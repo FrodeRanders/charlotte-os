@@ -545,19 +545,27 @@ Per-thread stack pages and maximum active threads originate in the retained, dev
 `charlotte/resources.yaml`, are signed into `CDEPLOY4`, and are enforced exactly for the protected domain rather than
 guessed or silently clamped by the cluster.
 
-### 12. Bounded cooperative deployment shutdown
+### 12. Bounded cooperative domain shutdown
 
 ```mermaid
 sequenceDiagram
 participant R as Replicated desired state
+participant N as Node shutdown coordinator
 participant A as Node deployment agent
 participant K as Kernel lifecycle gate
 participant P as Application domain
 participant E as External services
 
-      R-->>A: Deployment removed or replaced
-      A->>K: poll_retire(principal)
+      alt Deployment removed or replaced
+          R-->>A: Desired generation changed
+          A->>K: poll_retire(principal)
+      else Node shutdown
+          N-->>A: NodeShutdown(node deadline)
+          A->>A: Stop reconciliation<br/>mark all children retiring
+          A->>K: poll_node_shutdown(principal, node deadline)
+      end
       K-->>P: DrainRequested(reason, monotonic deadline)<br/>via read-only launch page
+      Note over K,P: node branch uses min(now + signed child grace, node deadline)
       loop Bounded application event loop
           P->>P: Stop accepting new work
           P->>E: Abort or finish transactions,<br/>close remote resources
@@ -574,9 +582,14 @@ participant E as External services
           K->>K: Abort remaining domain threads
           K-->>A: complete after generation-safe reaping
       end
+      opt Node shutdown and all child sets empty
+          A-->>N: Ready acknowledgement + thread_exit
+      end
 ```
 
 The cooperative request is kernel-authenticated because the application maps its launch page read-only. The signed
 `shutdownGraceMillis` value is bounded by admission policy; the application cannot clear the request or extend its
 deadline. `thread_exit` does not unwind Rust, so the generated and hand-written application pattern returns from the
 resource-owning serving function before calling `ShutdownRequest::complete()`.
+For node shutdown, the agent stops admitting new generations and propagates the enclosing deadline to every ordinary
+deployment and operational connector before acknowledging its own request.

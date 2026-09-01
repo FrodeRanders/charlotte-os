@@ -48,6 +48,8 @@ catten_rt::entry!(main);
 const STAGE_IDENTITY: u32 = 2;
 const STAGE_SERVING: u32 = 6;
 const STAGE_RETIRED: u32 = 7;
+const STAGE_DRAINING: u32 = 8;
+const STAGE_SHUTDOWN_READY: u32 = 9;
 const STAGE_FAIL: u32 = 0xdead;
 const RETIREMENT_POLL_MS: u64 = 10;
 
@@ -555,7 +557,57 @@ fn publish_if_ready(
     }
 }
 
-fn main(ctx: Context) -> ! {
+fn drain_for_node_shutdown(
+    active: &mut Vec<ActiveDeployment>,
+    operational: &mut Vec<ActiveOperational>,
+    request: catten_rt::ShutdownRequest,
+) -> catten_rt::ShutdownRequest {
+    catten_rt::logln!("[agent] node shutdown requested deadline_ms={}", request.deadline_ms);
+    config::write_u32_release(charlotte_launch::agent_status::STAGE, STAGE_DRAINING);
+    for running in active.iter_mut() {
+        running.retiring = true;
+    }
+    for running in operational.iter_mut() {
+        running.retiring = true;
+    }
+
+    loop {
+        let mut index = 0;
+        while index < active.len() {
+            match active[index].domain.poll_node_shutdown(request.deadline_ms) {
+                Ok(true) => {
+                    active.swap_remove(index);
+                    continue;
+                }
+                Ok(false) => {}
+                Err(_) => fail(STAGE_FAIL),
+            }
+            index += 1;
+        }
+
+        let mut index = 0;
+        while index < operational.len() {
+            match operational[index].domain.poll_node_shutdown(request.deadline_ms) {
+                Ok(true) => {
+                    operational.swap_remove(index);
+                    continue;
+                }
+                Ok(false) => {}
+                Err(_) => fail(STAGE_FAIL),
+            }
+            index += 1;
+        }
+
+        if active.is_empty() && operational.is_empty() {
+            catten_rt::logln!("[agent] child domains drained for node shutdown");
+            config::write_u32_release(charlotte_launch::agent_status::STAGE, STAGE_SHUTDOWN_READY);
+            return request;
+        }
+        sleep_ms(RETIREMENT_POLL_MS);
+    }
+}
+
+fn serve(ctx: &Context) -> catten_rt::ShutdownRequest {
     let names = ctx.bootstrap_connection().unwrap_or_else(|| fail(STAGE_FAIL));
     let poll_ms = match ctx.manifest_value(manifest_key(b"poll-ms")) {
         Some(ManifestValue::Unsigned(ms)) => ms,
@@ -566,10 +618,13 @@ fn main(ctx: Context) -> ! {
     config::write::<u64>(charlotte_launch::agent_status::NODE_KEY, my_node_key);
     config::write_u32_release(charlotte_launch::agent_status::STAGE, STAGE_IDENTITY);
 
-    let trust = manifest_admission_trust(&ctx).unwrap_or_else(|| fail(STAGE_FAIL));
+    let trust = manifest_admission_trust(ctx).unwrap_or_else(|| fail(STAGE_FAIL));
     let mut active: Vec<ActiveDeployment> = Vec::new();
     let mut operational: Vec<ActiveOperational> = Vec::new();
     loop {
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            return drain_for_node_shutdown(&mut active, &mut operational, request);
+        }
         let desired_names = deployment_names(dns_connection.as_ref());
         let desired_operations = operational_bindings(dns_connection.as_ref());
 
@@ -683,4 +738,8 @@ fn main(ctx: Context) -> ! {
             },
         );
     }
+}
+
+fn main(ctx: Context) -> ! {
+    serve(&ctx).complete()
 }

@@ -189,9 +189,13 @@ repository history remain authoritative.
         runner, named connector/procedure grants, scoped deployment launch, and
         generation-fenced Kafka commits are implemented. Deployed domains also
         receive a kernel-authenticated cooperative drain request and a signed,
-        bounded grace period before forced retirement; controller-managed
-        instance leases, replica-aware rollout, and coordinated rollback remain
-        future work.
+        bounded grace period before forced retirement. A node-shutdown request
+        now propagates through the deployment agent to ordinary applications
+        and operational connectors, with the earlier of the child and node
+        deadlines enforced. Reverse-ordered platform-service and driver drain,
+        final device quiescence and poweroff, controller-managed instance
+        leases, replica-aware rollout, and coordinated rollback remain future
+        work.
     \item \textbf{HVF does not honor hardware ASIDs.} Apple's
         Hypervisor.framework strips the ASID bits from \texttt{TTBR0\_EL1} on
         read and does not use them to isolate user translations, so the kernel's

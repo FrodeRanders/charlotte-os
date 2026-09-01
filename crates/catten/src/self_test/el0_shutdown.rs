@@ -4,7 +4,6 @@ use crate::{
     cpu::scheduler::{
         monotonic_millis,
         sleep_millis,
-        system_scheduler::SYSTEM_SCHEDULER,
     },
     ipc::ConnectionRights,
     logln,
@@ -23,10 +22,14 @@ use crate::{
 
 const STATUS_STARTED: usize = 0;
 const MODE_KEY: u64 = 0x7368_7574_6d6f_6465; // "shutmode"
+const COOPERATIVE_PRINCIPAL: u64 = 0x7368_7574_0000_0001;
+const STUBBORN_PRINCIPAL: u64 = 0x7368_7574_0000_0002;
 
 struct TestState {
     cooperative: ServiceDomain,
     stubborn: ServiceDomain,
+    acknowledged_before: u64,
+    forced_before: u64,
 }
 
 static TEST_STATE: spin::Mutex<Option<TestState>> = spin::Mutex::new(None);
@@ -48,9 +51,33 @@ pub fn test_el0_shutdown() {
             value: ManifestValue::Unsigned(1),
         }],
     );
+    let acknowledged_before = supervisor::NODE_SHUTDOWN_ACKNOWLEDGED_RETIREMENTS
+        .load(core::sync::atomic::Ordering::Relaxed);
+    let forced_before =
+        supervisor::NODE_SHUTDOWN_FORCED_RETIREMENTS.load(core::sync::atomic::Ordering::Relaxed);
+    supervisor::DEPLOYED_DOMAINS.lock().extend([
+        supervisor::DeployedDomain {
+            principal: COOPERATIVE_PRINCIPAL,
+            domain: cooperative,
+            shutdown_grace_ms: 2_000,
+            retirement_deadline_ms: None,
+            retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+            force_requested: false,
+        },
+        supervisor::DeployedDomain {
+            principal: STUBBORN_PRINCIPAL,
+            domain: stubborn,
+            shutdown_grace_ms: 100,
+            retirement_deadline_ms: None,
+            retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+            force_requested: false,
+        },
+    ]);
     *TEST_STATE.lock() = Some(TestState {
         cooperative,
         stubborn,
+        acknowledged_before,
+        forced_before,
     });
     crate::self_test::results::spawn_verifier(
         crate::self_test::results::TestId::Shutdown,
@@ -70,19 +97,50 @@ fn wait_started(domain: &ServiceDomain, what: &str) {
     }
 }
 
+fn lifecycle_request(domain: &ServiceDomain) -> (u32, u32, u64) {
+    let base: *const u8 = domain.config_frame.into();
+    unsafe {
+        let state = core::ptr::read_volatile(
+            base.add(charlotte_launch::lifecycle::CONTROL_STATE_OFFSET) as *const u32,
+        );
+        let reason = core::ptr::read_volatile(
+            base.add(charlotte_launch::lifecycle::CONTROL_REASON_OFFSET) as *const u32,
+        );
+        let deadline = core::ptr::read_volatile(
+            base.add(charlotte_launch::lifecycle::CONTROL_DEADLINE_MS_OFFSET) as *const u64,
+        );
+        (state, reason, deadline)
+    }
+}
+
 extern "C" fn verify_el0_shutdown() {
     let TestState {
         cooperative,
         stubborn,
+        acknowledged_before,
+        forced_before,
     } = TEST_STATE.lock().take().expect("[shutdown] verifier state");
 
     wait_started(&cooperative, "cooperative probe startup");
-    let deadline = monotonic_millis().saturating_add(2_000);
-    bootstrap::write_lifecycle_request(
-        cooperative.config_frame,
-        charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
-        charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
-        deadline,
+    let node_deadline = monotonic_millis().saturating_add(1_000);
+    assert_eq!(
+        crate::syscall::retire_deployed_artifact(
+            COOPERATIVE_PRINCIPAL,
+            false,
+            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+            node_deadline,
+        ),
+        1,
+        "cooperative node retirement did not enter the draining state"
+    );
+    assert_eq!(
+        lifecycle_request(&cooperative),
+        (
+            charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
+            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+            node_deadline,
+        ),
+        "enclosing node deadline did not cap the child's signed grace"
     );
     supervisor::wait_domain_exit(&cooperative, 10_000);
     assert_eq!(
@@ -90,31 +148,78 @@ extern "C" fn verify_el0_shutdown() {
         charlotte_launch::lifecycle::STATUS_READY,
         "cooperative probe exited without acknowledging cleanup"
     );
-    supervisor::teardown_domain(cooperative);
+    assert_eq!(
+        crate::syscall::retire_deployed_artifact(
+            COOPERATIVE_PRINCIPAL,
+            false,
+            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+            node_deadline,
+        ),
+        0,
+        "cooperative node retirement did not reclaim the domain"
+    );
     logln!("[shutdown] cooperative cleanup acknowledged and domain reclaimed");
 
     wait_started(&stubborn, "stubborn probe startup");
-    let deadline = monotonic_millis().saturating_add(100);
-    bootstrap::write_lifecycle_request(
-        stubborn.config_frame,
-        charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
-        charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
-        deadline,
+    let child_grace_started = monotonic_millis();
+    let node_deadline = monotonic_millis().saturating_add(10_000);
+    assert_eq!(
+        crate::syscall::retire_deployed_artifact(
+            STUBBORN_PRINCIPAL,
+            false,
+            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+            node_deadline,
+        ),
+        1,
+        "stubborn node retirement did not enter the draining state"
+    );
+    let (state, reason, child_deadline) = lifecycle_request(&stubborn);
+    let child_grace_observed = monotonic_millis();
+    assert_eq!(state, charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED);
+    assert_eq!(reason, charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN);
+    assert!(
+        child_deadline >= child_grace_started
+            && child_deadline <= child_grace_observed.saturating_add(100)
+            && child_deadline < node_deadline,
+        "signed child grace did not cap the enclosing node deadline"
     );
     sleep_millis(150);
     assert!(
         !supervisor::domain_exited(&stubborn),
         "stubborn probe unexpectedly honored the drain request"
     );
-    bootstrap::write_lifecycle_request(
-        stubborn.config_frame,
-        charlotte_launch::lifecycle::STATE_FORCE_TERMINATING,
-        charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
-        deadline,
+    assert_eq!(
+        crate::syscall::retire_deployed_artifact(
+            STUBBORN_PRINCIPAL,
+            false,
+            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+            node_deadline,
+        ),
+        1,
+        "expired child grace did not request forced termination"
     );
-    SYSTEM_SCHEDULER.read().abort_as_threads(stubborn.asid);
     supervisor::wait_domain_exit(&stubborn, 10_000);
-    supervisor::teardown_domain(stubborn);
+    assert_eq!(
+        crate::syscall::retire_deployed_artifact(
+            STUBBORN_PRINCIPAL,
+            false,
+            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+            node_deadline,
+        ),
+        0,
+        "forced node retirement did not reclaim the domain"
+    );
+    assert_eq!(
+        supervisor::NODE_SHUTDOWN_ACKNOWLEDGED_RETIREMENTS
+            .load(core::sync::atomic::Ordering::Relaxed),
+        acknowledged_before + 1,
+        "cooperative node-shutdown outcome was not recorded"
+    );
+    assert_eq!(
+        supervisor::NODE_SHUTDOWN_FORCED_RETIREMENTS.load(core::sync::atomic::Ordering::Relaxed),
+        forced_before + 1,
+        "forced node-shutdown outcome was not recorded"
+    );
     logln!("[shutdown] unresponsive domain forcibly terminated and reclaimed");
 
     logln!("[shutdown] SUCCESS: bounded cooperative and forced shutdown verified");

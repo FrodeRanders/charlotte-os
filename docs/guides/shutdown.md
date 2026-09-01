@@ -78,15 +78,38 @@ reconciliation must retain the owner and keep polling until the kernel reports
 completion, both to provide the cooperative window and to observe final
 reclamation.
 
+## Node-drain propagation
+
+The deployment agent is itself lifecycle-aware. When it observes a
+`NodeShutdown` request, it stops catalog reconciliation before launching any
+new work, marks every ordinary and operational child as retiring, and polls
+all of those owners until their address spaces have been reclaimed. Child
+lifecycle records carry `NodeShutdown`, rather than disguising the transition
+as a deployment update.
+
+The enclosing node deadline and the descriptor's signed grace period are both
+authoritative upper bounds. For each child, the kernel publishes the earlier
+of `now + shutdown_grace_ms` and the node deadline. A node coordinator can
+therefore shorten a grace period when little node-drain time remains, but it
+cannot extend one. Repeated polls likewise cannot move an established deadline
+later. An artifact already retiring because of a deployment change is upgraded
+to the node-shutdown reason and its deadline may only become earlier.
+
+Only after ordinary deployments and privileged operational connectors have
+both drained does the agent acknowledge its own lifecycle request and exit.
+Kernel counters distinguish acknowledged and forced node-shutdown retirements
+from ordinary deployment replacement outcomes.
+
 The lifecycle request is authenticated by memory protection: only the kernel
 can mutate the launch page. The application can acknowledge a request but
 cannot clear it, extend its deadline, or request shutdown of another domain.
 
 ## Scope
 
-This contract currently covers agent-owned deployed applications and
-operational connectors. Service-specific `OP_SHUTDOWN` messages remain useful
-for tests and targeted live upgrade, but are not the deployment lifecycle
-authority. Coordinated whole-node poweroff still needs a replicated drain
-intent, reverse dependency ordering for platform services and drivers, durable
-flush, DMA/device quiescence, and a final architecture poweroff operation.
+This contract currently covers the deployment agent and all agent-owned
+applications and operational connectors. Service-specific `OP_SHUTDOWN`
+messages remain useful for tests and targeted live upgrade, but are not the
+deployment lifecycle authority. Coordinated whole-node poweroff still needs a
+replicated drain intent, reverse dependency ordering for the remaining
+platform services and drivers, durable flush, DMA/device quiescence, and a
+final architecture poweroff operation.

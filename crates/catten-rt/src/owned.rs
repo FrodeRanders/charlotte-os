@@ -891,10 +891,29 @@ impl DeployedArtifact {
 
     /// Request retirement and report whether reclamation has completed.
     pub fn poll_retire(&mut self) -> Result<bool, ArtifactLaunchError> {
+        let principal = self.principal;
+        self.poll_retire_with(|| kernel::retire_artifact_named(principal))
+    }
+
+    /// Propagate an enclosing node-shutdown request to this domain.
+    ///
+    /// The kernel uses the earlier of the artifact's signed grace period and
+    /// `deadline_ms`. Repeated calls cannot extend a retirement already in
+    /// progress. This remains an explicit poll because the owner must be kept
+    /// alive until kernel-side reclamation completes.
+    pub fn poll_node_shutdown(&mut self, deadline_ms: u64) -> Result<bool, ArtifactLaunchError> {
+        let principal = self.principal;
+        self.poll_retire_with(|| kernel::retire_artifact_for_node_shutdown(principal, deadline_ms))
+    }
+
+    fn poll_retire_with(
+        &mut self,
+        request: impl FnOnce() -> u64,
+    ) -> Result<bool, ArtifactLaunchError> {
         if self.retired {
             return Ok(true);
         }
-        match kernel::retire_artifact_named(self.principal) {
+        match request() {
             0 => {
                 self.retired = true;
                 Ok(true)
@@ -2132,6 +2151,10 @@ mod kernel {
         catten_syscall::retire_artifact_named(principal)
     }
 
+    pub fn retire_artifact_for_node_shutdown(principal: u64, deadline_ms: u64) -> u64 {
+        catten_syscall::retire_artifact_for_node_shutdown(principal, deadline_ms)
+    }
+
     pub fn force_retire_artifact_named(principal: u64) -> u64 {
         catten_syscall::force_retire_artifact_named(principal)
     }
@@ -2169,6 +2192,7 @@ mod kernel {
         CompletionClose(u64),
         IpcClose(u64),
         RetireArtifact(u64),
+        RetireArtifactForNodeShutdown(u64, u64),
         ForceRetireArtifact(u64),
     }
 
@@ -2554,6 +2578,13 @@ mod kernel {
         })
     }
 
+    pub fn retire_artifact_for_node_shutdown(principal: u64, deadline_ms: u64) -> u64 {
+        with_state(|state| {
+            state.events.push(Event::RetireArtifactForNodeShutdown(principal, deadline_ms));
+            state.retire_result
+        })
+    }
+
     pub fn force_retire_artifact_named(principal: u64) -> u64 {
         with_state(|state| state.events.push(Event::ForceRetireArtifact(principal)));
         0
@@ -2826,6 +2857,27 @@ mod tests {
         assert_eq!(artifact.poll_retire(), Ok(true));
         drop(artifact);
         assert_eq!(kernel::events(), [kernel::Event::RetireArtifact(0x8000_5678)]);
+    }
+
+    #[test]
+    fn node_shutdown_retirement_carries_the_enclosing_deadline() {
+        let _guard = setup();
+        kernel::update(|state| state.retire_result = 1);
+        let mut artifact = DeployedArtifact {
+            principal: 0x8000_9abc,
+            asid: 9,
+            retired: false,
+        };
+
+        assert_eq!(artifact.poll_node_shutdown(12_345), Ok(false));
+        drop(artifact);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::RetireArtifactForNodeShutdown(0x8000_9abc, 12_345),
+                kernel::Event::ForceRetireArtifact(0x8000_9abc),
+            ]
+        );
     }
 
     #[test]

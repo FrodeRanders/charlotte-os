@@ -301,6 +301,7 @@ pub(crate) struct DeployedDomain {
     pub domain: ServiceDomain,
     pub shutdown_grace_ms: u32,
     pub retirement_deadline_ms: Option<u64>,
+    pub retirement_reason: u32,
     pub force_requested: bool,
 }
 
@@ -319,6 +320,10 @@ pub(crate) static DEPLOYED_DOMAINS: spin::LazyLock<
 pub(crate) static DEPLOYMENT_ACKNOWLEDGED_RETIREMENTS: core::sync::atomic::AtomicU64 =
     core::sync::atomic::AtomicU64::new(0);
 pub(crate) static DEPLOYMENT_FORCED_RETIREMENTS: core::sync::atomic::AtomicU64 =
+    core::sync::atomic::AtomicU64::new(0);
+pub(crate) static NODE_SHUTDOWN_ACKNOWLEDGED_RETIREMENTS: core::sync::atomic::AtomicU64 =
+    core::sync::atomic::AtomicU64::new(0);
+pub(crate) static NODE_SHUTDOWN_FORCED_RETIREMENTS: core::sync::atomic::AtomicU64 =
     core::sync::atomic::AtomicU64::new(0);
 
 /// Kernel-private connection to the node name service, minted when the node

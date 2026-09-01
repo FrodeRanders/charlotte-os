@@ -11,7 +11,7 @@ This manual calls the resulting complexity and performance cost the
 \textbf{retrofit tax}: a synchronous, ambient-authority, monolithic system must be
 made to behave as though it were asynchronous, least-privilege, and decomposed.
 
-\section{The retrofit tax, itemized}
+\section{The retrofit tax}
 
 \subsection{Async over blocking}
 
@@ -39,7 +39,7 @@ This translation layer brings with it:
 
 A conventional OS process has access to the filesystem namespace, the network, and
 other global resources by default. Security is subtractive: you start with
-everything and try to take things away (chroot, seccomp, namespaces). This is
+everything and try to take things away (by means of chroot, seccomp, namespaces). This is
 brittle because it requires the developer to enumerate what \emph{should not} be
 accessible --- an unbounded problem. In practice, most programs run with far more
 authority than they need, and exploits exploit that gap.
@@ -87,7 +87,7 @@ programs run on operating systems that do not share Rust's ownership discipline.
 \end{itemize}
 
 Rust prevents some bug classes within an address space. The OS still defines the
-rules between address spaces. If authority is ambient until restricted, the
+rules between address spaces. If authority is ambient until restricted, then the
 language's guarantees remain local.
 
 \section{What needs to change}
@@ -101,7 +101,7 @@ of critical, performant software:
         blocking-call semantics. No subsystem should force a thread to dedicate
         itself to one operation.
 
-    \item Capability-based, not ambient, authority --- a process should be
+    \item Capability-based, instead of ambient, authority --- a process should be
         able to perform an operation only if it holds a capability authorizing it.
         Capabilities are unforgeable and must be explicitly granted.
 

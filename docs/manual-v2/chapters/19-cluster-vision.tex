@@ -753,10 +753,20 @@ address space only after generation-safe reaping. While retirement is active,
 the agent polls at most ten milliseconds apart.
 Figure~\ref{fig:cooperative-deployment-shutdown} shows this path.
 
+The same mechanism now propagates a node drain through the deployment plane.
+On receiving a kernel-authenticated \texttt{NodeShutdown} lifecycle request,
+the agent stops reconciliation and launches no new work. It marks every
+ordinary deployment and privileged operational connector as retiring, then
+retains and polls their owners until reclamation completes. Each child receives
+the earlier of its descriptor-signed grace deadline and the enclosing node
+deadline: the node transition may shorten an allowance but cannot extend it.
+The agent acknowledges and exits only after both child sets are empty.
+
 \architecturewidefigure{cooperative-deployment-shutdown}
-    {Bounded cooperative shutdown followed by generation-safe forced retirement.
-    The application can acknowledge but cannot clear or extend a
-    kernel-published lifecycle request.}
+    {Bounded cooperative shutdown for deployment retirement or an enclosing
+    node drain, followed by generation-safe forced retirement. The application
+    can acknowledge but cannot clear or extend a kernel-published lifecycle
+    request.}
     {fig:cooperative-deployment-shutdown}
 
 The client may contact any member. A follower relays the bounded submission to

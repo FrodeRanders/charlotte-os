@@ -1981,6 +1981,7 @@ fn sys_spawn_artifact(frame: &mut TrapFrame) {
             domain,
             shutdown_grace_ms: charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS,
             retirement_deadline_ms: None,
+            retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
             force_requested: false,
         },
     );
@@ -2081,6 +2082,7 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
             domain,
             shutdown_grace_ms: decoded.shutdown_grace_ms,
             retirement_deadline_ms: None,
+            retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
             force_requested: false,
         },
     );
@@ -2232,6 +2234,7 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
             domain,
             shutdown_grace_ms,
             retirement_deadline_ms: None,
+            retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
             force_requested: false,
         },
     );
@@ -2246,6 +2249,45 @@ fn sys_retire_artifact(frame: &mut TrapFrame) {
     }
     let principal = frame.regs[1];
     let force = frame.regs[2] != 0;
+    let requested_reason = match frame.regs[3] {
+        0 => charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+        reason if reason == u64::from(charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED) => {
+            charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED
+        }
+        reason if reason == u64::from(charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN) => {
+            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN
+        }
+        _ => {
+            frame.regs[0] = u64::MAX;
+            return;
+        }
+    };
+    let enclosing_deadline_ms = frame.regs[4];
+    frame.regs[0] =
+        retire_deployed_artifact(principal, force, requested_reason, enclosing_deadline_ms);
+}
+
+const _: () = assert!(
+    catten_syscall::artifact_retirement_reason::DEPLOYMENT_RETIRED
+        == charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED
+        && catten_syscall::artifact_retirement_reason::NODE_SHUTDOWN
+            == charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN
+);
+
+/// Advance one deployment-owned domain through cooperative drain, forced
+/// termination, and reclamation. Kept separate from syscall authorization so
+/// the protected-domain shutdown test can exercise the exact state machine.
+pub(crate) fn retire_deployed_artifact(
+    principal: u64,
+    force: bool,
+    requested_reason: u32,
+    enclosing_deadline_ms: u64,
+) -> u64 {
+    assert!(
+        requested_reason == charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED
+            || requested_reason == charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+        "invalid internal deployment-retirement reason"
+    );
     let mut deployed = crate::service::supervisor::DEPLOYED_DOMAINS.lock();
     let position = if principal == 0 && deployed.len() == 1 {
         Some(0)
@@ -2253,22 +2295,47 @@ fn sys_retire_artifact(frame: &mut TrapFrame) {
         deployed.iter().position(|entry| entry.principal == principal)
     };
     let Some(position) = position else {
-        frame.regs[0] = 0;
-        return;
+        return 0;
     };
     let domain = deployed[position].domain;
     if !crate::service::supervisor::domain_exited(&domain) {
         let now = crate::cpu::scheduler::monotonic_millis();
         let entry = &mut deployed[position];
         if entry.retirement_deadline_ms.is_none() {
-            let deadline = now.saturating_add(u64::from(entry.shutdown_grace_ms));
+            let signed_deadline = now.saturating_add(u64::from(entry.shutdown_grace_ms));
+            let deadline = if requested_reason == charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN
+            {
+                signed_deadline.min(enclosing_deadline_ms)
+            } else {
+                signed_deadline
+            };
             entry.retirement_deadline_ms = Some(deadline);
+            entry.retirement_reason = requested_reason;
             crate::service::bootstrap::write_lifecycle_request(
                 domain.config_frame,
                 charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
-                charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+                entry.retirement_reason,
                 deadline,
             );
+        } else if requested_reason == charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN {
+            // A node drain subsumes an earlier deployment retirement. It may
+            // shorten the deadline, but it must never extend it.
+            let deadline = entry
+                .retirement_deadline_ms
+                .unwrap_or(enclosing_deadline_ms)
+                .min(enclosing_deadline_ms);
+            let changed = entry.retirement_reason != requested_reason
+                || entry.retirement_deadline_ms != Some(deadline);
+            entry.retirement_reason = requested_reason;
+            entry.retirement_deadline_ms = Some(deadline);
+            if changed && !entry.force_requested {
+                crate::service::bootstrap::write_lifecycle_request(
+                    domain.config_frame,
+                    charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
+                    entry.retirement_reason,
+                    deadline,
+                );
+            }
         }
         let deadline_reached = entry.retirement_deadline_ms.is_some_and(|deadline| now >= deadline);
         if force || deadline_reached {
@@ -2276,7 +2343,7 @@ fn sys_retire_artifact(frame: &mut TrapFrame) {
                 crate::service::bootstrap::write_lifecycle_request(
                     domain.config_frame,
                     charlotte_launch::lifecycle::STATE_FORCE_TERMINATING,
-                    charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+                    entry.retirement_reason,
                     entry.retirement_deadline_ms.unwrap_or(now),
                 );
                 entry.force_requested = true;
@@ -2285,22 +2352,29 @@ fn sys_retire_artifact(frame: &mut TrapFrame) {
                 .read()
                 .abort_as_threads(domain.asid);
         }
-        frame.regs[0] = 1;
-        return;
+        return 1;
     }
     let retired = deployed.swap_remove(position);
-    if retired.force_requested {
+    let acknowledged = retired.retirement_deadline_ms.is_some()
+        && crate::service::bootstrap::lifecycle_status(retired.domain.status_frame)
+            == charlotte_launch::lifecycle::STATUS_READY;
+    if retired.retirement_reason == charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN {
+        if retired.force_requested {
+            crate::service::supervisor::NODE_SHUTDOWN_FORCED_RETIREMENTS
+                .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        } else if acknowledged {
+            crate::service::supervisor::NODE_SHUTDOWN_ACKNOWLEDGED_RETIREMENTS
+                .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        }
+    } else if retired.force_requested {
         crate::service::supervisor::DEPLOYMENT_FORCED_RETIREMENTS
             .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
-    } else if retired.retirement_deadline_ms.is_some()
-        && crate::service::bootstrap::lifecycle_status(retired.domain.status_frame)
-            == charlotte_launch::lifecycle::STATUS_READY
-    {
+    } else if acknowledged {
         crate::service::supervisor::DEPLOYMENT_ACKNOWLEDGED_RETIREMENTS
             .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
     }
     let domain = retired.domain;
     drop(deployed);
     crate::service::supervisor::teardown_domain(domain);
-    frame.regs[0] = 0;
+    0
 }

@@ -86,10 +86,13 @@ formation, use:
     --fresh-storage --timeout 120
 ```
 
-The isolated verifier launches one probe that drops an owned endpoint and
-acknowledges the read-only lifecycle request, then a deliberately unresponsive
-probe that must be forcibly terminated and reclaimed after its deadline. The
-same switch is available through `scripts/run-x86_64.sh`.
+The isolated verifier registers both probes with the real deployment-domain
+retirement state machine. One drops an owned endpoint and acknowledges a
+propagated `NodeShutdown` request. The other is deliberately unresponsive: its
+signed child grace expires before the enclosing node deadline, so it must be
+forcibly terminated and reclaimed. The test also requires the distinct
+acknowledged/forced node-shutdown counters to advance. The same switch is
+available through `scripts/run-x86_64.sh`.
 
 `--kafka-test --timeout 300` similarly adds a disposable three-broker Apache
 Kafka KRaft cluster with ephemeral verified TLS listeners and an in-guest verifier.
