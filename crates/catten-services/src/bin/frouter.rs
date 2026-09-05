@@ -25,7 +25,15 @@ use alloc::vec::Vec;
 
 use catten_rt::{
     Context,
+    ShutdownRequest,
     config,
+    owned::{
+        Connection,
+        ConnectionRef,
+        Endpoint,
+        OwnedMemory,
+        PendingCall,
+    },
 };
 use catten_services::{
     disco,
@@ -35,26 +43,10 @@ use catten_services::{
     relmsg,
     sleep_ms,
     socket,
-    wait_reply,
+    wait_for_registered_name_owned,
 };
 use catten_syscall::{
     IpcRights,
-    ipc_close,
-    ipc_endpoint_bind_cq,
-    ipc_endpoint_create,
-    ipc_recv,
-    ipc_reply,
-    ipc_reply_move,
-    ipc_reply_poll,
-    ipc_reply_poll_with_memory,
-    ipc_scalar_call,
-    ipc_scalar_call_connection,
-    ipc_scalar_call_move,
-    ipc_status,
-    memory_alloc,
-    memory_close,
-    memory_map_any,
-    memory_unmap,
     thread_exit,
 };
 use charlotte_launch::frouter_status as status;
@@ -78,7 +70,7 @@ static HEARTBEAT_TICKS: core::sync::atomic::AtomicU64 = core::sync::atomic::Atom
 
 struct Route {
     ethertype: u16,
-    conn: u64,
+    conn: Connection,
     opcode: u32,
 }
 
@@ -86,125 +78,104 @@ struct RouteLookup {
     ethertype: u16,
     name: u64,
     opcode: u32,
-    call: u64,
+    call: Option<PendingCall<'static>>,
 }
 
 struct PendingForward {
-    call: u64,
-    route_conn: u64,
+    call: PendingCall<'static>,
+    route_ethertype: u16,
 }
 
-fn lookup(ns_conn: u64, name: u64) -> u64 {
-    let call = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, name);
-    if call == 0 {
-        return 0;
-    }
-    let (generation, connection) = unsafe { wait_reply(call, 0) };
-    if generation < 1 || connection == 0 {
-        if connection != 0 {
-            ipc_close(connection);
-        }
-        0
-    } else {
-        connection
-    }
+fn lookup(ns_conn: ConnectionRef<'_>, name: u64) -> Option<Connection> {
+    wait_for_registered_name_owned(ns_conn, name).map(|(_, connection)| connection)
 }
 
-fn refresh_routes(routes: &mut Vec<Route>, lookups: &mut [RouteLookup], ns_conn: u64) {
+fn refresh_routes(
+    routes: &mut Vec<Route>,
+    lookups: &mut [RouteLookup],
+    ns_conn: ConnectionRef<'_>,
+) {
     for lookup in lookups {
         if routes.iter().any(|route| route.ethertype == lookup.ethertype) {
             continue;
         }
 
-        if lookup.call == 0 {
+        if lookup.call.is_none() {
             // OP_LOOKUP intentionally remains pending while the service is
             // absent. This is the name service's synchronization mechanism;
             // keeping the call in this small fixed table makes it asynchronous
             // from the router's point of view and bounds retained authority.
-            lookup.call = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, lookup.name);
+            lookup.call = ns_conn.call(ns::OP_LOOKUP, lookup.name).ok();
             continue;
         }
 
-        let (status, generation, connection) = ipc_reply_poll(lookup.call);
-        if status == 1 {
-            continue;
-        }
-
-        ipc_close(lookup.call);
-        lookup.call = 0;
-        if status == 0 && generation >= 1 && connection != 0 {
-            routes.push(Route {
-                ethertype: lookup.ethertype,
-                conn: connection,
-                opcode: lookup.opcode,
-            });
-        } else if connection != 0 {
-            ipc_close(connection);
+        let result = lookup.call.as_mut().expect("route lookup exists").poll();
+        match result {
+            Ok(None) => continue,
+            Ok(Some(result)) => {
+                lookup.call = None;
+                if result.result >= 1
+                    && let Some(connection) = result.connection
+                {
+                    routes.push(Route {
+                        ethertype: lookup.ethertype,
+                        conn: connection,
+                        opcode: lookup.opcode,
+                    });
+                }
+            }
+            Err(_) => lookup.call = None,
         }
     }
 }
 
 /// Peek the EtherType field (bytes 12..14, big-endian) of a frame held in a
 /// moved memory object, without consuming the object.
-fn read_ethertype(memory: u64, frame_len: usize) -> u16 {
+fn read_ethertype(memory: OwnedMemory, frame_len: usize) -> Option<(OwnedMemory, u16)> {
     if frame_len < ETHERNET_HEADER_MIN {
-        return 0;
+        return None;
     }
-    let (scratch_2_map_status, scratch_2_vaddr) = memory_map_any(memory, false);
-    if scratch_2_map_status != 0 {
-        return 0;
-    }
-    let ethertype = unsafe {
-        let base = scratch_2_vaddr as *const u8;
-        u16::from_be_bytes([
-            core::ptr::read_volatile(base.add(ETHERTYPE_OFFSET)),
-            core::ptr::read_volatile(base.add(ETHERTYPE_OFFSET + 1)),
-        ])
+    let Ok(mapping) = memory.map_read_only() else {
+        return None;
     };
-    let _ = memory_unmap(memory);
-    ethertype
+    let field = mapping.as_slice().get(ETHERTYPE_OFFSET..ETHERTYPE_OFFSET + 2)?;
+    let ethertype = u16::from_be_bytes([field[0], field[1]]);
+    let Ok(memory) = mapping.unmap() else {
+        return None;
+    };
+    Some((memory, ethertype))
 }
 
-fn main(ctx: Context) -> ! {
+fn fail() -> ! {
+    unsafe { thread_exit() }
+}
+
+fn serve(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(status::STAGE, 1);
-    let ns_conn = match ctx.bootstrap_cap() {
-        Some(cap) => cap,
-        None => unsafe { thread_exit() },
-    };
+    let ns_conn = ctx.bootstrap_connection().unwrap_or_else(|| fail());
     // The NIC driver is mandatory; discovery of the optional consumers may
     // lag behind their registration.
-    let mut net_conn = lookup(ns_conn, net::NAME);
-    if net_conn == 0 {
-        unsafe { thread_exit() };
-    }
+    let mut net_conn = lookup(ns_conn, net::NAME).unwrap_or_else(|| fail());
     config::write::<u32>(status::STAGE, 2);
 
     // Register so other services (notably the httpd report aggregator) can
     // look us up and query our live counters.
-    let ep = ipc_endpoint_create(frouter::INTERFACE, frouter::VERSION, 8);
-    if ep == 0 {
-        unsafe { thread_exit() };
+    let endpoint =
+        Endpoint::create(frouter::INTERFACE, frouter::VERSION, 8).unwrap_or_else(|_| fail());
+    let registration = ns_conn
+        .call_connection(
+            ns::OP_REGISTER,
+            frouter::NAME,
+            &endpoint,
+            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
+        )
+        .unwrap_or_else(|_| fail())
+        .wait()
+        .unwrap_or_else(|_| fail());
+    if registration.result < 1 {
+        fail();
     }
-    let registration = ipc_scalar_call_connection(
-        ns_conn,
-        ns::OP_REGISTER,
-        frouter::NAME,
-        ep,
-        IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-    );
-    if registration == 0 {
-        unsafe { thread_exit() };
-    }
-    let (generation, returned_connection) = unsafe { wait_reply(registration, 0) };
-    if returned_connection != 0 {
-        ipc_close(returned_connection);
-    }
-    if generation < 1 {
-        unsafe { thread_exit() };
-    }
-    if ipc_endpoint_bind_cq(ep, 0) != 0 {
-        unsafe { thread_exit() };
-    }
+    endpoint.bind_completion_queue(0).unwrap_or_else(|_| fail());
     config::write::<u32>(status::STAGE, 3);
 
     let mut routes: Vec<Route> = Vec::new();
@@ -213,25 +184,25 @@ fn main(ctx: Context) -> ! {
             ethertype: MSG_ETHERTYPE,
             name: relmsg::NAME,
             opcode: relmsg::OP_FRAME,
-            call: 0,
+            call: None,
         },
         RouteLookup {
             ethertype: DISCO_ETHERTYPE,
             name: disco::NAME,
             opcode: disco::OP_FRAME,
-            call: 0,
+            call: None,
         },
         RouteLookup {
             ethertype: IPV4_ETHERTYPE,
             name: socket::NAME,
             opcode: socket::OP_FRAME,
-            call: 0,
+            call: None,
         },
         RouteLookup {
             ethertype: ARP_ETHERTYPE,
             name: socket::NAME,
             opcode: socket::OP_FRAME,
-            call: 0,
+            call: None,
         },
     ];
     let mut pending_forwards: Vec<PendingForward> = Vec::new();
@@ -246,11 +217,14 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, stage);
 
     loop {
-        let receive = ipc_scalar_call(net_conn, net::OP_RECV, 0);
-        if receive == 0 {
-            unsafe { thread_exit() };
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            return request;
         }
+        let mut receive = net_conn.call(net::OP_RECV, 0).unwrap_or_else(|_| fail());
         loop {
+            if let Some(request) = ctx.lifecycle().shutdown_requested() {
+                return request;
+            }
             // Periodic heartbeat (~every 256 reactor iterations) so a stall can
             // be localized: if rx stops advancing here, frames are not reaching
             // the demultiplexer from the NIC driver.
@@ -268,28 +242,13 @@ fn main(ctx: Context) -> ! {
             // Drain our own endpoint so status queries are served even while
             // no frames are flowing (non-blocking).
             loop {
-                let m = ipc_recv(ep);
-                if m.status == ipc_status::NO_MESSAGE {
+                let Some(mut message) = endpoint.try_receive().unwrap_or_else(|_| fail()) else {
                     break;
-                }
-                if m.status == ipc_status::ENDPOINT_CLOSED {
-                    unsafe { thread_exit() };
-                }
-                if !m.is_ok() || m.reply == 0 {
+                };
+                let Some(reply) = message.reply.take() else {
                     continue;
-                }
-                if m.opcode == frouter::OP_STATUS {
-                    let cap = memory_alloc(1);
-                    if cap == 0 {
-                        ipc_reply(m.reply, frouter::ERR_BAD_OPCODE);
-                        continue;
-                    }
-                    let (scratch_map_status, scratch_vaddr) = memory_map_any(cap, true);
-                    if scratch_map_status != 0 {
-                        memory_close(cap);
-                        ipc_reply(m.reply, frouter::ERR_BAD_OPCODE);
-                        continue;
-                    }
+                };
+                if message.opcode == frouter::OP_STATUS {
                     let words = [
                         stage,
                         rx_total,
@@ -299,19 +258,33 @@ fn main(ctx: Context) -> ! {
                         routes.len() as u32,
                         frouter::STATUS_MAGIC,
                     ];
-                    unsafe {
-                        core::ptr::copy_nonoverlapping(
-                            words.as_ptr(),
-                            scratch_vaddr as *mut u32,
-                            words.len(),
-                        );
+                    let memory = match OwnedMemory::allocate(1) {
+                        Ok(memory) => memory,
+                        Err(_) => {
+                            let _ = reply.reply(frouter::ERR_BAD_OPCODE);
+                            continue;
+                        }
+                    };
+                    let mut mapping = match memory.map_writable() {
+                        Ok(mapping) => mapping,
+                        Err((_, _)) => {
+                            let _ = reply.reply(frouter::ERR_BAD_OPCODE);
+                            continue;
+                        }
+                    };
+                    for (chunk, word) in mapping
+                        .as_mut_slice()
+                        .as_chunks_mut::<4>()
+                        .0
+                        .iter_mut()
+                        .zip(words.iter().copied())
+                    {
+                        chunk.copy_from_slice(&word.to_le_bytes());
                     }
-                    memory_unmap(cap);
-                    if ipc_reply_move(m.reply, cap, (words.len() * 4) as i64) != 0 {
-                        memory_close(cap);
-                    }
+                    let memory = mapping.unmap().unwrap_or_else(|_| fail());
+                    let _ = reply.reply_move(memory, (words.len() * 4) as i64);
                 } else {
-                    ipc_reply(m.reply, frouter::ERR_BAD_OPCODE);
+                    let _ = reply.reply(frouter::ERR_BAD_OPCODE);
                 }
             }
 
@@ -329,73 +302,69 @@ fn main(ctx: Context) -> ! {
             // not stop the NIC owner from serving every other EtherType.
             let mut index = 0;
             while index < pending_forwards.len() {
-                let pending = &pending_forwards[index];
-                let (status, result, returned_cap) = ipc_reply_poll(pending.call);
-                if status == 1 {
-                    index += 1;
-                    continue;
-                }
+                let result = pending_forwards[index].call.poll();
+                let outcome = match result {
+                    Ok(None) => {
+                        index += 1;
+                        continue;
+                    }
+                    Ok(Some(result)) => Some(result.result),
+                    Err(_) => None,
+                };
                 let pending = pending_forwards.swap_remove(index);
-                ipc_close(pending.call);
-                if returned_cap != 0 {
-                    ipc_close(returned_cap);
-                }
-                if status == 0 && result as i64 != catten_syscall::IPC_REPLY_ENDPOINT_CLOSED {
+                if outcome.is_some_and(|result| result != catten_syscall::IPC_REPLY_ENDPOINT_CLOSED)
+                {
                     forwarded = forwarded.wrapping_add(1);
                 } else {
                     dropped = dropped.wrapping_add(1);
                     if let Some(stale_index) =
-                        routes.iter().position(|route| route.conn == pending.route_conn)
+                        routes.iter().position(|route| route.ethertype == pending.route_ethertype)
                     {
-                        let stale = routes.remove(stale_index);
-                        ipc_close(stale.conn);
+                        routes.remove(stale_index);
                     }
                 }
             }
 
-            let (status, frame_len, connection, memory) = ipc_reply_poll_with_memory(receive);
-            if status == 1 {
-                // No frame yet; yield briefly, then poll again.
-                sleep_ms(ROUTE_RETRY_MS);
-                continue;
-            }
-            ipc_close(receive);
-            if connection != 0 {
-                ipc_close(connection);
-            }
-            if status != 0 {
-                if memory != 0 {
-                    memory_close(memory);
+            let received = match receive.poll() {
+                Ok(None) => {
+                    // No frame yet; yield briefly, then poll again.
+                    sleep_ms(ROUTE_RETRY_MS);
+                    continue;
                 }
-                // A restarted NIC invalidates this connection. Synchronize on
-                // the next registered generation before issuing another
-                // receive instead of polling a terminal call forever.
-                ipc_close(net_conn);
-                net_conn = lookup(ns_conn, net::NAME);
-                if net_conn == 0 {
-                    unsafe { thread_exit() };
+                Ok(Some(result)) => result,
+                Err(_) => {
+                    // A restarted NIC invalidates this connection. Synchronize on
+                    // the next registered generation before issuing another
+                    // receive instead of polling a terminal call forever.
+                    net_conn = lookup(ns_conn, net::NAME).unwrap_or_else(|| fail());
+                    break;
                 }
-                break;
-            }
-            if memory == 0 || frame_len > FRAME_MAX as u64 {
-                if memory != 0 {
-                    memory_close(memory);
-                }
-                break;
-            }
-
-            rx_total = rx_total.wrapping_add(1);
-            let ethertype = read_ethertype(memory, frame_len as usize);
-            let Some(route_index) = routes.iter().position(|route| route.ethertype == ethertype)
-            else {
-                unknown = unknown.wrapping_add(1);
-                memory_close(memory);
+            };
+            let frame_len = match usize::try_from(received.result) {
+                Ok(frame_len) if frame_len <= FRAME_MAX => frame_len,
+                _ => break,
+            };
+            let Some(memory) = received.memory else {
                 break;
             };
 
-            let route_conn = routes[route_index].conn;
+            rx_total = rx_total.wrapping_add(1);
+            let Some((memory, ethertype)) = read_ethertype(memory, frame_len) else {
+                dropped = dropped.wrapping_add(1);
+                break;
+            };
+            let Some(route_index) = routes.iter().position(|route| route.ethertype == ethertype)
+            else {
+                unknown = unknown.wrapping_add(1);
+                break;
+            };
+
+            let route_ethertype = routes[route_index].ethertype;
             let route_opcode = routes[route_index].opcode;
-            if pending_forwards.iter().filter(|pending| pending.route_conn == route_conn).count()
+            if pending_forwards
+                .iter()
+                .filter(|pending| pending.route_ethertype == route_ethertype)
+                .count()
                 >= MAX_PENDING_PER_ROUTE
             {
                 // Bound authority and memory retained by a wedged consumer.
@@ -403,35 +372,34 @@ fn main(ctx: Context) -> ! {
                 // name-service retry can install a fresh service generation.
                 let mut pending_index = 0;
                 while pending_index < pending_forwards.len() {
-                    if pending_forwards[pending_index].route_conn == route_conn {
-                        let pending = pending_forwards.swap_remove(pending_index);
-                        ipc_close(pending.call);
+                    if pending_forwards[pending_index].route_ethertype == route_ethertype {
+                        pending_forwards.swap_remove(pending_index);
                         dropped = dropped.wrapping_add(1);
                     } else {
                         pending_index += 1;
                     }
                 }
-                memory_close(memory);
                 dropped = dropped.wrapping_add(1);
-                let stale = routes.remove(route_index);
-                ipc_close(stale.conn);
+                routes.remove(route_index);
                 break;
             }
-            let forward = ipc_scalar_call_move(route_conn, route_opcode, frame_len, memory);
-            if forward == 0 {
-                memory_close(memory);
-                dropped = dropped.wrapping_add(1);
-                let stale = routes.remove(route_index);
-                ipc_close(stale.conn);
-            } else {
-                pending_forwards.push(PendingForward {
-                    call: forward,
-                    route_conn,
-                });
+            match routes[route_index].conn.call_move(route_opcode, frame_len as u64, memory) {
+                Ok(call) => pending_forwards.push(PendingForward {
+                    call,
+                    route_ethertype,
+                }),
+                Err((_memory, _)) => {
+                    dropped = dropped.wrapping_add(1);
+                    routes.remove(route_index);
+                }
             }
             break;
         }
     }
+}
+
+fn main(ctx: Context) -> ! {
+    serve(&ctx).complete()
 }
 
 catten_rt::entry!(main);
