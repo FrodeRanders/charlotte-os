@@ -287,6 +287,26 @@ fn submit_operations(dns_conn: u64, bundle: &[u8]) -> i64 {
     }
 }
 
+fn submit_shutdown(dns_conn: u64, envelope: &[u8]) -> i64 {
+    if charlotte_launch::shutdown::decode(envelope).is_none() {
+        return clusterctl::ERR_TOO_LARGE;
+    }
+    let Some(memory) = memory_from_bytes(envelope) else {
+        return clusterctl::ERR_UPLOAD_FAILED;
+    };
+    let dns = match unsafe { ConnectionRef::from_raw(dns_conn) } {
+        Ok(dns) => dns,
+        Err(_) => return clusterctl::ERR_NOT_LEADER,
+    };
+    match dns.call_move(dns::OP_SHUTDOWN_SUBMIT, envelope.len() as u64, memory) {
+        Ok(call) => match call.wait() {
+            Ok(reply) => reply.result,
+            Err(_) => clusterctl::ERR_NOT_LEADER,
+        },
+        Err((_memory, _error)) => clusterctl::ERR_NOT_LEADER,
+    }
+}
+
 fn memory_from_bytes(bytes: &[u8]) -> Option<OwnedMemory> {
     let memory = OwnedMemory::allocate(bytes.len().div_ceil(4096).max(1)).ok()?;
     let mut mapping = memory.map_writable().ok()?;
@@ -540,6 +560,24 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
                             // cluster, recipient and expiry verification. A
                             // follower is only a bounded transport hop.
                             submit_operations(dns_conn, &bundle)
+                        }
+                        Some(_) => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
+                        None => clusterctl::ERR_TOO_LARGE,
+                    };
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+                clusterctl::OP_NOTIFY_SHUTDOWN => {
+                    let result = match read_payload(&message) {
+                        Some(envelope)
+                            if charlotte_launch::shutdown::decode(&envelope).is_some() =>
+                        {
+                            // Signature, trusted UTC and the currently
+                            // committed cluster key are checked by the DNS
+                            // leader. This hop remains a bounded transport so
+                            // future key rotation cannot leave stale ingress.
+                            submit_shutdown(dns_conn, &envelope)
                         }
                         Some(_) => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
                         None => clusterctl::ERR_TOO_LARGE,

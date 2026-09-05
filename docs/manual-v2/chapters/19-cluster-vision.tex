@@ -753,7 +753,28 @@ address space only after generation-safe reaping. While retirement is active,
 the agent polls at most ten milliseconds apart.
 Figure~\ref{fig:cooperative-deployment-shutdown} shows this path.
 
-The same mechanism now propagates a node drain through the deployment plane.
+Production whole-node shutdown begins off-cluster as a fixed-size, signed
+\texttt{CSHUTDN1} intent. It binds one nonzero target node, a per-node
+monotonic sequence, a UTC validity interval, whole-node and per-phase grace
+budgets, and the power-off reason. There is deliberately no broadcast target:
+an operations controller can drain nodes in an order that preserves Raft and
+application quorum. The operator creates the record with
+\texttt{cluster-sign shutdown-sign} and submits it to
+\texttt{POST /v1/shutdowns}; no private key enters CharlotteOS.
+
+Any member may receive the bounded envelope. A follower relays it over the
+reliable-message channel, while the leader verifies the committed cluster key
+and trusted UTC before proposing it. The catalog state machine verifies the
+signature again, fences stale and conflicting per-node sequences, and retains
+the exact envelope in snapshots. The target agent consumes only locally
+applied state, re-verifies the envelope, and moves its memory capability into
+the kernel. The kernel admits only its designated deployment agent,
+independently checks the signature and target node, derives a local monotonic
+deadline from the signed duration, and transfers the service graph to a kernel
+worker. Thus retiring the agent cannot orphan a partially completed node
+drain.
+
+The same lifecycle mechanism then propagates the node drain through the deployment plane.
 On receiving a kernel-authenticated \texttt{NodeShutdown} lifecycle request,
 the agent stops reconciliation and launches no new work. It marks every
 ordinary deployment and privileged operational connector as retiring, then

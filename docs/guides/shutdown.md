@@ -103,6 +103,38 @@ both drained does the agent acknowledge its own lifecycle request and exit.
 Kernel counters distinguish acknowledged and forced node-shutdown retirements
 from ordinary deployment replacement outcomes.
 
+## Cluster-authorized shutdown ingress
+
+Whole-node poweroff begins as an operator-signed `CSHUTDN1` envelope, not as
+an application request. The fixed 144-byte record binds a nonzero target node
+key, a per-node monotonic sequence, a UTC validity interval, the whole-node and
+per-phase grace budgets, and the `power-off` reason. Current policy permits at
+most 24 hours of validity, 15 minutes of total grace, and 60 seconds per phase;
+the phase grace cannot exceed the node grace. There is no broadcast target, so
+a controller can preserve quorum while sequencing a cluster rollout.
+
+`cluster-sign shutdown-sign` creates the envelope off-cluster and
+`shutdown-notify` posts it to `POST /v1/shutdowns`. Any member may accept the
+bounded request. A follower relays the complete signed proof over relmsg; the
+leader re-verifies it against the committed cluster key and trusted UTC before
+proposing it. The catalog state machine verifies the signature again, fences
+stale or conflicting per-node sequences, stores the exact envelope in its
+snapshot, and exposes only locally applied state to node agents.
+
+The target deployment agent verifies the applied envelope again and moves its
+memory owner through `catten_rt::owned::request_node_shutdown`. The kernel
+consumes that capability on every result, admits only its uniquely delegated
+agent, independently verifies the signature and target node against the NIC
+driver's protected status page, and derives the actual deadline in the kernel
+monotonic epoch. A kernel thread then owns the complete service and device
+coordinator, so retiring the agent itself cannot orphan the shutdown. Failed
+or unverified device quiescence still refuses terminal poweroff.
+
+The signed intent is desired state: while it remains the latest replicated
+record, a restarted target drains and powers off again. A later lifecycle
+policy must use a higher sequence; the v1 format intentionally has no unsigned
+clear operation.
+
 ## Reverse-dependency node services
 
 After application-domain propagation, the kernel has a bounded node-service
@@ -202,18 +234,20 @@ boundary must never resume scheduling. The AArch64 `--shutdown-test` requires
 QEMU itself to exit only after the authoritative successful test result and
 the PSCI request marker have reached the serial log.
 
-The lifecycle request is authenticated by memory protection: only the kernel
+The per-domain lifecycle request is authenticated by memory protection: only the kernel
 can mutate the launch page. The application can acknowledge a request but
 cannot clear it, extend its deadline, or request shutdown of another domain.
 
 ## Scope
 
-This contract currently covers deployment and HTTP ingress, the deployment
-agent, all agent-owned applications and operational connectors, the UTC time
-service, the high-level node-service order above, durable object-store
-shutdown, and all in-tree hardware adapters. Service-specific `OP_SHUTDOWN`
-messages remain useful for tests and targeted live upgrade, but are not the
-deployment lifecycle authority. Coordinated whole-node shutdown still needs a
-replicated drain intent and independent kernel verification of device reset
-and IOMMU invalidation. PSCI poweroff is implemented and boot-validated on
-AArch64; x86-64 still needs its ACPI poweroff backend.
+This contract currently covers signed off-cluster shutdown admission,
+follower-to-leader relay, replay-fenced Raft persistence, target-agent pickup,
+kernel re-verification, deployment and HTTP ingress, the deployment agent, all
+agent-owned applications and operational connectors, the UTC time service,
+the high-level node-service order above, durable object-store shutdown, and all
+in-tree hardware adapters. Service-specific `OP_SHUTDOWN` messages remain
+useful for tests and targeted live upgrade, but are not the deployment
+lifecycle authority. Device reset and IOMMU invalidation remain
+adapter-specific proofs rather than a uniform hardware attestation record.
+PSCI poweroff is implemented and boot-validated on AArch64; x86-64 still needs
+its ACPI poweroff backend.

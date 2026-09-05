@@ -1377,6 +1377,13 @@ pub mod dns {
     /// moved memory. This lets the privileged launch gate prove that a target
     /// descriptor belongs to the release named by a compact binding.
     pub const OP_RELEASE_QUERY_NAMED: u32 = 23;
+    /// Admit one operator-signed, node-targeted `CSHUTDN1` shutdown intent.
+    /// The leader verifies trusted UTC and the cluster signature before the
+    /// exact envelope is replicated; followers relay the bounded envelope.
+    pub const OP_SHUTDOWN_SUBMIT: u32 = 24;
+    /// Query the latest locally applied shutdown intent for `arg0` = node
+    /// key. The reply moves `[generation:u64][CSHUTDN1 envelope]`.
+    pub const OP_SHUTDOWN_QUERY: u32 = 25;
 
     /// Event-name prefix: events are ordinary replicated catalog names so the
     /// existing register/commit/replicate machinery fires them; the prefix
@@ -1478,6 +1485,7 @@ pub mod clusterctl {
     pub const NOTIFY_PATH: &[u8] = b"/v1/deployments";
     pub const RELEASE_PATH: &[u8] = b"/v1/releases";
     pub const OPERATIONS_PATH: &[u8] = b"/v1/operations";
+    pub const SHUTDOWN_PATH: &[u8] = b"/v1/shutdowns";
 
     /// Upload an artifact. `arg0` is the packed artifact name; the attached
     /// memory object holds `[artifact_len:u64 LE][artifact]`, where the
@@ -1537,6 +1545,10 @@ pub mod clusterctl {
     /// The moved memory uses `[len:u64][bytes]`; the leader verifies release,
     /// operations, recipient, cluster and expiry context before admission.
     pub const OP_NOTIFY_OPERATIONS: u32 = 10;
+    /// Notify the cluster of an operator-signed, node-targeted `CSHUTDN1`
+    /// intent. The moved memory uses `[len:u64][bytes]`; no private signing
+    /// material enters the cluster.
+    pub const OP_NOTIFY_SHUTDOWN: u32 = 11;
 
     pub const ROLLOUT_COMMITTED: u8 = 1;
     pub const ROLLOUT_READY: u8 = 2;
@@ -1602,6 +1614,8 @@ pub mod clusterctl {
     pub const ERR_TIME_UNAVAILABLE: i64 = -16;
     /// At least one encrypted operational profile has expired.
     pub const ERR_EXPIRED_OPERATION: i64 = -17;
+    /// The trusted UTC clock is outside a signed request's validity window.
+    pub const ERR_OUTSIDE_VALIDITY: i64 = -18;
 }
 
 /// Remote-invocation wire protocol carried over the reliable message layer.
@@ -2418,6 +2432,77 @@ pub mod roperations {
             request_id,
             caller: frame.get(caller_start..bundle_len_offset)?.to_vec(),
             bundle: bundle.to_vec(),
+        })
+    }
+
+    pub fn encode_reply(session: u64, request_id: u64, result: i64) -> alloc::vec::Vec<u8> {
+        super::rdeploy::encode_reply(session, request_id, result)
+    }
+
+    pub fn decode_reply(frame: &[u8]) -> Option<(u64, u64, i64)> {
+        if frame.len() != 25 || frame[0] != TAG_REPLY {
+            return None;
+        }
+        Some((
+            u64::from_le_bytes(frame[1..9].try_into().ok()?),
+            u64::from_le_bytes(frame[9..17].try_into().ok()?),
+            i64::from_le_bytes(frame[17..25].try_into().ok()?),
+        ))
+    }
+}
+
+/// Correlated follower-to-leader shutdown-intent submission.
+pub mod rshutdown {
+    pub const TAG_REQUEST: u8 = 0x1d;
+    pub const TAG_REPLY: u8 = 0x1e;
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub struct Request {
+        pub session: u64,
+        pub request_id: u64,
+        pub caller: alloc::vec::Vec<u8>,
+        pub envelope: alloc::vec::Vec<u8>,
+    }
+
+    pub fn encode_request(request: &Request) -> Option<alloc::vec::Vec<u8>> {
+        if request.caller.is_empty()
+            || request.caller.len() > 255
+            || charlotte_launch::shutdown::decode(&request.envelope).is_none()
+        {
+            return None;
+        }
+        let mut frame = alloc::vec::Vec::with_capacity(
+            17 + request.caller.len() + charlotte_launch::shutdown::ENCODED_LEN,
+        );
+        frame.extend_from_slice(&request.session.to_le_bytes());
+        frame.extend_from_slice(&request.request_id.to_le_bytes());
+        frame.push(request.caller.len() as u8);
+        frame.extend_from_slice(&request.caller);
+        frame.extend_from_slice(&request.envelope);
+        Some(frame)
+    }
+
+    pub fn decode_request(frame: &[u8]) -> Option<Request> {
+        if frame.len() < 18 || frame[0] != TAG_REQUEST {
+            return None;
+        }
+        let session = u64::from_le_bytes(frame[1..9].try_into().ok()?);
+        let request_id = u64::from_le_bytes(frame[9..17].try_into().ok()?);
+        let caller_len = usize::from(frame[17]);
+        let caller_start = 18usize;
+        let envelope_start = caller_start.checked_add(caller_len)?;
+        let envelope = frame.get(envelope_start..)?;
+        if caller_len == 0
+            || envelope.len() != charlotte_launch::shutdown::ENCODED_LEN
+            || charlotte_launch::shutdown::decode(envelope).is_none()
+        {
+            return None;
+        }
+        Some(Request {
+            session,
+            request_id,
+            caller: frame.get(caller_start..envelope_start)?.to_vec(),
+            envelope: envelope.to_vec(),
         })
     }
 

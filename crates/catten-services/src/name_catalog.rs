@@ -43,6 +43,7 @@ const CMD_UNREGISTER_GENERATION: u8 = 0x04;
 const CMD_DEPLOY: u8 = 0x05;
 const CMD_SET_CLUSTER_KEY: u8 = 0x07;
 const CMD_RELEASE: u8 = 0x08;
+const CMD_SHUTDOWN: u8 = 0x09;
 const CATALOG_MAGIC_V1: u64 = 0x4341_5441_4c4f_474d; // "CATALOGM"
 const CATALOG_MAGIC_V2: u64 = 0x4341_5441_4c4f_4732; // "CATALOG2"
 const CATALOG_MAGIC_V3: u64 = 0x4341_5441_4c4f_4733; // "CATALOG3"
@@ -54,11 +55,14 @@ const CATALOG_MAGIC_V8: u64 = 0x4341_5441_4c4f_4738; // "CATALOG8"
 const CATALOG_MAGIC_V9: u64 = 0x4341_5441_4c4f_4739; // "CATALOG9"
 const CATALOG_MAGIC_V10: u64 = 0x4341_5441_4c4f_4741; // "CATALOGA"
 const CATALOG_MAGIC_V11: u64 = 0x4341_5441_4c4f_4742; // "CATALOGB"
+const CATALOG_MAGIC_V12: u64 = 0x4341_5441_4c4f_4743; // "CATALOGC"
 
 /// Query tag prefix for a name lookup.
 const QUERY_LOOKUP: u8 = 0x01;
 /// Query tag prefix for a deployment query.
 const QUERY_DEPLOY: u8 = 0x02;
+/// Query tag prefix for the latest shutdown intent targeting one node.
+const QUERY_SHUTDOWN: u8 = 0x03;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogEntry {
@@ -119,11 +123,19 @@ pub struct OperationalBindingEntry {
     pub authorization_signature: [u8; charlotte_launch::operations_bundle::BINDING_SIGNATURE_LEN],
 }
 
+/// Latest replicated, operator-signed shutdown intent for one node.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ShutdownIntentEntry {
+    pub generation: u64,
+    pub envelope: Vec<u8>,
+}
+
 pub struct NameCatalog {
     entries: spin::Mutex<BTreeMap<Vec<u8>, CatalogEntry>>,
     deployments: spin::Mutex<BTreeMap<Vec<u8>, DeploymentEntry>>,
     releases: spin::Mutex<BTreeMap<Vec<u8>, ReleaseEntry>>,
     operational_bindings: spin::Mutex<BTreeMap<Vec<u8>, OperationalBindingEntry>>,
+    shutdown_intents: spin::Mutex<BTreeMap<u64, ShutdownIntentEntry>>,
     cluster_key: spin::Mutex<Option<[u8; 32]>>,
     cluster_key_generation: spin::Mutex<u64>,
     /// Launch-owned deployment/release authority used before an optional
@@ -259,6 +271,7 @@ impl NameCatalog {
             deployments: spin::Mutex::new(BTreeMap::new()),
             releases: spin::Mutex::new(BTreeMap::new()),
             operational_bindings: spin::Mutex::new(BTreeMap::new()),
+            shutdown_intents: spin::Mutex::new(BTreeMap::new()),
             cluster_key: spin::Mutex::new(None),
             cluster_key_generation: spin::Mutex::new(0),
             bootstrap_deployment_key,
@@ -300,6 +313,10 @@ impl NameCatalog {
             .filter(|(_, entry)| entry.active)
             .map(|(name, entry)| (name.clone(), entry.clone()))
             .collect()
+    }
+
+    pub fn shutdown_intent(&self, node_key: u64) -> Option<ShutdownIntentEntry> {
+        self.shutdown_intents.lock().get(&node_key).cloned()
     }
 
     /// Whether `name` is registered to this node.
@@ -791,6 +808,57 @@ impl NameCatalog {
                 *current = Some(key);
                 generation.to_le_bytes().to_vec()
             }
+            Some(CMD_SHUTDOWN) => {
+                let Some((envelope, after_envelope)) = take_len_bytes(command, 1) else {
+                    return Vec::new();
+                };
+                if after_envelope != command.len() {
+                    return Vec::new();
+                }
+                let cluster_key =
+                    (*self.cluster_key.lock()).unwrap_or(self.bootstrap_deployment_key);
+                if charlotte_launch::shutdown::verify(envelope, &cluster_key)
+                    != charlotte_launch::shutdown::VerifyOutcome::Valid
+                {
+                    return crate::clusterctl::ERR_UNTRUSTED_DESCRIPTOR.to_le_bytes().to_vec();
+                }
+                let Some(fields) = charlotte_launch::shutdown::decode(envelope) else {
+                    return Vec::new();
+                };
+                let mut intents = self.shutdown_intents.lock();
+                let generation = match intents.get(&fields.target_node) {
+                    Some(existing) => {
+                        let Some(previous) = charlotte_launch::shutdown::decode(&existing.envelope)
+                        else {
+                            return Vec::new();
+                        };
+                        if fields.sequence < previous.sequence {
+                            return crate::clusterctl::ERR_STALE_DESCRIPTOR.to_le_bytes().to_vec();
+                        }
+                        if fields.sequence == previous.sequence {
+                            return if existing.envelope == envelope {
+                                (existing.generation as i64).to_le_bytes().to_vec()
+                            } else {
+                                crate::clusterctl::ERR_CONFLICTING_DESCRIPTOR.to_le_bytes().to_vec()
+                            };
+                        }
+                        existing.generation.checked_add(1)
+                    }
+                    None => Some(1),
+                }
+                .filter(|generation| *generation <= i64::MAX as u64);
+                let Some(generation) = generation else {
+                    return Vec::new();
+                };
+                intents.insert(
+                    fields.target_node,
+                    ShutdownIntentEntry {
+                        generation,
+                        envelope: envelope.to_vec(),
+                    },
+                );
+                (generation as i64).to_le_bytes().to_vec()
+            }
             _ => Vec::new(),
         }
     }
@@ -800,6 +868,7 @@ impl NameCatalog {
         let releases = self.releases.lock();
         let deployments = self.deployments.lock();
         let operational_bindings = self.operational_bindings.lock();
+        let shutdown_intents = self.shutdown_intents.lock();
         let mut size = 8 + 4; // magic + entry count
         for (name, entry) in entries.iter() {
             size += 4 + name.len() + 4 + entry.node.len() + 8 + 1 + 8;
@@ -808,7 +877,8 @@ impl NameCatalog {
         // V8 binds active application registrations to deployment generations;
         // V9 persists atomically admitted signed release envelopes; V10 adds
         // compact encrypted-profile references and their replay fences; V11
-        // adds the detached operational authorization for each binding.
+        // adds the detached operational authorization for each binding; V12
+        // appends node-targeted signed shutdown intents.
         size += 4;
         for (artifact, entry) in deployments.iter() {
             size += 4 + artifact.len() + 8 + 8 + 8 + 32 + 4 + entry.descriptor.len();
@@ -826,9 +896,13 @@ impl NameCatalog {
                 + entry.target_artifact.len()
                 + entry.object_key.len();
         }
+        size += 4;
+        for entry in shutdown_intents.values() {
+            size += 8 + 8 + 4 + entry.envelope.len();
+        }
         size += 1 + 8 + 32;
         let mut buf = Vec::with_capacity(size);
-        buf.extend_from_slice(&CATALOG_MAGIC_V11.to_le_bytes());
+        buf.extend_from_slice(&CATALOG_MAGIC_V12.to_le_bytes());
         buf.extend_from_slice(&(entries.len() as u32).to_le_bytes());
         for (name, entry) in entries.iter() {
             buf.extend_from_slice(&(name.len() as u32).to_le_bytes());
@@ -883,6 +957,13 @@ impl NameCatalog {
             buf.extend_from_slice(&entry.signing_key_id);
             buf.extend_from_slice(&entry.authorization_signature);
         }
+        buf.extend_from_slice(&(shutdown_intents.len() as u32).to_le_bytes());
+        for (node_key, entry) in shutdown_intents.iter() {
+            buf.extend_from_slice(&node_key.to_le_bytes());
+            buf.extend_from_slice(&entry.generation.to_le_bytes());
+            buf.extend_from_slice(&(entry.envelope.len() as u32).to_le_bytes());
+            buf.extend_from_slice(&entry.envelope);
+        }
         if let Some(key) = *self.cluster_key.lock() {
             buf.push(1);
             buf.extend_from_slice(&self.cluster_key_generation.lock().to_le_bytes());
@@ -911,6 +992,7 @@ impl NameCatalog {
             && magic != CATALOG_MAGIC_V9
             && magic != CATALOG_MAGIC_V10
             && magic != CATALOG_MAGIC_V11
+            && magic != CATALOG_MAGIC_V12
         {
             return;
         }
@@ -944,6 +1026,7 @@ impl NameCatalog {
                 || magic == CATALOG_MAGIC_V9
                 || magic == CATALOG_MAGIC_V10
                 || magic == CATALOG_MAGIC_V11
+                || magic == CATALOG_MAGIC_V12
             {
                 let Some(active) = data.get(after_generation) else {
                     return;
@@ -956,6 +1039,7 @@ impl NameCatalog {
                 || magic == CATALOG_MAGIC_V9
                 || magic == CATALOG_MAGIC_V10
                 || magic == CATALOG_MAGIC_V11
+                || magic == CATALOG_MAGIC_V12
             {
                 let Some((generation, after_generation)) = read_u64(data, after_entry) else {
                     return;
@@ -986,6 +1070,7 @@ impl NameCatalog {
             || magic == CATALOG_MAGIC_V9
             || magic == CATALOG_MAGIC_V10
             || magic == CATALOG_MAGIC_V11
+            || magic == CATALOG_MAGIC_V12
         {
             let Some(bytes) = data.get(pos..pos.saturating_add(4)) else {
                 return;
@@ -1021,6 +1106,7 @@ impl NameCatalog {
                     || magic == CATALOG_MAGIC_V9
                     || magic == CATALOG_MAGIC_V10
                     || magic == CATALOG_MAGIC_V11
+                    || magic == CATALOG_MAGIC_V12
                 {
                     let Some(digest) =
                         data.get(after_generation..after_generation.saturating_add(32))
@@ -1039,6 +1125,7 @@ impl NameCatalog {
                     || magic == CATALOG_MAGIC_V9
                     || magic == CATALOG_MAGIC_V10
                     || magic == CATALOG_MAGIC_V11
+                    || magic == CATALOG_MAGIC_V12
                 {
                     let Some((descriptor, after_descriptor)) = take_len_bytes(data, after_entry)
                     else {
@@ -1067,7 +1154,11 @@ impl NameCatalog {
         *self.deployments.lock() = deployments;
 
         let mut releases = BTreeMap::new();
-        if magic == CATALOG_MAGIC_V9 || magic == CATALOG_MAGIC_V10 || magic == CATALOG_MAGIC_V11 {
+        if magic == CATALOG_MAGIC_V9
+            || magic == CATALOG_MAGIC_V10
+            || magic == CATALOG_MAGIC_V11
+            || magic == CATALOG_MAGIC_V12
+        {
             let Some(bytes) = data.get(pos..pos.saturating_add(4)) else {
                 return;
             };
@@ -1086,6 +1177,7 @@ impl NameCatalog {
                 let (operations_sequence, operations_bundle_digest, after_operations) = if magic
                     == CATALOG_MAGIC_V10
                     || magic == CATALOG_MAGIC_V11
+                    || magic == CATALOG_MAGIC_V12
                 {
                     let Some((operations_sequence, after_operations_sequence)) =
                         read_u64(data, after_generation)
@@ -1125,7 +1217,7 @@ impl NameCatalog {
             }
         }
         let mut operational_bindings = BTreeMap::new();
-        if magic == CATALOG_MAGIC_V10 || magic == CATALOG_MAGIC_V11 {
+        if magic == CATALOG_MAGIC_V10 || magic == CATALOG_MAGIC_V11 || magic == CATALOG_MAGIC_V12 {
             let Some(binding_count) = data
                 .get(pos..pos.saturating_add(4))
                 .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
@@ -1202,17 +1294,18 @@ impl NameCatalog {
                 else {
                     return;
                 };
-                let (authorization_signature, after_binding) = if magic == CATALOG_MAGIC_V11 {
-                    let Some(signature) = data
-                        .get(after_expiry + 32..after_expiry + 96)
-                        .and_then(|bytes| <[u8; 64]>::try_from(bytes).ok())
-                    else {
-                        return;
+                let (authorization_signature, after_binding) =
+                    if magic == CATALOG_MAGIC_V11 || magic == CATALOG_MAGIC_V12 {
+                        let Some(signature) = data
+                            .get(after_expiry + 32..after_expiry + 96)
+                            .and_then(|bytes| <[u8; 64]>::try_from(bytes).ok())
+                        else {
+                            return;
+                        };
+                        (signature, after_expiry + 96)
+                    } else {
+                        ([0; 64], after_expiry + 32)
                     };
-                    (signature, after_expiry + 96)
-                } else {
-                    ([0; 64], after_expiry + 32)
-                };
                 if generation == 0
                     || bundle_sequence == 0
                     || sequence == 0
@@ -1271,6 +1364,50 @@ impl NameCatalog {
         *self.releases.lock() = releases;
         *self.operational_bindings.lock() = operational_bindings;
 
+        let mut shutdown_intents = BTreeMap::new();
+        if magic == CATALOG_MAGIC_V12 {
+            let Some(intent_count) = data
+                .get(pos..pos.saturating_add(4))
+                .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
+                .map(u32::from_le_bytes)
+            else {
+                return;
+            };
+            pos += 4;
+            for _ in 0..intent_count {
+                let Some((node_key, after_node)) = read_u64(data, pos) else {
+                    return;
+                };
+                let Some((generation, after_generation)) = read_u64(data, after_node) else {
+                    return;
+                };
+                let Some((envelope, after_envelope)) = take_len_bytes(data, after_generation)
+                else {
+                    return;
+                };
+                let Some(fields) = charlotte_launch::shutdown::decode(envelope) else {
+                    return;
+                };
+                if node_key == 0
+                    || generation == 0
+                    || fields.target_node != node_key
+                    || shutdown_intents
+                        .insert(
+                            node_key,
+                            ShutdownIntentEntry {
+                                generation,
+                                envelope: envelope.to_vec(),
+                            },
+                        )
+                        .is_some()
+                {
+                    return;
+                }
+                pos = after_envelope;
+            }
+        }
+        *self.shutdown_intents.lock() = shutdown_intents;
+
         *self.cluster_key.lock() = None;
         *self.cluster_key_generation.lock() = 0;
 
@@ -1281,6 +1418,7 @@ impl NameCatalog {
             || magic == CATALOG_MAGIC_V9
             || magic == CATALOG_MAGIC_V10
             || magic == CATALOG_MAGIC_V11
+            || magic == CATALOG_MAGIC_V12
         {
             let Some(present) = data.get(pos) else {
                 return;
@@ -1291,6 +1429,7 @@ impl NameCatalog {
                 || magic == CATALOG_MAGIC_V9
                 || magic == CATALOG_MAGIC_V10
                 || magic == CATALOG_MAGIC_V11
+                || magic == CATALOG_MAGIC_V12
             {
                 let Some((generation, after_generation)) = read_u64(data, pos + 1) else {
                     return;
@@ -1370,6 +1509,21 @@ impl QueryableStateMachine for NameCatalog {
                     result.extend_from_slice(&entry.descriptor);
                     result
                 })
+            }
+            Some(QUERY_SHUTDOWN) => {
+                let node_key = query
+                    .get(1..9)
+                    .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok())
+                    .map(u64::from_le_bytes);
+                node_key.and_then(|node_key| self.shutdown_intent(node_key)).map_or_else(
+                    Vec::new,
+                    |entry| {
+                        let mut result = Vec::with_capacity(8 + entry.envelope.len());
+                        result.extend_from_slice(&entry.generation.to_le_bytes());
+                        result.extend_from_slice(&entry.envelope);
+                        result
+                    },
+                )
             }
             _ => Vec::new(),
         }
@@ -1488,6 +1642,28 @@ pub fn encode_deploy_query(artifact: &[u8]) -> Vec<u8> {
     buf
 }
 
+/// Query the latest committed shutdown intent for `node_key`.
+pub fn encode_shutdown_query(node_key: u64) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(9);
+    buf.push(QUERY_SHUTDOWN);
+    buf.extend_from_slice(&node_key.to_le_bytes());
+    buf
+}
+
+pub fn decode_shutdown_result(bytes: &[u8]) -> Option<ShutdownIntentEntry> {
+    if bytes.len() != 8 + charlotte_launch::shutdown::ENCODED_LEN {
+        return None;
+    }
+    let generation = u64::from_le_bytes(bytes[..8].try_into().ok()?);
+    let envelope = bytes[8..].to_vec();
+    (generation != 0 && charlotte_launch::shutdown::decode(&envelope).is_some()).then_some(
+        ShutdownIntentEntry {
+            generation,
+            envelope,
+        },
+    )
+}
+
 /// Decode the deployment record returned by a deployment query.
 pub fn decode_deployment_result(bytes: &[u8]) -> Option<DeploymentEntry> {
     if bytes.len() < 56 {
@@ -1601,6 +1777,17 @@ pub fn encode_set_cluster_key(key: &[u8; 32]) -> Vec<u8> {
     buf
 }
 
+/// Encode an operator-signed shutdown intent for deterministic Raft
+/// admission. Signature and replay checks are repeated by the state machine.
+pub fn encode_shutdown(envelope: &[u8]) -> Option<Vec<u8>> {
+    charlotte_launch::shutdown::decode(envelope)?;
+    let mut buf = Vec::with_capacity(1 + 4 + envelope.len());
+    buf.push(CMD_SHUTDOWN);
+    buf.extend_from_slice(&(envelope.len() as u32).to_le_bytes());
+    buf.extend_from_slice(envelope);
+    Some(buf)
+}
+
 /// The replicated catalog viewed as an immediate [`Catalog`]: answers come
 /// from the *applied* state, so a resolved name is guaranteed to have
 /// committed. Used by the event broker's lookups.
@@ -1667,6 +1854,28 @@ mod tests {
         let signature: &[u8; charlotte_launch::release::SIGNATURE_LEN] =
             signature.as_ref().try_into().unwrap();
         assert!(charlotte_launch::release::set_signature(&mut bytes, signature));
+        bytes
+    }
+
+    fn signed_shutdown(pair: &KeyPair, sequence: u64, target_node: u64) -> Vec<u8> {
+        let fields = charlotte_launch::shutdown::ShutdownFields {
+            sequence,
+            target_node,
+            not_before_unix_seconds: 1_788_600_000,
+            expires_unix_seconds: 1_788_600_300,
+            node_grace_ms: 30_000,
+            phase_grace_ms: 2_000,
+            reason: charlotte_launch::shutdown::REASON_POWER_OFF,
+        };
+        let public_key: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
+        let mut bytes = vec![0; charlotte_launch::shutdown::ENCODED_LEN];
+        charlotte_launch::shutdown::encode_unsigned(&fields, public_key, &mut bytes).unwrap();
+        let signature: Signature =
+            pair.sk.sign(charlotte_launch::shutdown::signature_digest(&bytes).unwrap(), None);
+        assert!(charlotte_launch::shutdown::set_signature(
+            &mut bytes,
+            signature.as_ref().try_into().unwrap()
+        ));
         bytes
     }
 
@@ -1750,6 +1959,30 @@ mod tests {
 
     fn i64_result(bytes: Vec<u8>) -> i64 {
         i64::from_le_bytes(bytes.try_into().unwrap())
+    }
+
+    #[test]
+    fn shutdown_intent_is_replay_fenced_and_survives_snapshot() {
+        let pair = KeyPair::from_seed([0x55; 32].into());
+        let key: [u8; 32] = pair.pk.as_ref().try_into().unwrap();
+        let catalog = NameCatalog::new_with_deployment_key(key);
+        let first = signed_shutdown(&pair, 4, 0x1234);
+        assert_eq!(i64_result(catalog.apply_with_result(1, &encode_shutdown(&first).unwrap())), 1);
+        assert_eq!(i64_result(catalog.apply_with_result(1, &encode_shutdown(&first).unwrap())), 1);
+
+        let stale = signed_shutdown(&pair, 3, 0x1234);
+        assert_eq!(
+            i64_result(catalog.apply_with_result(1, &encode_shutdown(&stale).unwrap())),
+            crate::clusterctl::ERR_STALE_DESCRIPTOR
+        );
+        let next = signed_shutdown(&pair, 5, 0x1234);
+        assert_eq!(i64_result(catalog.apply_with_result(1, &encode_shutdown(&next).unwrap())), 2);
+
+        let query = catalog.query(&encode_shutdown_query(0x1234));
+        assert_eq!(decode_shutdown_result(&query).unwrap().envelope, next);
+        let restored = NameCatalog::new_with_deployment_key(key);
+        restored.restore(&catalog.snapshot());
+        assert_eq!(restored.shutdown_intent(0x1234), catalog.shutdown_intent(0x1234));
     }
 
     #[test]

@@ -189,10 +189,14 @@ repository history remain authoritative.
         runner, named connector/procedure grants, scoped deployment launch, and
         generation-fenced Kafka commits are implemented. Deployed domains also
         receive a kernel-authenticated cooperative drain request and a signed,
-        bounded grace period before forced retirement. A node-shutdown request
-        now propagates through lifecycle-aware deployment ingress and the
-        deployment agent to ordinary applications and then their operational
-        connectors, with the earlier of the child and node deadlines enforced.
+        bounded grace period before forced retirement. An off-cluster operator
+        can submit a signed, node-targeted shutdown intent to any deployment
+        ingress member. The Raft leader verifies its trusted-UTC window and
+        replay-fences it in replicated state; the target agent then transfers
+        the exact envelope to an independently verifying kernel launch gate.
+        The resulting node-shutdown request propagates to ordinary applications
+        and then their operational connectors, with the earlier of the child
+        and node deadlines enforced.
         Deployment and HTTP ingress stop admission through bounded,
         remotely-cancellable socket waits, while the UTC time service closes
         admission and unwinds a pending NTP operation through owned resources.
@@ -217,9 +221,8 @@ repository history remain authoritative.
         E1000E drain transmit descriptors and stop their DMA engines. AArch64
         then selects the FADT-advertised SMC/HVC conduit and boot-validates a
         terminal PSCI \texttt{SYSTEM\_OFF}; x86-64 ACPI poweroff remains open.
-        Independent kernel verification of reset/IOMMU invalidation, a
-        replicated shutdown intent, controller-managed instance leases,
-        replica-aware rollout, and
+        Independent kernel verification of reset/IOMMU invalidation,
+        controller-managed instance leases, replica-aware rollout, and
         coordinated rollback remain future work.
     \item \textbf{HVF does not honor hardware ASIDs.} Apple's
         Hypervisor.framework strips the ASID bits from \texttt{TTBR0\_EL1} on

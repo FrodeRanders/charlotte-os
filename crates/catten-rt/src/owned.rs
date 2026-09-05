@@ -790,6 +790,33 @@ pub enum ArtifactLaunchError {
     RetirementDenied,
 }
 
+/// Result of transferring a signed whole-node shutdown request to the
+/// kernel-owned coordinator.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NodeShutdownRequestError {
+    InvalidEnvelope,
+    AlreadyInProgress,
+    Denied,
+}
+
+/// Transfer the exact signed shutdown envelope into the kernel launch gate.
+/// The kernel consumes the memory capability on every submitted outcome and
+/// independently verifies signature, target node, and bounded duration.
+pub fn request_node_shutdown(
+    mut envelope: OwnedMemory,
+    envelope_len: usize,
+) -> Result<(), NodeShutdownRequestError> {
+    if envelope_len != charlotte_launch::shutdown::ENCODED_LEN || envelope_len > envelope.len() {
+        return Err(NodeShutdownRequestError::InvalidEnvelope);
+    }
+    let cap = envelope.cap.take().expect("shutdown envelope capability already consumed");
+    match kernel::request_node_shutdown(cap, envelope_len) {
+        0 => Ok(()),
+        1 => Err(NodeShutdownRequestError::AlreadyInProgress),
+        _ => Err(NodeShutdownRequestError::Denied),
+    }
+}
+
 /// Transfer a signed ELF and deployment descriptor to the privileged scoped
 /// deployment gate. The kernel consumes both memory capabilities on every
 /// submitted outcome; invalid lengths are rejected locally and normal `Drop`
@@ -2165,6 +2192,10 @@ mod kernel {
     pub fn force_retire_artifact_named(principal: u64) -> u64 {
         catten_syscall::force_retire_artifact_named(principal)
     }
+
+    pub fn request_node_shutdown(envelope: u64, envelope_len: usize) -> u64 {
+        catten_syscall::request_node_shutdown(envelope, envelope_len)
+    }
 }
 
 #[cfg(test)]
@@ -2201,6 +2232,7 @@ mod kernel {
         RetireArtifact(u64),
         RetireArtifactForNodeShutdown(u64, u64),
         ForceRetireArtifact(u64),
+        RequestNodeShutdown(u64, usize),
     }
 
     pub struct State {
@@ -2233,6 +2265,7 @@ mod kernel {
         pub connection_watch: u64,
         pub scoped_spawn: u64,
         pub retire_result: u64,
+        pub node_shutdown_result: u64,
         pub events: Vec<Event>,
     }
 
@@ -2268,6 +2301,7 @@ mod kernel {
                 connection_watch: 20,
                 scoped_spawn: 2,
                 retire_result: 0,
+                node_shutdown_result: 0,
                 events: Vec::new(),
             }
         }
@@ -2596,6 +2630,13 @@ mod kernel {
         with_state(|state| state.events.push(Event::ForceRetireArtifact(principal)));
         0
     }
+
+    pub fn request_node_shutdown(envelope: u64, envelope_len: usize) -> u64 {
+        with_state(|state| {
+            state.events.push(Event::RequestNodeShutdown(envelope, envelope_len));
+            state.node_shutdown_result
+        })
+    }
 }
 
 #[cfg(test)]
@@ -2622,10 +2663,12 @@ mod tests {
         IncomingMessage,
         MemoryError,
         MmioRegion,
+        NodeShutdownRequestError,
         OwnedMemory,
         ReadOperation,
         kernel,
         launch_operational_connector,
+        request_node_shutdown,
         spawn_scoped_artifact,
     };
 
@@ -2885,6 +2928,33 @@ mod tests {
                 kernel::Event::ForceRetireArtifact(0x8000_9abc),
             ]
         );
+    }
+
+    #[test]
+    fn node_shutdown_request_transfers_the_signed_envelope() {
+        let _guard = setup();
+        let envelope = unsafe { OwnedMemory::from_raw(15) }.expect("shutdown envelope");
+
+        assert_eq!(
+            request_node_shutdown(envelope, charlotte_launch::shutdown::ENCODED_LEN),
+            Ok(())
+        );
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::RequestNodeShutdown(15, charlotte_launch::shutdown::ENCODED_LEN,)]
+        );
+    }
+
+    #[test]
+    fn invalid_node_shutdown_request_retains_then_drops_the_envelope() {
+        let _guard = setup();
+        let envelope = unsafe { OwnedMemory::from_raw(16) }.expect("shutdown envelope");
+
+        assert_eq!(
+            request_node_shutdown(envelope, charlotte_launch::shutdown::ENCODED_LEN - 1),
+            Err(NodeShutdownRequestError::InvalidEnvelope)
+        );
+        assert_eq!(kernel::events(), [kernel::Event::MemoryClose(16)]);
     }
 
     #[test]

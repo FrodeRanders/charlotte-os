@@ -9,7 +9,7 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--deployment-ingress-test|--kafka-test|--kafka-coordinator-test|--kafka-fencing-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test|--shutdown-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--deployment-ingress-test|--shutdown-ingress-test|--kafka-test|--kafka-coordinator-test|--kafka-fencing-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test|--shutdown-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
@@ -42,6 +42,8 @@
 #                 PUT/HEAD/GET/DELETE from a CharlotteOS application
 #   --deployment-ingress-test  Use that RustFS fixture to verify the complete
 #                 signed upload/notify/pull/launch/readiness deployment path
+#   --shutdown-ingress-test  Sign and submit a node-targeted shutdown through
+#                 HTTP after self-tests pass; require verified PSCI poweroff
 #   --kafka-test  Start a TLS/mTLS/SCRAM Apache Kafka Docker fixture and verify
 #                 idempotent produce, read-committed consume, transactions,
 #                 and recovery after the active route leader is killed
@@ -84,6 +86,7 @@ HTTP_TEST="0"
 DHCP_TEST="0"
 S3_TEST="0"
 DEPLOYMENT_INGRESS_TEST="0"
+SHUTDOWN_INGRESS_TEST="0"
 KAFKA_TEST="0"
 KAFKA_COORDINATOR_TEST="0"
 KAFKA_FENCING_TEST="0"
@@ -127,6 +130,7 @@ while [ "$#" -gt 0 ]; do
         --dhcp-test)   NET_TEST="1"; DHCP_TEST="1"; shift ;; # includes the driver verifier
         --s3-test)     NET_TEST="1"; DHCP_TEST="1"; S3_TEST="1"; shift ;;
         --deployment-ingress-test) NET_TEST="1"; DHCP_TEST="1"; S3_TEST="1"; DEPLOYMENT_INGRESS_TEST="1"; shift ;;
+        --shutdown-ingress-test) NET_TEST="1"; DHCP_TEST="1"; SHUTDOWN_INGRESS_TEST="1"; shift ;;
         --kafka-test)  NET_TEST="1"; DHCP_TEST="1"; KAFKA_TEST="1"; shift ;;
         --kafka-coordinator-test) NET_TEST="1"; DHCP_TEST="1"; KAFKA_TEST="1"; KAFKA_COORDINATOR_TEST="1"; shift ;;
         --kafka-fencing-test) NET_TEST="1"; DHCP_TEST="1"; KAFKA_TEST="1"; KAFKA_FENCING_TEST="1"; shift ;;
@@ -176,7 +180,7 @@ if [ "$NETWORK" != "1" ] && { [ "$NET_TEST" = "1" ] || [ "$RELMSG_TEST" = "1" ] 
     || [ "$DISCO_TEST" = "1" ] || [ "$DNS_TEST" = "1" ] || [ "$DEPLOY_TEST" = "1" ] \
     || [ "$TCPIP_TEST" = "1" ] || [ "$HTTP_TEST" = "1" ] || [ "$DHCP_TEST" = "1" ] \
     || [ "$S3_TEST" = "1" ] || [ "$DEPLOYMENT_INGRESS_TEST" = "1" ] \
-    || [ "$KAFKA_TEST" = "1" ]; }; then
+    || [ "$SHUTDOWN_INGRESS_TEST" = "1" ] || [ "$KAFKA_TEST" = "1" ]; }; then
     echo "error: network verification options are incompatible with --no-network" >&2
     exit 1
 fi
@@ -229,6 +233,11 @@ if [ "$KAFKA_TEST" = "1" ] && { [ "$NET_BACKEND" != "user" ] || [ -z "$TIMEOUT" 
     echo "error: --kafka-test requires the default user network and --timeout" >&2
     exit 1
 fi
+if [ "$SHUTDOWN_INGRESS_TEST" = "1" ] \
+    && { [ "$NET_BACKEND" != "user" ] || [ -z "$TIMEOUT" ]; }; then
+    echo "error: --shutdown-ingress-test requires the default user network and --timeout" >&2
+    exit 1
+fi
 
 cd "$ROOT_DIR"
 catten_boot_init "$ROOT_DIR"
@@ -247,9 +256,14 @@ fi
 RUSTFS_COMPOSE="${ROOT_DIR}/docker/rustfs-s3-test/compose.yaml"
 RUSTFS_RUNNING="0"
 DEPLOYMENT_WORKER_PID=""
+QPID=""
 KAFKA_COMPOSE="${ROOT_DIR}/docker/kafka-test/compose.yaml"
 KAFKA_RUNNING="0"
 cleanup_fixtures() {
+    if [ -n "$QPID" ]; then
+        kill "$QPID" >/dev/null 2>&1 || true
+        wait "$QPID" >/dev/null 2>&1 || true
+    fi
     if [ -n "$DEPLOYMENT_WORKER_PID" ]; then
         kill "$DEPLOYMENT_WORKER_PID" >/dev/null 2>&1 || true
     fi
@@ -451,9 +465,11 @@ export CATTEN_AARCH64_SERVICE_BUNDLE="${ROOT_DIR}/target/embedded-services/aarch
 DEPLOYMENT_DESCRIPTOR=""
 DEPLOYMENT_RELEASE=""
 CLUSTER_SIGN_BIN="${ROOT_DIR}/target/debug/cluster-sign"
+if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ] || [ "$SHUTDOWN_INGRESS_TEST" = "1" ]; then
+    (cd /tmp && cargo build --quiet --manifest-path "${ROOT_DIR}/tools/cluster-sign/Cargo.toml")
+fi
 if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
     echo ">>> Preparing signed central-store deployment fixture..."
-    (cd /tmp && cargo build --quiet --manifest-path "${ROOT_DIR}/tools/cluster-sign/Cargo.toml")
     DEPLOYMENT_TEST_DIR="${ROOT_DIR}/target/deployment-ingress-test"
     mkdir -p "$DEPLOYMENT_TEST_DIR"
     DEPLOYMENT_ELF="${CATTEN_AARCH64_SERVICE_BUNDLE}/greet.elf"
@@ -801,6 +817,7 @@ if [ -n "$TIMEOUT" ]; then
     SELFTEST_COMPLETE=0
     SELFTEST_COMPLETE_TICK=-1
     POWER_OFF_OBSERVED=0
+    SHUTDOWN_INGRESS_SUBMITTED=0
     # A socket-linked peer may still be applying the final Raft entry or
     # consuming the causally ordered deployment barrier when this guest
     # finishes. Under TCG, a runnable verifier can take several host seconds
@@ -830,7 +847,7 @@ if [ -n "$TIMEOUT" ]; then
         sleep 0.1
         if ! kill -0 "$QPID" 2>/dev/null; then
             wait "$QPID" 2>/dev/null || true
-            if [ "$SHUTDOWN_TEST" = "1" ] \
+            if { [ "$SHUTDOWN_TEST" = "1" ] || [ "$SHUTDOWN_INGRESS_TEST" = "1" ]; } \
                 && grep -Fq "SELFTEST COMPLETE:" "$LOG" \
                 && grep -Fq "[shutdown] POWER-OFF REQUESTED via PSCI" "$LOG"; then
                 SELFTEST_COMPLETE=1
@@ -904,7 +921,39 @@ if [ -n "$TIMEOUT" ]; then
                     echo ">>> Keeping the socket-linked guest alive for a 15s peer drain window."
                 fi
             fi
-            if [ "$SHUTDOWN_TEST" != "1" ] \
+            if [ "$SHUTDOWN_INGRESS_TEST" = "1" ] \
+                && [ "$SHUTDOWN_INGRESS_SUBMITTED" = "0" ]; then
+                SHUTDOWN_TEST_DIR="${ROOT_DIR}/target/shutdown-ingress-test"
+                SHUTDOWN_INTENT="${SHUTDOWN_TEST_DIR}/node.cshutdown"
+                mkdir -p "$SHUTDOWN_TEST_DIR"
+                if [ -n "${CLUSTER_SIGN_PRIVATE_KEY:-}" ]; then
+                    SHUTDOWN_PRIVATE_KEY="$CLUSTER_SIGN_PRIVATE_KEY"
+                else
+                    SHUTDOWN_PRIVATE_KEY="$(grep -v '^#' \
+                        "${ROOT_DIR}/tools/cluster-sign/dev-key.hex" | tr -d '[:space:]')"
+                fi
+                SHUTDOWN_NOW="$(date +%s)"
+                SHUTDOWN_TARGET="$($CLUSTER_SIGN_BIN node-key "$NET_MAC")"
+                "$CLUSTER_SIGN_BIN" shutdown-sign "$SHUTDOWN_INTENT" \
+                    "$SHUTDOWN_NOW" "$SHUTDOWN_TARGET" "$SHUTDOWN_NOW" \
+                    "$((SHUTDOWN_NOW + 300))" 60000 5000 "$SHUTDOWN_PRIVATE_KEY"
+                SHUTDOWN_ACCEPTED=0
+                for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+                    if "$CLUSTER_SIGN_BIN" shutdown-notify "$SHUTDOWN_INTENT" \
+                        "127.0.0.1:${DEPLOY_HOST_PORT}"; then
+                        SHUTDOWN_ACCEPTED=1
+                        break
+                    fi
+                    sleep 1
+                done
+                if [ "$SHUTDOWN_ACCEPTED" != "1" ]; then
+                    echo "error: signed shutdown intent was not accepted by a Raft leader" >&2
+                    exit 1
+                fi
+                SHUTDOWN_INGRESS_SUBMITTED=1
+                echo ">>> Signed shutdown intent accepted; waiting for verified PSCI poweroff."
+            fi
+            if [ "$SHUTDOWN_TEST" != "1" ] && [ "$SHUTDOWN_INGRESS_TEST" != "1" ] \
                 && [ "$SCHEDULER_TRACE" = "0" ] && [ "$DEBUG_SNAPSHOT" = "0" ] \
                 && { [ "$KAFKA_TEST" = "0" ] || [ "$KAFKA_FENCING_TEST" = "1" ] \
                     || [ "$KAFKA_FAULT_RESTARTED" = "1" ]; } \
@@ -1008,7 +1057,8 @@ if [ -n "$TIMEOUT" ]; then
         echo "error: authoritative self-test result was not produced within ${TIMEOUT}s" >&2
         exit 1
     fi
-    if [ "$SHUTDOWN_TEST" = "1" ] && [ "$POWER_OFF_OBSERVED" -ne 1 ]; then
+    if { [ "$SHUTDOWN_TEST" = "1" ] || [ "$SHUTDOWN_INGRESS_TEST" = "1" ]; } \
+        && [ "$POWER_OFF_OBSERVED" -ne 1 ]; then
         echo "error: shutdown test passed without a PSCI system-off transition" >&2
         exit 1
     fi

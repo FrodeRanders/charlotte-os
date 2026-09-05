@@ -67,6 +67,7 @@ use catten_services::{
         encode_register_deployment,
         encode_release,
         encode_set_cluster_key,
+        encode_shutdown,
         encode_unregister_generation,
     },
     net,
@@ -556,6 +557,27 @@ fn operations_command(
             }
         }
     })
+}
+
+fn shutdown_command(
+    envelope: &[u8],
+    catalog: &NameCatalog,
+    trust: &charlotte_launch::trust::AdmissionTrust,
+    time: ConnectionRef<'_>,
+) -> Result<Vec<u8>, i64> {
+    let key = catalog.cluster_key().unwrap_or(trust.deployment_key);
+    if charlotte_launch::shutdown::verify(envelope, &key)
+        != charlotte_launch::shutdown::VerifyOutcome::Valid
+    {
+        return Err(clusterctl::ERR_UNTRUSTED_DESCRIPTOR);
+    }
+    let fields =
+        charlotte_launch::shutdown::decode(envelope).ok_or(clusterctl::ERR_UNTRUSTED_DESCRIPTOR)?;
+    let now = trusted_unix_seconds(time).ok_or(clusterctl::ERR_TIME_UNAVAILABLE)?;
+    if now < fields.not_before_unix_seconds || now > fields.expires_unix_seconds {
+        return Err(clusterctl::ERR_OUTSIDE_VALIDITY);
+    }
+    encode_shutdown(envelope).ok_or(clusterctl::ERR_TOO_LARGE)
 }
 
 fn serve(ctx: &Context) -> ShutdownRequest {
@@ -1118,6 +1140,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                 PendingQueryKind::Deploy { .. }
                                                     | PendingQueryKind::Release { .. }
                                                     | PendingQueryKind::Operations { .. }
+                                                    | PendingQueryKind::Shutdown { .. }
                                             )
                                     })
                                 {
@@ -1233,6 +1256,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             reply,
                                         }
                                         | PendingQueryKind::Operations {
+                                            reply,
+                                        }
+                                        | PendingQueryKind::Shutdown {
                                             reply,
                                         } => {
                                             if reply != 0 {
@@ -1600,6 +1626,82 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 {
                                     let query = pending_queries.swap_remove(index);
                                     let PendingQueryKind::Operations {
+                                        reply,
+                                    } = query.kind
+                                    else {
+                                        unreachable!()
+                                    };
+                                    if reply != 0 {
+                                        ipc_reply(reply, result);
+                                    }
+                                }
+                            }
+                            Some(catten_services::rshutdown::TAG_REQUEST) => {
+                                if let Some(request) =
+                                    catten_services::rshutdown::decode_request(frame)
+                                    && let Some(source_peer) =
+                                        transport.peer_id_for_mac(&source_mac)
+                                    && source_peer.as_bytes() == request.caller
+                                {
+                                    let result = if node.state != NodeState::Leader {
+                                        Some(dns::ERR_NOT_LEADER)
+                                    } else {
+                                        match shutdown_command(
+                                            &request.envelope,
+                                            &catalog,
+                                            &admission_trust,
+                                            time_conn.as_ref(),
+                                        ) {
+                                            Ok(command) => match node
+                                                .submit_command(command, node.millis())
+                                            {
+                                                Ok(log_index) => {
+                                                    pending_registers.push(
+                                                        PendingRegistration::RemoteShutdown {
+                                                            log_index,
+                                                            peer: source_peer.clone(),
+                                                            session: request.session,
+                                                            request_id: request.request_id,
+                                                        },
+                                                    );
+                                                    None
+                                                }
+                                                Err(code) => Some(code),
+                                            },
+                                            Err(code) => Some(code),
+                                        }
+                                    };
+                                    if let Some(result) = result {
+                                        transport.send_message(
+                                            &source_peer,
+                                            catten_services::rshutdown::TAG_REPLY,
+                                            catten_services::rshutdown::encode_reply(
+                                                request.session,
+                                                request.request_id,
+                                                result,
+                                            ),
+                                        );
+                                    }
+                                }
+                            }
+                            Some(catten_services::rshutdown::TAG_REPLY) => {
+                                if let Some((session, request_id, result)) =
+                                    catten_services::rshutdown::decode_reply(frame)
+                                    && session == dns_session
+                                    && let Some(source_peer) =
+                                        transport.peer_id_for_mac(&source_mac)
+                                    && let Some(index) =
+                                        pending_queries.iter().position(|query| {
+                                            query.query_id == request_id
+                                                && query.expected_leader == source_peer
+                                                && matches!(
+                                                    query.kind,
+                                                    PendingQueryKind::Shutdown { .. }
+                                                )
+                                        })
+                                {
+                                    let query = pending_queries.swap_remove(index);
+                                    let PendingQueryKind::Shutdown {
                                         reply,
                                     } = query.kind
                                     else {
@@ -2218,6 +2320,94 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     }
                 }
 
+                dns::OP_SHUTDOWN_SUBMIT => {
+                    let envelope =
+                        read_moved_bytes(&message, charlotte_launch::shutdown::ENCODED_LEN);
+                    let result = match envelope {
+                        Some(envelope) if node.state == NodeState::Leader => {
+                            match shutdown_command(
+                                &envelope,
+                                &catalog,
+                                &admission_trust,
+                                time_conn.as_ref(),
+                            ) {
+                                Ok(command) => match node.submit_command(command, node.millis()) {
+                                    Ok(log_index) => {
+                                        pending_registers.push(PendingRegistration::Deploy {
+                                            log_index,
+                                            reply: message.reply,
+                                        });
+                                        continue;
+                                    }
+                                    Err(code) => code,
+                                },
+                                Err(code) => code,
+                            }
+                        }
+                        Some(envelope) => {
+                            let Some(leader) = node.known_leader_id.clone() else {
+                                if message.reply != 0 {
+                                    ipc_reply(message.reply, dns::ERR_NOT_LEADER);
+                                }
+                                continue;
+                            };
+                            if pending_queries.len() >= MAX_IN_FLIGHT_CALLS
+                                || !transport.has_peer(&leader)
+                            {
+                                dns::ERR_BUSY
+                            } else {
+                                let request_id = next_query_id;
+                                next_query_id = next_query_id.wrapping_add(1).max(1);
+                                let relay = catten_services::rshutdown::Request {
+                                    session: dns_session,
+                                    request_id,
+                                    caller: node_name.clone(),
+                                    envelope,
+                                };
+                                let Some(frame) =
+                                    catten_services::rshutdown::encode_request(&relay)
+                                else {
+                                    if message.reply != 0 {
+                                        ipc_reply(message.reply, dns::ERR_TOO_LARGE);
+                                    }
+                                    continue;
+                                };
+                                pending_queries.push(PendingQuery {
+                                    query_id: request_id,
+                                    expected_leader: leader.clone(),
+                                    deadline: node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS),
+                                    kind: PendingQueryKind::Shutdown {
+                                        reply: message.reply,
+                                    },
+                                });
+                                transport.send_message(
+                                    &leader,
+                                    catten_services::rshutdown::TAG_REQUEST,
+                                    frame,
+                                );
+                                continue;
+                            }
+                        }
+                        None => dns::ERR_TOO_LARGE,
+                    };
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+
+                dns::OP_SHUTDOWN_QUERY => {
+                    if let Some(entry) = catalog.shutdown_intent(message.arg0) {
+                        let mut bytes =
+                            Vec::with_capacity(8 + charlotte_launch::shutdown::ENCODED_LEN);
+                        bytes.extend_from_slice(&entry.generation.to_le_bytes());
+                        bytes.extend_from_slice(&entry.envelope);
+                        reply_move_bytes(message.reply, &bytes);
+                    } else if message.reply != 0 {
+                        ipc_reply(message.reply, dns::ERR_NOT_FOUND);
+                    }
+                    continue;
+                }
+
                 dns::OP_DEPLOY_QUERY => {
                     let artifact = packed_name(message.arg0);
                     if artifact.is_empty() {
@@ -2731,6 +2921,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     log_index,
                     ..
                 }
+                | PendingRegistration::RemoteShutdown {
+                    log_index,
+                    ..
+                }
                 | PendingRegistration::SetKey {
                     log_index,
                     ..
@@ -2829,6 +3023,24 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         &peer,
                         catten_services::roperations::TAG_REPLY,
                         catten_services::roperations::encode_reply(session, request_id, result),
+                    );
+                }
+                PendingRegistration::RemoteShutdown {
+                    peer,
+                    session,
+                    request_id,
+                    ..
+                } => {
+                    let result = node
+                        .command_result(log_index)
+                        .and_then(|bytes| bytes.get(..8))
+                        .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok())
+                        .map(i64::from_le_bytes)
+                        .unwrap_or(dns::ERR_NOT_FOUND);
+                    transport.send_message(
+                        &peer,
+                        catten_services::rshutdown::TAG_REPLY,
+                        catten_services::rshutdown::encode_reply(session, request_id, result),
                     );
                 }
                 PendingRegistration::SetKey {

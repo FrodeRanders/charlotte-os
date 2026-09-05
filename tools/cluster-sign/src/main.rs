@@ -34,6 +34,7 @@ use charlotte_launch::{
     operations,
     operations_bundle,
     release,
+    shutdown,
     signature_note::{
         self,
         ArtifactClass,
@@ -1019,6 +1020,155 @@ fn release_verify(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+fn shutdown_sign(args: &[String]) -> Result<()> {
+    let output = args.first().ok_or_else(|| "missing shutdown-intent output path".to_owned())?;
+    let sequence = parse_required_u64(
+        args.get(1).ok_or_else(|| "missing shutdown sequence".to_owned())?,
+        "shutdown sequence",
+    )?;
+    let target_node = parse_required_u64(
+        args.get(2).ok_or_else(|| "missing target node".to_owned())?,
+        "target node",
+    )?;
+    let not_before_unix_seconds = parse_required_u64(
+        args.get(3).ok_or_else(|| "missing not-before UTC".to_owned())?,
+        "not-before UTC",
+    )?;
+    let expires_unix_seconds = parse_required_u64(
+        args.get(4).ok_or_else(|| "missing expiry UTC".to_owned())?,
+        "expiry UTC",
+    )?;
+    let node_grace_ms = parse_required_u64(
+        args.get(5).ok_or_else(|| "missing node grace milliseconds".to_owned())?,
+        "node grace milliseconds",
+    )?
+    .try_into()
+    .map_err(|_| "node grace milliseconds exceed the intent width".to_owned())?;
+    let phase_grace_ms = parse_required_u64(
+        args.get(6).ok_or_else(|| "missing phase grace milliseconds".to_owned())?,
+        "phase grace milliseconds",
+    )?
+    .try_into()
+    .map_err(|_| "phase grace milliseconds exceed the intent width".to_owned())?;
+    let secret = SecretKey::from_slice(&hex_decode(
+        args.get(7).ok_or_else(|| "missing private key".to_owned())?,
+    )?)
+    .map_err(|_| "private key must be an Ed25519 secret key".to_owned())?;
+    let fields = shutdown::ShutdownFields {
+        sequence,
+        target_node,
+        not_before_unix_seconds,
+        expires_unix_seconds,
+        node_grace_ms,
+        phase_grace_ms,
+        reason: shutdown::REASON_POWER_OFF,
+    };
+    let public = secret.public_key();
+    let public_key: &[u8; 32] =
+        public.as_ref().try_into().map_err(|_| "invalid public key".to_owned())?;
+    let mut bytes = vec![0; shutdown::ENCODED_LEN];
+    shutdown::encode_unsigned(&fields, public_key, &mut bytes)
+        .map_err(|error| format!("encode shutdown intent: {error:?}"))?;
+    let digest = shutdown::signature_digest(&bytes)
+        .ok_or_else(|| "encoded shutdown intent did not decode".to_owned())?;
+    let signature: Signature = secret.sign(digest, None);
+    let signature: &[u8; shutdown::SIGNATURE_LEN] =
+        signature.as_ref().try_into().map_err(|_| "invalid Ed25519 signature length".to_owned())?;
+    if !shutdown::set_signature(&mut bytes, signature) {
+        return Err("failed to install shutdown signature".to_owned());
+    }
+    fs::write(output, &bytes).map_err(|error| format!("write {output}: {error}"))?;
+    println!(
+        "signed shutdown intent {output}: target={target_node:#x} sequence={sequence} \
+         valid={not_before_unix_seconds}..={expires_unix_seconds} node_grace_ms={node_grace_ms} \
+         phase_grace_ms={phase_grace_ms}"
+    );
+    Ok(())
+}
+
+fn shutdown_verify(args: &[String]) -> Result<()> {
+    let path = args.first().ok_or_else(|| "missing shutdown-intent path".to_owned())?;
+    let key_bytes: [u8; 32] =
+        hex_decode(args.get(1).ok_or_else(|| "missing public key".to_owned())?)?
+            .try_into()
+            .map_err(|_| "public key must contain 32 bytes".to_owned())?;
+    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    if shutdown::verify(&bytes, &key_bytes) != shutdown::VerifyOutcome::Valid {
+        return Err("shutdown-intent signature verification failed".to_owned());
+    }
+    let fields =
+        shutdown::decode(&bytes).ok_or_else(|| "shutdown intent is malformed".to_owned())?;
+    println!(
+        "VERIFY OK: target={:#x} sequence={} valid={}..={} node_grace_ms={} phase_grace_ms={} \
+         reason={}",
+        fields.target_node,
+        fields.sequence,
+        fields.not_before_unix_seconds,
+        fields.expires_unix_seconds,
+        fields.node_grace_ms,
+        fields.phase_grace_ms,
+        fields.reason
+    );
+    Ok(())
+}
+
+fn shutdown_notify(args: &[String]) -> Result<()> {
+    let path = args.first().ok_or_else(|| "missing shutdown-intent path".to_owned())?;
+    let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
+    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    shutdown::decode(&bytes).ok_or_else(|| "shutdown intent is malformed".to_owned())?;
+    let mut stream = TcpStream::connect(endpoint)
+        .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(30)))
+        .map_err(|error| format!("set read timeout: {error}"))?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(30)))
+        .map_err(|error| format!("set write timeout: {error}"))?;
+    let header = format!(
+        "POST /v1/shutdowns HTTP/1.1\r\nHost: {endpoint}\r\nContent-Type: \
+         application/vnd.charlotte.shutdown\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        bytes.len()
+    );
+    stream
+        .write_all(header.as_bytes())
+        .and_then(|()| stream.write_all(&bytes))
+        .map_err(|error| format!("send shutdown notification: {error}"))?;
+    let mut response = String::new();
+    stream
+        .take(8192)
+        .read_to_string(&mut response)
+        .map_err(|error| format!("read shutdown response: {error}"))?;
+    if !response.lines().next().unwrap_or_default().starts_with("HTTP/1.1 202 ") {
+        return Err(format!("shutdown notification failed: {}", response.trim()));
+    }
+    println!("{}", response.split("\r\n\r\n").nth(1).unwrap_or_default().trim());
+    Ok(())
+}
+
+fn node_key(args: &[String]) -> Result<()> {
+    let mac = args.first().ok_or_else(|| "missing MAC address".to_owned())?;
+    let octets = mac
+        .split(':')
+        .map(|octet| {
+            if octet.len() != 2 {
+                return Err(format!("invalid MAC address: {mac:?}"));
+            }
+            u8::from_str_radix(octet, 16).map_err(|_| format!("invalid MAC address: {mac:?}"))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    if octets.len() != 6 {
+        return Err(format!("invalid MAC address: {mac:?}"));
+    }
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    for octet in octets {
+        hash ^= u64::from(octet);
+        hash = hash.wrapping_mul(0x1000_0000_01b3);
+    }
+    println!("{:#x}", hash & 0xffff_ffff);
+    Ok(())
+}
+
 fn deployment_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<String> {
     deployment::decode(bytes).ok_or_else(|| "deployment descriptor is malformed".to_owned())?;
     let mut stream = TcpStream::connect(endpoint)
@@ -1330,6 +1480,10 @@ fn run() -> Result<()> {
         Some("release-verify") => release_verify(&args[2..]),
         Some("release-notify") => release_notify(&args[2..]),
         Some("release-apply") => release_apply(&args[2..]),
+        Some("shutdown-sign") => shutdown_sign(&args[2..]),
+        Some("shutdown-verify") => shutdown_verify(&args[2..]),
+        Some("shutdown-notify") => shutdown_notify(&args[2..]),
+        Some("node-key") => node_key(&args[2..]),
         Some("operations-recipient-generate") => operations_recipient_generate(&args[2..]),
         Some("operations-signing-generate") => operations_signing_generate(&args[2..]),
         Some("operations-seal") => operations_seal(&args[2..]),
@@ -1445,7 +1599,10 @@ fn run() -> Result<()> {
                   deployment-apply <host:port> <wait-seconds> <descriptor>... | release-sign \
                   <output> <release-name> <sequence> <privkey-hex> <descriptor>... | \
                   release-verify <release> <pubkey-hex> | release-notify <release> [host:port] | \
-                  release-apply <release> [host:port] [wait-seconds] | \
+                  release-apply <release> [host:port] [wait-seconds] | shutdown-sign <output> \
+                  <sequence> <target-node> <not-before-unix> <expires-unix> <node-grace-ms> \
+                  <phase-grace-ms> <privkey-hex> | shutdown-verify <intent> <pubkey-hex> | \
+                  shutdown-notify <intent> [host:port] | node-key <mac-address> | \
                   operations-recipient-generate <private-key-file> <public-key-file> | \
                   operations-signing-generate <private-key-file> <public-key-file> | \
                   operations-seal <output> <profile-name> <s3|kafka> <cluster-id-hex> \

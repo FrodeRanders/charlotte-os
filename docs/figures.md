@@ -549,7 +549,9 @@ guessed or silently clamped by the cluster.
 
 ```mermaid
 sequenceDiagram
-participant R as Replicated desired state
+participant O as Cluster operator
+participant I as Deployment ingress
+participant R as DNS leader / replicated catalog
 participant N as Node shutdown coordinator
 participant A as Node deployment agent
 participant K as Kernel lifecycle gate
@@ -559,7 +561,15 @@ participant E as External services
       alt Deployment removed or replaced
           R-->>A: Desired generation changed
           A->>K: poll_retire(principal)
-      else Node shutdown
+      else Cluster-authorized node shutdown
+          O->>O: Sign node-targeted CSHUTDN1<br/>sequence, UTC window, grace budgets
+          O->>I: POST /v1/shutdowns
+          I->>R: Relay bounded signed envelope
+          R->>R: Verify cluster key + trusted UTC<br/>commit and replay-fence intent
+          R-->>A: Locally applied target intent
+          A->>K: Move signed envelope capability
+          K->>K: Reverify signature + target<br/>derive monotonic deadline
+          K->>N: Transfer steady-state owners<br/>start kernel coordinator
           N-->>A: NodeShutdown(node deadline)
           A->>A: Stop reconciliation<br/>mark all children retiring
           A->>K: poll_node_shutdown(principal, node deadline)

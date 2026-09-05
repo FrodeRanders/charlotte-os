@@ -734,6 +734,25 @@ pub(crate) fn take_steady_state_for_shutdown() -> Option<SteadyState> {
     STEADY_STATE.lock().take()
 }
 
+/// Derive the stable cluster node key from the trusted NIC driver's published
+/// MAC before shutdown transfers the steady-state owner away. This lets the
+/// kernel independently reject an otherwise valid intent for another node.
+pub(crate) fn local_node_key() -> Option<u64> {
+    let network = STEADY_STATE.lock().as_ref()?.network?;
+    let base: *const u8 = network.driver.status_frame.into();
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    let mut any = false;
+    for index in 0..6 {
+        let byte = unsafe {
+            core::ptr::read_volatile(base.add(charlotte_launch::net_status::MAC + index))
+        };
+        any |= byte != 0;
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x1000_0000_01b3);
+    }
+    any.then_some(hash & 0xffff_ffff)
+}
+
 /// A discovered PCI function descriptor:
 /// `(driver_elf, mmio_base, mmio_pages, intid, requester_id, msi_address)`.
 type DeviceDescriptor = (&'static [u8], usize, usize, u32, u32, Option<u64>);

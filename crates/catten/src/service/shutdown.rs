@@ -9,6 +9,10 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
+use core::sync::atomic::{
+    AtomicU64,
+    Ordering,
+};
 
 use crate::{
     cpu::scheduler::{
@@ -33,6 +37,7 @@ const MAX_PHASE_GRACE_MS: u64 = 60_000;
 static NODE_SHUTDOWN_COORDINATOR: spin::LazyLock<
     crate::cpu::multiprocessor::spin::mutex::Mutex<Option<NodeShutdownCoordinator>>,
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
+static NODE_SHUTDOWN_DEADLINE_MS: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BeginNodeShutdownError {
@@ -448,6 +453,86 @@ pub fn begin_node_shutdown(
     *coordinator =
         Some(NodeShutdownCoordinator::from_steady_state(state, node_deadline_ms, phase_grace_ms));
     Ok(())
+}
+
+/// Transfer the steady-state service set and start the kernel worker that
+/// retains shutdown ownership after the requesting deployment agent reaches
+/// its own retirement phase.
+pub fn start_node_shutdown_worker(
+    node_grace_ms: u64,
+    phase_grace_ms: u64,
+) -> Result<(), BeginNodeShutdownError> {
+    let deadline_ms = monotonic_millis().saturating_add(node_grace_ms);
+    begin_node_shutdown(deadline_ms, phase_grace_ms)?;
+    NODE_SHUTDOWN_DEADLINE_MS.store(deadline_ms, Ordering::Release);
+    crate::cpu::scheduler::spawn_thread_on_lp(
+        crate::memory::KERNEL_ASID,
+        node_shutdown_worker,
+        crate::cpu::isa::lp::ops::get_lp_id(),
+    );
+    Ok(())
+}
+
+extern "C" fn node_shutdown_worker() {
+    let deadline_ms = NODE_SHUTDOWN_DEADLINE_MS.load(Ordering::Acquire);
+    loop {
+        match poll_node_shutdown() {
+            Some(NodeShutdownProgress::Draining {
+                ..
+            }) => {
+                crate::cpu::scheduler::yield_lp();
+            }
+            Some(NodeShutdownProgress::AwaitingDeviceQuiescence {
+                ..
+            }) => break,
+            Some(NodeShutdownProgress::DeviceDomainsTransferred) | None => {
+                crate::logln!("[shutdown] coordinator ownership was lost before device drain");
+                return;
+            }
+        }
+    }
+
+    let Some(mut devices) = begin_device_shutdown(deadline_ms) else {
+        crate::logln!("[shutdown] device coordinator was unavailable");
+        return;
+    };
+    loop {
+        match devices.poll() {
+            DeviceShutdownProgress::Complete => break,
+            DeviceShutdownProgress::Quiescing {
+                ..
+            } => crate::cpu::scheduler::yield_lp(),
+            DeviceShutdownProgress::DeadlineExceeded {
+                remaining_domains,
+            } => {
+                crate::logln!(
+                    "[shutdown] refusing power-off: {} device domain(s) did not quiesce",
+                    remaining_domains
+                );
+                loop {
+                    crate::cpu::scheduler::yield_lp();
+                }
+            }
+            DeviceShutdownProgress::UnverifiedExit {
+                kind,
+            } => {
+                crate::logln!("[shutdown] refusing power-off: {:?} exited without proof", kind);
+                loop {
+                    crate::cpu::scheduler::yield_lp();
+                }
+            }
+        }
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    crate::cpu::isa::power::power_off();
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        crate::logln!("[shutdown] device quiescence complete; platform power-off unavailable");
+        loop {
+            crate::cpu::scheduler::yield_lp();
+        }
+    }
 }
 
 pub fn poll_node_shutdown() -> Option<NodeShutdownProgress> {

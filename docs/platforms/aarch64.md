@@ -58,6 +58,12 @@ order, device adapters quiesce, and the kernel selects the PSCI SMC/HVC
 conduit from the FADT before requesting `SYSTEM_OFF`. The runner requires this
 firmware transition to terminate QEMU after a successful authoritative result.
 
+`./scripts/run-aarch64.sh release --shutdown-ingress-test --timeout 120`
+exercises the production control path instead: after the ordinary self-tests
+pass, the host signs a node-targeted `CSHUTDN1` request, submits it through
+`POST /v1/shutdowns`, and requires the resulting replicated intent, kernel
+drain, verified device quiescence, and PSCI exit.
+
 The `--display` build additionally enables the `display,virtio_gpu` features
 (the flanterm framebuffer console) and boots with a ramfb display window. See
 "Display / framebuffer" below.

@@ -29,6 +29,7 @@ use catten_rt::{
         launch_artifact,
         launch_operational_connector,
         launch_scoped_artifact_named,
+        request_node_shutdown,
     },
 };
 use catten_services::{
@@ -54,6 +55,7 @@ const STAGE_RETIRED: u32 = 7;
 const STAGE_DRAINING_APPLICATIONS: u32 = 8;
 const STAGE_DRAINING_CONNECTORS: u32 = 9;
 const STAGE_SHUTDOWN_READY: u32 = 10;
+const STAGE_CLUSTER_SHUTDOWN_ACCEPTED: u32 = 11;
 const STAGE_FAIL: u32 = 0xdead;
 const RETIREMENT_POLL_MS: u64 = 10;
 
@@ -371,6 +373,31 @@ fn trusted_unix_seconds(names: ConnectionRef<'_>) -> Option<u64> {
     u64::try_from(reply.result).ok().filter(|seconds| *seconds != 0)
 }
 
+fn query_shutdown_intent(
+    dns_connection: ConnectionRef<'_>,
+    node_key: u64,
+    cluster_key: &[u8; 32],
+) -> Option<(u64, charlotte_launch::shutdown::ShutdownFields, Vec<u8>)> {
+    let reply = dns_connection.call(dns::OP_SHUTDOWN_QUERY, node_key).ok()?.wait().ok()?;
+    let len = usize::try_from(reply.result).ok()?;
+    if len != 8 + charlotte_launch::shutdown::ENCODED_LEN {
+        return None;
+    }
+    let memory = reply.memory?;
+    let mapping = memory.map_read_only().ok()?;
+    let bytes = mapping.as_slice().get(..len)?;
+    let generation = u64::from_le_bytes(bytes.get(..8)?.try_into().ok()?);
+    let envelope = bytes.get(8..)?;
+    if generation == 0
+        || charlotte_launch::shutdown::verify(envelope, cluster_key)
+            != charlotte_launch::shutdown::VerifyOutcome::Valid
+    {
+        return None;
+    }
+    let fields = charlotte_launch::shutdown::decode(envelope)?;
+    (fields.target_node == node_key).then_some((generation, fields, envelope.to_vec()))
+}
+
 fn launch(
     names: ConnectionRef<'_>,
     name: &[u8],
@@ -647,12 +674,42 @@ fn serve(ctx: &Context) -> catten_rt::ShutdownRequest {
     let trust = manifest_admission_trust(ctx).unwrap_or_else(|| fail(STAGE_FAIL));
     let mut active: Vec<ActiveDeployment> = Vec::new();
     let mut operational: Vec<ActiveOperational> = Vec::new();
+    let mut observed_shutdown_generation = 0;
     if let Err(request) = wait_for_local_ready_or_shutdown(ctx, names) {
         return request;
     }
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
             return drain_for_node_shutdown(&mut active, &mut operational, request);
+        }
+        if let Some((generation, fields, envelope)) =
+            query_shutdown_intent(dns_connection.as_ref(), my_node_key, &trust.deployment_key)
+            && generation > observed_shutdown_generation
+        {
+            let Some(envelope_memory) = memory_from_bytes(&envelope) else {
+                fail(STAGE_FAIL)
+            };
+            match request_node_shutdown(envelope_memory, envelope.len()) {
+                Ok(()) | Err(catten_rt::NodeShutdownRequestError::AlreadyInProgress) => {
+                    observed_shutdown_generation = generation;
+                    config::write_u32_release(
+                        charlotte_launch::agent_status::STAGE,
+                        STAGE_CLUSTER_SHUTDOWN_ACCEPTED,
+                    );
+                    catten_rt::logln!(
+                        "[agent] accepted cluster shutdown sequence={} generation={} \
+                         node_grace_ms={} phase_grace_ms={}",
+                        fields.sequence,
+                        generation,
+                        fields.node_grace_ms,
+                        fields.phase_grace_ms
+                    );
+                }
+                Err(
+                    catten_rt::NodeShutdownRequestError::InvalidEnvelope
+                    | catten_rt::NodeShutdownRequestError::Denied,
+                ) => fail(STAGE_FAIL),
+            }
         }
         let desired_names = deployment_names(dns_connection.as_ref());
         let desired_operations = operational_bindings(dns_connection.as_ref());

@@ -223,6 +223,9 @@ pub mod call_no {
     pub const SPAWN_OPERATIONAL_CONNECTOR: u16 = SyscallNumber::SpawnOperationalConnector as u16;
     /// Abort and reclaim the deployment agent's current child domain.
     pub const RETIRE_ARTIFACT: u16 = SyscallNumber::RetireArtifact as u16;
+    /// Begin kernel-owned whole-node drain. Restricted to the deployment
+    /// agent; x1=moved signed-envelope cap and x2=exact byte length.
+    pub const REQUEST_NODE_SHUTDOWN: u16 = SyscallNumber::RequestNodeShutdown as u16;
     /// Send a vector of memory-object caps. x1=connection, x2=opcode,
     /// x3=arg0, x4=cap_vector_page. Returns an IPC status code in x0.
     pub const IPC_VECTOR_SEND: u16 = SyscallNumber::IpcVectorSend as u16;
@@ -343,6 +346,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::RetireArtifact => {
             sys_retire_artifact(frame);
         }
+        SyscallNumber::RequestNodeShutdown => sys_request_node_shutdown(frame),
         SyscallNumber::IpcVectorSend => sys_ipc_vector_send(frame),
         SyscallNumber::IpcVectorCall => sys_ipc_vector_call(frame),
         SyscallNumber::IpcRecvVec => sys_ipc_recv_vec(frame),
@@ -2265,6 +2269,61 @@ fn sys_retire_artifact(frame: &mut TrapFrame) {
     let enclosing_deadline_ms = frame.regs[4];
     frame.regs[0] =
         retire_deployed_artifact(principal, force, requested_reason, enclosing_deadline_ms);
+}
+
+fn sys_request_node_shutdown(frame: &mut TrapFrame) {
+    let caller_asid = caller_asid(frame);
+    let envelope_cap = frame.regs[1];
+    let envelope_size = usize::try_from(frame.regs[2]).ok();
+    let close_input = || {
+        if envelope_cap != 0 {
+            let _ = crate::memory::object::close_cap(caller_asid, envelope_cap);
+        }
+    };
+    if !deployment_agent_authorized(caller_asid)
+        || envelope_cap == 0
+        || envelope_size != Some(charlotte_launch::shutdown::ENCODED_LEN)
+    {
+        close_input();
+        frame.regs[0] = u64::MAX;
+        return;
+    }
+    let envelope = crate::memory::object::snapshot_bytes(
+        caller_asid,
+        envelope_cap,
+        charlotte_launch::shutdown::ENCODED_LEN,
+    );
+    close_input();
+    let Some(trust) = crate::service::supervisor::configured_admission_trust() else {
+        frame.regs[0] = u64::MAX;
+        return;
+    };
+    let Ok(envelope) = envelope else {
+        frame.regs[0] = u64::MAX;
+        return;
+    };
+    if charlotte_launch::shutdown::verify(&envelope, &trust.deployment_key)
+        != charlotte_launch::shutdown::VerifyOutcome::Valid
+    {
+        frame.regs[0] = u64::MAX;
+        return;
+    }
+    let Some(fields) = charlotte_launch::shutdown::decode(&envelope) else {
+        frame.regs[0] = u64::MAX;
+        return;
+    };
+    if crate::service::launch::local_node_key() != Some(fields.target_node) {
+        frame.regs[0] = u64::MAX;
+        return;
+    }
+    frame.regs[0] = match crate::service::shutdown::start_node_shutdown_worker(
+        u64::from(fields.node_grace_ms),
+        u64::from(fields.phase_grace_ms),
+    ) {
+        Ok(()) => 0,
+        Err(crate::service::shutdown::BeginNodeShutdownError::AlreadyInProgress) => 1,
+        Err(_) => u64::MAX,
+    };
 }
 
 const _: () = assert!(

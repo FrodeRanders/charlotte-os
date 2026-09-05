@@ -81,6 +81,9 @@ pub(super) enum PendingQueryKind {
     Operations {
         reply: u64,
     },
+    Shutdown {
+        reply: u64,
+    },
 }
 
 pub(super) struct PendingQuery {
@@ -136,6 +139,14 @@ pub(super) enum PendingRegistration {
     /// Leader-side: a follower relayed an operational admission proof. The
     /// leader reverified it before submitting the compact command.
     RemoteOperations {
+        log_index: u64,
+        peer: String,
+        session: u64,
+        request_id: u64,
+    },
+    /// Leader-side: a follower relayed a signed shutdown intent. The leader
+    /// reverified signature and UTC bounds before submitting it.
+    RemoteShutdown {
         log_index: u64,
         peer: String,
         session: u64,

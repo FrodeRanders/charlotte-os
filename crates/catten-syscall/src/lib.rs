@@ -149,6 +149,7 @@ define_syscall_numbers!(
     (RandomU64, 75),
     (SpawnArtifactScoped, 76),
     (SpawnOperationalConnector, 77),
+    (RequestNodeShutdown, 78),
 );
 
 /// Supervisor-assigned roles carried in the kernel-authenticated IPC sender
@@ -382,6 +383,7 @@ unsafe fn svc3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             68 => asm!("svc #68", lateout("x0") ret, options(nostack, nomem, preserves_flags)),
             69 => asm!("svc #69", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             74 => asm!("svc #74", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            78 => asm!("svc #78", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             _ => panic!("syscall {:?} has no svc3 emitter", imm),
         }
     }
@@ -1901,6 +1903,19 @@ pub fn retire_artifact_for_node_shutdown(principal: u64, deadline_ms: u64) -> u6
 #[inline(always)]
 pub fn force_retire_artifact_named(principal: u64) -> u64 {
     unsafe { svc4(SyscallNumber::RetireArtifact, principal, 1, 0, 0) }
+}
+
+/// Transfer an operator-signed shutdown envelope to the kernel supervisor.
+/// This succeeds only for the uniquely delegated deployment agent and after
+/// independent signature, target-node, and policy verification. The kernel
+/// consumes `envelope_cap` on every outcome and derives the monotonic deadline
+/// from the signed relative duration.
+///
+/// Returns zero when accepted, one when shutdown is already in progress, and
+/// `u64::MAX` when authority or policy validation fails.
+#[inline(always)]
+pub fn request_node_shutdown(envelope_cap: u64, envelope_size: usize) -> u64 {
+    unsafe { svc3(SyscallNumber::RequestNodeShutdown, envelope_cap, envelope_size as u64, 0) }
 }
 
 /// Send a scalar message and move a memory object to the receiver.
