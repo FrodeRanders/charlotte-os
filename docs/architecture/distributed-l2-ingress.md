@@ -29,12 +29,14 @@ contract is `VIP:port`, while ingress ownership and execution placement may
 move independently behind it. Individual node addresses remain mechanisms of
 the cluster, not part of the cluster-addressed application's public identity.
 
-The first implementation stops short of making this indirection completely
-placement-aware. One service declaration is supplied as trusted launch policy,
-and admitted eligible members form its backend set. A future cluster controller
-must derive a service-specific eligible set from committed application
-placement and readiness, so a VIP follows the actual replicas of an arbitrary
-deployed service rather than all admitted members.
+The service declaration may now bind the VIP to a deployed application name.
+DNS then intersects admitted members with the application's committed placement
+and exact-generation readiness registration. A moved or replaced application
+does not receive new flows through a stale registration: eligibility becomes
+empty after the new placement commits and reappears only when the target node
+publishes the matching deployment generation. Omitting the application name
+retains the original platform-service mode in which every admitted,
+non-draining member is a backend.
 
 ## Identities and authority
 
@@ -43,15 +45,21 @@ identity is whichever committed node currently advertises the VIP. The
 execution identity is the backend selected for a five-tuple. They need not be
 the same node.
 
-Only the platform launcher can place `vip` and `vipport` in the `frouter` and
-`tcpip` manifests. Applications receive socket capabilities; they cannot alter
-ingress policy or cluster membership.
+Only the platform launcher can place `vip`, `vipport`, and the optional
+`vip-name` deployment binding in service manifests. Applications receive
+socket capabilities; they cannot alter ingress policy, claim readiness for a
+different deployment generation, or change cluster membership.
 
 DNS owns the operational Raft member. Its local `OP_INGRESS_MEMBERSHIP`
 operation materializes an immutable snapshot containing stable node keys and
 the discovery-associated MAC route for every admitted voter. The snapshot
 separates that trusted/routable member set from the subset eligible for new
-flows. It returns no snapshot unless every committed member has a route.
+flows. When `vip-name` is configured, that subset contains only nodes selected
+by the committed deployment and carrying an active catalog registration for
+the exact deployment generation. The current singleton deployment catalog
+therefore yields zero or one ready backend; the ingress interface and encoded
+snapshot already carry an explicit set so replica placement can widen it
+later. DNS returns no snapshot unless every committed member has a route.
 Discovery therefore supplies reachability but cannot admit a backend. During
 joint consensus the admitted set is the intersection of the old and new voter
 sets: a joiner enters only after finalization, while a departing node stops
@@ -82,10 +90,11 @@ The envelope retains the external source MAC and original EtherType. The
 backend accepts that envelope only from a MAC in its current committed member
 snapshot, removes it in place, restores the original Ethernet fields, and
 delivers the frame directly to its local protocol route. IP, TCP, TCP options,
-sequence numbers and payload bytes never change. The TCP/IP service installs
-the VIP as a `/32` address on every configured backend, separately from its
-DHCP or static node address, so the selected backend accepts the packet and
-replies with the VIP as IP source.
+sequence numbers and payload bytes never change. Every participating node's
+TCP/IP service installs the VIP as a `/32` address, separately from its DHCP or
+static node address; DSR policy nevertheless forwards new flows only to the
+ready backend subset. The selected backend accepts the packet and replies with
+the VIP as IP source.
 
 Raft's Vote, AppendEntries and InstallSnapshot traffic uses the separate
 private EtherType `0x88b7`. Keeping consensus heartbeats and election votes out
@@ -100,9 +109,10 @@ suffix.
 ## Epochs and failure semantics
 
 The load-balancing epoch is a deterministic fingerprint of the committed Raft
-configuration index and the sorted replicated shutdown-intent generations.
-It changes for membership or drain-policy changes, but not for unrelated
-catalog traffic.
+configuration index, service name, deployment generation, service-registration
+generation, sorted ready-node set, and replicated shutdown-intent generations.
+It changes for membership, placement, readiness, or drain-policy changes, but
+not for unrelated catalog traffic.
 `frouter` retains four membership snapshots and up to 1,024 local
 `FlowKey -> epoch` bindings. Retransmitted SYNs and later packets retain the
 original epoch. Adding a member consequently affects new flows without
@@ -118,13 +128,15 @@ Bindings can be lost through bounded eviction or simultaneous membership
 change and ingress failure; that is an explicit first-version limitation.
 Failure of the selected backend may terminate its TCP connections.
 
-VIP advertisement follows the leader elected by the existing Raft group,
-provided that identity belongs to the committed eligible set. Only that node
-passes VIP ARP requests to `smoltcp`; other nodes drop them, including while no
-leader or complete snapshot is known. A new leader transmits a gratuitous ARP
-reply. Loss of the ingress owner can therefore move advertisement after an
-ordinary Raft election without changing the backend set or introducing a
-second consensus system.
+VIP advertisement follows the leader elected by the existing Raft group when
+that identity is an admitted, non-draining ingress participant. It need not be
+an application backend: the ingress node can forward a flow to whichever node
+the placement/readiness set permits. No node advertises the VIP while the
+ready-backend set is empty. Other nodes drop VIP ARP requests, including while
+no leader or complete snapshot is known. A new advertiser transmits a
+gratuitous ARP reply. Loss of the ingress owner can therefore move advertisement
+after an ordinary Raft election without changing the backend set or introducing
+a second consensus system.
 
 The forwarding envelope is an isolation marker, not cryptographic link
 authentication. The receive path checks its source against committed member
@@ -141,7 +153,7 @@ The initial implementation supports one launch-configured IPv4/TCP service and
 at most 64 admitted members. Signed node shutdown supplies the first graceful
 drain trigger; a standalone service-drain operation and automatic failed-member
 removal are not implemented. IPv6 neighbour advertisement, service-specific
-placement sets, multiple VIPs and transparent TCP state migration remain
+replica sets, multiple VIPs and transparent TCP state migration remain
 extension points. Application state restoration can
 support reconnect-and-resume semantics, but application serialization does not
 include TCP sequence, retransmission or congestion-control state.
@@ -176,6 +188,18 @@ For an operational AArch64 launch, pass the same descriptor to every member:
 ```
 
 This option configures the runtime service; it does not register a verifier.
+To bind new-flow eligibility to a deployed application and its readiness fence,
+add the signed artifact name:
+
+```sh
+./scripts/run-aarch64.sh release \
+  --cluster-service 10.0.2.42:8080 \
+  --cluster-service-name orders
+```
+
+Before `orders` is committed and ready, no node advertises this VIP. During a
+move, observed flows continue to use retained epochs while new flows wait for
+the new exact generation to become ready.
 
 Run the complete multi-node validation separately:
 

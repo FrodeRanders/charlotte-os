@@ -53,6 +53,7 @@ use catten_services::{
         Backend,
         BackendSnapshot,
         load_balancing_epoch,
+        service_load_balancing_epoch,
     },
     clusterctl,
     disco,
@@ -193,6 +194,7 @@ const REPLY_SPINS: u64 = u64::MAX;
 
 const CLUSTER_KEY: u64 = manifest_key(b"cluster");
 const ELECTION_KEY: u64 = manifest_key(b"elect-ms");
+const INGRESS_SERVICE_KEY: u64 = manifest_key(b"vip-name");
 const DISCO_QUERY_MS: u64 = 2_000;
 // Keep retry slower than the relmsg acknowledgement/retry lease. JOIN is
 // idempotent, but flooding duplicates ahead of AppendEntries can otherwise
@@ -417,6 +419,7 @@ fn ingress_membership_snapshot(
     transport: &RelmsgRaftTransport,
     catalog: &NameCatalog,
     local_mac: [u8; 6],
+    service_name: Option<&[u8]>,
 ) -> Option<BackendSnapshot> {
     let self_node = node_identity::key_from_name(node.me.id.as_bytes())?;
     let mut members = Vec::new();
@@ -438,13 +441,35 @@ fn ingress_membership_snapshot(
         .filter(|(node_id, _)| members.iter().any(|member| member.node_id == *node_id))
         .collect::<Vec<_>>();
     draining.sort_unstable_by_key(|(node_id, _)| *node_id);
-    let eligible_nodes = members
+    let ingress_nodes = members
         .iter()
         .filter(|member| {
             draining.binary_search_by_key(&member.node_id, |(node_id, _)| *node_id).is_err()
         })
         .map(|member| member.node_id)
         .collect::<Vec<_>>();
+    let (deployment_generation, service_generation, placed_nodes) = service_name.map_or_else(
+        || (0, 0, None),
+        |name| {
+            catalog.ingress_placement(name).map_or((0, 0, Some(Vec::new())), |placement| {
+                (
+                    placement.deployment_generation,
+                    placement.service_generation,
+                    Some(placement.ready_nodes),
+                )
+            })
+        },
+    );
+    let eligible_nodes = placed_nodes.map_or_else(
+        || ingress_nodes.clone(),
+        |placed| {
+            ingress_nodes
+                .iter()
+                .copied()
+                .filter(|node_id| placed.contains(node_id))
+                .collect::<Vec<_>>()
+        },
+    );
     let leader = if node.state == NodeState::Leader {
         Some(node.me.id.as_str())
     } else {
@@ -458,15 +483,23 @@ fn ingress_membership_snapshot(
                 .any(|peer| peer.id.as_str() == *leader)
         })
         .and_then(|leader| node_identity::key_from_name(leader.as_bytes()))
-        .filter(|leader| eligible_nodes.contains(leader))
-        .or_else(|| eligible_nodes.iter().copied().min());
-    BackendSnapshot::new_with_members(
-        load_balancing_epoch(node.membership_epoch(), &draining),
-        self_node,
-        advertiser_node,
-        members,
-        eligible_nodes,
-    )
+        .filter(|leader| ingress_nodes.contains(leader))
+        .or_else(|| ingress_nodes.iter().copied().min())
+        .filter(|_| !eligible_nodes.is_empty());
+    let epoch = service_name.map_or_else(
+        || load_balancing_epoch(node.membership_epoch(), &draining),
+        |name| {
+            service_load_balancing_epoch(
+                node.membership_epoch(),
+                name,
+                deployment_generation,
+                service_generation,
+                &eligible_nodes,
+                &draining,
+            )
+        },
+    );
+    BackendSnapshot::new_with_members(epoch, self_node, advertiser_node, members, eligible_nodes)
 }
 
 /// Drain the administration face of the DNS-owned Raft node.
@@ -670,6 +703,15 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let election_timeout_ms = match ctx.manifest_value(ELECTION_KEY) {
         Some(ManifestValue::Unsigned(value)) => value,
         _ => 300,
+    };
+    let ingress_service = match ctx.manifest_value(INGRESS_SERVICE_KEY) {
+        Some(ManifestValue::Bytes(name))
+            if charlotte_launch::deployment::valid_artifact_name(name) =>
+        {
+            Some(name.to_vec())
+        }
+        Some(_) => fatal(23),
+        None => None,
     };
     let admission_trust = match ctx.manifest_value(charlotte_launch::ADMISSION_TRUST_MANIFEST_KEY) {
         Some(ManifestValue::Bytes(bytes)) => {
@@ -2836,7 +2878,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     if message.memory != 0 {
                         memory_close(message.memory);
                     }
-                    match ingress_membership_snapshot(&node, &transport, &catalog, local_mac) {
+                    match ingress_membership_snapshot(
+                        &node,
+                        &transport,
+                        &catalog,
+                        local_mac,
+                        ingress_service.as_deref(),
+                    ) {
                         Some(snapshot) => reply_move_bytes(message.reply, &snapshot.encode()),
                         None if message.reply != 0 => {
                             // A partial discovery overlay must never silently

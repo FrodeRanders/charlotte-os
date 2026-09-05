@@ -114,7 +114,10 @@ The main additions and extensions currently maintained here are:
   policy-epoch retention keeps observed flows on surviving backends across
   joins, signed node drains, and ingress-owner changes. A committed shutdown
   intent stops new assignment to its target before teardown while retaining
-  admitted routing authority for established flows. A three-guest host-side
+  admitted routing authority for established flows. An optional deployed
+  service name further intersects Raft membership with committed application
+  placement and exact-generation readiness, so new flows follow the ready
+  application without exposing its host node. A three-guest host-side
   fixture exercises remote selection, an established-flow request after
   VIP-owner loss, and a fresh connection to a surviving backend.
 - **Reliable-message fragmentation:** wire protocol v3 uses 32-bit message

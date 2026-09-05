@@ -210,6 +210,16 @@ rescheduling, rollout surge/unavailability, and rollback decisions. Those
 decisions belong above the node reconciler and should be committed as desired
 state through Raft.
 
+A launch-owned cluster VIP can be bound to one artifact name with
+`--cluster-service-name`. DNS derives its new-flow backend set from the desired
+deployment node and the active distributed registration for that exact
+deployment generation. This integrates today's singleton placement and agent
+readiness with DSR without granting either the application or discovery traffic
+authority to nominate a backend. A placement change immediately excludes the
+stale generation; the new node becomes eligible only after its agent publishes
+readiness. Older ingress epochs retain the previous admitted route for observed
+flows during the bounded drain window.
+
 Only the reuse-safe address-space identity selected by the supervisor may use
 the spawn/retire syscalls. Merely registering the name `agent` grants no
 authority.
@@ -264,7 +274,9 @@ The current Raft deployment map still contains one active node assignment per
 artifact, and the distributed name catalog has one active owner per name. The
 policy type and parallel-safety gate are implemented, but a placement
 controller, replica-set assignments, multi-owner lookup/load balancing, and
-observed-dependency migration are not.
+observed-dependency migration are not. The DSR control plane consumes a
+service-specific ready-node set, but that set contains at most one node until
+the deployment catalog grows replica-set assignments and multi-owner readiness.
 
 Raft agreement does not authenticate a raw DNS mutation. The network ingress
 does: it admits only a descriptor signed by the offline cluster authority and

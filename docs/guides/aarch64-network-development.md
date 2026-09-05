@@ -87,6 +87,22 @@ multi-node load-sharing exercise, place all guests and the client on a shared
 tap/bridge or socket-backed L2 fixture and use the same `VIP:port` on every
 node.
 
+For a deployed network application, bind the VIP to its signed artifact/service
+name as well:
+
+```sh
+./scripts/run-aarch64.sh release \
+  --cluster-service 10.0.2.42:8080 \
+  --cluster-service-name orders
+```
+
+DNS then admits new flows only to the node selected by the committed `orders`
+deployment after that node publishes readiness for the exact generation. The
+VIP is not advertised while no matching generation is ready. Without
+`--cluster-service-name`, the compatibility mode continues to use every
+admitted, non-draining member for platform services such as the built-in HTTP
+keyhole.
+
 The repository includes the complete socket-backed validation:
 
 ```sh

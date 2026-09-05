@@ -1418,7 +1418,10 @@ pub mod dns {
     /// Query the latest locally applied shutdown intent for `arg0` = node
     /// key. The reply moves `[generation:u64][CSHUTDN1 envelope]`.
     pub const OP_SHUTDOWN_QUERY: u32 = 25;
-    /// Return the locally applied committed ingress membership snapshot.
+    /// Return the locally applied committed ingress snapshot. Its routable
+    /// member set comes from Raft membership; when launch policy binds a VIP
+    /// to an application name, new-flow eligibility also requires matching
+    /// committed placement and exact-generation readiness.
     /// The moved reply is encoded by [`crate::cluster_ingress::BackendSnapshot`].
     /// This is a local materialization query; it never starts consensus and
     /// therefore remains off the packet hot path.

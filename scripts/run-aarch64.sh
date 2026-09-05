@@ -9,7 +9,7 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--cluster-service VIP:PORT] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--deployment-ingress-test|--shutdown-ingress-test|--kafka-test|--kafka-coordinator-test|--kafka-fencing-test] [--net-listen PORT|--net-connect HOST:PORT|--net-mcast GROUP:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test|--shutdown-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--cluster-service VIP:PORT] [--cluster-service-name NAME] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--deployment-ingress-test|--shutdown-ingress-test|--kafka-test|--kafka-coordinator-test|--kafka-fencing-test] [--net-listen PORT|--net-connect HOST:PORT|--net-mcast GROUP:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test|--shutdown-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
@@ -24,6 +24,8 @@
 #   --no-network   Do not attach a NIC or launch network-backed services
 #   --cluster-service VIP:PORT  Launch one distributed IPv4/TCP service; this
 #                  enables runtime ingress policy and is not a test workload
+#   --cluster-service-name NAME  Admit new VIP flows only to the node whose
+#                  committed deployment generation for NAME is ready
 #   --cluster-ingress-test  Probe the configured VIP from this guest
 #   --net-test     Verify the default virtio-net capability under TCG/KVM
 #   --relmsg-test  Exchange reliable messages with a second socket-LAN guest
@@ -111,6 +113,7 @@ INSTANCE=""
 NET_BACKEND="user"
 NET_MAC="52:54:00:12:34:56"
 CLUSTER_SERVICE=""
+CLUSTER_SERVICE_NAME=""
 CLUSTER_VIP=""
 CLUSTER_TCP_PORT=""
 
@@ -131,6 +134,9 @@ while [ "$#" -gt 0 ]; do
         --cluster-service)
             [ "$#" -ge 2 ] || { echo "Missing value for --cluster-service" >&2; exit 1; }
             CLUSTER_SERVICE="$2"; shift 2 ;;
+        --cluster-service-name)
+            [ "$#" -ge 2 ] || { echo "Missing value for --cluster-service-name" >&2; exit 1; }
+            CLUSTER_SERVICE_NAME="$2"; shift 2 ;;
         --cluster-ingress-test) NET_TEST="1"; CLUSTER_INGRESS_TEST="1"; shift ;;
         --net-test)    NET_TEST="1"; shift ;;
         --relmsg-test) NET_TEST="1"; RELMSG_TEST="1"; shift ;;
@@ -197,6 +203,17 @@ EOF
     done
     if [ -n "${vip_extra:-}" ] || [ "$CLUSTER_VIP" = "0.0.0.0" ]; then
         echo "error: --cluster-service has an invalid IPv4 address" >&2
+        exit 1
+    fi
+fi
+if [ -n "$CLUSTER_SERVICE_NAME" ]; then
+    if [ -z "$CLUSTER_SERVICE" ]; then
+        echo "error: --cluster-service-name requires --cluster-service" >&2
+        exit 1
+    fi
+    if [ "${#CLUSTER_SERVICE_NAME}" -gt 48 ] \
+        || ! [[ "$CLUSTER_SERVICE_NAME" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+        echo "error: --cluster-service-name must be 1-48 portable name characters" >&2
         exit 1
     fi
 fi
@@ -646,6 +663,11 @@ else
     if [ -n "$CLUSTER_SERVICE" ]; then
         export CATTEN_CLUSTER_VIP="$CLUSTER_VIP"
         export CATTEN_CLUSTER_TCP_PORT="$CLUSTER_TCP_PORT"
+        if [ -n "$CLUSTER_SERVICE_NAME" ]; then
+            export CATTEN_CLUSTER_SERVICE_NAME="$CLUSTER_SERVICE_NAME"
+        else
+            unset CATTEN_CLUSTER_SERVICE_NAME
+        fi
         if [ "$NET_BACKEND" != "user" ]; then
             export CATTEN_CLUSTER_STATIC_NETWORK=1
         fi

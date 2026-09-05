@@ -18,9 +18,10 @@ VIP whose connections are distributed without terminating TCP at the ingress
 node. Replicated naming and deployment state, signed ELF artifacts, per-node
 NVMe object stores, deployment agents, remote invocation, and a stateless
 assignment handoff are also implemented. Automatic capacity-aware placement,
-service-specific routing derived from replica readiness, shared artifact
-storage, stateful cross-node migration, and a production administration plane
-remain future work.
+multi-replica placement, shared artifact storage, stateful cross-node
+migration, and a production administration plane remain future work. For the
+current singleton deployment model, cluster TCP ingress is already derived
+from committed placement and exact-generation application readiness.
 
 The purpose of this chapter is therefore twofold. It first states the
 cluster-level model CharlotteOS is trying to reach. It then uses Linux

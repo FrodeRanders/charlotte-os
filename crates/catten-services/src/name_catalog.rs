@@ -91,6 +91,19 @@ pub struct DeploymentEntry {
     pub descriptor: Vec<u8>,
 }
 
+/// The committed placement/readiness view used to admit new ingress flows.
+///
+/// The current deployment model has one desired node per artifact, so
+/// `ready_nodes` contains at most one node. Keeping this as a vector gives the
+/// ingress boundary the right contract for replicated placement without
+/// making it depend on today's singleton catalog representation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IngressPlacement {
+    pub deployment_generation: u64,
+    pub service_generation: u64,
+    pub ready_nodes: Vec<u64>,
+}
+
 /// One atomically admitted, signed component set.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReleaseEntry {
@@ -296,6 +309,33 @@ impl NameCatalog {
     /// Snapshot copy of every desired deployment, sorted by artifact name.
     pub fn deployments(&self) -> Vec<(Vec<u8>, DeploymentEntry)> {
         self.deployments.lock().iter().map(|(name, entry)| (name.clone(), entry.clone())).collect()
+    }
+
+    /// Resolve the exact committed deployment generation to nodes that have
+    /// published matching, active application endpoints.
+    ///
+    /// A stale endpoint from the previous placement is deliberately not
+    /// ready for new ingress flows. Its node may remain in an older ingress
+    /// snapshot so established TCP flows can drain without making the stale
+    /// registration eligible for new connections.
+    pub fn ingress_placement(&self, artifact: &[u8]) -> Option<IngressPlacement> {
+        let deployment = self.deployment(artifact)?;
+        let owner = self.entries.lock().get(artifact).cloned();
+        let service_generation = owner.as_ref().map_or(0, |entry| entry.generation);
+        let ready_nodes = owner
+            .filter(|entry| {
+                entry.active
+                    && entry.deployment_generation == deployment.generation
+                    && crate::node_identity::key_from_name(&entry.node) == Some(deployment.node_key)
+            })
+            .and_then(|entry| crate::node_identity::key_from_name(&entry.node))
+            .into_iter()
+            .collect();
+        Some(IngressPlacement {
+            deployment_generation: deployment.generation,
+            service_generation,
+            ready_nodes,
+        })
     }
 
     pub fn release(&self, name: &[u8]) -> Option<ReleaseEntry> {
@@ -2027,6 +2067,64 @@ mod tests {
         let restored = NameCatalog::new();
         restored.restore(&catalog.snapshot());
         assert_eq!(restored.lookup(b"orders"), Some(entry));
+    }
+
+    #[test]
+    fn ingress_placement_requires_the_exact_ready_deployment_generation() {
+        let catalog = NameCatalog::new();
+        let first = catalog.apply_with_result(
+            1,
+            &encode_deploy(b"orders", 17, 0x89ab_cdef, &[0x5a; 32], b"descriptor-v1"),
+        );
+        assert_eq!(u64::from_le_bytes(first.try_into().unwrap()), 1);
+        assert_eq!(
+            catalog.ingress_placement(b"orders"),
+            Some(IngressPlacement {
+                deployment_generation: 1,
+                service_generation: 0,
+                ready_nodes: vec![],
+            })
+        );
+
+        let prepared = catalog
+            .apply_with_result(1, &encode_register_deployment(b"orders", b"charlotte:89abcdef", 1));
+        let first_service_generation = u64::from_le_bytes(prepared.try_into().unwrap());
+        catalog.apply(1, &encode_activate(b"orders", first_service_generation));
+        assert_eq!(
+            catalog.ingress_placement(b"orders"),
+            Some(IngressPlacement {
+                deployment_generation: 1,
+                service_generation: first_service_generation,
+                ready_nodes: vec![0x89ab_cdef],
+            })
+        );
+
+        let second = catalog.apply_with_result(
+            1,
+            &encode_deploy(b"orders", 18, 0x1234_abcd, &[0x6b; 32], b"descriptor-v2"),
+        );
+        assert_eq!(u64::from_le_bytes(second.try_into().unwrap()), 2);
+        assert_eq!(
+            catalog.ingress_placement(b"orders"),
+            Some(IngressPlacement {
+                deployment_generation: 2,
+                service_generation: first_service_generation,
+                ready_nodes: vec![],
+            })
+        );
+
+        let prepared = catalog
+            .apply_with_result(1, &encode_register_deployment(b"orders", b"charlotte:1234abcd", 2));
+        let second_service_generation = u64::from_le_bytes(prepared.try_into().unwrap());
+        catalog.apply(1, &encode_activate(b"orders", second_service_generation));
+        assert_eq!(
+            catalog.ingress_placement(b"orders"),
+            Some(IngressPlacement {
+                deployment_generation: 2,
+                service_generation: second_service_generation,
+                ready_nodes: vec![0x1234_abcd],
+            })
+        );
     }
 
     #[test]

@@ -75,6 +75,8 @@ pub struct BackendSnapshot {
     /// replicated ingress-drain policy represented here.
     pub epoch: u64,
     pub self_node: u64,
+    /// Admitted ingress participant that advertises the VIP. It may differ
+    /// from every application backend and forwards selected flows at L2.
     advertiser_node: Option<u64>,
     /// Every admitted member with a complete discovery route. This larger
     /// set remains authoritative for accepting one-hop forwarding envelopes
@@ -126,7 +128,9 @@ impl BackendSnapshot {
             || eligible_nodes
                 .iter()
                 .any(|node_id| !members.iter().any(|member| member.node_id == *node_id))
-            || advertiser_node.is_some_and(|advertiser| !eligible_nodes.contains(&advertiser))
+            || advertiser_node.is_some_and(|advertiser| {
+                !members.iter().any(|member| member.node_id == advertiser)
+            })
         {
             return None;
         }
@@ -154,7 +158,7 @@ impl BackendSnapshot {
 
     pub fn vip_advertiser(&self) -> Option<Backend> {
         let advertiser = self.advertiser_node?;
-        self.backends.iter().find(|backend| backend.node_id == advertiser).copied()
+        self.members.iter().find(|member| member.node_id == advertiser).copied()
     }
 
     pub fn encode(&self) -> Vec<u8> {
@@ -230,11 +234,38 @@ impl BackendSnapshot {
 /// drain generations. The explicit hash is stable on every node and changes
 /// only when the backend policy changes, not for unrelated catalog traffic.
 pub fn load_balancing_epoch(membership_epoch: u64, draining_nodes: &[(u64, u64)]) -> u64 {
+    service_load_balancing_epoch(membership_epoch, b"", 0, 0, &[], draining_nodes)
+}
+
+/// Produce a load-balancing epoch that is fenced by one service's committed
+/// placement and readiness generations.
+///
+/// The explicit eligible-node list makes a readiness transition visible even
+/// when the Raft membership itself is unchanged. Every input comes from
+/// locally applied replicated state, so independent ingress participants
+/// derive the same fingerprint without another consensus mechanism.
+pub fn service_load_balancing_epoch(
+    membership_epoch: u64,
+    service_name: &[u8],
+    deployment_generation: u64,
+    service_generation: u64,
+    eligible_nodes: &[u64],
+    draining_nodes: &[(u64, u64)],
+) -> u64 {
+    let mut eligible_nodes = eligible_nodes.to_vec();
+    eligible_nodes.sort_unstable();
     let mut draining_nodes = draining_nodes.to_vec();
     draining_nodes.sort_unstable();
     let mut hash = 0xcbf2_9ce4_8422_2325u64;
-    hash_bytes(&mut hash, b"Charlotte ingress policy v1\0");
+    hash_bytes(&mut hash, b"Charlotte ingress policy v2\0");
     hash_bytes(&mut hash, &membership_epoch.to_le_bytes());
+    hash_bytes(&mut hash, &(service_name.len() as u64).to_le_bytes());
+    hash_bytes(&mut hash, service_name);
+    hash_bytes(&mut hash, &deployment_generation.to_le_bytes());
+    hash_bytes(&mut hash, &service_generation.to_le_bytes());
+    for node_id in eligible_nodes {
+        hash_bytes(&mut hash, &node_id.to_le_bytes());
+    }
     for (node_id, generation) in draining_nodes {
         hash_bytes(&mut hash, &node_id.to_le_bytes());
         hash_bytes(&mut hash, &generation.to_le_bytes());
@@ -625,6 +656,31 @@ mod tests {
         assert_eq!(one, reordered);
         assert_ne!(one, load_balancing_epoch(18, &[(2, 4), (3, 1)]));
         assert_ne!(one, load_balancing_epoch(17, &[(2, 5), (3, 1)]));
+    }
+
+    #[test]
+    fn service_policy_epoch_tracks_placement_and_readiness() {
+        let one = service_load_balancing_epoch(17, b"orders", 4, 9, &[3, 2], &[(1, 7)]);
+        let reordered = service_load_balancing_epoch(17, b"orders", 4, 9, &[2, 3], &[(1, 7)]);
+        assert_eq!(one, reordered);
+        assert_ne!(one, service_load_balancing_epoch(17, b"orders", 5, 9, &[2, 3], &[(1, 7)]));
+        assert_ne!(one, service_load_balancing_epoch(17, b"orders", 4, 10, &[2, 3], &[(1, 7)]));
+        assert_ne!(one, service_load_balancing_epoch(17, b"orders", 4, 9, &[2], &[(1, 7)]));
+    }
+
+    #[test]
+    fn vip_advertiser_need_not_be_an_application_backend() {
+        let snapshot = BackendSnapshot::new_with_members(
+            23,
+            1,
+            Some(1),
+            vec![backend(1), backend(2), backend(3)],
+            vec![2],
+        )
+        .unwrap();
+        assert_eq!(snapshot.vip_advertiser(), Some(backend(1)));
+        assert_eq!(snapshot.backends(), &[backend(2)]);
+        assert_eq!(snapshot, BackendSnapshot::decode(&snapshot.encode()).unwrap());
     }
 
     #[test]

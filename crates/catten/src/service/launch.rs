@@ -70,11 +70,16 @@ pub struct NetworkAppliance {
 
 /// A TCP service exposed through Charlotte's distributed L2 ingress.
 /// Platform launch policy supplies this descriptor to both the frame router
-/// (classification/forwarding) and TCP/IP service (local VIP acceptance).
+/// (classification/forwarding), TCP/IP service (local VIP acceptance), and
+/// DNS (placement/readiness-derived backend eligibility).
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct ClusterTcpService {
     pub address: [u8; 4],
     pub port: u16,
+    /// Deployed artifact/service name whose exact active generation supplies
+    /// eligible backends. `None` retains the platform-service compatibility
+    /// mode in which every admitted, non-draining member is eligible.
+    pub backend_name: Option<&'static [u8]>,
 }
 
 pub(crate) fn configured_cluster_tcp_service() -> Option<ClusterTcpService> {
@@ -108,9 +113,14 @@ pub(crate) fn configured_cluster_tcp_service() -> Option<ClusterTcpService> {
             .and_then(|()| value.checked_mul(10))
             .and_then(|value| value.checked_add(u16::from(byte - b'0')))
     })?;
+    let backend_name = option_env!("CATTEN_CLUSTER_SERVICE_NAME").map(str::as_bytes);
+    if backend_name.is_some_and(|name| !charlotte_launch::deployment::valid_artifact_name(name)) {
+        return None;
+    }
     (port != 0).then_some(ClusterTcpService {
         address: octets,
         port,
+        backend_name,
     })
 }
 
@@ -379,7 +389,19 @@ pub fn launch_network_stack_with_service(
 pub fn launch_node_cluster(ns: &NameServiceHandle, cluster: &[u8]) -> Cluster {
     let trust = charlotte_launch::development_admission_trust(cluster)
         .expect("valid development admission trust");
-    launch_node_cluster_with_trust(ns, cluster, trust)
+    launch_node_cluster_with_trust_and_service(ns, cluster, trust, None)
+}
+
+/// Spawn cluster services and bind distributed ingress to an optional
+/// deployment-backed service identity.
+pub fn launch_node_cluster_with_service(
+    ns: &NameServiceHandle,
+    cluster: &[u8],
+    service: Option<ClusterTcpService>,
+) -> Cluster {
+    let trust = charlotte_launch::development_admission_trust(cluster)
+        .expect("valid development admission trust");
+    launch_node_cluster_with_trust_and_service(ns, cluster, trust, service)
 }
 
 /// Spawn cluster services with caller-provisioned, role-separated public
@@ -390,8 +412,20 @@ pub fn launch_node_cluster_with_trust(
     cluster: &[u8],
     trust: charlotte_launch::trust::AdmissionTrust,
 ) -> Cluster {
+    launch_node_cluster_with_trust_and_service(ns, cluster, trust, None)
+}
+
+/// Production cluster launch with role-separated admission trust and optional
+/// service-specific ingress placement policy.
+pub fn launch_node_cluster_with_trust_and_service(
+    ns: &NameServiceHandle,
+    cluster: &[u8],
+    trust: charlotte_launch::trust::AdmissionTrust,
+    service: Option<ClusterTcpService>,
+) -> Cluster {
     const CLUSTER_KEY: u64 = charlotte_launch::manifest_key(b"cluster");
     const ELECTION_KEY: u64 = charlotte_launch::manifest_key(b"elect-ms");
+    const INGRESS_SERVICE_KEY: u64 = charlotte_launch::manifest_key(b"vip-name");
     assert_eq!(trust.cluster_id, charlotte_launch::trust::cluster_id(cluster).unwrap());
     let trust = trust.encode().expect("valid admission trust");
 
@@ -411,27 +445,40 @@ pub fn launch_node_cluster_with_trust(
         ConnectionRights::CALL,
         &[],
     );
+    let base_manifest = [
+        ManifestEntry {
+            key: CLUSTER_KEY,
+            flags: 0,
+            value: ManifestValue::Bytes(cluster),
+        },
+        ManifestEntry {
+            key: ELECTION_KEY,
+            flags: 0,
+            value: ManifestValue::Unsigned(2_000),
+        },
+        ManifestEntry {
+            key: charlotte_launch::ADMISSION_TRUST_MANIFEST_KEY,
+            flags: 0,
+            value: ManifestValue::Bytes(&trust),
+        },
+    ];
+    let service_manifest = service.and_then(|service| service.backend_name).map(|name| {
+        [
+            base_manifest[0],
+            base_manifest[1],
+            base_manifest[2],
+            ManifestEntry {
+                key: INGRESS_SERVICE_KEY,
+                flags: 0,
+                value: ManifestValue::Bytes(name),
+            },
+        ]
+    });
     let dns = crate::service::supervisor::spawn_with_manifest(
         crate::service::store::service_elf(b"dns").expect("[launch] dns.elf"),
         ns,
         ConnectionRights::CALL,
-        &[
-            ManifestEntry {
-                key: CLUSTER_KEY,
-                flags: 0,
-                value: ManifestValue::Bytes(cluster),
-            },
-            ManifestEntry {
-                key: ELECTION_KEY,
-                flags: 0,
-                value: ManifestValue::Unsigned(2_000),
-            },
-            ManifestEntry {
-                key: charlotte_launch::ADMISSION_TRUST_MANIFEST_KEY,
-                flags: 0,
-                value: ManifestValue::Bytes(&trust),
-            },
-        ],
+        service_manifest.as_ref().map_or(&base_manifest, |manifest| manifest),
     );
     logln!(
         "[launch] cluster services spawned: disco={} relmsg={} dns={} (single Raft owner)",
@@ -812,7 +859,7 @@ pub extern "C" fn launch_steady_state() {
     let network = launch_network_stack_with_service(&ns, cluster_service);
     let (cluster, appliance) = match network {
         Some(_) => (
-            Some(launch_node_cluster(&ns, b"charlotte")),
+            Some(launch_node_cluster_with_service(&ns, b"charlotte", cluster_service)),
             Some(launch_network_appliance_with_service_mode(
                 &ns,
                 storage.is_some(),

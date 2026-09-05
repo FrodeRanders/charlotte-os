@@ -270,7 +270,8 @@ a departing node promptly.
 An operator-signed, committed node-shutdown intent removes its target from new
 flow selection before local teardown, while retaining its admitted route for
 observed flows during the grace interval. The load-balancing epoch is a stable
-fingerprint of the committed configuration index and replicated drain
+fingerprint of the committed configuration index, service name, deployment
+and registration generations, ready-node set, and replicated drain
 generations. Each
 router retains four recent sets and a bounded 1,024-entry
 \texttt{FlowKey $\rightarrow$ epoch} table. Observed connections retain their
@@ -279,22 +280,29 @@ backend are released for reconnection. Rendezvous selection is independent of
 member ordering, so a replacement ingress participant with the same epoch
 selects the same live backend without shared connection tracking.
 
-VIP acceptance and advertisement are separate. Every backend installs the VIP
-as a \texttt{/32} smoltcp address, but only the current Raft leader, when it is
-in the committed eligible set, passes VIP ARP requests. A newly elected leader
+VIP acceptance and advertisement are separate. Every participating node
+installs the VIP as a \texttt{/32} smoltcp address, while DSR admits new flows
+only to the ready backend subset. Only one admitted, non-draining ingress
+participant passes VIP ARP requests. It normally follows the current Raft
+leader and need not run the application itself. A newly selected advertiser
 emits gratuitous ARP, so ingress ownership can move without altering backend
-membership. The first version supports one IPv4/TCP service and at most 64 backends;
+membership. No node advertises the VIP when no backend is ready. The first
+version supports one IPv4/TCP service and at most 64 admitted members;
 IPv6 neighbour discovery, a service-only drain operation, automatic failed-member
-removal, multiple service-specific placement sets, and transparent TCP-state migration are future work. The
+removal, service-specific replica sets, multiple VIPs, and transparent TCP-state migration are future work. The
 precise bounds, failure semantics, and status fields are documented in
 \repofile|docs/architecture/distributed-l2-ingress.md|.
 
-The current slice supplies one service declaration as trusted launch policy
-and initially treats admitted eligible members as its backend set. It does not
-yet derive service-specific eligibility from committed application placement
-and readiness. Connecting those two control-plane records is the next step
-toward making arbitrarily placed services reachable through cluster identities
-without exposing their host nodes.
+The launch policy may bind the VIP to a deployed application name. DNS then
+intersects admitted membership with the application's committed placement and
+its exact-generation readiness registration. After movement or replacement,
+the stale generation receives no new flows; eligibility remains empty until
+the target node's agent publishes the matching generation. Retained epochs
+continue to route observed flows during the drain window. Omitting the name
+keeps a compatibility mode in which every admitted, non-draining member runs
+the platform service. The current deployment catalog has one active assignment
+per artifact, so the service-specific set contains at most one ready backend;
+replica-set placement is the next control-plane extension.
 
 Operational Vote, AppendEntries, and InstallSnapshot RPCs use private
 EtherType \texttt{0x88b7}, while admission and DNS application/control traffic
