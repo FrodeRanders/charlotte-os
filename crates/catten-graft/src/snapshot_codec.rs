@@ -11,6 +11,9 @@ use crate::types::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SnapshotEnvelope {
+    /// Raft index of the membership command represented by the member sets.
+    /// Zero denotes a legacy/transport-generic envelope without this hint.
+    pub membership_epoch: u64,
     pub current_members: Vec<Peer>,
     pub next_members: Vec<Peer>,
     pub state_machine_snapshot: Vec<u8>,
@@ -83,6 +86,23 @@ pub fn wrap_snapshot_payload(
     next_members: &[Peer],
     state_machine_snapshot: &[u8],
 ) -> Vec<u8> {
+    wrap_snapshot_payload_with_membership_epoch(
+        current_members,
+        next_members,
+        0,
+        state_machine_snapshot,
+    )
+}
+
+/// Wrap a snapshot while preserving the exact committed configuration index.
+/// The additional JSON field is backward-compatible with Graft readers that
+/// ignore unknown fields; the legacy wrapper above retains its wire contract.
+pub fn wrap_snapshot_payload_with_membership_epoch(
+    current_members: &[Peer],
+    next_members: &[Peer],
+    membership_epoch: u64,
+    state_machine_snapshot: &[u8],
+) -> Vec<u8> {
     let members_json = |members: &[Peer]| {
         members
             .iter()
@@ -103,8 +123,9 @@ pub fn wrap_snapshot_payload(
             .join(",")
     };
     format!(
-        "{{\"version\":1,\"currentMembers\":[{}],\"nextMembers\":[{}],\"stateMachineSnapshot\":\
-         {}}}",
+        "{{\"version\":1,\"membershipEpoch\":{},\"currentMembers\":[{}],\"nextMembers\":[{}],\"\
+         stateMachineSnapshot\":{}}}",
+        membership_epoch,
         members_json(current_members),
         members_json(next_members),
         quote_json(&base64_encode(state_machine_snapshot))
@@ -123,10 +144,18 @@ pub fn decode_snapshot_payload(payload: &[u8]) -> Option<SnapshotEnvelope> {
         return None;
     };
     Some(SnapshotEnvelope {
+        membership_epoch: unsigned_field(value, "membershipEpoch").unwrap_or(0),
         current_members: member_ids(value, "currentMembers")?,
         next_members: member_ids(value, "nextMembers")?,
         state_machine_snapshot: base64_decode(string_field(value, "stateMachineSnapshot")?)?,
     })
+}
+
+fn unsigned_field(value: &str, field: &str) -> Option<u64> {
+    let marker = format!("\"{field}\":");
+    let start = value.find(&marker)? + marker.len();
+    let digits = value[start..].bytes().take_while(u8::is_ascii_digit).count();
+    (digits != 0).then(|| value[start..start + digits].parse().ok()).flatten()
 }
 
 fn member_ids(value: &str, field: &str) -> Option<Vec<Peer>> {
@@ -233,6 +262,7 @@ mod tests {
     use super::{
         decode_snapshot_payload,
         wrap_snapshot_payload,
+        wrap_snapshot_payload_with_membership_epoch,
     };
     use crate::types::Peer;
 
@@ -245,8 +275,17 @@ mod tests {
         );
         let decoded = decode_snapshot_payload(&encoded).unwrap();
         assert_eq!(decoded.current_members[0], Peer::voter("n1".to_string(), 1));
+        assert_eq!(decoded.membership_epoch, 0);
         assert_eq!(decoded.current_members[1], Peer::learner("n2".to_string(), 2));
         assert_eq!(decoded.next_members[1], Peer::voter("n3".to_string(), 3));
         assert_eq!(decoded.state_machine_snapshot, vec![0, 1, 2, 255]);
+
+        let encoded = wrap_snapshot_payload_with_membership_epoch(
+            &[Peer::voter("n1".to_string(), 1)],
+            &[],
+            47,
+            b"state",
+        );
+        assert_eq!(decode_snapshot_payload(&encoded).unwrap().membership_epoch, 47);
     }
 }

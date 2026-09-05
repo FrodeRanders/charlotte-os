@@ -74,6 +74,9 @@ pub struct RaftNode {
     pub cluster_configuration: ClusterConfiguration,
     pub snapshot_configuration: ClusterConfiguration,
     pub committed_configurations: BTreeMap<u64, ClusterConfiguration>,
+    /// Exact committed configuration index, persisted in membership snapshot
+    /// envelopes independently of ordinary state-machine log compaction.
+    pub membership_epoch: u64,
     pub decommissioned: bool,
     pub joining: bool,
     /// The one leader this node explicitly elected to join. Joining does not
@@ -135,6 +138,7 @@ impl RaftNode {
         let join_admission = persistent_state.join_admission();
         let snapshot_index = log_store.snapshot_index();
         let mut snapshot_configuration = cluster_configuration.clone();
+        let mut membership_epoch = 0;
         let mut restored_membership_snapshot = false;
         if snapshot_index > 0 {
             let snapshot_data = log_store.snapshot_data();
@@ -149,6 +153,11 @@ impl RaftNode {
                     }
                     cluster_configuration = snapshot_configuration.clone();
                     restored_membership_snapshot = true;
+                    membership_epoch = if envelope.membership_epoch == 0 {
+                        snapshot_index
+                    } else {
+                        envelope.membership_epoch
+                    };
                 }
                 envelope.state_machine_snapshot
             } else {
@@ -210,6 +219,7 @@ impl RaftNode {
             snapshot_configuration,
             cluster_configuration,
             committed_configurations: BTreeMap::new(),
+            membership_epoch,
             decommissioned,
             joining,
             joining_from: joining_from.clone(),
@@ -240,18 +250,56 @@ impl RaftNode {
         self.current_millis
     }
 
+    /// Raft index of the newest committed membership snapshot/change.
+    ///
+    /// This is a stable, cluster-wide generation suitable for consumers that
+    /// materialize membership outside the consensus reactor. Ordinary log
+    /// compaction preserves it through the snapshot index.
+    pub fn membership_epoch(&self) -> u64 {
+        self.membership_epoch
+    }
+
     /// Enter the non-voting admission state for a specific cluster anchor.
     /// The node stops campaigning and accepts replication only from that
     /// anchor until a committed configuration contains this node.
     pub fn begin_joining(&mut self, anchor_id: String, current_millis: u64) {
         // Persist the admission fence before disabling elections or accepting
         // the anchor's log. A crash at any later instruction therefore
-        // restores the fail-closed joining posture.
+        // restores the fail-closed joining posture. A fresh node may already
+        // have elected itself and committed a standalone term-1 history. That
+        // history belongs to a different consensus domain even when its term
+        // and indexes happen to equal the anchor's; retaining it would violate
+        // Raft's log-matching premise. Clear it only after the durable fence is
+        // present, then let the selected anchor install the authoritative log.
+        let standalone_snapshot_index = self.log_store.snapshot_index();
         self.persistent_state.set_join_admission(Some(JoinAdmission {
             anchor_id: anchor_id.clone(),
-            snapshot_index: self.log_store.snapshot_index(),
+            snapshot_index: standalone_snapshot_index,
         }));
+        self.transport.reset();
+        self.log_store.reset();
+        if let Some(ref machine) = self.state_machine {
+            machine.reset();
+        }
+        self.commit_index = 0;
+        self.last_applied = 0;
+        self.membership_epoch = 0;
+        self.next_index.clear();
+        self.match_index.clear();
+        self.last_follower_contact_millis.clear();
+        self.snapshot_offsets.clear();
+        self.committed_configurations.clear();
+        self.applied_command_results.clear();
+        self.pending_joiners.clear();
+        self.pending_auto_finalize_members.clear();
+        self.pending_auto_finalize_fence_index = 0;
+        self.finalize_configuration_pending = false;
+        self.pending_snapshot = None;
+        self.voted_for = None;
+        self.persistent_state.set_voted_for(None);
         self.current_millis = current_millis;
+        self.last_heartbeat_millis = current_millis;
+        self.election_sequence_counter = 0;
         self.state = NodeState::Follower;
         self.joining = true;
         self.joining_from = Some(anchor_id.clone());
@@ -439,7 +487,7 @@ impl RaftNode {
 
     pub fn handle_append_entries(
         &mut self,
-        req: AppendEntriesRequest,
+        mut req: AppendEntriesRequest,
         current_millis: u64,
     ) -> AppendEntriesResponse {
         self.current_millis = current_millis;
@@ -456,6 +504,9 @@ impl RaftNode {
         if req.leader_id == self.me.id
             || (!self.cluster_configuration.is_voter(&req.leader_id)
                 && !self.accepts_joining_leader(&req.leader_id))
+            || (req.term == self.current_term
+                && self.state == NodeState::Follower
+                && self.known_leader_id.as_deref().is_some_and(|leader| leader != req.leader_id))
         {
             return AppendEntriesResponse {
                 peer_id: self.me.id.clone(),
@@ -479,6 +530,35 @@ impl RaftNode {
         self.last_heartbeat_millis = current_millis;
         self.timeout_at_millis = current_millis + self.election_timeout_millis();
         self.known_leader_id = Some(req.leader_id);
+
+        // A leader may retry from an index that this follower has already
+        // compacted. Normalize an overlapping request to the snapshot anchor
+        // before running the ordinary log-matching loop. Appending the old
+        // prefix after the retained suffix would shift every logical index
+        // and can turn unrelated application bytes into configuration entries.
+        let snapshot_index = self.log_store.snapshot_index();
+        if req.prev_log_index < snapshot_index {
+            let overlap = snapshot_index.saturating_sub(req.prev_log_index) as usize;
+            if req.entries.len() < overlap {
+                return AppendEntriesResponse {
+                    peer_id: self.me.id.clone(),
+                    term: self.current_term,
+                    success: true,
+                    match_index: snapshot_index,
+                };
+            }
+            if req.entries[overlap - 1].term != self.log_store.snapshot_term() {
+                return AppendEntriesResponse {
+                    peer_id: self.me.id.clone(),
+                    term: self.current_term,
+                    success: false,
+                    match_index: snapshot_index,
+                };
+            }
+            req.entries.drain(0..overlap);
+            req.prev_log_index = snapshot_index;
+            req.prev_log_term = self.log_store.snapshot_term();
+        }
 
         let last_index = self.log_store.last_index();
         if req.prev_log_index > last_index {
@@ -594,6 +674,9 @@ impl RaftNode {
         if req.leader_id == self.me.id
             || (!self.cluster_configuration.is_voter(&req.leader_id)
                 && !self.accepts_joining_leader(&req.leader_id))
+            || (req.term == self.current_term
+                && self.state == NodeState::Follower
+                && self.known_leader_id.as_deref().is_some_and(|leader| leader != req.leader_id))
         {
             return InstallSnapshotResponse {
                 peer_id: self.me.id.clone(),
@@ -681,6 +764,11 @@ impl RaftNode {
                             }
                             self.snapshot_configuration = configuration.clone();
                             self.cluster_configuration = configuration.clone();
+                            self.membership_epoch = if envelope.membership_epoch == 0 {
+                                snap.last_included_index
+                            } else {
+                                envelope.membership_epoch
+                            };
                             self.committed_configurations
                                 .retain(|index, _| *index > snap.last_included_index);
                             self.committed_configurations
@@ -802,8 +890,8 @@ impl RaftNode {
 
     /// Promote a joiner into the joint configuration once it has caught up
     /// to its committed JOIN fence. The joint phase then auto-finalizes via
-    /// [`maybe_auto_finalize_joint_configuration`] once the whole next
-    /// configuration acknowledges the joint entry.
+    /// [`maybe_auto_finalize_joint_configuration`] once a joint majority
+    /// acknowledges the joint entry.
     fn maybe_promote_pending_joiners(&mut self, current_millis: u64) {
         if self.state != NodeState::Leader
             || self.pending_joiners.is_empty()
@@ -981,9 +1069,10 @@ impl RaftNode {
         } else {
             Vec::new()
         };
-        let snapshot = crate::snapshot_codec::wrap_snapshot_payload(
+        let snapshot = crate::snapshot_codec::wrap_snapshot_payload_with_membership_epoch(
             &current_members,
             &next_members,
+            self.membership_epoch,
             &machine.snapshot(),
         );
         let term = self.log_store.term_at(self.commit_index);
@@ -1014,9 +1103,10 @@ impl RaftNode {
         };
         let application_snapshot =
             self.state_machine.as_ref().map(|machine| machine.snapshot()).unwrap_or_default();
-        let snapshot = crate::snapshot_codec::wrap_snapshot_payload(
+        let snapshot = crate::snapshot_codec::wrap_snapshot_payload_with_membership_epoch(
             &current_members,
             &next_members,
+            index,
             &application_snapshot,
         );
         let term = self.log_store.term_at(index);
@@ -1035,6 +1125,7 @@ impl RaftNode {
             self.pending_joiners.insert(peer.id.clone(), (peer.clone(), index));
             return true;
         }
+        let entered_joint = matches!(&command, ConfigurationCommand::Joint(_));
         self.cluster_configuration = match command {
             ConfigurationCommand::Joint(members) => {
                 // Until this joint entry is applied, newly promoted peers
@@ -1056,6 +1147,7 @@ impl RaftNode {
             }
             ConfigurationCommand::Join(_) => unreachable!(),
         };
+        self.membership_epoch = index;
         self.committed_configurations.insert(index, self.cluster_configuration.clone());
         self.decommissioned = !self.cluster_configuration.contains(&self.me.id);
         if self.cluster_configuration.contains(&self.me.id) {
@@ -1080,6 +1172,12 @@ impl RaftNode {
         self.next_index.retain(|id, _| active_ids.contains(id));
         self.match_index.retain(|id, _| active_ids.contains(id));
         self.snapshot_offsets.retain(|id, _| active_ids.contains(id));
+        if entered_joint
+            && self.state == NodeState::Leader
+            && self.submit_finalize_configuration(self.current_millis).is_ok()
+        {
+            self.finalize_configuration_pending = true;
+        }
         true
     }
 
@@ -1091,11 +1189,12 @@ impl RaftNode {
         {
             return;
         }
-        let fence = self.pending_auto_finalize_fence_index;
-        let caught_up = self.pending_auto_finalize_members.iter().all(|peer_id| {
-            peer_id == &self.me.id || self.match_index.get(peer_id).copied().unwrap_or(0) >= fence
-        });
-        if caught_up && self.submit_finalize_configuration(self.current_millis).is_ok() {
+        // Applying Joint means its log entry is committed. It is therefore
+        // safe to propose Finalize immediately: advancement of the Finalize
+        // commit index is still evaluated against both old and new majorities.
+        // A separate unanimity/match-index gate only lets one slow learner pin
+        // the cluster in joint consensus.
+        if self.submit_finalize_configuration(self.current_millis).is_ok() {
             self.finalize_configuration_pending = true;
         }
     }
@@ -1238,6 +1337,7 @@ mod tests {
     };
 
     use super::{
+        PendingSnapshot,
         RaftNode,
         RaftNodeConfig,
     };
@@ -1273,6 +1373,10 @@ mod tests {
         fn restore(&self, snapshot_data: &[u8]) {
             *self.restored.lock() = snapshot_data.to_vec();
         }
+
+        fn reset(&self) {
+            self.restored.lock().clear();
+        }
     }
 
     struct ApplyingStateMachine {
@@ -1282,6 +1386,10 @@ mod tests {
     impl StateMachine for ApplyingStateMachine {
         fn apply(&self, _term: u64, command: &[u8]) {
             self.applied.lock().push(command.to_vec());
+        }
+
+        fn reset(&self) {
+            self.applied.lock().clear();
         }
     }
 
@@ -1378,7 +1486,11 @@ mod tests {
 
         let mut joiner = node_with_voters(&["n2"]);
         joiner.start_election(200);
+        assert!(joiner.log_store.last_index() > 0);
         joiner.begin_joining("n1".to_string(), 201);
+        assert_eq!(joiner.log_store.last_index(), 0);
+        assert_eq!(joiner.commit_index, 0);
+        assert_eq!(joiner.last_applied, 0);
         let entries = anchor.log_store.entries_from(1);
         let accepted = joiner.handle_append_entries(
             AppendEntriesRequest {
@@ -1405,6 +1517,45 @@ mod tests {
             203,
         );
         assert!(!rejected.success);
+    }
+
+    #[test]
+    fn joining_discards_standalone_application_and_replication_state() {
+        let restored = Arc::new(spin::Mutex::new(b"standalone".to_vec()));
+        let peer = Peer::voter("n2".to_string(), 0);
+        let mut node = RaftNode::new(RaftNodeConfig {
+            me: peer.clone(),
+            timeout_millis: 150,
+            log_store: Box::new(InMemoryLogStore::new()),
+            persistent_state: Box::new(InMemoryPersistentStateStore::new()),
+            state_machine: Some(Box::new(RecordingStateMachine {
+                restored: Arc::clone(&restored),
+            })),
+            cluster_configuration: ClusterConfiguration::stable(vec![peer]),
+            transport: Arc::new(NoopTransport),
+            current_millis: 0,
+            snapshot_min_entries: 64,
+            snapshot_chunk_bytes: 3000,
+        });
+        node.start_election(200);
+        node.next_index.insert("stale".to_string(), 9);
+        node.match_index.insert("stale".to_string(), 8);
+        node.snapshot_offsets.insert("stale".to_string(), 7);
+        node.pending_snapshot = Some(PendingSnapshot {
+            last_included_index: 6,
+            last_included_term: 1,
+            offset: 2,
+            data: b"stale".to_vec(),
+        });
+
+        node.begin_joining("n1".to_string(), 201);
+
+        assert!(restored.lock().is_empty());
+        assert_eq!(node.log_store.last_index(), 0);
+        assert!(node.next_index.is_empty());
+        assert!(node.match_index.is_empty());
+        assert!(node.snapshot_offsets.is_empty());
+        assert!(node.pending_snapshot.is_none());
     }
 
     #[test]
@@ -1459,7 +1610,9 @@ mod tests {
         assert!(!rejected.success);
 
         // Applying the anchor's joint configuration first snapshots that
-        // membership, then clears the durable admission fence.
+        // membership, then clears the durable admission fence. Admission
+        // discarded the old standalone index space, so authoritative
+        // replication begins at index one.
         let joint =
             crate::configuration::encode(&crate::configuration::ConfigurationCommand::Joint(vec![
                 Peer::voter("n1".to_string(), 1),
@@ -1470,16 +1623,16 @@ mod tests {
             AppendEntriesRequest {
                 term: 2,
                 leader_id: "n1".to_string(),
-                prev_log_index: 2,
-                prev_log_term: 1,
+                prev_log_index: 0,
+                prev_log_term: 0,
                 entries: vec![LogEntry::new(2, "n1".to_string(), joint)],
-                leader_commit: 3,
+                leader_commit: 1,
             },
             1_002,
         );
         assert!(accepted.success);
         assert!(!restarted.joining);
-        assert_eq!(log_store.snapshot_index(), 3);
+        assert_eq!(log_store.snapshot_index(), 1);
         assert_eq!(persistent_state.join_admission(), None);
         drop(restarted);
 
@@ -1488,7 +1641,7 @@ mod tests {
         // recognizes only the strictly newer snapshot as completion proof.
         persistent_state.set_join_admission(Some(crate::log_store::JoinAdmission {
             anchor_id: "n1".to_string(),
-            snapshot_index: 2,
+            snapshot_index: 0,
         }));
         let recovered_member = make_node();
         assert!(!recovered_member.joining);
@@ -1496,6 +1649,7 @@ mod tests {
         assert!(recovered_member.cluster_configuration.is_joint_consensus());
         assert!(recovered_member.cluster_configuration.contains("n1"));
         assert!(recovered_member.cluster_configuration.contains("n2"));
+        assert_eq!(recovered_member.membership_epoch(), 1);
     }
 
     #[test]
@@ -1512,6 +1666,41 @@ mod tests {
         assert!(node.pending_joiners().is_empty());
         assert!(node.cluster_configuration.is_joint_consensus());
         assert_eq!(node.cluster_configuration.next_members().len(), 3);
+    }
+
+    #[test]
+    fn committed_joint_configuration_can_propose_finalize_immediately() {
+        let mut node = node_with_voters(&["n1", "n2"]);
+        node.start_election(200);
+        node.handle_vote_response(
+            "n2",
+            VoteResponse {
+                peer_id: "n2".to_string(),
+                term: node.current_term,
+                vote_granted: true,
+            },
+            201,
+        );
+        assert_eq!(node.state, NodeState::Leader);
+
+        node.cluster_configuration = node.cluster_configuration.transition_to(vec![
+            Peer::voter("n1".to_string(), 0),
+            Peer::voter("n2".to_string(), 0),
+            Peer::voter("n3".to_string(), 0),
+        ]);
+        node.pending_auto_finalize_members =
+            vec!["n1".to_string(), "n2".to_string(), "n3".to_string()];
+        node.pending_auto_finalize_fence_index = 7;
+
+        node.maybe_auto_finalize_joint_configuration();
+
+        assert!(node.finalize_configuration_pending);
+        assert!(matches!(
+            node.log_store
+                .entry_at(node.log_store.last_index())
+                .and_then(|entry| crate::configuration::decode(&entry.data)),
+            Some(crate::configuration::ConfigurationCommand::Finalize)
+        ));
     }
 
     #[test]
@@ -1761,6 +1950,48 @@ mod tests {
     }
 
     #[test]
+    fn append_retry_crossing_snapshot_does_not_duplicate_the_compacted_prefix() {
+        let store = InMemoryLogStore::new();
+        store.append(
+            (1..=4).map(|index| LogEntry::new(1, "n2".to_string(), vec![index as u8])).collect(),
+        );
+        store.install_snapshot(3, 1, Vec::new());
+        let peers = vec![Peer::voter("n1".to_string(), 0), Peer::voter("n2".to_string(), 0)];
+        let mut node = RaftNode::new(RaftNodeConfig {
+            me: peers[0].clone(),
+            timeout_millis: 150,
+            log_store: Box::new(store),
+            persistent_state: Box::new(InMemoryPersistentStateStore::new()),
+            state_machine: None,
+            cluster_configuration: ClusterConfiguration::stable(peers),
+            transport: Arc::new(NoopTransport),
+            current_millis: 0,
+            snapshot_min_entries: 64,
+            snapshot_chunk_bytes: 3000,
+        });
+        let entries =
+            (1..=5).map(|index| LogEntry::new(1, "n2".to_string(), vec![index as u8])).collect();
+
+        let response = node.handle_append_entries(
+            AppendEntriesRequest {
+                term: 1,
+                leader_id: "n2".to_string(),
+                prev_log_index: 0,
+                prev_log_term: 0,
+                entries,
+                leader_commit: 5,
+            },
+            200,
+        );
+
+        assert!(response.success);
+        assert_eq!(response.match_index, 5);
+        assert_eq!(node.log_store.last_index(), 5);
+        assert_eq!(node.log_store.entry_at(4).unwrap().data, vec![4]);
+        assert_eq!(node.log_store.entry_at(5).unwrap().data, vec![5]);
+    }
+
+    #[test]
     fn same_term_snapshot_steps_down_without_erasing_vote() {
         let mut node = node_with_voters(&["n1", "n2", "n3"]);
         node.start_election(200);
@@ -1808,6 +2039,51 @@ mod tests {
         assert_eq!(node.state, NodeState::Follower);
         assert_eq!(node.voted_for.as_deref(), Some("n1"));
         assert_eq!(node.persistent_state.voted_for().as_deref(), Some("n1"));
+    }
+
+    #[test]
+    fn follower_rejects_a_conflicting_same_term_leader() {
+        let mut node = node_with_voters(&["n1", "n2", "n3"]);
+        let first = node.handle_append_entries(
+            AppendEntriesRequest {
+                term: 1,
+                leader_id: "n2".to_string(),
+                prev_log_index: 0,
+                prev_log_term: 0,
+                entries: Vec::new(),
+                leader_commit: 0,
+            },
+            200,
+        );
+        assert!(first.success);
+        assert_eq!(node.known_leader_id.as_deref(), Some("n2"));
+
+        let conflicting_append = node.handle_append_entries(
+            AppendEntriesRequest {
+                term: 1,
+                leader_id: "n3".to_string(),
+                prev_log_index: 0,
+                prev_log_term: 0,
+                entries: Vec::new(),
+                leader_commit: 0,
+            },
+            201,
+        );
+        assert!(!conflicting_append.success);
+        let conflicting_snapshot = node.handle_install_snapshot(
+            InstallSnapshotRequest {
+                term: 1,
+                leader_id: "n3".to_string(),
+                last_included_index: 1,
+                last_included_term: 1,
+                offset: 0,
+                data: Vec::new(),
+                done: true,
+            },
+            202,
+        );
+        assert!(!conflicting_snapshot.success);
+        assert_eq!(node.known_leader_id.as_deref(), Some("n2"));
     }
 
     #[test]
@@ -1873,6 +2149,9 @@ mod tests {
         );
         assert!(node.cluster_configuration.is_voter("n3"));
         assert_eq!(node.pending_auto_finalize_fence_index, 7);
+        // Legacy envelopes without the explicit field safely fall back to
+        // the index of the installed membership snapshot.
+        assert_eq!(node.membership_epoch(), 7);
         assert!(!node.decommissioned);
     }
 }

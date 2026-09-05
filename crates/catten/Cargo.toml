@@ -49,6 +49,9 @@ clusterctl_test = ["deploy_net_test"]
 # Run the TCP/IP test: the smoltcp userspace adapter served through the
 # frouter, exchanging TCP data between two guests on a QEMU stream LAN.
 tcpip_net_test = ["virtio_net_test"]
+# Probe one operational cluster VIP from every guest. The runner composes
+# three or more guests on a multicast L2; this feature adds only verification.
+cluster_ingress_test = ["virtio_net_test"]
 # Run the HTTP keyhole test: a hardcoded HTTP server on port 80 serving
 # observable node state over the tcpip service, reachable from the host via
 # SLIRP hostfwd (single guest, user network).

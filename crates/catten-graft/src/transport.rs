@@ -47,6 +47,11 @@ pub struct InstallSnapshotRpc<'a> {
 }
 
 pub trait RaftTransport {
+    /// Discard queued RPCs and completions from a previous consensus domain.
+    /// Persistent admission fencing is handled by `RaftNode`; transports use
+    /// this hook only to prevent delayed local work crossing that boundary.
+    fn reset(&self) {}
+
     fn set_current_millis(&self, _current_millis: u64) {}
 
     fn send_vote_request(

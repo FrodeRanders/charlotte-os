@@ -501,6 +501,14 @@ impl DiskLogStore {
 }
 
 impl LogStore for DiskLogStore {
+    fn reset(&self) {
+        self.entries.lock().clear();
+        *self.snapshot_idx.lock() = 0;
+        *self.snapshot_term.lock() = 0;
+        self.snapshot_data.lock().clear();
+        self.persist_log_state();
+    }
+
     fn snapshot_index(&self) -> u64 {
         *self.snapshot_idx.lock()
     }

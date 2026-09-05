@@ -7,6 +7,9 @@ use alloc::{
 use crate::types::LogEntry;
 
 pub trait LogStore {
+    /// Atomically discard every entry and snapshot from another consensus
+    /// domain, leaving the durable store at the zero index.
+    fn reset(&self);
     fn snapshot_index(&self) -> u64;
     fn snapshot_term(&self) -> u64;
     fn last_index(&self) -> u64;
@@ -73,6 +76,13 @@ impl Default for InMemoryLogStore {
 }
 
 impl LogStore for InMemoryLogStore {
+    fn reset(&self) {
+        self.entries.lock().clear();
+        *self.snapshot_idx.lock() = 0;
+        *self.snapshot_term_val.lock() = 0;
+        self.snapshot_bytes.lock().clear();
+    }
+
     fn snapshot_index(&self) -> u64 {
         *self.snapshot_idx.lock()
     }

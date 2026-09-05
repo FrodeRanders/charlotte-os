@@ -507,21 +507,33 @@ extern "C" fn local_ready_publisher() {
         yield_lp();
     }
 
-    // Local business first: the marker is published only once the local disk
-    // stack (NVMe driver + object store) is actually serving — the store is
-    // the foundation node identity, the replicated log, and every
-    // store-loaded service depend on. Cluster-facing work (discovery probes,
-    // the replicated name service, membership admission) starts only after
-    // this marker, so boot ordering is defined by local readiness rather
-    // than by wall-clock luck. The disk stack comes up as part of the NVMe
-    // deferred verifier, which passes only once the object store registers.
-    assert!(
-        crate::self_test::results::wait_until_resolved(
-            crate::self_test::results::TestId::Nvme,
-            120_000,
-        ) && crate::self_test::results::has_passed(crate::self_test::results::TestId::Nvme),
-        "local disk stack failed before node readiness"
-    );
+    // Local business first: publish only once the operational object store is
+    // serving. Readiness is a platform contract, not a self-test result: a
+    // production boot or a focused verifier may legitimately omit the NVMe
+    // test while the steady-state launcher still owns the same storage stack.
+    let storage = crate::service::launch::steady_state()
+        .storage
+        .expect("local readiness requires durable storage");
+    let object_store_status: *const u8 = storage.objstore.status_frame.into();
+    let storage_deadline = monotonic_millis().saturating_add(120_000);
+    loop {
+        let stage = unsafe {
+            core::ptr::read_volatile(
+                object_store_status.add(charlotte_launch::objstore_status::STAGE).cast::<u32>(),
+            )
+        };
+        let error = unsafe {
+            core::ptr::read_volatile(
+                object_store_status.add(charlotte_launch::objstore_status::ERROR).cast::<u32>(),
+            )
+        };
+        assert_eq!(error, 0, "local object store failed before node readiness");
+        if stage >= 4 {
+            break;
+        }
+        assert!(monotonic_millis() < storage_deadline, "local object store did not become ready");
+        yield_lp();
+    }
 
     #[cfg(feature = "virtio_net_test")]
     assert!(

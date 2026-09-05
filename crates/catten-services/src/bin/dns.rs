@@ -4,8 +4,8 @@
 //! - derives its persistent node identity from the NIC MAC + cluster mnemonic ([`NodeIdentity`])
 //!   and waits for the kernel's boot-done marker,
 //! - discovers its peers through the cluster discovery service (`disco`),
-//! - runs a [`RaftNode`] whose transport carries peer RPCs over the reliable message layer
-//!   ([`RelmsgRaftTransport`]), and
+//! - runs a [`RaftNode`] whose operational RPCs use direct Ethernet while admission and
+//!   application/control traffic use the reliable message layer ([`RelmsgRaftTransport`]), and
 //! - serves registrations (proposed to the cluster, then registered with the node-local name
 //!   service) and lookups (answered from the replicated catalog: local names resolve to the local
 //!   name service, remote names report the hosting node).
@@ -49,6 +49,11 @@ use catten_rt::{
 };
 use catten_services::{
     broker::EventBroker,
+    cluster_ingress::{
+        Backend,
+        BackendSnapshot,
+        load_balancing_epoch,
+    },
     clusterctl,
     disco,
     disk_raft::{
@@ -81,8 +86,12 @@ use catten_services::{
     relmsg,
     relmsg_transport::{
         RelmsgRaftTransport,
+        TAG_APPEND_REQUEST,
+        TAG_APPEND_RESPONSE,
         TAG_JOIN_REPLY,
         TAG_JOIN_REQUEST,
+        TAG_SNAPSHOT_RESPONSE,
+        TAG_VOTE_REQUEST,
         decode_join_reply,
         decode_join_request,
         encode_join_reply,
@@ -185,7 +194,18 @@ const REPLY_SPINS: u64 = u64::MAX;
 const CLUSTER_KEY: u64 = manifest_key(b"cluster");
 const ELECTION_KEY: u64 = manifest_key(b"elect-ms");
 const DISCO_QUERY_MS: u64 = 2_000;
-const JOIN_RETRY_MS: u64 = 1_000;
+// Keep retry slower than the relmsg acknowledgement/retry lease. JOIN is
+// idempotent, but flooding duplicates ahead of AppendEntries can otherwise
+// starve heartbeats precisely while a two-voter configuration is fragile.
+const JOIN_RETRY_MS: u64 = 5_000;
+
+fn join_request_allowed(
+    committed_members: usize,
+    singleton_leader: bool,
+    joining_from_anchor: bool,
+) -> bool {
+    (committed_members == 1 && singleton_leader) || joining_from_anchor
+}
 const REMOTE_CALL_TIMEOUT_MS: u64 = 5_000;
 const REMOTE_OPERATIONS_TIMEOUT_MS: u64 = 60_000;
 const MAX_IN_FLIGHT_CALLS: usize = 64;
@@ -386,6 +406,67 @@ fn submit_unregister_local_generation(ns_conn: u64, name: &[u8], generation: u64
         return 0;
     }
     call
+}
+
+/// Materialize one all-or-nothing view of committed ingress eligibility.
+/// Discovery supplies only the Ethernet route for each already-admitted
+/// identity. If any route is missing, callers retain their previous snapshot
+/// instead of selecting from inconsistent partial sets on different nodes.
+fn ingress_membership_snapshot(
+    node: &RaftNode,
+    transport: &RelmsgRaftTransport,
+    catalog: &NameCatalog,
+    local_mac: [u8; 6],
+) -> Option<BackendSnapshot> {
+    let self_node = node_identity::key_from_name(node.me.id.as_bytes())?;
+    let mut members = Vec::new();
+    for peer in node.cluster_configuration.active_voting_members() {
+        let node_id = node_identity::key_from_name(peer.id.as_bytes())?;
+        let mac = if peer.id == node.me.id {
+            local_mac
+        } else {
+            transport.mac_for_peer(&peer.id)?
+        };
+        members.push(Backend {
+            node_id,
+            mac,
+        });
+    }
+    let mut draining = catalog
+        .ingress_draining_nodes()
+        .into_iter()
+        .filter(|(node_id, _)| members.iter().any(|member| member.node_id == *node_id))
+        .collect::<Vec<_>>();
+    draining.sort_unstable_by_key(|(node_id, _)| *node_id);
+    let eligible_nodes = members
+        .iter()
+        .filter(|member| {
+            draining.binary_search_by_key(&member.node_id, |(node_id, _)| *node_id).is_err()
+        })
+        .map(|member| member.node_id)
+        .collect::<Vec<_>>();
+    let leader = if node.state == NodeState::Leader {
+        Some(node.me.id.as_str())
+    } else {
+        node.known_leader_id.as_deref()
+    };
+    let advertiser_node = leader
+        .filter(|leader| {
+            node.cluster_configuration
+                .active_voting_members()
+                .iter()
+                .any(|peer| peer.id.as_str() == *leader)
+        })
+        .and_then(|leader| node_identity::key_from_name(leader.as_bytes()))
+        .filter(|leader| eligible_nodes.contains(leader))
+        .or_else(|| eligible_nodes.iter().copied().min());
+    BackendSnapshot::new_with_members(
+        load_balancing_epoch(node.membership_epoch(), &draining),
+        self_node,
+        advertiser_node,
+        members,
+        eligible_nodes,
+    )
 }
 
 /// Drain the administration face of the DNS-owned Raft node.
@@ -598,7 +679,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     };
     // Keep heartbeats comfortably below the election timeout without
     // flooding the serialized relmsg path on a slow emulator.
-    let heartbeat_interval_ms = (election_timeout_ms / 4).clamp(25, 250);
+    let heartbeat_interval_ms = (election_timeout_ms / 4).clamp(25, 500);
 
     let names = match ctx.bootstrap_connection() {
         Some(connection) => connection,
@@ -718,6 +799,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     // supplies transient MAC routes; admission itself is a command in this
     // same durable Raft log.
     let transport = Arc::new(RelmsgRaftTransport::new(relmsg_conn));
+    transport.set_net_send(net_conn, local_mac, catten_services::raft::ETHERTYPE);
     config::write_u32_release(dns::status::STAGE, 7);
 
     let me = Peer::voter(node_name_str.clone(), raft_name);
@@ -777,9 +859,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut next_disco_query_ms = 0u64;
     let mut join_request_pending = false;
     let mut join_retry_at_ms = 0u64;
-    let mut join_accepted = node.cluster_configuration.all_members().len() > 1;
     let mut membership_events_submitted: BTreeSet<Vec<u8>> = BTreeSet::new();
     let mut membership_event_term = 0u64;
+    let mut logged_membership_epoch = u64::MAX;
+    let mut logged_raft_term = u64::MAX;
+    let mut logged_raft_state = NodeState::Follower;
+    let mut next_joint_diagnostic_ms = 0u64;
     let mut timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
     let mut last_heartbeat_broadcast = 0u64;
 
@@ -844,16 +929,24 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
             }
             if let Some(anchor) = anchor
-                && !join_accepted
                 && !join_request_pending
-                && node.cluster_configuration.all_members().len() == 1
-                && (node.state == NodeState::Leader
-                    || (node.joining && node.joining_from.as_deref() == Some(anchor.as_str())))
+                && node.millis() >= join_retry_at_ms
+                && join_request_allowed(
+                    node.cluster_configuration.all_members().len(),
+                    node.state == NodeState::Leader,
+                    node.joining && node.joining_from.as_deref() == Some(anchor.as_str()),
+                )
                 && let Some(payload) = encode_join_request(node.me.id.as_bytes(), raft_name)
             {
                 if !node.joining {
                     node.begin_joining(anchor.clone(), node.millis());
                 }
+                catten_rt::logln!(
+                    "[dns] JOIN REQUEST self={} anchor={} term={}",
+                    node.me.id,
+                    anchor,
+                    node.current_term
+                );
                 transport.send_message(&anchor, TAG_JOIN_REQUEST, payload);
                 join_request_pending = true;
                 join_retry_at_ms = node.millis().saturating_add(JOIN_RETRY_MS);
@@ -1713,18 +1806,44 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 }
                             }
                             Some(TAG_JOIN_REQUEST) => {
+                                let mut response_mac = source_mac;
                                 let accepted = decode_join_request(&frame[1..])
                                     .and_then(|(joiner_id, service_name)| {
                                         let joiner = core::str::from_utf8(joiner_id).ok()?;
-                                        let route_matches = transport
-                                            .peer_id_for_mac(&source_mac)
-                                            .is_some_and(|peer| peer == joiner);
-                                        if node.state != NodeState::Leader
-                                            || joiner.is_empty()
-                                            || !route_matches
-                                        {
+                                        let source_peer = transport.peer_id_for_mac(&source_mac)?;
+                                        let direct = source_peer == joiner;
+                                        if node.state != NodeState::Leader {
+                                            // A deterministic admission anchor can cease being
+                                            // leader while the request is in flight. Relay only a
+                                            // directly sourced request and only to the leader this
+                                            // committed member currently follows.
+                                            if direct
+                                                && let Some(leader) = node.known_leader_id.as_ref()
+                                                && leader != &node.me.id
+                                                && transport.has_peer(leader)
+                                            {
+                                                transport.send_message(
+                                                    leader,
+                                                    TAG_JOIN_REQUEST,
+                                                    frame[1..].to_vec(),
+                                                );
+                                            }
                                             return Some(0);
                                         }
+                                        // A leader accepts either the joiner's own frame or a
+                                        // relay from an already committed member. In both cases it
+                                        // must have independently discovered the joiner's route;
+                                        // an arbitrary L2 sender cannot nominate a backend.
+                                        let trusted_relay = node
+                                            .cluster_configuration
+                                            .contains(&source_peer)
+                                            && transport.has_peer(joiner);
+                                        if joiner.is_empty() || (!direct && !trusted_relay) {
+                                            return Some(0);
+                                        }
+                                        response_mac = transport
+                                            .mac_for_peer(joiner)
+                                            .unwrap_or(source_mac);
                                         Some(
                                             node.submit_join(
                                                 Peer::voter(joiner.to_string(), service_name),
@@ -1734,18 +1853,40 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                         )
                                     })
                                     .unwrap_or(0);
+                                catten_rt::logln!(
+                                    "[dns] JOIN RECEIVED source={:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} index={} term={} leader={}",
+                                    source_mac[0],
+                                    source_mac[1],
+                                    source_mac[2],
+                                    source_mac[3],
+                                    source_mac[4],
+                                    source_mac[5],
+                                    accepted,
+                                    node.current_term,
+                                    node.state == NodeState::Leader
+                                );
                                 transport.send_response(
-                                    source_mac,
+                                    response_mac,
                                     TAG_JOIN_REPLY,
                                     encode_join_reply(accepted),
                                 );
                             }
                             Some(TAG_JOIN_REPLY) => {
                                 if let Some(index) = decode_join_reply(&frame[1..]) {
+                                    catten_rt::logln!(
+                                        "[dns] JOIN ACK index={} term={} committed_members={}",
+                                        index,
+                                        node.current_term,
+                                        node.cluster_configuration.all_members().len()
+                                    );
                                     join_request_pending = false;
-                                    if index > 0 {
-                                        join_accepted = true;
-                                    }
+                                    // An index acknowledges only that the
+                                    // leader appended (or deduplicated) JOIN;
+                                    // it is not proof of committed admission.
+                                    // Keep retrying idempotently until the
+                                    // replicated configuration contains us.
+                                    join_retry_at_ms =
+                                        node.millis().saturating_add(JOIN_RETRY_MS);
                                 }
                             }
                             _ => {
@@ -2653,6 +2794,59 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     }
                 }
 
+                dns::OP_RAFT_FRAME => {
+                    let frame_len = usize::try_from(message.arg0).unwrap_or(0);
+                    let mut result = dns::ERR_BAD_OPCODE;
+                    if message.memory != 0 && (15..=4096).contains(&frame_len) {
+                        let (map_status, vaddr) = memory_map_any(message.memory, false);
+                        if map_status == 0 {
+                            let frame = unsafe {
+                                core::slice::from_raw_parts(vaddr as *const u8, frame_len)
+                            };
+                            if frame[0..6] == local_mac
+                                && u16::from_be_bytes([frame[12], frame[13]])
+                                    == catten_services::raft::ETHERTYPE
+                                && let Ok((tag, payload)) =
+                                    catten_graft::wire::parse_tagged_payload(&frame[14..])
+                                && (TAG_VOTE_REQUEST..=TAG_SNAPSHOT_RESPONSE).contains(&tag)
+                            {
+                                let source_mac: [u8; 6] = frame[6..12].try_into().unwrap_or([0; 6]);
+                                if let Some(inbound) =
+                                    transport.decode_inbound_parts(&source_mac, tag, payload)
+                                {
+                                    let millis = node.millis();
+                                    drive_inbound(
+                                        &mut node, &transport, source_mac, inbound, millis,
+                                    );
+                                }
+                                result = 0;
+                            }
+                            memory_unmap(message.memory);
+                        }
+                        memory_close(message.memory);
+                    } else if message.memory != 0 {
+                        memory_close(message.memory);
+                    }
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+
+                dns::OP_INGRESS_MEMBERSHIP => {
+                    if message.memory != 0 {
+                        memory_close(message.memory);
+                    }
+                    match ingress_membership_snapshot(&node, &transport, &catalog, local_mac) {
+                        Some(snapshot) => reply_move_bytes(message.reply, &snapshot.encode()),
+                        None if message.reply != 0 => {
+                            // A partial discovery overlay must never silently
+                            // become a different backend set on each node.
+                            ipc_reply(message.reply, dns::ERR_BUSY);
+                        }
+                        None => {}
+                    }
+                }
+
                 dns::OP_STATUS => {
                     let state = match node.state {
                         NodeState::Follower => 1,
@@ -3402,6 +3596,50 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             &mut last_heartbeat_broadcast,
             &mut timer_armed,
         );
+        if logged_membership_epoch != node.membership_epoch() {
+            logged_membership_epoch = node.membership_epoch();
+            catten_rt::logln!(
+                "[dns] MEMBERSHIP epoch={} joint={} members={} commit={} last={} \
+                 finalize_pending={} term={} leader={}",
+                logged_membership_epoch,
+                node.cluster_configuration.is_joint_consensus(),
+                node.cluster_configuration.all_members().len(),
+                node.commit_index,
+                node.log_store.last_index(),
+                node.finalize_configuration_pending,
+                node.current_term,
+                node.state == NodeState::Leader
+            );
+        }
+        if logged_raft_term != node.current_term || logged_raft_state != node.state {
+            logged_raft_term = node.current_term;
+            logged_raft_state = node.state;
+            catten_rt::logln!(
+                "[dns] RAFT STATE state={:?} term={} leader={:?} millis={} pending={} queued={}",
+                node.state,
+                node.current_term,
+                node.known_leader_id,
+                node.millis(),
+                transport.pending_send_count(),
+                transport.outbound_count()
+            );
+        }
+        if node.cluster_configuration.is_joint_consensus()
+            && node.millis() >= next_joint_diagnostic_ms
+        {
+            next_joint_diagnostic_ms = node.millis().saturating_add(5_000);
+            catten_rt::logln!(
+                "[dns] JOINT PROGRESS epoch={} commit={} last={} pending={} queued={} \
+                 append_tx={} append_rx={}",
+                node.membership_epoch(),
+                node.commit_index,
+                node.log_store.last_index(),
+                transport.pending_send_count(),
+                transport.outbound_count(),
+                transport.acknowledged_count(TAG_APPEND_REQUEST),
+                transport.acknowledged_count(TAG_APPEND_RESPONSE)
+            );
+        }
         publish_status(&node, &catalog);
     }
 }

@@ -102,11 +102,25 @@ The main additions and extensions currently maintained here are:
   lease, start discovery and cluster formation, and synchronize UTC. The
   `*-test` options only add verifiers; use `--no-network` for an intentionally
   isolated boot.
+- **Cluster-wide TCP ingress without a TCP proxy:** a launch-authorized
+  `VIP:port` can be accepted by every admitted backend while one Raft-derived
+  participant advertises it. The frame router applies deterministic
+  five-tuple rendezvous placement and moves remote frames in a compact one-hop
+  Ethernet envelope that preserves the original IP/TCP packet; the backend's
+  `smoltcp` instance owns the connection and replies directly. Bounded
+  policy-epoch retention keeps observed flows on surviving backends across
+  joins, signed node drains, and ingress-owner changes. A committed shutdown
+  intent stops new assignment to its target before teardown while retaining
+  admitted routing authority for established flows. A three-guest host-side
+  fixture exercises remote selection, an established-flow request after
+  VIP-owner loss, and a fresh connection to a surviving backend.
 - **Reliable-message fragmentation:** wire protocol v3 uses 32-bit message
   lengths and fragment offsets. The initial 1 MiB operational ceiling is a
   resource policy, not a field-width limit; messages are split across Ethernet
-  frames and reassembled at the receiver, carrying the distributed name
-  service / Raft across two guests.
+  frames and reassembled at the receiver. Distributed name-service
+  application/control traffic uses this layer; operational Raft consensus RPCs
+  use a dedicated Ethernet route so they cannot queue behind application
+  messages.
 - **Capability-scoped data-plane clients:** the S3 service confines a managed
   object-store endpoint, bucket/prefix, TLS trust anchor, credentials, and
   operations behind endpoint capabilities. Named Kafka connectors confine an

@@ -68,6 +68,52 @@ pub struct NetworkAppliance {
     pub httpd: ServiceDomain,
 }
 
+/// A TCP service exposed through Charlotte's distributed L2 ingress.
+/// Platform launch policy supplies this descriptor to both the frame router
+/// (classification/forwarding) and TCP/IP service (local VIP acceptance).
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct ClusterTcpService {
+    pub address: [u8; 4],
+    pub port: u16,
+}
+
+pub(crate) fn configured_cluster_tcp_service() -> Option<ClusterTcpService> {
+    let address = option_env!("CATTEN_CLUSTER_VIP")?.as_bytes();
+    let port = option_env!("CATTEN_CLUSTER_TCP_PORT")?.as_bytes();
+    let mut octets = [0u8; 4];
+    let mut octet = 0usize;
+    let mut value = 0u16;
+    let mut digits = 0usize;
+    for byte in address.iter().copied().chain(core::iter::once(b'.')) {
+        match byte {
+            b'0'..=b'9' if digits < 3 => {
+                value = value.checked_mul(10)?.checked_add(u16::from(byte - b'0'))?;
+                digits += 1;
+            }
+            b'.' if digits != 0 && octet < octets.len() && value <= u16::from(u8::MAX) => {
+                octets[octet] = value as u8;
+                octet += 1;
+                value = 0;
+                digits = 0;
+            }
+            _ => return None,
+        }
+    }
+    if octet != octets.len() || octets == [0; 4] {
+        return None;
+    }
+    let port = port.iter().copied().try_fold(0u16, |value, byte| {
+        byte.is_ascii_digit()
+            .then_some(())
+            .and_then(|()| value.checked_mul(10))
+            .and_then(|value| value.checked_add(u16::from(byte - b'0')))
+    })?;
+    (port != 0).then_some(ClusterTcpService {
+        address: octets,
+        port,
+    })
+}
+
 /// The normal deployment control plane: signed-descriptor administration,
 /// the node artifact puller, and the bounded off-cluster notification ingress.
 #[derive(Copy, Clone)]
@@ -269,6 +315,16 @@ pub fn launch_storage(ns: &NameServiceHandle) -> Option<StorageStack> {
 /// Spawn the NIC driver for the first discovered Ethernet controller and the
 /// frame demultiplexer in front of it. Returns `None` when no NIC is present.
 pub fn launch_network_stack(ns: &NameServiceHandle) -> Option<NetworkStack> {
+    launch_network_stack_with_service(ns, None)
+}
+
+/// Spawn the physical network path, optionally enabling one cluster TCP VIP.
+/// This is launch-authorized platform policy; applications receive socket
+/// capabilities and never authority to alter the VIP or backend membership.
+pub fn launch_network_stack_with_service(
+    ns: &NameServiceHandle,
+    service: Option<ClusterTcpService>,
+) -> Option<NetworkStack> {
     let (driver_elf, mmio_base, mmio_pages, intid, requester_id, msi_address) =
         discover_network_controller()?;
     let driver = crate::service::supervisor::spawn_driver_with_name_service(
@@ -283,10 +339,30 @@ pub fn launch_network_stack(ns: &NameServiceHandle) -> Option<NetworkStack> {
             dma_msi_address: msi_address,
         },
     );
-    let frouter = crate::service::supervisor::spawn_with_name_service(
+    const VIP_KEY: u64 = charlotte_launch::manifest_key(b"vip");
+    const VIP_PORT_KEY: u64 = charlotte_launch::manifest_key(b"vipport");
+    let vip = service.map(|service| service.address).unwrap_or([0; 4]);
+    let frouter_manifest = [
+        ManifestEntry {
+            key: VIP_KEY,
+            flags: 0,
+            value: ManifestValue::Bytes(&vip),
+        },
+        ManifestEntry {
+            key: VIP_PORT_KEY,
+            flags: 0,
+            value: ManifestValue::Unsigned(service.map_or(0, |service| u64::from(service.port))),
+        },
+    ];
+    let frouter = crate::service::supervisor::spawn_with_manifest(
         crate::service::store::service_elf(b"frouter").expect("[launch] frouter.elf"),
         ns,
         ConnectionRights::CALL,
+        if service.is_some() {
+            &frouter_manifest
+        } else {
+            &[]
+        },
     );
     Some(NetworkStack {
         driver,
@@ -372,16 +448,58 @@ pub fn launch_node_cluster_with_trust(
 
 /// Spawn `tcpip` in DHCP mode, the NTP-backed time service, and `httpd`.
 pub fn launch_network_appliance(ns: &NameServiceHandle, persist_time: bool) -> NetworkAppliance {
+    launch_network_appliance_with_service(ns, persist_time, None)
+}
+
+/// Spawn the IP/application-facing network services with optional local VIP
+/// acceptance matching [`launch_network_stack_with_service`].
+pub fn launch_network_appliance_with_service(
+    ns: &NameServiceHandle,
+    persist_time: bool,
+    service: Option<ClusterTcpService>,
+) -> NetworkAppliance {
+    launch_network_appliance_with_service_mode(ns, persist_time, service, true)
+}
+
+fn launch_network_appliance_with_service_mode(
+    ns: &NameServiceHandle,
+    persist_time: bool,
+    service: Option<ClusterTcpService>,
+    dhcp: bool,
+) -> NetworkAppliance {
     const DHCP_KEY: u64 = charlotte_launch::manifest_key(b"dhcp");
+    const VIP_KEY: u64 = charlotte_launch::manifest_key(b"vip");
+    const VIP_PORT_KEY: u64 = charlotte_launch::manifest_key(b"vipport");
+    let vip = service.map(|service| service.address).unwrap_or([0; 4]);
+    let dhcp_entry = ManifestEntry {
+        key: DHCP_KEY,
+        flags: 0,
+        value: ManifestValue::Bytes(b"1"),
+    };
+    let vip_entries = [
+        ManifestEntry {
+            key: VIP_KEY,
+            flags: 0,
+            value: ManifestValue::Bytes(&vip),
+        },
+        ManifestEntry {
+            key: VIP_PORT_KEY,
+            flags: 0,
+            value: ManifestValue::Unsigned(service.map_or(0, |service| u64::from(service.port))),
+        },
+    ];
+    let dhcp_vip_entries = [dhcp_entry, vip_entries[0], vip_entries[1]];
+    let manifest: &[ManifestEntry<'_>] = match (dhcp, service.is_some()) {
+        (true, true) => &dhcp_vip_entries,
+        (true, false) => core::slice::from_ref(&dhcp_entry),
+        (false, true) => &vip_entries,
+        (false, false) => &[],
+    };
     let tcpip = crate::service::supervisor::spawn_with_manifest(
         crate::service::store::service_elf(b"tcpip").expect("[launch] tcpip.elf"),
         ns,
         ConnectionRights::CALL,
-        &[ManifestEntry {
-            key: DHCP_KEY,
-            flags: 0,
-            value: ManifestValue::Bytes(b"1"),
-        }],
+        manifest,
     );
     let httpd = crate::service::supervisor::spawn_with_manifest(
         crate::service::store::service_elf(b"httpd").expect("[launch] httpd.elf"),
@@ -690,11 +808,17 @@ pub extern "C" fn launch_steady_state() {
     let ns = crate::service::supervisor::node_name_service();
     let storage = launch_storage(&ns);
     let entropy = launch_entropy(&ns);
-    let network = launch_network_stack(&ns);
+    let cluster_service = configured_cluster_tcp_service();
+    let network = launch_network_stack_with_service(&ns, cluster_service);
     let (cluster, appliance) = match network {
         Some(_) => (
             Some(launch_node_cluster(&ns, b"charlotte")),
-            Some(launch_network_appliance(&ns, storage.is_some())),
+            Some(launch_network_appliance_with_service_mode(
+                &ns,
+                storage.is_some(),
+                cluster_service,
+                option_env!("CATTEN_CLUSTER_STATIC_NETWORK") != Some("1"),
+            )),
         ),
         None => (None, None),
     };

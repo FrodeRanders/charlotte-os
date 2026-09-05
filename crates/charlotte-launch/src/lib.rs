@@ -178,6 +178,16 @@ pub mod frouter_status {
     pub const DROPPED: usize = 12;
     pub const UNKNOWN: usize = 16;
     pub const ROUTES: usize = 20;
+    pub const EPOCH_LO: usize = 24;
+    pub const EPOCH_HI: usize = 28;
+    pub const BACKENDS: usize = 32;
+    pub const VIP_ADVERTISER: usize = 36;
+    pub const INGRESS_LOCAL: usize = 40;
+    pub const INGRESS_FORWARDED: usize = 44;
+    pub const INGRESS_DROPPED: usize = 48;
+    pub const FLOW_BINDINGS: usize = 52;
+    pub const IS_ADVERTISER: usize = 56;
+    pub const MEMBERS: usize = 60;
 }
 
 /// Discovery-service diagnostic status-page byte offsets.

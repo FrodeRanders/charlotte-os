@@ -28,6 +28,9 @@
 //!   network.
 //! - `gateway`: optional IPv4 default-route gateway as four bytes. Omit on a raw two-node link:
 //!   same-subnet peers are reached directly.
+//! - `vip`: optional cluster-service IPv4 address accepted by every backend. The frame router
+//!   independently restricts ARP advertisement to the committed VIP owner and distributes the
+//!   configured `vipport` flows.
 #![no_std]
 #![no_main]
 
@@ -80,6 +83,7 @@ use smoltcp::{
         tcp::{
             Socket as TcpSocket,
             SocketBuffer as TcpSocketBuffer,
+            State as TcpState,
         },
         udp::{
             PacketBuffer as UdpPacketBuffer,
@@ -232,6 +236,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         }
         _ => None,
     };
+    let service_vip = match ctx.manifest_value(charlotte_launch::manifest_key(b"vip")) {
+        Some(ManifestValue::Bytes(raw)) if raw.len() == 4 && raw != [0, 0, 0, 0] => {
+            Some(Ipv4Address::new(raw[0], raw[1], raw[2], raw[3]))
+        }
+        _ => None,
+    };
     config::write::<u32>(status::STAGE, 3);
 
     let endpoint =
@@ -276,6 +286,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     if !dhcp {
         iface.update_ip_addrs(|addrs| {
             let _ = addrs.push(IpCidr::Ipv4(Ipv4Cidr::new(local_ip, 24)));
+            if let Some(vip) = service_vip
+                && vip != local_ip
+            {
+                let _ = addrs.push(IpCidr::Ipv4(Ipv4Cidr::new(vip, 32)));
+            }
         });
         if let Some(gw) = gateway {
             iface.routes_mut().add_default_ipv4_route(gw).ok();
@@ -391,6 +406,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     iface.update_ip_addrs(|addrs| {
                         addrs.clear();
                         let _ = addrs.push(IpCidr::Ipv4(cidr));
+                        if let Some(vip) = service_vip
+                            && vip != cidr.address()
+                        {
+                            let _ = addrs.push(IpCidr::Ipv4(Ipv4Cidr::new(vip, 32)));
+                        }
                     });
                     match router {
                         Some(r) => {
@@ -403,7 +423,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
                 DhcpUpdate::Deconfigured => {
                     local_ip = Ipv4Address::new(0, 0, 0, 0);
-                    iface.update_ip_addrs(|addrs| addrs.clear());
+                    iface.update_ip_addrs(|addrs| {
+                        addrs.clear();
+                        if let Some(vip) = service_vip {
+                            let _ = addrs.push(IpCidr::Ipv4(Ipv4Cidr::new(vip, 32)));
+                        }
+                    });
                     iface.routes_mut().remove_default_ipv4_route();
                 }
             }
@@ -873,6 +898,33 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     }
                     memory_unmap(cap);
                     ipc_reply_move(msg.reply, cap, (words.len() * 4) as i64);
+                }
+
+                socket::OP_CONNECTION_STATE => {
+                    let Some(entry) = state.sockets.get(&msg.arg0) else {
+                        ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
+                        continue;
+                    };
+                    let connection_state = match entry.kind {
+                        SocketKind::Tcp => match sockets.get::<TcpSocket>(entry.handle).state() {
+                            TcpState::Closed | TcpState::Listen => socket::CONNECTION_STATE_CLOSED,
+                            TcpState::SynSent | TcpState::SynReceived => {
+                                socket::CONNECTION_STATE_CONNECTING
+                            }
+                            TcpState::Established => socket::CONNECTION_STATE_ESTABLISHED,
+                            TcpState::FinWait1
+                            | TcpState::FinWait2
+                            | TcpState::CloseWait
+                            | TcpState::Closing
+                            | TcpState::LastAck
+                            | TcpState::TimeWait => socket::CONNECTION_STATE_CLOSING,
+                        },
+                        SocketKind::Udp if entry.udp_remote.is_some() => {
+                            socket::CONNECTION_STATE_ESTABLISHED
+                        }
+                        SocketKind::Udp => socket::CONNECTION_STATE_CLOSED,
+                    };
+                    ipc_reply(msg.reply, connection_state);
                 }
 
                 _ => {

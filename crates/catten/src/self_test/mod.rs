@@ -138,6 +138,8 @@ pub mod el0_disco;
 pub mod el0_dns;
 #[cfg(feature = "http_net_test")]
 pub mod el0_http;
+#[cfg(feature = "cluster_ingress_test")]
+pub mod el0_ingress;
 pub mod el0_ipc;
 #[cfg(feature = "clusterctl_test")]
 pub mod el0_join;
@@ -233,6 +235,18 @@ pub(crate) fn close_test_address_space(
 /// are the only mutator of global test state.
 pub fn run_synchronous_self_tests() {
     logln!("Running self tests...");
+    if cfg!(feature = "cluster_ingress_test") {
+        // The three-guest fixture validates the operational steady-state
+        // network and ingress services. Running every unrelated device and
+        // lifecycle stress verifier three times adds contention and can make
+        // an ingress result depend on an independent test's timing.
+        results::register(results::TestId::Net);
+        // Scheduler lifecycle is started by the scheduler boot path rather
+        // than this module and therefore still reports its deferred result.
+        results::register(results::TestId::SchedulerLifecycle);
+        results::register(results::TestId::Ingress);
+        return;
+    }
     if cfg!(feature = "shutdown_test") {
         results::register(results::TestId::Shutdown);
         return;
@@ -267,6 +281,13 @@ pub fn run_synchronous_self_tests() {
 /// execute it from a scheduler-owned kernel thread after the AP schedulers are
 /// live.
 pub fn run_deferred_self_tests() {
+    if cfg!(feature = "cluster_ingress_test") {
+        el0_net::test_el0_net();
+        #[cfg(feature = "cluster_ingress_test")]
+        el0_ingress::test_el0_ingress();
+        logln!("Distributed-ingress verifiers are pending.");
+        return;
+    }
     if cfg!(feature = "shutdown_test") {
         #[cfg(feature = "shutdown_test")]
         el0_shutdown::test_el0_shutdown();
@@ -337,6 +358,8 @@ pub fn run_deferred_self_tests() {
     logln!("Skipping EL0 dns test (enable dns_net_test with matching PCI hardware).");
     #[cfg(feature = "tcpip_net_test")]
     el0_tcpip::test_el0_tcpip();
+    #[cfg(feature = "cluster_ingress_test")]
+    el0_ingress::test_el0_ingress();
     #[cfg(feature = "clusterctl_test")]
     el0_clusterctl::test_el0_clusterctl();
     #[cfg(feature = "clusterctl_test")]

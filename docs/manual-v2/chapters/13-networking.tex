@@ -42,7 +42,7 @@ The stack below is the target architecture. The current repository contains a
 userspace virtio-net driver, an Intel 82574L/E1000E driver, a frame
 demultiplexer (``frouter''), a
 reliable-message service with fragmentation, a distributed name service that
-replicates a \texttt{name $\rightarrow$ \{node, generation\}} catalog across two guests, a
+replicates a \texttt{name $\rightarrow$ \{node, generation\}} catalog across cluster members, a
 smoltcp TCP/IP service, and a remote-invocation path through the catalog. The
 NIC/TCP path is runtime-validated on macOS QEMU TCG with both virtio-net and
 E1000E (\texttt{--relmsg-test},
@@ -226,6 +226,74 @@ DHCP-configured TCP/IP service. The \texttt{--no-network} runner option is the
 explicit isolated-boot configuration. Options ending in \texttt{-test} add
 verification workloads and result reporting; they do not enable the runtime
 services.
+
+\section{Cluster-wide TCP ingress and direct server return}
+\label{sec:distributed-l2-ingress}
+
+Charlotte can expose one launch-authorized IPv4 TCP service as a cluster
+\texttt{VIP:port}. This is not a TCP proxy. The frame router that receives an
+external frame parses its five-tuple and uses deterministic rendezvous hashing
+to select an execution node. A local winner follows the ordinary
+\texttt{OP\_FRAME} path into smoltcp. For a remote winner, the router changes
+the Ethernet delivery into a compact one-hop Charlotte envelope and moves the
+same memory object back through \texttt{net::OP\_SEND}. The envelope carries
+the original source MAC and EtherType; the selected backend validates the
+outer source against its committed member routes and removes the envelope in
+place. IP, TCP options, sequence numbers, and payload bytes remain unchanged.
+The
+backend smoltcp instance owns the only TCP state and sends its VIP response
+directly to the client.
+
+Eligibility comes from the committed configuration of the DNS-owned Raft
+member, never from discovery alone. DNS materializes an immutable snapshot of
+stable node keys and discovery-associated MAC routes, separating admitted
+members from the subset eligible for new flows. The router refreshes this snapshot asynchronously; no consensus operation occurs
+on the packet path. During joint consensus, only voters common to the old and
+new sets accept new flows. This delays a joiner until finalization and removes
+a departing node promptly.
+
+An operator-signed, committed node-shutdown intent removes its target from new
+flow selection before local teardown, while retaining its admitted route for
+observed flows during the grace interval. The load-balancing epoch is a stable
+fingerprint of the committed configuration index and replicated drain
+generations. Each
+router retains four recent sets and a bounded 1,024-entry
+\texttt{FlowKey $\rightarrow$ epoch} table. Observed connections retain their
+set across additions; when a backend is removed, only bindings selecting that
+backend are released for reconnection. Rendezvous selection is independent of
+member ordering, so a replacement ingress participant with the same epoch
+selects the same live backend without shared connection tracking.
+
+VIP acceptance and advertisement are separate. Every backend installs the VIP
+as a \texttt{/32} smoltcp address, but only the current Raft leader, when it is
+in the committed eligible set, passes VIP ARP requests. A newly elected leader
+emits gratuitous ARP, so ingress ownership can move without altering backend
+membership. The first version supports one IPv4/TCP service and at most 64 backends;
+IPv6 neighbour discovery, a service-only drain operation, automatic failed-member
+removal, multiple service-specific placement sets, and transparent TCP-state migration are future work. The
+precise bounds, failure semantics, and status fields are documented in
+\repofile|docs/architecture/distributed-l2-ingress.md|.
+
+Operational Vote, AppendEntries, and InstallSnapshot RPCs use private
+EtherType \texttt{0x88b7}, while admission and DNS application/control traffic
+remain on the reliable-message layer. Joining durably fences and resets the
+standalone consensus history before accepting the selected anchor's log.
+Append retries that overlap a compacted snapshot skip the compacted prefix;
+they cannot duplicate it behind the retained suffix. Forwarded data frames use
+EtherType \texttt{0x88b8}. This is an isolation marker rather than
+cryptographic link authentication, so the first version assumes a trusted or
+administratively isolated cluster L2 segment.
+
+The host-visible \repofile|scripts/run-distributed-ingress-test.sh| fixture
+forms a stable three-voter cluster, establishes flows across all three
+backends, kills the Raft leader and VIP advertiser, observes the replacement's
+gratuitous ARP, and completes an HTTP request over a surviving established
+flow. It then opens fresh five-tuples and requires another HTTP exchange with a
+live backend, covering reconnect after the failed advertiser also took one
+backend connection with it. Failed voters are not removed automatically, so
+some new hashes may continue to select the failed node until an explicit
+committed membership change removes it; the recovery probe therefore tries a
+bounded family of new flows.
 
 \section{UTC time as an internal service}
 

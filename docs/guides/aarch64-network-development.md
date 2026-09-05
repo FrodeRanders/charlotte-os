@@ -62,8 +62,10 @@ captures do not overwrite one another:
 
 This establishes the host-side L2 link and runs a NIC in each guest. It is
 the distributed-services test path: the reliable-message service exchanges
-frames through `net0` via the frouter, Raft peer RPCs (the distributed name
-service) route through that service, and each VM runs a name-service replica.
+frames through `net0` via the frouter, each VM runs a name-service replica,
+and the DNS-owned Raft member uses a dedicated Ethernet route for consensus
+RPCs. Admission and distributed application/control messages continue through
+the reliable-message service.
 
 Two-node tests use `--relmsg-test`, `--disco-test`, `--dns-test`, and
 `--tcpip-test` with the stream backend (the relmsg smoke client derives its
@@ -71,3 +73,31 @@ peer from MAC last-octets 1 and 2 and exchanges a 70,000-byte v3 message).
 `--http-test` runs a single guest on the
 SLIRP user network with `hostfwd=tcp::8080-:80` so the host can curl the
 httpd keyhole.
+
+To configure the operational distributed-ingress path (without adding a test
+workload), supply a cluster service to every participating guest:
+
+```sh
+./scripts/run-aarch64.sh release --cluster-service 10.0.2.42:80
+```
+
+On the default single-guest SLIRP network the runner forwards host port 8080
+to that VIP and port, which provides a basic HTTP demonstrator. For a real
+multi-node load-sharing exercise, place all guests and the client on a shared
+tap/bridge or socket-backed L2 fixture and use the same `VIP:port` on every
+node.
+
+The repository includes the complete socket-backed validation:
+
+```sh
+./scripts/run-distributed-ingress-test.sh
+```
+
+It starts an Ethernet hub, three AArch64 guests, and an independent host-side
+ARP/TCP participant. After stable three-voter membership it establishes one
+flow per selected backend, stops the Raft leader/VIP advertiser, waits for a
+replacement advertisement, and sends HTTP on the already established flows.
+The fixture requires remote forwarding, at least one surviving flow, and a
+fresh HTTP connection to a live backend after the failure. It uses
+`--cluster-ingress-test` internally; that switch is verifier plumbing, whereas
+`--cluster-service` is the operational configuration.

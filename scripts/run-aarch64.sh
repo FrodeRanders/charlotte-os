@@ -9,7 +9,7 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--deployment-ingress-test|--shutdown-ingress-test|--kafka-test|--kafka-coordinator-test|--kafka-fencing-test] [--net-listen PORT|--net-connect HOST:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test|--shutdown-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--cluster-service VIP:PORT] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--deployment-ingress-test|--shutdown-ingress-test|--kafka-test|--kafka-coordinator-test|--kafka-fencing-test] [--net-listen PORT|--net-connect HOST:PORT|--net-mcast GROUP:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test|--shutdown-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
@@ -22,6 +22,9 @@
 #   --scheduler-trace  Capture and decode the in-memory scheduler trace at timeout
 #   --hvf          Use Apple Hypervisor.Framework acceleration (macOS only)
 #   --no-network   Do not attach a NIC or launch network-backed services
+#   --cluster-service VIP:PORT  Launch one distributed IPv4/TCP service; this
+#                  enables runtime ingress policy and is not a test workload
+#   --cluster-ingress-test  Probe the configured VIP from this guest
 #   --net-test     Verify the default virtio-net capability under TCG/KVM
 #   --relmsg-test  Exchange reliable messages with a second socket-LAN guest
 #   --disco-test   Run the cluster discovery test (implies --net-test)
@@ -53,6 +56,7 @@
 #                 identity and require the first to report producer fencing
 #   --net-listen PORT  Put the guest NIC on a QEMU socket LAN and listen
 #   --net-connect HOST:PORT  Connect the guest NIC to a QEMU socket LAN
+#   --net-mcast GROUP:PORT  Join a QEMU UDP multicast LAN (three or more guests)
 #   --instance NAME  Use separate boot/NVMe/log files for this VM
 #   --mac ADDRESS  Set the guest NIC MAC address
 #   --live-upgrade-test  Run the isolated EL0 service lifecycle/upgrade integration test
@@ -82,6 +86,7 @@ DISCO_TEST="0"
 DNS_TEST="0"
 DEPLOY_TEST="0"
 TCPIP_TEST="0"
+CLUSTER_INGRESS_TEST="0"
 HTTP_TEST="0"
 DHCP_TEST="0"
 S3_TEST="0"
@@ -105,6 +110,9 @@ REUSE_STORAGE="0"
 INSTANCE=""
 NET_BACKEND="user"
 NET_MAC="52:54:00:12:34:56"
+CLUSTER_SERVICE=""
+CLUSTER_VIP=""
+CLUSTER_TCP_PORT=""
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -120,6 +128,10 @@ while [ "$#" -gt 0 ]; do
         --scheduler-trace) SCHEDULER_TRACE="1"; shift ;;
         --hvf)         USE_HVF="1"; shift ;;
         --no-network)  NETWORK="0"; shift ;;
+        --cluster-service)
+            [ "$#" -ge 2 ] || { echo "Missing value for --cluster-service" >&2; exit 1; }
+            CLUSTER_SERVICE="$2"; shift 2 ;;
+        --cluster-ingress-test) NET_TEST="1"; CLUSTER_INGRESS_TEST="1"; shift ;;
         --net-test)    NET_TEST="1"; shift ;;
         --relmsg-test) NET_TEST="1"; RELMSG_TEST="1"; shift ;;
         --disco-test)  NET_TEST="1"; DISCO_TEST="1"; shift ;; # implies --net-test
@@ -140,6 +152,9 @@ while [ "$#" -gt 0 ]; do
         --net-connect)
             [ "$#" -ge 2 ] || { echo "Missing value for --net-connect" >&2; exit 1; }
             NET_BACKEND="connect:$2"; shift 2 ;;
+        --net-mcast)
+            [ "$#" -ge 2 ] || { echo "Missing value for --net-mcast" >&2; exit 1; }
+            NET_BACKEND="mcast:$2"; shift 2 ;;
         --instance)
             [ "$#" -ge 2 ] || { echo "Missing value for --instance" >&2; exit 1; }
             INSTANCE="$2"; shift 2 ;;
@@ -163,6 +178,28 @@ done
 catten_boot_validate_port "--gdb-port" "$GDB_PORT"
 catten_boot_validate_port "CATTEN_HTTP_HOST_PORT" "$HTTP_HOST_PORT"
 catten_boot_validate_port "CATTEN_DEPLOY_HOST_PORT" "$DEPLOY_HOST_PORT"
+if [ -n "$CLUSTER_SERVICE" ]; then
+    CLUSTER_VIP="${CLUSTER_SERVICE%:*}"
+    CLUSTER_TCP_PORT="${CLUSTER_SERVICE##*:}"
+    if [ "$CLUSTER_VIP" = "$CLUSTER_SERVICE" ] || [ -z "$CLUSTER_VIP" ]; then
+        echo "error: --cluster-service must be an IPv4 address and TCP port (for example 10.0.2.42:80)" >&2
+        exit 1
+    fi
+    catten_boot_validate_port "--cluster-service port" "$CLUSTER_TCP_PORT"
+    IFS=. read -r vip_a vip_b vip_c vip_d vip_extra <<EOF
+$CLUSTER_VIP
+EOF
+    for vip_octet in "$vip_a" "$vip_b" "$vip_c" "$vip_d"; do
+        if ! [[ "$vip_octet" =~ ^[0-9]+$ ]] || [ "$vip_octet" -gt 255 ]; then
+            echo "error: --cluster-service has an invalid IPv4 address" >&2
+            exit 1
+        fi
+    done
+    if [ -n "${vip_extra:-}" ] || [ "$CLUSTER_VIP" = "0.0.0.0" ]; then
+        echo "error: --cluster-service has an invalid IPv4 address" >&2
+        exit 1
+    fi
+fi
 catten_boot_validate_instance "$INSTANCE"
 catten_boot_validate_positive_integer "--smp" "$SMP"
 if [ -n "$TIMEOUT" ]; then
@@ -179,6 +216,7 @@ fi
 if [ "$NETWORK" != "1" ] && { [ "$NET_TEST" = "1" ] || [ "$RELMSG_TEST" = "1" ] \
     || [ "$DISCO_TEST" = "1" ] || [ "$DNS_TEST" = "1" ] || [ "$DEPLOY_TEST" = "1" ] \
     || [ "$TCPIP_TEST" = "1" ] || [ "$HTTP_TEST" = "1" ] || [ "$DHCP_TEST" = "1" ] \
+    || [ "$CLUSTER_INGRESS_TEST" = "1" ] \
     || [ "$S3_TEST" = "1" ] || [ "$DEPLOYMENT_INGRESS_TEST" = "1" ] \
     || [ "$SHUTDOWN_INGRESS_TEST" = "1" ] || [ "$KAFKA_TEST" = "1" ]; }; then
     echo "error: network verification options are incompatible with --no-network" >&2
@@ -203,6 +241,11 @@ if [ "$RELMSG_TEST" = "1" ] && [ "$NET_BACKEND" = "user" ]; then
 fi
 if [ "$TCPIP_TEST" = "1" ] && [ "$NET_BACKEND" = "user" ]; then
     echo "error: --tcpip-test requires --net-listen or --net-connect" >&2
+    exit 1
+fi
+if [ "$CLUSTER_INGRESS_TEST" = "1" ] \
+    && { [ -z "$CLUSTER_SERVICE" ] || [ "$NET_BACKEND" = "user" ]; }; then
+    echo "error: --cluster-ingress-test requires --cluster-service and a shared L2 backend" >&2
     exit 1
 fi
 if [ "$SBSA_REF" = "1" ] && [ "$USE_HVF" = "1" ]; then
@@ -559,6 +602,9 @@ fi
 if [ "$KAFKA_FENCING_TEST" = "1" ]; then
     FEATURES="${FEATURES},kafka_fencing_test"
 fi
+if [ "$CLUSTER_INGRESS_TEST" = "1" ]; then
+    FEATURES="${FEATURES},cluster_ingress_test"
+fi
 
 if [ "$LIVE_UPGRADE_TEST" = "1" ]; then
     FEATURES="${FEATURES},live_upgrade_test"
@@ -597,6 +643,13 @@ if [ "${CATTEN_SKIP_KERNEL_BUILD:-0}" = "1" ]; then
     fi
     echo ">>> Reusing previously built Catten kernel."
 else
+    if [ -n "$CLUSTER_SERVICE" ]; then
+        export CATTEN_CLUSTER_VIP="$CLUSTER_VIP"
+        export CATTEN_CLUSTER_TCP_PORT="$CLUSTER_TCP_PORT"
+        if [ "$NET_BACKEND" != "user" ]; then
+            export CATTEN_CLUSTER_STATIC_NETWORK=1
+        fi
+    fi
     cargo build --package catten --target "$TARGET_SPEC" \
         --no-default-features --features "$FEATURES" $RELEASE_FLAG
 fi
@@ -747,7 +800,9 @@ QEMU_OPTS+=(-nic none)
 if [ "$NETWORK" = "1" ]; then
     case "$NET_BACKEND" in
         user)
-            if [ "$HTTP_TEST" = "1" ]; then
+            if [ -n "$CLUSTER_SERVICE" ]; then
+                QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${HTTP_HOST_PORT}-${CLUSTER_VIP}:${CLUSTER_TCP_PORT},hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444")
+            elif [ "$HTTP_TEST" = "1" ]; then
                 # Host-side keyhole: forward the configurable host port to
                 # guest port 80 so parallel/local runs need not contend for a
                 # hard-coded listener.
@@ -765,6 +820,10 @@ if [ "$NETWORK" = "1" ]; then
             NET_HOST="${NET_PEER%%:*}"
             NET_PORT="${NET_PEER#*:}"
             QEMU_OPTS+=(-netdev "stream,id=charlotte-net,server=off,addr.type=inet,addr.host=${NET_HOST},addr.port=${NET_PORT}")
+            ;;
+        mcast:*)
+            NET_GROUP="${NET_BACKEND#mcast:}"
+            QEMU_OPTS+=(-netdev "socket,id=charlotte-net,mcast=${NET_GROUP}")
             ;;
     esac
     QEMU_OPTS+=(
@@ -793,6 +852,9 @@ if [ -n "$TIMEOUT" ]; then
     fi
     qemu-system-aarch64 "${QEMU_OPTS[@]}" $GDB &
     QPID=$!
+    if [ -n "${CATTEN_QEMU_PID_FILE:-}" ]; then
+        printf '%s\n' "$QPID" >"$CATTEN_QEMU_PID_FILE"
+    fi
     DEPLOYMENT_RESULT_FILE=""
     DEPLOYMENT_WORKER_LOG=""
     if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then

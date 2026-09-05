@@ -65,6 +65,25 @@ impl ClusterConfiguration {
         members
     }
 
+    /// Voters eligible for new cluster-wide work in this committed
+    /// configuration.
+    ///
+    /// A joint configuration represents both the old and proposed voter
+    /// sets. Only their intersection is safe for new ingress flows: it keeps
+    /// an arriving voter out until finalization and stops assigning work to a
+    /// departing voter as soon as the joint change commits.
+    pub fn active_voting_members(&self) -> Vec<&Peer> {
+        if !self.is_joint_consensus() {
+            return self.current_voting_members();
+        }
+        self.current_members
+            .values()
+            .filter(|peer| {
+                peer.is_voter() && self.next_members.get(&peer.id).is_some_and(Peer::is_voter)
+            })
+            .collect()
+    }
+
     pub fn contains(&self, peer_id: &str) -> bool {
         self.current_members.contains_key(peer_id) || self.next_members.contains_key(peer_id)
     }
@@ -152,5 +171,13 @@ mod tests {
             "c".to_string(),
             "d".to_string(),
         ])));
+        assert_eq!(
+            configuration
+                .active_voting_members()
+                .into_iter()
+                .map(|peer| peer.id.as_str())
+                .collect::<alloc::vec::Vec<_>>(),
+            ["c"]
+        );
     }
 }

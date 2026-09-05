@@ -70,6 +70,10 @@ impl StateMachine for CatalogMachine {
         self.0.restore(snapshot_data);
     }
 
+    fn reset(&self) {
+        self.0.reset();
+    }
+
     fn as_queryable(&self) -> Option<&dyn QueryableStateMachine> {
         Some(self.0.as_ref())
     }

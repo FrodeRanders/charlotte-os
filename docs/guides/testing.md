@@ -57,6 +57,23 @@ payload. This intentionally crosses v2's 65,535-byte limit and exercises the
 v3 IPC envelope, fragmentation, adaptive retry, reassembly, and cumulative
 delivery acknowledgement end to end.
 
+The cluster-wide TCP data path has a dedicated host-visible fixture:
+
+```sh
+./scripts/run-distributed-ingress-test.sh
+```
+
+It creates a shared stream-backed L2 segment with three guests and an
+independent host-side Ethernet/TCP client. The test requires committed stable
+three-voter membership, deterministic selection across all three backends,
+remote one-hop frame forwarding, leader/VIP-advertiser loss, replacement
+gratuitous ARP, and a request completed over a previously established flow on
+a surviving backend. It then requires a fresh connection and complete HTTP
+exchange with a live backend, demonstrating reconnect after the failed
+advertiser also took one backend connection with it. `--cluster-ingress-test`
+is used only by this harness; ordinary operation is enabled by giving every
+member the same `--cluster-service VIP:port` launch policy.
+
 `--s3-test --timeout 240` is an explicitly test-only integration fixture. It
 adds a local TLS RustFS Docker container, a provisioned S3 service profile, and
 an in-guest PUT/HEAD/GET/DELETE verifier. Network, DHCP, time synchronization,

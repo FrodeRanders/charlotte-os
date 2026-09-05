@@ -727,7 +727,9 @@ fn build_json(
 
     // frouter counters.
     if let Some(frouter_conn) = services.frouter_conn.as_ref() {
-        if let Some(w) = read_words(frouter_conn.as_ref(), frouter::OP_STATUS, 0, 7) {
+        if let Some(w) =
+            read_words(frouter_conn.as_ref(), frouter::OP_STATUS, 0, frouter::STATUS_WORDS)
+        {
             let frouter_rx = w[frouter::STATUS_OFFSET_RX as usize];
             let forwarded = w[frouter::STATUS_OFFSET_FORWARDED as usize];
             let rx_delta = if prev.initialized {
@@ -740,11 +742,16 @@ fn build_json(
             } else {
                 0
             };
+            let ingress_epoch = u64::from(w[frouter::STATUS_OFFSET_EPOCH_LO as usize])
+                | (u64::from(w[frouter::STATUS_OFFSET_EPOCH_HI as usize]) << 32);
             let _ = write!(
                 &mut s,
                 "\"frouter\":{{\"stage\":{},\"rx\":{},\"forwarded\":{},\"dropped\":{},\"unknown\":\
                  {},\"routes\":{},\"rx_delta\":{},\"forwarded_delta\":{},\"rx_rate\":{},\"\
-                 forwarded_rate\":{}}},",
+                 forwarded_rate\":{},\"ingress_epoch\":{},\"ingress_backends\":{},\"\
+                 ingress_members\":{},\"ingress_draining\":{},\"vip_advertiser\":{},\"\
+                 is_advertiser\":{},\"ingress_local\":{},\"ingress_forwarded\":{},\"\
+                 ingress_dropped\":{},\"flow_bindings\":{}}},",
                 w[frouter::STATUS_OFFSET_STAGE as usize],
                 frouter_rx,
                 forwarded,
@@ -754,7 +761,18 @@ fn build_json(
                 rx_delta,
                 forwarded_delta,
                 rate(rx_delta, interval_ms),
-                rate(forwarded_delta, interval_ms)
+                rate(forwarded_delta, interval_ms),
+                ingress_epoch,
+                w[frouter::STATUS_OFFSET_BACKENDS as usize],
+                w[frouter::STATUS_OFFSET_MEMBERS as usize],
+                w[frouter::STATUS_OFFSET_MEMBERS as usize]
+                    .saturating_sub(w[frouter::STATUS_OFFSET_BACKENDS as usize]),
+                w[frouter::STATUS_OFFSET_VIP_ADVERTISER as usize],
+                w[frouter::STATUS_OFFSET_IS_ADVERTISER as usize],
+                w[frouter::STATUS_OFFSET_INGRESS_LOCAL as usize],
+                w[frouter::STATUS_OFFSET_INGRESS_FORWARDED as usize],
+                w[frouter::STATUS_OFFSET_INGRESS_DROPPED as usize],
+                w[frouter::STATUS_OFFSET_FLOW_BINDINGS as usize]
             );
             prev.frouter_rx = frouter_rx;
             prev.forwarded = forwarded;

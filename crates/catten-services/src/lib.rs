@@ -35,6 +35,9 @@ pub mod disk_raft;
 pub mod node_identity;
 
 pub mod broker;
+/// Deterministic service/flow selection and packet helpers for distributed
+/// L2 ingress.
+pub mod cluster_ingress;
 /// Replicated name catalog: the Raft state machine for the distributed name
 /// service.
 pub mod name_catalog;
@@ -577,9 +580,9 @@ pub mod raft {
     pub const INTERFACE: u64 = super::name(b"RAFT");
     pub const VERSION: u32 = 1;
 
-    /// Direct-network EtherType retained for the isolated generic Raft
-    /// fixture. The operational DNS-owned node uses relmsg and does not
-    /// install this route in the frame demultiplexer.
+    /// Direct-network EtherType used by both the isolated generic Raft
+    /// fixture and the operational DNS-owned Raft member. The frame router
+    /// delivers the latter to `dns::OP_RAFT_FRAME`.
     pub const ETHERTYPE: u16 = 0x88b7;
     /// Well-known name the frame demultiplexer routes `ETHERTYPE` frames to.
     pub const FRAME_NAME: u64 = super::name(b"raft-f");
@@ -781,6 +784,15 @@ pub mod socket {
     /// allowing a bounded client wait to release the server-side reply slot
     /// without closing the socket.
     pub const OP_CANCEL_RECV: u32 = 11;
+    /// Query one socket's connection state without consuming it. The scalar
+    /// reply is one of `CONNECTION_STATE_*`; this lets event loops distinguish
+    /// an accepted nonblocking connect request from an established TCP flow.
+    pub const OP_CONNECTION_STATE: u32 = 12;
+
+    pub const CONNECTION_STATE_CLOSED: i64 = 0;
+    pub const CONNECTION_STATE_CONNECTING: i64 = 1;
+    pub const CONNECTION_STATE_ESTABLISHED: i64 = 2;
+    pub const CONNECTION_STATE_CLOSING: i64 = 3;
 
     /// `TcpipStatus` snapshot layout (all little-endian u32 words in a moved
     /// page). Offsets are in u32 words from the base of the reply page. Words
@@ -886,6 +898,16 @@ pub mod socket {
 
         pub fn call(&self, opcode: u32, arg0: u64) -> Result<PendingCall<'static>, IpcError> {
             self.service.call(opcode, arg0)
+        }
+
+        /// Return the protocol-neutral connection state exposed by tcpip.
+        pub fn connection_state(&self) -> Result<i64, SocketError> {
+            self.service
+                .call(OP_CONNECTION_STATE, self.id())
+                .map_err(SocketError::Ipc)?
+                .wait()
+                .map(|result| result.result)
+                .map_err(SocketError::Ipc)
         }
 
         /// Select an IPv4 peer and begin connecting. TCP handshaking proceeds
@@ -1093,6 +1115,18 @@ pub mod frouter {
     pub const STATUS_OFFSET_UNKNOWN: u32 = 4;
     pub const STATUS_OFFSET_ROUTES: u32 = 5;
     pub const STATUS_OFFSET_MAGIC: u32 = 6;
+    pub const STATUS_OFFSET_EPOCH_LO: u32 = 7;
+    pub const STATUS_OFFSET_EPOCH_HI: u32 = 8;
+    pub const STATUS_OFFSET_BACKENDS: u32 = 9;
+    pub const STATUS_OFFSET_VIP_ADVERTISER: u32 = 10;
+    pub const STATUS_OFFSET_INGRESS_LOCAL: u32 = 11;
+    pub const STATUS_OFFSET_INGRESS_FORWARDED: u32 = 12;
+    pub const STATUS_OFFSET_INGRESS_DROPPED: u32 = 13;
+    pub const STATUS_OFFSET_FLOW_BINDINGS: u32 = 14;
+    pub const STATUS_OFFSET_IS_ADVERTISER: u32 = 15;
+    /// Admitted/routable members, including members draining existing flows.
+    pub const STATUS_OFFSET_MEMBERS: u32 = 16;
+    pub const STATUS_WORDS: usize = 17;
     pub const STATUS_MAGIC: u32 = 0x4652_5453;
 }
 
@@ -1384,6 +1418,15 @@ pub mod dns {
     /// Query the latest locally applied shutdown intent for `arg0` = node
     /// key. The reply moves `[generation:u64][CSHUTDN1 envelope]`.
     pub const OP_SHUTDOWN_QUERY: u32 = 25;
+    /// Return the locally applied committed ingress membership snapshot.
+    /// The moved reply is encoded by [`crate::cluster_ingress::BackendSnapshot`].
+    /// This is a local materialization query; it never starts consensus and
+    /// therefore remains off the packet hot path.
+    pub const OP_INGRESS_MEMBERSHIP: u32 = 26;
+    /// Raw Ethernet ingress for the DNS-owned Raft transport. The frouter
+    /// routes only `raft::ETHERTYPE` frames here; join and application control
+    /// traffic continue to use relmsg.
+    pub const OP_RAFT_FRAME: u32 = 27;
 
     /// Event-name prefix: events are ordinary replicated catalog names so the
     /// existing register/commit/replicate machinery fires them; the prefix

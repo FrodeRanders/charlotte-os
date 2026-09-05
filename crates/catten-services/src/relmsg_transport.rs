@@ -1,17 +1,18 @@
-//! Raft peer transport over the reliable message layer (`relmsg`).
+//! Hybrid peer transport for the DNS-owned Raft member.
 //!
-//! Implements `catten_graft::RaftTransport` by carrying Vote/AppendEntries/
-//! InstallSnapshot RPCs as `relmsg` messages addressed to peer node MACs,
-//! routed through the frame demultiplexer to the NIC. Each message is prefixed
-//! with a one-byte request/response type tag followed by the encoded protobuf.
+//! Vote, AppendEntries and InstallSnapshot RPCs use a private Ethernet
+//! EtherType so elections and heartbeats cannot queue behind application
+//! traffic in `relmsg`. Pre-membership join and DNS application/control
+//! messages retain reliable-message delivery. Both paths prefix the encoded
+//! body with a one-byte request/response type tag.
 //!
 //! - Requests are handed to the owning reactor (which drives `RaftNode::handle_*`) and answered
 //!   with a tagged response back to the source MAC.
 //! - Responses are buffered and exposed through `poll_completions`, exactly like
 //!   `CharlotteTransport`.
 //!
-//! relmsg allows one outstanding `OP_SEND` per peer (it replies `ERR_BUSY`
-//! otherwise), so outbound RPCs are queued per peer and drained one at a time.
+//! Both NIC and relmsg calls retain moved memory until completion, so outbound
+//! traffic is queued per peer and drained one call at a time.
 use alloc::{
     collections::BTreeMap,
     string::{
@@ -56,6 +57,13 @@ pub const TAG_SNAPSHOT_RESPONSE: u8 = 6;
 /// admission the joiner has no local name-service route to any raft peer.
 pub const TAG_JOIN_REQUEST: u8 = 7;
 pub const TAG_JOIN_REPLY: u8 = 8;
+
+/// Bound application-level AppendEntries flow control. A transport send ACK
+/// only transfers the request into the peer's receive path; the corresponding
+/// Raft response can still be lost while a NIC/service generation changes.
+/// Retrying the newest coalesced request after this interval prevents one lost
+/// response from permanently fencing all later replication to that peer.
+const APPEND_RESPONSE_TIMEOUT_MS: u64 = 1_000;
 
 /// Encode the body of a join request: `[id_len][id][service_name:8 LE]`.
 ///
@@ -147,6 +155,10 @@ pub struct RelmsgRaftTransport {
     outbound: spin::Mutex<BTreeMap<String, Vec<OutboundRpc>>>,
     /// Outstanding relmsg `OP_SEND` call caps per peer (0 = none).
     pending_sends: spin::Mutex<BTreeMap<String, PendingSend>>,
+    /// Application-level AppendEntries requests awaiting a Raft response.
+    /// A completed relmsg send only means that the remote delivery queue owns
+    /// the message; it does not mean the follower has processed it.
+    append_in_flight: spin::Mutex<BTreeMap<String, u64>>,
     acknowledged_by_tag: spin::Mutex<BTreeMap<u8, u64>>,
     acknowledged_by_peer_tag: spin::Mutex<BTreeMap<(String, u8), u64>>,
     received_responses: spin::Mutex<Vec<RpcCompletion>>,
@@ -163,6 +175,7 @@ impl RelmsgRaftTransport {
             peer_macs: spin::Mutex::new(BTreeMap::new()),
             outbound: spin::Mutex::new(BTreeMap::new()),
             pending_sends: spin::Mutex::new(BTreeMap::new()),
+            append_in_flight: spin::Mutex::new(BTreeMap::new()),
             acknowledged_by_tag: spin::Mutex::new(BTreeMap::new()),
             acknowledged_by_peer_tag: spin::Mutex::new(BTreeMap::new()),
             received_responses: spin::Mutex::new(Vec::new()),
@@ -201,6 +214,7 @@ impl RelmsgRaftTransport {
         {
             ipc_close(pending.call);
         }
+        self.append_in_flight.lock().remove(peer_id);
     }
 
     pub fn has_peer(&self, peer_id: &str) -> bool {
@@ -261,8 +275,7 @@ impl RelmsgRaftTransport {
         } else if !matches!(tag, TAG_APPEND_REQUEST | TAG_APPEND_RESPONSE) {
             // Preserve the order of application/control messages, but place
             // them ahead of queued, supersedable AppendEntries traffic. An
-            // append already in flight remains non-preemptible; relmsg's
-            // bounded retry lease limits that delay.
+            // append already in flight remains response-paced.
             let position = queue
                 .iter()
                 .position(|(queued_tag, _)| {
@@ -289,11 +302,30 @@ impl RelmsgRaftTransport {
                 continue;
             };
             let (tag, payload) = (*tag, payload.clone());
+            if tag == TAG_APPEND_REQUEST {
+                let now = *self.current_millis.lock();
+                let mut append_in_flight = self.append_in_flight.lock();
+                if let Some(sent_at) = append_in_flight.get(peer_id).copied() {
+                    if now.saturating_sub(sent_at) < APPEND_RESPONSE_TIMEOUT_MS {
+                        continue;
+                    }
+                    append_in_flight.remove(peer_id);
+                }
+            }
             let Some(mac) = self.peer_macs.lock().get(peer_id).copied() else {
                 continue;
             };
             let net_conn = *self.net_conn.lock();
-            let call = if net_conn != 0 {
+            let direct_raft = matches!(
+                tag,
+                TAG_VOTE_REQUEST
+                    | TAG_APPEND_REQUEST
+                    | TAG_SNAPSHOT_REQUEST
+                    | TAG_VOTE_RESPONSE
+                    | TAG_APPEND_RESPONSE
+                    | TAG_SNAPSHOT_RESPONSE
+            );
+            let call = if net_conn != 0 && direct_raft {
                 send_payload_net(
                     net_conn,
                     &self.src_mac.lock(),
@@ -309,6 +341,9 @@ impl RelmsgRaftTransport {
                 continue;
             };
             queue.remove(0);
+            if tag == TAG_APPEND_REQUEST {
+                self.append_in_flight.lock().insert(peer_id.clone(), *self.current_millis.lock());
+            }
             pending.insert(
                 peer_id.clone(),
                 PendingSend {
@@ -340,6 +375,10 @@ impl RelmsgRaftTransport {
                         let mut peer_counts = self.acknowledged_by_peer_tag.lock();
                         let count = peer_counts.entry((peer_id.clone(), send.tag)).or_default();
                         *count = count.saturating_add(1);
+                    } else if send.tag == TAG_APPEND_REQUEST {
+                        // Submission failed before the follower could return a
+                        // Raft response; permit the coalesced retry.
+                        self.append_in_flight.lock().remove(peer_id);
                     }
                     completed.push(peer_id.clone());
                 }
@@ -387,16 +426,27 @@ impl RelmsgRaftTransport {
         payload: &[u8],
     ) -> Option<InboundRpc> {
         match tag {
-            TAG_VOTE_REQUEST => decode_vote_request(payload).ok().map(InboundRpc::VoteRequest),
+            TAG_VOTE_REQUEST => {
+                let request = decode_vote_request(payload).ok()?;
+                (self.mac_for_peer(&request.candidate_id).as_ref() == Some(source_mac))
+                    .then_some(InboundRpc::VoteRequest(request))
+            }
             TAG_APPEND_REQUEST => {
-                decode_append_request(payload).ok().map(InboundRpc::AppendEntries)
+                let request = decode_append_request(payload).ok()?;
+                (self.mac_for_peer(&request.leader_id).as_ref() == Some(source_mac))
+                    .then_some(InboundRpc::AppendEntries(request))
             }
             TAG_SNAPSHOT_REQUEST => {
-                decode_snapshot_request(payload).ok().map(InboundRpc::InstallSnapshot)
+                let request = decode_snapshot_request(payload).ok()?;
+                (self.mac_for_peer(&request.leader_id).as_ref() == Some(source_mac))
+                    .then_some(InboundRpc::InstallSnapshot(request))
             }
             TAG_VOTE_RESPONSE => {
                 let response = decode_vote_response(payload).ok()?;
                 let peer_id = self.peer_id_for_mac(source_mac)?;
+                if response.peer_id != peer_id {
+                    return None;
+                }
                 self.received_responses.lock().push(RpcCompletion::Vote {
                     peer_id,
                     response,
@@ -406,6 +456,10 @@ impl RelmsgRaftTransport {
             TAG_APPEND_RESPONSE => {
                 let response = decode_append_response(payload).ok()?;
                 let peer_id = self.peer_id_for_mac(source_mac)?;
+                if response.peer_id != peer_id {
+                    return None;
+                }
+                self.append_in_flight.lock().remove(&peer_id);
                 self.received_responses.lock().push(RpcCompletion::AppendEntries {
                     peer_id,
                     response,
@@ -415,6 +469,9 @@ impl RelmsgRaftTransport {
             TAG_SNAPSHOT_RESPONSE => {
                 let response = decode_snapshot_response(payload).ok()?;
                 let peer_id = self.peer_id_for_mac(source_mac)?;
+                if response.peer_id != peer_id {
+                    return None;
+                }
                 let sent_next_offset = response.next_offset;
                 let sent_done = response.done;
                 self.received_responses.lock().push(RpcCompletion::InstallSnapshot {
@@ -468,6 +525,18 @@ impl Default for RelmsgRaftTransport {
 }
 
 impl RaftTransport for RelmsgRaftTransport {
+    fn reset(&self) {
+        self.outbound.lock().clear();
+        self.append_in_flight.lock().clear();
+        self.received_responses.lock().clear();
+        let pending = core::mem::take(&mut *self.pending_sends.lock());
+        for send in pending.into_values() {
+            if send.call != 0 {
+                ipc_close(send.call);
+            }
+        }
+    }
+
     fn set_current_millis(&self, current_millis: u64) {
         *self.current_millis.lock() = current_millis;
     }
@@ -603,5 +672,51 @@ fn send_payload(relmsg_conn: u64, mac: &[u8; 6], tag: u8, payload: &[u8]) -> Opt
         None
     } else {
         Some(call)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use alloc::string::ToString;
+
+    use catten_graft::{
+        types::VoteRequest,
+        wire::encode_vote_request,
+    };
+
+    use super::*;
+
+    #[test]
+    fn raft_request_identity_must_match_its_ethernet_source() {
+        let transport = RelmsgRaftTransport::default();
+        let peer_mac = [0x02, 0, 0, 0, 0, 2];
+        transport.add_peer("n2", peer_mac);
+        transport.add_peer("n3", [0x02, 0, 0, 0, 0, 3]);
+        let request = VoteRequest {
+            term: 4,
+            candidate_id: "n2".to_string(),
+            last_log_index: 7,
+            last_log_term: 3,
+        };
+        let payload = encode_vote_request(&request).unwrap();
+
+        assert!(matches!(
+            transport.decode_inbound_parts(&peer_mac, TAG_VOTE_REQUEST, &payload),
+            Some(InboundRpc::VoteRequest(decoded))
+                if decoded.term == request.term
+                    && decoded.candidate_id == request.candidate_id
+                    && decoded.last_log_index == request.last_log_index
+                    && decoded.last_log_term == request.last_log_term
+        ));
+        assert!(
+            transport
+                .decode_inbound_parts(&[0x02, 0, 0, 0, 0, 3], TAG_VOTE_REQUEST, &payload)
+                .is_none()
+        );
+        assert!(
+            transport
+                .decode_inbound_parts(&[0x02, 0, 0, 0, 0, 9], TAG_VOTE_REQUEST, &payload)
+                .is_none()
+        );
     }
 }

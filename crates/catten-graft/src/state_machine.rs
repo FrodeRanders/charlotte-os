@@ -14,6 +14,13 @@ pub trait StateMachine: Send + Sync {
 
     fn restore(&self, _snapshot_data: &[u8]) {}
 
+    /// Discard state belonging to a different consensus domain.
+    ///
+    /// This is distinct from restoring a snapshot: an empty byte string may
+    /// be an invalid snapshot and implementations are allowed to ignore it.
+    /// Admission calls this only after durably fencing the node as a joiner.
+    fn reset(&self);
+
     fn as_queryable(&self) -> Option<&dyn QueryableStateMachine> {
         None
     }

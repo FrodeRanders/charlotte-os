@@ -319,6 +319,18 @@ impl NameCatalog {
         self.shutdown_intents.lock().get(&node_key).cloned()
     }
 
+    /// Nodes whose signed shutdown intent has committed, paired with the
+    /// replicated intent generation. Ingress treats these members as
+    /// draining: they remain trusted/routable for existing flows but stop
+    /// receiving new ones before local service teardown begins.
+    pub fn ingress_draining_nodes(&self) -> Vec<(u64, u64)> {
+        self.shutdown_intents
+            .lock()
+            .iter()
+            .map(|(node_key, entry)| (*node_key, entry.generation))
+            .collect()
+    }
+
     /// Whether `name` is registered to this node.
     pub fn is_local(&self, name: &[u8], local_node: &[u8]) -> bool {
         self.lookup(name).is_some_and(|entry| entry.node == local_node)
@@ -1480,6 +1492,17 @@ impl StateMachine for NameCatalog {
         self.restore_bytes(snapshot_data);
     }
 
+    fn reset(&self) {
+        self.entries.lock().clear();
+        self.deployments.lock().clear();
+        self.releases.lock().clear();
+        self.operational_bindings.lock().clear();
+        self.shutdown_intents.lock().clear();
+        *self.cluster_key.lock() = None;
+        *self.cluster_key_generation.lock() = 0;
+        *self.last_apply.lock() = None;
+    }
+
     fn as_queryable(&self) -> Option<&dyn QueryableStateMachine> {
         Some(self)
     }
@@ -1977,12 +2000,14 @@ mod tests {
         );
         let next = signed_shutdown(&pair, 5, 0x1234);
         assert_eq!(i64_result(catalog.apply_with_result(1, &encode_shutdown(&next).unwrap())), 2);
+        assert_eq!(catalog.ingress_draining_nodes(), vec![(0x1234, 2)]);
 
         let query = catalog.query(&encode_shutdown_query(0x1234));
         assert_eq!(decode_shutdown_result(&query).unwrap().envelope, next);
         let restored = NameCatalog::new_with_deployment_key(key);
         restored.restore(&catalog.snapshot());
         assert_eq!(restored.shutdown_intent(0x1234), catalog.shutdown_intent(0x1234));
+        assert_eq!(restored.ingress_draining_nodes(), vec![(0x1234, 2)]);
     }
 
     #[test]
@@ -2012,6 +2037,26 @@ mod tests {
         let service_generation = u64::from_le_bytes(prepared.try_into().unwrap());
         catalog.apply(1, &encode_activate(b"dns", service_generation));
         assert_eq!(catalog.lookup(b"dns").unwrap().deployment_generation, 0);
+    }
+
+    #[test]
+    fn consensus_domain_reset_discards_the_standalone_catalog() {
+        let catalog = NameCatalog::new();
+        let prepared =
+            catalog.apply_with_result(1, &encode_register(b"dns", b"charlotte:1234abcd"));
+        let service_generation = u64::from_le_bytes(prepared.try_into().unwrap());
+        catalog.apply(1, &encode_activate(b"dns", service_generation));
+        catalog.apply(1, &encode_deploy(b"orders", 17, 0x1234_abcd, &[0x5a; 32], b"descriptor"));
+        assert!(catalog.lookup(b"dns").is_some());
+        assert!(catalog.deployment(b"orders").is_some());
+
+        catalog.reset();
+
+        assert!(catalog.lookup(b"dns").is_none());
+        assert!(catalog.deployment(b"orders").is_none());
+        assert_eq!(catalog.registered_count(), 0);
+        assert_eq!(catalog.deployment_count(), 0);
+        assert!(catalog.cluster_key().is_none());
     }
 
     #[test]

@@ -122,6 +122,9 @@ a test option. The \texttt{*-test} switches only register additional verifiers;
 # Or choose the profile, LP count, and timeout directly:
 ./scripts/run-aarch64.sh debug --smp 4 --timeout 180
 
+# Enable one operational cluster-wide TCP VIP (not a verifier):
+./scripts/run-aarch64.sh release --cluster-service 10.0.2.42:80
+
 # Apple Silicon: accelerated 15-test non-storage compatibility suite:
 ./scripts/run-aarch64.sh debug --hvf --no-network --smp 4 --timeout 180
 \end{verbatim}
