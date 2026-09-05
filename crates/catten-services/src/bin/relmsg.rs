@@ -18,12 +18,14 @@ use core::sync::atomic::{
 
 use catten_rt::{
     Context,
+    ShutdownRequest,
     config,
 };
 use catten_services::{
     net,
     ns,
     relmsg,
+    wait_for_registered_name_or_shutdown_owned,
     wait_reply,
 };
 use catten_syscall::{
@@ -461,21 +463,20 @@ fn process_frame(
     let _ = send_frame(net_conn, &ack_frame);
 }
 
-fn main(ctx: Context) -> ! {
+fn serve(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(status::STAGE, 1);
-    let ns_conn = match ctx.bootstrap_cap() {
-        Some(cap) => cap,
+    let names = match ctx.bootstrap_connection() {
+        Some(connection) => connection,
         None => unsafe { thread_exit() },
     };
+    let ns_conn = names.as_raw();
 
-    let lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, net::NAME);
-    if lookup == 0 {
-        unsafe { thread_exit() };
-    }
-    let (generation, net_conn) = unsafe { wait_reply(lookup, REPLY_SPINS) };
-    if generation < 1 || net_conn == 0 {
-        unsafe { thread_exit() };
-    }
+    let (_, net_connection) =
+        match wait_for_registered_name_or_shutdown_owned(ctx, names, net::NAME) {
+            Ok(found) => found,
+            Err(request) => return request,
+        };
+    let net_conn = net_connection.as_raw();
     let status_call = ipc_scalar_call(net_conn, net::OP_STATUS, 0);
     if status_call == 0 {
         unsafe { thread_exit() };
@@ -516,7 +517,7 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 3);
 
     let mut peers: Vec<Peer> = Vec::new();
-    let mut received = VecDeque::new();
+    let mut received: VecDeque<ReceivedMessage> = VecDeque::new();
     let mut pending_recv = 0;
     let cq = ctx.completion_queue_layout();
     let mut retransmit_timer_armed =
@@ -524,6 +525,21 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 4);
 
     loop {
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            if pending_recv != 0 {
+                ipc_reply(pending_recv, 0);
+            }
+            for message in received {
+                memory_close(message.cap);
+            }
+            for peer in peers {
+                if let Some(pending) = peer.pending {
+                    ipc_reply(pending.reply, relmsg::ERR_PEER_UNREACHABLE);
+                }
+            }
+            catten_rt::logln!("[relmsg] shutdown: pending receive and peer sessions released");
+            return request;
+        }
         // Retransmission cadence must be independent of endpoint traffic.
         // A timed CQ wait alone is insufficient: a busy peer can wake that
         // wait continuously, preventing its deadline from ever winning while
@@ -785,6 +801,10 @@ fn main(ctx: Context) -> ! {
             }
         }
     }
+}
+
+fn main(ctx: Context) -> ! {
+    serve(&ctx).complete()
 }
 
 catten_rt::entry!(main);

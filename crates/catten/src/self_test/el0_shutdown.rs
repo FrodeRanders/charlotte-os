@@ -376,8 +376,14 @@ extern "C" fn verify_el0_shutdown() {
         }
     };
     for phase in [
+        ShutdownPhase::DeploymentIngress,
+        ShutdownPhase::DeploymentControl,
+        ShutdownPhase::DeploymentAgent,
         ShutdownPhase::HttpIngress,
         ShutdownPhase::Time,
+        ShutdownPhase::ClusterCatalog,
+        ShutdownPhase::ReliableMessaging,
+        ShutdownPhase::Discovery,
         ShutdownPhase::TcpIp,
         ShutdownPhase::FrameRouter,
         ShutdownPhase::ObjectStore,

@@ -202,6 +202,10 @@ repository history remain authoritative.
         Lifecycle-aware boot-gate polling also lets HTTP, time, and TCP/IP
         acknowledge while local readiness is still pending; the coordinator
         records acknowledged, unacknowledged, and forced outcomes per phase.
+        Deployment ingress/control/agent and DNS/reliable-messaging/discovery
+        now participate in the same bounded lifecycle. The production fixture
+        requires all eleven high-level phases to acknowledge without a forced
+        or unacknowledged exit before device ownership transfers.
         A kernel-owned coordinator implements the reverse-dependency
         high-level service plan through object-store drain and transfers
         hardware-root domains exactly once to a fail-closed device-quiescence
@@ -210,8 +214,7 @@ repository history remain authoritative.
         flushes, masks interrupts, disables the controller, and
         observes \texttt{RDY=0} before the stronger acknowledgement. AHCI and
         VirtIO block flush and stop/reset their controllers; VirtIO net and
-        E1000E drain transmit descriptors and stop their DMA engines. Cooperative
-        cleanup in the remaining cluster services, independent
+        E1000E drain transmit descriptors and stop their DMA engines. Independent
         kernel verification of reset/IOMMU invalidation, a replicated shutdown
         intent, final poweroff, controller-managed instance leases,
         replica-aware rollout, and

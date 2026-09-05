@@ -152,6 +152,16 @@ therefore acknowledge a drain even when the node-ready gate never opens. The
 kernel coordinator records acknowledged, unacknowledged, and forced counts per
 phase before it reclaims each domain.
 
+The deployment plane and cluster core follow the same rule. Deployment ingress
+closes its listener; cluster control drops its endpoint and service
+connections; and the agent interrupts dependency/reconciliation waits, drains
+applications before their operational connectors, then releases its catalog
+connections. DNS stops its Raft/catalog reactor and cancels pending transport
+and catalog work. Reliable messaging rejects retained sends, completes its
+deferred receive, and releases queued message pages before discovery stops its
+probes and pending cluster-status waiters. `sleep_ms_or_shutdown` prevents a
+configured retry or reconciliation interval from becoming shutdown latency.
+
 The object-store phase is cooperative and durable. On `NodeShutdown` the
 service closes its public endpoint before doing any more work, retries the
 block-device flush until it succeeds (or the supervisor's deadline forces the
@@ -195,6 +205,5 @@ service, the high-level node-service order above, durable object-store
 shutdown, and all in-tree hardware adapters. Service-specific `OP_SHUTDOWN`
 messages remain useful for tests and targeted live upgrade, but are not the
 deployment lifecycle authority. Coordinated whole-node poweroff still needs a
-replicated drain intent, explicit cooperative cleanup in the remaining cluster
-services, independent kernel verification of device reset and IOMMU
-invalidation, and a final architecture poweroff operation.
+replicated drain intent, independent kernel verification of device reset and
+IOMMU invalidation, and a final architecture poweroff operation.

@@ -89,6 +89,11 @@ impl<W> KeyedWaitlist<W> {
     pub fn is_empty(&self) -> bool {
         self.waiters.is_empty()
     }
+
+    /// Remove every waiter, used when the owning service closes admission.
+    pub fn drain(&mut self) -> alloc::vec::Vec<W> {
+        core::mem::take(&mut self.waiters).into_values().flatten().collect()
+    }
 }
 
 impl<W> EventBroker for KeyedWaitlist<W> {

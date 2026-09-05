@@ -42,6 +42,7 @@ use catten_graft::{
 use catten_rt::{
     Context,
     ManifestValue,
+    ShutdownRequest,
     config,
     manifest_key,
     owned::ConnectionRef,
@@ -87,7 +88,7 @@ use catten_services::{
         encode_join_request,
     },
     time,
-    wait_for_local_ready,
+    wait_for_local_ready_or_shutdown,
     wait_for_registered_name_owned,
     wait_reply,
 };
@@ -557,7 +558,7 @@ fn operations_command(
     })
 }
 
-fn main(ctx: Context) -> ! {
+fn serve(ctx: &Context) -> ShutdownRequest {
     config::write_u32_release(dns::status::STAGE, 1);
     let mnemonic: Vec<u8> = match ctx.manifest_value(CLUSTER_KEY) {
         Some(ManifestValue::Bytes(raw)) if !raw.is_empty() => raw.to_vec(),
@@ -577,10 +578,11 @@ fn main(ctx: Context) -> ! {
     // flooding the serialized relmsg path on a slow emulator.
     let heartbeat_interval_ms = (election_timeout_ms / 4).clamp(25, 250);
 
-    let ns_conn = match ctx.bootstrap_cap() {
-        Some(cap) => cap,
+    let names = match ctx.bootstrap_connection() {
+        Some(connection) => connection,
         None => fatal(1),
     };
+    let ns_conn = names.as_raw();
     config::write_u32_release(dns::status::STAGE, 2);
 
     // MAC and persisted node identity.
@@ -610,8 +612,8 @@ fn main(ctx: Context) -> ! {
     config::write_u32_release(dns::status::STAGE, 3);
 
     // Wait for the boot storm to settle before joining the cluster.
-    if !wait_for_local_ready(ns_conn) {
-        fatal(7);
+    if let Err(request) = wait_for_local_ready_or_shutdown(ctx, names) {
+        return request;
     }
     config::write_u32_release(dns::status::STAGE, 4);
 
@@ -760,6 +762,23 @@ fn main(ctx: Context) -> ! {
     let mut last_heartbeat_broadcast = 0u64;
 
     loop {
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            if recv_pending != 0 {
+                ipc_close(recv_pending);
+            }
+            for reply in event_waiters.drain() {
+                ipc_reply(reply, clusterctl::ERR_NOT_LEADER);
+            }
+            catten_rt::logln!(
+                "[dns] shutdown: cancelling {} register(s), {} call(s), {} query(s), and {} local \
+                 call(s)",
+                pending_registers.len(),
+                in_flight_calls.len(),
+                pending_queries.len(),
+                pending_local_calls.len()
+            );
+            return request;
+        }
         // The detached timer owns Raft timekeeping, but inbound IPC replies
         // are not guaranteed to wake this CQ. Bound the reactor sleep to its
         // loop period so the relmsg receive queue cannot fill behind an
@@ -3173,6 +3192,10 @@ fn main(ctx: Context) -> ! {
         );
         publish_status(&node, &catalog);
     }
+}
+
+fn main(ctx: Context) -> ! {
+    serve(&ctx).complete()
 }
 
 catten_rt::entry!(main);

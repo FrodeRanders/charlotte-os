@@ -38,8 +38,11 @@ use catten_services::{
     objstore,
     s3_client::Client as S3Client,
     sleep_ms,
+    sleep_ms_or_shutdown,
     time,
     try_registered_name_bytes_owned,
+    wait_for_local_ready_or_shutdown,
+    wait_for_registered_name_or_shutdown_owned,
     wait_for_registered_name_owned,
 };
 
@@ -119,13 +122,6 @@ fn manifest_admission_trust(ctx: &Context) -> Option<charlotte_launch::trust::Ad
         Some(ManifestValue::Bytes(bytes)) => charlotte_launch::trust::AdmissionTrust::decode(bytes),
         _ => None,
     }
-}
-
-fn local_node_key(names: ConnectionRef<'_>) -> Option<u64> {
-    let connection = lookup(names, net::NAME)?;
-    let reply = connection.as_ref().call(net::OP_STATUS, 0).ok()?.wait().ok()?;
-    let (link, mac) = charlotte_protocol_net::decode_status(reply.result);
-    (link != 0).then_some(node_identity::fnv1a(&mac) & 0xffff_ffff)
 }
 
 fn deployment_names(dns_connection: ConnectionRef<'_>) -> Vec<Vec<u8>> {
@@ -625,14 +621,35 @@ fn serve(ctx: &Context) -> catten_rt::ShutdownRequest {
         Some(ManifestValue::Unsigned(ms)) => ms,
         _ => 500,
     };
-    let dns_connection = lookup(names, dns::NAME).unwrap_or_else(|| fail(STAGE_FAIL));
-    let my_node_key = local_node_key(names).unwrap_or_else(|| fail(STAGE_FAIL));
+    let (_, dns_connection) =
+        match wait_for_registered_name_or_shutdown_owned(ctx, names, dns::NAME) {
+            Ok(found) => found,
+            Err(request) => return request,
+        };
+    let (_, net_connection) =
+        match wait_for_registered_name_or_shutdown_owned(ctx, names, net::NAME) {
+            Ok(found) => found,
+            Err(request) => return request,
+        };
+    let my_node_key = net_connection
+        .as_ref()
+        .call(net::OP_STATUS, 0)
+        .ok()
+        .and_then(|call| call.wait().ok())
+        .and_then(|reply| {
+            let (link, mac) = charlotte_protocol_net::decode_status(reply.result);
+            (link != 0).then_some(node_identity::fnv1a(&mac) & 0xffff_ffff)
+        })
+        .unwrap_or_else(|| fail(STAGE_FAIL));
     config::write::<u64>(charlotte_launch::agent_status::NODE_KEY, my_node_key);
     config::write_u32_release(charlotte_launch::agent_status::STAGE, STAGE_IDENTITY);
 
     let trust = manifest_admission_trust(ctx).unwrap_or_else(|| fail(STAGE_FAIL));
     let mut active: Vec<ActiveDeployment> = Vec::new();
     let mut operational: Vec<ActiveOperational> = Vec::new();
+    if let Err(request) = wait_for_local_ready_or_shutdown(ctx, names) {
+        return request;
+    }
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
             return drain_for_node_shutdown(&mut active, &mut operational, request);
@@ -742,13 +759,14 @@ fn serve(ctx: &Context) -> catten_rt::ShutdownRequest {
         }
         let retirement_in_progress = active.iter().any(|running| running.retiring)
             || operational.iter().any(|running| running.retiring);
-        sleep_ms(
-            if retirement_in_progress {
-                poll_ms.min(RETIREMENT_POLL_MS)
-            } else {
-                poll_ms
-            },
-        );
+        let delay = if retirement_in_progress {
+            poll_ms.min(RETIREMENT_POLL_MS)
+        } else {
+            poll_ms
+        };
+        if let Err(request) = sleep_ms_or_shutdown(ctx, delay) {
+            return drain_for_node_shutdown(&mut active, &mut operational, request);
+        }
     }
 }
 

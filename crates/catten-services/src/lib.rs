@@ -1872,6 +1872,24 @@ pub fn wait_for_registered_name_owned(
     }
 }
 
+/// Resolve a service dependency while allowing node shutdown to interrupt
+/// startup before the dependency registers.
+pub fn wait_for_registered_name_or_shutdown_owned(
+    ctx: &catten_rt::Context,
+    ns_connection: catten_rt::owned::ConnectionRef<'_>,
+    name: u64,
+) -> Result<(i64, catten_rt::owned::Connection), catten_rt::ShutdownRequest> {
+    loop {
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            return Err(request);
+        }
+        if let Some(found) = try_registered_name_owned(ns_connection, name) {
+            return Ok(found);
+        }
+        sleep_ms(10);
+    }
+}
+
 /// Wait for either a short or memory-carried service name and return one
 /// uniquely owned connection. The staged name remains owned by this call
 /// until the name-service lookup terminates.
@@ -1950,14 +1968,34 @@ pub fn wait_for_local_ready_or_shutdown(
     ctx: &catten_rt::Context,
     ns_connection: catten_rt::owned::ConnectionRef<'_>,
 ) -> Result<(), catten_rt::ShutdownRequest> {
+    wait_for_registered_name_or_shutdown_owned(
+        ctx,
+        ns_connection,
+        charlotte_launch::LOCAL_READY_NAME,
+    )
+    .map(|_| ())
+}
+
+/// Sleep for at most `milliseconds`, checking the lifecycle page every 10 ms.
+///
+/// Service event loops should use this for retry and reconciliation delays so
+/// a configured interval does not silently become their minimum shutdown
+/// latency.
+pub fn sleep_ms_or_shutdown(
+    ctx: &catten_rt::Context,
+    milliseconds: u64,
+) -> Result<(), catten_rt::ShutdownRequest> {
+    let mut remaining = milliseconds;
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
             return Err(request);
         }
-        if try_registered_name_owned(ns_connection, charlotte_launch::LOCAL_READY_NAME).is_some() {
+        if remaining == 0 {
             return Ok(());
         }
-        sleep_ms(10);
+        let slice = remaining.min(10);
+        sleep_ms(slice);
+        remaining -= slice;
     }
 }
 

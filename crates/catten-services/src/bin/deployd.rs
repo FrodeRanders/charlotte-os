@@ -27,8 +27,8 @@ use catten_services::{
     clusterctl,
     sleep_ms,
     socket,
-    wait_for_local_ready_owned,
-    wait_for_registered_name_owned,
+    wait_for_local_ready_or_shutdown,
+    wait_for_registered_name_or_shutdown_owned,
 };
 use catten_syscall::thread_exit;
 
@@ -368,11 +368,17 @@ fn rollout_response(result: Result<clusterctl::RolloutStatus, i64>) -> alloc::st
 
 fn serve(ctx: &Context) -> ShutdownRequest {
     let names = ctx.bootstrap_connection().unwrap_or_else(|| fail());
-    let (_, tcp) = wait_for_registered_name_owned(names, socket::NAME).unwrap_or_else(|| fail());
+    let (_, tcp) = match wait_for_registered_name_or_shutdown_owned(ctx, names, socket::NAME) {
+        Ok(found) => found,
+        Err(request) => return request,
+    };
     let (_, controller) =
-        wait_for_registered_name_owned(names, clusterctl::NAME).unwrap_or_else(|| fail());
-    if !wait_for_local_ready_owned(names) {
-        fail();
+        match wait_for_registered_name_or_shutdown_owned(ctx, names, clusterctl::NAME) {
+            Ok(found) => found,
+            Err(request) => return request,
+        };
+    if let Err(request) = wait_for_local_ready_or_shutdown(ctx, names) {
+        return request;
     }
 
     loop {

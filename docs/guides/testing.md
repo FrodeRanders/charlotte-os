@@ -120,6 +120,10 @@ NIC connection before the VirtIO NIC is reset. It deliberately begins the
 production drain before publishing the boot-ready marker and asserts that
 HTTP, time, and TCP/IP interrupt that startup wait and acknowledge normally;
 per-phase outcome counters distinguish this from forced termination.
+The same assertion covers deployment ingress/control/agent and
+DNS/reliable-messaging/discovery, so every planned high-level production phase
+must report one acknowledged exit and no unacknowledged or forced exit before
+device ownership can transfer.
 
 The ordinary no-network AArch64 suite exercises the ownership-aware object
 store with the real NVMe service: a 12 KiB PRP-list block round trip, a 2 MiB +

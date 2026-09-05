@@ -25,9 +25,11 @@ catten_rt::entry!(main);
 use catten_rt::{
     Context,
     ManifestValue,
+    ShutdownRequest,
     config,
     owned::{
         ConnectionRef,
+        Endpoint,
         OwnedMemory,
     },
 };
@@ -39,6 +41,7 @@ use catten_services::{
     ns,
     objstore,
     raft,
+    wait_for_registered_name_or_shutdown_owned,
     wait_reply,
 };
 use catten_syscall::*;
@@ -327,42 +330,56 @@ fn read_payload(message: &catten_syscall::IpcMessage) -> Option<alloc::vec::Vec<
     Some(payload)
 }
 
-fn main(ctx: Context) -> ! {
+fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
     let trust = match ctx.manifest_value(charlotte_launch::ADMISSION_TRUST_MANIFEST_KEY) {
         Some(ManifestValue::Bytes(bytes)) => {
-            charlotte_launch::trust::AdmissionTrust::decode(bytes).unwrap_or_else(|| fail(0xdea5))
+            charlotte_launch::trust::AdmissionTrust::decode(bytes).ok_or(0xdea5u32)?
         }
-        _ => fail(0xdea5),
+        _ => return Err(0xdea5),
     };
-    let ns_connection = ctx.bootstrap_cap().unwrap_or_else(|| fail(0xdea0));
-    let obj_conn = lookup(ns_connection, objstore::NAME);
-    let dns_conn = lookup(ns_connection, dns::NAME);
-    if obj_conn == 0 || dns_conn == 0 {
-        fail(0xdea1);
+    let ns_connection = ctx.bootstrap_connection().ok_or(0xdea0u32)?;
+    let (_, obj_connection) =
+        match wait_for_registered_name_or_shutdown_owned(ctx, ns_connection, objstore::NAME) {
+            Ok(found) => found,
+            Err(request) => return Ok(request),
+        };
+    let (_, dns_connection) =
+        match wait_for_registered_name_or_shutdown_owned(ctx, ns_connection, dns::NAME) {
+            Ok(found) => found,
+            Err(request) => return Ok(request),
+        };
+    let endpoint =
+        Endpoint::create(clusterctl::INTERFACE, clusterctl::VERSION, 8).map_err(|_| 0xdea2u32)?;
+    let register = ns_connection
+        .call_connection(
+            ns::OP_REGISTER,
+            clusterctl::NAME,
+            &endpoint,
+            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
+        )
+        .map_err(|_| 0xdea3u32)?
+        .wait()
+        .map_err(|_| 0xdea3u32)?;
+    if register.result < 1 {
+        return Err(0xdea3);
     }
-    let endpoint = ipc_endpoint_create(clusterctl::INTERFACE, clusterctl::VERSION, 8);
-    if endpoint == 0 {
-        fail(0xdea2);
-    }
-    let register = ipc_scalar_call_connection(
-        ns_connection,
-        ns::OP_REGISTER,
-        clusterctl::NAME,
-        endpoint,
-        IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-    );
-    if register == 0 || unsafe { wait_reply(register, REPLY_SPINS) }.0 < 1 {
-        fail(0xdea3);
-    }
-    if ipc_endpoint_bind_cq(endpoint, 0) != 0 {
-        fail(0xdea4);
-    }
+    endpoint.bind_completion_queue(0).map_err(|_| 0xdea4u32)?;
     config::write::<u32>(status::STAGE, STAGE_SERVING);
 
+    // The request handlers below are still the protocol adapter's legacy raw
+    // reactor. These integers borrow the typed owners for this serving scope;
+    // they are never closed, transferred, or adopted.
+    let ns_connection = ns_connection.as_raw();
+    let obj_conn = obj_connection.as_raw();
+    let dns_conn = dns_connection.as_raw();
+
     loop {
-        cq_wait(1, 0);
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            return Ok(request);
+        }
+        cq_wait_timeout(1, 10, 0);
         loop {
-            let message = ipc_recv(endpoint);
+            let message = ipc_recv(endpoint.as_raw());
             if message.status == ipc_status::NO_MESSAGE {
                 break;
             }
@@ -741,6 +758,13 @@ fn main(ctx: Context) -> ! {
                 }
             }
         }
+    }
+}
+
+fn main(ctx: Context) -> ! {
+    match serve(&ctx) {
+        Ok(request) => request.complete(),
+        Err(stage) => fail(stage),
     }
 }
 

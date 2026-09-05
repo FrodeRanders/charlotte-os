@@ -34,15 +34,18 @@ use core::sync::atomic::{
 use catten_rt::{
     Context,
     ManifestValue,
+    ShutdownRequest,
     config,
 };
 use catten_services::{
+    clusterctl,
     disco,
     net,
     ns,
     raft,
-    sleep_ms,
-    wait_for_local_ready,
+    sleep_ms_or_shutdown,
+    wait_for_local_ready_or_shutdown,
+    wait_for_registered_name_or_shutdown_owned,
     wait_reply,
 };
 use catten_syscall::{
@@ -523,25 +526,21 @@ fn handle_frame(
     }
 }
 
-fn main(ctx: Context) -> ! {
+fn serve(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(status::STAGE, 1);
-    let ns_conn = match ctx.bootstrap_cap() {
-        Some(cap) => cap,
+    let names = match ctx.bootstrap_connection() {
+        Some(connection) => connection,
         None => unsafe { thread_exit() },
     };
+    let ns_conn = names.as_raw();
     config::write::<u32>(status::STAGE, 2);
 
-    let lookup = ipc_scalar_call(ns_conn, ns::OP_LOOKUP, net::NAME);
-    if lookup == 0 {
-        unsafe { thread_exit() };
-    }
-    let (generation, net_conn) = unsafe { wait_reply(lookup, 0) };
-    if generation < 1 || net_conn == 0 {
-        if net_conn != 0 {
-            ipc_close(net_conn);
-        }
-        unsafe { thread_exit() };
-    }
+    let (_, net_connection) =
+        match wait_for_registered_name_or_shutdown_owned(ctx, names, net::NAME) {
+            Ok(found) => found,
+            Err(request) => return request,
+        };
+    let net_conn = net_connection.as_raw();
 
     let status_call = ipc_scalar_call(net_conn, net::OP_STATUS, 0);
     if status_call == 0 {
@@ -620,9 +619,8 @@ fn main(ctx: Context) -> ! {
     // Wait until this node has finished booting before broadcasting, so the
     // NIC and the two-node socket transport have settled. Probes sent during
     // the boot storm are silently lost and never retried.
-    if !wait_for_local_ready(ns_conn) {
-        config::write::<u32>(status::STAGE, 0xff10);
-        unsafe { thread_exit() };
+    if let Err(request) = wait_for_local_ready_or_shutdown(ctx, names) {
+        return request;
     }
     config::write::<u32>(status::STAGE, 6);
 
@@ -631,7 +629,9 @@ fn main(ctx: Context) -> ! {
     // never starve them.
     for _ in 0..RAPID_PROBE_COUNT {
         send_probe(net_conn, local_mac, &cluster_id_raw, &node_id, own_service_name, &cluster.info);
-        sleep_ms(RAPID_PROBE_INTERVAL_MS);
+        if let Err(request) = sleep_ms_or_shutdown(ctx, RAPID_PROBE_INTERVAL_MS) {
+            return request;
+        }
     }
 
     let mut next_background_probe_ms: u64 =
@@ -642,6 +642,16 @@ fn main(ctx: Context) -> ! {
     let mut heart: u32 = 0;
 
     loop {
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            for reply in cluster_waiters {
+                ipc_reply(reply, clusterctl::ERR_NO_CLUSTER);
+            }
+            catten_rt::logln!(
+                "[disco] shutdown: released {} peer(s) and pending cluster waiters",
+                peers.len()
+            );
+            return request;
+        }
         heart = heart.wrapping_add(1);
         heartbeat(heart);
 
@@ -855,6 +865,10 @@ fn main(ctx: Context) -> ! {
         }
         publish_diag();
     }
+}
+
+fn main(ctx: Context) -> ! {
+    serve(&ctx).complete()
 }
 
 catten_rt::entry!(main);

@@ -792,6 +792,17 @@ acknowledge a node drain even if shutdown begins before local readiness is
 published. Before reclaiming a domain, the coordinator records per-phase
 counts for acknowledged, unacknowledged, and forced exits.
 
+The deployment plane and cluster core are cooperative participants rather than
+forced-retirement exceptions. Deployment ingress closes its listener, cluster
+control drops its endpoint and service connections, and the agent interrupts
+startup or reconciliation waits before draining applications and then their
+operational connectors. DNS stops the Raft/catalog reactor and cancels pending
+transport and catalog work. Reliable messaging rejects retained sends,
+completes its deferred receive, and releases queued messages before discovery
+stops probing and settles pending cluster-status waiters. Bounded
+lifecycle-aware sleeps ensure a configured retry interval does not become
+shutdown latency.
+
 The kernel's next shutdown layer transfers the published steady-state handles
 out of the launch registry and retires high-level node services in reverse
 dependency order: deployment ingress, deployment control, deployment agent;
