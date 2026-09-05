@@ -214,9 +214,11 @@ repository history remain authoritative.
         flushes, masks interrupts, disables the controller, and
         observes \texttt{RDY=0} before the stronger acknowledgement. AHCI and
         VirtIO block flush and stop/reset their controllers; VirtIO net and
-        E1000E drain transmit descriptors and stop their DMA engines. Independent
-        kernel verification of reset/IOMMU invalidation, a replicated shutdown
-        intent, final poweroff, controller-managed instance leases,
+        E1000E drain transmit descriptors and stop their DMA engines. AArch64
+        then selects the FADT-advertised SMC/HVC conduit and boot-validates a
+        terminal PSCI \texttt{SYSTEM\_OFF}; x86-64 ACPI poweroff remains open.
+        Independent kernel verification of reset/IOMMU invalidation, a
+        replicated shutdown intent, controller-managed instance leases,
         replica-aware rollout, and
         coordinated rollback remain future work.
     \item \textbf{HVF does not honor hardware ASIDs.} Apple's

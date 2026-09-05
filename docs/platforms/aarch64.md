@@ -52,6 +52,12 @@ network stack, obtains a DHCP lease, launches discovery and cluster services,
 and starts the NTP-backed time service. Pass `--no-network` only for an isolated
 boot.
 
+`./scripts/run-aarch64.sh release --shutdown-test --timeout 120` exercises the
+opposite transition: applications and services drain in reverse dependency
+order, device adapters quiesce, and the kernel selects the PSCI SMC/HVC
+conduit from the FADT before requesting `SYSTEM_OFF`. The runner requires this
+firmware transition to terminate QEMU after a successful authoritative result.
+
 The `--display` build additionally enables the `display,virtio_gpu` features
 (the flanterm framebuffer console) and boots with a ramfb display window. See
 "Display / framebuffer" below.

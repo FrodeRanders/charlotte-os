@@ -800,6 +800,7 @@ if [ -n "$TIMEOUT" ]; then
     fi
     SELFTEST_COMPLETE=0
     SELFTEST_COMPLETE_TICK=-1
+    POWER_OFF_OBSERVED=0
     # A socket-linked peer may still be applying the final Raft entry or
     # consuming the causally ordered deployment barrier when this guest
     # finishes. Under TCG, a runnable verifier can take several host seconds
@@ -829,6 +830,14 @@ if [ -n "$TIMEOUT" ]; then
         sleep 0.1
         if ! kill -0 "$QPID" 2>/dev/null; then
             wait "$QPID" 2>/dev/null || true
+            if [ "$SHUTDOWN_TEST" = "1" ] \
+                && grep -Fq "SELFTEST COMPLETE:" "$LOG" \
+                && grep -Fq "[shutdown] POWER-OFF REQUESTED via PSCI" "$LOG"; then
+                SELFTEST_COMPLETE=1
+                POWER_OFF_OBSERVED=1
+                echo ">>> Guest completed verified shutdown and powered off through PSCI."
+                break
+            fi
             echo "error: QEMU exited before the ${TIMEOUT}s test window elapsed" >&2
             if [ -f "$LOG" ]; then
                 echo ">>> Serial log (${LOG}):"
@@ -895,7 +904,8 @@ if [ -n "$TIMEOUT" ]; then
                     echo ">>> Keeping the socket-linked guest alive for a 15s peer drain window."
                 fi
             fi
-            if [ "$SCHEDULER_TRACE" = "0" ] && [ "$DEBUG_SNAPSHOT" = "0" ] \
+            if [ "$SHUTDOWN_TEST" != "1" ] \
+                && [ "$SCHEDULER_TRACE" = "0" ] && [ "$DEBUG_SNAPSHOT" = "0" ] \
                 && { [ "$KAFKA_TEST" = "0" ] || [ "$KAFKA_FENCING_TEST" = "1" ] \
                     || [ "$KAFKA_FAULT_RESTARTED" = "1" ]; } \
                 && { [ "$DEPLOYMENT_INGRESS_TEST" = "0" ] \
@@ -973,8 +983,10 @@ if [ -n "$TIMEOUT" ]; then
             echo "warning: lldb unavailable; debug snapshot not captured" >&2
         fi
     fi
-    kill "$QPID" 2>/dev/null || true
-    wait "$QPID" 2>/dev/null || true
+    if kill -0 "$QPID" 2>/dev/null; then
+        kill "$QPID" 2>/dev/null || true
+        wait "$QPID" 2>/dev/null || true
+    fi
     echo ">>> Serial log (${LOG}):"
     cat "$LOG"
     if [ "$HTTP_TEST" = "1" ] && [ "$HTTP_PROBED" = "1" ] && [ "$HTTP_PROBE_OK" = "0" ]; then
@@ -994,6 +1006,10 @@ if [ -n "$TIMEOUT" ]; then
     fi
     if [ "$SELFTEST_COMPLETE" -ne 1 ]; then
         echo "error: authoritative self-test result was not produced within ${TIMEOUT}s" >&2
+        exit 1
+    fi
+    if [ "$SHUTDOWN_TEST" = "1" ] && [ "$POWER_OFF_OBSERVED" -ne 1 ]; then
+        echo "error: shutdown test passed without a PSCI system-off transition" >&2
         exit 1
     fi
     if [ "$KAFKA_TEST" = "1" ] && [ "$KAFKA_FENCING_TEST" = "0" ] \

@@ -193,6 +193,15 @@ reset or halt their receive/transmit engines and mask interrupts. A failed
 flush or drain still attempts to stop DMA, but withholds `DEVICE_QUIESCED` and
 retains the domain rather than claiming a graceful shutdown.
 
+After successful device quiescence, AArch64 has a terminal architecture
+transition. The kernel reads the FADT Arm boot-architecture flags instead of
+assuming an emulator-specific calling convention, selects the advertised SMC
+or HVC conduit, masks local interrupts, and invokes PSCI `SYSTEM_OFF`. A return
+from that firmware call is fatal: a node that has crossed the terminal drain
+boundary must never resume scheduling. The AArch64 `--shutdown-test` requires
+QEMU itself to exit only after the authoritative successful test result and
+the PSCI request marker have reached the serial log.
+
 The lifecycle request is authenticated by memory protection: only the kernel
 can mutate the launch page. The application can acknowledge a request but
 cannot clear it, extend its deadline, or request shutdown of another domain.
@@ -204,6 +213,7 @@ agent, all agent-owned applications and operational connectors, the UTC time
 service, the high-level node-service order above, durable object-store
 shutdown, and all in-tree hardware adapters. Service-specific `OP_SHUTDOWN`
 messages remain useful for tests and targeted live upgrade, but are not the
-deployment lifecycle authority. Coordinated whole-node poweroff still needs a
-replicated drain intent, independent kernel verification of device reset and
-IOMMU invalidation, and a final architecture poweroff operation.
+deployment lifecycle authority. Coordinated whole-node shutdown still needs a
+replicated drain intent and independent kernel verification of device reset
+and IOMMU invalidation. PSCI poweroff is implemented and boot-validated on
+AArch64; x86-64 still needs its ACPI poweroff backend.

@@ -22,6 +22,13 @@ use crate::{
     },
 };
 
+/// Firmware conduit used for Arm PSCI calls.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PsciConduit {
+    Smc,
+    Hvc,
+}
+
 /// Walk the XSDT and return the physical address of the first table whose
 /// four-character signature matches `signature`.
 pub fn find_table_physical(signature: [u8; 4]) -> Option<u64> {
@@ -48,6 +55,36 @@ pub fn find_table_physical(signature: [u8; 4]) -> Option<u64> {
         }
     }
     None
+}
+
+/// Return the PSCI conduit advertised by the FADT's Arm boot architecture
+/// flags.
+///
+/// ACPI 5.1 and later place the 16-bit Arm boot architecture field at byte
+/// 129. Bit 0 states that the platform is PSCI compliant; bit 1 selects HVC
+/// instead of SMC. Reading this firmware contract matters because QEMU
+/// `virt` and server firmware such as TF-A need not expose the same conduit.
+pub fn fadt_psci_conduit() -> Option<PsciConduit> {
+    const ARM_BOOT_ARCH_OFFSET: u64 = 129;
+    const ARM_BOOT_ARCH_SIZE: u32 = 2;
+    const PSCI_COMPLIANT: u16 = 1 << 0;
+    const PSCI_USE_HVC: u16 = 1 << 1;
+
+    let fadt = find_table_physical(*b"FACP")?;
+    let header: &SdtHeader = unsafe { &*PAddr::from(fadt).into_hhdm_ptr::<SdtHeader>() };
+    if !header.validate() || header.length < ARM_BOOT_ARCH_OFFSET as u32 + ARM_BOOT_ARCH_SIZE {
+        return None;
+    }
+    let flags = unsafe {
+        (PAddr::from(fadt + ARM_BOOT_ARCH_OFFSET).into_hhdm_ptr::<u16>()).read_unaligned()
+    };
+    if flags & PSCI_COMPLIANT == 0 {
+        None
+    } else if flags & PSCI_USE_HVC != 0 {
+        Some(PsciConduit::Hvc)
+    } else {
+        Some(PsciConduit::Smc)
+    }
 }
 
 /// The UART base address published by the SPCR (Serial Port Console

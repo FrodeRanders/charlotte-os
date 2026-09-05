@@ -436,6 +436,10 @@ extern "C" fn coordinator() {
                 failed,
                 pending
             );
+            #[cfg(all(feature = "shutdown_test", target_arch = "aarch64"))]
+            if failed == 0 && passed == expected {
+                crate::cpu::isa::power::power_off();
+            }
             return;
         }
         let pending = expected & !passed;

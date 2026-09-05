@@ -11,5 +11,6 @@ pub mod interrupts;
 pub mod io;
 pub mod lp;
 pub mod memory;
+pub mod power;
 pub mod system_info;
 pub mod timers;

@@ -829,6 +829,11 @@ engines. A failed flush or drain still stops DMA where possible but withholds
 \texttt{DEVICE\_QUIESCED}. Thread death alone is never treated as evidence
 that DMA stopped.
 
+After verified device quiescence, AArch64 selects the FADT-advertised PSCI SMC
+or HVC conduit, masks interrupts, and invokes \texttt{SYSTEM\_OFF}. It must not
+return: scheduling cannot resume past terminal drain. The fixture accepts QEMU
+exit only after the authoritative success and poweroff records.
+
 \architecturewidefigure{cooperative-deployment-shutdown}
     {Bounded cooperative shutdown for deployment retirement or an enclosing
     node drain, followed by generation-safe forced retirement. The application

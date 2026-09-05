@@ -82,8 +82,7 @@ For a deterministic test that does not require networking or cluster
 formation, use:
 
 ```sh
-./scripts/run-aarch64.sh release --shutdown-test --no-network \
-    --fresh-storage --timeout 120
+./scripts/run-aarch64.sh release --shutdown-test --fresh-storage --timeout 120
 ```
 
 The isolated verifier registers both probes with the real deployment-domain
@@ -124,6 +123,13 @@ The same assertion covers deployment ingress/control/agent and
 DNS/reliable-messaging/discovery, so every planned high-level production phase
 must report one acknowledged exit and no unacknowledged or forced exit before
 device ownership can transfer.
+
+On AArch64 this fixture is also the terminal-poweroff test. After the
+authoritative success record, the kernel selects the SMC/HVC conduit from the
+ACPI FADT and invokes PSCI `SYSTEM_OFF`. The runner treats an early QEMU exit as
+an error and accepts a powered-off guest only when both records are present.
+The x86-64 switch currently validates drain and device quiescence but does not
+yet exercise an ACPI S5 transition.
 
 The ordinary no-network AArch64 suite exercises the ownership-aware object
 store with the real NVMe service: a 12 KiB PRP-list block round trip, a 2 MiB +
