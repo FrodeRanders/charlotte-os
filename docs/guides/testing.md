@@ -109,9 +109,11 @@ same lifecycle contract and are compile-checked; their shutdown paths still
 need dedicated platform fixtures for runtime fault injection.
 
 The network-enabled shutdown fixture also exercises lifecycle-aware deployment
-ingress and UTC time domains. Both are idle at the drain boundary, so the test
-proves that their bounded socket/NTP waits observe the request and release their
-owned resources without delaying the later storage and device phases.
+ingress, HTTP ingress when present, and UTC time domains. They are idle at the
+drain boundary, so the test proves that their bounded socket/NTP waits observe
+the request and release their owned resources without delaying the later
+storage and device phases. `--http-test` separately sends a real host request
+through the bounded receive path and validates the complete response.
 
 The ordinary no-network AArch64 suite exercises the ownership-aware object
 store with the real NVMe service: a 12 KiB PRP-list block round trip, a 2 MiB +

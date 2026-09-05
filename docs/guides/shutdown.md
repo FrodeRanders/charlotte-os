@@ -121,13 +121,20 @@ Every phase has its own bounded grace, capped by the enclosing node deadline.
 Dropping an unfinished coordinator requests forced termination for ordinary
 service domains, matching the owner fallback used for deployments.
 
-Deployment ingress and the UTC time service now honor this request directly.
-The ingress stops accepting sockets and cancels an idle bounded receive before
-dropping its owned listener and service connections. The time service drops
-its public endpoint and unwinds any pending NTP call, UDP socket, and
-persistence connection as one owning scope. Work already inside an admitted
-deployment request may finish within the signed grace; no new request is
-admitted after the lifecycle request is observed.
+Deployment ingress, HTTP ingress, and the UTC time service now honor this
+request directly. The two ingress services stop opening listeners and poll
+their current accept or receive operation with a bounded lifecycle check.
+Dropping their resource-owning serving scopes closes the listener and service
+connections; an HTTP request already admitted may finish within the phase
+grace. The time service drops its public endpoint and unwinds any pending NTP
+call, UDP socket, and persistence connection as one owning scope. None of the
+three begins new work after observing the lifecycle request.
+
+Bounded socket receive uses an explicit `OP_CANCEL_RECV` exchange. Merely
+closing a local pending-call capability is insufficient because tcpip retains
+the remote reply token until data arrives. The cancellation exchange releases
+that server-side slot before `receive_timeout` returns, so lifecycle polling
+cannot discard the first bytes of the next request or strand a deferred reply.
 
 The object-store phase is cooperative and durable. On `NodeShutdown` the
 service closes its public endpoint before doing any more work, retries the
@@ -166,12 +173,12 @@ cannot clear it, extend its deadline, or request shutdown of another domain.
 
 ## Scope
 
-This contract currently covers deployment ingress and the deployment agent,
-all agent-owned applications and operational connectors, the UTC time service,
-the high-level node-service order above, durable object-store shutdown, and all
-in-tree hardware adapters. Service-specific `OP_SHUTDOWN` messages remain
-useful for tests and targeted live upgrade, but are not the deployment
-lifecycle authority. Coordinated whole-node poweroff still needs a replicated
-drain intent, explicit cooperative cleanup in the remaining platform services,
-independent kernel verification of device reset and IOMMU invalidation, and a
-final architecture poweroff operation.
+This contract currently covers deployment and HTTP ingress, the deployment
+agent, all agent-owned applications and operational connectors, the UTC time
+service, the high-level node-service order above, durable object-store
+shutdown, and all in-tree hardware adapters. Service-specific `OP_SHUTDOWN`
+messages remain useful for tests and targeted live upgrade, but are not the
+deployment lifecycle authority. Coordinated whole-node poweroff still needs a
+replicated drain intent, explicit cooperative cleanup in the remaining cluster
+and transport services, independent kernel verification of device reset and
+IOMMU invalidation, and a final architecture poweroff operation.

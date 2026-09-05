@@ -776,6 +776,11 @@ pub mod socket {
     /// Reply moves a page holding the packed `TcpipStatus` snapshot
     /// (`crate::socket::STATUS_*` layout).
     pub const OP_STATUS: u32 = 10;
+    /// Cancel this socket's deferred `OP_RECV`, if any. The receive call is
+    /// completed with `ERR_WOULD_BLOCK` before this request is acknowledged,
+    /// allowing a bounded client wait to release the server-side reply slot
+    /// without closing the socket.
+    pub const OP_CANCEL_RECV: u32 = 11;
 
     /// `TcpipStatus` snapshot layout (all little-endian u32 words in a moved
     /// page). Offsets are in u32 words from the base of the reply page. Words
@@ -956,8 +961,8 @@ pub mod socket {
         }
 
         /// Poll for one receive page, returning `RetryExhausted` after a
-        /// bounded wait. Dropping the pending call cancels it; dropping or
-        /// closing this socket then releases tcpip's retained receive slot.
+        /// bounded wait. On timeout this explicitly cancels tcpip's retained
+        /// receive slot before releasing the local pending-call capability.
         pub fn receive_timeout(
             &self,
             attempts: usize,
@@ -970,7 +975,24 @@ pub mod socket {
                 }
                 super::sleep_ms(retry_ms);
             }
-            Err(SocketError::RetryExhausted)
+            let cancel =
+                self.service.call(OP_CANCEL_RECV, self.id())?.wait().map_err(SocketError::Ipc)?;
+            if cancel.result != 0 {
+                return Err(SocketError::Service(cancel.result));
+            }
+            // tcpip processes messages from this connection in order. If the
+            // reactor delivered bytes before observing the cancellation, keep
+            // them; otherwise OP_CANCEL_RECV completes this call with the
+            // distinguished timeout result.
+            let result = pending.wait().map_err(SocketError::Ipc)?;
+            if result.result == ERR_WOULD_BLOCK
+                && result.connection.is_none()
+                && result.memory.is_none()
+            {
+                Err(SocketError::RetryExhausted)
+            } else {
+                Self::decode_receive(result)
+            }
         }
 
         fn decode_receive(result: CallResult) -> Result<Option<ReceivedChunk>, SocketError> {

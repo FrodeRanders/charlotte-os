@@ -47,7 +47,13 @@ use core::fmt::Write as _;
 
 use catten_rt::{
     Context,
+    ShutdownRequest,
     config,
+    owned::{
+        Connection,
+        ConnectionRef,
+        OwnedMemory,
+    },
 };
 use catten_services::{
     disco,
@@ -58,12 +64,10 @@ use catten_services::{
     observability,
     raft,
     relmsg,
-    scalar_call_with_backpressure,
     sleep_ms,
     socket,
-    wait_for_local_ready,
-    wait_for_registered_name,
-    wait_reply,
+    wait_for_local_ready_owned,
+    wait_for_registered_name_owned,
 };
 use catten_syscall::{
     OBSERVABILITY_NONE,
@@ -71,15 +75,6 @@ use catten_syscall::{
     THREAD_STATISTICS_MAGIC,
     THREAD_STATISTICS_RECORD_U64S,
     THREAD_STATISTICS_VERSION,
-    ipc_close,
-    ipc_reply_wait_with_memory,
-    ipc_scalar_call,
-    ipc_scalar_call_move,
-    memory_alloc,
-    memory_close,
-    memory_map_any,
-    memory_size,
-    memory_unmap,
     thread_exit,
     thread_statistics_header as thread_header,
     thread_statistics_record as thread_record,
@@ -173,14 +168,14 @@ poll();setInterval(poll,5000);
 </html>
 "##;
 
-struct ServiceSet {
-    ns_conn: u64,
-    tcp_conn: u64,
-    frouter_conn: u64,
-    dns_conn: u64,
-    disco_conn: u64,
-    relmsg_conn: u64,
-    observe_conn: u64,
+struct ServiceSet<'context> {
+    ns_conn: ConnectionRef<'context>,
+    tcp_conn: Connection,
+    frouter_conn: Option<Connection>,
+    dns_conn: Option<Connection>,
+    disco_conn: Option<Connection>,
+    relmsg_conn: Option<Connection>,
+    observe_conn: Option<Connection>,
 }
 
 fn fail(code: u32) -> ! {
@@ -189,143 +184,56 @@ fn fail(code: u32) -> ! {
     unsafe { thread_exit() };
 }
 
-/// Send a payload, retrying while the tcpip service reports `ERR_WOULD_BLOCK`
-/// or accepts only part of a chunk (buffer fills as smoltcp drains it).
-fn send_all(tcp_conn: u64, sock_id: u64, data: &[u8]) -> bool {
-    let mut offset = 0usize;
-    for _ in 0..1200 {
-        if offset >= data.len() {
-            return true;
-        }
-        let chunk_len = (data.len() - offset).min(4096);
-        let cap = memory_alloc(1);
-        let (scratch_7_map_status, scratch_7_vaddr) = memory_map_any(cap, true);
-        if cap == 0 || scratch_7_map_status != 0 {
-            if cap != 0 {
-                memory_close(cap);
-            }
-            return false;
-        }
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                data.as_ptr().add(offset),
-                scratch_7_vaddr as *mut u8,
-                chunk_len,
-            );
-        }
-        memory_unmap(cap);
-        let send = ipc_scalar_call_move(
-            tcp_conn,
-            socket::OP_SEND,
-            ((chunk_len as u64) << 32) | (sock_id & 0xffff_ffff),
-            cap,
-        );
-        if send == 0 {
-            memory_close(cap);
-            return false;
-        }
-        let (sent, _) = unsafe { wait_reply(send, 0) };
-        if sent > 0 {
-            offset += sent as usize;
-        } else if sent == socket::ERR_WOULD_BLOCK || sent == 0 {
-            // Connection not established yet or transmit buffer full; retry.
-            sleep_ms(ACCEPT_POLL_MS);
-        } else {
-            return false;
-        }
-    }
-    false
-}
-
 /// Non-blocking name-service lookup; `None` if the service is not registered.
-fn try_lookup(ns_conn: u64, name: u64) -> Option<u64> {
-    let call = ipc_scalar_call(ns_conn, ns::OP_TRY_LOOKUP, name);
-    if call == 0 {
-        return None;
-    }
-    let (generation, connection) = unsafe { wait_reply(call, 0) };
-    if generation < 1 || connection == 0 {
-        None
-    } else {
-        Some(connection)
-    }
+fn try_lookup(ns_conn: ConnectionRef<'_>, name: u64) -> Option<Connection> {
+    let result = ns_conn.call(ns::OP_TRY_LOOKUP, name).ok()?.wait().ok()?;
+    (result.result >= 1).then_some(result.connection?)
 }
 
 /// Scalar status call; `None` on failure.
-fn call_scalar(conn: u64, opcode: u32, arg0: u64) -> Option<i64> {
-    let call = ipc_scalar_call(conn, opcode, arg0);
-    if call == 0 {
-        return None;
-    }
-    let (result, _) = unsafe { wait_reply(call, 0) };
-    Some(result)
+fn call_scalar(conn: ConnectionRef<'_>, opcode: u32, arg0: u64) -> Option<i64> {
+    conn.call(opcode, arg0).ok()?.wait().ok().map(|reply| reply.result)
 }
 
 /// Call `opcode` and copy `words` little-endian u32 words out of the moved
 /// reply page.
-fn read_words(conn: u64, opcode: u32, arg0: u64, words: usize) -> Option<alloc::vec::Vec<u32>> {
-    let call = ipc_scalar_call(conn, opcode, arg0);
-    if call == 0 {
+fn read_words(
+    conn: ConnectionRef<'_>,
+    opcode: u32,
+    arg0: u64,
+    words: usize,
+) -> Option<alloc::vec::Vec<u32>> {
+    let bytes = read_moved(conn, opcode, arg0, words.checked_mul(4)?)?;
+    if bytes.len() != words * 4 {
         return None;
     }
-    let (status, len, _connection, memory) = ipc_reply_wait_with_memory(call);
-    ipc_close(call);
-    if status != 0 || memory == 0 {
-        if memory != 0 {
-            memory_close(memory);
-        }
-        return None;
-    }
-    // Bound the copy by the object's real capacity, not just the sender's
-    // claimed length, and validate before mapping so a short reply never
-    // leaves a mapping behind.
-    let object_bytes = memory_size(memory).min(len as usize);
-    if object_bytes < words * 4 {
-        memory_close(memory);
-        return None;
-    }
-    let (map_status, vaddr) = memory_map_any(memory, false);
-    if map_status != 0 {
-        memory_close(memory);
-        return None;
-    }
-    let mut out = alloc::vec![0u32; words];
-    unsafe {
-        core::ptr::copy_nonoverlapping(vaddr as *const u32, out.as_mut_ptr(), words);
-    }
-    memory_unmap(memory);
-    memory_close(memory);
-    Some(out)
+    Some(bytes.as_chunks::<4>().0.iter().copied().map(u32::from_le_bytes).collect())
 }
 
 /// Call `opcode` and copy up to `max_len` raw bytes out of the moved reply
 /// page (for variable-length payloads such as peer lists and cluster status).
-fn read_moved(conn: u64, opcode: u32, arg0: u64, max_len: usize) -> Option<alloc::vec::Vec<u8>> {
-    let call = ipc_scalar_call(conn, opcode, arg0);
-    if call == 0 {
+fn read_moved(
+    conn: ConnectionRef<'_>,
+    opcode: u32,
+    arg0: u64,
+    max_len: usize,
+) -> Option<alloc::vec::Vec<u8>> {
+    let result = conn.call(opcode, arg0).ok()?.wait().ok()?;
+    if result.result < 0 {
         return None;
     }
-    let (status, len, _connection, memory) = ipc_reply_wait_with_memory(call);
-    ipc_close(call);
-    if status != 0 || memory == 0 {
-        if memory != 0 {
-            memory_close(memory);
-        }
-        return None;
-    }
-    let len = (len as usize).min(max_len).min(memory_size(memory));
-    let (map_status, vaddr) = memory_map_any(memory, false);
-    if map_status != 0 {
-        memory_close(memory);
-        return None;
-    }
-    let mut out = alloc::vec![0u8; len];
-    unsafe {
-        core::ptr::copy_nonoverlapping(vaddr as *const u8, out.as_mut_ptr(), len);
-    }
-    memory_unmap(memory);
-    memory_close(memory);
-    Some(out)
+    let memory = result.memory?;
+    let len = (result.result as usize).min(max_len).min(memory.len());
+    let mapping = memory.map_read_only().ok()?;
+    Some(mapping.as_slice()[..len].to_vec())
+}
+
+fn u32_at(bytes: &[u8], offset: usize) -> Option<u32> {
+    Some(u32::from_le_bytes(bytes.get(offset..offset + 4)?.try_into().ok()?))
+}
+
+fn u64_at(bytes: &[u8], offset: usize) -> Option<u64> {
+    Some(u64::from_le_bytes(bytes.get(offset..offset + 8)?.try_into().ok()?))
 }
 
 /// Convert a per-interval counter delta to a per-second integer rate.
@@ -391,47 +299,22 @@ struct ThreadReport {
 
 /// Fetch and parse the observe service's system-wide thread snapshot
 /// (`CCOSTAT1` wire format).
-fn thread_report(observe_conn: u64) -> Option<ThreadReport> {
-    let call = ipc_scalar_call(observe_conn, observability::OP_THREAD_SNAPSHOT, 0);
-    if call == 0 {
-        return None;
-    }
-    let (status, len, _connection, memory) = ipc_reply_wait_with_memory(call);
-    ipc_close(call);
-    if status != 0 || memory == 0 {
-        if memory != 0 {
-            memory_close(memory);
-        }
-        return None;
-    }
-    let len = len as usize;
-    let (scratch_5_map_status, scratch_5_vaddr) = memory_map_any(memory, false);
-    if scratch_5_map_status != 0 {
-        memory_close(memory);
-        return None;
-    }
+fn thread_report(observe_conn: ConnectionRef<'_>) -> Option<ThreadReport> {
     let header_words = THREAD_STATISTICS_HEADER_U64S;
     let word_bytes = core::mem::size_of::<u64>();
-    if len < header_words * word_bytes {
-        memory_unmap(memory);
-        memory_close(memory);
-        return None;
-    }
+    let max_len = (header_words + THREAD_SAMPLE_ROWS * THREAD_STATISTICS_RECORD_U64S)
+        .checked_mul(word_bytes)?;
+    let bytes = read_moved(observe_conn, observability::OP_THREAD_SNAPSHOT, 0, max_len)?;
+    let len = bytes.len();
     let mut header = [0u64; THREAD_STATISTICS_HEADER_U64S];
-    unsafe {
-        core::ptr::copy_nonoverlapping(
-            scratch_5_vaddr as *const u64,
-            header.as_mut_ptr(),
-            header_words,
-        );
+    for (slot, word) in header.iter_mut().zip(bytes.chunks_exact(word_bytes)) {
+        *slot = u64::from_le_bytes(word.try_into().ok()?);
     }
     if header[thread_header::MAGIC] != THREAD_STATISTICS_MAGIC
         || header[thread_header::VERSION] != THREAD_STATISTICS_VERSION
         || header[thread_header::RECORD_BYTES]
             != (THREAD_STATISTICS_RECORD_U64S * word_bytes) as u64
     {
-        memory_unmap(memory);
-        memory_close(memory);
         return None;
     }
     let max_by_len = (len.saturating_sub(header_words * word_bytes))
@@ -439,16 +322,10 @@ fn thread_report(observe_conn: u64) -> Option<ThreadReport> {
     let count = (header[thread_header::RECORD_COUNT] as usize).min(max_by_len);
     let mut rows = alloc::vec::Vec::with_capacity(count);
     for i in 0..count {
-        let base = scratch_5_vaddr
-            + header_words * word_bytes
-            + i * THREAD_STATISTICS_RECORD_U64S * word_bytes;
+        let base = (header_words + i * THREAD_STATISTICS_RECORD_U64S) * word_bytes;
         let mut rec: [u64; THREAD_STATISTICS_RECORD_U64S] = [0; THREAD_STATISTICS_RECORD_U64S];
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                base as *const u64,
-                rec.as_mut_ptr(),
-                THREAD_STATISTICS_RECORD_U64S,
-            );
+        for (slot, word) in rec.iter_mut().zip(bytes[base..].chunks_exact(word_bytes)) {
+            *slot = u64::from_le_bytes(word.try_into().ok()?);
         }
         rows.push(ThreadRow {
             tid: rec[thread_record::TID],
@@ -466,8 +343,6 @@ fn thread_report(observe_conn: u64) -> Option<ThreadReport> {
             saturated: rec[thread_record::SATURATED],
         });
     }
-    memory_unmap(memory);
-    memory_close(memory);
     Some(ThreadReport {
         freq_hz: header[thread_header::COUNTER_FREQUENCY_HZ],
         mono_ticks: header[thread_header::MONOTONIC_TICKS],
@@ -494,7 +369,7 @@ fn thread_state_name(state: u64) -> &'static str {
     }
 }
 
-fn render_dns(s: &mut String, dns_conn: u64) {
+fn render_dns(s: &mut String, dns_conn: ConnectionRef<'_>) {
     if let Some(result) = call_scalar(dns_conn, dns::OP_STATUS, 0) {
         let v = result as u64;
         let _ = write!(
@@ -504,82 +379,36 @@ fn render_dns(s: &mut String, dns_conn: u64) {
             (v >> 8) & 0xff_ffff
         );
         // Dump the replicated name -> node catalog.
-        let call = ipc_scalar_call(dns_conn, dns::OP_CATALOG, 0);
         let mut rendered = false;
-        if call != 0 {
-            let (status, len, _connection, memory) = ipc_reply_wait_with_memory(call);
-            ipc_close(call);
-            if status == 0 && memory != 0 {
-                let len = len as usize;
-                let (scratch_4_map_status, scratch_4_vaddr) = memory_map_any(memory, false);
-                if scratch_4_map_status == 0 {
-                    let _ = write!(s, "{{\"count\":{},\"entries\":{{", unsafe {
-                        core::ptr::read_volatile(scratch_4_vaddr as *const u32)
-                    });
-                    let mut offset = dns::CATALOG_HEADER_BYTES;
-                    let mut emitted = 0u32;
-                    let count = unsafe { core::ptr::read_volatile(scratch_4_vaddr as *const u32) };
-                    while emitted < count && offset + 2 < len.min(4096) {
-                        let name_len = unsafe {
-                            core::ptr::read_volatile((scratch_4_vaddr + offset) as *const u8)
-                        } as usize;
-                        let node_offset = offset + 1 + name_len;
-                        if node_offset + 1 > len.min(4096) {
-                            break;
-                        }
-                        let node_len = unsafe {
-                            core::ptr::read_volatile((scratch_4_vaddr + node_offset) as *const u8)
-                        } as usize;
-                        let generation_offset = node_offset + 1 + node_len;
-                        if generation_offset + 8 > len.min(4096) {
-                            break;
-                        }
-                        if emitted > 0 {
-                            s.push(',');
-                        }
-                        s.push('"');
-                        for i in 0..name_len {
-                            let byte = unsafe {
-                                core::ptr::read_volatile(
-                                    (scratch_4_vaddr + offset + 1 + i) as *const u8,
-                                )
-                            };
-                            if byte == b'"' {
-                                s.push('\\');
-                            }
-                            if byte >= 0x20 {
-                                s.push(byte as char);
-                            }
-                        }
-                        s.push_str("\":{\"node\":\"");
-                        for i in 0..node_len {
-                            let byte = unsafe {
-                                core::ptr::read_volatile(
-                                    (scratch_4_vaddr + node_offset + 1 + i) as *const u8,
-                                )
-                            };
-                            if byte == b'"' {
-                                s.push('\\');
-                            }
-                            if byte >= 0x20 {
-                                s.push(byte as char);
-                            }
-                        }
-                        let generation = unsafe {
-                            u64::from_le(core::ptr::read_unaligned(
-                                (scratch_4_vaddr + generation_offset) as *const u64,
-                            ))
-                        };
-                        let _ = write!(s, "\",\"generation\":{generation}}}");
-                        offset = generation_offset + 8;
-                        emitted += 1;
-                    }
-                    s.push_str("}}");
-                    rendered = true;
+        if let Some(bytes) = read_moved(dns_conn, dns::OP_CATALOG, 0, 4096)
+            && let Some(count) = u32_at(&bytes, 0)
+        {
+            let _ = write!(s, "{{\"count\":{},\"entries\":{{", count);
+            let mut offset = dns::CATALOG_HEADER_BYTES;
+            let mut emitted = 0u32;
+            while emitted < count && offset + 2 < bytes.len() {
+                let name_len = bytes[offset] as usize;
+                let node_offset = offset + 1 + name_len;
+                if node_offset + 1 > bytes.len() {
+                    break;
                 }
-                memory_unmap(memory);
-                memory_close(memory);
+                let node_len = bytes[node_offset] as usize;
+                let generation_offset = node_offset + 1 + node_len;
+                let Some(generation) = u64_at(&bytes, generation_offset) else {
+                    break;
+                };
+                if emitted > 0 {
+                    s.push(',');
+                }
+                push_json_string(s, &bytes[offset + 1..node_offset]);
+                s.push_str(":{\"node\":");
+                push_json_string(s, &bytes[node_offset + 1..generation_offset]);
+                let _ = write!(s, ",\"generation\":{generation}}}");
+                offset = generation_offset + 8;
+                emitted += 1;
             }
+            s.push_str("}}");
+            rendered = true;
         }
         if !rendered {
             let _ = write!(s, "{{\"count\":{},\"entries\":{{}}}}", (v >> 32) & 0xffff_ffff);
@@ -677,91 +506,53 @@ fn render_threads(s: &mut String, report: &ThreadReport) {
     s.push_str("]}");
 }
 
-fn render_ns(s: &mut String, ns_conn: u64) {
-    let call = ipc_scalar_call(ns_conn, ns::OP_STATUS, 0);
-    if call == 0 {
+fn render_ns(s: &mut String, ns_conn: ConnectionRef<'_>) {
+    let Some(bytes) = read_moved(ns_conn, ns::OP_STATUS, 0, 4096) else {
+        s.push_str("\"ns\":null");
+        return;
+    };
+    let Some(magic) = u32_at(&bytes, ns::STATUS_OFFSET_MAGIC as usize * 4) else {
+        s.push_str("\"ns\":null");
+        return;
+    };
+    let Some(registered) = u32_at(&bytes, ns::STATUS_OFFSET_REGISTERED as usize * 4) else {
+        s.push_str("\"ns\":null");
+        return;
+    };
+    let Some(pending) = u32_at(&bytes, ns::STATUS_OFFSET_PENDING as usize * 4) else {
+        s.push_str("\"ns\":null");
+        return;
+    };
+    if magic != ns::STATUS_MAGIC {
         s.push_str("\"ns\":null");
         return;
     }
-    let (status, len, _connection, memory) = ipc_reply_wait_with_memory(call);
-    ipc_close(call);
-    if status != 0 || memory == 0 {
-        if memory != 0 {
-            memory_close(memory);
+    let _ =
+        write!(s, "\"ns\":{{\"registered\":{},\"pending\":{},\"services\":[", registered, pending);
+    let mut offset = ns::STATUS_HEADER_BYTES;
+    let mut emitted = 0u32;
+    while emitted < registered && offset < bytes.len() {
+        let name_len = bytes[offset] as usize;
+        let end = offset + 1 + name_len;
+        let Some(name) = bytes.get(offset + 1..end) else {
+            break;
+        };
+        if emitted > 0 {
+            s.push(',');
         }
-        s.push_str("\"ns\":null");
-        return;
-    }
-    let len = len as usize;
-    let (scratch_3_map_status, scratch_3_vaddr) = memory_map_any(memory, false);
-    if scratch_3_map_status != 0 {
-        memory_close(memory);
-        s.push_str("\"ns\":null");
-        return;
-    }
-    unsafe {
-        let magic = core::ptr::read_volatile(
-            (scratch_3_vaddr + ns::STATUS_OFFSET_MAGIC as usize * 4) as *const u32,
-        );
-        let registered = core::ptr::read_volatile(
-            (scratch_3_vaddr + ns::STATUS_OFFSET_REGISTERED as usize * 4) as *const u32,
-        );
-        let pending = core::ptr::read_volatile(
-            (scratch_3_vaddr + ns::STATUS_OFFSET_PENDING as usize * 4) as *const u32,
-        );
-        if magic != ns::STATUS_MAGIC {
-            memory_unmap(memory);
-            memory_close(memory);
-            s.push_str("\"ns\":null");
-            return;
-        }
-        let _ = write!(
-            s,
-            "\"ns\":{{\"registered\":{},\"pending\":{},\"services\":[",
-            registered, pending
-        );
-        let mut offset = ns::STATUS_HEADER_BYTES;
-        let mut emitted = 0u32;
-        while emitted < registered && offset + 1 < len.min(4096) {
-            let name_len =
-                core::ptr::read_volatile((scratch_3_vaddr + offset) as *const u8) as usize;
-            if offset + 1 + name_len > len.min(4096) {
-                break;
-            }
-            if emitted > 0 {
-                s.push(',');
+        if name.iter().all(u8::is_ascii_graphic) {
+            push_json_string(s, name);
+        } else {
+            s.push_str("\"hex:");
+            for byte in name {
+                let _ = write!(s, "{byte:02x}");
             }
             s.push('"');
-            let printable = (0..name_len).all(|i| {
-                let byte =
-                    core::ptr::read_volatile((scratch_3_vaddr + offset + 1 + i) as *const u8);
-                byte.is_ascii_graphic()
-            });
-            if printable {
-                for i in 0..name_len {
-                    let byte =
-                        core::ptr::read_volatile((scratch_3_vaddr + offset + 1 + i) as *const u8);
-                    if byte == b'"' || byte == b'\\' {
-                        s.push('\\');
-                    }
-                    s.push(byte as char);
-                }
-            } else {
-                s.push_str("hex:");
-                for i in 0..name_len {
-                    let byte =
-                        core::ptr::read_volatile((scratch_3_vaddr + offset + 1 + i) as *const u8);
-                    let _ = write!(s, "{byte:02x}");
-                }
-            }
-            s.push('"');
-            offset += 1 + name_len;
-            emitted += 1;
         }
-        s.push_str("]}");
+        offset = end;
+        emitted += 1;
     }
-    memory_unmap(memory);
-    memory_close(memory);
+    s.push_str("]}");
 }
 
 fn disco_role_name(role: u32) -> &'static str {
@@ -775,7 +566,7 @@ fn disco_role_name(role: u32) -> &'static str {
     }
 }
 
-fn render_disco(s: &mut String, disco_conn: u64) {
+fn render_disco(s: &mut String, disco_conn: ConnectionRef<'_>) {
     let scalar = call_scalar(disco_conn, disco::OP_STATUS, 0);
     let (running, peers) = scalar.map_or((0u64, 0u64), |r| {
         let v = r as u64;
@@ -823,7 +614,7 @@ fn render_disco(s: &mut String, disco_conn: u64) {
     s.push_str("]},");
 }
 
-fn render_relmsg(s: &mut String, relmsg_conn: u64) {
+fn render_relmsg(s: &mut String, relmsg_conn: ConnectionRef<'_>) {
     if let Some(result) = call_scalar(relmsg_conn, relmsg::OP_STATUS, 0) {
         let local_mac = unpack_mac(result as u64);
         let _ = write!(
@@ -855,7 +646,7 @@ fn render_relmsg(s: &mut String, relmsg_conn: u64) {
 fn build_json(
     mac: &[u8; 6],
     link: u8,
-    services: &ServiceSet,
+    services: &ServiceSet<'_>,
     counters: &HttpCounters,
     prev: &mut Prev,
 ) -> String {
@@ -864,11 +655,7 @@ fn build_json(
     // The observe snapshot doubles as the wall-clock source: uptime, inter-
     // request interval, and per-counter rates all derive from its monotonic
     // counter and frequency.
-    let report = if services.observe_conn != 0 {
-        thread_report(services.observe_conn)
-    } else {
-        None
-    };
+    let report = services.observe_conn.as_ref().and_then(|conn| thread_report(conn.as_ref()));
     let (freq_hz, mono_ticks) = report.as_ref().map_or((0, 0), |r| (r.freq_hz, r.mono_ticks));
     let uptime_ms = mono_ticks.saturating_mul(1000).checked_div(freq_hz).unwrap_or(0);
     let interval_ms = if prev.initialized && freq_hz > 0 && mono_ticks > prev.mono_ticks {
@@ -878,7 +665,7 @@ fn build_json(
     };
 
     // node + tcpip (both mandatory at startup).
-    let status = read_words(services.tcp_conn, socket::OP_STATUS, 0, socket::STATUS_WORDS);
+    let status = read_words(services.tcp_conn.as_ref(), socket::OP_STATUS, 0, socket::STATUS_WORDS);
     let ip = status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_IP as usize]);
     let rx = status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_RX_FRAMES as usize]);
     let tx = status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_TX_SENDS as usize]);
@@ -939,8 +726,8 @@ fn build_json(
     s.push(',');
 
     // frouter counters.
-    if services.frouter_conn != 0 {
-        if let Some(w) = read_words(services.frouter_conn, frouter::OP_STATUS, 0, 7) {
+    if let Some(frouter_conn) = services.frouter_conn.as_ref() {
+        if let Some(w) = read_words(frouter_conn.as_ref(), frouter::OP_STATUS, 0, 7) {
             let frouter_rx = w[frouter::STATUS_OFFSET_RX as usize];
             let forwarded = w[frouter::STATUS_OFFSET_FORWARDED as usize];
             let rx_delta = if prev.initialized {
@@ -979,23 +766,23 @@ fn build_json(
     }
 
     // dns: Raft state/term + replicated catalog + cluster posture.
-    if services.dns_conn != 0 {
-        render_dns(&mut s, services.dns_conn);
+    if let Some(dns_conn) = services.dns_conn.as_ref() {
+        render_dns(&mut s, dns_conn.as_ref());
         s.push(',');
     } else {
         s.push_str("\"dns\":null,");
     }
 
     // disco: probe-traffic counters + live peer table.
-    if services.disco_conn != 0 {
-        render_disco(&mut s, services.disco_conn);
+    if let Some(disco_conn) = services.disco_conn.as_ref() {
+        render_disco(&mut s, disco_conn.as_ref());
     } else {
         s.push_str("\"disco\":null,");
     }
 
     // relmsg: transport counters + delivery/retransmit diagnostics.
-    if services.relmsg_conn != 0 {
-        render_relmsg(&mut s, services.relmsg_conn);
+    if let Some(relmsg_conn) = services.relmsg_conn.as_ref() {
+        render_relmsg(&mut s, relmsg_conn.as_ref());
     } else {
         s.push_str("\"relmsg\":null,");
     }
@@ -1029,38 +816,35 @@ fn build_json(
     s
 }
 
-fn main(ctx: Context) -> ! {
+fn serve(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(status::STAGE, 1);
-    let ns_conn = match ctx.bootstrap_cap() {
-        Some(cap) => cap,
-        None => unsafe { thread_exit() },
-    };
+    let ns_conn = ctx.bootstrap_connection().unwrap_or_else(|| fail(0xe001));
     let (_, net_conn) =
-        wait_for_registered_name(ns_conn, net::NAME).unwrap_or_else(|| unsafe { thread_exit() });
+        wait_for_registered_name_owned(ns_conn, net::NAME).unwrap_or_else(|| fail(0xe002));
     config::write::<u32>(status::STAGE, 2);
 
-    let status = scalar_call_with_backpressure(net_conn, net::OP_STATUS, 0);
-    let (status, _) = unsafe { wait_reply(status, 0) };
+    let status = call_scalar(net_conn.as_ref(), net::OP_STATUS, 0).unwrap_or_else(|| fail(0xe002));
     let (link, mac) = decode_status(status);
+    drop(net_conn);
     config::write::<u32>(status::STAGE, 3);
 
     let (_, tcp_conn) =
-        wait_for_registered_name(ns_conn, socket::NAME).unwrap_or_else(|| fail(0xe003));
+        wait_for_registered_name_owned(ns_conn, socket::NAME).unwrap_or_else(|| fail(0xe003));
     config::write::<u32>(status::STAGE, 4);
 
     // Optional report sources; absent services render as null.
     let services = ServiceSet {
         ns_conn,
         tcp_conn,
-        frouter_conn: try_lookup(ns_conn, frouter::NAME).unwrap_or(0),
-        dns_conn: try_lookup(ns_conn, dns::NAME).unwrap_or(0),
-        disco_conn: try_lookup(ns_conn, disco::NAME).unwrap_or(0),
-        relmsg_conn: try_lookup(ns_conn, relmsg::NAME).unwrap_or(0),
-        observe_conn: try_lookup(ns_conn, observability::NAME).unwrap_or(0),
+        frouter_conn: try_lookup(ns_conn, frouter::NAME),
+        dns_conn: try_lookup(ns_conn, dns::NAME),
+        disco_conn: try_lookup(ns_conn, disco::NAME),
+        relmsg_conn: try_lookup(ns_conn, relmsg::NAME),
+        observe_conn: try_lookup(ns_conn, observability::NAME),
     };
     config::write::<u32>(status::STAGE, 5);
 
-    if !wait_for_local_ready(ns_conn) {
+    if !wait_for_local_ready_owned(ns_conn) {
         fail(0xe004);
     }
     config::write::<u32>(status::STAGE, 6);
@@ -1081,44 +865,40 @@ fn main(ctx: Context) -> ! {
         forwarded: 0,
     };
     loop {
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            return request;
+        }
         // Fresh socket + listener per connection (smoltcp's listening socket
         // becomes the established connection, then returns to Closed).
-        let sock_call = ipc_scalar_call(tcp_conn, socket::OP_SOCKET, socket::DOMAIN_TCP);
-        if sock_call == 0 {
-            fail(0xe005);
-        }
-        let (sock_id, _) = unsafe { wait_reply(sock_call, 0) };
-        if sock_id < 1 {
-            fail(0xe006);
-        }
-        let port_cap = memory_alloc(1);
-        let (scratch_2_map_status, scratch_2_vaddr) = memory_map_any(port_cap, true);
-        if port_cap == 0 || scratch_2_map_status != 0 {
-            if port_cap != 0 {
-                memory_close(port_cap);
-            }
-            fail(0xe007);
-        }
-        unsafe { core::ptr::write_unaligned(scratch_2_vaddr as *mut u16, HTTP_PORT.to_le()) }
-        memory_unmap(port_cap);
-        let listen = ipc_scalar_call_move(tcp_conn, socket::OP_LISTEN, sock_id as u64, port_cap);
-        if listen == 0 {
-            memory_close(port_cap);
-            fail(0xe008);
-        }
-        let (result, _) = unsafe { wait_reply(listen, 0) };
-        if result != 0 {
+        let socket = socket::OwnedSocket::open(services.tcp_conn.as_ref(), socket::DOMAIN_TCP)
+            .unwrap_or_else(|_| fail(0xe005));
+        let port = OwnedMemory::allocate(1).unwrap_or_else(|_| fail(0xe007));
+        let mut mapping = port.map_writable().unwrap_or_else(|_| fail(0xe007));
+        mapping.as_mut_slice()[..2].copy_from_slice(&HTTP_PORT.to_le_bytes());
+        let port = mapping.unmap().unwrap_or_else(|_| fail(0xe007));
+        let listen = services
+            .tcp_conn
+            .as_ref()
+            .call_move(socket::OP_LISTEN, socket.id(), port)
+            .unwrap_or_else(|_| fail(0xe008))
+            .wait()
+            .unwrap_or_else(|_| fail(0xe008));
+        if listen.result != 0 {
             fail(0xe009);
         }
 
         // Poll for a connection indefinitely: this is a long-lived keyhole
         // server, so an idle listener must stay alive rather than abort.
         loop {
-            let accept = ipc_scalar_call(tcp_conn, socket::OP_ACCEPT, sock_id as u64);
-            if accept == 0 {
-                fail(0xe00a);
+            if let Some(request) = ctx.lifecycle().shutdown_requested() {
+                return request;
             }
-            let (result, _) = unsafe { wait_reply(accept, 0) };
+            let result = socket
+                .call(socket::OP_ACCEPT, socket.id())
+                .unwrap_or_else(|_| fail(0xe00a))
+                .wait()
+                .unwrap_or_else(|_| fail(0xe00a))
+                .result;
             if result == 0 {
                 break;
             }
@@ -1130,30 +910,22 @@ fn main(ctx: Context) -> ! {
 
         // Read whatever request arrived (the response is hardcoded state, so
         // even a partial request is fine).
-        let recv = ipc_scalar_call(tcp_conn, socket::OP_RECV, sock_id as u64);
-        if recv == 0 {
-            fail(0xe00d);
-        }
-        let (status, len, _connection, memory) = ipc_reply_wait_with_memory(recv);
-        ipc_close(recv);
-        if status != 0 || memory == 0 {
-            if memory != 0 {
-                memory_close(memory);
+        let chunk = loop {
+            if let Some(request) = ctx.lifecycle().shutdown_requested() {
+                return request;
             }
-            fail(0xe00e);
-        }
-        let (scratch_map_status, scratch_vaddr) = memory_map_any(memory, false);
-        if scratch_map_status != 0 {
-            memory_close(memory);
-            fail(0xe00f);
-        }
-        let req_len = (len as usize).min(512);
+            match socket.receive_timeout(1, ACCEPT_POLL_MS) {
+                Ok(Some(chunk)) => break chunk,
+                Ok(None) => fail(0xe00e),
+                Err(socket::SocketError::RetryExhausted) => continue,
+                Err(_) => fail(0xe00d),
+            }
+        };
+        let (memory, len) = chunk.into_parts();
+        let mapping = memory.map_read_only().unwrap_or_else(|_| fail(0xe00f));
+        let req_len = len.min(512);
         let mut req = [0u8; 512];
-        unsafe {
-            core::ptr::copy_nonoverlapping(scratch_vaddr as *const u8, req.as_mut_ptr(), req_len);
-        }
-        memory_unmap(memory);
-        memory_close(memory);
+        req[..req_len].copy_from_slice(&mapping.as_slice()[..req_len]);
 
         // Route on the request target: HTML dashboard at `/`, JSON at
         // `/metrics` (alias `/metric`), 404 otherwise. Account for the request
@@ -1184,19 +956,20 @@ fn main(ctx: Context) -> ! {
         let _ = write!(response, "{}", body.len());
         response.push_str("\r\nConnection: close\r\n\r\n");
         response.push_str(&body);
-        if !send_all(tcp_conn, sock_id as u64, response.as_bytes()) {
+        if socket.send_all(response.as_bytes(), 1200, ACCEPT_POLL_MS).is_err() {
             fail(0xe010);
         }
         counters.bytes_sent = counters.bytes_sent.wrapping_add(response.len() as u64);
 
-        let close = ipc_scalar_call(tcp_conn, socket::OP_CLOSE, sock_id as u64);
-        if close != 0 {
-            let _ = unsafe { wait_reply(close, 0) };
-        }
+        let _ = socket.close();
 
         config::write::<u32>(status::REQUESTS, counters.requests);
         config::write::<u32>(status::STAGE, SENTINEL);
     }
+}
+
+fn main(ctx: Context) -> ! {
+    serve(&ctx).complete()
 }
 
 catten_rt::entry!(main);

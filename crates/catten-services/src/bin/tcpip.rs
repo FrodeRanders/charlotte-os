@@ -765,6 +765,20 @@ fn main(ctx: Context) -> ! {
                     }
                 }
 
+                socket::OP_CANCEL_RECV => {
+                    let entry = match state.sockets.get_mut(&msg.arg0) {
+                        Some(entry) => entry,
+                        None => {
+                            ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
+                            continue;
+                        }
+                    };
+                    if let Some(token) = entry.recv_pending.take() {
+                        ipc_reply(token, socket::ERR_WOULD_BLOCK);
+                    }
+                    ipc_reply(msg.reply, 0);
+                }
+
                 socket::OP_CLOSE => {
                     // Graceful close: transition to FIN-WAIT so queued
                     // transmit data (e.g. an httpd response) drains before the

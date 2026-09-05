@@ -765,13 +765,17 @@ so an application retains Kafka/S3 authority while it finishes or aborts
 external work. The agent acknowledges and exits only after both child sets are
 empty.
 
-Deployment ingress and the UTC time service also implement the cooperative
-path. Ingress stops accepting connections, cancels an idle bounded receive,
-and drops its owned listener and service connections. Time closes its public
-endpoint and unwinds any pending NTP call, UDP socket, and persistence
-connection as one owning scope. Already admitted deployment work may finish
-inside the signed grace, but neither service begins new work after observing
-the lifecycle request.
+Deployment ingress, HTTP ingress, and the UTC time service also implement the
+cooperative path. The ingress services stop opening listeners and poll their
+current accept or receive operation with a bounded lifecycle check before
+dropping their owned listener and service connections. A receive timeout uses
+an explicit cancellation exchange with TCP/IP: closing only the local call
+capability would leave the server's deferred reply slot occupied and could
+discard the first bytes that arrive later. Time closes its public endpoint and
+unwinds any pending NTP call, UDP socket, and persistence connection as one
+owning scope. Already admitted ingress work may finish inside the signed grace,
+but none of these services begins new work after observing the lifecycle
+request.
 
 The kernel's next shutdown layer transfers the published steady-state handles
 out of the launch registry and retires high-level node services in reverse
