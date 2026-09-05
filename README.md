@@ -103,8 +103,11 @@ The main additions and extensions currently maintained here are:
   `*-test` options only add verifiers; use `--no-network` for an intentionally
   isolated boot.
 - **Cluster-wide TCP ingress without a TCP proxy:** a launch-authorized
-  `VIP:port` can be accepted by every admitted backend while one Raft-derived
-  participant advertises it. The frame router applies deterministic
+  `VIP:port` gives clients a stable cluster-level service address: they need
+  not know which node currently runs a particular connection or which node
+  admits the first packet. Nodes retain their own addresses for deliberately
+  node-specific client/server traffic, while the VIP makes the cluster itself
+  the externally addressed computer. The frame router applies deterministic
   five-tuple rendezvous placement and moves remote frames in a compact one-hop
   Ethernet envelope that preserves the original IP/TCP packet; the backend's
   `smoltcp` instance owns the connection and replies directly. Bounded

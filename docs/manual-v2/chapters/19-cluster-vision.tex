@@ -12,14 +12,15 @@ not long-lived machines whose local software configuration is operationally
 interesting.
 
 This is an architectural vision, but we are taking steps in this direction.
-What we can demonstrate now is a two-node QEMU cluster with
-replicated naming and deployment state, signed ELF artifacts, per-node NVMe
-object stores, deployment agents, remote invocation, and a demonstrated
-stateless assignment handoff. Discovery-bridged admission has also been
-demonstrated for a generic Raft group, but the production DNS voter set is
-still launched statically. Automatic placement, shared artifact storage,
-replica-aware routing, stateful cross-node migration, and a production
-administration plane remain future work.
+What we can demonstrate now includes a three-node QEMU cluster with
+discovery-bridged Raft admission, joint-consensus membership, and a cluster TCP
+VIP whose connections are distributed without terminating TCP at the ingress
+node. Replicated naming and deployment state, signed ELF artifacts, per-node
+NVMe object stores, deployment agents, remote invocation, and a stateless
+assignment handoff are also implemented. Automatic capacity-aware placement,
+service-specific routing derived from replica readiness, shared artifact
+storage, stateful cross-node migration, and a production administration plane
+remain future work.
 
 The purpose of this chapter is therefore twofold. It first states the
 cluster-level model CharlotteOS is trying to reach. It then uses Linux
@@ -50,6 +51,14 @@ fails, the operator should replace the resource and let the cluster
 reconstruct the intended placement. If a workload moves, clients should
 continue to address its cluster name rather than learn the identity of its
 new host.
+
+That indirection now has an external TCP counterpart. A node address remains
+available when a protocol intentionally targets one machine, but a cluster
+service VIP lets a client address functionality placed somewhere in Charlotte.
+Direct Server Return distributes load, yet its deeper role here is to hide the
+ingress and execution nodes behind a stable cluster network identity. The
+implemented data path and its current placement-policy boundary are described
+in \autoref{sec:distributed-l2-ingress}.
 
 This makes individual nodes deliberately uninteresting. They still have
 identities where consensus membership, failure detection, routing, and

@@ -231,7 +231,22 @@ services.
 \label{sec:distributed-l2-ingress}
 
 Charlotte can expose one launch-authorized IPv4 TCP service as a cluster
-\texttt{VIP:port}. This is not a TCP proxy. The frame router that receives an
+\texttt{VIP:port}. Charlotte therefore supports two complementary addressing
+modes. A node's DHCP or static address names that particular machine and is
+appropriate for intentionally node-specific client/server traffic. The VIP
+names a service in the cluster: an external client need not know which node
+admits the packet or owns the connection, and those roles can change without
+changing the client's service address.
+
+Direct Server Return is often introduced as a load-balancing technique, and
+Charlotte does distribute five-tuples across eligible execution nodes. Here it
+also provides a cluster facade. The stable external identity belongs to the
+cluster service, while individual node addresses and MAC routes remain
+internal placement and delivery mechanisms. In that sense the VIP is another
+step toward treating the cluster, rather than a selected server, as the
+computer.
+
+This is not a TCP proxy. The frame router that receives an
 external frame parses its five-tuple and uses deterministic rendezvous hashing
 to select an execution node. A local winner follows the ordinary
 \texttt{OP\_FRAME} path into smoltcp. For a remote winner, the router changes
@@ -273,6 +288,13 @@ IPv6 neighbour discovery, a service-only drain operation, automatic failed-membe
 removal, multiple service-specific placement sets, and transparent TCP-state migration are future work. The
 precise bounds, failure semantics, and status fields are documented in
 \repofile|docs/architecture/distributed-l2-ingress.md|.
+
+The current slice supplies one service declaration as trusted launch policy
+and initially treats admitted eligible members as its backend set. It does not
+yet derive service-specific eligibility from committed application placement
+and readiness. Connecting those two control-plane records is the next step
+toward making arbitrarily placed services reachable through cluster identities
+without exposing their host nodes.
 
 Operational Vote, AppendEntries, and InstallSnapshot RPCs use private
 EtherType \texttt{0x88b7}, while admission and DNS application/control traffic

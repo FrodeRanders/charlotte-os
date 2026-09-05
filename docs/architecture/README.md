@@ -19,7 +19,8 @@ logic, and external managed infrastructure at explicit boundaries.
   objects, completion queues, isolated services, and shard-local execution.
 - [Networking](networking.md) — native message-oriented distributed services,
   transport layering, discovery, and compatibility networking.
-- [Distributed L2 ingress](distributed-l2-ingress.md) — one cluster TCP VIP,
+- [Distributed L2 ingress](distributed-l2-ingress.md) — a cluster-level TCP
+  service identity hiding movable node execution behind one VIP, with
   Raft-derived backend eligibility, rendezvous flow placement, direct server
   return, membership epochs, and bounded failure semantics.
 - [Async syscall ABI](async-syscall-abi.md) — the evolution of the completion

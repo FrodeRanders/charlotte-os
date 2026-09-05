@@ -13,6 +13,29 @@ client -> VIP advertiser/frouter -- one-hop L2 envelope --> backend tcpip
 client <----------------------- direct VIP reply -------- backend tcpip
 ```
 
+## A cluster facade, not only a load balancer
+
+Charlotte supports two complementary network identities. A node's DHCP or
+static address deliberately identifies that node and remains useful for
+node-specific client/server protocols, diagnostics, and infrastructure
+integration. A cluster service VIP instead identifies a service placed within
+Charlotte without revealing which node admits a packet or owns the resulting
+connection.
+
+Direct Server Return is commonly described as a load-balancing technique, and
+this implementation does distribute five-tuples across eligible nodes. Its
+more important architectural effect for Charlotte is indirection: the external
+contract is `VIP:port`, while ingress ownership and execution placement may
+move independently behind it. Individual node addresses remain mechanisms of
+the cluster, not part of the cluster-addressed application's public identity.
+
+The first implementation stops short of making this indirection completely
+placement-aware. One service declaration is supplied as trusted launch policy,
+and admitted eligible members form its backend set. A future cluster controller
+must derive a service-specific eligible set from committed application
+placement and readiness, so a VIP follows the actual replicas of an arbitrary
+deployed service rather than all admitted members.
+
 ## Identities and authority
 
 The service identity is IPv4 address, IP protocol and port. The ingress
