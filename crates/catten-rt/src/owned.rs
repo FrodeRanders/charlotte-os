@@ -1019,6 +1019,13 @@ impl Endpoint {
         self.cap.expect("endpoint capability already consumed")
     }
 
+    /// Temporarily expose the handle for a low-level service reactor that
+    /// adopts every received attachment itself. The returned integer is a
+    /// borrow: it must never be closed, transferred, or adopted.
+    pub const fn as_raw(&self) -> u64 {
+        self.cap.expect("endpoint capability already consumed")
+    }
+
     /// Receive one queued request without blocking.
     ///
     /// Every capability attached to a successful message is immediately

@@ -66,7 +66,7 @@ use catten_services::{
     relmsg,
     sleep_ms,
     socket,
-    wait_for_local_ready_owned,
+    wait_for_local_ready_or_shutdown,
     wait_for_registered_name_owned,
 };
 use catten_syscall::{
@@ -844,8 +844,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     };
     config::write::<u32>(status::STAGE, 5);
 
-    if !wait_for_local_ready_owned(ns_conn) {
-        fail(0xe004);
+    if let Err(request) = wait_for_local_ready_or_shutdown(ctx, ns_conn) {
+        return request;
     }
     config::write::<u32>(status::STAGE, 6);
 

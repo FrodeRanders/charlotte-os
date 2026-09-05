@@ -136,6 +136,22 @@ the remote reply token until data arrives. The cancellation exchange releases
 that server-side slot before `receive_timeout` returns, so lifecycle polling
 cannot discard the first bytes of the next request or strand a deferred reply.
 
+The transport phase is cooperative as well. TCP/IP runs only after all socket
+consumers have drained; it closes admission, completes retained receive calls,
+stops any residual protocol sockets, and drops its endpoint and owned NIC
+connection. The frame router then drops one owning scope containing its
+single NIC receive call, deferred name lookups, routed service connections,
+and in-flight moved-frame calls. Only after both domains exit can the node
+coordinator transfer the NIC driver to device quiescence.
+
+Startup is part of the same lifecycle. A long-lived service must not use an
+unbounded dependency lookup before it starts polling `Context::lifecycle()`.
+`catten_services::wait_for_local_ready_or_shutdown` performs bounded,
+non-blocking name lookups with owned timer waits; HTTP, time, and TCP/IP can
+therefore acknowledge a drain even when the node-ready gate never opens. The
+kernel coordinator records acknowledged, unacknowledged, and forced counts per
+phase before it reclaims each domain.
+
 The object-store phase is cooperative and durable. On `NodeShutdown` the
 service closes its public endpoint before doing any more work, retries the
 block-device flush until it succeeds (or the supervisor's deadline forces the
@@ -180,5 +196,5 @@ shutdown, and all in-tree hardware adapters. Service-specific `OP_SHUTDOWN`
 messages remain useful for tests and targeted live upgrade, but are not the
 deployment lifecycle authority. Coordinated whole-node poweroff still needs a
 replicated drain intent, explicit cooperative cleanup in the remaining cluster
-and transport services, independent kernel verification of device reset and
-IOMMU invalidation, and a final architecture poweroff operation.
+services, independent kernel verification of device reset and IOMMU
+invalidation, and a final architecture poweroff operation.

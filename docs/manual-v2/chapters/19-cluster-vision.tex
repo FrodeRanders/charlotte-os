@@ -777,6 +777,21 @@ owning scope. Already admitted ingress work may finish inside the signed grace,
 but none of these services begins new work after observing the lifecycle
 request.
 
+The transport phase is cooperative too. TCP/IP runs after every socket
+consumer has drained; it closes admission, completes retained receive calls,
+stops residual protocol sockets, and releases its endpoint and owned NIC
+connection. The frame router then drops one owning scope containing the single
+NIC receive, deferred name lookups, routed service connections, and in-flight
+moved-frame calls. The NIC driver cannot transfer to device quiescence until
+both transport domains have exited.
+
+Startup gates obey the same lifecycle contract. Long-lived services poll the
+node-ready name through bounded non-blocking lookups, checking the authenticated
+lifecycle page between attempts. HTTP, time, and TCP/IP can consequently
+acknowledge a node drain even if shutdown begins before local readiness is
+published. Before reclaiming a domain, the coordinator records per-phase
+counts for acknowledged, unacknowledged, and forced exits.
+
 The kernel's next shutdown layer transfers the published steady-state handles
 out of the launch registry and retires high-level node services in reverse
 dependency order: deployment ingress, deployment control, deployment agent;

@@ -32,7 +32,7 @@ use catten_services::{
     observability,
     socket,
     time,
-    wait_for_local_ready_owned,
+    wait_for_local_ready_or_shutdown,
     wait_for_registered_name_owned,
 };
 use catten_syscall::{
@@ -699,11 +699,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
     // Avoid firing the first packet into the boot storm. Failure still leaves
     // the 'time' endpoint available in unsynchronized/holdover state.
-    let network_ready = wait_for_local_ready_owned(ns_conn);
-    let mut next_sync_ticks = initial_mono.ticks;
-    if !network_ready {
-        next_sync_ticks = ticks_after(initial_mono, RETRY_INTERVAL_SECONDS);
+    if let Err(request) = wait_for_local_ready_or_shutdown(ctx, ns_conn) {
+        return request;
     }
+    let mut next_sync_ticks = initial_mono.ticks;
     let mut attempt: Option<Attempt> = None;
     let mut ntp_failures: u32 = 0;
     let cq = ctx.completion_queue_layout();

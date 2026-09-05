@@ -42,6 +42,7 @@ pub enum BeginNodeShutdownError {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
 pub enum ShutdownPhase {
     DeploymentIngress,
     DeploymentControl,
@@ -54,6 +55,20 @@ pub enum ShutdownPhase {
     TcpIp,
     FrameRouter,
     ObjectStore,
+}
+
+const SHUTDOWN_PHASE_COUNT: usize = ShutdownPhase::ObjectStore as usize + 1;
+
+/// How domains in one reverse-dependency phase actually retired.
+///
+/// An acknowledged retirement published `STATUS_READY` and exited before the
+/// coordinator had to cross the phase deadline. A forced retirement required
+/// the kernel to abort the domain's threads.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ShutdownPhaseOutcome {
+    pub acknowledged: usize,
+    pub unacknowledged: usize,
+    pub forced: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -141,6 +156,7 @@ pub struct NodeShutdownCoordinator {
     phases: Vec<ShutdownPhaseSpec>,
     device_domains: Vec<DeviceShutdownDomain>,
     device_domains_transferred: bool,
+    phase_outcomes: [ShutdownPhaseOutcome; SHUTDOWN_PHASE_COUNT],
 }
 
 impl NodeShutdownCoordinator {
@@ -156,6 +172,7 @@ impl NodeShutdownCoordinator {
             phases,
             device_domains,
             device_domains_transferred: false,
+            phase_outcomes: [ShutdownPhaseOutcome::default(); SHUTDOWN_PHASE_COUNT],
         }
     }
 
@@ -237,6 +254,25 @@ impl NodeShutdownCoordinator {
                 let retirement = &mut current.domains[index];
                 if supervisor::domain_exited(&retirement.domain) {
                     let retirement = current.domains.swap_remove(index);
+                    let lifecycle_status =
+                        bootstrap::lifecycle_status(retirement.domain.status_frame);
+                    let outcome = &mut self.phase_outcomes[current.phase as usize];
+                    if retirement.force_requested {
+                        outcome.forced += 1;
+                    } else if lifecycle_status == charlotte_launch::lifecycle::STATUS_READY {
+                        outcome.acknowledged += 1;
+                    } else {
+                        outcome.unacknowledged += 1;
+                    }
+                    crate::logln!(
+                        "[shutdown] {:?}: acknowledged={} unacknowledged={} forced={} \
+                         lifecycle_status={}",
+                        current.phase,
+                        outcome.acknowledged,
+                        outcome.unacknowledged,
+                        outcome.forced,
+                        lifecycle_status
+                    );
                     supervisor::teardown_domain(retirement.domain);
                     continue;
                 }
@@ -281,6 +317,11 @@ impl NodeShutdownCoordinator {
         }
         self.device_domains_transferred = true;
         Some(core::mem::take(&mut self.device_domains))
+    }
+
+    /// Return the observed retirement outcomes for one phase.
+    pub fn phase_outcome(&self, phase: ShutdownPhase) -> ShutdownPhaseOutcome {
+        self.phase_outcomes[phase as usize]
     }
 }
 
@@ -411,6 +452,12 @@ pub fn begin_node_shutdown(
 
 pub fn poll_node_shutdown() -> Option<NodeShutdownProgress> {
     NODE_SHUTDOWN_COORDINATOR.lock().as_mut().map(NodeShutdownCoordinator::poll)
+}
+
+/// Inspect how a production shutdown phase retired without taking ownership
+/// away from the global coordinator.
+pub fn node_shutdown_phase_outcome(phase: ShutdownPhase) -> Option<ShutdownPhaseOutcome> {
+    NODE_SHUTDOWN_COORDINATOR.lock().as_ref().map(|coordinator| coordinator.phase_outcome(phase))
 }
 
 /// Transfer the hardware-root domains to the device shutdown layer only once

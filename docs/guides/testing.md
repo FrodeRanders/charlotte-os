@@ -114,6 +114,12 @@ drain boundary, so the test proves that their bounded socket/NTP waits observe
 the request and release their owned resources without delaying the later
 storage and device phases. `--http-test` separately sends a real host request
 through the bounded receive path and validates the complete response.
+The shutdown fixture also requires TCP/IP and the frame router to release
+their protocol sockets, deferred reply tokens, pending frame transfers, and
+NIC connection before the VirtIO NIC is reset. It deliberately begins the
+production drain before publishing the boot-ready marker and asserts that
+HTTP, time, and TCP/IP interrupt that startup wait and acknowledge normally;
+per-phase outcome counters distinguish this from forced termination.
 
 The ordinary no-network AArch64 suite exercises the ownership-aware object
 store with the real NVMe service: a 12 KiB PRP-list block round trip, a 2 MiB +

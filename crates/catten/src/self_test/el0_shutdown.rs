@@ -24,6 +24,7 @@ use crate::{
             ShutdownPhaseSpec,
             begin_device_shutdown,
             begin_node_shutdown,
+            node_shutdown_phase_outcome,
             poll_node_shutdown,
         },
         supervisor::{
@@ -314,6 +315,12 @@ extern "C" fn verify_el0_shutdown() {
             device_domains: 1,
         }
     );
+    for phase in [ShutdownPhase::HttpIngress, ShutdownPhase::Time, ShutdownPhase::ObjectStore] {
+        let outcome = coordinator.phase_outcome(phase);
+        assert_eq!(outcome.acknowledged, 1, "cooperative phase did not acknowledge cleanup");
+        assert_eq!(outcome.unacknowledged, 0, "cooperative phase exited without acknowledgement");
+        assert_eq!(outcome.forced, 0, "cooperative phase was forcibly terminated");
+    }
     let domains = coordinator
         .take_device_domains()
         .expect("device domains were not exposed after service drain completed");
@@ -368,6 +375,25 @@ extern "C" fn verify_el0_shutdown() {
             }
         }
     };
+    for phase in [
+        ShutdownPhase::HttpIngress,
+        ShutdownPhase::Time,
+        ShutdownPhase::TcpIp,
+        ShutdownPhase::FrameRouter,
+        ShutdownPhase::ObjectStore,
+    ] {
+        let outcome = node_shutdown_phase_outcome(phase)
+            .expect("production node shutdown outcomes disappeared");
+        assert_eq!(
+            outcome.acknowledged, 1,
+            "production cooperative phase did not acknowledge cleanup"
+        );
+        assert_eq!(
+            outcome.unacknowledged, 0,
+            "production cooperative phase exited without acknowledgement"
+        );
+        assert_eq!(outcome.forced, 0, "production cooperative phase required forced termination");
+    }
     assert!(expected_devices >= 2, "storage and entropy drivers were not retained");
     let mut production_devices = begin_device_shutdown(production_deadline)
         .expect("production device shutdown did not acquire hardware-root domains");

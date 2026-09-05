@@ -218,11 +218,21 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            catten_rt::logln!(
+                "[frouter] shutdown: cancelling NIC receive, {} lookup(s), and {} forward(s)",
+                route_lookups.iter().filter(|lookup| lookup.call.is_some()).count(),
+                pending_forwards.len()
+            );
             return request;
         }
         let mut receive = net_conn.call(net::OP_RECV, 0).unwrap_or_else(|_| fail());
         loop {
             if let Some(request) = ctx.lifecycle().shutdown_requested() {
+                catten_rt::logln!(
+                    "[frouter] shutdown: cancelling NIC receive, {} lookup(s), and {} forward(s)",
+                    route_lookups.iter().filter(|lookup| lookup.call.is_some()).count(),
+                    pending_forwards.len()
+                );
                 return request;
             }
             // Periodic heartbeat (~every 256 reactor iterations) so a stall can

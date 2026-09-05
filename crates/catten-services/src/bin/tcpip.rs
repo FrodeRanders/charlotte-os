@@ -41,27 +41,23 @@ use alloc::{
 use catten_rt::{
     Context,
     ManifestValue,
+    ShutdownRequest,
     config,
+    owned::Endpoint,
 };
 use catten_services::{
     net,
     ns,
-    scalar_call_with_backpressure,
     socket,
-    wait_for_local_ready,
-    wait_for_registered_name,
-    wait_reply,
+    wait_for_local_ready_or_shutdown,
+    wait_for_registered_name_owned,
 };
 use catten_syscall::{
-    IpcRights,
     cq_read,
     cq_wait_timeout,
-    ipc_endpoint_bind_cq,
-    ipc_endpoint_create,
     ipc_recv,
     ipc_reply,
     ipc_reply_move,
-    ipc_scalar_call_connection,
     ipc_status,
     memory_alloc,
     memory_close,
@@ -102,7 +98,6 @@ use smoltcp::{
     },
 };
 
-const REPLY_SPINS: u64 = 50_000_000;
 const FRAME_MAX: usize = 4096;
 /// Detached-timer cadence for the smoltcp clock. A continuously IPC-woken
 /// reactor must not collapse the timebase to a fixed 1 ms per iteration; the
@@ -110,7 +105,7 @@ const FRAME_MAX: usize = 4096;
 /// Kept at 100 ms (matching the discovery service) rather than 10 ms: smoltcp's
 /// timers (delayed ACK, RTO) tolerate the coarser granularity, and the lower
 /// re-arm rate avoids interacting with the 10 ms scheduler quantum on LP 0.
-const CLOCK_TICK_MS: u64 = 100;
+const CLOCK_TICK_MS: u64 = 50;
 const CLOCK_TIMER_COOKIE: u64 = 0x5443_5049_434c_4b31;
 /// Per-socket buffer size. The httpd report exceeds one 4096-byte page, so a
 /// single-page buffer forces the sender to stall mid-stream while the peer
@@ -184,22 +179,19 @@ fn fail(code: u32) -> ! {
     unsafe { thread_exit() }
 }
 
-fn main(ctx: Context) -> ! {
+fn serve(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(status::STAGE, 1);
-    let ns_connection = match ctx.bootstrap_cap() {
-        Some(c) => c,
-        None => fail(0xe001),
-    };
+    let ns_connection = ctx.bootstrap_connection().unwrap_or_else(|| fail(0xe001));
     config::write::<u32>(status::STAGE, 2);
 
     config::write::<u32>(status::DETAIL, 1);
     let (_, net_conn) =
-        wait_for_registered_name(ns_connection, net::NAME).unwrap_or_else(|| fail(0xe002));
+        wait_for_registered_name_owned(ns_connection, net::NAME).unwrap_or_else(|| fail(0xe002));
     config::write::<u32>(status::DETAIL, 2);
 
-    let status_call = scalar_call_with_backpressure(net_conn, net::OP_STATUS, 0);
+    let status_call = net_conn.call(net::OP_STATUS, 0).unwrap_or_else(|_| fail(0xe003));
     config::write::<u32>(status::DETAIL, 3);
-    let (nic_status, _) = unsafe { wait_reply(status_call, REPLY_SPINS) };
+    let nic_status = status_call.wait().unwrap_or_else(|_| fail(0xe003)).result;
     config::write::<u32>(status::DETAIL, 4);
     if nic_status < 0 {
         fail(0xe003);
@@ -242,19 +234,17 @@ fn main(ctx: Context) -> ! {
     };
     config::write::<u32>(status::STAGE, 3);
 
-    let ep = ipc_endpoint_create(socket::INTERFACE, socket::VERSION, 8);
-    if ep == 0 {
-        fail(0xe004);
-    }
+    let endpoint =
+        Endpoint::create(socket::INTERFACE, socket::VERSION, 8).unwrap_or_else(|_| fail(0xe004));
     let reg = loop {
-        let call = ipc_scalar_call_connection(
-            ns_connection,
+        if let Ok(call) = ns_connection.call_connection(
             ns::OP_REGISTER,
             socket::NAME,
-            ep,
-            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-        );
-        if call != 0 {
+            &endpoint,
+            catten_syscall::IpcRights::SEND
+                | catten_syscall::IpcRights::CALL
+                | catten_syscall::IpcRights::MINT_CONNECTION,
+        ) {
             break call;
         }
         // The name-service queue is shared by the booting service set. Yield
@@ -263,22 +253,22 @@ fn main(ctx: Context) -> ! {
         // submit again.
         catten_services::sleep_ms(1);
     };
-    let (generation, _) = unsafe { wait_reply(reg, REPLY_SPINS) };
-    if generation < 1 {
+    let registration = reg.wait().unwrap_or_else(|_| fail(0xe005));
+    if registration.result < 1 {
         fail(0xe005);
     }
-    if ipc_endpoint_bind_cq(ep, 0) != 0 {
-        fail(0xe006);
-    }
+    endpoint.bind_completion_queue(0).unwrap_or_else(|_| fail(0xe006));
     config::write::<u32>(status::STAGE, 4);
 
     // Let the NIC and the link settle before ARP/IP traffic starts flowing.
-    if !wait_for_local_ready(ns_connection) {
-        fail(0xe007);
+    if let Err(request) = wait_for_local_ready_or_shutdown(ctx, ns_connection) {
+        return request;
     }
     config::write::<u32>(status::STAGE, 5);
 
-    let mut device = CharlotteEthDevice::new(net_conn, mtu);
+    // CharlotteEthDevice is the low-level smoltcp/protocol adapter. It borrows
+    // this owned connection handle for the lifetime of the serving scope.
+    let mut device = CharlotteEthDevice::new(net_conn.as_raw(), mtu);
     let hw = HardwareAddress::Ethernet(smoltcp::wire::EthernetAddress(mac));
     let mut cfg = Config::new(hw);
     cfg.random_seed = 0x0123_4567_89ab_cdef;
@@ -326,6 +316,26 @@ fn main(ctx: Context) -> ! {
     let mut clock_armed = submit_detached_timer(CLOCK_TICK_MS, 0, CLOCK_TIMER_COOKIE) != u64::MAX;
 
     loop {
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            // All higher-level socket consumers have already drained. Reject
+            // new endpoint work by returning from this scope, complete any
+            // retained receive calls, and stop residual protocol sockets
+            // before the frame router and NIC are asked to quiesce.
+            let socket_count = state.sockets.len();
+            for entry in state.sockets.values_mut() {
+                if let Some(token) = entry.recv_pending.take() {
+                    ipc_reply(token, 0);
+                }
+                match entry.kind {
+                    SocketKind::Tcp => sockets.get_mut::<TcpSocket>(entry.handle).abort(),
+                    SocketKind::Udp => sockets.get_mut::<UdpSocket>(entry.handle).close(),
+                }
+            }
+            state.sockets.clear();
+            config::write::<u32>(status::SOCKETS, 0);
+            catten_rt::logln!("[tcpip] shutdown: released {} socket(s)", socket_count);
+            return request;
+        }
         device.poll_smoltcp(&mut iface, &mut sockets, &mut ticks, elapsed_ms);
 
         // Periodic heartbeat (~every 1024 reactor iterations) so a stall can be
@@ -481,7 +491,7 @@ fn main(ctx: Context) -> ! {
         }
 
         loop {
-            let msg = ipc_recv(ep);
+            let msg = ipc_recv(endpoint.as_raw());
             if msg.status == ipc_status::NO_MESSAGE {
                 break;
             }
@@ -892,6 +902,10 @@ fn main(ctx: Context) -> ! {
             elapsed_ms = 0;
         }
     }
+}
+
+fn main(ctx: Context) -> ! {
+    serve(&ctx).complete()
 }
 
 catten_rt::entry!(main);

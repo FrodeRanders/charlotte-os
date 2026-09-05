@@ -1938,6 +1938,29 @@ pub fn wait_for_local_ready_owned(ns_connection: catten_rt::owned::ConnectionRef
     wait_for_registered_name_owned(ns_connection, charlotte_launch::LOCAL_READY_NAME).is_some()
 }
 
+/// Wait for the node-ready marker without making startup an uninterruptible
+/// part of the service lifecycle.
+///
+/// Long-lived services should prefer this over [`wait_for_local_ready_owned`]:
+/// the name service's ordinary deferred lookup intentionally has no deadline,
+/// whereas a node shutdown must be able to retire a service that is still
+/// waiting for one of its startup gates. The short non-blocking lookup and
+/// owned timer keep both operations bounded without exposing capabilities.
+pub fn wait_for_local_ready_or_shutdown(
+    ctx: &catten_rt::Context,
+    ns_connection: catten_rt::owned::ConnectionRef<'_>,
+) -> Result<(), catten_rt::ShutdownRequest> {
+    loop {
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            return Err(request);
+        }
+        if try_registered_name_owned(ns_connection, charlotte_launch::LOCAL_READY_NAME).is_some() {
+            return Ok(());
+        }
+        sleep_ms(10);
+    }
+}
+
 /// Submit a scalar call without making transient endpoint backpressure fatal.
 ///
 /// The syscall's compact ABI reports a zero call capability for a full target
