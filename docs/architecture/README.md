@@ -22,7 +22,8 @@ logic, and external managed infrastructure at explicit boundaries.
 - [Distributed L2 ingress](distributed-l2-ingress.md) — a cluster-level TCP
   service identity hiding movable node execution behind one VIP, with
   Raft membership plus committed placement/readiness-derived backend
-  eligibility, rendezvous flow placement, direct server return, membership
+  eligibility, leased new-flow admission, fail-closed retained-flow epochs,
+  rendezvous flow placement, direct server return, membership
   epochs, and bounded failure semantics.
 - [Async syscall ABI](async-syscall-abi.md) — the evolution of the completion
   capability ABI; its early proposal sections are historical and its later

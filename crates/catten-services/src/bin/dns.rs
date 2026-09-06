@@ -62,6 +62,7 @@ use catten_services::{
         DiskPersistentStateStore,
     },
     dns,
+    frouter,
     name_catalog::{
         CatalogEntry,
         NameCatalog,
@@ -2963,13 +2964,19 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     if message.memory != 0 {
                         memory_close(message.memory);
                     }
-                    match ingress_membership_snapshot(
-                        &node,
-                        &transport,
-                        &catalog,
-                        local_mac,
-                        ingress_service.as_deref(),
-                    ) {
+                    let snapshot = node
+                        .can_serve_bounded_read(frouter::SNAPSHOT_SOURCE_MAX_AGE_MS)
+                        .then(|| {
+                            ingress_membership_snapshot(
+                                &node,
+                                &transport,
+                                &catalog,
+                                local_mac,
+                                ingress_service.as_deref(),
+                            )
+                        })
+                        .flatten();
+                    match snapshot {
                         Some(snapshot) => reply_move_bytes(message.reply, &snapshot.encode()),
                         None if message.reply != 0 => {
                             // A partial discovery overlay must never silently

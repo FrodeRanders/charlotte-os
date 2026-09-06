@@ -188,6 +188,10 @@ pub mod frouter_status {
     pub const FLOW_BINDINGS: usize = 52;
     pub const IS_ADVERTISER: usize = 56;
     pub const MEMBERS: usize = 60;
+    pub const SNAPSHOT_FRESH: usize = 64;
+    pub const SNAPSHOT_STALE_DROPPED: usize = 68;
+    pub const MISSING_EPOCH_DROPPED: usize = 72;
+    pub const SNAPSHOT_EXPIRATIONS: usize = 76;
 }
 
 /// Discovery-service diagnostic status-page byte offsets.

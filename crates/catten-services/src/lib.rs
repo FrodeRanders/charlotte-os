@@ -1104,6 +1104,16 @@ pub mod frouter {
 
     pub const OP_STATUS: u32 = 1;
 
+    /// Normal interval for refreshing the DNS-owned ingress projection.
+    pub const SNAPSHOT_REFRESH_MS: u64 = 1_000;
+    /// Maximum age of a follower's last successful leader replication when
+    /// DNS materializes an ingress snapshot. This bounds the upstream source
+    /// that is allowed to renew the frame router's longer admission lease.
+    pub const SNAPSHOT_SOURCE_MAX_AGE_MS: u64 = SNAPSHOT_REFRESH_MS;
+    /// Maximum age of the last complete projection for VIP advertisement and
+    /// admission of a flow not already present in the local binding table.
+    pub const SNAPSHOT_LEASE_MS: u64 = SNAPSHOT_REFRESH_MS * 5;
+
     pub const ERR_BAD_OPCODE: i64 = -1;
 
     /// `FrouterStatus` snapshot layout (little-endian u32 words in a moved
@@ -1126,7 +1136,16 @@ pub mod frouter {
     pub const STATUS_OFFSET_IS_ADVERTISER: u32 = 15;
     /// Admitted/routable members, including members draining existing flows.
     pub const STATUS_OFFSET_MEMBERS: u32 = 16;
-    pub const STATUS_WORDS: usize = 17;
+    /// One while the latest complete snapshot remains within its monotonic
+    /// new-flow admission lease.
+    pub const STATUS_OFFSET_SNAPSHOT_FRESH: u32 = 17;
+    /// Frames rejected because an unbound flow arrived after lease expiry.
+    pub const STATUS_OFFSET_SNAPSHOT_STALE_DROPPED: u32 = 18;
+    /// Frames rejected because their pinned epoch left snapshot history.
+    pub const STATUS_OFFSET_MISSING_EPOCH_DROPPED: u32 = 19;
+    /// Number of transitions from a fresh snapshot lease to fail-closed state.
+    pub const STATUS_OFFSET_SNAPSHOT_EXPIRATIONS: u32 = 20;
+    pub const STATUS_WORDS: usize = 21;
     pub const STATUS_MAGIC: u32 = 0x4652_5453;
 }
 

@@ -61,6 +61,13 @@ pub struct ParsedFlow {
     pub terminal: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FlowPolicyError {
+    NoSnapshot,
+    SnapshotStale,
+    MissingEpoch,
+}
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Backend {
     /// Stable node token derived from the committed Charlotte identity.
@@ -356,9 +363,17 @@ impl FlowEpochTable {
     }
 
     /// Return the epoch to use for this packet. Existing entries win even for
-    /// a retransmitted initial SYN. FIN/RST releases the entry after returning
-    /// its pinned epoch for the terminal packet itself.
-    pub fn observe(&mut self, packet: &ParsedFlow, current_epoch: u64) -> u64 {
+    /// a retransmitted initial SYN. An unbound packet is admitted only when
+    /// `allow_new` is true; this lets the frame router keep established flows
+    /// alive while a snapshot lease is stale without admitting new work.
+    /// FIN/RST releases an existing entry after returning its pinned epoch for
+    /// the terminal packet itself.
+    pub fn observe(
+        &mut self,
+        packet: &ParsedFlow,
+        current_epoch: u64,
+        allow_new: bool,
+    ) -> Option<u64> {
         self.clock = self.clock.wrapping_add(1).max(1);
         if let Some(index) = self.entries.iter().position(|entry| entry.flow == packet.key) {
             let epoch = self.entries[index].epoch;
@@ -367,7 +382,10 @@ impl FlowEpochTable {
             } else {
                 self.entries[index].last_seen = self.clock;
             }
-            return epoch;
+            return Some(epoch);
+        }
+        if !allow_new {
+            return None;
         }
         if !packet.terminal && self.capacity != 0 {
             if self.entries.len() == self.capacity {
@@ -386,7 +404,7 @@ impl FlowEpochTable {
                 last_seen: self.clock,
             });
         }
-        current_epoch
+        Some(current_epoch)
     }
 
     /// Forget only flows whose previously selected backend is absent from a
@@ -401,12 +419,15 @@ impl FlowEpochTable {
     ) -> usize {
         let before = self.entries.len();
         self.entries.retain(|entry| {
-            history
-                .get(entry.epoch)
-                .and_then(|snapshot| select_backend(service, &entry.flow, snapshot))
-                .is_some_and(|selected| {
-                    current.members.iter().any(|backend| backend.node_id == selected.node_id)
-                })
+            let Some(snapshot) = history.get(entry.epoch) else {
+                // Preserve the binding as a fail-closed tombstone. If its
+                // snapshot has left bounded history, classification must drop
+                // rather than reinterpret the flow under the current policy.
+                return true;
+            };
+            select_backend(service, &entry.flow, snapshot).is_some_and(|selected| {
+                current.members.iter().any(|backend| backend.node_id == selected.node_id)
+            })
         });
         before - self.entries.len()
     }
@@ -447,6 +468,24 @@ impl SnapshotHistory {
     pub fn get(&self, epoch: u64) -> Option<&BackendSnapshot> {
         self.snapshots.iter().find(|snapshot| snapshot.epoch == epoch)
     }
+}
+
+/// Resolve the immutable policy for one packet without ever reinterpreting a
+/// bound flow through another epoch. A fresh current snapshot may admit an
+/// unbound packet (including traffic first seen after ingress failover). Once
+/// freshness expires, only an existing binding can proceed. A binding whose
+/// epoch has left history remains a fail-closed tombstone.
+pub fn snapshot_for_flow<'history>(
+    packet: &ParsedFlow,
+    history: &'history SnapshotHistory,
+    flows: &mut FlowEpochTable,
+    snapshot_fresh: bool,
+) -> Result<&'history BackendSnapshot, FlowPolicyError> {
+    let current = history.current().ok_or(FlowPolicyError::NoSnapshot)?;
+    let epoch = flows
+        .observe(packet, current.epoch, snapshot_fresh)
+        .ok_or(FlowPolicyError::SnapshotStale)?;
+    history.get(epoch).ok_or(FlowPolicyError::MissingEpoch)
 }
 
 /// Parse an Ethernet/IPv4/TCP frame only when it targets `service`.
@@ -513,10 +552,11 @@ pub fn is_arp_request_for_vip(frame: &[u8], vip: [u8; 4]) -> bool {
 
 /// Whether this participant may advertise the VIP represented by `snapshot`.
 /// Absence of a complete committed snapshot fails closed.
-pub fn local_advertises_vip(snapshot: Option<&BackendSnapshot>) -> bool {
-    snapshot.is_some_and(|snapshot| {
-        snapshot.vip_advertiser().is_some_and(|owner| owner.node_id == snapshot.self_node)
-    })
+pub fn local_advertises_vip(snapshot: Option<&BackendSnapshot>, snapshot_fresh: bool) -> bool {
+    snapshot_fresh
+        && snapshot.is_some_and(|snapshot| {
+            snapshot.vip_advertiser().is_some_and(|owner| owner.node_id == snapshot.self_node)
+        })
 }
 
 /// Wrap an ordinary Ethernet frame for one-hop delivery to a selected
@@ -732,7 +772,7 @@ mod tests {
                 initial_syn: true,
                 terminal: false,
             };
-            table.observe(&packet, before.epoch);
+            assert_eq!(table.observe(&packet, before.epoch, true), Some(before.epoch));
             match select_backend(&SERVICE, &key, &before).unwrap().node_id {
                 2 => removed += 1,
                 _ => surviving += 1,
@@ -740,6 +780,58 @@ mod tests {
         }
         assert_eq!(table.remove_absent_backends(&SERVICE, &history, &after), removed);
         assert_eq!(table.len(), surviving);
+    }
+
+    #[test]
+    fn history_eviction_retains_a_fail_closed_flow_tombstone() {
+        let before = snapshot(17, &[1, 2]);
+        let after = snapshot(18, &[1, 2, 3]);
+        let key = flow(7);
+        let packet = ParsedFlow {
+            key,
+            initial_syn: true,
+            terminal: false,
+        };
+        let mut history = SnapshotHistory::new(1);
+        history.install(before.clone());
+        let mut table = FlowEpochTable::new(4);
+        assert_eq!(table.observe(&packet, before.epoch, true), Some(before.epoch));
+
+        history.install(after.clone());
+        assert!(history.get(before.epoch).is_none());
+        assert_eq!(table.remove_absent_backends(&SERVICE, &history, &after), 0);
+        assert_eq!(table.observe(&packet, after.epoch, true), Some(before.epoch));
+        assert!(history.get(before.epoch).is_none());
+        assert_eq!(
+            snapshot_for_flow(&packet, &history, &mut table, true).unwrap_err(),
+            FlowPolicyError::MissingEpoch
+        );
+    }
+
+    #[test]
+    fn stale_snapshot_admits_only_already_bound_flows() {
+        let current = snapshot(17, &[1, 2]);
+        let packet = ParsedFlow {
+            key: flow(7),
+            initial_syn: true,
+            terminal: false,
+        };
+        let mut history = SnapshotHistory::new(2);
+        history.install(current.clone());
+        let mut table = FlowEpochTable::new(4);
+
+        assert_eq!(
+            snapshot_for_flow(&packet, &history, &mut table, false).unwrap_err(),
+            FlowPolicyError::SnapshotStale
+        );
+        assert_eq!(
+            snapshot_for_flow(&packet, &history, &mut table, true).unwrap().epoch,
+            current.epoch
+        );
+        assert_eq!(
+            snapshot_for_flow(&packet, &history, &mut table, false).unwrap().epoch,
+            current.epoch
+        );
     }
 
     #[test]
@@ -765,23 +857,32 @@ mod tests {
         history.install(before.clone());
         history.install(after.clone());
         let mut table = FlowEpochTable::new(1);
-        table.observe(
-            &ParsedFlow {
-                key,
-                initial_syn: true,
-                terminal: false,
-            },
-            before.epoch,
+        assert_eq!(
+            table.observe(
+                &ParsedFlow {
+                    key,
+                    initial_syn: true,
+                    terminal: false,
+                },
+                before.epoch,
+                true,
+            ),
+            Some(before.epoch)
         );
         assert_eq!(table.remove_absent_backends(&SERVICE, &history, &after), 0);
-        let retained = history.get(table.observe(
-            &ParsedFlow {
-                key,
-                initial_syn: false,
-                terminal: false,
-            },
-            after.epoch,
-        ));
+        let retained = history.get(
+            table
+                .observe(
+                    &ParsedFlow {
+                        key,
+                        initial_syn: false,
+                        terminal: false,
+                    },
+                    after.epoch,
+                    true,
+                )
+                .unwrap(),
+        );
         assert_eq!(select_backend(&SERVICE, &key, retained.unwrap()).unwrap().node_id, 2);
         assert_ne!(select_backend(&SERVICE, &flow(index + 1), &after).unwrap().node_id, 2);
     }
@@ -812,9 +913,15 @@ mod tests {
             terminal: false,
         };
         let mut table = FlowEpochTable::new(16);
-        assert_eq!(table.observe(&syn, 17), 17);
-        assert_eq!(table.observe(&syn, 18), 17);
-        assert_eq!(table.observe(&data, 18), 17);
+        assert_eq!(table.observe(&syn, 17, true), Some(17));
+        assert_eq!(table.observe(&syn, 18, true), Some(17));
+        assert_eq!(table.observe(&data, 18, true), Some(17));
+        let unbound = ParsedFlow {
+            key: flow(10),
+            initial_syn: false,
+            terminal: false,
+        };
+        assert_eq!(table.observe(&unbound, 18, false), None);
     }
 
     #[test]
@@ -828,7 +935,7 @@ mod tests {
         let independently_decoded = BackendSnapshot::decode(&replacement.encode()).unwrap();
         let from_c = select_backend(&SERVICE, &key, &independently_decoded).unwrap();
         assert_eq!(from_a, from_c);
-        assert!(local_advertises_vip(Some(&independently_decoded)));
+        assert!(local_advertises_vip(Some(&independently_decoded), true));
     }
 
     #[test]
@@ -885,9 +992,10 @@ mod tests {
 
         let owner = snapshot(17, &[1, 2, 3]);
         let non_owner = BackendSnapshot::new(17, 2, owner.backends().to_vec()).unwrap();
-        assert!(local_advertises_vip(Some(&owner)));
-        assert!(!local_advertises_vip(Some(&non_owner)));
-        assert!(!local_advertises_vip(None));
+        assert!(local_advertises_vip(Some(&owner), true));
+        assert!(!local_advertises_vip(Some(&owner), false));
+        assert!(!local_advertises_vip(Some(&non_owner), true));
+        assert!(!local_advertises_vip(None, true));
 
         let announcement = gratuitous_arp(backend(1).mac, SERVICE.address);
         assert_eq!(&announcement[0..6], &[0xff; 6]);

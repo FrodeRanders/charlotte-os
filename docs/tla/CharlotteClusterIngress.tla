@@ -79,14 +79,14 @@ Winner(policy) == MaxNode(policy.eligible)
 VARIABLES membershipPhase, currentVoters, nextVoters,
           deploymentGeneration, replicas, readyGeneration, draining,
           policyVersion, policies,
-          knownRoutes, routerPolicy, history,
+          knownRoutes, routerPolicy, history, leaseFresh,
           bindingPolicy, bindingBackend,
           staleNewFlowAdmitted, flowRemapped
 
 vars == <<membershipPhase, currentVoters, nextVoters,
           deploymentGeneration, replicas, readyGeneration, draining,
           policyVersion, policies,
-          knownRoutes, routerPolicy, history,
+          knownRoutes, routerPolicy, history, leaseFresh,
           bindingPolicy, bindingBackend,
           staleNewFlowAdmitted, flowRemapped>>
 
@@ -107,6 +107,7 @@ Init ==
     /\ knownRoutes = [router \in Node |-> {router}]
     /\ routerPolicy = [router \in Node |-> 0]
     /\ history = [router \in Node |-> <<>>]
+    /\ leaseFresh = [router \in Node |-> FALSE]
     /\ bindingPolicy = [router \in Node |-> [flow \in Flow |-> 0]]
     /\ bindingBackend = [router \in Node |-> [flow \in Flow |-> NoNode]]
     /\ staleNewFlowAdmitted = FALSE
@@ -135,7 +136,7 @@ PublishReady(node) ==
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, draining,
-                    knownRoutes, routerPolicy, history,
+                    knownRoutes, routerPolicy, history, leaseFresh,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
 
@@ -155,7 +156,7 @@ WithdrawReady(node) ==
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, draining,
-                    knownRoutes, routerPolicy, history,
+                    knownRoutes, routerPolicy, history, leaseFresh,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
 
@@ -179,7 +180,7 @@ ReplaceDeployment(nextReplicas) ==
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     readyGeneration, draining,
-                    knownRoutes, routerPolicy, history,
+                    knownRoutes, routerPolicy, history, leaseFresh,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
 
@@ -200,7 +201,7 @@ CommitDrain(node) ==
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration,
-                    knownRoutes, routerPolicy, history,
+                    knownRoutes, routerPolicy, history, leaseFresh,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
 
@@ -224,7 +225,7 @@ BeginJoint(nextMembers) ==
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<currentVoters, deploymentGeneration, replicas,
                     readyGeneration, draining,
-                    knownRoutes, routerPolicy, history,
+                    knownRoutes, routerPolicy, history, leaseFresh,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
 
@@ -245,7 +246,7 @@ FinalizeJoint ==
                                                draining)]
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<deploymentGeneration, replicas, readyGeneration, draining,
-                    knownRoutes, routerPolicy, history,
+                    knownRoutes, routerPolicy, history, leaseFresh,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
 
@@ -254,7 +255,7 @@ LearnRoute(router, node) ==
     /\ knownRoutes' = [knownRoutes EXCEPT ![router] = @ \cup {node}]
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
-                    policyVersion, policies, routerPolicy, history,
+                    policyVersion, policies, routerPolicy, history, leaseFresh,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
 
@@ -264,13 +265,15 @@ ForgetRoute(router, node) ==
     /\ knownRoutes' = [knownRoutes EXCEPT ![router] = @ \ {node}]
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
-                    policyVersion, policies, routerPolicy, history,
+                    policyVersion, policies, routerPolicy, history, leaseFresh,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
 
 \* Installing a snapshot is all-or-nothing: every admitted member must have a
-\* route. Safe eviction also drops flow state whose policy is no longer
-\* retained, causing a later packet to fail closed rather than be remapped.
+\* route. The action abstracts the concrete DNS source-freshness gate (leader
+\* quorum contact or a recent successful follower log match). A flow may
+\* continue naming an evicted policy, but no safe packet action interprets
+\* that binding through a different snapshot.
 InstallSnapshot(router, version) ==
     /\ version \in 1..policyVersion
     /\ version > routerPolicy[router]
@@ -278,42 +281,60 @@ InstallSnapshot(router, version) ==
     /\ LET nextHistory == AppendBounded(history[router], version)
        IN /\ history' = [history EXCEPT ![router] = nextHistory]
           /\ routerPolicy' = [routerPolicy EXCEPT ![router] = version]
-          /\ bindingPolicy' =
-              [bindingPolicy EXCEPT
-                  ![router] =
-                      [flow \in Flow |->
-                          IF bindingPolicy[router][flow] \in SeqToSet(nextHistory)
-                          THEN bindingPolicy[router][flow]
-                          ELSE 0]]
-          /\ bindingBackend' =
-              [bindingBackend EXCEPT
-                  ![router] =
-                      [flow \in Flow |->
-                          IF bindingPolicy[router][flow] \in SeqToSet(nextHistory)
-                          THEN bindingBackend[router][flow]
-                          ELSE NoNode]]
+          /\ leaseFresh' = [leaseFresh EXCEPT ![router] = TRUE]
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
                     policyVersion, policies, knownRoutes,
+                    bindingPolicy, bindingBackend,
+                    staleNewFlowAdmitted, flowRemapped>>
+
+\* A successful materialization grants only a bounded local lease. The weak
+\* fairness condition in Spec ensures that a lease cannot remain fresh forever
+\* without another successful InstallSnapshot refresh.
+ExpireLease(router) ==
+    /\ leaseFresh[router]
+    /\ leaseFresh' = [leaseFresh EXCEPT ![router] = FALSE]
+    /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
+                    deploymentGeneration, replicas, readyGeneration, draining,
+                    policyVersion, policies, knownRoutes, routerPolicy, history,
+                    bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
 
 StartNewFlow(router, flow) ==
     /\ bindingPolicy[router][flow] = 0
-    /\ routerPolicy[router] = policyVersion
-    /\ policies[policyVersion].advertiser = router
-    /\ policies[policyVersion].eligible /= {}
+    /\ leaseFresh[router]
+    /\ routerPolicy[router] /= 0
+    /\ policies[routerPolicy[router]].advertiser = router
+    /\ policies[routerPolicy[router]].eligible /= {}
     /\ bindingPolicy' =
-        [bindingPolicy EXCEPT ![router][flow] = policyVersion]
+        [bindingPolicy EXCEPT ![router][flow] = routerPolicy[router]]
     /\ bindingBackend' =
-        [bindingBackend EXCEPT ![router][flow] = Winner(policies[policyVersion])]
+        [bindingBackend EXCEPT
+            ![router][flow] = Winner(policies[routerPolicy[router]])]
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
                     policyVersion, policies, knownRoutes, routerPolicy, history,
+                    leaseFresh,
                     staleNewFlowAdmitted, flowRemapped>>
 
 ExistingFlowPacket(router, flow) ==
     /\ bindingPolicy[router][flow] /= 0
     /\ bindingPolicy[router][flow] \in SeqToSet(history[router])
+    /\ UNCHANGED vars
+
+\* A router policy cannot admit an unbound flow after its freshness lease
+\* expires. Existing bindings remain eligible for their retained epoch.
+DropStaleNewFlow(router, flow) ==
+    /\ bindingPolicy[router][flow] = 0
+    /\ routerPolicy[router] /= 0
+    /\ ~leaseFresh[router]
+    /\ UNCHANGED vars
+
+\* If bounded history no longer contains a flow's pinned epoch, the packet is
+\* rejected. The binding remains as a tombstone and is never reinterpreted.
+DropUnretainedFlow(router, flow) ==
+    /\ bindingPolicy[router][flow] /= 0
+    /\ bindingPolicy[router][flow] \notin SeqToSet(history[router])
     /\ UNCHANGED vars
 
 EndFlow(router, flow) ==
@@ -323,13 +344,16 @@ EndFlow(router, flow) ==
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
                     policyVersion, policies, knownRoutes, routerPolicy, history,
+                    leaseFresh,
                     staleNewFlowAdmitted, flowRemapped>>
 
-\* Negative regression: the router admits a new SYN through an old snapshot
-\* after current committed policy has withdrawn the selected backend.
+\* Negative regression: the router admits a new SYN after the local snapshot
+\* lease has expired. The extra policy checks produce a concrete withdrawn
+\* backend counterexample rather than merely setting the witness bit.
 UnsafeStartStaleFlow(router, flow) ==
     /\ AllowStaleNewFlow
     /\ bindingPolicy[router][flow] = 0
+    /\ ~leaseFresh[router]
     /\ routerPolicy[router] \in 1..(policyVersion - 1)
     /\ policies[routerPolicy[router]].advertiser = router
     /\ policies[routerPolicy[router]].eligible /= {}
@@ -344,27 +368,11 @@ UnsafeStartStaleFlow(router, flow) ==
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
                     policyVersion, policies, knownRoutes, routerPolicy, history,
+                    leaseFresh,
                     flowRemapped>>
 
-\* Negative regression: an installed snapshot evicts an epoch still named by
-\* a flow without clearing that flow. The implementation's current fallback
-\* can subsequently choose a different backend from the newest snapshot.
-UnsafeInstallSnapshot(router, version) ==
-    /\ AllowHistoryFallback
-    /\ version \in 1..policyVersion
-    /\ version > routerPolicy[router]
-    /\ policies[version].members \subseteq knownRoutes[router]
-    /\ Len(history[router]) = HistoryLimit
-    /\ \E flow \in Flow : bindingPolicy[router][flow] = Head(history[router])
-    /\ history' =
-        [history EXCEPT ![router] = AppendBounded(@, version)]
-    /\ routerPolicy' = [routerPolicy EXCEPT ![router] = version]
-    /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
-                    deploymentGeneration, replicas, readyGeneration, draining,
-                    policyVersion, policies, knownRoutes,
-                    bindingPolicy, bindingBackend,
-                    staleNewFlowAdmitted, flowRemapped>>
-
+\* Negative regression: the former fallback interprets a binding whose epoch
+\* has left history through the newest snapshot and can change its backend.
 UnsafeFallbackExistingPacket(router, flow) ==
     /\ AllowHistoryFallback
     /\ bindingPolicy[router][flow] /= 0
@@ -381,6 +389,7 @@ UnsafeFallbackExistingPacket(router, flow) ==
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
                     policyVersion, policies, knownRoutes, routerPolicy, history,
+                    leaseFresh,
                     staleNewFlowAdmitted>>
 
 \* Negative regression: an old readiness proof is treated as if it belonged
@@ -408,7 +417,7 @@ UnsafeAdmitStaleReadiness(node) ==
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
-                    knownRoutes, routerPolicy, history,
+                    knownRoutes, routerPolicy, history, leaseFresh,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
 
@@ -422,15 +431,18 @@ Next ==
     \/ \E router, node \in Node : LearnRoute(router, node)
     \/ \E router, node \in Node : ForgetRoute(router, node)
     \/ \E router \in Node, version \in PolicyVersion : InstallSnapshot(router, version)
+    \/ \E router \in Node : ExpireLease(router)
     \/ \E router \in Node, flow \in Flow : StartNewFlow(router, flow)
     \/ \E router \in Node, flow \in Flow : ExistingFlowPacket(router, flow)
+    \/ \E router \in Node, flow \in Flow : DropStaleNewFlow(router, flow)
+    \/ \E router \in Node, flow \in Flow : DropUnretainedFlow(router, flow)
     \/ \E router \in Node, flow \in Flow : EndFlow(router, flow)
     \/ \E router \in Node, flow \in Flow : UnsafeStartStaleFlow(router, flow)
-    \/ \E router \in Node, version \in PolicyVersion : UnsafeInstallSnapshot(router, version)
     \/ \E router \in Node, flow \in Flow : UnsafeFallbackExistingPacket(router, flow)
     \/ \E node \in Node : UnsafeAdmitStaleReadiness(node)
 
 Spec == Init /\ [][Next]_vars
+        /\ \A router \in Node : WF_vars(ExpireLease(router))
 
 TypeOK ==
     /\ membershipPhase \in MembershipPhase
@@ -449,6 +461,7 @@ TypeOK ==
     /\ knownRoutes \in [Node -> SUBSET Node]
     /\ routerPolicy \in [Node -> 0..MaxPolicyVersion]
     /\ history \in [Node -> Seq(PolicyVersion)]
+    /\ leaseFresh \in [Node -> BOOLEAN]
     /\ \A router \in Node : Len(history[router]) <= HistoryLimit
     /\ bindingPolicy \in [Node -> [Flow -> 0..MaxPolicyVersion]]
     /\ bindingBackend \in [Node -> [Flow -> Node \cup {NoNode}]]
@@ -476,10 +489,10 @@ InstalledSnapshotIsRetained ==
             /\ routerPolicy[router] <= policyVersion
             /\ routerPolicy[router] \in SeqToSet(history[router])
 
-BoundFlowHasSnapshot ==
+BoundFlowRemainsPinned ==
     \A router \in Node, flow \in Flow :
         bindingPolicy[router][flow] /= 0 =>
-            /\ bindingPolicy[router][flow] \in SeqToSet(history[router])
+            /\ bindingPolicy[router][flow] \in 1..policyVersion
             /\ bindingBackend[router][flow] = Winner(policies[bindingPolicy[router][flow]])
 
 EmptyBindingHasNoBackend ==
@@ -487,7 +500,7 @@ EmptyBindingHasNoBackend ==
         (bindingPolicy[router][flow] = 0) =
         (bindingBackend[router][flow] = NoNode)
 
-NewFlowsUseLatestPolicy == ~staleNewFlowAdmitted
+NewFlowsRequireFreshLease == ~staleNewFlowAdmitted
 
 FlowBackendStable == ~flowRemapped
 
@@ -495,9 +508,9 @@ Invariants ==
     /\ TypeOK
     /\ CommittedPoliciesAreDerived
     /\ InstalledSnapshotIsRetained
-    /\ BoundFlowHasSnapshot
+    /\ BoundFlowRemainsPinned
     /\ EmptyBindingHasNoBackend
-    /\ NewFlowsUseLatestPolicy
+    /\ NewFlowsRequireFreshLease
     /\ FlowBackendStable
 
 =============================================================================

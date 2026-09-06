@@ -129,6 +129,12 @@ in-flight, decoded frames); `disco::OP_LIST_PEERS` supplies the peer table;
 and `dns` also serves `raft::OP_CLUSTER_STATUS` for commit index, member
 count, and leader identity.
 
+The `frouter` report includes `snapshot_fresh`,
+`snapshot_stale_dropped`, `missing_epoch_dropped`, and
+`snapshot_expirations`. These distinguish normal policy rejection from the two
+fail-closed ingress safeguards: loss of the new-flow lease and a flow binding
+whose immutable epoch has left bounded history.
+
 The aggregation model follows the two explicit producer paths above: each
 service *voluntarily publishes* a status op, and the `observe` service is the
 sole holder of the system-observer capability; the httpd holds neither and

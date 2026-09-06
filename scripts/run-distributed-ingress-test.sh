@@ -8,6 +8,7 @@ HUB="${CATTEN_INGRESS_HUB:-127.0.0.1:12042}"
 SERVICE="${CATTEN_INGRESS_SERVICE:-10.0.0.42:80}"
 TIMEOUT="${CATTEN_INGRESS_TIMEOUT:-180}"
 PHASE_TIMEOUT="${CATTEN_INGRESS_PHASE_TIMEOUT:-90}"
+SMP="${CATTEN_INGRESS_SMP:-4}"
 WORK="/tmp/charlotte-ingress-fixture"
 mkdir -p "$WORK"
 for fixture_node in ingress-a ingress-b ingress-c; do
@@ -41,12 +42,12 @@ start_node() {
             CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_QEMU_PID_FILE="$WORK/${node}.qemu.pid" \
             "$RUNNER" release --cluster-service "$SERVICE" --cluster-ingress-test \
             --net-connect "$HUB" --instance "$node" --mac "$mac" \
-            --fresh-storage --timeout "$TIMEOUT" >"$runner_log" 2>&1 &
+            --fresh-storage --smp "$SMP" --timeout "$TIMEOUT" >"$runner_log" 2>&1 &
     else
         CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_QEMU_PID_FILE="$WORK/${node}.qemu.pid" \
             "$RUNNER" release --cluster-service "$SERVICE" --cluster-ingress-test \
             --net-connect "$HUB" --instance "$node" --mac "$mac" \
-            --fresh-storage --timeout "$TIMEOUT" >"$runner_log" 2>&1 &
+            --fresh-storage --smp "$SMP" --timeout "$TIMEOUT" >"$runner_log" 2>&1 &
     fi
     last_pid=$!
     pids+=("$last_pid")

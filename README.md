@@ -112,7 +112,12 @@ The main additions and extensions currently maintained here are:
   Ethernet envelope that preserves the original IP/TCP packet; the backend's
   `smoltcp` instance owns the connection and replies directly. Bounded
   policy-epoch retention keeps observed flows on surviving backends across
-  joins, signed node drains, and ingress-owner changes. A committed shutdown
+  joins, signed node drains, and ingress-owner changes. A five-second
+  monotonic snapshot lease stops VIP advertisement and unbound-flow admission
+  when policy refresh fails. DNS renews that lease only from a leader holding
+  recent quorum contact or a follower with a recent successful leader-log
+  match; rejected heartbeats cannot keep stale policy authoritative. A binding
+  whose epoch leaves history fails closed instead of being remapped. A committed shutdown
   intent stops new assignment to its target before teardown while retaining
   admitted routing authority for established flows. An optional deployed
   service name further intersects Raft membership with committed application

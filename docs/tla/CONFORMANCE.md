@@ -348,11 +348,14 @@ application linearization point.
 | `CommitDrain` | application of a signed shutdown intent; `NameCatalog::ingress_draining_nodes` | Direct for adding a generation-bearing drain decision to applied catalog state. Signature, expiry, and trusted UTC checks precede this boundary. |
 | `BeginJoint` / `FinalizeJoint` | application of Raft `JOINT` and `FINALIZE`; `active_voting_members` | Abstract membership projection. Quorum and durable ordering are established by `CharlotteRaftMembership`; this layer checks the old/new voter intersection during joint consensus and the final voter set afterward. |
 | `LearnRoute` / `ForgetRoute` | `RelmsgRaftTransport::mac_for_peer`; discovery updates | Abstract availability of an authenticated node-to-MAC route. The trusted-L2 assumption and frame authentication are not proved. |
-| `InstallSnapshot` | `ingress_membership_snapshot`, `BackendSnapshot::new_with_members`, `MembershipClient::poll`, `SnapshotHistory::install` | Direct for all-or-nothing materialization and immutable history. The safe action additionally retires bindings whose epoch is evicted; current Rust does not yet perform that stronger step. |
-| `StartNewFlow` | `classify_ingress`, `FlowEpochTable::observe`, `select_backend` | Direct for deterministic selection from an installed policy, with a stronger freshness precondition: the safe model requires the snapshot to represent the latest locally applied catalog policy. Current Rust may continue admitting SYNs through its last complete snapshot. |
+| `InstallSnapshot` | `RaftNode::can_serve_bounded_read`, `ingress_membership_snapshot`, `BackendSnapshot::new_with_members`, `MembershipClient::poll`, `SnapshotHistory::install` | Direct for a cluster-fresh, all-or-nothing materialization and immutable bounded history. A leader needs quorum contact; a follower needs a recent successful leader-log match. Bindings may outlive history entries but remain pinned tombstones. |
+| `ExpireLease` | terminal observation of the monotonic `snapshot_lease` timer | Abstract timing correspondence. Weak fairness says an unrenewed lease eventually expires; Rust fixes the interval at five seconds. |
+| `StartNewFlow` | `classify_ingress`, `snapshot_for_flow`, `FlowEpochTable::observe`, `select_backend` | Direct for deterministic selection from a complete snapshot while its five-second monotonic lease is fresh. Each successful one-second refresh replaces the lease; timer failure or expiry stops unbound-flow admission. |
 | `ExistingFlowPacket` / `EndFlow` | `FlowEpochTable::observe` | Direct while the binding's snapshot remains retained. FIN/RST removes the binding. Timing, TCP state, table-pressure eviction, and packets arriving through a different advertiser are omitted. |
-| `UnsafeStartStaleFlow` | continued use of `SnapshotHistory::current` after a refresh cannot produce a complete snapshot | Present implementation gap. The negative model demonstrates that an old policy can authorize a new flow after the latest locally applied policy has withdrawn that backend. |
-| `UnsafeInstallSnapshot` / `UnsafeFallbackExistingPacket` | independent bounded `SnapshotHistory` and `FlowEpochTable`; `history.get(epoch).unwrap_or(current)` | Present implementation gap. An epoch can be evicted while a flow still names it, after which current Rust may select a different backend. |
+| `DropStaleNewFlow` | `snapshot_for_flow` with an expired or unavailable `snapshot_lease`; freshness-aware `local_advertises_vip` | Direct. Bound traffic may retain an old policy, while unbound packets and VIP ARP requests fail closed after lease expiry. |
+| `DropUnretainedFlow` | `snapshot_for_flow`; `remove_absent_backends` retains bindings whose epoch is missing | Direct. Missing history returns `FlowPolicyError::MissingEpoch`; there is no current-snapshot fallback. |
+| `UnsafeStartStaleFlow` | former unconditional use of `SnapshotHistory::current` | Negative regression. It demonstrates why an expired local policy must not authorize an unbound flow. |
+| `UnsafeFallbackExistingPacket` | former `history.get(epoch).unwrap_or(current)` | Negative regression. It demonstrates why an unretained binding cannot be reinterpreted through the current snapshot. |
 | `UnsafeAdmitStaleReadiness` | missing generation comparison, retained only as a negative regression | Negative model only. Current `ingress_placement` compares each active registration's deployment generation with the desired generation before adding the node. |
 
 The model treats a policy version as the complete identity of one immutable
@@ -360,9 +363,10 @@ snapshot. Rust compresses membership epoch, deployment and service
 generations, eligible nodes, and drain generations into a 64-bit digest.
 Collision resistance of that digest is outside the TLA+ claim. The model also
 does not claim instant convergence among routers or globally unique VIP
-advertisement during ARP and leader handover. A later refinement should add
-snapshot leases, advertiser failover, and packets that move between ingress
-participants.
+advertisement during ARP and leader handover. Lease freshness is one abstract
+Boolean plus weak fairness, rather than a proof of the five-second timer. A
+later refinement should add advertiser failover and packets that move between
+ingress participants.
 
 ## Remote-call identity and uncertainty
 

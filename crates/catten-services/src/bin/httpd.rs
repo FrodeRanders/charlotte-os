@@ -751,7 +751,9 @@ fn build_json(
                  forwarded_rate\":{},\"ingress_epoch\":{},\"ingress_backends\":{},\"\
                  ingress_members\":{},\"ingress_draining\":{},\"vip_advertiser\":{},\"\
                  is_advertiser\":{},\"ingress_local\":{},\"ingress_forwarded\":{},\"\
-                 ingress_dropped\":{},\"flow_bindings\":{}}},",
+                 ingress_dropped\":{},\"flow_bindings\":{},\"snapshot_fresh\":{},\"\
+                 snapshot_stale_dropped\":{},\"missing_epoch_dropped\":{},\"snapshot_expirations\"\
+                 :{}}},",
                 w[frouter::STATUS_OFFSET_STAGE as usize],
                 frouter_rx,
                 forwarded,
@@ -772,7 +774,11 @@ fn build_json(
                 w[frouter::STATUS_OFFSET_INGRESS_LOCAL as usize],
                 w[frouter::STATUS_OFFSET_INGRESS_FORWARDED as usize],
                 w[frouter::STATUS_OFFSET_INGRESS_DROPPED as usize],
-                w[frouter::STATUS_OFFSET_FLOW_BINDINGS as usize]
+                w[frouter::STATUS_OFFSET_FLOW_BINDINGS as usize],
+                w[frouter::STATUS_OFFSET_SNAPSHOT_FRESH as usize],
+                w[frouter::STATUS_OFFSET_SNAPSHOT_STALE_DROPPED as usize],
+                w[frouter::STATUS_OFFSET_MISSING_EPOCH_DROPPED as usize],
+                w[frouter::STATUS_OFFSET_SNAPSHOT_EXPIRATIONS as usize]
             );
             prev.frouter_rx = frouter_rx;
             prev.forwarded = forwarded;

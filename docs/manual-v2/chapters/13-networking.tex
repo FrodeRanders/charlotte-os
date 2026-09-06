@@ -281,13 +281,22 @@ backend are released for reconnection. Rendezvous selection is independent of
 member ordering, so a replacement ingress participant with the same epoch
 selects the same live backend without shared connection tracking.
 
-The current bounds leave two explicit hardening obligations. A failed or
-incomplete refresh retains the last complete snapshot, and new SYNs presently
-use it without a freshness lease. Snapshot history and flow bindings are also
-evicted independently; if a live binding names an unavailable epoch, the
-router falls back to the current snapshot and may select a different backend.
-The intended production contract requires fresh policy for new flows and
-fail-closed or deliberately disruptive handling of such unretained bindings.
+A complete refresh grants a five-second monotonic lease for VIP advertisement
+and unbound-flow admission; the normal one-second poll renews it. A failed or
+incomplete refresh may leave the last complete snapshot available to existing
+bindings, but lease expiry suppresses ARP replies and rejects unbound traffic.
+DNS answers the refresh only when the local Raft state has current cluster
+evidence: a leader holds recent quorum contact, or a follower successfully
+matched and applied its recognized leader's log within the previous second.
+Rejected replication does not renew this witness. Source evidence therefore
+expires within one second of lost contact, followed by at most the router's
+five-second admission lease.
+Snapshot history and flow bindings are bounded independently. If a live
+binding names an epoch that has left history, it remains as a fail-closed
+tombstone and its packets are dropped rather than reinterpreted through the
+current snapshot. Ordinary flow-table pressure can still discard old local
+state, an availability limit that cannot be eliminated without shared
+connection tracking or additional packet metadata.
 
 VIP acceptance and advertisement are separate. Every participating node
 installs the VIP as a \texttt{/32} smoltcp address, while DSR admits new flows
@@ -328,8 +337,8 @@ then chooses only among authorized ready replicas; the selected replica owns
 TCP and replies directly. An empty ready set suppresses VIP advertisement.
 The joint TLA+ model in
 \autoref{subsec:formal-cluster-ingress} checks this control-plane-to-packet-path
-composition and preserves counterexamples for the two outstanding router
-freshness and history obligations.
+composition and preserves counterexamples for the two router freshness and
+history regressions that the implementation now rejects.
 
 Operational Vote, AppendEntries, and InstallSnapshot RPCs use private
 EtherType \texttt{0x88b7}, while admission and DNS application/control traffic

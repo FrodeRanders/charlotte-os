@@ -42,6 +42,7 @@ use catten_services::{
         BackendSnapshot,
         FORWARDED_ETHERTYPE,
         FlowEpochTable,
+        FlowPolicyError,
         ServiceId,
         SnapshotHistory,
         decapsulate_forwarded_frame,
@@ -51,6 +52,7 @@ use catten_services::{
         local_advertises_vip,
         parse_service_flow,
         select_backend,
+        snapshot_for_flow,
     },
     disco,
     dns,
@@ -85,7 +87,6 @@ const MAX_PENDING_PER_ROUTE: usize = 8;
 const MAX_PENDING_L2_SENDS: usize = 32;
 const FLOW_EPOCH_CAPACITY: usize = 1024;
 const SNAPSHOT_HISTORY_CAPACITY: usize = 4;
-const MEMBERSHIP_REFRESH_MS: u64 = 1_000;
 const VIP_KEY: u64 = charlotte_launch::manifest_key(b"vip");
 const VIP_PORT_KEY: u64 = charlotte_launch::manifest_key(b"vipport");
 
@@ -181,6 +182,14 @@ impl MembershipClient {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum IngressDropReason {
+    Policy,
+    SnapshotStale,
+    MissingEpoch,
+    UntrustedForwarder,
+}
+
 enum IngressDecision {
     Ordinary,
     Local,
@@ -188,7 +197,7 @@ enum IngressDecision {
         ingress: [u8; 6],
         destination: [u8; 6],
     },
-    Drop,
+    Drop(IngressDropReason),
 }
 
 fn classify_ingress(
@@ -197,6 +206,7 @@ fn classify_ingress(
     service: ServiceId,
     history: &SnapshotHistory,
     flows: &mut FlowEpochTable,
+    snapshot_fresh: bool,
 ) -> Option<(OwnedMemory, usize, u16, IngressDecision)> {
     let mapping = memory.map_read_only().ok()?;
     let frame = mapping.as_slice().get(..frame_len)?;
@@ -208,7 +218,12 @@ fn classify_ingress(
             .is_some_and(|snapshot| snapshot.members().iter().any(|backend| backend.mac == source));
         let memory = mapping.unmap().ok()?;
         if !trusted {
-            return Some((memory, frame_len, ethertype, IngressDecision::Drop));
+            return Some((
+                memory,
+                frame_len,
+                ethertype,
+                IngressDecision::Drop(IngressDropReason::UntrustedForwarder),
+            ));
         }
         let mut mapping = memory.map_writable().ok()?;
         let (restored_len, restored_ethertype) =
@@ -218,16 +233,27 @@ fn classify_ingress(
     }
     let decision = if ethertype == ARP_ETHERTYPE
         && is_arp_request_for_vip(frame, service.address)
-        && !local_advertises_vip(current)
+        && !local_advertises_vip(current, snapshot_fresh)
     {
-        IngressDecision::Drop
-    } else if let Some(packet) = parse_service_flow(frame, &service) {
-        let Some(current) = current else {
-            let memory = mapping.unmap().ok()?;
-            return Some((memory, frame_len, ethertype, IngressDecision::Drop));
+        let reason = if current.is_some() && !snapshot_fresh {
+            IngressDropReason::SnapshotStale
+        } else {
+            IngressDropReason::Policy
         };
-        let epoch = flows.observe(&packet, current.epoch);
-        let snapshot = history.get(epoch).unwrap_or(current);
+        IngressDecision::Drop(reason)
+    } else if let Some(packet) = parse_service_flow(frame, &service) {
+        let snapshot = match snapshot_for_flow(&packet, history, flows, snapshot_fresh) {
+            Ok(snapshot) => snapshot,
+            Err(error) => {
+                let reason = match error {
+                    FlowPolicyError::NoSnapshot => IngressDropReason::Policy,
+                    FlowPolicyError::SnapshotStale => IngressDropReason::SnapshotStale,
+                    FlowPolicyError::MissingEpoch => IngressDropReason::MissingEpoch,
+                };
+                let memory = mapping.unmap().ok()?;
+                return Some((memory, frame_len, ethertype, IngressDecision::Drop(reason)));
+            }
+        };
         match select_backend(&service, &packet.key, snapshot) {
             Some(backend) if backend.node_id == snapshot.self_node => IngressDecision::Local,
             Some(backend) => {
@@ -243,7 +269,7 @@ fn classify_ingress(
             }
             // A complete committed snapshot with no eligible backend is an
             // explicit fail-closed policy, not ordinary local VIP traffic.
-            None => IngressDecision::Drop,
+            None => IngressDecision::Drop(IngressDropReason::Policy),
         }
     } else {
         IngressDecision::Ordinary
@@ -405,8 +431,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut membership = MembershipClient::new();
     let mut snapshots = SnapshotHistory::new(SNAPSHOT_HISTORY_CAPACITY);
     let mut flows = FlowEpochTable::new(FLOW_EPOCH_CAPACITY);
-    let mut membership_timer = Completion::timer(MEMBERSHIP_REFRESH_MS).ok();
+    let mut membership_timer = Completion::timer(frouter::SNAPSHOT_REFRESH_MS).ok();
     let mut membership_due = true;
+    let mut snapshot_lease: Option<Completion> = None;
     let mut vip_advertiser = None;
     let mut logged_membership_epoch = None;
     refresh_routes(&mut routes, &mut route_lookups, ns_conn);
@@ -419,6 +446,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut ingress_local: u32 = 0;
     let mut ingress_forwarded: u32 = 0;
     let mut ingress_dropped: u32 = 0;
+    let mut snapshot_stale_dropped: u32 = 0;
+    let mut missing_epoch_dropped: u32 = 0;
+    let mut snapshot_expirations: u32 = 0;
     let stage: u32 = 4;
     config::write::<u32>(status::STAGE, stage);
 
@@ -493,10 +523,19 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         ingress_forwarded,
                         ingress_dropped,
                         flows.len() as u32,
-                        u32::from(vip_advertiser.is_some_and(|node| {
-                            snapshots.current().is_some_and(|snapshot| node == snapshot.self_node)
-                        })),
+                        u32::from(
+                            snapshot_lease.is_some()
+                                && vip_advertiser.is_some_and(|node| {
+                                    snapshots
+                                        .current()
+                                        .is_some_and(|snapshot| node == snapshot.self_node)
+                                }),
+                        ),
                         snapshots.current().map_or(0, |snapshot| snapshot.members().len() as u32),
+                        u32::from(snapshot_lease.is_some()),
+                        snapshot_stale_dropped,
+                        missing_epoch_dropped,
+                        snapshot_expirations,
                     ];
                     let memory = match OwnedMemory::allocate(1) {
                         Ok(memory) => memory,
@@ -535,22 +574,40 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             if let Some(timer) = membership_timer.as_mut() {
                 match timer.poll() {
                     Ok(Some(_)) => {
-                        membership_timer = Completion::timer(MEMBERSHIP_REFRESH_MS).ok();
+                        membership_timer = Completion::timer(frouter::SNAPSHOT_REFRESH_MS).ok();
                         membership_due = true;
                     }
                     Ok(None) => {}
                     Err(_) => membership_timer = None,
                 }
             } else {
-                membership_timer = Completion::timer(MEMBERSHIP_REFRESH_MS).ok();
+                membership_timer = Completion::timer(frouter::SNAPSHOT_REFRESH_MS).ok();
+            }
+            if let Some(lease) = snapshot_lease.as_mut() {
+                match lease.poll() {
+                    Ok(None) => {}
+                    Ok(Some(_)) | Err(_) => {
+                        snapshot_lease = None;
+                        vip_advertiser = None;
+                        snapshot_expirations = snapshot_expirations.wrapping_add(1);
+                        catten_rt::logln!(
+                            "[frouter] VIP SNAPSHOT LEASE EXPIRED epoch={}",
+                            snapshots.current().map_or(0, |snapshot| snapshot.epoch)
+                        );
+                    }
+                }
             }
             if cluster_service.is_some()
                 && let Some(snapshot) = membership.poll(ns_conn, membership_due, &mut snapshots)
             {
+                snapshot_lease = Completion::timer(frouter::SNAPSHOT_LEASE_MS).ok();
                 if let Some(service) = cluster_service {
                     let _ = flows.remove_absent_backends(&service, &snapshots, &snapshot);
                 }
-                let new_advertiser = snapshot.vip_advertiser().map(|backend| backend.node_id);
+                let new_advertiser = snapshot_lease
+                    .is_some()
+                    .then(|| snapshot.vip_advertiser().map(|backend| backend.node_id))
+                    .flatten();
                 let epoch_changed = logged_membership_epoch != Some(snapshot.epoch);
                 if epoch_changed && new_advertiser == Some(snapshot.self_node) {
                     catten_rt::logln!(
@@ -613,14 +670,21 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             config::write::<u32>(status::FLOW_BINDINGS, flows.len() as u32);
             config::write::<u32>(
                 status::IS_ADVERTISER,
-                u32::from(vip_advertiser.is_some_and(|node| {
-                    snapshots.current().is_some_and(|snapshot| node == snapshot.self_node)
-                })),
+                u32::from(
+                    snapshot_lease.is_some()
+                        && vip_advertiser.is_some_and(|node| {
+                            snapshots.current().is_some_and(|snapshot| node == snapshot.self_node)
+                        }),
+                ),
             );
             config::write::<u32>(
                 status::MEMBERS,
                 snapshots.current().map_or(0, |snapshot| snapshot.members().len() as u32),
             );
+            config::write::<u32>(status::SNAPSHOT_FRESH, u32::from(snapshot_lease.is_some()));
+            config::write::<u32>(status::SNAPSHOT_STALE_DROPPED, snapshot_stale_dropped);
+            config::write::<u32>(status::MISSING_EPOCH_DROPPED, missing_epoch_dropped);
+            config::write::<u32>(status::SNAPSHOT_EXPIRATIONS, snapshot_expirations);
 
             // Forward calls are asynchronous: one slow protocol consumer must
             // not stop the NIC owner from serving every other EtherType.
@@ -689,9 +753,14 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             rx_total = rx_total.wrapping_add(1);
             let (memory, frame_len, ethertype, decision) = match cluster_service {
                 Some(service) => {
-                    let Some(result) =
-                        classify_ingress(memory, frame_len, service, &snapshots, &mut flows)
-                    else {
+                    let Some(result) = classify_ingress(
+                        memory,
+                        frame_len,
+                        service,
+                        &snapshots,
+                        &mut flows,
+                        snapshot_lease.is_some(),
+                    ) else {
                         dropped = dropped.wrapping_add(1);
                         break;
                     };
@@ -706,8 +775,17 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
             };
             match decision {
-                IngressDecision::Drop => {
+                IngressDecision::Drop(reason) => {
                     ingress_dropped = ingress_dropped.wrapping_add(1);
+                    match reason {
+                        IngressDropReason::SnapshotStale => {
+                            snapshot_stale_dropped = snapshot_stale_dropped.wrapping_add(1);
+                        }
+                        IngressDropReason::MissingEpoch => {
+                            missing_epoch_dropped = missing_epoch_dropped.wrapping_add(1);
+                        }
+                        IngressDropReason::Policy | IngressDropReason::UntrustedForwarder => {}
+                    }
                     break;
                 }
                 IngressDecision::Remote {

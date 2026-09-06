@@ -389,19 +389,25 @@ where replicated authority becomes packet-routing policy.
 The safe specification derives every eligible backend as the intersection of
 active membership, committed placement, readiness for the exact deployment
 generation, and nodes not draining. A router installs only a complete snapshot
-for which all member routes are known. New flows require the latest locally
-committed policy; established flows retain their selected policy while its
-snapshot remains present. Safe history eviction removes dependent flow state
-instead of silently choosing a new backend.
+for which all member routes are known. New flows require the router's installed
+policy to hold a bounded local freshness lease. The policy may lag the latest
+global commit during asynchronous propagation; an abstract fair expiry action
+prevents an unrenewed lease from persisting forever. Established flows retain
+their selected policy while its snapshot remains present. After history
+eviction, the binding remains pinned but its packets fail closed instead of
+silently choosing a new backend. Concrete snapshot installation additionally
+requires a quorum-fresh Raft leader or a follower with a recent successful
+leader-log match, so a responsive but partitioned local DNS process cannot
+renew the lease indefinitely.
 
 Three negative configurations expose the important cross-layer failures. One
 admits a new SYN through a stale snapshot after current policy withdraws its
 backend. Another evicts an epoch still named by a live flow and then remaps that
 flow through the current snapshot. The third admits readiness from an old
 deployment generation. Exact readiness is already enforced by the catalog.
-Snapshot freshness and unretained-flow handling remain implementation gaps:
-the model records the stronger production contract instead of weakening the
-invariant to match those gaps.
+The router now enforces the other two contracts with a five-second monotonic
+snapshot lease and fail-closed missing-epoch tombstones. All three unsafe
+actions remain as regression witnesses.
 
 \subsection{Retained regression patterns}
 
@@ -595,7 +601,7 @@ fast configurations produced the following complete state graphs:
 \hline
 \tlbreak{Charlotte}{ReliableMessage} & 30 & 21 & 5 \\
 \hline
-\tlbreak{CharlotteCluster}{Ingress} & 672,087 & 151,904 & 14 \\
+\tlbreak{CharlotteCluster}{Ingress} & 3,522,889 & 576,764 & 17 \\
 \hline
 \end{longtable}
 

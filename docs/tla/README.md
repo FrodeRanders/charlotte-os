@@ -571,12 +571,16 @@ to retained policy epochs. This is a deliberate composition layer over the
 separate election, log, membership, and snapshot specifications; it does not
 repeat Raft's replication mechanics.
 
-The safe transition system requires a new flow to use the latest locally
-committed policy. Eligible backends are exactly the intersection of active
-members, desired replicas, exact-generation readiness, and nodes not draining.
-A router installs a snapshot only when every member has a discovery route.
-When bounded history evicts an epoch, the safe transition also removes flow
-bindings that depended on it instead of silently selecting a new backend.
+The safe transition system requires a new flow to use the router's installed
+policy while that policy has a fresh local lease. Eligible backends are exactly
+the intersection of active members, desired replicas, exact-generation
+readiness, and nodes not draining. A router installs a snapshot only when every
+member has a discovery route. The model deliberately allows a leased snapshot
+to lag the latest globally committed policy during asynchronous propagation;
+an abstract fair expiry action bounds that authority. Once expired, the lease
+drops unbound traffic. When bounded history evicts an epoch, its flow binding
+remains pinned but no packet action may reinterpret that binding through a
+different snapshot.
 
 Three negative configurations preserve the cross-layer hazards:
 
@@ -587,14 +591,12 @@ Three negative configurations preserve the cross-layer hazards:
 - `CharlotteClusterIngress_readiness_unsafe.cfg` treats readiness from an old
   deployment generation as authority for its replacement.
 
-The first two identify implementation work, rather than repaired historical
-defects. The frame router currently retains its last complete snapshot when a
-refresh cannot be materialized, and a flow whose epoch has fallen out of
-history falls back to the current snapshot. Production policy must choose and
-implement a freshness/lease rule for new SYNs and fail-closed or explicitly
-disruptive handling for an unretained established-flow epoch. The model makes
-those obligations visible without pretending that asynchronous policy
-delivery is instantaneous.
+All three are retained regressions. The frame router now gives each complete
+snapshot a five-second monotonic lease for VIP advertisement and unbound-flow
+admission. A flow whose pinned epoch has left history remains a fail-closed
+tombstone instead of falling back to the current snapshot. The model includes
+the corresponding stale-new-flow and unretained-flow drop actions without
+pretending that asynchronous policy delivery is instantaneous.
 
 ## Remote-call model
 

@@ -189,10 +189,10 @@ run_model CharlotteRaftSnapshot CharlotteRaftSnapshot_small.cfg \
 run_model CharlotteClusterIngress CharlotteClusterIngress_small.cfg \
     PublishReady WithdrawReady ReplaceDeployment CommitDrain BeginJoint \
     FinalizeJoint LearnRoute ForgetRoute InstallSnapshot StartNewFlow \
-    ExistingFlowPacket EndFlow
+    ExpireLease ExistingFlowPacket DropStaleNewFlow DropUnretainedFlow EndFlow
 run_expected_violation CharlotteClusterIngress \
     CharlotteClusterIngress_stale_snapshot_unsafe.cfg \
-    NewFlowsUseLatestPolicy UnsafeStartStaleFlow
+    NewFlowsRequireFreshLease UnsafeStartStaleFlow
 run_expected_violation CharlotteClusterIngress \
     CharlotteClusterIngress_history_unsafe.cfg \
     FlowBackendStable UnsafeFallbackExistingPacket

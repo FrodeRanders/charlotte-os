@@ -62,6 +62,11 @@ pub struct RaftNode {
     pub voted_for: Option<String>,
     pub timeout_millis: u64,
     pub last_heartbeat_millis: u64,
+    /// Last time this follower successfully matched and applied an
+    /// AppendEntries request from its recognized leader. Unlike
+    /// `last_heartbeat_millis`, rejected replication does not refresh this
+    /// bounded-read witness.
+    last_successful_leader_sync_millis: Option<u64>,
     pub timeout_at_millis: u64,
     pub election_sequence_counter: u64,
     pub commit_index: u64,
@@ -203,6 +208,7 @@ impl RaftNode {
             voted_for,
             timeout_millis,
             last_heartbeat_millis: current_millis,
+            last_successful_leader_sync_millis: None,
             timeout_at_millis: if joining {
                 u64::MAX
             } else {
@@ -299,6 +305,7 @@ impl RaftNode {
         self.persistent_state.set_voted_for(None);
         self.current_millis = current_millis;
         self.last_heartbeat_millis = current_millis;
+        self.last_successful_leader_sync_millis = None;
         self.election_sequence_counter = 0;
         self.state = NodeState::Follower;
         self.joining = true;
@@ -350,6 +357,7 @@ impl RaftNode {
         self.persistent_state.set_voted_for(self.voted_for.clone());
         self.election_sequence_counter += 1;
         self.known_leader_id = None;
+        self.last_successful_leader_sync_millis = None;
         self.granted_votes.clear();
         self.granted_votes.insert(self.me.id.clone());
 
@@ -455,6 +463,7 @@ impl RaftNode {
         self.granted_votes.clear();
         self.last_follower_contact_millis.clear();
         self.known_leader_id = None;
+        self.last_successful_leader_sync_millis = None;
         self.election_sequence_counter = 0;
         self.timeout_at_millis = current_millis + self.election_timeout_millis();
     }
@@ -462,6 +471,7 @@ impl RaftNode {
     fn become_leader(&mut self, current_millis: u64) {
         self.state = NodeState::Leader;
         self.known_leader_id = Some(self.me.id.clone());
+        self.last_successful_leader_sync_millis = None;
         self.current_millis = current_millis;
         self.granted_votes.clear();
         self.last_follower_contact_millis.clear();
@@ -524,6 +534,7 @@ impl RaftNode {
             // allow a follower to grant a second vote in the same term.
             self.state = NodeState::Follower;
             self.known_leader_id = None;
+            self.last_successful_leader_sync_millis = None;
             self.granted_votes.clear();
         }
 
@@ -612,6 +623,8 @@ impl RaftNode {
             }
         }
 
+        self.last_successful_leader_sync_millis = Some(current_millis);
+
         AppendEntriesResponse {
             peer_id: self.me.id.clone(),
             term: self.current_term,
@@ -696,6 +709,7 @@ impl RaftNode {
             // current term so a follower cannot vote twice.
             self.state = NodeState::Follower;
             self.known_leader_id = None;
+            self.last_successful_leader_sync_millis = None;
             self.granted_votes.clear();
         }
 
@@ -802,6 +816,7 @@ impl RaftNode {
                 }
             }
             self.pending_snapshot = None;
+            self.last_successful_leader_sync_millis = Some(current_millis);
         }
 
         InstallSnapshotResponse {
@@ -1161,6 +1176,7 @@ impl RaftNode {
         if self.decommissioned {
             self.state = NodeState::Follower;
             self.known_leader_id = None;
+            self.last_successful_leader_sync_millis = None;
         }
 
         let active_ids: BTreeSet<String> = self
@@ -1285,6 +1301,25 @@ impl RaftNode {
             }
         }
         self.cluster_configuration.has_joint_majority(&contacted)
+    }
+
+    /// Whether local committed state is backed by recent cluster evidence.
+    ///
+    /// A leader must currently hold its quorum-contact read lease. A follower
+    /// may serve a bounded-staleness projection only after a successful log
+    /// match from its recognized leader; rejected heartbeats do not count.
+    pub fn can_serve_bounded_read(&self, max_follower_age_millis: u64) -> bool {
+        if self.state == NodeState::Leader {
+            return self.can_serve_linearizable_read();
+        }
+        self.state == NodeState::Follower
+            && !self.joining
+            && !self.decommissioned
+            && self.known_leader_id.is_some()
+            && self.commit_index == self.last_applied
+            && self.last_successful_leader_sync_millis.is_some_and(|last_sync| {
+                self.current_millis.saturating_sub(last_sync) <= max_follower_age_millis
+            })
     }
 
     pub fn handle_client_command(
@@ -2039,6 +2074,43 @@ mod tests {
         assert_eq!(node.state, NodeState::Follower);
         assert_eq!(node.voted_for.as_deref(), Some("n1"));
         assert_eq!(node.persistent_state.voted_for().as_deref(), Some("n1"));
+    }
+
+    #[test]
+    fn bounded_read_requires_recent_successful_leader_replication() {
+        let mut node = node_with_voters(&["n1", "n2"]);
+        assert!(!node.can_serve_bounded_read(1_000));
+
+        let accepted = node.handle_append_entries(
+            AppendEntriesRequest {
+                term: 1,
+                leader_id: "n2".to_string(),
+                prev_log_index: 0,
+                prev_log_term: 0,
+                entries: Vec::new(),
+                leader_commit: 0,
+            },
+            200,
+        );
+        assert!(accepted.success);
+        assert!(node.can_serve_bounded_read(1_000));
+
+        node.set_millis(1_201);
+        assert!(!node.can_serve_bounded_read(1_000));
+
+        let rejected = node.handle_append_entries(
+            AppendEntriesRequest {
+                term: 1,
+                leader_id: "n2".to_string(),
+                prev_log_index: 99,
+                prev_log_term: 1,
+                entries: Vec::new(),
+                leader_commit: 0,
+            },
+            1_202,
+        );
+        assert!(!rejected.success);
+        assert!(!node.can_serve_bounded_read(1_000));
     }
 
     #[test]

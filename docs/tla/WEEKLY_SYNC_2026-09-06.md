@@ -5,9 +5,10 @@
 This synchronization revisits the formal suite after CharlotteOS gained
 replica-set placement, exact-generation readiness, distributed L2 ingress,
 cluster-wide TCP load sharing, operationally separated connector launch, and
-cluster drain and shutdown. The review follows the current implementation at
-`11d5c3f` and concentrates on new state shared by the cluster control plane and
-packet path.
+cluster drain and shutdown. The review began from implementation `11d5c3f`; a
+7 September follow-up checks the freshness and history repairs made after
+formalization commit `81ebb00`. It concentrates on state shared by the cluster
+control plane and packet path.
 
 The existing Raft specifications already check how election, log replication,
 joint membership, admission, and snapshots establish committed state. The new
@@ -41,9 +42,12 @@ making the cross-layer assumptions executable.
 - flow bindings retained against a bounded policy history.
 
 Policy versions represent the full immutable identity of the Rust
-`BackendSnapshot` inputs. The model does not prove collision resistance of the
+`BackendSnapshot` inputs. Lease freshness is modeled as a local Boolean with a
+weakly fair expiry action: this proves that expired authority cannot admit a
+flow and that an unrenewed lease cannot remain fresh forever, but not the real
+five-second duration. The model does not prove collision resistance of the
 64-bit implementation digest, Ethernet authentication, ARP convergence, TCP
-correctness, temporal progress, or globally unique VIP advertisement.
+correctness, or globally unique VIP advertisement.
 
 ## Findings
 
@@ -53,34 +57,37 @@ correctness, temporal progress, or globally unique VIP advertisement.
    negative readiness action demonstrates the stale-generation failure that
    the Rust catalog already rejects.
 
-2. **A complete snapshot can still be stale for new flows.** The frame router
-   intentionally retains its previous snapshot if DNS cannot materialize a
-   complete replacement. That is useful for established flows, but new SYNs
-   currently use the same last-known snapshot without a freshness bound. The
-   negative model reaches a new-flow admission after current locally applied
-   policy has withdrawn the selected backend.
+2. **A complete snapshot needed a new-flow lease.** The frame router retains
+   its previous snapshot if DNS cannot materialize a complete replacement.
+   That remains useful for established flows. A successful refresh now grants
+   five seconds of VIP advertisement and unbound-flow admission; timer failure
+   or expiry suppresses both. DNS renews it only from a quorum-fresh leader or
+   a follower with a leader-log match no more than one second old; rejected
+   replication cannot keep the source witness alive. The negative model retains
+   the former unbounded stale-new-flow behavior as a regression witness.
 
 3. **Flow and snapshot bounds are independent.** A flow records an epoch, while
-   snapshot history can evict that epoch. Current classification falls back to
-   the newest snapshot, which can select a different backend after a policy
-   addition or replacement. The safe model instead removes dependent flow
-   state when the epoch is evicted; the negative configuration retains and
-   demonstrates the remap.
+   snapshot history can evict that epoch. Classification now retains the
+   binding as a fail-closed tombstone and reports a missing-epoch drop instead
+   of selecting from the newest snapshot. The negative configuration retains
+   and demonstrates the former remap.
 
-The latter two are open implementation decisions, not claims of repaired
-behavior. Production policy should distinguish new-flow freshness from
-established-flow retention and define whether an unretained flow fails closed,
-is deliberately reset, or is reconstructed from a separately durable binding.
+These repairs choose the conservative production contract exposed by the
+model: lease freshness is required only to admit unbound traffic, and an
+unretained epoch fails closed. Bounded flow-table eviction remains a separate
+availability limitation because DSR intentionally has no distributed
+connection tracker.
 
 ## Validation
 
-- The safe two-node, one-flow, two-generation, four-policy configuration
-  exhaustively explored 672,087 generated states, 151,904 distinct states, and
-  depth 14 without an invariant violation.
+- The revised safe two-node, one-flow, two-generation, four-policy
+  configuration exhaustively explored 3,522,889 generated states, 576,764
+  distinct states, and depth 17 without an invariant violation.
 - Required action coverage includes readiness publication and withdrawal,
   replacement, drain, stable-to-joint and joint-to-stable membership, route
-  discovery loss/recovery, snapshot installation, new flow, existing packet,
-  and flow termination.
+  discovery loss/recovery, snapshot installation and lease expiry, new flow,
+  existing packet, stale-new-flow rejection, missing-epoch rejection, and flow
+  termination.
 - The stale-snapshot, history-eviction, and stale-readiness configurations each
   produce their named invariant violation through the intended unsafe action.
 - `docs/tla/check.sh` runs the new safe model and all three counterexamples as
@@ -88,9 +95,7 @@ is deliberately reset, or is reconstructed from a separately durable binding.
 
 ## Next formal work
 
-1. Decide and implement the snapshot-freshness and missing-epoch contracts,
-   then change the two present-gap negative cases into fixed regressions.
-2. Add advertiser handover and packets observed by different ingress nodes.
-3. Model the complete replicated drain-to-local-shutdown ordering.
-4. Model role-separated operational admission and connector replacement.
-5. Model Kafka transactional-step fencing and uncertain external effects.
+1. Add advertiser handover and packets observed by different ingress nodes.
+2. Model the complete replicated drain-to-local-shutdown ordering.
+3. Model role-separated operational admission and connector replacement.
+4. Model Kafka transactional-step fencing and uncertain external effects.

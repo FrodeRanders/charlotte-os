@@ -238,11 +238,14 @@ authority to nominate a backend. A placement change immediately excludes the
 stale generation from the committed eligibility projection; the new node enters
 that projection only after its agent publishes readiness. Each frame router
 adopts the change on its next successful asynchronous snapshot refresh. The
-current router deliberately retains its last complete snapshot when a newer one
-cannot be materialized, so freshness for new flows is an identified hardening
-requirement rather than an instantaneous-convergence claim. Older ingress
-epochs retain the previous admitted route for observed flows during the bounded
-drain window.
+router retains its last complete snapshot when a newer one cannot be
+materialized, but that snapshot grants new-flow admission and VIP advertisement
+only through a five-second monotonic lease. DNS renews the lease only for a
+quorum-fresh leader or a follower whose last successful leader-log match is at
+most one second old; failed replication cannot perpetuate stale authority.
+Once the lease expires, unbound traffic fails closed while bindings to retained epochs may continue. Older
+ingress epochs retain the previous admitted route for observed flows during the
+bounded drain window.
 
 ![Replica placement and readiness feeding cluster DSR](../manual-v2/figures/cluster-management-dsr.svg)
 

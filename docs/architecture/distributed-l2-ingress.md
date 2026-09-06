@@ -133,13 +133,26 @@ routable and therefore keeps its observed bindings; new SYNs exclude it.
 
 Those properties hold while the required snapshot remains in the bounded
 history and after the router has installed the relevant committed projection.
-Today a failed or incomplete refresh leaves the last complete snapshot current,
-including for new SYNs. Also, snapshot-history eviction is independent of the
-flow-table bound; classification falls back to the current snapshot if a live
-binding names an evicted epoch. That fallback can remap an established flow.
-Production hardening must therefore add a new-flow freshness/lease rule and
-either retire dependent bindings when evicting an epoch or fail closed when the
-epoch is unavailable.
+A successful complete refresh grants a five-second monotonic lease for VIP
+advertisement and unbound-flow admission. The normal one-second refresh renews
+it. DNS supplies a refresh only when its Raft state has current cluster
+evidence: a leader must hold recent quorum contact, while a follower must have
+successfully matched and applied a recognized leader's log within the previous
+second. A rejected AppendEntries heartbeat does not refresh that evidence. A
+failed, incomplete, or source-stale refresh may leave the last complete
+snapshot in memory for established flows, but lease expiry suppresses ARP
+responses and drops every packet without an existing binding. The two-stage
+rule bounds authority after cluster contact is lost: the source witness ages
+out within one second and the last router lease within a further five seconds.
+
+Snapshot-history eviction remains independent of the flow-table bound. A live
+binding whose epoch leaves history is retained as a fail-closed tombstone;
+classification drops its packets instead of falling back to the current
+snapshot. FIN or RST may retire the binding, and ordinary bounded flow-table
+pressure may still evict old state. That latter loss remains an explicit
+availability limit: without distributed connection tracking, an ingress node
+cannot always distinguish traffic first observed after advertiser failover from
+traffic whose local binding was evicted.
 
 This cache is deliberately not distributed connection tracking. Another
 ingress participant with the same epoch independently selects the same backend,
@@ -150,9 +163,10 @@ Failure of the selected backend may terminate its TCP connections.
 
 [`CharlotteClusterIngress.tla`](../tla/CharlotteClusterIngress.tla) composes
 membership, placement, exact-generation readiness, drain, router snapshots and
-flow epochs. Its safe specification states the intended production contract;
-negative configurations reproduce stale-new-flow admission and flow remapping
-after history eviction, alongside the already prevented stale-readiness case.
+flow epochs. Its safe specification now matches the implemented lease and
+fail-closed tombstone contract. Negative configurations retain the former
+stale-new-flow admission and history-fallback remapping alongside the
+stale-readiness regression.
 
 VIP advertisement follows the leader elected by the existing Raft group when
 that identity is an admitted, non-draining ingress participant. It need not be
@@ -227,8 +241,8 @@ Before `orders` is committed, ready, and installed in a complete router
 snapshot, no freshly initialized node advertises this VIP. During a move, the
 committed policy makes new flows wait for the new exact generation and retained
 epochs preserve observed flows. A router that cannot refresh can presently
-continue using its last complete policy; the formal model records the stronger
-freshness contract still to be implemented.
+continue using retained epochs for bound flows, but its five-second lease stops
+VIP advertisement and admission of unbound traffic.
 
 Run the complete multi-node validation separately:
 
