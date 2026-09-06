@@ -12,10 +12,11 @@ store credentials.
 2. Calculate the SHA-256 of the final signed ELF.
 3. Upload those immutable bytes from CI or an operator workstation to the
    central RustFS, Dell EMC ECS, or other compatible store.
-4. Create a `CDEPLOY4` descriptor with `cluster-sign deployment-sign`. It binds
+4. Create a `CDEPLOY5` descriptor with `cluster-sign deployment-sign`. It binds
    the logical artifact name, exact digest, opaque object key, target node key,
    monotonic sequence, per-thread stack allocation in 4 KiB pages, maximum
-   active-thread count, cooperative shutdown grace, and named capability grants.
+   active-thread count, cooperative shutdown grace, placement policy, and
+   named capability grants.
 5. Submit it with `cluster-sign deployment-notify <descriptor> [host:port]`.
 6. Observe the exact generation with
    `cluster-sign deployment-status <artifact-name> [host:port] [wait-seconds]`.
@@ -48,6 +49,18 @@ cluster-sign deployment-notify greet.cdep 127.0.0.1:8081
 cluster-sign deployment-status greet 127.0.0.1:8081 120
 ```
 
+For three distinct replicas, bless the ELF with
+`FLAG_PARALLEL_INSTANCES`, use node key zero, and add placement options before
+the grants:
+
+```text
+cluster-sign deployment-sign orders.cdep orders releases/orders-42.elf \
+  <sha256-of-signed-elf> 0 42 8 8 15000 <private-key-hex> \
+  --replicas=3 --spread-replicas --anti-affinity-group=42 orders=publish
+cluster-sign release-sign orders.crelease orders 42 <private-key-hex> orders.cdep
+cluster-sign release-apply orders.crelease 127.0.0.1:8081 120
+```
+
 A successful notification returns HTTP `202 Accepted` and JSON containing the
 committed Raft deployment generation. Repeating the exact same descriptor is
 idempotent. A lower signed sequence, or different signed bytes at the same
@@ -56,7 +69,7 @@ sequence, returns HTTP `409 Conflict`.
 The `4 1 5000` between the deployment sequence and private key in the example means
 four 4 KiB stack pages per thread and at most one active thread, including the
 bootstrap thread, with five seconds to drain before forced retirement. Valid
-`CDEPLOY4` execution values are 1 through 64; shutdown grace is zero through
+`CDEPLOY5` execution values are 1 through 64; shutdown grace is zero through
 300,000 milliseconds. All three values are signed and enforced exactly by the kernel; values outside those
 ranges are rejected rather than clamped. A thread publication beyond the
 signed quota aborts that protection domain under the current fail-closed spawn
@@ -64,7 +77,8 @@ ABI. The release pipeline should take all three requirements from the signed,
 developer-reviewed component plan. For compatibility, `CDEPLOY1` is interpreted
 as four pages and 16 threads, while `CDEPLOY2` retains its signed stack pages
 and receives the 16-thread default. `CDEPLOY3` receives the five-second
-shutdown compatibility default.
+shutdown compatibility default. `CDEPLOY4` retains all three values and
+decodes with singleton placement.
 
 `deployment-apply` is currently release orchestration, not atomic bundle
 admission. Each descriptor is a separate Raft entry, so a transport or policy
@@ -87,25 +101,25 @@ cluster-sign release-apply orders.crelease 127.0.0.1:8081 120
 
 The outer signature binds the release name, monotonic release sequence, and
 exact ordered descriptor bytes. Every nested deployment signature is also
-verified against the cluster key; current tooling emits `CDEPLOY4`, while the
-reader retains `CDEPLOY1` through `CDEPLOY3` compatibility. An envelope is limited
+verified against the cluster key; current tooling emits `CDEPLOY5`, while the
+reader retains `CDEPLOY1` through `CDEPLOY4` compatibility. An envelope is limited
 to 16 distinct artifact names and 3,584 bytes so it, its IPC envelope, and the
 leader-resolved node assignments remain bounded.
 
 `deployd` accepts the envelope at `POST /v1/releases`. The request can enter
 through any member; a follower source-validates and correlates its relay to the
-leader. The leader resolves every zero node key and proposes the complete set
-as one Raft command. The replicated state machine preflights the release and
+leader. The leader resolves every zero node key and signed placement policy,
+then proposes all concrete replica sets as one Raft command. The replicated state machine preflights the release and
 all component sequences while holding the deployment map, then changes either
 all desired deployments or none. Exact retries return the existing release
-generation, and catalog v9 snapshots retain the signed release record.
+generation, and catalog snapshots retain the signed release and replica records.
 
 Atomic admission does not mean simultaneous readiness. Node agents reconcile
 the newly visible desired records independently, and `release-apply` waits for
 each exact deployment generation. A fetch or launch failure can therefore
 leave a release committed but not ready; automatic rollback and rollout policy
 remain controller work. `CRELEASE` binds executable deployment decisions, not
-yet the BPMN digest, schemas, provenance graph, replica policy, or other
+yet the BPMN digest, schemas, provenance graph, or other
 semantic content of a complete Durga process bundle.
 
 ![Signed atomic release admission and rollout](../manual-v2/figures/release-admission-rollout.svg)
@@ -116,15 +130,21 @@ the current Raft leader, and correlates the committed result back to the HTTP
 request. The release client therefore does not need to discover the leader.
 
 `GET /v1/deployments/{percent-encoded-artifact-name}` reports `committed`,
-`replacing`, or `ready`. Readiness is generation-safe: the active distributed
-name-catalog entry must name the selected node and carry the exact desired
-deployment generation. A stale endpoint with the same logical name therefore
-cannot satisfy a newer rollout.
+`replacing`, or `ready`. Readiness is generation-safe: each ready count
+represents a distinct desired node whose active distributed registration
+carries the exact deployment generation. The JSON response includes
+`desired_replicas` and `ready_replicas`; `ready` means the full desired set is
+ready. A stale endpoint with the same logical name therefore cannot satisfy a
+newer rollout.
 
-A node key of zero asks the cluster to place the singleton automatically. The
-implemented first policy chooses the current Raft leader, independently of
-which member accepted the HTTP request. A
-nonzero key remains an explicit pin. The descriptor name may use the complete
+A node key of zero asks the cluster to apply the signed placement policy. A
+singleton prefers the current Raft leader and moves to a deterministic
+fallback when it is draining; fixed replica counts and
+`every eligible node` select from admitted, non-draining voters. The leader
+reconciles automatic sets after membership changes. A nonzero key remains an
+explicit singleton pin. Replica policies must be submitted in a `CRELEASE`, so
+the planner can honor cross-component affinity and anti-affinity consistently.
+The descriptor name may use the complete
 CLS2 limit of 48 bytes; it is no longer restricted by the old scalar-name ABI.
 
 ## Trust and secret boundary
@@ -183,10 +203,11 @@ drop. The limit is a kernel admission bound, not a protocol-name limit.
   notification. It is also the privileged retrieval path for encrypted
   operational envelopes and cannot configure itself without a lower-level
   provisioning source.
-- Automatic placement currently handles one replica on the current Raft leader.
-  Capacity-aware selection, affinity/anti-affinity, failure-domain spreading,
-  rescheduling after node loss, and replica counts above one need a
-  cluster-level deployment planner.
+- Automatic placement handles leader-preferred singletons, fixed replica sets,
+  every-eligible-node policy, affinity/anti-affinity, and membership- or
+  drain-driven rescheduling. Capacity-aware selection, named failure-domain
+  spreading, multiple instances of one artifact per node, and rolling
+  replacement remain future controller work.
 - `scripts/run-aarch64.sh --deployment-ingress-test --timeout 240` automates a
   TLS RustFS upload → signed atomic release → S3 pull → scoped launch →
   readiness path.

@@ -2,7 +2,7 @@
 //!
 //! This is a policy contract, not a scheduler implementation. It makes the
 //! important distinctions explicit before the replicated deployment format
-//! grows from its current single-assignment slice: component replicas,
+//! grows beyond its original single-assignment slice: component replicas,
 //! co-location affinity between different components, anti-affinity/failure
 //! domains, and whether the blessed artifact permits parallel instances.
 
@@ -56,9 +56,11 @@ impl PlacementPolicy {
         }
     }
 
-    /// Validate a placement declaration against the artifact policy that the
-    /// cluster signer blessed into the ELF.
-    pub fn validate(&self, artifact: &ArtifactMetadata) -> Result<(), PolicyError> {
+    /// Validate the internally signed placement shape without consulting an
+    /// artifact. Admission can perform this check before fetching executable
+    /// bytes; the launch gate must subsequently call [`Self::validate`] to
+    /// enforce the artifact's parallel-instance blessing.
+    pub fn validate_shape(&self) -> Result<(), PolicyError> {
         let every_node = self.flags & EVERY_ELIGIBLE_NODE != 0;
         if every_node && self.replicas != 0 {
             return Err(PolicyError::EveryNodeWithFixedReplicaCount);
@@ -79,13 +81,21 @@ impl PlacementPolicy {
                 return Err(PolicyError::ImpossibleSpread);
             }
         }
+        if self.flags & COLOCATE_AFFINITY_GROUP != 0 && self.affinity_group == 0 {
+            return Err(PolicyError::MissingAffinityGroup);
+        }
+        Ok(())
+    }
+
+    /// Validate a placement declaration against the artifact policy that the
+    /// cluster signer blessed into the ELF.
+    pub fn validate(&self, artifact: &ArtifactMetadata) -> Result<(), PolicyError> {
+        self.validate_shape()?;
+        let every_node = self.flags & EVERY_ELIGIBLE_NODE != 0;
         let may_run_in_parallel =
             every_node || self.replicas > 1 || self.max_instances_per_node > 1;
         if may_run_in_parallel && artifact.flags & FLAG_PARALLEL_INSTANCES == 0 {
             return Err(PolicyError::ParallelInstancesNotBlessed);
-        }
-        if self.flags & COLOCATE_AFFINITY_GROUP != 0 && self.affinity_group == 0 {
-            return Err(PolicyError::MissingAffinityGroup);
         }
         Ok(())
     }

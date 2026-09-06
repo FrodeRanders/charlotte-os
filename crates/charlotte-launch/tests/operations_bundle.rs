@@ -40,6 +40,7 @@ fn signed_release(pair: &KeyPair) -> Vec<u8> {
         stack_pages_per_thread: 32,
         max_threads: 16,
         shutdown_grace_ms: charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS,
+        placement: charlotte_launch::placement::PlacementPolicy::singleton(),
         object_key: b"releases/kafka.elf",
         grants: &[],
     };

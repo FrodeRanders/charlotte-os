@@ -6,7 +6,14 @@
 
 extern crate alloc;
 
-use alloc::vec::Vec;
+use alloc::{
+    collections::{
+        BTreeMap,
+        BTreeSet,
+    },
+    vec,
+    vec::Vec,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AdmissionError {
@@ -17,6 +24,115 @@ pub enum AdmissionError {
     WrongOperationsKey,
     WrongRecipient,
     WrongReleaseKey,
+    UnsatisfiablePlacement,
+}
+
+/// Resolve each signed component policy to a concrete, unique node set.
+/// Fixed singletons retain the historical leader placement. Replica choices
+/// use a stable per-artifact ranking; affinity groups share a ranking seed and
+/// anti-affinity groups require unused nodes. Components are planned in
+/// artifact-name order so release ordering cannot change the result.
+pub fn resolve_release_assignments(
+    release_bytes: &[u8],
+    eligible_nodes: &[u64],
+    automatic_node: u64,
+) -> Result<Vec<Vec<u64>>, AdmissionError> {
+    let release =
+        charlotte_launch::release::decode(release_bytes).ok_or(AdmissionError::Invalid)?;
+    let descriptors = release.descriptors().collect::<Vec<_>>();
+    resolve_descriptor_assignments(&descriptors, eligible_nodes, automatic_node)
+}
+
+/// Resolve an already decoded, stable descriptor ordering. The controller
+/// uses this to recompute desired sets after committed membership changes.
+pub fn resolve_descriptor_assignments(
+    descriptor_bytes: &[&[u8]],
+    eligible_nodes: &[u64],
+    automatic_node: u64,
+) -> Result<Vec<Vec<u64>>, AdmissionError> {
+    let mut candidates =
+        eligible_nodes.iter().copied().filter(|node| *node != 0).collect::<Vec<_>>();
+    candidates.sort_unstable();
+    candidates.dedup();
+    let descriptors = descriptor_bytes
+        .iter()
+        .map(|bytes| charlotte_launch::deployment::decode(bytes).ok_or(AdmissionError::Invalid))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut order = (0..descriptors.len()).collect::<Vec<_>>();
+    order.sort_unstable_by(|left, right| {
+        descriptors[*left]
+            .artifact_name
+            .cmp(descriptors[*right].artifact_name)
+            .then_with(|| left.cmp(right))
+    });
+    let mut anti_affinity: BTreeMap<u64, BTreeSet<u64>> = BTreeMap::new();
+    let mut assignments = vec![None; descriptors.len()];
+    for index in order {
+        let descriptor = descriptors[index];
+        if descriptor.node_key != 0 {
+            assignments[index] = Some(vec![descriptor.node_key]);
+            continue;
+        }
+        let policy = descriptor.placement;
+        policy.validate_shape().map_err(|_| AdmissionError::Invalid)?;
+        if policy == charlotte_launch::placement::PlacementPolicy::singleton() {
+            let selected = if automatic_node != 0 && candidates.contains(&automatic_node) {
+                automatic_node
+            } else {
+                candidates
+                    .iter()
+                    .copied()
+                    .max_by_key(|node| {
+                        let mut score_input = descriptor.artifact_name.to_vec();
+                        score_input.extend_from_slice(&node.to_le_bytes());
+                        (charlotte_launch::fnv1a(&score_input), core::cmp::Reverse(*node))
+                    })
+                    .ok_or(AdmissionError::UnsatisfiablePlacement)?
+            };
+            assignments[index] = Some(vec![selected]);
+            continue;
+        }
+        let every = policy.flags & charlotte_launch::placement::EVERY_ELIGIBLE_NODE != 0;
+        let wanted = if every {
+            candidates.len()
+        } else {
+            usize::from(policy.replicas)
+        };
+        if wanted == 0 || wanted > candidates.len() {
+            return Err(AdmissionError::UnsatisfiablePlacement);
+        }
+        let seed = if policy.flags & charlotte_launch::placement::COLOCATE_AFFINITY_GROUP != 0 {
+            policy.affinity_group.to_le_bytes().to_vec()
+        } else {
+            descriptor.artifact_name.to_vec()
+        };
+        let used = anti_affinity.get(&policy.anti_affinity_group);
+        let mut ranked = candidates
+            .iter()
+            .copied()
+            .filter(|node| {
+                policy.anti_affinity_group == 0 || !used.is_some_and(|nodes| nodes.contains(node))
+            })
+            .collect::<Vec<_>>();
+        if ranked.len() < wanted {
+            return Err(AdmissionError::UnsatisfiablePlacement);
+        }
+        ranked.sort_unstable_by_key(|node| {
+            let mut score_input = seed.clone();
+            score_input.extend_from_slice(&node.to_le_bytes());
+            (core::cmp::Reverse(charlotte_launch::fnv1a(&score_input)), *node)
+        });
+        let mut selected = ranked.into_iter().take(wanted).collect::<Vec<_>>();
+        selected.sort_unstable();
+        if policy.anti_affinity_group != 0 {
+            anti_affinity
+                .entry(policy.anti_affinity_group)
+                .or_default()
+                .extend(selected.iter().copied());
+        }
+        assignments[index] = Some(selected);
+    }
+    assignments.into_iter().collect::<Option<Vec<_>>>().ok_or(AdmissionError::Invalid)
 }
 
 /// Verify both authorities and all operational context, resolve automatic
@@ -29,6 +145,7 @@ pub fn verify_and_encode(
     bundle_bytes: &[u8],
     trust: &charlotte_launch::trust::AdmissionTrust,
     now_unix_seconds: u64,
+    eligible_nodes: &[u64],
     automatic_node: u64,
 ) -> Result<Vec<u8>, AdmissionError> {
     use charlotte_launch::operations_bundle::VerifyOutcome;
@@ -55,23 +172,8 @@ pub fn verify_and_encode(
     }
     let bundle =
         charlotte_launch::operations_bundle::decode(bundle_bytes).ok_or(AdmissionError::Invalid)?;
-    let release =
-        charlotte_launch::release::decode(bundle.release).ok_or(AdmissionError::Invalid)?;
-    let nodes = release
-        .descriptors()
-        .map(|bytes| {
-            let descriptor = charlotte_launch::deployment::decode(bytes)?;
-            Some(
-                if descriptor.node_key == 0 {
-                    automatic_node
-                } else {
-                    descriptor.node_key
-                },
-            )
-        })
-        .collect::<Option<Vec<_>>>()
-        .ok_or(AdmissionError::Invalid)?;
-    crate::name_catalog::encode_release_with_operations(bundle_bytes, &nodes)
+    let assignments = resolve_release_assignments(bundle.release, eligible_nodes, automatic_node)?;
+    crate::name_catalog::encode_release_replicas_with_operations(bundle_bytes, &assignments)
         .ok_or(AdmissionError::TooLarge)
 }
 
@@ -123,6 +225,45 @@ mod tests {
         assert!(deployment::set_signature(bytes, signature.as_ref().try_into().unwrap()));
     }
 
+    fn policy_release(
+        pair: &KeyPair,
+        components: &[(&[u8], charlotte_launch::placement::PlacementPolicy)],
+    ) -> Vec<u8> {
+        let public: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
+        let descriptors = components
+            .iter()
+            .map(|(name, placement)| {
+                let fields = DescriptorFields {
+                    sequence: 1,
+                    node_key: 0,
+                    artifact_digest: [name[0]; 32],
+                    artifact_name: name,
+                    stack_pages_per_thread: 4,
+                    max_threads: 4,
+                    shutdown_grace_ms: charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS,
+                    placement: *placement,
+                    object_key: name,
+                    grants: &[],
+                };
+                let mut bytes = vec![0; deployment::encoded_len(&fields).unwrap()];
+                deployment::encode_unsigned(&fields, public, &mut bytes).unwrap();
+                sign_deployment(&mut bytes, pair);
+                bytes
+            })
+            .collect::<Vec<_>>();
+        let refs = descriptors.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        let fields = ReleaseFields {
+            sequence: 1,
+            release_name: b"placement-test",
+            descriptors: &refs,
+        };
+        let mut release = vec![0; release::encoded_len(&fields).unwrap()];
+        release::encode_unsigned(&fields, public, &mut release).unwrap();
+        let signature: Signature = pair.sk.sign(release::signature_digest(&release).unwrap(), None);
+        assert!(release::set_signature(&mut release, signature.as_ref().try_into().unwrap()));
+        release
+    }
+
     fn fixture(profile_len: usize, expiry: u64) -> Fixture {
         let release_pair = KeyPair::from_seed([0x31; 32].into());
         let operational_pair = KeyPair::from_seed([0x42; 32].into());
@@ -136,6 +277,7 @@ mod tests {
             stack_pages_per_thread: 32,
             max_threads: 16,
             shutdown_grace_ms: charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS,
+            placement: charlotte_launch::placement::PlacementPolicy::singleton(),
             object_key: b"releases/kafka.elf",
             grants: &[],
         };
@@ -230,7 +372,8 @@ mod tests {
     fn leader_verification_produces_only_compact_replay_fenced_state() {
         let fixture = fixture(128, 2_000_000_000);
         let command =
-            verify_and_encode(&fixture.bundle, &fixture.trust, 1_900_000_000, 0x1234).unwrap();
+            verify_and_encode(&fixture.bundle, &fixture.trust, 1_900_000_000, &[0x1234], 0x1234)
+                .unwrap();
         assert!(command.len() <= catten_graft::types::MAX_COMMAND_BYTES);
         assert!(!command.windows(32).any(|window| window.iter().all(|byte| *byte == 0x5a)));
 
@@ -243,22 +386,92 @@ mod tests {
     }
 
     #[test]
+    fn planner_resolves_distinct_replicas_and_fails_when_capacity_is_short() {
+        let pair = KeyPair::from_seed([0x53; 32].into());
+        let policy = charlotte_launch::placement::PlacementPolicy {
+            replicas: 3,
+            max_instances_per_node: 1,
+            min_distinct_nodes: 3,
+            flags: charlotte_launch::placement::SPREAD_REPLICAS,
+            affinity_group: 0,
+            anti_affinity_group: 0,
+        };
+        let release = policy_release(&pair, &[(b"orders", policy)]);
+        let assignments = resolve_release_assignments(&release, &[4, 2, 3, 1], 4).unwrap();
+        assert_eq!(assignments.len(), 1);
+        assert_eq!(assignments[0].len(), 3);
+        assert!(assignments[0].windows(2).all(|pair| pair[0] < pair[1]));
+        assert_eq!(
+            resolve_release_assignments(&release, &[1, 2], 1),
+            Err(AdmissionError::UnsatisfiablePlacement)
+        );
+    }
+
+    #[test]
+    fn singleton_prefers_the_leader_but_can_leave_a_draining_leader() {
+        let pair = KeyPair::from_seed([0x55; 32].into());
+        let release = policy_release(
+            &pair,
+            &[(b"orders", charlotte_launch::placement::PlacementPolicy::singleton())],
+        );
+        assert_eq!(resolve_release_assignments(&release, &[1, 2, 3], 2).unwrap(), vec![vec![2]]);
+        let fallback = resolve_release_assignments(&release, &[1, 3], 2).unwrap();
+        assert_eq!(fallback[0].len(), 1);
+        assert!(matches!(fallback[0][0], 1 | 3));
+    }
+
+    #[test]
+    fn planner_honours_affinity_and_anti_affinity_groups() {
+        let pair = KeyPair::from_seed([0x54; 32].into());
+        let colocated = charlotte_launch::placement::PlacementPolicy {
+            replicas: 1,
+            max_instances_per_node: 1,
+            min_distinct_nodes: 1,
+            flags: charlotte_launch::placement::COLOCATE_AFFINITY_GROUP,
+            affinity_group: 7,
+            anti_affinity_group: 0,
+        };
+        let release = policy_release(&pair, &[(b"receive", colocated), (b"publish", colocated)]);
+        let assignments = resolve_release_assignments(&release, &[1, 2, 3], 1).unwrap();
+        assert_eq!(assignments[0], assignments[1]);
+
+        let separated = charlotte_launch::placement::PlacementPolicy {
+            flags: 0,
+            affinity_group: 0,
+            anti_affinity_group: 9,
+            ..colocated
+        };
+        let release = policy_release(&pair, &[(b"receive", separated), (b"publish", separated)]);
+        let assignments = resolve_release_assignments(&release, &[1, 2, 3], 1).unwrap();
+        assert_ne!(assignments[0], assignments[1]);
+        assert_eq!(
+            resolve_release_assignments(&release, &[1], 1),
+            Err(AdmissionError::UnsatisfiablePlacement)
+        );
+
+        let reversed = policy_release(&pair, &[(b"publish", separated), (b"receive", separated)]);
+        let reversed_assignments = resolve_release_assignments(&reversed, &[1, 2, 3], 1).unwrap();
+        assert_eq!(assignments[0], reversed_assignments[1]);
+        assert_eq!(assignments[1], reversed_assignments[0]);
+    }
+
+    #[test]
     fn leader_fails_closed_on_expiry_and_wrong_authority_context() {
         let fixture = fixture(32, 2_000_000_000);
         assert_eq!(
-            verify_and_encode(&fixture.bundle, &fixture.trust, 2_000_000_001, 1),
+            verify_and_encode(&fixture.bundle, &fixture.trust, 2_000_000_001, &[1], 1),
             Err(AdmissionError::Expired)
         );
         let mut wrong = fixture.trust;
         wrong.operations_key = [0x99; 32];
         assert_eq!(
-            verify_and_encode(&fixture.bundle, &wrong, 1_900_000_000, 1),
+            verify_and_encode(&fixture.bundle, &wrong, 1_900_000_000, &[1], 1),
             Err(AdmissionError::WrongOperationsKey)
         );
         let mut wrong = fixture.trust;
         wrong.cluster_id = [0x88; 32];
         assert_eq!(
-            verify_and_encode(&fixture.bundle, &wrong, 1_900_000_000, 1),
+            verify_and_encode(&fixture.bundle, &wrong, 1_900_000_000, &[1], 1),
             Err(AdmissionError::WrongCluster)
         );
     }

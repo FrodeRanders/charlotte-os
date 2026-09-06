@@ -164,12 +164,15 @@ The main additions and extensions currently maintained here are:
   SHA-256.
 - **Signed, capability-scoped cluster deployment:** CI can place immutable ELFs
   in a separately managed S3-compatible store and notify any cluster member
-  with a signed `CDEPLOY4` descriptor that binds placement, per-thread stack
+  with a signed `CDEPLOY5` descriptor that binds singleton, fixed-replica, or
+  every-eligible-node placement, per-thread stack
   pages, a maximum active-thread count, a bounded cooperative-shutdown grace
   period, and capability grants. A signed
   `CRELEASE` binds an ordered
   multi-component change and admits all desired revisions in one Raft command.
-  Assigned node agents fetch and verify each artifact, launch it in a fresh
+  The Raft leader resolves replica policies against admitted, non-draining
+  voters and continuously reconciles the concrete node sets as membership
+  changes. Assigned node agents fetch and verify each artifact, launch it in a fresh
   address space, and give it only `grantctl`; the controller translates the
   descriptor's named grants into attenuated service connections without
   exposing the name service or infrastructure credentials to the application.
@@ -265,8 +268,9 @@ The long-term direction is to scale this model from one machine to a cluster:
 interchangeable server-class nodes assemble themselves on boot, software is
 deployed to a named cluster rather than to named servers, and replicated policy
 decides where components belong. Placement should eventually account for
-replica count, node capacity and labels, failure domains, affinity,
-anti-affinity, observed communication, readiness, and disruption budgets. A
+node capacity and labels, failure domains, observed communication, and
+disruption budgets. Signed replica count, basic affinity/anti-affinity,
+readiness, and membership-driven rescheduling are implemented first steps. A
 node should be replaceable compute, retaining only the local state needed to
 participate safely while pulling immutable software from a managed object
 store and validating it against cluster-wide trust state.
@@ -317,9 +321,11 @@ signed image -- the build pipeline signs every staged service ELF with a
 and logical identity. Known third-party-containing services can therefore be
 admitted once with an SBOM/provenance digest and traded internally without
 runtime Internet dependency fetching. Bootstrap and Raft durability are still
-per-node; capacity-aware replica placement, failure-domain scheduling,
-rescheduling, coordinated rollback, and a richer process-level release bundle
-are not yet implemented. These boundaries are called out in
+per-node. Signed replica sets, affinity/anti-affinity, exact-generation
+readiness, and membership- or drain-driven rescheduling are implemented;
+capacity-aware placement, failure-domain scheduling, rolling replacement,
+coordinated rollback, and a richer process-level release bundle are not yet
+implemented. These boundaries are called out in
 Chapter 17 of [the manual](docs/manual-v2/charlotte.pdf) ("Server-Class
 Cluster Vision"), which describes the vision against what already exists
 (consensus, the distributed name service, the object store, and live upgrade).

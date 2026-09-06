@@ -7,8 +7,8 @@
 //! operation on the hosting node.
 //!
 //! The same state machine also carries the cluster **deployment manifest**
-//! (`artifact -> {object_id, artifact_sha256, node_key, descriptor, generation}`) and the cluster's
-//! **Ed25519 public key** (committed by the key ceremony). A deployment is a
+//! (`artifact -> {object_id, artifact_sha256, replica_nodes, descriptor, generation}`) and the
+//! cluster's **Ed25519 public key** (committed by the key ceremony). A deployment is a
 //! cluster decision, so it lives in replicated state next to the name
 //! catalog; node-local agents read it and act on the assignments addressed
 //! to them. The deployment record itself needs no signature: its
@@ -24,6 +24,10 @@
 //! set-key:    0x07 | key:[u8; 32]
 //! release:    0x08 | envelope_len:u32 | signed_release | node_count:u16 | node_keys:[u64]
 //!             [bundle_sequence:u64 | bundle_sha256:32 | binding_count:u16 | compact_bindings]
+//! replicas:   0x0a | envelope_len:u32 | signed_release | descriptor_count:u16 |
+//!             [replica_count:u16 | node_keys:[u64]] [optional operational tail]
+//! reassign:   0x0b | artifact_len:u32 | artifact | expected_generation:u64 |
+//!             replica_count:u16 | node_keys:[u64]
 //! ```
 use alloc::{
     collections::BTreeMap,
@@ -44,6 +48,8 @@ const CMD_DEPLOY: u8 = 0x05;
 const CMD_SET_CLUSTER_KEY: u8 = 0x07;
 const CMD_RELEASE: u8 = 0x08;
 const CMD_SHUTDOWN: u8 = 0x09;
+const CMD_RELEASE_REPLICAS: u8 = 0x0a;
+const CMD_REASSIGN: u8 = 0x0b;
 const CATALOG_MAGIC_V1: u64 = 0x4341_5441_4c4f_474d; // "CATALOGM"
 const CATALOG_MAGIC_V2: u64 = 0x4341_5441_4c4f_4732; // "CATALOG2"
 const CATALOG_MAGIC_V3: u64 = 0x4341_5441_4c4f_4733; // "CATALOG3"
@@ -56,6 +62,7 @@ const CATALOG_MAGIC_V9: u64 = 0x4341_5441_4c4f_4739; // "CATALOG9"
 const CATALOG_MAGIC_V10: u64 = 0x4341_5441_4c4f_4741; // "CATALOGA"
 const CATALOG_MAGIC_V11: u64 = 0x4341_5441_4c4f_4742; // "CATALOGB"
 const CATALOG_MAGIC_V12: u64 = 0x4341_5441_4c4f_4743; // "CATALOGC"
+const CATALOG_MAGIC_V13: u64 = 0x4341_5441_4c4f_4744; // "CATALOGD"
 
 /// Query tag prefix for a name lookup.
 const QUERY_LOOKUP: u8 = 0x01;
@@ -74,7 +81,7 @@ pub struct CatalogEntry {
     pub deployment_generation: u64,
 }
 
-/// A replicated deployment record: the cluster's answer to "which node runs
+/// A replicated deployment record: the cluster's answer to "which nodes run
 /// this artifact, and from which object-store object?".
 ///
 /// `node_key` is the packed cluster node identity (the FNV-1a of the node's
@@ -83,7 +90,11 @@ pub struct CatalogEntry {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DeploymentEntry {
     pub object_id: u64,
+    /// Compatibility/diagnostic primary: the first member of
+    /// `replica_nodes`, or zero when no placement is currently possible.
     pub node_key: u64,
+    /// Sorted, unique concrete assignments committed by Raft.
+    pub replica_nodes: Vec<u64>,
     pub generation: u64,
     /// Immutable content identity selected by this deployment generation.
     pub artifact_digest: [u8; 32],
@@ -93,10 +104,8 @@ pub struct DeploymentEntry {
 
 /// The committed placement/readiness view used to admit new ingress flows.
 ///
-/// The current deployment model has one desired node per artifact, so
-/// `ready_nodes` contains at most one node. Keeping this as a vector gives the
-/// ingress boundary the right contract for replicated placement without
-/// making it depend on today's singleton catalog representation.
+/// Each ready node is both a member of the committed replica set and the
+/// publisher of an endpoint for the exact deployment generation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IngressPlacement {
     pub deployment_generation: u64,
@@ -143,8 +152,13 @@ pub struct ShutdownIntentEntry {
     pub envelope: Vec<u8>,
 }
 
+type DeploymentReplicaMap = BTreeMap<Vec<u8>, BTreeMap<Vec<u8>, CatalogEntry>>;
+
 pub struct NameCatalog {
     entries: spin::Mutex<BTreeMap<Vec<u8>, CatalogEntry>>,
+    /// Per-node publications for replicated deployed applications. Ordinary
+    /// service names retain the singleton `entries` representation.
+    deployment_replicas: spin::Mutex<DeploymentReplicaMap>,
     deployments: spin::Mutex<BTreeMap<Vec<u8>, DeploymentEntry>>,
     releases: spin::Mutex<BTreeMap<Vec<u8>, ReleaseEntry>>,
     operational_bindings: spin::Mutex<BTreeMap<Vec<u8>, OperationalBindingEntry>>,
@@ -281,6 +295,7 @@ impl NameCatalog {
         assert!(bootstrap_deployment_key.iter().any(|byte| *byte != 0));
         Arc::new(Self {
             entries: spin::Mutex::new(BTreeMap::new()),
+            deployment_replicas: spin::Mutex::new(BTreeMap::new()),
             deployments: spin::Mutex::new(BTreeMap::new()),
             releases: spin::Mutex::new(BTreeMap::new()),
             operational_bindings: spin::Mutex::new(BTreeMap::new()),
@@ -294,11 +309,58 @@ impl NameCatalog {
 
     /// The replicated owner and service generation for `name`, or `None`.
     pub fn lookup(&self, name: &[u8]) -> Option<CatalogEntry> {
-        self.entries
+        let desired = self.deployment(name);
+        if let Some(entry) = self
+            .deployment_replicas
+            .lock()
+            .get(name)
+            .and_then(|entries| {
+                entries.values().find(|entry| {
+                    let node = crate::node_identity::key_from_name(&entry.node);
+                    entry.active
+                        && !entry.node.is_empty()
+                        && desired.as_ref().is_some_and(|deployment| {
+                            entry.deployment_generation == deployment.generation
+                                && node.is_some_and(|node| deployment.replica_nodes.contains(&node))
+                        })
+                })
+            })
+            .cloned()
+        {
+            return Some(entry);
+        }
+        let entry = self
+            .entries
             .lock()
             .get(name)
             .filter(|entry| entry.active && !entry.node.is_empty())
+            .cloned()?;
+        if entry.deployment_generation == 0 {
+            return Some(entry);
+        }
+        let deployment = desired?;
+        let node = crate::node_identity::key_from_name(&entry.node)?;
+        (entry.deployment_generation == deployment.generation
+            && deployment.replica_nodes.contains(&node))
+        .then_some(entry)
+    }
+
+    /// Resolve one exact active owner. This is the fencing primitive used by
+    /// publication teardown when a deployed name has several replicas.
+    pub fn lookup_owner(&self, name: &[u8], node: &[u8]) -> Option<CatalogEntry> {
+        self.entries
+            .lock()
+            .get(name)
+            .filter(|entry| entry.active && entry.node == node)
             .cloned()
+            .or_else(|| {
+                self.deployment_replicas
+                    .lock()
+                    .get(name)
+                    .and_then(|entries| entries.get(node))
+                    .filter(|entry| entry.active && entry.node == node)
+                    .cloned()
+            })
     }
 
     /// The replicated deployment record for `artifact`, or `None`.
@@ -320,17 +382,36 @@ impl NameCatalog {
     /// registration eligible for new connections.
     pub fn ingress_placement(&self, artifact: &[u8]) -> Option<IngressPlacement> {
         let deployment = self.deployment(artifact)?;
-        let owner = self.entries.lock().get(artifact).cloned();
-        let service_generation = owner.as_ref().map_or(0, |entry| entry.generation);
-        let ready_nodes = owner
-            .filter(|entry| {
-                entry.active
+        let entries = self.entries.lock();
+        let replicas = self.deployment_replicas.lock();
+        let mut service_generation = 0;
+        let mut ready_nodes = Vec::new();
+        if let Some(entry) = entries.get(artifact) {
+            service_generation = service_generation.max(entry.generation);
+            if entry.active
+                && entry.deployment_generation == deployment.generation
+                && let Some(node) = crate::node_identity::key_from_name(&entry.node)
+                && deployment.replica_nodes.contains(&node)
+            {
+                ready_nodes.push(node);
+            }
+        }
+        if let Some(by_node) = replicas.get(artifact) {
+            for entry in by_node.values() {
+                service_generation = service_generation.max(entry.generation);
+                let Some(node) = crate::node_identity::key_from_name(&entry.node) else {
+                    continue;
+                };
+                if entry.active
                     && entry.deployment_generation == deployment.generation
-                    && crate::node_identity::key_from_name(&entry.node) == Some(deployment.node_key)
-            })
-            .and_then(|entry| crate::node_identity::key_from_name(&entry.node))
-            .into_iter()
-            .collect();
+                    && deployment.replica_nodes.contains(&node)
+                    && !ready_nodes.contains(&node)
+                {
+                    ready_nodes.push(node);
+                }
+            }
+        }
+        ready_nodes.sort_unstable();
         Some(IngressPlacement {
             deployment_generation: deployment.generation,
             service_generation,
@@ -373,11 +454,18 @@ impl NameCatalog {
 
     /// Whether `name` is registered to this node.
     pub fn is_local(&self, name: &[u8], local_node: &[u8]) -> bool {
-        self.lookup(name).is_some_and(|entry| entry.node == local_node)
+        self.lookup_owner(name, local_node).is_some()
     }
 
     pub fn registered_count(&self) -> usize {
         self.entries.lock().values().filter(|entry| entry.active && !entry.node.is_empty()).count()
+            + self
+                .deployment_replicas
+                .lock()
+                .values()
+                .flat_map(BTreeMap::values)
+                .filter(|entry| entry.active && !entry.node.is_empty())
+                .count()
     }
 
     pub fn deployment_count(&self) -> usize {
@@ -393,11 +481,20 @@ impl NameCatalog {
     /// Snapshot copy of the whole `name -> {node, generation}` catalog.
     pub fn entries(&self) -> alloc::vec::Vec<(alloc::vec::Vec<u8>, CatalogEntry)> {
         let entries = self.entries.lock();
-        entries
+        let mut result = entries
             .iter()
             .filter(|(_, entry)| entry.active && !entry.node.is_empty())
             .map(|(name, entry)| (name.clone(), entry.clone()))
-            .collect()
+            .collect::<Vec<_>>();
+        for (name, replicas) in self.deployment_replicas.lock().iter() {
+            result.extend(
+                replicas
+                    .values()
+                    .filter(|entry| entry.active && !entry.node.is_empty())
+                    .map(|entry| (name.clone(), entry.clone())),
+            );
+        }
+        result
     }
 
     fn apply_command(&self, command: &[u8]) -> Vec<u8> {
@@ -418,6 +515,40 @@ impl NameCatalog {
                 } else {
                     return Vec::new();
                 };
+                if deployment_generation != 0 {
+                    let Some(node_key) = crate::node_identity::key_from_name(node) else {
+                        return Vec::new();
+                    };
+                    let desired = self.deployments.lock().get(name).cloned();
+                    if !desired.is_some_and(|deployment| {
+                        deployment.generation == deployment_generation
+                            && deployment.replica_nodes.contains(&node_key)
+                    }) {
+                        return 0u64.to_le_bytes().to_vec();
+                    }
+                    let ordinary_generation =
+                        self.entries.lock().get(name).map_or(0, |entry| entry.generation);
+                    let mut replicas = self.deployment_replicas.lock();
+                    let by_node = replicas.entry(name.to_vec()).or_default();
+                    let generation = by_node
+                        .values()
+                        .fold(ordinary_generation, |latest, entry| latest.max(entry.generation))
+                        .checked_add(1)
+                        .filter(|generation| *generation <= i64::MAX as u64);
+                    let Some(generation) = generation else {
+                        return 0u64.to_le_bytes().to_vec();
+                    };
+                    by_node.insert(
+                        node.to_vec(),
+                        CatalogEntry {
+                            node: node.to_vec(),
+                            generation,
+                            active: false,
+                            deployment_generation,
+                        },
+                    );
+                    return generation.to_le_bytes().to_vec();
+                }
                 let mut entries = self.entries.lock();
                 let generation = match entries.get(name) {
                     Some(entry) => entry
@@ -452,6 +583,11 @@ impl NameCatalog {
                     entry.node.clear();
                     entry.active = false;
                 }
+                if let Some(entries) = self.deployment_replicas.lock().get_mut(name) {
+                    for entry in entries.values_mut() {
+                        entry.active = false;
+                    }
+                }
                 Vec::new()
             }
             Some(CMD_ACTIVATE) => {
@@ -465,11 +601,23 @@ impl NameCatalog {
                     return Vec::new();
                 };
                 let generation = u64::from_le_bytes(bytes);
-                let mut entries = self.entries.lock();
-                let Some(entry) = entries.get_mut(name) else {
+                {
+                    let mut entries = self.entries.lock();
+                    if let Some(entry) = entries.get_mut(name)
+                        && entry.generation == generation
+                        && !entry.node.is_empty()
+                    {
+                        entry.active = true;
+                        return generation.to_le_bytes().to_vec();
+                    }
+                }
+                let mut replicas = self.deployment_replicas.lock();
+                let Some(entry) = replicas.get_mut(name).and_then(|entries| {
+                    entries.values_mut().find(|entry| entry.generation == generation)
+                }) else {
                     return Vec::new();
                 };
-                if entry.generation != generation || entry.node.is_empty() {
+                if entry.node.is_empty() {
                     return Vec::new();
                 }
                 entry.active = true;
@@ -489,14 +637,26 @@ impl NameCatalog {
                     return Vec::new();
                 };
                 let generation = u64::from_le_bytes(bytes);
-                let mut entries = self.entries.lock();
-                let Some(entry) = entries.get_mut(name) else {
+                {
+                    let mut entries = self.entries.lock();
+                    if let Some(entry) = entries.get_mut(name)
+                        && entry.active
+                        && entry.node == node
+                        && entry.generation == generation
+                    {
+                        entry.node.clear();
+                        entry.active = false;
+                        return generation.to_le_bytes().to_vec();
+                    }
+                }
+                let mut replicas = self.deployment_replicas.lock();
+                let Some(entry) = replicas.get_mut(name).and_then(|entries| entries.get_mut(node))
+                else {
                     return Vec::new();
                 };
-                if !entry.active || entry.node != node || entry.generation != generation {
+                if !entry.active || entry.generation != generation {
                     return Vec::new();
                 }
-                entry.node.clear();
                 entry.active = false;
                 generation.to_le_bytes().to_vec()
             }
@@ -555,28 +715,136 @@ impl NameCatalog {
                     DeploymentEntry {
                         object_id,
                         node_key,
+                        replica_nodes: (node_key != 0).then_some(node_key).into_iter().collect(),
                         generation,
                         artifact_digest,
                         descriptor,
                     },
                 );
+                drop(deployments);
+                if let Some(replicas) = self.deployment_replicas.lock().get_mut(artifact) {
+                    for replica in replicas.values_mut() {
+                        replica.active = false;
+                    }
+                }
                 generation.to_le_bytes().to_vec()
             }
-            Some(CMD_RELEASE) => {
+            Some(CMD_REASSIGN) => {
+                let Some((artifact, after_artifact)) = take_len_bytes(command, 1) else {
+                    return Vec::new();
+                };
+                let Some((expected_generation, after_generation)) =
+                    read_u64(command, after_artifact)
+                else {
+                    return Vec::new();
+                };
+                let Some((node_count, mut position)) = read_u16(command, after_generation) else {
+                    return Vec::new();
+                };
+                if node_count == 0 {
+                    return Vec::new();
+                }
+                let mut nodes = Vec::with_capacity(usize::from(node_count));
+                for _ in 0..node_count {
+                    let Some((node, next)) = read_u64(command, position) else {
+                        return Vec::new();
+                    };
+                    if node == 0 || nodes.contains(&node) {
+                        return Vec::new();
+                    }
+                    nodes.push(node);
+                    position = next;
+                }
+                if position != command.len() {
+                    return Vec::new();
+                }
+                nodes.sort_unstable();
+                let mut deployments = self.deployments.lock();
+                let Some(current) = deployments.get_mut(artifact) else {
+                    return Vec::new();
+                };
+                if current.generation != expected_generation || current.descriptor.is_empty() {
+                    return 0u64.to_le_bytes().to_vec();
+                }
+                let Some(descriptor) = charlotte_launch::deployment::decode(&current.descriptor)
+                else {
+                    return Vec::new();
+                };
+                let every_node = descriptor.placement.flags
+                    & charlotte_launch::placement::EVERY_ELIGIBLE_NODE
+                    != 0;
+                if descriptor.node_key != 0
+                    || (!every_node && nodes.len() != usize::from(descriptor.placement.replicas))
+                {
+                    return Vec::new();
+                }
+                if current.replica_nodes == nodes {
+                    return current.generation.to_le_bytes().to_vec();
+                }
+                let Some(generation) = current
+                    .generation
+                    .checked_add(1)
+                    .filter(|generation| *generation <= i64::MAX as u64)
+                else {
+                    return 0u64.to_le_bytes().to_vec();
+                };
+                current.node_key = nodes[0];
+                current.replica_nodes = nodes;
+                current.generation = generation;
+                drop(deployments);
+                if let Some(replicas) = self.deployment_replicas.lock().get_mut(artifact) {
+                    for replica in replicas.values_mut() {
+                        replica.active = false;
+                    }
+                }
+                generation.to_le_bytes().to_vec()
+            }
+            Some(CMD_RELEASE) | Some(CMD_RELEASE_REPLICAS) => {
                 let Some((envelope_bytes, after_envelope)) = take_len_bytes(command, 1) else {
                     return Vec::new();
                 };
-                let Some((node_count, after_count)) = read_u16(command, after_envelope) else {
+                let Some((descriptor_count, mut assignment_position)) =
+                    read_u16(command, after_envelope)
+                else {
                     return Vec::new();
                 };
-                let Some(nodes_len) = usize::from(node_count).checked_mul(8) else {
-                    return Vec::new();
-                };
-                let Some(after_nodes) = after_count.checked_add(nodes_len) else {
-                    return Vec::new();
-                };
-                if command.len() < after_nodes {
-                    return Vec::new();
+                let mut assignments = Vec::with_capacity(usize::from(descriptor_count));
+                if command[0] == CMD_RELEASE {
+                    for _ in 0..descriptor_count {
+                        let Some((node, next)) = read_u64(command, assignment_position) else {
+                            return Vec::new();
+                        };
+                        if node == 0 {
+                            return Vec::new();
+                        }
+                        assignments.push(alloc::vec![node]);
+                        assignment_position = next;
+                    }
+                } else {
+                    for _ in 0..descriptor_count {
+                        let Some((replica_count, after_count)) =
+                            read_u16(command, assignment_position)
+                        else {
+                            return Vec::new();
+                        };
+                        assignment_position = after_count;
+                        if replica_count == 0 {
+                            return Vec::new();
+                        }
+                        let mut nodes = Vec::with_capacity(usize::from(replica_count));
+                        for _ in 0..replica_count {
+                            let Some((node, next)) = read_u64(command, assignment_position) else {
+                                return Vec::new();
+                            };
+                            if node == 0 || nodes.contains(&node) {
+                                return Vec::new();
+                            }
+                            nodes.push(node);
+                            assignment_position = next;
+                        }
+                        nodes.sort_unstable();
+                        assignments.push(nodes);
+                    }
                 }
                 // The build-time key is the bootstrap trust anchor. A key
                 // ceremony commits that same key for join/snapshot state,
@@ -592,11 +860,11 @@ impl NameCatalog {
                 let Some(envelope) = charlotte_launch::release::decode(envelope_bytes) else {
                     return crate::clusterctl::ERR_UNTRUSTED_DESCRIPTOR.to_le_bytes().to_vec();
                 };
-                if usize::from(node_count) != envelope.descriptors().count() {
+                if usize::from(descriptor_count) != envelope.descriptors().count() {
                     return Vec::new();
                 }
                 let Some(operational_tail) =
-                    parse_operational_tail(command, after_nodes, &envelope)
+                    parse_operational_tail(command, assignment_position, &envelope)
                 else {
                     return Vec::new();
                 };
@@ -653,17 +921,25 @@ impl NameCatalog {
                 }
 
                 let mut deployments = self.deployments.lock();
-                let mut planned_deployments = Vec::with_capacity(usize::from(node_count));
+                let mut planned_deployments = Vec::with_capacity(usize::from(descriptor_count));
                 for (index, descriptor_bytes) in envelope.descriptors().enumerate() {
                     let Some(descriptor) = charlotte_launch::deployment::decode(descriptor_bytes)
                     else {
                         return Vec::new();
                     };
-                    let node_offset = after_count + index * 8;
-                    let Some((assigned_node, _)) = read_u64(command, node_offset) else {
+                    let assigned_nodes = &assignments[index];
+                    let every_node = descriptor.placement.flags
+                        & charlotte_launch::placement::EVERY_ELIGIBLE_NODE
+                        != 0;
+                    if (descriptor.node_key != 0
+                        && assigned_nodes.as_slice() != [descriptor.node_key])
+                        || (descriptor.node_key == 0
+                            && !every_node
+                            && assigned_nodes.len() != usize::from(descriptor.placement.replicas))
+                    {
                         return Vec::new();
-                    };
-                    let (generation, effective_node) =
+                    }
+                    let (generation, effective_nodes) =
                         match deployments.get(descriptor.artifact_name) {
                             Some(current) if !current.descriptor.is_empty() => {
                                 let Some(previous) =
@@ -682,7 +958,7 @@ impl NameCatalog {
                                             .to_le_bytes()
                                             .to_vec();
                                     }
-                                    (current.generation, current.node_key)
+                                    (current.generation, current.replica_nodes.clone())
                                 } else {
                                     let Some(generation) = current
                                         .generation
@@ -691,7 +967,7 @@ impl NameCatalog {
                                     else {
                                         return Vec::new();
                                     };
-                                    (generation, assigned_node)
+                                    (generation, assigned_nodes.clone())
                                 }
                             }
                             Some(current) => {
@@ -702,10 +978,11 @@ impl NameCatalog {
                                 else {
                                     return Vec::new();
                                 };
-                                (generation, assigned_node)
+                                (generation, assigned_nodes.clone())
                             }
-                            None => (1, assigned_node),
+                            None => (1, assigned_nodes.clone()),
                         };
+                    let effective_node = effective_nodes.first().copied().unwrap_or(0);
                     planned_deployments.push((
                         descriptor.artifact_name.to_vec(),
                         DeploymentEntry {
@@ -713,6 +990,7 @@ impl NameCatalog {
                                 descriptor.artifact_name,
                             ),
                             node_key: effective_node,
+                            replica_nodes: effective_nodes,
                             generation,
                             artifact_digest: descriptor.artifact_digest,
                             descriptor: descriptor_bytes.to_vec(),
@@ -821,8 +1099,28 @@ impl NameCatalog {
                     }
                 }
 
+                let changed_artifacts = planned_deployments
+                    .iter()
+                    .filter(|(artifact, entry)| {
+                        deployments
+                            .get(artifact.as_slice())
+                            .is_none_or(|current| current.generation != entry.generation)
+                    })
+                    .map(|(artifact, _)| artifact.clone())
+                    .collect::<Vec<_>>();
                 for (artifact, entry) in planned_deployments {
                     deployments.insert(artifact, entry);
+                }
+                drop(deployments);
+                if !changed_artifacts.is_empty() {
+                    let mut replicas = self.deployment_replicas.lock();
+                    for artifact in changed_artifacts {
+                        if let Some(entries) = replicas.get_mut(artifact.as_slice()) {
+                            for entry in entries.values_mut() {
+                                entry.active = false;
+                            }
+                        }
+                    }
                 }
                 for (profile, entry) in planned_operations {
                     operational_bindings.insert(profile, entry);
@@ -919,6 +1217,7 @@ impl NameCatalog {
         let entries = self.entries.lock();
         let releases = self.releases.lock();
         let deployments = self.deployments.lock();
+        let deployment_replicas = self.deployment_replicas.lock();
         let operational_bindings = self.operational_bindings.lock();
         let shutdown_intents = self.shutdown_intents.lock();
         let mut size = 8 + 4; // magic + entry count
@@ -930,10 +1229,20 @@ impl NameCatalog {
         // V9 persists atomically admitted signed release envelopes; V10 adds
         // compact encrypted-profile references and their replay fences; V11
         // adds the detached operational authorization for each binding; V12
-        // appends node-targeted signed shutdown intents.
+        // appends node-targeted signed shutdown intents; V13 adds concrete
+        // replica sets and per-node deployment readiness.
         size += 4;
         for (artifact, entry) in deployments.iter() {
-            size += 4 + artifact.len() + 8 + 8 + 8 + 32 + 4 + entry.descriptor.len();
+            size += 4
+                + artifact.len()
+                + 8
+                + 8
+                + 8
+                + 32
+                + 4
+                + entry.descriptor.len()
+                + 2
+                + entry.replica_nodes.len() * 8;
         }
         size += 4;
         for (name, entry) in releases.iter() {
@@ -952,9 +1261,16 @@ impl NameCatalog {
         for entry in shutdown_intents.values() {
             size += 8 + 8 + 4 + entry.envelope.len();
         }
+        size += 4;
+        for (name, replicas) in deployment_replicas.iter() {
+            size += 4 + name.len() + 2;
+            for entry in replicas.values() {
+                size += 4 + entry.node.len() + 8 + 1 + 8;
+            }
+        }
         size += 1 + 8 + 32;
         let mut buf = Vec::with_capacity(size);
-        buf.extend_from_slice(&CATALOG_MAGIC_V12.to_le_bytes());
+        buf.extend_from_slice(&CATALOG_MAGIC_V13.to_le_bytes());
         buf.extend_from_slice(&(entries.len() as u32).to_le_bytes());
         for (name, entry) in entries.iter() {
             buf.extend_from_slice(&(name.len() as u32).to_le_bytes());
@@ -975,6 +1291,10 @@ impl NameCatalog {
             buf.extend_from_slice(&entry.artifact_digest);
             buf.extend_from_slice(&(entry.descriptor.len() as u32).to_le_bytes());
             buf.extend_from_slice(&entry.descriptor);
+            buf.extend_from_slice(&(entry.replica_nodes.len() as u16).to_le_bytes());
+            for node in &entry.replica_nodes {
+                buf.extend_from_slice(&node.to_le_bytes());
+            }
         }
         buf.extend_from_slice(&(releases.len() as u32).to_le_bytes());
         for (name, entry) in releases.iter() {
@@ -1016,6 +1336,19 @@ impl NameCatalog {
             buf.extend_from_slice(&(entry.envelope.len() as u32).to_le_bytes());
             buf.extend_from_slice(&entry.envelope);
         }
+        buf.extend_from_slice(&(deployment_replicas.len() as u32).to_le_bytes());
+        for (name, replicas) in deployment_replicas.iter() {
+            buf.extend_from_slice(&(name.len() as u32).to_le_bytes());
+            buf.extend_from_slice(name);
+            buf.extend_from_slice(&(replicas.len() as u16).to_le_bytes());
+            for entry in replicas.values() {
+                buf.extend_from_slice(&(entry.node.len() as u32).to_le_bytes());
+                buf.extend_from_slice(&entry.node);
+                buf.extend_from_slice(&entry.generation.to_le_bytes());
+                buf.push(u8::from(entry.active));
+                buf.extend_from_slice(&entry.deployment_generation.to_le_bytes());
+            }
+        }
         if let Some(key) = *self.cluster_key.lock() {
             buf.push(1);
             buf.extend_from_slice(&self.cluster_key_generation.lock().to_le_bytes());
@@ -1045,6 +1378,7 @@ impl NameCatalog {
             && magic != CATALOG_MAGIC_V10
             && magic != CATALOG_MAGIC_V11
             && magic != CATALOG_MAGIC_V12
+            && magic != CATALOG_MAGIC_V13
         {
             return;
         }
@@ -1079,6 +1413,7 @@ impl NameCatalog {
                 || magic == CATALOG_MAGIC_V10
                 || magic == CATALOG_MAGIC_V11
                 || magic == CATALOG_MAGIC_V12
+                || magic == CATALOG_MAGIC_V13
             {
                 let Some(active) = data.get(after_generation) else {
                     return;
@@ -1092,6 +1427,7 @@ impl NameCatalog {
                 || magic == CATALOG_MAGIC_V10
                 || magic == CATALOG_MAGIC_V11
                 || magic == CATALOG_MAGIC_V12
+                || magic == CATALOG_MAGIC_V13
             {
                 let Some((generation, after_generation)) = read_u64(data, after_entry) else {
                     return;
@@ -1123,6 +1459,7 @@ impl NameCatalog {
             || magic == CATALOG_MAGIC_V10
             || magic == CATALOG_MAGIC_V11
             || magic == CATALOG_MAGIC_V12
+            || magic == CATALOG_MAGIC_V13
         {
             let Some(bytes) = data.get(pos..pos.saturating_add(4)) else {
                 return;
@@ -1159,6 +1496,7 @@ impl NameCatalog {
                     || magic == CATALOG_MAGIC_V10
                     || magic == CATALOG_MAGIC_V11
                     || magic == CATALOG_MAGIC_V12
+                    || magic == CATALOG_MAGIC_V13
                 {
                     let Some(digest) =
                         data.get(after_generation..after_generation.saturating_add(32))
@@ -1178,6 +1516,7 @@ impl NameCatalog {
                     || magic == CATALOG_MAGIC_V10
                     || magic == CATALOG_MAGIC_V11
                     || magic == CATALOG_MAGIC_V12
+                    || magic == CATALOG_MAGIC_V13
                 {
                     let Some((descriptor, after_descriptor)) = take_len_bytes(data, after_entry)
                     else {
@@ -1190,11 +1529,34 @@ impl NameCatalog {
                 } else {
                     (Vec::new(), after_entry)
                 };
+                let (replica_nodes, after_entry) = if magic == CATALOG_MAGIC_V13 {
+                    let Some((replica_count, mut position)) = read_u16(data, after_entry) else {
+                        return;
+                    };
+                    let mut nodes = Vec::with_capacity(usize::from(replica_count));
+                    for _ in 0..replica_count {
+                        let Some((node, next)) = read_u64(data, position) else {
+                            return;
+                        };
+                        if node == 0 || nodes.contains(&node) {
+                            return;
+                        }
+                        nodes.push(node);
+                        position = next;
+                    }
+                    if nodes.first().copied().unwrap_or(0) != node_key {
+                        return;
+                    }
+                    (nodes, position)
+                } else {
+                    ((node_key != 0).then_some(node_key).into_iter().collect(), after_entry)
+                };
                 deployments.insert(
                     artifact.to_vec(),
                     DeploymentEntry {
                         object_id,
                         node_key,
+                        replica_nodes,
                         generation,
                         artifact_digest,
                         descriptor,
@@ -1210,6 +1572,7 @@ impl NameCatalog {
             || magic == CATALOG_MAGIC_V10
             || magic == CATALOG_MAGIC_V11
             || magic == CATALOG_MAGIC_V12
+            || magic == CATALOG_MAGIC_V13
         {
             let Some(bytes) = data.get(pos..pos.saturating_add(4)) else {
                 return;
@@ -1230,6 +1593,7 @@ impl NameCatalog {
                     == CATALOG_MAGIC_V10
                     || magic == CATALOG_MAGIC_V11
                     || magic == CATALOG_MAGIC_V12
+                    || magic == CATALOG_MAGIC_V13
                 {
                     let Some((operations_sequence, after_operations_sequence)) =
                         read_u64(data, after_generation)
@@ -1269,7 +1633,11 @@ impl NameCatalog {
             }
         }
         let mut operational_bindings = BTreeMap::new();
-        if magic == CATALOG_MAGIC_V10 || magic == CATALOG_MAGIC_V11 || magic == CATALOG_MAGIC_V12 {
+        if magic == CATALOG_MAGIC_V10
+            || magic == CATALOG_MAGIC_V11
+            || magic == CATALOG_MAGIC_V12
+            || magic == CATALOG_MAGIC_V13
+        {
             let Some(binding_count) = data
                 .get(pos..pos.saturating_add(4))
                 .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
@@ -1346,18 +1714,20 @@ impl NameCatalog {
                 else {
                     return;
                 };
-                let (authorization_signature, after_binding) =
-                    if magic == CATALOG_MAGIC_V11 || magic == CATALOG_MAGIC_V12 {
-                        let Some(signature) = data
-                            .get(after_expiry + 32..after_expiry + 96)
-                            .and_then(|bytes| <[u8; 64]>::try_from(bytes).ok())
-                        else {
-                            return;
-                        };
-                        (signature, after_expiry + 96)
-                    } else {
-                        ([0; 64], after_expiry + 32)
+                let (authorization_signature, after_binding) = if magic == CATALOG_MAGIC_V11
+                    || magic == CATALOG_MAGIC_V12
+                    || magic == CATALOG_MAGIC_V13
+                {
+                    let Some(signature) = data
+                        .get(after_expiry + 32..after_expiry + 96)
+                        .and_then(|bytes| <[u8; 64]>::try_from(bytes).ok())
+                    else {
+                        return;
                     };
+                    (signature, after_expiry + 96)
+                } else {
+                    ([0; 64], after_expiry + 32)
+                };
                 if generation == 0
                     || bundle_sequence == 0
                     || sequence == 0
@@ -1417,7 +1787,7 @@ impl NameCatalog {
         *self.operational_bindings.lock() = operational_bindings;
 
         let mut shutdown_intents = BTreeMap::new();
-        if magic == CATALOG_MAGIC_V12 {
+        if magic == CATALOG_MAGIC_V12 || magic == CATALOG_MAGIC_V13 {
             let Some(intent_count) = data
                 .get(pos..pos.saturating_add(4))
                 .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
@@ -1460,6 +1830,65 @@ impl NameCatalog {
         }
         *self.shutdown_intents.lock() = shutdown_intents;
 
+        let mut deployment_replicas = BTreeMap::new();
+        if magic == CATALOG_MAGIC_V13 {
+            let Some(replica_name_count) = data
+                .get(pos..pos.saturating_add(4))
+                .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
+                .map(u32::from_le_bytes)
+            else {
+                return;
+            };
+            pos += 4;
+            for _ in 0..replica_name_count {
+                let Some((name, after_name)) = take_len_bytes(data, pos) else {
+                    return;
+                };
+                let Some((replica_count, mut position)) = read_u16(data, after_name) else {
+                    return;
+                };
+                let mut replicas = BTreeMap::new();
+                for _ in 0..replica_count {
+                    let Some((node, after_node)) = take_len_bytes(data, position) else {
+                        return;
+                    };
+                    let Some((generation, after_generation)) = read_u64(data, after_node) else {
+                        return;
+                    };
+                    let Some(active) = data.get(after_generation) else {
+                        return;
+                    };
+                    let Some((deployment_generation, after_entry)) =
+                        read_u64(data, after_generation + 1)
+                    else {
+                        return;
+                    };
+                    if generation == 0
+                        || node.is_empty()
+                        || replicas
+                            .insert(
+                                node.to_vec(),
+                                CatalogEntry {
+                                    node: node.to_vec(),
+                                    generation,
+                                    active: *active != 0,
+                                    deployment_generation,
+                                },
+                            )
+                            .is_some()
+                    {
+                        return;
+                    }
+                    position = after_entry;
+                }
+                if deployment_replicas.insert(name.to_vec(), replicas).is_some() {
+                    return;
+                }
+                pos = position;
+            }
+        }
+        *self.deployment_replicas.lock() = deployment_replicas;
+
         *self.cluster_key.lock() = None;
         *self.cluster_key_generation.lock() = 0;
 
@@ -1471,6 +1900,7 @@ impl NameCatalog {
             || magic == CATALOG_MAGIC_V10
             || magic == CATALOG_MAGIC_V11
             || magic == CATALOG_MAGIC_V12
+            || magic == CATALOG_MAGIC_V13
         {
             let Some(present) = data.get(pos) else {
                 return;
@@ -1482,6 +1912,7 @@ impl NameCatalog {
                 || magic == CATALOG_MAGIC_V10
                 || magic == CATALOG_MAGIC_V11
                 || magic == CATALOG_MAGIC_V12
+                || magic == CATALOG_MAGIC_V13
             {
                 let Some((generation, after_generation)) = read_u64(data, pos + 1) else {
                     return;
@@ -1534,6 +1965,7 @@ impl StateMachine for NameCatalog {
 
     fn reset(&self) {
         self.entries.lock().clear();
+        self.deployment_replicas.lock().clear();
         self.deployments.lock().clear();
         self.releases.lock().clear();
         self.operational_bindings.lock().clear();
@@ -1562,16 +1994,9 @@ impl QueryableStateMachine for NameCatalog {
             }
             Some(QUERY_DEPLOY) => {
                 let artifact = query.get(1..).unwrap_or_default();
-                self.deployment(artifact).map_or_else(Vec::new, |entry| {
-                    let mut result = Vec::with_capacity(60 + entry.descriptor.len());
-                    result.extend_from_slice(&entry.generation.to_le_bytes());
-                    result.extend_from_slice(&entry.object_id.to_le_bytes());
-                    result.extend_from_slice(&entry.node_key.to_le_bytes());
-                    result.extend_from_slice(&entry.artifact_digest);
-                    result.extend_from_slice(&(entry.descriptor.len() as u32).to_le_bytes());
-                    result.extend_from_slice(&entry.descriptor);
-                    result
-                })
+                self.deployment(artifact)
+                    .and_then(|entry| encode_deployment_result(&entry))
+                    .unwrap_or_default()
             }
             Some(QUERY_SHUTDOWN) => {
                 let node_key = query
@@ -1732,25 +2157,70 @@ pub fn decode_deployment_result(bytes: &[u8]) -> Option<DeploymentEntry> {
     if bytes.len() < 56 {
         return None;
     }
-    let descriptor = if bytes.len() == 56 {
-        Vec::new()
+    let (descriptor, replica_nodes) = if bytes.len() == 56 {
+        (Vec::new(), Vec::new())
     } else {
         let descriptor_len =
             usize::try_from(u32::from_le_bytes(bytes.get(56..60)?.try_into().ok()?)).ok()?;
-        if descriptor_len > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
-            || bytes.len() != 60 + descriptor_len
-        {
+        if descriptor_len > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN {
             return None;
         }
-        bytes[60..].to_vec()
+        let descriptor_end = 60usize.checked_add(descriptor_len)?;
+        let descriptor = bytes.get(60..descriptor_end)?.to_vec();
+        let nodes = if descriptor_end == bytes.len() {
+            Vec::new()
+        } else {
+            let count = usize::from(read_u16(bytes, descriptor_end)?.0);
+            let nodes_end = descriptor_end.checked_add(2)?.checked_add(count.checked_mul(8)?)?;
+            if nodes_end != bytes.len() {
+                return None;
+            }
+            let mut nodes = Vec::with_capacity(count);
+            let mut position = descriptor_end + 2;
+            for _ in 0..count {
+                let (node, next) = read_u64(bytes, position)?;
+                if node == 0 || nodes.contains(&node) {
+                    return None;
+                }
+                nodes.push(node);
+                position = next;
+            }
+            nodes
+        };
+        (descriptor, nodes)
+    };
+    let node_key = u64::from_le_bytes(bytes[16..24].try_into().ok()?);
+    let replica_nodes = if replica_nodes.is_empty() && node_key != 0 {
+        alloc::vec![node_key]
+    } else {
+        replica_nodes
     };
     Some(DeploymentEntry {
         generation: u64::from_le_bytes(bytes[0..8].try_into().ok()?),
         object_id: u64::from_le_bytes(bytes[8..16].try_into().ok()?),
-        node_key: u64::from_le_bytes(bytes[16..24].try_into().ok()?),
+        node_key,
+        replica_nodes,
         artifact_digest: bytes[24..56].try_into().ok()?,
         descriptor,
     })
+}
+
+/// Encode a deployment query result, including the committed concrete
+/// replica set after the backwards-compatible singleton prefix.
+pub fn encode_deployment_result(entry: &DeploymentEntry) -> Option<Vec<u8>> {
+    let count = u16::try_from(entry.replica_nodes.len()).ok()?;
+    let mut bytes = Vec::with_capacity(62 + entry.descriptor.len() + entry.replica_nodes.len() * 8);
+    bytes.extend_from_slice(&entry.generation.to_le_bytes());
+    bytes.extend_from_slice(&entry.object_id.to_le_bytes());
+    bytes.extend_from_slice(&entry.node_key.to_le_bytes());
+    bytes.extend_from_slice(&entry.artifact_digest);
+    bytes.extend_from_slice(&(entry.descriptor.len() as u32).to_le_bytes());
+    bytes.extend_from_slice(&entry.descriptor);
+    bytes.extend_from_slice(&count.to_le_bytes());
+    for node in &entry.replica_nodes {
+        bytes.extend_from_slice(&node.to_le_bytes());
+    }
+    Some(bytes)
 }
 
 /// Encode a deployment command: assign `artifact` (stored at `object_id`) to
@@ -1774,6 +2244,36 @@ pub fn encode_deploy(
     buf
 }
 
+/// Commit a controller-computed replacement replica set while fencing the
+/// deployment generation observed during planning.
+pub fn encode_reassign(
+    artifact: &[u8],
+    expected_generation: u64,
+    replica_nodes: &[u64],
+) -> Option<Vec<u8>> {
+    if expected_generation == 0
+        || replica_nodes.is_empty()
+        || replica_nodes.len() > u16::MAX as usize
+        || replica_nodes.contains(&0)
+        || replica_nodes
+            .iter()
+            .enumerate()
+            .any(|(index, node)| replica_nodes[..index].contains(node))
+    {
+        return None;
+    }
+    let mut buf = Vec::with_capacity(1 + 4 + artifact.len() + 8 + 2 + replica_nodes.len() * 8);
+    buf.push(CMD_REASSIGN);
+    buf.extend_from_slice(&(artifact.len() as u32).to_le_bytes());
+    buf.extend_from_slice(artifact);
+    buf.extend_from_slice(&expected_generation.to_le_bytes());
+    buf.extend_from_slice(&(replica_nodes.len() as u16).to_le_bytes());
+    for node in replica_nodes {
+        buf.extend_from_slice(&node.to_le_bytes());
+    }
+    (buf.len() <= catten_graft::types::MAX_COMMAND_BYTES).then_some(buf)
+}
+
 /// Encode one signed release and the leader-resolved node assignment for
 /// every nested descriptor. The state machine verifies the envelope again
 /// and applies the complete component set under one deployment-map lock.
@@ -1795,6 +2295,39 @@ pub fn encode_release(envelope: &[u8], assigned_nodes: &[u64]) -> Option<Vec<u8>
     (buf.len() <= catten_graft::types::MAX_COMMAND_BYTES).then_some(buf)
 }
 
+/// Encode a signed release plus one concrete, non-empty, unique node set per
+/// descriptor. The leader resolves policy to these assignments before Raft
+/// submission; followers validate the cardinality against the signed policy.
+pub fn encode_release_replicas(envelope: &[u8], assignments: &[Vec<u64>]) -> Option<Vec<u8>> {
+    let release = charlotte_launch::release::decode(envelope)?;
+    if release.descriptors().count() != assignments.len() || assignments.len() > u16::MAX as usize {
+        return None;
+    }
+    let assignments_len = assignments.iter().try_fold(0usize, |total, nodes| {
+        if nodes.is_empty()
+            || nodes.len() > u16::MAX as usize
+            || nodes.contains(&0)
+            || nodes.iter().enumerate().any(|(index, node)| nodes[..index].contains(node))
+        {
+            None
+        } else {
+            total.checked_add(2 + nodes.len() * 8)
+        }
+    })?;
+    let mut buf = Vec::with_capacity(1 + 4 + envelope.len() + 2 + assignments_len);
+    buf.push(CMD_RELEASE_REPLICAS);
+    buf.extend_from_slice(&(envelope.len() as u32).to_le_bytes());
+    buf.extend_from_slice(envelope);
+    buf.extend_from_slice(&(assignments.len() as u16).to_le_bytes());
+    for nodes in assignments {
+        buf.extend_from_slice(&(nodes.len() as u16).to_le_bytes());
+        for node in nodes {
+            buf.extend_from_slice(&node.to_le_bytes());
+        }
+    }
+    (buf.len() <= catten_graft::types::MAX_COMMAND_BYTES).then_some(buf)
+}
+
 /// Compact an already verified `COPSBND2` admission bundle for the Raft log.
 ///
 /// The large encrypted envelopes are transport proofs and remain in the
@@ -1808,6 +2341,15 @@ pub fn encode_release_with_operations(
 ) -> Option<Vec<u8>> {
     let bundle = charlotte_launch::operations_bundle::decode(bundle_bytes)?;
     let mut command = encode_release(bundle.release, assigned_nodes)?;
+    append_operational_tail(&mut command, bundle_bytes, &bundle)?;
+    (command.len() <= catten_graft::types::MAX_COMMAND_BYTES).then_some(command)
+}
+
+fn append_operational_tail(
+    command: &mut Vec<u8>,
+    bundle_bytes: &[u8],
+    bundle: &charlotte_launch::operations_bundle::Bundle<'_>,
+) -> Option<()> {
     command.extend_from_slice(&bundle.sequence.to_le_bytes());
     command.extend_from_slice(&charlotte_launch::sha256::digest(bundle_bytes));
     let binding_count = u16::try_from(bundle.bindings().count()).ok()?;
@@ -1829,6 +2371,17 @@ pub fn encode_release_with_operations(
         command.extend_from_slice(envelope.profile_name);
         command.extend_from_slice(binding.object_key);
     }
+    Some(())
+}
+
+/// Replica-set form of [`encode_release_with_operations`].
+pub fn encode_release_replicas_with_operations(
+    bundle_bytes: &[u8],
+    assignments: &[Vec<u64>],
+) -> Option<Vec<u8>> {
+    let bundle = charlotte_launch::operations_bundle::decode(bundle_bytes)?;
+    let mut command = encode_release_replicas(bundle.release, assignments)?;
+    append_operational_tail(&mut command, bundle_bytes, &bundle)?;
     (command.len() <= catten_graft::types::MAX_COMMAND_BYTES).then_some(command)
 }
 
@@ -1876,6 +2429,20 @@ mod tests {
     use super::*;
 
     fn signed_deployment(pair: &KeyPair, name: &[u8], sequence: u64) -> Vec<u8> {
+        signed_deployment_with_policy(
+            pair,
+            name,
+            sequence,
+            charlotte_launch::placement::PlacementPolicy::singleton(),
+        )
+    }
+
+    fn signed_deployment_with_policy(
+        pair: &KeyPair,
+        name: &[u8],
+        sequence: u64,
+        placement: charlotte_launch::placement::PlacementPolicy,
+    ) -> Vec<u8> {
         let fields = charlotte_launch::deployment::DescriptorFields {
             sequence,
             node_key: 0,
@@ -1884,6 +2451,7 @@ mod tests {
             stack_pages_per_thread: charlotte_launch::DEFAULT_USER_STACK_PAGES as u16,
             max_threads: charlotte_launch::DEFAULT_USER_MAX_THREADS as u16,
             shutdown_grace_ms: charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS,
+            placement,
             object_key: name,
             grants: &[],
         };
@@ -2053,15 +2621,20 @@ mod tests {
     #[test]
     fn deployment_generation_survives_activation_and_snapshot() {
         let catalog = NameCatalog::new();
-        let prepared = catalog.apply_with_result(
-            1,
-            &encode_register_deployment(b"orders", b"charlotte:89abcdef", 42),
+        assert_eq!(
+            catalog.apply_with_result(
+                1,
+                &encode_deploy(b"orders", 17, 0x89ab_cdef, &[0x5a; 32], b"descriptor")
+            ),
+            1u64.to_le_bytes()
         );
+        let prepared = catalog
+            .apply_with_result(1, &encode_register_deployment(b"orders", b"charlotte:89abcdef", 1));
         let service_generation = u64::from_le_bytes(prepared.try_into().unwrap());
         catalog.apply(1, &encode_activate(b"orders", service_generation));
 
         let entry = catalog.lookup(b"orders").unwrap();
-        assert_eq!(entry.deployment_generation, 42);
+        assert_eq!(entry.deployment_generation, 1);
         assert_eq!(crate::node_identity::key_from_name(&entry.node), Some(0x89ab_cdef));
 
         let restored = NameCatalog::new();
@@ -2124,6 +2697,83 @@ mod tests {
                 service_generation: second_service_generation,
                 ready_nodes: vec![0x1234_abcd],
             })
+        );
+    }
+
+    #[test]
+    fn replica_set_readiness_is_per_node_generation_fenced_and_snapshotted() {
+        let pair = KeyPair::from_seed([0x63; 32].into());
+        let key: [u8; 32] = pair.pk.as_ref().try_into().unwrap();
+        let descriptor = signed_deployment_with_policy(
+            &pair,
+            b"orders",
+            1,
+            charlotte_launch::placement::PlacementPolicy {
+                replicas: 2,
+                max_instances_per_node: 1,
+                min_distinct_nodes: 2,
+                flags: charlotte_launch::placement::SPREAD_REPLICAS,
+                affinity_group: 0,
+                anti_affinity_group: 0,
+            },
+        );
+        let release = signed_release(&pair, b"orders-v1", 1, &[&descriptor]);
+        let catalog = NameCatalog::new_with_deployment_key(key);
+        let command = encode_release_replicas(&release, &[vec![0x1111_1111, 0x2222_2222]])
+            .expect("replica command");
+        assert_eq!(catalog.apply_with_result(1, &command), 1i64.to_le_bytes());
+        assert_eq!(
+            catalog.deployment(b"orders").unwrap().replica_nodes,
+            vec![0x1111_1111, 0x2222_2222]
+        );
+
+        let first = catalog
+            .apply_with_result(1, &encode_register_deployment(b"orders", b"charlotte:11111111", 1));
+        let first = u64::from_le_bytes(first.try_into().unwrap());
+        catalog.apply(1, &encode_activate(b"orders", first));
+        let second = catalog
+            .apply_with_result(1, &encode_register_deployment(b"orders", b"charlotte:22222222", 1));
+        let second = u64::from_le_bytes(second.try_into().unwrap());
+        catalog.apply(1, &encode_activate(b"orders", second));
+        assert_eq!(
+            catalog.ingress_placement(b"orders"),
+            Some(IngressPlacement {
+                deployment_generation: 1,
+                service_generation: second,
+                ready_nodes: vec![0x1111_1111, 0x2222_2222],
+            })
+        );
+
+        let restored = NameCatalog::new_with_deployment_key(key);
+        restored.restore(&catalog.snapshot());
+        assert_eq!(restored.ingress_placement(b"orders"), catalog.ingress_placement(b"orders"));
+        assert_eq!(
+            restored.apply_with_result(
+                1,
+                &encode_unregister_generation(b"orders", b"charlotte:11111111", first),
+            ),
+            first.to_le_bytes()
+        );
+        assert_eq!(restored.ingress_placement(b"orders").unwrap().ready_nodes, vec![0x2222_2222]);
+        let reassigned = restored.apply_with_result(
+            1,
+            &encode_reassign(b"orders", 1, &[0x2222_2222, 0x3333_3333]).unwrap(),
+        );
+        assert_eq!(u64::from_le_bytes(reassigned.try_into().unwrap()), 2);
+        assert_eq!(
+            restored.ingress_placement(b"orders"),
+            Some(IngressPlacement {
+                deployment_generation: 2,
+                service_generation: second,
+                ready_nodes: vec![],
+            })
+        );
+        assert_eq!(
+            restored.apply_with_result(
+                1,
+                &encode_register_deployment(b"orders", b"charlotte:33333333", 1),
+            ),
+            0u64.to_le_bytes()
         );
     }
 
@@ -2334,6 +2984,8 @@ mod tests {
             deployment_generation: 7,
             service_generation: 11,
             node_key: 0x1234_abcd,
+            desired_replicas: 3,
+            ready_replicas: 3,
         };
         assert_eq!(crate::clusterctl::RolloutStatus::decode(&status.encode()), Some(status));
 

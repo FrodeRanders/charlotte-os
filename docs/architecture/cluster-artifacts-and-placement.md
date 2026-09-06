@@ -35,10 +35,10 @@ reproducible builds, source attestations, and key custody.
 ## Signed deployment descriptors
 
 The ELF signature and the deployment decision are different trust statements.
-An ELF signature binds code to an artifact name. A `CDEPLOY4` descriptor binds
+An ELF signature binds code to an artifact name. A `CDEPLOY5` descriptor binds
 that artifact's complete SHA-256 to an opaque central-object-store key, a
-monotonic deployment sequence, a selected node (or zero for automatic
-singleton placement), a per-thread stack allocation, a maximum active-thread
+monotonic deployment sequence, an optional pinned node, a signed placement
+policy, a per-thread stack allocation, a maximum active-thread
 count, a cooperative shutdown grace period, and a bounded list of named client (`SEND`/`CALL`) or publication
 capability grants. The descriptor is separately signed by the offline cluster
 Ed25519 authority. Tampering with placement, an object key, either resource
@@ -55,8 +55,9 @@ current fail-closed spawn ABI. Legacy `CDEPLOY1` descriptors remain readable
 with the former four-page (16 KiB) and 16-thread defaults. `CDEPLOY2` retains
 its signed stack allocation and receives the 16-thread compatibility default.
 `CDEPLOY3` retains both execution limits and receives the five-second shutdown
-compatibility default. New release tooling emits only `CDEPLOY4` and signs all
-three values. Shutdown grace accepts zero through 300,000 milliseconds; zero
+compatibility default. `CDEPLOY4` retains all three execution/shutdown values
+and decodes with singleton placement. New release tooling emits only
+`CDEPLOY5`. Shutdown grace accepts zero through 300,000 milliseconds; zero
 selects immediate forced retirement.
 
 This is deliberately a two-role decision. Development and generation know the
@@ -97,6 +98,12 @@ giving the generator or application object-store credentials:
 
 ![Durga-to-Charlotte generation and deployment flow](../manual-v2/figures/durga-charlotte-generation.svg)
 
+Durga's Charlotte target retains execution limits, replica count,
+every-eligible-node selection, spread, affinity, and anti-affinity in the
+developer-owned `charlotte/resources.yaml`. It derives matching `CDEPLOY5`
+signing options and declares the CLS2 parallel-instance requirement whenever
+the policy can launch concurrent copies.
+
 ```text
 cluster-sign deployment-apply 127.0.0.1:8081 120 \
   receive.cdep transform.cdep publish.cdep
@@ -121,7 +128,8 @@ bytes. The cluster verifies the outer and nested signatures, relays a request
 received by a follower to the current leader, resolves automatic placement,
 and admits the whole set in one Raft command. Catalog preflight rejects a stale
 or conflicting release or component before changing the deployment map; v9
-snapshots retain the release record. Admission is atomic, while S3 fetch,
+snapshots first retained the release record and current catalog-v13 snapshots
+also retain concrete replica sets and per-node readiness. Admission is atomic, while S3 fetch,
 launch, publication, and readiness remain independently reconciled after the
 commit. Coordinated rollback and richer rollout policy still require a release
 controller.
@@ -139,15 +147,18 @@ idempotent.
 An operator may contact any member. A follower relays the bounded deployment
 submission over its source-validated peer route to the current Raft leader and
 correlates the committed result back to the ingress request. Automatic
-singleton placement is resolved by that leader rather than by whichever node
-received the HTTP connection.
+placement is resolved by that leader rather than by whichever node received
+the HTTP connection. Fixed replica sets and `every eligible node` use the
+current admitted, non-draining voters; an unsatisfiable policy fails before
+Raft submission.
 
 `tools/cluster-sign deployment-sign` and `deployment-verify` implement the
 canonical bounded wire format used by the kernel and userspace. For example:
 
 ```text
 cluster-sign deployment-sign orders.cdep orders releases/orders-a5.elf \
-  <artifact-sha256> 0 7 16 8 15000 <private-key-hex> \
+  <artifact-sha256> 0 7 16 8 15000 <private-key-hex> --replicas=3 \
+  --spread-replicas --anti-affinity-group=42 \
   kafka/orders/input=call kafka/orders/output=client
 ```
 
@@ -201,19 +212,27 @@ by the stable principal derived from its full, at-most-48-byte signed name; on
 reassignment or generation change the agent aborts and reclaims only that
 domain. Endpoint closure drives generation-fenced distributed removal.
 
-The current automatic placement policy is intentionally small: `node_key = 0`
-selects the current Raft leader for a singleton descriptor. This removes offline
-knowledge of a node key from the common one-replica release flow, but it is not
-a general scheduler. Cluster-level planning must next model node capacity,
-labels and failure domains, affinity/anti-affinity, replicas, health/readiness,
-rescheduling, rollout surge/unavailability, and rollback decisions. Those
-decisions belong above the node reconciler and should be committed as desired
-state through Raft.
+`node_key = 0` delegates placement to the cluster. A singleton prefers the
+current Raft leader and deterministically falls back when that node is
+draining; a fixed replica count selects distinct admitted,
+non-draining voters using a stable artifact ranking; and `every eligible node`
+selects the complete eligible set. Shared affinity groups use the same ranking
+seed, while anti-affinity groups require previously unused nodes and fail
+closed if the eligible set cannot satisfy the separation. The
+leader continuously recomputes automatic assignments after membership or
+drain-state changes and commits generation-fenced replacement sets through
+Raft. Pinned singleton descriptors remain fixed.
+
+This is deliberately still a bounded scheduler. It does not yet model resource
+requests against node capacity, arbitrary labels, named failure domains,
+rollout surge/unavailability, or automatic rollback. The current runtime also
+runs at most one instance of a given artifact on each node, even though the
+policy type reserves a larger per-node limit for a future scheduler.
 
 A launch-owned cluster VIP can be bound to one artifact name with
 `--cluster-service-name`. DNS derives its new-flow backend set from the desired
-deployment node and the active distributed registration for that exact
-deployment generation. This integrates today's singleton placement and agent
+replica nodes and the active per-node registrations for that exact deployment
+generation. This integrates replica placement and agent
 readiness with DSR without granting either the application or discovery traffic
 authority to nominate a backend. A placement change immediately excludes the
 stale generation; the new node becomes eligible only after its agent publishes
@@ -270,13 +289,19 @@ agent exits, independent of which LP runs the verifier.
 
 ## Honest remaining boundary
 
-The current Raft deployment map still contains one active node assignment per
-artifact, and the distributed name catalog has one active owner per name. The
-policy type and parallel-safety gate are implemented, but a placement
-controller, replica-set assignments, multi-owner lookup/load balancing, and
-observed-dependency migration are not. The DSR control plane consumes a
-service-specific ready-node set, but that set contains at most one node until
-the deployment catalog grows replica-set assignments and multi-owner readiness.
+The Raft deployment map now contains a sorted concrete replica set per
+artifact, and deployed readiness is stored per owner and deployment generation.
+The leader-side placement controller reconciles those sets against voting
+membership and committed drain intents. DSR consumes every exact-generation
+ready owner. Ordinary distributed name lookup remains deterministic rather
+than caller-balanced; cluster-wide TCP traffic obtains replica load sharing at
+the DSR layer.
+
+Resource-aware scheduling, label/failure-domain selection, multi-instance
+placement on one node, dependency-observed migration, rolling surge policy and
+automatic rollback remain open. Reassignment currently advances the whole
+deployment generation, so retained replicas restart alongside newly selected
+ones; a future per-replica revision can make that transition rolling.
 
 Raft agreement does not authenticate a raw DNS mutation. The network ingress
 does: it admits only a descriptor signed by the offline cluster authority and
@@ -292,6 +317,7 @@ to 64 independently reconciled application domains per node. The S3 connector
 must still be provisioned separately before notifying the cluster. The management endpoint
 now reports generation-safe `committed`, `replacing`, and `ready` rollout
 conditions, and the QEMU runner has a RustFS-backed end-to-end deployment
-fixture. Multi-owner placement and load balancing, authenticated audit
-identities beyond the signing key, and a production release controller remain
-open.
+fixture. Replica-set placement is unit-tested and compiled into the AArch64
+services, but still needs a dedicated multi-node release/scale/failover QEMU
+fixture. Authenticated audit identities beyond the signing key and a
+production resource-aware release controller remain open.

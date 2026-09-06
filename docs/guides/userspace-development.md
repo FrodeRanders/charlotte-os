@@ -51,7 +51,7 @@ Stack and thread count are protected-domain execution limits, not
 application-controlled manifest knobs. For centrally deployed applications,
 generation or development records the required number of 4 KiB pages per
 thread and maximum active threads in the component deployment plan. Release
-tooling places the reviewed values in the signed `CDEPLOY4` descriptor. Every
+tooling places the reviewed values in the signed `CDEPLOY5` descriptor. Every
 thread subsequently created in that domain inherits the stack allocation, and
 the scheduler counts the bootstrap thread against the signed thread quota.
 

@@ -1,6 +1,6 @@
 //! Bounded off-cluster deployment-notification ingress.
 //!
-//! The listener accepts `POST /v1/deployments` with one signed `CDEPLOY4`
+//! The listener accepts `POST /v1/deployments` with one signed `CDEPLOY5`
 //! descriptor, `POST /v1/releases` with one signed `CRELEASE` component set,
 //! `POST /v1/operations` with one encrypted `COPSBND2` admission proof,
 //! `POST /v1/shutdowns` with one signed node-targeted shutdown intent,
@@ -361,6 +361,9 @@ fn response(result: Result<i64, ()>) -> alloc::string::String {
         Ok(clusterctl::ERR_OUTSIDE_VALIDITY) => {
             ("409 Conflict", format!("{{\"error\":{}}}\n", clusterctl::ERR_OUTSIDE_VALIDITY))
         }
+        Ok(clusterctl::ERR_UNSATISFIABLE_PLACEMENT) => {
+            ("409 Conflict", format!("{{\"error\":{}}}\n", clusterctl::ERR_UNSATISFIABLE_PLACEMENT))
+        }
         Ok(code) => ("503 Service Unavailable", format!("{{\"error\":{code}}}\n")),
         Err(()) => ("400 Bad Request", "{\"error\":\"malformed request\"}\n".into()),
     };
@@ -383,8 +386,12 @@ fn rollout_response(result: Result<clusterctl::RolloutStatus, i64>) -> alloc::st
                 "200 OK",
                 format!(
                     "{{\"state\":\"{state}\",\"deployment_generation\":{},\"service_generation\":\
-                     {},\"node_key\":{}}}\n",
-                    status.deployment_generation, status.service_generation, status.node_key
+                     {},\"node_key\":{},\"desired_replicas\":{},\"ready_replicas\":{}}}\n",
+                    status.deployment_generation,
+                    status.service_generation,
+                    status.node_key,
+                    status.desired_replicas,
+                    status.ready_replicas
                 ),
             )
         }

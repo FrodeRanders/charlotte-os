@@ -55,11 +55,10 @@ operation materializes an immutable snapshot containing stable node keys and
 the discovery-associated MAC route for every admitted voter. The snapshot
 separates that trusted/routable member set from the subset eligible for new
 flows. When `vip-name` is configured, that subset contains only nodes selected
-by the committed deployment and carrying an active catalog registration for
-the exact deployment generation. The current singleton deployment catalog
-therefore yields zero or one ready backend; the ingress interface and encoded
-snapshot already carry an explicit set so replica placement can widen it
-later. DNS returns no snapshot unless every committed member has a route.
+by the committed replica set and carrying an active per-node catalog
+registration for the exact deployment generation. It therefore yields any
+subset from zero through the desired replica count as agents become ready.
+DNS returns no snapshot unless every committed member has a route.
 Discovery therefore supplies reachability but cannot admit a backend. During
 joint consensus the admitted set is the intersection of the old and new voter
 sets: a joiner enters only after finalization, while a departing node stops
@@ -152,9 +151,9 @@ segment to mutually untrusted hosts.
 The initial implementation supports one launch-configured IPv4/TCP service and
 at most 64 admitted members. Signed node shutdown supplies the first graceful
 drain trigger; a standalone service-drain operation and automatic failed-member
-removal are not implemented. IPv6 neighbour advertisement, service-specific
-replica sets, multiple VIPs and transparent TCP state migration remain
-extension points. Application state restoration can
+removal are not implemented. Service-specific replica sets are implemented;
+IPv6 neighbour advertisement, multiple VIPs and transparent TCP state
+migration remain extension points. Application state restoration can
 support reconnect-and-resume semantics, but application serialization does not
 include TCP sequence, retransmission or congestion-control state.
 

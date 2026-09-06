@@ -823,6 +823,55 @@ fn parse_grant(value: &str) -> Result<(&[u8], u16)> {
     Ok((service.as_bytes(), rights))
 }
 
+fn parse_u16_option(value: &str, label: &str) -> Result<u16> {
+    parse_required_u64(value, label)?
+        .try_into()
+        .map_err(|_| format!("{label} exceeds the descriptor width"))
+}
+
+type ParsedPlacement<'a> = (charlotte_launch::placement::PlacementPolicy, Vec<(&'a [u8], u16)>);
+
+fn parse_placement_and_grants(values: &[String]) -> Result<ParsedPlacement<'_>> {
+    use charlotte_launch::placement::{
+        PlacementPolicy,
+        COLOCATE_AFFINITY_GROUP,
+        EVERY_ELIGIBLE_NODE,
+        SPREAD_REPLICAS,
+    };
+
+    let mut policy = PlacementPolicy::singleton();
+    let mut min_distinct_explicit = false;
+    let mut grants = Vec::new();
+    for value in values {
+        if let Some(raw) = value.strip_prefix("--replicas=") {
+            policy.replicas = parse_u16_option(raw, "replica count")?;
+            if !min_distinct_explicit {
+                policy.min_distinct_nodes = policy.replicas;
+            }
+        } else if value == "--every-eligible-node" {
+            policy.flags |= EVERY_ELIGIBLE_NODE;
+            policy.replicas = 0;
+            policy.min_distinct_nodes = 0;
+        } else if let Some(raw) = value.strip_prefix("--max-instances-per-node=") {
+            policy.max_instances_per_node = parse_u16_option(raw, "per-node instance limit")?;
+        } else if let Some(raw) = value.strip_prefix("--min-distinct-nodes=") {
+            policy.min_distinct_nodes = parse_u16_option(raw, "minimum distinct node count")?;
+            min_distinct_explicit = true;
+        } else if value == "--spread-replicas" {
+            policy.flags |= SPREAD_REPLICAS;
+        } else if let Some(raw) = value.strip_prefix("--affinity-group=") {
+            policy.affinity_group = parse_required_u64(raw, "affinity group")?;
+            policy.flags |= COLOCATE_AFFINITY_GROUP;
+        } else if let Some(raw) = value.strip_prefix("--anti-affinity-group=") {
+            policy.anti_affinity_group = parse_required_u64(raw, "anti-affinity group")?;
+        } else {
+            grants.push(parse_grant(value)?);
+        }
+    }
+    policy.validate_shape().map_err(|error| format!("invalid placement policy: {error:?}"))?;
+    Ok((policy, grants))
+}
+
 fn deployment_sign(args: &[String]) -> Result<()> {
     let output = args.first().ok_or_else(|| "missing descriptor output path".to_owned())?;
     let artifact_name = args.get(1).ok_or_else(|| "missing artifact name".to_owned())?;
@@ -859,8 +908,7 @@ fn deployment_sign(args: &[String]) -> Result<()> {
         args.get(9).ok_or_else(|| "missing private key".to_owned())?,
     )?)
     .map_err(|_| "private key must be an Ed25519 secret key".to_owned())?;
-    let parsed_grants =
-        args[10..].iter().map(|value| parse_grant(value)).collect::<Result<Vec<_>>>()?;
+    let (placement, parsed_grants) = parse_placement_and_grants(&args[10..])?;
     let grants = parsed_grants
         .iter()
         .map(|(service, rights)| CapabilityGrant {
@@ -876,6 +924,7 @@ fn deployment_sign(args: &[String]) -> Result<()> {
         stack_pages_per_thread,
         max_threads,
         shutdown_grace_ms,
+        placement,
         object_key: object_key.as_bytes(),
         grants: &grants,
     };
@@ -899,10 +948,12 @@ fn deployment_sign(args: &[String]) -> Result<()> {
     println!(
         "signed deployment {output}: artifact={artifact_name:?} object={object_key:?} \
          node={node_key:#x} sequence={sequence} stack_pages_per_thread={} max_threads={} \
-         shutdown_grace_ms={} grants={}",
+         shutdown_grace_ms={} replicas={} placement_flags={:#x} grants={}",
         stack_pages_per_thread,
         max_threads,
         shutdown_grace_ms,
+        placement.replicas,
+        placement.flags,
         grants.len()
     );
     Ok(())
@@ -922,14 +973,16 @@ fn deployment_verify(args: &[String]) -> Result<()> {
         .ok_or_else(|| "deployment descriptor is malformed".to_owned())?;
     println!(
         "VERIFY OK: artifact={:?} object={:?} node={:#x} sequence={} stack_pages_per_thread={} \
-         max_threads={} shutdown_grace_ms={}",
+         max_threads={} shutdown_grace_ms={} replicas={} placement_flags={:#x}",
         String::from_utf8_lossy(descriptor.artifact_name),
         String::from_utf8_lossy(descriptor.object_key),
         descriptor.node_key,
         descriptor.sequence,
         descriptor.stack_pages_per_thread,
         descriptor.max_threads,
-        descriptor.shutdown_grace_ms
+        descriptor.shutdown_grace_ms,
+        descriptor.placement.replicas,
+        descriptor.placement.flags
     );
     for grant in descriptor.grants() {
         println!("grant {:?} rights={:#x}", String::from_utf8_lossy(grant.service), grant.rights);
@@ -1543,12 +1596,13 @@ fn run() -> Result<()> {
             }];
             let fields = DescriptorFields {
                 sequence: 7,
-                node_key: 0x1234,
+                node_key: 0,
                 artifact_digest: [0xa5; 32],
                 artifact_name: b"orders-step",
                 stack_pages_per_thread: 16,
                 max_threads: 8,
                 shutdown_grace_ms: 5_000,
+                placement: policy,
                 object_key: b"releases/orders-step-a5.elf",
                 grants: &grants,
             };
@@ -1593,31 +1647,33 @@ fn run() -> Result<()> {
                   [provenance-sha256|-] | elf-verify <elf> <name> <pubkey-hex> | sha256 <file> | \
                   deployment-sign <output> <artifact-name> <object-key> <artifact-sha256> \
                   <node-key> <sequence> <stack-pages-per-thread> <max-threads> \
-                  <shutdown-grace-ms> <privkey-hex> [service=send|call|client|publish ...] | \
-                  deployment-verify <descriptor> <pubkey-hex> | deployment-notify <descriptor> \
-                  [host:port] | deployment-status <artifact-name> [host:port] [wait-seconds] | \
-                  deployment-apply <host:port> <wait-seconds> <descriptor>... | release-sign \
-                  <output> <release-name> <sequence> <privkey-hex> <descriptor>... | \
-                  release-verify <release> <pubkey-hex> | release-notify <release> [host:port] | \
-                  release-apply <release> [host:port] [wait-seconds] | shutdown-sign <output> \
-                  <sequence> <target-node> <not-before-unix> <expires-unix> <node-grace-ms> \
-                  <phase-grace-ms> <privkey-hex> | shutdown-verify <intent> <pubkey-hex> | \
-                  shutdown-notify <intent> [host:port] | node-key <mac-address> | \
-                  operations-recipient-generate <private-key-file> <public-key-file> | \
-                  operations-signing-generate <private-key-file> <public-key-file> | \
-                  operations-seal <output> <profile-name> <s3|kafka> <cluster-id-hex> \
-                  <release-sha256> <sequence> <expires-unix> <recipient-public-key-file> \
-                  <ops-ed25519-private-key-file> <profile-file> | operations-verify <envelope> \
-                  <ops-ed25519-public-key-file> | operations-open <envelope> <cluster-id-hex> \
-                  <release-sha256> <now-unix> <recipient-private-key-file> \
-                  <ops-ed25519-public-key-file> <output> | operations-bundle-sign <output> \
-                  <bundle-sequence> <cluster-id-hex> <release-ed25519-public-key-hex> \
-                  <ops-ed25519-private-key-file> <recipient-public-key-file> <release> \
-                  (<target-artifact> <object-key> <envelope>)... | operations-bundle-verify \
-                  <bundle> <cluster-id-hex> <release-ed25519-public-key-hex> \
-                  <ops-ed25519-public-key-file> <recipient-public-key-file> <now-unix> | \
-                  operations-bundle-notify <bundle> [host:port] | cluster-id <mnemonic> | \
-                  selftest"
+                  <shutdown-grace-ms> <privkey-hex> [--replicas=N | --every-eligible-node] \
+                  [--min-distinct-nodes=N] [--max-instances-per-node=N] [--spread-replicas] \
+                  [--affinity-group=N] [--anti-affinity-group=N] \
+                  [service=send|call|client|publish ...] | deployment-verify <descriptor> \
+                  <pubkey-hex> | deployment-notify <descriptor> [host:port] | deployment-status \
+                  <artifact-name> [host:port] [wait-seconds] | deployment-apply <host:port> \
+                  <wait-seconds> <descriptor>... | release-sign <output> <release-name> \
+                  <sequence> <privkey-hex> <descriptor>... | release-verify <release> \
+                  <pubkey-hex> | release-notify <release> [host:port] | release-apply <release> \
+                  [host:port] [wait-seconds] | shutdown-sign <output> <sequence> <target-node> \
+                  <not-before-unix> <expires-unix> <node-grace-ms> <phase-grace-ms> \
+                  <privkey-hex> | shutdown-verify <intent> <pubkey-hex> | shutdown-notify \
+                  <intent> [host:port] | node-key <mac-address> | operations-recipient-generate \
+                  <private-key-file> <public-key-file> | operations-signing-generate \
+                  <private-key-file> <public-key-file> | operations-seal <output> <profile-name> \
+                  <s3|kafka> <cluster-id-hex> <release-sha256> <sequence> <expires-unix> \
+                  <recipient-public-key-file> <ops-ed25519-private-key-file> <profile-file> | \
+                  operations-verify <envelope> <ops-ed25519-public-key-file> | operations-open \
+                  <envelope> <cluster-id-hex> <release-sha256> <now-unix> \
+                  <recipient-private-key-file> <ops-ed25519-public-key-file> <output> | \
+                  operations-bundle-sign <output> <bundle-sequence> <cluster-id-hex> \
+                  <release-ed25519-public-key-hex> <ops-ed25519-private-key-file> \
+                  <recipient-public-key-file> <release> (<target-artifact> <object-key> \
+                  <envelope>)... | operations-bundle-verify <bundle> <cluster-id-hex> \
+                  <release-ed25519-public-key-hex> <ops-ed25519-public-key-file> \
+                  <recipient-public-key-file> <now-unix> | operations-bundle-notify <bundle> \
+                  [host:port] | cluster-id <mnemonic> | selftest"
             .to_owned()),
     }
 }
@@ -1645,6 +1701,7 @@ mod tests {
             stack_pages_per_thread: charlotte_launch::DEFAULT_USER_STACK_PAGES as u16,
             max_threads: charlotte_launch::DEFAULT_USER_MAX_THREADS as u16,
             shutdown_grace_ms: charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS,
+            placement: charlotte_launch::placement::PlacementPolicy::singleton(),
             object_key: name,
             grants: &[],
         };

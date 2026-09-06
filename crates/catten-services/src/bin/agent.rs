@@ -62,7 +62,7 @@ const RETIREMENT_POLL_MS: u64 = 10;
 struct DeploymentInfo {
     generation: u64,
     object_id: u64,
-    node_key: u64,
+    replica_nodes: Vec<u64>,
     artifact_digest: [u8; 32],
     descriptor: Vec<u8>,
 }
@@ -260,28 +260,13 @@ fn query_release(dns_connection: ConnectionRef<'_>, release_name: &[u8]) -> Opti
 }
 
 fn decode_deployment(bytes: &[u8]) -> Option<DeploymentInfo> {
-    if bytes.len() < 56 {
-        return None;
-    }
-    let descriptor = if bytes.len() == 56 {
-        Vec::new()
-    } else {
-        let descriptor_len =
-            usize::try_from(u32::from_le_bytes(bytes.get(56..60)?.try_into().ok()?)).ok()?;
-        if descriptor_len == 0
-            || descriptor_len > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
-            || bytes.len() != 60 + descriptor_len
-        {
-            return None;
-        }
-        bytes[60..].to_vec()
-    };
+    let entry = catten_services::name_catalog::decode_deployment_result(bytes)?;
     Some(DeploymentInfo {
-        generation: u64::from_le_bytes(bytes[0..8].try_into().ok()?),
-        object_id: u64::from_le_bytes(bytes[8..16].try_into().ok()?),
-        node_key: u64::from_le_bytes(bytes[16..24].try_into().ok()?),
-        artifact_digest: bytes[24..56].try_into().ok()?,
-        descriptor,
+        generation: entry.generation,
+        object_id: entry.object_id,
+        replica_nodes: entry.replica_nodes,
+        artifact_digest: entry.artifact_digest,
+        descriptor: entry.descriptor,
     })
 }
 
@@ -441,6 +426,8 @@ fn launch(
         return None;
     }
     let artifact = fetch_from_central_store(names, &descriptor, &trust.artifact_key)?;
+    let metadata = charlotte_launch::signature_note::artifact_metadata(&artifact)?;
+    descriptor.placement.validate(&metadata).ok()?;
     let artifact_memory = memory_from_bytes(&artifact)?;
     let descriptor_memory = memory_from_bytes(&entry.descriptor)?;
     let domain = launch_scoped_artifact_named(
@@ -475,7 +462,7 @@ fn launch_operational(
     my_node_key: u64,
 ) -> Option<ActiveOperational> {
     if deployment.descriptor.is_empty()
-        || deployment.node_key != my_node_key
+        || !deployment.replica_nodes.contains(&my_node_key)
         || deployment.artifact_digest == [0; 32]
     {
         return None;
@@ -492,6 +479,8 @@ fn launch_operational(
         return None;
     }
     let artifact = fetch_from_central_store(names, &descriptor, &trust.artifact_key)?;
+    let metadata = charlotte_launch::signature_note::artifact_metadata(&artifact)?;
+    descriptor.placement.validate(&metadata).ok()?;
     let envelope = fetch_s3_object(
         names,
         &binding.object_key,
@@ -717,7 +706,8 @@ fn serve(ctx: &Context) -> catten_rt::ShutdownRequest {
         for running in &mut active {
             let still_desired =
                 query_deployment(dns_connection.as_ref(), &running.name).is_some_and(|entry| {
-                    entry.node_key == my_node_key && entry.generation == running.generation
+                    entry.replica_nodes.contains(&my_node_key)
+                        && entry.generation == running.generation
                 }) && !desired_operations
                     .iter()
                     .any(|binding| binding.target_artifact == running.name);
@@ -753,13 +743,13 @@ fn serve(ctx: &Context) -> catten_rt::ShutdownRequest {
                     && binding.target_artifact == running.target_artifact
                     && binding.generation == running.binding_generation
             });
-            let deployment_matches = query_deployment(
-                dns_connection.as_ref(),
-                &running.target_artifact,
-            )
-            .is_some_and(|entry| {
-                entry.node_key == my_node_key && entry.generation == running.deployment_generation
-            });
+            let deployment_matches =
+                query_deployment(dns_connection.as_ref(), &running.target_artifact).is_some_and(
+                    |entry| {
+                        entry.replica_nodes.contains(&my_node_key)
+                            && entry.generation == running.deployment_generation
+                    },
+                );
             running.retiring |= !binding_matches || !deployment_matches;
         }
         let mut index = 0;
@@ -808,7 +798,7 @@ fn serve(ctx: &Context) -> catten_rt::ShutdownRequest {
                 continue;
             }
             if let Some(entry) = query_deployment(dns_connection.as_ref(), &name)
-                && entry.node_key == my_node_key
+                && entry.replica_nodes.contains(&my_node_key)
                 && let Some(running) = launch(names, &name, &entry, &trust, my_node_key)
             {
                 active.push(running);

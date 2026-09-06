@@ -23,7 +23,7 @@ The current boundary is important. Durga now has a prototype
 For each BPMN component it emits a \texttt{no\_std} runtime adapter, a Cargo
 manifest template, an AArch64 Charlotte build script, capability requests,
 named Kafka connector profiles, explicit stack and thread-count requirements,
-and signed-deployment planning metadata. The generator creates a
+signed replica/affinity policy, and deployment planning metadata. The generator creates a
 developer-owned \texttt{charlotte/resources.yaml} once and preserves it on
 later runs; deployment output remains blocked until its values have been
 reviewed, and the signing command is derived from that same retained source.
@@ -221,8 +221,9 @@ The third Durga target is called \texttt{charlotte}. Its first vertical slice
 transforms the Durga semantic model into Charlotte-native adapter sources,
 build inputs, authority requests, connector profiles, and a deployment plan.
 The target architecture extends that working slice with completed business-rule
-bindings, bundle admission, multi-replica placement, lifecycle supervision, and
-rollback.
+bindings, semantic bundle admission, resource-aware and rolling placement,
+lifecycle supervision, and rollback. Charlotte's lower-level signed release
+path now realises fixed replica sets and exact-generation DSR readiness.
 
 \subsection{Generated activity boundary}
 
@@ -396,16 +397,19 @@ contain:
     \item the proposed cluster desired state for this process release.
 \end{itemize}
 
-Execution resources deserve special treatment among those estimates. Only the application
+Execution resources and replica intent deserve special treatment among those estimates. Only the application
 and generator authors know the component's worst-case call depth, generated
-adapter frames, stack-resident data, and safe concurrency. Durga therefore
+adapter frames, stack-resident data, safe concurrency, and intended replication. Durga therefore
 creates a developer-owned \texttt{charlotte/resources.yaml} carrying explicit
 \texttt{stackPagesPerThread}, \texttt{maxThreads}, and
-\texttt{shutdownGraceMillis} requests. It creates that
+\texttt{shutdownGraceMillis} requests together with replica count,
+every-eligible-node selection, spread, affinity, and anti-affinity. It creates that
 file once and never overwrites it during regeneration. Operations may approve
 or reject the reviewed values when signing the deployment, but should not have
 to guess them from the ELF or silently rewrite them. Charlotte's
-\texttt{CDEPLOY4} descriptor signs all three values; the kernel gives every thread
+\texttt{CDEPLOY5} descriptor signs all three values and placement policy; Durga
+derives the corresponding signing options and adds the CLS2 parallel-instance
+requirement whenever the policy permits concurrent instances. The kernel gives every thread
 in the protected domain the specified 4 KiB-page stack allocation and counts
 the bootstrap thread against the active-thread quota. It first requests
 cooperative application draining and then forcibly retires the domain at the
@@ -473,19 +477,17 @@ parallel-safety declaration, artifact identities, stack limits, capabilities,
 and placement constraints before committing desired state to the replicated
 manifest.
 
-The existing Charlotte manifest accepts one explicit node assignment per
-artifact. The \texttt{PlacementPolicy} contract described in
-\autoref{chap:cluster-vision} can
-express replica and affinity properties but is not yet stored or realised by a
-placement controller. Consuming a generated singleton is now possible through
-signed central-S3 notification. A generated set of singleton components can be
-wrapped in \texttt{CRELEASE}, atomically admitted, and observed together with
-\texttt{cluster-sign release-apply}. This binds the exact executable deployment
-descriptors, but not yet the BPMN digest, schemas, communication graph,
-provenance, or placement policy of the proposed semantic bundle. Consuming a
-complete replicated Durga process bundle still depends on that richer binding,
-the future placement controller, replica routing, and production administration
-authority already identified there.
+The Charlotte manifest accepts signed singleton, fixed-replica, and
+\emph{every eligible node} policy. The \texttt{PlacementPolicy} contract
+described in \autoref{chap:cluster-vision} is stored in \texttt{CDEPLOY5}; a
+leader-side controller resolves it and commits concrete replica sets. A
+generated component set can be wrapped in \texttt{CRELEASE}, atomically
+admitted, and observed together with \texttt{cluster-sign release-apply}.
+This binds exact executable deployment descriptors and placement policy, but
+not yet the BPMN digest, schemas, communication graph, or provenance of the
+proposed semantic bundle. Consuming a complete Durga process bundle still
+depends on that richer binding, resource-aware scheduling, and production
+administration authority already identified there.
 
 \section{Process topology as placement information}
 
@@ -1001,9 +1003,9 @@ Substantial work remains in both projects:
         provenance, and reproducible generation remain to be designed.
 
     \item The Charlotte cluster now has shared central-S3 artifact fetching and
-        singleton rollout observation. It still needs production administration
-        authority, replica realisation and routing,
-        cluster-wide telemetry, and an automatic placement controller
+        replica-set rollout observation and DSR routing. It still needs
+        production administration authority, resource-aware placement,
+        cluster-wide telemetry, and rolling update/rollback control
         (\autoref{chap:cluster-vision}).
 
     \item Native Charlotte messaging needs defined delivery, back-pressure,

@@ -1522,7 +1522,8 @@ pub mod deploy {
 /// dimension appears only in the deployment record.
 pub mod clusterctl {
     pub const INTERFACE: u64 = super::name(b"CTL");
-    pub const VERSION: u32 = 1;
+    /// Version 2 extends rollout status with desired and ready replica counts.
+    pub const VERSION: u32 = 2;
     /// The service's short name (packed LE).
     pub const NAME: u64 = super::name(b"ctl");
     /// Plain HTTP notification ingress. Authenticity and integrity come from
@@ -1549,9 +1550,9 @@ pub mod clusterctl {
     pub const OP_DEPLOY: u32 = 2;
     /// Query the deployment manifest. `arg0` is the packed artifact name; the
     /// reply moves `[generation:u64][object_id:u64][node_key:u64]
-    /// [artifact_sha256:32][descriptor_len:u32][signed_descriptor]`, or the
-    /// legacy 56-byte prefix for a legacy deployment. Missing records return
-    /// `ERR_NOT_FOUND`.
+    /// [artifact_sha256:32][descriptor_len:u32][signed_descriptor]
+    /// [replica_count:u16][node_keys:u64...]`, or the legacy 56-byte prefix
+    /// for a legacy deployment. Missing records return `ERR_NOT_FOUND`.
     pub const OP_STATUS: u32 = 3;
     /// Commit the cluster's Ed25519 public key to the replicated state (the
     /// key ceremony, performed once during cluster establishment). `arg0` is
@@ -1564,11 +1565,11 @@ pub mod clusterctl {
     /// a page holding the 32 key bytes, or is `ERR_NOT_FOUND` before the
     /// first ceremony.
     pub const OP_KEY: u32 = 5;
-    /// Notify the cluster of a signed `CDEPLOY4` descriptor. The artifact
+    /// Notify the cluster of a signed `CDEPLOY5` descriptor. The artifact
     /// name is taken from the signed descriptor and the moved memory uses the same
     /// `[len:u64][bytes]` envelope as `OP_UPLOAD`. The descriptor contains the
     /// central object key, digest, target node, revision, per-thread stack
-    /// pages, maximum thread count, and capability grants. No object-store
+    /// pages, maximum thread count, placement policy, and capability grants. No object-store
     /// credentials cross this interface.
     pub const OP_NOTIFY: u32 = 6;
     /// Join the cluster on the local network segment. The service asks the
@@ -1598,10 +1599,10 @@ pub mod clusterctl {
 
     pub const ROLLOUT_COMMITTED: u8 = 1;
     pub const ROLLOUT_READY: u8 = 2;
-    /// The name is active, but its owner differs from the desired node. This
-    /// is observable during replacement and is not a successful rollout.
+    /// Some but not all exact-generation replicas are ready. This is
+    /// observable during replacement and is not a successful rollout.
     pub const ROLLOUT_REPLACING: u8 = 3;
-    pub const ROLLOUT_STATUS_LEN: usize = 32;
+    pub const ROLLOUT_STATUS_LEN: usize = 40;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct RolloutStatus {
@@ -1609,6 +1610,8 @@ pub mod clusterctl {
         pub deployment_generation: u64,
         pub service_generation: u64,
         pub node_key: u64,
+        pub desired_replicas: u16,
+        pub ready_replicas: u16,
     }
 
     impl RolloutStatus {
@@ -1618,6 +1621,8 @@ pub mod clusterctl {
             bytes[8..16].copy_from_slice(&self.deployment_generation.to_le_bytes());
             bytes[16..24].copy_from_slice(&self.service_generation.to_le_bytes());
             bytes[24..32].copy_from_slice(&self.node_key.to_le_bytes());
+            bytes[32..34].copy_from_slice(&self.desired_replicas.to_le_bytes());
+            bytes[34..36].copy_from_slice(&self.ready_replicas.to_le_bytes());
             bytes
         }
 
@@ -1625,6 +1630,7 @@ pub mod clusterctl {
             if bytes.len() != ROLLOUT_STATUS_LEN
                 || !matches!(bytes[0], ROLLOUT_COMMITTED | ROLLOUT_READY | ROLLOUT_REPLACING)
                 || bytes[1..8].iter().any(|byte| *byte != 0)
+                || bytes[36..40].iter().any(|byte| *byte != 0)
             {
                 return None;
             }
@@ -1633,6 +1639,8 @@ pub mod clusterctl {
                 deployment_generation: u64::from_le_bytes(bytes[8..16].try_into().ok()?),
                 service_generation: u64::from_le_bytes(bytes[16..24].try_into().ok()?),
                 node_key: u64::from_le_bytes(bytes[24..32].try_into().ok()?),
+                desired_replicas: u16::from_le_bytes(bytes[32..34].try_into().ok()?),
+                ready_replicas: u16::from_le_bytes(bytes[34..36].try_into().ok()?),
             })
         }
     }
@@ -1662,6 +1670,9 @@ pub mod clusterctl {
     pub const ERR_EXPIRED_OPERATION: i64 = -17;
     /// The trusted UTC clock is outside a signed request's validity window.
     pub const ERR_OUTSIDE_VALIDITY: i64 = -18;
+    /// The signed replica policy cannot be satisfied by the current admitted,
+    /// non-draining voting members.
+    pub const ERR_UNSATISFIABLE_PLACEMENT: i64 = -19;
 }
 
 /// Remote-invocation wire protocol carried over the reliable message layer.

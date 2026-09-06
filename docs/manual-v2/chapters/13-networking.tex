@@ -289,20 +289,21 @@ emits gratuitous ARP, so ingress ownership can move without altering backend
 membership. No node advertises the VIP when no backend is ready. The first
 version supports one IPv4/TCP service and at most 64 admitted members;
 IPv6 neighbour discovery, a service-only drain operation, automatic failed-member
-removal, service-specific replica sets, multiple VIPs, and transparent TCP-state migration are future work. The
+removal, multiple VIPs, and transparent TCP-state migration are future work. The
 precise bounds, failure semantics, and status fields are documented in
 \repofile|docs/architecture/distributed-l2-ingress.md|.
 
 The launch policy may bind the VIP to a deployed application name. DNS then
-intersects admitted membership with the application's committed placement and
-its exact-generation readiness registration. After movement or replacement,
+intersects admitted membership with the application's committed replica set and
+its per-node exact-generation readiness registrations. After movement or replacement,
 the stale generation receives no new flows; eligibility remains empty until
 the target node's agent publishes the matching generation. Retained epochs
 continue to route observed flows during the drain window. Omitting the name
 keeps a compatibility mode in which every admitted, non-draining member runs
-the platform service. The current deployment catalog has one active assignment
-per artifact, so the service-specific set contains at most one ready backend;
-replica-set placement is the next control-plane extension.
+the platform service. Fixed replica counts and emph{every eligible node}
+placements widen the service-specific backend set as their node agents publish
+readiness. A leader-side controller reconciles automatic assignments after
+membership and drain-state changes.
 
 Operational Vote, AppendEntries, and InstallSnapshot RPCs use private
 EtherType \texttt{0x88b7}, while admission and DNS application/control traffic

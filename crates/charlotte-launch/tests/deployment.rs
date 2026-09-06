@@ -23,6 +23,7 @@ fn fields(stack_pages_per_thread: u16, max_threads: u16) -> DescriptorFields<'st
         stack_pages_per_thread,
         max_threads,
         shutdown_grace_ms: 12_000,
+        placement: charlotte_launch::placement::PlacementPolicy::singleton(),
         object_key: b"releases/orders.elf",
         grants: &[],
     }
@@ -45,7 +46,7 @@ fn downgrade(mut bytes: Vec<u8>, magic: &[u8; 8], version: u16) -> Vec<u8> {
 }
 
 #[test]
-fn v4_round_trip_binds_execution_and_shutdown_resources() {
+fn v5_round_trip_binds_execution_shutdown_and_placement_resources() {
     let pair = KeyPair::from_seed([0x31; 32].into());
     let public: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
     let fields = fields(16, 8);
@@ -58,6 +59,7 @@ fn v4_round_trip_binds_execution_and_shutdown_resources() {
     assert_eq!(decoded.stack_pages_per_thread, 16);
     assert_eq!(decoded.max_threads, 8);
     assert_eq!(decoded.shutdown_grace_ms, 12_000);
+    assert_eq!(decoded.placement, charlotte_launch::placement::PlacementPolicy::singleton());
     assert_eq!(deployment::verify(&bytes, public), deployment::VerifyOutcome::Valid);
 
     let mut stack_tamper = bytes.clone();
@@ -66,6 +68,47 @@ fn v4_round_trip_binds_execution_and_shutdown_resources() {
 
     bytes[deployment::MAX_THREADS_OFFSET] ^= 1;
     assert_ne!(deployment::verify(&bytes, public), deployment::VerifyOutcome::Valid);
+}
+
+#[test]
+fn v5_round_trip_carries_replica_policy() {
+    let pair = KeyPair::from_seed([0x21; 32].into());
+    let public: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
+    let mut fields = fields(16, 8);
+    fields.node_key = 0;
+    fields.placement = charlotte_launch::placement::PlacementPolicy {
+        replicas: 3,
+        max_instances_per_node: 1,
+        min_distinct_nodes: 3,
+        flags: charlotte_launch::placement::SPREAD_REPLICAS,
+        affinity_group: 0,
+        anti_affinity_group: 7,
+    };
+    let mut bytes = vec![0; deployment::encoded_len(&fields).unwrap()];
+    deployment::encode_unsigned(&fields, public, &mut bytes).unwrap();
+    sign(&mut bytes, &pair);
+    assert_eq!(deployment::decode(&bytes).unwrap().placement, fields.placement);
+    assert_eq!(deployment::verify(&bytes, public), deployment::VerifyOutcome::Valid);
+}
+
+#[test]
+fn v4_decodes_with_singleton_placement() {
+    let pair = KeyPair::from_seed([0x22; 32].into());
+    let public: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
+    let fields = fields(16, 8);
+    let mut bytes = vec![0; deployment::encoded_len(&fields).unwrap()];
+    deployment::encode_unsigned(&fields, public, &mut bytes).unwrap();
+    bytes.drain(deployment::V4_HEADER_LEN..deployment::HEADER_LEN);
+    bytes[..8].copy_from_slice(deployment::V4_MAGIC);
+    bytes[8..10].copy_from_slice(&deployment::V4_VERSION.to_le_bytes());
+    bytes[10..12].copy_from_slice(&(deployment::V4_HEADER_LEN as u16).to_le_bytes());
+    let total_len = bytes.len() as u32;
+    bytes[12..16].copy_from_slice(&total_len.to_le_bytes());
+    sign(&mut bytes, &pair);
+    let decoded = deployment::decode(&bytes).unwrap();
+    assert_eq!(decoded.format_version, deployment::V4_VERSION);
+    assert_eq!(decoded.placement, charlotte_launch::placement::PlacementPolicy::singleton());
+    assert_eq!(deployment::verify(&bytes, public), deployment::VerifyOutcome::Valid);
 }
 
 #[test]
@@ -141,10 +184,14 @@ fn encoder_rejects_invalid_execution_resources() {
     let mut invalid_grace = fields(1, 1);
     invalid_grace.shutdown_grace_ms = charlotte_launch::MAX_SHUTDOWN_GRACE_MS + 1;
     assert_eq!(deployment::encoded_len(&invalid_grace), Err(EncodeError::InvalidShutdownGrace));
+    let mut pinned_replicas = fields(1, 1);
+    pinned_replicas.placement.replicas = 2;
+    pinned_replicas.placement.min_distinct_nodes = 2;
+    assert_eq!(deployment::encoded_len(&pinned_replicas), Err(EncodeError::InvalidPlacement));
 }
 
 #[test]
-fn decoder_rejects_invalid_v4_and_noncanonical_legacy_resources() {
+fn decoder_rejects_invalid_v5_and_noncanonical_legacy_resources() {
     let pair = KeyPair::from_seed([0x75; 32].into());
     let public: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
     let fields = fields(DEFAULT_USER_STACK_PAGES as u16, 1);

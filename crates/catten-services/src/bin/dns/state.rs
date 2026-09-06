@@ -121,6 +121,11 @@ pub(super) enum PendingRegistration {
         log_index: u64,
         reply: u64,
     },
+    /// Leader-local placement-controller reconciliation.
+    Placement {
+        log_index: u64,
+        artifact: Vec<u8>,
+    },
     /// Leader-side: a follower relayed a deployment after its local
     /// administration service verified the signed descriptor.
     RemoteDeploy {

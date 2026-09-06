@@ -17,11 +17,12 @@ discovery-bridged Raft admission, joint-consensus membership, and a cluster TCP
 VIP whose connections are distributed without terminating TCP at the ingress
 node. Replicated naming and deployment state, signed ELF artifacts, per-node
 NVMe object stores, deployment agents, remote invocation, and a stateless
-assignment handoff are also implemented. Automatic capacity-aware placement,
-multi-replica placement, shared artifact storage, stateful cross-node
-migration, and a production administration plane remain future work. For the
-current singleton deployment model, cluster TCP ingress is already derived
-from committed placement and exact-generation application readiness.
+assignment handoff are also implemented. Signed fixed replica counts,
+emph{every eligible node}, basic affinity/anti-affinity planning, membership
+reconciliation, and per-node readiness now feed cluster TCP ingress. Automatic
+capacity-aware placement, shared artifact storage, stateful cross-node
+migration, rolling replacement, and a production administration plane remain
+future work.
 
 The purpose of this chapter is therefore twofold. It first states the
 cluster-level model CharlotteOS is trying to reach. It then uses Linux
@@ -359,7 +360,8 @@ does not by itself constitute a complete cluster executive.
         Ethernet segment and serves remote invocation through
         \texttt{dns::OP\_CALL} (\autoref{chap:consensus}). The same replicated catalog
         carries the set-once cluster signing key and deployment assignments.
-        Placement rules are not yet stored in that state machine.
+        Signed placement rules, concrete replica sets, and per-node readiness
+        are stored in that state machine.
 
     \item \textbf{Reliable cluster messaging.} Protocol v3 represents message
         lengths and fragment offsets with 32 bits and initially admits messages
@@ -547,33 +549,41 @@ The demonstrated deployment pipeline implements a narrower three-stage path:
         The present ceremony can distribute only the build-time anchor; it is
         not a general enrolment or rotation protocol.
 
-    \item \textbf{Assignment.} A Raft-committed record directs a named node
-        to load a particular object id and immutable ELF digest. The node's
-        agent fetches, validates, and runs that exact artifact. The bytes are
-        currently fetched from a locally staged NVMe store, not through a
-        cluster artifact protocol.
+    \item \textbf{Assignment.} A Raft-committed record directs a concrete
+        replica set to load a particular object id and immutable ELF digest.
+        Each selected node's agent fetches the opaque object key through its
+        locally provisioned S3 capability, then validates and runs those exact
+        bytes. Endpoint and credential details remain inside that privileged
+        connector rather than the descriptor or application.
 \end{enumerate}
 
-The replicated catalog currently records one active owner and one explicit
-node assignment per artifact. The policy contract can express
-\emph{somewhere}, replicas, and \emph{every eligible node}, but a controller
-does not yet realise those choices and the name service does not yet route
-among multiple active owners.
+The replicated catalog records a sorted concrete node set per artifact and an
+independently generation-fenced readiness registration for each active owner.
+The leader resolves \emph{somewhere}, fixed replicas, and
+\emph{every eligible node} against admitted, non-draining voters and
+reconciles the assignments when that set changes. DSR routes new cluster-VIP
+flows across the ready subset.
 
 \section{Placement: contract, observation, and movement}
 
-\subsection{Declared policy: implemented contract}
+\subsection{Declared policy and bounded scheduler}
 
 The shared \texttt{PlacementPolicy} type expresses desired replicas, maximum
 instances per node, minimum distinct nodes, \emph{every eligible node}, an
 affinity group, and an anti-affinity group. A request for concurrent
 replicas is invalid unless the artifact's signed CLS2 metadata contains
-\texttt{PARALLEL\_INSTANCES}. The type and its validation are implemented
-and host-tested.
+\texttt{PARALLEL\_INSTANCES}. \texttt{CDEPLOY5} signs this policy, the
+leader resolves it to concrete assignments, and catalog-v13 snapshots retain
+both the desired set and per-node readiness. Affinity groups share a stable
+ranking seed; anti-affinity groups require unused nodes and fail closed when
+the eligible set cannot satisfy the separation. A policy that needs more
+distinct nodes than the current eligible set fails admission.
 
-This is a validation contract, not a scheduler. The policy is not yet stored
-in the replicated deployment manifest or consumed by a controller. The
-current state machine commits one explicit node assignment for each artifact.
+The scheduler remains intentionally bounded. It does not yet account for CPU
+or memory capacity, labels, named failure domains, or more than one instance
+of an artifact on a node. Reassignment advances the whole deployment
+generation, so retained replicas restart rather than participating in a
+rolling surge/unavailability protocol.
 
 \subsection{Runtime observation: local substrate only}
 
@@ -704,7 +714,7 @@ wraps the DNS manifest operations and object store behind:
     \item \texttt{deploy}, which hashes the stored bytes and submits the
         pinned assignment; and
     \item \texttt{status}, which queries the committed record; and
-    \item \texttt{notify}, which verifies a signed \texttt{CDEPLOY4}
+    \item \texttt{notify}, which verifies a signed \texttt{CDEPLOY5}
         descriptor and commits its opaque central-object key, digest, target,
         sequence, per-thread stack pages, maximum active-thread count, and
         cooperative shutdown grace period and capability grants without
@@ -738,11 +748,12 @@ The atomic alternative is a signed \texttt{CRELEASE} envelope produced with
 sequence, and the exact ordered bytes of up to 16 distinct nested descriptors;
 the complete envelope is bounded to 3,584 bytes. The cluster verifies both the
 outer signature and every nested deployment signature. Current tooling emits
-\texttt{CDEPLOY4}; the reader retains compatibility with \texttt{CDEPLOY1}
-through \texttt{CDEPLOY3}.
+\texttt{CDEPLOY5}; the reader retains compatibility with \texttt{CDEPLOY1}
+through \texttt{CDEPLOY4}.
 A follower relays the
-request to the current leader, which resolves all automatic node selections
-and proposes the set as one Raft command. The state machine preflights every
+request to the current leader, which resolves all signed placement policies
+against admitted, non-draining voters and proposes the concrete replica sets
+as one Raft command. The state machine preflights every
 release and component revision before changing the deployment map, so desired
 state changes all at once or not at all. Exact retries are idempotent and the
 signed release record survives catalog snapshots.
@@ -750,8 +761,8 @@ signed release record survives catalog snapshots.
 Admission atomicity does not make component startup simultaneous. Agents fetch,
 launch, and publish independently after commit, and \texttt{release-apply}
 waits for every exact generation. Coordinated rollback, progress policy, and a
-semantic process bundle that also binds BPMN, schemas, provenance, and replica
-intent remain controller work.
+semantic process bundle that also binds BPMN, schemas, and provenance remain
+controller work.
 
 Retirement is nevertheless bounded locally. On the first reconciliation poll,
 the kernel publishes a drain request and monotonic deadline in the domain's
@@ -879,15 +890,20 @@ does not need a separate leader-discovery protocol.
 
 The same endpoint accepts
 \texttt{GET /v1/deployments/\{percent-encoded-name\}}. It reports
-\texttt{committed}, \texttt{replacing}, or \texttt{ready}. A ready observation
-is generation-safe: the active catalog owner must be the selected node and its
-registration must carry the exact desired deployment generation. A stale
-endpoint with the same name cannot make a replacement rollout appear ready.
+\texttt{committed}, \texttt{replacing}, or \texttt{ready}, together with
+desired and ready replica counts. A ready observation is generation-safe: all
+desired nodes must have active registrations carrying the exact deployment
+generation. A stale endpoint with the same name cannot make a replacement
+rollout appear ready.
 
-The signed descriptor may carry node key zero to request automatic singleton
-placement. The implemented initial policy chooses the current Raft leader,
-independently of which member accepted the HTTP request; a nonzero key remains
-an explicit pin. Full signed artifact names
+The signed descriptor may carry node key zero to request automatic placement.
+A singleton prefers the current Raft leader and uses a deterministic fallback
+when that node is draining; fixed replica counts and
+\emph{every eligible node} select distinct admitted, non-draining voters. The
+leader continuously reconciles that set after membership changes. A nonzero
+key remains an explicit singleton pin. Replica policy is admitted through a
+\texttt{CRELEASE}, giving affinity decisions the complete component context.
+Full signed artifact names
 up to the 48-byte CLS2 limit travel in memory-backed catalog operations rather
 than the historical eight-byte scalar encoding.
 
@@ -906,12 +922,12 @@ its signed artifact name, so a generation change retires only the matching
 application even if address-space identifiers have been reused. This bound is
 kernel admission policy, not a naming or descriptor-format limit.
 
-Automatic placement currently covers one replica on the current Raft leader. A
-cluster-level deployment planner is still required for capacity-aware node
-selection, labels and failure domains, affinity and anti-affinity, replica
-sets, rescheduling, readiness conditions, rollout surge/unavailability, and
-rollback. Such a planner should commit desired assignments through Raft; node
-agents should remain mechanism-only reconcilers.
+Automatic placement now covers singletons, fixed distinct-node replica sets,
+every eligible voter, stable affinity/anti-affinity ranking, rescheduling, and
+exact-generation readiness. The controller commits desired assignments
+through Raft while node agents remain mechanism-only reconcilers. It still
+needs capacity-aware selection, labels and named failure domains,
+multi-instance-per-node execution, rollout surge/unavailability, and rollback.
 
 The development runner's
 \texttt{--deployment-ingress-test --timeout 240} option proves the complete
@@ -923,10 +939,10 @@ progress deadlines, rollback, and operator audit identity.
 \subsection{Artifact naming}
 
 Artifact names are currently bare cluster-global names such as
-\texttt{greet}. The object-store id is derived from the name using a
-\texttt{0xfffe...} tag over FNV-1a, so each staged node stores an artifact
-under the same id and the node dimension occurs only in the deployment
-record.
+\texttt{greet}. The compatibility object id is derived from the name using a
+\texttt{0xfffe...} tag over FNV-1a, while signed descriptors carry the opaque
+central-S3 object key and full content digest. Concrete node assignments occur
+only in the replicated deployment record.
 
 The host image producer detects and rejects collisions in the complete
 bundle. Production should replace the truncated 48-bit name hash with a
@@ -995,7 +1011,7 @@ Within its stated limits, the slice proves that:
         requiring direct machine configuration.
 \end{itemize}
 
-It does not prove automatic placement, multi-owner routing, stateful
+It does not prove resource-aware placement, rolling replacement, stateful
 cross-node migration, shared artifact availability, dynamic reconfiguration
 of the durable DNS group, production key establishment or rotation, or
 production administrative authorisation. The narrower generic-Raft

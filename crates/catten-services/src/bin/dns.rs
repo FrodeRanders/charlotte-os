@@ -68,10 +68,11 @@ use catten_services::{
         decode_query_result,
         encode_activate,
         encode_deploy,
+        encode_deployment_result,
         encode_lookup_query,
+        encode_reassign,
         encode_register,
         encode_register_deployment,
-        encode_release,
         encode_set_cluster_key,
         encode_shutdown,
         encode_unregister_generation,
@@ -502,6 +503,63 @@ fn ingress_membership_snapshot(
     BackendSnapshot::new_with_members(epoch, self_node, advertiser_node, members, eligible_nodes)
 }
 
+fn reconcile_replica_placements(
+    node: &mut RaftNode,
+    catalog: &NameCatalog,
+    pending: &mut Vec<PendingRegistration>,
+) {
+    if node.state != NodeState::Leader {
+        return;
+    }
+    let candidates = placement_nodes(node, catalog);
+    let automatic_node = node_identity::key_from_name(node.me.id.as_bytes()).unwrap_or(0);
+    let deployments = catalog
+        .deployments()
+        .into_iter()
+        .filter(|(_, entry)| {
+            !entry.descriptor.is_empty()
+                && charlotte_launch::deployment::decode(&entry.descriptor)
+                    .is_some_and(|descriptor| descriptor.node_key == 0)
+        })
+        .collect::<Vec<_>>();
+    let descriptors =
+        deployments.iter().map(|(_, entry)| entry.descriptor.as_slice()).collect::<Vec<_>>();
+    let Ok(assignments) = operations_admission::resolve_descriptor_assignments(
+        &descriptors,
+        &candidates,
+        automatic_node,
+    ) else {
+        return;
+    };
+    for ((artifact, entry), nodes) in deployments.iter().zip(assignments) {
+        if pending.len() >= MAX_IN_FLIGHT_CALLS {
+            break;
+        }
+        if entry.replica_nodes == nodes
+            || pending.iter().any(|pending| {
+                matches!(
+                    pending,
+                    PendingRegistration::Placement {
+                        artifact: pending_artifact,
+                        ..
+                    } if pending_artifact == artifact
+                )
+            })
+        {
+            continue;
+        }
+        let Some(command) = encode_reassign(artifact, entry.generation, &nodes) else {
+            continue;
+        };
+        if let Ok(log_index) = node.submit_command(command, node.millis()) {
+            pending.push(PendingRegistration::Placement {
+                log_index,
+                artifact: artifact.clone(),
+            });
+        }
+    }
+}
+
 /// Drain the administration face of the DNS-owned Raft node.
 fn drain_raft_admin(endpoint: u64, node: &mut RaftNode) {
     loop {
@@ -628,22 +686,36 @@ fn drain_raft_admin(endpoint: u64, node: &mut RaftNode) {
     }
 }
 
-fn release_command(envelope: &[u8], automatic_node: u64) -> Option<Vec<u8>> {
-    let release = charlotte_launch::release::decode(envelope)?;
-    let nodes = release
-        .descriptors()
-        .map(|bytes| {
-            let descriptor = charlotte_launch::deployment::decode(bytes)?;
-            Some(
-                if descriptor.node_key == 0 {
-                    automatic_node
-                } else {
-                    descriptor.node_key
-                },
-            )
-        })
-        .collect::<Option<Vec<_>>>()?;
-    encode_release(envelope, &nodes)
+fn placement_nodes(node: &RaftNode, catalog: &NameCatalog) -> Vec<u64> {
+    let draining =
+        catalog.ingress_draining_nodes().into_iter().map(|(node, _)| node).collect::<BTreeSet<_>>();
+    let mut nodes = node
+        .cluster_configuration
+        .active_voting_members()
+        .iter()
+        .filter_map(|peer| node_identity::key_from_name(peer.id.as_bytes()))
+        .filter(|node| !draining.contains(node))
+        .collect::<Vec<_>>();
+    nodes.sort_unstable();
+    nodes.dedup();
+    nodes
+}
+
+fn release_command(
+    envelope: &[u8],
+    eligible_nodes: &[u64],
+    automatic_node: u64,
+) -> Result<Vec<u8>, i64> {
+    let assignments =
+        operations_admission::resolve_release_assignments(envelope, eligible_nodes, automatic_node)
+            .map_err(|error| match error {
+                operations_admission::AdmissionError::UnsatisfiablePlacement => {
+                    clusterctl::ERR_UNSATISFIABLE_PLACEMENT
+                }
+                _ => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
+            })?;
+    catten_services::name_catalog::encode_release_replicas(envelope, &assignments)
+        .ok_or(dns::ERR_TOO_LARGE)
 }
 
 fn trusted_unix_seconds(time: ConnectionRef<'_>) -> Option<u64> {
@@ -655,13 +727,17 @@ fn operations_command(
     bundle: &[u8],
     trust: &charlotte_launch::trust::AdmissionTrust,
     time: ConnectionRef<'_>,
+    eligible_nodes: &[u64],
     automatic_node: u64,
 ) -> Result<Vec<u8>, i64> {
     let now = trusted_unix_seconds(time).ok_or(clusterctl::ERR_TIME_UNAVAILABLE)?;
-    operations_admission::verify_and_encode(bundle, trust, now, automatic_node).map_err(|error| {
-        match error {
+    operations_admission::verify_and_encode(bundle, trust, now, eligible_nodes, automatic_node)
+        .map_err(|error| match error {
             operations_admission::AdmissionError::Expired => clusterctl::ERR_EXPIRED_OPERATION,
             operations_admission::AdmissionError::TooLarge => clusterctl::ERR_TOO_LARGE,
+            operations_admission::AdmissionError::UnsatisfiablePlacement => {
+                clusterctl::ERR_UNSATISFIABLE_PLACEMENT
+            }
             operations_admission::AdmissionError::Invalid
             | operations_admission::AdmissionError::WrongCluster
             | operations_admission::AdmissionError::WrongOperationsKey
@@ -669,8 +745,7 @@ fn operations_command(
             | operations_admission::AdmissionError::WrongReleaseKey => {
                 clusterctl::ERR_UNTRUSTED_DESCRIPTOR
             }
-        }
-    })
+        })
 }
 
 fn shutdown_command(
@@ -1410,10 +1485,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     && transport
                                         .peer_id_for_mac(&source_mac)
                                         .is_some_and(|peer| peer.as_bytes() == owner)
-                                    && catalog.lookup(&name).is_some_and(|entry| {
-                                        entry.active
-                                            && entry.node == owner
-                                            && entry.generation == generation
+                                    && catalog.lookup_owner(&name, &owner).is_some_and(|entry| {
+                                        entry.generation == generation
                                     })
                                     && !pending_registers.iter().any(|pending| matches!(
                                         pending,
@@ -1632,8 +1705,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     } else {
                                         let automatic_node = node_identity::key_from_name(&node_name)
                                             .unwrap_or(0);
-                                        match release_command(&request.envelope, automatic_node) {
-                                            Some(command) => match node
+                                        let eligible_nodes = placement_nodes(&node, &catalog);
+                                        match release_command(
+                                            &request.envelope,
+                                            &eligible_nodes,
+                                            automatic_node,
+                                        ) {
+                                            Ok(command) => match node
                                                 .submit_command(command, node.millis())
                                             {
                                                 Ok(log_index) => {
@@ -1649,7 +1727,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                 }
                                                 Err(code) => Some(code),
                                             },
-                                            None => Some(dns::ERR_TOO_LARGE),
+                                            Err(code) => Some(code),
                                         }
                                     };
                                     if let Some(result) = result {
@@ -1705,10 +1783,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     } else {
                                         let automatic_node = node_identity::key_from_name(&node_name)
                                             .unwrap_or(0);
+                                        let eligible_nodes = placement_nodes(&node, &catalog);
                                         match operations_command(
                                             &request.bundle,
                                             &admission_trust,
                                             time_conn.as_ref(),
+                                            &eligible_nodes,
                                             automatic_node,
                                         ) {
                                             Ok(command) => match node
@@ -2014,6 +2094,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
         }
 
+        // The leader continuously turns signed placement policy plus the
+        // committed, non-draining voter set into concrete desired replicas.
+        // Generation fencing makes a leadership change or repeated pass
+        // harmless.
+        reconcile_replica_placements(&mut node, &catalog, &mut pending_registers);
+
         // Settle event-broker waiters from the *applied* catalog: any entry
         // that landed in this iteration (via replication or a local commit)
         // fires its waiters. Fulfillment is defined by consensus, never by
@@ -2187,9 +2273,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         dns::ERR_NOT_LEADER
                     } else {
                         let expected_generation = expected_generation.unwrap_or(0);
-                        let matches_active_owner = catalog.lookup(&name).is_some_and(|entry| {
-                            entry.node == node_name && entry.generation == expected_generation
-                        });
+                        let matches_active_owner = catalog
+                            .lookup_owner(&name, &node_name)
+                            .is_some_and(|entry| entry.generation == expected_generation);
                         if !matches_active_owner {
                             if message.reply != 0 {
                                 ipc_reply(message.reply, dns::ERR_STALE_GENERATION);
@@ -2356,20 +2442,19 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         Some(envelope) if node.state == NodeState::Leader => {
                             let automatic_node =
                                 node_identity::key_from_name(&node_name).unwrap_or(0);
-                            match release_command(&envelope, automatic_node) {
-                                Some(command) => {
-                                    match node.submit_command(command, node.millis()) {
-                                        Ok(log_index) => {
-                                            pending_registers.push(PendingRegistration::Deploy {
-                                                log_index,
-                                                reply: message.reply,
-                                            });
-                                            continue;
-                                        }
-                                        Err(code) => code,
+                            let eligible_nodes = placement_nodes(&node, &catalog);
+                            match release_command(&envelope, &eligible_nodes, automatic_node) {
+                                Ok(command) => match node.submit_command(command, node.millis()) {
+                                    Ok(log_index) => {
+                                        pending_registers.push(PendingRegistration::Deploy {
+                                            log_index,
+                                            reply: message.reply,
+                                        });
+                                        continue;
                                     }
-                                }
-                                None => dns::ERR_TOO_LARGE,
+                                    Err(code) => code,
+                                },
+                                Err(code) => code,
                             }
                         }
                         Some(envelope) => {
@@ -2431,10 +2516,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         Some(bundle) if node.state == NodeState::Leader => {
                             let automatic_node =
                                 node_identity::key_from_name(&node_name).unwrap_or(0);
+                            let eligible_nodes = placement_nodes(&node, &catalog);
                             match operations_command(
                                 &bundle,
                                 &admission_trust,
                                 time_conn.as_ref(),
+                                &eligible_nodes,
                                 automatic_node,
                             ) {
                                 Ok(command) => match node.submit_command(command, node.millis()) {
@@ -2604,14 +2691,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     // replicated to this replica. Agents poll, so no read
                     // barrier is required.
                     if let Some(entry) = catalog.deployment(&artifact) {
-                        let mut bytes = Vec::with_capacity(60 + entry.descriptor.len());
-                        bytes.extend_from_slice(&entry.generation.to_le_bytes());
-                        bytes.extend_from_slice(&entry.object_id.to_le_bytes());
-                        bytes.extend_from_slice(&entry.node_key.to_le_bytes());
-                        bytes.extend_from_slice(&entry.artifact_digest);
-                        bytes.extend_from_slice(&(entry.descriptor.len() as u32).to_le_bytes());
-                        bytes.extend_from_slice(&entry.descriptor);
-                        reply_move_bytes(message.reply, &bytes);
+                        if let Some(bytes) = encode_deployment_result(&entry) {
+                            reply_move_bytes(message.reply, &bytes);
+                        } else if message.reply != 0 {
+                            ipc_reply(message.reply, dns::ERR_TOO_LARGE);
+                        }
                     } else if message.reply != 0 {
                         ipc_reply(message.reply, dns::ERR_NOT_FOUND);
                     }
@@ -2623,14 +2707,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     if let Some(artifact) = artifact
                         && let Some(entry) = catalog.deployment(&artifact)
                     {
-                        let mut bytes = Vec::with_capacity(60 + entry.descriptor.len());
-                        bytes.extend_from_slice(&entry.generation.to_le_bytes());
-                        bytes.extend_from_slice(&entry.object_id.to_le_bytes());
-                        bytes.extend_from_slice(&entry.node_key.to_le_bytes());
-                        bytes.extend_from_slice(&entry.artifact_digest);
-                        bytes.extend_from_slice(&(entry.descriptor.len() as u32).to_le_bytes());
-                        bytes.extend_from_slice(&entry.descriptor);
-                        reply_move_bytes(message.reply, &bytes);
+                        if let Some(bytes) = encode_deployment_result(&entry) {
+                            reply_move_bytes(message.reply, &bytes);
+                        } else if message.reply != 0 {
+                            ipc_reply(message.reply, dns::ERR_TOO_LARGE);
+                        }
                     } else if message.reply != 0 {
                         ipc_reply(message.reply, dns::ERR_NOT_FOUND);
                     }
@@ -2714,24 +2795,28 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     if let Some(artifact) = artifact
                         && let Some(deployment) = catalog.deployment(&artifact)
                     {
-                        let owner = catalog.lookup(&artifact);
-                        let service_generation = owner.as_ref().map_or(0, |entry| entry.generation);
-                        let state = match owner.as_ref() {
-                            None => clusterctl::ROLLOUT_COMMITTED,
-                            Some(entry)
-                                if entry.deployment_generation == deployment.generation
-                                    && node_identity::key_from_name(&entry.node)
-                                        == Some(deployment.node_key) =>
-                            {
-                                clusterctl::ROLLOUT_READY
-                            }
-                            Some(_) => clusterctl::ROLLOUT_REPLACING,
+                        let placement = catalog.ingress_placement(&artifact);
+                        let service_generation =
+                            placement.as_ref().map_or(0, |view| view.service_generation);
+                        let ready = placement.as_ref().map_or(0, |view| view.ready_nodes.len());
+                        let state = if ready == deployment.replica_nodes.len() && ready != 0 {
+                            clusterctl::ROLLOUT_READY
+                        } else if ready == 0 {
+                            clusterctl::ROLLOUT_COMMITTED
+                        } else {
+                            clusterctl::ROLLOUT_REPLACING
                         };
                         let status = clusterctl::RolloutStatus {
                             state,
                             deployment_generation: deployment.generation,
                             service_generation,
                             node_key: deployment.node_key,
+                            desired_replicas: deployment
+                                .replica_nodes
+                                .len()
+                                .try_into()
+                                .unwrap_or(u16::MAX),
+                            ready_replicas: ready.try_into().unwrap_or(u16::MAX),
                         };
                         reply_move_bytes(message.reply, &status.encode());
                     } else if message.reply != 0 {
@@ -3151,6 +3236,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     log_index,
                     ..
                 }
+                | PendingRegistration::Placement {
+                    log_index,
+                    ..
+                }
                 | PendingRegistration::RemoteDeploy {
                     log_index,
                     ..
@@ -3203,6 +3292,24 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         .unwrap_or(0);
                     if reply != 0 {
                         ipc_reply(reply, generation as i64);
+                    }
+                }
+                PendingRegistration::Placement {
+                    artifact,
+                    ..
+                } => {
+                    let generation = node
+                        .command_result(log_index)
+                        .and_then(|bytes| bytes.get(..8))
+                        .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok())
+                        .map(u64::from_le_bytes)
+                        .unwrap_or(0);
+                    if generation != 0 {
+                        catten_rt::logln!(
+                            "[dns] reconciled replica placement {:?} generation={}",
+                            core::str::from_utf8(&artifact).unwrap_or("<invalid>"),
+                            generation
+                        );
                     }
                 }
                 PendingRegistration::RemoteDeploy {
@@ -3539,18 +3646,18 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
             }
 
-            let still_active = catalog.lookup(&publication.name).is_some_and(|entry| {
-                entry.node == node_name && entry.generation == publication.generation
-            });
+            let still_active = catalog
+                .lookup_owner(&publication.name, &node_name)
+                .is_some_and(|entry| entry.generation == publication.generation);
             // A publication becomes stale only when the catalog has moved past
             // its generation (a replacement or migration) or when this dns
             // itself tore the endpoint down. An absent entry is NOT stale by
             // itself: for a follower the activate may simply still be
             // replicating when the leader's register reply arrives, and
             // cleaning up there would unregister a live local service.
-            let superseded = catalog.lookup(&publication.name).is_some_and(|entry| {
-                entry.generation != publication.generation || entry.node != node_name
-            });
+            let superseded = catalog
+                .lookup_owner(&publication.name, &node_name)
+                .is_some_and(|entry| entry.generation != publication.generation);
             if !still_active && (superseded || publication.endpoint_closed) {
                 if !publication.local_cleanup_submitted && publication.local_generation != 0 {
                     let call = submit_unregister_local_generation(

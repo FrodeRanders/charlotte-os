@@ -482,6 +482,16 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
                             ) == charlotte_launch::deployment::VerifyOutcome::Valid =>
                         {
                             match charlotte_launch::deployment::decode(&descriptor_bytes) {
+                                Some(descriptor)
+                                    if descriptor.node_key == 0
+                                        && descriptor.placement
+                                            != charlotte_launch::placement::PlacementPolicy::singleton() =>
+                                {
+                                    // Replica placement needs the leader's
+                                    // whole-release planning context for
+                                    // affinity and anti-affinity decisions.
+                                    clusterctl::ERR_UNSATISFIABLE_PLACEMENT
+                                }
                                 Some(descriptor) => {
                                     match current_deployment(dns_conn, descriptor.artifact_name)
                                         .filter(|current| !current.descriptor.is_empty())

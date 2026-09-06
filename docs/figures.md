@@ -359,32 +359,32 @@ participant P as Application components
 
       C->>C: Build self-contained ELFs and add CLS2 signatures
       C->>O: Upload immutable artifact objects
-      C->>C: Sign one CDEPLOY4 per component, including execution and shutdown limits
+      C->>C: Sign one CDEPLOY5 per component, including placement and resource limits
       C->>C: Sign ordered descriptors as CRELEASE(name, sequence)
       C->>D: POST /v1/releases
       D->>X: Move bounded release memory
       X->>X: Verify outer and every nested signature
       X->>R: Relay to leader when necessary
-      R->>R: Resolve placement and preflight every revision
-      R->>R: Commit all desired records in one Raft command
-      R-->>A: Replicated desired deployment set
+      R->>R: Resolve replica sets and preflight every revision
+      R->>R: Commit all desired replica records in one Raft command
+      R-->>A: Replicated desired replica sets
 
       par Each assigned component
           A->>O: Fetch opaque object key through local S3 connector
           A->>A: Verify digest and CLS2 executable signature
           A->>P: Launch with grantctl + immutable descriptor
           P->>G: Request grants and publish declared name + generation
-          G->>R: Replicate published generation
+          G->>R: Replicate per-node published generation
       end
 
       loop Until deadline
           C->>D: GET /v1/deployments/{component}
           D->>R: Query rollout state
-          R-->>C: committed / replacing / ready
+          R-->>C: committed / replacing / ready + replica counts
       end
 ```
 
-The `CRELEASE` envelope binds a monotonic release identity to the exact ordered `CDEPLOY4` bytes. Admission is atomic:
+The `CRELEASE` envelope binds a monotonic release identity to the exact ordered `CDEPLOY5` bytes. Admission is atomic:
 all component revisions enter the replicated desired state or none do. Readiness is deliberately not claimed to be
 simultaneous—fetch, verification, launch, capability acquisition, and publication occur independently after commit.
 Coordinated rollback, progress deadlines, and failure-domain-aware rescheduling remain controller work.
@@ -403,7 +403,7 @@ participant K as Kernel launch gate
 participant C as Isolated connector
 
       DEV->>DEV: Sign ELF with artifact key
-      DEV->>DEV: Sign CDEPLOY4 + CRELEASE with deployment key
+      DEV->>DEV: Sign CDEPLOY5 + CRELEASE with deployment key
       DEV->>O: Upload immutable connector ELF
 
       OPS->>OPS: Build bounded CHS3PF1 or Kafka profile
@@ -448,7 +448,7 @@ RPK["Cluster recipient public key"]
 RSK["Recipient private key<br/>kernel/KMS custody"]
 TRUST["CTRUST1 public policy<br/>role-specific keys + cluster ID"]
 ELF["CLS2-signed ELF"]
-DESC["CDEPLOY4<br/>digest · object key · selector · stack pages · max threads · shutdown grace · grants"]
+DESC["CDEPLOY5<br/>digest · object key · placement · stack pages · max threads · shutdown grace · grants"]
 REL["CRELEASE<br/>name · sequence · ordered descriptors"]
 PROFILE["CHS3PF1 / Kafka profile<br/>infrastructure details + credentials"]
 ENC["COPSENC1<br/>HPKE ciphertext + operations signature"]
@@ -504,7 +504,7 @@ GEN["Charlotte target generator"]
           ADAPTERS["Compilable no_std<br/>activity adapters"]
           HANDLERS["Business handler stubs<br/>fail closed until implemented"]
           BUILD["Cargo manifest and build script"]
-          RESOURCES["Developer-owned resources.yaml<br/>stack pages · max threads · shutdown grace · review"]
+          RESOURCES["Developer-owned resources.yaml<br/>execution limits · replicas · affinity · review"]
           CAPS["Capability plan"]
           KPROFILES["Named Kafka connector<br/>and kafka_step profiles"]
           PLAN["Multi-component deployment plan"]
@@ -541,9 +541,9 @@ the retained execution-resource values have been reviewed. The present `CRELEASE
 decisions. A richer semantic bundle could additionally bind the original process model, schemas, provenance,
 communication graph, replica policy, affinity rules, and update strategy. Connector profiles are infrastructure inputs,
 not application-visible release secrets; descriptors bind only the names and rights an application may request.
-Per-thread stack pages and maximum active threads originate in the retained, developer-reviewed
-`charlotte/resources.yaml`, are signed into `CDEPLOY4`, and are enforced exactly for the protected domain rather than
-guessed or silently clamped by the cluster.
+Execution limits, replica count, every-node policy, and affinity/anti-affinity originate in the retained,
+developer-reviewed `charlotte/resources.yaml`. Durga derives the exact `CDEPLOY5` signing options and requests the CLS2
+parallel-instance blessing when needed; Charlotte enforces the execution limits and resolves the placement contract.
 
 ### 12. Bounded cooperative domain shutdown
 

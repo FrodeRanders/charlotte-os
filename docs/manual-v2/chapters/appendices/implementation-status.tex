@@ -47,9 +47,10 @@ repository history remain authoritative.
     TLS with streaming object operations; Kafka idempotent producer,
     read-committed fixed-partition consumer, and transactional produce plus
     offset commit & Opt-in AArch64 Docker-fixture tests \\
-15 & Distributed L2 ingress: one configured IPv4/TCP VIP, committed-Raft
-    membership intersected with optional exact-generation application placement
-    and readiness, policy epochs, signed-shutdown draining, deterministic
+15 & Distributed L2 ingress and placement: one configured IPv4/TCP VIP,
+    committed-Raft membership intersected with signed fixed/every-node replica
+    sets and per-node exact-generation readiness, policy epochs, continuous
+    membership/drain reconciliation, signed-shutdown draining, deterministic
     rendezvous placement, one-hop L2 envelopes, direct backend replies, and
     exclusive ARP advertisement & Pure-policy tests, single-node SLIRP VIP, and three-guest
     host-visible established-flow failover plus backend-loss reconnect fixture \\
@@ -228,7 +229,7 @@ repository history remain authoritative.
         then selects the FADT-advertised SMC/HVC conduit and boot-validates a
         terminal PSCI \texttt{SYSTEM\_OFF}; x86-64 ACPI poweroff remains open.
         Independent kernel verification of reset/IOMMU invalidation,
-        controller-managed instance leases, replica-aware rollout, and
+        controller-managed instance leases, rolling replica replacement, and
         coordinated rollback remain future work.
     \item \textbf{HVF does not honor hardware ASIDs.} Apple's
         Hypervisor.framework strips the ASID bits from \texttt{TTBR0\_EL1} on
