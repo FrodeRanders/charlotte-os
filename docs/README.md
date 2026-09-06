@@ -37,6 +37,8 @@ is evidence about one revision and configuration, not a standing guarantee.
 | [`research/`](research/README.md) | Prior systems, their afterlives, and CharlotteOS's inheritance |
 | [`tla/`](tla/README.md) | Executable TLA+ models, model-checking instructions, and Rust conformance map |
 | [`figures.md`](figures.md) | Editable Mermaid sources and explanatory captions for the architecture figure set |
+| [`presentations/charlotte-for-operations.md`](presentations/charlotte-for-operations.md) | Ops-facing slide outline covering the cluster model, development/operations separation, connectors, and production gaps |
+| [`presentations/openshift-and-charlotte.md`](presentations/openshift-and-charlotte.md) | Slide outline comparing OpenShift's Linux-container platform with CharlotteOS's cluster-native operating-system direction |
 
 ## Maintenance rules
 
