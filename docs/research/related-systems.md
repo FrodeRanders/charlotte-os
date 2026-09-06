@@ -6,31 +6,37 @@ This note identifies operating-systems and distributed-systems research related 
 
 - [Networking architecture](../architecture/networking.md)
 - [Sitas and Xous co-design](../architecture/sitas-xous.md)
-- [The CharlotteOS manual](../manual-v2/charlotte.pdf), especially Chapters 11
-  and 16, and the server-class cluster vision
+- [The CharlotteOS manual](../manual-v2/charlotte.pdf), especially the service,
+  networking, consensus, storage, cluster, and application-generation chapters
+- [Cluster-native research lineages](cluster-native-lineages.md), which maps
+  the strengthened cluster implementation to prior and current work
 
 The generated manual also contains a compact version of this note's historical
 assessment in the **Research Lineages and Their Afterlives** appendix.
 
-These do not descend from one research tradition and shamelessly combine good ideas from:
+These do not descend from one research tradition and combine ideas from:
 
 1. capability-based microkernels;
 2. distributed operating systems organized around RPC and objects;
 3. message-passing many-core operating systems;
 4. ownership-oriented IPC;
 5. isolated user-space services and drivers;
-6. high-performance user-space networking and asynchronous I/O.
+6. high-performance user-space networking and asynchronous I/O;
+7. declarative cluster management and deterministic placement; and
+8. secure software supply chains and workload identity.
 
 The closest overall characterization is:
 
 > CharlotteOS combines Xous-style isolated IPC and memory lending,
-  Seastar-style shard-local execution, seL4/EROS-style authority,
-  Barrelfish-style explicit message passing, and Amoeba-style
-  distributed capability invocation.
+> Seastar-style shard-local execution, seL4/EROS-style authority,
+> Barrelfish-style explicit message passing, Amoeba-style distributed
+> capability invocation, Borg/Kubernetes-style reconciliation, and
+> TUF/in-toto-style role-separated artifact trust.
 
-Its most important unresolved research problem is preserving capability
-and ownership semantics across unreliable networks, retries, partial
-failure, and service restart.
+Its most important unresolved research problem has moved upward: preserve
+explicit authority, ownership, and generation fencing while automated
+placement, ingress, connector rotation, failure recovery, and rolling change
+act on the same replicated cluster state.
 
 This note distinguishes four kinds of answer:
 
@@ -43,14 +49,16 @@ This note distinguishes four kinds of answer:
 - **Open** means the architecture may state an intention, but the repository
   does not yet provide an implementation-level contract.
 
-The audit below finds that most questions about the **local** object model now
-have implemented or bounded-model-checked answers: tagged capability lookup,
-rights attenuation, reply-token linearity, memory transfer and lending,
-completion retention and cancellation, lifecycle teardown, DMA isolation, and
-Raft's internal safety mechanisms. The principal open areas are the **remote**
-invocation/capability contract, derivation-based and distributed revocation,
-whole-system information-flow proof, consensus-backed service authority, and
-end-to-end admission/priority policy.
+The audit below finds implemented or bounded-model-checked answers for most
+questions about the **local** object model and for a bounded remote service
+path: tagged capability lookup, rights attenuation, reply-token linearity,
+memory transfer and lending, completion retention and cancellation, lifecycle
+teardown, DMA isolation, reliable-message fragmentation, duplicate handling,
+generation-fenced remote invocation, and Raft safety mechanisms. The principal
+open areas are general distributed capability delegation and revocation,
+whole-system information-flow proof, automated failure convergence,
+capacity-aware rolling placement, production trust rotation, and end-to-end
+overload policy.
 
 ---
 
@@ -68,10 +76,14 @@ The documents establish the following core ideas:
 - userspace services and drivers run in separate protection domains;
 - one Sitas executor owns each shard’s mutable state;
 - cross-shard coordination uses bounded typed messages;
-- the native network interface is reliable, message-oriented capability invocation rather than sockets;
+- the native cluster interface is reliable, message-oriented service invocation rather than sockets;
 - TCP/IP remains an interoperability service;
 - service names are discovery metadata, not authority;
-- remote services are intended to be invoked through distributed object capabilities.
+- remote calls carry request identity, deadlines, duplicate handling,
+  generation fencing, and explicit uncertain outcomes;
+- signed releases, placement, readiness, connector bindings, and shutdown
+  intent are cluster-level policy; and
+- TCP/IP, Kafka, and S3 remain capability-scoped interoperability services.
 
 These ideas have strong historical precedents, but their particular
 combination is unusual.
@@ -93,7 +105,7 @@ Its model consists of:
 - RPC as the native operation mechanism;
 - location-independent communication.
 
-This closely matches this OS’ proposed sequence:
+This closely matches the implemented CharlotteOS sequence:
 
 ```text
 service lookup
@@ -122,17 +134,18 @@ service lookup
 
 #### Present CharlotteOS answers
 
-Most of these questions now have a local answer but not yet a distributed one:
+These questions now have bounded local and distributed answers, while a
+general transferable network capability remains open:
 
 | Question | Current answer |
 |---|---|
-| Capability identity | A local handle names a tagged kernel object in one address space. A connection names an endpoint; the name service separately returns a service generation so clients can reject stale instances. The representation of stable authority for a remote logical object remains open. |
-| Forgery resistance | Local handles are opaque, monotonically allocated, non-reused table indices and are checked against the caller ASID, object-family tag, and subsystem registry. Cryptographic protection or proxy validation for a network-carried capability is not implemented. |
-| Attenuation | Connection delegation intersects the requested `SEND`/`CALL` rights with available authority. Device, memory, observer, and bootstrap authority is explicitly delegated. General derivation trees and arbitrary distributed attenuation are not implemented. |
-| Revocation | Endpoint closure, capability removal, address-space teardown, borrow cancellation, and service-generation replacement revoke local authority deterministically. Selective transitive and distributed revocation remain open. |
-| Service restart | Implemented locally: old connections fail, a replacement registers a new generation, and clients re-resolve. A remote retry/re-resolution contract across partitions remains open. |
-| Duplicate and replay detection | Local pending calls and reply tokens have unique identities and one-shot terminal transitions. Raft RPC handling has term/index and peer-identity checks. There is no general remote invocation ID, deduplication window, or replay cache yet. |
-| Delivery/execution guarantee | Local IPC distinguishes a queued call cancelled before delivery from a delivered call whose reply authority is later invalidated. It does not claim transactional execution. A general remote at-most-once/at-least-once and uncertain-outcome contract remains open. |
+| Capability identity | A local handle names a tagged kernel object in one address space. Policy-controlled lookup or `grantctl` yields a connection capability. Distributed naming keeps logical service identity separate from the active owner and generation. A freely transferable cryptographic capability format is not implemented. |
+| Forgery resistance | Local handles are opaque, monotonically allocated, non-reused indices checked against caller identity, object type, and rights. Remote invocation enters through an already delegated local connection and a policy-checked DNS proxy; CharlotteOS does not place raw local handles on the network. Cryptographic bearer capabilities remain open. |
+| Attenuation | Connection delegation intersects `SEND`/`CALL` rights. Signed deployment grants, per-principal name policy, and named Kafka/S3 access points further narrow remote and external-service authority. General derivation trees and arbitrary distributed attenuation are not implemented. |
+| Revocation | Endpoint closure, address-space teardown, borrow cancellation, generation replacement, committed placement, and exact-generation readiness withdraw authority at their respective boundaries. Selective transitive revocation of an arbitrary delegation graph remains open. |
+| Service restart | Local and remote paths carry generations. Old local connections close, stale remote generations fail, and clients re-resolve. Outcome recovery for effects completed immediately before a partition remains protocol-specific. |
+| Duplicate and replay detection | Remote calls carry request and session identity through relmsg v3; DNS uses bounded duplicate suppression and generation checks. Operational deployment adds monotonic sequences, digests, expiry, and replay fences. Durable exactly-once execution for arbitrary remote procedures is not claimed. |
+| Delivery/execution guarantee | Remote calls expose deadlines, retries, cancellation, duplicate handling, and an uncertain result when execution cannot be distinguished from reply loss. Protocols such as the Kafka step add their own transactional or idempotent recovery rules. |
 
 Amoeba’s Fast Local Internet Protocol, or FLIP, is also directly relevant. It was designed
 to support location-independent RPC, group communication, and internetwork routing without
@@ -367,26 +380,29 @@ A local call either returns or its process fails. With a remote call, a
 client can lose contact after the server has executed the request but before
 the reply arrives. No abstraction layer can always determine which occurred.
 
-### Recommended refinement
+### Implemented refinement
 
-A safer architectural principle is:
+CharlotteOS now follows the safer architectural principle:
 
 > Local and remote services use a common capability-oriented protocol model,
   while remote invocation explicitly exposes latency, cancellation, retry,
   and partial-failure semantics.
 
-The programming model should make the following concepts available:
+The bounded remote-call path now carries or defines:
 
 - deadlines;
-- cancellation tokens;
-- idempotency keys;
-- retry policies;
+- cancellation;
+- request and session identities;
+- bounded retry policy;
 - duplicate detection;
 - logical service identity;
 - server-instance generation;
 - uncertain outcomes;
-- reconnect and re-resolution;
-- protocol-specific recovery.
+- reconnect and re-resolution; and
+- protocol-specific recovery, including the transactional Kafka-step path.
+
+This is an implemented narrowing of the original slogan, not a claim that a
+local call and remote call have identical costs or failure semantics.
 
 Remote invocation should not silently inherit assumptions from MMU-enforced
 local memory lending. In particular, a network partition cannot synchronously
@@ -874,17 +890,17 @@ The main design dimensions are:
 - caching and invalidation;
 - bootstrap trust.
 
-CharlotteOS’s node-local name service and attenuated discovery connections
-are consistent with capability discipline. A future distributed registry
-must preserve that discipline rather than turning a globally visible name
-into ambient authority.
+CharlotteOS’s node-local name service, distributed DNS catalog, signed grant
+descriptors, and attenuated discovery connections preserve this discipline.
+A globally visible name remains routing metadata. A caller still needs an
+already delegated local connection, and policy checks bind the remote call to
+an authenticated principal and service generation.
 
 ---
 
 ## 11. Distributed consistency and replicated services
 
-The networking document proposes Raft as a capability service. Raft is an
-appropriate starting point for replicated metadata and directory services:
+CharlotteOS uses Raft for replicated metadata and directory services:
 
 - Diego Ongaro and John Ousterhout, [In Search of an Understandable Consensus Algorithm](https://raft.github.io/raft.pdf)
 
@@ -924,17 +940,16 @@ persistent object-store recovery. The boot suite exercises local multi-node
 election and explicit persistent restart. The TLA+ suite separately checks
 bounded election, log, membership, and snapshot safety models.
 
-That answers the Raft-mechanism part, but not yet the distributed name-service
-policy:
+The name, deployment, readiness, and ingress policies now build on that core:
 
 | Question | Current answer |
 |---|---|
-| Which operations are linearizable? | The Graft core defines committed client commands and quorum-contact read barriers. The distributed name service now exposes client commands (`dns::OP_REGISTER`/`OP_LOOKUP`/`OP_CALL`) that submit to the leader and replicate the `name -> node` catalog across two guests; a per-operation external linearizability contract and general query service remain future work. |
-| Leader changes and outstanding calls | The core rejects non-leader commands, tracks a known leader, and requires current-term/quorum conditions. Redirect, retry, idempotency, and uncertain-outcome behavior are not yet a complete external client protocol. |
-| Capabilities after rollback/reconfiguration | Raft membership authority is configuration-indexed and removed peers are decommissioned. Application capabilities issued from replicated directory state do not yet have consensus-backed epochs or rollback rules. |
-| Authority during membership changes | Peer voting and leadership authority follows stable/joint voter sets; learners replicate without voting. This protects the consensus group itself, not arbitrary capabilities stored in its state machine. |
-| Consensus-backed service generations | **Open.** Current name-service generations are node-local lifecycle generations. The planned clustered registry must decide whether generation allocation is a replicated command. |
-| Stale replicas authorizing operations | The Raft core accepts leader RPCs only from configured voters and linearizable reads only after a quorum-contact barrier. A distributed capability issuer still needs an epoch/fencing rule so a stale service replica cannot authorize external effects. |
+| Which operations are linearizable? | Committed catalog and deployment mutations pass through the leader. Quorum-contact barriers protect linearizable reads. Remote invocation uses the committed `name -> node` owner and generation, while the caller still receives an explicit uncertain result across ambiguous network failure. |
+| Leader changes and outstanding calls | The core redirects nonleader commands and requires current-term quorum conditions. Relmsg v3 carries stable request/session identity and bounded duplicate suppression across retry. An application protocol remains responsible for recovery from an uncertain completed effect. |
+| Capabilities after rollback/reconfiguration | Membership is configuration-indexed and removed peers are decommissioned. Signed descriptor sequences, release generations, operational-profile sequences, and readiness generations prevent an older control object from silently regaining authority. General derivation-based distributed revocation remains open. |
+| Authority during membership changes | Voting and leadership follow stable or joint voter sets. Placement intersects admitted, non-draining members, and DSR derives new-flow eligibility from committed placement plus exact-generation readiness. |
+| Consensus-backed service generations | Deployment generation and concrete replica placement are committed catalog state. Per-node readiness names that exact generation, and stale registration cannot make a node eligible for grants or new VIP flows. |
+| Stale replicas authorizing operations | Only the current leader constructs admitted deployment and operations commands after verification. Followers relay bounded proofs. Local issuance remains fenced by the committed descriptor, principal, generation, and readiness state. Production administrative authentication and general distributed capability revocation remain open. |
 
 ---
 
@@ -1101,10 +1116,10 @@ research conclusions:
 - asynchronous completion should be distinct from IPC;
 - zero-copy requires explicit lifetime and ownership management.
 
-Its most ambitious claim -- making local and remote service invocation
-indistinguishable -- should be narrowed. A shared typed capability
-interface is useful, but latency, retry, cancellation, independent failure,
-and uncertain outcomes must remain visible.
+The original aspiration that local and remote invocation be indistinguishable
+has been narrowed in the implementation. Both use a common typed service
+model, while remote calls expose deadlines, retry, cancellation, independent
+failure, generations, and uncertain outcomes.
 
 The architecture’s strongest potential contribution is the integration of:
 
@@ -1113,34 +1128,38 @@ The architecture’s strongest potential contribution is the integration of:
 - isolated userspace servers and drivers;
 - shard-local asynchronous execution;
 - bounded completion queues;
-- native distributed service invocation.
+- native distributed service invocation;
+- replicated deployment, placement, and exact-generation readiness;
+- placement-derived cluster network identity; and
+- role-separated application and operational trust.
 
 That synthesis is coherent, but its success depends on treating lifecycle
 and failure semantics as foundational parts of the interface rather than
 transport-level implementation details.
 
-The manual indicates that CharlotteOS already provides this as a local
-service-lifecycle foundation: stale-generation detection, domain teardown,
-borrow revocation, deterministic pending-call failure, driver reset,
-operation reconciliation, fresh bootstrap, and a prototype stateful handoff
-are defined and tested.
+CharlotteOS now carries that discipline from local service lifecycle into a
+bounded cluster path: signed release admission, remote invocation, deterministic
+replica placement, central artifact pickup, capability grants, readiness-gated
+DSR ingress, encrypted connector profiles, and cooperative retirement.
 
-The remaining gap is concentrated at the protocol and distributed-systems
-layers: durable state, versioned state transfer, externally visible effects,
-idempotent retry, uncertain outcomes, and bounded recovery.
+The remaining gap is concentrated in production depth: automated failure
+convergence, capacity and failure-domain placement, rolling replacement,
+stateful cross-node transfer, externally visible effects, trust rotation,
+administrative authorization, and sustained operational evidence.
 
 ---
 
-## 15. Server-class cluster vision: deployment, placement, and signing
+## 15. Server-class cluster implementation: deployment, placement, and signing
 
-Chapter 17 of the manual (Server-Class Cluster Vision) describes intended
-architecture for clusters of interchangeable server-class ARM nodes:
-software is deployed to a named cluster rather than to named servers, the
-cluster decides placement (declared affinity first, observed
-inter-dependency second, cross-node migration third), nodes are "dumb"
-compute over a shared object store, and software is validated against a
-cluster-wide signing key held in replicated state. The related work falls
-into four groups.
+Chapter 17 of the manual (Server-Class Cluster Vision) now combines an
+implemented cluster foundation with its longer-term architecture. Software is
+assigned to a named cluster rather than installed on named machines. Signed
+singleton, fixed-replica, and every-eligible-node policies are resolved against
+admitted, non-draining members; exact-generation readiness controls publication
+and DSR ingress; and selected nodes retrieve digest-pinned artifacts from
+central S3. Capacity-aware scheduling, rolling replacement, and stateful
+cross-node migration remain research targets. The related work falls into the
+groups below.
 
 ### 15.1 Interchangeable compute and processor pools
 
@@ -1428,16 +1447,19 @@ Uptane is now a versioned standard under Linux Foundation governance
 Notary/Cosign made artifact identity and provenance part of cloud deployment.
 
 **What CharlotteOS took.** Locally, names resolve to delegated connection
-capabilities; a string is never authority. Across two guests, the `dns`
-catalog is a Raft state machine and remote calls have request identity,
-generation fencing, duplicate handling, retries, deadlines, and an explicit
-uncertain outcome. The cluster slice stores signed service artifacts, verifies
-Ed25519 ELF notes, commits placement records, and can reassign a stateless
-service. This is materially Amoeba-like in interface and Kubernetes-like in
-deployment intent, but the current implementation is a bounded prototype:
-automatic placement, a shared content-addressed artifact store, production key
-rotation, general stateful migration, and distributed capability revocation
-remain open.
+capabilities; a string is never authority. The `dns` catalog is a Raft state
+machine and remote calls have request identity, generation fencing, duplicate
+handling, retries, deadlines, and an explicit uncertain outcome. Signed
+releases drive deterministic replica placement over admitted, non-draining
+members. Per-node exact-generation readiness gates capability publication and
+new DSR flows through a stable cluster VIP. Assigned agents can retrieve
+digest-pinned artifacts from central S3 and launch them with signed grants.
+
+This is materially Amoeba-like in interface and Kubernetes-like in deployment
+intent. The current implementation remains a bounded prototype: capacity and
+failure-domain-aware scheduling, health-driven replacement, rolling policy,
+production key rotation and custody, general stateful migration, and
+derivation-based distributed capability revocation remain open.
 
 ### 16.6 CharlotteOS's synthesis, stated precisely
 
@@ -1447,8 +1469,8 @@ The inheritance is easiest to understand by strength:
 |---|---|---|
 | **Direct design source** | Xous server/connection and memory-message model; Sitas shard ownership and async execution | Implemented locally, with CharlotteOS-specific capabilities, memory objects, completion queues, and teardown semantics |
 | **Mechanism adopted and changed** | EROS/seL4 authority; Singularity ownership transfer; Barrelfish explicit messages; MINIX service recovery; completion-ring I/O | Implemented in bounded local forms; not a compatibility claim or refinement of those systems |
-| **Focused protocol adopted** | Raft replication; Ed25519/SHA-256 artifact verification | Implemented and tested, including cross-guest catalog replication and signed deployment |
-| **Architecture informed by** | Amoeba distributed invocation; IX/DPDK/Arrakis fast paths; Borg/Kubernetes placement; Nix/TUF/Uptane trust and artifacts | Partial cluster slice or future work |
+| **Focused protocol adopted** | Raft replication; rendezvous placement; Ed25519/SHA-256 artifact verification; RFC 9180 HPKE | Implemented and tested in bounded forms across catalog replication, replica placement, DSR ingress, and role-separated connector launch |
+| **Architecture informed by** | Amoeba distributed invocation; IX/DPDK/Arrakis fast paths; Borg/Kubernetes reconciliation; Maglev/CRUSH stable placement; Nix/TUF/Uptane/in-toto trust and artifacts; SPIFFE workload identity | Implemented cluster foundations with production-scale policy, recovery, and trust lifecycle still open |
 | **Explicitly rejected or narrowed** | Failure-transparent remote calls; arbitrary transparent process migration; language-only isolation; direct device access by ordinary applications | Remote uncertainty is visible; migration is protocol-specific; MMU/IOMMU and capabilities enforce isolation; drivers retain device authority |
 
 The distinctive CharlotteOS idea is therefore not any single borrowed

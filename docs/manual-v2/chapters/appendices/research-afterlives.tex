@@ -184,20 +184,183 @@ machine protocol with many implementations (\url{https://raft.github.io/}).
 SWIM-style gossip survived in memberlist and Consul. Nix made hash-identified
 immutable software stores practical. TUF and Uptane became maintained update
 security frameworks; Uptane is now a versioned standard under Linux Foundation
-governance (\url{https://uptane.org/learn-more/about}). Sigstore, Cosign, and
-Notary brought signed identity and provenance into cloud artifact workflows.
+governance (\url{https://uptane.org/learn-more/about}). In-toto, Sigstore,
+Cosign, and Notary brought supply-chain provenance and signed artifact identity
+into cloud deployment workflows.
+
+\subsection{Clean-break and compatibility counterpoints}
+
+Solaris MC extended Unix into a multi-computer single-system image while
+preserving the Solaris ABI
+(\url{https://www.usenix.org/conference/usenix-1996-annual-technical-conference/solaris-mc-multi-computer-os}).
+LegoOS reopened the operating-system boundary for disaggregated processor,
+memory, and storage components, while deliberately retaining common Linux
+system calls to ease adoption
+(\url{https://www.usenix.org/conference/osdi18/presentation/shan}). These
+systems make useful counterpoints to CharlotteOS. They move the operating
+system across hardware boundaries while preserving a machine-compatible
+application contract. CharlotteOS instead tests a smaller native contract of
+signed execution objects, messages, and explicit capabilities.
+
+The comparison sharpens the research question. Compatibility is valuable
+because existing software, libraries, and operational knowledge are valuable.
+A clean-break system must demonstrate that its shorter policy and execution
+path compensates for the cost of adapting applications.
+
+\section{Cluster-native placement, ingress, and lifecycle}
+
+\subsection{Desired state and replica placement}
+
+Borg, Omega, and Kubernetes established the modern control-plane pattern:
+declare desired state, schedule from constraints, observe actual state, and
+reconcile the difference. Kubernetes describes its controllers directly as
+control loops
+(\url{https://kubernetes.io/docs/concepts/architecture/controller/}). Ceph's
+CRUSH algorithm provides a related precedent for deriving deterministic
+placement from a compact topology and failure-domain map rather than storing
+one decision per object.
+
+CharlotteOS now applies these ideas to native protected domains. Its
+\texttt{dns} catalog is a Raft state machine that commits membership, signed
+releases, replica policy, concrete assignments, deployment generations,
+operational bindings, shutdown intent, and per-node readiness. The leader
+resolves singleton, fixed-replica, and every-eligible-node policy against
+admitted, non-draining voters. Affinity and anti-affinity relate components,
+and node agents reconcile every assigned deployment.
+
+Placement is also an authority decision. A selected node must publish readiness
+for the exact committed generation before the service can receive grants or new
+cluster-addressed flows. Capacity, trust labels, named failure domains,
+health-driven replacement, and rolling availability policy remain the next
+scheduler work.
+
+\subsection{Cluster service identity and Direct Server Return}
+
+Distributed object systems established location-independent service names.
+Modern software load balancers use deterministic connection mapping and
+retained flow state to limit disruption when backend sets change. Maglev is a
+production-scale example
+(\url{https://www.usenix.org/system/files/conference/nsdi16/nsdi16-paper-eisenbud.pdf}).
+
+CharlotteOS derives its DSR backend set directly from Raft membership,
+committed application placement, exact-generation readiness, and drain intent.
+The frame router consumes an immutable epoch and applies rendezvous hashing to
+each five-tuple. A remote backend receives the original packet through one L2
+envelope, owns the TCP connection, and replies directly. The VIP advertiser,
+execution owner, and public service identity may therefore be different.
+
+The present implementation supports a bounded IPv4/TCP configuration and an
+administratively trusted cluster L2. Multiple services, hostile-fabric
+authentication, larger membership, and sustained churn remain experiments.
+The distinctive question is whether packet eligibility can remain a direct,
+inspectable consequence of application placement and lifecycle.
+
+\subsection{Remote calls and explicit failure}
+
+CharlotteOS retains Amoeba's common service model and accepts the critique in
+Waldo et al.'s \emph{A Note on Distributed Computing}. Relmsg v3 carries
+32-bit lengths, fragmentation, request and session identity, bounded duplicate
+handling, retries, and deadlines. Distributed calls include the target
+generation and can report an uncertain result. They do not promise that a
+network call has local latency, synchronous revocation, or a knowable outcome
+after reply loss. General cryptographic bearer capabilities, transitive
+distributed revocation, and durable exactly-once execution remain open.
+
+Lifecycle uses the same generation discipline. Exact readiness gates
+publication and ingress; committed drain removes a node from new work; a
+signed grace period bounds cooperative service shutdown; and forced retirement
+closes the domain after the deadline. Stateful cross-node movement still needs
+an explicit, failure-safe transfer of mutable ownership.
+
+\section{Operational trust and managed-service authority}
+
+\subsection{Software supply chain and role separation}
+
+TUF separates update roles, versions, thresholds, and expiry
+(\url{https://theupdateframework.github.io/specification/v1.0.28/}). In-toto
+binds artifacts to verifiable supply-chain steps
+(\url{https://www.usenix.org/conference/usenixsecurity19/presentation/torres-arias}).
+RFC~9180 defines Hybrid Public Key Encryption
+(\url{https://www.rfc-editor.org/info/rfc9180/}). CharlotteOS composes those
+ideas into a runtime-authority path:
+
+\begin{itemize}
+    \item development signs executable behavior and release descriptors;
+    \item operations independently signs an HPKE-encrypted Kafka or S3 profile
+        bound to one cluster, release, connector, sequence, and expiry;
+    \item the leader verifies both authorities against trusted UTC and commits
+        only compact references and replay fences; and
+    \item the selected node retrieves the ciphertext, after which the kernel
+        re-verifies it, decrypts into transient zeroizing memory, and moves a
+        read-only profile capability into the connector.
+\end{itemize}
+
+This gives the two organisational roles different powers. Development cannot
+select production credentials. Operations cannot replace the approved
+executable through a connector binding. Production KMS/HSM custody, measured
+boot or attestation, rotation, recovery, audit, and readiness-driven connector
+replacement remain necessary.
+
+\subsection{Connector-confined managed services}
+
+SPIFFE addresses a neighbouring problem by delivering platform-selected,
+short-lived identities through a privileged workload API
+(\url{https://spiffe.io/docs/latest/spiffe-specs/spiffe_workload_api/}).
+CharlotteOS often keeps the external identity one step farther away: Kafka and
+S3 credentials remain in a connector, while an application receives an
+attenuated endpoint for named routes, prefixes, or operations. Independently
+named connectors allow several roles and destinations. The Kafka-step service
+owns the transaction and invokes a business procedure that never receives the
+Kafka credential or delivery token.
+
+The connector can consequently act as an authority firewall and an operations-
+owned integration point. Its value should be measured through credential
+exposure, policy review effort, reuse, revocation latency, failure isolation,
+and the effect of connector compromise.
+
+\section{AI-assisted adaptation and the POSIX question}
+
+Clean-break systems historically faced a severe software-adoption cost. That
+explains why LegoOS retained a Linux ABI and why capability systems such as
+Capsicum add confinement within Unix. Coding agents change this constraint by
+reducing some of the human work required to discover assumptions, translate
+APIs, generate adapters, and build tests. They do not make generated code
+correct by origin.
+
+Recent migration benchmarks show both promise and substantial failure. The
+2025 CODEMENV study evaluates package and environment adaptation
+(\url{https://arxiv.org/abs/2506.00894}); FreshBrew evaluates project-level
+Java migration and emphasises semantic preservation under strong tests
+(\url{https://arxiv.org/abs/2510.04852}). These results make compatibility cost
+an empirical question, while reinforcing the need for conformance tests,
+review, reproducible generation, and provenance.
+
+Durga provides a constrained CharlotteOS experiment. A BPMN process model and
+developer-owned procedure generate the Charlotte adapter, capability
+requirements, resource declarations, build inputs, replica and affinity
+policy, and deployment metadata. Platform mechanics remain in generated code;
+the business rule remains testable on a conventional host. The research test
+is whether this reduces adaptation cost without hiding authority, lifecycle,
+or failure semantics.
 
 \subsection{CharlotteOS inheritance}
 
 CharlotteOS separates a human-readable name from the connection capability
-returned by policy-controlled lookup. Its \texttt{dns} catalog is a Raft state
-machine among multiple nodes. Remote calls use request identity, generation
-fencing, duplicate handling, deadlines, and an explicit uncertain outcome.
-The current implementation verifies Ed25519-signed ELF notes, commits
-placement records, and reassigns a stateless service. It is Amoeba-like in interface
-and Kubernetes-like in deployment intent, but remains bounded: automatic
-placement, a shared content-addressed artifact store, production key rotation,
-general stateful migration, and distributed capability revocation are open.
+returned by policy-controlled lookup. Its replicated catalog and relmsg path
+carry request identity, generation fencing, duplicate handling, deadlines, and
+explicit uncertain outcomes. Signed releases drive deterministic replica
+placement; exact-generation readiness gates publication and DSR; and assigned
+agents retrieve digest-pinned artifacts from central S3. Applications obtain
+signed, attenuated grants, while independently authorised connector profiles
+retain infrastructure details and credentials.
+
+The result is Amoeba-like in invocation, Borg/Kubernetes-like in desired-state
+control, Maglev/CRUSH-like in stable deterministic placement, and
+TUF/in-toto-like in trust decomposition. CharlotteOS applies those ideas
+directly to native capability-constrained execution objects. Its bounded
+implementation does not yet establish production scale, general distributed
+revocation, stateful migration, automatic health recovery, complete trust
+lifecycle, or production administration.
 
 \section{The synthesis and the rejected inheritances}
 
@@ -218,13 +381,15 @@ Adopted and changed & EROS/seL4 authority; Singularity ownership transfer;
 Barrelfish messages; MINIX recovery; completion-ring I/O & Implemented in
 bounded local forms; no compatibility or refinement claim \\
 \hline
-Focused protocol & Raft replication; Ed25519/SHA-256 artifact verification &
-Implemented and tested, including cross-guest catalog replication and signed
-deployment \\
+Focused protocol & Raft replication; rendezvous placement;
+Ed25519/SHA-256 verification; RFC~9180 HPKE & Implemented and tested in bounded
+forms across catalog replication, replica placement, DSR ingress, and
+role-separated connector launch \\
 \hline
 Architectural influence & Amoeba invocation; IX/DPDK/Arrakis fast paths;
-Borg/Kubernetes placement; Nix/TUF/Uptane artifacts and trust & Partial
-cluster implementation or future work \\
+Borg/Kubernetes reconciliation; Maglev/CRUSH placement;
+Nix/TUF/Uptane/in-toto trust; SPIFFE identity & Implemented cluster foundations
+with production-scale policy, recovery, and trust lifecycle still open \\
 \hline
 Rejected or narrowed & Failure-transparent remote calls; arbitrary process
 migration; language-only isolation; direct device access by ordinary apps &
