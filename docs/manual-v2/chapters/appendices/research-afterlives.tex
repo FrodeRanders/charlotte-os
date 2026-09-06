@@ -191,11 +191,11 @@ Notary brought signed identity and provenance into cloud artifact workflows.
 
 CharlotteOS separates a human-readable name from the connection capability
 returned by policy-controlled lookup. Its \texttt{dns} catalog is a Raft state
-machine across two guests. Remote calls use request identity, generation
+machine among multiple nodes. Remote calls use request identity, generation
 fencing, duplicate handling, deadlines, and an explicit uncertain outcome.
-The cluster slice verifies Ed25519-signed ELF notes, commits placement records,
-and reassigns a stateless service. It is Amoeba-like in interface and
-Kubernetes-like in deployment intent, but remains bounded: automatic
+The current implementation verifies Ed25519-signed ELF notes, commits
+placement records, and reassigns a stateless service. It is Amoeba-like in interface
+and Kubernetes-like in deployment intent, but remains bounded: automatic
 placement, a shared content-addressed artifact store, production key rotation,
 general stateful migration, and distributed capability revocation are open.
 
@@ -224,7 +224,7 @@ deployment \\
 \hline
 Architectural influence & Amoeba invocation; IX/DPDK/Arrakis fast paths;
 Borg/Kubernetes placement; Nix/TUF/Uptane artifacts and trust & Partial
-cluster slice or future work \\
+cluster implementation or future work \\
 \hline
 Rejected or narrowed & Failure-transparent remote calls; arbitrary process
 migration; language-only isolation; direct device access by ordinary apps &

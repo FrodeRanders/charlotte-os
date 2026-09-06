@@ -265,9 +265,10 @@ objects per cluster/node namespace contain term and vote state, snapshot
 metadata, snapshot data, and serialized log entries. Mutations write the
 object and flush the underlying NVMe device before returning.
 
-The ordinary two-node local election test deliberately uses memory stores, so
-the generic consensus service remains testable on a multicore machine without
-NVMe. A separate storage test starts a single voter with required persistence,
+The focused local election fixture runs two in-process Raft members with memory
+stores, keeping consensus behavior testable on a multicore machine without
+NVMe. Its peer count is a fixture choice, not a Raft limit. A separate storage
+test starts a single voter with required persistence,
 records its elected term, tears down that process, restarts the same identity,
 and requires the new election term to be greater. A repeated term 1 would
 fail, so the test distinguishes recovery from a fresh in-memory start.

@@ -38,6 +38,15 @@ publishes the matching deployment generation. Omitting the application name
 retains the original platform-service mode in which every admitted,
 non-draining member is a backend.
 
+![Cluster management driving DSR eligibility and packet delivery](../manual-v2/figures/cluster-management-dsr.svg)
+
+The diagram separates reconciliation from forwarding. Signed operations,
+membership, placement, and readiness change a replicated eligibility epoch;
+the frame router consumes an immutable projection of that state without making
+a Raft call for each packet. Consequently, cluster management decides who may
+receive new connections, while DSR decides which eligible replica owns a
+particular five-tuple and leaves TCP state at that replica.
+
 ## Identities and authority
 
 The service identity is IPv4 address, IP protocol and port. The ingress

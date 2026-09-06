@@ -3,7 +3,7 @@
 Charlotte should expose Kafka authority by role rather than make every
 application implement a broker loop. The roles share the same protocol codec,
 TLS transport, metadata handling, producer fencing, and owned-resource model;
-they are separate authority surfaces, not three unrelated Kafka stacks.
+each role forms a separate authority boundary over one shared Kafka stack.
 
 ## Broker connector boundary
 

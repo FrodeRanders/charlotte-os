@@ -134,7 +134,7 @@ launch, publication, and readiness remain independently reconciled after the
 commit. Coordinated rollback and richer rollout policy still require a release
 controller.
 
-![Two-node Charlotte cluster and deployment data path](../manual-v2/figures/two-node-cluster.svg)
+![Focused two-node deployment-handoff data path](../manual-v2/figures/two-node-cluster.svg)
 
 The listener is intentionally plaintext because the signed descriptor is the
 authorization and integrity envelope and contains no secret. Network policy or
@@ -238,6 +238,13 @@ authority to nominate a backend. A placement change immediately excludes the
 stale generation; the new node becomes eligible only after its agent publishes
 readiness. Older ingress epochs retain the previous admitted route for observed
 flows during the bounded drain window.
+
+![Replica placement and readiness feeding cluster DSR](../manual-v2/figures/cluster-management-dsr.svg)
+
+The control plane produces the authority-bearing set; DSR only projects and
+uses it. In particular, discovery contributes a route for an admitted node but
+cannot make that node an application backend, and an application readiness
+registration cannot override the signed desired replica set.
 
 Only the reuse-safe address-space identity selected by the supervisor may use
 the spawn/retire syscalls. Merely registering the name `agent` grants no

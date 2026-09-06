@@ -1,4 +1,4 @@
-A coherent CharlotteOS figure set answers eleven different questions, from broad structure down to resource
+A coherent CharlotteOS figure set answers thirteen different questions, from broad structure down to resource
 lifetime, external integration, and application delivery.
 
 ### 1. System layering
@@ -250,7 +250,7 @@ participant Q as Completion queue
 
 This depicts why application code uses catten_rt::owned: Rust ownership mirrors capability ownership across the ABI.
 
-### 6. Two-node cluster
+### 6. Focused deployment-handoff topology
 
 ```mermaid
 flowchart LR
@@ -306,7 +306,8 @@ This separates three kinds of state: node-local connection registration, locally
 deployment artifacts and encrypted operational profiles held in a central S3-compatible store. The replicated catalog
 contains desired deployment state plus compact, signed ciphertext references—not connector credentials. The selected
 node fetches digest-pinned inputs through a separately provisioned bootstrap S3 connector before the bounded pickup
-crosses into the kernel’s trusted verification, decryption, and loader path.
+crosses into the kernel’s trusted verification, decryption, and loader path. Two nodes keep the handoff legible; the
+catalog, membership, placement, and routing mechanisms are not restricted to this topology.
 
 ### 7. Secrets and attenuated external-service capabilities
 
@@ -604,3 +605,50 @@ resource-owning serving function before calling `ShutdownRequest::complete()`.
 For node shutdown, the agent stops admitting new generations and propagates the enclosing deadline to every ordinary
 deployment first, then to operational connectors, before acknowledging its own request. This preserves Kafka/S3
 capabilities while applications finish or abort external work.
+
+### 13. Cluster management and DSR
+
+```mermaid
+sequenceDiagram
+participant O as CI / operator
+participant I as Deployment ingress
+participant R as Cluster leader / Raft catalog
+participant A as Assigned node agents
+participant P as Application replicas
+participant D as DNS eligibility projection
+participant F as VIP advertiser / frouter
+participant C as External client
+
+      O->>I: Signed release or drain intent
+      I->>R: Verify and relay bounded operation
+      R->>R: Plan from admitted voters and drain state<br/>commit replica nodes + generation
+      R-->>A: Desired assignments
+      par Each assigned node
+          A->>P: Fetch, verify and launch replica
+          P->>R: Publish owner + node + exact-generation readiness
+      end
+      R->>D: Membership + drain + desired + readiness
+      D-->>F: Immutable eligible-backend snapshot + epoch
+
+      alt No exact-generation replica is ready
+          F->>F: Do not advertise the VIP
+      else At least one replica is ready
+          C->>F: ARP and TCP to stable VIP
+          F->>P: Unchanged VIP packet<br/>local OP_FRAME or remote one-hop L2 envelope
+          P-->>C: Direct VIP reply<br/>replica owns TCP state
+      end
+
+      opt Membership, drain, placement or generation changes
+          R->>R: Reconcile and commit replacement set
+          R-->>A: Retire excluded generation<br/>launch new assignments
+          R->>D: Updated committed state
+          D-->>F: Replace snapshot with a new epoch
+          Note over F,P: New flows use the new ready set<br/>observed flows retain a bounded older epoch
+      end
+```
+
+Cluster management controls DSR without entering the per-packet decision path. The leader commits desired placement;
+agents publish readiness only for the exact generation they launched; and DNS projects those records together with
+membership and drain state into a bounded immutable snapshot. The frame router refreshes that snapshot asynchronously,
+selects a ready replica for each new flow, and forwards the unchanged packet locally or through the one-hop L2 envelope.
+The selected backend owns TCP and replies directly. If the ready set is empty, no node advertises the VIP.

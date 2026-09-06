@@ -30,7 +30,7 @@ repository history remain authoritative.
     negotiation, MAC/link read, virtqueue setup, and EL0 transmit submission.
     Smoltcp 0.13 adapter + TCP/IP service binary compile, and the frame
     demultiplexer routes IPv4/ARP to the tcpip service. &
-    Two-guest TCG suite \\
+    Focused two-guest TCG network suite \\
 10 & Lock-free device interrupt delivery (deferred wake), idempotent scheduler
     wakes, sustained-window load rebalancing & Done \\
 11 & Userspace startup ABI: ELF \texttt{\_start}, \texttt{entry!} macro, typed
@@ -39,7 +39,7 @@ repository history remain authoritative.
 12 & x86-64 multi-LP ring-3 platform: shared service ABI, synchronous TLB
     shootdown, VT-d/AMD-Vi, NVMe/AHCI/virtio-blk, virtio-net/E1000E, discovery, and
     distributed DNS, smoltcp TCP/IP, HTTP reporting, signed deployment,
-    migration, and dynamic membership & Four-LP and two-guest TCG suites \\
+    migration, and dynamic membership & Four-LP and focused two-guest TCG suites \\
 13 & UTC time service: internal endpoint API, ISO 8601 formatting, connected
     UDP/NTP client, drift and uncertainty estimation, monotonic holdover, and
     object-store calibration persistence & Default boot-validated on both targets \\
@@ -90,7 +90,7 @@ repository history remain authoritative.
         ring 3, and runs native Rust service ELFs through the shared syscall and
         launch ABI. The tested service path includes naming, object storage,
         Raft persistence, service management, live upgrade, virtio-net,
-        discovery, two-guest distributed DNS and smoltcp TCP exchange, the HTTP
+        discovery, a focused two-guest distributed-DNS and smoltcp TCP exchange, the HTTP
         state report, signed deployment, cross-node invocation, migration,
         retirement, \texttt{clusterctl}, and dynamic membership. NVMe, AHCI,
         and virtio-blk run behind Intel VT-d or AMD-Vi. The full cluster suite
@@ -166,10 +166,12 @@ repository history remain authoritative.
         timeout, and terminal-DLQ paths while keeping broker authority out of
         the called procedure.
 
-    \item \textbf{Raft:} two-node election over local endpoint IPC, persistent
-        single-voter restart, discovery-led join through joint consensus, and a
-        two-guest replicated DNS catalog. Restart-safe admission has focused host
-        tests and a persistent-storage boot-test manifest.
+    \item \textbf{Raft:} generic voter and learner sets, quorum accounting
+        tested with configurations up to five voters, three-node TLA+ safety
+        models, persistent single-voter restart, discovery-led joint-consensus
+        admission, focused two-guest catalog/deployment fixtures, and a
+        three-guest operational membership and ingress fixture. Fixture sizes
+        describe validation coverage rather than an architectural limit.
 
     \item \textbf{CI:} GitHub Actions builds both architectures with
         \texttt{-D warnings}, QEMU boot gate on AArch64.

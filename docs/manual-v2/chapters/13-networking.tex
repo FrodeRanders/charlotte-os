@@ -300,10 +300,22 @@ the stale generation receives no new flows; eligibility remains empty until
 the target node's agent publishes the matching generation. Retained epochs
 continue to route observed flows during the drain window. Omitting the name
 keeps a compatibility mode in which every admitted, non-draining member runs
-the platform service. Fixed replica counts and emph{every eligible node}
+the platform service. Fixed replica counts and \emph{every eligible node}
 placements widen the service-specific backend set as their node agents publish
 readiness. A leader-side controller reconciles automatic assignments after
 membership and drain-state changes.
+
+\architecturewidefigure{cluster-management-dsr}
+    {Cluster management supplies DSR with an exact-generation eligible-backend
+     set; packet steering remains outside the consensus path.}
+    {fig:cluster-management-dsr}
+
+Figure~\ref{fig:cluster-management-dsr} separates the replicated control loop
+from the packet path. Signed policy and committed membership determine desired
+placement, node agents contribute exact-generation readiness, and DNS derives
+the immutable epoch snapshot consumed asynchronously by the frame router. DSR
+then chooses only among authorized ready replicas; the selected replica owns
+TCP and replies directly. An empty ready set suppresses VIP advertisement.
 
 Operational Vote, AppendEntries, and InstallSnapshot RPCs use private
 EtherType \texttt{0x88b7}, while admission and DNS application/control traffic
@@ -402,7 +414,7 @@ to plaintext. The S3 request date also comes from synchronized UTC, so a TLS
 or signed request fails closed while the clock is unsynchronized.
 
 The AArch64 integration test starts RustFS behind verified TLS and performs a
-PUT/HEAD/GET/DELETE round trip. The same client surface is intended for
+PUT/HEAD/GET/DELETE round trip. The same client API is intended for
 centrally managed S3-compatible stores. The optional
 \texttt{x-emc-namespace} header specifically supports Dell EMC ECS namespace
 profiles, but ECS interoperability has not yet been runtime-qualified in this

@@ -161,7 +161,7 @@ platform-specific mounted-image discovery on macOS.
 \end{verbatim}
 
 Use \texttt{--tcpip-test} instead of \texttt{--deploy-test} for the smaller
-two-guest smoltcp exchange. \texttt{--live-upgrade-test} runs the isolated
+focused two-guest smoltcp exchange. \texttt{--live-upgrade-test} runs the isolated
 persistent service-manager handoff. The complete deployment suite is qualified
 with four LPs; two LPs are not a supported test configuration for that load.
 
@@ -248,7 +248,7 @@ Representative boot suites include:
     \item \repofiletext|crates/catten/src/self_test/el0_ipc.rs|{\texttt{el0\_ipc.rs}} --- EL0 endpoint IPC between domains.
     \item \repofiletext|crates/catten/src/self_test/el0_net.rs|{\texttt{el0\_net.rs}} --- EL0 networking test.
     \item \repofiletext|crates/catten/src/self_test/el0_pingpong.rs|{\texttt{el0\_pingpong.rs}} --- bidirectional EL0 IPC.
-    \item \repofiletext|crates/catten/src/self_test/el0_raft.rs|{\texttt{el0\_raft.rs}} --- two-node Raft election over local IPC.
+    \item \repofiletext|crates/catten/src/self_test/el0_raft.rs|{\texttt{el0\_raft.rs}} --- focused two-member Raft election over local IPC.
     \item \repofiletext|crates/catten/src/self_test/el0_service.rs|{\texttt{el0\_service.rs}} --- EL0 service lifecycle (spawn, IPC,
         teardown).
     \item \repofiletext|crates/catten/src/self_test/el0_uart.rs|{\texttt{el0\_uart.rs}} --- userspace UART driver (delegated MMIO +

@@ -20,6 +20,7 @@ names=(
     role-separated-deployment-trust
     durga-charlotte-generation
     cooperative-deployment-shutdown
+    cluster-management-dsr
 )
 
 command -v mmdc >/dev/null 2>&1 || {

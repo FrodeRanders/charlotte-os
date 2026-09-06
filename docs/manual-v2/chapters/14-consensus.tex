@@ -4,12 +4,18 @@
 CharlotteOS exposes distributed consensus as a capability service: a replicated
 state machine reached through the same endpoint IPC used by local services.
 
-The test suite covers single-voter term recovery from NVMe and cross-machine
-catalog replication and invocation through \texttt{dns}. Each operational node
-runs exactly one durable Raft member inside \texttt{dns}; membership, names,
-deployments, keys, and cluster events share that member's ordered log. The
-multi-guest admission test observes it through discovery and exercises
-\texttt{JOIN}, joint consensus, and \texttt{FINALIZE}. The separate
+Validation covers several scales. Unit tests exercise quorum accounting with
+up to five configured voters, while TLA+ safety models exhaustively explore
+three-node elections and membership transitions within their bounds. QEMU
+fixtures cover single-voter NVMe recovery, focused two-guest catalog and
+deployment paths, and three-guest discovery, membership, and ingress failover.
+These are validation topologies; the Raft membership representation and quorum
+logic are generic.
+
+Each operational node runs exactly one durable Raft member inside
+\texttt{dns}; membership, names, deployments, keys, and cluster events share
+that member's ordered log. Multi-guest admission observes it through discovery
+and exercises \texttt{JOIN}, joint consensus, and \texttt{FINALIZE}. The separate
 \texttt{raft.elf} process is network-disabled and retained only by the NVMe
 term-recovery fixture. Power-loss behavior within a live quorum is not yet
 validated end to end.
@@ -62,17 +68,18 @@ between DNS replicas; the consensus core does not change.
 
 \subsection{Authority, not addresses}
 
-Once the cluster is running, peers are identified by name service entries, not
-\texttt{IP:port}. A node that has joined the cluster receives connection caps
-for its peers through the name service:
+Once the cluster is running, committed peer identities resolve through the
+name service. A joined node receives connection capabilities for the current
+voter and learner set:
 
 \begin{lstlisting}[style=rustCode]
-let peer_1: ConnectionCap = name_service.lookup("raft-node-1")?;
-let peer_2: ConnectionCap = name_service.lookup("raft-node-2")?;
+for peer_name in committed_members {
+    let peer = name_service.lookup(peer_name)?;
+    transport.install(peer_name, peer)?;
+}
 \end{lstlisting}
 
-No IP configuration. No DNS. The authority to communicate with a peer is the 
-capability; without it, you cannot even address the peer.
+The capability carries communication authority; an IP address alone does not.
 
 \subsection{Transport transparency}
 
@@ -130,8 +137,10 @@ The cluster mnemonic and election timeout remain in the launch manifest. A
 fresh identity bootstraps as a durable singleton. Discovery supplies MAC routes,
 the lexicographically larger singleton applies to the smaller anchor, and
 active membership changes only through the Raft log and snapshot envelope.
-The distinct storage fixture verifies one generic node across process restart;
-the two-guest DNS test verifies the operational cluster.
+The distinct storage fixture verifies one generic node across process restart.
+Focused two-guest tests cover catalog and deployment exchanges, and the
+three-guest ingress fixture covers discovery-driven admission, leader failover,
+and continued cluster operation. None of these fixture sizes bounds membership.
 
 \section{Cluster bootstrap --- the seed problem}
 

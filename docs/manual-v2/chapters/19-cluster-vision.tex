@@ -1,37 +1,36 @@
 \chapter{Server-Class Cluster Vision}
 \label{chap:cluster-vision}
 
-CharlotteOS is exploring an operating-system boundary at which the cluster,
-rather than an individual machine, is the primary administrative and
-computational unit. An operator should not install a program on a chosen
-server. The operator should assign a signed workload to a cluster, declare
-the resources, authority, multiplicity, and placement constraints it needs,
-and let the cluster decide where the workload runs. Nodes should be
-replaceable providers of processors, memory, devices, and failure domains,
-not long-lived machines whose local software configuration is operationally
-interesting.
+CharlotteOS explores an operating-system boundary at which the cluster is the
+primary administrative and computational unit. An operator assigns a signed
+workload to the cluster, declares its resources, authority, multiplicity, and
+placement constraints, and leaves physical placement to cluster policy. Nodes
+supply processors, memory, devices, and failure domains; replacing one should
+not require rebuilding a machine-specific application installation.
 
-This is an architectural vision, but we are taking steps in this direction.
-What we can demonstrate now includes a three-node QEMU cluster with
-discovery-bridged Raft admission, joint-consensus membership, and a cluster TCP
-VIP whose connections are distributed without terminating TCP at the ingress
-node. Replicated naming and deployment state, signed ELF artifacts, per-node
-NVMe object stores, deployment agents, remote invocation, and a stateless
-assignment handoff are also implemented. Signed fixed replica counts,
-emph{every eligible node}, basic affinity/anti-affinity planning, membership
-reconciliation, and per-node readiness now feed cluster TCP ingress. Automatic
-capacity-aware placement, shared artifact storage, stateful cross-node
-migration, rolling replacement, and a production administration plane remain
-future work.
+Three kinds of evidence appear in this chapter and should not be confused.
+The generic Raft core exercises quorum rules with configurations including
+five voters, and the safety models explore three-node elections and membership
+transitions. Operational QEMU validation ranges from focused two-guest
+scenarios to a three-guest cluster with discovery-driven admission,
+joint-consensus membership, replica placement, and cluster-wide TCP ingress.
+The number of guests in a fixture is a validation choice, not a cluster-size
+limit or architectural objective.
 
-The purpose of this chapter is therefore twofold. It first states the
-cluster-level model CharlotteOS is trying to reach. It then uses Linux
-containers and Kubernetes/OpenShift as a counterpoint for identifying which
-parts of a modern cluster platform are intrinsic consequences of distributed
-computation and which parts arise from adapting general-purpose,
-machine-centred operating systems to isolated, reproducible, movable
-workloads. The comparison is a research question, not a claim that the
-prototype already replaces a production container platform.
+The implemented system now includes replicated naming and deployment state,
+signed ELF artifacts, central-S3 artifact pickup, per-node deployment agents,
+remote invocation, deterministic replica placement, basic affinity and
+anti-affinity, membership and drain reconciliation, exact-generation
+readiness, and a DSR-backed service VIP. Capacity-aware scheduling, stateful
+cross-node migration, rolling replacement, and a production administration
+plane define the next engineering boundary.
+
+This chapter first develops the cluster-level model and then uses Linux
+containers and Kubernetes/OpenShift as a counterpoint. The comparison separates
+the intrinsic cost of distributed computation from machinery needed to adapt
+general-purpose, machine-centred operating systems to isolated, reproducible,
+movable workloads. CharlotteOS is a research prototype for testing that
+separation, not a production container-platform replacement.
 
 \section{The cluster is the computer}
 
@@ -40,35 +39,32 @@ prototype already replaces a production container platform.
 The central proposition is simple:
 
 \begin{quote}
-    A Charlotte node is not an administrative unit. The Charlotte cluster is
-    the administrative unit.
+    The Charlotte cluster is the administrative unit; nodes contribute
+    replaceable execution and storage resources.
 \end{quote}
 
 A node boots, discovers or is directed to a cluster, establishes its
 identity, joins shared state, advertises resources, and receives work. Its
-useful description is not a list of packages and locally installed
-applications, but properties such as processor architecture, memory,
+useful description consists of properties such as processor architecture, memory,
 accelerators, attached devices, trust domain, and failure domain. If a node
 fails, the operator should replace the resource and let the cluster
 reconstruct the intended placement. If a workload moves, clients should
-continue to address its cluster name rather than learn the identity of its
-new host.
+continue to address its cluster name.
 
-That indirection now has an external TCP counterpart. A node address remains
-available when a protocol intentionally targets one machine, but a cluster
-service VIP lets a client address functionality placed somewhere in Charlotte.
-Direct Server Return distributes load, yet its deeper role here is to hide the
-ingress and execution nodes behind a stable cluster network identity. The
+That indirection now has an external TCP counterpart. Node addresses serve
+protocols that intentionally target one machine. A cluster service VIP instead
+addresses functionality placed somewhere in Charlotte. Direct Server Return
+both distributes load and hides ingress and execution nodes behind a stable
+cluster network identity. The
 implemented data path and its current placement-policy boundary are described
 in \autoref{sec:distributed-l2-ingress}.
 
-This makes individual nodes deliberately uninteresting. They still have
-identities where consensus membership, failure detection, routing, and
-ownership fencing require them, but those identities are mechanisms, not the
-operator's application-deployment model. The distinction is important:
-interchangeable nodes need not be physically identical, and failure domains
-cannot be ignored. Differences are expressed as schedulable properties and
-constraints rather than as hand-maintained machine personalities.
+Consensus membership, failure detection, routing, and ownership fencing still
+use stable node identities. Those identities remain mechanisms below the
+operator's application-deployment model. Interchangeability also permits
+heterogeneous hardware: schedulable properties and failure-domain constraints
+express relevant differences without turning nodes into hand-maintained
+machine personalities.
 
 The same idea already appears one level down in CharlotteOS. The
 shard-per-core model of \autoref{chap:sitas-executor} treats cores as executors
@@ -80,40 +76,32 @@ and the cluster becomes the unit within which execution is placed.
 
 \subsection{Workloads are signed execution objects}
 
-In the target model, cluster software is not a miniature general-purpose
-machine encoded as a filesystem. It is a signed execution object with a
+In the target model, cluster software is a signed execution object with a
 logical identity and a deliberately small execution environment. Its signed
 metadata can bind, among other things, its name, class, release, rollback
 counter, permission to run concurrent instances, and a digest linking to
 retained provenance.
 
-Signature validity answers only whether the cluster accepts the artifact's
-identity and origin. It does not grant the workload arbitrary authority.
-Once loaded, a workload executes in its own address space and receives only
-the capabilities needed for its purpose. Authority is delegated positively:
-a component may receive a service endpoint, a storage object, a device, or
-an administration capability. It does not begin with a complete Unix machine
-view that must subsequently be hidden from it.
+Signature validity establishes the artifact identity and accepted origin.
+Capability delegation independently determines what a running workload may
+do. Each workload executes in its own address space and receives a deliberate
+set of service endpoints, storage objects, devices, or administration
+capabilities.
 
-Signing and capability confinement solve different problems and both are
-required. A correctly signed but over-authorised program can still cause
-damage; a tightly confined but unauthenticated program is not acceptable
-cluster software. CharlotteOS combines an immutable, name-bound artifact
-identity at the loading boundary with explicit authority at the execution
-boundary.
+CharlotteOS therefore combines an immutable, name-bound identity at the
+loading boundary with explicit authority at the execution boundary. Signing
+without confinement accepts an over-powerful program; confinement without
+authentication accepts code of unknown origin.
 
-This clean boundary also changes what installing software means. Nodes need
-not resolve packages, execute installation scripts, or accumulate
-machine-local dependency state. Third-party code can still enter during the
-build, but the cluster receives a self-contained, blessed artifact and its
-associated evidence. Reproducible builds, vulnerability policy, SBOMs,
-source attestation, and signing-key custody remain essential supply-chain
-responsibilities; they are not replaced by the operating system.
+This boundary also changes what installing software means. Build systems
+resolve third-party code and produce a self-contained, blessed artifact with
+its evidence. Nodes avoid installation scripts and machine-local dependency
+state. Reproducible builds, vulnerability policy, SBOMs, source attestation,
+and signing-key custody remain supply-chain responsibilities.
 
 \subsection{Assignment is declarative and cluster-wide}
 
-The desired operation is not to install version 71 of a claims engine on
-servers A, B, and C. It is to make that version active in the cluster with a
+The desired operation makes version 71 of a claims engine active in the cluster with a
 desired number of instances and declared resource, authority, affinity,
 anti-affinity, and failure-domain constraints.
 
@@ -124,22 +112,20 @@ an isolated execution domain, and supplies its delegated capabilities.
 Rollback is another desired-state change to an earlier accepted artifact,
 not a sequence of machine-repair commands.
 
-Placement is not a fixed one-component/one-node map. A component explicitly
+Placement maps a component to one or more eligible nodes. A component explicitly
 blessed as safe for parallel execution may have several instances. Closely
 interacting components may be co-located to reduce communication cost, while
 replica anti-affinity and minimum failure-domain rules keep latency
 optimisation from defeating availability. Node capacity, architecture,
 devices, policy domains, and actual load all constrain the decision.
 
-Routing must follow the same abstraction. Clients address a logical service
-through the cluster name service; they do not bind application configuration
-to a host address. The runtime may choose local delivery when caller and
+Routing follows the same abstraction. Clients address a logical service
+through the cluster name service. The runtime may choose local delivery when caller and
 callee are co-located and network delivery when they are not. If placement
 changes, the name's generation changes, stale endpoints are invalidated, and
 clients resolve again.
 
-Migration is consequently a cluster operation, not an administrator logging
-into two machines. Stateless reassignment starts an equivalent instance at
+Migration is consequently a cluster operation. Stateless reassignment starts an equivalent instance at
 the new location and retires the old one under generation fencing. Stateful
 migration additionally requires an explicit transfer of owned mutable state
 and a single, fenced change of ownership. CharlotteOS has demonstrated only
@@ -154,7 +140,7 @@ machine. It is a group of ordinary Linux processes made into a deployable
 unit by combining several facilities: namespaces determine which resources
 and identifiers are visible, cgroups account for and limit resource use,
 Linux capabilities divide some root privileges, seccomp restricts the system
-call surface, an LSM such as SELinux constrains object access, and a prepared
+call interface, an LSM such as SELinux constrains object access, and a prepared
 filesystem and network configuration provide the process's apparent
 environment. An OCI image and runtime turn those facilities into a
 repeatable execution contract. Kubernetes adds scheduling, desired-state
@@ -164,7 +150,7 @@ build, registry, identity, networking, and operations environment around
 that model.
 
 This machinery exists for good reasons. Linux is a general-purpose,
-machine-centred operating system with a vast compatibility surface.
+machine-centred operating system with broad compatibility obligations.
 Conventional applications expect filesystems, shared libraries, package
 contents, users, process APIs, network interfaces, and often a distribution
 userspace. Container platforms must package enough of that environment to
@@ -175,10 +161,9 @@ because existing software was written as if it ran inside a machine.
 
 Kubernetes can therefore be understood partly as a distributed
 operating-system layer over machines whose native abstractions stop at the
-node. It translates from the operator's model of workloads in a cluster to
-Linux processes on machines. That observation is not a criticism of
-Kubernetes. Its great practical advantage is that it orchestrates the
-software and operating systems that already exist.
+node. It translates the operator's model of cluster workloads into Linux
+processes on machines, and gains enormous practical value from orchestrating
+the software and operating systems that already exist.
 
 CharlotteOS asks a different question: what becomes possible when the
 controlled distributed execution environment is the operating system,
@@ -189,16 +174,15 @@ rather than something assembled above a set of general-purpose hosts?
 The comparison is useful only if it separates two kinds of complexity.
 
 \subsubsection{Distributed-systems complexity is intrinsic}
-CharlotteOS does not abolish scheduling, consensus, placement, replication,
-health management, service discovery, upgrades, resource accounting,
-storage, networking, observability, failure detection, load balancing, or
-recovery from partial failure. Network partitions still occur. Replicas
-still need consistency rules. Persistent state still needs ownership,
-durability, repair, and backup. Placement still needs capacity and policy
-constraints. Rolling change still needs compatibility and rollback.
-Secrets still need secure creation and delegation. An operating system that
-absorbs orchestration must implement these responsibilities; moving them
-downward does not make them disappear.
+CharlotteOS retains the intrinsic responsibilities of distributed systems:
+scheduling, consensus, placement, replication, health management, service
+discovery, upgrades, resource accounting, storage, networking, observability,
+failure detection, load balancing, and recovery from partial failure. Network
+partitions require consistency rules; persistent state requires ownership,
+durability, repair, and backup; rolling change requires compatibility and
+rollback; and secrets require secure creation and delegation. Moving these
+responsibilities into the operating system changes their integration, not
+their necessity.
 
 \subsubsection{Compatibility and boundary-construction complexity may change}
 Some machinery exists because a cluster platform must turn a
@@ -220,20 +204,16 @@ per-node application installation may eliminate or radically simplify:
         and network emulation.
 \end{itemize}
 
-These are hypotheses about the target architecture, not blanket claims that
-each mechanism is unnecessary in every CharlotteOS implementation.
-Resource accounting, for example, survives even if cgroups do not; memory
-protection survives even if Linux namespaces do not; policy enforcement
-survives even if it is expressed by capability possession rather than
-SELinux labels. The responsibility remains while its mechanism and location
-change.
+These are hypotheses about mechanisms and their location. Resource accounting,
+memory protection, and policy enforcement remain essential even when Charlotte
+expresses them through native resource objects, address spaces, and capability
+possession instead of cgroups, Linux namespaces, and SELinux labels.
 
 \subsection{The control plane may survive the execution stack}
 
-The likely result is not that CharlotteOS eliminates Kubernetes. It is that
 CharlotteOS explores absorbing cluster orchestration into the operating
-system while removing much of the machinery required to manufacture a
-controlled execution environment above Linux.
+system and shortening the machinery required to manufacture a controlled
+execution environment above Linux.
 
 Kubernetes's strongest control-plane ideas may survive remarkably well:
 declarative desired state, reconciliation, scheduling from constraints,
@@ -286,9 +266,9 @@ A target node lifecycle is:
         the cluster reconciles desired state elsewhere.
 \end{enumerate}
 
-Secure Boot, measured boot, or remote attestation can strengthen the
-hardware-to-cluster trust chain, but they are complementary future concerns;
-artifact signing by itself does not attest the node.
+Secure Boot, measured boot, or remote attestation can extend the
+hardware-to-cluster trust chain. Artifact signing establishes executable
+identity; node attestation remains future work.
 
 \subsection{The cluster executive}
 
@@ -311,10 +291,10 @@ include:
         administrative audit.
 \end{itemize}
 
-This is substantial orchestration work. The simplification sought by
-CharlotteOS is not a control plane with no hard problems, but a control plane
-that acts directly on native execution objects rather than indirectly on
-machine-shaped compatibility environments.
+This is substantial orchestration work. CharlotteOS seeks a shorter control
+path that acts directly on native execution objects, removing the intermediate
+machine-shaped compatibility environment while retaining the hard distributed
+systems problems.
 
 \subsection{Placement, routing, and migration as native operations}
 
@@ -342,26 +322,27 @@ transport without changing the caller's authority. When an owner is
 replaced, generation fencing prevents the retiring instance from deleting or
 overwriting its successor's registration.
 
-Stateful migration must be explicit. The old instance exports only the
+Stateful migration is explicit. The old instance exports only the
 mutable state it owns; the target accepts that state under a transfer
 protocol; ownership changes exactly once; the new endpoint becomes active;
-and stale clients are forced to re-resolve. Transparent movement must never
-mean copying mutable state without a consistency and fencing model.
+and stale clients are forced to re-resolve. Every transfer therefore carries a
+consistency and fencing model.
 
 \section{Implemented foundation}
 
-The architectural target above is supported by the following implemented and
-verified mechanisms. Their existence makes the cluster vision concrete, but
-does not by itself constitute a complete cluster executive.
+The following implemented and verified mechanisms make the cluster vision
+concrete. The remaining controller responsibilities are collected later in
+this chapter.
 
 \begin{itemize}
-    \item \textbf{Cross-machine consensus.} The Graft core replicates the
-        \texttt{dns} catalog state machine across two QEMU guests on a stream
-        Ethernet segment and serves remote invocation through
-        \texttt{dns::OP\_CALL} (\autoref{chap:consensus}). The same replicated catalog
-        carries the set-once cluster signing key and deployment assignments.
-        Signed placement rules, concrete replica sets, and per-node readiness
-        are stored in that state machine.
+    \item \textbf{Cross-machine consensus.} The Graft core implements generic
+        voter sets, learners, quorum decisions, and joint-consensus membership.
+        Unit tests exercise configurations including five voters; TLA+ models
+        explore three-node safety; and operational QEMU fixtures replicate the
+        \texttt{dns} catalog over Ethernet with up to three guests
+        (\autoref{chap:consensus}). The catalog carries membership, names,
+        deployments, the set-once cluster signing key, signed placement rules,
+        concrete replica sets, and per-node readiness.
 
     \item \textbf{Reliable cluster messaging.} Protocol v3 represents message
         lengths and fragment offsets with 32 bits and initially admits messages
@@ -388,8 +369,9 @@ does not by itself constitute a complete cluster executive.
         produce-route allow-list, group, transactional identity, and operation
         mask while keeping TLS/SCRAM and mTLS credentials inside the connector and offering idempotent production,
         read-committed consumption, and transactional offset commits. These
-        adapters make external infrastructure usable from Charlotte; they are
-        not yet cluster-managed storage or messaging substrates.
+        adapters make externally managed infrastructure usable through
+        Charlotte's capability model. Cluster-native storage and messaging are
+        separate research questions.
 
     \item \textbf{Role-separated operational deployment.} Development signs
         an immutable release and its deployment descriptors, while operations
@@ -421,8 +403,8 @@ does not by itself constitute a complete cluster executive.
 
     \item \textbf{Certified work migration.} The scheduler migrates threads
         between LPs with generation-validated handoff and sustained-window
-        load rebalancing (\autoref{chap:scheduling}). This is a per-node precedent for,
-        rather than an implementation of, cluster rebalancing.
+        load rebalancing (\autoref{chap:scheduling}). This per-node mechanism
+        supplies design evidence for future cluster-wide load rebalancing.
 
     \item \textbf{Observation substrate.} The sitas executor exposes task
         counts, poll counts, queue depth, and shard snapshots
@@ -459,17 +441,19 @@ loaded on first use from the signed bundle in the initial NVMe object-store
 image and cached in kernel memory. Service binaries therefore no longer
 generally need to be linked into the kernel image.
 
-This is a concrete step toward the minimal node, but the current
-\texttt{--deploy-test} serial command loop is a kernel-side test and
-administration shim, not a production management plane.
+This establishes the minimal-node bootstrap shape. The current
+\texttt{--deploy-test} serial command loop remains a kernel-side validation and
+administration shim; production management enters through userspace deployment
+ingress and still needs further hardening.
 
 \subsection{Discovery and membership}
 
-The current two-node DNS test starts a statically described pair of voters.
-A separate boot test demonstrates discovery-bridged admission to a generic
-Raft group through replicated \texttt{JOIN}, joint consensus, and
-\texttt{FINALIZE}. Integrating that admission path with the durable
-DNS/shared-name-service identity remains future work.
+The operational DNS-owned Raft group now admits members discovered on the
+cluster Ethernet through replicated \texttt{JOIN}, joint consensus, and
+\texttt{FINALIZE}. The three-guest ingress fixture exercises that path before
+driving placement and VIP failover. A smaller two-guest fixture remains useful
+for focused catalog and deployment checks; its topology is not a membership
+restriction.
 
 A production node joining shared cluster state must complete three distinct
 operations:
@@ -488,9 +472,10 @@ operations:
         genuinely blank start and rotating keys are not implemented.
 
     \item \textbf{Join shared state.} The node becomes a member of the
-        replicated state machine and begins receiving assignments. Test
-        agents consume explicit assignments now, but no automatic placement
-        controller produces them.
+        replicated state machine and begins receiving assignments. The leader
+        resolves signed singleton, fixed-replica, every-eligible-node, affinity,
+        and anti-affinity policy into concrete node sets and reconciles them
+        after membership or drain changes.
 \end{enumerate}
 
 The target may allow a node to discover peers and participate in a restricted
@@ -504,8 +489,8 @@ a set-once, idempotent key ceremony.
 
 \subsection{The target pipeline}
 
-CharlotteOS does not remove the software supply chain; it narrows and makes
-explicit the object that crosses into the cluster. The intended pipeline is:
+CharlotteOS gives the software supply chain an explicit cluster boundary. The
+intended pipeline is:
 
 \begin{enumerate}
     \item build a self-contained workload from reviewed source and
@@ -518,11 +503,10 @@ explicit the object that crosses into the cluster. The intended pipeline is:
         and runs the accepted version.
 \end{enumerate}
 
-Nodes never receive the signing private key and do not fetch executable
-dependencies from the Internet during placement. Software distribution and
-machine configuration are therefore separated: the same immutable object can
-be placed on any eligible node without reconstructing a userspace installation
-there.
+The signing private key remains off-cluster, and placement fetches complete
+artifacts instead of executable dependencies from the Internet. The same
+immutable object can consequently run on any eligible node without
+reconstructing a userspace installation there.
 
 \architecturefigure{release-admission-rollout}
     {A signed multi-component release is admitted atomically to desired state;
@@ -532,7 +516,7 @@ there.
 
 \subsection{The implemented pipeline}
 
-The demonstrated deployment pipeline implements a narrower three-stage path:
+The current deployment pipeline has three stages:
 
 \begin{enumerate}
     \item \textbf{Blessing and signing.} Version-controlled policy admits an
@@ -562,7 +546,10 @@ independently generation-fenced readiness registration for each active owner.
 The leader resolves \emph{somewhere}, fixed replicas, and
 \emph{every eligible node} against admitted, non-draining voters and
 reconciles the assignments when that set changes. DSR routes new cluster-VIP
-flows across the ready subset.
+flows across the ready subset. The boundary between this management loop and
+the DSR packet path is shown in
+Figure~\ref{fig:cluster-management-dsr}: placement and readiness determine the
+eligible set, while each packet uses an already materialized snapshot.
 
 \section{Placement: contract, observation, and movement}
 
@@ -597,14 +584,14 @@ No cluster-wide metrics aggregation or feedback-driven placement loop is
 implemented today. The existing executor measurements are inputs from which
 that controller can later be built.
 
-\subsection{Demonstrated stateless handoff}
+\subsection{Focused stateless-handoff validation}
 
-The two-node test starts the signed \texttt{greet} artifact on one node,
-invokes it remotely, reassigns it to the other node, retires the old instance,
-and verifies that the logical name remains reachable. Generation fencing
-prevents the retiring owner from unregistering its replacement. This proves
-assignment handoff and routing continuity for fresh service state; it does
-not prove general load-driven migration.
+The focused two-guest fixture starts the signed \texttt{greet} artifact on one
+node, invokes it remotely, reassigns it, retires the old instance, and verifies
+that the logical name remains reachable. Generation fencing prevents the
+retiring owner from unregistering its replacement. This fixture isolates
+assignment handoff and routing continuity for fresh service state; load-driven
+and stateful migration require additional protocols described below.
 
 \subsection{Future stateful cross-node migration}
 
@@ -631,20 +618,20 @@ transport and ownership fencing for mutable service state are not
 implemented. The demonstrated cluster handoff starts the same immutable
 artifact with fresh state.
 
-\section{The demonstrated two-node deployment slice}
+\section{Deployment, rollout, and reassignment}
 
-The deployment-test QEMU flow boot-tests a first end-to-end slice on two
-guests. A signed artifact is assigned to a named node through replicated
-state; the remote agent obtains and verifies it; the service is invoked across
-the network; and the assignment moves to the other node without losing the
-logical name. Both guests complete with zero failed or pending self-tests.
-The slice is important evidence for the architecture, but its simulated
-administration, pre-staged artifacts, explicit assignments, and static DNS
-voter set keep it well short of the production target.
+The deployment-test QEMU flow uses two guests to isolate one source-to-target
+handoff. A signed artifact is assigned through replicated state; the remote
+agent obtains and verifies it; the service is invoked across the network; and
+the assignment moves without losing the logical name. Both guests complete
+with zero failed or pending self-tests. The operational membership, replica,
+and ingress paths also run in a three-guest fixture, and the underlying Raft
+membership is generic. These fixture sizes describe test coverage only.
 
 \architecturewidefigure{two-node-cluster}
-    {The demonstrated two-node cluster combines Raft-held compact desired state,
-    local reconcilers, capability-routed services, and central object pickup.}
+    {A focused two-guest deployment fixture combines Raft-held desired state,
+    local reconcilers, capability-routed services, and central object pickup;
+    the architecture admits larger voter and replica sets.}
     {fig:two-node-cluster}
 
 \subsection{Replicated deployment manifest}
@@ -653,7 +640,8 @@ The distributed name service's Raft catalog (\autoref{chap:consensus}) also hold
 \textbf{deployment manifest}:
 
 \begin{quote}
-\texttt{artifact -> \{object\_id, artifact\_sha256, node\_key, generation\}}.
+\texttt{artifact -> \{object identity, artifact digest, replica nodes,
+generation, signed descriptor\}}.
 \end{quote}
 
 The map is committed through the same log as name registrations. Deployment
@@ -661,13 +649,14 @@ is therefore ordered, replicated, generation-fenced cluster state rather than
 per-node configuration. \texttt{OP\_DEPLOY} submits a record and
 \texttt{OP\_DEPLOY\_QUERY} reads a replica's applied state.
 
-Raft agreement on a deployment record is not caller authorisation and the
-record carries no independent artifact signature. The production mutation
-path still needs a separately delegated cluster-administrator capability.
+The signed descriptor authorises the deployment decision and binds artifact
+identity, placement policy, and resource limits. Raft orders and replicates the
+result. Production ingress still needs a separately delegated online
+administrator identity and audit policy in addition to the offline signature.
 
 \subsection{Cross-node hosting and generation fencing}
 
-A service hosted on the follower registers through a
+A service hosted away from the leader registers through a
 \textbf{remote-register relay}, because only the leader may commit catalog
 entries. The leader returns the committed generation. The two-phase
 register/activate sequence and generation-fenced endpoint-death unregister
@@ -675,7 +664,7 @@ are preserved across the relay, so a retiring host cannot clobber a
 replacement's registration.
 
 Cross-node invocation uses the existing \texttt{OP\_CALL} relay. A client on
-either node reaches the service at its current owner through the replicated
+any member reaches the service at its current owner through the replicated
 name service rather than through a node-specific application address.
 
 \subsection{The deployment agent}
@@ -697,10 +686,10 @@ assignment. When the manifest assigns the artifact elsewhere, the agent
 retires the service and causes its address space to exit. Endpoint closure is
 observed by \texttt{dns}, whose generation check prevents a stale unregister.
 
-The supervisor-designated agent authority is the one narrow kernel mechanism
-added for this slice: only that agent may start or retire a verified,
-name-bound ELF memory object. The desired placement and administration
-logic remains a userspace coordination concern.
+The supervisor-designated agent authority is the one narrow kernel mechanism:
+only that agent may start or retire a verified, name-bound ELF memory
+object. The desired placement and administration logic remains a userspace
+coordination concern.
 
 \subsection{\texttt{clusterctl} and the test console}
 
@@ -737,12 +726,12 @@ exact generation to become ready against one deadline. Artifacts must already
 be signed and uploaded; object-store credentials remain outside the generated
 application and its descriptors.
 
-This command is release orchestration rather than atomic process-bundle
-admission. Each descriptor remains a separate Raft entry, so a later failure
-can leave an accepted prefix committed. Repeating the same set is safe because
-identical descriptors are idempotent.
+\texttt{deployment-apply} orchestrates independent descriptor admissions.
+Each descriptor occupies a separate Raft entry, so a later failure can leave
+an accepted prefix committed. Identical retries are idempotent. The atomic
+alternative is described next.
 
-The atomic alternative is a signed \texttt{CRELEASE} envelope produced with
+A signed \texttt{CRELEASE} envelope produced with
 \texttt{cluster-sign release-sign} and submitted with
 \texttt{release-apply}. Its outer signature binds a release name, monotonic
 sequence, and the exact ordered bytes of up to 16 distinct nested descriptors;
@@ -758,11 +747,10 @@ release and component revision before changing the deployment map, so desired
 state changes all at once or not at all. Exact retries are idempotent and the
 signed release record survives catalog snapshots.
 
-Admission atomicity does not make component startup simultaneous. Agents fetch,
-launch, and publish independently after commit, and \texttt{release-apply}
-waits for every exact generation. Coordinated rollback, progress policy, and a
-semantic process bundle that also binds BPMN, schemas, and provenance remain
-controller work.
+After atomic admission, agents fetch, launch, and publish independently;
+\texttt{release-apply} waits for every exact generation. Coordinated rollback,
+progress policy, and a semantic process bundle that also binds BPMN, schemas,
+and provenance remain controller work.
 
 Retirement is nevertheless bounded locally. On the first reconciliation poll,
 the kernel publishes a drain request and monotonic deadline in the domain's
@@ -834,8 +822,8 @@ acknowledge a node drain even if shutdown begins before local readiness is
 published. Before reclaiming a domain, the coordinator records per-phase
 counts for acknowledged, unacknowledged, and forced exits.
 
-The deployment plane and cluster core are cooperative participants rather than
-forced-retirement exceptions. Deployment ingress closes its listener, cluster
+The deployment plane and cluster core participate in cooperative shutdown.
+Deployment ingress closes its listener, cluster
 control drops its endpoint and service connections, and the agent interrupts
 startup or reconciliation waits before draining applications and then their
 operational connectors. DNS stops the Raft/catalog reactor and cancels pending
@@ -907,13 +895,12 @@ Full signed artifact names
 up to the 48-byte CLS2 limit travel in memory-backed catalog operations rather
 than the historical eight-byte scalar encoding.
 
-An interactive kernel serial console in the \texttt{--deploy-test} flow lets
-an operator issue these commands against the live cluster. The console is a
-kernel test thread, not an out-of-band production management plane, and the
-raw mutation endpoint does not yet enforce the intended separately delegated
-administrator capability. The notification endpoint is a first off-cluster
-management path, but it still needs network-level denial-of-service controls,
-audit identity beyond the signing key, and production transport hardening.
+An interactive kernel serial console in the \texttt{--deploy-test} flow issues
+these commands against the live cluster for validation. Production operations
+use the userspace notification endpoint, whose remaining hardening includes
+network-level denial-of-service controls, an online audit identity distinct
+from the signing key, and production transport policy. The raw mutation path
+and serial shim remain test-only privileged interfaces.
 
 The node agent now reconciles the complete replicated deployment-name set,
 rather than polling only \texttt{greet}. A node can own up to 64 independently
@@ -972,9 +959,9 @@ is embedded in the kernel at build time as the bootstrap trust anchor and
 passed to services in the launch manifest; and the key ceremony commits it
 to replicated state through
 \texttt{OP\_KEYCEREMONY} and \texttt{OP\_SET\_KEY}. This demonstrates a
-distribution path that a future dynamically joining node can use. It does
-not demonstrate blank-start trust: the replicated value must equal the
-build-time anchor.
+distribution path for dynamically joining nodes. The replicated value must
+currently equal the build-time anchor; blank-start trust establishment remains
+future work.
 
 The EL0 loader verifies the note before mapping a domain. Signing is
 mandatory: unsigned or invalidly signed images are rejected. The
@@ -994,9 +981,9 @@ local object store, mapped, executed, served across the network, and
 reassigned. Raft orders the assignment, but consensus is not an
 authorisation proof for the administrator who requested it.
 
-\subsection{What the slice proves}
+\subsection{Validated properties}
 
-Within its stated limits, the slice proves that:
+The focused deployment fixture validates that:
 
 \begin{itemize}
     \item an explicit node assignment can be represented as replicated,
@@ -1011,25 +998,23 @@ Within its stated limits, the slice proves that:
         requiring direct machine configuration.
 \end{itemize}
 
-It does not prove resource-aware placement, rolling replacement, stateful
-cross-node migration, shared artifact availability, dynamic reconfiguration
-of the durable DNS group, production key establishment or rotation, or
-production administrative authorisation. The narrower generic-Raft
-admission path is separately demonstrated.
+Separate multi-guest fixtures validate dynamic DNS/Raft admission, replica
+placement, and DSR failover. Evidence is still required for resource-aware
+placement, rolling replacement, stateful cross-node migration, artifact-store
+recovery, production key establishment and rotation, and production
+administrative authorisation.
 
 \section{Remaining implementation boundary}
 
-The gap between the demonstrated slice and the target cluster operating
-system is not a small amount of polish. It contains the following
-substantial coordination and trust work:
+The gap between the demonstrated functionality and the target cluster operating
+system contains the following substantial coordination and trust work:
 
 \begin{itemize}
-    \item \textbf{Dynamic membership hardening and integration.} Generic
-        discovery-bridged admission performs replicated \texttt{JOIN}, joint
-        consensus, and \texttt{FINALIZE}. It must be integrated with the
-        durable DNS/shared-state identity. Partition behaviour, restart
-        within a live quorum, and three-voter operation still need
-        validation.
+    \item \textbf{Dynamic membership recovery.} Discovery-bridged admission
+        performs replicated \texttt{JOIN}, joint consensus, and
+        \texttt{FINALIZE} in the durable DNS-owned group. Partition behaviour,
+        restart and rejoin within a live quorum, automatic failed-voter
+        removal, and longer-running fault injection remain.
 
     \item \textbf{Trust establishment and key rotation.} The present key
         ceremony is set-once, idempotent, and limited to the build-time
@@ -1037,23 +1022,26 @@ substantial coordination and trust work:
         rotation, revocation, and recovery remain.
 
     \item \textbf{Durable artifact availability.} Signed descriptor deployment
-        now pulls digest-pinned artifacts through a separately provisioned S3
-        connector, while the legacy path still uses per-node NVMe staging.
-        Integrity-checked repair, retention, garbage collection, connector
-        bootstrap, and replication policy remain.
+        pulls digest-pinned artifacts through a separately provisioned S3
+        connector; the legacy path uses per-node NVMe staging. Production work
+        includes integrity-checked repair, retention, garbage collection,
+        connector bootstrap recovery, and replication policy.
 
     \item \textbf{Cluster-wide observation.} Per-executor metrics must be
         collected and interpreted across nodes without turning transient
         telemetry into unstable placement decisions.
 
-    \item \textbf{The placement controller.} No component yet converts
-        desired replica policy, node capacity, trust boundaries, affinity,
-        anti-affinity, failure domains, health, and observed communication
-        into assignments or migration decisions.
+    \item \textbf{Placement and rollout depth.} The leader currently resolves
+        fixed and every-node replica policy, basic affinity/anti-affinity, and
+        drain-aware membership into assignments. The next scheduler adds node
+        capacity, trust labels, named failure domains, health and communication
+        signals, multi-instance-per-node execution, and rolling
+        surge/unavailability and rollback policy.
 
-    \item \textbf{Replica-set realisation and routing.} The runtime needs
-        multiple active placements, failure-domain enforcement, health-aware
-        selection among owners, and convergence when replica count changes.
+    \item \textbf{Replica health and failure convergence.} Exact-generation
+        readiness gates DSR and replica counts converge after committed
+        membership or drain changes. Health-driven replacement, automatic
+        failed-member removal, and state-aware recovery remain controller work.
 
     \item \textbf{Stateful cross-node migration.} The stateless handoff must
         be extended with network state transfer, explicit ownership
@@ -1217,22 +1205,24 @@ The cluster vision can be summarised as the following proposition:
     distributed control plane would remain.
 \end{quote}
 
-CharlotteOS is an experimental vehicle for testing that proposition. The
-implemented two-node slice establishes several necessary mechanisms: signed
-and name-bound loading, capability-separated services, replicated naming and
-assignment state, remote invocation, and generation-safe stateless handoff.
-It does not yet establish the full proposition. The decisive evidence will
-come from building the missing controller, artifact, membership, replica,
-state-transfer, administration, and operations layers and observing what
-complexity genuinely disappears.
+CharlotteOS is an experimental vehicle for testing that proposition. Evidence
+now spans signed and name-bound loading, capability-separated services,
+replicated naming and deployment state, dynamic membership, deterministic
+replica placement, central artifact pickup, remote invocation,
+generation-safe stateless handoff, and cluster-wide TCP ingress. Focused
+two-guest tests isolate particular transitions; three-guest fixtures exercise
+membership, placement, and failover; generic tests and safety models cover
+larger or exhaustively explored configurations.
 
-The likely endpoint is neither a conventional per-node operating system nor
-the absence of orchestration. It is a cluster operating system whose
-reconciliation and scheduling ideas may resemble a reduced Kubernetes
-control plane, but whose execution objects are native, signed,
-capability-constrained workloads rather than containers that reconstruct and
-then confine a Unix machine. At that boundary, the cluster stops looking
-like a collection of computers on which software is installed and starts
-looking like the computer itself.
+The next decisive evidence concerns resource-aware and rolling placement,
+state transfer, production trust lifecycle, failure recovery, administration,
+and sustained operations. Observing those mechanisms will show which
+complexity genuinely disappears and which merely moves.
+
+The intended endpoint is a cluster operating system with explicit
+reconciliation and scheduling, acting on native, signed,
+capability-constrained execution objects. At that boundary, the cluster stops
+looking like a collection of computers on which software is installed and
+starts looking like the computer itself.
 
 \endinput
