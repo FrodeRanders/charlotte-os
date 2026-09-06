@@ -235,9 +235,14 @@ replica nodes and the active per-node registrations for that exact deployment
 generation. This integrates replica placement and agent
 readiness with DSR without granting either the application or discovery traffic
 authority to nominate a backend. A placement change immediately excludes the
-stale generation; the new node becomes eligible only after its agent publishes
-readiness. Older ingress epochs retain the previous admitted route for observed
-flows during the bounded drain window.
+stale generation from the committed eligibility projection; the new node enters
+that projection only after its agent publishes readiness. Each frame router
+adopts the change on its next successful asynchronous snapshot refresh. The
+current router deliberately retains its last complete snapshot when a newer one
+cannot be materialized, so freshness for new flows is an identified hardening
+requirement rather than an instantaneous-convergence claim. Older ingress
+epochs retain the previous admitted route for observed flows during the bounded
+drain window.
 
 ![Replica placement and readiness feeding cluster DSR](../manual-v2/figures/cluster-management-dsr.svg)
 
@@ -245,6 +250,9 @@ The control plane produces the authority-bearing set; DSR only projects and
 uses it. In particular, discovery contributes a route for an admitted node but
 cannot make that node an application backend, and an application readiness
 registration cannot override the signed desired replica set.
+The composed control-plane/DSR model and the counterexamples for stale router
+state and bounded epoch history are documented in
+[`CharlotteClusterIngress.tla`](../tla/CharlotteClusterIngress.tla).
 
 Only the reuse-safe address-space identity selected by the supervisor may use
 the spawn/retire syscalls. Merely registering the name `agent` grants no

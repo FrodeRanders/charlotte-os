@@ -333,6 +333,37 @@ and chunks to a bounded count. It omits peer roles and addresses within those
 sets, checksums below the object-store interface, network framing, storage
 exhaustion, and state-machine-specific validation of snapshot bytes.
 
+## Cluster placement, readiness, and DSR ingress
+
+`CharlotteClusterIngress` composes already committed Raft application state
+with its asynchronous projection into the frame router. It deliberately does
+not duplicate log replication: `PublishReady`, `ReplaceDeployment`,
+`CommitDrain`, `BeginJoint`, and `FinalizeJoint` begin at their state-machine
+application linearization point.
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `PublishReady` / `WithdrawReady` | `NameCatalog::apply_register`, activation and generation-fenced unregister; `NameCatalog::ingress_placement` | Abstract across prepare/activate. The resulting ready node must be both a desired replica and active for the exact deployment generation. |
+| `ReplaceDeployment` | deployment application in `NameCatalog`; leader `reconcile_replica_placements` | Abstract for a committed generation and sorted concrete replica set. Artifact verification, descriptor decoding, and placement ranking are outside this model. |
+| `CommitDrain` | application of a signed shutdown intent; `NameCatalog::ingress_draining_nodes` | Direct for adding a generation-bearing drain decision to applied catalog state. Signature, expiry, and trusted UTC checks precede this boundary. |
+| `BeginJoint` / `FinalizeJoint` | application of Raft `JOINT` and `FINALIZE`; `active_voting_members` | Abstract membership projection. Quorum and durable ordering are established by `CharlotteRaftMembership`; this layer checks the old/new voter intersection during joint consensus and the final voter set afterward. |
+| `LearnRoute` / `ForgetRoute` | `RelmsgRaftTransport::mac_for_peer`; discovery updates | Abstract availability of an authenticated node-to-MAC route. The trusted-L2 assumption and frame authentication are not proved. |
+| `InstallSnapshot` | `ingress_membership_snapshot`, `BackendSnapshot::new_with_members`, `MembershipClient::poll`, `SnapshotHistory::install` | Direct for all-or-nothing materialization and immutable history. The safe action additionally retires bindings whose epoch is evicted; current Rust does not yet perform that stronger step. |
+| `StartNewFlow` | `classify_ingress`, `FlowEpochTable::observe`, `select_backend` | Direct for deterministic selection from an installed policy, with a stronger freshness precondition: the safe model requires the snapshot to represent the latest locally applied catalog policy. Current Rust may continue admitting SYNs through its last complete snapshot. |
+| `ExistingFlowPacket` / `EndFlow` | `FlowEpochTable::observe` | Direct while the binding's snapshot remains retained. FIN/RST removes the binding. Timing, TCP state, table-pressure eviction, and packets arriving through a different advertiser are omitted. |
+| `UnsafeStartStaleFlow` | continued use of `SnapshotHistory::current` after a refresh cannot produce a complete snapshot | Present implementation gap. The negative model demonstrates that an old policy can authorize a new flow after the latest locally applied policy has withdrawn that backend. |
+| `UnsafeInstallSnapshot` / `UnsafeFallbackExistingPacket` | independent bounded `SnapshotHistory` and `FlowEpochTable`; `history.get(epoch).unwrap_or(current)` | Present implementation gap. An epoch can be evicted while a flow still names it, after which current Rust may select a different backend. |
+| `UnsafeAdmitStaleReadiness` | missing generation comparison, retained only as a negative regression | Negative model only. Current `ingress_placement` compares each active registration's deployment generation with the desired generation before adding the node. |
+
+The model treats a policy version as the complete identity of one immutable
+snapshot. Rust compresses membership epoch, deployment and service
+generations, eligible nodes, and drain generations into a 64-bit digest.
+Collision resistance of that digest is outside the TLA+ claim. The model also
+does not claim instant convergence among routers or globally unique VIP
+advertisement during ARP and leader handover. A later refinement should add
+snapshot leases, advertiser failover, and packets that move between ingress
+participants.
+
 ## Remote-call identity and uncertainty
 
 | TLA+ action | Rust implementation | Correspondence |

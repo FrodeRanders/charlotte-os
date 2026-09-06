@@ -120,7 +120,7 @@ provide.
 
 \section{What is modeled}
 
-The current suite contains twenty-one safe specifications. They are divided by
+The current suite contains twenty-two safe specifications. They are divided by
 state ownership and failure boundary so that each model remains reviewable.
 The Raft models are deliberately layered: election, log replication,
 membership, pre-membership admission, and snapshots have different state and
@@ -227,6 +227,12 @@ different proof obligations.
     matching suffix, membership recovery & Stale snapshots cannot regress
     progress; the installed state and retained suffix agree; restart restores
     membership and application state before use. \\
+\hline
+\tlbreak{CharlotteCluster}{Ingress} & Joint membership, replica placement,
+    exact-generation readiness, drain, immutable ingress snapshots, and
+    retained flow epochs & New flows use current policy; eligible backends are
+    placed, ready, admitted, and non-draining; incomplete snapshots do not
+    install; an unretained flow epoch cannot silently remap. \\
 \hline
 \tlbreak{Charlotte}{RemoteCall} & Call identity, target generation, duplicate
     suppression, timeout uncertainty, result eviction & At most one execution
@@ -370,9 +376,37 @@ prove which cluster has authority. The safe
 TLA+ specification includes crash and restart; an unsafe restart that forgets
 admission must violate \texttt{RestartPreservesAdmission}.
 
+\subsection{Cluster placement and DSR ingress}
+\label{subsec:formal-cluster-ingress}
+
+The cluster-ingress model begins after a Raft application command commits. It
+then composes stable and joint membership, desired replica sets, deployment
+generations, per-node readiness, drain intent, discovery routes, asynchronous
+snapshot installation, VIP advertisement, and per-flow epoch retention. This
+keeps Raft quorum mechanics in their existing models while checking the point
+where replicated authority becomes packet-routing policy.
+
+The safe specification derives every eligible backend as the intersection of
+active membership, committed placement, readiness for the exact deployment
+generation, and nodes not draining. A router installs only a complete snapshot
+for which all member routes are known. New flows require the latest locally
+committed policy; established flows retain their selected policy while its
+snapshot remains present. Safe history eviction removes dependent flow state
+instead of silently choosing a new backend.
+
+Three negative configurations expose the important cross-layer failures. One
+admits a new SYN through a stale snapshot after current policy withdraws its
+backend. Another evicts an epoch still named by a live flow and then remaps that
+flow through the current snapshot. The third admits readiness from an old
+deployment generation. Exact readiness is already enforced by the catalog.
+Snapshot freshness and unretained-flow handling remain implementation gaps:
+the model records the stronger production contract instead of weakening the
+invariant to match those gaps.
+
 \subsection{Retained regression patterns}
 
-Other negative specifications preserve compact versions of repaired faults:
+Other negative specifications preserve compact versions of repaired faults and
+present conformance obligations:
 
 \small
 \begin{longtable}{|p{0.27\textwidth}|p{0.31\textwidth}|p{0.32\textwidth}|}
@@ -436,6 +470,17 @@ Other negative specifications preserve compact versions of repaired faults:
 \tlbreak{UnsafeRestartForgets}{Admission} & Restart makes an incomplete joiner
     election-eligible. & \tlbreak{RestartPreserves}{Admission} \\
 \hline
+\tlbreak{UnsafeStartStale}{Flow} & A router admits a new SYN through an old
+    snapshot after current policy withdraws its backend. &
+    \tlbreak{NewFlowsUseLatest}{Policy} \\
+\hline
+\tlbreak{UnsafeFallbackExisting}{Packet} & Snapshot-history eviction makes an
+    established flow select a different backend. & \texttt{FlowBackendStable} \\
+\hline
+\tlbreak{UnsafeAdmitStale}{Readiness} & Readiness from an old deployment
+    generation authorizes its replacement. &
+    \tlbreak{CommittedPoliciesAre}{Derived} \\
+\hline
 Flat session allocation & Retry and restart epochs alias one wire session. &
     \tlbreak{SessionIdentity}{Unique} \\
 \hline
@@ -460,7 +505,7 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \end{longtable}
 \normalsize
 
-The check suite expects all twenty-three negative configurations to fail for the named
+The check suite expects all twenty-six negative configurations to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -506,12 +551,12 @@ docs/tla/check.sh /path/to/tla2tools.jar
 Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
 
 \begin{itemize}
-    \item runs all twenty-one safe configurations;
+    \item runs all twenty-two safe configurations;
     \item enables action coverage and requires selected actions to have a
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs twenty-three negative configurations and requires each one to fail on
+    \item runs twenty-six negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.
@@ -521,7 +566,7 @@ Action coverage is important. An invariant can pass because a transition is
 accidentally disabled. Requiring coverage does not prove that an action is
 correct, but it detects this common vacuity.
 
-At the 15 August 2026 implementation synchronization point, representative
+At the 6 September 2026 implementation synchronization point, representative
 fast configurations produced the following complete state graphs:
 
 \begin{longtable}{|p{0.32\textwidth}|r|r|r|}
@@ -549,6 +594,8 @@ fast configurations produced the following complete state graphs:
 \texttt{CharlotteRaftJoin} & 2,029 & 520 & 13 \\
 \hline
 \tlbreak{Charlotte}{ReliableMessage} & 30 & 21 & 5 \\
+\hline
+\tlbreak{CharlotteCluster}{Ingress} & 672,087 & 151,904 & 14 \\
 \hline
 \end{longtable}
 

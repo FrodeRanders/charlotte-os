@@ -32,11 +32,13 @@ the cluster, not part of the cluster-addressed application's public identity.
 The service declaration may now bind the VIP to a deployed application name.
 DNS then intersects admitted members with the application's committed placement
 and exact-generation readiness registration. A moved or replaced application
-does not receive new flows through a stale registration: eligibility becomes
-empty after the new placement commits and reappears only when the target node
-publishes the matching deployment generation. Omitting the application name
-retains the original platform-service mode in which every admitted,
-non-draining member is a backend.
+does not remain in the newly derived policy through a stale registration:
+eligibility becomes empty after the new placement commits and reappears only
+when the target node publishes the matching deployment generation. Routers
+learn that policy asynchronously, so this statement describes the committed
+projection, not instantaneous convergence at every packet path. Omitting the
+application name retains the original platform-service mode in which every
+admitted, non-draining member is a backend.
 
 ![Cluster management driving DSR eligibility and packet delivery](../manual-v2/figures/cluster-management-dsr.svg)
 
@@ -129,12 +131,28 @@ selected it are released so a reconnect can use the active set; bindings
 owned by surviving nodes retain their older epoch. A draining backend remains
 routable and therefore keeps its observed bindings; new SYNs exclude it.
 
+Those properties hold while the required snapshot remains in the bounded
+history and after the router has installed the relevant committed projection.
+Today a failed or incomplete refresh leaves the last complete snapshot current,
+including for new SYNs. Also, snapshot-history eviction is independent of the
+flow-table bound; classification falls back to the current snapshot if a live
+binding names an evicted epoch. That fallback can remap an established flow.
+Production hardening must therefore add a new-flow freshness/lease rule and
+either retire dependent bindings when evicting an epoch or fail closed when the
+epoch is unavailable.
+
 This cache is deliberately not distributed connection tracking. Another
 ingress participant with the same epoch independently selects the same backend,
 so failure of the VIP advertiser alone does not destroy backend TCP state.
 Bindings can be lost through bounded eviction or simultaneous membership
 change and ingress failure; that is an explicit first-version limitation.
 Failure of the selected backend may terminate its TCP connections.
+
+[`CharlotteClusterIngress.tla`](../tla/CharlotteClusterIngress.tla) composes
+membership, placement, exact-generation readiness, drain, router snapshots and
+flow epochs. Its safe specification states the intended production contract;
+negative configurations reproduce stale-new-flow admission and flow remapping
+after history eviction, alongside the already prevented stale-readiness case.
 
 VIP advertisement follows the leader elected by the existing Raft group when
 that identity is an admitted, non-draining ingress participant. It need not be
@@ -205,9 +223,12 @@ add the signed artifact name:
   --cluster-service-name orders
 ```
 
-Before `orders` is committed and ready, no node advertises this VIP. During a
-move, observed flows continue to use retained epochs while new flows wait for
-the new exact generation to become ready.
+Before `orders` is committed, ready, and installed in a complete router
+snapshot, no freshly initialized node advertises this VIP. During a move, the
+committed policy makes new flows wait for the new exact generation and retained
+epochs preserve observed flows. A router that cannot refresh can presently
+continue using its last complete policy; the formal model records the stronger
+freshness contract still to be implemented.
 
 Run the complete multi-node validation separately:
 

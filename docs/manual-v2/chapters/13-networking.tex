@@ -265,7 +265,8 @@ stable node keys and discovery-associated MAC routes, separating admitted
 members from the subset eligible for new flows. The router refreshes this snapshot asynchronously; no consensus operation occurs
 on the packet path. During joint consensus, only voters common to the old and
 new sets accept new flows. This delays a joiner until finalization and removes
-a departing node promptly.
+a departing node from the committed projection promptly. Packet-path adoption
+still depends on a successful asynchronous refresh.
 
 An operator-signed, committed node-shutdown intent removes its target from new
 flow selection before local teardown, while retaining its admitted route for
@@ -279,6 +280,14 @@ set across additions; when a backend is removed, only bindings selecting that
 backend are released for reconnection. Rendezvous selection is independent of
 member ordering, so a replacement ingress participant with the same epoch
 selects the same live backend without shared connection tracking.
+
+The current bounds leave two explicit hardening obligations. A failed or
+incomplete refresh retains the last complete snapshot, and new SYNs presently
+use it without a freshness lease. Snapshot history and flow bindings are also
+evicted independently; if a live binding names an unavailable epoch, the
+router falls back to the current snapshot and may select a different backend.
+The intended production contract requires fresh policy for new flows and
+fail-closed or deliberately disruptive handling of such unretained bindings.
 
 VIP acceptance and advertisement are separate. Every participating node
 installs the VIP as a \texttt{/32} smoltcp address, while DSR admits new flows
@@ -296,11 +305,12 @@ precise bounds, failure semantics, and status fields are documented in
 The launch policy may bind the VIP to a deployed application name. DNS then
 intersects admitted membership with the application's committed replica set and
 its per-node exact-generation readiness registrations. After movement or replacement,
-the stale generation receives no new flows; eligibility remains empty until
-the target node's agent publishes the matching generation. Retained epochs
-continue to route observed flows during the drain window. Omitting the name
-keeps a compatibility mode in which every admitted, non-draining member runs
-the platform service. Fixed replica counts and \emph{every eligible node}
+the stale generation is absent from newly derived eligibility; eligibility
+remains empty until the target node's agent publishes the matching generation.
+Routers adopt that result on successful refresh. Retained epochs continue to
+route observed flows during the drain window. Omitting the name keeps a
+compatibility mode in which every admitted, non-draining member runs the
+platform service. Fixed replica counts and \emph{every eligible node}
 placements widen the service-specific backend set as their node agents publish
 readiness. A leader-side controller reconciles automatic assignments after
 membership and drain-state changes.
@@ -316,6 +326,10 @@ placement, node agents contribute exact-generation readiness, and DNS derives
 the immutable epoch snapshot consumed asynchronously by the frame router. DSR
 then chooses only among authorized ready replicas; the selected replica owns
 TCP and replies directly. An empty ready set suppresses VIP advertisement.
+The joint TLA+ model in
+\autoref{subsec:formal-cluster-ingress} checks this control-plane-to-packet-path
+composition and preserves counterexamples for the two outstanding router
+freshness and history obligations.
 
 Operational Vote, AppendEntries, and InstallSnapshot RPCs use private
 EtherType \texttt{0x88b7}, while admission and DNS application/control traffic

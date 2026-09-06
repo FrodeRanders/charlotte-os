@@ -186,6 +186,19 @@ run_expected_violation CharlotteRaftJoin CharlotteRaftJoin_restart_unsafe.cfg \
 run_model CharlotteRaftSnapshot CharlotteRaftSnapshot_small.cfg \
     AppendLog Commit BeginReceive ReceiveChunk PersistSnapshot ActivateSnapshot \
     DiscardStale Crash Restart
+run_model CharlotteClusterIngress CharlotteClusterIngress_small.cfg \
+    PublishReady WithdrawReady ReplaceDeployment CommitDrain BeginJoint \
+    FinalizeJoint LearnRoute ForgetRoute InstallSnapshot StartNewFlow \
+    ExistingFlowPacket EndFlow
+run_expected_violation CharlotteClusterIngress \
+    CharlotteClusterIngress_stale_snapshot_unsafe.cfg \
+    NewFlowsUseLatestPolicy UnsafeStartStaleFlow
+run_expected_violation CharlotteClusterIngress \
+    CharlotteClusterIngress_history_unsafe.cfg \
+    FlowBackendStable UnsafeFallbackExistingPacket
+run_expected_violation CharlotteClusterIngress \
+    CharlotteClusterIngress_readiness_unsafe.cfg \
+    CommittedPoliciesAreDerived UnsafeAdmitStaleReadiness
 run_model CharlotteRemoteCall CharlotteRemoteCall_small.cfg \
     Start ReplaceTarget Execute RejectStale QueueReply DuplicateRequest \
     DeliverReply Timeout SettleTransport RetireUncertainSession Evict

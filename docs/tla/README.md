@@ -1,6 +1,6 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for twenty-one
+This directory contains finite, executable specifications for twenty-two
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
@@ -24,6 +24,7 @@ CharlotteOS subsystems:
 | Raft joint membership and decommissioning | `CharlotteRaftMembership.tla` | `CharlotteRaftMembership_small.cfg` |
 | Raft pre-membership join admission | `CharlotteRaftJoin.tla` | `CharlotteRaftJoin_small.cfg` |
 | Raft snapshot installation and recovery | `CharlotteRaftSnapshot.tla` | `CharlotteRaftSnapshot_small.cfg` |
+| Joint cluster placement, readiness, drain, and DSR ingress | `CharlotteClusterIngress.tla` | `CharlotteClusterIngress_small.cfg` |
 | Remote-call identity, uncertainty, and bounded deduplication | `CharlotteRemoteCall.tla` | `CharlotteRemoteCall_small.cfg` |
 | Reliable-message restart/retry sessions | `CharlotteReliableMessage.tla` | `CharlotteReliableMessage_small.cfg` |
 
@@ -34,7 +35,7 @@ Establishing that a Rust operation implements the same atomic transition will
 require identified linearization points and a refinement argument.
 
 The latest implementation-to-model audit is
-[`WEEKLY_SYNC_2026-08-11.md`](WEEKLY_SYNC_2026-08-11.md); the action-level map
+[`WEEKLY_SYNC_2026-09-06.md`](WEEKLY_SYNC_2026-09-06.md); the action-level map
 is [`CONFORMANCE.md`](CONFORMANCE.md).
 
 ## Running the models
@@ -47,10 +48,10 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all twenty-one complete fast configurations plus expected-failure
+- runs all twenty-two complete fast configurations plus expected-failure
   IPC-transaction, endpoint-observer, CQ-buffer, timed-wait, scheduler, thread-join, domain-abort, address-space,
   hardware-ASID, interrupt-route, service-lifecycle, DMA, authorization,
-  Raft-join, and reliable-message regression configurations;
+  Raft-join, cluster-ingress, and reliable-message regression configurations;
 - enables TLC action coverage;
 - places checkpoints and traces in a temporary directory;
 - rejects structural TLC warnings in addition to invariant failures.
@@ -133,6 +134,10 @@ java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteRaftSnapshot -config CharlotteRaftSnapshot_small.cfg \
+  -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteClusterIngress -config CharlotteClusterIngress_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
@@ -555,6 +560,41 @@ writes do not form one atomic snapshot/log update. The implementation now
 restores on construction, acknowledges stale snapshots without installing
 them, retains a suffix with a matching boundary term, and serializes snapshot
 metadata, bytes, and log suffix into one copy-on-write object.
+
+## Cluster placement and DSR ingress model
+
+`CharlotteClusterIngress.tla` begins after Raft commits a control-plane
+mutation. It models stable and joint membership, deployment generations,
+replica replacement, exact-generation readiness, drain intent, discovery
+routes, immutable per-router snapshots, VIP advertisement, and flow bindings
+to retained policy epochs. This is a deliberate composition layer over the
+separate election, log, membership, and snapshot specifications; it does not
+repeat Raft's replication mechanics.
+
+The safe transition system requires a new flow to use the latest locally
+committed policy. Eligible backends are exactly the intersection of active
+members, desired replicas, exact-generation readiness, and nodes not draining.
+A router installs a snapshot only when every member has a discovery route.
+When bounded history evicts an epoch, the safe transition also removes flow
+bindings that depended on it instead of silently selecting a new backend.
+
+Three negative configurations preserve the cross-layer hazards:
+
+- `CharlotteClusterIngress_stale_snapshot_unsafe.cfg` admits a new SYN through
+  an old snapshot after current policy withdraws its selected backend;
+- `CharlotteClusterIngress_history_unsafe.cfg` evicts an epoch still named by
+  a flow and then remaps that flow through the current snapshot; and
+- `CharlotteClusterIngress_readiness_unsafe.cfg` treats readiness from an old
+  deployment generation as authority for its replacement.
+
+The first two identify implementation work, rather than repaired historical
+defects. The frame router currently retains its last complete snapshot when a
+refresh cannot be materialized, and a flow whose epoch has fallen out of
+history falls back to the current snapshot. Production policy must choose and
+implement a freshness/lease rule for new SYNs and fail-closed or explicitly
+disruptive handling for an unretained established-flow epoch. The model makes
+those obligations visible without pretending that asynchronous policy
+delivery is instantaneous.
 
 ## Remote-call model
 
