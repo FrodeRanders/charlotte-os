@@ -640,8 +640,8 @@ The distributed name service's Raft catalog (\autoref{chap:consensus}) also hold
 \textbf{deployment manifest}:
 
 \begin{quote}
-\texttt{artifact -> \{object identity, artifact digest, replica nodes,
-generation, signed descriptor\}}.
+\texttt{artifact -> \{object identity, artifact digest, replica nodes,} \\
+\texttt{generation, signed descriptor\}}.
 \end{quote}
 
 The map is committed through the same log as name registrations. Deployment
@@ -864,7 +864,7 @@ or HVC conduit, masks interrupts, and invokes \texttt{SYSTEM\_OFF}. It must not
 return: scheduling cannot resume past terminal drain. The fixture accepts QEMU
 exit only after the authoritative success and poweroff records.
 
-\architecturewidefigure{cooperative-deployment-shutdown}
+\architecturefigure{cooperative-deployment-shutdown}
     {Bounded cooperative shutdown for deployment retirement or an enclosing
     node drain, followed by generation-safe forced retirement. The application
     can acknowledge but cannot clear or extend a kernel-published lifecycle

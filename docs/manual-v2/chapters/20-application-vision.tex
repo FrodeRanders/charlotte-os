@@ -52,15 +52,17 @@ mutable packages, and a process API designed around one host.
 
 The alternative considered here is compatibility at a higher level:
 
-\begin{verbatim}
-business process + business rules
-                 |
-                 v
-              generator
-                 |
-                 v
-     native Charlotte application
-\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, align=center, inner sep=5pt},
+]
+    \node[box] (b) {business process\\+ business rules};
+    \node[box, below=0.6cm of b] (g) {generator};
+    \node[box, below=0.6cm of g] (n) {native Charlotte\\application};
+    \draw[->] (b) -- (g);
+    \draw[->] (g) -- (n);
+\end{tikzpicture}
+\end{center}
 
 Compatibility moves into libraries, data formats, external-system connectors,
 diagnostics, testing, and developer tools. For a useful class of
@@ -187,18 +189,26 @@ required. Supervision and the complete process runtime remain target work.
 
 The intended relationship is therefore:
 
-\begin{verbatim}
-                 BPMN + business rules
-                           |
-                           v
-              Durga semantic process model
-                           |
-             +-------------+-------------+
-             |             |             |
-             v             v             v
-        Java/Kafka     Rust/Kafka     Charlotte
-                                      backend
-\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, align=center, inner sep=5pt},
+]
+    \node[box] (root) {BPMN + business rules};
+    \node[box, below=0.7cm of root] (mid) {Durga semantic\\process model};
+
+    \node[box, below left=1.2cm and 1.4cm of mid] (java) {Java/Kafka};
+    \node[box, below=1.2cm of mid] (rust) {Rust/Kafka};
+    \node[box, below right=1.2cm and 1.4cm of mid] (char) {Charlotte\\backend};
+
+    \draw[->] (root) -- (mid);
+    \coordinate (m) at ([yshift=-0.5cm]mid.south);
+    \draw (mid.south) -- (m);
+    \draw (java.north |- m) -- (char.north |- m);
+    \draw (java.north) -- (java.north |- m);
+    \draw (rust.north) -- (rust.north |- m);
+    \draw (char.north) -- (char.north |- m);
+\end{tikzpicture}
+\end{center}
 
 Each lower-layer mapping must preserve the process contract. When the available
 substrate lacks a required semantic, the generator retains a suitable service
@@ -286,11 +296,20 @@ and which declared data or external service an activity uses.
 
 For a simple process fragment:
 
-\begin{verbatim}
-ValidateClaim -> CalculateEntitlement -> IssueDecision
-                         |
-                         +-----------> RulesService
-\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[
+    act/.style={draw, rounded corners, align=center, inner sep=5pt, font=\small},
+]
+    \node[act] (vc) {ValidateClaim};
+    \node[act, right=0.8cm of vc] (ce) {CalculateEntitlement};
+    \node[act, right=0.8cm of ce] (id) {IssueDecision};
+    \node[act, below=0.8cm of ce] (rs) {RulesService};
+
+    \draw[->] (vc) -- (ce);
+    \draw[->] (ce) -- (id);
+    \draw[->] (ce) -- (rs);
+\end{tikzpicture}
+\end{center}
 
 the backend could derive a graph in which:
 
@@ -630,18 +649,29 @@ Charlotte messaging.
 
 A proposed Charlotte deployment may therefore be hybrid:
 
-\begin{verbatim}
-external producers
-        |
-        v
- durable event log
-        |
-        v
- [A] -> [B] -> [C]       native Charlotte messages
-        |
-        v
- durable business event
-\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, align=center, inner sep=5pt},
+    act/.style={draw, rounded corners, align=center, inner sep=4pt},
+]
+    \node[box] (ext) {external producers};
+    \node[box, below=0.7cm of ext] (log) {durable event log};
+
+    \node[act, below=1.2cm of log] (c) {C};
+    \node[act, left=0.5cm of c] (b) {B};
+    \node[act, left=0.5cm of b] (a) {A};
+    \node[align=center, right=0.25cm of c] (note) {Native\\Charlotte\\messages};
+
+    \node[draw, left=0.0cm of a, dashed, rounded corners, fit=(a)(b)(c)(note), inner sep=8pt] (group) {};
+
+    \node[box, below=1.2cm of c] (bev) {durable business event};
+
+    \draw[->] (ext) -- (log);
+    \draw[->] (log) -- (group);
+    \draw[->] (a) -- (b);
+    \draw[->] (b) -- (c);
+    \draw[->] (group) -- (bev);
+\end{tikzpicture}\end{center}
 
 This keeps Kafka where log semantics and ecosystem integration are required,
 while avoiding a broker round trip for every internal transition. It also makes
@@ -680,21 +710,22 @@ measurement means to the business process.
 
 Durga and Charlotte together could preserve an identity chain:
 
-\begin{verbatim}
-BPMN process and activity identity
-                 |
-                 v
-Durga execution and schema identity
-                 |
-                 v
-capability and communication edges
-                 |
-                 v
-physical artifact and placement identity
-                 |
-                 v
-runtime observations and process outcomes
-\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, align=center, minimum width=6cm, inner sep=5pt},
+]
+    \node[box] (id1) {BPMN process and\\activity identity};
+    \node[box, below=0.5cm of id1] (id2) {Durga execution and\\schema identity};
+    \node[box, below=0.5cm of id2] (id3) {capability and\\communication edges};
+    \node[box, below=0.5cm of id3] (id4) {physical artifact and\\placement identity};
+    \node[box, below=0.5cm of id4] (id5) {runtime observations and\\process outcomes};
+
+    \draw[->] (id1) -- (id2);
+    \draw[->] (id2) -- (id3);
+    \draw[->] (id3) -- (id4);
+    \draw[->] (id4) -- (id5);
+\end{tikzpicture}
+\end{center}
 
 Every generated message and observation can carry or imply stable process,
 release, instance, activity, edge, and schema identities. The signed bundle

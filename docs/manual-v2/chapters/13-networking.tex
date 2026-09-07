@@ -52,21 +52,26 @@ remote capability delegation is not.
 
 \section{The native protocol stack}
 
-\begin{verbatim}
-Applications
-        |
-Capability Invocation
-        |
-Distributed Objects
-        |
-       RPC
-        |
-Reliable Message Layer
-        |
-Ethernet Frame Transport
-        |
-VirtIO / NIC Driver
-\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[
+    layer/.style={draw, rounded corners, align=center, minimum width=5cm, inner sep=5pt},
+]
+    \node[layer] (apps) {Applications};
+    \node[layer, below=0.35cm of apps] (caps) {Capability Invocation};
+    \node[layer, below=0.35cm of caps] (dobj) {Distributed Objects};
+    \node[layer, below=0.35cm of dobj] (rpc) {RPC};
+    \node[layer, below=0.35cm of rpc] (rel) {Reliable Message Layer};
+    \node[layer, below=0.35cm of rel] (eth) {Ethernet Frame Transport};
+    \node[layer, below=0.35cm of eth] (nic) {VirtIO / NIC Driver};
+
+    \draw[->] (apps) -- (caps);
+    \draw[->] (caps) -- (dobj);
+    \draw[->] (dobj) -- (rpc);
+    \draw[->] (rpc) -- (rel);
+    \draw[->] (rel) -- (eth);
+    \draw[->] (eth) -- (nic);
+\end{tikzpicture}
+\end{center}
 
 \subsection{Ethernet --- generic frame transport}
 
@@ -384,17 +389,18 @@ CharlotteOS has narrow S3 and Kafka compatibility services on top of the
 userspace TCP/IP stack. They preserve the capability model at the application
 boundary even though they communicate with conventional external systems:
 
-\begin{verbatim}
-application
-    |
-    | delegated endpoint capability
-    v
-S3 or Kafka service
-    |
-    | owned TCP socket (+ verified TLS when configured)
-    v
-managed object store or Kafka broker
-\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, align=center, minimum width=6cm, inner sep=5pt},
+]
+    \node[box] (app) {application};
+    \node[box, below=1.1cm of app] (svc) {S3 or Kafka service};
+    \node[box, below=1.1cm of svc] (ext) {managed object store\\or Kafka broker};
+
+    \draw[->] (app) -- node[right, align=center] {delegated endpoint\\capability} (svc);
+    \draw[->] (svc) -- node[right, align=center] {owned TCP socket\\(+ verified TLS when configured)} (ext);
+\end{tikzpicture}
+\end{center}
 
 An application receives neither a generic network capability nor the remote
 credentials and protocol state. Instead, each service instance is provisioned

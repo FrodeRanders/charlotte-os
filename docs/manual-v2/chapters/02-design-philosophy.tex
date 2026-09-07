@@ -114,29 +114,46 @@ Service discovery and policy & Userspace (name service, supervisor) \\
 
 The layers are:
 
-\begin{verbatim}
-CharlotteOS kernel
-    protection domains
-    threads and LP scheduling
-    capabilities and endpoint connections
-    interrupt routing
-    memory objects and page mappings
-    operation submission and completion queues
+\begin{center}
+\begin{tikzpicture}[
+    layer/.style={draw, rounded corners, align=left, text width=11cm,
+        inner sep=7pt, font=\small},
+]
+    \node[layer] (client) {%
+        \textbf{Client process}\par\vspace{2pt}
+        \begin{itemize}
+            \setlength{\itemsep}{0pt}
+            \item typed protocol library
+            \item endpoint connection capabilities
+            \item futures backed by IPC replies or completion records
+            \item owned buffers whose transfer mode is explicit
+        \end{itemize}};
 
-Userspace service process
-    one or more externally visible IPC endpoints
-    protocol-specific request/reply handling
-    one sitas executor per assigned shard
-    shard-local state
-    typed in-process commands
-    driver or service implementation
+    \node[layer, below=0.4cm of client] (service) {%
+        \textbf{Userspace service process}\par\vspace{2pt}
+        \begin{itemize}
+            \setlength{\itemsep}{0pt}
+            \item one or more externally visible IPC endpoints
+            \item protocol-specific request/reply handling
+            \item one sitas executor per assigned shard
+            \item shard-local state
+            \item typed in-process commands
+            \item driver or service implementation
+        \end{itemize}};
 
-Client process
-    typed protocol library
-    endpoint connection capabilities
-    futures backed by IPC replies or completion records
-    owned buffers whose transfer mode is explicit
-\end{verbatim}
+    \node[layer, below=0.4cm of service] (kernel) {%
+        \textbf{CharlotteOS kernel}\par\vspace{2pt}
+        \begin{itemize}
+            \setlength{\itemsep}{0pt}
+            \item protection domains
+            \item threads and LP scheduling
+            \item capabilities and endpoint connections
+            \item interrupt routing
+            \item memory objects and page mappings
+            \item operation submission and completion queues
+        \end{itemize}};
+\end{tikzpicture}
+\end{center}
 
 \architecturefigure{system-layering}
     {CharlotteOS layering from hardware and kernel mechanism through isolated
@@ -147,16 +164,28 @@ Client process
 
 Three orthogonal kernel abstractions form the foundation:
 
-\begin{verbatim}
-                 Kernel Objects
-                      |
-      +---------------+----------------+
-      |               |                |
- Capabilities      Endpoints      Memory Objects
-      |               |                |
-  Authority      Communication     Ownership
-   Security       Rendezvous     Data Movement
-\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, align=center, minimum width=2.8cm, inner sep=3pt},
+    note/.style={align=center, font=\footnotesize},
+]
+    \node[box] (root) {Kernel Objects};
+    \node[box, below left=1.5cm and 2.1cm of root] (caps) {Capabilities};
+    \node[box, below=1.5cm of root] (ends) {Endpoints};
+    \node[box, below right=1.5cm and 2.1cm of root] (mems) {Memory Objects};
+
+    \node[note, below=0.3cm of caps] {Authority\\Security};
+    \node[note, below=0.3cm of ends] {Communication\\Rendezvous};
+    \node[note, below=0.3cm of mems] {Ownership\\Data Movement};
+
+    \coordinate (mid) at ([yshift=-0.75cm]root.south);
+    \draw (root.south) -- (mid);
+    \draw (caps.north |- mid) -- (mems.north |- mid);
+    \draw (caps.north) -- (caps.north |- mid);
+    \draw (ends.north) -- (ends.north |- mid);
+    \draw (mems.north) -- (mems.north |- mid);
+\end{tikzpicture}
+\end{center}
 
 Every other kernel facility --- completion queues, reply tokens, device grants,
 DMA mappings --- is a \textbf{composition} of these three primitives.
@@ -225,18 +254,29 @@ This is not the same as saying:
 When no sitas task is runnable, the shard's execution context should block in one
 kernel wait operation:
 
-\begin{verbatim}
-ready tasks exist
-    -> poll tasks
+\begin{center}
+\begin{tikzpicture}[
+    cond/.style={draw, dashed, rounded corners, align=center, minimum width=2.8cm, inner sep=4pt},
+    act/.style={draw, rounded corners, align=center, inner sep=4pt},
+]
+    \node[cond] (ready) {ready tasks\\exist};
+    \node[act, right=0.9cm of ready] (poll) {poll tasks};
 
-no ready tasks
-    -> wait on CQ / endpoint readiness / deadline
+    \node[cond, below=0.6cm of ready] (noready) {no ready\\tasks};
+    \node[act, right=0.9cm of noready] (wait) {wait on CQ /\\endpoint readiness /\\deadline};
 
-event arrives
-    -> execution context becomes runnable
-    -> drain events
-    -> wake relevant futures
-\end{verbatim}
+    \node[cond, below=0.6cm of noready] (event) {event\\arrives};
+    \node[act, right=0.9cm of event] (runnable) {execution context\\becomes runnable};
+    \node[act, right=0.7cm of runnable] (drain) {drain events};
+    \node[act, right=0.7cm of drain] (wake) {wake relevant\\futures};
+
+    \draw[->, dashed] (ready) -- (poll);
+    \draw[->, dashed] (noready) -- (wait);
+    \draw[->, dashed] (event) -- (runnable);
+    \draw[->] (runnable) -- (drain);
+    \draw[->] (drain) -- (wake);
+\end{tikzpicture}
+\end{center}
 
 \begin{quote}
 \textbf{The shard parks directly on native completion and message state; no
@@ -256,14 +296,24 @@ synchronous work.
 Completions do not inject callbacks into userspace at arbitrary instructions. The
 path is:
 
-\begin{verbatim}
-hardware interrupt
-    -> kernel records result or notification
-    -> blocked execution context becomes runnable
-    -> normal return to userspace
-    -> sitas executor drains CQ/endpoints
-    -> executor wakes relevant Rust tasks
-\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[
+    cond/.style={draw, dashed, rounded corners, align=center, inner sep=5pt},
+    stage/.style={draw, rounded corners, align=center, inner sep=5pt},
+]
+    \node[cond] (s1) {hardware interrupt};
+    \node[stage, below=0.4cm of s1] (s2) {kernel records result\\or notification};
+    \node[stage, below=0.4cm of s2] (s3) {blocked execution context\\becomes runnable};
+    \node[stage, below=0.4cm of s3] (s4) {normal return to userspace};
+    \node[stage, below=0.4cm of s4] (s5) {sitas executor drains\\CQ/endpoints};
+    \node[stage, below=0.4cm of s5] (s6) {executor wakes\\relevant Rust tasks};
+    \draw[->] (s1) -- (s2);
+    \draw[->] (s2) -- (s3);
+    \draw[->] (s3) -- (s4);
+    \draw[->] (s4) -- (s5);
+    \draw[->] (s5) -- (s6);
+\end{tikzpicture}
+\end{center}
 
 The kernel may preempt threads, but it does not inject arbitrary task callbacks
 into userspace. Task scheduling therefore remains cooperative and reviewable.

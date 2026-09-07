@@ -652,3 +652,30 @@ agents publish readiness only for the exact generation they launched; and DNS pr
 membership and drain state into a bounded immutable snapshot. The frame router refreshes that snapshot asynchronously,
 selects a ready replica for each new flow, and forwards the unchanged packet locally or through the one-hop L2 envelope.
 The selected backend owns TCP and replies directly. If the ready set is empty, no node advertises the VIP.
+
+### 14. Live-upgrade handoff protocol
+
+```mermaid
+sequenceDiagram
+participant O as Old Service
+participant S as Supervisor
+participant N as New Service
+participant C as Clients
+
+      S->>O: OP_HANDOFF
+      Note over O: drain in-flight work,<br/>serialize state
+      O->>S: move_to (state memory objects)
+      O->>S: reply "ready"
+      Note over O: exit
+
+      S->>N: spawn_upgrade()
+      S->>N: bootstrap (ns_connection + state_memory)
+      Note over N: reads state,<br/>takes over endpoint,<br/>registers
+
+      Note over C: clients: re-lookup -><br/>re-connects -><br/>resume
+```
+
+The old service receives an `OP_HANDOFF` request, drains in-flight work, serialises its mutable state into memory
+objects, and moves them to the supervisor before replying "ready" and exiting. The supervisor spawns the replacement
+with the name-service connection and handoff state; the new instance registers under a new generation, and stale
+clients re-look up and retry.

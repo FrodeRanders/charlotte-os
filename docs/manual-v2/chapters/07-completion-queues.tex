@@ -105,15 +105,34 @@ proportional to the number of entries, not the number of shards.
 
 Every asynchronous operation transitions through a defined state machine:
 
-\begin{verbatim}
-Created
-    -> Submitted
-    -> Accepted | Rejected
-    -> InFlight
-    -> Completed | Failed | Cancelled
-    -> ResultObserved
-    -> ResourcesReclaimed
-\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[
+    state/.style={draw, rounded corners, align=center, inner sep=4pt, font=\small},
+]
+    \node[state] (created) {Created};
+    \node[state, right=0.45cm of created] (submitted) {Submitted};
+    \node[state, right=0.45cm of submitted] (accepted) {Accepted};
+    \node[state, right=0.45cm of accepted] (inflight) {InFlight};
+    \node[state, right=0.45cm of inflight] (completed) {Completed};
+    \node[state, right=0.45cm of completed] (observed) {Result\\Observed};
+    \node[state, right=0.45cm of observed] (reclaimed) {Resources\\Reclaimed};
+
+    \node[state, below=0.4cm of submitted] (rejected) {Rejected};
+    \node[state, below=0.4cm of inflight] (failed) {Failed};
+    \node[state, below=0.4cm of completed] (cancelled) {Cancelled};
+
+    \draw[->] (created) -- (submitted);
+    \draw[->] (submitted) -- (accepted);
+    \draw[->] (accepted) -- (inflight);
+    \draw[->] (inflight) -- (completed);
+    \draw[->] (completed) -- (observed);
+    \draw[->] (observed) -- (reclaimed);
+
+    \draw[->] (submitted) -- (rejected);
+    \draw[->] (inflight) -- (failed);
+    \draw[->] (inflight) -- (cancelled);
+\end{tikzpicture}
+\end{center}
 
 Each transition is explicit and observable:
 

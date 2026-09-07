@@ -5,6 +5,7 @@ manual_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_dir="$(cd -- "$manual_dir/../.." && pwd)"
 source_file="$repo_dir/docs/figures.md"
 output_dir="$manual_dir/figures"
+inkscape_dir="$manual_dir/svg-inkscape"
 config_file="$output_dir/mermaid-config.json"
 
 names=(
@@ -21,6 +22,7 @@ names=(
     durga-charlotte-generation
     cooperative-deployment-shutdown
     cluster-management-dsr
+    handoff-protocol
 )
 
 command -v mmdc >/dev/null 2>&1 || {
@@ -28,7 +30,12 @@ command -v mmdc >/dev/null 2>&1 || {
     exit 1
 }
 
-mkdir -p "$output_dir"
+command -v inkscape >/dev/null 2>&1 || {
+    echo "error: Inkscape is required to pre-render the LaTeX SVG cache" >&2
+    exit 1
+}
+
+mkdir -p "$output_dir" "$inkscape_dir"
 render_tmp="$(mktemp -d "${TMPDIR:-/tmp}/charlotte-mermaid.XXXXXX")"
 trap 'rm -rf -- "$render_tmp"' EXIT
 
@@ -60,6 +67,11 @@ for index in "${!names[@]}"; do
     # Mermaid emits native labels as adjacent tspans with significant leading
     # spaces. Preserve those spaces in SVG renderers such as Inkscape and librsvg.
     perl -0pi -e 's/<svg /<svg xml:space="preserve" /' "$output"
+
+    # Pre-render the PDF that the LaTeX `svg` package would otherwise produce
+    # with Inkscape during the build. This keeps the figures ready to include
+    # and makes `render-figures.sh` self-contained.
+    inkscape "$output" -D --export-filename="$inkscape_dir/${names[$index]}_svg-raw.pdf"
 done
 
-echo "Rendered ${#names[@]} SVG figures in $output_dir"
+echo "Rendered ${#names[@]} SVG figures in $output_dir and pre-rendered PDFs in $inkscape_dir"

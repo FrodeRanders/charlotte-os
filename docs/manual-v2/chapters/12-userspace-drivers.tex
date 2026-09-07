@@ -157,15 +157,20 @@ multi-IOMMU topologies remain future work.
 
 Complex I/O stacks decompose into separate failure and authority domains:
 
-\begin{verbatim}
-Application
-    -> socket endpoint
-Network service
-    -> packet endpoint
-NIC driver
-    -> MMIO / DMA / IRQ
-Hardware
-\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[
+    layer/.style={draw, rounded corners, align=center, minimum width=4cm, inner sep=5pt},
+]
+    \node[layer] (app) {Application};
+    \node[layer, below=0.7cm of app] (net) {Network service};
+    \node[layer, below=0.7cm of net] (nic) {NIC driver};
+    \node[layer, below=0.7cm of nic] (hw) {Hardware};
+
+    \draw[->] (app) -- node[right, align=center] {socket endpoint} (net);
+    \draw[->] (net) -- node[right, align=center] {packet endpoint} (nic);
+    \draw[->] (nic) -- node[right, align=center] {MMIO / DMA / IRQ} (hw);
+\end{tikzpicture}
+\end{center}
 
 The NIC driver knows about hardware registers and descriptor rings, the network
 service knows about protocols and sockets, and the application knows about its

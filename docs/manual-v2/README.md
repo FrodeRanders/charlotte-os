@@ -10,8 +10,9 @@ Regenerate them after changing a Mermaid block:
 ./docs/manual-v2/render-figures.sh
 ```
 
-This requires Mermaid CLI (`mmdc`). Build the manual from this directory with
-shell escape enabled so the `svg` package can invoke Inkscape:
+This requires Mermaid CLI (`mmdc`) and Inkscape. It regenerates the SVG sources
+and pre-renders the `svg-inkscape/` PDF cache that the `svg` package consumes.
+Build the manual from this directory with shell escape enabled:
 
 ```sh
 cd docs/manual-v2

@@ -49,11 +49,17 @@ the Sitas discipline:
 
 In the typical configuration:
 
-\begin{verbatim}
-one sitas shard
-    <-> one LP-affine userspace thread
-    <-> normally one logical CPU
-\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[
+    box/.style={draw, rounded corners, align=center, inner sep=5pt},
+]
+    \node[box] (shard) {one sitas shard};
+    \node[box, right=0.8cm of shard] (thread) {one LP-affine\\userspace thread};
+    \node[box, right=0.8cm of thread] (cpu) {normally one\\logical CPU};
+    \draw[<->] (shard) -- (thread);
+    \draw[<->] (thread) -- (cpu);
+\end{tikzpicture}
+\end{center}
 
 The userspace thread and its executor are pinned to one LP.
 \rusttype{ShardLocal<T>} state is valid only while that LP's owning thread runs.

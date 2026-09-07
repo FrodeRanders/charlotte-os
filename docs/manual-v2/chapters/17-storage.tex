@@ -9,15 +9,30 @@ and PCI/MSI-X setup paths.
 
 \section{The storage stack}
 
-\begin{verbatim}
-Filesystem ("fs")           ← charlotte-protocol-fs
-    |
-Object store ("obj")        ← charlotte-protocol-objstore
-    |
-Block driver ("blk0")       ← charlotte-protocol-block
-    |
-NVMe controller             ← MMIO + DMA + MSI-X (granted at boot)
-\end{verbatim}
+\begin{center}
+\begin{tikzpicture}[
+    layer/.style={draw, rounded corners, align=center, minimum width=4.5cm, inner sep=5pt},
+    proto/.style={align=left, font=\footnotesize},
+]
+    \node[layer] (fs) {Filesystem (``fs'')};
+    \node[proto, right=0.5cm of fs] (fsproto) {charlotte-protocol-fs};
+    \node[layer, below=0.6cm of fs] (obj) {Object store (``obj'')};
+    \node[proto, right=0.5cm of obj] (objproto) {charlotte-protocol-objstore};
+    \node[layer, below=0.6cm of obj] (blk) {Block driver (``blk0'')};
+    \node[proto, right=0.5cm of blk] (blkproto) {charlotte-protocol-block};
+    \node[layer, below=0.6cm of blk] (nvme) {NVMe controller};
+    \node[proto, right=0.5cm of nvme] (nvmeproto) {MMIO + DMA + MSI-X\\(granted at boot)};
+
+    \draw[->] (fs) -- (obj);
+    \draw[->] (obj) -- (blk);
+    \draw[->] (blk) -- (nvme);
+
+    \draw[<-] (fs) -- (fsproto);
+    \draw[<-] (obj) -- (objproto);
+    \draw[<-] (blk) -- (blkproto);
+    \draw[<-] (nvme) -- (nvmeproto);
+\end{tikzpicture}
+\end{center}
 
 \section{NVMe block driver}
 

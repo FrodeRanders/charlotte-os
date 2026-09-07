@@ -37,30 +37,11 @@ service:
 
 \section{The handoff protocol}
 
-\begin{verbatim}
-     Old Service         Supervisor         New Service
-          |                    |                   |
-     OP_HANDOFF                |                   |
-          |-------------------->                   |
-          |   drain in-flight, |                   |
-          |   serialize state  |                   |
-          |   -> move_to       |                   |
-          |<-------------------|                   |
-          |  reply: "ready"    |                   |
-          |                    |  spawn_upgrade()  |
-          |  (exit)            |------------------>|
-          |                    |  bootstrap:       |
-          |                    |    ns_connection  |
-          |                    |    state_memory   |
-          |                    |                   |
-          |                    |         new service reads state,
-          |                    |         takes over endpoint,
-          |                    |         registers (new generation)
-          |                    |                   |
-                    clients see EndpointClosed
-                    -> re-lookup -> fresh connection
-                    -> resume from where they left off
-\end{verbatim}
+\architecturefigure{handoff-protocol}
+    {The live-upgrade handoff: the supervisor drains and transfers the old
+    service's state, spawns the replacement with the handoff state and a fresh
+    generation, and stale clients re-look up and retry.}
+    {fig:handoff-protocol}
 
 The old service receives an \texttt{OP\_HANDOFF} request (typically from the
 supervisor or a service manager). It drains any in-flight work, serialises its
