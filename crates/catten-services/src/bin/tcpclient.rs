@@ -105,9 +105,7 @@ fn send_payload_attempts(
 }
 
 fn wait_for_ingress_members(ns_conn: ConnectionRef<'_>, expected: u32) -> Option<bool> {
-    let Some((_, connection)) = wait_for_registered_name_owned(ns_conn, frouter::NAME) else {
-        return None;
-    };
+    let (_, connection) = wait_for_registered_name_owned(ns_conn, frouter::NAME)?;
     for _ in 0..1_200 {
         let Ok(call) = connection.call(frouter::OP_STATUS, 0) else {
             return None;
