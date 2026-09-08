@@ -753,7 +753,7 @@ fn build_json(
                  is_advertiser\":{},\"ingress_local\":{},\"ingress_forwarded\":{},\"\
                  ingress_dropped\":{},\"flow_bindings\":{},\"snapshot_fresh\":{},\"\
                  snapshot_stale_dropped\":{},\"missing_epoch_dropped\":{},\"snapshot_expirations\"\
-                 :{}}},",
+                 :{},\"ingress_services\":{}}},",
                 w[frouter::STATUS_OFFSET_STAGE as usize],
                 frouter_rx,
                 forwarded,
@@ -778,7 +778,8 @@ fn build_json(
                 w[frouter::STATUS_OFFSET_SNAPSHOT_FRESH as usize],
                 w[frouter::STATUS_OFFSET_SNAPSHOT_STALE_DROPPED as usize],
                 w[frouter::STATUS_OFFSET_MISSING_EPOCH_DROPPED as usize],
-                w[frouter::STATUS_OFFSET_SNAPSHOT_EXPIRATIONS as usize]
+                w[frouter::STATUS_OFFSET_SNAPSHOT_EXPIRATIONS as usize],
+                w[frouter::STATUS_OFFSET_SERVICE_COUNT as usize]
             );
             prev.frouter_rx = frouter_rx;
             prev.forwarded = forwarded;

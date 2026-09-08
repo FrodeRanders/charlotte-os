@@ -4,6 +4,7 @@
 //! descriptor, `POST /v1/releases` with one signed `CRELEASE` component set,
 //! `POST /v1/operations` with one encrypted `COPSBND2` admission proof,
 //! `POST /v1/shutdowns` with one signed node-targeted shutdown intent,
+//! `POST /v1/ingress-policy` with one operations-signed assignment replacement,
 //! and `GET /v1/deployments/{percent-encoded-name}` for rollout observation.
 //! The ingress carries no object-store or application secret: authenticity,
 //! integrity, placement, and authority come from signatures checked by
@@ -26,6 +27,7 @@ use catten_rt::{
 };
 use catten_services::{
     clusterctl,
+    name_catalog,
     sleep_ms,
     socket,
     wait_for_local_ready_or_shutdown,
@@ -42,6 +44,8 @@ enum Request {
     Release(Vec<u8>),
     Operations(Vec<u8>),
     Shutdown(Vec<u8>),
+    IngressPolicy(Vec<u8>),
+    IngressPolicyStatus,
     Status(Vec<u8>),
 }
 
@@ -132,6 +136,9 @@ fn complete_request(request: &[u8]) -> Result<Option<Request>, ()> {
         return Err(());
     }
     if method == b"GET" {
+        if path == clusterctl::INGRESS_POLICY_PATH {
+            return Ok(Some(Request::IngressPolicyStatus));
+        }
         return decode_path_name(path).map(Request::Status).map(Some).ok_or(());
     }
     if method != b"POST" {
@@ -152,6 +159,10 @@ fn complete_request(request: &[u8]) -> Result<Option<Request>, ()> {
         clusterctl::SHUTDOWN_PATH => {
             (charlotte_launch::shutdown::ENCODED_LEN, charlotte_launch::shutdown::ENCODED_LEN)
         }
+        clusterctl::INGRESS_POLICY_PATH => (
+            charlotte_launch::ingress_policy::HEADER_LEN,
+            charlotte_launch::ingress_policy::MAX_ENCODED_LEN,
+        ),
         _ => return Err(()),
     };
     let length = content_length(&request[..body_start]).ok_or(())?;
@@ -172,6 +183,8 @@ fn complete_request(request: &[u8]) -> Result<Option<Request>, ()> {
                         Request::Operations(body.to_vec())
                     } else if path == clusterctl::SHUTDOWN_PATH {
                         Request::Shutdown(body.to_vec())
+                    } else if path == clusterctl::INGRESS_POLICY_PATH {
+                        Request::IngressPolicy(body.to_vec())
                     } else {
                         Request::Notify(body.to_vec())
                     },
@@ -314,6 +327,34 @@ fn notify_shutdown(controller: catten_rt::owned::ConnectionRef<'_>, envelope: &[
     }
 }
 
+fn notify_ingress_policy(controller: catten_rt::owned::ConnectionRef<'_>, envelope: &[u8]) -> i64 {
+    if charlotte_launch::ingress_policy::decode(envelope).is_none() {
+        return clusterctl::ERR_UNTRUSTED_DESCRIPTOR;
+    }
+    let bytes = match envelope.len().checked_add(8) {
+        Some(bytes) => bytes,
+        None => return clusterctl::ERR_TOO_LARGE,
+    };
+    let memory = match OwnedMemory::allocate(bytes.div_ceil(4096).max(1)) {
+        Ok(memory) => memory,
+        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
+    };
+    let mut mapping = match memory.map_writable() {
+        Ok(mapping) => mapping,
+        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
+    };
+    mapping.as_mut_slice()[..8].copy_from_slice(&(envelope.len() as u64).to_le_bytes());
+    mapping.as_mut_slice()[8..8 + envelope.len()].copy_from_slice(envelope);
+    let memory = match mapping.unmap() {
+        Ok(memory) => memory,
+        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
+    };
+    match controller.call_move(clusterctl::OP_NOTIFY_INGRESS_POLICY, 0, memory) {
+        Ok(call) => call.wait().map_or(clusterctl::ERR_NOT_LEADER, |reply| reply.result),
+        Err((_memory, _error)) => clusterctl::ERR_NOT_LEADER,
+    }
+}
+
 fn query_rollout(
     controller: catten_rt::owned::ConnectionRef<'_>,
     name: &[u8],
@@ -344,6 +385,37 @@ fn query_rollout(
     .ok_or(clusterctl::ERR_NOT_FOUND)
 }
 
+fn query_ingress_policy(
+    controller: catten_rt::owned::ConnectionRef<'_>,
+) -> Result<alloc::string::String, i64> {
+    let reply = controller
+        .call(clusterctl::OP_INGRESS_POLICY_STATUS, 0)
+        .map_err(|_| clusterctl::ERR_NOT_LEADER)?
+        .wait()
+        .map_err(|_| clusterctl::ERR_NOT_LEADER)?;
+    if reply.result < 0 {
+        return Err(reply.result);
+    }
+    let len = usize::try_from(reply.result).map_err(|_| clusterctl::ERR_NOT_FOUND)?;
+    let memory = reply.memory.ok_or(clusterctl::ERR_NOT_FOUND)?;
+    let mapping = memory.map_read_only().map_err(|_| clusterctl::ERR_NOT_FOUND)?;
+    let entry = name_catalog::decode_ingress_policy_result(
+        mapping.as_slice().get(..len).ok_or(clusterctl::ERR_NOT_FOUND)?,
+    )
+    .ok_or(clusterctl::ERR_NOT_FOUND)?;
+    let policy = charlotte_launch::ingress_policy::decode(&entry.envelope)
+        .ok_or(clusterctl::ERR_NOT_FOUND)?;
+    Ok(format!(
+        "{{\"generation\":{},\"sequence\":{},\"assignments\":{},\"not_before_unix_seconds\":{},\"\
+         expires_unix_seconds\":{}}}\n",
+        entry.generation,
+        policy.sequence,
+        policy.assignments().count(),
+        policy.not_before_unix_seconds,
+        policy.expires_unix_seconds
+    ))
+}
+
 fn response(result: Result<i64, ()>) -> alloc::string::String {
     let (status, body) = match result {
         Ok(generation) if generation > 0 => {
@@ -371,6 +443,22 @@ fn response(result: Result<i64, ()>) -> alloc::string::String {
         "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: \
          close\r\n\r\n{body}",
         body.len()
+    )
+}
+
+fn status_response(result: Result<alloc::string::String, i64>) -> alloc::string::String {
+    let (status, body) = match result {
+        Ok(body) => ("200 OK", body),
+        Err(clusterctl::ERR_NOT_FOUND) => {
+            ("404 Not Found", "{\"error\":\"ingress policy not found\"}\n".into())
+        }
+        Err(code) => ("503 Service Unavailable", format!("{{\"error\":{code}}}\n")),
+    };
+    format!(
+        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: \
+         close\r\n\r\n{}",
+        body.len(),
+        body
     )
 }
 
@@ -473,6 +561,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
             Ok(Ok(Request::Shutdown(envelope))) => {
                 response(Ok(notify_shutdown(controller.as_ref(), &envelope)))
+            }
+            Ok(Ok(Request::IngressPolicy(envelope))) => {
+                response(Ok(notify_ingress_policy(controller.as_ref(), &envelope)))
+            }
+            Ok(Ok(Request::IngressPolicyStatus)) => {
+                status_response(query_ingress_policy(controller.as_ref()))
             }
             Ok(Ok(Request::Status(name))) => {
                 rollout_response(query_rollout(controller.as_ref(), &name))

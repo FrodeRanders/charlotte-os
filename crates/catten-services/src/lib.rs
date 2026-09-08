@@ -788,6 +788,12 @@ pub mod socket {
     /// reply is one of `CONNECTION_STATE_*`; this lets event loops distinguish
     /// an accepted nonblocking connect request from an established TCP flow.
     pub const OP_CONNECTION_STATE: u32 = 12;
+    /// Bind TCP or UDP to one exact IPv4 address and port from a six-byte
+    /// moved memory object. This permits equal ports on distinct service VIPs.
+    pub const OP_BIND_IPV4: u32 = 13;
+    /// Listen for TCP on one exact IPv4 address and port. The payload matches
+    /// [`OP_BIND_IPV4`].
+    pub const OP_LISTEN_IPV4: u32 = 14;
 
     pub const CONNECTION_STATE_CLOSED: i64 = 0;
     pub const CONNECTION_STATE_CONNECTING: i64 = 1;
@@ -932,6 +938,40 @@ pub mod socket {
             } else {
                 Err(SocketError::Service(result))
             }
+        }
+
+        fn local_ipv4_operation(
+            &self,
+            opcode: u32,
+            address: [u8; 4],
+            port: u16,
+        ) -> Result<(), SocketError> {
+            let memory = OwnedMemory::allocate(1).map_err(SocketError::Memory)?;
+            let mut mapping =
+                memory.map_writable().map_err(|(_, error)| SocketError::Memory(error))?;
+            mapping.as_mut_slice()[..4].copy_from_slice(&address);
+            mapping.as_mut_slice()[4..6].copy_from_slice(&port.to_le_bytes());
+            let memory = mapping.unmap().map_err(|(_, error)| SocketError::Memory(error))?;
+            let result = self
+                .service
+                .call_move(opcode, self.id(), memory)
+                .map_err(|(_, error)| SocketError::Ipc(error))?
+                .wait()
+                .map_err(SocketError::Ipc)?
+                .result;
+            if result == 0 {
+                Ok(())
+            } else {
+                Err(SocketError::Service(result))
+            }
+        }
+
+        pub fn bind_ipv4(&self, address: [u8; 4], port: u16) -> Result<(), SocketError> {
+            self.local_ipv4_operation(OP_BIND_IPV4, address, port)
+        }
+
+        pub fn listen_ipv4(&self, address: [u8; 4], port: u16) -> Result<(), SocketError> {
+            self.local_ipv4_operation(OP_LISTEN_IPV4, address, port)
         }
 
         /// Send the entire byte slice as one or more moved pages, handling
@@ -1145,7 +1185,9 @@ pub mod frouter {
     pub const STATUS_OFFSET_MISSING_EPOCH_DROPPED: u32 = 19;
     /// Number of transitions from a fresh snapshot lease to fail-closed state.
     pub const STATUS_OFFSET_SNAPSHOT_EXPIRATIONS: u32 = 20;
-    pub const STATUS_WORDS: usize = 21;
+    /// Number of independently assigned IPv4/TCP service identities.
+    pub const STATUS_OFFSET_SERVICE_COUNT: u32 = 21;
+    pub const STATUS_WORDS: usize = 22;
     pub const STATUS_MAGIC: u32 = 0x4652_5453;
 }
 
@@ -1326,6 +1368,8 @@ pub mod disco {
 /// invokes it locally (when hosted here) or forwards it to the hosting node
 /// over the reliable message layer.
 pub mod dns {
+    use alloc::vec::Vec;
+
     pub const INTERFACE: u64 = super::name(b"DNS ");
     pub const VERSION: u32 = 3;
     pub const NAME: u64 = super::name(b"dns");
@@ -1437,7 +1481,8 @@ pub mod dns {
     /// Query the latest locally applied shutdown intent for `arg0` = node
     /// key. The reply moves `[generation:u64][CSHUTDN1 envelope]`.
     pub const OP_SHUTDOWN_QUERY: u32 = 25;
-    /// Return the locally applied committed ingress snapshot. Its routable
+    /// Return the locally applied committed ingress snapshot. `arg0` is the
+    /// compact [`charlotte_launch::ingress::ServiceId::pack`] identity. Its routable
     /// member set comes from Raft membership; when launch policy binds a VIP
     /// to an application name, new-flow eligibility also requires matching
     /// committed placement and exact-generation readiness.
@@ -1449,6 +1494,72 @@ pub mod dns {
     /// routes only `raft::ETHERTYPE` frames here; join and application control
     /// traffic continue to use relmsg.
     pub const OP_RAFT_FRAME: u32 = 27;
+    /// Resolve all launch-authorized external identities assigned to one
+    /// artifact/service name. The moved request contains the complete name
+    /// (`arg0` = length); the reply is a filtered canonical
+    /// [`charlotte_launch::ingress`] table.
+    pub const OP_INGRESS_ASSIGNMENTS_NAMED: u32 = 28;
+    /// Admit a complete operator-signed `CINGPOL1` assignment replacement.
+    /// Followers relay the envelope and the leader re-verifies operations
+    /// authority, cluster identity and trusted UTC before Raft submission.
+    pub const OP_INGRESS_POLICY_SUBMIT: u32 = 29;
+    /// Return `[generation:u64][CINGPOL1 envelope]` for the committed policy.
+    pub const OP_INGRESS_POLICY_QUERY: u32 = 30;
+    /// Return the effective canonical assignment table: committed policy when
+    /// present, otherwise the launch-time bootstrap table.
+    pub const OP_INGRESS_ASSIGNMENTS: u32 = 31;
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum IngressAssignmentError {
+        InvalidName,
+        Ipc(catten_rt::owned::IpcError),
+        Memory(catten_rt::owned::MemoryError),
+        Service(i64),
+        InvalidReply,
+    }
+
+    /// Resolve the operations-owned cluster identities assigned to an exact
+    /// deployed artifact name.
+    ///
+    /// The caller needs a suitably attenuated DNS connection. Request and
+    /// reply memory remain linearly owned throughout the operation; the
+    /// returned values contain no live capabilities or borrowed mappings.
+    pub fn ingress_assignments(
+        connection: catten_rt::owned::ConnectionRef<'_>,
+        artifact_name: &[u8],
+    ) -> Result<Vec<charlotte_launch::ingress::ServiceId>, IngressAssignmentError> {
+        if !charlotte_launch::deployment::valid_artifact_name(artifact_name) {
+            return Err(IngressAssignmentError::InvalidName);
+        }
+        let request =
+            super::stage_name_owned(artifact_name).ok_or(IngressAssignmentError::InvalidName)?;
+        let result = connection
+            .call_move(OP_INGRESS_ASSIGNMENTS_NAMED, artifact_name.len() as u64, request)
+            .map_err(|(_, error)| IngressAssignmentError::Ipc(error))?
+            .wait()
+            .map_err(IngressAssignmentError::Ipc)?;
+        if result.result < 0 {
+            return Err(IngressAssignmentError::Service(result.result));
+        }
+        if result.connection.is_some() {
+            return Err(IngressAssignmentError::InvalidReply);
+        }
+        let memory = result.memory.ok_or(IngressAssignmentError::InvalidReply)?;
+        let len =
+            usize::try_from(result.result).map_err(|_| IngressAssignmentError::InvalidReply)?;
+        if len > memory.len() {
+            return Err(IngressAssignmentError::InvalidReply);
+        }
+        let mapping =
+            memory.map_read_only().map_err(|(_, error)| IngressAssignmentError::Memory(error))?;
+        let assignments = charlotte_launch::ingress::decode(&mapping.as_slice()[..len])
+            .ok_or(IngressAssignmentError::InvalidReply)?
+            .map(|binding| binding.service)
+            .collect();
+        let memory = mapping.unmap().map_err(|(_, error)| IngressAssignmentError::Memory(error))?;
+        drop(memory);
+        Ok(assignments)
+    }
 
     /// Event-name prefix: events are ordinary replicated catalog names so the
     /// existing register/commit/replicate machinery fires them; the prefix
@@ -1552,6 +1663,7 @@ pub mod clusterctl {
     pub const RELEASE_PATH: &[u8] = b"/v1/releases";
     pub const OPERATIONS_PATH: &[u8] = b"/v1/operations";
     pub const SHUTDOWN_PATH: &[u8] = b"/v1/shutdowns";
+    pub const INGRESS_POLICY_PATH: &[u8] = b"/v1/ingress-policy";
 
     /// Upload an artifact. `arg0` is the packed artifact name; the attached
     /// memory object holds `[artifact_len:u64 LE][artifact]`, where the
@@ -1615,6 +1727,12 @@ pub mod clusterctl {
     /// intent. The moved memory uses `[len:u64][bytes]`; no private signing
     /// material enters the cluster.
     pub const OP_NOTIFY_SHUTDOWN: u32 = 11;
+    /// Notify the cluster of an operations-signed `CINGPOL1` complete ingress
+    /// assignment replacement. The moved memory uses `[len:u64][bytes]`.
+    pub const OP_NOTIFY_INGRESS_POLICY: u32 = 12;
+    /// Return `[generation:u64][CINGPOL1 envelope]` for operational
+    /// inspection, or `ERR_NOT_FOUND` before the first committed policy.
+    pub const OP_INGRESS_POLICY_STATUS: u32 = 13;
 
     pub const ROLLOUT_COMMITTED: u8 = 1;
     pub const ROLLOUT_READY: u8 = 2;
@@ -2572,6 +2690,73 @@ pub mod rshutdown {
             || envelope.len() != charlotte_launch::shutdown::ENCODED_LEN
             || charlotte_launch::shutdown::decode(envelope).is_none()
         {
+            return None;
+        }
+        Some(Request {
+            session,
+            request_id,
+            caller: frame.get(caller_start..envelope_start)?.to_vec(),
+            envelope: envelope.to_vec(),
+        })
+    }
+
+    pub fn encode_reply(session: u64, request_id: u64, result: i64) -> alloc::vec::Vec<u8> {
+        super::rdeploy::encode_reply(session, request_id, result)
+    }
+
+    pub fn decode_reply(frame: &[u8]) -> Option<(u64, u64, i64)> {
+        if frame.len() != 25 || frame[0] != TAG_REPLY {
+            return None;
+        }
+        Some((
+            u64::from_le_bytes(frame[1..9].try_into().ok()?),
+            u64::from_le_bytes(frame[9..17].try_into().ok()?),
+            i64::from_le_bytes(frame[17..25].try_into().ok()?),
+        ))
+    }
+}
+
+/// Correlated follower-to-leader ingress-policy submission.
+pub mod ringress_policy {
+    pub const TAG_REQUEST: u8 = 0x1f;
+    pub const TAG_REPLY: u8 = 0x20;
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub struct Request {
+        pub session: u64,
+        pub request_id: u64,
+        pub caller: alloc::vec::Vec<u8>,
+        pub envelope: alloc::vec::Vec<u8>,
+    }
+
+    pub fn encode_request(request: &Request) -> Option<alloc::vec::Vec<u8>> {
+        if request.caller.is_empty()
+            || request.caller.len() > 255
+            || charlotte_launch::ingress_policy::decode(&request.envelope).is_none()
+        {
+            return None;
+        }
+        let mut frame =
+            alloc::vec::Vec::with_capacity(17 + request.caller.len() + request.envelope.len());
+        frame.extend_from_slice(&request.session.to_le_bytes());
+        frame.extend_from_slice(&request.request_id.to_le_bytes());
+        frame.push(request.caller.len() as u8);
+        frame.extend_from_slice(&request.caller);
+        frame.extend_from_slice(&request.envelope);
+        Some(frame)
+    }
+
+    pub fn decode_request(frame: &[u8]) -> Option<Request> {
+        if frame.len() < 18 || frame[0] != TAG_REQUEST {
+            return None;
+        }
+        let session = u64::from_le_bytes(frame[1..9].try_into().ok()?);
+        let request_id = u64::from_le_bytes(frame[9..17].try_into().ok()?);
+        let caller_len = usize::from(frame[17]);
+        let caller_start = 18usize;
+        let envelope_start = caller_start.checked_add(caller_len)?;
+        let envelope = frame.get(envelope_start..)?;
+        if caller_len == 0 || charlotte_launch::ingress_policy::decode(envelope).is_none() {
             return None;
         }
         Some(Request {

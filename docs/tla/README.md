@@ -571,6 +571,15 @@ to retained policy epochs. This is a deliberate composition layer over the
 separate election, log, membership, and snapshot specifications; it does not
 repeat Raft's replication mechanics.
 
+The model also treats VIP assignment as committed control-plane state. The
+initial assignment represents launch-time bootstrap policy. A later
+`CommitIngressAssignment` transition carries a strictly increasing operator
+sequence and either assigns or explicitly withdraws the modeled service. The
+cryptographic signature, operations-key role, cluster binding, and trusted-UTC
+admission checks precede this abstraction's Raft linearization point; the model
+checks that only the committed assignment can contribute eligible backends to
+subsequent router snapshots.
+
 The safe transition system requires a new flow to use the router's installed
 policy while that policy has a fresh local lease. Eligible backends are exactly
 the intersection of active members, desired replicas, exact-generation

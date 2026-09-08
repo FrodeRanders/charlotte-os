@@ -10,3 +10,5 @@ CFLAGS_x86_64-unknown-none-catten = "-ffreestanding -mcmodel=kernel"
 BINDGEN_EXTRA_CLANG_ARGS_x86_64-unknown-none-catten = "--target=x86_64-unknown-none-elf -ffreestanding -mcmodel=kernel"
 CFLAGS_aarch64-unknown-none-catten = "-ffreestanding"
 BINDGEN_EXTRA_CLANG_ARGS_aarch64-unknown-none-catten = "--target=aarch64-unknown-none-elf -ffreestanding"
+# One node address plus the bounded launch-policy table of cluster VIPs.
+SMOLTCP_IFACE_MAX_ADDR_COUNT = "17"

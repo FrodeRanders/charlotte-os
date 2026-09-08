@@ -53,6 +53,8 @@ pub const DEPLOY_NOTIFY_PORT: u16 = 7444;
 pub mod sha256;
 
 pub mod deployment;
+pub mod ingress;
+pub mod ingress_policy;
 pub mod operations;
 pub mod operations_bundle;
 pub mod operations_pickup;
@@ -192,6 +194,7 @@ pub mod frouter_status {
     pub const SNAPSHOT_STALE_DROPPED: usize = 68;
     pub const MISSING_EPOCH_DROPPED: usize = 72;
     pub const SNAPSHOT_EXPIRATIONS: usize = 76;
+    pub const SERVICE_COUNT: usize = 80;
 }
 
 /// Discovery-service diagnostic status-page byte offsets.

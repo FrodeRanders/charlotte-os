@@ -28,6 +28,7 @@
 //!             [replica_count:u16 | node_keys:[u64]] [optional operational tail]
 //! reassign:   0x0b | artifact_len:u32 | artifact | expected_generation:u64 |
 //!             replica_count:u16 | node_keys:[u64]
+//! ingress:    0x0c | envelope_len:u32 | signed_ingress_policy
 //! ```
 use alloc::{
     collections::BTreeMap,
@@ -50,6 +51,7 @@ const CMD_RELEASE: u8 = 0x08;
 const CMD_SHUTDOWN: u8 = 0x09;
 const CMD_RELEASE_REPLICAS: u8 = 0x0a;
 const CMD_REASSIGN: u8 = 0x0b;
+const CMD_INGRESS_POLICY: u8 = 0x0c;
 const CATALOG_MAGIC_V1: u64 = 0x4341_5441_4c4f_474d; // "CATALOGM"
 const CATALOG_MAGIC_V2: u64 = 0x4341_5441_4c4f_4732; // "CATALOG2"
 const CATALOG_MAGIC_V3: u64 = 0x4341_5441_4c4f_4733; // "CATALOG3"
@@ -63,6 +65,7 @@ const CATALOG_MAGIC_V10: u64 = 0x4341_5441_4c4f_4741; // "CATALOGA"
 const CATALOG_MAGIC_V11: u64 = 0x4341_5441_4c4f_4742; // "CATALOGB"
 const CATALOG_MAGIC_V12: u64 = 0x4341_5441_4c4f_4743; // "CATALOGC"
 const CATALOG_MAGIC_V13: u64 = 0x4341_5441_4c4f_4744; // "CATALOGD"
+const CATALOG_MAGIC_V14: u64 = 0x4341_5441_4c4f_4745; // "CATALOGE"
 
 /// Query tag prefix for a name lookup.
 const QUERY_LOOKUP: u8 = 0x01;
@@ -70,6 +73,8 @@ const QUERY_LOOKUP: u8 = 0x01;
 const QUERY_DEPLOY: u8 = 0x02;
 /// Query tag prefix for the latest shutdown intent targeting one node.
 const QUERY_SHUTDOWN: u8 = 0x03;
+/// Query the current cluster ingress assignment policy.
+const QUERY_INGRESS_POLICY: u8 = 0x04;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogEntry {
@@ -152,6 +157,13 @@ pub struct ShutdownIntentEntry {
     pub envelope: Vec<u8>,
 }
 
+/// Latest replicated, operator-signed complete ingress assignment table.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IngressPolicyEntry {
+    pub generation: u64,
+    pub envelope: Vec<u8>,
+}
+
 type DeploymentReplicaMap = BTreeMap<Vec<u8>, BTreeMap<Vec<u8>, CatalogEntry>>;
 
 pub struct NameCatalog {
@@ -163,11 +175,14 @@ pub struct NameCatalog {
     releases: spin::Mutex<BTreeMap<Vec<u8>, ReleaseEntry>>,
     operational_bindings: spin::Mutex<BTreeMap<Vec<u8>, OperationalBindingEntry>>,
     shutdown_intents: spin::Mutex<BTreeMap<u64, ShutdownIntentEntry>>,
+    ingress_policy: spin::Mutex<Option<IngressPolicyEntry>>,
     cluster_key: spin::Mutex<Option<[u8; 32]>>,
     cluster_key_generation: spin::Mutex<u64>,
     /// Launch-owned deployment/release authority used before an optional
     /// replicated key ceremony commits a replacement.
     bootstrap_deployment_key: [u8; 32],
+    bootstrap_operations_key: [u8; 32],
+    cluster_id: [u8; 32],
     last_apply: spin::Mutex<Option<Vec<u8>>>,
 }
 
@@ -292,7 +307,21 @@ impl NameCatalog {
     }
 
     pub fn new_with_deployment_key(bootstrap_deployment_key: [u8; 32]) -> Arc<Self> {
+        Self::new_with_control_plane_trust(
+            bootstrap_deployment_key,
+            bootstrap_deployment_key,
+            charlotte_launch::trust::cluster_id(b"charlotte").expect("static cluster name"),
+        )
+    }
+
+    pub fn new_with_control_plane_trust(
+        bootstrap_deployment_key: [u8; 32],
+        bootstrap_operations_key: [u8; 32],
+        cluster_id: [u8; 32],
+    ) -> Arc<Self> {
         assert!(bootstrap_deployment_key.iter().any(|byte| *byte != 0));
+        assert!(bootstrap_operations_key.iter().any(|byte| *byte != 0));
+        assert!(cluster_id.iter().any(|byte| *byte != 0));
         Arc::new(Self {
             entries: spin::Mutex::new(BTreeMap::new()),
             deployment_replicas: spin::Mutex::new(BTreeMap::new()),
@@ -300,9 +329,12 @@ impl NameCatalog {
             releases: spin::Mutex::new(BTreeMap::new()),
             operational_bindings: spin::Mutex::new(BTreeMap::new()),
             shutdown_intents: spin::Mutex::new(BTreeMap::new()),
+            ingress_policy: spin::Mutex::new(None),
             cluster_key: spin::Mutex::new(None),
             cluster_key_generation: spin::Mutex::new(0),
             bootstrap_deployment_key,
+            bootstrap_operations_key,
+            cluster_id,
             last_apply: spin::Mutex::new(None),
         })
     }
@@ -438,6 +470,10 @@ impl NameCatalog {
 
     pub fn shutdown_intent(&self, node_key: u64) -> Option<ShutdownIntentEntry> {
         self.shutdown_intents.lock().get(&node_key).cloned()
+    }
+
+    pub fn ingress_policy(&self) -> Option<IngressPolicyEntry> {
+        self.ingress_policy.lock().clone()
     }
 
     /// Nodes whose signed shutdown intent has committed, paired with the
@@ -1209,6 +1245,54 @@ impl NameCatalog {
                 );
                 (generation as i64).to_le_bytes().to_vec()
             }
+            Some(CMD_INGRESS_POLICY) => {
+                let Some((envelope, after_envelope)) = take_len_bytes(command, 1) else {
+                    return Vec::new();
+                };
+                if after_envelope != command.len()
+                    || charlotte_launch::ingress_policy::verify(
+                        envelope,
+                        &self.cluster_id,
+                        &self.bootstrap_operations_key,
+                    ) != charlotte_launch::ingress_policy::VerifyOutcome::Valid
+                {
+                    return crate::clusterctl::ERR_UNTRUSTED_DESCRIPTOR.to_le_bytes().to_vec();
+                }
+                let Some(policy) = charlotte_launch::ingress_policy::decode(envelope) else {
+                    return Vec::new();
+                };
+                let mut current = self.ingress_policy.lock();
+                let generation = match current.as_ref() {
+                    Some(existing) => {
+                        let Some(previous) =
+                            charlotte_launch::ingress_policy::decode(&existing.envelope)
+                        else {
+                            return Vec::new();
+                        };
+                        if policy.sequence < previous.sequence {
+                            return crate::clusterctl::ERR_STALE_DESCRIPTOR.to_le_bytes().to_vec();
+                        }
+                        if policy.sequence == previous.sequence {
+                            return if existing.envelope == envelope {
+                                (existing.generation as i64).to_le_bytes().to_vec()
+                            } else {
+                                crate::clusterctl::ERR_CONFLICTING_DESCRIPTOR.to_le_bytes().to_vec()
+                            };
+                        }
+                        existing.generation.checked_add(1)
+                    }
+                    None => Some(1),
+                }
+                .filter(|generation| *generation <= i64::MAX as u64);
+                let Some(generation) = generation else {
+                    return Vec::new();
+                };
+                *current = Some(IngressPolicyEntry {
+                    generation,
+                    envelope: envelope.to_vec(),
+                });
+                (generation as i64).to_le_bytes().to_vec()
+            }
             _ => Vec::new(),
         }
     }
@@ -1220,6 +1304,7 @@ impl NameCatalog {
         let deployment_replicas = self.deployment_replicas.lock();
         let operational_bindings = self.operational_bindings.lock();
         let shutdown_intents = self.shutdown_intents.lock();
+        let ingress_policy = self.ingress_policy.lock();
         let mut size = 8 + 4; // magic + entry count
         for (name, entry) in entries.iter() {
             size += 4 + name.len() + 4 + entry.node.len() + 8 + 1 + 8;
@@ -1230,7 +1315,8 @@ impl NameCatalog {
         // compact encrypted-profile references and their replay fences; V11
         // adds the detached operational authorization for each binding; V12
         // appends node-targeted signed shutdown intents; V13 adds concrete
-        // replica sets and per-node deployment readiness.
+        // replica sets and per-node deployment readiness; V14 appends the
+        // operator-signed cluster ingress policy.
         size += 4;
         for (artifact, entry) in deployments.iter() {
             size += 4
@@ -1268,9 +1354,13 @@ impl NameCatalog {
                 size += 4 + entry.node.len() + 8 + 1 + 8;
             }
         }
+        size += 1;
+        if let Some(entry) = ingress_policy.as_ref() {
+            size += 8 + 4 + entry.envelope.len();
+        }
         size += 1 + 8 + 32;
         let mut buf = Vec::with_capacity(size);
-        buf.extend_from_slice(&CATALOG_MAGIC_V13.to_le_bytes());
+        buf.extend_from_slice(&CATALOG_MAGIC_V14.to_le_bytes());
         buf.extend_from_slice(&(entries.len() as u32).to_le_bytes());
         for (name, entry) in entries.iter() {
             buf.extend_from_slice(&(name.len() as u32).to_le_bytes());
@@ -1349,6 +1439,14 @@ impl NameCatalog {
                 buf.extend_from_slice(&entry.deployment_generation.to_le_bytes());
             }
         }
+        if let Some(entry) = ingress_policy.as_ref() {
+            buf.push(1);
+            buf.extend_from_slice(&entry.generation.to_le_bytes());
+            buf.extend_from_slice(&(entry.envelope.len() as u32).to_le_bytes());
+            buf.extend_from_slice(&entry.envelope);
+        } else {
+            buf.push(0);
+        }
         if let Some(key) = *self.cluster_key.lock() {
             buf.push(1);
             buf.extend_from_slice(&self.cluster_key_generation.lock().to_le_bytes());
@@ -1379,6 +1477,7 @@ impl NameCatalog {
             && magic != CATALOG_MAGIC_V11
             && magic != CATALOG_MAGIC_V12
             && magic != CATALOG_MAGIC_V13
+            && magic != CATALOG_MAGIC_V14
         {
             return;
         }
@@ -1414,6 +1513,7 @@ impl NameCatalog {
                 || magic == CATALOG_MAGIC_V11
                 || magic == CATALOG_MAGIC_V12
                 || magic == CATALOG_MAGIC_V13
+                || magic == CATALOG_MAGIC_V14
             {
                 let Some(active) = data.get(after_generation) else {
                     return;
@@ -1428,6 +1528,7 @@ impl NameCatalog {
                 || magic == CATALOG_MAGIC_V11
                 || magic == CATALOG_MAGIC_V12
                 || magic == CATALOG_MAGIC_V13
+                || magic == CATALOG_MAGIC_V14
             {
                 let Some((generation, after_generation)) = read_u64(data, after_entry) else {
                     return;
@@ -1460,6 +1561,7 @@ impl NameCatalog {
             || magic == CATALOG_MAGIC_V11
             || magic == CATALOG_MAGIC_V12
             || magic == CATALOG_MAGIC_V13
+            || magic == CATALOG_MAGIC_V14
         {
             let Some(bytes) = data.get(pos..pos.saturating_add(4)) else {
                 return;
@@ -1497,6 +1599,7 @@ impl NameCatalog {
                     || magic == CATALOG_MAGIC_V11
                     || magic == CATALOG_MAGIC_V12
                     || magic == CATALOG_MAGIC_V13
+                    || magic == CATALOG_MAGIC_V14
                 {
                     let Some(digest) =
                         data.get(after_generation..after_generation.saturating_add(32))
@@ -1517,6 +1620,7 @@ impl NameCatalog {
                     || magic == CATALOG_MAGIC_V11
                     || magic == CATALOG_MAGIC_V12
                     || magic == CATALOG_MAGIC_V13
+                    || magic == CATALOG_MAGIC_V14
                 {
                     let Some((descriptor, after_descriptor)) = take_len_bytes(data, after_entry)
                     else {
@@ -1529,7 +1633,9 @@ impl NameCatalog {
                 } else {
                     (Vec::new(), after_entry)
                 };
-                let (replica_nodes, after_entry) = if magic == CATALOG_MAGIC_V13 {
+                let (replica_nodes, after_entry) = if magic == CATALOG_MAGIC_V13
+                    || magic == CATALOG_MAGIC_V14
+                {
                     let Some((replica_count, mut position)) = read_u16(data, after_entry) else {
                         return;
                     };
@@ -1573,6 +1679,7 @@ impl NameCatalog {
             || magic == CATALOG_MAGIC_V11
             || magic == CATALOG_MAGIC_V12
             || magic == CATALOG_MAGIC_V13
+            || magic == CATALOG_MAGIC_V14
         {
             let Some(bytes) = data.get(pos..pos.saturating_add(4)) else {
                 return;
@@ -1594,6 +1701,7 @@ impl NameCatalog {
                     || magic == CATALOG_MAGIC_V11
                     || magic == CATALOG_MAGIC_V12
                     || magic == CATALOG_MAGIC_V13
+                    || magic == CATALOG_MAGIC_V14
                 {
                     let Some((operations_sequence, after_operations_sequence)) =
                         read_u64(data, after_generation)
@@ -1637,6 +1745,7 @@ impl NameCatalog {
             || magic == CATALOG_MAGIC_V11
             || magic == CATALOG_MAGIC_V12
             || magic == CATALOG_MAGIC_V13
+            || magic == CATALOG_MAGIC_V14
         {
             let Some(binding_count) = data
                 .get(pos..pos.saturating_add(4))
@@ -1717,6 +1826,7 @@ impl NameCatalog {
                 let (authorization_signature, after_binding) = if magic == CATALOG_MAGIC_V11
                     || magic == CATALOG_MAGIC_V12
                     || magic == CATALOG_MAGIC_V13
+                    || magic == CATALOG_MAGIC_V14
                 {
                     let Some(signature) = data
                         .get(after_expiry + 32..after_expiry + 96)
@@ -1787,7 +1897,7 @@ impl NameCatalog {
         *self.operational_bindings.lock() = operational_bindings;
 
         let mut shutdown_intents = BTreeMap::new();
-        if magic == CATALOG_MAGIC_V12 || magic == CATALOG_MAGIC_V13 {
+        if magic == CATALOG_MAGIC_V12 || magic == CATALOG_MAGIC_V13 || magic == CATALOG_MAGIC_V14 {
             let Some(intent_count) = data
                 .get(pos..pos.saturating_add(4))
                 .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
@@ -1831,7 +1941,7 @@ impl NameCatalog {
         *self.shutdown_intents.lock() = shutdown_intents;
 
         let mut deployment_replicas = BTreeMap::new();
-        if magic == CATALOG_MAGIC_V13 {
+        if magic == CATALOG_MAGIC_V13 || magic == CATALOG_MAGIC_V14 {
             let Some(replica_name_count) = data
                 .get(pos..pos.saturating_add(4))
                 .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
@@ -1889,6 +1999,41 @@ impl NameCatalog {
         }
         *self.deployment_replicas.lock() = deployment_replicas;
 
+        let ingress_policy = if magic == CATALOG_MAGIC_V14 {
+            let Some(present) = data.get(pos) else {
+                return;
+            };
+            pos += 1;
+            if *present == 0 {
+                None
+            } else {
+                let Some((generation, after_generation)) = read_u64(data, pos) else {
+                    return;
+                };
+                let Some((envelope, after_envelope)) = take_len_bytes(data, after_generation)
+                else {
+                    return;
+                };
+                if generation == 0
+                    || charlotte_launch::ingress_policy::verify(
+                        envelope,
+                        &self.cluster_id,
+                        &self.bootstrap_operations_key,
+                    ) != charlotte_launch::ingress_policy::VerifyOutcome::Valid
+                {
+                    return;
+                }
+                pos = after_envelope;
+                Some(IngressPolicyEntry {
+                    generation,
+                    envelope: envelope.to_vec(),
+                })
+            }
+        } else {
+            None
+        };
+        *self.ingress_policy.lock() = ingress_policy;
+
         *self.cluster_key.lock() = None;
         *self.cluster_key_generation.lock() = 0;
 
@@ -1901,6 +2046,7 @@ impl NameCatalog {
             || magic == CATALOG_MAGIC_V11
             || magic == CATALOG_MAGIC_V12
             || magic == CATALOG_MAGIC_V13
+            || magic == CATALOG_MAGIC_V14
         {
             let Some(present) = data.get(pos) else {
                 return;
@@ -1913,6 +2059,7 @@ impl NameCatalog {
                 || magic == CATALOG_MAGIC_V11
                 || magic == CATALOG_MAGIC_V12
                 || magic == CATALOG_MAGIC_V13
+                || magic == CATALOG_MAGIC_V14
             {
                 let Some((generation, after_generation)) = read_u64(data, pos + 1) else {
                     return;
@@ -1970,6 +2117,7 @@ impl StateMachine for NameCatalog {
         self.releases.lock().clear();
         self.operational_bindings.lock().clear();
         self.shutdown_intents.lock().clear();
+        *self.ingress_policy.lock() = None;
         *self.cluster_key.lock() = None;
         *self.cluster_key_generation.lock() = 0;
         *self.last_apply.lock() = None;
@@ -2013,6 +2161,12 @@ impl QueryableStateMachine for NameCatalog {
                     },
                 )
             }
+            Some(QUERY_INGRESS_POLICY) => self.ingress_policy().map_or_else(Vec::new, |entry| {
+                let mut result = Vec::with_capacity(8 + entry.envelope.len());
+                result.extend_from_slice(&entry.generation.to_le_bytes());
+                result.extend_from_slice(&entry.envelope);
+                result
+            }),
             _ => Vec::new(),
         }
     }
@@ -2146,6 +2300,24 @@ pub fn decode_shutdown_result(bytes: &[u8]) -> Option<ShutdownIntentEntry> {
     let envelope = bytes[8..].to_vec();
     (generation != 0 && charlotte_launch::shutdown::decode(&envelope).is_some()).then_some(
         ShutdownIntentEntry {
+            generation,
+            envelope,
+        },
+    )
+}
+
+pub fn encode_ingress_policy_query() -> Vec<u8> {
+    alloc::vec![QUERY_INGRESS_POLICY]
+}
+
+pub fn decode_ingress_policy_result(bytes: &[u8]) -> Option<IngressPolicyEntry> {
+    if bytes.len() < 8 + charlotte_launch::ingress_policy::HEADER_LEN {
+        return None;
+    }
+    let generation = u64::from_le_bytes(bytes[..8].try_into().ok()?);
+    let envelope = bytes[8..].to_vec();
+    (generation != 0 && charlotte_launch::ingress_policy::decode(&envelope).is_some()).then_some(
+        IngressPolicyEntry {
             generation,
             envelope,
         },
@@ -2404,6 +2576,17 @@ pub fn encode_shutdown(envelope: &[u8]) -> Option<Vec<u8>> {
     Some(buf)
 }
 
+/// Encode a complete operator-signed ingress-policy replacement. Signature,
+/// cluster binding and replay checks are repeated by the state machine.
+pub fn encode_ingress_policy(envelope: &[u8]) -> Option<Vec<u8>> {
+    charlotte_launch::ingress_policy::decode(envelope)?;
+    let mut buf = Vec::with_capacity(1 + 4 + envelope.len());
+    buf.push(CMD_INGRESS_POLICY);
+    buf.extend_from_slice(&(envelope.len() as u32).to_le_bytes());
+    buf.extend_from_slice(envelope);
+    Some(buf)
+}
+
 /// The replicated catalog viewed as an immediate [`Catalog`]: answers come
 /// from the *applied* state, so a resolved name is guaranteed to have
 /// committed. Used by the event broker's lookups.
@@ -2504,6 +2687,35 @@ mod tests {
         let signature: Signature =
             pair.sk.sign(charlotte_launch::shutdown::signature_digest(&bytes).unwrap(), None);
         assert!(charlotte_launch::shutdown::set_signature(
+            &mut bytes,
+            signature.as_ref().try_into().unwrap()
+        ));
+        bytes
+    }
+
+    fn signed_ingress_policy(
+        pair: &KeyPair,
+        cluster_id: [u8; 32],
+        sequence: u64,
+        address: [u8; 4],
+    ) -> Vec<u8> {
+        let assignments = [charlotte_launch::ingress::ServiceBinding {
+            service: charlotte_launch::ingress::ServiceId::tcp_v4(address, 443),
+            backend_name: Some(b"orders"),
+        }];
+        let fields = charlotte_launch::ingress_policy::PolicyFields {
+            sequence,
+            not_before_unix_seconds: 1_788_600_000,
+            expires_unix_seconds: 1_788_600_300,
+            cluster_id,
+            assignments: &assignments,
+        };
+        let public_key: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
+        let mut bytes = vec![0; charlotte_launch::ingress_policy::encoded_len(&fields).unwrap()];
+        charlotte_launch::ingress_policy::encode_unsigned(&fields, public_key, &mut bytes).unwrap();
+        let signature: Signature =
+            pair.sk.sign(charlotte_launch::ingress_policy::signature_digest(&bytes).unwrap(), None);
+        assert!(charlotte_launch::ingress_policy::set_signature(
             &mut bytes,
             signature.as_ref().try_into().unwrap()
         ));
@@ -2616,6 +2828,48 @@ mod tests {
         restored.restore(&catalog.snapshot());
         assert_eq!(restored.shutdown_intent(0x1234), catalog.shutdown_intent(0x1234));
         assert_eq!(restored.ingress_draining_nodes(), vec![(0x1234, 2)]);
+    }
+
+    #[test]
+    fn ingress_policy_is_replay_fenced_and_survives_snapshot() {
+        let deployment = KeyPair::from_seed([0x56; 32].into());
+        let operations = KeyPair::from_seed([0x57; 32].into());
+        let deployment_key = deployment.pk.as_ref().try_into().unwrap();
+        let operations_key = operations.pk.as_ref().try_into().unwrap();
+        let cluster_id = [0x58; 32];
+        let catalog =
+            NameCatalog::new_with_control_plane_trust(deployment_key, operations_key, cluster_id);
+        let first = signed_ingress_policy(&operations, cluster_id, 4, [10, 0, 2, 42]);
+        assert_eq!(
+            i64_result(catalog.apply_with_result(1, &encode_ingress_policy(&first).unwrap())),
+            1
+        );
+        assert_eq!(
+            i64_result(catalog.apply_with_result(1, &encode_ingress_policy(&first).unwrap())),
+            1
+        );
+        let conflict = signed_ingress_policy(&operations, cluster_id, 4, [10, 0, 2, 43]);
+        assert_eq!(
+            i64_result(catalog.apply_with_result(1, &encode_ingress_policy(&conflict).unwrap())),
+            crate::clusterctl::ERR_CONFLICTING_DESCRIPTOR
+        );
+        let stale = signed_ingress_policy(&operations, cluster_id, 3, [10, 0, 2, 43]);
+        assert_eq!(
+            i64_result(catalog.apply_with_result(1, &encode_ingress_policy(&stale).unwrap())),
+            crate::clusterctl::ERR_STALE_DESCRIPTOR
+        );
+        let next = signed_ingress_policy(&operations, cluster_id, 5, [10, 0, 2, 44]);
+        assert_eq!(
+            i64_result(catalog.apply_with_result(1, &encode_ingress_policy(&next).unwrap())),
+            2
+        );
+        let query = catalog.query(&encode_ingress_policy_query());
+        assert_eq!(decode_ingress_policy_result(&query).unwrap().envelope, next);
+
+        let restored =
+            NameCatalog::new_with_control_plane_trust(deployment_key, operations_key, cluster_id);
+        restored.restore(&catalog.snapshot());
+        assert_eq!(restored.ingress_policy(), catalog.ingress_policy());
     }
 
     #[test]

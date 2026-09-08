@@ -147,14 +147,52 @@ the planner can honor cross-component affinity and anti-affinity consistently.
 The descriptor name may use the complete
 CLS2 limit of 48 bytes; it is no longer restricted by the old scalar-name ABI.
 
+## Cluster ingress policy
+
+Production VIPs are operations data rather than application-descriptor data.
+The independent operations authority signs a complete `CINGPOL1` assignment
+table, scoped to the cluster ID and a bounded UTC interval:
+
+```text
+cluster-sign ingress-policy-sign ingress.cing 7 NOT_BEFORE_UNIX EXPIRES_UNIX \
+  CLUSTER_ID operations-private.hex \
+  orders=10.0.2.42:443 payments=10.0.2.43:443
+cluster-sign ingress-policy-verify ingress.cing CLUSTER_ID operations-public.hex
+cluster-sign ingress-policy-notify ingress.cing 127.0.0.1:8081
+cluster-sign ingress-policy-status 127.0.0.1:8081
+```
+
+`deployd` accepts the envelope at `POST /v1/ingress-policy`. A follower
+source-validates and correlates the request while the leader verifies the
+operations key, cluster ID, and validity interval against trusted UTC. The
+complete replacement then enters Raft. Exact retries are idempotent; lower
+sequences and conflicting reuse of a sequence fail. Use `--clear` in place of
+the assignment list to sign an explicit empty-table withdrawal. The UTC range
+bounds admission and replay of the envelope; a committed policy remains desired
+state until a newer record replaces it.
+
+The applied policy supersedes the runner's launch-time bootstrap table. DNS
+materializes placement/readiness independently for every named service, the
+frame router reconciles its leased epochs and flow tables by stable service
+identity, and TCP/IP reconciles the node's `/32` VIP addresses. Catalog-v14
+snapshots retain the envelope and replay generation. Applications do not
+receive the operations key or production configuration; an application with
+an attenuated DNS grant can poll `dns::ingress_assignments` and rebind an
+exact-address listener after a change.
+
+`GET /v1/ingress-policy`, wrapped by `ingress-policy-status`, reports the
+catalog generation, signed sequence, assignment count, and admission validity
+interval without exposing signing material.
+
 ## Trust and secret boundary
 
 The HTTP listener is plaintext by design: the Ed25519-signed descriptor is the
 authorization and integrity envelope and contains no secret. `clusterctl`
-verifies it before proposing state to Raft. Plaintext still reveals deployment
-metadata and does not prevent connection-level denial of service, so production
-networks should restrict the listener or place it behind an authenticated TLS
-gateway when those properties matter.
+forwards only a structurally valid envelope; the DNS leader verifies its
+signature and admission context before proposing state to Raft. Plaintext still
+reveals deployment metadata and does not prevent connection-level denial of
+service, so production networks should restrict the listener or place it behind
+an authenticated TLS gateway when those properties matter.
 
 The descriptor contains only an opaque object key. Endpoint addresses, bucket,
 prefix, access credentials, Dell EMC ECS namespace, CA certificate, and TLS

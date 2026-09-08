@@ -235,10 +235,10 @@ services.
 \section{Cluster-wide TCP ingress and direct server return}
 \label{sec:distributed-l2-ingress}
 
-Charlotte can expose one launch-authorized IPv4 TCP service as a cluster
-\texttt{VIP:port}. Charlotte therefore supports two complementary addressing
+Charlotte can expose a bounded table of launch-authorized IPv4 TCP services as
+cluster \texttt{VIP:port} identities. Charlotte therefore supports two complementary addressing
 modes. A node's DHCP or static address names that particular machine and is
-appropriate for intentionally node-specific client/server traffic. The VIP
+appropriate for intentionally node-specific client/server traffic. Each VIP
 names a service in the cluster: an external client need not know which node
 admits the packet or owns the connection, and those roles can change without
 changing the client's service address.
@@ -275,11 +275,11 @@ still depends on a successful asynchronous refresh.
 
 An operator-signed, committed node-shutdown intent removes its target from new
 flow selection before local teardown, while retaining its admitted route for
-observed flows during the grace interval. The load-balancing epoch is a stable
+observed flows during the grace interval. Each service has an independent
+load-balancing epoch: a stable
 fingerprint of the committed configuration index, service name, deployment
 and registration generations, ready-node set, and replicated drain
-generations. Each
-router retains four recent sets and a bounded 1,024-entry
+generations. Each router retains four recent sets and a bounded 1,024-entry
 \texttt{FlowKey $\rightarrow$ epoch} table. Observed connections retain their
 set across additions; when a backend is removed, only bindings selecting that
 backend are released for reconnection. Rendezvous selection is independent of
@@ -304,30 +304,49 @@ state, an availability limit that cannot be eliminated without shared
 connection tracking or additional packet metadata.
 
 VIP acceptance and advertisement are separate. Every participating node
-installs the VIP as a \texttt{/32} smoltcp address, while DSR admits new flows
+installs each configured VIP as a \texttt{/32} smoltcp address, while DSR admits new flows
 only to the ready backend subset. Only one admitted, non-draining ingress
 participant passes VIP ARP requests. It normally follows the current Raft
 leader and need not run the application itself. A newly selected advertiser
 emits gratuitous ARP, so ingress ownership can move without altering backend
-membership. No node advertises the VIP when no backend is ready. The first
-version supports one IPv4/TCP service and at most 64 admitted members;
+membership. No node advertises a VIP when its backend set is empty. The current
+launch-manifest transport supports 16 IPv4/TCP service assignments and the
+packet policy supports at most 64 admitted members;
 IPv6 neighbour discovery, a service-only drain operation, automatic failed-member
-removal, multiple VIPs, and transparent TCP-state migration are future work. The
+removal, and transparent TCP-state migration are future work. The
 precise bounds, failure semantics, and status fields are documented in
 \repofile|docs/architecture/distributed-l2-ingress.md|.
 
-The launch policy may bind the VIP to a deployed application name. DNS then
-intersects admitted membership with the application's committed replica set and
+The operations-owned bootstrap policy may bind each VIP and TCP port to a
+deployed application name. DNS evaluates each assignment independently and intersects
+admitted membership with the application's committed replica set and
 its per-node exact-generation readiness registrations. After movement or replacement,
 the stale generation is absent from newly derived eligibility; eligibility
 remains empty until the target node's agent publishes the matching generation.
-Routers adopt that result on successful refresh. Retained epochs continue to
+Routers keep separate leases, histories, and flow bindings for every service
+and adopt each result on successful refresh. Retained epochs continue to
 route observed flows during the drain window. Omitting the name keeps a
 compatibility mode in which every admitted, non-draining member runs the
 platform service. Fixed replica counts and \emph{every eligible node}
 placements widen the service-specific backend set as their node agents publish
 readiness. A leader-side controller reconciles automatic assignments after
-membership and drain-state changes.
+membership and drain-state changes. The runner accepts repeatable
+\texttt{--cluster-service NAME=VIP:PORT} options; the older paired
+\texttt{--cluster-service}/\texttt{--cluster-service-name} form remains a
+single-assignment compatibility spelling. Address-specific socket binds allow
+distinct VIPs to use the same conventional TCP port.
+
+The bootstrap table ceases to be authoritative after the first committed
+ingress policy. The variable-length 	exttt{CINGPOL1} envelope binds a complete
+replacement table, monotonic sequence, cluster identity, and UTC validity
+interval under the independent operations signing key. It can enter through
+any member; the leader re-verifies the signature and trusted UTC before Raft
+submission. Exact retries are idempotent, stale or conflicting sequences fail,
+and an empty signed table withdraws all VIPs. Catalog-v14 snapshots retain the
+envelope and replay fence. DNS serves the applied table, frame routers reconcile
+service state by stable packed identity, and TCP/IP reconciles its 	exttt{/32}
+addresses without restarting the nodes. Applications using exact-address
+listeners poll their typed assignments and rebind after an address change.
 
 \architecturewidefigure{cluster-management-dsr}
     {Cluster management supplies DSR with an exact-generation eligible-backend

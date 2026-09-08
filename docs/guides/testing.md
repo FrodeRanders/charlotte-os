@@ -72,7 +72,7 @@ a surviving backend. It then requires a fresh connection and complete HTTP
 exchange with a live backend, demonstrating reconnect after the failed
 advertiser also took one backend connection with it. `--cluster-ingress-test`
 is used only by this harness; ordinary operation is enabled by giving every
-member the same `--cluster-service VIP:port` launch policy.
+member the same repeatable `--cluster-service [NAME=]VIP:port` bootstrap policy.
 
 `--s3-test --timeout 240` is an explicitly test-only integration fixture. It
 adds a local TLS RustFS Docker container, a provisioned S3 service profile, and

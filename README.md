@@ -102,11 +102,12 @@ The main additions and extensions currently maintained here are:
   lease, start discovery and cluster formation, and synchronize UTC. The
   `*-test` options only add verifiers; use `--no-network` for an intentionally
   isolated boot.
-- **Cluster-wide TCP ingress without a TCP proxy:** a launch-authorized
-  `VIP:port` gives clients a stable cluster-level service address: they need
+- **Cluster-wide TCP ingress without a TCP proxy:** launch-authorized
+  `service=VIP:port` assignments give clients stable cluster-level service
+  addresses: they need
   not know which node currently runs a particular connection or which node
   admits the first packet. Nodes retain their own addresses for deliberately
-  node-specific client/server traffic, while the VIP makes the cluster itself
+  node-specific client/server traffic, while each VIP makes the cluster itself
   the externally addressed computer. The frame router applies deterministic
   five-tuple rendezvous placement and moves remote frames in a compact one-hop
   Ethernet envelope that preserves the original IP/TCP packet; the backend's
@@ -120,9 +121,15 @@ The main additions and extensions currently maintained here are:
   whose epoch leaves history fails closed instead of being remapped. A committed shutdown
   intent stops new assignment to its target before teardown while retaining
   admitted routing authority for established flows. An optional deployed
-  service name further intersects Raft membership with committed application
+  service assignment further intersects Raft membership with committed application
   placement and exact-generation readiness, so new flows follow the ready
-  application without exposing its host node. A three-guest host-side
+  application without exposing its host node. Each assignment has an
+  independent freshness lease, policy history, and flow-binding table; equal
+  TCP ports on different VIPs can use address-specific socket binds. A
+  versioned `CINGPOL1` replacement can be signed by the operations authority,
+  submitted through any member, and committed through Raft; routers and TCP/IP
+  reconcile the new identities without rebuilding applications or nodes. A
+  three-guest host-side
   fixture exercises remote selection, an established-flow request after
   VIP-owner loss, and a fresh connection to a surviving backend.
 - **Reliable-message fragmentation:** wire protocol v3 uses 32-bit message

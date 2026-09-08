@@ -1,7 +1,8 @@
 # Distributed L2 ingress and cluster-wide TCP services
 
-Charlotte can expose a TCP service as one IPv4 `VIP:port` while letting the
-admitted cluster members own different connections. The ingress path does not
+Charlotte can expose independently placed TCP services as stable IPv4
+`VIP:port` identities while letting admitted cluster members own different
+connections. The ingress path does not
 terminate TCP. It selects a backend and, when that backend is remote, wraps the
 unchanged IP packet in a compact one-hop Charlotte Ethernet envelope before
 returning the same moved memory object to the NIC driver. The selected
@@ -29,8 +30,8 @@ contract is `VIP:port`, while ingress ownership and execution placement may
 move independently behind it. Individual node addresses remain mechanisms of
 the cluster, not part of the cluster-addressed application's public identity.
 
-The service declaration may now bind the VIP to a deployed application name.
-DNS then intersects admitted members with the application's committed placement
+Each service declaration binds a VIP and port to an optional deployed
+application name. DNS then intersects admitted members with that application's committed placement
 and exact-generation readiness registration. A moved or replaced application
 does not remain in the newly derived policy through a stale registration:
 eligibility becomes empty after the new placement commits and reappears only
@@ -56,8 +57,9 @@ identity is whichever committed node currently advertises the VIP. The
 execution identity is the backend selected for a five-tuple. They need not be
 the same node.
 
-Only the platform launcher can place `vip`, `vipport`, and the optional
-`vip-name` deployment binding in service manifests. Applications receive
+The platform launcher can place the canonical `vips` bootstrap table, and the
+operations authority can replace it cluster-wide with a signed committed
+policy. Applications receive
 socket capabilities; they cannot alter ingress policy, claim readiness for a
 different deployment generation, or change cluster membership.
 
@@ -65,7 +67,9 @@ DNS owns the operational Raft member. Its local `OP_INGRESS_MEMBERSHIP`
 operation materializes an immutable snapshot containing stable node keys and
 the discovery-associated MAC route for every admitted voter. The snapshot
 separates that trusted/routable member set from the subset eligible for new
-flows. When `vip-name` is configured, that subset contains only nodes selected
+flows. Its argument carries the stable packed service identity, so a table
+revision cannot redirect an outstanding query to another service. Every
+service has an independent eligibility epoch. When a backend name is configured, that subset contains only nodes selected
 by the committed replica set and carrying an active per-node catalog
 registration for the exact deployment generation. It therefore yields any
 subset from zero through the desired replica count as agents become ready.
@@ -124,7 +128,7 @@ generation, sorted ready-node set, and replicated shutdown-intent generations.
 It changes for membership, placement, readiness, or drain-policy changes, but
 not for unrelated catalog traffic.
 `frouter` retains four membership snapshots and up to 1,024 local
-`FlowKey -> epoch` bindings. Retransmitted SYNs and later packets retain the
+`FlowKey -> epoch` bindings per assigned service. Retransmitted SYNs and later packets retain the
 original epoch. Adding a member consequently affects new flows without
 remapping observed connections. When a backend is removed, bindings that
 selected it are released so a reconnect can use the active set; bindings
@@ -187,20 +191,69 @@ trusted or administratively isolated fabric. Authenticated link envelopes,
 switch port controls, or a protected overlay are required before exposing that
 segment to mutually untrusted hosts.
 
+## Operations-owned service assignment
+
+Production addresses belong to operations configuration, not to the signed
+application descriptor. DNS, `frouter`, and `tcpip` therefore share one
+canonical, validated assignment table. Each entry is
+`service-name=VIP:port`; an unnamed entry retains the platform-service mode.
+The QEMU runner exposes this directly as a repeatable option:
+
+```sh
+./scripts/run-aarch64.sh release \
+  --cluster-service orders=10.0.2.42:443 \
+  --cluster-service payments=10.0.2.43:443
+```
+
+DNS evaluates placement and readiness independently for `orders` and
+`payments`. The router maintains separate leases, snapshot histories, and flow
+tables, while TCP/IP installs both addresses as `/32` identities. ARP policy is
+evaluated across every service on a VIP, and address-specific `bind_ipv4` and
+`listen_ipv4` socket operations allow applications on different VIPs to use
+the same conventional port. An application can resolve all identities assigned
+to its full artifact name with the ownership-safe `dns::ingress_assignments`
+helper, provided its signed descriptor grants the attenuated DNS connection;
+it need not compile an environment address into its executable.
+
+The launch table is a bootstrap default, so members should still receive the
+same value before the first policy commit. Runtime changes use `CINGPOL1`, a
+complete replacement signed by the independent operations authority. It binds
+a monotonic sequence, cluster ID, UTC validity interval, and canonical table.
+A request can enter through any member; the leader re-verifies signature,
+cluster and trusted UTC during the admission window, then commits the envelope
+through Raft. The committed desired policy remains active until replacement;
+expiry does not withdraw a live VIP. Lower
+sequences and conflicting bytes at an existing sequence are rejected; exact
+retries return the existing generation. An empty signed table explicitly
+withdraws every cluster identity.
+
+After application, DNS serves only the committed table. `frouter` reconciles
+states by packed `ServiceId` and backend artifact, preserving snapshots and
+flows only for unchanged bindings and dropping state for withdrawn or rebound
+identities. `tcpip` independently
+reconciles its `/32` addresses. Applications using exact-address listeners
+poll `dns::ingress_assignments` and rebind when their assignment changes.
+Catalog-v14 snapshots retain the signed policy and replay fence.
+
+Both bootstrap and committed formats currently hold at most 16 entries. This
+guarantees that 16 maximum-length names fit the 1 KiB table bound and is not a
+DSR or Raft limit.
+
 ## Bounds, diagnostics and validation
 
-The initial implementation supports one launch-configured IPv4/TCP service and
+The implementation supports up to 16 bootstrap- or Raft-configured IPv4/TCP services and
 at most 64 admitted members. Signed node shutdown supplies the first graceful
 drain trigger; a standalone service-drain operation and automatic failed-member
-removal are not implemented. Service-specific replica sets are implemented;
-IPv6 neighbour advertisement, multiple VIPs and transparent TCP state
+removal are not implemented. Service-specific replica sets and multiple VIPs
+are implemented; IPv6 neighbour advertisement and transparent TCP state
 migration remain extension points. Application state restoration can
 support reconnect-and-resume semantics, but application serialization does not
 include TCP sequence, retransmission or congestion-control state.
 
-The frame-router status reply and shared status page expose the current epoch,
+The frame-router status reply and shared status page expose the first service's current epoch,
 admitted-member, eligible-backend and derived draining counts, advertiser node
-key, local/remote/drop counters and retained flow-binding count. Unit tests
+key, aggregate local/remote/drop counters, total retained flow-binding count,
+and configured service count. Unit tests
 cover deterministic selection, distribution, join, drain and removal
 behaviour, ingress replacement, exact packet preservation and ARP construction.
 The AArch64 SLIRP demonstrator serves the HTTP keyhole
@@ -221,7 +274,7 @@ least one must reach a live member. The observed two-survivor election can need
 multiple split-vote rounds, so faster failover remains a tuning and pre-vote
 work item rather than a claimed property.
 
-For an operational AArch64 launch, pass the same descriptor to every member:
+For an operational AArch64 bootstrap, pass the same assignment to every member:
 
 ```sh
 ./scripts/run-aarch64.sh release --cluster-service 10.0.2.42:80
@@ -229,12 +282,11 @@ For an operational AArch64 launch, pass the same descriptor to every member:
 
 This option configures the runtime service; it does not register a verifier.
 To bind new-flow eligibility to a deployed application and its readiness fence,
-add the signed artifact name:
+name the assignment:
 
 ```sh
 ./scripts/run-aarch64.sh release \
-  --cluster-service 10.0.2.42:8080 \
-  --cluster-service-name orders
+  --cluster-service orders=10.0.2.42:8080
 ```
 
 Before `orders` is committed, ready, and installed in a complete router
@@ -243,6 +295,21 @@ committed policy makes new flows wait for the new exact generation and retained
 epochs preserve observed flows. A router that cannot refresh can presently
 continue using retained epochs for bound flows, but its five-second lease stops
 VIP advertisement and admission of unbound traffic.
+
+To replace bootstrap policy without restarting nodes, derive the cluster ID,
+sign a bounded policy off-cluster, verify it, and notify any member:
+
+```sh
+cluster-sign cluster-id charlotte
+cluster-sign ingress-policy-sign ingress.cing 7 NOT_BEFORE_UNIX EXPIRES_UNIX \
+  CLUSTER_ID operations-private.hex \
+  orders=10.0.2.42:443 payments=10.0.2.43:443
+cluster-sign ingress-policy-verify ingress.cing CLUSTER_ID operations-public.hex
+cluster-sign ingress-policy-notify ingress.cing 127.0.0.1:8081
+cluster-sign ingress-policy-status 127.0.0.1:8081
+```
+
+Use `--clear` instead of assignments to create an authenticated withdrawal.
 
 Run the complete multi-node validation separately:
 

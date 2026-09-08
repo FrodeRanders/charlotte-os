@@ -47,13 +47,17 @@ repository history remain authoritative.
     TLS with streaming object operations; Kafka idempotent producer,
     read-committed fixed-partition consumer, and transactional produce plus
     offset commit & Opt-in AArch64 Docker-fixture tests \\
-15 & Distributed L2 ingress and placement: one configured IPv4/TCP VIP,
+15 & Distributed L2 ingress and placement: up to 16 operations-assigned
+    IPv4/TCP service VIPs,
+    operations-signed Raft-committed complete policy replacement with replay,
+    cluster, and UTC fences,
     committed-Raft membership intersected with signed fixed/every-node replica
     sets and per-node exact-generation readiness, policy epochs, continuous
     membership/drain reconciliation, signed-shutdown draining, deterministic
     rendezvous placement, leased new-flow admission, fail-closed epoch
     tombstones, one-hop L2 envelopes, direct backend replies, and exclusive
-    ARP advertisement & Pure-policy tests, single-node SLIRP VIP, and three-guest
+    ARP advertisement, per-service policy history, and address-specific
+    listeners & Pure-policy tests, single-node SLIRP VIP, and three-guest
     host-visible established-flow failover plus backend-loss reconnect fixture \\
 \hline
 \end{longtable}

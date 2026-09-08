@@ -192,6 +192,13 @@ artifact and deployment roles, but they are separate fields so a production
 launcher can provision them independently. Trust-policy rotation is identified
 by a nonzero sequence; replicated rotation policy remains future work.
 
+The same operations key now signs `CINGPOL1`, the cluster's production
+`service=VIP:port` assignment policy. Unlike connector profiles, these values
+are not secret and the complete bounded envelope can enter Raft. It is still
+cluster-bound, validity-bounded by trusted UTC, and replay-fenced. This keeps
+network identity out of developer-owned application descriptors while allowing
+operations to replace or withdraw assignments without rebuilding nodes.
+
 `deployd` accepts `COPSBND2` at `POST /v1/operations`, and the host tool exposes
 `operations-bundle-notify`. A request may enter through any member. A follower
 only validates bounded framing and source-correlated transport; it sends the

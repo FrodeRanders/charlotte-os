@@ -28,9 +28,9 @@
 //!   network.
 //! - `gateway`: optional IPv4 default-route gateway as four bytes. Omit on a raw two-node link:
 //!   same-subnet peers are reached directly.
-//! - `vip`: optional cluster-service IPv4 address accepted by every backend. The frame router
-//!   independently restricts ARP advertisement to the committed VIP owner and distributes the
-//!   configured `vipport` flows.
+//! - `vips`: optional canonical table of cluster-service IPv4/TCP identities accepted by every
+//!   backend. The frame router independently restricts ARP advertisement and distributes each
+//!   service's flows from its committed placement/readiness projection.
 #![no_std]
 #![no_main]
 
@@ -39,6 +39,7 @@ extern crate alloc;
 use alloc::{
     collections::BTreeMap,
     vec,
+    vec::Vec,
 };
 
 use catten_rt::{
@@ -46,9 +47,15 @@ use catten_rt::{
     ManifestValue,
     ShutdownRequest,
     config,
-    owned::Endpoint,
+    owned::{
+        Connection,
+        ConnectionRef,
+        Endpoint,
+        PendingCall,
+    },
 };
 use catten_services::{
+    dns,
     net,
     ns,
     socket,
@@ -110,6 +117,7 @@ const FRAME_MAX: usize = 4096;
 /// timers (delayed ACK, RTO) tolerate the coarser granularity, and the lower
 /// re-arm rate avoids interacting with the 10 ms scheduler quantum on LP 0.
 const CLOCK_TICK_MS: u64 = 50;
+const ASSIGNMENT_REFRESH_MS: u64 = 1_000;
 const CLOCK_TIMER_COOKIE: u64 = 0x5443_5049_434c_4b31;
 /// Per-socket buffer size. The httpd report exceeds one 4096-byte page, so a
 /// single-page buffer forces the sender to stall mid-stream while the peer
@@ -177,6 +185,112 @@ fn read_port(memory: u64) -> u16 {
     port
 }
 
+/// Decode the address-specific bind/listen payload at this protocol adapter
+/// boundary. The caller retains responsibility for closing the moved object.
+fn read_ipv4_listen_endpoint(memory: u64) -> Option<smoltcp::wire::IpListenEndpoint> {
+    let (status, vaddr) = memory_map_any(memory, false);
+    if status != 0 {
+        return None;
+    }
+    let bytes = unsafe { core::slice::from_raw_parts(vaddr as *const u8, 6) };
+    let address = Ipv4Address::new(bytes[0], bytes[1], bytes[2], bytes[3]);
+    let port = u16::from_le_bytes([bytes[4], bytes[5]]);
+    memory_unmap(memory);
+    (address != Ipv4Address::UNSPECIFIED && port != 0).then_some(smoltcp::wire::IpListenEndpoint {
+        addr: Some(IpAddress::Ipv4(address)),
+        port,
+    })
+}
+
+struct AssignmentClient {
+    lookup: Option<PendingCall<'static>>,
+    connection: Option<Connection>,
+    request: Option<PendingCall<'static>>,
+}
+
+impl AssignmentClient {
+    fn new() -> Self {
+        Self {
+            lookup: None,
+            connection: None,
+            request: None,
+        }
+    }
+
+    fn poll(&mut self, names: ConnectionRef<'_>, refresh_due: bool) -> Option<Vec<Ipv4Address>> {
+        if let Some(request) = self.request.as_mut() {
+            match request.poll() {
+                Ok(None) => return None,
+                Ok(Some(result)) => {
+                    self.request = None;
+                    let length = usize::try_from(result.result).ok()?;
+                    let memory = result.memory?;
+                    let mapping = memory.map_read_only().ok()?;
+                    let bytes = mapping.as_slice().get(..length)?;
+                    return Some(charlotte_launch::ingress::decode(bytes)?.fold(
+                        Vec::new(),
+                        |mut addresses, binding| {
+                            let [a, b, c, d] = binding.service.address;
+                            let address = Ipv4Address::new(a, b, c, d);
+                            if !addresses.contains(&address) {
+                                addresses.push(address);
+                            }
+                            addresses
+                        },
+                    ));
+                }
+                Err(_) => {
+                    self.request = None;
+                    self.connection = None;
+                }
+            }
+        }
+        if let Some(lookup) = self.lookup.as_mut() {
+            match lookup.poll() {
+                Ok(None) => return None,
+                Ok(Some(result)) => {
+                    self.lookup = None;
+                    if result.result >= 1 {
+                        self.connection = result.connection;
+                    }
+                }
+                Err(_) => self.lookup = None,
+            }
+        }
+        if self.connection.is_none() {
+            self.lookup = names.call(ns::OP_LOOKUP, dns::NAME).ok();
+            return None;
+        }
+        if refresh_due {
+            self.request = self
+                .connection
+                .as_ref()
+                .and_then(|connection| connection.call(dns::OP_INGRESS_ASSIGNMENTS, 0).ok());
+        }
+        None
+    }
+}
+
+fn install_interface_addresses(
+    iface: &mut Interface,
+    local: Option<Ipv4Cidr>,
+    service_vips: &[Ipv4Address],
+) {
+    iface.update_ip_addrs(|addrs| {
+        addrs.clear();
+        if let Some(local) = local {
+            let _ = addrs.push(IpCidr::Ipv4(local));
+        }
+        for vip in service_vips
+            .iter()
+            .copied()
+            .filter(|vip| local.is_none_or(|cidr| *vip != cidr.address()))
+        {
+            addrs.push(IpCidr::Ipv4(Ipv4Cidr::new(vip, 32))).unwrap_or_else(|_| fail(0xe008));
+        }
+    });
+}
+
 fn fail(code: u32) -> ! {
     config::write::<u32>(status::ERROR, code);
     catten_syscall::el0_log(0x5443_5049, code as u64); // "TCPI"
@@ -230,17 +344,28 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             _ => default_ip,
         }
     };
+    let mut local_cidr = (!dhcp).then(|| Ipv4Cidr::new(local_ip, 24));
     let gateway = match ctx.manifest_value(charlotte_launch::manifest_key(b"gateway")) {
         Some(ManifestValue::Bytes(raw)) if raw.len() == 4 => {
             Some(Ipv4Address::new(raw[0], raw[1], raw[2], raw[3]))
         }
         _ => None,
     };
-    let service_vip = match ctx.manifest_value(charlotte_launch::manifest_key(b"vip")) {
-        Some(ManifestValue::Bytes(raw)) if raw.len() == 4 && raw != [0, 0, 0, 0] => {
-            Some(Ipv4Address::new(raw[0], raw[1], raw[2], raw[3]))
-        }
-        _ => None,
+    let mut service_vips = match ctx.manifest_value(charlotte_launch::manifest_key(b"vips")) {
+        Some(ManifestValue::Bytes(raw)) => charlotte_launch::ingress::decode(raw)
+            .unwrap_or_else(|| fail(0xe007))
+            .map(|binding| {
+                let [a, b, c, d] = binding.service.address;
+                Ipv4Address::new(a, b, c, d)
+            })
+            .fold(Vec::new(), |mut addresses, address| {
+                if !addresses.contains(&address) {
+                    addresses.push(address);
+                }
+                addresses
+            }),
+        Some(_) => fail(0xe007),
+        None => Vec::new(),
     };
     config::write::<u32>(status::STAGE, 3);
 
@@ -284,14 +409,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     cfg.random_seed = 0x0123_4567_89ab_cdef;
     let mut iface = Interface::new(cfg, &mut device, Instant::from_millis(0));
     if !dhcp {
-        iface.update_ip_addrs(|addrs| {
-            let _ = addrs.push(IpCidr::Ipv4(Ipv4Cidr::new(local_ip, 24)));
-            if let Some(vip) = service_vip
-                && vip != local_ip
-            {
-                let _ = addrs.push(IpCidr::Ipv4(Ipv4Cidr::new(vip, 32)));
-            }
-        });
+        install_interface_addresses(&mut iface, local_cidr, &service_vips);
         if let Some(gw) = gateway {
             iface.routes_mut().add_default_ipv4_route(gw).ok();
         }
@@ -329,6 +447,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     // how often endpoint traffic wakes the bounded CQ wait.
     let cq = ctx.completion_queue_layout();
     let mut clock_armed = submit_detached_timer(CLOCK_TICK_MS, 0, CLOCK_TIMER_COOKIE) != u64::MAX;
+    let mut assignment_client = AssignmentClient::new();
+    let mut next_assignment_refresh_ms = 0u64;
 
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
@@ -352,6 +472,17 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             return request;
         }
         device.poll_smoltcp(&mut iface, &mut sockets, &mut ticks, elapsed_ms);
+        let assignments_due = ticks >= next_assignment_refresh_ms;
+        if assignments_due {
+            next_assignment_refresh_ms = ticks.saturating_add(ASSIGNMENT_REFRESH_MS);
+        }
+        if let Some(vips) = assignment_client.poll(ns_connection, assignments_due)
+            && vips != service_vips
+        {
+            install_interface_addresses(&mut iface, local_cidr, &vips);
+            service_vips = vips;
+            catten_rt::logln!("[tcpip] installed {} committed cluster VIP(s)", service_vips.len());
+        }
 
         // Periodic heartbeat (~every 1024 reactor iterations) so a stall can be
         // localized: if rx_total stops advancing here, forwarded frames (e.g.
@@ -394,6 +525,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     router,
                 } => {
                     local_ip = cidr.address();
+                    local_cidr = Some(cidr);
                     let octets = local_ip.octets();
                     catten_rt::logln!(
                         "[tcpip] DHCP assigned {}.{}.{}.{}/{}",
@@ -403,15 +535,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         octets[3],
                         cidr.prefix_len()
                     );
-                    iface.update_ip_addrs(|addrs| {
-                        addrs.clear();
-                        let _ = addrs.push(IpCidr::Ipv4(cidr));
-                        if let Some(vip) = service_vip
-                            && vip != cidr.address()
-                        {
-                            let _ = addrs.push(IpCidr::Ipv4(Ipv4Cidr::new(vip, 32)));
-                        }
-                    });
+                    install_interface_addresses(&mut iface, local_cidr, &service_vips);
                     match router {
                         Some(r) => {
                             let _ = iface.routes_mut().add_default_ipv4_route(r);
@@ -423,12 +547,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
                 DhcpUpdate::Deconfigured => {
                     local_ip = Ipv4Address::new(0, 0, 0, 0);
-                    iface.update_ip_addrs(|addrs| {
-                        addrs.clear();
-                        if let Some(vip) = service_vip {
-                            let _ = addrs.push(IpCidr::Ipv4(Ipv4Cidr::new(vip, 32)));
-                        }
-                    });
+                    local_cidr = None;
+                    install_interface_addresses(&mut iface, local_cidr, &service_vips);
                     iface.routes_mut().remove_default_ipv4_route();
                 }
             }
@@ -669,6 +789,44 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     };
                 }
 
+                socket::OP_BIND_IPV4 => {
+                    let entry = match state.sockets.get_mut(&msg.arg0) {
+                        Some(entry) => entry,
+                        None => {
+                            if msg.memory != 0 {
+                                memory_close(msg.memory);
+                            }
+                            ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
+                            continue;
+                        }
+                    };
+                    let listen =
+                        (msg.memory != 0).then(|| read_ipv4_listen_endpoint(msg.memory)).flatten();
+                    if msg.memory != 0 {
+                        memory_close(msg.memory);
+                    }
+                    let Some(listen) = listen else {
+                        ipc_reply(msg.reply, socket::ERR_BAD_OPCODE);
+                        continue;
+                    };
+                    let bound = match entry.kind {
+                        SocketKind::Tcp => {
+                            sockets.get_mut::<TcpSocket>(entry.handle).listen(listen).is_ok()
+                        }
+                        SocketKind::Udp => {
+                            sockets.get_mut::<UdpSocket>(entry.handle).bind(listen).is_ok()
+                        }
+                    };
+                    ipc_reply(
+                        msg.reply,
+                        if bound {
+                            0
+                        } else {
+                            socket::ERR_BAD_SOCKET
+                        },
+                    );
+                }
+
                 socket::OP_LISTEN => {
                     let entry = match state.sockets.get_mut(&msg.arg0) {
                         Some(e) => e,
@@ -699,6 +857,33 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         Ok(()) => ipc_reply(msg.reply, 0),
                         Err(_) => ipc_reply(msg.reply, socket::ERR_BAD_SOCKET),
                     };
+                }
+
+                socket::OP_LISTEN_IPV4 => {
+                    let entry = match state.sockets.get_mut(&msg.arg0) {
+                        Some(entry) if entry.kind == SocketKind::Tcp => entry,
+                        _ => {
+                            if msg.memory != 0 {
+                                memory_close(msg.memory);
+                            }
+                            ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
+                            continue;
+                        }
+                    };
+                    let listen =
+                        (msg.memory != 0).then(|| read_ipv4_listen_endpoint(msg.memory)).flatten();
+                    if msg.memory != 0 {
+                        memory_close(msg.memory);
+                    }
+                    let Some(listen) = listen else {
+                        ipc_reply(msg.reply, socket::ERR_BAD_OPCODE);
+                        continue;
+                    };
+                    let result = sockets
+                        .get_mut::<TcpSocket>(entry.handle)
+                        .listen(listen)
+                        .map_or(socket::ERR_BAD_SOCKET, |()| 0);
+                    ipc_reply(msg.reply, result);
                 }
 
                 socket::OP_ACCEPT => {

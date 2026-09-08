@@ -87,8 +87,7 @@ const MAX_PENDING_PER_ROUTE: usize = 8;
 const MAX_PENDING_L2_SENDS: usize = 32;
 const FLOW_EPOCH_CAPACITY: usize = 1024;
 const SNAPSHOT_HISTORY_CAPACITY: usize = 4;
-const VIP_KEY: u64 = charlotte_launch::manifest_key(b"vip");
-const VIP_PORT_KEY: u64 = charlotte_launch::manifest_key(b"vipport");
+const INGRESS_SERVICES_KEY: u64 = charlotte_launch::manifest_key(b"vips");
 
 /// Monotonic reactor-tick counter for periodic heartbeat logging.
 static HEARTBEAT_TICKS: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
@@ -132,6 +131,7 @@ impl MembershipClient {
     fn poll(
         &mut self,
         ns_conn: ConnectionRef<'_>,
+        service: ServiceId,
         refresh_due: bool,
         history: &mut SnapshotHistory,
     ) -> Option<BackendSnapshot> {
@@ -173,12 +173,119 @@ impl MembershipClient {
             return None;
         }
         if refresh_due {
+            self.request = self.connection.as_ref().and_then(|connection| {
+                connection.call(dns::OP_INGRESS_MEMBERSHIP, service.pack()).ok()
+            });
+        }
+        None
+    }
+}
+
+struct AssignmentClient {
+    lookup: Option<PendingCall<'static>>,
+    connection: Option<Connection>,
+    request: Option<PendingCall<'static>>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ConfiguredIngressService {
+    service: ServiceId,
+    backend_name: Option<Vec<u8>>,
+}
+
+impl AssignmentClient {
+    fn new() -> Self {
+        Self {
+            lookup: None,
+            connection: None,
+            request: None,
+        }
+    }
+
+    /// Poll the effective committed assignment table without parking the NIC
+    /// owner. Invalid replies leave the previously installed table intact.
+    fn poll(
+        &mut self,
+        ns_conn: ConnectionRef<'_>,
+        refresh_due: bool,
+    ) -> Option<Vec<ConfiguredIngressService>> {
+        if let Some(request) = self.request.as_mut() {
+            match request.poll() {
+                Ok(None) => return None,
+                Ok(Some(result)) => {
+                    self.request = None;
+                    let length = usize::try_from(result.result).ok()?;
+                    let memory = result.memory?;
+                    let mapping = memory.map_read_only().ok()?;
+                    let bytes = mapping.as_slice().get(..length)?;
+                    return Some(
+                        charlotte_launch::ingress::decode(bytes)?
+                            .map(|binding| ConfiguredIngressService {
+                                service: binding.service,
+                                backend_name: binding.backend_name.map(<[u8]>::to_vec),
+                            })
+                            .collect(),
+                    );
+                }
+                Err(_) => {
+                    self.request = None;
+                    self.connection = None;
+                }
+            }
+        }
+        if let Some(lookup) = self.lookup.as_mut() {
+            match lookup.poll() {
+                Ok(None) => return None,
+                Ok(Some(result)) => {
+                    self.lookup = None;
+                    if result.result >= 1 {
+                        self.connection = result.connection;
+                    }
+                }
+                Err(_) => self.lookup = None,
+            }
+        }
+        if self.connection.is_none() {
+            self.lookup = ns_conn.call(ns::OP_LOOKUP, dns::NAME).ok();
+            return None;
+        }
+        if refresh_due {
             self.request = self
                 .connection
                 .as_ref()
-                .and_then(|connection| connection.call(dns::OP_INGRESS_MEMBERSHIP, 0).ok());
+                .and_then(|connection| connection.call(dns::OP_INGRESS_ASSIGNMENTS, 0).ok());
         }
         None
+    }
+}
+
+struct IngressServiceState {
+    service: ServiceId,
+    backend_name: Option<Vec<u8>>,
+    membership: MembershipClient,
+    snapshots: SnapshotHistory,
+    flows: FlowEpochTable,
+    snapshot_lease: Option<Completion>,
+    vip_advertiser: Option<u64>,
+    logged_epoch: Option<u64>,
+}
+
+impl IngressServiceState {
+    fn new(service: ServiceId, backend_name: Option<Vec<u8>>) -> Self {
+        Self {
+            service,
+            backend_name,
+            membership: MembershipClient::new(),
+            snapshots: SnapshotHistory::new(SNAPSHOT_HISTORY_CAPACITY),
+            flows: FlowEpochTable::new(FLOW_EPOCH_CAPACITY),
+            snapshot_lease: None,
+            vip_advertiser: None,
+            logged_epoch: None,
+        }
+    }
+
+    fn snapshot_fresh(&self) -> bool {
+        self.snapshot_lease.is_some()
     }
 }
 
@@ -278,6 +385,116 @@ fn classify_ingress(
     Some((memory, frame_len, ethertype, decision))
 }
 
+fn classify_configured_ingress(
+    memory: OwnedMemory,
+    frame_len: usize,
+    services: &mut [IngressServiceState],
+) -> Option<(OwnedMemory, usize, u16, IngressDecision)> {
+    if services.is_empty() {
+        let (memory, ethertype) = read_ethertype(memory, frame_len)?;
+        return Some((memory, frame_len, ethertype, IngressDecision::Ordinary));
+    }
+    let mapping = memory.map_read_only().ok()?;
+    let frame = mapping.as_slice().get(..frame_len)?;
+    let ethertype = u16::from_be_bytes(frame.get(12..14)?.try_into().ok()?);
+    if ethertype == FORWARDED_ETHERTYPE {
+        let source: [u8; 6] = frame.get(6..12)?.try_into().ok()?;
+        let trusted = services.iter().any(|state| {
+            state.snapshots.current().is_some_and(|snapshot| {
+                snapshot.members().iter().any(|member| member.mac == source)
+            })
+        });
+        let memory = mapping.unmap().ok()?;
+        if !trusted {
+            return Some((
+                memory,
+                frame_len,
+                ethertype,
+                IngressDecision::Drop(IngressDropReason::UntrustedForwarder),
+            ));
+        }
+        let mut mapping = memory.map_writable().ok()?;
+        let (restored_len, restored_ethertype) =
+            decapsulate_forwarded_frame(mapping.as_mut_slice(), frame_len)?;
+        let memory = mapping.unmap().ok()?;
+        return Some((memory, restored_len, restored_ethertype, IngressDecision::Local));
+    }
+    if ethertype == ARP_ETHERTYPE {
+        let mut matched = false;
+        let mut stale = false;
+        let mut advertise = false;
+        for state in services.iter() {
+            if is_arp_request_for_vip(frame, state.service.address) {
+                matched = true;
+                stale |= state.snapshots.current().is_some() && !state.snapshot_fresh();
+                advertise |=
+                    local_advertises_vip(state.snapshots.current(), state.snapshot_fresh());
+            }
+        }
+        let memory = mapping.unmap().ok()?;
+        return Some((
+            memory,
+            frame_len,
+            ethertype,
+            if !matched || advertise {
+                IngressDecision::Ordinary
+            } else if stale {
+                IngressDecision::Drop(IngressDropReason::SnapshotStale)
+            } else {
+                IngressDecision::Drop(IngressDropReason::Policy)
+            },
+        ));
+    }
+    let mut memory = mapping.unmap().ok()?;
+    for state in services {
+        let snapshot_fresh = state.snapshot_fresh();
+        let result = classify_ingress(
+            memory,
+            frame_len,
+            state.service,
+            &state.snapshots,
+            &mut state.flows,
+            snapshot_fresh,
+        )?;
+        let ordinary = matches!(result.3, IngressDecision::Ordinary);
+        memory = result.0;
+        if !ordinary {
+            return Some((memory, result.1, result.2, result.3));
+        }
+    }
+    Some((memory, frame_len, ethertype, IngressDecision::Ordinary))
+}
+
+fn configured_ingress_services(ctx: &Context) -> Vec<IngressServiceState> {
+    match ctx.manifest_value(INGRESS_SERVICES_KEY) {
+        Some(ManifestValue::Bytes(bytes)) => charlotte_launch::ingress::decode(bytes)
+            .unwrap_or_else(|| fail())
+            .map(|binding| {
+                IngressServiceState::new(binding.service, binding.backend_name.map(<[u8]>::to_vec))
+            })
+            .collect(),
+        Some(_) => fail(),
+        None => Vec::new(),
+    }
+}
+
+fn reconcile_ingress_services(
+    states: &mut Vec<IngressServiceState>,
+    services: &[ConfiguredIngressService],
+) {
+    let mut previous = core::mem::take(states);
+    states.reserve(services.len());
+    for service in services {
+        if let Some(index) = previous.iter().position(|state| {
+            state.service == service.service && state.backend_name == service.backend_name
+        }) {
+            states.push(previous.swap_remove(index));
+        } else {
+            states.push(IngressServiceState::new(service.service, service.backend_name.clone()));
+        }
+    }
+}
+
 fn submit_gratuitous_arp(
     net_conn: &Connection,
     local_mac: [u8; 6],
@@ -361,16 +578,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     // The NIC driver is mandatory; discovery of the optional consumers may
     // lag behind their registration.
     let mut net_conn = lookup(ns_conn, net::NAME).unwrap_or_else(|| fail());
-    let cluster_service = match (ctx.manifest_value(VIP_KEY), ctx.manifest_value(VIP_PORT_KEY)) {
-        (Some(ManifestValue::Bytes(address)), Some(ManifestValue::Unsigned(port)))
-            if address.len() == 4 && u16::try_from(port).is_ok() =>
-        {
-            let service =
-                ServiceId::tcp_v4([address[0], address[1], address[2], address[3]], port as u16);
-            service.is_valid().then_some(service)
-        }
-        _ => None,
-    };
+    let mut ingress_services = configured_ingress_services(ctx);
     config::write::<u32>(status::STAGE, 2);
 
     // Register so other services (notably the httpd report aggregator) can
@@ -428,14 +636,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     ];
     let mut pending_forwards: Vec<PendingForward> = Vec::new();
     let mut pending_l2_sends: Vec<PendingCall<'static>> = Vec::new();
-    let mut membership = MembershipClient::new();
-    let mut snapshots = SnapshotHistory::new(SNAPSHOT_HISTORY_CAPACITY);
-    let mut flows = FlowEpochTable::new(FLOW_EPOCH_CAPACITY);
     let mut membership_timer = Completion::timer(frouter::SNAPSHOT_REFRESH_MS).ok();
     let mut membership_due = true;
-    let mut snapshot_lease: Option<Completion> = None;
-    let mut vip_advertiser = None;
-    let mut logged_membership_epoch = None;
+    let mut assignments = AssignmentClient::new();
     refresh_routes(&mut routes, &mut route_lookups, ns_conn);
     config::write::<u32>(status::ROUTES, routes.len() as u32);
 
@@ -491,7 +694,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     ingress_local,
                     ingress_forwarded,
                     ingress_dropped,
-                    snapshots.current().map_or(0, |snapshot| snapshot.epoch)
+                    ingress_services
+                        .first()
+                        .and_then(|state| state.snapshots.current())
+                        .map_or(0, |snapshot| snapshot.epoch)
                 );
             }
             // Drain our own endpoint so status queries are served even while
@@ -504,6 +710,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     continue;
                 };
                 if message.opcode == frouter::OP_STATUS {
+                    let primary = ingress_services.first();
+                    let primary_snapshot = primary.and_then(|state| state.snapshots.current());
                     let words = [
                         stage,
                         rx_total,
@@ -512,30 +720,32 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         unknown,
                         routes.len() as u32,
                         frouter::STATUS_MAGIC,
-                        snapshots.current().map_or(0, |snapshot| snapshot.epoch as u32),
-                        snapshots.current().map_or(0, |snapshot| (snapshot.epoch >> 32) as u32),
-                        snapshots.current().map_or(0, |snapshot| snapshot.backends().len() as u32),
-                        snapshots
-                            .current()
+                        primary_snapshot.map_or(0, |snapshot| snapshot.epoch as u32),
+                        primary_snapshot.map_or(0, |snapshot| (snapshot.epoch >> 32) as u32),
+                        primary_snapshot.map_or(0, |snapshot| snapshot.backends().len() as u32),
+                        primary_snapshot
                             .and_then(BackendSnapshot::vip_advertiser)
                             .map_or(0, |backend| backend.node_id as u32),
                         ingress_local,
                         ingress_forwarded,
                         ingress_dropped,
-                        flows.len() as u32,
-                        u32::from(
-                            snapshot_lease.is_some()
-                                && vip_advertiser.is_some_and(|node| {
-                                    snapshots
+                        ingress_services.iter().map(|state| state.flows.len()).sum::<usize>()
+                            as u32,
+                        u32::from(primary.is_some_and(|state| {
+                            state.snapshot_fresh()
+                                && state.vip_advertiser.is_some_and(|node| {
+                                    state
+                                        .snapshots
                                         .current()
                                         .is_some_and(|snapshot| node == snapshot.self_node)
-                                }),
-                        ),
-                        snapshots.current().map_or(0, |snapshot| snapshot.members().len() as u32),
-                        u32::from(snapshot_lease.is_some()),
+                                })
+                        })),
+                        primary_snapshot.map_or(0, |snapshot| snapshot.members().len() as u32),
+                        u32::from(primary.is_some_and(IngressServiceState::snapshot_fresh)),
                         snapshot_stale_dropped,
                         missing_epoch_dropped,
                         snapshot_expirations,
+                        ingress_services.len() as u32,
                     ];
                     let memory = match OwnedMemory::allocate(1) {
                         Ok(memory) => memory,
@@ -583,50 +793,76 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             } else {
                 membership_timer = Completion::timer(frouter::SNAPSHOT_REFRESH_MS).ok();
             }
-            if let Some(lease) = snapshot_lease.as_mut() {
-                match lease.poll() {
-                    Ok(None) => {}
-                    Ok(Some(_)) | Err(_) => {
-                        snapshot_lease = None;
-                        vip_advertiser = None;
-                        snapshot_expirations = snapshot_expirations.wrapping_add(1);
-                        catten_rt::logln!(
-                            "[frouter] VIP SNAPSHOT LEASE EXPIRED epoch={}",
-                            snapshots.current().map_or(0, |snapshot| snapshot.epoch)
-                        );
+            if let Some(services) = assignments.poll(ns_conn, membership_due) {
+                reconcile_ingress_services(&mut ingress_services, &services);
+            }
+            for state in &mut ingress_services {
+                if let Some(lease) = state.snapshot_lease.as_mut() {
+                    match lease.poll() {
+                        Ok(None) => {}
+                        Ok(Some(_)) | Err(_) => {
+                            state.snapshot_lease = None;
+                            state.vip_advertiser = None;
+                            snapshot_expirations = snapshot_expirations.wrapping_add(1);
+                            catten_rt::logln!(
+                                "[frouter] VIP SNAPSHOT LEASE EXPIRED vip={}.{}.{}.{}:{} epoch={}",
+                                state.service.address[0],
+                                state.service.address[1],
+                                state.service.address[2],
+                                state.service.address[3],
+                                state.service.port,
+                                state.snapshots.current().map_or(0, |snapshot| snapshot.epoch)
+                            );
+                        }
                     }
                 }
-            }
-            if cluster_service.is_some()
-                && let Some(snapshot) = membership.poll(ns_conn, membership_due, &mut snapshots)
-            {
-                snapshot_lease = Completion::timer(frouter::SNAPSHOT_LEASE_MS).ok();
-                if let Some(service) = cluster_service {
-                    let _ = flows.remove_absent_backends(&service, &snapshots, &snapshot);
-                }
-                let new_advertiser = snapshot_lease
+                let Some(snapshot) = state.membership.poll(
+                    ns_conn,
+                    state.service,
+                    membership_due,
+                    &mut state.snapshots,
+                ) else {
+                    continue;
+                };
+                state.snapshot_lease = Completion::timer(frouter::SNAPSHOT_LEASE_MS).ok();
+                let _ =
+                    state.flows.remove_absent_backends(&state.service, &state.snapshots, &snapshot);
+                let new_advertiser = state
+                    .snapshot_lease
                     .is_some()
                     .then(|| snapshot.vip_advertiser().map(|backend| backend.node_id))
                     .flatten();
-                let epoch_changed = logged_membership_epoch != Some(snapshot.epoch);
+                let epoch_changed = state.logged_epoch != Some(snapshot.epoch);
                 if epoch_changed && new_advertiser == Some(snapshot.self_node) {
                     catten_rt::logln!(
-                        "[frouter] VIP SNAPSHOT OWNER node={:08x} epoch={} backends={}/{}",
+                        "[frouter] VIP SNAPSHOT OWNER vip={}.{}.{}.{}:{} node={:08x} epoch={} \
+                         backends={}/{}",
+                        state.service.address[0],
+                        state.service.address[1],
+                        state.service.address[2],
+                        state.service.address[3],
+                        state.service.port,
                         snapshot.self_node,
                         snapshot.epoch,
                         snapshot.backends().len(),
                         snapshot.members().len()
                     );
                 }
-                if (vip_advertiser != new_advertiser || epoch_changed)
+                if (state.vip_advertiser != new_advertiser || epoch_changed)
                     && new_advertiser == Some(snapshot.self_node)
                     && pending_l2_sends.len() < MAX_PENDING_L2_SENDS
-                    && let (Some(service), Some(owner)) =
-                        (cluster_service, snapshot.vip_advertiser())
-                    && let Some(call) = submit_gratuitous_arp(&net_conn, owner.mac, service.address)
+                    && let Some(owner) = snapshot.vip_advertiser()
+                    && let Some(call) =
+                        submit_gratuitous_arp(&net_conn, owner.mac, state.service.address)
                 {
                     catten_rt::logln!(
-                        "[frouter] VIP ADVERTISER ACQUIRED node={:08x} epoch={} backends={}/{}",
+                        "[frouter] VIP ADVERTISER ACQUIRED vip={}.{}.{}.{}:{} node={:08x} \
+                         epoch={} backends={}/{}",
+                        state.service.address[0],
+                        state.service.address[1],
+                        state.service.address[2],
+                        state.service.address[3],
+                        state.service.port,
                         snapshot.self_node,
                         snapshot.epoch,
                         snapshot.backends().len(),
@@ -634,10 +870,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     );
                     pending_l2_sends.push(call);
                 }
-                vip_advertiser = new_advertiser;
-                logged_membership_epoch = Some(snapshot.epoch);
+                state.vip_advertiser = new_advertiser;
+                state.logged_epoch = Some(snapshot.epoch);
             }
-            if membership.request.is_some() {
+            if membership_due {
                 membership_due = false;
             }
             config::write::<u32>(status::RX_TOTAL, rx_total);
@@ -645,46 +881,57 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             config::write::<u32>(status::DROPPED, dropped);
             config::write::<u32>(status::UNKNOWN, unknown);
             config::write::<u32>(status::ROUTES, routes.len() as u32);
+            let primary = ingress_services.first();
+            let primary_snapshot = primary.and_then(|state| state.snapshots.current());
             config::write::<u32>(
                 status::EPOCH_LO,
-                snapshots.current().map_or(0, |snapshot| snapshot.epoch as u32),
+                primary_snapshot.map_or(0, |snapshot| snapshot.epoch as u32),
             );
             config::write::<u32>(
                 status::EPOCH_HI,
-                snapshots.current().map_or(0, |snapshot| (snapshot.epoch >> 32) as u32),
+                primary_snapshot.map_or(0, |snapshot| (snapshot.epoch >> 32) as u32),
             );
             config::write::<u32>(
                 status::BACKENDS,
-                snapshots.current().map_or(0, |snapshot| snapshot.backends().len() as u32),
+                primary_snapshot.map_or(0, |snapshot| snapshot.backends().len() as u32),
             );
             config::write::<u32>(
                 status::VIP_ADVERTISER,
-                snapshots
-                    .current()
+                primary_snapshot
                     .and_then(BackendSnapshot::vip_advertiser)
                     .map_or(0, |backend| backend.node_id as u32),
             );
             config::write::<u32>(status::INGRESS_LOCAL, ingress_local);
             config::write::<u32>(status::INGRESS_FORWARDED, ingress_forwarded);
             config::write::<u32>(status::INGRESS_DROPPED, ingress_dropped);
-            config::write::<u32>(status::FLOW_BINDINGS, flows.len() as u32);
+            config::write::<u32>(
+                status::FLOW_BINDINGS,
+                ingress_services.iter().map(|state| state.flows.len()).sum::<usize>() as u32,
+            );
             config::write::<u32>(
                 status::IS_ADVERTISER,
-                u32::from(
-                    snapshot_lease.is_some()
-                        && vip_advertiser.is_some_and(|node| {
-                            snapshots.current().is_some_and(|snapshot| node == snapshot.self_node)
-                        }),
-                ),
+                u32::from(primary.is_some_and(|state| {
+                    state.snapshot_fresh()
+                        && state.vip_advertiser.is_some_and(|node| {
+                            state
+                                .snapshots
+                                .current()
+                                .is_some_and(|snapshot| node == snapshot.self_node)
+                        })
+                })),
             );
             config::write::<u32>(
                 status::MEMBERS,
-                snapshots.current().map_or(0, |snapshot| snapshot.members().len() as u32),
+                primary_snapshot.map_or(0, |snapshot| snapshot.members().len() as u32),
             );
-            config::write::<u32>(status::SNAPSHOT_FRESH, u32::from(snapshot_lease.is_some()));
+            config::write::<u32>(
+                status::SNAPSHOT_FRESH,
+                u32::from(primary.is_some_and(IngressServiceState::snapshot_fresh)),
+            );
             config::write::<u32>(status::SNAPSHOT_STALE_DROPPED, snapshot_stale_dropped);
             config::write::<u32>(status::MISSING_EPOCH_DROPPED, missing_epoch_dropped);
             config::write::<u32>(status::SNAPSHOT_EXPIRATIONS, snapshot_expirations);
+            config::write::<u32>(status::SERVICE_COUNT, ingress_services.len() as u32);
 
             // Forward calls are asynchronous: one slow protocol consumer must
             // not stop the NIC owner from serving every other EtherType.
@@ -751,28 +998,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             };
 
             rx_total = rx_total.wrapping_add(1);
-            let (memory, frame_len, ethertype, decision) = match cluster_service {
-                Some(service) => {
-                    let Some(result) = classify_ingress(
-                        memory,
-                        frame_len,
-                        service,
-                        &snapshots,
-                        &mut flows,
-                        snapshot_lease.is_some(),
-                    ) else {
-                        dropped = dropped.wrapping_add(1);
-                        break;
-                    };
-                    result
-                }
-                None => {
-                    let Some((memory, ethertype)) = read_ethertype(memory, frame_len) else {
-                        dropped = dropped.wrapping_add(1);
-                        break;
-                    };
-                    (memory, frame_len, ethertype, IngressDecision::Ordinary)
-                }
+            let Some((memory, frame_len, ethertype, decision)) =
+                classify_configured_ingress(memory, frame_len, &mut ingress_services)
+            else {
+                dropped = dropped.wrapping_add(1);
+                break;
             };
             match decision {
                 IngressDecision::Drop(reason) => {

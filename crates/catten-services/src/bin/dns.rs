@@ -70,6 +70,7 @@ use catten_services::{
         encode_activate,
         encode_deploy,
         encode_deployment_result,
+        encode_ingress_policy,
         encode_lookup_query,
         encode_reassign,
         encode_register,
@@ -196,7 +197,7 @@ const REPLY_SPINS: u64 = u64::MAX;
 
 const CLUSTER_KEY: u64 = manifest_key(b"cluster");
 const ELECTION_KEY: u64 = manifest_key(b"elect-ms");
-const INGRESS_SERVICE_KEY: u64 = manifest_key(b"vip-name");
+const INGRESS_SERVICES_KEY: u64 = manifest_key(b"vips");
 const DISCO_QUERY_MS: u64 = 2_000;
 // Keep retry slower than the relmsg acknowledgement/retry lease. JOIN is
 // idempotent, but flooding duplicates ahead of AppendEntries can otherwise
@@ -504,6 +505,49 @@ fn ingress_membership_snapshot(
     BackendSnapshot::new_with_members(epoch, self_node, advertiser_node, members, eligible_nodes)
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct EffectiveIngressBinding {
+    service: charlotte_launch::ingress::ServiceId,
+    backend_name: Option<Vec<u8>>,
+}
+
+fn effective_ingress_bindings(
+    catalog: &NameCatalog,
+    bootstrap: &[charlotte_launch::ingress::ServiceBinding<'_>],
+) -> Vec<EffectiveIngressBinding> {
+    if let Some(entry) = catalog.ingress_policy()
+        && let Some(policy) = charlotte_launch::ingress_policy::decode(&entry.envelope)
+    {
+        return policy
+            .assignments()
+            .map(|binding| EffectiveIngressBinding {
+                service: binding.service,
+                backend_name: binding.backend_name.map(<[u8]>::to_vec),
+            })
+            .collect();
+    }
+    bootstrap
+        .iter()
+        .map(|binding| EffectiveIngressBinding {
+            service: binding.service,
+            backend_name: binding.backend_name.map(<[u8]>::to_vec),
+        })
+        .collect()
+}
+
+fn encode_effective_ingress_bindings(bindings: &[EffectiveIngressBinding]) -> Option<Vec<u8>> {
+    let borrowed = bindings
+        .iter()
+        .map(|binding| charlotte_launch::ingress::ServiceBinding {
+            service: binding.service,
+            backend_name: binding.backend_name.as_deref(),
+        })
+        .collect::<Vec<_>>();
+    let mut bytes = vec![0; charlotte_launch::ingress::encoded_len(&borrowed).ok()?];
+    charlotte_launch::ingress::encode(&borrowed, &mut bytes).ok()?;
+    Some(bytes)
+}
+
 fn reconcile_replica_placements(
     node: &mut RaftNode,
     catalog: &NameCatalog,
@@ -770,6 +814,32 @@ fn shutdown_command(
     encode_shutdown(envelope).ok_or(clusterctl::ERR_TOO_LARGE)
 }
 
+fn ingress_policy_command(
+    envelope: &[u8],
+    trust: &charlotte_launch::trust::AdmissionTrust,
+    time: ConnectionRef<'_>,
+) -> Result<Vec<u8>, i64> {
+    match charlotte_launch::ingress_policy::verify(
+        envelope,
+        &trust.cluster_id,
+        &trust.operations_key,
+    ) {
+        charlotte_launch::ingress_policy::VerifyOutcome::Valid => {}
+        charlotte_launch::ingress_policy::VerifyOutcome::Invalid
+        | charlotte_launch::ingress_policy::VerifyOutcome::WrongCluster
+        | charlotte_launch::ingress_policy::VerifyOutcome::WrongKey => {
+            return Err(clusterctl::ERR_UNTRUSTED_DESCRIPTOR);
+        }
+    }
+    let policy = charlotte_launch::ingress_policy::decode(envelope)
+        .ok_or(clusterctl::ERR_UNTRUSTED_DESCRIPTOR)?;
+    let now = trusted_unix_seconds(time).ok_or(clusterctl::ERR_TIME_UNAVAILABLE)?;
+    if now < policy.not_before_unix_seconds || now > policy.expires_unix_seconds {
+        return Err(clusterctl::ERR_OUTSIDE_VALIDITY);
+    }
+    encode_ingress_policy(envelope).ok_or(clusterctl::ERR_TOO_LARGE)
+}
+
 fn serve(ctx: &Context) -> ShutdownRequest {
     config::write_u32_release(dns::status::STAGE, 1);
     let mnemonic: Vec<u8> = match ctx.manifest_value(CLUSTER_KEY) {
@@ -780,14 +850,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         Some(ManifestValue::Unsigned(value)) => value,
         _ => 300,
     };
-    let ingress_service = match ctx.manifest_value(INGRESS_SERVICE_KEY) {
-        Some(ManifestValue::Bytes(name))
-            if charlotte_launch::deployment::valid_artifact_name(name) =>
-        {
-            Some(name.to_vec())
-        }
+    let ingress_services = match ctx.manifest_value(INGRESS_SERVICES_KEY) {
+        Some(ManifestValue::Bytes(bytes)) => charlotte_launch::ingress::decode(bytes)
+            .unwrap_or_else(|| fatal(23))
+            .collect::<Vec<_>>(),
         Some(_) => fatal(23),
-        None => None,
+        None => Vec::new(),
     };
     let admission_trust = match ctx.manifest_value(charlotte_launch::ADMISSION_TRUST_MANIFEST_KEY) {
         Some(ManifestValue::Bytes(bytes)) => {
@@ -923,7 +991,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let me = Peer::voter(node_name_str.clone(), raft_name);
     config::write_u32_release(dns::status::PEER_COUNT, 1);
 
-    let catalog = NameCatalog::new_with_deployment_key(admission_trust.deployment_key);
+    let catalog = NameCatalog::new_with_control_plane_trust(
+        admission_trust.deployment_key,
+        admission_trust.operations_key,
+        admission_trust.cluster_id,
+    );
     // A clustered voter must retain term, vote, log, and snapshot state.
     // Falling back to memory after advertising the same durable node identity
     // would permit a restarted replica to vote twice in one term.
@@ -1352,6 +1424,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                     | PendingQueryKind::Release { .. }
                                                     | PendingQueryKind::Operations { .. }
                                                     | PendingQueryKind::Shutdown { .. }
+                                                    | PendingQueryKind::IngressPolicy { .. }
                                             )
                                     })
                                 {
@@ -1470,6 +1543,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             reply,
                                         }
                                         | PendingQueryKind::Shutdown {
+                                            reply,
+                                        }
+                                        | PendingQueryKind::IngressPolicy {
                                             reply,
                                         } => {
                                             if reply != 0 {
@@ -1918,6 +1994,81 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 {
                                     let query = pending_queries.swap_remove(index);
                                     let PendingQueryKind::Shutdown {
+                                        reply,
+                                    } = query.kind
+                                    else {
+                                        unreachable!()
+                                    };
+                                    if reply != 0 {
+                                        ipc_reply(reply, result);
+                                    }
+                                }
+                            }
+                            Some(catten_services::ringress_policy::TAG_REQUEST) => {
+                                if let Some(request) =
+                                    catten_services::ringress_policy::decode_request(frame)
+                                    && let Some(source_peer) =
+                                        transport.peer_id_for_mac(&source_mac)
+                                    && source_peer.as_bytes() == request.caller
+                                {
+                                    let result = if node.state != NodeState::Leader {
+                                        Some(dns::ERR_NOT_LEADER)
+                                    } else {
+                                        match ingress_policy_command(
+                                            &request.envelope,
+                                            &admission_trust,
+                                            time_conn.as_ref(),
+                                        ) {
+                                            Ok(command) => match node
+                                                .submit_command(command, node.millis())
+                                            {
+                                                Ok(log_index) => {
+                                                    pending_registers.push(
+                                                        PendingRegistration::RemoteIngressPolicy {
+                                                            log_index,
+                                                            peer: source_peer.clone(),
+                                                            session: request.session,
+                                                            request_id: request.request_id,
+                                                        },
+                                                    );
+                                                    None
+                                                }
+                                                Err(code) => Some(code),
+                                            },
+                                            Err(code) => Some(code),
+                                        }
+                                    };
+                                    if let Some(result) = result {
+                                        transport.send_message(
+                                            &source_peer,
+                                            catten_services::ringress_policy::TAG_REPLY,
+                                            catten_services::ringress_policy::encode_reply(
+                                                request.session,
+                                                request.request_id,
+                                                result,
+                                            ),
+                                        );
+                                    }
+                                }
+                            }
+                            Some(catten_services::ringress_policy::TAG_REPLY) => {
+                                if let Some((session, request_id, result)) =
+                                    catten_services::ringress_policy::decode_reply(frame)
+                                    && session == dns_session
+                                    && let Some(source_peer) =
+                                        transport.peer_id_for_mac(&source_mac)
+                                    && let Some(index) =
+                                        pending_queries.iter().position(|query| {
+                                            query.query_id == request_id
+                                                && query.expected_leader == source_peer
+                                                && matches!(
+                                                    query.kind,
+                                                    PendingQueryKind::IngressPolicy { .. }
+                                                )
+                                        })
+                                {
+                                    let query = pending_queries.swap_remove(index);
+                                    let PendingQueryKind::IngressPolicy {
                                         reply,
                                     } = query.kind
                                     else {
@@ -2679,6 +2830,96 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     continue;
                 }
 
+                dns::OP_INGRESS_POLICY_SUBMIT => {
+                    let envelope = read_moved_bytes(
+                        &message,
+                        charlotte_launch::ingress_policy::MAX_ENCODED_LEN,
+                    );
+                    let result = match envelope {
+                        Some(envelope) if node.state == NodeState::Leader => {
+                            match ingress_policy_command(
+                                &envelope,
+                                &admission_trust,
+                                time_conn.as_ref(),
+                            ) {
+                                Ok(command) => match node.submit_command(command, node.millis()) {
+                                    Ok(log_index) => {
+                                        pending_registers.push(PendingRegistration::Deploy {
+                                            log_index,
+                                            reply: message.reply,
+                                        });
+                                        continue;
+                                    }
+                                    Err(code) => code,
+                                },
+                                Err(code) => code,
+                            }
+                        }
+                        Some(envelope) => {
+                            let Some(leader) = node.known_leader_id.clone() else {
+                                if message.reply != 0 {
+                                    ipc_reply(message.reply, dns::ERR_NOT_LEADER);
+                                }
+                                continue;
+                            };
+                            if pending_queries.len() >= MAX_IN_FLIGHT_CALLS
+                                || !transport.has_peer(&leader)
+                            {
+                                dns::ERR_BUSY
+                            } else {
+                                let request_id = next_query_id;
+                                next_query_id = next_query_id.wrapping_add(1).max(1);
+                                let relay = catten_services::ringress_policy::Request {
+                                    session: dns_session,
+                                    request_id,
+                                    caller: node_name.clone(),
+                                    envelope,
+                                };
+                                let Some(frame) =
+                                    catten_services::ringress_policy::encode_request(&relay)
+                                else {
+                                    if message.reply != 0 {
+                                        ipc_reply(message.reply, dns::ERR_TOO_LARGE);
+                                    }
+                                    continue;
+                                };
+                                pending_queries.push(PendingQuery {
+                                    query_id: request_id,
+                                    expected_leader: leader.clone(),
+                                    deadline: node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS),
+                                    kind: PendingQueryKind::IngressPolicy {
+                                        reply: message.reply,
+                                    },
+                                });
+                                transport.send_message(
+                                    &leader,
+                                    catten_services::ringress_policy::TAG_REQUEST,
+                                    frame,
+                                );
+                                continue;
+                            }
+                        }
+                        None => dns::ERR_TOO_LARGE,
+                    };
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+
+                dns::OP_INGRESS_POLICY_QUERY => {
+                    if message.memory != 0 {
+                        memory_close(message.memory);
+                    }
+                    if let Some(entry) = catalog.ingress_policy() {
+                        let mut bytes = Vec::with_capacity(8 + entry.envelope.len());
+                        bytes.extend_from_slice(&entry.generation.to_le_bytes());
+                        bytes.extend_from_slice(&entry.envelope);
+                        reply_move_bytes(message.reply, &bytes);
+                    } else if message.reply != 0 {
+                        ipc_reply(message.reply, dns::ERR_NOT_FOUND);
+                    }
+                }
+
                 dns::OP_DEPLOY_QUERY => {
                     let artifact = packed_name(message.arg0);
                     if artifact.is_empty() {
@@ -2964,18 +3205,25 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     if message.memory != 0 {
                         memory_close(message.memory);
                     }
-                    let snapshot = node
-                        .can_serve_bounded_read(frouter::SNAPSHOT_SOURCE_MAX_AGE_MS)
-                        .then(|| {
+                    let service = charlotte_launch::ingress::ServiceId::unpack(message.arg0)
+                        .and_then(|service| {
+                            effective_ingress_bindings(&catalog, &ingress_services)
+                                .into_iter()
+                                .find(|binding| binding.service == service)
+                        });
+                    let snapshot = service
+                        .filter(|_| {
+                            node.can_serve_bounded_read(frouter::SNAPSHOT_SOURCE_MAX_AGE_MS)
+                        })
+                        .and_then(|service| {
                             ingress_membership_snapshot(
                                 &node,
                                 &transport,
                                 &catalog,
                                 local_mac,
-                                ingress_service.as_deref(),
+                                service.backend_name.as_deref(),
                             )
-                        })
-                        .flatten();
+                        });
                     match snapshot {
                         Some(snapshot) => reply_move_bytes(message.reply, &snapshot.encode()),
                         None if message.reply != 0 => {
@@ -2984,6 +3232,51 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             ipc_reply(message.reply, dns::ERR_BUSY);
                         }
                         None => {}
+                    }
+                }
+
+                dns::OP_INGRESS_ASSIGNMENTS_NAMED => {
+                    let name = read_moved_bytes(
+                        &message,
+                        charlotte_launch::deployment::MAX_ARTIFACT_NAME_LEN,
+                    );
+                    let Some(name) =
+                        name.filter(|name| charlotte_launch::deployment::valid_artifact_name(name))
+                    else {
+                        if message.reply != 0 {
+                            ipc_reply(message.reply, dns::ERR_TOO_LARGE);
+                        }
+                        continue;
+                    };
+                    let matches = effective_ingress_bindings(&catalog, &ingress_services)
+                        .iter()
+                        .filter(|binding| binding.backend_name.as_deref() == Some(name.as_slice()))
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    if matches.is_empty() {
+                        if message.reply != 0 {
+                            ipc_reply(message.reply, dns::ERR_NOT_FOUND);
+                        }
+                        continue;
+                    }
+                    let Some(bytes) = encode_effective_ingress_bindings(&matches) else {
+                        if message.reply != 0 {
+                            ipc_reply(message.reply, dns::ERR_TOO_LARGE);
+                        }
+                        continue;
+                    };
+                    reply_move_bytes(message.reply, &bytes);
+                }
+
+                dns::OP_INGRESS_ASSIGNMENTS => {
+                    if message.memory != 0 {
+                        memory_close(message.memory);
+                    }
+                    let effective = effective_ingress_bindings(&catalog, &ingress_services);
+                    if let Some(bytes) = encode_effective_ingress_bindings(&effective) {
+                        reply_move_bytes(message.reply, &bytes);
+                    } else if message.reply != 0 {
+                        ipc_reply(message.reply, dns::ERR_TOO_LARGE);
                     }
                 }
 
@@ -3263,6 +3556,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     log_index,
                     ..
                 }
+                | PendingRegistration::RemoteIngressPolicy {
+                    log_index,
+                    ..
+                }
                 | PendingRegistration::SetKey {
                     log_index,
                     ..
@@ -3397,6 +3694,24 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         &peer,
                         catten_services::rshutdown::TAG_REPLY,
                         catten_services::rshutdown::encode_reply(session, request_id, result),
+                    );
+                }
+                PendingRegistration::RemoteIngressPolicy {
+                    peer,
+                    session,
+                    request_id,
+                    ..
+                } => {
+                    let result = node
+                        .command_result(log_index)
+                        .and_then(|bytes| bytes.get(..8))
+                        .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok())
+                        .map(i64::from_le_bytes)
+                        .unwrap_or(dns::ERR_NOT_FOUND);
+                    transport.send_message(
+                        &peer,
+                        catten_services::ringress_policy::TAG_REPLY,
+                        catten_services::ringress_policy::encode_reply(session, request_id, result),
                     );
                 }
                 PendingRegistration::SetKey {

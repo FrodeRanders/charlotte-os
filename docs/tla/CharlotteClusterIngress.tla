@@ -13,7 +13,7 @@
 EXTENDS Naturals, FiniteSets, Sequences
 
 CONSTANTS Node, Flow, InitialVoters, InitialReplicas, MaxGeneration,
-          MaxPolicyVersion, HistoryLimit, NoNode,
+          MaxPolicyVersion, MaxAssignmentSequence, HistoryLimit, NoNode,
           AllowStaleNewFlow, AllowHistoryFallback, AllowStaleReadiness
 
 ASSUME Node \subseteq Nat
@@ -25,6 +25,7 @@ ASSUME InitialReplicas \subseteq InitialVoters
 ASSUME InitialReplicas /= {}
 ASSUME MaxGeneration > 1
 ASSUME MaxPolicyVersion > 3
+ASSUME MaxAssignmentSequence > 1
 ASSUME HistoryLimit > 0
 ASSUME NoNode \notin Node
 
@@ -44,14 +45,18 @@ DerivedEligible(members, generation, replicas, ready, draining) ==
         /\ ready[n] = generation
         /\ n \notin draining}
 
-MakePolicy(members, generation, replicas, ready, draining) ==
-    LET eligible == DerivedEligible(members, generation, replicas, ready, draining)
+MakePolicy(members, generation, replicas, ready, draining, assigned) ==
+    LET eligible ==
+            IF assigned
+            THEN DerivedEligible(members, generation, replicas, ready, draining)
+            ELSE {}
         ingressMembers == members \ draining
     IN [members |-> members,
         generation |-> generation,
         replicas |-> replicas,
         ready |-> ready,
         draining |-> draining,
+        assigned |-> assigned,
         eligible |-> eligible,
         advertiser |->
             IF eligible /= {} /\ ingressMembers /= {}
@@ -64,6 +69,7 @@ PolicyType ==
      replicas: SUBSET Node,
      ready: [Node -> Generation],
      draining: SUBSET Node,
+     assigned: BOOLEAN,
      eligible: SUBSET Node,
      advertiser: Node \cup {NoNode}]
 
@@ -78,6 +84,7 @@ Winner(policy) == MaxNode(policy.eligible)
 
 VARIABLES membershipPhase, currentVoters, nextVoters,
           deploymentGeneration, replicas, readyGeneration, draining,
+          assignmentSequence, serviceAssigned,
           policyVersion, policies,
           knownRoutes, routerPolicy, history, leaseFresh,
           bindingPolicy, bindingBackend,
@@ -85,6 +92,7 @@ VARIABLES membershipPhase, currentVoters, nextVoters,
 
 vars == <<membershipPhase, currentVoters, nextVoters,
           deploymentGeneration, replicas, readyGeneration, draining,
+          assignmentSequence, serviceAssigned,
           policyVersion, policies,
           knownRoutes, routerPolicy, history, leaseFresh,
           bindingPolicy, bindingBackend,
@@ -92,7 +100,7 @@ vars == <<membershipPhase, currentVoters, nextVoters,
 
 InitialReady == [n \in Node |-> 0]
 InitialPolicy ==
-    MakePolicy(InitialVoters, 1, InitialReplicas, InitialReady, {})
+    MakePolicy(InitialVoters, 1, InitialReplicas, InitialReady, {}, TRUE)
 
 Init ==
     /\ membershipPhase = "Stable"
@@ -102,6 +110,8 @@ Init ==
     /\ replicas = InitialReplicas
     /\ readyGeneration = InitialReady
     /\ draining = {}
+    /\ assignmentSequence = 0
+    /\ serviceAssigned = TRUE
     /\ policyVersion = 1
     /\ policies = [version \in PolicyVersion |-> InitialPolicy]
     /\ knownRoutes = [router \in Node |-> {router}]
@@ -132,10 +142,12 @@ PublishReady(node) ==
                                                deploymentGeneration,
                                                replicas,
                                                nextReady,
-                                               draining)]
+                                               draining,
+                                               serviceAssigned)]
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, draining,
+                    assignmentSequence, serviceAssigned,
                     knownRoutes, routerPolicy, history, leaseFresh,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
@@ -152,10 +164,12 @@ WithdrawReady(node) ==
                                                deploymentGeneration,
                                                replicas,
                                                nextReady,
-                                               draining)]
+                                               draining,
+                                               serviceAssigned)]
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, draining,
+                    assignmentSequence, serviceAssigned,
                     knownRoutes, routerPolicy, history, leaseFresh,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
@@ -176,10 +190,12 @@ ReplaceDeployment(nextReplicas) ==
                                                nextGeneration,
                                                nextReplicas,
                                                readyGeneration,
-                                               draining)]
+                                               draining,
+                                               serviceAssigned)]
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     readyGeneration, draining,
+                    assignmentSequence, serviceAssigned,
                     knownRoutes, routerPolicy, history, leaseFresh,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
@@ -197,10 +213,38 @@ CommitDrain(node) ==
                                                deploymentGeneration,
                                                replicas,
                                                readyGeneration,
-                                               nextDraining)]
+                                               nextDraining,
+                                               serviceAssigned)]
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration,
+                    assignmentSequence, serviceAssigned,
+                    knownRoutes, routerPolicy, history, leaseFresh,
+                    bindingPolicy, bindingBackend,
+                    staleNewFlowAdmitted, flowRemapped>>
+
+\* Signature, key-role, cluster-id, and UTC-envelope checks happen before this
+\* Raft state-machine transition. A strictly increasing sequence models the
+\* replay fence on the operator-signed assignment record. FALSE is an explicit
+\* signed withdrawal; the launch-time assignment is only the initial default.
+CommitIngressAssignment(sequence, assigned) ==
+    /\ sequence \in 1..MaxAssignmentSequence
+    /\ sequence > assignmentSequence
+    /\ policyVersion < MaxPolicyVersion
+    /\ LET nextVersion == policyVersion + 1
+       IN /\ assignmentSequence' = sequence
+          /\ serviceAssigned' = assigned
+          /\ policies' =
+              [policies EXCEPT
+                  ![nextVersion] = MakePolicy(CurrentMembers,
+                                               deploymentGeneration,
+                                               replicas,
+                                               readyGeneration,
+                                               draining,
+                                               assigned)]
+          /\ policyVersion' = nextVersion
+    /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
+                    deploymentGeneration, replicas, readyGeneration, draining,
                     knownRoutes, routerPolicy, history, leaseFresh,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
@@ -221,10 +265,12 @@ BeginJoint(nextMembers) ==
                                                deploymentGeneration,
                                                replicas,
                                                readyGeneration,
-                                               draining)]
+                                               draining,
+                                               serviceAssigned)]
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<currentVoters, deploymentGeneration, replicas,
                     readyGeneration, draining,
+                    assignmentSequence, serviceAssigned,
                     knownRoutes, routerPolicy, history, leaseFresh,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
@@ -243,9 +289,11 @@ FinalizeJoint ==
                                                deploymentGeneration,
                                                replicas,
                                                readyGeneration,
-                                               draining)]
+                                               draining,
+                                               serviceAssigned)]
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<deploymentGeneration, replicas, readyGeneration, draining,
+                    assignmentSequence, serviceAssigned,
                     knownRoutes, routerPolicy, history, leaseFresh,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
@@ -255,6 +303,7 @@ LearnRoute(router, node) ==
     /\ knownRoutes' = [knownRoutes EXCEPT ![router] = @ \cup {node}]
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
+                    assignmentSequence, serviceAssigned,
                     policyVersion, policies, routerPolicy, history, leaseFresh,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
@@ -265,6 +314,7 @@ ForgetRoute(router, node) ==
     /\ knownRoutes' = [knownRoutes EXCEPT ![router] = @ \ {node}]
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
+                    assignmentSequence, serviceAssigned,
                     policyVersion, policies, routerPolicy, history, leaseFresh,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
@@ -284,6 +334,7 @@ InstallSnapshot(router, version) ==
           /\ leaseFresh' = [leaseFresh EXCEPT ![router] = TRUE]
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
+                    assignmentSequence, serviceAssigned,
                     policyVersion, policies, knownRoutes,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
@@ -296,6 +347,7 @@ ExpireLease(router) ==
     /\ leaseFresh' = [leaseFresh EXCEPT ![router] = FALSE]
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
+                    assignmentSequence, serviceAssigned,
                     policyVersion, policies, knownRoutes, routerPolicy, history,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
@@ -313,6 +365,7 @@ StartNewFlow(router, flow) ==
             ![router][flow] = Winner(policies[routerPolicy[router]])]
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
+                    assignmentSequence, serviceAssigned,
                     policyVersion, policies, knownRoutes, routerPolicy, history,
                     leaseFresh,
                     staleNewFlowAdmitted, flowRemapped>>
@@ -343,6 +396,7 @@ EndFlow(router, flow) ==
     /\ bindingBackend' = [bindingBackend EXCEPT ![router][flow] = NoNode]
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
+                    assignmentSequence, serviceAssigned,
                     policyVersion, policies, knownRoutes, routerPolicy, history,
                     leaseFresh,
                     staleNewFlowAdmitted, flowRemapped>>
@@ -367,6 +421,7 @@ UnsafeStartStaleFlow(router, flow) ==
     /\ staleNewFlowAdmitted' = TRUE
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
+                    assignmentSequence, serviceAssigned,
                     policyVersion, policies, knownRoutes, routerPolicy, history,
                     leaseFresh,
                     flowRemapped>>
@@ -388,6 +443,7 @@ UnsafeFallbackExistingPacket(router, flow) ==
     /\ flowRemapped' = TRUE
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
+                    assignmentSequence, serviceAssigned,
                     policyVersion, policies, knownRoutes, routerPolicy, history,
                     leaseFresh,
                     staleNewFlowAdmitted>>
@@ -407,7 +463,8 @@ UnsafeAdmitStaleReadiness(node) ==
                                     deploymentGeneration,
                                     replicas,
                                     readyGeneration,
-                                    draining)
+                                    draining,
+                                    serviceAssigned)
            unsafeEligible == safePolicy.eligible \cup {node}
            unsafePolicy ==
                [safePolicy EXCEPT
@@ -417,6 +474,7 @@ UnsafeAdmitStaleReadiness(node) ==
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
+                    assignmentSequence, serviceAssigned,
                     knownRoutes, routerPolicy, history, leaseFresh,
                     bindingPolicy, bindingBackend,
                     staleNewFlowAdmitted, flowRemapped>>
@@ -426,6 +484,8 @@ Next ==
     \/ \E node \in Node : WithdrawReady(node)
     \/ \E nextReplicas \in SUBSET Node : ReplaceDeployment(nextReplicas)
     \/ \E node \in Node : CommitDrain(node)
+    \/ \E sequence \in 1..MaxAssignmentSequence,
+          assigned \in BOOLEAN : CommitIngressAssignment(sequence, assigned)
     \/ \E nextMembers \in SUBSET Node : BeginJoint(nextMembers)
     \/ FinalizeJoint
     \/ \E router, node \in Node : LearnRoute(router, node)
@@ -456,6 +516,8 @@ TypeOK ==
     /\ replicas /= {}
     /\ readyGeneration \in [Node -> Generation]
     /\ draining \subseteq Node
+    /\ assignmentSequence \in 0..MaxAssignmentSequence
+    /\ serviceAssigned \in BOOLEAN
     /\ policyVersion \in PolicyVersion
     /\ policies \in [PolicyVersion -> PolicyType]
     /\ knownRoutes \in [Node -> SUBSET Node]
@@ -472,16 +534,21 @@ CommittedPoliciesAreDerived ==
     \A version \in 1..policyVersion :
         LET policy == policies[version]
         IN /\ policy.eligible =
-                   DerivedEligible(policy.members,
-                                   policy.generation,
-                                   policy.replicas,
-                                   policy.ready,
-                                   policy.draining)
+                   IF policy.assigned
+                   THEN DerivedEligible(policy.members,
+                                        policy.generation,
+                                        policy.replicas,
+                                        policy.ready,
+                                        policy.draining)
+                   ELSE {}
            /\ policy.eligible \subseteq policy.members
            /\ policy.advertiser =
                 IF policy.eligible = {}
                 THEN NoNode
                 ELSE MinNode(policy.members \ policy.draining)
+
+CurrentPolicyMatchesAssignment ==
+    policies[policyVersion].assigned = serviceAssigned
 
 InstalledSnapshotIsRetained ==
     \A router \in Node :
@@ -507,6 +574,7 @@ FlowBackendStable == ~flowRemapped
 Invariants ==
     /\ TypeOK
     /\ CommittedPoliciesAreDerived
+    /\ CurrentPolicyMatchesAssignment
     /\ InstalledSnapshotIsRetained
     /\ BoundFlowRemainsPinned
     /\ EmptyBindingHasNoBackend

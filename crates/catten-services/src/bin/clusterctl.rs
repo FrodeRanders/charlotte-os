@@ -307,6 +307,26 @@ fn submit_shutdown(dns_conn: u64, envelope: &[u8]) -> i64 {
     }
 }
 
+fn submit_ingress_policy(dns_conn: u64, envelope: &[u8]) -> i64 {
+    if charlotte_launch::ingress_policy::decode(envelope).is_none() {
+        return clusterctl::ERR_TOO_LARGE;
+    }
+    let Some(memory) = memory_from_bytes(envelope) else {
+        return clusterctl::ERR_UPLOAD_FAILED;
+    };
+    let dns = match unsafe { ConnectionRef::from_raw(dns_conn) } {
+        Ok(dns) => dns,
+        Err(_) => return clusterctl::ERR_NOT_LEADER,
+    };
+    match dns.call_move(dns::OP_INGRESS_POLICY_SUBMIT, envelope.len() as u64, memory) {
+        Ok(call) => match call.wait() {
+            Ok(reply) => reply.result,
+            Err(_) => clusterctl::ERR_NOT_LEADER,
+        },
+        Err((_memory, _error)) => clusterctl::ERR_NOT_LEADER,
+    }
+}
+
 fn memory_from_bytes(bytes: &[u8]) -> Option<OwnedMemory> {
     let memory = OwnedMemory::allocate(bytes.len().div_ceil(4096).max(1)).ok()?;
     let mut mapping = memory.map_writable().ok()?;
@@ -594,6 +614,49 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
                     };
                     if message.reply != 0 {
                         ipc_reply(message.reply, result);
+                    }
+                }
+                clusterctl::OP_NOTIFY_INGRESS_POLICY => {
+                    let result = match read_payload(&message) {
+                        Some(envelope)
+                            if charlotte_launch::ingress_policy::decode(&envelope).is_some() =>
+                        {
+                            // The DNS leader performs operations-key, cluster,
+                            // trusted-UTC and replay verification.
+                            submit_ingress_policy(dns_conn, &envelope)
+                        }
+                        Some(_) => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
+                        None => clusterctl::ERR_TOO_LARGE,
+                    };
+                    if message.reply != 0 {
+                        ipc_reply(message.reply, result);
+                    }
+                }
+                clusterctl::OP_INGRESS_POLICY_STATUS => {
+                    if message.memory != 0 {
+                        memory_close(message.memory);
+                    }
+                    let call = ipc_scalar_call(dns_conn, dns::OP_INGRESS_POLICY_QUERY, 0);
+                    if call == 0 {
+                        if message.reply != 0 {
+                            ipc_reply(message.reply, clusterctl::ERR_NOT_FOUND);
+                        }
+                        continue;
+                    }
+                    let (status, size, _returned_connection, memory) =
+                        ipc_reply_wait_with_memory(call);
+                    ipc_close(call);
+                    if memory == 0 || (status as i64) < 0 {
+                        if memory != 0 {
+                            memory_close(memory);
+                        }
+                        if message.reply != 0 {
+                            ipc_reply(message.reply, clusterctl::ERR_NOT_FOUND);
+                        }
+                    } else if message.reply != 0 {
+                        ipc_reply_move(message.reply, memory, size as i64);
+                    } else {
+                        memory_close(memory);
                     }
                 }
                 clusterctl::OP_STATUS => {

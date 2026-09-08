@@ -9,7 +9,7 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--cluster-service VIP:PORT] [--cluster-service-name NAME] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--deployment-ingress-test|--shutdown-ingress-test|--kafka-test|--kafka-coordinator-test|--kafka-fencing-test] [--net-listen PORT|--net-connect HOST:PORT|--net-mcast GROUP:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test|--shutdown-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--cluster-service [NAME=]VIP:PORT]... [--cluster-service-name NAME] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--deployment-ingress-test|--shutdown-ingress-test|--kafka-test|--kafka-coordinator-test|--kafka-fencing-test] [--net-listen PORT|--net-connect HOST:PORT|--net-mcast GROUP:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test|--shutdown-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
@@ -22,10 +22,9 @@
 #   --scheduler-trace  Capture and decode the in-memory scheduler trace at timeout
 #   --hvf          Use Apple Hypervisor.Framework acceleration (macOS only)
 #   --no-network   Do not attach a NIC or launch network-backed services
-#   --cluster-service VIP:PORT  Launch one distributed IPv4/TCP service; this
-#                  enables runtime ingress policy and is not a test workload
-#   --cluster-service-name NAME  Admit new VIP flows only to the node whose
-#                  committed deployment generation for NAME is ready
+#   --cluster-service [NAME=]VIP:PORT  Bootstrap a distributed IPv4/TCP identity;
+#                  repeat for independently placed services; committed policy wins
+#   --cluster-service-name NAME  Compatibility spelling for naming one service
 #   --cluster-ingress-test  Probe the configured VIP from this guest
 #   --net-test     Verify the default virtio-net capability under TCG/KVM
 #   --relmsg-test  Exchange reliable messages with a second socket-LAN guest
@@ -113,6 +112,7 @@ INSTANCE=""
 NET_BACKEND="user"
 NET_MAC="52:54:00:12:34:56"
 CLUSTER_SERVICE=""
+CLUSTER_SERVICE_SPECS=()
 CLUSTER_SERVICE_NAME=""
 CLUSTER_VIP=""
 CLUSTER_TCP_PORT=""
@@ -133,7 +133,7 @@ while [ "$#" -gt 0 ]; do
         --no-network)  NETWORK="0"; shift ;;
         --cluster-service)
             [ "$#" -ge 2 ] || { echo "Missing value for --cluster-service" >&2; exit 1; }
-            CLUSTER_SERVICE="$2"; shift 2 ;;
+            CLUSTER_SERVICE_SPECS+=("$2"); shift 2 ;;
         --cluster-service-name)
             [ "$#" -ge 2 ] || { echo "Missing value for --cluster-service-name" >&2; exit 1; }
             CLUSTER_SERVICE_NAME="$2"; shift 2 ;;
@@ -184,16 +184,44 @@ done
 catten_boot_validate_port "--gdb-port" "$GDB_PORT"
 catten_boot_validate_port "CATTEN_HTTP_HOST_PORT" "$HTTP_HOST_PORT"
 catten_boot_validate_port "CATTEN_DEPLOY_HOST_PORT" "$DEPLOY_HOST_PORT"
-if [ -n "$CLUSTER_SERVICE" ]; then
-    CLUSTER_VIP="${CLUSTER_SERVICE%:*}"
-    CLUSTER_TCP_PORT="${CLUSTER_SERVICE##*:}"
-    if [ "$CLUSTER_VIP" = "$CLUSTER_SERVICE" ] || [ -z "$CLUSTER_VIP" ]; then
-        echo "error: --cluster-service must be an IPv4 address and TCP port (for example 10.0.2.42:80)" >&2
+if [ -n "$CLUSTER_SERVICE_NAME" ] && [ "${#CLUSTER_SERVICE_SPECS[@]}" -ne 1 ]; then
+    echo "error: --cluster-service-name requires exactly one --cluster-service" >&2
+    exit 1
+fi
+if [ "${#CLUSTER_SERVICE_SPECS[@]}" -gt 16 ]; then
+    echo "error: at most 16 --cluster-service assignments fit the launch policy" >&2
+    exit 1
+fi
+CLUSTER_SERVICES_ENV=""
+for service_index in "${!CLUSTER_SERVICE_SPECS[@]}"; do
+    service_spec="${CLUSTER_SERVICE_SPECS[$service_index]}"
+    service_name=""
+    service_endpoint="$service_spec"
+    if [[ "$service_spec" == *=* ]]; then
+        service_name="${service_spec%%=*}"
+        service_endpoint="${service_spec#*=}"
+    fi
+    if [ -n "$CLUSTER_SERVICE_NAME" ]; then
+        if [ -n "$service_name" ]; then
+            echo "error: do not combine NAME=VIP:PORT with --cluster-service-name" >&2
+            exit 1
+        fi
+        service_name="$CLUSTER_SERVICE_NAME"
+    fi
+    if [ -n "$service_name" ] && { [ "${#service_name}" -gt 48 ] \
+        || ! [[ "$service_name" =~ ^[A-Za-z0-9._/-]+$ ]]; }; then
+        echo "error: cluster service names must contain 1-48 portable name characters" >&2
         exit 1
     fi
-    catten_boot_validate_port "--cluster-service port" "$CLUSTER_TCP_PORT"
+    service_vip="${service_endpoint%:*}"
+    service_port="${service_endpoint##*:}"
+    if [ "$service_vip" = "$service_endpoint" ] || [ -z "$service_vip" ]; then
+        echo "error: --cluster-service must be [NAME=]IPv4:PORT (for example orders=10.0.2.42:80)" >&2
+        exit 1
+    fi
+    catten_boot_validate_port "--cluster-service port" "$service_port"
     IFS=. read -r vip_a vip_b vip_c vip_d vip_extra <<EOF
-$CLUSTER_VIP
+$service_vip
 EOF
     for vip_octet in "$vip_a" "$vip_b" "$vip_c" "$vip_d"; do
         if ! [[ "$vip_octet" =~ ^[0-9]+$ ]] || [ "$vip_octet" -gt 255 ]; then
@@ -201,22 +229,35 @@ EOF
             exit 1
         fi
     done
-    if [ -n "${vip_extra:-}" ] || [ "$CLUSTER_VIP" = "0.0.0.0" ]; then
+    if [ -n "${vip_extra:-}" ] || [ "$service_vip" = "0.0.0.0" ] \
+        || [ "$vip_a" -ge 224 ]; then
         echo "error: --cluster-service has an invalid IPv4 address" >&2
         exit 1
     fi
-fi
-if [ -n "$CLUSTER_SERVICE_NAME" ]; then
+    normalized_service="$service_endpoint"
+    if [ -n "$service_name" ]; then
+        normalized_service="${service_name}=${service_endpoint}"
+    fi
+    for previous_index in "${!CLUSTER_SERVICE_SPECS[@]}"; do
+        [ "$previous_index" -lt "$service_index" ] || break
+        previous_spec="${CLUSTER_SERVICE_SPECS[$previous_index]}"
+        previous_endpoint="${previous_spec#*=}"
+        if [ "$previous_endpoint" = "$service_endpoint" ]; then
+            echo "error: duplicate cluster service endpoint ${service_endpoint}" >&2
+            exit 1
+        fi
+    done
+    CLUSTER_SERVICE_SPECS[$service_index]="$normalized_service"
     if [ -z "$CLUSTER_SERVICE" ]; then
-        echo "error: --cluster-service-name requires --cluster-service" >&2
-        exit 1
+        CLUSTER_SERVICE="$service_endpoint"
+        CLUSTER_VIP="$service_vip"
+        CLUSTER_TCP_PORT="$service_port"
     fi
-    if [ "${#CLUSTER_SERVICE_NAME}" -gt 48 ] \
-        || ! [[ "$CLUSTER_SERVICE_NAME" =~ ^[A-Za-z0-9._/-]+$ ]]; then
-        echo "error: --cluster-service-name must be 1-48 portable name characters" >&2
-        exit 1
+    if [ -n "$CLUSTER_SERVICES_ENV" ]; then
+        CLUSTER_SERVICES_ENV="${CLUSTER_SERVICES_ENV};"
     fi
-fi
+    CLUSTER_SERVICES_ENV="${CLUSTER_SERVICES_ENV}${normalized_service}"
+done
 catten_boot_validate_instance "$INSTANCE"
 catten_boot_validate_positive_integer "--smp" "$SMP"
 if [ -n "$TIMEOUT" ]; then
@@ -661,16 +702,25 @@ if [ "${CATTEN_SKIP_KERNEL_BUILD:-0}" = "1" ]; then
     echo ">>> Reusing previously built Catten kernel."
 else
     if [ -n "$CLUSTER_SERVICE" ]; then
+        export CATTEN_CLUSTER_SERVICES="$CLUSTER_SERVICES_ENV"
+        # Historical single-service compile variables remain available to
+        # focused probes while platform services consume the canonical table.
         export CATTEN_CLUSTER_VIP="$CLUSTER_VIP"
         export CATTEN_CLUSTER_TCP_PORT="$CLUSTER_TCP_PORT"
-        if [ -n "$CLUSTER_SERVICE_NAME" ]; then
-            export CATTEN_CLUSTER_SERVICE_NAME="$CLUSTER_SERVICE_NAME"
+        first_service_spec="${CLUSTER_SERVICE_SPECS[0]}"
+        if [[ "$first_service_spec" == *=* ]]; then
+            export CATTEN_CLUSTER_SERVICE_NAME="${first_service_spec%%=*}"
         else
             unset CATTEN_CLUSTER_SERVICE_NAME
         fi
         if [ "$NET_BACKEND" != "user" ]; then
             export CATTEN_CLUSTER_STATIC_NETWORK=1
         fi
+    else
+        unset CATTEN_CLUSTER_SERVICES
+        unset CATTEN_CLUSTER_VIP
+        unset CATTEN_CLUSTER_TCP_PORT
+        unset CATTEN_CLUSTER_SERVICE_NAME
     fi
     cargo build --package catten --target "$TARGET_SPEC" \
         --no-default-features --features "$FEATURES" $RELEASE_FLAG

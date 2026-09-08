@@ -229,8 +229,11 @@ rollout surge/unavailability, or automatic rollback. The current runtime also
 runs at most one instance of a given artifact on each node, even though the
 policy type reserves a larger per-node limit for a future scheduler.
 
-A launch-owned cluster VIP can be bound to one artifact name with
-`--cluster-service-name`. DNS derives its new-flow backend set from the desired
+A bootstrap cluster identity can be bound atomically to an artifact name with
+`--cluster-service artifact=VIP:port`; the option is repeatable for independent
+services. An operations-signed `CINGPOL1` complete replacement supersedes that
+table after Raft commitment and can add, change, or withdraw identities without
+rebuilding nodes or applications. DNS derives each new-flow backend set from the desired
 replica nodes and the active per-node registrations for that exact deployment
 generation. This integrates replica placement and agent
 readiness with DSR without granting either the application or discovery traffic
@@ -243,7 +246,7 @@ materialized, but that snapshot grants new-flow admission and VIP advertisement
 only through a five-second monotonic lease. DNS renews the lease only for a
 quorum-fresh leader or a follower whose last successful leader-log match is at
 most one second old; failed replication cannot perpetuate stale authority.
-Once the lease expires, unbound traffic fails closed while bindings to retained epochs may continue. Older
+Once a service's lease expires, its unbound traffic fails closed while bindings to retained epochs may continue. Older
 ingress epochs retain the previous admitted route for observed flows during the
 bounded drain window.
 

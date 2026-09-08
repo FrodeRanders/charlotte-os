@@ -24,26 +24,7 @@ pub const MEMBERSHIP_HEADER_LEN: usize = 40;
 pub const MEMBERSHIP_RECORD_LEN: usize = 16;
 const MEMBER_FLAG_ELIGIBLE: u8 = 1 << 0;
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct ServiceId {
-    pub address: [u8; 4],
-    pub protocol: u8,
-    pub port: u16,
-}
-
-impl ServiceId {
-    pub const fn tcp_v4(address: [u8; 4], port: u16) -> Self {
-        Self {
-            address,
-            protocol: IP_PROTOCOL_TCP,
-            port,
-        }
-    }
-
-    pub fn is_valid(self) -> bool {
-        self.address != [0; 4] && self.port != 0 && self.protocol == IP_PROTOCOL_TCP
-    }
-}
+pub use charlotte_launch::ingress::ServiceId;
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct FlowKey {

@@ -31,6 +31,8 @@ use charlotte_launch::{
         CapabilityGrant,
         DescriptorFields,
     },
+    ingress,
+    ingress_policy,
     operations,
     operations_bundle,
     release,
@@ -1199,6 +1201,199 @@ fn shutdown_notify(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+fn parse_ingress_assignment(value: &str) -> Result<ingress::ServiceBinding<'_>> {
+    let (backend_name, endpoint) = value
+        .split_once('=')
+        .map_or((None, value), |(name, endpoint)| (Some(name.as_bytes()), endpoint));
+    let (address, port) = endpoint.rsplit_once(':').ok_or_else(|| {
+        format!("invalid ingress assignment {value:?}; expected [NAME=]IPv4:PORT")
+    })?;
+    let octets = address
+        .split('.')
+        .map(|part| part.parse::<u8>().map_err(|_| format!("invalid IPv4 address {address:?}")))
+        .collect::<Result<Vec<_>>>()?;
+    let address: [u8; 4] =
+        octets.try_into().map_err(|_| format!("invalid IPv4 address {address:?}"))?;
+    let port = port.parse::<u16>().map_err(|_| format!("invalid TCP port in {value:?}"))?;
+    let binding = ingress::ServiceBinding {
+        service: ingress::ServiceId::tcp_v4(address, port),
+        backend_name,
+    };
+    binding
+        .is_valid()
+        .then_some(binding)
+        .ok_or_else(|| format!("invalid ingress assignment {value:?}"))
+}
+
+fn ingress_policy_sign(args: &[String]) -> Result<()> {
+    let output = args.first().ok_or_else(|| "missing ingress-policy output path".to_owned())?;
+    let sequence = parse_required_u64(
+        args.get(1).ok_or_else(|| "missing ingress-policy sequence".to_owned())?,
+        "ingress-policy sequence",
+    )?;
+    let not_before_unix_seconds = parse_required_u64(
+        args.get(2).ok_or_else(|| "missing not-before UTC".to_owned())?,
+        "not-before UTC",
+    )?;
+    let expires_unix_seconds = parse_required_u64(
+        args.get(3).ok_or_else(|| "missing expiry UTC".to_owned())?,
+        "expiry UTC",
+    )?;
+    let cluster_id: [u8; 32] = parse_fixed_hex(
+        args.get(4).ok_or_else(|| "missing cluster id".to_owned())?,
+        32,
+        "cluster id",
+    )?
+    .try_into()
+    .unwrap();
+    let secret_bytes = Zeroizing::new(read_hex_key(
+        args.get(5).ok_or_else(|| "missing operational signing-key path".to_owned())?,
+        64,
+        "operational Ed25519 secret key",
+    )?);
+    let secret = SecretKey::from_slice(&secret_bytes)
+        .map_err(|_| "invalid operational Ed25519 secret key".to_owned())?;
+    let assignment_args = args.get(6..).unwrap_or_default();
+    let assignments = if assignment_args == ["--clear"] {
+        Vec::new()
+    } else if assignment_args.is_empty() {
+        return Err("provide at least one [NAME=]VIP:PORT assignment or --clear".to_owned());
+    } else {
+        assignment_args
+            .iter()
+            .map(|value| parse_ingress_assignment(value))
+            .collect::<Result<Vec<_>>>()?
+    };
+    let fields = ingress_policy::PolicyFields {
+        sequence,
+        not_before_unix_seconds,
+        expires_unix_seconds,
+        cluster_id,
+        assignments: &assignments,
+    };
+    let public = secret.public_key();
+    let public: &[u8; 32] =
+        public.as_ref().try_into().map_err(|_| "invalid public key".to_owned())?;
+    let mut bytes = vec![
+        0;
+        ingress_policy::encoded_len(&fields)
+            .map_err(|error| format!("invalid ingress policy: {error:?}"))?
+    ];
+    ingress_policy::encode_unsigned(&fields, public, &mut bytes)
+        .map_err(|error| format!("encode ingress policy: {error:?}"))?;
+    let signature: Signature = secret.sign(
+        ingress_policy::signature_digest(&bytes)
+            .ok_or_else(|| "encoded ingress policy did not decode".to_owned())?,
+        None,
+    );
+    if !ingress_policy::set_signature(
+        &mut bytes,
+        signature.as_ref().try_into().map_err(|_| "invalid signature length".to_owned())?,
+    ) {
+        return Err("failed to install ingress-policy signature".to_owned());
+    }
+    write_new_file(output, &bytes, false)?;
+    println!(
+        "signed ingress policy {output}: sequence={sequence} assignments={} \
+         valid={not_before_unix_seconds}..={expires_unix_seconds}",
+        assignments.len()
+    );
+    Ok(())
+}
+
+fn ingress_policy_verify(args: &[String]) -> Result<()> {
+    let path = args.first().ok_or_else(|| "missing ingress-policy path".to_owned())?;
+    let cluster_id: [u8; 32] = parse_fixed_hex(
+        args.get(1).ok_or_else(|| "missing cluster id".to_owned())?,
+        32,
+        "cluster id",
+    )?
+    .try_into()
+    .unwrap();
+    let public_key: [u8; 32] = read_hex_key(
+        args.get(2).ok_or_else(|| "missing operational public-key path".to_owned())?,
+        32,
+        "operational Ed25519 public key",
+    )?
+    .try_into()
+    .unwrap();
+    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    if ingress_policy::verify(&bytes, &cluster_id, &public_key)
+        != ingress_policy::VerifyOutcome::Valid
+    {
+        return Err("ingress-policy signature verification failed".to_owned());
+    }
+    let policy =
+        ingress_policy::decode(&bytes).ok_or_else(|| "ingress policy is malformed".to_owned())?;
+    println!(
+        "VERIFY OK: sequence={} assignments={} valid={}..={}",
+        policy.sequence,
+        policy.assignments().count(),
+        policy.not_before_unix_seconds,
+        policy.expires_unix_seconds
+    );
+    Ok(())
+}
+
+fn ingress_policy_notify(args: &[String]) -> Result<()> {
+    let path = args.first().ok_or_else(|| "missing ingress-policy path".to_owned())?;
+    let endpoint = args.get(1).map_or("127.0.0.1:8081", String::as_str);
+    let bytes = fs::read(path).map_err(|error| format!("read {path}: {error}"))?;
+    ingress_policy::decode(&bytes).ok_or_else(|| "ingress policy is malformed".to_owned())?;
+    let mut stream = TcpStream::connect(endpoint)
+        .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(30)))
+        .and_then(|()| stream.set_write_timeout(Some(Duration::from_secs(30))))
+        .map_err(|error| format!("configure ingress-policy connection: {error}"))?;
+    let header = format!(
+        "POST /v1/ingress-policy HTTP/1.1\r\nHost: {endpoint}\r\nContent-Type: \
+         application/vnd.charlotte.ingress-policy\r\nContent-Length: {}\r\nConnection: \
+         close\r\n\r\n",
+        bytes.len()
+    );
+    stream
+        .write_all(header.as_bytes())
+        .and_then(|()| stream.write_all(&bytes))
+        .map_err(|error| format!("send ingress-policy notification: {error}"))?;
+    let mut response = String::new();
+    stream
+        .take(8192)
+        .read_to_string(&mut response)
+        .map_err(|error| format!("read ingress-policy response: {error}"))?;
+    if !response.lines().next().unwrap_or_default().starts_with("HTTP/1.1 202 ") {
+        return Err(format!("ingress-policy notification failed: {}", response.trim()));
+    }
+    println!("ingress policy accepted by {endpoint}");
+    Ok(())
+}
+
+fn ingress_policy_status(args: &[String]) -> Result<()> {
+    let endpoint = args.first().map_or("127.0.0.1:8081", String::as_str);
+    let mut stream = TcpStream::connect(endpoint)
+        .map_err(|error| format!("connect to deployment ingress {endpoint}: {error}"))?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(30)))
+        .and_then(|()| stream.set_write_timeout(Some(Duration::from_secs(30))))
+        .map_err(|error| format!("configure ingress-policy connection: {error}"))?;
+    let request =
+        format!("GET /v1/ingress-policy HTTP/1.1\r\nHost: {endpoint}\r\nConnection: close\r\n\r\n");
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|error| format!("query ingress-policy status: {error}"))?;
+    let mut response = String::new();
+    stream
+        .take(8192)
+        .read_to_string(&mut response)
+        .map_err(|error| format!("read ingress-policy status: {error}"))?;
+    if !response.lines().next().unwrap_or_default().starts_with("HTTP/1.1 200 ") {
+        return Err(format!("ingress-policy status failed: {}", response.trim()));
+    }
+    let body = response.split_once("\r\n\r\n").map_or("", |(_, body)| body);
+    println!("{}", body.trim());
+    Ok(())
+}
+
 fn node_key(args: &[String]) -> Result<()> {
     let mac = args.first().ok_or_else(|| "missing MAC address".to_owned())?;
     let octets = mac
@@ -1536,6 +1731,10 @@ fn run() -> Result<()> {
         Some("shutdown-sign") => shutdown_sign(&args[2..]),
         Some("shutdown-verify") => shutdown_verify(&args[2..]),
         Some("shutdown-notify") => shutdown_notify(&args[2..]),
+        Some("ingress-policy-sign") => ingress_policy_sign(&args[2..]),
+        Some("ingress-policy-verify") => ingress_policy_verify(&args[2..]),
+        Some("ingress-policy-notify") => ingress_policy_notify(&args[2..]),
+        Some("ingress-policy-status") => ingress_policy_status(&args[2..]),
         Some("node-key") => node_key(&args[2..]),
         Some("operations-recipient-generate") => operations_recipient_generate(&args[2..]),
         Some("operations-signing-generate") => operations_signing_generate(&args[2..]),
@@ -1642,39 +1841,44 @@ fn run() -> Result<()> {
             );
             Ok(())
         }
-        _ => Err("usage: cluster-sign generate | elf-sign <elf> <name> <privkey-hex> \
-                  [service|driver|bootstrap|admin] [version] [rollback] [flags] \
-                  [provenance-sha256|-] | elf-verify <elf> <name> <pubkey-hex> | sha256 <file> | \
-                  deployment-sign <output> <artifact-name> <object-key> <artifact-sha256> \
-                  <node-key> <sequence> <stack-pages-per-thread> <max-threads> \
-                  <shutdown-grace-ms> <privkey-hex> [--replicas=N | --every-eligible-node] \
-                  [--min-distinct-nodes=N] [--max-instances-per-node=N] [--spread-replicas] \
-                  [--affinity-group=N] [--anti-affinity-group=N] \
-                  [service=send|call|client|publish ...] | deployment-verify <descriptor> \
-                  <pubkey-hex> | deployment-notify <descriptor> [host:port] | deployment-status \
-                  <artifact-name> [host:port] [wait-seconds] | deployment-apply <host:port> \
-                  <wait-seconds> <descriptor>... | release-sign <output> <release-name> \
-                  <sequence> <privkey-hex> <descriptor>... | release-verify <release> \
-                  <pubkey-hex> | release-notify <release> [host:port] | release-apply <release> \
-                  [host:port] [wait-seconds] | shutdown-sign <output> <sequence> <target-node> \
-                  <not-before-unix> <expires-unix> <node-grace-ms> <phase-grace-ms> \
-                  <privkey-hex> | shutdown-verify <intent> <pubkey-hex> | shutdown-notify \
-                  <intent> [host:port] | node-key <mac-address> | operations-recipient-generate \
-                  <private-key-file> <public-key-file> | operations-signing-generate \
-                  <private-key-file> <public-key-file> | operations-seal <output> <profile-name> \
-                  <s3|kafka> <cluster-id-hex> <release-sha256> <sequence> <expires-unix> \
-                  <recipient-public-key-file> <ops-ed25519-private-key-file> <profile-file> | \
-                  operations-verify <envelope> <ops-ed25519-public-key-file> | operations-open \
-                  <envelope> <cluster-id-hex> <release-sha256> <now-unix> \
-                  <recipient-private-key-file> <ops-ed25519-public-key-file> <output> | \
-                  operations-bundle-sign <output> <bundle-sequence> <cluster-id-hex> \
-                  <release-ed25519-public-key-hex> <ops-ed25519-private-key-file> \
-                  <recipient-public-key-file> <release> (<target-artifact> <object-key> \
-                  <envelope>)... | operations-bundle-verify <bundle> <cluster-id-hex> \
-                  <release-ed25519-public-key-hex> <ops-ed25519-public-key-file> \
-                  <recipient-public-key-file> <now-unix> | operations-bundle-notify <bundle> \
-                  [host:port] | cluster-id <mnemonic> | selftest"
-            .to_owned()),
+        _ => {
+            Err("usage: cluster-sign generate | elf-sign <elf> <name> <privkey-hex> \
+                 [service|driver|bootstrap|admin] [version] [rollback] [flags] \
+                 [provenance-sha256|-] | elf-verify <elf> <name> <pubkey-hex> | sha256 <file> | \
+                 deployment-sign <output> <artifact-name> <object-key> <artifact-sha256> \
+                 <node-key> <sequence> <stack-pages-per-thread> <max-threads> <shutdown-grace-ms> \
+                 <privkey-hex> [--replicas=N | --every-eligible-node] [--min-distinct-nodes=N] \
+                 [--max-instances-per-node=N] [--spread-replicas] [--affinity-group=N] \
+                 [--anti-affinity-group=N] [service=send|call|client|publish ...] | \
+                 deployment-verify <descriptor> <pubkey-hex> | deployment-notify <descriptor> \
+                 [host:port] | deployment-status <artifact-name> [host:port] [wait-seconds] | \
+                 deployment-apply <host:port> <wait-seconds> <descriptor>... | release-sign \
+                 <output> <release-name> <sequence> <privkey-hex> <descriptor>... | \
+                 release-verify <release> <pubkey-hex> | release-notify <release> [host:port] | \
+                 release-apply <release> [host:port] [wait-seconds] | shutdown-sign <output> \
+                 <sequence> <target-node> <not-before-unix> <expires-unix> <node-grace-ms> \
+                 <phase-grace-ms> <privkey-hex> | shutdown-verify <intent> <pubkey-hex> | \
+                 shutdown-notify <intent> [host:port] | ingress-policy-sign <output> <sequence> \
+                 <not-before-unix> <expires-unix> <cluster-id-hex> <ops-ed25519-private-key-file> \
+                 ([NAME=]VIP:PORT... | --clear) | ingress-policy-verify <policy> <cluster-id-hex> \
+                 <ops-ed25519-public-key-file> | ingress-policy-notify <policy> [host:port] | \
+                 ingress-policy-status [host:port] | node-key <mac-address> | \
+                 operations-recipient-generate <private-key-file> <public-key-file> | \
+                 operations-signing-generate <private-key-file> <public-key-file> | \
+                 operations-seal <output> <profile-name> <s3|kafka> <cluster-id-hex> \
+                 <release-sha256> <sequence> <expires-unix> <recipient-public-key-file> \
+                 <ops-ed25519-private-key-file> <profile-file> | operations-verify <envelope> \
+                 <ops-ed25519-public-key-file> | operations-open <envelope> <cluster-id-hex> \
+                 <release-sha256> <now-unix> <recipient-private-key-file> \
+                 <ops-ed25519-public-key-file> <output> | operations-bundle-sign <output> \
+                 <bundle-sequence> <cluster-id-hex> <release-ed25519-public-key-hex> \
+                 <ops-ed25519-private-key-file> <recipient-public-key-file> <release> \
+                 (<target-artifact> <object-key> <envelope>)... | operations-bundle-verify \
+                 <bundle> <cluster-id-hex> <release-ed25519-public-key-hex> \
+                 <ops-ed25519-public-key-file> <recipient-public-key-file> <now-unix> | \
+                 operations-bundle-notify <bundle> [host:port] | cluster-id <mnemonic> | selftest"
+                .to_owned())
+        }
     }
 }
 

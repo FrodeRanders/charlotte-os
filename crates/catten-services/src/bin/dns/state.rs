@@ -84,6 +84,9 @@ pub(super) enum PendingQueryKind {
     Shutdown {
         reply: u64,
     },
+    IngressPolicy {
+        reply: u64,
+    },
 }
 
 pub(super) struct PendingQuery {
@@ -152,6 +155,14 @@ pub(super) enum PendingRegistration {
     /// Leader-side: a follower relayed a signed shutdown intent. The leader
     /// reverified signature and UTC bounds before submitting it.
     RemoteShutdown {
+        log_index: u64,
+        peer: String,
+        session: u64,
+        request_id: u64,
+    },
+    /// Leader-side: a follower relayed a signed complete ingress policy. The
+    /// leader reverified operations authority and UTC before submission.
+    RemoteIngressPolicy {
         log_index: u64,
         peer: String,
         session: u64,

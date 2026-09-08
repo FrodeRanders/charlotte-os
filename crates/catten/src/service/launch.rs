@@ -12,6 +12,8 @@
 //! therefore pure launch; readiness waits and assertions belong to the test
 //! (or boot-progress) layer.
 
+use alloc::vec::Vec;
+
 use spin::LazyLock;
 
 use crate::{
@@ -82,9 +84,13 @@ pub struct ClusterTcpService {
     pub backend_name: Option<&'static [u8]>,
 }
 
-pub(crate) fn configured_cluster_tcp_service() -> Option<ClusterTcpService> {
-    let address = option_env!("CATTEN_CLUSTER_VIP")?.as_bytes();
-    let port = option_env!("CATTEN_CLUSTER_TCP_PORT")?.as_bytes();
+fn parse_cluster_tcp_service(value: &'static str) -> Option<ClusterTcpService> {
+    let (backend_name, endpoint) = value
+        .split_once('=')
+        .map_or((None, value), |(name, endpoint)| (Some(name.as_bytes()), endpoint));
+    let (address, port) = endpoint.rsplit_once(':')?;
+    let address = address.as_bytes();
+    let port = port.as_bytes();
     let mut octets = [0u8; 4];
     let mut octet = 0usize;
     let mut value = 0u16;
@@ -113,7 +119,6 @@ pub(crate) fn configured_cluster_tcp_service() -> Option<ClusterTcpService> {
             .and_then(|()| value.checked_mul(10))
             .and_then(|value| value.checked_add(u16::from(byte - b'0')))
     })?;
-    let backend_name = option_env!("CATTEN_CLUSTER_SERVICE_NAME").map(str::as_bytes);
     if backend_name.is_some_and(|name| !charlotte_launch::deployment::valid_artifact_name(name)) {
         return None;
     }
@@ -122,6 +127,60 @@ pub(crate) fn configured_cluster_tcp_service() -> Option<ClusterTcpService> {
         port,
         backend_name,
     })
+}
+
+pub(crate) fn configured_cluster_tcp_services() -> Vec<ClusterTcpService> {
+    if let Some(configured) = option_env!("CATTEN_CLUSTER_SERVICES") {
+        return configured
+            .split(';')
+            .filter(|entry| !entry.is_empty())
+            .map(|entry| {
+                parse_cluster_tcp_service(entry)
+                    .unwrap_or_else(|| panic!("invalid compiled cluster service {entry:?}"))
+            })
+            .collect();
+    }
+    // Parse the historical fields directly. They remain compile-time strings,
+    // so the optional backend name keeps its launch-policy lifetime.
+    let endpoint = option_env!("CATTEN_CLUSTER_VIP").zip(option_env!("CATTEN_CLUSTER_TCP_PORT"));
+    let Some((address, port)) = endpoint else {
+        return Vec::new();
+    };
+    let legacy = ClusterTcpService {
+        address: parse_ipv4(address).unwrap_or_else(|| panic!("invalid compiled cluster VIP")),
+        port: parse_port(port).unwrap_or_else(|| panic!("invalid compiled cluster TCP port")),
+        backend_name: option_env!("CATTEN_CLUSTER_SERVICE_NAME").map(str::as_bytes),
+    };
+    alloc::vec![legacy]
+}
+
+fn parse_ipv4(address: &str) -> Option<[u8; 4]> {
+    let mut octets = [0u8; 4];
+    let mut parts = address.split('.');
+    for octet in &mut octets {
+        *octet = parts.next()?.parse().ok()?;
+    }
+    (parts.next().is_none() && octets != [0; 4]).then_some(octets)
+}
+
+fn parse_port(port: &str) -> Option<u16> {
+    port.parse::<u16>().ok().filter(|port| *port != 0)
+}
+
+fn encode_cluster_tcp_services(services: &[ClusterTcpService]) -> Vec<u8> {
+    let bindings = services
+        .iter()
+        .map(|service| charlotte_launch::ingress::ServiceBinding {
+            service: charlotte_launch::ingress::ServiceId::tcp_v4(service.address, service.port),
+            backend_name: service.backend_name,
+        })
+        .collect::<Vec<_>>();
+    let len = charlotte_launch::ingress::encoded_len(&bindings)
+        .expect("invalid cluster ingress launch policy");
+    let mut encoded = alloc::vec![0; len];
+    charlotte_launch::ingress::encode(&bindings, &mut encoded)
+        .expect("cluster ingress launch policy changed after validation");
+    encoded
 }
 
 /// The normal deployment control plane: signed-descriptor administration,
@@ -325,7 +384,7 @@ pub fn launch_storage(ns: &NameServiceHandle) -> Option<StorageStack> {
 /// Spawn the NIC driver for the first discovered Ethernet controller and the
 /// frame demultiplexer in front of it. Returns `None` when no NIC is present.
 pub fn launch_network_stack(ns: &NameServiceHandle) -> Option<NetworkStack> {
-    launch_network_stack_with_service(ns, None)
+    launch_network_stack_with_services(ns, &[])
 }
 
 /// Spawn the physical network path, optionally enabling one cluster TCP VIP.
@@ -334,6 +393,15 @@ pub fn launch_network_stack(ns: &NameServiceHandle) -> Option<NetworkStack> {
 pub fn launch_network_stack_with_service(
     ns: &NameServiceHandle,
     service: Option<ClusterTcpService>,
+) -> Option<NetworkStack> {
+    launch_network_stack_with_services(ns, service.as_slice())
+}
+
+/// Spawn the physical network path with a bounded table of independently
+/// assigned cluster service identities.
+pub fn launch_network_stack_with_services(
+    ns: &NameServiceHandle,
+    services: &[ClusterTcpService],
 ) -> Option<NetworkStack> {
     let (driver_elf, mmio_base, mmio_pages, intid, requester_id, msi_address) =
         discover_network_controller()?;
@@ -349,29 +417,21 @@ pub fn launch_network_stack_with_service(
             dma_msi_address: msi_address,
         },
     );
-    const VIP_KEY: u64 = charlotte_launch::manifest_key(b"vip");
-    const VIP_PORT_KEY: u64 = charlotte_launch::manifest_key(b"vipport");
-    let vip = service.map(|service| service.address).unwrap_or([0; 4]);
-    let frouter_manifest = [
-        ManifestEntry {
-            key: VIP_KEY,
-            flags: 0,
-            value: ManifestValue::Bytes(&vip),
-        },
-        ManifestEntry {
-            key: VIP_PORT_KEY,
-            flags: 0,
-            value: ManifestValue::Unsigned(service.map_or(0, |service| u64::from(service.port))),
-        },
-    ];
+    const INGRESS_SERVICES_KEY: u64 = charlotte_launch::manifest_key(b"vips");
+    let encoded_services = encode_cluster_tcp_services(services);
+    let frouter_manifest = [ManifestEntry {
+        key: INGRESS_SERVICES_KEY,
+        flags: 0,
+        value: ManifestValue::Bytes(&encoded_services),
+    }];
     let frouter = crate::service::supervisor::spawn_with_manifest(
         crate::service::store::service_elf(b"frouter").expect("[launch] frouter.elf"),
         ns,
         ConnectionRights::CALL,
-        if service.is_some() {
-            &frouter_manifest
-        } else {
+        if services.is_empty() {
             &[]
+        } else {
+            &frouter_manifest
         },
     );
     Some(NetworkStack {
@@ -389,7 +449,7 @@ pub fn launch_network_stack_with_service(
 pub fn launch_node_cluster(ns: &NameServiceHandle, cluster: &[u8]) -> Cluster {
     let trust = charlotte_launch::development_admission_trust(cluster)
         .expect("valid development admission trust");
-    launch_node_cluster_with_trust_and_service(ns, cluster, trust, None)
+    launch_node_cluster_with_trust_and_services(ns, cluster, trust, &[])
 }
 
 /// Spawn cluster services and bind distributed ingress to an optional
@@ -401,7 +461,17 @@ pub fn launch_node_cluster_with_service(
 ) -> Cluster {
     let trust = charlotte_launch::development_admission_trust(cluster)
         .expect("valid development admission trust");
-    launch_node_cluster_with_trust_and_service(ns, cluster, trust, service)
+    launch_node_cluster_with_trust_and_services(ns, cluster, trust, service.as_slice())
+}
+
+pub fn launch_node_cluster_with_services(
+    ns: &NameServiceHandle,
+    cluster: &[u8],
+    services: &[ClusterTcpService],
+) -> Cluster {
+    let trust = charlotte_launch::development_admission_trust(cluster)
+        .expect("valid development admission trust");
+    launch_node_cluster_with_trust_and_services(ns, cluster, trust, services)
 }
 
 /// Spawn cluster services with caller-provisioned, role-separated public
@@ -412,7 +482,7 @@ pub fn launch_node_cluster_with_trust(
     cluster: &[u8],
     trust: charlotte_launch::trust::AdmissionTrust,
 ) -> Cluster {
-    launch_node_cluster_with_trust_and_service(ns, cluster, trust, None)
+    launch_node_cluster_with_trust_and_services(ns, cluster, trust, &[])
 }
 
 /// Production cluster launch with role-separated admission trust and optional
@@ -423,9 +493,20 @@ pub fn launch_node_cluster_with_trust_and_service(
     trust: charlotte_launch::trust::AdmissionTrust,
     service: Option<ClusterTcpService>,
 ) -> Cluster {
+    launch_node_cluster_with_trust_and_services(ns, cluster, trust, service.as_slice())
+}
+
+/// Production cluster launch with one canonical operations-owned ingress
+/// assignment table shared with DNS and the packet path.
+pub fn launch_node_cluster_with_trust_and_services(
+    ns: &NameServiceHandle,
+    cluster: &[u8],
+    trust: charlotte_launch::trust::AdmissionTrust,
+    services: &[ClusterTcpService],
+) -> Cluster {
     const CLUSTER_KEY: u64 = charlotte_launch::manifest_key(b"cluster");
     const ELECTION_KEY: u64 = charlotte_launch::manifest_key(b"elect-ms");
-    const INGRESS_SERVICE_KEY: u64 = charlotte_launch::manifest_key(b"vip-name");
+    const INGRESS_SERVICES_KEY: u64 = charlotte_launch::manifest_key(b"vips");
     assert_eq!(trust.cluster_id, charlotte_launch::trust::cluster_id(cluster).unwrap());
     let trust = trust.encode().expect("valid admission trust");
 
@@ -462,23 +543,26 @@ pub fn launch_node_cluster_with_trust_and_service(
             value: ManifestValue::Bytes(&trust),
         },
     ];
-    let service_manifest = service.and_then(|service| service.backend_name).map(|name| {
-        [
-            base_manifest[0],
-            base_manifest[1],
-            base_manifest[2],
-            ManifestEntry {
-                key: INGRESS_SERVICE_KEY,
-                flags: 0,
-                value: ManifestValue::Bytes(name),
-            },
-        ]
-    });
+    let encoded_services = encode_cluster_tcp_services(services);
+    let service_manifest = [
+        base_manifest[0],
+        base_manifest[1],
+        base_manifest[2],
+        ManifestEntry {
+            key: INGRESS_SERVICES_KEY,
+            flags: 0,
+            value: ManifestValue::Bytes(&encoded_services),
+        },
+    ];
     let dns = crate::service::supervisor::spawn_with_manifest(
         crate::service::store::service_elf(b"dns").expect("[launch] dns.elf"),
         ns,
         ConnectionRights::CALL,
-        service_manifest.as_ref().map_or(&base_manifest, |manifest| manifest),
+        if services.is_empty() {
+            &base_manifest
+        } else {
+            &service_manifest
+        },
     );
     logln!(
         "[launch] cluster services spawned: disco={} relmsg={} dns={} (single Raft owner)",
@@ -495,7 +579,7 @@ pub fn launch_node_cluster_with_trust_and_service(
 
 /// Spawn `tcpip` in DHCP mode, the NTP-backed time service, and `httpd`.
 pub fn launch_network_appliance(ns: &NameServiceHandle, persist_time: bool) -> NetworkAppliance {
-    launch_network_appliance_with_service(ns, persist_time, None)
+    launch_network_appliance_with_services_mode(ns, persist_time, &[], true)
 }
 
 /// Spawn the IP/application-facing network services with optional local VIP
@@ -505,41 +589,42 @@ pub fn launch_network_appliance_with_service(
     persist_time: bool,
     service: Option<ClusterTcpService>,
 ) -> NetworkAppliance {
-    launch_network_appliance_with_service_mode(ns, persist_time, service, true)
+    launch_network_appliance_with_services_mode(ns, persist_time, service.as_slice(), true)
 }
 
-fn launch_network_appliance_with_service_mode(
+pub fn launch_network_appliance_with_services(
     ns: &NameServiceHandle,
     persist_time: bool,
-    service: Option<ClusterTcpService>,
+    services: &[ClusterTcpService],
+) -> NetworkAppliance {
+    launch_network_appliance_with_services_mode(ns, persist_time, services, true)
+}
+
+fn launch_network_appliance_with_services_mode(
+    ns: &NameServiceHandle,
+    persist_time: bool,
+    services: &[ClusterTcpService],
     dhcp: bool,
 ) -> NetworkAppliance {
     const DHCP_KEY: u64 = charlotte_launch::manifest_key(b"dhcp");
-    const VIP_KEY: u64 = charlotte_launch::manifest_key(b"vip");
-    const VIP_PORT_KEY: u64 = charlotte_launch::manifest_key(b"vipport");
-    let vip = service.map(|service| service.address).unwrap_or([0; 4]);
+    const INGRESS_SERVICES_KEY: u64 = charlotte_launch::manifest_key(b"vips");
+    let encoded_services = encode_cluster_tcp_services(services);
     let dhcp_entry = ManifestEntry {
         key: DHCP_KEY,
         flags: 0,
         value: ManifestValue::Bytes(b"1"),
     };
-    let vip_entries = [
-        ManifestEntry {
-            key: VIP_KEY,
-            flags: 0,
-            value: ManifestValue::Bytes(&vip),
-        },
-        ManifestEntry {
-            key: VIP_PORT_KEY,
-            flags: 0,
-            value: ManifestValue::Unsigned(service.map_or(0, |service| u64::from(service.port))),
-        },
-    ];
-    let dhcp_vip_entries = [dhcp_entry, vip_entries[0], vip_entries[1]];
-    let manifest: &[ManifestEntry<'_>] = match (dhcp, service.is_some()) {
-        (true, true) => &dhcp_vip_entries,
+    let ingress_entry = ManifestEntry {
+        key: INGRESS_SERVICES_KEY,
+        flags: 0,
+        value: ManifestValue::Bytes(&encoded_services),
+    };
+    let ingress_entries = [ingress_entry];
+    let dhcp_ingress_entries = [dhcp_entry, ingress_entry];
+    let manifest: &[ManifestEntry<'_>] = match (dhcp, !services.is_empty()) {
+        (true, true) => &dhcp_ingress_entries,
         (true, false) => core::slice::from_ref(&dhcp_entry),
-        (false, true) => &vip_entries,
+        (false, true) => &ingress_entries,
         (false, false) => &[],
     };
     let tcpip = crate::service::supervisor::spawn_with_manifest(
@@ -855,15 +940,15 @@ pub extern "C" fn launch_steady_state() {
     let ns = crate::service::supervisor::node_name_service();
     let storage = launch_storage(&ns);
     let entropy = launch_entropy(&ns);
-    let cluster_service = configured_cluster_tcp_service();
-    let network = launch_network_stack_with_service(&ns, cluster_service);
+    let cluster_services = configured_cluster_tcp_services();
+    let network = launch_network_stack_with_services(&ns, &cluster_services);
     let (cluster, appliance) = match network {
         Some(_) => (
-            Some(launch_node_cluster_with_service(&ns, b"charlotte", cluster_service)),
-            Some(launch_network_appliance_with_service_mode(
+            Some(launch_node_cluster_with_services(&ns, b"charlotte", &cluster_services)),
+            Some(launch_network_appliance_with_services_mode(
                 &ns,
                 storage.is_some(),
-                cluster_service,
+                &cluster_services,
                 option_env!("CATTEN_CLUSTER_STATIC_NETWORK") != Some("1"),
             )),
         ),

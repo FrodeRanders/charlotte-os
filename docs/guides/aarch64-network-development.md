@@ -87,21 +87,41 @@ multi-node load-sharing exercise, place all guests and the client on a shared
 tap/bridge or socket-backed L2 fixture and use the same `VIP:port` on every
 node.
 
-For a deployed network application, bind the VIP to its signed artifact/service
-name as well:
+For deployed applications, bind each VIP to its signed artifact/service name.
+The option is repeatable and the preferred spelling keeps the assignment
+atomic:
 
 ```sh
 ./scripts/run-aarch64.sh release \
-  --cluster-service 10.0.2.42:8080 \
-  --cluster-service-name orders
+  --cluster-service orders=10.0.2.42:8080 \
+  --cluster-service payments=10.0.2.43:8080
 ```
 
-DNS then admits new flows only to the node selected by the committed `orders`
-deployment after that node publishes readiness for the exact generation. The
-VIP is not advertised while no matching generation is ready. Without
-`--cluster-service-name`, the compatibility mode continues to use every
-admitted, non-draining member for platform services such as the built-in HTTP
-keyhole.
+DNS evaluates each assignment independently and admits new flows only to nodes
+selected by the corresponding committed deployment after they publish
+readiness for the exact generation. A VIP is not advertised while its service
+has no matching ready generation. The older `--cluster-service VIP:PORT
+--cluster-service-name NAME` spelling remains available for one assignment.
+An unnamed assignment keeps the compatibility mode that uses every admitted,
+non-draining member for platform services such as the built-in HTTP keyhole.
+
+The runner's table is operations-owned bootstrap policy: application
+descriptors contain no production address. All members should receive the same
+bootstrap value. A signed `CINGPOL1` policy submitted with `cluster-sign
+ingress-policy-notify` then becomes the Raft-committed authority on every
+member. DNS, the frame router, and TCP/IP reconcile a complete replacement at
+runtime. The table holds 16 maximum-length named assignments within its 1 KiB
+bound; this is not an inherent DSR limit. See
+[Distributed L2 ingress](../architecture/distributed-l2-ingress.md#operations-owned-service-assignment)
+for signing and withdrawal examples.
+
+The socket protocol also offers address-specific `bind_ipv4` and
+`listen_ipv4` helpers. Applications that share a conventional port, such as
+443, bind their assigned VIP explicitly rather than competing for a wildcard
+listener in the node TCP/IP service. An application with an attenuated DNS
+grant uses the ownership-safe `dns::ingress_assignments` helper to resolve the
+typed identities for its full artifact name; the helper owns the request,
+reply, and mapping lifetimes around `OP_INGRESS_ASSIGNMENTS_NAMED`.
 
 The repository includes the complete socket-backed validation:
 
@@ -116,4 +136,5 @@ replacement advertisement, and sends HTTP on the already established flows.
 The fixture requires remote forwarding, at least one surviving flow, and a
 fresh HTTP connection to a live backend after the failure. It uses
 `--cluster-ingress-test` internally; that switch is verifier plumbing, whereas
-`--cluster-service` is the operational configuration.
+`--cluster-service` is bootstrap operational configuration; a committed
+`CINGPOL1` policy supersedes it.

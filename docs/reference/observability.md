@@ -131,9 +131,18 @@ count, and leader identity.
 
 The `frouter` report includes `snapshot_fresh`,
 `snapshot_stale_dropped`, `missing_epoch_dropped`, and
-`snapshot_expirations`. These distinguish normal policy rejection from the two
+`snapshot_expirations`, plus `ingress_services`, the number of independently
+assigned service identities. The legacy epoch/backend/advertiser fields
+describe the first assignment while packet and drop counters are aggregate.
+These distinguish normal policy rejection from the two
 fail-closed ingress safeguards: loss of the new-flow lease and a flow binding
 whose immutable epoch has left bounded history.
+
+The operations-facing `GET /v1/ingress-policy` endpoint reports the committed
+catalog generation, signed policy sequence, assignment count, and admission
+validity interval. `cluster-sign ingress-policy-status [host:port]` wraps this
+query. Before the first policy commit it returns not found because the
+launch-time bootstrap table is local fallback rather than replicated state.
 
 The aggregation model follows the two explicit producer paths above: each
 service *voluntarily publishes* a status op, and the `observe` service is the
