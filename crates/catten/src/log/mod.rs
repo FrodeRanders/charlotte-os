@@ -123,6 +123,33 @@ pub fn early_restore_interrupts(interrupts_were_enabled: bool) {
     }
 }
 
+/// Write directly to the architecture's early serial device without taking
+/// its software lock.
+///
+/// This is reserved for the fatal panic path. A panic may have interrupted a
+/// normal logger while it owned the serial lock, so attempting even a
+/// non-allocating locked write could deadlock before the panic or backtrace is
+/// visible. Output from another LP can interleave, but making progress is more
+/// important once the kernel is irrecoverably stopped.
+pub fn panic_write(args: core::fmt::Arguments<'_>) {
+    use core::fmt::Write;
+
+    #[cfg(target_arch = "aarch64")]
+    {
+        let mut console = serial::Pl011;
+        let _ = console.write_fmt(args);
+    }
+    #[cfg(target_arch = "x86_64")]
+    {
+        let mut console = serial_x86::Uart16550;
+        let _ = console.write_fmt(args);
+    }
+    #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+    {
+        let _ = args;
+    }
+}
+
 /// Early, dependency-light log output. On AArch64 this writes to the PL011
 /// serial console, which is usable from the very first instruction of the
 /// kernel; on other architectures it is currently a no-op pending an equivalent

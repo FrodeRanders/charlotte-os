@@ -97,6 +97,65 @@ catten_boot_sha256_stdin() {
     fi
 }
 
+catten_boot_find_llvm_nm() {
+    local rust_host
+    local rust_llvm_nm
+
+    if [ -n "${LLVM_NM:-}" ] && [ -x "$LLVM_NM" ]; then
+        printf '%s\n' "$LLVM_NM"
+        return 0
+    fi
+    if command -v llvm-nm >/dev/null 2>&1; then
+        command -v llvm-nm
+        return 0
+    fi
+    if command -v rustc >/dev/null 2>&1; then
+        rust_host="$(rustc -vV | awk '/^host:/ {print $2}')"
+        rust_llvm_nm="$(rustc --print sysroot)/lib/rustlib/${rust_host}/bin/llvm-nm"
+        if [ -x "$rust_llvm_nm" ]; then
+            printf '%s\n' "$rust_llvm_nm"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+catten_boot_write_kernel_symbols() {
+    local kernel="$1"
+    local kernel_sha256="$2"
+    local llvm_nm
+    local symbol_map="${kernel}.symbols"
+    local archive_dir="${CATTEN_BOOT_ROOT_DIR}/target/kernel-symbols"
+    local archived_map="${archive_dir}/${kernel_sha256}.symbols"
+    local temporary_map
+
+    if ! llvm_nm="$(catten_boot_find_llvm_nm)"; then
+        rm -f -- "$symbol_map"
+        echo "warning: llvm-nm is unavailable; kernel symbol map was not generated" >&2
+        echo "         install rustup's llvm-tools-preview component or set LLVM_NM" >&2
+        return 0
+    fi
+
+    temporary_map="$(mktemp "${symbol_map}.tmp.XXXXXX")" || return 1
+    if ! {
+        printf '# CharlotteOS kernel symbol map v1\n'
+        printf '# kernel-sha256: %s\n' "$kernel_sha256"
+        printf '# columns: address size type demangled-symbol\n'
+        "$llvm_nm" --defined-only --numeric-sort --print-size --demangle "$kernel"
+    } >"$temporary_map"; then
+        rm -f -- "$temporary_map"
+        rm -f -- "$symbol_map"
+        echo "warning: failed to generate kernel symbol map with ${llvm_nm}" >&2
+        return 0
+    fi
+
+    mv -f -- "$temporary_map" "$symbol_map"
+    mkdir -p "$archive_dir"
+    cp -f -- "$symbol_map" "$archived_map"
+    echo ">>> Kernel symbols: ${symbol_map}"
+    echo ">>> Archived symbols: ${archived_map}"
+}
+
 catten_boot_report_kernel() {
     local kernel="$1"
     local kernel_sha256
@@ -108,6 +167,21 @@ catten_boot_report_kernel() {
     kernel_sha256="$(catten_boot_sha256 "$kernel")" || return 1
     echo ">>> Kernel payload: ${kernel}"
     echo ">>> Kernel SHA-256: ${kernel_sha256}"
+    catten_boot_write_kernel_symbols "$kernel" "$kernel_sha256"
+}
+
+catten_boot_record_log_kernel() {
+    local log="$1"
+    local kernel="$2"
+    local symbol_map="${kernel}.symbols"
+    local kernel_sha256
+
+    kernel_sha256="$(catten_boot_sha256 "$kernel")" || return 1
+    printf '%s\n' "$kernel_sha256" >"${log}.kernel.sha256"
+    rm -f -- "${log}.symbols"
+    if [ -f "$symbol_map" ]; then
+        cp -f -- "$symbol_map" "${log}.symbols"
+    fi
 }
 
 catten_boot_bundle_sha256() (
@@ -187,6 +261,7 @@ catten_boot_create_uefi_image() {
 
 catten_boot_validate_selftest_log() {
     local log="$1"
+    local kernel="${2:-}"
 
     if [ ! -f "$log" ]; then
         echo "error: serial log does not exist: ${log}" >&2
@@ -194,6 +269,10 @@ catten_boot_validate_selftest_log() {
     fi
     if grep -Fq "Kernel panic:" "$log"; then
         echo "error: kernel panic observed during the test window" >&2
+        if [ -n "$kernel" ] && command -v python3 >/dev/null 2>&1; then
+            "${CATTEN_BOOT_ROOT_DIR}/scripts/symbolize-kernel-panic.py" \
+                --kernel "$kernel" "$log" || true
+        fi
         return 1
     fi
     if ! grep -Eq \

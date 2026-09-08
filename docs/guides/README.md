@@ -3,6 +3,8 @@
 These documents contain repeatable workflows rather than architectural claims.
 
 - [Testing](testing.md) — host suites, QEMU target tests, and validation scope.
+- [Kernel panic backtraces](kernel-panic-backtraces.md) — fail-stop behavior,
+  build-matched symbol maps, and offline function/source lookup.
 - [Limine dependency and boot policy](limine.md) — exact version pins, binary
   provenance, update validation, and measured/Secure Boot boundaries.
 - [Userspace development](userspace-development.md) — `catten-rt`, entry

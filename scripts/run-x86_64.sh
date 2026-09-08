@@ -459,6 +459,7 @@ fi
 if [ -n "$TIMEOUT" ]; then
     LOG="/tmp/charlotte-x86${INSTANCE_SUFFIX}-serial.log"
     : >"$LOG"
+    catten_boot_record_log_kernel "$LOG" "$KERNEL"
     QEMU_OPTS+=(-serial "file:${LOG}")
     echo ">>> Booting under QEMU (${TIMEOUT}s timeout, serial to ${LOG})..."
     qemu-system-x86_64 "${QEMU_OPTS[@]}" $GDB &
@@ -525,7 +526,7 @@ if [ -n "$TIMEOUT" ]; then
         echo "error: authoritative self-test result was not produced within ${TIMEOUT}s" >&2
         exit 1
     fi
-    catten_boot_validate_selftest_log "$LOG"
+    catten_boot_validate_selftest_log "$LOG" "$KERNEL"
 else
     QEMU_OPTS+=(-serial stdio)
     echo ">>> Booting under QEMU (serial on stdio; press Ctrl-A X to quit)..."

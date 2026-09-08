@@ -917,6 +917,7 @@ fi
 if [ -n "$TIMEOUT" ]; then
     LOG="/tmp/charlotte${INSTANCE_SUFFIX}-serial.log"
     : >"$LOG"
+    catten_boot_record_log_kernel "$LOG" "$KERNEL"
     QEMU_OPTS+=(-serial "file:${LOG}")
     echo ">>> Booting under QEMU (${TIMEOUT}s timeout, serial to ${LOG})..."
     if [ "$SCHEDULER_TRACE" = "1" ] || [ "$DEBUG_SNAPSHOT" = "1" ]; then
@@ -1201,7 +1202,7 @@ if [ -n "$TIMEOUT" ]; then
         echo "error: Kafka broker fault injection did not complete" >&2
         exit 1
     fi
-    catten_boot_validate_selftest_log "$LOG"
+    catten_boot_validate_selftest_log "$LOG" "$KERNEL"
 else
     QEMU_OPTS+=(-serial stdio)
     if [ "$DISPLAY_MODE" = "1" ]; then
