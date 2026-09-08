@@ -158,6 +158,28 @@ pub fn test_completion_caps() {
     completion::close(cq_asid, cap_a).unwrap();
     completion::close(cq_asid, cap_b).unwrap();
     completion::close(cq_asid, cap_c).unwrap();
+
+    // --- cap-based consumers must not leave an unbounded stale backlog ------
+    // Keep the one-slot ring full, then repeatedly consume completions through
+    // poll(cap) instead. close(cap) must discard each redundant, undelivered
+    // CQ record rather than retaining it forever in the kernel backlog.
+    let blocker = completion::submit(cq_asid, OpCode::Nop, None).unwrap();
+    completion::complete(cq_asid, blocker, OpResult::Ok(40)).unwrap();
+    assert!(completion::poll(cq_asid, blocker).unwrap().is_some());
+    completion::close(cq_asid, blocker).unwrap();
+    for value in 0..64 {
+        let cap = completion::submit(cq_asid, OpCode::Nop, None).unwrap();
+        completion::complete(cq_asid, cap, OpResult::Ok(value)).unwrap();
+        assert!(completion::poll(cq_asid, cap).unwrap().is_some());
+        completion::close(cq_asid, cap).unwrap();
+    }
+    let blocker_entry = unsafe { &mut *ring_ptr }.read().expect("blocking CQ entry must remain");
+    assert_eq!(blocker_entry.cookie, blocker);
+    assert_eq!(
+        completion::cq_pending(cq_asid, 0),
+        0,
+        "closed cap completions must not remain in the CQ backlog"
+    );
     completion::close_address_space(cq_asid);
 
     logln!("Completion-capability subsystem tests passed.");
@@ -268,5 +290,35 @@ pub fn test_detached_operations() {
     );
 
     completion::close_address_space(asid);
+
+    // A detached completion that cannot enter a full ring continues to count
+    // against submission capacity until userspace drains space and a kernel
+    // entry point flushes it. This bounds retained CQ records by that capacity.
+    let bounded_asid = 0xde7a_c402;
+    completion::open_address_space_with_cq(bounded_asid, 2, 2);
+    let bounded_ring =
+        unsafe { completion::cq_ring_of(bounded_asid, 0) }.expect("bounded CQ ring must exist");
+    let first = completion::submit_detached(bounded_asid, 0, OpCode::Nop, 0xb001).unwrap();
+    let retained = completion::submit_detached(bounded_asid, 0, OpCode::Nop, 0xb002).unwrap();
+    completion::complete_detached(bounded_asid, first, OpResult::Ok(1)).unwrap();
+    completion::complete_detached(bounded_asid, retained, OpResult::Ok(2)).unwrap();
+
+    let admitted = completion::submit_detached(bounded_asid, 0, OpCode::Nop, 0xb003).unwrap();
+    assert_eq!(
+        completion::submit_detached(bounded_asid, 0, OpCode::Nop, 0xb004),
+        Err(SubmitError::WouldBlock),
+        "an undelivered detached completion must retain its submission slot"
+    );
+    let first_entry = unsafe { &mut *bounded_ring }.read().expect("first CQ entry must exist");
+    assert_eq!(first_entry.cookie, 0xb001);
+
+    let retried = completion::submit_detached(bounded_asid, 0, OpCode::Nop, 0xb004)
+        .expect("submission should flush retained work after userspace drains CQ space");
+    let retained_entry =
+        unsafe { &mut *bounded_ring }.read().expect("retained CQ entry must be flushed");
+    assert_eq!(retained_entry.cookie, 0xb002);
+    completion::complete_detached(bounded_asid, admitted, OpResult::Ok(3)).unwrap();
+    completion::complete_detached(bounded_asid, retried, OpResult::Ok(4)).unwrap();
+    completion::close_address_space(bounded_asid);
     logln!("Capability-free (detached) completion tests passed.");
 }

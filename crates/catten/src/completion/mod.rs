@@ -415,22 +415,40 @@ struct DetachedTimerObserver {
     operation: OperationId,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BacklogOwner {
+    Capability,
+    Detached,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct BacklogEntry {
+    operation: OperationId,
+    cookie: u64,
+    status: u32,
+    result: i64,
+    owner: BacklogOwner,
+}
+
 impl Observer for DetachedTimerObserver {
     fn notify(self: Arc<Self>) {
         let _ = complete_detached(self.asid, self.operation, OpResult::Ok(0));
     }
 }
 
-/// One completion queue: the shared ring plus its non-lossy backlog and a
-/// monotonic work-generation counter.  An address space owns one per shard.
+/// One completion queue: the shared ring plus its bounded non-lossy backlog
+/// and a monotonic work-generation counter. An address space owns one per
+/// shard.
 struct CqState {
     /// The shared ring (zero-syscall drain path). The allocation backing a
     /// heap-backed ring is kept alive by `_buf`.
     ring: *mut crate::completion::cq::CompletionQueueRing,
-    /// Entries (cookie, result) that could not fit in the shared ring yet.
-    /// This preserves the non-lossy completion contract: a full userspace
-    /// ring delays delivery but does not discard terminal completions.
-    backlog: VecDeque<(u64, u64, u32, i64)>,
+    /// Entries that could not fit in the shared ring yet. Every entry either
+    /// belongs to a live capability or retains a detached operation's live
+    /// submission slot, so the address-space capacity also bounds this queue.
+    /// Closing a cap-based completion removes its undelivered redundant entry.
+    backlog: VecDeque<BacklogEntry>,
+    retained_limit: usize,
     /// Monotonic counter bumped every time new work arrives on this queue:
     /// a completion is posted or an explicit wake is posted.  Used by
     /// [`wait_on_cq`] to detect new work without depending on the shared
@@ -450,6 +468,8 @@ struct CqState {
 
 struct AsCompletions {
     table: BTreeMap<CompletionCap, Arc<Completion>>,
+    /// Shared upper bound for capability records, in-flight detached
+    /// operations, and completed detached records awaiting CQ delivery.
     capacity: usize,
     live: usize,
     /// Live capability-free operations, keyed by their stable operation id.
@@ -542,11 +562,13 @@ pub fn open_cq(asid: AddressSpaceId, cq: CqId, cq_entries: u32) {
         .expect("completion queue capacity must be at least two");
     let mut registry = COMPLETIONS.write();
     if let Some(as_completions) = registry.get_mut(&asid) {
+        let retained_limit = as_completions.capacity;
         as_completions.cqs.insert(
             cq,
             CqState {
                 ring: ring_ptr,
-                backlog: VecDeque::new(),
+                backlog: VecDeque::with_capacity(retained_limit),
+                retained_limit,
                 work_generation: 0,
                 last_seen_generation: 0,
                 observers: ConcurrentQueue::unbounded(),
@@ -569,11 +591,13 @@ pub fn open_cq_phys(
             .expect("completion queue capacity must be at least two");
     let mut registry = COMPLETIONS.write();
     if let Some(as_completions) = registry.get_mut(&asid) {
+        let retained_limit = as_completions.capacity;
         as_completions.cqs.insert(
             cq,
             CqState {
                 ring: ring_ptr,
-                backlog: VecDeque::new(),
+                backlog: VecDeque::with_capacity(retained_limit),
+                retained_limit,
                 work_generation: 0,
                 last_seen_generation: 0,
                 observers: ConcurrentQueue::unbounded(),
@@ -633,6 +657,7 @@ pub fn submit(
 ) -> Result<CompletionCap, SubmitError> {
     let mut registry = COMPLETIONS.write();
     let as_completions = registry.get_mut(&asid).ok_or(SubmitError::UnknownAddressSpace)?;
+    flush_cq_backlog(as_completions, DEFAULT_CQ);
     if as_completions.live >= as_completions.capacity {
         return Err(SubmitError::WouldBlock);
     }
@@ -790,10 +815,21 @@ pub fn complete(
     {
         let mut registry = COMPLETIONS.write();
         if let Some(as_completions) = registry.get_mut(&asid)
+            // poll/close may race the state transition above. Do not publish
+            // into a replacement address space, or after the cap consumer has
+            // already closed the only remaining result.
+            && as_completions
+                .table
+                .get(&cap)
+                .is_some_and(|registered| Arc::ptr_eq(registered, &completion))
             && let Some(cq_state) = as_completions.cqs.get_mut(&DEFAULT_CQ)
         {
             let op = completion.operation_id();
-            post_to_cq(cq_state, op, cap, &effective);
+            let flushed_detached =
+                post_to_cq(cq_state, op, cap, &effective, BacklogOwner::Capability)
+                    .flushed
+                    .detached;
+            as_completions.live = as_completions.live.saturating_sub(flushed_detached);
             cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
             crate::debug_trace::trace(
                 crate::debug_trace::TAG_COMPLETE,
@@ -811,15 +847,39 @@ pub fn complete(
 }
 
 /// Posts one entry to a queue's ring, spilling to its non-lossy backlog when
-/// the ring is full. Any backlog is flushed (batched) first so ordering is
-/// preserved.
-fn post_to_cq(cq_state: &mut CqState, operation: u64, cookie: u64, result: &OpResult) {
+/// the ring is full. Any backlog is flushed first so ordering is preserved.
+struct PostOutcome {
+    flushed: FlushOutcome,
+    delivered_current: bool,
+}
+
+fn post_to_cq(
+    cq_state: &mut CqState,
+    operation: u64,
+    cookie: u64,
+    result: &OpResult,
+    owner: BacklogOwner,
+) -> PostOutcome {
     let (status, val) = crate::completion::cq::op_result_to_fields(result);
-    flush_backlog(cq_state);
-    if !cq_state.backlog.is_empty()
-        || !unsafe { &mut *cq_state.ring }.write(operation, cookie, status, val)
-    {
-        cq_state.backlog.push_back((operation, cookie, status, val));
+    let flushed = flush_backlog(cq_state);
+    let delivered_current = cq_state.backlog.is_empty()
+        && unsafe { &mut *cq_state.ring }.write(operation, cookie, status, val);
+    if !delivered_current {
+        assert!(
+            cq_state.backlog.len() < cq_state.retained_limit,
+            "completion backlog exceeded address-space submission capacity"
+        );
+        cq_state.backlog.push_back(BacklogEntry {
+            operation,
+            cookie,
+            status,
+            result: val,
+            owner,
+        });
+    }
+    PostOutcome {
+        flushed,
+        delivered_current,
     }
 }
 
@@ -841,6 +901,7 @@ pub fn submit_detached(
 ) -> Result<OperationId, SubmitError> {
     let mut registry = COMPLETIONS.write();
     let as_completions = registry.get_mut(&asid).ok_or(SubmitError::UnknownAddressSpace)?;
+    flush_cq_backlog(as_completions, cq);
     if !as_completions.cqs.contains_key(&cq) {
         return Err(SubmitError::NoCompletionQueue);
     }
@@ -886,8 +947,10 @@ pub fn submit_detached_timer(
 }
 
 /// Completes a capability-free operation: posts `(user_data, result)` to the
-/// operation's queue (or its non-lossy backlog), reclaims the operation
-/// record, and wakes that queue's waiters. The effective result is forced to
+/// operation's queue (or its non-lossy backlog), reclaims the addressable
+/// operation record, and wakes that queue's waiters. A backlogged record keeps
+/// its submission slot until it reaches the ring, bounding retained records by
+/// the address-space capacity. The effective result is forced to
 /// [`OpResult::Cancelled`] when a cancel was pending. After this call the
 /// operation id no longer names anything.
 pub fn complete_detached(
@@ -905,7 +968,13 @@ pub fn complete_detached(
             result
         };
         if let Some(cq_state) = as_completions.cqs.get_mut(&detached.cq) {
-            post_to_cq(cq_state, operation, detached.user_data, &effective);
+            let outcome = post_to_cq(
+                cq_state,
+                operation,
+                detached.user_data,
+                &effective,
+                BacklogOwner::Detached,
+            );
             cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
             crate::debug_trace::trace(
                 crate::debug_trace::TAG_COMPLETE_DETACHED,
@@ -913,8 +982,13 @@ pub fn complete_detached(
                 cq_state.work_generation,
                 operation,
             );
+            let delivered = outcome.flushed.detached + usize::from(outcome.delivered_current);
+            as_completions.live = as_completions.live.saturating_sub(delivered);
+        } else {
+            // The queue disappeared after submission, so no delivery can be
+            // retained. Release this operation's submission slot.
+            as_completions.live = as_completions.live.saturating_sub(1);
         }
-        as_completions.live = as_completions.live.saturating_sub(1);
         detached.cq
     };
     signal_cq(asid, cq);
@@ -936,18 +1010,49 @@ pub fn cancel_detached(
     Ok(CancelState::CancelRequested)
 }
 
-/// Batched backlog flush: writes as many retained entries as fit with one
-/// ring head update, preserving order.
-fn flush_backlog(cq_state: &mut CqState) {
+#[derive(Clone, Copy, Default)]
+struct FlushOutcome {
+    total: usize,
+    detached: usize,
+}
+
+/// Writes as many retained entries as fit, preserving order. Reports how many
+/// entries became visible and how many detached entries therefore released
+/// submission slots.
+fn flush_backlog(cq_state: &mut CqState) -> FlushOutcome {
     if cq_state.backlog.is_empty() {
-        return;
+        return FlushOutcome::default();
     }
-    let entries = cq_state.backlog.make_contiguous();
-    let written = unsafe { &mut *cq_state.ring }.write_batch(entries.iter());
-    let _ = entries;
-    for _ in 0..written {
-        cq_state.backlog.pop_front();
+
+    let mut outcome = FlushOutcome::default();
+    while !unsafe { &*cq_state.ring }.is_full() {
+        let Some(entry) = cq_state.backlog.pop_front() else {
+            break;
+        };
+        let written = unsafe { &mut *cq_state.ring }.write(
+            entry.operation,
+            entry.cookie,
+            entry.status,
+            entry.result,
+        );
+        debug_assert!(written, "CQ became full while its producer lock was held");
+        outcome.total += 1;
+        if entry.owner == BacklogOwner::Detached {
+            outcome.detached += 1;
+        }
     }
+    if outcome.total != 0 {
+        // Retained records becoming visible are new work even if the original
+        // completion generation was consumed before ring space was available.
+        cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
+    }
+    outcome
+}
+
+fn flush_cq_backlog(as_completions: &mut AsCompletions, cq: CqId) -> FlushOutcome {
+    let outcome = as_completions.cqs.get_mut(&cq).map(flush_backlog).unwrap_or_default();
+    as_completions.live = as_completions.live.saturating_sub(outcome.detached);
+    outcome
 }
 
 fn signal_cq(asid: AddressSpaceId, cq: CqId) {
@@ -1089,8 +1194,16 @@ pub fn close(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
     if !completion.is_reclaimable() {
         return Err(CapError::NotComplete);
     }
+    let operation = completion.operation_id();
     let mut registry = COMPLETIONS.write();
     let as_completions = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
+    if let Some(cq_state) = as_completions.cqs.get_mut(&DEFAULT_CQ) {
+        cq_state.backlog.retain(|entry| {
+            entry.owner != BacklogOwner::Capability
+                || entry.operation != operation
+                || entry.cookie != cap
+        });
+    }
     as_completions.table.remove(&cap).ok_or(CapError::UnknownCap)?;
     let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Completion);
     assert!(revoked, "completion payload capability was absent from unified table");
@@ -1132,13 +1245,11 @@ pub fn state_of(asid: AddressSpaceId, cap: CompletionCap) -> Result<OpStateKind,
 /// exist.
 pub fn cq_pending(asid: AddressSpaceId, cq: CqId) -> u32 {
     let mut registry = COMPLETIONS.write();
-    match registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {
-        Some(cq_state) => {
-            flush_backlog(cq_state);
-            unsafe { &*cq_state.ring }.pending()
-        }
-        None => 0,
-    }
+    let Some(as_completions) = registry.get_mut(&asid) else {
+        return 0;
+    };
+    flush_cq_backlog(as_completions, cq);
+    as_completions.cqs.get(&cq).map(|cq_state| unsafe { &*cq_state.ring }.pending()).unwrap_or(0)
 }
 
 /// Posts an explicit wake to the waiters of one queue (architecture doc
@@ -1179,20 +1290,23 @@ pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, _min_complete: u32) {
     // Fast path: work arrived before the first cq_wait call.
     {
         let mut registry = COMPLETIONS.write();
-        if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq))
-            && charlotte_lifecycle::classify_timed_wait(
-                cq_state.last_seen_generation,
-                cq_state.work_generation,
-            ) == charlotte_lifecycle::TimedWaitOutcome::Work
-        {
-            crate::debug_trace::trace(
-                crate::debug_trace::TAG_CQ_WAIT_FAST,
-                asid as u64,
-                cq_state.work_generation,
-                cq_state.last_seen_generation,
-            );
-            cq_state.last_seen_generation = cq_state.work_generation;
-            return;
+        if let Some(as_completions) = registry.get_mut(&asid) {
+            flush_cq_backlog(as_completions, cq);
+            if let Some(cq_state) = as_completions.cqs.get_mut(&cq)
+                && charlotte_lifecycle::classify_timed_wait(
+                    cq_state.last_seen_generation,
+                    cq_state.work_generation,
+                ) == charlotte_lifecycle::TimedWaitOutcome::Work
+            {
+                crate::debug_trace::trace(
+                    crate::debug_trace::TAG_CQ_WAIT_FAST,
+                    asid as u64,
+                    cq_state.work_generation,
+                    cq_state.last_seen_generation,
+                );
+                cq_state.last_seen_generation = cq_state.work_generation;
+                return;
+            }
         }
     }
 
@@ -1313,14 +1427,17 @@ pub fn wait_on_cq_timeout(
 
     {
         let mut registry = COMPLETIONS.write();
-        if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq))
-            && charlotte_lifecycle::classify_timed_wait(
-                cq_state.last_seen_generation,
-                cq_state.work_generation,
-            ) == charlotte_lifecycle::TimedWaitOutcome::Work
-        {
-            cq_state.last_seen_generation = cq_state.work_generation;
-            return true;
+        if let Some(as_completions) = registry.get_mut(&asid) {
+            flush_cq_backlog(as_completions, cq);
+            if let Some(cq_state) = as_completions.cqs.get_mut(&cq)
+                && charlotte_lifecycle::classify_timed_wait(
+                    cq_state.last_seen_generation,
+                    cq_state.work_generation,
+                ) == charlotte_lifecycle::TimedWaitOutcome::Work
+            {
+                cq_state.last_seen_generation = cq_state.work_generation;
+                return true;
+            }
         }
     }
 

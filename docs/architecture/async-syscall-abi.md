@@ -567,7 +567,7 @@ backpressure).
 
 The prototype has since grown beyond that initial submission path. Blocking CQ
 waits are scheduler-driven and tested after boot, a shared-memory CQ ring plus
-non-lossy kernel backlog is mapped into EL0 domains, and real AArch64 EL0/SVC
+bounded non-lossy kernel backlog is mapped into EL0 domains, and real AArch64 EL0/SVC
 self-tests exercise submission, waiting, draining, cancellation, endpoint
 readiness, and cross-LP completion paths. The historical implementation steps
 below are retained to explain how those pieces were introduced.
@@ -667,7 +667,10 @@ physical memory is visible from both sides. Entries are written/read with
 ensuring correct ordering without cache-coherence surprises. The raw ring
 detects and counts a full-ring write instead of overwriting an entry; the
 completion subsystem then retains that entry in its ordered, non-lossy kernel
-backlog until userspace drains enough ring capacity.
+backlog until userspace drains enough ring capacity. Each retained entry keeps
+an existing submission slot occupied (or belongs to a still-live capability),
+so the address-space completion capacity bounds the backlog and further
+submissions return `WouldBlock` instead of consuming memory without limit.
 
 Self-tests validate: write → pending count, drain in insertion order,
 fill-to-capacity, overflow detection, and status/result encoding

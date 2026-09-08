@@ -34,7 +34,7 @@ is in the repository history and earlier revisions of this document.
 | 3 | Userspace name/service manager, bootstrap delivery, ELF loader, supervisor, generation tracking, long names via memory objects | Done |
 | 4 | First-class memory objects: allocate, map, unmap, close, ownership accounting | Done |
 | 5 | Memory IPC: Copy, Move, BorrowRead, BorrowWrite, reply-bound revocation, cancellation, server-death recovery | Done |
-| 6 | CQ subsystem normalisation: operation IDs, detached submission, CQ_WAIT/CQ_WAKE, per-shard CQ partitioning, backlog batching, §8.2 32-byte richer completion records | Done |
+| 6 | CQ subsystem normalisation: operation IDs, detached submission, CQ_WAIT/CQ_WAKE, per-shard CQ partitioning, bounded overflow retention, §8.2 32-byte richer completion records | Done |
 | 7 | Sitas endpoint/CQ backend: endpoint readiness binding, unified shard wait (`CQ_WAIT`), `ShardExecutor` (budgeted polling, task wakeup from drained events), spin-free `ShardParker` integration, per-shard CQ rings, `kv::spin_recv` retired | Done |
 | 8 | Userspace UART driver: delegated MMIO + IRQ, EL0 MMIO writes, interrupt-driven deferred reads, driver crash → device reset → outstanding-op reconciliation → generation-2 restart | Done |
 | 9 | Virtio-net driver: PCI discovery, translated legacy register aperture + MSI-X delegation, SMMU DMA domain, feature negotiation, MAC/link read, virtqueue setup, and EL0 frame submission. Protocol crates extracted. Smoltcp 0.13 adapter + TCP/IP service binary compile. The driver smoke path is runtime-validated under QEMU TCG; receive, completion reclamation, batching, and the TCP/IP service remain incomplete. | Driver smoke path TCG-validated; full data path pending |
@@ -1099,8 +1099,8 @@ registered operation table.
 
 ## 8.3 Non-lossy terminal results
 
-The current fork's decision to retain CQ overflow in a kernel backlog is
-correct and must become an architectural invariant:
+The current fork's decision to retain CQ overflow in a bounded kernel backlog
+is correct and must become an architectural invariant:
 
 > A terminal operation result must never be silently lost because the
 > userspace CQ ring is full.
@@ -1114,6 +1114,12 @@ The kernel may:
 -   stop accepting new submissions;
 -   propagate `WouldBlock`;
 -   force the application to drain completions.
+
+Every retained detached result continues to occupy its original submission
+slot until it reaches the shared ring. A retained capability result belongs to
+a live capability and is discarded if that capability is consumed and closed
+before the redundant CQ record is delivered. Consequently the configured
+per-address-space completion capacity bounds all backlog memory.
 
 It must not discard terminal results.
 
