@@ -8,7 +8,7 @@ placement constraints, and leaves physical placement to cluster policy. Nodes
 supply processors, memory, devices, and failure domains; replacing one should
 not require rebuilding a machine-specific application installation.
 
-Three kinds of evidence appear in this chapter and should not be confused.
+This chapter draws on three distinct kinds of evidence.
 The generic Raft core exercises quorum rules with configurations including
 five voters, and the safety models explore three-node elections and membership
 transitions. Operational QEMU validation ranges from focused two-guest
@@ -28,7 +28,7 @@ plane define the next engineering boundary.
 This chapter first develops the cluster-level model and then uses Linux
 containers and Kubernetes/OpenShift as a counterpoint. The comparison separates
 the intrinsic cost of distributed computation from machinery needed to adapt
-general-purpose, machine-centred operating systems to isolated, reproducible,
+general-purpose, machine-centered operating systems to isolated, reproducible,
 movable workloads. CharlotteOS is a research prototype for testing that
 separation, not a production container-platform replacement.
 
@@ -116,7 +116,7 @@ Placement maps a component to one or more eligible nodes. A component explicitly
 blessed as safe for parallel execution may have several instances. Closely
 interacting components may be co-located to reduce communication cost, while
 replica anti-affinity and minimum failure-domain rules keep latency
-optimisation from defeating availability. Node capacity, architecture,
+optimization from defeating availability. Node capacity, architecture,
 devices, policy domains, and actual load all constrain the decision.
 
 Routing follows the same abstraction. Clients address a logical service
@@ -135,14 +135,14 @@ the stateless cross-node case; the stateful protocol remains a target.
 
 \subsection{What the container stack constructs}
 
-A Linux container is not a new kernel object equivalent to a virtual
-machine. It is a group of ordinary Linux processes made into a deployable
-unit by combining several facilities: namespaces determine which resources
-and identifiers are visible, cgroups account for and limit resource use,
-Linux capabilities divide some root privileges, seccomp restricts the system
-call interface, an LSM such as SELinux constrains object access, and a prepared
-filesystem and network configuration provide the process's apparent
-environment. An OCI image and runtime turn those facilities into a
+A Linux container is not a new kernel object equivalent to a virtual machine.
+It combines ordinary Linux processes with several existing facilities.
+Namespaces determine which resources and identifiers are visible; cgroups
+account for and limit resource use; Linux capabilities divide some root
+privileges; seccomp restricts the system call interface; and an LSM such as
+SELinux constrains object access. A prepared filesystem and network
+configuration provide the process's apparent environment. An OCI image and
+runtime turn those facilities into a
 repeatable execution contract. Kubernetes adds scheduling, desired-state
 reconciliation, service naming, failure recovery, rolling change, and many
 other cluster functions. OpenShift adds an integrated security, policy,
@@ -150,7 +150,7 @@ build, registry, identity, networking, and operations environment around
 that model.
 
 This machinery exists for good reasons. Linux is a general-purpose,
-machine-centred operating system with broad compatibility obligations.
+machine-centered operating system with broad compatibility obligations.
 Conventional applications expect filesystems, shared libraries, package
 contents, users, process APIs, network interfaces, and often a distribution
 userspace. Container platforms must package enough of that environment to
@@ -199,7 +199,7 @@ per-node application installation may eliminate or radically simplify:
     \item the attempt to remove ambient machine authority from a process that
         began in a conventional Unix environment;
     \item per-node application package management, configuration drift, and
-        machine-centred deployment procedures; and
+        machine-centered deployment procedures; and
     \item host-oriented workload mobility assembled from process, filesystem,
         and network emulation.
 \end{itemize}
@@ -219,7 +219,7 @@ Kubernetes's strongest control-plane ideas may survive remarkably well:
 declarative desired state, reconciliation, scheduling from constraints,
 generation-aware updates, health-driven replacement, replicated control
 state, and separation between specification and observation. A CharlotteOS
-cluster executive may therefore look recognisably Kubernetes-like at the
+cluster executive may therefore look recognizably Kubernetes-like at the
 level of intent and convergence.
 
 The execution path beneath that controller could, however, be much shorter.
@@ -232,8 +232,8 @@ scheduling survive while Pods, OCI, CRI, and much container security
 scaffolding do not would identify which platform ideas are consequences of
 distributed computation and which are consequences of the substrate.
 
-The price of the clean break is equally important: existing Linux software
-does not simply run. CharlotteOS exchanges compatibility for a smaller and
+Existing Linux software does not simply run on CharlotteOS. The system
+exchanges compatibility for a smaller and
 more explicit execution contract. Kubernetes asks how to orchestrate today's
 applications. CharlotteOS asks what applications and operating systems could
 look like if cluster execution, artifact trust, and explicit authority were
@@ -280,7 +280,7 @@ include:
 
 \begin{itemize}
     \item admitting nodes and maintaining consensus membership;
-    \item accepting authorised, generation-fenced desired-state changes;
+    \item accepting authorized, generation-fenced desired-state changes;
     \item ensuring that referenced artifacts are available and valid;
     \item choosing placements from resource, trust, affinity,
         anti-affinity, and failure-domain constraints;
@@ -302,7 +302,7 @@ The first placement controller can begin with declared rules. Desired
 replicas, maximum instances per node, minimum distinct nodes, every eligible
 node, affinity groups, anti-affinity groups, required resources, and policy
 domains form a constraint problem over advertised node capacity. Admission
-must reject combinations the artifact did not authorise: in particular,
+must reject combinations the artifact did not authorize: in particular,
 concurrent replicas are invalid unless signed metadata blesses parallel
 instances.
 
@@ -480,7 +480,7 @@ operations:
 
 The target may allow a node to discover peers and participate in a restricted
 bootstrap before cluster key material is established, but it cannot validate
-executable artifacts without an accepted public key. An authorised
+executable artifacts without an accepted public key. An authorized
 administrative operation would establish or rotate that trust through
 replicated state. The current prototype instead uses a build-time anchor and
 a set-once, idempotent key ceremony.
@@ -531,7 +531,7 @@ The current deployment pipeline has three stages:
         replicated key. The loader, object-store resolver, administration
         ingress, and agent enforce signature, logical-name, and digest checks.
         The present ceremony can distribute only the build-time anchor; it is
-        not a general enrolment or rotation protocol.
+        not a general enrollment or rotation protocol.
 
     \item \textbf{Assignment.} A Raft-committed record directs a concrete
         replica set to load a particular object id and immutable ELF digest.
@@ -578,7 +578,7 @@ Declared relationships are guesses. Shard-level message counts, byte flow,
 queue depth, and task snapshots are already observable inside a node
 (\autoref{chap:sitas-executor}), and the distributed name service can identify which components
 call which. The target controller should aggregate these signals across
-nodes and use sustained behaviour, not transient noise, to refine placement.
+nodes and use sustained behavior, not transient noise, to refine placement.
 
 No cluster-wide metrics aggregation or feedback-driven placement loop is
 implemented today. The existing executor measurements are inputs from which
@@ -649,7 +649,7 @@ is therefore ordered, replicated, generation-fenced cluster state rather than
 per-node configuration. \texttt{OP\_DEPLOY} submits a record and
 \texttt{OP\_DEPLOY\_QUERY} reads a replica's applied state.
 
-The signed descriptor authorises the deployment decision and binds artifact
+The signed descriptor authorizes the deployment decision and binds artifact
 identity, placement policy, and resource limits. Raft orders and replicates the
 result. Production ingress still needs a separately delegated online
 administrator identity and audit policy in addition to the offline signature.
@@ -712,7 +712,7 @@ wraps the DNS manifest operations and object store behind:
 
 The normal service set also starts \texttt{deployd}. Its bounded plaintext
 HTTP endpoint accepts \texttt{POST /v1/deployments} on guest port 7444 with
-exactly one signed descriptor as the body. The signature is the authorisation
+exactly one signed descriptor as the body. The signature is the authorization
 and integrity envelope and the descriptor carries no secret. Lower sequences
 are rejected, different bytes at an existing sequence conflict, and identical
 notifications are idempotent. QEMU's user network forwards host port 8081 by
@@ -972,14 +972,14 @@ version-controlled development keypair at
 \texttt{CLUSTER\_PUBLIC\_KEY}. A different key can be supplied through
 \texttt{CLUSTER\_SIGN\_PRIVATE\_KEY}, with a kernel rebuilt to embed its
 public half. A production key would be held outside the repository under
-organisational key-management procedures.
+organizational key-management procedures.
 
 Store resolution and deployment additionally check the signed logical name,
 and the manifest pins the full ELF SHA-256. The demonstrated
 \texttt{greet} service is therefore a real, signed binary fetched from the
 local object store, mapped, executed, served across the network, and
 reassigned. Raft orders the assignment, but consensus is not an
-authorisation proof for the administrator who requested it.
+authorization proof for the administrator who requested it.
 
 \subsection{Validated properties}
 
@@ -1002,7 +1002,7 @@ Separate multi-guest fixtures validate dynamic DNS/Raft admission, replica
 placement, and DSR failover. Evidence is still required for resource-aware
 placement, rolling replacement, stateful cross-node migration, artifact-store
 recovery, production key establishment and rotation, and production
-administrative authorisation.
+administrative authorization.
 
 \section{Remaining implementation boundary}
 
@@ -1012,7 +1012,7 @@ system contains the following substantial coordination and trust work:
 \begin{itemize}
     \item \textbf{Dynamic membership recovery.} Discovery-bridged admission
         performs replicated \texttt{JOIN}, joint consensus, and
-        \texttt{FINALIZE} in the durable DNS-owned group. Partition behaviour,
+        \texttt{FINALIZE} in the durable DNS-owned group. Partition behavior,
         restart and rejoin within a live quorum, automatic failed-voter
         removal, and longer-running fault injection remain.
 
@@ -1051,7 +1051,7 @@ system contains the following substantial coordination and trust work:
         \texttt{clusterctl} protocol exists, but the raw mutation endpoint
         and kernel serial shim do not enforce the intended separately
         delegated cluster-administrator capability. Authentication,
-        authorisation, audit, and safe concurrent administration remain.
+        authorization, audit, and safe concurrent administration remain.
 
     \item \textbf{Operational cluster services.} Production health
         management, upgrades, resource accounting, persistent storage
@@ -1084,7 +1084,7 @@ not claims of equivalent guarantees or implementation maturity.
         extension in the CharlotteOS target.
 
     \item \textbf{Plan 9} (Bell Labs) separates terminals, CPU servers, and
-        file servers, and centralises authentication and key handling in
+        file servers, and centralizes authentication and key handling in
         \texttt{factotum}. Its machine roles and network-transparent names
         challenge the assumption that every node is an independent Unix
         installation.
@@ -1190,9 +1190,9 @@ imply identical isolation or compatibility guarantees in the others.
         filesystem images.
 \end{itemize}
 
-\section{Research thesis}
+\section{Research test}
 
-The cluster vision can be summarised as the following proposition:
+The cluster vision can be summarized as the following proposition:
 
 \begin{quote}
     Containers are partly an artifact of retrofitting isolation,
@@ -1218,11 +1218,5 @@ The next decisive evidence concerns resource-aware and rolling placement,
 state transfer, production trust lifecycle, failure recovery, administration,
 and sustained operations. Observing those mechanisms will show which
 complexity genuinely disappears and which merely moves.
-
-The intended endpoint is a cluster operating system with explicit
-reconciliation and scheduling, acting on native, signed,
-capability-constrained execution objects. At that boundary, the cluster stops
-looking like a collection of computers on which software is installed and
-starts looking like the computer itself.
 
 \endinput

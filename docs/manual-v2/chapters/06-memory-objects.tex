@@ -1,4 +1,4 @@
-\chapter{Memory Objects --- Ownership That Crosses Boundaries}
+\chapter{Memory Objects: Ownership That Crosses Boundaries}
 \label{chap:memory-objects}
 
 A memory object answers: \textbf{``Where is the data, and who owns it?''} It lets
@@ -27,14 +27,14 @@ A memory object is a dedicated kernel object representing page-backed storage wi
 explicit ownership and capability semantics. The kernel manages:
 
 \begin{itemize}
-    \item Physical frames --- the backing storage.
-    \item Mappings --- which domains have virtual addresses pointing to
+    \item Physical frames: the backing storage.
+    \item Mappings: which domains have virtual addresses pointing to
         the pages, and with what permissions.
-    \item Ownership --- which domain currently holds the master
+    \item Ownership: which domain currently holds the master
         capability.
-    \item Transfer state --- whether the object is idle, in transit,
+    \item Transfer state: whether the object is idle, in transit,
         borrowed, or undergoing DMA.
-    \item Lifetime --- when the object is freed, all mappings are
+    \item Lifetime: when the object is freed, all mappings are
         revoked and all capabilities to it are invalidated.
 \end{itemize}
 
@@ -63,8 +63,9 @@ The kernel performs the potentially large byte copy without holding the
 interrupt-masking memory-object or frame-allocator locks. Before releasing the
 registry lock it acquires a shared-read copy pin on the source object. That pin
 keeps the frames alive and rejects every tracked operation that could introduce
-a writer---a writable CPU mapping, in-kernel write, writable or exclusive DMA
-pin, write lend, move, or ownership rollback---until the snapshot is complete.
+a writer until the snapshot is complete. Rejected operations include a writable
+CPU mapping, an in-kernel write, a writable or exclusive DMA pin, a write lend,
+a move, and ownership rollback.
 Read-only mappings and DMA pins may coexist. If the source domain exits during
 the copy, destruction is deferred until both the copy-pin and DMA-pin counts
 reach zero; physical frames are freed only after the registry lock is released.
@@ -117,7 +118,7 @@ is restored.
         borrow for reply-time revocation.
     \item \textbf{Semantics:} the hardware enforces mutual exclusion. The sender
         cannot access the pages while they are lent out. Unsafe
-        Rust can violate this --- the MMU will fault.
+        Rust can violate this; the MMU will fault.
 \end{itemize}
 
 \section{Why hardware enforcement matters}
@@ -132,8 +133,8 @@ The transfer modes are enforced by page tables, not by Rust's type system:
     \item A use-after-drop cannot resurrect a moved memory object.
 \end{itemize}
 
-Rust's ownership complements the kernel enforcement --- it catches errors within a
-domain at compile time. But the kernel is the ultimate guarantor for cross-domain
+Rust's ownership complements the kernel enforcement by catching errors within a
+domain at compile time. The kernel is the ultimate guarantor for cross-domain
 safety, so non-Rust or buggy-Rust processes are still contained by page tables and
 capability checks.
 
@@ -148,9 +149,9 @@ Memory objects belong to the \textbf{data plane}: they carry the actual bytes
 For networking specifically:
 
 \begin{itemize}
-    \item Control plane --- endpoint IPC configures NIC queues, sets MTU,
+    \item Control plane: endpoint IPC configures NIC queues, sets MTU,
         registers buffer pools.
-    \item Data plane --- descriptor rings coordinate producer/consumer
+    \item Data plane: descriptor rings coordinate producer/consumer
         state; packet payloads move as memory objects.
 \end{itemize}
 
@@ -162,10 +163,10 @@ preserving strict ownership.
 When a device performs DMA, a memory object enters a third ownership state:
 
 \begin{itemize}
-    \item CPU ownership --- the CPU reads and writes the pages normally.
-    \item DMA ownership --- the device is reading or writing the pages; the
+    \item CPU ownership: the CPU reads and writes the pages normally.
+    \item DMA ownership: the device is reading or writing the pages; the
         CPU must not access them.
-    \item Rust/API ownership --- which domain holds the capability.
+    \item Rust/API ownership: which domain holds the capability.
 \end{itemize}
 
 The AArch64 SMMUv3 and x86-64 VT-d/AMD-Vi paths track an explicit DMA pin per
@@ -180,32 +181,32 @@ only the resulting \texttt{OwnedMemory} can create a \texttt{DmaTransfer}.
 The memory cannot be mapped or exposed as a Rust slice again until the
 transfer's \texttt{finish} method has synchronously removed the IOMMU mapping.
 
-\section{Why memory objects matter for critical software}
+\section{Transfer guarantees and limits}
 
 \begin{enumerate}
-    \item Page transfer without payload copying --- for aligned,
+    \item Page transfer without payload copying: for aligned,
         page-backed objects, ownership can move by changing mappings rather than
         copying bytes. Whether this is faster depends on payload size and
         mapping/TLB costs.
 
-    \item Cross-domain stale access is constrained by mappings ---
+    \item Cross-domain stale access is constrained by mappings:
         when a memory object is moved, the sender's mappings are removed. Any
         later access through those mappings faults. When a borrow is revoked,
         the borrower's mappings are removed. This does not rule out bugs in
         unsafe code, page-table maintenance, or DMA.
 
-    \item Borrows have defined lifetimes --- a borrow is always tied to an
+    \item Borrows have defined lifetimes: a borrow is always tied to an
         IPC call. When the call completes (reply, cancellation, timeout, or
         server death), the borrow ends. There is no ``I forgot to return it.''
 
-    \item DMA ownership is tracked on the reference platforms --- AArch64
+    \item DMA ownership is tracked on the reference platforms: AArch64
         SMMUv3 and x86-64 VT-d/AMD-Vi pin mapped memory and restrict each
         requester to its DMA domain. The ownership-aware Rust API prevents
         ordinary CPU mappings from overlapping a transfer; raw coherent-ring
         implementations remain responsible for volatile/atomic access and the
         device protocol.
 
-    \item Hardware enforcement, not language enforcement --- the page tables
+    \item Hardware enforcement, not language enforcement: the page tables
         are the ultimate arbiter. No amount of unsafe code, C FFI, or compiler
         bug should access CPU pages that are not mapped, assuming correct MMU
         setup and TLB maintenance. The implemented SMMUv3, VT-d, and AMD-Vi

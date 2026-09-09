@@ -116,7 +116,7 @@
 
     \item[Waker] An \texttt{Observer} wrapping a \texttt{ThreadId}. When
         notified, calls \texttt{submit\_ready\_thread(tid)}. In userspace,
-        a Rust \texttt{Waker} is a hint to repoll a future --- it is not a
+        a Rust \texttt{Waker} is a hint to repoll a future, not a
         kernel completion.
 
     \item[Yield] To voluntarily give up the LP by calling

@@ -11,43 +11,43 @@ The guiding principle is:
 \textbf{Remote IPC is local IPC with a different transport.}
 \end{quote}
 
-\section{Why not sockets?}
+\section{Sockets as a compatibility interface}
 
 The Berkeley socket API (\texttt{socket()}, \texttt{connect()}, \texttt{send()},
-\texttt{recv()}) has served the Internet for decades. But it is not the right
-foundation for a capability-based microkernel:
+\texttt{recv()}) remains useful for compatibility, but CharlotteOS does not use
+it as the native service interface:
 
 \begin{itemize}
-    \item Sockets identify hosts, not services ---
-        \texttt{10.2.3.17:443} tells you where to connect, not what you are
-        talking to. The mapping from address to service is out-of-band (DNS).
+    \item Network addresses do not bind Charlotte service identity:
+        \texttt{10.2.3.17:443} locates an endpoint. DNS or another directory can
+        associate that address with a service, but the association is outside
+        the socket handle.
 
-    \item Sockets are byte streams, not messages --- message boundaries
-        are lost. Every protocol invents its own framing on top of TCP's
-        undifferentiated stream.
+    \item TCP sockets expose byte streams: an application protocol must add its
+        own message boundaries. Charlotte's native IPC preserves them.
 
-    \item Sockets carry ambient authority --- any process can open a
-        socket to any address. There is no capability check; authority comes
-        from being able to reach the network, not from being granted a
-        connection.
+    \item Socket authority usually comes from process and network policy:
+        sandboxes, firewalls, and namespaces can restrict reachability, but the
+        socket API does not require a delegated capability naming the target
+        service. Charlotte's native path does.
 
-    \item Sockets couple applications to transports --- code written
-        against TCP cannot transparently use shared memory for local
-        communication or RDMA for high-performance communication.
+    \item TCP-specific code needs an adapter to use shared memory for local
+        communication or RDMA for a high-performance interconnect. Charlotte's
+        service API keeps that choice below the application protocol.
 \end{itemize}
 
 CharlotteOS instead uses layers with separate responsibilities.
 
 The stack below is the target architecture. The current repository contains a
 userspace virtio-net driver, an Intel 82574L/E1000E driver, a frame
-demultiplexer (``frouter''), a
-reliable-message service with fragmentation, a distributed name service that
-replicates a \texttt{name $\rightarrow$ \{node, generation\}} catalog across cluster members, a
-smoltcp TCP/IP service, and a remote-invocation path through the catalog. The
+demultiplexer (``frouter''), and a reliable-message service with fragmentation.
+It also contains a distributed name service that replicates a
+\texttt{name $\rightarrow$ \{node, generation\}} catalog across cluster members,
+a smoltcp TCP/IP service, and a remote-invocation path through the catalog. The
 NIC/TCP path is runtime-validated on macOS QEMU TCG with both virtio-net and
 E1000E (\texttt{--relmsg-test},
-\texttt{--disco-test}, \texttt{--dns-test}, \texttt{--tcpip-test}), and remote
-scalar remote-call prototype is implemented (\texttt{dns::OP\_CALL}); the general
+\texttt{--disco-test}, \texttt{--dns-test}, \texttt{--tcpip-test}), and a remote
+scalar-call prototype is implemented (\texttt{dns::OP\_CALL}); general
 remote capability delegation is not.
 
 \section{The native protocol stack}
@@ -73,17 +73,17 @@ remote capability delegation is not.
 \end{tikzpicture}
 \end{center}
 
-\subsection{Ethernet --- generic frame transport}
+\subsection{Ethernet: generic frame transport}
 
 The NIC driver exports raw Ethernet frames. It knows about MAC addresses, MTU,
 and frame CRCs. It knows \textbf{nothing} about IP, TCP, RPC, or services. Its
 endpoint protocol has two operations:
 
 \begin{itemize}
-    \item \texttt{OP\_SEND(frame\_buffer)} --- transmit a frame via a moved
+    \item \texttt{OP\_SEND(frame\_buffer)}: transmit a frame via a moved
         memory object.
-    \item \texttt{OP\_RECV} --- deferred receive: the caller retains a reply
-        token; the driver replies with a received frame buffer.
+    \item \texttt{OP\_RECV}: the caller retains a reply token for a deferred
+        receive; the driver replies with a frame buffer.
 \end{itemize}
 
 Ethernet is a generic frame transport that can carry IP, ARP, LLDP, custom protocols, 
@@ -144,13 +144,13 @@ should use a streaming or object-store protocol rather than treating the
 The RPC layer provides request/reply semantics over the reliable message layer:
 
 \begin{itemize}
-    \item Synchronous-looking futures --- \texttt{service.call(opcode, args).await?}
-    \item Asynchronous invocation --- the \texttt{Future} is backed by a
+    \item Synchronous-looking futures: \texttt{service.call(opcode, args).await?}
+    \item Asynchronous invocation: the \texttt{Future} is backed by a
         pending RPC call; the shard continues other work while waiting.
-    \item Object references --- the target architecture can represent
+    \item Object references: the target architecture can represent
         delegated remote authority; general remote capability delegation is not
         implemented.
-    \item Serialisation --- typed protocol crates handle encoding/decoding
+    \item Serialization: typed protocol crates handle encoding/decoding
         between Rust types and the wire format.
 \end{itemize}
 
@@ -187,8 +187,8 @@ not linearizable reads.
 
 \subsection{Distributed objects}
 
-At the top of the stack, applications interact with \textbf{capabilities} ---
-the same abstraction they use for local IPC:
+At the top of the stack, applications use the same \textbf{capability}
+abstraction as local IPC:
 
 \begin{lstlisting}[style=rustCode]
 let payroll: Capability<PayrollService> = lookup("Payroll")?;
@@ -558,7 +558,7 @@ reconnects, retries, terminal failures, fences, group state, consumer lag, and
 cumulative records per route. Monitoring derives throughput by sampling these
 counters; ordinary application capabilities do not expose the operational view.
 
-For procedures that only implement business behaviour, the generic
+For procedures that only implement business behavior, the generic
 \texttt{kafka\_step} service owns that lifecycle instead. Its separate,
 read-only profile names one connector and one procedure endpoint, admits only
 specific output-route indices, identifies the DLQ route, and bounds output
@@ -592,9 +592,10 @@ and an ECDSA P-256 private key; both mechanisms may be required together. The
 bounded SCRAM exchange validates broker challenges, minimum and maximum
 iteration counts, and the server signature. Passwords, client private keys,
 and derived keys use zeroizing owners and remain outside the application ABI.
-The opt-in AArch64 test uses a three-broker Apache Kafka fixture over TLS, required mTLS, and SCRAM,
-places three-replica input and output routes on different leaders, and verifies
-idempotent production, read-committed consumption, atomic production plus
+The opt-in AArch64 test uses a three-broker Apache Kafka fixture over TLS with
+required mTLS and SCRAM. It places three-replica input and output routes on
+different leaders and verifies idempotent production, read-committed
+consumption, atomic production plus
 generation-fenced group-offset commit, group generation advance and heartbeat,
 transaction abort, filtering of the aborted record, and
 the generic step runner's success, retry, timeout, and terminal-DLQ paths. It
@@ -636,13 +637,13 @@ The reliable-message interface is designed to be transport-agnostic. Candidate
 transports include:
 
 \begin{itemize}
-    \item Ethernet --- for inter-machine communication.
-    \item Shared memory --- for co-located processes on the same machine,
+    \item Ethernet: for inter-machine communication.
+    \item Shared memory: for co-located processes on the same machine,
         where the kernel can set up shared memory regions instead of going through
         the NIC.
-    \item Loopback --- for same-machine same-stack communication.
-    \item RDMA --- for high-performance cluster interconnects.
-    \item PCIe NTB --- for backplane communication in multi-socket
+    \item Loopback: for same-machine same-stack communication.
+    \item RDMA: for high-performance cluster interconnects.
+    \item PCIe NTB: for backplane communication in multi-socket
         systems.
 \end{itemize}
 
@@ -656,15 +657,15 @@ when it moves from same-process to same-machine to different-machine.
 The intended network stack avoids copying whenever practical:
 
 \begin{itemize}
-    \item Receive path --- the NIC driver receives a buffer from hardware.
+    \item Receive path: the NIC driver receives a buffer from hardware.
         That buffer (a memory object) is passed up the stack by transferring
-        ownership --- first to the message layer (for reassembly), then to the
+        ownership: first to the message layer (for reassembly), then to the
         RPC layer (for deserialization), then to the application. No intermediate
         copies.
-    \item Transmit path --- the application creates a buffer. It is passed
+    \item Transmit path: the application creates a buffer. It is passed
         down by moving ownership. The NIC driver DMA's it directly from the
         application's pages.
-    \item Buffer recycling --- after the application consumes a received
+    \item Buffer recycling: after the application consumes a received
         buffer, it returns the (now empty) memory object to the driver's RX pool.
         The driver reuses it for DMA and the cycle repeats. IOMMU-backed pinning
         is implemented with AArch64 SMMUv3 and x86-64 VT-d/AMD-Vi.
@@ -673,10 +674,10 @@ The intended network stack avoids copying whenever practical:
 This is the memory-object transfer model (\autoref{chap:memory-objects}) applied
 to networking.
 
-\section{Why the networking architecture matters for critical software}
+\section{Network authority and transport}
 
 \begin{enumerate}
-    \item Remote invocation follows the local call shape --- the target API
+    \item Remote invocation follows the local call shape: the target API
         keeps transport choices out of application protocols. This permits:
         \begin{itemize}
             \item Services can be relocated without application changes.
@@ -686,21 +687,21 @@ to networking.
                 absent from local IPC.
         \end{itemize}
 
-    \item Authority is not an address --- an application invokes a service
+    \item Authority is not an address: an application invokes a service
         capability rather than relying on \texttt{host:port} reachability. Network
         access alone does not mint that capability.
 
-    \item Copy avoidance is a design goal --- page ownership transfer can
+    \item Copy avoidance is a design goal: page ownership transfer can
         avoid intermediate payload copies. CPU mappings are MMU-enforced; DMA
         isolation is implemented with SMMUv3, VT-d, and AMD-Vi. No performance
         comparison with sockets has yet been established.
 
-    \item Message boundaries are preserved --- the native abstraction is a
+    \item Message boundaries are preserved: the native abstraction is a
         message with identity, ownership, metadata, and boundaries. There is no
         need for an additional stream-framing layer. This can simplify protocol
         implementations, but does not eliminate parsing or framing defects.
 
-    \item TCP/IP is available but not mandatory --- legacy software
+    \item TCP/IP is available but not mandatory: legacy software
         connects to the TCP/IP service. Native software uses the capability-based
         stack. The transition is incremental: a service can expose both a native
         endpoint and a TCP/IP socket through the compatibility service.

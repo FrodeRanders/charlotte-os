@@ -14,7 +14,7 @@ Three systems approach the same design space from different directions. Rather t
 collapsing their abstractions into one universal mechanism, the architecture
 composes them at the right boundaries.
 
-\subsection{CharlotteOS --- the protection, scheduling, and interrupt substrate}
+\subsection{CharlotteOS: the protection, scheduling, and interrupt substrate}
 
 CharlotteOS contributes the mechanisms that \emph{must} be privileged:
 
@@ -33,9 +33,10 @@ Its design rule is: \textbf{the kernel provides the minimum set of primitives fr
 which everything else can be composed.} If a facility can be built in userspace
 without compromising isolation, it belongs in userspace.
 
-\subsection{Sitas --- the shard-per-core execution discipline}
+\subsection{Sitas: the shard-per-core execution discipline}
 
-Sitas (\url{https://github.com/FrodeRanders/sitas}) contributes an execution discipline --- a set of rules about how state is
+Sitas (\url{https://github.com/FrodeRanders/sitas}) contributes an execution
+discipline: a set of rules about how state is
 owned and mutated:
 
 \begin{quote}
@@ -46,48 +47,48 @@ through bounded typed messages carrying owned values.
 Sitas provides:
 
 \begin{itemize}
-    \item One executor per shard --- cooperative task scheduling within
+    \item One executor per shard: cooperative task scheduling within
         a shard; preemption between shards.
-    \item Futures as userspace state machines --- every operation that may
+    \item Futures as userspace state machines: every operation that may
         wait is a \texttt{Future}, driven by the shard's executor.
-    \item Bounded backpressure --- every queue has fixed capacity; senders
+    \item Bounded backpressure: every queue has fixed capacity; senders
         must handle \texttt{WouldBlock}.
-    \item Shard-local ownership --- mutable state belongs to exactly one
+    \item Shard-local ownership: mutable state belongs to exactly one
         shard; no locks, no atomics for shard-internal data.
-    \item Explicit placement --- where a task runs is a deliberate choice,
+    \item Explicit placement: where a task runs is a deliberate choice,
         not an accident of scheduling.
-    \item Typed command/reply APIs --- what a shard receives is a specific
+    \item Typed command/reply APIs: what a shard receives is a specific
         Rust type, not a generic byte buffer.
-    \item Structured shutdown and cancellation --- tasks can be cancelled,
+    \item Structured shutdown and cancellation: tasks can be cancelled,
         and cancellation has defined ownership semantics.
-    \item Observability through owned snapshots --- diagnostics capture
+    \item Observability through owned snapshots: diagnostics capture
         state by value, never by borrowed reference into runtime internals.
 \end{itemize}
 
 The sitas discipline is enforced by Rust's type system within a single protection
 domain. CharlotteOS extends it across domains through the kernel.
 
-\subsection{Xous --- the isolated userspace service model}
+\subsection{Xous: the isolated userspace service model}
 
 Xous, a microkernel OS for Precursor and Betrusted hardware, contributes the
 protection-domain service model:
 
 \begin{itemize}
-    \item Services are userspace servers --- drivers, filesystems, and
+    \item Services are userspace servers: drivers, filesystems, and
         protocol stacks run in their own protection domains, not in the kernel.
-    \item Clients connect to servers and receive connection identifiers ---
+    \item Clients connect to servers and receive connection identifiers:
         a connection \emph{is} authority; possessing one means you may communicate
         with that server.
-    \item IPC is a kernel primitive --- communication is not a convention
+    \item IPC is a kernel primitive: communication is not a convention
         layered on shared memory; it is mediated and validated by the kernel.
-    \item Scalar messages are distinct from memory-bearing messages ---
+    \item Scalar messages are distinct from memory-bearing messages:
         small control-plane operations (opcodes, handles, status codes) travel
         in fixed-size messages; bulk data travels as memory-object attachments.
-    \item Memory IPC distinguishes ownership transfer from borrowing ---
+    \item Memory IPC distinguishes ownership transfer from borrowing:
         move transfers ownership permanently. Borrow grants temporary access,
         revoked on reply or cancellation.
     \item A userspace name service maps human-readable names to opaque
-        server identities --- the kernel knows nothing about strings.
+        server identities; the kernel knows nothing about strings.
 \end{itemize}
 
 CharlotteOS adopts Xous's userspace-server model and combines it with the sitas
@@ -187,8 +188,8 @@ Three orthogonal kernel abstractions form the foundation:
 \end{tikzpicture}
 \end{center}
 
-Every other kernel facility --- completion queues, reply tokens, device grants,
-DMA mappings --- is a \textbf{composition} of these three primitives.
+Every other kernel facility, including completion queues, reply tokens, device
+grants, and DMA mappings, is a \textbf{composition} of these three primitives.
 
 \subsection{Capabilities: ``May I?''}
 
@@ -286,8 +287,8 @@ into futures.}
 
 \subsection{Immediate operations remain immediate}
 
-Operations that cannot meaningfully block --- capability duplication, metadata
-queries, nonblocking CQ drain, closing a quiescent object --- complete
+Operations that cannot meaningfully block, such as capability duplication,
+metadata queries, nonblocking CQ drain, and closing a quiescent object, complete
 synchronously. The ABI does not force asynchronous ceremony onto inherently
 synchronous work.
 
@@ -318,26 +319,26 @@ path is:
 The kernel may preempt threads, but it does not inject arbitrary task callbacks
 into userspace. Task scheduling therefore remains cooperative and reviewable.
 
-\section{Why this matters for critical software}
+\section{Safety consequences and open bounds}
 
 Every design decision in CharlotteOS traces back to one or more of the six
 principles from \autoref{chap:problem}:
 
 \begin{itemize}
-    \item Capabilities replace ambient authority --- a compromised service
+    \item Capabilities replace ambient authority: a compromised service
         cannot access resources it was never granted. The set of things a process
         can do is enumerable and auditable by construction.
-    \item Endpoints make communication authenticated --- a client that holds
+    \item Endpoints make communication authenticated: a client that holds
         a connection capability has proven (at grant time) that it is authorized
         to communicate. The kernel enforces this on every message.
-    \item Memory objects constrain stale cross-domain access --- ownership moves
+    \item Memory objects constrain stale cross-domain access: ownership moves
         through the kernel and is enforced by page tables. Correctness still
         depends on MMU, TLB, and DMA handling.
-    \item Composition limits the privileged code footprint --- most system functionality
+    \item Composition limits the privileged code footprint: most system functionality
         lives in userspace, where faults can be contained to a service domain.
-    \item The async model reduces adaptation --- the kernel and runtime share
+    \item The async model reduces adaptation: the kernel and runtime share
         submission, completion, and wake semantics.
-    \item Bounded ingress makes pressure visible --- endpoint and hardware queues
+    \item Bounded ingress makes pressure visible: endpoint and hardware queues
         apply explicit backpressure. \autoref{chap:scheduling} records the remaining unbounded
         internal backlog.
 \end{itemize}

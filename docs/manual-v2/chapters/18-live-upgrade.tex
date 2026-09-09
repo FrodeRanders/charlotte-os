@@ -11,23 +11,23 @@ The prototype builds on four primitives implemented in the kernel and name
 service:
 
 \begin{enumerate}
-    \item Memory-object ownership transfer --- the kernel's
+    \item Memory-object ownership transfer: the kernel's
         \texttt{memory::object::move\_to} moves a page-backed memory object
         from one address space to another. The sender loses access; the
         receiver gains it. This is the vehicle for service state.
 
-    \item Generation tracking --- the userspace name service records an
+    \item Generation tracking: the userspace name service records an
         instance generation that increments on restart. A stale connection
         returns \texttt{EndpointClosed}; a new lookup returns the replacement
         generation and connection.
 
-    \item EndpointClose and Cancelled --- when a service domain exits,
+    \item EndpointClose and Cancelled: when a service domain exits,
         the kernel closes its endpoint. Queued requests that were never
         delivered complete as \texttt{EndpointClosed}. Delivered calls whose
         server exited before replying complete as \texttt{Cancelled}. Clients
         see a deterministic failure, not a hung request.
 
-    \item Bootstrap capability delivery --- the supervisor writes
+    \item Bootstrap capability delivery: the supervisor writes
         initial capabilities to the config page before a domain starts. For a
         live upgrade, the bootstrap contract is extended: in addition to the
         name service connection, the new domain receives the old service's
@@ -44,13 +44,13 @@ service:
     {fig:handoff-protocol}
 
 The old service receives an \texttt{OP\_HANDOFF} request (typically from the
-supervisor or a service manager). It drains any in-flight work, serialises its
+supervisor or a service manager). It drains any in-flight work, serializes its
 mutable state into memory objects, moves those objects to the supervisor's
 address space, and replies ``ready'' before exiting.
 
 The supervisor then spawns the new service instance with an extended bootstrap
 contract containing the name service connection and handoff state. The new
-service deserialises the state, creates a fresh endpoint, and re-registers under
+service deserializes the state, creates a fresh endpoint, and re-registers under
 the same name. The name service bumps the generation. Teardown of the stopped
 old domain invalidates its stale client connections.
 
@@ -63,10 +63,11 @@ multi-page memory-object capability and exact byte length are passed to
 \texttt{spawn\_upgrade}. If storage is absent or the object is not installed,
 the manager selects the embedded recovery image.
 
-The kernel snapshots the capability-backed bytes into kernel-owned memory
-before parsing them, then checks the ELF class, architecture, program-header
-bounds, segment bounds, page congruence, W\^{}X (“write xor execute”)\footnote{a memory page may be writable or executable, but never both simultaneously}, 
-integer overflow, and that the entry point lies in an executable load segment. 
+The kernel snapshots the capability-backed bytes into kernel-owned memory before
+parsing them. It then checks the ELF class, architecture, program-header bounds,
+segment bounds, page congruence, W\^{}X (``write xor execute'')\footnote{A memory
+page may be writable or executable, but never both simultaneously}, integer
+overflow, and whether the entry point lies in an executable load segment.
 This prevents a mutable userspace image from changing between validation and 
 mapping.
 
@@ -163,10 +164,10 @@ explicitly handle transient failures through name-service re-lookup.
 True zero-downtime would require one of:
 
 \begin{itemize}
-    \item Queue migration --- the old service's endpoint queue would
+    \item Queue migration: the old service's endpoint queue would
         need to be transferred to the new service atomically, so no request
         is ever rejected. This is a future kernel feature.
-    \item Sidecar model --- the new service starts alongside the old
+    \item Sidecar model: the new service starts alongside the old
         one, both sharing the same endpoint, and the old service stops
         accepting new work. The kernel does not currently support multiple
         owners for one endpoint.
@@ -181,26 +182,26 @@ spawns a new instance with a bumped generation. The difference is that live
 upgrade transfers state explicitly through memory objects before the old
 instance exits, rather than starting the new instance from scratch.
 
-\section{Why this matters for critical software}
+\section{Upgrade guarantees and limits}
 
 \begin{enumerate}
-    \item The reference path transfers service state --- the self-test
+    \item The reference path transfers service state: the self-test
         demonstrates handoff for the reference service. Filesystems, network
         stacks, and consensus nodes would each need protocol-specific
         serialization, compatibility, and recovery work.
 
-    \item The upgrade sequence is explicit --- the old service drains
-        in-flight work, serialises state, and exits. The new service starts
+    \item The upgrade sequence is explicit: the old service drains
+        in-flight work, serializes state, and exits. The new service starts
         and registers. Clients retry. A hard time bound is not currently
         enforced or benchmarked.
 
-    \item Failure recovery has an ownership model --- if the new service
+    \item Failure recovery has an ownership model: if the new service
         fails to start, a future supervisor could restart the old service or a
         fallback.
         The state memory objects are owned by the supervisor during the
         transition, so they are not lost.
 
-    \item The building blocks are covered by self-tests --- memory-object
+    \item The building blocks are covered by self-tests: memory-object
         transfer, generation tracking, deterministic teardown, and bootstrap
         delivery are exercised by the existing self-test suite. This evidence
         does not establish crash consistency, arbitrary-service compatibility,

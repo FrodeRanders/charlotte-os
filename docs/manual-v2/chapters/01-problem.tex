@@ -1,17 +1,15 @@
 \chapter{The Problem}
 \label{chap:problem}
 
-\section{The operating system is the bottleneck}
+\section{A mismatch at the operating-system boundary}
 
-Critical software must be both \textbf{correct} and \textbf{fast}. Modern systems
-often pursue both goals by adding layers to operating systems whose basic
-abstractions were designed for timesharing.
+CharlotteOS starts from a specific mismatch. Async runtimes, least-privilege
+services, and isolated components are often built above interfaces organized
+around blocking calls, ambient namespaces, and machine-wide policy. This manual
+calls the resulting adapters, duplicated concurrency models, and policy layers
+the \textbf{retrofit tax}.
 
-This manual calls the resulting complexity and performance cost the
-\textbf{retrofit tax}: a synchronous, ambient-authority, monolithic system must be
-made to behave as though it were asynchronous, least-privilege, and decomposed.
-
-\section{The retrofit tax}
+\section{Sources of the retrofit tax}
 
 \subsection{Async over blocking}
 
@@ -22,27 +20,26 @@ These interfaces are effective, but applications may still need adapters when a
 kernel or library operation blocks. Runtimes then translate blocking work into
 readiness or completion notifications.
 
-This translation layer brings with it:
+That translation can introduce:
 \begin{itemize}
-    \item Async-signal-safety problems --- the kernel may deliver a
+    \item Async-signal-safety problems: the kernel may deliver a
         completion while userspace holds a lock, requiring elaborate
         signal-handler discipline or a dedicated thread pool.
-    \item Thread-pool overhead --- many async runtimes spawn a pool of OS
+    \item Thread-pool overhead: many async runtimes spawn a pool of OS
         threads to convert blocking syscalls into futures, undoing the
         resource benefits of asynchronous execution.
-    \item Two concurrency models --- the application uses async/await; the
+    \item Two concurrency models: the application uses async/await; the
         kernel uses threads and blocking. The mismatch forces every boundary
         crossing to bridge the two models.
 \end{itemize}
 
 \subsection{Ambient authority}
 
-A conventional OS process has access to the filesystem namespace, the network, and
-other global resources by default. Security is subtractive: you start with
-everything and try to take things away (by means of chroot, seccomp, namespaces). This is
-brittle because it requires the developer to enumerate what \emph{should not} be
-accessible --- an unbounded problem. In practice, most programs run with far more
-authority than they need, and exploits exploit that gap.
+A process on a conventional OS commonly begins with access to broad filesystem
+and network namespaces. Security policy then removes authority with mechanisms
+such as chroot, seccomp, and namespaces. This approach requires the developer to
+enumerate what the process must not reach. Programs that omit a restriction
+retain more authority than they need, which increases the effect of a compromise.
 
 \subsection{Hardware asynchrony disguised as software synchrony}
 
@@ -59,9 +56,9 @@ with thread pools; real-time systems may use carefully tuned polling loops.
 
 A bug in a device driver can crash a monolithic kernel. A memory corruption in one
 application can, in a system without hardware-enforced isolation, corrupt another.
-Conventional microkernels solve this with address-space isolation, but at the cost
-of IPC overhead that often drives designers back toward monolithic architectures
-for performance.
+Address-space isolation contains faults between drivers and applications, but it
+also puts IPC on performance-critical paths. A design that cannot keep that path
+cheap faces pressure to move services back into the kernel.
 
 A common compromise is to isolate untrusted code in virtual machines while
 keeping trusted code in the kernel. Kernel defects can still cross that boundary.
@@ -96,35 +93,31 @@ We need an operating system whose foundational abstractions align with the deman
 of critical, performant software:
 
 \begin{enumerate}
-    \item Asynchronous by construction --- operations that may wait for
+    \item Asynchronous by construction: operations that may wait for
         external progress should have submission/completion semantics, not
         blocking-call semantics. No subsystem should force a thread to dedicate
         itself to one operation.
 
-    \item Capability-based, instead of ambient, authority --- a process should be
+    \item Capability-based, instead of ambient, authority: a process should be
         able to perform an operation only if it holds a capability authorizing it.
         Capabilities are unforgeable and must be explicitly granted.
 
-    \item Isolation by default --- every protection domain should run in its
+    \item Isolation by default: every protection domain should run in its
         own address space. Communication crosses a kernel-mediated boundary.
         A fault in one domain should not propagate to another.
 
-    \item Ownership that crosses boundaries --- data movement between
+    \item Ownership that crosses boundaries: data movement between
         domains should transfer ownership, not copy bytes. The kernel should move
         page mappings, so the sender loses access and the receiver gains it.
 
-    \item Bounded resource consumption --- every queue, table, and buffer
+    \item Bounded resource consumption: every queue, table, and buffer
         should be bounded. Backpressure should propagate explicitly. No unbounded
         allocation should be a correctness requirement.
 
-    \item The OS and the language runtime should agree --- the kernel's model
+    \item The OS and the language runtime should agree: the kernel's model
         of concurrency (asynchronous, completion-driven) should match the
         language's model of concurrency (futures, wakers). No translation layer
         should be needed.
 \end{enumerate}
-
-CharlotteOS is built around these six principles. The rest of this manual
-describes the architecture, programming model, implementation status, and evidence
-for its safety claims.
 
 \endinput

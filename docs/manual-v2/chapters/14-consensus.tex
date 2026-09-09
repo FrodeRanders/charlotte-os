@@ -41,7 +41,7 @@ by the per-node DNS EL0 process, which:
         changes only through committed membership commands.
     \item Carries VoteRequest, AppendEntries, InstallSnapshot, and admission
         messages through the reliable-message service.
-    \item Uses completion-queue waits for time --- a bounded
+    \item Uses completion-queue waits for time: a bounded
         \texttt{CQ\_WAIT} drives election and heartbeat checks without a
         detached timer completion or a busy polling loop.
     \item Applies membership commands and DNS catalog commands to the same
@@ -85,8 +85,8 @@ The capability carries communication authority; an IP address alone does not.
 
 The transport is behind the \texttt{RaftTransport} trait. A connection capability
 routes through local IPC (same machine), Ethernet frames (same network), or a
-future RDMA transport (high-performance cluster) --- the consensus core never
-changes. This means:
+future RDMA transport (high-performance cluster). The consensus core does not
+change. This permits:
 
 \begin{itemize}
     \item Development and testing can run a multi-node Raft cluster on one
@@ -99,10 +99,10 @@ changes. This means:
 
 \subsection{Zero-copy log replication}
 
-Locally, log payloads can transfer via Move memory objects: the kernel flips page-table
-ownership instead of copying bytes. A follower that receives a Move attachment
-gets the exact same physical pages the leader held --- no intermediate buffer,
-no copy. 
+Locally, log payloads can transfer via Move memory objects: the kernel flips
+page-table ownership instead of copying bytes. A follower that receives a Move
+attachment gets the same physical pages the leader held, without an intermediate
+buffer or copy.
 
 The current local transport uses one moved page per RPC and batches the largest
 AppendEntries prefix whose protobuf encoding fits. This is a 4\,KiB transport
@@ -142,7 +142,7 @@ Focused two-guest tests cover catalog and deployment exchanges, and the
 three-guest ingress fixture covers discovery-driven admission, leader failover,
 and continued cluster operation. None of these fixture sizes bounds membership.
 
-\section{Cluster bootstrap --- the seed problem}
+\section{Cluster bootstrap: the seed problem}
 
 A new node must contact at least one existing cluster member. CharlotteOS
 expresses the seed as a service name or capability rather than an IP address.
@@ -158,8 +158,8 @@ commits the joint configuration, and finalizes it.
 
 \subsection{Pre-shared cluster capability (small kernel change)}
 
-A cluster administrator provisions a ``cluster capability'' --- a connection
-to a known cluster member --- and delivers it to new nodes via the config page.
+A cluster administrator provisions a connection to a known cluster member as a
+``cluster capability'' and delivers it to new nodes via the config page.
 No name lookup required; the node already holds a first-class connection.
 
 \subsection{Ethernet broadcast discovery (zero-configuration)}
@@ -196,7 +196,7 @@ trait StateMachine {
 Different services are different state machines on the same Raft substrate:
 
 \begin{itemize}
-    \item Distributed name service --- commands are
+    \item Distributed name service: commands are
         ``register(name, owner, route, generation)'' and
         ``unregister(name, owner, generation)''. Unregistration is rejected
         unless both owner and generation still match the active entry.
@@ -213,9 +213,9 @@ Different services are different state machines on the same Raft substrate:
         identities, generations, and policy metadata. Replicated, it makes
         service discovery available cluster-wide; this is the implemented
         \texttt{dns} service.
-    \item Distributed lock service --- commands are ``acquire(lock\_id)''
+    \item Distributed lock service: commands are ``acquire(lock\_id)''
         and ``release(lock\_id)''. The state is a set of held locks.
-    \item Cluster configuration store --- commands are arbitrary
+    \item Cluster configuration store: commands are arbitrary
         key-value writes. The state is a key-value map.
 \end{itemize}
 
@@ -289,30 +289,30 @@ The timer is a kernel-managed operation. The shard parks on its CQ. When the
 timer fires, the executor wakes, drains the CQ entry, and resumes the election
 task. There is no need for a polling loop and no thread dedicated to sleeping.
 
-\section{Why consensus as a service matters for critical software}
+\section{Replication consequences}
 
 \begin{enumerate}
-    \item Consistency primitives can be exposed as services --- a replicated
+    \item Consistency primitives can be exposed as services: a replicated
         service implements \texttt{StateMachine} and uses the shared Raft,
         transport, timer, and storage interfaces.
 
-    \item Capabilities, not IP addresses, identify peers --- the cluster
+    \item Capabilities, not IP addresses, identify peers: the cluster
         configuration is a set of capabilities, not a list of \texttt{host:port}
         pairs. A network reconfiguration (new NIC, new subnet, move to RDMA)
         need not change the replicated peer identities.
 
-    \item Timers are first-class and reliable --- an election timeout
+    \item Timers are first-class and reliable: an election timeout
         that is lost because the polling loop missed its window is a correctness
         bug (it can cause spurious leader changes or extended unavailability).
         Kernel-managed timers use the non-lossy CQ delivery path exercised by
         the local-election test.
 
-    \item Failure isolation can extend to the consensus layer --- a Raft
+    \item Failure isolation can extend to the consensus layer: a Raft
         node is a userspace process. It can crash, restart, and recover without
         affecting the kernel or other Raft nodes. The supervisor handles the
         lifecycle; the Raft protocol handles the consensus.
 
-    \item A distributed name service is implemented --- the
+    \item A distributed name service is implemented: the
         \texttt{dns} service runs the \texttt{CatalogMachine} state machine
         on the Raft substrate; all other services that need cluster-wide
         consistency can use the same \texttt{StateMachine} pattern and shared

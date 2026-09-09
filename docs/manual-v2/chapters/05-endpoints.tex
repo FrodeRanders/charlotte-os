@@ -1,4 +1,4 @@
-\chapter{Endpoints --- Communication as a First-Class Primitive}
+\chapter{Endpoints: Communication as a First-Class Primitive}
 \label{chap:endpoints}
 
 An endpoint answers: \textbf{``Who am I communicating with?''} It is
@@ -77,11 +77,11 @@ struct MessageHeader {
 Constraints on the ABI:
 
 \begin{itemize}
-    \item Fixed-width fields --- no \texttt{usize}, no pointer-sized values.
-    \item Explicit alignment --- no compiler-dependent layout.
-    \item Checked offsets and lengths --- the kernel rejects out-of-bounds.
-    \item Explicit protocol versioning --- forward compatibility is negotiated.
-    \item Maximum attachment counts --- bounded kernel work per message.
+    \item Fixed-width fields: no \texttt{usize}, no pointer-sized values.
+    \item Explicit alignment: no compiler-dependent layout.
+    \item Checked offsets and lengths: the kernel rejects out-of-bounds.
+    \item Explicit protocol versioning: forward compatibility is negotiated.
+    \item Maximum attachment counts: bounded kernel work per message.
     \item No arbitrary userspace pointers as durable message identity.
 \end{itemize}
 
@@ -106,7 +106,7 @@ Underneath, the runtime:
     \item The kernel creates a one-shot \textbf{reply token} bound to this call.
     \item The caller task becomes pending (the \texttt{Future} returns
         \texttt{Poll::Pending}).
-    \item The caller shard continues running other tasks --- no thread is
+    \item The caller shard continues running other tasks: no thread is
         dedicated to this request.
     \item The server receives the message on its endpoint.
     \item The server replies (immediately or later).
@@ -116,7 +116,7 @@ Underneath, the runtime:
 
 \subsection{Deferred replies}
 
-A server may retain a reply token and complete it later --- while continuing to
+A server may retain a reply token and complete it later while continuing to
 serve other requests on the same shard. This supports device-driven
 operations:
 
@@ -138,16 +138,16 @@ A reply token is:
 
 \begin{itemize}
     \item Created by the kernel when a call message is enqueued.
-    \item Bound to the pending call --- it completes exactly that
+    \item Bound to the pending call: it completes exactly that
         caller's future.
-    \item Consumable exactly once --- a second reply attempt returns
+    \item Consumable exactly once: a second reply attempt returns
         an error.
-    \item Invalidated by cancellation --- if the caller times out or
+    \item Invalidated by cancellation: if the caller times out or
         aborts, the reply token becomes inert.
-    \item Invalidated by endpoint teardown --- if the server dies,
+    \item Invalidated by endpoint teardown: if the server dies,
         all outstanding reply tokens are invalidated, and all waiting
         callers receive \texttt{ServiceRestarted}.
-    \item Optionally delegable --- a server may forward a reply token
+    \item Optionally delegable: a server may forward a reply token
         to another service, allowing a chain of services to contribute to
         a single reply.
 \end{itemize}
@@ -184,16 +184,16 @@ The kernel uses opaque endpoint identities. A userspace \textbf{name service}
 maps human-readable names to re-delegable connection capabilities:
 
 \begin{itemize}
-    \item Registration --- a service registers as \texttt{"driver.nic.v1"}
+    \item Registration: a service registers as \texttt{"driver.nic.v1"}
         with a specific endpoint. The name service stores the endpoint's
         connection.
-    \item Generation tracking --- each registration bumps a generation
+    \item Generation tracking: each registration bumps a generation
         counter. Stale client connections bound to the previous generation fail
         with \texttt{ServiceRestarted}.
-    \item Access-key gating --- a registration may specify a non-zero access
-        key. Lookups without the matching key are denied --- policy enforced by
-        a userspace service, not the kernel.
-    \item Lookup --- a client asks for \texttt{"driver.nic.v1"} and receives
+    \item Access-key gating: a registration may specify a non-zero access
+        key. The userspace name service, not the kernel, denies lookups without
+        the matching key.
+    \item Lookup: a client asks for \texttt{"driver.nic.v1"} and receives
         a connection capability (or an error). It never receives an address, a
         port number, or a raw handle.
 \end{itemize}
@@ -225,31 +225,31 @@ submit a hardware operation and await a CQ entry (control path). The endpoint
 message and the hardware completion are related \emph{in the service's logic}, but
 they are different kernel abstractions with different semantics.
 
-\section{Why endpoints matter for critical software}
+\section{Authority, concurrency, and restart}
 
 \begin{enumerate}
-    \item Communication carries authority --- a client that
+    \item Communication carries authority: a client that
         holds a connection capability was authorized (at grant time, by the name
         service or policy service) to communicate with the target. Every message
         is authorized by possession of a kernel-mediated capability rather than
         by an address or UID alone.
 
-    \item Scalar and memory messages are distinct --- the kernel does not
+    \item Scalar and memory messages are distinct: the kernel does not
         copy arbitrary data between address spaces by default. Small control
         messages stay small. Bulk data moves as memory objects
         (\autoref{chap:memory-objects}) with
         explicit ownership semantics.
 
-    \item Deferred replies enable efficient concurrency --- a server is never
+    \item Deferred replies enable efficient concurrency: a server is never
         forced to block waiting for one slow client. It retains reply tokens for
         in-flight work and continues serving other requests. The shard's executor
         multiplexes naturally.
 
-    \item Restart errors are defined --- stale connections return typed
+    \item Restart errors are defined: stale connections return typed
         errors such as \texttt{EndpointClosed} and \texttt{ServiceRestarted}.
         A replacement cannot inherit the old instance's reply tokens.
 
-    \item Name service is policy, not mechanism --- the kernel provides
+    \item Name service is policy, not mechanism: the kernel provides
         endpoints and connections. Userspace decides who can register what name,
         who can look up what service, and what access keys are required. The
         kernel remains small; policy is replaceable without a kernel rebuild.

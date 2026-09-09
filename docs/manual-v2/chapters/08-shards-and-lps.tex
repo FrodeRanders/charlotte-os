@@ -4,7 +4,7 @@
 CharlotteOS separates the hardware execution context (logical processor, or LP)
 from the userspace ownership domain (shard).
 
-\section{The logical processor (LP) --- the hardware unit of scheduling}
+\section{The logical processor (LP): the hardware unit of scheduling}
 
 An LP is CharlotteOS's representation of a schedulable hardware execution
 context. In most configurations, one LP equals one CPU core (or one hyperthread).
@@ -21,26 +21,26 @@ The kernel shards its own state per-LP, meaning each LP has:
 An LP is a \textbf{place}: threads are pinned to an LP at creation and, by default,
 stay there. Migration is opt-in and restricted.
 
-\section{The shard --- the userspace unit of ownership}
+\section{The shard: the userspace unit of ownership}
 
 A shard is a userspace ownership and execution domain. The rules of the shard are
 the Sitas discipline:
 
 \begin{enumerate}
-    \item Only the owning shard mutates shard-local state --- there is no
+    \item Only the owning shard mutates shard-local state: there is no
         lock on shard-local data because there is no concurrent access. The
         executor runs one task at a time on the shard.
 
-    \item Cross-shard interaction goes through bounded typed messages ---
+    \item Cross-shard interaction goes through bounded typed messages:
         a value that moves from shard A to shard B is sent through a typed
         channel (\rusttype{ShardSender<M>}). The sender loses the value; the
         receiver gains it.
 
-    \item Placement is explicit --- code that needs to be shard-local is
+    \item Placement is explicit: code that needs to be shard-local is
         accessed through \rusttype{ShardLocal<T>}, which verifies at runtime that
         the calling thread belongs to the owning LP.
 
-    \item Observability returns owned snapshots --- diagnostics and
+    \item Observability returns owned snapshots: diagnostics and
         introspection capture state by value. No borrowed reference into shard
         internals escapes the shard.
 \end{enumerate}
@@ -68,15 +68,15 @@ The architecture retains the distinction (shard $\neq$ LP) so that more complex
 configurations remain possible:
 
 \begin{itemize}
-    \item Multiple sharded processes --- one LP might host shards from
+    \item Multiple sharded processes: one LP might host shards from
         multiple protection domains, time-sliced by the kernel scheduler.
-    \item CPU hotplug --- an LP can be taken offline; its shards can be
+    \item CPU hotplug: an LP can be taken offline; its shards can be
         migrated (when migration-safe) or torn down.
-    \item Oversubscription --- a test can run $N$ shards on $M < N$ LPs
+    \item Oversubscription: a test can run $N$ shards on $M < N$ LPs
         to exercise migration and scheduling paths.
 \end{itemize}
 
-\section{\texttt{PerLp<T>} --- interrupt-safe shared data}
+\section{\texttt{PerLp<T>}: interrupt-safe shared data}
 
 \label{sec:per-lp}
 
@@ -100,7 +100,7 @@ Use \rusttype{PerLp<T>} for data that is:
         that must be LP-safe.
 \end{itemize}
 
-\section{\texttt{ShardLocal<T>} --- lock-free single-owner data}
+\section{\texttt{ShardLocal<T>}: lock-free single-owner data}
 
 \label{sec:shard-local}
 
@@ -131,25 +131,25 @@ The closure must not:
         access).
 \end{itemize}
 
-\section{Why the distinction matters for critical software}
+\section{Ownership and placement consequences}
 
 \begin{enumerate}
-    \item Single-owner mutation --- the intended shard path does not access
+    \item Single-owner mutation: the intended shard path does not access
         shard-local state concurrently. Runtime owner and borrow checks complement
         Rust's type rules.
 
-    \item Placement is deliberate --- sending work to a
+    \item Placement is deliberate: sending work to a
         specific LP is an explicit operation (\texttt{try\_run\_on\_lp},
         \texttt{ShardSender::try\_send}) and it is not at the mercy of a global
         work-stealing scheduler. This makes it possible to reason about locality,
         cache behavior, and latency.
 
-    \item The two container types force a design choice --- when you reach
+    \item The two container types force a design choice: when you reach
         for shared data, you must decide: is this accessed from interrupt context?
         Use \rusttype{PerLp<T>} with locking. Is it thread-only? Use
         \rusttype{ShardLocal<T>} without locking. The choice is explicit.
 
-    \item Cross-shard communication is typed and bounded --- A
+    \item Cross-shard communication is typed and bounded: A
         \rusttype{ShardSender<M>} carries a specific Rust type (not
         \texttt{Box<dyn Any>}, not a byte buffer). The receiver knows what it will
         get. The channel has fixed capacity; senders handle backpressure. There

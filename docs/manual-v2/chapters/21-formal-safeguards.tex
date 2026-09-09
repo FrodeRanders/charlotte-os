@@ -400,7 +400,7 @@ requires a quorum-fresh Raft leader or a follower with a recent successful
 leader-log match, so a responsive but partitioned local DNS process cannot
 renew the lease indefinitely.
 
-Three negative configurations expose the important cross-layer failures. One
+Three negative configurations expose cross-layer failures. One
 admits a new SYN through a stale snapshot after current policy withdraws its
 backend. Another evicts an epoch still named by a live flow and then remaps that
 flow through the current snapshot. The third admits readiness from an old
@@ -568,9 +568,9 @@ Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
         state does not become part of the source tree.
 \end{itemize}
 
-Action coverage is important. An invariant can pass because a transition is
-accidentally disabled. Requiring coverage does not prove that an action is
-correct, but it detects this common vacuity.
+An invariant can pass because a transition is accidentally disabled. Required
+action coverage detects this vacuity, although it does not prove that an action
+is correct.
 
 At the 6 September 2026 implementation synchronization point, representative
 fast configurations produced the following complete state graphs:

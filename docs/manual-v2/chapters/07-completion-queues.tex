@@ -23,7 +23,7 @@ Use endpoint IPC (\autoref{chap:endpoints}) when one protection domain invokes a
 Confusing these two paths leads to architectural mistakes: a service call is not a
 kernel operation, and a reply token is not a completion record.
 
-\section{The CQ ring --- a shared-memory completion buffer}
+\section{The CQ ring: a shared-memory completion buffer}
 
 A completion queue is a \textbf{shared-memory ring buffer} between the kernel
 (producer) and userspace (consumer). A single 4 KiB page contains a header and a
@@ -46,12 +46,12 @@ tail; the kernel accesses the same frame through its privileged mapping. The ABI
 assigns each side its own fields:
 
 \begin{itemize}
-    \item Userspace drains entries without syscalls --- advancing the
+    \item Userspace drains entries without syscalls: advancing the
         consumer tail is a store to a shared page; reading entries is a load.
         No kernel crossing needed for the common fast path.
-    \item The kernel publishes entries with a release fence --- the consumer
+    \item The kernel publishes entries with a release fence: the consumer
         sees coherent data without additional synchronization.
-    \item Overflow is detected, not hidden --- an overflow counter in the
+    \item Overflow is detected, not hidden: an overflow counter in the
         header lets userspace detect when entries were produced faster than
         consumed.
 \end{itemize}
@@ -67,13 +67,13 @@ This is an architectural invariant, so when the ring is full, the
 kernel has several options:
 
 \begin{itemize}
-    \item Retain overflow in a per-domain kernel backlog --- entries that
+    \item Retain overflow in a per-domain kernel backlog: entries that
         cannot fit in the ring wait in a kernel-side buffer. When userspace
         drains the ring, the backlog drains into it.
-    \item Stop accepting new submissions --- the kernel may return
+    \item Stop accepting new submissions: the kernel may return
         \texttt{WouldBlock} on \texttt{submit}, applying backpressure at the
         submission point rather than at the completion point.
-    \item Propagate \texttt{WouldBlock} --- the CQ's wait operation can
+    \item Propagate \texttt{WouldBlock}: the CQ's wait operation can
         indicate that the ring is full and must be drained.
 \end{itemize}
 
@@ -153,7 +153,7 @@ Each transition is explicit and observable:
         freed (via \texttt{close}).
 \end{description}
 
-\section{Waiting on a CQ --- \texttt{CQ\_WAIT}}
+\section{Waiting on a CQ: \texttt{CQ\_WAIT}}
 
 When a shard's executor has no ready tasks, it calls \texttt{CQ\_WAIT} on its
 assigned queue. The kernel blocks the calling thread until one of three things
@@ -169,11 +169,11 @@ happens:
 The wait is race-free. The sequence is:
 
 \begin{enumerate}
-    \item Inspect the CQ ring --- if completions are pending, return immediately.
+    \item Inspect the CQ ring: if completions are pending, return immediately.
     \item Register a waiter against the CQ's generation counter.
-    \item Re-inspect the CQ ring --- if completions arrived during registration,
+    \item Re-inspect the CQ ring: if completions arrived during registration,
         unregister and return.
-    \item Block the thread --- it will be woken when the generation counter changes
+    \item Block the thread: it will be woken when the generation counter changes
         (a new entry is posted or a \texttt{CQ\_WAKE} bumps it).
 \end{enumerate}
 
@@ -200,9 +200,9 @@ one. This has three benefits:
     \item Timer events stay on the same LP's queue, eliminating
         cross-LP migration races (observer-not-found when a completion is posted
         on a different LP than the one where the waiter was registered).
-    \item Cache warmth is preserved --- the waking thread finds its data
+    \item Cache warmth is preserved: the waking thread finds its data
         in the LP's local caches.
-    \item Shard-to-LP affinity is maintained --- the Sitas shard that blocked
+    \item Shard-to-LP affinity is maintained: the Sitas shard that blocked
         on CQ 0 on LP 2 wakes up on LP 2, where its shard-local state lives.
 \end{enumerate}
 
@@ -244,29 +244,29 @@ Under this contract, a buffer is retained while the kernel or device may still
 reach it. The safe Rust wrapper consumes the owned value on submission and returns
 it on terminal completion.
 
-\section{Why completion queues matter for critical software}
+\section{Reliability and latency consequences}
 
 \begin{enumerate}
-    \item Non-lossy completions are a correctness requirement --- a disk-write
+    \item Non-lossy completions are a correctness requirement: a disk-write
         confirmation, a timer expiry, or a sensor reading is a fact and losing it
         is a bug. The backlog retains terminal results when the ring is full.
 
-    \item The single aggregated wait eliminates a class of race conditions ---
+    \item The single aggregated wait eliminates a class of race conditions:
         a shard that must wait on ``timer or IPC message or device interrupt'' in
         a conventional OS must manage three separate wait objects, with potential
         lost-wake races between checking one and arming another. One CQ means one
         atomic check-and-arm sequence.
 
-    \item Per-shard CQ rings enable predictable latency --- no shard wakes
+    \item Per-shard CQ rings enable predictable latency: no shard wakes
         another shard's executor to deliver a completion. Wakes are targeted,
         bounded, and proportional to the actual work.
 
-    \item The CQ ring is zero-syscall in the common case --- the fast path
-        --- drain entries, process results, loop --- requires no kernel
-        transitions. Only when the ring is empty and the shard must block does a
-        syscall occur.
+    \item The CQ ring is zero-syscall in the common case: draining entries,
+        processing results, and continuing the loop require no kernel
+        transitions. A syscall occurs only when the ring is empty and the shard
+        must block.
 
-    \item Cancellation is defined, not best-effort --- every cancellation
+    \item Cancellation is defined, not best-effort: every cancellation
         path ends in a terminal completion. There is no ``the buffer might or
         might not be freed'' ambiguity. The ownership contract is explicit and
         testable.

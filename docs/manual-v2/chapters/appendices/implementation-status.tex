@@ -65,18 +65,19 @@ repository history remain authoritative.
 \section{Success criteria}
 
 \begin{enumerate}
-    \item Two EL0 domains communicate through a bounded endpoint --- \textbf{Verified.}
-    \item Deferred async call while a shard continues other tasks --- \textbf{Verified.}
-    \item Moved memory object --- sender locked out until return --- \textbf{Verified.}
-    \item Lending enforced by mappings, including death cleanup --- \textbf{Verified.}
-    \item Single \texttt{CQ\_WAIT} for endpoint + completions + device interrupts --- \textbf{Verified.}
-    \item Terminal CQ results survive ring overflow (non-lossy backlog) --- \textbf{Verified.}
-    \item Coalesced remote shard wakes (idempotent scheduler fix) --- \textbf{Verified.}
-    \item Userspace UART driver with only delegated MMIO + IRQ --- \textbf{Verified.}
-    \item Restart invalidates stale connections + device reset + op reconciliation --- \textbf{Verified.}
-    \item Virtio-net data path with batched packet buffers --- \textbf{Runtime-validated on macOS QEMU TCG.}
-    \item Fixed-width stable ABI representations (32-byte CQ entries) --- \textbf{Implemented; not formally audited.}
-    \item Capability misuse and cancellation race adversarial tests --- \textbf{Partial; six IPC error-path tests.}
+    \item Two EL0 domains communicate through a bounded endpoint: \textbf{Verified.}
+    \item Deferred async call while a shard continues other tasks: \textbf{Verified.}
+    \item Moved memory object with the sender locked out until return:
+        \textbf{Verified.}
+    \item Lending enforced by mappings, including death cleanup: \textbf{Verified.}
+    \item Single \texttt{CQ\_WAIT} for endpoint + completions + device interrupts: \textbf{Verified.}
+    \item Terminal CQ results survive ring overflow (non-lossy backlog): \textbf{Verified.}
+    \item Coalesced remote shard wakes (idempotent scheduler fix): \textbf{Verified.}
+    \item Userspace UART driver with only delegated MMIO + IRQ: \textbf{Verified.}
+    \item Restart invalidates stale connections + device reset + op reconciliation: \textbf{Verified.}
+    \item Virtio-net data path with batched packet buffers: \textbf{Runtime-validated on macOS QEMU TCG.}
+    \item Fixed-width stable ABI representations (32-byte CQ entries): \textbf{Implemented; not formally audited.}
+    \item Capability misuse and cancellation race adversarial tests: \textbf{Partial; six IPC error-path tests.}
 \end{enumerate}
 
 \section{Verified scope}

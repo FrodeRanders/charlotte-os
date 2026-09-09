@@ -9,14 +9,14 @@ queue when no task is ready.
 Each sitas shard has:
 
 \begin{itemize}
-    \item One executor --- a cooperative scheduler that polls ready
+    \item One executor: a cooperative scheduler that polls ready
         futures within a budget.
-    \item One ready queue --- tasks whose futures returned
+    \item One ready queue: tasks whose futures returned
         \texttt{Poll::Pending} and whose wakers have since been invoked.
-    \item One timer wheel --- futures awaiting deadlines.
-    \item One CQ partition --- the completion queue on which this shard
+    \item One timer wheel: futures awaiting deadlines.
+    \item One CQ partition: the completion queue on which this shard
         waits (\texttt{CQ\_WAIT}).
-    \item Shard-owned service state --- mutable data that only this
+    \item Shard-owned service state: mutable data that only this
         executor touches.
 \end{itemize}
 
@@ -57,7 +57,7 @@ starving other tasks on the shard. If the budget is exhausted with work remainin
 the executor re-queues the remaining tasks and yields (either to other threads on
 the same LP via the kernel scheduler, or to idle).
 
-\section{The unified wait --- three event sources, one wait point}
+\section{The unified wait: three event sources, one wait point}
 \label{sec:sitas-unified-wait}
 
 When the executor has no ready tasks and no pending timers, it calls
@@ -98,7 +98,7 @@ A device interrupt object can be bound to a CQ. When the interrupt fires, the
 kernel posts a coalesced wake. The executor, on waking, calls the device's
 interrupt handler (or the driver's polling function).
 
-\section{Task wakeup --- from CQ entry to future poll}
+\section{Task wakeup: from CQ entry to future poll}
 
 When the executor drains a CQ entry, it looks up the registered waker for that
 entry's \texttt{user\_data} cookie. The cookie was set by the task when it
@@ -119,15 +119,15 @@ fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<u64> {
 }
 \end{lstlisting}
 
-The waker is a \texttt{ShardWaker} --- when invoked, it sets the task's ready flag
-and signals the reactor (if the reactor is currently blocked) to re-enter the
-polling loop. The reactor then polls the task, which finds its completion ready.
+When invoked, the \texttt{ShardWaker} sets the task's ready flag and signals a
+blocked reactor to re-enter the polling loop. The reactor then polls the task,
+which finds its completion ready.
 
 \section{Cross-shard messaging without the kernel}
 \label{sec:sitas-cross-shard-messaging}
 
 Within one protection domain, tasks on different shards communicate through sitas
-typed mailboxes --- not through kernel endpoint IPC:
+typed mailboxes rather than kernel endpoint IPC:
 
 \begin{lstlisting}[style=rustCode]
 // Shard A: send work to Shard B.
@@ -153,7 +153,7 @@ This is \textbf{internal} cross-shard communication (same protection domain,
 different shards). External communication (different protection domains) uses
 endpoint IPC (\autoref{chap:endpoints}).
 
-\section{The ShardParker --- blocking on native state}
+\section{The ShardParker: blocking on native state}
 
 When the executor has no ready tasks, it must block its OS thread. The mechanism
 is the \texttt{ShardParker} trait:
@@ -180,31 +180,31 @@ This direct mapping is the basis of the ``no retrofit tax'' claim. The runtime
 does not need a thread pool to translate blocking calls into futures because
 \texttt{CQ\_WAIT} covers the shard's asynchronous sources.
 
-\section{Why the sitas executor matters for critical software}
+\section{Concurrency and execution consequences}
 
 \begin{enumerate}
-    \item Cooperative scheduling means no data races on shard-local state ---
+    \item Cooperative scheduling means no data races on shard-local state:
         within a shard, only one task runs at a time. The executor polls tasks
         sequentially. There is no preemption within the shard. This means
         shard-local mutable state never needs locks.
 
-    \item The single wait point eliminates a class of race conditions ---
+    \item The single wait point eliminates a class of race conditions:
         the executor does not wait on ``timer or CQ or endpoint'' through three
         separate blocking calls with three separate check-and-arm sequences. One
         CQ, one wait, one drain loop. The kernel guarantees the wake is not lost
         between checking and arming.
 
-    \item No thread-pool overhead --- the executor uses exactly one kernel
-        thread per shard. When that thread blocks, it blocks on the CQ --- the
-        same object that will deliver its wake. There is no need for a pool of
+    \item No thread-pool overhead: the executor uses exactly one kernel
+        thread per shard. When that thread blocks, it blocks on the CQ, the same
+        object that will deliver its wake. There is no need for a pool of
         threads to convert blocking syscalls into futures.
 
-    \item Budgeting prevents starvation --- the polling budget ensures that
+    \item Budgeting prevents starvation: the polling budget ensures that
         a shard with many ready tasks makes progress on all of them, not just the
         one that finishes fastest. This prevents priority-inversion-like behavior
         within a shard.
 
-    \item Internal messaging avoids unnecessary kernel crossings --- shards
+    \item Internal messaging avoids unnecessary kernel crossings: shards
         within the same process communicate through typed channels in userspace.
         Only cross-process IPC crosses the kernel boundary. This keeps the fast
         path fast and the trusted computing base small.
@@ -232,16 +232,16 @@ thread can re-derive any key without storing the data set. An index entry is
 a \texttt{(key, offset)} pair.
 
 \begin{itemize}
-    \item Scanners --- two producer threads, one per shard. Each
+    \item Scanners: two producer threads, one per shard. Each
         generates its contiguous partition of records, routes every key to
         an assembler with a key hash, batches the entries, and sends the
         batches as owned messages.
-    \item Assemblers --- three logical work units. Two are placed
+    \item Assemblers: three logical work units. Two are placed
         on shards 0 and 1; the third is deliberately placed on shard 0 so
         that logical naming and physical placement are visibly separate.
         Each assembler receives its entries, sorts them into a run, and
         hands the completed run to the coordinator as an owned value.
-    \item Coordinator --- the main thread. It spawns the shard
+    \item Coordinator: the main thread. It spawns the shard
         threads, waits for all three runs, k-way merges them, verifies the
         final index, and writes the verified record count to the status
         page.
@@ -299,7 +299,7 @@ non-blocking \texttt{try\_send}; a producer whose mailbox is full parks
 briefly on the runtime's \texttt{ShardParker} and retries, rather than
 spinning. The assembler task awaits \texttt{receiver.recv()}; the await
 parks the shard in its reactor wait, and the sending side's channel waker
-re-queues exactly that task and releases the reactor --- the same
+re-queues exactly that task and releases the reactor. This is the same
 channel-waker-to-reactor chain as the sharded KV service
 (\autoref{sec:sitas-cross-shard-messaging}).
 
@@ -316,15 +316,14 @@ user thread has no ``returned'' trap, so the trampoline must ask the kernel
 to reap it), and the kernel's \texttt{ObserveThreadExit} syscall registers a
 completion capability as an exit-observer of that thread: when the kernel
 reaps the thread, the capability fires through the ordinary completion ABI.
-The backend's \texttt{CharlotteJoinHandle} wraps this --- \texttt{join}
+The backend's \texttt{CharlotteJoinHandle} wraps this behavior. \texttt{join}
 blocks in the kernel's completion wait and then reads the closure's return
 value from a per-spawn result slot, and \texttt{is\_finished} polls the
 capability. The \texttt{catten-user} join probe exercises it: it spawns two
 shard threads that return 40 and 41, joins both, and writes the sum (81) to
-the status page. The coordinator of the mailbox demo itself does not join
-because work completion (all runs arrived) already implies the shards are
-done --- but a caller that needs ``the thread really exited'' has the
-kernel-backed primitive.
+the status page. The coordinator of the mailbox demo itself does not join because
+work completion (all runs arrived) already implies that the shards are done. A
+caller that must observe thread exit can use the kernel-backed primitive.
 
 \subsection{Verification}
 
@@ -354,18 +353,13 @@ join probe sum 81
 A failed demo writes the failure sentinel \texttt{0xBADC0DE} instead, which
 the verifier turns into a failed self-test.
 
-\subsection{Why this demo matters}
+\subsection{What the demo establishes}
 
-The mailbox index build shows the architecture working as designed:
-mutable state is owned, work is transferred as owned values, shards
-communicate without locks or kernel crossings, and the kernel stays a thin
-substrate. Because the demo is written against the \texttt{no\_std}
-\texttt{ShardRuntime}, the identical code path runs on a Unix host
-through \texttt{sitas-unix} with a plain \texttt{cargo test} and on
-CharlotteOS through the kernel syscall backend: the runtime is not rewritten
-or emulated for either side. That is the Rust-affine version of the old
-division of labour: the kernel contributes the primitives that only it can
-provide, and the language contributes the discipline that userspace is
-trusted to enforce.
+The mailbox index build exercises owned state, owned-value transfer, and
+lock-free cross-shard communication while the kernel provides only scheduling
+and completion primitives. The demo targets the \texttt{no\_std}
+\texttt{ShardRuntime}, so the identical code path runs on a Unix host through
+\texttt{sitas-unix} with a plain \texttt{cargo test} and on CharlotteOS through
+the kernel syscall backend.
 
 \endinput

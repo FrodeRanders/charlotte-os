@@ -47,34 +47,34 @@ controller's PCI requester ID. Queue and data memory are mapped with
 addresses. The kernel pins the backing frames and removes each translation
 with a synchronous SMMU invalidation before unpinning.
 
-\subsection{Initialisation}
+\subsection{Initialization}
 
-The driver follows the standard NVMe initialisation sequence:
+The driver follows the standard NVMe initialization sequence:
 
 \begin{enumerate}
-    \item Controller reset --- disable CC.EN, wait for CSTS.RDY = 0.
-    \item Admin queue setup --- allocate physically contiguous memory for the
+    \item Controller reset: disable CC.EN, wait for CSTS.RDY = 0.
+    \item Admin queue setup: allocate physically contiguous memory for the
         Admin Submission Queue (ASQ, 32 entries) and Admin Completion Queue
         (ACQ, 32 entries). Write AQA, ASQ, and ACQ registers. Enable the
         controller and wait for CSTS.RDY = 1.
-    \item Identify controller --- submit an Identify command (CNS=1) through
+    \item Identify controller: submit an Identify command (CNS=1) through
         the admin SQ. Read capabilities, version, and supported features.
-    \item Set Features (Number of Queues) --- declare how many I/O queue
+    \item Set Features (Number of Queues): declare how many I/O queue
         pairs the driver intends to use. QEMU's NVMe controller requires this
         before accepting I/O queue creation commands.
-    \item Identify namespace --- submit an Identify command (CNS=0, NSID=1)
+    \item Identify namespace: submit an Identify command (CNS=0, NSID=1)
         to read the namespace size (NSZE) and the active LBA format (FLBAS),
         which determines the block size.
-    \item Create I/O Completion Queue --- allocate memory, submit a Create
+    \item Create I/O Completion Queue: allocate memory, submit a Create
         I/O CQ admin command. The CDW11 register must set bit 0 (PC =
-        Physically Contiguous) to 1 --- this is required by the NVMe
+        Physically Contiguous) to 1. The NVMe
         specification and enforced by QEMU's device model.
-    \item Create I/O Submission Queue --- allocate memory, submit a Create
+    \item Create I/O Submission Queue: allocate memory, submit a Create
         I/O SQ admin command, associating it with the I/O CQ created in the
         previous step.
 \end{enumerate}
 
-After initialisation the driver registers \texttt{"blk0"} with the name service
+After initialization the driver registers \texttt{"blk0"} with the name service
 and enters its main loop, blocking on \texttt{cq\_wait} for endpoint messages
 and I/O completions.
 
@@ -98,23 +98,23 @@ written data reaches durable media before replying.
 The NVMe driver exposed several non-obvious requirements:
 
 \begin{itemize}
-    \item CDW11 bit 0 (PC) must be 1 --- QEMU's NVMe device model
+    \item CDW11 bit 0 (PC) must be 1: QEMU's NVMe device model
         requires physically contiguous queues. Without this bit, the Create
         I/O CQ command returns status 0x4002 regardless of all other
         parameters.
-    \item SQE layout is exacting --- the Command Identifier occupies
+    \item SQE layout is exacting: the Command Identifier occupies
         bits 31:16 of DW0, the opcode occupies bits 7:0. The NSID shares
         DW0's high bits with DW0 in the first u64. PRP1 is at byte offset
         24, CDW10-11 at byte offset 40. Getting any of these wrong produces
         silent failures.
-    \item Doorbell stride must be derived from CAP.DSTRD --- on QEMU
+    \item Doorbell stride must be derived from CAP.DSTRD: on QEMU
         this is 0 (stride = 4 bytes), but the architecture supports strides
         up to $4 \ll 15$ bytes.
-    \item MMIO mapping must cover the doorbell region --- the NVMe
+    \item MMIO mapping must cover the doorbell region: the NVMe
         controller registers occupy offsets 0x0000--0x003F within BAR0, but
         doorbell registers start at offset 0x1000. A single-page MMIO grant
-        is insufficient --- at least two pages are needed.
-    \item On TCG, \texttt{cq\_wait} is required for VM exits --- a
+        is insufficient; at least two pages are needed.
+    \item On TCG, \texttt{cq\_wait} is required for VM exits: a
         pure spin-loop prevents QEMU from processing I/O because the guest
         never yields. The driver must block on \texttt{cq\_wait} to let the
         host process NVMe commands.
@@ -186,23 +186,23 @@ Directory records are checksummed and mirrored. Each update goes to the
 generation-selected bank, and mount chooses the newest valid copy per record;
 versioned tombstones prevent deleted records from reappearing. This recovers
 from one torn directory-sector write. Full device-level sudden-power-loss
-guarantees still depend on truthful flush/FUA behaviour. FNV-1a detects
+guarantees still depend on truthful flush/FUA behavior. FNV-1a detects
 accidental corruption, but is not cryptographic authentication.
 
 \subsection{Operations}
 
 \begin{itemize}
-    \item \textbf{CREATE} --- allocate a directory slot, return a new object ID.
-    \item \textbf{CREATE\_AT} --- create a caller-selected stable object ID, or
+    \item \textbf{CREATE}: allocate a directory slot, return a new object ID.
+    \item \textbf{CREATE\_AT}: create a caller-selected stable object ID, or
         report that it already exists.
-    \item \textbf{WRITE} --- replace the object's content. The caller moves a
+    \item \textbf{WRITE}: replace the object's content. The caller moves a
         suitably sized memory object; the store writes it in bounded chunks.
-    \item \textbf{SET\_SIZE} --- set the exact byte length consumed by the next
+    \item \textbf{SET\_SIZE}: set the exact byte length consumed by the next
         whole-object write.
-    \item \textbf{READ} --- return the object's data as a moved memory object.
-    \item \textbf{DELETE} --- mark the directory entry as free, return the
+    \item \textbf{READ}: return the object's data as a moved memory object.
+    \item \textbf{DELETE}: mark the directory entry as free, return the
         extent blocks to the free bitmap.
-    \item \textbf{FLUSH} --- flush the underlying block device.
+    \item \textbf{FLUSH}: flush the underlying block device.
 \end{itemize}
 
 \subsection{The initial service-artifact store}
@@ -288,8 +288,8 @@ records its elected term, tears down that process, restarts the same identity,
 and requires the new election term to be greater. A repeated term 1 would
 fail, so the test distinguishes recovery from a fresh in-memory start.
 
-Launch configuration---node identity, peers, election timeout, cluster name,
-and storage policy---remains in the supervisor-provided manifest. The
+Launch configuration (node identity, peers, election timeout, cluster name,
+and storage policy) remains in the supervisor-provided manifest. The
 persistent objects hold Raft protocol state, log entries, and snapshots.
 Cross-machine catalog replication is provided separately by the \texttt{dns}
 state machine described in \autoref{chap:consensus} and
@@ -317,7 +317,7 @@ directories (bit 0 set) from files (bit 0 clear).
 \subsection{Path resolution}
 
 Paths are walked client-side by chaining \texttt{OP\_LOOKUP} calls. The
-filesystem service does not understand path strings --- it only resolves
+filesystem service does not understand path strings; it resolves only
 single-component lookups within a given directory. This keeps the filesystem
 protocol minimal: six operations (LOOKUP, CREATE, READ, WRITE, DELETE, LIST)
 plus FLUSH.
@@ -347,31 +347,31 @@ generation, header location, logical and allocated lengths, integrity hash, and
 every extent. Unknown flag bits remain visible. The \texttt{format} command
 creates a blank v3 store and destructively replaces the image contents.
 
-\section{Why this matters for critical software}
+\section{Isolation and durability limits}
 
 \begin{enumerate}
-    \item Storage policy lives in userspace --- a bug in a block
+    \item Storage policy lives in userspace: a bug in a block
         driver, the object store, or the filesystem corrupts that service's
         address space, not the kernel. The kernel grants MMIO and interrupts;
         everything else is userspace.
 
-    \item Device-independent protocol --- the object store and filesystem use
+    \item Device-independent protocol: the object store and filesystem use
         one block protocol over the implemented NVMe, AHCI, and virtio-blk
         userspace drivers. Further backends can implement the same protocol
         without moving storage policy into the kernel.
 
-    \item Crash-safety mechanism under development --- process-restart
+    \item Crash-safety mechanism under development: process-restart
         persistence is boot-validated. Copy-on-write object replacement and
         mirrored directory records recover from one torn directory-record
         write. Broader power-loss guarantees still require validation of
         device atomicity and truthful flush/FUA ordering.
 
-    \item Capability-based access --- a client that holds a connection to
+    \item Capability-based access: a client that holds a connection to
         \texttt{"blk0"} can read and write blocks. A client that does not hold
         that connection cannot. There is no ambient filesystem namespace to
         escape.
 
-    \item Host-inspectable --- the included Python inspector reads the raw
+    \item Host-inspectable: the included Python inspector reads the raw
         disk image and reports its documented object and filesystem structures.
 \end{enumerate}
 

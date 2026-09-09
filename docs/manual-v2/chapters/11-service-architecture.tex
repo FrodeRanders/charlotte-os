@@ -10,21 +10,21 @@ A protection domain (\autoref{chap:vocabulary}) is the unit of both authority an
 a service crashes:
 
 \begin{itemize}
-    \item Its capability table is destroyed, invalidating its handles --- client
+    \item Its capability table is destroyed, invalidating its handles: client
         connections to the closed endpoint fail through the IPC lifecycle.
-    \item Its memory mappings are removed --- outstanding borrows are revoked; the
+    \item Its memory mappings are removed: outstanding borrows are revoked; the
         kernel unmaps the pages from the (dead) borrower and restores the lender's
         access.
-    \item Its threads are aborted --- any thread blocked on a CQ or endpoint is
+    \item Its threads are aborted: any thread blocked on a CQ or endpoint is
         woken with a terminal error.
-    \item Its device grants are recovered --- the supervisor regains ownership of
+    \item Its device grants are recovered: the supervisor regains ownership of
         any MMIO region and interrupt objects the domain held.
 \end{itemize}
 
 The MMU and capability checks are intended to contain the fault to that domain;
 kernel, hardware, and DMA defects remain outside this guarantee.
 
-\section{The supervisor --- domain lifecycle manager}
+\section{The supervisor: domain lifecycle manager}
 
 The \textbf{supervisor} is a kernel-side component that creates and destroys
 protection domains. It does not understand service protocols, but it does understand
@@ -58,7 +58,7 @@ Grants are minted kernel-side by the supervisor and never through a syscall. A
 driver does not ask the kernel for MMIO; the supervisor grants it at creation
 time based on the device topology it enumerated during boot.
 
-\section{The name service --- discovery without the kernel}
+\section{The name service: discovery without the kernel}
 
 The kernel does not know about service names. A userspace \textbf{name service}
 maps human-readable names to connection capabilities:
@@ -73,7 +73,7 @@ maps human-readable names to connection capabilities:
         generation fail with \texttt{ServiceRestarted}.
     \item[Lookup] A client calls \texttt{lookup("driver.nic.v1", access\_key)}.
         The name service checks the access key (if the service registered one),
-        then delegates a connection capability to the client --- typically with
+        then delegates a connection capability to the client, typically with
         \texttt{SEND | CALL} rights only.
     \item[Access-key gating] A registration with a non-zero access key requires
         lookers to provide the matching key. This is userspace policy: the name
@@ -98,20 +98,20 @@ inspect another process's capability table.
 When a service crashes and the supervisor restarts it:
 
 \begin{enumerate}
-    \item Device reset --- if the service was a driver, the supervisor
+    \item Device reset: if the service was a driver, the supervisor
         resets the device before re-granting it to a new driver instance. The
         new driver sees a clean hardware state.
-    \item Generation increment --- the name service bumps the service's
+    \item Generation increment: the name service bumps the service's
         generation. All old connections are invalidated.
-    \item Stale connections --- clients connected to the old instance
+    \item Stale connections: clients connected to the old instance
         receive \texttt{ServiceRestarted} on their next call
         attempt. They re-lookup the service and receive a connection to the
         new instance.
-    \item Outstanding operation reconciliation --- the supervisor
+    \item Outstanding operation reconciliation: the supervisor
         reconciles any operations the old domain had submitted but not
         completed: cancellations are posted, borrowed memory is returned,
         DMA buffers are recovered.
-    \item Fresh bootstrap --- the new domain receives a fresh config-page
+    \item Fresh bootstrap: the new domain receives a fresh config-page
         with freshly minted capabilities. It does not inherit the previous
         instance's capability table, reply tokens, or DMA ownership.
 \end{enumerate}
@@ -124,17 +124,17 @@ operation reconciliation; the status appendix records the verified scope.
 At steady state, a CharlotteOS system consists of:
 
 \begin{itemize}
-    \item The kernel --- capabilities, endpoints, memory objects,
+    \item The kernel: capabilities, endpoints, memory objects,
         CQs, scheduling, interrupt routing.
-    \item The supervisor (kernel-side) --- domain lifecycle, ELF
+    \item The supervisor (kernel-side): domain lifecycle, ELF
         loading, device enumeration.
-    \item  The node name service (one userspace instance) --- the
+    \item  The node name service (one userspace instance): the
         shared registry for service registration, lookup, access-key gating,
         and generation tracking.
-    \item Service processes --- one or more per logical function:
-        NIC driver, TCP/IP stack, UTC time, filesystem, Raft consensus,
-        application servers.
-    \item Client processes --- application code that looks up
+    \item Service processes: one or more per logical function, such as a
+        NIC driver, TCP/IP stack, UTC time service, filesystem, Raft consensus,
+        or application server.
+    \item Client processes: application code that looks up
         services and invokes them through capabilities.
 \end{itemize}
 
@@ -145,29 +145,29 @@ At steady state, a CharlotteOS system consists of:
 
 Every component beyond the kernel, supervisor, and name service is a replaceable
 userspace process. A different NIC driver, a different filesystem, a different
-network stack --- these are configuration choices, not kernel modifications.
+network stack. These are configuration choices, not kernel modifications.
 
-\section{Why service architecture matters for critical software}
+\section{Failure containment and recovery}
 
 \begin{enumerate}
-    \item Failure containment is architectural --- a service fault closes
+    \item Failure containment is architectural: a service fault closes
         its endpoints and affects clients through defined errors rather than
         direct memory corruption. Availability still depends on the failed
         service and its dependants.
 
-    \item Recovery follows a defined sequence --- the restart sequence
+    \item Recovery follows a defined sequence: the restart sequence
         (device reset, generation bump, connection invalidation, operation
         reconciliation) is the same for every driver. A new driver
         implemented to the same endpoint protocol replaces the old one
         without any special-case recovery code.
 
-    \item Policy lives in userspace --- the kernel enforces mechanism
+    \item Policy lives in userspace: the kernel enforces mechanism
         (capabilities, endpoints, memory objects). Userspace enforces policy
         (who can register what name, who can look up what service, how
         many restarts are allowed, what log level to use). The kernel
         stays small; policy is auditable and replaceable.
 
-    \item The bootstrap contract is explicit and minimal --- every
+    \item The bootstrap contract is explicit and minimal: every
         domain starts with exactly the capabilities it needs and no more.
         The config-page contract defines what a domain receives; there is no
         ambient authority to discover or exploit.

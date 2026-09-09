@@ -16,7 +16,7 @@ never through a shared lock acquired from a foreign LP.
 
 \subsection{Messages are owned values}
 
-Everything that crosses a shard boundary is an owned value --- a typed
+Everything that crosses a shard boundary is an owned value: a typed
 \texttt{M} in a \texttt{ShardSender<M>}, an IPI closure, or a memory object.
 No shared references, no \texttt{Arc<Mutex<...>{>}} as the normal programming
 model. \texttt{Send + 'static} boundaries enforce this at compile time.
@@ -207,12 +207,12 @@ their bounded input spaces in host tests.
 The \texttt{Context} carries the domain's bootstrap capabilities:
 
 \begin{itemize}
-    \item \texttt{name\_service()} --- a connection to the name service, for
+    \item \texttt{name\_service()}: a connection to the name service, for
         looking up other services.
-    \item \texttt{default\_cq()} --- the CQ handle for submission and waiting.
-    \item \texttt{device\_grants()} --- any \texttt{MmioRegion} or
+    \item \texttt{default\_cq()}: the CQ handle for submission and waiting.
+    \item \texttt{device\_grants()}: any \texttt{MmioRegion} or
         \texttt{Interrupt} capabilities granted to this domain.
-    \item \texttt{heap\_config()} --- memory available for the allocator.
+    \item \texttt{heap\_config()}: memory available for the allocator.
 \end{itemize}
 
 The \texttt{Context} is the only way a userspace program acquires capabilities
@@ -329,7 +329,7 @@ The full ABI is described in
 \repofile|docs/architecture/async-syscall-abi.md| and implemented in
 \repofile|crates/catten/src/syscall/mod.rs|.
 
-\section{Why the programming model matters for critical software}
+\section{Enforcement and audit}
 
 \begin{enumerate}
     \item \textbf{Invariants have enforcement points.} \texttt{ShardLocal<T>}

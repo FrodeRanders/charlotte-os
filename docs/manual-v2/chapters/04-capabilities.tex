@@ -1,4 +1,4 @@
-\chapter{Capabilities --- Authority Without Ambiguity}
+\chapter{Capabilities: Authority Without Ambiguity}
 \label{chap:capabilities}
 
 A capability is the answer to one question: \textbf{``May I perform this
@@ -15,16 +15,16 @@ kernel object.
 Capabilities have four key properties:
 
 \begin{itemize}
-    \item Unforgeable --- a process cannot create a capability through
+    \item Unforgeable: a process cannot create a capability through
         computation. Capabilities enter a domain only through the bootstrap
         contract or through IPC delegation.
-    \item Scoped --- a capability is valid only in the domain that holds it.
+    \item Scoped: a capability is valid only in the domain that holds it.
         Capability index 3 in domain A refers to a different object (or nothing)
         than capability index 3 in domain B.
-    \item Righted --- a capability carries a rights mask specifying which
+    \item Righted: a capability carries a rights mask specifying which
         operations are permitted. An endpoint capability might carry only
         \texttt{SEND | CALL} rights without granting \texttt{RECEIVE}.
-    \item Revocable --- when a kernel object is destroyed, all capabilities
+    \item Revocable: when a kernel object is destroyed, all capabilities
         referencing it become invalid. Subsequent use returns an error.
 \end{itemize}
 
@@ -76,7 +76,7 @@ is incremented. Any attempt to use an old index with a stale generation returns
 \texttt{InvalidCapability} rather than accessing a different object that happened
 to be allocated at the same index.
 
-\section{Bootstrap --- how capabilities enter a domain}
+\section{Bootstrap: how capabilities enter a domain}
 
 A newly created protection domain starts with an empty capability table. It
 receives its initial capabilities through the \textbf{config-page contract}: a
@@ -94,21 +94,21 @@ After bootstrap, additional capabilities arrive through IPC: the name service
 delegates service connections; the supervisor delegates device grants; other
 services delegate whatever the protocol authorizes.
 
-\section{Why capabilities matter for critical software}
+\section{Authority and audit consequences}
 
 \begin{enumerate}
-    \item Least privilege is architectural, not advisory --- a process
+    \item Least privilege is architectural, not advisory: a process
         starts with nothing. Every capability it holds was explicitly granted by
         a trusted component (the supervisor, the name service, or another service
         under a protocol). There is no ambient authority to strip away and the
         default is none.
 
-    \item Kernel-mediated authority is enumerable --- a process's capability table
+    \item Kernel-mediated authority is enumerable: a process's capability table
         records the kernel objects it may use. This makes authority easier to
         audit, but does not by itself account for device side effects, protocol
         state, or implementation defects.
 
-    \item Delegation is mediated --- a process cannot grant authority it
+    \item Delegation is mediated: a process cannot grant authority it
         does not hold; it cannot grant rights beyond what it possesses; and every
         delegation crosses the kernel, which enforces both constraints.
 
@@ -116,13 +116,10 @@ services delegate whatever the protocol authorizes.
         endpoint relationships. Existing tests cover stale connections and
         pending-call reconciliation.
 
-    \item Capability tables are bounded --- a process cannot create
+    \item Capability tables are bounded: a process cannot create
         unlimited capabilities to exhaust kernel memory. Submission backpressure
         (\texttt{WouldBlock}) applies when a table is full, forcing the
         application to drain completions before submitting more work.
 \end{enumerate}
-
-Capabilities give endpoints and memory objects explicit authority instead of
-making them ambient resources addressed only by an index or address.
 
 \endinput

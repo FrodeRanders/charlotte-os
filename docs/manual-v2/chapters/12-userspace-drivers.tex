@@ -7,8 +7,8 @@ resources and endpoint interfaces.
 \section{The problem with kernel drivers}
 
 In a monolithic kernel, a driver has access to everything: all physical memory,
-all interrupt vectors, and all kernel data structures. A driver bug --- such as a
-buffer overflow, use-after-free, or race --- can corrupt the kernel and crash the
+all interrupt vectors, and all kernel data structures. A buffer overflow,
+use-after-free error, or race in a driver can corrupt the kernel and crash the
 system.
 
 The microkernel solution is to move drivers to userspace. But simply moving
@@ -53,9 +53,9 @@ x86-64).
 The mapping is a kernel-mediated operation: the driver calls
 \texttt{mmio\_map(region\_cap, addr)}. The kernel validates the
 capability, creates the page-table entries with the correct memory attributes,
-and returns. The driver then performs \textbf{direct EL0 MMIO} --- load and
-store instructions to the mapped virtual addresses, with no kernel involvement
-on the fast path.
+and returns. The driver then performs \textbf{direct EL0 MMIO}: load and store
+instructions to the mapped virtual addresses, with no kernel involvement on the
+fast path.
 
 The common MMIO access therefore avoids a syscall or context switch.
 
@@ -92,13 +92,13 @@ thread context performs the remaining work.
 The PL011 UART driver demonstrates the full lifecycle:
 
 \begin{itemize}
-    \item Direct MMIO writes to the transmit FIFO --- no syscalls.
-    \item Interrupt-driven deferred reads --- the driver retains a reply
+    \item Direct MMIO writes to the transmit FIFO: no syscalls.
+    \item Interrupt-driven deferred reads: the driver retains a reply
         token for a pending read. When the RX interrupt fires, the driver reads
         the receive register and completes the deferred reply.
-    \item Cooperative shutdown --- on graceful exit, the driver unmaps its
+    \item Cooperative shutdown: on graceful exit, the driver unmaps its
         MMIO region and closes its interrupt.
-    \item Crash recovery --- if the driver terminates without releasing
+    \item Crash recovery: if the driver terminates without releasing
         its device caps (panic, infinite loop, killed by supervisor), the
         teardown path:
         \begin{enumerate}
@@ -123,16 +123,16 @@ memory or another domain's pages.
 The implementation has two platform levels:
 
 \begin{itemize}
-    \item Without IOMMU --- the driver is trusted with DMA. It still
+    \item Without IOMMU: the driver is trusted with DMA. It still
         receives only the MMIO and interrupt it needs, and it still runs in
         a separate address space, so a CPU-side bug cannot read kernel memory.
         But a DMA programming bug can violate memory isolation.
-    \item With IOMMU/SMMU --- the DMA domain capability binds the
+    \item With IOMMU/SMMU: the DMA domain capability binds the
         device to a specific IOMMU translation table. The driver can only
         DMA into pages explicitly pinned into its DMA domain. The kernel
         validates every pin/unpin through the capability. The IOMMU hardware
-        enforces the rest --- even a malicious driver cannot DMA outside its
-        domain.
+        prevents even a malicious driver from using that device to DMA outside
+        its domain.
 \end{itemize}
 
 On the implemented AArch64 ACPI path, \texttt{dma\_map(domain, memory,
@@ -178,23 +178,24 @@ business logic. A crash in any layer is contained: the NIC driver crashes,
 the network service sees \texttt{ServiceRestarted}, and reconnects to a fresh
 instance.
 
-\section{Why userspace drivers matter for critical software}
+\section{Isolation and device access}
 
 \begin{enumerate}
-    \item CPU-side driver faults are contained --- a buffer overflow in a
+    \item CPU-side driver faults are contained: a buffer overflow in a
         NIC driver is confined by its address space, assuming correct kernel,
         MMU, and DMA isolation.
 
-    \item The privilege model is grant-by-grant --- a driver receives
+    \item The privilege model is grant-by-grant: a driver receives
         exactly the resources it needs. There is no ``driver has access to
         everything because it's in the kernel'' default.
 
-    \item Direct MMIO keeps the fast path fast --- reading a device
+    \item Direct MMIO keeps the fast path fast: reading a device
         register uses a direct load rather than a syscall or context switch.
 
-    \item Restart follows a defined path --- the supervisor handles
+    \item Restart follows a defined path: the supervisor handles
         driver restart (device reset, grant re-issuance, generation bump).
-        Driver authors do not write recovery code.
+        The supervisor supplies the common lifecycle sequence instead of
+        requiring each driver to invent restart coordination.
 
     \item Hardware-isolated DMA is implemented on the reference AArch64
         SMMUv3 platform and on x86-64 with Intel VT-d or AMD-Vi. Advanced
