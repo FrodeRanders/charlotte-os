@@ -364,6 +364,10 @@ pub mod time_status {
     pub const DRIFT_PPB: usize = 16;
     pub const PERSIST_ERROR: usize = 24;
     pub const ERROR: usize = 28;
+    /// Current calibration-persistence operation: 0 idle, 1 create,
+    /// 2 set-size, 3 write, 4 flush.
+    pub const PERSIST_STAGE: usize = 32;
+    pub const PERSIST_TIMEOUTS: usize = 36;
 }
 
 /// S3 client-service diagnostic status-page offsets.

@@ -226,6 +226,9 @@ pub mod call_no {
     /// Begin kernel-owned whole-node drain. Restricted to the deployment
     /// agent; x1=moved signed-envelope cap and x2=exact byte length.
     pub const REQUEST_NODE_SHUTDOWN: u16 = SyscallNumber::RequestNodeShutdown as u16;
+    /// Read the architectural monotonic counter into x0 and its frequency in
+    /// hertz into x1. This read-only query performs no allocation or locking.
+    pub const MONOTONIC_CLOCK: u16 = SyscallNumber::MonotonicClock as u16;
     /// Send a vector of memory-object caps. x1=connection, x2=opcode,
     /// x3=arg0, x4=cap_vector_page. Returns an IPC status code in x0.
     pub const IPC_VECTOR_SEND: u16 = SyscallNumber::IpcVectorSend as u16;
@@ -353,6 +356,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::IpcRecvVecAuthenticated => sys_ipc_recv_vec_authenticated(frame),
         SyscallNumber::CompletionSubmitDetachedTimer => sys_completion_submit_detached_timer(frame),
         SyscallNumber::RandomU64 => sys_random_u64(frame),
+        SyscallNumber::MonotonicClock => sys_monotonic_clock(frame),
     }
 }
 
@@ -370,6 +374,11 @@ fn sys_random_u64(frame: &mut TrapFrame) {
         frame.regs[0] = 0;
         frame.regs[1] = 0;
     }
+}
+
+fn sys_monotonic_clock(frame: &mut TrapFrame) {
+    frame.regs[0] = crate::cpu::scheduler::monotonic_ticks();
+    frame.regs[1] = crate::cpu::scheduler::counter_frequency_hz();
 }
 
 fn random_u64() -> Option<u64> {

@@ -1,12 +1,14 @@
 //! UTC time service with an SNTP client and persistent holdover calibration.
 //!
-//! The service uses the observe service's hardware-backed monotonic counter as
-//! its oscillator. It samples an NTPv4 server over connected UDP, estimates
+//! The service uses the kernel's allocation-free monotonic counter as its
+//! oscillator. It samples an NTPv4 server over connected UDP, estimates
 //! network uncertainty and counter frequency error, and persists the latest
-//! calibration in the local object store. Persistence prevents the clock from
-//! returning to 1970 after a warm restart, but cannot account for powered-off
-//! time; that state is explicitly reported as `STATE_HOLDOVER` until a fresh
-//! network sample arrives.
+//! calibration in the local object store. Persistence is an asynchronous,
+//! bounded side operation so a stalled storage stack cannot stop time queries
+//! or later NTP samples. It prevents the clock from returning to 1970 after a
+//! warm restart, but cannot account for powered-off time; that state is
+//! explicitly reported as `STATE_HOLDOVER` until a fresh network sample
+//! arrives.
 #![no_std]
 #![no_main]
 
@@ -29,7 +31,6 @@ use catten_rt::{
 use catten_services::{
     ns,
     objstore,
-    observability,
     socket,
     time,
     wait_for_local_ready_or_shutdown,
@@ -37,13 +38,10 @@ use catten_services::{
 };
 use catten_syscall::{
     IpcRights,
-    THREAD_STATISTICS_HEADER_U64S,
-    THREAD_STATISTICS_MAGIC,
-    THREAD_STATISTICS_VERSION,
     cq_read,
     cq_wait_timeout,
+    monotonic_clock,
     thread_exit,
-    thread_statistics_header as thread_header,
 };
 use charlotte_launch::time_status as status;
 
@@ -58,6 +56,8 @@ const LOOP_WAIT_MS: u64 = 1_000;
 const REQUEST_TIMEOUT_MS: u64 = 5_000;
 const RETRY_INTERVAL_SECONDS: u64 = 64;
 const SYNC_INTERVAL_SECONDS: u64 = 900;
+const PERSIST_TIMEOUT_SECONDS: u64 = 30;
+const HEARTBEAT_INTERVAL_SECONDS: u64 = 60;
 const MAX_DRIFT_PPB: i64 = 500_000;
 const UNCERTAINTY_FLOOR_PPB: u64 = 50_000;
 
@@ -274,26 +274,12 @@ fn wait_scalar(call: PendingCall<'_>) -> Option<(i64, Option<Connection>)> {
     Some((result.result, result.connection))
 }
 
-fn read_monotonic(observe_conn: ConnectionRef<'_>) -> Option<MonoClock> {
-    let result = observe_conn.call(observability::OP_THREAD_SNAPSHOT, 0).ok()?.wait().ok()?;
-    if result.result < (THREAD_STATISTICS_HEADER_U64S * core::mem::size_of::<u64>()) as i64 {
-        return None;
-    }
-    let memory = result.memory?;
-    let mapping = memory.map_read_only().ok()?;
-    if mapping.len() < THREAD_STATISTICS_HEADER_U64S * core::mem::size_of::<u64>() {
-        return None;
-    }
-    let header = unsafe {
-        core::slice::from_raw_parts(mapping.as_ptr().cast::<u64>(), THREAD_STATISTICS_HEADER_U64S)
-    };
-    (header[thread_header::MAGIC] == THREAD_STATISTICS_MAGIC
-        && header[thread_header::VERSION] == THREAD_STATISTICS_VERSION
-        && header[thread_header::COUNTER_FREQUENCY_HZ] > 0)
-        .then_some(MonoClock {
-            ticks: header[thread_header::MONOTONIC_TICKS],
-            frequency_hz: header[thread_header::COUNTER_FREQUENCY_HZ],
-        })
+fn read_monotonic() -> Option<MonoClock> {
+    let (ticks, frequency_hz) = monotonic_clock();
+    (frequency_hz > 0).then_some(MonoClock {
+        ticks,
+        frequency_hz,
+    })
 }
 
 fn ticks_to_ns(ticks: u64, frequency_hz: u64) -> u64 {
@@ -512,57 +498,164 @@ fn load_calibration(obj_conn: ConnectionRef<'_>) -> Option<Calibration> {
     Calibration::decode(&mapping.as_slice()[..CALIBRATION_LEN])
 }
 
-fn save_calibration(obj_conn: ConnectionRef<'_>, record: Calibration) -> bool {
-    let Ok(create) = obj_conn.call(objstore::OP_CREATE_AT, CALIBRATION_OBJECT_ID) else {
-        return false;
-    };
-    let Some((created, _)) = wait_scalar(create) else {
-        return false;
-    };
-    if created != objstore::ERR_OK && created != objstore::ERR_EXISTS {
-        return false;
+const PERSIST_STAGE_IDLE: u32 = 0;
+const PERSIST_STAGE_CREATE: u32 = 1;
+const PERSIST_STAGE_SET_SIZE: u32 = 2;
+const PERSIST_STAGE_WRITE: u32 = 3;
+const PERSIST_STAGE_FLUSH: u32 = 4;
+
+/// Owns the complete asynchronous calibration transaction. Dropping it
+/// cancels its one pending call and releases any capability retained by that
+/// call. Memory passed to object storage is moved exactly once, so there is no
+/// detached cleanup path for a timed-out transaction.
+struct CalibrationPersistence {
+    call: Option<PendingCall<'static>>,
+    record: Option<Calibration>,
+    stage: u32,
+    deadline_ticks: u64,
+    timeouts: u32,
+}
+
+impl CalibrationPersistence {
+    fn new() -> Self {
+        Self {
+            call: None,
+            record: None,
+            stage: PERSIST_STAGE_IDLE,
+            deadline_ticks: 0,
+            timeouts: 0,
+        }
     }
-    let Ok(size_memory) = OwnedMemory::allocate(1) else {
-        return false;
-    };
-    let Ok(mut size_mapping) = size_memory.map_writable() else {
-        return false;
-    };
-    size_mapping.as_mut_slice()[..8].copy_from_slice(&(CALIBRATION_LEN as u64).to_le_bytes());
-    let Ok(size_memory) = size_mapping.unmap() else {
-        return false;
-    };
-    let sized = obj_conn
-        .call_borrow_read(objstore::OP_SET_SIZE, CALIBRATION_OBJECT_ID, &size_memory)
-        .ok()
-        .and_then(wait_scalar)
-        .is_some_and(|(result, _)| result == objstore::ERR_OK);
-    if !sized {
-        return false;
+
+    fn start(&mut self, obj_conn: ConnectionRef<'_>, record: Calibration, now: MonoClock) {
+        if self.stage != PERSIST_STAGE_IDLE {
+            // A synchronization interval is much longer than the persistence
+            // deadline. This only protects against accidentally admitting two
+            // transactions if those constants change independently.
+            return;
+        }
+        let Ok(call) = obj_conn.call(objstore::OP_CREATE_AT, CALIBRATION_OBJECT_ID) else {
+            self.fail(PERSIST_STAGE_CREATE, "submission failed");
+            return;
+        };
+        self.record = Some(record);
+        self.deadline_ticks = ticks_after(now, PERSIST_TIMEOUT_SECONDS);
+        self.set_call(PERSIST_STAGE_CREATE, call);
     }
-    let Ok(data_memory) = OwnedMemory::allocate(1) else {
-        return false;
-    };
-    let Ok(mut data_mapping) = data_memory.map_writable() else {
-        return false;
-    };
-    let bytes = record.encode();
-    data_mapping.as_mut_slice()[..bytes.len()].copy_from_slice(&bytes);
-    let Ok(data_memory) = data_mapping.unmap() else {
-        return false;
-    };
-    let Ok(write) = obj_conn.call_move(objstore::OP_WRITE, CALIBRATION_OBJECT_ID, data_memory)
-    else {
-        return false;
-    };
-    if wait_scalar(write).is_none_or(|(result, _)| result != objstore::ERR_OK) {
-        return false;
+
+    fn poll(&mut self, obj_conn: ConnectionRef<'_>, now: MonoClock) {
+        if self.stage == PERSIST_STAGE_IDLE {
+            return;
+        }
+        let Some(call) = self.call.as_mut() else {
+            self.fail(self.stage, "lost pending call");
+            return;
+        };
+        match call.poll() {
+            Ok(None) if now.ticks < self.deadline_ticks => {}
+            Ok(None) => {
+                // Poll before testing the deadline so a terminal reply that
+                // arrived at the boundary wins over cancellation.
+                drop(self.call.take());
+                self.timeouts = self.timeouts.saturating_add(1);
+                config::write::<u32>(status::PERSIST_TIMEOUTS, self.timeouts);
+                self.fail(self.stage, "timed out");
+            }
+            Ok(Some(result)) => {
+                drop(self.call.take());
+                let accepted = if self.stage == PERSIST_STAGE_CREATE {
+                    result.result == objstore::ERR_OK || result.result == objstore::ERR_EXISTS
+                } else {
+                    result.result == objstore::ERR_OK
+                };
+                if !accepted {
+                    self.fail(self.stage, "object store rejected operation");
+                    return;
+                }
+                match self.stage {
+                    PERSIST_STAGE_CREATE => self.submit_size(obj_conn),
+                    PERSIST_STAGE_SET_SIZE => self.submit_write(obj_conn),
+                    PERSIST_STAGE_WRITE => self.submit_flush(obj_conn),
+                    PERSIST_STAGE_FLUSH => self.succeed(),
+                    _ => self.fail(self.stage, "invalid stage"),
+                }
+            }
+            Err(_) => {
+                drop(self.call.take());
+                self.fail(self.stage, "call failed");
+            }
+        }
     }
-    obj_conn
-        .call(objstore::OP_FLUSH, 0)
-        .ok()
-        .and_then(wait_scalar)
-        .is_some_and(|(result, _)| result == objstore::ERR_OK)
+
+    fn submit_size(&mut self, obj_conn: ConnectionRef<'_>) {
+        let Some(size_memory) = encoded_memory(&(CALIBRATION_LEN as u64).to_le_bytes()) else {
+            self.fail(PERSIST_STAGE_SET_SIZE, "memory allocation failed");
+            return;
+        };
+        let Ok(call) =
+            obj_conn.call_move(objstore::OP_SET_SIZE, CALIBRATION_OBJECT_ID, size_memory)
+        else {
+            self.fail(PERSIST_STAGE_SET_SIZE, "submission failed");
+            return;
+        };
+        self.set_call(PERSIST_STAGE_SET_SIZE, call);
+    }
+
+    fn submit_write(&mut self, obj_conn: ConnectionRef<'_>) {
+        let Some(record) = self.record.take() else {
+            self.fail(PERSIST_STAGE_WRITE, "lost calibration record");
+            return;
+        };
+        let Some(data_memory) = encoded_memory(&record.encode()) else {
+            self.fail(PERSIST_STAGE_WRITE, "memory allocation failed");
+            return;
+        };
+        let Ok(call) = obj_conn.call_move(objstore::OP_WRITE, CALIBRATION_OBJECT_ID, data_memory)
+        else {
+            self.fail(PERSIST_STAGE_WRITE, "submission failed");
+            return;
+        };
+        self.set_call(PERSIST_STAGE_WRITE, call);
+    }
+
+    fn submit_flush(&mut self, obj_conn: ConnectionRef<'_>) {
+        let Ok(call) = obj_conn.call(objstore::OP_FLUSH, 0) else {
+            self.fail(PERSIST_STAGE_FLUSH, "submission failed");
+            return;
+        };
+        self.set_call(PERSIST_STAGE_FLUSH, call);
+    }
+
+    fn set_call(&mut self, stage: u32, call: PendingCall<'static>) {
+        self.stage = stage;
+        self.call = Some(call);
+        config::write::<u32>(status::PERSIST_STAGE, stage);
+    }
+
+    fn succeed(&mut self) {
+        self.record = None;
+        self.stage = PERSIST_STAGE_IDLE;
+        config::write::<u32>(status::PERSIST_ERROR, 0);
+        config::write::<u32>(status::PERSIST_STAGE, PERSIST_STAGE_IDLE);
+    }
+
+    fn fail(&mut self, stage: u32, reason: &str) {
+        drop(self.call.take());
+        self.record = None;
+        self.stage = PERSIST_STAGE_IDLE;
+        config::write::<u32>(status::PERSIST_ERROR, stage);
+        config::write::<u32>(status::PERSIST_STAGE, PERSIST_STAGE_IDLE);
+        catten_rt::logln!("[time] calibration persistence stage={} {}", stage, reason);
+    }
+}
+
+fn encoded_memory(bytes: &[u8]) -> Option<OwnedMemory> {
+    // Calibration records and their size word are both defined to fit in one
+    // page, so no platform page-size constant needs to leak into this adapter.
+    let memory = OwnedMemory::allocate(1).ok()?;
+    let mut mapping = memory.map_writable().ok()?;
+    mapping.as_mut_slice().get_mut(..bytes.len())?.copy_from_slice(bytes);
+    mapping.unmap().ok()
 }
 
 fn calibration_from_model(model: &ClockModel, server_ipv4: [u8; 4]) -> Calibration {
@@ -577,12 +670,7 @@ fn calibration_from_model(model: &ClockModel, server_ipv4: [u8; 4]) -> Calibrati
     }
 }
 
-fn handle_requests(
-    endpoint: &Endpoint,
-    observe_conn: ConnectionRef<'_>,
-    model: &mut Option<ClockModel>,
-    server_ipv4: [u8; 4],
-) {
+fn handle_requests(endpoint: &Endpoint, model: &mut Option<ClockModel>, server_ipv4: [u8; 4]) {
     loop {
         let message = match endpoint.try_receive() {
             Ok(Some(message)) => message,
@@ -595,7 +683,7 @@ fn handle_requests(
         };
         match message.opcode {
             time::OP_NOW | time::OP_ISO8601 => {
-                let Some(clock) = read_monotonic(observe_conn) else {
+                let Some(clock) = read_monotonic() else {
                     let _ = reply.reply(time::ERR_UNAVAILABLE);
                     continue;
                 };
@@ -613,7 +701,7 @@ fn handle_requests(
                 }
             }
             time::OP_UNIX_SECONDS => {
-                let Some(clock) = read_monotonic(observe_conn) else {
+                let Some(clock) = read_monotonic() else {
                     let _ = reply.reply(time::ERR_UNAVAILABLE);
                     continue;
                 };
@@ -636,10 +724,6 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     // Local name service
     let ns_conn = ctx.bootstrap_connection().unwrap_or_else(|| fail(0xe001));
 
-    // The 'observe' service is used as local timepiece
-    let (_, observe_conn) = wait_for_registered_name_owned(ns_conn, observability::NAME)
-        .unwrap_or_else(|| fail(0xe002));
-
     let (_, tcp_conn) =
         wait_for_registered_name_owned(ns_conn, socket::NAME).unwrap_or_else(|| fail(0xe003));
     let persistence_requested =
@@ -659,7 +743,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         }
         _ => DEFAULT_NTP_SERVER,
     };
-    let initial_mono = read_monotonic(observe_conn.as_ref()).unwrap_or_else(|| fail(0xe005));
+    let initial_mono = read_monotonic().unwrap_or_else(|| fail(0xe005));
     let mut model = obj_conn
         .as_ref()
         .and_then(|connection| load_calibration(connection.as_ref()))
@@ -704,22 +788,40 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     }
     let mut next_sync_ticks = initial_mono.ticks;
     let mut attempt: Option<Attempt> = None;
+    let mut persistence = CalibrationPersistence::new();
     let mut ntp_failures: u32 = 0;
+    let mut next_heartbeat_ticks = ticks_after(initial_mono, HEARTBEAT_INTERVAL_SECONDS);
     let cq = ctx.completion_queue_layout();
 
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
-            // Dropping the endpoint closes admission. Any active NTP attempt,
-            // its UDP socket, and all owned service connections then unwind
-            // together before the lifecycle acknowledgement is published.
+            // Dropping the serving scope closes admission. Any active NTP
+            // attempt, its UDP socket, the pending persistence transaction,
+            // and all owned service connections then unwind together before
+            // the lifecycle acknowledgement is published.
             return request;
         }
-        handle_requests(&endpoint, observe_conn.as_ref(), &mut model, server_ipv4);
-        let Some(now_mono) = read_monotonic(observe_conn.as_ref()) else {
+        handle_requests(&endpoint, &mut model, server_ipv4);
+        let Some(now_mono) = read_monotonic() else {
             config::write::<u32>(status::ERROR, 0xe008);
             cq_wait_timeout(1, LOOP_WAIT_MS, 0);
             continue;
         };
+        if let Some(obj_conn) = obj_conn.as_ref() {
+            persistence.poll(obj_conn.as_ref(), now_mono);
+        }
+
+        if now_mono.ticks >= next_heartbeat_ticks {
+            catten_rt::logln!(
+                "[time] hb state={} samples={} ntp_active={} persist_stage={} persist_timeouts={}",
+                model.as_ref().map_or(time::STATE_UNSYNCHRONIZED, |clock| clock.state),
+                model.as_ref().map_or(0, |clock| clock.sample_count),
+                attempt.is_some(),
+                persistence.stage,
+                persistence.timeouts
+            );
+            next_heartbeat_ticks = ticks_after(now_mono, HEARTBEAT_INTERVAL_SECONDS);
+        }
 
         if let Some(active) = attempt.as_mut()
             && let Some(result) = poll_attempt(active, now_mono)
@@ -770,13 +872,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         clock.uncertainty_ns.div_ceil(1_000_000),
                         clock.drift_ppb
                     );
-                    if let Some(obj_conn) = obj_conn.as_ref()
-                        && !save_calibration(
+                    if let Some(obj_conn) = obj_conn.as_ref() {
+                        persistence.start(
                             obj_conn.as_ref(),
                             calibration_from_model(clock, server_ipv4),
-                        )
-                    {
-                        config::write::<u32>(status::PERSIST_ERROR, 1);
+                            now_mono,
+                        );
                     }
                     next_sync_ticks = ticks_after(now_mono, SYNC_INTERVAL_SECONDS);
                 }

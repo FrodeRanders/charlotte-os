@@ -150,6 +150,7 @@ define_syscall_numbers!(
     (SpawnArtifactScoped, 76),
     (SpawnOperationalConnector, 77),
     (RequestNodeShutdown, 78),
+    (MonotonicClock, 79),
 );
 
 /// Supervisor-assigned roles carried in the kernel-authenticated IPC sender
@@ -907,6 +908,7 @@ unsafe fn svc3_x1(imm: SyscallNumber, arg1: u64, arg2: u64, _arg3: u64) -> (u64,
              47 => asm!("svc #47", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             59 => asm!("svc #59", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             75 => asm!("svc #75", lateout("x0") ret, lateout("x1") x1_out, options(nostack, nomem, preserves_flags)),
+            79 => asm!("svc #79", lateout("x0") ret, lateout("x1") x1_out, options(nostack, nomem, preserves_flags)),
             _ => panic!("syscall {:?} has no svc3_x1 emitter", imm),
         }
     }
@@ -2282,6 +2284,16 @@ pub unsafe fn ipc_recv_vec_authenticated(endpoint: u64, result_page: u64) -> Ipc
 #[inline]
 pub fn thread_statistics_snapshot(system_observer: u64) -> (u64, u64) {
     unsafe { svc3_x1(SyscallNumber::ThreadStatistics, system_observer, 0, 0) }
+}
+
+/// Read the kernel's monotonic counter and its frequency.
+///
+/// This scalar query performs no allocation and requires no capability. It is
+/// suitable for service control loops that must not depend on an observability
+/// snapshot completing.
+#[inline]
+pub fn monotonic_clock() -> (u64, u64) {
+    unsafe { svc3_x1(SyscallNumber::MonotonicClock, 0, 0, 0) }
 }
 
 /// Return one cryptographically random word from a kernel-provided source.

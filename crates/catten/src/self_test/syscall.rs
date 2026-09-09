@@ -651,6 +651,17 @@ pub fn test_syscall_dispatch() {
         }
     }
 
+    {
+        let mut first = synthetic_trap_frame_in(memory_owner, 0, 0, 0, 0);
+        syscall::syscall_dispatch(&mut first, call_no::MONOTONIC_CLOCK);
+        assert_ne!(first.regs[1], 0, "MONOTONIC_CLOCK frequency must be nonzero");
+
+        let mut second = synthetic_trap_frame_in(memory_owner, 0, 0, 0, 0);
+        syscall::syscall_dispatch(&mut second, call_no::MONOTONIC_CLOCK);
+        assert_eq!(second.regs[1], first.regs[1], "MONOTONIC_CLOCK frequency must remain stable");
+        assert!(second.regs[0] >= first.regs[0], "MONOTONIC_CLOCK ticks must not decrease");
+    }
+
     #[cfg(target_arch = "aarch64")]
     {
         use catten_syscall::{

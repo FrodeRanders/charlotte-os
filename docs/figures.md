@@ -100,6 +100,7 @@ Capabilities are scoped to an address space; userspace cannot directly name anot
 flowchart LR
 NS["Node-local name service<br/>registration and deferred lookup"]
 OBS["observe<br/>monotonic clock and system snapshots"]
+CLOCK["Kernel<br/>scalar monotonic clock"]
 
       BLOCKHW["NVMe / AHCI / virtio-blk"]
       BLK["Userspace block driver<br/>blk0"]
@@ -135,7 +136,7 @@ OBS["observe<br/>monotonic clock and system snapshots"]
       OBJ -->|"durable Raft state"| DNS
 
       TCP -->|"UDP / NTP"| TIME
-      OBS -->|"monotonic oscillator"| TIME
+      CLOCK --> TIME
       OBJ -->|"calibration holdover"| TIME
 
       TCP -->|"TCP listener"| HTTP

@@ -54,10 +54,28 @@ Successive samples estimate monotonic oscillator drift, clamped to ±500 ppm
 and damped to reduce network jitter. Returned time never decreases within one
 service lifetime.
 
+The oscillator is read through the kernel's scalar `MONOTONIC_CLOCK` syscall.
+That path only reads the architectural counter and frequency: it does not
+allocate, acquire scheduler-table locks, or wait for the observability service.
+The time service emits a heartbeat every 60 seconds with synchronization,
+sample, active-NTP, and persistence state so a long-running test can distinguish
+a quiet healthy service from a stalled control loop.
+
 The steady-state launch manifest currently selects Cloudflare's documented
 anycast NTP address `162.159.200.1`. `ntp_ip` can override it with four raw
 IPv4 bytes. When local storage exists, the `persist` manifest flag enables the
-reserved calibration object `0xfffd000000000001`.
+reserved calibration object `0xfffd000000000001`. Saving that object is a
+polled side transaction rather than part of the synchronization critical path:
+the create, set-size, write, and flush sequence has one 30-second deadline. If
+object storage stops replying, the time service cancels its owned pending call,
+continues answering queries and taking later NTP samples, and retries
+persistence after a later successful sample.
+
+The service status page exposes persistence diagnosis without requiring a
+live debugger. `PERSIST_STAGE` is zero while idle and 1 through 4 for create,
+set-size, write, and flush. `PERSIST_ERROR` retains the stage of the most recent
+failure, while `PERSIST_TIMEOUTS` counts expired transactions. A timeout also
+logs `calibration persistence stage=N timed out` to the serial console.
 
 The current SNTP exchange validates packet consistency but is not
 cryptographically authenticated. Applications must not treat it as secure time
