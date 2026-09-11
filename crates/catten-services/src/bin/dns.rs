@@ -770,9 +770,28 @@ fn release_command(
         .ok_or(dns::ERR_TOO_LARGE)
 }
 
+/// Bound on the synchronous time-service query. The DNS reactor owns Raft
+/// heartbeats, so a wedged time service must fail the operation rather than
+/// stall consensus indefinitely.
+const TIME_QUERY_TIMEOUT_MS: u64 = 100;
+
 fn trusted_unix_seconds(time: ConnectionRef<'_>) -> Option<u64> {
-    let reply = time.call(catten_services::time::OP_UNIX_SECONDS, 0).ok()?.wait().ok()?;
-    u64::try_from(reply.result).ok()
+    let mut call = time.call(catten_services::time::OP_UNIX_SECONDS, 0).ok()?;
+    let (start_ticks, frequency_hz) = catten_syscall::monotonic_clock();
+    let frequency_hz = frequency_hz.max(1);
+    loop {
+        match call.poll() {
+            Ok(Some(reply)) => return u64::try_from(reply.result).ok(),
+            Ok(None) => {}
+            Err(_) => return None,
+        }
+        let (now_ticks, _) = catten_syscall::monotonic_clock();
+        let elapsed_ms = now_ticks.saturating_sub(start_ticks).saturating_mul(1000) / frequency_hz;
+        if elapsed_ms >= TIME_QUERY_TIMEOUT_MS {
+            return None;
+        }
+        catten_services::sleep_ms(5);
+    }
 }
 
 fn operations_command(
