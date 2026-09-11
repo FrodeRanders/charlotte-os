@@ -74,15 +74,24 @@ pub enum CqRingError {
 }
 
 impl CompletionQueueRing {
+    /// Entry capacity of a 4 KiB ring page for the requested entry count. The
+    /// shared `capacity` field mirrors this value for userspace, but the
+    /// kernel's producer state is authoritative and must never read it back.
+    pub const fn capacity_for(num_entries: u32) -> u32 {
+        let max = ((4096 - core::mem::size_of::<Self>()) / core::mem::size_of::<CqEntry>()) as u32;
+        if num_entries < max {
+            num_entries
+        } else {
+            max
+        }
+    }
+
     pub fn new_page(num_entries: u32) -> Result<(alloc::vec::Vec<u8>, *mut Self), CqRingError> {
         if num_entries < 2 {
             return Err(CqRingError::CapacityTooSmall);
         }
-        let ps: usize = 4096;
-        let hs = 16usize;
-        let max = ((ps - hs) / core::mem::size_of::<CqEntry>()) as u32;
-        let cap = num_entries.min(max);
-        let mut buf = alloc::vec![0u8; ps];
+        let cap = Self::capacity_for(num_entries);
+        let mut buf = alloc::vec![0u8; 4096];
         let ptr = buf.as_mut_ptr() as *mut Self;
         unsafe {
             (*ptr).head = 0;
@@ -101,12 +110,9 @@ impl CompletionQueueRing {
         if num_entries < 2 {
             return Err(CqRingError::CapacityTooSmall);
         }
-        let ps: usize = 4096;
-        let hs = 16usize;
-        let max = ((ps - hs) / core::mem::size_of::<CqEntry>()) as u32;
-        let cap = num_entries.min(max);
+        let cap = Self::capacity_for(num_entries);
         let ptr: *mut Self = frame.into();
-        for i in 0..ps {
+        for i in 0..4096 {
             unsafe {
                 (frame.into_hhdm_mut::<u8>()).add(i).write_volatile(0);
             }
@@ -235,7 +241,7 @@ impl CompletionQueueRing {
         })
     }
 
-    fn entry_ptr(&self, idx: usize) -> *mut CqEntry {
+    pub(crate) fn entry_ptr(&self, idx: usize) -> *mut CqEntry {
         let base = self as *const Self as *mut u8;
         let off = core::mem::offset_of!(Self, entries);
         unsafe { base.add(off).add(idx * core::mem::size_of::<CqEntry>()) as *mut CqEntry }

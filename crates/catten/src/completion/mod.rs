@@ -443,6 +443,11 @@ struct CqState {
     /// The shared ring (zero-syscall drain path). The allocation backing a
     /// heap-backed ring is kept alive by `_buf`.
     ring: *mut crate::completion::cq::CompletionQueueRing,
+    /// Kernel-authoritative producer cursor and capacity. The ring page is
+    /// mapped writable to EL0, so `head`/`capacity` in shared memory are only
+    /// a publication mirror; the producer must never read them back.
+    ring_head: u32,
+    ring_capacity: u32,
     /// Entries that could not fit in the shared ring yet. Every entry either
     /// belongs to a live capability or retains a detached operation's live
     /// submission slot, so the address-space capacity also bounds this queue.
@@ -466,6 +471,60 @@ struct CqState {
     _buf: Option<alloc::vec::Vec<u8>>,
 }
 
+impl CqState {
+    /// Sanitized consumer cursor. EL0 owns `tail` but may hand back garbage;
+    /// an out-of-range value is treated as empty so producer arithmetic stays
+    /// bounded by the kernel-side capacity.
+    fn shared_tail(&self) -> u32 {
+        let tail = unsafe { core::ptr::read_volatile(&(*self.ring).tail) };
+        if tail < self.ring_capacity {
+            tail
+        } else {
+            self.ring_head
+        }
+    }
+
+    fn ring_has_space(&self) -> bool {
+        (self.ring_head + 1) % self.ring_capacity != self.shared_tail()
+    }
+
+    fn ring_pending(&self) -> u32 {
+        let tail = self.shared_tail();
+        if self.ring_head >= tail {
+            self.ring_head - tail
+        } else {
+            self.ring_head + self.ring_capacity - tail
+        }
+    }
+
+    /// Publishes one entry to the shared ring using the kernel-authoritative
+    /// producer cursor. Returns `false` when the ring is full.
+    fn push_completion(&mut self, operation: u64, cookie: u64, status: u32, result: i64) -> bool {
+        if !self.ring_has_space() {
+            let overflow = unsafe { core::ptr::read_volatile(&(*self.ring).overflow) };
+            unsafe {
+                core::ptr::write_volatile(&mut (*self.ring).overflow, overflow.wrapping_add(1));
+            }
+            return false;
+        }
+        let head = self.ring_head;
+        let entry = unsafe { &mut *(*self.ring).entry_ptr(head as usize) };
+        unsafe {
+            core::ptr::write_volatile(&mut entry.operation, operation);
+            core::ptr::write_volatile(&mut entry.cookie, cookie);
+            core::ptr::write_volatile(&mut entry.status, status);
+            core::ptr::write_volatile(&mut entry.flags, 0u32);
+            core::ptr::write_volatile(&mut entry.result, result);
+        }
+        core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
+        let next = (head + 1) % self.ring_capacity;
+        unsafe {
+            core::ptr::write_volatile(&mut (*self.ring).head, next);
+        }
+        self.ring_head = next;
+        true
+    }
+}
 struct AsCompletions {
     table: BTreeMap<CompletionCap, Arc<Completion>>,
     /// Shared upper bound for capability records, in-flight detached
@@ -567,6 +626,8 @@ pub fn open_cq(asid: AddressSpaceId, cq: CqId, cq_entries: u32) {
             cq,
             CqState {
                 ring: ring_ptr,
+                ring_head: 0,
+                ring_capacity: crate::completion::cq::CompletionQueueRing::capacity_for(cq_entries),
                 backlog: VecDeque::with_capacity(retained_limit),
                 retained_limit,
                 work_generation: 0,
@@ -596,6 +657,8 @@ pub fn open_cq_phys(
             cq,
             CqState {
                 ring: ring_ptr,
+                ring_head: 0,
+                ring_capacity: crate::completion::cq::CompletionQueueRing::capacity_for(cq_entries),
                 backlog: VecDeque::with_capacity(retained_limit),
                 retained_limit,
                 work_generation: 0,
@@ -858,8 +921,8 @@ fn post_to_cq(
 ) -> PostOutcome {
     let (status, val) = crate::completion::cq::op_result_to_fields(result);
     let flushed = flush_backlog(cq_state);
-    let delivered_current = cq_state.backlog.is_empty()
-        && unsafe { &mut *cq_state.ring }.write(operation, cookie, status, val);
+    let delivered_current =
+        cq_state.backlog.is_empty() && cq_state.push_completion(operation, cookie, status, val);
     if !delivered_current {
         assert!(
             cq_state.backlog.len() < cq_state.retained_limit,
@@ -1021,17 +1084,18 @@ fn flush_backlog(cq_state: &mut CqState) -> FlushOutcome {
     }
 
     let mut outcome = FlushOutcome::default();
-    while !unsafe { &*cq_state.ring }.is_full() {
+    while cq_state.ring_has_space() {
         let Some(entry) = cq_state.backlog.pop_front() else {
             break;
         };
-        let written = unsafe { &mut *cq_state.ring }.write(
-            entry.operation,
-            entry.cookie,
-            entry.status,
-            entry.result,
-        );
-        debug_assert!(written, "CQ became full while its producer lock was held");
+        let written =
+            cq_state.push_completion(entry.operation, entry.cookie, entry.status, entry.result);
+        if !written {
+            // A racing shared-tail update made the ring full; retain the
+            // entry and retry after the consumer advances.
+            cq_state.backlog.push_front(entry);
+            break;
+        }
         outcome.total += 1;
         if entry.owner == BacklogOwner::Detached {
             outcome.detached += 1;
@@ -1245,7 +1309,7 @@ pub fn cq_pending(asid: AddressSpaceId, cq: CqId) -> u32 {
         return 0;
     };
     flush_cq_backlog(as_completions, cq);
-    as_completions.cqs.get(&cq).map(|cq_state| unsafe { &*cq_state.ring }.pending()).unwrap_or(0)
+    as_completions.cqs.get(&cq).map(CqState::ring_pending).unwrap_or(0)
 }
 
 /// Posts an explicit wake to the waiters of one queue (architecture doc
