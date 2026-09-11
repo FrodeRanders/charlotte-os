@@ -1440,11 +1440,11 @@ pub fn poll_reply(
     if call.caller != caller {
         return Err(IpcError::PermissionDenied);
     }
-    // Test-and-take under one write hold: two threads polling the same call
-    // must not both observe (and adopt) the returned capabilities.
-    if call.observed {
-        return Ok(None);
-    }
+    // Mark observation under this single write hold, before returning, so a
+    // concurrent close_cap cannot revoke the returned capabilities after a
+    // poller has seen them. Polling is repeatable by contract: later polls
+    // return the same reply (callers that adopt returned capabilities track
+    // their own one-shot state).
     let result = call.result;
     if result.is_some() {
         call.observed = true;
