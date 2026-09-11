@@ -34,6 +34,7 @@ use alloc::{
 use catten_graft::{
     membership::ClusterConfiguration,
     node::RaftNode,
+    transport::RaftTransport,
     types::{
         NodeState,
         Peer,
@@ -4257,6 +4258,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         );
         expire_remote_calls(&mut in_flight_calls, node.millis());
         expire_queries(&mut pending_queries, node.millis());
+        // The transport's reply-retry guard compares against this clock; keep
+        // it fresh every tick so a lost AppendEntries response cannot freeze
+        // retransmission.
+        transport.set_current_millis(node.millis());
         advance_raft_clock(
             &mut node,
             tick_due,
