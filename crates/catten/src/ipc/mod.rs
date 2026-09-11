@@ -41,6 +41,11 @@ type PendingCallId = u64;
 pub const REPLY_CANCELLED: i64 = -3;
 pub const REPLY_ENDPOINT_CLOSED: i64 = -7;
 
+/// Upper bound on a single endpoint's queued-message capacity. Endpoint
+/// storage is kernel heap, so an EL0-provided capacity must be clamped before
+/// it can drive unbounded allocation.
+pub const MAX_ENDPOINT_CAPACITY: usize = 4096;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IpcError {
     UnknownCapability,
@@ -337,6 +342,7 @@ pub fn endpoint_create(
     if capacity == 0 {
         return Err(IpcError::QueueFull);
     }
+    let capacity = capacity.min(MAX_ENDPOINT_CAPACITY);
 
     let mut ipc = IPC.write();
     let endpoint = ipc.alloc_endpoint();
@@ -1532,6 +1538,30 @@ impl Observable for PendingCallObservable {
     }
 }
 
+/// Whether any live capability still names `endpoint`. The unified `Endpoint`
+/// cap and delegated `Connection` caps are the only holders of an endpoint id;
+/// queued messages and reply tokens are drained before an endpoint is retired.
+fn endpoint_referenced(ipc: &IpcRegistry, endpoint: EndpointId) -> bool {
+    ipc.caps.values().any(|as_caps| {
+        as_caps.caps.values().any(|cap| match cap {
+            Capability::Endpoint {
+                endpoint: id,
+                ..
+            }
+            | Capability::Connection {
+                endpoint: id,
+                ..
+            } => *id == endpoint,
+            Capability::ReplyToken {
+                ..
+            }
+            | Capability::PendingCall {
+                ..
+            } => false,
+        })
+    })
+}
+
 pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError> {
     let mut ipc = IPC.write();
     let mut observers = Vec::new();
@@ -1567,6 +1597,11 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
                     let _ = ipc.remove_cap(asid, connection_cap);
                 }
             }
+            // Retire the registry entry once no capability can name it, so
+            // endpoint create/close cycles cannot grow the registry forever.
+            if !endpoint_referenced(&ipc, endpoint) {
+                ipc.endpoints.remove(&endpoint);
+            }
         }
         Capability::PendingCall {
             call,
@@ -1595,8 +1630,14 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
             consume_reply_token(&mut ipc, token, REPLY_CANCELLED, &mut observers);
         }
         Capability::Connection {
+            endpoint,
             ..
-        } => {}
+        } => {
+            // The last capability naming a closed endpoint retires it.
+            if !endpoint_referenced(&ipc, endpoint) {
+                ipc.endpoints.remove(&endpoint);
+            }
+        }
     }
     drop(ipc);
     if let Some((owner, cq)) = cq_wake {
@@ -1640,6 +1681,18 @@ pub fn close_address_space(asid: AddressSpaceId) {
                 "IPC payload capability was absent from unified table"
             );
         }
+    }
+    // Any endpoint cap of this address space is gone now, so closed endpoints
+    // no longer named by a capability can be retired.
+    let mut ipc = IPC.write();
+    let retired = ipc
+        .endpoints
+        .iter()
+        .filter(|(id, endpoint)| endpoint.closed && !endpoint_referenced(&ipc, **id))
+        .map(|(id, _)| *id)
+        .collect::<Vec<_>>();
+    for endpoint in retired {
+        ipc.endpoints.remove(&endpoint);
     }
 }
 
