@@ -21,6 +21,8 @@ pub const SCRATCH_VADDR: usize = 0x0000_0000_0082_0000;
 /// Direct-Ethernet Raft payload prefix: one message tag followed by the
 /// unpadded body length in network byte order.
 pub const TAGGED_PAYLOAD_HEADER_SIZE: usize = 3;
+/// Upper bound for a peer id: the on-disk log stores its length in one byte.
+pub const MAX_PEER_ID_BYTES: usize = 255;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WireError {
@@ -112,6 +114,9 @@ pub fn encode_append_request(request: &AppendEntriesRequest) -> Result<Vec<u8>, 
             .entries
             .iter()
             .map(|entry| {
+                if entry.peer_id.len() > MAX_PEER_ID_BYTES {
+                    return Err(WireError::Invalid);
+                }
                 Ok(proto::LogEntry {
                     term: signed(entry.term)?,
                     peer_id: entry.peer_id.clone(),
@@ -134,6 +139,11 @@ pub fn decode_append_request(bytes: &[u8]) -> Result<AppendEntriesRequest, WireE
             .entries
             .into_iter()
             .map(|entry| {
+                // The on-disk log stores peer ids in one byte, so reject
+                // longer ids here instead of truncating them on persist.
+                if entry.peer_id.len() > MAX_PEER_ID_BYTES {
+                    return Err(WireError::Invalid);
+                }
                 Ok(LogEntry {
                     term: nonnegative(entry.term)?,
                     peer_id: entry.peer_id,

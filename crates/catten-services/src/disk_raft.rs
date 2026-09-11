@@ -75,6 +75,7 @@ impl ObjectIds {
 
 fn serialize_entry(entry: &LogEntry) -> Vec<u8> {
     let peer_bytes = entry.peer_id.as_bytes();
+    debug_assert!(peer_bytes.len() <= 255, "peer id exceeds the on-disk one-byte length field");
     let peer_len = (peer_bytes.len() as u32).min(255);
     let data_len = entry.data.len() as u32;
     let mut buf = alloc::vec![0u8; 16 + peer_len as usize + data_len as usize];

@@ -324,8 +324,9 @@ pub fn fill_entropy(
 
 impl SystemRng<'_> {
     /// Fill a handshake buffer, retrying a briefly busy entropy service
-    /// before treating the missing randomness as fatal. A handshake cannot
-    /// continue without entropy, so exhaustion remains fail-stop.
+    /// before treating the missing randomness as fatal. `RngCore::fill_bytes`
+    /// cannot report an error, so exhaustion remains fail-stop; callers that
+    /// can handle it use [`fill_entropy`] or `try_fill_bytes`.
     fn fill_or_fail(&self, destination: &mut [u8]) {
         for attempt in 0..3 {
             if self.try_fill(destination).is_ok() {
@@ -364,7 +365,8 @@ impl SystemRng<'_> {
         }
         let mapping =
             reply.memory.ok_or_else(rng_error)?.map_read_only().map_err(|_| rng_error())?;
-        destination[offset..].copy_from_slice(&mapping.as_slice()[..remaining]);
+        let input = mapping.as_slice().get(..remaining).ok_or_else(rng_error)?;
+        destination[offset..].copy_from_slice(input);
         Ok(())
     }
 }
