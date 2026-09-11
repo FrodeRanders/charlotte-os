@@ -99,6 +99,7 @@ fn obj_write(obj_conn: u64, object_id: u64, data: &[u8]) -> bool {
     memory_unmap(mem);
     let call = ipc_scalar_call_move(obj_conn, objstore::OP_WRITE, object_id, mem);
     if call == 0 {
+        memory_close(mem);
         return false;
     }
     let (result, _) = unsafe { catten_services::wait_reply(call) };
@@ -126,7 +127,14 @@ fn obj_read(obj_conn: u64, object_id: u64) -> Option<Vec<u8>> {
         memory_close(mem);
         return None;
     }
-    let size = result as usize;
+    let Ok(size) = usize::try_from(result) else {
+        memory_close(mem);
+        return None;
+    };
+    if size > memory_size(mem) {
+        memory_close(mem);
+        return None;
+    }
     let mut buf = alloc::vec![0u8; size];
     unsafe {
         core::ptr::copy_nonoverlapping(buffer_vaddr_3 as *const u8, buf.as_mut_ptr(), size);
@@ -439,17 +447,23 @@ fn main(ctx: Context) -> ! {
                         if let Some(data) = ffs.op_read(file_id) {
                             let mem = memory_alloc(data.len().max(1).div_ceil(4096));
                             if mem != 0 {
-                                let (_buffer_vaddr_5_map_status, buffer_vaddr_5) =
-                                    memory_map_any(mem, true);
-                                unsafe {
-                                    core::ptr::copy_nonoverlapping(
-                                        data.as_ptr(),
-                                        buffer_vaddr_5 as *mut u8,
-                                        data.len(),
-                                    );
+                                let (map_status, buffer_vaddr_5) = memory_map_any(mem, true);
+                                if map_status != 0 {
+                                    memory_close(mem);
+                                    ipc_reply(message.reply, fs::ERR_IO_ERROR);
+                                } else {
+                                    unsafe {
+                                        core::ptr::copy_nonoverlapping(
+                                            data.as_ptr(),
+                                            buffer_vaddr_5 as *mut u8,
+                                            data.len(),
+                                        );
+                                    }
+                                    memory_unmap(mem);
+                                    if ipc_reply_move(message.reply, mem, data.len() as i64) != 0 {
+                                        memory_close(mem);
+                                    }
                                 }
-                                memory_unmap(mem);
-                                ipc_reply_move(message.reply, mem, data.len() as i64);
                             } else {
                                 ipc_reply(message.reply, fs::ERR_IO_ERROR);
                             }
@@ -532,17 +546,23 @@ fn main(ctx: Context) -> ! {
                         let data = ffs.op_list(parent_id);
                         let mem = memory_alloc(1);
                         if mem != 0 {
-                            let (_buffer_vaddr_8_map_status, buffer_vaddr_8) =
-                                memory_map_any(mem, true);
-                            unsafe {
-                                core::ptr::copy_nonoverlapping(
-                                    data.as_ptr(),
-                                    buffer_vaddr_8 as *mut u8,
-                                    data.len().min(4096),
-                                );
+                            let (map_status, buffer_vaddr_8) = memory_map_any(mem, true);
+                            if map_status != 0 {
+                                memory_close(mem);
+                                ipc_reply(message.reply, fs::ERR_IO_ERROR);
+                            } else {
+                                unsafe {
+                                    core::ptr::copy_nonoverlapping(
+                                        data.as_ptr(),
+                                        buffer_vaddr_8 as *mut u8,
+                                        data.len().min(4096),
+                                    );
+                                }
+                                memory_unmap(mem);
+                                if ipc_reply_move(message.reply, mem, data.len() as i64) != 0 {
+                                    memory_close(mem);
+                                }
                             }
-                            memory_unmap(mem);
-                            ipc_reply_move(message.reply, mem, data.len() as i64);
                         } else {
                             ipc_reply(message.reply, fs::ERR_IO_ERROR);
                         }

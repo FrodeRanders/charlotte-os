@@ -981,6 +981,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             ipc_reply(message.reply, block::ERR_IO_ERROR);
                             continue;
                         }
+                        if transfer_bytes > memory_size(mem_cap) as u64 {
+                            ipc_reply(message.reply, block::ERR_INVALID_RANGE);
+                            continue;
+                        }
                         let Some(prps) =
                             prepare_prps(mem_cap, transfer_bytes, DmaDirection::DeviceWrite)
                         else {
@@ -1029,6 +1033,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         let mem_cap = message.memory;
                         if mem_cap == 0 {
                             ipc_reply(message.reply, block::ERR_IO_ERROR);
+                            continue;
+                        }
+                        if transfer_bytes > memory_size(mem_cap) as u64 {
+                            ipc_reply(message.reply, block::ERR_INVALID_RANGE);
                             continue;
                         }
                         let Some(prps) =

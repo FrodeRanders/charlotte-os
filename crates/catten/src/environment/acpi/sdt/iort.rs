@@ -41,7 +41,7 @@ impl SmmuV3Config {
     /// Translate a PCI requester ID through the root-complex IORT mapping.
     pub fn stream_id(self, requester_id: u32) -> Option<u32> {
         let offset = requester_id.checked_sub(self.input_base)?;
-        if offset > self.id_count {
+        if offset >= self.id_count {
             return None;
         }
         self.output_base.checked_add(offset)

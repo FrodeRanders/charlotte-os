@@ -749,7 +749,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             );
                         }
                         memory_unmap(cap);
-                        ipc_reply_move(message.reply, cap, buf.len() as i64);
+                        if ipc_reply_move(message.reply, cap, buf.len() as i64) != 0 {
+                            memory_close(cap);
+                        }
                     } else {
                         memory_close(cap);
                         ipc_reply(message.reply, -1);

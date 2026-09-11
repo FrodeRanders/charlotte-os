@@ -827,25 +827,30 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
                                     let (data_vaddr_4_map_status, data_vaddr_4_vaddr) =
                                         memory_map_any(memory, false);
                                     if data_vaddr_4_map_status == 0 {
-                                        let bytes = unsafe {
-                                            core::slice::from_raw_parts(
-                                                data_vaddr_4_vaddr as *const u8,
-                                                size as usize,
-                                            )
-                                        };
-                                        if let Some((
-                                            _self_role,
-                                            self_raft_id,
-                                            self_leader_id,
-                                            peers,
-                                        )) = parse_cluster_answer(bytes)
-                                        {
-                                            outcome = run_join(
-                                                ns_connection,
+                                        let size = usize::try_from(size)
+                                            .ok()
+                                            .filter(|size| *size <= memory_size(memory));
+                                        if let Some(size) = size {
+                                            let bytes = unsafe {
+                                                core::slice::from_raw_parts(
+                                                    data_vaddr_4_vaddr as *const u8,
+                                                    size,
+                                                )
+                                            };
+                                            if let Some((
+                                                _self_role,
                                                 self_raft_id,
                                                 self_leader_id,
-                                                &peers,
-                                            );
+                                                peers,
+                                            )) = parse_cluster_answer(bytes)
+                                            {
+                                                outcome = run_join(
+                                                    ns_connection,
+                                                    self_raft_id,
+                                                    self_leader_id,
+                                                    &peers,
+                                                );
+                                            }
                                         }
                                         memory_unmap(memory);
                                     }

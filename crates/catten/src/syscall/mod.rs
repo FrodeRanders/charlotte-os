@@ -1485,7 +1485,7 @@ fn sys_ipc_vector_send(frame: &mut TrapFrame) {
     let cap_vector = frame.regs[4];
     frame.regs[0] = match ipc::vector_send(asid, connection, opcode, arg0, cap_vector) {
         Ok(()) => 0,
-        Err(error) => error as u64,
+        Err(error) => ipc_status(error),
     };
 }
 
@@ -1528,7 +1528,7 @@ fn recv_vec_into_frame(frame: &mut TrapFrame, authenticated: bool) {
             }
         }
         Err(error) => {
-            frame.regs[0] = error as u64;
+            frame.regs[0] = ipc_status(error);
             let last = if authenticated {
                 11
             } else {
@@ -1840,6 +1840,9 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
     let ns_handle = match *crate::service::supervisor::LIVE_UPGRADE_NS.lock() {
         Some(handle) => handle,
         None => {
+            if elf_cap != 0 {
+                let _ = crate::memory::object::close_cap(caller_asid, elf_cap);
+            }
             frame.regs[0] = 0;
             return;
         }

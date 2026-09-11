@@ -243,7 +243,9 @@ pub(super) fn reply_move_bytes(reply: u64, bytes: &[u8]) {
             core::ptr::copy_nonoverlapping(bytes.as_ptr(), vaddr as *mut u8, bytes.len());
         }
         memory_unmap(cap);
-        ipc_reply_move(reply, cap, bytes.len() as i64);
+        if ipc_reply_move(reply, cap, bytes.len() as i64) != 0 {
+            memory_close(cap);
+        }
     } else {
         if cap != 0 {
             memory_close(cap);

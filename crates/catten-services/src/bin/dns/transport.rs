@@ -26,6 +26,7 @@ use catten_syscall::{
     ipc_scalar_call,
     memory_close,
     memory_map_any,
+    memory_size,
     memory_unmap,
 };
 
@@ -43,7 +44,14 @@ pub(super) fn query_disco_peers(disco_conn: u64) -> Vec<([u8; 6], Vec<u8>)> {
         }
         return Vec::new();
     }
-    let len = result as usize;
+    let Ok(len) = usize::try_from(result) else {
+        memory_close(memory);
+        return Vec::new();
+    };
+    if len > memory_size(memory) {
+        memory_close(memory);
+        return Vec::new();
+    }
     let (map_status, vaddr) = memory_map_any(memory, false);
     if map_status != 0 {
         memory_close(memory);

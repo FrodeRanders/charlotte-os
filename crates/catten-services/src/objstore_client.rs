@@ -86,6 +86,7 @@ pub(crate) fn write(obj_conn: u64, object_id: u64, data: &[u8]) -> bool {
     memory_unmap(mem);
     let call = ipc_scalar_call_move(obj_conn, crate::objstore::OP_WRITE, object_id, mem);
     if call == 0 {
+        memory_close(mem);
         return false;
     }
     let (result, _) = unsafe { crate::wait_reply(call) };
