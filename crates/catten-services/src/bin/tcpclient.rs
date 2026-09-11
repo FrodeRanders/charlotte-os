@@ -55,7 +55,15 @@ fn fail(code: u32) -> ! {
 fn ip_from_mac(mac: &[u8; 6]) -> (u8, u8) {
     let last = mac[5];
     let local = 100u8.wrapping_add(last % 100);
-    let peer = 100u8.wrapping_add((last ^ 1) % 100);
+    // Peers are consecutive addresses: the odd octet connects to the even one
+    // while the even one listens, matching the tcpip service's own
+    // `10.0.0.(100 + mac[5] % 100)` derivation.
+    let peer_last = if last % 2 == 1 {
+        last.wrapping_add(1)
+    } else {
+        last.wrapping_sub(1)
+    };
+    let peer = 100u8.wrapping_add(peer_last % 100);
     (local, peer)
 }
 
