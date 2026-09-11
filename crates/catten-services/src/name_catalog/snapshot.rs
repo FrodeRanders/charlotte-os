@@ -257,7 +257,6 @@ impl NameCatalog {
             );
             pos = after_entry;
         }
-        *self.entries.lock() = entries;
 
         let mut deployments = BTreeMap::new();
         if magic == CATALOG_MAGIC_V4
@@ -383,7 +382,6 @@ impl NameCatalog {
                 pos = after_entry;
             }
         }
-        *self.deployments.lock() = deployments;
 
         let mut releases = BTreeMap::new();
         if magic == CATALOG_MAGIC_V9
@@ -605,8 +603,6 @@ impl NameCatalog {
                 pos = after_binding;
             }
         }
-        *self.releases.lock() = releases;
-        *self.operational_bindings.lock() = operational_bindings;
 
         let mut shutdown_intents = BTreeMap::new();
         if magic == CATALOG_MAGIC_V12 || magic == CATALOG_MAGIC_V13 || magic == CATALOG_MAGIC_V14 {
@@ -650,7 +646,6 @@ impl NameCatalog {
                 pos = after_envelope;
             }
         }
-        *self.shutdown_intents.lock() = shutdown_intents;
 
         let mut deployment_replicas = BTreeMap::new();
         if magic == CATALOG_MAGIC_V13 || magic == CATALOG_MAGIC_V14 {
@@ -709,7 +704,6 @@ impl NameCatalog {
                 pos = position;
             }
         }
-        *self.deployment_replicas.lock() = deployment_replicas;
 
         let ingress_policy = if magic == CATALOG_MAGIC_V14 {
             let Some(present) = data.get(pos) else {
@@ -744,10 +738,9 @@ impl NameCatalog {
         } else {
             None
         };
-        *self.ingress_policy.lock() = ingress_policy;
 
-        *self.cluster_key.lock() = None;
-        *self.cluster_key_generation.lock() = 0;
+        let mut cluster_key = None;
+        let mut cluster_key_generation = 0u64;
 
         if magic == CATALOG_MAGIC_V5
             || magic == CATALOG_MAGIC_V6
@@ -787,9 +780,22 @@ impl NameCatalog {
                 let Ok(key) = <[u8; 32]>::try_from(key) else {
                     return;
                 };
-                *self.cluster_key.lock() = Some(key);
-                *self.cluster_key_generation.lock() = generation.max(1);
+                cluster_key = Some(key);
+                cluster_key_generation = generation.max(1);
             }
         }
+
+        // Publish the whole snapshot only after every section parsed; a
+        // truncated or corrupt snapshot leaves the previous state intact
+        // rather than a mix of old and new collections.
+        *self.entries.lock() = entries;
+        *self.deployments.lock() = deployments;
+        *self.releases.lock() = releases;
+        *self.operational_bindings.lock() = operational_bindings;
+        *self.shutdown_intents.lock() = shutdown_intents;
+        *self.deployment_replicas.lock() = deployment_replicas;
+        *self.ingress_policy.lock() = ingress_policy;
+        *self.cluster_key.lock() = cluster_key;
+        *self.cluster_key_generation.lock() = cluster_key_generation;
     }
 }
