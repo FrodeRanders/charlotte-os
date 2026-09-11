@@ -14,7 +14,11 @@ use zeroize::Zeroizing;
 
 pub const MECHANISM: &[u8] = b"SCRAM-SHA-256";
 pub const MIN_ITERATIONS: u32 = 4_096;
-pub const MAX_ITERATIONS: u32 = 1_000_000;
+/// Upper bound on the server-advertised PBKDF2 iteration count. A malicious
+/// broker could otherwise force a million synchronous SHA-256 rounds per
+/// authentication attempt. This stays above the counts used by common Kafka
+/// and MongoDB deployments.
+pub const MAX_ITERATIONS: u32 = 200_000;
 const MAX_SERVER_MESSAGE_BYTES: usize = 4_096;
 const MAX_SALT_BYTES: usize = 1_024;
 
@@ -291,6 +295,12 @@ fn base64_digit(byte: u8) -> Result<u8, Error> {
 }
 
 fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    // Length inequality is not secret here (both sides are fixed-size
+    // digests), but it must be rejected explicitly: zipping mismatched slices
+    // would otherwise compare only the common prefix.
+    if left.len() != right.len() {
+        return false;
+    }
     let mut difference = 0u8;
     for (left, right) in left.iter().zip(right) {
         difference |= left ^ right;
