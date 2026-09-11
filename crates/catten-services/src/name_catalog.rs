@@ -31,7 +31,10 @@
 //! ingress:    0x0c | envelope_len:u32 | signed_ingress_policy
 //! ```
 use alloc::{
-    collections::BTreeMap,
+    collections::{
+        BTreeMap,
+        BTreeSet,
+    },
     sync::Arc,
     vec::Vec,
 };
@@ -781,11 +784,12 @@ impl NameCatalog {
                     return Vec::new();
                 }
                 let mut nodes = Vec::with_capacity(usize::from(node_count));
+                let mut seen = BTreeSet::new();
                 for _ in 0..node_count {
                     let Some((node, next)) = read_u64(command, position) else {
                         return Vec::new();
                     };
-                    if node == 0 || nodes.contains(&node) {
+                    if node == 0 || !seen.insert(node) {
                         return Vec::new();
                     }
                     nodes.push(node);
@@ -868,11 +872,12 @@ impl NameCatalog {
                             return Vec::new();
                         }
                         let mut nodes = Vec::with_capacity(usize::from(replica_count));
+                        let mut seen = BTreeSet::new();
                         for _ in 0..replica_count {
                             let Some((node, next)) = read_u64(command, assignment_position) else {
                                 return Vec::new();
                             };
-                            if node == 0 || nodes.contains(&node) {
+                            if node == 0 || !seen.insert(node) {
                                 return Vec::new();
                             }
                             nodes.push(node);
@@ -1117,8 +1122,10 @@ impl NameCatalog {
                 // tied to the old release digest. Keep inactive entries as
                 // monotonic sequence tombstones.
                 if !release_exact || has_operational_tail {
-                    let retained_profiles =
-                        planned_operations.iter().map(|(name, _)| name.clone()).collect::<Vec<_>>();
+                    let retained_profiles = planned_operations
+                        .iter()
+                        .map(|(name, _)| name.clone())
+                        .collect::<BTreeSet<_>>();
                     for (name, current) in operational_bindings.iter() {
                         if current.active
                             && current.release_name == envelope.release_name
@@ -1640,11 +1647,12 @@ impl NameCatalog {
                         return;
                     };
                     let mut nodes = Vec::with_capacity(usize::from(replica_count));
+                    let mut seen = BTreeSet::new();
                     for _ in 0..replica_count {
                         let Some((node, next)) = read_u64(data, position) else {
                             return;
                         };
-                        if node == 0 || nodes.contains(&node) {
+                        if node == 0 || !seen.insert(node) {
                             return;
                         }
                         nodes.push(node);
@@ -2348,10 +2356,11 @@ pub fn decode_deployment_result(bytes: &[u8]) -> Option<DeploymentEntry> {
                 return None;
             }
             let mut nodes = Vec::with_capacity(count);
+            let mut seen = BTreeSet::new();
             let mut position = descriptor_end + 2;
             for _ in 0..count {
                 let (node, next) = read_u64(bytes, position)?;
-                if node == 0 || nodes.contains(&node) {
+                if node == 0 || !seen.insert(node) {
                     return None;
                 }
                 nodes.push(node);
