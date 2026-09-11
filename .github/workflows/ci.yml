@@ -179,17 +179,21 @@ jobs:
 
   test:
     name: Test (${{ matrix.target }})
-    # Ubuntu 24.04 ships QEMU 8.2, which cannot request a GICv2m MSI frame
-    # alongside GICv3. The macOS ARM image uses current Homebrew QEMU, matching
-    # the supported development configuration.
+    # Ubuntu's QEMU cannot request a GICv2m MSI frame alongside GICv3, so the
+    # boot tests run on the macOS ARM image with current Homebrew QEMU. The
+    # x86_64 entry boots under TCG, so it gets a larger timeout.
     runs-on: macos-15
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - aarch64-unknown-none-catten
+        include:
+          - target: aarch64-unknown-none-catten
+            rust_target: aarch64-unknown-none
+            boot: scripts/run-aarch64.sh debug --smp 4 --timeout 180
+          - target: x86_64-unknown-none-catten
+            rust_target: x86_64-unknown-none
+            boot: scripts/run-x86_64.sh debug --smp 4 --timeout 480
     steps:
       - uses: actions/checkout@v5
 
@@ -197,7 +201,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2026-07-27
-          targets: aarch64-unknown-none
+          targets: ${{ matrix.rust_target }}
           components: rust-src,llvm-tools
 
       - name: Install QEMU
@@ -212,4 +216,4 @@ jobs:
       # Keep CI on the same multicore, MSI-X/NVMe configuration and marker
       # list used by developers. This also rebuilds the embedded EL0 bundle.
       - name: Boot QEMU and verify self-tests
-        run: scripts/run-aarch64.sh debug --smp 4 --timeout 180
+        run: ${{ matrix.boot }}
