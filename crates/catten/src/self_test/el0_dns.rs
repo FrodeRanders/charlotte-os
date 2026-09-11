@@ -483,23 +483,35 @@ mod inner {
         }
 
         let deadline = crate::self_test::results::Deadline::after_millis(120_000);
-        let expected_stage = if is_leader {
-            AGENT_STAGE_RETIRED
-        } else {
-            AGENT_STAGE_SERVING
-        };
-        while status_word(agent_cfg, charlotte_launch::agent_status::STAGE) != expected_stage {
-            deadline.assert_pending("EL0 deploy forced return migration");
-            crate::cpu::scheduler::sleep_millis(10);
-            yield_lp();
-        }
         if is_leader {
+            // The agent only reports RETIRED once *every* deployment retires,
+            // and the clusterctl test deliberately leaves an `agent`
+            // deployment on guest B. Wait for this artifact's own domain to
+            // be reaped instead of the agent's global stage.
+            let principal = charlotte_launch::artifact_principal_id(b"greet");
+            while crate::service::supervisor::DEPLOYED_DOMAINS
+                .lock()
+                .iter()
+                .any(|entry| entry.principal == principal)
+            {
+                deadline.assert_pending("EL0 deploy forced return migration");
+                crate::cpu::scheduler::sleep_millis(10);
+                yield_lp();
+            }
             assert!(
                 crate::service::supervisor::DEPLOYMENT_FORCED_RETIREMENTS
                     .load(core::sync::atomic::Ordering::Relaxed)
                     > forced_before_return_migration,
                 "[deploy] zero-grace retirement must take the forced path"
             );
+        } else {
+            while status_word(agent_cfg, charlotte_launch::agent_status::STAGE)
+                != AGENT_STAGE_SERVING
+            {
+                deadline.assert_pending("EL0 deploy forced return migration");
+                crate::cpu::scheduler::sleep_millis(10);
+                yield_lp();
+            }
         }
 
         let deadline = crate::self_test::results::Deadline::after_millis(120_000);
