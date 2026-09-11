@@ -62,6 +62,13 @@ pub trait EventBroker {
     fn fire(&mut self, event: &[u8]) -> alloc::vec::Vec<Self::Waiter>;
 }
 
+/// Upper bound on parked waiters across all events. Deferred lookups and
+/// event waits are caller-controlled; without a bound a burst could pin reply
+/// tokens and heap indefinitely. Callers check
+/// [`KeyedWaitlist::waiter_count`] before parking and fail the request with a
+/// busy result.
+pub const MAX_WAITERS: usize = 4096;
+
 /// The shared keyed waitlist backing both the local name service's deferred
 /// lookups and the replicated dns's cluster events.
 #[derive(Debug)]
@@ -84,6 +91,11 @@ impl<W> KeyedWaitlist<W> {
 
     pub fn len(&self) -> usize {
         self.waiters.len()
+    }
+
+    /// Total parked waiters across every event.
+    pub fn waiter_count(&self) -> usize {
+        self.waiters.values().map(alloc::vec::Vec::len).sum()
     }
 
     pub fn is_empty(&self) -> bool {

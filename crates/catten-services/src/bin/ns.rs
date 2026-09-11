@@ -440,6 +440,8 @@ fn authorized_lookup_or_defer(
 ) {
     if RegistryCatalog(registry).resolve(service).is_some() {
         authorize_and_reply(policy, audit, registry, service, caller, requested, reply);
+    } else if waitlist.waiter_count() >= catten_services::broker::MAX_WAITERS {
+        unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
     } else {
         let _ = waitlist.park(
             service,
@@ -629,15 +631,20 @@ fn lookup_or_defer(
         }
         _ => {
             // Defer: the event broker retains the reply token until the
-            // service registers (fulfillment by the publishing side).
-            let _ = waitlist.park(
-                key,
-                PendingLookup::Legacy {
-                    reply,
-                    access_key: caller_key,
-                },
-                &RegistryCatalog(registry),
-            );
+            // service registers (fulfillment by the publishing side). Fail
+            // closed if the broker is saturated.
+            if waitlist.waiter_count() >= catten_services::broker::MAX_WAITERS {
+                unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
+            } else {
+                let _ = waitlist.park(
+                    key,
+                    PendingLookup::Legacy {
+                        reply,
+                        access_key: caller_key,
+                    },
+                    &RegistryCatalog(registry),
+                );
+            }
         }
     }
 }
@@ -1077,17 +1084,23 @@ fn main(ctx: Context) -> ! {
                                 );
                             }
                             (Some(target), Some(target_principal)) => {
-                                let _ = waitlist.park(
-                                    service,
-                                    PendingLookup::Grant {
-                                        reply: message.reply,
-                                        actor,
-                                        target,
-                                        target_principal,
-                                        requested,
-                                    },
-                                    &RegistryCatalog(&registry),
-                                );
+                                if waitlist.waiter_count() >= catten_services::broker::MAX_WAITERS {
+                                    unsafe {
+                                        ipc_reply(message.reply, ns::ERR_ACCESS_DENIED);
+                                    }
+                                } else {
+                                    let _ = waitlist.park(
+                                        service,
+                                        PendingLookup::Grant {
+                                            reply: message.reply,
+                                            actor,
+                                            target,
+                                            target_principal,
+                                            requested,
+                                        },
+                                        &RegistryCatalog(&registry),
+                                    );
+                                }
                             }
                             _ => unsafe {
                                 ipc_reply(message.reply, ns::ERR_ACCESS_DENIED);

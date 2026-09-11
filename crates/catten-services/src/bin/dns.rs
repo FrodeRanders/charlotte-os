@@ -2415,6 +2415,14 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     // otherwise the event broker parks the reply token and
                     // the reactor settles it when the replicated entry lands.
                     if let Some(name) = read_named_bytes(&message) {
+                        if event_waiters.waiter_count() >= catten_services::broker::MAX_WAITERS
+                            && catalog.lookup(&name).is_none()
+                        {
+                            if message.reply != 0 {
+                                ipc_reply(message.reply, dns::ERR_BUSY);
+                            }
+                            continue;
+                        }
                         if let Some(reply) = event_waiters.park(&name, message.reply, &*catalog) {
                             if let Some(entry) = catalog.lookup(&name) {
                                 if reply != 0 {
