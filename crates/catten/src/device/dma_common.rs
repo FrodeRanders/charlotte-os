@@ -12,6 +12,7 @@ pub enum Error {
     Memory,
     OutOfIova,
     MapFailed,
+    AlreadyMapped,
     UnknownDomain,
     UnknownMapping,
     HardwareTimeout,

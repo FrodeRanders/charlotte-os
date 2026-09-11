@@ -222,19 +222,22 @@ impl BackendSnapshot {
 /// drain generations. The explicit hash is stable on every node and changes
 /// only when the backend policy changes, not for unrelated catalog traffic.
 pub fn load_balancing_epoch(membership_epoch: u64, draining_nodes: &[(u64, u64)]) -> u64 {
-    service_load_balancing_epoch(membership_epoch, b"", 0, 0, &[], draining_nodes)
+    service_load_balancing_epoch(membership_epoch, b"", 0, 0, 0, &[], draining_nodes)
 }
 
 /// Produce a load-balancing epoch that is fenced by one service's committed
-/// placement and readiness generations.
+/// assignment sequence, placement, and readiness generations.
 ///
 /// The explicit eligible-node list makes a readiness transition visible even
-/// when the Raft membership itself is unchanged. Every input comes from
-/// locally applied replicated state, so independent ingress participants
-/// derive the same fingerprint without another consensus mechanism.
+/// when the Raft membership itself is unchanged, and the signed assignment
+/// sequence makes a policy replacement visible even when it leaves the derived
+/// inputs unchanged. Every input comes from locally applied replicated state,
+/// so independent ingress participants derive the same fingerprint without
+/// another consensus mechanism.
 pub fn service_load_balancing_epoch(
     membership_epoch: u64,
     service_name: &[u8],
+    assignment_sequence: u64,
     deployment_generation: u64,
     service_generation: u64,
     eligible_nodes: &[u64],
@@ -249,6 +252,7 @@ pub fn service_load_balancing_epoch(
     hash_bytes(&mut hash, &membership_epoch.to_le_bytes());
     hash_bytes(&mut hash, &(service_name.len() as u64).to_le_bytes());
     hash_bytes(&mut hash, service_name);
+    hash_bytes(&mut hash, &assignment_sequence.to_le_bytes());
     hash_bytes(&mut hash, &deployment_generation.to_le_bytes());
     hash_bytes(&mut hash, &service_generation.to_le_bytes());
     for node_id in eligible_nodes {
@@ -680,13 +684,14 @@ mod tests {
     }
 
     #[test]
-    fn service_policy_epoch_tracks_placement_and_readiness() {
-        let one = service_load_balancing_epoch(17, b"orders", 4, 9, &[3, 2], &[(1, 7)]);
-        let reordered = service_load_balancing_epoch(17, b"orders", 4, 9, &[2, 3], &[(1, 7)]);
+    fn service_policy_epoch_tracks_assignment_placement_and_readiness() {
+        let one = service_load_balancing_epoch(17, b"orders", 3, 4, 9, &[3, 2], &[(1, 7)]);
+        let reordered = service_load_balancing_epoch(17, b"orders", 3, 4, 9, &[2, 3], &[(1, 7)]);
         assert_eq!(one, reordered);
-        assert_ne!(one, service_load_balancing_epoch(17, b"orders", 5, 9, &[2, 3], &[(1, 7)]));
-        assert_ne!(one, service_load_balancing_epoch(17, b"orders", 4, 10, &[2, 3], &[(1, 7)]));
-        assert_ne!(one, service_load_balancing_epoch(17, b"orders", 4, 9, &[2], &[(1, 7)]));
+        assert_ne!(one, service_load_balancing_epoch(17, b"orders", 4, 4, 9, &[2, 3], &[(1, 7)]));
+        assert_ne!(one, service_load_balancing_epoch(17, b"orders", 3, 5, 9, &[2, 3], &[(1, 7)]));
+        assert_ne!(one, service_load_balancing_epoch(17, b"orders", 3, 4, 10, &[2, 3], &[(1, 7)]));
+        assert_ne!(one, service_load_balancing_epoch(17, b"orders", 3, 4, 9, &[2], &[(1, 7)]));
     }
 
     #[test]

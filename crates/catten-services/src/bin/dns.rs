@@ -489,12 +489,19 @@ fn ingress_membership_snapshot(
         .filter(|leader| ingress_nodes.contains(leader))
         .or_else(|| ingress_nodes.iter().copied().min())
         .filter(|_| !eligible_nodes.is_empty());
+    let assignment_sequence = catalog
+        .ingress_policy()
+        .and_then(|entry| {
+            charlotte_launch::ingress_policy::decode(&entry.envelope).map(|policy| policy.sequence)
+        })
+        .unwrap_or(0);
     let epoch = service_name.map_or_else(
         || load_balancing_epoch(node.membership_epoch(), &draining),
         |name| {
             service_load_balancing_epoch(
                 node.membership_epoch(),
                 name,
+                assignment_sequence,
                 deployment_generation,
                 service_generation,
                 &eligible_nodes,

@@ -109,6 +109,7 @@ pub enum Error {
     Memory,
     OutOfIova,
     MapFailed,
+    AlreadyMapped,
     UnknownDomain,
     UnknownMapping,
     HardwareTimeout,
@@ -269,6 +270,9 @@ impl Domain {
     }
 
     fn map(&mut self, pin: DmaPin, direction: Direction) -> Result<u64, (Error, DmaPin)> {
+        if self.mappings.values().any(|mapping| mapping.pin.object_id() == pin.object_id()) {
+            return Err((Error::AlreadyMapped, pin));
+        }
         let pages = pin.frames().len();
         let Some(bytes) = (pages as u64).checked_mul(PAGE_SIZE as u64) else {
             return Err((Error::OutOfIova, pin));

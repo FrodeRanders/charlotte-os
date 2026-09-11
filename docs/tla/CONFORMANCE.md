@@ -238,7 +238,7 @@ code never performs an indefinite CQ wait plus a detached timer.
 | `BeginLoan` / `EndLoan` | `lend_read`, `lend_write`, `revoke_lend` | Abstract projection of IPC memory loans. A new loan is rejected while any DMA pin exists. |
 | `BeginMap(..., "Coherent")` | unsafe `dma_map`, `memory::object::pin_for_dma` | The raw coherent-sharing path may coexist with CPU mappings or a previously established loan; synchronization remains the unsafe caller's obligation. It cannot coexist with an exclusive pin. |
 | `BeginMap(..., "Exclusive")` | safe `dma_map_exclusive`, `OwnedMemory::begin_dma` | Direct ownership transfer: requires no CPU mappings, loans, or other DMA pins. The mode remains exclusive until acknowledged unmap and pin release. |
-| `CommitMap` | `Domain::map`, `invalidate_asid`, successful return from `smmu::map` | Abstract: per-page PTE installation and IOVA arithmetic are collapsed. Publication occurs only after invalidation succeeds. |
+| `CommitMap` | `Domain::map`, `invalidate_asid`, successful return from `smmu::map` | Abstract: per-page PTE installation and IOVA arithmetic are collapsed. Publication occurs only after invalidation succeeds. A second mapping of the same memory object in one domain is rejected, preserving the model's per-domain uniqueness. |
 | `FailMap` | partial-PTE cleanup and `memory::object::unpin_dma` | Direct rollback for failures before complete PTE installation, including unknown-domain lookup. |
 | `QuarantineMap` | failed `invalidate_asid` after `Domain::map` | Direct safety policy: the unpublished internal mapping retains its pin because hardware translation state is uncertain. A later acknowledged domain destroy reclaims it. |
 | `RevokeMap` / `ReleasePin` | `Domain::clear_mapping`, `invalidate_asid`, then `unpin_dma` | Direct ordering: translation removal is acknowledged before the object becomes reclaimable. |
@@ -353,10 +353,10 @@ catalog application of the resulting Raft command.
 | `PublishReady` / `WithdrawReady` | `NameCatalog::apply_command(CMD_REGISTER)` (dispatched by `StateMachine::apply`), activation and generation-fenced unregister; `NameCatalog::ingress_placement` | Abstract across prepare/activate. The resulting ready node must be both a desired replica and active for the exact deployment generation. |
 | `ReplaceDeployment` | deployment application in `NameCatalog`; leader `reconcile_replica_placements` | Abstract for a committed generation and sorted concrete replica set. Artifact verification, descriptor decoding, and placement ranking are outside this model. |
 | `CommitDrain` | application of a signed shutdown intent; `NameCatalog::ingress_draining_nodes` | Direct for adding a generation-bearing drain decision to applied catalog state. Signature, expiry, and trusted UTC checks precede this boundary. |
-| `CommitIngressAssignment` | `NameCatalog::apply` for `CMD_INGRESS_POLICY`; `effective_ingress_bindings`; frame-router and TCP/IP assignment polling | Abstracts the signed multi-service table to one service and an assigned/withdrawn Boolean. The monotonic sequence corresponds directly to the catalog replay fence. An accepted change materially refreshes the router policy, but the published 64-bit epoch does not itself include the assignment sequence (see below). |
+| `CommitIngressAssignment` | `NameCatalog::apply` for `CMD_INGRESS_POLICY`; `effective_ingress_bindings`; frame-router and TCP/IP assignment polling | Abstracts the signed multi-service table to one service and an assigned/withdrawn Boolean. The monotonic sequence corresponds directly to the catalog replay fence and is hashed into each service epoch, so a policy replacement is visible even when placement, readiness, and membership inputs are unchanged. |
 | `BeginJoint` / `FinalizeJoint` | application of Raft `JOINT` and `FINALIZE`; `active_voting_members` | Abstract membership projection. Quorum and durable ordering are established by `CharlotteRaftMembership`; this layer checks the old/new voter intersection during joint consensus and the final voter set afterward. |
 | `LearnRoute` / `ForgetRoute` | `RelmsgRaftTransport::mac_for_peer`; discovery updates | Abstract availability of an authenticated node-to-MAC route. The trusted-L2 assumption and frame authentication are not proved. |
-| `InstallSnapshot` | `RaftNode::can_serve_bounded_read`, `ingress_membership_snapshot`, `BackendSnapshot::new_with_members`, `MembershipClient::poll`, `SnapshotHistory::install` | Direct for a cluster-fresh, all-or-nothing materialization and immutable bounded history. A leader needs quorum contact; a follower needs a recent successful leader-log match. Bindings may outlive history entries but remain pinned tombstones. |
+| `InstallSnapshot` | `RaftNode::can_serve_bounded_read`, `ingress_membership_snapshot`, `BackendSnapshot::new_with_members`, `MembershipClient::poll`, `SnapshotHistory::install` | Direct for a cluster-fresh, all-or-nothing materialization and immutable bounded history. A leader needs quorum contact; a follower needs a recent successful leader-log match. Bindings may outlive history entries but remain pinned tombstones. The router holds at most one membership request in flight per service and installs each response in request order, so an older snapshot cannot replace a newer one; re-installing the current epoch is a content no-op that renews the lease. |
 | `ExpireLease` | terminal observation of the monotonic `snapshot_lease` timer | Abstract timing correspondence. Weak fairness says an unrenewed lease eventually expires; Rust fixes the interval at five seconds. |
 | `StartNewFlow` | `classify_ingress`, `snapshot_for_flow`, `FlowEpochTable::observe`, `select_backend` | Direct for deterministic selection from a complete snapshot while its five-second monotonic lease is fresh. Each successful one-second refresh replaces the lease; timer failure or expiry stops unbound-flow admission. |
 | `ExistingFlowPacket` / `EndFlow` | `FlowEpochTable::observe` | Direct while the binding's snapshot remains retained. FIN/RST removes the binding. Timing, TCP state, table-pressure eviction, and packets arriving through a different advertiser are omitted. |
@@ -377,14 +377,16 @@ them; only a determinism test is needed for the concrete functions. The model
 ends a binding when the committed assignment is withdrawn or when the pinned
 backend leaves the installed member set, matching the router's hard-stop
 behavior; `CommitDrain` remains the graceful path that retains established
-flows while excluding the node from new selection. Still outside the model:
-snapshot installs are accepted in arrival order rather than by numeric version
-comparison, the 64-bit epoch does not include the assignment sequence, and
-platform-compatibility services use a reduced digest.
+flows while excluding the node from new selection. Snapshot install order is
+guaranteed by the router's single in-flight request against monotonic applied
+state rather than by a numeric epoch comparison, and the signed assignment
+sequence is part of the service epoch digest. Platform-compatibility services
+have no per-service assignment and keep the reduced membership/drain digest.
 
 The model treats a policy version as the complete identity of one immutable
-snapshot. Rust compresses membership epoch, deployment and service
-generations, eligible nodes, and drain generations into a 64-bit digest.
+snapshot. Rust compresses membership epoch, the signed assignment sequence,
+deployment and service generations, eligible nodes, and drain generations into
+a 64-bit digest.
 Collision resistance of that digest is outside the TLA+ claim. The model also
 does not claim instant convergence among routers or globally unique VIP
 advertisement during ARP and leader handover. Lease freshness is one abstract

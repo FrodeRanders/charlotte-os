@@ -318,14 +318,19 @@ ForgetRoute(router, node) ==
 
 \* Installing a snapshot is all-or-nothing: every admitted member must have a
 \* route. The action abstracts the concrete DNS source-freshness gate (leader
-\* quorum contact or a recent successful follower log match). A flow may
-\* continue naming an evicted policy, but no safe packet action interprets
-\* that binding through a different snapshot.
+\* quorum contact or a recent successful follower log match). Installing the
+\* already-current version is a content no-op that renews the lease, matching
+\* the concrete router's one-in-flight refresh against a monotonic applied
+\* source. A flow may continue naming an evicted policy, but no safe packet
+\* action interprets that binding through a different snapshot.
 InstallSnapshot(router, version) ==
     /\ version \in 1..policyVersion
-    /\ version > routerPolicy[router]
+    /\ version >= routerPolicy[router]
     /\ policies[version].members \subseteq knownRoutes[router]
-    /\ LET nextHistory == AppendBounded(history[router], version)
+    /\ LET nextHistory ==
+              IF version > routerPolicy[router]
+              THEN AppendBounded(history[router], version)
+              ELSE history[router]
        IN /\ history' = [history EXCEPT ![router] = nextHistory]
           /\ routerPolicy' = [routerPolicy EXCEPT ![router] = version]
           /\ leaseFresh' = [leaseFresh EXCEPT ![router] = TRUE]

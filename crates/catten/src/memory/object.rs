@@ -109,6 +109,10 @@ impl DmaPin {
     pub(crate) fn frames(&self) -> &[PAddr] {
         &self.frames
     }
+
+    pub(crate) fn object_id(&self) -> u64 {
+        self.object
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

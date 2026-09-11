@@ -586,14 +586,16 @@ The safe transition system requires a new flow to use the router's installed
 policy while that policy has a fresh local lease. Eligible backends are exactly
 the intersection of active members, desired replicas, exact-generation
 readiness, and nodes not draining. A router installs a snapshot only when every
-member has a discovery route. The model deliberately treats both selection
-functions as parameters: it checks that a policy names one non-draining
-advertiser and that a flow stays pinned to one eligible backend of its policy
-version, so the concrete leader-preferred advertiser and rendezvous-hash
-backend are valid instances rather than privileged choices. The model also
-allows a leased snapshot to lag the latest globally committed policy during
-asynchronous propagation; an abstract fair expiry action bounds that
-authority. Once expired, the lease drops unbound traffic. When bounded history
+member has a discovery route, and re-installing the current version is a
+content no-op that renews the lease; the concrete router keeps one request in
+flight at a time, so installs cannot reorder. The model deliberately treats
+both selection functions as parameters: it checks that a policy names one
+non-draining advertiser and that a flow stays pinned to one eligible backend of
+its policy version, so the concrete leader-preferred advertiser and
+rendezvous-hash backend are valid instances rather than privileged choices.
+The model also allows a leased snapshot to lag the latest globally committed
+policy during asynchronous propagation; an abstract fair expiry action bounds
+that authority. Once expired, the lease drops unbound traffic. When bounded history
 evicts an epoch, its flow binding remains pinned but no packet action may
 reinterpret that binding through a different snapshot. An explicit assignment
 withdrawal, or the departure of the pinned backend from the installed member
