@@ -1,7 +1,4 @@
-use alloc::{
-    vec,
-    vec::Vec,
-};
+use alloc::vec::Vec;
 use core::sync::atomic::{
     AtomicBool,
     Ordering,
@@ -9,22 +6,25 @@ use core::sync::atomic::{
 
 use spin::LazyLock;
 
-use crate::cpu::{
-    isa::lp::ops::{
-        get_int_state,
-        get_lp_id,
-        mask_interrupts,
-        unmask_interrupts,
+use crate::{
+    cpu::{
+        isa::lp::ops::{
+            get_int_state,
+            get_lp_id,
+            mask_interrupts,
+            unmask_interrupts,
+        },
+        multiprocessor::get_lp_count,
     },
-    multiprocessor::get_lp_count,
+    klib::sync_cell::SyncUnsafeCell,
 };
 
 pub static INT_STATE: LazyLock<IntState> = LazyLock::new(IntState::new);
 
 pub struct IntState {
     raw_locks: Vec<AtomicBool>,
-    save_counts: Vec<usize>,
-    saved_int_bits: Vec<bool>,
+    save_counts: Vec<SyncUnsafeCell<usize>>,
+    saved_int_bits: Vec<SyncUnsafeCell<bool>>,
 }
 
 impl IntState {
@@ -32,8 +32,8 @@ impl IntState {
         let num_cpus = get_lp_count() as usize;
         Self {
             raw_locks: (0..num_cpus).map(|_| AtomicBool::default()).collect(),
-            save_counts: vec![0; num_cpus],
-            saved_int_bits: vec![false; num_cpus],
+            save_counts: (0..num_cpus).map(|_| SyncUnsafeCell::new(0)).collect(),
+            saved_int_bits: (0..num_cpus).map(|_| SyncUnsafeCell::new(false)).collect(),
         }
     }
 
@@ -48,20 +48,16 @@ impl IntState {
         {
             core::hint::spin_loop();
         }
-        // Increment the save count using raw pointers and unsafe
-        let sc_ptr = &raw const self.save_counts[lp_idx];
-        // SAFETY: We want a mutable reference but Rust won't give one to us when self is not mut so
-        // we use a raw internal lock and raw pointers to achieve the equivalent of interior
-        // mutability. This is safe because we still use an AtomicBool to achieve mutual
-        // exclusion just in a way that is too low level for rustc to understand.
+        // Increment the save count through the cell pointer. The per-LP raw
+        // lock above provides exclusive access for this logical processor, so
+        // no reference to the cell contents is ever created.
+        let count = self.save_counts[lp_idx].get();
         unsafe {
-            let sc_mut = sc_ptr as *mut usize;
-            *sc_mut += 1;
+            let current = *count;
+            *count = current + 1;
             // save and clear the interrupt enable bit if necessary.
-            if self.save_counts[lp_idx] == 1 {
-                let sib_ptr = &raw const self.saved_int_bits[lp_idx];
-                let sib_mut = sib_ptr as *mut bool;
-                *sib_mut = int_state;
+            if current == 0 {
+                *self.saved_int_bits[lp_idx].get() = int_state;
             }
         }
         // Release the raw lock
@@ -78,17 +74,16 @@ impl IntState {
         {
             core::hint::spin_loop();
         }
-        // Decrement the save count using raw pointers and unsafe
-        let sc_ptr = &raw const self.save_counts[lp_idx];
+        // Decrement the save count through the cell pointer.
+        let count = self.save_counts[lp_idx].get();
         let mut restore_saved_int = false;
         unsafe {
-            let sc_mut = sc_ptr as *mut usize;
-            *sc_mut -= 1;
+            let current = *count;
+            debug_assert!(current > 0, "unbalanced interrupt-state restore");
+            *count = current.saturating_sub(1);
             // restore the interrupt enable bit if necessary.
-            if self.save_counts[lp_idx] == 0 {
-                let sib_ptr = &raw const self.saved_int_bits[lp_idx];
-                let sib_mut = sib_ptr as *mut bool;
-                restore_saved_int = *sib_mut;
+            if current == 1 {
+                restore_saved_int = *self.saved_int_bits[lp_idx].get();
             }
         }
         // Release the raw lock
