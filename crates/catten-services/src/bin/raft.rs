@@ -519,6 +519,9 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(status::DURABLE, durable as u32);
     let ns_transport = Arc::new(CharlotteTransport::new());
     let mac_transport = Arc::new(RelmsgRaftTransport::new(0));
+    // Discovered link MAC, used to reject frames that are not addressed to
+    // this node.
+    let mut local_mac = [0u8; 6];
     let transport: Arc<dyn RaftTransport> = Arc::new(ServiceRaftTransport {
         ns: ns_transport.clone(),
         mac: mac_transport.clone(),
@@ -703,6 +706,7 @@ fn main(ctx: Context) -> ! {
                         };
                         if link != 0 {
                             net_conn = conn;
+                            local_mac = mac;
                             mac_transport.set_net_send(conn, mac, raft::ETHERTYPE);
                         }
                     }
@@ -919,71 +923,86 @@ fn main(ctx: Context) -> ! {
                                     frame_len,
                                 )
                             };
-                            let mut source_mac = [0u8; 6];
-                            source_mac.copy_from_slice(&frame[6..12]);
-                            let Some((tag, payload)) =
-                                catten_graft::wire::parse_tagged_payload(&frame[14..]).ok()
-                            else {
-                                memory_unmap(message.memory);
-                                memory_close(message.memory);
-                                if message.reply != 0 {
-                                    ipc_reply(message.reply, -1);
-                                }
-                                continue;
-                            };
-                            match tag {
-                                tag if (1..=6).contains(&tag) => {
-                                    let counter = &mut raft_tag_counts[tag as usize - 1];
-                                    *counter = counter.saturating_add(1);
-                                    if let Some(inbound) = mac_transport.decode_inbound_parts(
-                                        &source_mac,
-                                        tag,
-                                        payload,
-                                    ) {
-                                        let millis = node.millis();
-                                        drive_inbound(
-                                            &mut node,
-                                            &mac_transport,
-                                            source_mac,
-                                            inbound,
-                                            millis,
-                                        );
-                                    }
-                                }
-                                TAG_JOIN_REQUEST => {
-                                    join_requests_received =
-                                        join_requests_received.saturating_add(1);
-                                    if let Some((joiner_id, service_name)) =
-                                        decode_join_request(payload)
-                                    {
-                                        let accepted = if node.state == NodeState::Leader {
-                                            let peer = Peer::voter(
-                                                core::str::from_utf8(joiner_id)
-                                                    .unwrap_or("")
-                                                    .to_string(),
-                                                service_name,
+                            // Only frames addressed to this node carrying the
+                            // Raft EtherType drive consensus.
+                            if frame[0..6] == local_mac
+                                && u16::from_be_bytes([frame[12], frame[13]])
+                                    == catten_services::raft::ETHERTYPE
+                                && let Ok((tag, payload)) =
+                                    catten_graft::wire::parse_tagged_payload(&frame[14..])
+                            {
+                                let mut source_mac = [0u8; 6];
+                                source_mac.copy_from_slice(&frame[6..12]);
+                                match tag {
+                                    tag if (1..=6).contains(&tag) => {
+                                        let counter = &mut raft_tag_counts[tag as usize - 1];
+                                        *counter = counter.saturating_add(1);
+                                        if let Some(inbound) = mac_transport.decode_inbound_parts(
+                                            &source_mac,
+                                            tag,
+                                            payload,
+                                        ) {
+                                            let millis = node.millis();
+                                            drive_inbound(
+                                                &mut node,
+                                                &mac_transport,
+                                                source_mac,
+                                                inbound,
+                                                millis,
                                             );
-                                            node.submit_join(peer, node.millis()).unwrap_or(0)
-                                        } else {
-                                            0
-                                        };
+                                        }
+                                    }
+                                    TAG_JOIN_REQUEST => {
+                                        join_requests_received =
+                                            join_requests_received.saturating_add(1);
+                                        let accepted = decode_join_request(payload)
+                                            .and_then(|(joiner_id, service_name)| {
+                                                let joiner =
+                                                    core::str::from_utf8(joiner_id).ok()?;
+                                                let source_peer =
+                                                    mac_transport.peer_id_for_mac(&source_mac)?;
+                                                let direct = source_peer == joiner;
+                                                if node.state != NodeState::Leader {
+                                                    return Some(0);
+                                                }
+                                                // A leader accepts the joiner's own frame
+                                                // or a relay from an already committed
+                                                // member; an arbitrary L2 sender cannot
+                                                // nominate a backend.
+                                                let trusted_relay = node
+                                                    .cluster_configuration
+                                                    .contains(&source_peer)
+                                                    && mac_transport.has_peer(joiner);
+                                                if joiner.is_empty() || (!direct && !trusted_relay)
+                                                {
+                                                    return Some(0);
+                                                }
+                                                let peer =
+                                                    Peer::voter(joiner.to_string(), service_name);
+                                                Some(
+                                                    node.submit_join(peer, node.millis())
+                                                        .unwrap_or(0),
+                                                )
+                                            })
+                                            .unwrap_or(0);
                                         mac_transport.send_response(
                                             source_mac,
                                             TAG_JOIN_REPLY,
                                             encode_join_reply(accepted),
                                         );
                                     }
-                                }
-                                TAG_JOIN_REPLY => {
-                                    join_replies_received = join_replies_received.saturating_add(1);
-                                    if let Some(index) = decode_join_reply(payload) {
-                                        join_request_pending = false;
-                                        if index > 0 {
-                                            join_accepted = true;
+                                    TAG_JOIN_REPLY => {
+                                        join_replies_received =
+                                            join_replies_received.saturating_add(1);
+                                        if let Some(index) = decode_join_reply(payload) {
+                                            join_request_pending = false;
+                                            if index > 0 {
+                                                join_accepted = true;
+                                            }
                                         }
                                     }
+                                    _ => {}
                                 }
-                                _ => {}
                             }
                         }
                         memory_unmap(message.memory);
