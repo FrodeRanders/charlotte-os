@@ -283,7 +283,7 @@ pub fn allocate_msi(device_id: u32) -> Option<
         return None;
     }
     let intid = NEXT_LPI.fetch_add(1, Ordering::Relaxed);
-    if intid < LPI_BASE {
+    if !(LPI_BASE..LPI_BASE + super::lpi::LPI_COUNT).contains(&intid) {
         return None;
     }
 

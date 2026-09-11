@@ -37,6 +37,19 @@ pub type PageTable = [pte::PageTableEntry; N_PAGE_TABLE_ENTRIES];
 /// Mask of the address bits of CR3 (the top-level page-table physical base).
 pub const CR3_ADDRESS_MASK: u64 = 0x000f_ffff_ffff_f000;
 
+/// Select the PAT index for a mapping's page type. `IA32_PAT` keeps its reset
+/// value, where index 0 is write-back, 1 is write-through, and 3 is
+/// uncacheable; write-combining (framebuffer) would need PAT entry 4
+/// programmed, so framebuffers use write-through.
+fn pat_index(page_type: crate::memory::linear::PageType) -> u8 {
+    use crate::memory::linear::PageType;
+    match page_type {
+        PageType::Framebuffer => 1,
+        _ if page_type.is_uncacheable() => 3,
+        _ => 0,
+    }
+}
+
 /// The logical [`AddressSpaceId`](crate::memory::AddressSpaceId) of the thread
 /// currently executing on each logical processor, maintained by the context
 /// switch and read by the SYSCALL entry path to attribute the caller's
@@ -294,6 +307,7 @@ impl AddressSpaceInterface for AddressSpace {
             mapping.page_type.is_writable(),
             mapping.page_type.is_user_accessible(),
             mapping.page_type.is_no_execute(),
+            pat_index(mapping.page_type),
         )?;
         Ok(())
     }
@@ -308,6 +322,7 @@ impl AddressSpaceInterface for AddressSpace {
             mapping.page_type.is_writable(),
             mapping.page_type.is_user_accessible(),
             mapping.page_type.is_no_execute(),
+            pat_index(mapping.page_type),
         )?;
         Ok(())
     }
@@ -336,6 +351,7 @@ impl AddressSpaceInterface for AddressSpace {
             mapping.page_type.is_writable(),
             mapping.page_type.is_user_accessible(),
             mapping.page_type.is_no_execute(),
+            pat_index(mapping.page_type),
         )?;
         Ok(())
     }
@@ -364,6 +380,7 @@ impl AddressSpaceInterface for AddressSpace {
             mapping.page_type.is_writable(),
             mapping.page_type.is_user_accessible(),
             mapping.page_type.is_no_execute(),
+            pat_index(mapping.page_type),
         )?;
         Ok(())
     }

@@ -53,6 +53,18 @@ pub type HwAsid = u16;
 
 const TTBR_BADDR_MASK: u64 = 0x0000_ffff_ffff_f000;
 
+/// Select the `MAIR_EL1` attribute index for a mapping's page type. MMIO and
+/// DMA must be strongly ordered and uncacheable; framebuffers use Limine's
+/// framebuffer attribute; everything else is Normal write-back.
+fn mair_index(page_type: crate::memory::linear::PageType) -> u64 {
+    use crate::memory::linear::PageType;
+    match page_type {
+        PageType::Framebuffer => descriptor::MAIR_IDX_FRAMEBUFFER,
+        _ if page_type.is_uncacheable() => descriptor::MAIR_IDX_DEVICE,
+        _ => descriptor::MAIR_IDX_NORMAL,
+    }
+}
+
 /// Hardware ASID width selected by TCR_EL1.AS: 8 bits when clear, 16 bits
 /// when set. In the 8-bit format the tag occupies TTBR bits 63:56.
 static HW_ASID_BITS: LazyLock<u8> = LazyLock::new(|| {
@@ -380,6 +392,7 @@ impl AddressSpaceInterface for AddressSpace {
             mapping.page_type.is_writable(),
             mapping.page_type.is_user_accessible(),
             mapping.page_type.is_no_execute(),
+            mair_index(mapping.page_type),
         )
     }
 
@@ -393,6 +406,7 @@ impl AddressSpaceInterface for AddressSpace {
             mapping.page_type.is_writable(),
             mapping.page_type.is_user_accessible(),
             mapping.page_type.is_no_execute(),
+            mair_index(mapping.page_type),
         )
     }
 
@@ -423,6 +437,7 @@ impl AddressSpaceInterface for AddressSpace {
             mapping.page_type.is_writable(),
             mapping.page_type.is_user_accessible(),
             mapping.page_type.is_no_execute(),
+            mair_index(mapping.page_type),
         )
     }
 
@@ -453,6 +468,7 @@ impl AddressSpaceInterface for AddressSpace {
             mapping.page_type.is_writable(),
             mapping.page_type.is_user_accessible(),
             mapping.page_type.is_no_execute(),
+            mair_index(mapping.page_type),
         )
     }
 

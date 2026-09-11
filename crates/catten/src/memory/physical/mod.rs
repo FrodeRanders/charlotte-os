@@ -66,11 +66,19 @@ pub struct PhysicalFrameAllocator {
 unsafe impl Send for PhysicalFrameAllocator {}
 
 impl PhysicalFrameAllocator {
+    fn addr_to_bitmap_index(&self, addr: PAddr) -> Result<(usize, usize), Error> {
+        let (byte_index, bit_offset) = addr_to_bitmap_index(addr)?;
+        if byte_index >= self.bitmap_len {
+            return Err(Error::InvalidPAddr);
+        }
+        Ok((byte_index, bit_offset))
+    }
+
     pub fn mark_frame_unavailable(&mut self, frame_addr: PAddr) -> Result<(), Error> {
         if !<PAddr as Into<usize>>::into(frame_addr).is_multiple_of(PAGE_FRAME_SIZE) {
             return Err(Error::MisalignedPhysicalAddress);
         }
-        let idx = addr_to_bitmap_index(frame_addr)?;
+        let idx = self.addr_to_bitmap_index(frame_addr)?;
         let byte_idx = idx.0;
         let bit_idx = idx.1;
         unsafe {
@@ -125,7 +133,8 @@ impl PhysicalFrameAllocator {
 
     #[inline]
     fn is_containing_frame_available(&self, addr: PAddr) -> Result<bool, Error> {
-        let (byte_idx, bit_idx) = addr_to_bitmap_index(addr.prev_aligned_to(PAGE_FRAME_SIZE))?;
+        let (byte_idx, bit_idx) =
+            self.addr_to_bitmap_index(addr.prev_aligned_to(PAGE_FRAME_SIZE))?;
         unsafe {
             let byte = self.bitmap_ptr.add(byte_idx).read_volatile();
             Ok(byte & (1 << bit_idx) == 0)
@@ -147,31 +156,37 @@ impl PhysicalFrameAllocator {
     ) -> Result<PAddr, Error> {
         if nframes == 0 {
             Err(Error::NoOp)
-        } else if nframes / BITS_PER_BYTE > self.bitmap_len {
+        } else if nframes > self.bitmap_len * BITS_PER_BYTE {
             Err(Error::RequestLargerThanTotalMemory)
         } else if !alignment.is_multiple_of(PAGE_FRAME_SIZE)
-            || alignment / (PAGE_FRAME_SIZE * BITS_PER_BYTE) > self.bitmap_len
+            || alignment / (PAGE_FRAME_SIZE * BITS_PER_BYTE) >= self.bitmap_len
         {
             Err(Error::InvalidPhysAlignment)
         } else {
+            let tracked_bytes = self.bitmap_len * PAGE_FRAME_SIZE * BITS_PER_BYTE;
+            let run_bytes = nframes * PAGE_FRAME_SIZE;
             let mut start_frame_base = alignment;
 
-            'outer: loop {
-                for fb in (start_frame_base..(start_frame_base + nframes * PAGE_FRAME_SIZE))
-                    .step_by(PAGE_FRAME_SIZE)
+            while start_frame_base.checked_add(run_bytes).is_some_and(|end| end <= tracked_bytes) {
+                let mut run_available = true;
+                for fb in (start_frame_base..start_frame_base + run_bytes).step_by(PAGE_FRAME_SIZE)
                 {
-                    if !self.is_containing_frame_available(PAddr::try_from(fb).unwrap())? {
-                        start_frame_base += alignment;
+                    if !self.is_containing_frame_available(PAddr::try_from(fb)?)? {
+                        run_available = false;
                         break;
-                    } else if fb == start_frame_base + (nframes - 1) * PAGE_FRAME_SIZE {
-                        // found a suitable range
-                        break 'outer;
                     }
                 }
+                if run_available {
+                    let start_addr = PAddr::try_from(start_frame_base)?;
+                    self.mark_frames_unavailable(start_addr, nframes)?;
+                    return Ok(start_addr);
+                }
+                match start_frame_base.checked_add(alignment) {
+                    Some(next) => start_frame_base = next,
+                    None => break,
+                }
             }
-            let start_addr = PAddr::try_from(start_frame_base)?;
-            self.mark_frames_unavailable(start_addr, nframes)?;
-            Ok(start_addr) // Placeholder
+            Err(Error::OutOfFrames)
         }
     }
 
@@ -179,7 +194,7 @@ impl PhysicalFrameAllocator {
         if !<PAddr as Into<usize>>::into(frame_addr).is_multiple_of(PAGE_FRAME_SIZE) {
             return Err(Error::MisalignedPhysicalAddress);
         }
-        if let Ok(idx) = addr_to_bitmap_index(frame_addr) {
+        if let Ok(idx) = self.addr_to_bitmap_index(frame_addr) {
             let byte_idx = idx.0;
             let bit_idx = idx.1;
             unsafe {

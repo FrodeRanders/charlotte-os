@@ -28,11 +28,14 @@ const GICR_PENDBASER: usize = 0x0078;
 
 // QEMU's GICR_PROPBASER / GICR_PENDBASER layouts: IDBits at bits [0:5],
 // PhysicalAddress at bits [51:12] (PROP) or [51:16] (PEND, 64 KiB aligned).
-// IDBits must keep QEMU's pending-table scan (1 << (IDBits + 1) bits) inside
-// the single allocated frame; 13 covers LPIs 8192..16383 within 4 KiB.
-const GICR_PROP_IDBITS: u64 = 13;
+// The property table is 2^(IDBits + 1) bytes, so IDBits must describe exactly
+// the single allocated frame: 11 gives 4 KiB covering 4096 LPIs.
+const GICR_PROP_IDBITS: u64 = 11;
 const GICR_PROP_PHYADDR: u64 = 0x0000_ffff_ffff_f000; // bits [51:12]
 const GICR_PEND_PHYADDR: u64 = 0x0000_ffff_ffff_0000; // bits [51:16]
+
+/// Number of LPIs covered by the property table: `2^(IDBits + 1)`.
+pub const LPI_COUNT: u32 = 1 << (GICR_PROP_IDBITS + 1);
 
 /// LPI priority (upper nibble of the config byte). Numerically lower values are
 /// higher priority; the value must sit below the `ICC_PMR_EL1` threshold
@@ -107,8 +110,10 @@ pub fn configure_lpis() {
         // before any SPI is routed.
         let ctlr = super::mmio_read32(base, GICR_CTLR);
         super::mmio_write32(base, GICR_CTLR, ctlr | GICR_CTLR_LPI_ENABLE);
-        while super::mmio_read32(base, GICR_CTLR) & super::GICR_CTLR_RWP != 0 {
-            core::hint::spin_loop();
+        if !crate::klib::spin::bounded_spin(1_000_000, || {
+            super::mmio_read32(base, GICR_CTLR) & super::GICR_CTLR_RWP == 0
+        }) {
+            crate::early_logln!("[GIC] redistributor LPI-enable handshake timed out");
         }
     }
 }
@@ -122,7 +127,10 @@ pub fn set_lpi_enabled(intid: u32, enabled: bool) {
     if !is_lpi(intid) {
         return;
     }
-    let ptr = unsafe { prop.into_hhdm_mut::<u8>().add((intid - LPI_BASE) as usize) };
+    let Some(offset) = intid.checked_sub(LPI_BASE).filter(|id| *id < LPI_COUNT) else {
+        return;
+    };
+    let ptr = unsafe { prop.into_hhdm_mut::<u8>().add(offset as usize) };
     unsafe {
         let byte = (LPI_PRIORITY << 4) | enabled as u8;
         core::ptr::write_volatile(ptr, byte);

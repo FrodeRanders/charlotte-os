@@ -199,8 +199,9 @@ impl<'vas> PthWalker<'vas> {
         writable: bool,
         user_accessible: bool,
         no_execute: bool,
+        pat_index: u8,
     ) -> WalkerResult<()> {
-        self.map_page_with_attrs(frame, writable, user_accessible, no_execute, true)
+        self.map_page_with_attrs(frame, writable, user_accessible, no_execute, pat_index, true)
     }
 
     /// Map a page that is already owned and populated (e.g. a memory-object
@@ -211,8 +212,9 @@ impl<'vas> PthWalker<'vas> {
         writable: bool,
         user_accessible: bool,
         no_execute: bool,
+        pat_index: u8,
     ) -> WalkerResult<()> {
-        self.map_page_with_attrs(frame, writable, user_accessible, no_execute, false)
+        self.map_page_with_attrs(frame, writable, user_accessible, no_execute, pat_index, false)
     }
 
     fn map_page_with_attrs(
@@ -221,6 +223,7 @@ impl<'vas> PthWalker<'vas> {
         writable: bool,
         user_accessible: bool,
         no_execute: bool,
+        pat_index: u8,
         zero: bool,
     ) -> WalkerResult<()> {
         Self::prepare_map_walk_result(self.walk())?;
@@ -299,14 +302,11 @@ impl<'vas> PthWalker<'vas> {
         }
         // Map the page frame
         unsafe {
-            Self::set_table_entry(
-                &mut (*self.pt_ptr)[self.vaddr.pt_index()],
-                frame,
-                writable,
-                user_accessible,
-                no_execute,
-                false,
-            );
+            let pte = &mut (*self.pt_ptr)[self.vaddr.pt_index()];
+            Self::set_table_entry(pte, frame, writable, user_accessible, no_execute, false);
+            // Select the cache attribute for the leaf only; PAT bits in
+            // intermediate table entries are reserved.
+            pte.set_pat_index_bits(pat_index);
             if zero {
                 // for those who may not immediately see it, this is the Rust equivalent of
                 // memset being used to clear the newly mapped page
@@ -388,6 +388,7 @@ impl<'vas> PthWalker<'vas> {
         writable: bool,
         user_accessible: bool,
         no_execute: bool,
+        pat_index: u8,
     ) -> WalkerResult<()> {
         Self::prepare_map_walk_result(self.walk_large_page())?;
         self.ensure_pml4()?;
@@ -417,14 +418,9 @@ impl<'vas> PthWalker<'vas> {
             }
             // Map the large page frame directly in the Page Directory (PML2) with the PS
             // bit set
-            Self::set_table_entry(
-                &mut (*self.pd_ptr)[self.vaddr.pd_index()],
-                frame,
-                writable,
-                user_accessible,
-                no_execute,
-                true,
-            );
+            let pde = &mut (*self.pd_ptr)[self.vaddr.pd_index()];
+            Self::set_table_entry(pde, frame, writable, user_accessible, no_execute, true);
+            pde.set_pat_index_bits_large_huge(pat_index);
         }
         Ok(())
     }
@@ -448,6 +444,7 @@ impl<'vas> PthWalker<'vas> {
         writable: bool,
         user_accessible: bool,
         no_execute: bool,
+        pat_index: u8,
     ) -> WalkerResult<()> {
         Self::prepare_map_walk_result(self.walk_huge_page())?;
         self.ensure_pml4()?;
@@ -467,14 +464,9 @@ impl<'vas> PthWalker<'vas> {
             }
             // Map the huge page frame directly in the Page Directory Pointer Table (PML3)
             // with the PS bit set
-            Self::set_table_entry(
-                &mut (*self.pdpt_ptr)[self.vaddr.pdpt_index()],
-                frame,
-                writable,
-                user_accessible,
-                no_execute,
-                true,
-            );
+            let pdpte = &mut (*self.pdpt_ptr)[self.vaddr.pdpt_index()];
+            Self::set_table_entry(pdpte, frame, writable, user_accessible, no_execute, true);
+            pdpte.set_pat_index_bits_large_huge(pat_index);
         }
         Ok(())
     }

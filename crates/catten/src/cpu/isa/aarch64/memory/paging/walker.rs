@@ -24,7 +24,6 @@ use super::{
     descriptor::{
         Descriptor,
         MAIR_IDX_DEVICE,
-        MAIR_IDX_NORMAL,
     },
     is_table_unused,
 };
@@ -240,15 +239,9 @@ impl<'vas> Walker<'vas> {
         writable: bool,
         user_accessible: bool,
         no_execute: bool,
+        mair_index: u64,
     ) -> WalkerResult<()> {
-        self.map_page_with_attrs(
-            frame,
-            writable,
-            user_accessible,
-            no_execute,
-            MAIR_IDX_NORMAL,
-            true,
-        )
+        self.map_page_with_attrs(frame, writable, user_accessible, no_execute, mair_index, true)
     }
 
     pub fn map_existing_page(
@@ -257,15 +250,9 @@ impl<'vas> Walker<'vas> {
         writable: bool,
         user_accessible: bool,
         no_execute: bool,
+        mair_index: u64,
     ) -> WalkerResult<()> {
-        self.map_page_with_attrs(
-            frame,
-            writable,
-            user_accessible,
-            no_execute,
-            MAIR_IDX_NORMAL,
-            false,
-        )
+        self.map_page_with_attrs(frame, writable, user_accessible, no_execute, mair_index, false)
     }
 
     /// Map a single 4 KiB page of strongly-ordered device memory (MMIO). Unlike
@@ -373,6 +360,7 @@ impl<'vas> Walker<'vas> {
         writable: bool,
         user_accessible: bool,
         no_execute: bool,
+        mair_index: u64,
     ) -> WalkerResult<()> {
         Self::prepare_map_walk_result(self.walk_large_page())?;
         self.ensure_root()?;
@@ -391,7 +379,7 @@ impl<'vas> Walker<'vas> {
                 writable,
                 user_accessible,
                 no_execute,
-                MAIR_IDX_NORMAL,
+                mair_index,
                 false,
             );
         }
@@ -416,6 +404,7 @@ impl<'vas> Walker<'vas> {
         writable: bool,
         user_accessible: bool,
         no_execute: bool,
+        mair_index: u64,
     ) -> WalkerResult<()> {
         Self::prepare_map_walk_result(self.walk_huge_page())?;
         self.ensure_root()?;
@@ -431,7 +420,7 @@ impl<'vas> Walker<'vas> {
                 writable,
                 user_accessible,
                 no_execute,
-                MAIR_IDX_NORMAL,
+                mair_index,
                 false,
             );
         }
