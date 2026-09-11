@@ -57,6 +57,11 @@ use crate::{
 const TLS_RECORD_BUFFER_LEN: usize = 16_640;
 const TLS_CERTIFICATE_LEN: usize = 16_384;
 
+/// Unix time used by the in-progress TLS handshake. The verifier consults the
+/// clock only while `open` runs to completion, and each service domain is
+/// single-threaded, so one handshake-scoped value is sufficient. It is stored
+/// immediately before the verifier is constructed and replaced by the next
+/// handshake.
 static TLS_UNIX_SECONDS: AtomicU64 = AtomicU64::new(0);
 
 /// Bounds used while adapting message-oriented CharlotteOS sockets to a byte
@@ -318,6 +323,21 @@ pub fn fill_entropy(
 }
 
 impl SystemRng<'_> {
+    /// Fill a handshake buffer, retrying a briefly busy entropy service
+    /// before treating the missing randomness as fatal. A handshake cannot
+    /// continue without entropy, so exhaustion remains fail-stop.
+    fn fill_or_fail(&self, destination: &mut [u8]) {
+        for attempt in 0..3 {
+            if self.try_fill(destination).is_ok() {
+                return;
+            }
+            if attempt < 2 {
+                crate::sleep_ms(1);
+            }
+        }
+        panic!("system entropy unavailable during a TLS handshake");
+    }
+
     fn try_fill(&self, destination: &mut [u8]) -> Result<(), rand_core::Error> {
         let mut offset = 0;
         while offset < destination.len() {
@@ -362,12 +382,12 @@ impl RngCore for SystemRng<'_> {
 
     fn next_u64(&mut self) -> u64 {
         let mut bytes = [0; 8];
-        self.try_fill(&mut bytes).expect("system entropy unavailable");
+        self.fill_or_fail(&mut bytes);
         u64::from_ne_bytes(bytes)
     }
 
     fn fill_bytes(&mut self, destination: &mut [u8]) {
-        self.try_fill_bytes(destination).expect("system entropy unavailable");
+        self.fill_or_fail(destination);
     }
 
     fn try_fill_bytes(&mut self, destination: &mut [u8]) -> Result<(), rand_core::Error> {
