@@ -44,6 +44,8 @@ use charlotte_launch::objstore_status as status;
 const PAGE_SIZE: usize = 4096;
 const MAX_IO_BYTES: usize = 512 * 1024;
 const METADATA_IO_BYTES: usize = 32 * 1024;
+/// Worst-case wait for the final object-store flush during shutdown.
+const SHUTDOWN_FLUSH_TIMEOUT_MS: u64 = 5_000;
 
 const SB_MAGIC: u64 = 0x3352_5453_424a_4f43; // "COBJSTR3"
 const SB_VERSION: u32 = 3;
@@ -1241,8 +1243,21 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             // from entering the store. Do not publish lifecycle readiness
             // until the complete on-disk commit chain is durable.
             drop(endpoint);
+            // Bound the shutdown flush so a dead block device cannot hang the
+            // node's shutdown indefinitely.
+            let (start_ticks, frequency_hz) = catten_syscall::monotonic_clock();
+            let frequency_hz = frequency_hz.max(1);
             while !store.dev.flush() {
-                catten_rt::logln!("[objstore] shutdown flush failed; retrying until deadline");
+                let (now_ticks, _) = catten_syscall::monotonic_clock();
+                let elapsed_ms =
+                    now_ticks.saturating_sub(start_ticks).saturating_mul(1000) / frequency_hz;
+                if elapsed_ms >= SHUTDOWN_FLUSH_TIMEOUT_MS {
+                    catten_rt::logln!(
+                        "[objstore] flush did not complete before the shutdown deadline"
+                    );
+                    break;
+                }
+                catten_rt::logln!("[objstore] shutdown flush failed; retrying");
                 sleep_ms(10);
             }
             drop(store);

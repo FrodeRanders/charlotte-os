@@ -2535,6 +2535,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         fail(0x4b05);
     }
     while !tcpip_has_ipv4(tcp_connection.as_ref()) {
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            return request;
+        }
         sleep_ms(250);
     }
     if profile.tls {

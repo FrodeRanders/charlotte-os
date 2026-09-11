@@ -59,6 +59,8 @@ use charlotte_launch::nvme_status as status;
 const ADMIN_QUEUE_SIZE: u32 = 32;
 const IO_QUEUE_SIZE: u32 = 64;
 const PAGE_SIZE: usize = 4096;
+/// Grace period before exiting despite failed controller quiescence.
+const QUIESCE_TIMEOUT_MS: u64 = 10_000;
 /// One PRP-list page holds 512 device-visible page addresses. We deliberately cap
 /// transfers at 512 data pages so a request never needs chained PRP lists.
 const MAX_TRANSFER_PAGES: usize = PAGE_SIZE / core::mem::size_of::<u64>();
@@ -899,7 +901,21 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 return request;
             }
             catten_rt::logln!("[nvme] device quiescence failed; retaining controller domain");
+            // Do not hang node shutdown forever if the controller never
+            // drains. The SMMU aborting STE installed during domain destroy
+            // still isolates the device, so exit after a bounded grace period.
+            let (start_ticks, frequency_hz) = catten_syscall::monotonic_clock();
+            let frequency_hz = frequency_hz.max(1);
             loop {
+                let (now_ticks, _) = catten_syscall::monotonic_clock();
+                let elapsed_ms =
+                    now_ticks.saturating_sub(start_ticks).saturating_mul(1000) / frequency_hz;
+                if elapsed_ms >= QUIESCE_TIMEOUT_MS {
+                    catten_rt::logln!(
+                        "[nvme] quiescence deadline expired; exiting with the controller masked"
+                    );
+                    return request;
+                }
                 sleep_ms(100);
             }
         }
