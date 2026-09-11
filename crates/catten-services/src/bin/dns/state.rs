@@ -97,6 +97,7 @@ pub(super) struct PendingQuery {
 
 pub(super) enum PendingRegistration {
     Prepare {
+        term: u64,
         log_index: u64,
         reply: u64,
         name: Vec<u8>,
@@ -104,6 +105,7 @@ pub(super) enum PendingRegistration {
         existing_local_generation: u64,
     },
     Activate {
+        term: u64,
         log_index: u64,
         reply: u64,
         name: Vec<u8>,
@@ -112,6 +114,7 @@ pub(super) enum PendingRegistration {
         local_generation: u64,
     },
     Unregister {
+        term: u64,
         log_index: u64,
         reply: u64,
         name: Vec<u8>,
@@ -120,17 +123,20 @@ pub(super) enum PendingRegistration {
         automatic_term: Option<u64>,
     },
     Deploy {
+        term: u64,
         log_index: u64,
         reply: u64,
     },
     /// Leader-local placement-controller reconciliation.
     Placement {
+        term: u64,
         log_index: u64,
         artifact: Vec<u8>,
     },
     /// Leader-side: a follower relayed a deployment after its local
     /// administration service verified the signed descriptor.
     RemoteDeploy {
+        term: u64,
         log_index: u64,
         peer: String,
         session: u64,
@@ -138,6 +144,7 @@ pub(super) enum PendingRegistration {
     },
     /// Leader-side: a follower relayed an already verified signed release.
     RemoteRelease {
+        term: u64,
         log_index: u64,
         peer: String,
         session: u64,
@@ -146,6 +153,7 @@ pub(super) enum PendingRegistration {
     /// Leader-side: a follower relayed an operational admission proof. The
     /// leader reverified it before submitting the compact command.
     RemoteOperations {
+        term: u64,
         log_index: u64,
         peer: String,
         session: u64,
@@ -154,6 +162,7 @@ pub(super) enum PendingRegistration {
     /// Leader-side: a follower relayed a signed shutdown intent. The leader
     /// reverified signature and UTC bounds before submitting it.
     RemoteShutdown {
+        term: u64,
         log_index: u64,
         peer: String,
         session: u64,
@@ -162,6 +171,7 @@ pub(super) enum PendingRegistration {
     /// Leader-side: a follower relayed a signed complete ingress policy. The
     /// leader reverified operations authority and UTC before submission.
     RemoteIngressPolicy {
+        term: u64,
         log_index: u64,
         peer: String,
         session: u64,
@@ -170,6 +180,7 @@ pub(super) enum PendingRegistration {
     /// Leader-side: the key ceremony committed the cluster public key; the
     /// reply reports the committed key generation.
     SetKey {
+        term: u64,
         log_index: u64,
         reply: u64,
     },
@@ -177,6 +188,7 @@ pub(super) enum PendingRegistration {
     /// own node; the leader committed the register half and will activate on
     /// commit.
     RemotePrepare {
+        term: u64,
         log_index: u64,
         name: Vec<u8>,
         owner: Vec<u8>,
@@ -184,6 +196,7 @@ pub(super) enum PendingRegistration {
     /// Leader-side: the activate half of a remote register has committed; the
     /// generation reply is relayed back to the hosting node.
     RemoteActivate {
+        term: u64,
         log_index: u64,
         name: Vec<u8>,
         owner: Vec<u8>,
@@ -192,11 +205,78 @@ pub(super) enum PendingRegistration {
     /// Follower-side: a register for a locally hosted service was relayed to
     /// the leader; the reply completes this entry and publishes the service.
     RemoteRegister {
+        term: u64,
         reply: u64,
         name: Vec<u8>,
         connection: u64,
         local_generation: u64,
     },
+}
+
+impl PendingRegistration {
+    /// Term under which the entry's command was submitted. A pending entry is
+    /// only valid while the node is still in this term: after a term change a
+    /// different command can occupy the same log index.
+    pub(super) fn term(&self) -> u64 {
+        match self {
+            Self::Prepare {
+                term,
+                ..
+            }
+            | Self::Activate {
+                term,
+                ..
+            }
+            | Self::Unregister {
+                term,
+                ..
+            }
+            | Self::Deploy {
+                term,
+                ..
+            }
+            | Self::Placement {
+                term,
+                ..
+            }
+            | Self::RemoteDeploy {
+                term,
+                ..
+            }
+            | Self::RemoteRelease {
+                term,
+                ..
+            }
+            | Self::RemoteOperations {
+                term,
+                ..
+            }
+            | Self::RemoteShutdown {
+                term,
+                ..
+            }
+            | Self::RemoteIngressPolicy {
+                term,
+                ..
+            }
+            | Self::SetKey {
+                term,
+                ..
+            }
+            | Self::RemotePrepare {
+                term,
+                ..
+            }
+            | Self::RemoteActivate {
+                term,
+                ..
+            }
+            | Self::RemoteRegister {
+                term,
+                ..
+            } => *term,
+        }
+    }
 }
 
 pub(super) struct LocalPublication {

@@ -212,6 +212,9 @@ fn join_request_allowed(
     (committed_members == 1 && singleton_leader) || joining_from_anchor
 }
 const REMOTE_CALL_TIMEOUT_MS: u64 = 5_000;
+/// Upper bound on deferred admissions awaiting commit. Entries beyond this
+/// bound are failed as uncertain so the queue cannot grow without limit.
+const MAX_PENDING_REGISTRATIONS: usize = 256;
 const REMOTE_OPERATIONS_TIMEOUT_MS: u64 = 60_000;
 const MAX_IN_FLIGHT_CALLS: usize = 64;
 const DEDUP_WINDOW: usize = 128;
@@ -333,6 +336,7 @@ fn register_name(
                         request,
                     );
                     pending_registers.push(PendingRegistration::RemoteRegister {
+                        term: node.current_term,
                         reply: message.reply,
                         name,
                         connection,
@@ -362,6 +366,7 @@ fn register_name(
                 let (connection, existing_local_generation) =
                     local_publication(ns_conn, message.connection, &name).unwrap_or((0, 0));
                 pending_registers.push(PendingRegistration::Prepare {
+                    term: node.current_term,
                     log_index: index,
                     reply: message.reply,
                     name,
@@ -605,6 +610,7 @@ fn reconcile_replica_placements(
         };
         if let Ok(log_index) = node.submit_command(command, node.millis()) {
             pending.push(PendingRegistration::Placement {
+                term: node.current_term,
                 log_index,
                 artifact: artifact.clone(),
             });
@@ -864,6 +870,141 @@ fn ingress_policy_command(
         return Err(clusterctl::ERR_OUTSIDE_VALIDITY);
     }
     encode_ingress_policy(envelope).ok_or(clusterctl::ERR_TOO_LARGE)
+}
+
+/// Fail one deferred admission whose command can no longer be trusted to
+/// occupy the log index it captured (term changed) or that exceeded the
+/// pending-queue bound. Callers observe an uncertain outcome and may retry
+/// idempotently.
+fn abort_pending_entry(entry: PendingRegistration, transport: &RelmsgRaftTransport) {
+    match entry {
+        PendingRegistration::Prepare {
+            reply,
+            connection,
+            ..
+        }
+        | PendingRegistration::Activate {
+            reply,
+            connection,
+            ..
+        } => {
+            if connection != 0 {
+                ipc_close(connection);
+            }
+            if reply != 0 {
+                ipc_reply(reply, dns::ERR_UNCERTAIN);
+            }
+        }
+        PendingRegistration::RemoteRegister {
+            reply,
+            connection,
+            ..
+        } => {
+            if connection != 0 {
+                ipc_close(connection);
+            }
+            if reply != 0 {
+                ipc_reply(reply, dns::ERR_UNCERTAIN);
+            }
+        }
+        PendingRegistration::Unregister {
+            reply,
+            ..
+        }
+        | PendingRegistration::Deploy {
+            reply,
+            ..
+        }
+        | PendingRegistration::SetKey {
+            reply,
+            ..
+        } => {
+            if reply != 0 {
+                ipc_reply(reply, dns::ERR_UNCERTAIN);
+            }
+        }
+        PendingRegistration::Placement {
+            ..
+        } => {}
+        PendingRegistration::RemoteDeploy {
+            peer,
+            session,
+            request_id,
+            ..
+        } => {
+            transport.send_message(
+                &peer,
+                catten_services::rdeploy::TAG_REPLY,
+                catten_services::rdeploy::encode_reply(session, request_id, dns::ERR_UNCERTAIN),
+            );
+        }
+        PendingRegistration::RemoteRelease {
+            peer,
+            session,
+            request_id,
+            ..
+        } => {
+            transport.send_message(
+                &peer,
+                catten_services::rrelease::TAG_REPLY,
+                catten_services::rrelease::encode_reply(session, request_id, dns::ERR_UNCERTAIN),
+            );
+        }
+        PendingRegistration::RemoteOperations {
+            peer,
+            session,
+            request_id,
+            ..
+        } => {
+            transport.send_message(
+                &peer,
+                catten_services::roperations::TAG_REPLY,
+                catten_services::roperations::encode_reply(session, request_id, dns::ERR_UNCERTAIN),
+            );
+        }
+        PendingRegistration::RemoteShutdown {
+            peer,
+            session,
+            request_id,
+            ..
+        } => {
+            transport.send_message(
+                &peer,
+                catten_services::rshutdown::TAG_REPLY,
+                catten_services::rshutdown::encode_reply(session, request_id, dns::ERR_UNCERTAIN),
+            );
+        }
+        PendingRegistration::RemoteIngressPolicy {
+            peer,
+            session,
+            request_id,
+            ..
+        } => {
+            transport.send_message(
+                &peer,
+                catten_services::ringress_policy::TAG_REPLY,
+                catten_services::ringress_policy::encode_reply(
+                    session,
+                    request_id,
+                    dns::ERR_UNCERTAIN,
+                ),
+            );
+        }
+        PendingRegistration::RemotePrepare {
+            name,
+            owner,
+            ..
+        }
+        | PendingRegistration::RemoteActivate {
+            name,
+            owner,
+            ..
+        } => {
+            let reply = catten_services::rregister::encode_reply(&owner, &name, 0);
+            let owner = alloc::string::String::from_utf8_lossy(&owner);
+            transport.send_message(&owner, catten_services::rregister::TAG_REPLY, reply);
+        }
+    }
 }
 
 fn serve(ctx: &Context) -> ShutdownRequest {
@@ -1594,7 +1735,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                         node.millis(),
                                     )
                                 {
-                                    pending_registers.push(PendingRegistration::Unregister {
+                                    pending_registers.push(PendingRegistration::Unregister { term: node.current_term,
                                         log_index,
                                         reply: 0,
                                         name,
@@ -1634,7 +1775,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                         )
                                     }, node.millis())
                                 {
-                                    pending_registers.push(PendingRegistration::RemotePrepare {
+                                    pending_registers.push(PendingRegistration::RemotePrepare { term: node.current_term,
                                         log_index,
                                         name,
                                         owner,
@@ -1731,8 +1872,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             node.millis(),
                                         ) {
                                             Ok(log_index) => {
-                                                pending_registers.push(
-                                                    PendingRegistration::RemoteDeploy {
+                                                pending_registers.push(PendingRegistration::RemoteDeploy { term: node.current_term,
                                                         log_index,
                                                         peer: source_peer.clone(),
                                                         session: request.session,
@@ -1807,8 +1947,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                 .submit_command(command, node.millis())
                                             {
                                                 Ok(log_index) => {
-                                                    pending_registers.push(
-                                                        PendingRegistration::RemoteRelease {
+                                                    pending_registers.push(PendingRegistration::RemoteRelease { term: node.current_term,
                                                             log_index,
                                                             peer: source_peer.clone(),
                                                             session: request.session,
@@ -1887,8 +2026,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                 .submit_command(command, node.millis())
                                             {
                                                 Ok(log_index) => {
-                                                    pending_registers.push(
-                                                        PendingRegistration::RemoteOperations {
+                                                    pending_registers.push(PendingRegistration::RemoteOperations { term: node.current_term,
                                                             log_index,
                                                             peer: source_peer.clone(),
                                                             session: request.session,
@@ -1963,8 +2101,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                 .submit_command(command, node.millis())
                                             {
                                                 Ok(log_index) => {
-                                                    pending_registers.push(
-                                                        PendingRegistration::RemoteShutdown {
+                                                    pending_registers.push(PendingRegistration::RemoteShutdown { term: node.current_term,
                                                             log_index,
                                                             peer: source_peer.clone(),
                                                             session: request.session,
@@ -2038,8 +2175,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                 .submit_command(command, node.millis())
                                             {
                                                 Ok(log_index) => {
-                                                    pending_registers.push(
-                                                        PendingRegistration::RemoteIngressPolicy {
+                                                    pending_registers.push(PendingRegistration::RemoteIngressPolicy { term: node.current_term,
                                                             log_index,
                                                             peer: source_peer.clone(),
                                                             session: request.session,
@@ -2251,6 +2387,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 {
                     membership_events_submitted.insert(name.clone());
                     pending_registers.push(PendingRegistration::Prepare {
+                        term: node.current_term,
                         log_index,
                         reply: 0,
                         name,
@@ -2373,6 +2510,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                         request,
                                     );
                                     pending_registers.push(PendingRegistration::RemoteRegister {
+                                        term: node.current_term,
                                         reply: message.reply,
                                         name,
                                         connection: 0,
@@ -2388,6 +2526,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             {
                                 Ok(index) => {
                                     pending_registers.push(PendingRegistration::Prepare {
+                                        term: node.current_term,
                                         log_index: index,
                                         reply: message.reply,
                                         name,
@@ -2464,6 +2603,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         ) {
                             Ok(log_index) => {
                                 pending_registers.push(PendingRegistration::Unregister {
+                                    term: node.current_term,
                                     log_index,
                                     reply: message.reply,
                                     name,
@@ -2512,6 +2652,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 ) {
                                     Ok(log_index) => {
                                         pending_registers.push(PendingRegistration::Deploy {
+                                            term: node.current_term,
                                             log_index,
                                             reply: message.reply,
                                         });
@@ -2548,6 +2689,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             ) {
                                 Ok(log_index) => {
                                     pending_registers.push(PendingRegistration::Deploy {
+                                        term: node.current_term,
                                         log_index,
                                         reply: message.reply,
                                     });
@@ -2622,6 +2764,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 Ok(command) => match node.submit_command(command, node.millis()) {
                                     Ok(log_index) => {
                                         pending_registers.push(PendingRegistration::Deploy {
+                                            term: node.current_term,
                                             log_index,
                                             reply: message.reply,
                                         });
@@ -2702,6 +2845,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 Ok(command) => match node.submit_command(command, node.millis()) {
                                     Ok(log_index) => {
                                         pending_registers.push(PendingRegistration::Deploy {
+                                            term: node.current_term,
                                             log_index,
                                             reply: message.reply,
                                         });
@@ -2779,6 +2923,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 Ok(command) => match node.submit_command(command, node.millis()) {
                                     Ok(log_index) => {
                                         pending_registers.push(PendingRegistration::Deploy {
+                                            term: node.current_term,
                                             log_index,
                                             reply: message.reply,
                                         });
@@ -2868,6 +3013,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 Ok(command) => match node.submit_command(command, node.millis()) {
                                     Ok(log_index) => {
                                         pending_registers.push(PendingRegistration::Deploy {
+                                            term: node.current_term,
                                             log_index,
                                             reply: message.reply,
                                         });
@@ -3104,6 +3250,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 {
                                     Ok(log_index) => {
                                         pending_registers.push(PendingRegistration::SetKey {
+                                            term: node.current_term,
                                             log_index,
                                             reply: message.reply,
                                         });
@@ -3525,14 +3672,17 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // --- Complete deferred registers once committed ---
         let mut index = 0;
         while index < pending_registers.len() {
-            if matches!(
-                &pending_registers[index],
-                PendingRegistration::Unregister {
-                    automatic_term: Some(term),
-                    ..
-                } if *term != node.current_term
-            ) {
-                pending_registers.swap_remove(index);
+            // A pending entry is only valid while this node remains in the
+            // term that submitted its command. After a term change the same
+            // log index can hold a different command, so fail the stale entry
+            // instead of completing it against the wrong result. Remote
+            // registers wait on a remote reply rather than a local index and
+            // are bounded by the queue cap below.
+            if !matches!(&pending_registers[index], PendingRegistration::RemoteRegister { .. })
+                && pending_registers[index].term() != node.current_term
+            {
+                let entry = pending_registers.swap_remove(index);
+                abort_pending_entry(entry, &transport);
                 continue;
             }
             let log_index = match &pending_registers[index] {
@@ -3771,6 +3921,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             node.submit_command(encode_activate(&name, generation), node.millis())
                     {
                         pending_registers.push(PendingRegistration::RemoteActivate {
+                            term: node.current_term,
                             log_index: activate_index,
                             name,
                             owner,
@@ -3857,6 +4008,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     match node.submit_command(encode_activate(&name, generation), node.millis()) {
                         Ok(activate_index) => {
                             pending_registers.push(PendingRegistration::Activate {
+                                term: node.current_term,
                                 log_index: activate_index,
                                 reply,
                                 name,
@@ -3971,6 +4123,14 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
         }
 
+        if pending_registers.len() > MAX_PENDING_REGISTRATIONS {
+            let excess = pending_registers.len() - MAX_PENDING_REGISTRATIONS;
+            for _ in 0..excess {
+                let entry = pending_registers.remove(0);
+                abort_pending_entry(entry, &transport);
+            }
+        }
+
         drain_local_unregistrations(&mut pending_local_unregistrations);
 
         let mut publication_index = 0;
@@ -4056,6 +4216,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     {
                         config::write_u32_release(dns::status::PUBLICATION_LIFECYCLE, 3);
                         pending_registers.push(PendingRegistration::Unregister {
+                            term: node.current_term,
                             log_index,
                             reply: 0,
                             name: publication.name.clone(),
