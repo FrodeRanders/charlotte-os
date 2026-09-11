@@ -51,7 +51,9 @@ separate administrator and service-manager roles, default-deny exact-match
 rules, versioned policy replacement, service-generation fencing, rights
 attenuation, and subject-bound single-use decisions. Every collection and
 service identifier has an explicit configured bound and fails closed at
-capacity.
+capacity. Domain bindings are the one exception: at capacity the oldest
+occupancy is retired, because any live domain is re-provisioned from its next
+kernel-authenticated envelope before it is authorized.
 
 The local `ns` service now hosts this engine. `OP_REGISTER_AUTHORIZED` requires
 the kernel-authenticated service-manager role, `OP_SET_POLICY` requires the

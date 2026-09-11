@@ -410,7 +410,17 @@ impl PolicyStore {
         }
         let replaces_asid = self.identities.keys().any(|known| known.asid == identity.asid);
         if !replaces_asid && self.identities.len() >= self.limits.identities {
-            return Err(AuthorizationError::IdentityCapacity);
+            // Retire the oldest generation instead of permanently denying
+            // every new domain once the table fills. An evicted live domain is
+            // re-provisioned from its next kernel-authenticated envelope
+            // before any authorization decision, so eviction cannot confer
+            // stale authority; it only briefly denies the evicted identity.
+            let oldest =
+                self.identities.keys().min_by_key(|known| (known.generation, known.asid)).copied();
+            let Some(oldest) = oldest else {
+                return Err(AuthorizationError::IdentityCapacity);
+            };
+            self.identities.remove(&oldest);
         }
         self.identities.retain(|known, _| known.asid != identity.asid);
         self.identities.insert(

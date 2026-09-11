@@ -189,7 +189,7 @@ fn generation_fenced_unpublish_preserves_a_replacement() {
 }
 
 #[test]
-fn configured_capacity_limits_fail_closed_without_losing_replacements() {
+fn configured_capacity_retires_oldest_identity_without_losing_replacements() {
     let limits = PolicyLimits {
         identities: 1,
         policies: 1,
@@ -207,10 +207,15 @@ fn configured_capacity_limits_fail_closed_without_losing_replacements() {
         )
         .unwrap();
 
-    assert_eq!(
-        store.provision_identity_from_supervisor(identity(2, 1), principal(20), Roles::NONE),
-        Err(AuthorizationError::IdentityCapacity)
-    );
+    // A new address-space occupancy at capacity retires the oldest generation
+    // instead of denying every future domain; a same-ASID replacement then
+    // retires the survivor.
+    let newcomer = identity(2, 1);
+    let newcomer_principal = principal(20);
+    store.provision_identity_from_supervisor(newcomer, newcomer_principal, Roles::NONE).unwrap();
+    assert_eq!(store.principal_for(admin), None);
+    assert_eq!(store.principal_for(newcomer), Some(newcomer_principal));
+
     let replacement = identity(1, 2);
     let replacement_principal = principal(30);
     store
@@ -220,7 +225,7 @@ fn configured_capacity_limits_fail_closed_without_losing_replacements() {
             Roles::POLICY_ADMIN | Roles::SERVICE_MANAGER,
         )
         .unwrap();
-    assert_eq!(store.principal_for(admin), None);
+    assert_eq!(store.principal_for(newcomer), None);
     assert_eq!(store.principal_for(replacement), Some(replacement_principal));
     assert_eq!(
         store.publish_service(replacement, b"longer", Rights::CALL),
