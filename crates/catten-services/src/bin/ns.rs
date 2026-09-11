@@ -611,7 +611,7 @@ fn register(
             ),
         }
     }
-    generation as i64
+    generation
 }
 
 fn lookup_or_defer(
