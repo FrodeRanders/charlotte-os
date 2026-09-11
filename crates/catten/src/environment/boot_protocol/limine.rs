@@ -13,6 +13,11 @@ use limine::{
         TscFrequencyRequest,
     },
 };
+#[cfg(target_arch = "x86_64")]
+use limine::{
+    paging::PagingMode,
+    request::PagingModeRequest,
+};
 
 use crate::memory::allocators::memory::PageSize;
 
@@ -72,6 +77,17 @@ pub static STACK_SIZE: StackSizeRequest =
 #[used]
 #[unsafe(link_section = ".limine_requests")]
 pub static TSC_FREQUENCY_REQUEST: TscFrequencyRequest = TscFrequencyRequest::new();
+
+/// The kernel implements only 4-level x86_64 paging. Pin the boot mode so a
+/// bootloader never hands over 5-level tables the walkers cannot interpret.
+#[cfg(target_arch = "x86_64")]
+#[used]
+#[unsafe(link_section = ".limine_requests")]
+pub static PAGING_MODE_REQUEST: PagingModeRequest = PagingModeRequest::new(
+    PagingMode::X86_64_4LVL,
+    PagingMode::X86_64_4LVL,
+    PagingMode::X86_64_4LVL,
+);
 
 #[used]
 #[unsafe(link_section = ".limine_requests_end")]

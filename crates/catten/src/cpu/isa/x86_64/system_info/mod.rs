@@ -107,16 +107,19 @@ impl CpuInfoIfce for CpuInfo {
         // active 4-level regime, causing a #GP on first dereference.
         //
         // The active mode is determined by CR4.LA57 (bit 12): set => 5-level
-        // (57-bit), clear => 4-level (48-bit).
+        // (57-bit), clear => 4-level (48-bit). Every page-table walker in this
+        // kernel implements the 4-level layout, and the Limine paging-mode
+        // request pins 4-level, so an active 5-level mode is a fatal
+        // configuration error rather than something to report.
         let cr4: u64;
         unsafe {
             core::arch::asm!("mov {}, cr4", out(reg) cr4, options(nomem, nostack, preserves_flags));
         }
-        if cr4 & (1 << 12) != 0 {
-            57
-        } else {
-            48
-        }
+        assert!(
+            cr4 & (1 << 12) == 0,
+            "x86_64 5-level paging is active but the kernel only implements 4-level paging"
+        );
+        48
     }
 
     fn is_extension_supported(extension: Self::IsaExtension) -> bool {
