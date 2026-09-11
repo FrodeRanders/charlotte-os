@@ -19,7 +19,6 @@ pub trait LogStore {
     fn append(&self, entries: Vec<LogEntry>);
     fn truncate_from(&self, index: u64);
     fn entries_from(&self, index: u64) -> Vec<LogEntry>;
-    fn compact_up_to(&self, index: u64);
     fn snapshot_data(&self) -> Vec<u8>;
     fn install_snapshot(
         &self,
@@ -165,23 +164,6 @@ impl LogStore for InMemoryLogStore {
         };
         let entries = self.entries.lock();
         entries[offset..].to_vec()
-    }
-
-    fn compact_up_to(&self, index: u64) {
-        let base = *self.snapshot_idx.lock();
-        if index <= base {
-            return;
-        }
-        let offset = (index - base) as usize;
-        let mut entries = self.entries.lock();
-        let compacted_term = if offset > 0 && offset <= entries.len() {
-            entries[offset - 1].term
-        } else {
-            return;
-        };
-        entries.drain(0..offset);
-        *self.snapshot_idx.lock() = index;
-        *self.snapshot_term_val.lock() = compacted_term;
     }
 
     fn snapshot_data(&self) -> Vec<u8> {

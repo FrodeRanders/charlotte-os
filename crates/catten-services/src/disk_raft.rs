@@ -35,8 +35,21 @@ use catten_graft::{
 use catten_syscall::*;
 use spin::Mutex;
 
-const REPLY_SPINS: u64 = u64::MAX;
-const BUFFER_VADDR: usize = 0x0000_0000_2000_0000;
+use crate::objstore_client::{
+    connect as objstore_connect,
+    create_at as obj_create_at,
+    flush as obj_flush,
+    read as obj_read,
+    write as obj_write,
+};
+
+/// Durability failure is fail-stop: continuing with an unpersisted term,
+/// vote, or log could violate election or log safety. Log and terminate the
+/// calling service thread instead of unwinding through consensus state.
+fn persist_fail_stop(what: &str) -> ! {
+    catten_rt::logln!("[raft-store] FATAL: failed to persist {}", what);
+    unsafe { thread_exit() }
+}
 
 #[derive(Clone, Copy)]
 struct ObjectIds {
@@ -58,129 +71,6 @@ impl ObjectIds {
             log: base + 3,
         }
     }
-}
-
-fn objstore_connect(ns_conn: u64, wait_for_service: bool) -> Option<u64> {
-    let opcode = if wait_for_service {
-        crate::ns::OP_LOOKUP
-    } else {
-        crate::ns::OP_TRY_LOOKUP
-    };
-    let lookup = ipc_scalar_call_connection(
-        ns_conn,
-        opcode,
-        crate::objstore::NAME,
-        0,
-        IpcRights::SEND | IpcRights::CALL,
-    );
-    if lookup == 0 {
-        return None;
-    }
-    let (generation, conn) = unsafe { crate::wait_reply(lookup, REPLY_SPINS) };
-    if generation < 1 || conn == 0 {
-        return None;
-    }
-    Some(conn)
-}
-
-fn obj_create_at(obj_conn: u64, object_id: u64) -> bool {
-    let call = ipc_scalar_call(obj_conn, charlotte_protocol_objstore::OP_CREATE_AT, object_id);
-    if call == 0 {
-        return false;
-    }
-    let (result, _) = unsafe { crate::wait_reply(call, REPLY_SPINS) };
-    result == charlotte_protocol_objstore::ERR_OK
-        || result == charlotte_protocol_objstore::ERR_EXISTS
-}
-
-fn obj_write(obj_conn: u64, object_id: u64, data: &[u8]) -> bool {
-    let size_mem = memory_alloc(1);
-    if size_mem == 0 || memory_map(size_mem, BUFFER_VADDR, true) != 0 {
-        if size_mem != 0 {
-            memory_close(size_mem);
-        }
-        return false;
-    }
-    unsafe {
-        (BUFFER_VADDR as *mut u64).write_unaligned(data.len() as u64);
-    }
-    memory_unmap(size_mem);
-    let size_call =
-        ipc_scalar_call_borrow_read(obj_conn, crate::objstore::OP_SET_SIZE, object_id, size_mem);
-    if size_call == 0 {
-        memory_close(size_mem);
-        return false;
-    }
-    let (size_result, _) = unsafe { crate::wait_reply(size_call, REPLY_SPINS) };
-    memory_close(size_mem);
-    if size_result != 0 {
-        return false;
-    }
-
-    let pages = data.len().max(1).div_ceil(4096);
-    let mem = memory_alloc(pages);
-    if mem == 0 {
-        return false;
-    }
-    if memory_map(mem, BUFFER_VADDR, true) != 0 {
-        memory_close(mem);
-        return false;
-    }
-    unsafe {
-        core::ptr::copy_nonoverlapping(data.as_ptr(), BUFFER_VADDR as *mut u8, data.len());
-    }
-    memory_unmap(mem);
-    let call = ipc_scalar_call_move(obj_conn, crate::objstore::OP_WRITE, object_id, mem);
-    if call == 0 {
-        return false;
-    }
-    let (result, _) = unsafe { crate::wait_reply(call, REPLY_SPINS) };
-    result == 0
-}
-
-fn obj_read(obj_conn: u64, object_id: u64) -> Option<Vec<u8>> {
-    let call = ipc_scalar_call(obj_conn, crate::objstore::OP_READ, object_id);
-    if call == 0 {
-        return None;
-    }
-    let (status, result, returned_connection, memory) = ipc_reply_wait_with_memory(call);
-    ipc_close(call);
-    if returned_connection != 0 {
-        ipc_close(returned_connection);
-    }
-    if status != 0 || memory == 0 {
-        if memory != 0 {
-            memory_close(memory);
-        }
-        return None;
-    }
-    if memory_map(memory, BUFFER_VADDR, false) != 0 {
-        memory_close(memory);
-        return None;
-    }
-    let size = result as usize;
-    let mut buf = alloc::vec![0u8; size];
-    unsafe {
-        core::ptr::copy_nonoverlapping(BUFFER_VADDR as *const u8, buf.as_mut_ptr(), size);
-    }
-    memory_unmap(memory);
-    memory_close(memory);
-    Some(buf)
-}
-
-fn obj_flush(obj_conn: u64) -> bool {
-    let call = ipc_scalar_call_connection(
-        obj_conn,
-        crate::objstore::OP_FLUSH,
-        0,
-        0,
-        IpcRights::SEND | IpcRights::CALL,
-    );
-    if call == 0 {
-        return false;
-    }
-    let (result, _) = unsafe { crate::wait_reply(call, REPLY_SPINS) };
-    result == 0
 }
 
 fn serialize_entry(entry: &LogEntry) -> Vec<u8> {
@@ -296,12 +186,11 @@ impl DiskPersistentStateStore {
         if !obj_create_at(obj_conn, object_id) {
             return None;
         }
-        let (current_term, voted_for, join_admission) =
-            if let Some(buf) = obj_read(obj_conn, object_id) {
-                deserialize_persistent_state(&buf)?
-            } else {
-                (0, None, None)
-            };
+        let state = obj_read(obj_conn, object_id).ok()?;
+        let (current_term, voted_for, join_admission) = match state {
+            Some(buf) => deserialize_persistent_state(&buf)?,
+            None => (0, None, None),
+        };
         Some(Self {
             obj_conn,
             object_id,
@@ -337,10 +226,9 @@ impl DiskPersistentStateStore {
         if anchor_len > 0 {
             data[admission_offset + 12..].copy_from_slice(&anchor_bytes[..anchor_len as usize]);
         }
-        assert!(
-            obj_write(self.obj_conn, self.object_id, &data) && obj_flush(self.obj_conn),
-            "failed to persist Raft term/vote/admission state"
-        );
+        if !(obj_write(self.obj_conn, self.object_id, &data) && obj_flush(self.obj_conn)) {
+            persist_fail_stop("Raft term/vote/admission state");
+        }
     }
 }
 
@@ -445,7 +333,8 @@ impl DiskLogStore {
             return None;
         }
 
-        let legacy_snapshot = if let Some(buf) = obj_read(obj_conn, objects.snapshot_meta) {
+        let legacy_meta = obj_read(obj_conn, objects.snapshot_meta).ok()?;
+        let legacy_snapshot = if let Some(buf) = legacy_meta {
             if buf.len() < 16 {
                 (0, 0)
             } else {
@@ -458,8 +347,8 @@ impl DiskLogStore {
             (0, 0)
         };
 
-        let legacy_data = obj_read(obj_conn, objects.snapshot_data).unwrap_or_default();
-        let log_bytes = obj_read(obj_conn, objects.log).unwrap_or_default();
+        let legacy_data = obj_read(obj_conn, objects.snapshot_data).ok()?.unwrap_or_default();
+        let log_bytes = obj_read(obj_conn, objects.log).ok()?.unwrap_or_default();
         let (snapshot_idx, snapshot_term, snapshot_data, entries) =
             if let Some(state) = deserialize_log_state(&log_bytes) {
                 state
@@ -493,10 +382,9 @@ impl DiskLogStore {
         let snapshot_term = *self.snapshot_term.lock();
         let snapshot_data = self.snapshot_data.lock().clone();
         let data = serialize_log_state(snapshot_idx, snapshot_term, &snapshot_data, &entries);
-        assert!(
-            obj_write(self.obj_conn, self.objects.log, &data) && obj_flush(self.obj_conn),
-            "failed to persist Raft log state"
-        );
+        if !(obj_write(self.obj_conn, self.objects.log, &data) && obj_flush(self.obj_conn)) {
+            persist_fail_stop("Raft log state");
+        }
     }
 }
 
@@ -596,23 +484,6 @@ impl LogStore for DiskLogStore {
             (index - base - 1) as usize
         };
         entries[offset..].to_vec()
-    }
-
-    fn compact_up_to(&self, index: u64) {
-        let base = *self.snapshot_idx.lock();
-        if index <= base {
-            return;
-        }
-        let offset = (index - base) as usize;
-        let mut entries = self.entries.lock();
-        if offset == 0 || offset > entries.len() {
-            return;
-        }
-        let compacted_term = entries[offset - 1].term;
-        entries.drain(0..offset);
-        *self.snapshot_idx.lock() = index;
-        *self.snapshot_term.lock() = compacted_term;
-        self.persist_log_state();
     }
 
     fn snapshot_data(&self) -> Vec<u8> {

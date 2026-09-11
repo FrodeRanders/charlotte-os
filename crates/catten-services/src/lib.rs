@@ -31,6 +31,8 @@ pub mod tls_client;
 /// Disk-backed Raft persistent state and log store on top of the object store.
 pub mod disk_raft;
 
+mod objstore_client;
+
 /// Persistent, cluster-scoped node identity (`{mnemonic}:{token}`).
 pub mod node_identity;
 

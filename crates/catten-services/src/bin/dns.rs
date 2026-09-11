@@ -1024,7 +1024,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         cluster_configuration: ClusterConfiguration::stable(vec![me]),
         transport: transport.clone(),
         current_millis: 0,
-        snapshot_min_entries: 0,
+        // Bound the durable log with periodic local snapshots. The catalog
+        // state machine snapshots the complete committed catalog, so the
+        // threshold trades log memory and boot replay time against snapshot
+        // serialization frequency.
+        snapshot_min_entries: 1024,
         snapshot_chunk_bytes: 1200,
     });
     config::write_u32_release(dns::status::STAGE, 8);

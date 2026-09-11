@@ -25,10 +25,13 @@ use alloc::{
     vec::Vec,
 };
 
-use catten_syscall::*;
-
-const REPLY_SPINS: u64 = u64::MAX;
-const BUFFER_VADDR: usize = 0x0000_0000_2000_0000;
+use crate::objstore_client::{
+    connect as objstore_connect,
+    create_at as obj_create_at,
+    flush as obj_flush,
+    read as obj_read,
+    write as obj_write,
+};
 const IDENTITY_MAGIC: u64 = 0x4e4f_4445_4944_524f; // "NODEIDRO"
 /// Stable high-range object id for the identity blob (out of the low range
 /// the object store hands out monotonically).
@@ -54,10 +57,11 @@ impl NodeIdentity {
         if mnemonic.is_empty() {
             return None;
         }
-        let obj_conn = objstore_connect(ns_conn)?;
+        let obj_conn = objstore_connect(ns_conn, true)?;
         let namespace = fnv1a(mnemonic);
         let object = stable_object_id(namespace);
-        if let Some(bytes) = obj_read(obj_conn, object)
+        let existing = obj_read(obj_conn, object).ok()?;
+        if let Some(bytes) = existing
             && let Some(identity) = decode(&bytes)
         {
             return Some(identity);
@@ -162,123 +166,4 @@ pub fn key_from_name(name: &[u8]) -> Option<u64> {
     })
 }
 
-fn objstore_connect(ns_conn: u64) -> Option<u64> {
-    // The identity lives on NVMe, so wait for the object store to register
-    // (deferred lookup) rather than failing on first boot.
-    let lookup = ipc_scalar_call_connection(
-        ns_conn,
-        crate::ns::OP_LOOKUP,
-        crate::objstore::NAME,
-        0,
-        IpcRights::SEND | IpcRights::CALL,
-    );
-    if lookup == 0 {
-        return None;
-    }
-    let (generation, conn) = unsafe { crate::wait_reply(lookup, u64::MAX) };
-    if generation < 1 || conn == 0 {
-        None
-    } else {
-        Some(conn)
-    }
-}
-
-fn obj_create_at(obj_conn: u64, object_id: u64) -> bool {
-    let call = ipc_scalar_call(obj_conn, charlotte_protocol_objstore::OP_CREATE_AT, object_id);
-    if call == 0 {
-        return false;
-    }
-    let (result, _) = unsafe { crate::wait_reply(call, REPLY_SPINS) };
-    result == charlotte_protocol_objstore::ERR_OK
-        || result == charlotte_protocol_objstore::ERR_EXISTS
-}
-
-fn obj_write(obj_conn: u64, object_id: u64, data: &[u8]) -> bool {
-    let size_mem = memory_alloc(1);
-    if size_mem == 0 || memory_map(size_mem, BUFFER_VADDR, true) != 0 {
-        if size_mem != 0 {
-            memory_close(size_mem);
-        }
-        return false;
-    }
-    unsafe {
-        (BUFFER_VADDR as *mut u64).write_unaligned(data.len() as u64);
-    }
-    memory_unmap(size_mem);
-    let size_call =
-        ipc_scalar_call_borrow_read(obj_conn, crate::objstore::OP_SET_SIZE, object_id, size_mem);
-    if size_call == 0 {
-        memory_close(size_mem);
-        return false;
-    }
-    let (size_result, _) = unsafe { crate::wait_reply(size_call, REPLY_SPINS) };
-    memory_close(size_mem);
-    if size_result != 0 {
-        return false;
-    }
-
-    let pages = data.len().max(1).div_ceil(4096);
-    let mem = memory_alloc(pages);
-    if mem == 0 {
-        return false;
-    }
-    if memory_map(mem, BUFFER_VADDR, true) != 0 {
-        memory_close(mem);
-        return false;
-    }
-    unsafe {
-        core::ptr::copy_nonoverlapping(data.as_ptr(), BUFFER_VADDR as *mut u8, data.len());
-    }
-    memory_unmap(mem);
-    let call = ipc_scalar_call_move(obj_conn, crate::objstore::OP_WRITE, object_id, mem);
-    if call == 0 {
-        return false;
-    }
-    let (result, _) = unsafe { crate::wait_reply(call, REPLY_SPINS) };
-    result == 0
-}
-
-fn obj_read(obj_conn: u64, object_id: u64) -> Option<Vec<u8>> {
-    let call = ipc_scalar_call(obj_conn, crate::objstore::OP_READ, object_id);
-    if call == 0 {
-        return None;
-    }
-    let (status, result, returned_connection, memory) = ipc_reply_wait_with_memory(call);
-    ipc_close(call);
-    if returned_connection != 0 {
-        ipc_close(returned_connection);
-    }
-    if status != 0 || memory == 0 {
-        if memory != 0 {
-            memory_close(memory);
-        }
-        return None;
-    }
-    if memory_map(memory, BUFFER_VADDR, false) != 0 {
-        memory_close(memory);
-        return None;
-    }
-    let size = result as usize;
-    let mut buf = vec![0u8; size];
-    unsafe {
-        core::ptr::copy_nonoverlapping(BUFFER_VADDR as *const u8, buf.as_mut_ptr(), size);
-    }
-    memory_unmap(memory);
-    memory_close(memory);
-    Some(buf)
-}
-
-fn obj_flush(obj_conn: u64) -> bool {
-    let call = ipc_scalar_call_connection(
-        obj_conn,
-        crate::objstore::OP_FLUSH,
-        0,
-        0,
-        IpcRights::SEND | IpcRights::CALL,
-    );
-    if call == 0 {
-        return false;
-    }
-    let (result, _) = unsafe { crate::wait_reply(call, REPLY_SPINS) };
-    result == 0
-}
+// Object-store helpers live in `crate::objstore_client`.
