@@ -353,10 +353,11 @@ extern "C" fn verify_el0_shutdown() {
     logln!("[shutdown] device domain required quiescence acknowledgement before reclamation");
 
     let production_deadline = monotonic_millis().saturating_add(10_000);
-    // Most high-level platform services do not yet have cooperative cleanup.
-    // Keep their isolated-test grace short enough to reach real device
-    // quiescence before unrelated background verifiers complete.
-    begin_node_shutdown(production_deadline, 100)
+    // The platform services poll the lifecycle page from idle waits that can
+    // be as long as their retransmission cadence (200 ms for the reliable
+    // message layer), so the cooperative grace must exceed that; a shorter
+    // grace forces services that are merely between polls.
+    begin_node_shutdown(production_deadline, 1_000)
         .expect("production node shutdown did not acquire the steady-state service set");
     let production_wait = crate::self_test::results::Deadline::after_millis(10_000);
     let expected_devices = loop {
