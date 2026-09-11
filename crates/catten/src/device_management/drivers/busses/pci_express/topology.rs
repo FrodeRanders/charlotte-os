@@ -19,7 +19,13 @@ use crate::{
         MAX_PCIE_BRIDGE_DEPTH,
         device_class::PciIdentifier,
         ecam,
-        ecam::pcie::PcieCfgSpace,
+        ecam::{
+            headers::{
+                CfgBridgeHeader,
+                CfgEndpointHeader,
+            },
+            pcie::PcieCfgSpace,
+        },
     },
     logln,
     memory::{
@@ -263,10 +269,10 @@ impl PcieDevice {
             )
             .get_ecam_offset();
 
-        let cfg_space = unsafe { &*cfg_space_vaddr.into_ptr::<PcieCfgSpace>() };
-        if !cfg_space.has_device_present() {
+        let cfg_space = cfg_space_vaddr.into_ptr::<PcieCfgSpace>();
+        if !unsafe { PcieCfgSpace::has_device_present(cfg_space) } {
             PcieDevice::Empty
-        } else if cfg_space.device_is_multifunction() {
+        } else if unsafe { PcieCfgSpace::device_is_multifunction(cfg_space) } {
             PcieDevice::MultiFunc(PcieMultiFuncDevice::new(
                 ecam_vaddr,
                 segment_group_num,
@@ -397,10 +403,10 @@ impl PcieFunction {
                 function_num,
             )
             .get_ecam_offset();
-        let cfg_space = unsafe { &*(cfg_space_vaddr.into_ptr::<PcieCfgSpace>()) };
-        if !cfg_space.has_device_present() {
+        let cfg_space = cfg_space_vaddr.into_ptr::<PcieCfgSpace>();
+        if !unsafe { PcieCfgSpace::has_device_present(cfg_space) } {
             PcieFunction::Empty
-        } else if cfg_space.device_is_bridge() {
+        } else if unsafe { PcieCfgSpace::device_is_bridge(cfg_space) } {
             if depth >= MAX_PCIE_BRIDGE_DEPTH {
                 logln!(
                     "[drivers::busses::pci_express] Bridge nesting limit reached at bus {} device \
@@ -411,7 +417,7 @@ impl PcieFunction {
                 return PcieFunction::Empty;
             }
             let secondary_bus_segment_number =
-                unsafe { cfg_space.header.bridge.get_secondary_bus_num() };
+                unsafe { CfgBridgeHeader::secondary_bus_num_at(cfg_space.cast()) };
             PcieFunction::Bridge(PcieBusSegment::new_boxed(
                 ecam_vaddr,
                 segment_group_num,
@@ -459,7 +465,7 @@ impl PcieEndpoint {
             )
             .get_ecam_offset();
         let cfg_space = cfg_space_vaddr.into_ptr::<PcieCfgSpace>();
-        let identifier = unsafe { (*cfg_space).header.common.get_identifier() };
+        let identifier = unsafe { PcieCfgSpace::identifier(cfg_space) };
 
         PcieEndpoint {
             number: function_num,
@@ -660,13 +666,14 @@ pub fn lookup_first_virtio_net(
                 let requester_id =
                     ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
                 let cfg = ep.cfg_ptr.lock();
-                let header = unsafe { &(*cfg.as_ptr()).header.endpoint };
+                let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
                 // QEMU places all modern virtio regions in BAR 4. Verify the
                 // vendor capability instead of mistaking the transitional
                 // legacy I/O BAR for a DMA-isolatable transport.
                 let cfg_bytes = cfg.as_ptr().cast::<u8>();
-                let mut capability =
-                    header.get_capabilities_offset().map(|offset| offset as usize).unwrap_or(0);
+                let mut capability = unsafe { CfgEndpointHeader::capabilities_offset_at(header) }
+                    .map(|offset| offset as usize)
+                    .unwrap_or(0);
                 let mut modern_bar = None;
                 for _ in 0..48 {
                     if capability < 0x40 || capability + 16 > 0x100 {
@@ -710,7 +717,7 @@ pub fn lookup_first_virtio_net(
                 if bar_index >= 6 {
                     continue;
                 }
-                let bar = header.bar(bar_index) as u64;
+                let bar = unsafe { CfgEndpointHeader::bar_at(header, bar_index) } as u64;
                 if bar & 1 != 0 {
                     continue;
                 }
@@ -718,11 +725,14 @@ pub fn lookup_first_virtio_net(
                     if bar_index + 1 >= 6 {
                         continue;
                     }
-                    (bar & 0xffff_fff0) | ((header.bar(bar_index + 1) as u64 & 0xffff_ffff) << 32)
+                    (bar & 0xffff_fff0)
+                        | ((unsafe { CfgEndpointHeader::bar_at(header, bar_index + 1) } as u64
+                            & 0xffff_ffff)
+                            << 32)
                 } else {
                     bar & 0xffff_fff0
                 };
-                let legacy_irq = header.interrupt_line() as u32;
+                let legacy_irq = unsafe { CfgEndpointHeader::interrupt_line_at(header) } as u32;
                 if phys_base != 0 {
                     if crate::device::msi_available()
                         && let Some(message) = crate::device::allocate_msi(requester_id)
@@ -787,21 +797,22 @@ pub fn lookup_first_e1000e(topology: &PcieTopology) -> Option<(u64, usize, u32, 
                 let requester_id =
                     ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
                 let cfg = ep.cfg_ptr.lock();
-                let header = unsafe { &(*cfg.as_ptr()).header.endpoint };
-                let bar0 = header.bar(0) as u64;
+                let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
+                let bar0 = unsafe { CfgEndpointHeader::bar_at(header, 0) } as u64;
                 logln!(
                     "[e1000e] found Intel 82574L at {:02x}:{:02x}.{} (BAR0={:#x}, IRQ line={})",
                     bus.number,
                     device,
                     function,
                     bar0,
-                    header.interrupt_line()
+                    unsafe { CfgEndpointHeader::interrupt_line_at(header) }
                 );
                 if bar0 & 1 != 0 {
                     continue;
                 }
                 let phys_base = if bar0 & 0x4 != 0 {
-                    (bar0 & 0xffff_fff0) | ((header.bar(1) as u64) << 32)
+                    (bar0 & 0xffff_fff0)
+                        | ((unsafe { CfgEndpointHeader::bar_at(header, 1) } as u64) << 32)
                 } else {
                     bar0 & 0xffff_fff0
                 };
@@ -809,7 +820,7 @@ pub fn lookup_first_e1000e(topology: &PcieTopology) -> Option<(u64, usize, u32, 
                     continue;
                 }
 
-                let legacy_irq = header.interrupt_line() as u32;
+                let legacy_irq = unsafe { CfgEndpointHeader::interrupt_line_at(header) } as u32;
                 if crate::device::msi_available()
                     && let Some(message) = crate::device::allocate_msi(requester_id)
                     && crate::device_management::drivers::busses::pci_express::ecam::capabilities::standard::msix::program_vector0(
@@ -885,15 +896,15 @@ pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u32, u32, Opti
                 }
                 let cfg = ep.cfg_ptr.lock();
                 let (phys_base, legacy_irq) = {
-                    let header = unsafe { &(*cfg.as_ptr()).header.endpoint };
-                    let bar0 = header.bar(0) as u64;
+                    let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
+                    let bar0 = unsafe { CfgEndpointHeader::bar_at(header, 0) } as u64;
                     let bar0_phys = if bar0 & 0x4 != 0 {
-                        let bar1 = header.bar(1) as u64;
+                        let bar1 = unsafe { CfgEndpointHeader::bar_at(header, 1) } as u64;
                         (bar0 & 0xffff_fff0) | ((bar1 & 0xffff_ffff) << 32)
                     } else {
                         bar0 & 0xffff_fff0
                     };
-                    (bar0_phys, header.interrupt_line() as u32)
+                    (bar0_phys, unsafe { CfgEndpointHeader::interrupt_line_at(header) } as u32)
                 };
                 if phys_base != 0 {
                     // Only program MSI-X when the kernel's MSI mechanism (the
@@ -967,9 +978,9 @@ pub fn lookup_first_ahci(topology: &PcieTopology) -> Option<(u64, u32, u32, Opti
                         continue;
                     }
                     let cfg = ep.cfg_ptr.lock();
-                    let header = unsafe { &(*cfg.as_ptr()).header.endpoint };
+                    let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
                     // The HBA register block (ABAR) is memory BAR 5.
-                    let bar5 = header.bar(5) as u64;
+                    let bar5 = unsafe { CfgEndpointHeader::bar_at(header, 5) } as u64;
                     if bar5 & 0x4 != 0 {
                         // A 64-bit BAR cannot start in the last BAR slot:
                         // there is no BAR6 to hold its upper half. Treat the
@@ -978,7 +989,7 @@ pub fn lookup_first_ahci(topology: &PcieTopology) -> Option<(u64, u32, u32, Opti
                         continue;
                     }
                     let abar = bar5 & 0xffff_fff0;
-                    let legacy_irq = header.interrupt_line() as u32;
+                    let legacy_irq = unsafe { CfgEndpointHeader::interrupt_line_at(header) } as u32;
                     if abar != 0 {
                         return Some((abar, legacy_irq, requester_id, None));
                     }
@@ -1029,12 +1040,14 @@ pub fn lookup_first_virtio_blk(topology: &PcieTopology) -> Option<(u64, u32, u32
                     let requester_id =
                         ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
                     let cfg = ep.cfg_ptr.lock();
-                    let header = unsafe { &(*cfg.as_ptr()).header.endpoint };
+                    let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
                     // Locate the modern transport BAR via the common-config
                     // vendor capability (type 1).
                     let cfg_bytes = cfg.as_ptr().cast::<u8>();
                     let mut capability =
-                        header.get_capabilities_offset().map(|offset| offset as usize).unwrap_or(0);
+                        unsafe { CfgEndpointHeader::capabilities_offset_at(header) }
+                            .map(|offset| offset as usize)
+                            .unwrap_or(0);
                     let mut modern_bar = None;
                     for _ in 0..48 {
                         if capability < 0x40 || capability + 16 > 0x100 {
@@ -1065,7 +1078,7 @@ pub fn lookup_first_virtio_blk(topology: &PcieTopology) -> Option<(u64, u32, u32
                     if bar_index >= 6 {
                         continue;
                     }
-                    let bar = header.bar(bar_index) as u64;
+                    let bar = unsafe { CfgEndpointHeader::bar_at(header, bar_index) } as u64;
                     if bar & 1 != 0 {
                         continue;
                     }
@@ -1074,11 +1087,13 @@ pub fn lookup_first_virtio_blk(topology: &PcieTopology) -> Option<(u64, u32, u32
                             continue;
                         }
                         (bar & 0xffff_fff0)
-                            | ((header.bar(bar_index + 1) as u64 & 0xffff_ffff) << 32)
+                            | ((unsafe { CfgEndpointHeader::bar_at(header, bar_index + 1) } as u64
+                                & 0xffff_ffff)
+                                << 32)
                     } else {
                         bar & 0xffff_fff0
                     };
-                    let legacy_irq = header.interrupt_line() as u32;
+                    let legacy_irq = unsafe { CfgEndpointHeader::interrupt_line_at(header) } as u32;
                     if phys_base != 0 {
                         return Some((phys_base, legacy_irq, requester_id, None));
                     }
@@ -1129,10 +1144,12 @@ pub fn lookup_first_virtio_rng(topology: &PcieTopology) -> Option<(u64, u32, u32
                     let requester_id =
                         ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
                     let cfg = endpoint.cfg_ptr.lock();
-                    let header = unsafe { &(*cfg.as_ptr()).header.endpoint };
+                    let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
                     let cfg_bytes = cfg.as_ptr().cast::<u8>();
                     let mut capability =
-                        header.get_capabilities_offset().map(|offset| offset as usize).unwrap_or(0);
+                        unsafe { CfgEndpointHeader::capabilities_offset_at(header) }
+                            .map(|offset| offset as usize)
+                            .unwrap_or(0);
                     let mut modern_bar = None;
                     for _ in 0..48 {
                         if capability < 0x40 || capability + 16 > 0x100 {
@@ -1163,7 +1180,7 @@ pub fn lookup_first_virtio_rng(topology: &PcieTopology) -> Option<(u64, u32, u32
                     if bar_index >= 6 {
                         continue;
                     }
-                    let bar = header.bar(bar_index) as u64;
+                    let bar = unsafe { CfgEndpointHeader::bar_at(header, bar_index) } as u64;
                     if bar & 1 != 0 {
                         continue;
                     }
@@ -1172,14 +1189,16 @@ pub fn lookup_first_virtio_rng(topology: &PcieTopology) -> Option<(u64, u32, u32
                             continue;
                         }
                         (bar & 0xffff_fff0)
-                            | ((header.bar(bar_index + 1) as u64 & 0xffff_ffff) << 32)
+                            | ((unsafe { CfgEndpointHeader::bar_at(header, bar_index + 1) } as u64
+                                & 0xffff_ffff)
+                                << 32)
                     } else {
                         bar & 0xffff_fff0
                     };
                     if physical != 0 {
                         return Some((
                             physical,
-                            header.interrupt_line() as u32,
+                            unsafe { CfgEndpointHeader::interrupt_line_at(header) } as u32,
                             requester_id,
                             None,
                         ));

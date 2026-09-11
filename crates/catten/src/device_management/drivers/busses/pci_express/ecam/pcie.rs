@@ -1,5 +1,11 @@
 #![allow(dead_code)]
-use crate::device_management::drivers::busses::pci_express::ecam::headers;
+use crate::device_management::drivers::busses::pci_express::{
+    device_class::PciIdentifier,
+    ecam::{
+        headers,
+        headers::CfgCommonHeader,
+    },
+};
 
 /// The size of the configuration space for legacy PCI and PCI-X local bus devices as may be used
 /// via PCIe to PCI/PCI-X bridges.
@@ -37,15 +43,15 @@ pub struct PcieCfgSpace {
 
 impl PcieCfgSpace {
     /// Determines if there is device present at the device slot corresponding to this configuration
-    /// space.
-    pub fn has_device_present(&self) -> bool {
-        unsafe { self.header.common.is_device_present() }
+    /// space. Reads are volatile; see [`CfgCommonHeader`].
+    pub unsafe fn has_device_present(cfg: *const Self) -> bool {
+        unsafe { CfgCommonHeader::is_device_present_at(cfg.cast()) }
     }
 
     /// Determines if the device corresponding to this configuration space is a PCI(e) to PCI(e)
     /// bridge.
-    pub fn device_is_bridge(&self) -> bool {
-        unsafe { self.header.common.is_bridge() }
+    pub unsafe fn device_is_bridge(cfg: *const Self) -> bool {
+        unsafe { CfgCommonHeader::is_bridge_at(cfg.cast()) }
     }
 
     /// Determines if the device corresponding to this configuration space is a multifunction device
@@ -53,7 +59,19 @@ impl PcieCfgSpace {
     /// header type field of the endpoint header for function 0 of the device slot. If there is no
     /// device present at function 0, then this function will accurately return false, as there
     /// cannot be multiple functions without a device present in the first place.
-    pub fn device_is_multifunction(&self) -> bool {
-        unsafe { self.header.common.is_multi_function() }
+    pub unsafe fn device_is_multifunction(cfg: *const Self) -> bool {
+        unsafe { CfgCommonHeader::is_multi_function_at(cfg.cast()) }
+    }
+
+    pub unsafe fn identifier(cfg: *const Self) -> PciIdentifier {
+        unsafe { CfgCommonHeader::identifier_at(cfg.cast()) }
+    }
+
+    pub unsafe fn capabilities_supported(cfg: *const Self) -> bool {
+        unsafe { CfgCommonHeader::capabilities_supported_at(cfg.cast()) }
+    }
+
+    pub unsafe fn capabilities_offset(cfg: *const Self) -> Option<u8> {
+        unsafe { CfgCommonHeader::capabilities_offset_at(cfg.cast()) }
     }
 }

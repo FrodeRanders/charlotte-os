@@ -42,22 +42,11 @@ struct PciCapabilityIter {
 impl PciCapabilityIter {
     fn try_new(cfg_space: *const PcieCfgSpace) -> Result<Self, Error> {
         // Bail early if capabilities are not supported
-        if core::hint::unlikely(!unsafe { (*cfg_space).header.common.are_capabilities_supported() })
-        {
+        if core::hint::unlikely(!unsafe { PcieCfgSpace::capabilities_supported(cfg_space) }) {
             return Err(Error::PciCapabilitiesNotSupported);
         }
 
-        let mut starting_offset = 0;
-        if core::hint::unlikely(unsafe { (*cfg_space).header.common.is_bridge() }) {
-            if let Some(offset) = unsafe { (*cfg_space).header.bridge.get_capabilities_offset() } {
-                starting_offset = offset;
-            }
-        } else {
-            if let Some(offset) = unsafe { (*cfg_space).header.endpoint.get_capabilities_offset() }
-            {
-                starting_offset = offset;
-            }
-        }
+        let starting_offset = unsafe { PcieCfgSpace::capabilities_offset(cfg_space) }.unwrap_or(0);
         Ok(Self {
             cfg_space,
             current_offset: starting_offset,
@@ -78,17 +67,19 @@ impl PciCapabilityIter {
 }
 
 impl Iterator for PciCapabilityIter {
-    type Item = &'static PciCapabilityHeader;
+    type Item = *const PciCapabilityHeader;
 
-    fn next(&mut self) -> Option<&'static PciCapabilityHeader> {
+    fn next(&mut self) -> Option<*const PciCapabilityHeader> {
         let curr_hdr = unsafe { self.cfg_space.byte_add(self.current_offset as usize) }
             as *const PciCapabilityHeader;
         if curr_hdr.is_null() || self.seen_offsets.contains(&self.current_offset) {
             None
         } else {
             self.seen_offsets.push(self.current_offset);
-            self.current_offset = unsafe { (*curr_hdr).next };
-            Some(unsafe { &*curr_hdr })
+            let base = curr_hdr.cast::<u8>();
+            // `id` and `next` are the first two bytes of the capability header.
+            self.current_offset = unsafe { core::ptr::read_volatile(base.add(1)) };
+            Some(curr_hdr)
         }
     }
 }
@@ -99,7 +90,7 @@ pub fn find_capability(
 ) -> Result<*const PciCapabilityHeader, Error> {
     let iter = PciCapabilityIter::try_new(cfg_space)?;
     for cap in iter {
-        if cap.id == id {
+        if unsafe { core::ptr::read_volatile(cap.cast::<u8>()) } == id as u8 {
             return Ok(cap);
         }
     }

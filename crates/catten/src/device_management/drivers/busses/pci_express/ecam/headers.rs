@@ -7,6 +7,29 @@ use crate::device_management::drivers::busses::pci_express::{
     ecam::capabilities::standard::PciCapabilityOffset,
 };
 
+/// Volatile little-endian byte reads from an MMIO configuration-space overlay.
+///
+/// The `repr(C, packed)` overlays are only a layout description: fields must
+/// not be read through ordinary struct field accesses, which the compiler may
+/// cache, merge, or reorder against a device's changing registers. Reading
+/// byte at a time also avoids unaligned typed loads.
+pub(crate) unsafe fn read_u8(base: *const u8, offset: usize) -> u8 {
+    unsafe { core::ptr::read_volatile(base.add(offset)) }
+}
+
+pub(crate) unsafe fn read_u16(base: *const u8, offset: usize) -> u16 {
+    u16::from_le_bytes([unsafe { read_u8(base, offset) }, unsafe { read_u8(base, offset + 1) }])
+}
+
+pub(crate) unsafe fn read_u32(base: *const u8, offset: usize) -> u32 {
+    u32::from_le_bytes([
+        unsafe { read_u8(base, offset) },
+        unsafe { read_u8(base, offset + 1) },
+        unsafe { read_u8(base, offset + 2) },
+        unsafe { read_u8(base, offset + 3) },
+    ])
+}
+
 #[repr(C, packed)]
 /// The Common portion of the PCIe configuration space header; shared by both endpoint and bridge
 /// devices
@@ -31,33 +54,42 @@ impl CfgCommonHeader {
     const HEADER_TYPE_SINGLE_FUNC_MASK: u8 = 0b1 << 7;
     const VENDOR_ID_NOT_PRESENT: u16 = 0xffff;
 
-    pub fn is_device_present(&self) -> bool {
-        self.vendor_id != Self::VENDOR_ID_NOT_PRESENT
+    pub unsafe fn is_device_present_at(cfg: *const Self) -> bool {
+        unsafe { read_u16(cfg.cast(), 0x00) != Self::VENDOR_ID_NOT_PRESENT }
     }
 
-    pub fn is_bridge(&self) -> bool {
-        self.header_type & Self::HEADER_TYPE_MASK == 0b1
+    pub unsafe fn is_bridge_at(cfg: *const Self) -> bool {
+        unsafe { read_u8(cfg.cast(), 0x0e) & Self::HEADER_TYPE_MASK == 0b1 }
     }
 
-    pub fn is_multi_function(&self) -> bool {
-        self.header_type & Self::HEADER_TYPE_SINGLE_FUNC_MASK != 0
+    pub unsafe fn is_multi_function_at(cfg: *const Self) -> bool {
+        unsafe { read_u8(cfg.cast(), 0x0e) & Self::HEADER_TYPE_SINGLE_FUNC_MASK != 0 }
     }
 
-    pub fn get_identifier(&self) -> PciIdentifier {
+    pub unsafe fn identifier_at(cfg: *const Self) -> PciIdentifier {
         PciIdentifier {
-            vendor_id: self.vendor_id,
-            device_id: self.device_id,
-            class_code: self.class_code,
-            subclass: self.subclass,
-            prog_if: self.prog_if,
+            vendor_id: unsafe { read_u16(cfg.cast(), 0x00) },
+            device_id: unsafe { read_u16(cfg.cast(), 0x02) },
+            class_code: unsafe { read_u8(cfg.cast(), 0x0b) },
+            subclass: unsafe { read_u8(cfg.cast(), 0x0a) },
+            prog_if: unsafe { read_u8(cfg.cast(), 0x09) },
         }
     }
 
     /// Determines if the PCI(-X/e) device supports capabilities.
-    pub fn are_capabilities_supported(&self) -> bool {
+    pub unsafe fn capabilities_supported_at(cfg: *const Self) -> bool {
         const CAPABILITIES_SUPPORT_STATUS_BIT: u16 = 1 << 4;
 
-        self.status & CAPABILITIES_SUPPORT_STATUS_BIT != 0
+        unsafe { read_u16(cfg.cast(), 0x06) & CAPABILITIES_SUPPORT_STATUS_BIT != 0 }
+    }
+
+    /// The capabilities pointer, if the status register advertises a list.
+    pub unsafe fn capabilities_offset_at(cfg: *const Self) -> Option<PciCapabilityOffset> {
+        if unsafe { Self::capabilities_supported_at(cfg) } {
+            Some(unsafe { read_u8(cfg.cast(), 0x34) })
+        } else {
+            None
+        }
     }
 }
 
@@ -91,8 +123,8 @@ pub struct CfgBridgeHeader {
 
 #[allow(dead_code)]
 impl CfgBridgeHeader {
-    pub fn get_secondary_bus_num(&self) -> u8 {
-        self.secondary_bus_num
+    pub unsafe fn secondary_bus_num_at(cfg: *const Self) -> u8 {
+        unsafe { read_u8(cfg.cast(), 0x19) }
     }
 
     pub fn is_secondary_bus_pcie(&self) -> bool {
@@ -102,12 +134,8 @@ impl CfgBridgeHeader {
         )
     }
 
-    pub fn get_capabilities_offset(&self) -> Option<PciCapabilityOffset> {
-        if self.common.are_capabilities_supported() {
-            Some(self.capabilities_offset)
-        } else {
-            None
-        }
+    pub unsafe fn capabilities_offset_at(cfg: *const Self) -> Option<PciCapabilityOffset> {
+        unsafe { CfgCommonHeader::capabilities_offset_at(cfg.cast()) }
     }
 }
 
@@ -130,29 +158,24 @@ pub struct CfgEndpointHeader {
 }
 
 impl CfgEndpointHeader {
-    pub fn get_capabilities_offset(&self) -> Option<PciCapabilityOffset> {
-        if self.common.are_capabilities_supported() {
-            Some(self.capabilities_offset)
-        } else {
-            None
-        }
+    pub unsafe fn capabilities_offset_at(cfg: *const Self) -> Option<PciCapabilityOffset> {
+        unsafe { CfgCommonHeader::capabilities_offset_at(cfg.cast()) }
     }
 
     /// Read one 32-bit BAR. Out-of-range indices return 0 instead of
     /// panicking, since the index may be derived from firmware-supplied
-    /// descriptors. The header is `repr(C, packed)`, so the load is
-    /// unaligned.
-    pub fn bar(&self, index: usize) -> u32 {
+    /// descriptors. The BARs live at 0x10 and are read one byte at a time so
+    /// the access is volatile and alignment-safe.
+    pub unsafe fn bar_at(cfg: *const Self, index: usize) -> u32 {
         const BAR_COUNT: usize = 6;
         if index >= BAR_COUNT {
             return 0;
         }
-        let base: *const u32 = core::ptr::addr_of!(self.bars).cast();
-        unsafe { base.add(index).read_unaligned() }
+        unsafe { read_u32(cfg.cast(), 0x10 + index * 4) }
     }
 
-    pub fn interrupt_line(&self) -> u8 {
-        self.interrupt_line
+    pub unsafe fn interrupt_line_at(cfg: *const Self) -> u8 {
+        unsafe { read_u8(cfg.cast(), 0x3c) }
     }
 }
 

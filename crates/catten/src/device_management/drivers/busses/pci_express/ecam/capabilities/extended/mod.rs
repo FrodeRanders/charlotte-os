@@ -4,9 +4,12 @@ pub mod rsbar;
 
 use super::*;
 use crate::{
-    device_management::drivers::busses::pci_express::ecam::capabilities::standard::{
-        PciCapabilityId,
-        find_capability,
+    device_management::drivers::busses::pci_express::ecam::{
+        capabilities::standard::{
+            PciCapabilityId,
+            find_capability,
+        },
+        headers::read_u16,
     },
     klib::bitwise::mask_shift_read,
 };
@@ -110,7 +113,8 @@ impl Iterator for PcieExtCapIter {
         } else {
             self.seen_offsets.push(self.current_offset);
             let current = self.current();
-            self.current_offset = unsafe { (*current).next_ver };
+            // `next_ver` is the second 16-bit field of the extended header.
+            self.current_offset = PcieExtCapVerOffset::new(unsafe { read_u16(current.cast(), 2) });
             Some(current)
         }
     }
@@ -123,11 +127,9 @@ pub fn find_extended_capabilities(
     if let Ok(iter) = PcieExtCapIter::try_new(cfg_space) {
         let mut matches = Vec::new();
         for cap in iter {
-            unsafe {
-                let ext_cap_id = cap.read_unaligned().id;
-                if ext_cap_id == req_id {
-                    matches.push(cap);
-                }
+            let ext_cap_id = unsafe { read_u16(cap.cast(), 0) };
+            if ext_cap_id == req_id as u16 {
+                matches.push(cap);
             }
         }
         matches
