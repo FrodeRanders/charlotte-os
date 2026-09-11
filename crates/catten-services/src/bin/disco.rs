@@ -666,6 +666,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // OP_FRAME ingress from the frouter.
         loop {
             let message = ipc_recv(ep);
+            let _attachments =
+                catten_services::RequestAttachments::new(message.memory, message.connection);
             if message.status == ipc_status::ENDPOINT_CLOSED {
                 unsafe { thread_exit() };
             }

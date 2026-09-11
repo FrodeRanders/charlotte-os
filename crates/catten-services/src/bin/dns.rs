@@ -374,7 +374,12 @@ fn register_name(
                 });
                 None
             }
-            Err(code) => Some(code),
+            Err(code) => {
+                if message.connection != 0 {
+                    ipc_close(message.connection);
+                }
+                Some(code)
+            }
         }
     }
 }
@@ -621,6 +626,8 @@ fn reconcile_replica_placements(
 fn drain_raft_admin(endpoint: u64, node: &mut RaftNode) {
     loop {
         let message = ipc_recv(endpoint);
+        let _attachments =
+            catten_services::RequestAttachments::new(message.memory, message.connection);
         if message.status == ipc_status::NO_MESSAGE {
             break;
         }
@@ -2483,6 +2490,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // --- Local endpoint ops (register / lookup / status) ---
         loop {
             let message = ipc_recv(endpoint);
+            let _attachments = catten_services::RequestAttachments::memory_only(message.memory);
             if message.status == ipc_status::NO_MESSAGE {
                 break;
             }
@@ -2494,6 +2502,16 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
             served += 1;
             config::write_u32_release(dns::status::IPC_REQUESTS_SERVED, served);
+            // Only the register opcodes may retain the attached connection for
+            // a deferred reply; every other opcode must release it here.
+            if message.connection != 0
+                && !matches!(
+                    message.opcode,
+                    dns::OP_REGISTER | dns::OP_REGISTER_NAMED | dns::OP_REGISTER_DEPLOYMENT_NAMED
+                )
+            {
+                ipc_close(message.connection);
+            }
             match message.opcode {
                 dns::OP_REGISTER => {
                     if message.memory != 0 {
@@ -2516,8 +2534,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 dns::OP_REGISTER_NAMED => {
-                    if let Some(name) = read_named_bytes(&message)
-                        && let Some(result) = register_name(
+                    if let Some(name) = read_named_bytes(&message) {
+                        if let Some(result) = register_name(
                             &mut node,
                             ns_conn,
                             &transport,
@@ -2526,17 +2544,20 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             &message,
                             name,
                             0,
-                        )
-                        && message.reply != 0
-                    {
-                        ipc_reply(message.reply, result);
+                        ) && message.reply != 0
+                        {
+                            ipc_reply(message.reply, result);
+                        }
+                    } else if message.connection != 0 {
+                        ipc_close(message.connection);
                     }
                 }
 
                 dns::OP_REGISTER_DEPLOYMENT_NAMED => {
                     if let Some((name, deployment_generation)) =
                         read_deployment_registration(&message)
-                        && let Some(result) = register_name(
+                    {
+                        if let Some(result) = register_name(
                             &mut node,
                             ns_conn,
                             &transport,
@@ -2545,10 +2566,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             &message,
                             name,
                             deployment_generation,
-                        )
-                        && message.reply != 0
-                    {
-                        ipc_reply(message.reply, result);
+                        ) && message.reply != 0
+                        {
+                            ipc_reply(message.reply, result);
+                        }
+                    } else if message.connection != 0 {
+                        ipc_close(message.connection);
                     }
                 }
 

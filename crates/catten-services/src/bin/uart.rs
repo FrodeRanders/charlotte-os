@@ -183,6 +183,8 @@ fn main(ctx: Context) -> ! {
         // Drain every ready console request.
         loop {
             let message = ipc_recv(endpoint);
+            let _attachments =
+                catten_services::RequestAttachments::new(message.memory, message.connection);
             if message.status == ipc_status::NO_MESSAGE {
                 break;
             }

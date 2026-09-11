@@ -566,6 +566,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
         config::write::<u32>(status::STAGE, 6);
         let message = ipc_recv(ep);
+        let _attachments =
+            catten_services::RequestAttachments::new(message.memory, message.connection);
         config::write::<u32>(status::STAGE, 7);
         if message.status == ipc_status::NO_MESSAGE {
             let (_, timed_out) = cq_wait_timeout(1, relmsg::RETRANSMIT_MS, 0);

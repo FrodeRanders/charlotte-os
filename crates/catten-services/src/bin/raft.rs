@@ -1131,6 +1131,15 @@ fn main(ctx: Context) -> ! {
                     }
                 }
             }
+
+            // Request attachments are borrowed, not retained: close whatever
+            // this request left open so a client cannot pin capabilities.
+            if message.memory != 0 {
+                memory_close(message.memory);
+            }
+            if message.connection != 0 {
+                ipc_close(message.connection);
+            }
         }
 
         if tick_due {

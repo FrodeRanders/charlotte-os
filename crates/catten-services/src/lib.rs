@@ -2786,3 +2786,50 @@ pub mod ringress_policy {
         ))
     }
 }
+
+/// Closes request-scoped IPC attachments when dropped.
+///
+/// Raw service loops have many exit paths (`continue`, bad-opcode replies,
+/// early returns); a guard releases the attachments on all of them. Capability
+/// ids are monotonic, so closing an attachment an arm already consumed is a
+/// harmless no-op. Services that deliberately retain an attachment must not
+/// use this.
+#[must_use]
+pub struct RequestAttachments {
+    memory: u64,
+    connection: u64,
+}
+
+impl RequestAttachments {
+    pub fn new(memory: u64, connection: u64) -> Self {
+        Self {
+            memory,
+            connection,
+        }
+    }
+
+    pub fn memory_only(memory: u64) -> Self {
+        Self {
+            memory,
+            connection: 0,
+        }
+    }
+
+    pub fn connection_only(connection: u64) -> Self {
+        Self {
+            memory: 0,
+            connection,
+        }
+    }
+}
+
+impl Drop for RequestAttachments {
+    fn drop(&mut self) {
+        if self.memory != 0 {
+            catten_syscall::memory_close(self.memory);
+        }
+        if self.connection != 0 {
+            catten_syscall::ipc_close(self.connection);
+        }
+    }
+}

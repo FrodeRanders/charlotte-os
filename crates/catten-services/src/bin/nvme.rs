@@ -936,6 +936,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
         loop {
             let message = ipc_recv(endpoint);
+            let _attachments =
+                catten_services::RequestAttachments::connection_only(message.connection);
             if message.status == ipc_status::NO_MESSAGE {
                 break;
             }
