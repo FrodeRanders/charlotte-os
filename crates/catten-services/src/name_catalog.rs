@@ -55,6 +55,14 @@ const CMD_SHUTDOWN: u8 = 0x09;
 const CMD_RELEASE_REPLICAS: u8 = 0x0a;
 const CMD_REASSIGN: u8 = 0x0b;
 const CMD_INGRESS_POLICY: u8 = 0x0c;
+
+/// Bounds on the replicated record collections. Tombstones are monotonic by
+/// design, so a cap applies only to new keys; replacing an existing entry
+/// always succeeds.
+const MAX_DEPLOYMENTS: usize = 4_096;
+const MAX_RELEASES: usize = 4_096;
+const MAX_OPERATIONAL_BINDINGS: usize = 8_192;
+const MAX_SHUTDOWN_INTENTS: usize = 4_096;
 const CATALOG_MAGIC_V1: u64 = 0x4341_5441_4c4f_474d; // "CATALOGM"
 const CATALOG_MAGIC_V2: u64 = 0x4341_5441_4c4f_4732; // "CATALOG2"
 const CATALOG_MAGIC_V3: u64 = 0x4341_5441_4c4f_4733; // "CATALOG3"
@@ -749,6 +757,9 @@ impl NameCatalog {
                 let Some(generation) = generation else {
                     return 0u64.to_le_bytes().to_vec();
                 };
+                if !deployments.contains_key(artifact) && deployments.len() >= MAX_DEPLOYMENTS {
+                    return crate::clusterctl::ERR_CAPACITY.to_le_bytes().to_vec();
+                }
                 deployments.insert(
                     artifact.to_vec(),
                     DeploymentEntry {
@@ -1142,6 +1153,27 @@ impl NameCatalog {
                     }
                 }
 
+                // Bound each replicated collection. Replacements of existing
+                // keys always succeed; only admitting new keys can exceed a
+                // cap.
+                let new_deployments = planned_deployments
+                    .iter()
+                    .filter(|(artifact, _)| !deployments.contains_key(artifact.as_slice()))
+                    .count();
+                if deployments.len() + new_deployments > MAX_DEPLOYMENTS {
+                    return crate::clusterctl::ERR_CAPACITY.to_le_bytes().to_vec();
+                }
+                let new_bindings = planned_operations
+                    .iter()
+                    .filter(|(profile, _)| !operational_bindings.contains_key(profile.as_slice()))
+                    .count();
+                if operational_bindings.len() + new_bindings > MAX_OPERATIONAL_BINDINGS {
+                    return crate::clusterctl::ERR_CAPACITY.to_le_bytes().to_vec();
+                }
+                if !releases.contains_key(envelope.release_name) && releases.len() >= MAX_RELEASES {
+                    return crate::clusterctl::ERR_CAPACITY.to_le_bytes().to_vec();
+                }
+
                 let changed_artifacts = planned_deployments
                     .iter()
                     .filter(|(artifact, entry)| {
@@ -1243,6 +1275,11 @@ impl NameCatalog {
                 let Some(generation) = generation else {
                     return Vec::new();
                 };
+                if !intents.contains_key(&fields.target_node)
+                    && intents.len() >= MAX_SHUTDOWN_INTENTS
+                {
+                    return crate::clusterctl::ERR_CAPACITY.to_le_bytes().to_vec();
+                }
                 intents.insert(
                     fields.target_node,
                     ShutdownIntentEntry {
@@ -3082,6 +3119,36 @@ mod tests {
         let replacement = encode_deploy(b"orders", 17, 0x89ab_cdef, &[0x5a; 32], b"descriptor");
         let next = catalog.apply_with_result(3, &replacement);
         assert_eq!(u64::from_le_bytes(next.try_into().unwrap()), 2);
+    }
+
+    #[test]
+    fn deployment_capacity_rejects_new_keys_and_allows_replacements() {
+        let catalog = NameCatalog::new();
+        {
+            let mut deployments = catalog.deployments.lock();
+            for index in 0..MAX_DEPLOYMENTS {
+                deployments.insert(
+                    alloc::format!("fill-{index}").into_bytes(),
+                    DeploymentEntry {
+                        object_id: index as u64,
+                        node_key: 0,
+                        replica_nodes: Vec::new(),
+                        generation: 1,
+                        artifact_digest: [0; 32],
+                        descriptor: Vec::new(),
+                    },
+                );
+            }
+        }
+
+        let overflow = catalog
+            .apply_with_result(1, &encode_deploy(b"overflow", 1, 1, &[0; 32], b"descriptor"));
+        assert_eq!(overflow, crate::clusterctl::ERR_CAPACITY.to_le_bytes().to_vec());
+
+        let replacement =
+            catalog.apply_with_result(2, &encode_deploy(b"fill-0", 2, 2, &[1; 32], b"d2"));
+        assert_ne!(replacement, crate::clusterctl::ERR_CAPACITY.to_le_bytes().to_vec());
+        assert_eq!(catalog.deployment(b"fill-0").unwrap().object_id, 2);
     }
 
     #[test]

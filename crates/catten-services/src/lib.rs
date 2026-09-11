@@ -1812,6 +1812,8 @@ pub mod clusterctl {
     /// The signed replica policy cannot be satisfied by the current admitted,
     /// non-draining voting members.
     pub const ERR_UNSATISFIABLE_PLACEMENT: i64 = -19;
+    /// Accepting the command would exceed a bounded replicated collection.
+    pub const ERR_CAPACITY: i64 = -20;
 }
 
 /// Remote-invocation wire protocol carried over the reliable message layer.
