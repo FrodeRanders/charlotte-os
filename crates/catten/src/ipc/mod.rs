@@ -1208,7 +1208,18 @@ pub fn wait_readable(receiver: AddressSpaceId, endpoint_cap: CapabilityId) -> Re
 
     // Lost-wake guard: if a sender enqueued after the fast-path check but
     // before observer registration completed, re-admit the thread immediately.
-    if endpoint_is_readable_or_closed(endpoint_id)? {
+    let readable = match endpoint_is_readable_or_closed(endpoint_id) {
+        Ok(readable) => readable,
+        Err(error) => {
+            // The endpoint was removed while this thread was parked; re-admit
+            // it before returning so it is not left Blocked forever.
+            let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+                .read()
+                .submit_woken_thread(tid, generation);
+            return Err(error);
+        }
+    };
+    if readable {
         let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
             .read()
             .submit_woken_thread(tid, generation);
@@ -1418,26 +1429,25 @@ pub fn poll_reply(
     caller: AddressSpaceId,
     call_cap: CapabilityId,
 ) -> Result<Option<ReplyValue>, IpcError> {
-    let (call_id, result, need_observe) = {
-        let ipc = IPC.read();
-        let call_id = match ipc.cap(caller, call_cap)? {
-            Capability::PendingCall {
-                call,
-            } => call,
-            _ => return Err(IpcError::WrongType),
-        };
-        let call = ipc.pending_calls.get(&call_id).ok_or(IpcError::UnknownCapability)?;
-        if call.caller != caller {
-            return Err(IpcError::PermissionDenied);
-        }
-        let need_observe = call.result.is_some() && !call.observed;
-        (call_id, call.result, need_observe)
+    let mut ipc = IPC.write();
+    let call_id = match ipc.cap(caller, call_cap)? {
+        Capability::PendingCall {
+            call,
+        } => call,
+        _ => return Err(IpcError::WrongType),
     };
-    if need_observe {
-        let mut ipc = IPC.write();
-        if let Some(call) = ipc.pending_calls.get_mut(&call_id) {
-            call.observed = true;
-        }
+    let call = ipc.pending_calls.get_mut(&call_id).ok_or(IpcError::UnknownCapability)?;
+    if call.caller != caller {
+        return Err(IpcError::PermissionDenied);
+    }
+    // Test-and-take under one write hold: two threads polling the same call
+    // must not both observe (and adopt) the returned capabilities.
+    if call.observed {
+        return Ok(None);
+    }
+    let result = call.result;
+    if result.is_some() {
+        call.observed = true;
     }
     Ok(result)
 }
@@ -1470,7 +1480,19 @@ pub fn wait_reply(caller: AddressSpaceId, call_cap: CapabilityId) -> Result<(), 
         // Close the check/register race. Notifications are hints rather than
         // proof that this particular pending call completed, so after every
         // wake the loop checks the call and parks again when necessary.
-        if pending_call_is_ready(call_id)? {
+        let ready = match pending_call_is_ready(call_id) {
+            Ok(ready) => ready,
+            Err(error) => {
+                // The call was removed while this thread was parked. Its
+                // observers may have been dropped without a wake, so re-admit
+                // the thread before returning rather than leaving it Blocked.
+                let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+                    .read()
+                    .submit_woken_thread(tid, generation);
+                return Err(error);
+            }
+        };
+        if ready {
             let _ = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
                 .read()
                 .submit_woken_thread(tid, generation);
@@ -1607,6 +1629,8 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
             call,
         } => {
             if let Some(pending) = ipc.pending_calls.remove(&call) {
+                // A thread parked in wait_reply holds its only waker here.
+                observers.extend(drain_observers(&pending.observers));
                 if let Some(reply) = pending.result {
                     // Revoke undelivered results only. Once the caller has
                     // observed the reply, the returned capabilities are its

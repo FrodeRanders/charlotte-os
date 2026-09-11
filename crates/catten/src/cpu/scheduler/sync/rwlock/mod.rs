@@ -60,10 +60,13 @@ impl RwLockCore {
 impl RwLockCore {
     fn wake_next(&self) {
         if !self.waitlist_exclusive.is_empty() {
-            if let Ok(observer) = self.waitlist_exclusive.pop()
-                && let Some(observer) = observer.upgrade()
-            {
-                observer.notify();
+            // Skip observers whose waker has exited; the lock is already free,
+            // so no later unlock will run this path again.
+            while let Ok(observer) = self.waitlist_exclusive.pop() {
+                if let Some(observer) = observer.upgrade() {
+                    observer.notify();
+                    return;
+                }
             }
         } else {
             while !self.waitlist_shared.is_empty() {
@@ -87,12 +90,30 @@ unsafe impl RawRwLock for RwLockCore {
     };
 
     fn lock_exclusive(&self) {
-        while self.raw_lock.compare_exchange(0, -1, Ordering::AcqRel, Ordering::Acquire).is_err() {
-            let _ = SYSTEM_SCHEDULER.read().block_thread(
-                get_thread_id()
-                    .expect("Attempted to lock a blocking lock from outside thread context!"),
+        loop {
+            if self.raw_lock.compare_exchange(0, -1, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+                return;
+            }
+            let Some(tid) = get_thread_id() else {
+                panic!("Attempted to lock a blocking lock from outside thread context!");
+            };
+            let generation = match SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
+                tid,
                 &self.waitlist_exclusive,
-            );
+                crate::cpu::scheduler::threads::MigrationConstraint::GeneralWait,
+            ) {
+                Ok(generation) => generation,
+                Err(_) => {
+                    crate::cpu::scheduler::yield_lp();
+                    continue;
+                }
+            };
+            // Lost-wake guard: unlock may have run between the failed CAS and
+            // observer registration.
+            if self.raw_lock.load(Ordering::Acquire) == 0 {
+                let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
+            }
+            crate::cpu::scheduler::yield_lp();
         }
     }
 
@@ -109,22 +130,38 @@ unsafe impl RawRwLock for RwLockCore {
     }
 
     fn lock_shared(&self) {
-        while self
-            .raw_lock
-            .try_update(Ordering::AcqRel, Ordering::Acquire, |x| {
-                if x >= 0 {
-                    Some(x + 1)
-                } else {
-                    None
-                }
-            })
-            .is_err()
-        {
-            let _ = SYSTEM_SCHEDULER.read().block_thread(
-                get_thread_id()
-                    .expect("Attempted to lock a blocking lock from outside thread context!"),
+        loop {
+            if self
+                .raw_lock
+                .try_update(Ordering::AcqRel, Ordering::Acquire, |x| {
+                    if x >= 0 {
+                        Some(x + 1)
+                    } else {
+                        None
+                    }
+                })
+                .is_ok()
+            {
+                return;
+            }
+            let Some(tid) = get_thread_id() else {
+                panic!("Attempted to lock a blocking lock from outside thread context!");
+            };
+            let generation = match SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
+                tid,
                 &self.waitlist_shared,
-            );
+                crate::cpu::scheduler::threads::MigrationConstraint::GeneralWait,
+            ) {
+                Ok(generation) => generation,
+                Err(_) => {
+                    crate::cpu::scheduler::yield_lp();
+                    continue;
+                }
+            };
+            if self.raw_lock.load(Ordering::Acquire) >= 0 {
+                let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
+            }
+            crate::cpu::scheduler::yield_lp();
         }
     }
 

@@ -65,14 +65,29 @@ unsafe impl RawMutex for MutexCore {
                 .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
                 .is_ok()
             {
-                break; // acquired — return
+                return; // acquired
             }
-            // Failed to acquire — block this thread until unlock() wakes us
-            if let Some(tid) = get_thread_id() {
-                SYSTEM_SCHEDULER.read().block_thread(tid, self).expect("Failed to block thread");
-            } else {
+            let Some(tid) = get_thread_id() else {
                 panic!("Attempted to acquire a blocking mutex from outside thread context.");
+            };
+            let generation = match SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
+                tid,
+                self,
+                crate::cpu::scheduler::threads::MigrationConstraint::GeneralWait,
+            ) {
+                Ok(generation) => generation,
+                // Already blocked: a notify raced with the CAS. Yield and retry.
+                Err(_) => {
+                    crate::cpu::scheduler::yield_lp();
+                    continue;
+                }
+            };
+            // Lost-wake guard: unlock may have run between the failed CAS and
+            // observer registration, in which case no future unlock is coming.
+            if !self.raw_lock.load(Ordering::Acquire) {
+                let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
             }
+            crate::cpu::scheduler::yield_lp();
         }
     }
 
