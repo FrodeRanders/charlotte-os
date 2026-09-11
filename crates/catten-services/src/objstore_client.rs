@@ -109,14 +109,17 @@ pub(crate) fn read(obj_conn: u64, object_id: u64) -> Result<Option<Vec<u8>>, ()>
         if memory != 0 {
             memory_close(memory);
         }
-        return if status == charlotte_protocol_objstore::ERR_NOT_FOUND as u64 {
+        return Err(());
+    }
+    // A reply without memory is scalar only: the object store reports a
+    // missing object as ERR_NOT_FOUND with no payload. (The first tuple
+    // element is the IPC status, not the store's result.)
+    if memory == 0 {
+        return if result == charlotte_protocol_objstore::ERR_NOT_FOUND as u64 {
             Ok(None)
         } else {
             Err(())
         };
-    }
-    if memory == 0 {
-        return Err(());
     }
     let capacity = memory_size(memory);
     let Ok(size) = usize::try_from(result) else {

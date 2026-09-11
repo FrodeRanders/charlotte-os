@@ -57,10 +57,19 @@ impl NodeIdentity {
         if mnemonic.is_empty() {
             return None;
         }
-        let obj_conn = objstore_connect(ns_conn, true)?;
+        let Some(obj_conn) = objstore_connect(ns_conn, true) else {
+            catten_rt::logln!("[identity] object-store connect failed");
+            return None;
+        };
         let namespace = fnv1a(mnemonic);
         let object = stable_object_id(namespace);
-        let existing = obj_read(obj_conn, object).ok()?;
+        let existing = match obj_read(obj_conn, object) {
+            Ok(existing) => existing,
+            Err(()) => {
+                catten_rt::logln!("[identity] object read failed");
+                return None;
+            }
+        };
         if let Some(bytes) = existing
             && let Some(identity) = decode(&bytes)
         {
@@ -85,14 +94,18 @@ impl NodeIdentity {
         blob[name_off + 4..].copy_from_slice(&name);
 
         let _ = obj_create_at(obj_conn, object);
-        if obj_write(obj_conn, object, &blob) && obj_flush(obj_conn) {
-            Some(NodeIdentity {
-                mnemonic: mnemonic.to_vec(),
-                name,
-            })
-        } else {
-            None
+        if !obj_write(obj_conn, object, &blob) {
+            catten_rt::logln!("[identity] object write failed");
+            return None;
         }
+        if !obj_flush(obj_conn) {
+            catten_rt::logln!("[identity] object flush failed");
+            return None;
+        }
+        Some(NodeIdentity {
+            mnemonic: mnemonic.to_vec(),
+            name,
+        })
     }
 
     /// The node's name as a string slice.
