@@ -1980,18 +1980,23 @@ fn read_vector_page(
     is_call: bool,
     out: &mut Vec<MemoryObjectCap>,
 ) -> Result<Vec<AppliedVectorTransfer>, IpcError> {
-    let phys = crate::memory::object::get_phys(sender, cap_vector_page);
-    if phys == 0 {
-        return Err(IpcError::UnknownCapability);
-    }
-    let paddr = crate::memory::PAddr::try_from(phys as usize)
-        .map_err(|_| IpcError::MemoryTransferFailed)?;
-    let ptr: *const u8 = paddr.into();
-    let count = unsafe { core::ptr::read_volatile(ptr as *const u16) } as usize;
+    let vector_bytes = crate::memory::object::snapshot_bytes(
+        sender,
+        cap_vector_page,
+        2 + CAP_VECTOR_MAX * core::mem::size_of::<CapVectorEntry>(),
+    )
+    .map_err(|_| IpcError::UnknownCapability)?;
+    let count = u16::from_le_bytes(
+        vector_bytes
+            .get(..2)
+            .ok_or(IpcError::MemoryTransferFailed)?
+            .try_into()
+            .map_err(|_| IpcError::MemoryTransferFailed)?,
+    ) as usize;
     if count == 0 || count > CAP_VECTOR_MAX {
         return Err(IpcError::MemoryTransferFailed);
     }
-    let entries_ptr = unsafe { ptr.add(2) } as *const CapVectorEntry;
+    let entries_ptr = unsafe { vector_bytes.as_ptr().add(2) } as *const CapVectorEntry;
     let mut entries = Vec::with_capacity(count);
     for i in 0..count {
         let entry = unsafe { core::ptr::read_unaligned(entries_ptr.add(i)) };

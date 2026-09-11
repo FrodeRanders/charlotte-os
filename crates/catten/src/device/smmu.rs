@@ -238,7 +238,14 @@ impl Domain {
         };
         if let Some(address) = msi_address {
             let page = address & !(PAGE_SIZE as u64 - 1);
-            domain.map_page(page, PAddr::from(page), true)?;
+            if let Err(error) = domain.map_page(page, PAddr::from(page), true) {
+                let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+                for frame in domain.table_frames {
+                    let _ = allocator.deallocate_frame(frame);
+                }
+                let _ = allocator.deallocate_frame(domain.cd);
+                return Err(error);
+            }
         }
         Ok(domain)
     }

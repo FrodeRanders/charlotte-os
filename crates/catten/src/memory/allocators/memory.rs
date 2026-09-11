@@ -89,8 +89,10 @@ pub fn try_allocate_and_map_range(
         if let Err(err) = mapping_func(&mut kas, mapping.clone()) {
             // release the lock so the unmap_and_deallocate_range function can acquire it
             drop(kas);
-            // deallocate and unmap the frames that were allocated
-            unmap_and_deallocate_range(base, page_size, page_idx + 1);
+            // Deallocate and unmap only the pages this call mapped; the
+            // failing page may already have belonged to someone else
+            // (AlreadyMapped), and unmapping it here would steal it.
+            unmap_and_deallocate_range(base, page_size, page_idx);
             // deallocate the frame that was just allocated
             if let Err(err) = PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame) {
                 logln!("Error deallocating frame at {frame:?} during cleanup: {err:?}");

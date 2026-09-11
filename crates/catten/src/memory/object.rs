@@ -1081,6 +1081,7 @@ pub fn close_cap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Memor
         }
     };
 
+    let mut free_failed = false;
     if should_destroy {
         let object = registry
             .objects
@@ -1088,11 +1089,16 @@ pub fn close_cap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Memor
             .ok_or(MemoryObjectError::UnknownCapability)?;
         let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
         for frame in object.frames {
-            allocator.deallocate_frame(frame).map_err(|_| MemoryObjectError::FrameFreeFailed)?;
+            if allocator.deallocate_frame(frame).is_err() {
+                free_failed = true;
+            }
         }
     }
     let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Memory);
     assert!(revoked, "memory payload capability was absent from unified table");
+    if free_failed {
+        return Err(MemoryObjectError::FrameFreeFailed);
+    }
     Ok(())
 }
 

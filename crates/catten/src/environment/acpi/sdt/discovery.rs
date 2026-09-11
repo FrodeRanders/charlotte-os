@@ -102,6 +102,10 @@ pub fn spcr_uart_base() -> Option<u64> {
     const SPCR_GAS_OFFSET: u64 = 36 + 1 + 3; // SdtHeader + InterfaceType + reserved
     const GAS_ADDRESS_OFFSET: u64 = 4;
     let spcr = find_table_physical(*b"SPCR")?;
+    let header: &SdtHeader = unsafe { &*PAddr::from(spcr).into_hhdm_ptr::<SdtHeader>() };
+    if !header.validate() || header.length < (SPCR_GAS_OFFSET + GAS_ADDRESS_OFFSET + 8) as u32 {
+        return None;
+    }
     let addr = spcr + SPCR_GAS_OFFSET + GAS_ADDRESS_OFFSET;
     let base = unsafe { (PAddr::from(addr).into_hhdm_ptr::<u64>()).read_unaligned() };
     (base != 0).then_some(base)
@@ -113,6 +117,10 @@ pub fn spcr_uart_base() -> Option<u64> {
 pub fn spcr_uart_irq() -> Option<u32> {
     const SPCR_INTERRUPT_OFFSET: u64 = 36 + 1 + 3 + 12 + 1 + 1;
     let spcr = find_table_physical(*b"SPCR")?;
+    let header: &SdtHeader = unsafe { &*PAddr::from(spcr).into_hhdm_ptr::<SdtHeader>() };
+    if !header.validate() || header.length < (SPCR_INTERRUPT_OFFSET + 4) as u32 {
+        return None;
+    }
     let irq = unsafe {
         (PAddr::from(spcr + SPCR_INTERRUPT_OFFSET).into_hhdm_ptr::<u32>()).read_unaligned()
     };
