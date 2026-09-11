@@ -261,6 +261,35 @@ pub fn test_memory_objects() {
         object::unpin_copy(copy_pin);
         close_test_address_space(pinned_owner)
             .expect("memory object: failed to close deferred-cleanup AS");
+
+        // A borrower that pinned an object before its owner exited must not be
+        // able to re-map it: the object is destroy-pending and only the final
+        // unpin may release its frames.
+        let deferred_owner = create_memory_object_test_address_space("deferred map guard owner");
+        let deferred_borrower =
+            create_memory_object_test_address_space("deferred map guard borrower");
+        let deferred_cap = object::allocate(deferred_owner, 1)
+            .expect("memory object: deferred guard allocation failed");
+        let deferred_lend = object::lend_read(deferred_owner, deferred_cap, deferred_borrower)
+            .expect("memory object: deferred guard lend failed");
+        let deferred_pin =
+            object::pin_for_dma(deferred_borrower, deferred_lend, true, false, false)
+                .expect("memory object: deferred guard borrower pin failed");
+        object::close_address_space(deferred_owner);
+        assert_eq!(
+            object::map(deferred_borrower, deferred_lend, VAddr::from(0xbc000usize), false),
+            Err(MemoryObjectError::LendingActive),
+            "destroy-pending memory must reject a new CPU mapping"
+        );
+        object::unpin_dma(deferred_pin);
+        assert_eq!(
+            object::info(deferred_borrower, deferred_lend),
+            Err(MemoryObjectError::UnknownCapability)
+        );
+        close_test_address_space(deferred_borrower)
+            .expect("memory object: failed to close deferred guard borrower AS");
+        close_test_address_space(deferred_owner)
+            .expect("memory object: failed to close deferred guard owner AS");
     }
 
     let owner_cleanup_cap =

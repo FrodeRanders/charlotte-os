@@ -516,6 +516,9 @@ fn map_locked(
             .objects
             .get_mut(&cap_entry.object)
             .ok_or(MemoryObjectError::UnknownCapability)?;
+        if object.destroy_when_unpinned {
+            return Err(MemoryObjectError::LendingActive);
+        }
         if object.exclusive_dma_pins != 0 || writable && object.copy_pins != 0 {
             return Err(MemoryObjectError::LendingActive);
         }

@@ -421,6 +421,7 @@ impl Thread {
         self.migration_safe
             && self.pinned_lp.is_none()
             && self.migration_constraints == 0
+            && !self.abort_requested.load(Ordering::Acquire)
             && !self.context.is_on_cpu()
     }
 }

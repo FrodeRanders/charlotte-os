@@ -523,7 +523,24 @@ pub fn create_domain(sid: u32, msi_address: Option<u64>) -> Result<u64, Error> {
         let cd = domain.cd;
         smmu.domains.insert(id, domain);
         smmu.streams.insert(sid, id);
-        smmu.write_ste(sid, Some(cd))?;
+        if let Err(error) = smmu.write_ste(sid, Some(cd)) {
+            // Never leave a half-installed domain registered: if the aborting
+            // STE can be acknowledged, roll the stream, domain and frames
+            // back; otherwise retain the record as quarantined until a later
+            // acknowledged destroy.
+            if smmu.write_ste(sid, None).is_ok() {
+                smmu.streams.remove(&sid);
+                let domain = smmu.domains.remove(&id).expect("new SMMU domain disappeared");
+                let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+                for frame in domain.table_frames {
+                    let _ = allocator.deallocate_frame(frame);
+                }
+                let _ = allocator.deallocate_frame(domain.cd);
+            } else {
+                crate::logln!("[smmu] quarantining failed domain {} for sid {:#x}", id, sid);
+            }
+            return Err(error);
+        }
         Ok(id)
     })
 }
@@ -575,7 +592,15 @@ pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
             let domain = smmu.domains.get_mut(&domain_id).ok_or(Error::UnknownDomain)?;
             (domain.clear_mapping(iova)?, domain.asid)
         };
-        smmu.invalidate_asid(asid)?;
+        if let Err(error) = smmu.invalidate_asid(asid) {
+            // Hardware may still translate the removed entry. Retain the
+            // mapping record and its pin so an acknowledged domain destroy
+            // releases them once the aborting STE is installed.
+            if let Some(domain) = smmu.domains.get_mut(&domain_id) {
+                domain.mappings.insert(iova, mapping);
+            }
+            return Err(error);
+        }
         Ok(mapping)
     })?;
     object::unpin_dma(mapping.pin);

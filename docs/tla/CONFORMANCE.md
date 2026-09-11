@@ -11,9 +11,9 @@ This is a reviewable correspondence map, not a refinement proof.
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
-| `MemoryCreate` | `memory::object::create` and capability insertion | Abstract: frames, sizes, rights and mappings are omitted. |
-| `EndpointCreate` | `ipc::create_endpoint` | Direct for owner, capacity, open state and endpoint capability. Interface/version and CQ notification binding are omitted. |
-| `ConnectionMint` | `ipc::mint_connection` and `mintable_endpoint` | Direct for endpoint identity and attenuated rights. |
+| `MemoryCreate` | `memory::object::allocate` and capability insertion | Abstract: frames, sizes, rights and mappings are omitted. |
+| `EndpointCreate` | `ipc::endpoint_create` | Direct for owner, capacity, open state and endpoint capability. Interface/version and CQ notification binding are omitted. |
+| `ConnectionMint` | `ipc::connection_mint` and `mintable_endpoint` | Direct for endpoint identity and attenuated rights. `mintable_endpoint` also accepts a `Connection` source capability, so re-delegation is a concrete superset of the model's endpoint-only precondition. |
 | `ScalarSend` | `ipc::scalar_send`, `enqueue_scalar` | Direct for authorization, closure, queue capacity and enqueue. |
 | `ScalarCall` | `ipc::scalar_call` | Direct for pending-call creation, internal reply-token creation and enqueue. The token identity remains kernel-internal while queued; `receive` installs the server-visible one-shot capability. |
 | `ScalarCallMove` | `ipc::scalar_call_with_memory_move`, `memory::object::move_to` | Abstract: one attachment only; concrete rollback and mapping checks are omitted. |
@@ -34,7 +34,7 @@ This is a reviewable correspondence map, not a refinement proof.
 |---|---|
 | `capTable[asid][cap]` | Unified `capability` namespace plus the matching entry in `IpcRegistry::caps` or the memory-object capability table. |
 | `endpoints` | `IpcRegistry::endpoints`; observers, interface/version and `notify_cq` are hidden. |
-| `replyTokens` | `IpcRegistry::reply_tokens`; `MemoryBorrow` is reduced to a memory-object ID. |
+| `replyTokens` | `IpcRegistry::reply_tokens`; a `MemoryBorrow` records owner/borrower capability pairs, and the model reduces that to one memory-object identity. |
 | `pendingCalls` | `IpcRegistry::pending_calls`; `None` maps to `NoResult`, `Some` maps to a result record. |
 | `memObjects` | Memory-object owner and `LendState`; mappings, rights, physical frames and DMA pins are hidden. |
 
@@ -53,7 +53,7 @@ invalidate either queued identities or already delivered capabilities.
 | `Commit` | successful vector enqueue, or scalar connection/copy enqueue, plus pending-call insertion | The queue/pending-call boundary is the transaction's visibility point. Preparation failure cannot leave a partially visible call. |
 | `FailAndRollback` | vector reverse-order rollback, including `memory::object::rollback_move_to`; reply memory rollback in `complete_reply` | Direct for the implemented multi-memory vector rollback and the move-plus-loan reply transaction. Composing a connection with all vector entries is a conservative formal obligation for future generalized attachment transactions. |
 | `Deliver` | `receive_vec` | Abstract delivery of the complete vector and reply authority. Result-page encoding is omitted. |
-| `WaitTimeout` | non-terminal `ipc_reply_wait_timeout` result | Direct: timeout reports that no reply was observed; it neither closes the pending call nor ends its memory loan. |
+| `WaitTimeout` | non-terminal `ipc::wait_reply_timeout` result | Direct: timeout reports that no reply was observed; it neither closes the pending call nor ends its memory loan. The function is kernel-internal and has no userspace syscall variant; the EL0 ABI exposes only `IpcReplyPoll` and `IpcReplyWait`. |
 | `Reply` / `ObserveReply` | `complete_reply`, then reply wait/poll observation | Direct for terminal loan release followed by userspace observation and close. |
 
 The retained unsafe rollback leaves one target-registry entry and its abstract
@@ -67,7 +67,7 @@ the model runner.
 |---|---|---|
 | `ArmReadiness` | `EndpointObservable::register_observer` | Direct: installs a waiter in `Endpoint::readiness_observers`. |
 | `ArmCloseWatch` | `watch_connection_closed` | Direct: installs a completion observer in `Endpoint::close_observers`, with an atomic already-closed check. |
-| `Send` | `enqueue_message` | Direct for the empty-to-readable event: drains readiness observers only. |
+| `Send` | `enqueue_message` | Direct for the empty-to-readable event: the CQ wake is gated on that transition. Readiness observers are drained on every enqueue; close observers are never drained here, which is the property the model checks. |
 | `Receive` | `receive` | Abstract: payload and authorization are omitted. |
 | `Close` | endpoint branch of `close_cap` | Direct: marks the endpoint closed and drains both observer classes. |
 | `ObserveClose` | `completion::poll` | Abstract: consumes the completed close-watch result. |
@@ -82,9 +82,9 @@ corresponding to the repaired model and its retained negative counterexample.
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
-| `OpenCq` | completion address-space/CQ attachment | Abstract: allocation and shared mapping are omitted. |
-| `SubmitNoBuffer` / `SubmitWithBuffer` | `completion::submit`, `Completion::new`; `catten_rt::owned::ReadOperation::submit` | A successful submission begins in `InFlight`. Buffered submission also transfers the mutable borrow to the in-flight operation (`kernelOwnsBuffer`). |
-| `Complete` / `Fail` | `completion::complete`, `Completion::complete`, `post_to_cq`; `ReadOperation::wait` | Direct for the terminal transition, CQ publication, generation increment and notification. Only this terminal boundary releases the kernel's buffer loan. |
+| `OpenCq` | `completion::open_cq`, `open_cq_phys`, `open_address_space_with_cq` | Abstract: allocation and shared mapping are omitted. Concrete open replaces any existing queue and starts `work_generation` at zero, whereas the model opens a closed unowned slot and increments the generation. |
+| `SubmitNoBuffer` / `SubmitWithBuffer` | `completion::submit`, `Completion::new`; `catten_rt::owned::ReadOperation::submit` | A successful submission begins in `InFlight`. Buffered submission also transfers the mutable borrow to the in-flight operation (`kernelOwnsBuffer`). The concrete submit path has no CQ-owner precondition and succeeds even when no queue is open. |
+| `Complete` / `Fail` | `completion::complete`, `Completion::complete`, `post_to_cq`; `ReadOperation::wait` | Direct for the terminal transition, CQ publication, generation increment and notification. Only this terminal boundary releases the kernel's buffer loan. The state transition becomes visible before the CQ write is committed, so a concurrent poll plus close can suppress the ring entry; the model's single atomic action cannot produce that interleaving. |
 | `CancelOp` | `completion::cancel`, `Completion::cancel`; `ReadOperation::drop` | Direct: `InFlight` becomes `CancelPending`; no CQ entry is posted and the buffer remains loaned until the later terminal completion. The safe wrapper cancels, waits, and closes before its Rust borrow can end. |
 | `DrainOne` / `DrainAll` | userspace ring drain plus kernel `flush_backlog` | Abstract: shared-memory head/tail mechanics and batching details are collapsed. Marks CQ delivery consumed, not the capability result observed. |
 | `ObserveResult` | `completion::poll`, `Completion::take` | Direct: `Completed` becomes `Observed`, independently of CQ draining. |
@@ -101,7 +101,7 @@ corresponding to the repaired model and its retained negative counterexample.
 |---|---|
 | `InFlight`, `CancelPending`, `Completed`, `Observed` | `completion::OpState`. |
 | `Reclaimed` | Capability absent after `completion::close`. |
-| `cqDrained` | Whether userspace has consumed the operation's CQ entry; this is deliberately separate from `OpState::Observed`. |
+| `cqDrained` | Whether userspace has consumed the operation's CQ entry; this is deliberately separate from `OpState::Observed`. No per-operation bit is stored: the value is derivable only while the entry remains in the ring, so it does not survive ring consumption. |
 | `cqRings.entries` | Entries visible in `CompletionQueueRing`. |
 | `cqRings.backlog` | `CqState::backlog`. |
 | `cqRings.gen` | `CqState::work_generation`. |
@@ -115,8 +115,9 @@ use-after-cancel scenario as an executable negative regression.
 `CharlotteTimedWait` splits work-generation publication from wake delivery,
 which exposes the interval in which a timer can run after work exists but
 before the ordinary wake is processed. `TimerFire` rechecks the registered
-generation, matching `block_until` and `wait_on_cq_timeout`; a changed
-generation returns work rather than a false timeout.
+generation via `classify_timed_wait`, used by `wait_on_cq` and
+`wait_on_cq_timeout`; a changed generation returns work rather than a false
+timeout. (`block_until` rechecks the caller's condition, not the generation.)
 `CharlotteTimedWait_unsafe.cfg` omits that recheck and must violate
 `TimeoutObservedNoWork`.
 
@@ -143,12 +144,12 @@ actions and prove that their projection implements these abstract transitions.
 | `Block` | `block_thread_with_constraint` | Direct for waker generation capture and `Blocked`; concrete observer registration shares the transition's linearization point. |
 | `Wake` | `Waker::notify`, `submit_woken_thread`, `add_thread` | Direct for generation validation and re-admission. A stale generation disables the model action and is rejected by Rust. |
 | `Migrate` | `try_rebalance` | Direct for migration-safe, unpinned Ready threads; load-window policy is omitted. |
-| `RequestRemoteAbort` | `abort_thread`, `abort_requested`, `abort_owner_lp`, scheduler IPI | Direct for cross-LP termination: the caller records the physical owner but leaves the executing context in the master table. |
+| `RequestRemoteAbort` | `abort_thread`, `abort_requested`, `abort_owner_lp`, scheduler IPI | Direct for cross-LP termination: the caller records the physical owner but leaves the executing context in the master table. Concrete `abort_thread_generation` also defers an off-CPU `Ready` target through this path instead of removing it immediately as `AbortNotRunning`; end state and safety are unchanged. |
 | `RetireRemoteAbort` | `RoundRobin::next`, `retire_requested_threads` | Owner-LP transition after switching away. Run-queue selection and `add_thread` reject the requested generation, including block/wake races. |
 | `AbortNotRunning` / `SelfAbort` | `abort_thread`, `take_element`, `stage_dead_thread` | Non-running contexts can be removed immediately; self-exit is staged while still on its stack and switches away before reaping. |
 | `BeginDomainAbort` | `domain_abort`, `abort_address_space`, `abort_as_threads` | The concrete refinement holds the publication gate, records the current address-space generation, snapshots every owned thread, and retains the gate through the sweep. This is the linearization boundary for the model's bulk transition. |
 | `Reap` | `reap_dead_threads` | Direct for post-context-switch destruction; the concrete stack-pointer check may defer a context again. |
-| `DestroyAddressSpace` | `domain_exited`, `teardown_domain`, `close_user_address_space` | Requires every master-table and deferred-dead thread owned by the ASID to be gone. `OnCpuHasLiveAddressSpace` checks the resulting safety boundary. |
+| `DestroyAddressSpace` | `domain_exited`, `teardown_domain`, `close_user_address_space_handle` | Requires every master-table and deferred-dead thread owned by the ASID to be gone. `OnCpuHasLiveAddressSpace` checks the resulting safety boundary. |
 
 The model makes master-table removal and insertion into the deferred-dead
 state one atomic retirement action. Rust uses separate locks for those tables,
@@ -175,7 +176,9 @@ immediately. `CharlotteThreadJoin_unsafe.cfg` restores TID-only registration
 and must violate `ObserverMatchesCapturedHandle` after slot reuse. Generation
 allocation uses `charlotte_lifecycle::claim_generation` and the scheduler's
 single global atomic `try_update`; it starts at one and reserves `u64::MAX` as
-the exhausted state instead of ever issuing it. The safe model exercises
+the exhausted state instead of ever issuing it. Concrete exhaustion panics
+(fail-stop) instead of returning the model's non-fatal `RejectExhaustedSpawn`;
+the never-issued property is preserved. The safe model exercises
 `RejectExhaustedSpawn`, while
 `CharlotteThreadJoin_wrap_unsafe.cfg` wraps to generation one and must violate
 `GenerationNeverReused`.
@@ -184,15 +187,17 @@ the exhausted state instead of ever issuing it. The safe model exercises
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
-| Address-space `Allocate` / `CaptureHandle` | `register_user_address_space`, `AddressSpaceHandle` | Direct for recyclable numeric ASID plus monotonic software generation. The same handle identity now keys service scratch-window cursors. |
-| Address-space `CloseExact` | `close_user_address_space_handle`, generation checks in map/unmap/teardown | Direct for rejecting a stale handle after ASID reuse. Scratch allocation and mapping teardown are serialized across this boundary. |
+| Address-space `Allocate` / `CaptureHandle` | `register_user_address_space`, `AddressSpaceHandle` | Direct for recyclable numeric ASID plus monotonic software generation. The scratch-window cursor is keyed by ASID with a stored generation field, so a recycled ASID resets it on first use. |
+| Address-space `CloseExact` | `close_user_address_space_handle`; generation checks in teardown and scratch reservation; `ADDRESS_SPACE_LIFECYCLE` serialization in map/unmap | Direct for rejecting a stale handle after ASID reuse. Map/unmap do not compare generations themselves; they hold `ADDRESS_SPACE_LIFECYCLE`, which close also holds, so a mapping cannot straddle a close/reuse boundary. |
 | Hardware-ASID `Allocate` / `Retire` / `Invalidate` | AArch64 hardware-ASID allocator and TLB invalidation | Abstract: page-table contents are omitted; tag reuse is allowed only after invalidation removes stale translations. |
 | Interrupt-route `Bind` / `QueueWake` / `Unbind` / `DrainSafe` | device interrupt binding, route generation, deferred wake drain | Direct for generation-fenced delivery. GIC register programming and MPIDR routing are below the model boundary. |
 
-The August `memory_map_any` repair did not change memory ownership in
+The August `memory_map_any` work did not change memory ownership in
 `CharlotteIPC`; it changed address-space placement. Its safety-relevant part
 is the generation-keyed scratch cursor and lifecycle serialization represented
-by `CharlotteAddressSpace`, not a new IPC transfer mode.
+by `CharlotteAddressSpace` (introduced across the August lifecycle-hardening
+commits, not by the cursor-arithmetic repair itself), not a new IPC transfer
+mode.
 
 ## Service lifecycle
 
@@ -200,17 +205,17 @@ by `CharlotteAddressSpace`, not a new IPC transfer mode.
 |---|---|---|
 | `StageTrusted` / `StageUntrusted` / `RejectUntrustedLoad` | signed service bundle/object-store staging; `verify_image_signature`, `try_load_domain` | Direct for the trust gate: unsigned, tampered, or artifact-mismatched bytes cannot reach address-space allocation/mapping. Cryptography and ELF parsing are abstracted to the trust bit. |
 | `Load` | `loader::try_load_domain` | Abstract: ELF segments, mappings, bootstrap frames and finite hardware-ASID allocation are omitted. |
-| `Start` | `start_domain`, `spawn_thread` | Direct for the initial `(tid, generation)` domain handle. |
+| `Start` | `start_domain`, `spawn_thread_on_lp` | Direct for the initial `(tid, generation)` domain handle. |
 | `Prepare` | `NameCatalog::apply_command(CMD_REGISTER)` | Direct: increments the retained generation, records the owner, and stores an inactive entry. A replacement is intentionally unresolvable until activation. Exhaustion returns generation zero without changing the entry. |
 | `PublishLocal` | node-local `ns::register` from DNS registration flow | Direct for installing the re-delegable local connection before distributed visibility. The local name service independently allocates and returns its checked generation. |
 | `Activate` / `RejectStaleActivate` | `CMD_ACTIVATE` | Direct: only the exact prepared generation with a nonempty owner becomes active. |
 | `Lookup` | `NameCatalog::lookup`, quorum-contact query path | Direct for filtering inactive entries/tombstones. Linearizable read-barrier mechanics remain in the Raft layer. |
 | `FencedUnregister` / `RejectStaleUnregister` | `CMD_UNREGISTER_GENERATION`; local `OP_UNREGISTER_GENERATION` | Direct owner-and-generation fence. A delayed cleanup request cannot unpublish a replacement. The unsafe model removes this check and retains the corresponding counterexample. |
 | `CleanupLocal` | `pending_local_unregistrations`, `LocalPublication::local_cleanup_submitted` | Abstract asynchronous cleanup, separately fenced by the node-local generation. |
-| `RequestStop` / `Exit` | `ipc_connection_watch_closed`; service shutdown or `abort_thread` | Endpoint closure completes a retained kernel watch; the owner proposes the tombstone directly or sends a source-authenticated, retried request to the known leader. The catalog may remain briefly active while this asynchronous transition is in flight. |
+| `RequestStop` / `Exit` | `ipc_connection_watch_closed`; service shutdown or `abort_as_threads` | Endpoint closure completes a retained kernel watch; the owner proposes the tombstone directly or sends a source-authenticated, retried request to the known leader. The catalog may remain briefly active while this asynchronous transition is in flight. |
 | `DomainAbort` | Rust panic handler, fatal EL0 exception handling, `DOMAIN_ABORT` | Abstract spontaneous failure: scheduler retirement of the complete address space is collapsed into `Exited`; catalog cleanup, reaping, and teardown retain their ordinary fences. |
 | `Reap` | `wait_domain_exit`, scheduler master/dead-table observations | Direct for the condition required before teardown. |
-| `Teardown` | `teardown_domain`, `close_user_address_space` | Direct for the reaping precondition and resource/address-space release. |
+| `Teardown` | `teardown_domain`, `close_user_address_space_handle` | Direct for the reaping precondition and resource/address-space release. |
 
 Concrete teardown treats a domain as exited only after every master-table and
 deferred-dead thread with that ASID is gone. Looking only at the initial TID
@@ -218,10 +223,10 @@ allowed a secondary EL0 thread to enter SVC after its address space had been
 removed; the strengthened check implements the model's domain-wide `Reap`
 precondition.
 
-The userspace Raft reactor applies the same single-wait discipline: a bounded
-CQ wait is released by endpoint/transport readiness or supplies the next
-election-clock tick on timeout. It does not combine an indefinite CQ wait with
-a separately delivered detached-timer completion.
+The userspace Raft reactors combine a bounded CQ wait with a detached timer
+that supplies the next election-clock tick. The bounded timeout is kept as an
+independent watchdog, so a lost timer completion cannot freeze elections; the
+code never performs an indefinite CQ wait plus a detached timer.
 
 ## DMA and SMMUv3 lifecycle
 
@@ -230,7 +235,7 @@ a separately delivered detached-timer completion.
 | `CreateMemory` | `memory::object::allocate` | Abstract: frame count and physical addresses are omitted. |
 | `CreateDomain` | `device::grant_dma_domain`, `smmu::create_domain` | Direct for unique requester-stream ownership and domain authority. Page-table allocation is omitted. |
 | `CpuMap` / `CpuUnmap` | `memory::object::map`, `unmap` | Abstract boolean projection of CPU page mappings. Exclusive DMA blocks mapping; concrete virtual addresses and permissions are omitted. |
-| `BeginLoan` / `EndLoan` | `lend_read`, `lend_write`, `return_lend` | Abstract projection of IPC memory loans. A new loan is rejected while any DMA pin exists. |
+| `BeginLoan` / `EndLoan` | `lend_read`, `lend_write`, `revoke_lend` | Abstract projection of IPC memory loans. A new loan is rejected while any DMA pin exists. |
 | `BeginMap(..., "Coherent")` | unsafe `dma_map`, `memory::object::pin_for_dma` | The raw coherent-sharing path may coexist with CPU mappings or a previously established loan; synchronization remains the unsafe caller's obligation. It cannot coexist with an exclusive pin. |
 | `BeginMap(..., "Exclusive")` | safe `dma_map_exclusive`, `OwnedMemory::begin_dma` | Direct ownership transfer: requires no CPU mappings, loans, or other DMA pins. The mode remains exclusive until acknowledged unmap and pin release. |
 | `CommitMap` | `Domain::map`, `invalidate_asid`, successful return from `smmu::map` | Abstract: per-page PTE installation and IOVA arithmetic are collapsed. Publication occurs only after invalidation succeeds. |
@@ -241,7 +246,7 @@ a separately delivered detached-timer completion.
 | `AcknowledgeDestroy` | successful `write_ste(sid, None)` | Direct linearization point at which the requester stream is forced to abort and mappings may be consumed. |
 | `QuarantineDestroy` | `destroy_domain` error return | Direct safety policy: the domain and pins remain retained when hardware acknowledgement is uncertain. |
 | `ExitDriver` | `device::close_address_space`, `memory::object::close_address_space` | Abstract bulk teardown; pinned owned memory becomes `destroy_when_unpinned`. |
-| `ReclaimMemory` | final `unpin_dma` for a destroy-pending object | Direct for last-pin removal, capability cleanup and frame reclamation. |
+| `ReclaimMemory` | final `unpin_dma` for a destroy-pending object | Direct for last-pin removal, capability cleanup and frame reclamation. A destroy-pending object rejects further CPU mapping and DMA pinning, so no mapping can outlive the final unpin. |
 
 `ExclusiveDmaHasNoCpuAuthority` checks that an exclusive pin cannot overlap a
 CPU mapping, IPC loan, or second DMA pin. `CharlotteDMA_unsafe.cfg` removes the
@@ -251,7 +256,7 @@ exclusive precondition and must produce a counterexample.
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
-| `StartElection` | `RaftNode::start_election` | Abstract atomic transition. Rust persists the incremented term and self-vote before sending vote requests. |
+| `StartElection` | `RaftNode::start_election` | Abstract atomic transition. Rust persists the incremented term and self-vote as two durable writes before sending vote requests; a crash between them leaves a durable term/vote pair the model cannot represent, but never a second vote in one term. |
 | `GrantVote` | `handle_vote_request`, followed by `handle_vote_response` | Abstract delivery pair. Voter persistence precedes its response; candidate vote sets deduplicate peer IDs. Log freshness is omitted. |
 | `BecomeLeader` | `has_election_majority`, `become_leader` | Direct for a fixed voter set and distinct-voter majority. Leader no-op append is deferred to the log layer. |
 | `ObserveHigherTerm` | `step_down` from request or response handling | Direct for durable term advancement, vote clearing and candidate-vote reset. |
@@ -268,8 +273,8 @@ separate membership layer below.
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
 | `Elect` | `handle_vote_response`, `become_leader` | Assumes the election model's one-leader-per-term result and Raft's up-to-date-log voting rule. Each replacement leader has a strictly newer term. |
-| `AppendLeader` | `append_client_entry`, `LogStore::append` | Direct for a durable leader append. Client response and state-machine application are omitted. |
-| `ReplicateOne` | `handle_append_entries`, `truncate_suffix`, `append` | One-entry projection. A matching entry retains the existing suffix; a conflict truncates from that index before appending. The store flushes each mutation before returning. |
+| `AppendLeader` | `submit_command` (`handle_client_command`), `LogStore::append` | Direct for a durable leader append. Client response and state-machine application are omitted. |
+| `ReplicateOne` | `handle_append_entries`, `LogStore::truncate_from`, `append` | One-entry projection. A matching entry retains the existing suffix; a conflict truncates from that index before appending. The store flushes each mutation before returning, so a conflict repair is two durable writes rather than the model's atomic replacement. |
 | `CommitLeader` | `advance_commit_index` | Direct: a configured-voter majority must contain the index, and Raft advances by counting only an entry from the leader's current term. |
 | `PropagateCommit` | follower `handle_append_entries` update of `commit_index` | Direct for `min(leader_commit, last_new_index)` after prefix validation. |
 | `Crash` / `Restart` | service-domain exit and `RaftNode::new` with its `LogStore` | Durable logs survive. The model conservatively retains commit knowledge; concrete restart currently reconstructs it from snapshot/application progress and subsequent leader messages. |
@@ -285,12 +290,12 @@ framing, and temporal liveness are outside this abstraction.
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
-| `Elect` | `has_election_majority`, `become_leader` | Membership projection of election: a candidate must be a current voter and must obtain both current and next voter majorities while joint. Durable voting remains in the election model. |
+| `Elect` | `has_election_majority`, `become_leader` | Membership projection of election: a candidate must obtain both current and next voter majorities while joint. Durable voting remains in the election model. Concrete `ClusterConfiguration::is_voter` also admits a next-only voter as a candidate, so the concrete eligibility set is `current ∪ next` rather than `currentVoters`. |
 | `SubmitJoint` | `submit_joint_configuration`, `submit_command` | Direct for appending the encoded `JOINT` command while the old configuration is authoritative. |
-| `Replicate` | append-response handling and `match_index` | Abstract monotonic replication progress for active voters and learners. Log contents and conflict repair remain in the log model. |
+| `Replicate` | append-response handling and `match_index` | Abstract replication progress for configured voters and learners. Concrete `match_index` is assigned from each successful response without a monotonic `max` guard and without a membership check; commit counting only reads configured members. Log contents and conflict repair remain in the log model. |
 | `CommitJoint` | `advance_commit_index`, then `apply_configuration_command(Joint)` | The `JOINT` entry commits under its preceding configuration; applying it activates the old/new union and records the finalization fence. |
-| `SubmitFinalize` | `maybe_auto_finalize_joint_configuration` | Direct: every proposed voter and learner must reach the committed joint-entry fence before `FINALIZE` is submitted. |
-| `CommitFinalize` | `advance_commit_index`, then `apply_configuration_command(Finalize)` | Requires both voter majorities while joint, installs the next configuration, and decommissions nodes absent from the resulting voter/learner set. |
+| `SubmitFinalize` | `maybe_auto_finalize_joint_configuration` | Abstract: the model requires every proposed voter and learner to reach the committed joint-entry fence before `FINALIZE` is submitted. Concrete code intentionally omits that catch-up fence and proposes `FINALIZE` as soon as `JOINT` is committed, because the `FINALIZE` commit still requires both voter majorities. The recorded fence index is not read on this path, so the model's `FinalizationWasJoint` ordering is stronger than the implementation. |
+| `CommitFinalize` | `advance_commit_index`, then `apply_configuration_command(Finalize)` | Requires both voter majorities while joint, installs the next configuration, and decommissions nodes absent from the resulting voter/learner set. A leader that survives only as a learner keeps leadership, whereas the model sets `leader' = NoNode`. |
 | `Crash` / `Restart` | service-domain exit and `RaftNode::new` | Abstract volatile availability. Durable configuration recovery is checked in the snapshot layer. |
 
 The model represents peer identity and role as voter/learner sets. Peer
@@ -322,11 +327,11 @@ preserve the admission fence.
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
 | `BeginReceive` / `ReceiveChunk` | `handle_install_snapshot`, `PendingSnapshot` | Direct for ordered chunk accumulation. A mismatched offset is rejected without changing the durable image. |
-| `DiscardStale` | early completed response from `handle_install_snapshot` | Direct: an index at or below `commit_index` is acknowledged but cannot replace newer state or move progress backwards. |
+| `DiscardStale` | early completed response from `handle_install_snapshot` | Direct: an index at or below `commit_index` is acknowledged but cannot replace newer state or move progress backwards. The concrete early return also clears any pending snapshot buffer, which the model leaves unchanged. |
 | `PersistSnapshot` | `LogStore::install_snapshot`, `DiskLogStore::persist_log_state` | The durable boundary, bytes, current/next membership, and compatible suffix are one serialized object-store replacement. The object store publishes it copy-on-write after data and metadata reach stable storage. |
 | `ActivateSnapshot` | commit/last-applied update, membership reconstruction, and `StateMachine::restore` | Abstract split after durable publication so a crash between persistence and activation is explored. Membership activation also recomputes local decommissioning. |
 | `Crash` | service-domain exit | Pending chunks and volatile state-machine contents disappear; the atomically published log-state object survives. |
-| `Restart` | `DiskLogStore::new`, then `RaftNode::new` | Direct: construction restores snapshot bytes and current/next membership before exposing its index as committed and applied. |
+| `Restart` | `DiskLogStore::new`, then `RaftNode::new` | Direct: construction restores snapshot bytes and current/next membership before exposing its index as committed and applied. Membership is only restored when the snapshot payload decodes to a non-empty `current_members` envelope; locally produced snapshots always satisfy this. |
 
 The model abstracts snapshot contents to one value, membership to peer-ID sets,
 and chunks to a bounded count. It omits peer roles and addresses within those
@@ -345,10 +350,10 @@ catalog application of the resulting Raft command.
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
-| `PublishReady` / `WithdrawReady` | `NameCatalog::apply_register`, activation and generation-fenced unregister; `NameCatalog::ingress_placement` | Abstract across prepare/activate. The resulting ready node must be both a desired replica and active for the exact deployment generation. |
+| `PublishReady` / `WithdrawReady` | `NameCatalog::apply_command(CMD_REGISTER)` (dispatched by `StateMachine::apply`), activation and generation-fenced unregister; `NameCatalog::ingress_placement` | Abstract across prepare/activate. The resulting ready node must be both a desired replica and active for the exact deployment generation. |
 | `ReplaceDeployment` | deployment application in `NameCatalog`; leader `reconcile_replica_placements` | Abstract for a committed generation and sorted concrete replica set. Artifact verification, descriptor decoding, and placement ranking are outside this model. |
 | `CommitDrain` | application of a signed shutdown intent; `NameCatalog::ingress_draining_nodes` | Direct for adding a generation-bearing drain decision to applied catalog state. Signature, expiry, and trusted UTC checks precede this boundary. |
-| `CommitIngressAssignment` | `NameCatalog::apply` for `CMD_INGRESS_POLICY`; `effective_ingress_assignments`; frame-router and TCP/IP assignment polling | Abstracts the signed multi-service table to one service and an assigned/withdrawn Boolean. The monotonic sequence corresponds directly to the catalog replay fence; an accepted change creates a new immutable router-policy version. |
+| `CommitIngressAssignment` | `NameCatalog::apply` for `CMD_INGRESS_POLICY`; `effective_ingress_bindings`; frame-router and TCP/IP assignment polling | Abstracts the signed multi-service table to one service and an assigned/withdrawn Boolean. The monotonic sequence corresponds directly to the catalog replay fence. An accepted change materially refreshes the router policy, but the published 64-bit epoch does not itself include the assignment sequence (see below). |
 | `BeginJoint` / `FinalizeJoint` | application of Raft `JOINT` and `FINALIZE`; `active_voting_members` | Abstract membership projection. Quorum and durable ordering are established by `CharlotteRaftMembership`; this layer checks the old/new voter intersection during joint consensus and the final voter set afterward. |
 | `LearnRoute` / `ForgetRoute` | `RelmsgRaftTransport::mac_for_peer`; discovery updates | Abstract availability of an authenticated node-to-MAC route. The trusted-L2 assumption and frame authentication are not proved. |
 | `InstallSnapshot` | `RaftNode::can_serve_bounded_read`, `ingress_membership_snapshot`, `BackendSnapshot::new_with_members`, `MembershipClient::poll`, `SnapshotHistory::install` | Direct for a cluster-fresh, all-or-nothing materialization and immutable bounded history. A leader needs quorum contact; a follower needs a recent successful leader-log match. Bindings may outlive history entries but remain pinned tombstones. |
@@ -360,6 +365,16 @@ catalog application of the resulting Raft command.
 | `UnsafeStartStaleFlow` | former unconditional use of `SnapshotHistory::current` | Negative regression. It demonstrates why an expired local policy must not authorize an unbound flow. |
 | `UnsafeFallbackExistingPacket` | former `history.get(epoch).unwrap_or(current)` | Negative regression. It demonstrates why an unretained binding cannot be reinterpreted through the current snapshot. |
 | `UnsafeAdmitStaleReadiness` | missing generation comparison, retained only as a negative regression | Negative model only. Current `ingress_placement` compares each active registration's deployment generation with the desired generation before adding the node. |
+
+Several concrete selections are deliberately abstracted and are not checked
+by the model's `Winner`/`MinNode` definitions: the advertiser prefers the
+current Raft leader and only falls back to the minimum eligible node, the flow
+winner is a rendezvous hash rather than `MaxNode`, withdrawing an assignment
+drops that service's retained flow bindings, snapshot installs are accepted in
+arrival order rather than by numeric version comparison, and
+`remove_absent_backends` can terminate a binding when its selected backend
+leaves the current member set. The 64-bit epoch does not include the
+assignment sequence, and platform-compatibility services use a reduced digest.
 
 The model treats a policy version as the complete identity of one immutable
 snapshot. Rust compresses membership epoch, deployment and service
@@ -375,12 +390,13 @@ ingress participants.
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
-| `Start` | `dns::OP_CALL`, `InFlightCall` | Captures caller DNS session, monotonic call ID, expected peer and replicated target generation before dispatch. |
+| `Start` | `dns::OP_CALL`, `InFlightCall` | Captures caller DNS session, call ID, expected peer and replicated target generation before dispatch. The ID is monotonic until it wraps at `u64::MAX` and resets to 1. |
 | `ReplaceTarget` / `RejectStale` | `NameCatalog` generation transition; inbound `rcall` validation | The target executes only when the request generation equals the active catalog generation; otherwise it returns `ERR_STALE_GENERATION`. |
 | `Execute` / `DuplicateRequest` | inbound `TAG_REQUEST`; `CompletedCall` cache | First delivery invokes the local endpoint and caches its result; the same caller/session/call identity reuses the cached result. |
 | `QueueReply` / `DeliverReply` | `TAG_REPLY`; relmsg acknowledgement counter | Abstract split between application result creation, reliable-message delivery, and client reply completion. |
 | `Timeout` | `REMOTE_CALL_TIMEOUT_MS`, in-flight expiry | Direct: once dispatch may have executed, expiry returns `ERR_UNCERTAIN`, not a retry-safe transport error. |
-| `SettleTransport` / `Evict` | per-peer relmsg reply-ACK ordinal and bounded result window | Direct for transport settlement: Rust evicts only an entry whose reply ordinal has been acknowledged by that peer. If every entry remains unsettled, it returns `ERR_BUSY` before execution instead of evicting deduplication evidence. Explicit uncertain-session retirement remains a modeled extension. |
+| `SettleTransport` / `Evict` | per-peer relmsg reply-ACK ordinal and bounded result window | Direct for transport settlement: Rust evicts only an entry whose reserved reply ordinal is covered by that peer's acknowledged reply count. The ordinal is reserved at admission while the reply is sent on later completion, so out-of-order completions can associate an ACK count with the wrong entry; the `ERR_BUSY` gate is also triggered by pending executions, before evaluation of settlement. Explicit uncertain-session retirement remains a modeled extension. |
+| `RetireUncertainSession` | modeled extension only | No Rust counterpart: `expire_remote_calls` drops the in-flight record and returns `ERR_UNCERTAIN` without recording a retirement marker. |
 
 The model does not assert global exactly-once behavior. It checks at-most-once
 execution while an identity remains tracked and makes the condition for safe
@@ -427,7 +443,7 @@ records bounded audit entries. The design contract is in
 
 | TLA+ action | Intended CharlotteOS implementation | Correspondence |
 |---|---|---|
-| `PublishService` / `ReplaceService` / `UnpublishService` | `PolicyStore::publish_service` / `unpublish_service`, `ns::OP_REGISTER_AUTHORIZED`, and generation-fenced unregister | Direct for kernel-authenticated service-manager role, rights ceiling, checked generation, and stale-unpublish rejection. Legacy registration is mirrored into the same binding store for compatibility. Distributed policy replication is not implemented. |
+| `PublishService` / `ReplaceService` / `UnpublishService` | `PolicyStore::publish_service` / `unpublish_service`, `ns::OP_REGISTER_AUTHORIZED`, and generation-fenced unregister | Direct for kernel-authenticated service-manager role, rights ceiling, checked generation, and stale-unpublish rejection. The legacy `OP_UNREGISTER` / `OP_UNREGISTER_GENERATION` paths do not run `synchronize_sender`: they call `unpublish_service` with the name service's own identity, so the service-manager role is checked against the name service rather than the requesting sender. Legacy registration is mirrored into the same binding store for compatibility. Distributed policy replication is not implemented. |
 | `SetPolicy` | `PolicyStore::set_policy`, `ns::OP_SET_POLICY` | Direct for authenticated administrator role, exact subject/service rule, optimistic version fence, explicit deny, and exhaustion failure. State and its bounded audit are currently volatile. |
 | `IssueTicket` | `PolicyStore::issue_ticket` | Direct in the engine for exact generation-aware identity, requested rights, current rule and binding, attenuation, bounded outstanding decisions, and default deny. The co-located runtime path uses `authorize_now` instead of exporting a ticket. |
 | `CancelTicket` | `PolicyStore::cancel_ticket` | Direct for subject-bound removal. Expiry is not implemented. A co-located adapter can keep decisions internal by using `authorize_now`. |

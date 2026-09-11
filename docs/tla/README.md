@@ -381,11 +381,11 @@ rules reflected in the Rust scheduler:
    `ThreadState` snapshot.
 
 The authoritative `scheduler-lifecycle` kernel self-test exercises the same
-trace deterministically. A target pinned to LP1 masks interrupts while LP0
-requests its abort, installs a block after the request, and receives a racing
-wake. The test requires that wake admission to reject the terminating
-generation, then waits for owner-LP retirement and deferred reaping before it
-can report success.
+trace deterministically. A spinning target is pinned to LP1 with interrupts
+enabled while LP0 requests its abort; LP0 then verifies the pending request
+and requires `submit_woken_thread` to reject the abort-requested generation.
+The test waits for owner-LP retirement and deferred reaping before it can
+report success.
 
 The master table and per-LP deferred-dead lists use separate locks. Their Rust
 transition is therefore marked by `RETIREMENTS_IN_FLIGHT`; domain-exit
@@ -518,10 +518,12 @@ temporal replication liveness remain outside this model.
 
 `CharlotteRaftMembership.tla` models stable and joint configurations, separate
 voter and learner roles, old-configuration commitment of the `JOINT` entry,
-joint-majority commitment of `FINALIZE`, the implementation's all-proposed-peer
-catch-up fence before automatic finalization, leader eligibility, crashes,
-restarts, and decommissioning. Its two-entry, three-node configuration explores
-5,656 distinct states.
+joint-majority commitment of `FINALIZE`, an all-proposed-peer catch-up fence
+before automatic finalization, leader eligibility, crashes, restarts, and
+decommissioning. The model requires the catch-up fence; the implementation
+intentionally proposes `FINALIZE` as soon as `JOINT` commits (see
+`CONFORMANCE.md`). Its two-entry, three-node configuration explores 5,656
+distinct states.
 
 The invariants require voters and learners to remain disjoint, both voter
 majorities during joint consensus, finalization only after every proposed
