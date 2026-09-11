@@ -8,8 +8,30 @@ use core::{
     },
 };
 
-const STACK_PAGE_SIZE: usize = 4096;
 const MAX_BACKTRACE_FRAMES: usize = 32;
+
+/// Translation granule currently mapping the kernel stack. The backtrace walk
+/// is a diagnostic aid, so this bound only keeps reads inside mapped memory;
+/// a wrong value degrades output rather than safety.
+#[cfg(target_arch = "aarch64")]
+fn stack_granule() -> usize {
+    let tcr: u64;
+    unsafe {
+        core::arch::asm!("mrs {}, tcr_el1", out(reg) tcr, options(nomem, nostack, preserves_flags));
+    }
+    // TCR_EL1.TG1[31:30]: 0b01 = 16 KiB, 0b10 = 4 KiB, 0b11 = 64 KiB.
+    match (tcr >> 30) & 0b11 {
+        0b01 => 16 * 1024,
+        0b11 => 64 * 1024,
+        _ => 4096,
+    }
+}
+
+/// The x86_64 kernel always runs with 4 KiB pages.
+#[cfg(not(target_arch = "aarch64"))]
+fn stack_granule() -> usize {
+    4096
+}
 
 /// Only the first panicking LP attempts diagnostics. A second panic may be a
 /// consequence of abandoned locks, and competing serial output would make the
@@ -51,15 +73,17 @@ fn panic(info: &PanicInfo) -> ! {
 ///
 /// The custom kernel targets force frame pointers. To keep a corrupted stack
 /// from turning diagnostics into a page fault, this walker never dereferences
-/// outside the page containing the panic handler's current stack pointer. That
-/// normally captures the allocator and its caller; deeper frames can be lost
-/// when the chain crosses a page boundary. Addresses can be symbolized against
-/// the unstripped `catten` ELF with `lldb` or `addr2line`.
+/// outside the translation granule containing the panic handler's current
+/// stack pointer. That normally captures the allocator and its caller; deeper
+/// frames can be lost when the chain crosses a granule boundary. Addresses can
+/// be symbolized against the unstripped `catten` ELF with `lldb` or
+/// `addr2line`.
 #[inline(never)]
 fn dump_backtrace() {
     let (stack_pointer, mut frame_pointer) = current_stack_and_frame_pointer();
-    let page_start = stack_pointer & !(STACK_PAGE_SIZE - 1);
-    let page_end = page_start.saturating_add(STACK_PAGE_SIZE);
+    let page_size = stack_granule();
+    let page_start = stack_pointer & !(page_size - 1);
+    let page_end = page_start.saturating_add(page_size);
     let text_start = core::ptr::addr_of!(__text_start) as usize;
     let text_end = core::ptr::addr_of!(__text_end) as usize;
 
