@@ -72,6 +72,10 @@ struct Registration {
     /// kernel-authenticated envelope supplied one. Only this principal (or a
     /// service manager) may retire the registration.
     registrar: Option<PrincipalId>,
+    /// Whether this entry was published through the authorized opcode and has
+    /// a matching `PolicyStore` binding. Legacy publication is a separate
+    /// compatibility namespace that authorized lookups must not resolve.
+    authorized: bool,
 }
 
 type Registry = BTreeMap<Vec<u8>, Registration>;
@@ -512,38 +516,41 @@ fn register(
     policy: &mut PolicyStore,
     audit: &mut AuditLog,
     publisher: DomainIdentity,
+    authorized: bool,
     registrar: Option<PrincipalId>,
     key: Vec<u8>,
     connection: u64,
     access_key: u64,
     ceiling: AuthorizationRights,
 ) -> i64 {
-    let generation = match registry.get(&key) {
-        Some(previous) => previous.generation.checked_add(1),
-        None => Some(1),
-    };
-    let Some(generation) = generation else {
-        // Fail closed instead of wrapping a live generation and making stale
-        // generation-fenced cleanup authoritative again.
+    let close_connection = |connection: u64| {
         if connection != 0 {
             unsafe {
                 ipc_close(connection);
             }
         }
-        return ns::ERR_INVALID;
     };
+    // Legacy replacement is registrant-bound: it may only replace an active
+    // legacy entry created by the same stable principal. An entry published
+    // through the authorized opcode can never be displaced or downgraded by
+    // the legacy opcode; a service manager must unregister it first.
+    if !authorized
+        && let Some(previous) = registry.get(&key).filter(|previous| previous.connection != 0)
+        && (previous.authorized || previous.registrar.is_none() || previous.registrar != registrar)
+    {
+        close_connection(connection);
+        return ns::ERR_ACCESS_DENIED;
+    }
     let binding = match policy.publish_service(publisher, &key, ceiling) {
-        Ok(binding)
-            if i64::try_from(binding.generation) == Ok(generation) && binding.generation != 0 =>
-        {
-            binding
-        }
+        Ok(binding) if binding.generation != 0 => binding,
         _ => {
-            if connection != 0 {
-                ipc_close(connection);
-            }
+            close_connection(connection);
             return ns::ERR_ACCESS_DENIED;
         }
+    };
+    let Ok(generation) = i64::try_from(binding.generation) else {
+        close_connection(connection);
+        return ns::ERR_INVALID;
     };
     // Publishing the new entry is the replacement linearization point. Retire
     // the old connection only after no subsequent lookup can observe it.
@@ -554,6 +561,7 @@ fn register(
             generation,
             access_key,
             registrar,
+            authorized,
         },
     );
     if let Some(previous) = previous
@@ -601,7 +609,7 @@ fn register(
             ),
         }
     }
-    binding.generation as i64
+    generation as i64
 }
 
 fn lookup_or_defer(
@@ -698,6 +706,7 @@ fn main(ctx: Context) -> ! {
                         &mut policy,
                         &mut audit,
                         own_identity,
+                        false,
                         PrincipalId::new(message.sender_principal),
                         scalar_key(message.arg0),
                         message.connection,
@@ -722,6 +731,7 @@ fn main(ctx: Context) -> ! {
                         &mut policy,
                         &mut audit,
                         own_identity,
+                        false,
                         PrincipalId::new(message.sender_principal),
                         scalar_key(message.arg0),
                         message.connection,
@@ -744,6 +754,7 @@ fn main(ctx: Context) -> ! {
                         &mut policy,
                         &mut audit,
                         own_identity,
+                        false,
                         PrincipalId::new(message.sender_principal),
                         key,
                         connection,
@@ -784,7 +795,7 @@ fn main(ctx: Context) -> ! {
                     .filter(|registration| registration.connection != 0)
                     .map(|registration| registration.generation);
                 let actor = synchronize_sender(&mut policy, &message);
-                let authorized = match &actor {
+                let is_manager = match &actor {
                     Ok(identity) => policy
                         .roles_for(*identity)
                         .is_some_and(|roles| roles.contains(Roles::SERVICE_MANAGER)),
@@ -792,7 +803,7 @@ fn main(ctx: Context) -> ! {
                 };
                 let result = match (current, actor) {
                     (Some(generation), Ok(actor))
-                        if authorized
+                        if is_manager
                             && policy.unpublish_service(actor, &key, generation as u64).is_ok() =>
                     {
                         let registration = registry.get_mut(&key).expect("registration vanished");
@@ -907,6 +918,7 @@ fn main(ctx: Context) -> ! {
                         &mut policy,
                         &mut audit,
                         actor,
+                        true,
                         registrar,
                         service.to_vec(),
                         message.connection,

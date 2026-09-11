@@ -62,7 +62,12 @@ same exact `DomainIdentity`, and stale ASID generations are rejected rather
 than being rebound. `OP_UNREGISTER` requires the service-manager role.
 `OP_UNREGISTER_GENERATION` is restricted to the stable principal recorded when
 the registration was created, or a service-manager caller, so ordinary clients
-cannot retire names they did not publish.
+cannot retire names they did not publish. Legacy registration (`OP_REGISTER*`)
+remains available for compatibility, but it may only replace an active entry
+created by the same stable principal, and it can never displace an entry
+published through the authorized opcode. A service that self-registers through
+the legacy path therefore cannot be hijacked by another domain, while
+authorized publications stay authoritative.
 
 Authorization decisions and delegation failures enter a bounded FIFO audit
 stream containing sequence, exact caller identity, stable principal, service,
