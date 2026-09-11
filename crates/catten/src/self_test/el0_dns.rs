@@ -806,12 +806,19 @@ mod inner {
                 yield_lp();
             }
         } else {
-            let lookup = call(dns_conn, DNS_OP_LOOKUP, ECHO_NAME);
-            assert_eq!(
-                lookup,
-                Some(DNS_ERR_NOT_FOUND),
-                "[dns] post-tombstone lookup must observe the removal"
-            );
+            // This replica's `registered_count` passes through 2 twice: once
+            // while it is still catching up (alpha + echo) and again after the
+            // tombstone commits (alpha + the membership event). Waiting on the
+            // count alone would let the follower leave this phase before the
+            // unregister has replicated, so wait on the observable outcome:
+            // the name must stop resolving.
+            let tombstone_deadline = crate::self_test::results::Deadline::after_millis(60_000);
+            let mut lookup = call(dns_conn, DNS_OP_LOOKUP, ECHO_NAME);
+            while lookup != Some(DNS_ERR_NOT_FOUND) {
+                tombstone_deadline.assert_pending("EL0 dns follower tombstone observation");
+                crate::cpu::scheduler::sleep_millis(200);
+                lookup = call(dns_conn, DNS_OP_LOOKUP, ECHO_NAME);
+            }
         }
         if is_leader {
             let stale_unregister = call_with_memory(
