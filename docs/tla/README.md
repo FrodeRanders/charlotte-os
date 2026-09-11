@@ -595,7 +595,10 @@ allows a leased snapshot to lag the latest globally committed policy during
 asynchronous propagation; an abstract fair expiry action bounds that
 authority. Once expired, the lease drops unbound traffic. When bounded history
 evicts an epoch, its flow binding remains pinned but no packet action may
-reinterpret that binding through a different snapshot.
+reinterpret that binding through a different snapshot. An explicit assignment
+withdrawal, or the departure of the pinned backend from the installed member
+set, ends the binding instead of retaining a black hole; `CommitDrain` is the
+graceful path that keeps established flows and blocks new ones.
 
 Three negative configurations preserve the cross-layer hazards:
 

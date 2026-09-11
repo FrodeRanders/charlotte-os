@@ -387,6 +387,38 @@ DropUnretainedFlow(router, flow) ==
     /\ bindingPolicy[router][flow] \notin SeqToSet(history[router])
     /\ UNCHANGED vars
 
+\* An explicit assignment withdrawal is a hard stop: the router drops its
+\* retained bindings rather than forwarding traffic to a service the operator
+\* deassigned. CommitDrain is the graceful path that retains established
+\* flows while excluding the node from new selections.
+DropWithdrawnFlow(router, flow) ==
+    /\ ~serviceAssigned
+    /\ bindingPolicy[router][flow] /= 0
+    /\ bindingPolicy' = [bindingPolicy EXCEPT ![router][flow] = 0]
+    /\ bindingBackend' = [bindingBackend EXCEPT ![router][flow] = NoNode]
+    /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
+                    deploymentGeneration, replicas, readyGeneration, draining,
+                    assignmentSequence, serviceAssigned,
+                    policyVersion, policies, knownRoutes, routerPolicy, history,
+                    leaseFresh,
+                    staleNewFlowAdmitted, flowRemapped>>
+
+\* A pinned backend that has left the installed snapshot's member set cannot
+\* deliver traffic. Drop the binding so a reconnect can select a live backend
+\* instead of black-holing until the client resets.
+DropDepartedBackend(router, flow) ==
+    /\ bindingPolicy[router][flow] /= 0
+    /\ routerPolicy[router] /= 0
+    /\ bindingBackend[router][flow] \notin policies[routerPolicy[router]].members
+    /\ bindingPolicy' = [bindingPolicy EXCEPT ![router][flow] = 0]
+    /\ bindingBackend' = [bindingBackend EXCEPT ![router][flow] = NoNode]
+    /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
+                    deploymentGeneration, replicas, readyGeneration, draining,
+                    assignmentSequence, serviceAssigned,
+                    policyVersion, policies, knownRoutes, routerPolicy, history,
+                    leaseFresh,
+                    staleNewFlowAdmitted, flowRemapped>>
+
 EndFlow(router, flow) ==
     /\ bindingPolicy[router][flow] /= 0
     /\ bindingPolicy' = [bindingPolicy EXCEPT ![router][flow] = 0]
@@ -493,6 +525,8 @@ Next ==
     \/ \E router \in Node, flow \in Flow : ExistingFlowPacket(router, flow)
     \/ \E router \in Node, flow \in Flow : DropStaleNewFlow(router, flow)
     \/ \E router \in Node, flow \in Flow : DropUnretainedFlow(router, flow)
+    \/ \E router \in Node, flow \in Flow : DropWithdrawnFlow(router, flow)
+    \/ \E router \in Node, flow \in Flow : DropDepartedBackend(router, flow)
     \/ \E router \in Node, flow \in Flow : EndFlow(router, flow)
     \/ \E router \in Node, flow \in Flow : UnsafeStartStaleFlow(router, flow)
     \/ \E router \in Node, flow \in Flow : UnsafeFallbackExistingPacket(router, flow)

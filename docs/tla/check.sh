@@ -189,7 +189,8 @@ run_model CharlotteRaftSnapshot CharlotteRaftSnapshot_small.cfg \
 run_model CharlotteClusterIngress CharlotteClusterIngress_small.cfg \
     PublishReady WithdrawReady ReplaceDeployment CommitDrain BeginJoint \
     FinalizeJoint LearnRoute ForgetRoute InstallSnapshot StartNewFlow \
-    ExpireLease ExistingFlowPacket DropStaleNewFlow DropUnretainedFlow EndFlow
+    ExpireLease ExistingFlowPacket DropStaleNewFlow DropUnretainedFlow \
+    DropWithdrawnFlow DropDepartedBackend EndFlow
 run_expected_violation CharlotteClusterIngress \
     CharlotteClusterIngress_stale_snapshot_unsafe.cfg \
     NewFlowsRequireFreshLease UnsafeStartStaleFlow

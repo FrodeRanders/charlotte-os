@@ -360,6 +360,8 @@ catalog application of the resulting Raft command.
 | `ExpireLease` | terminal observation of the monotonic `snapshot_lease` timer | Abstract timing correspondence. Weak fairness says an unrenewed lease eventually expires; Rust fixes the interval at five seconds. |
 | `StartNewFlow` | `classify_ingress`, `snapshot_for_flow`, `FlowEpochTable::observe`, `select_backend` | Direct for deterministic selection from a complete snapshot while its five-second monotonic lease is fresh. Each successful one-second refresh replaces the lease; timer failure or expiry stops unbound-flow admission. |
 | `ExistingFlowPacket` / `EndFlow` | `FlowEpochTable::observe` | Direct while the binding's snapshot remains retained. FIN/RST removes the binding. Timing, TCP state, table-pressure eviction, and packets arriving through a different advertiser are omitted. |
+| `DropWithdrawnFlow` | `reconcile_ingress_services` after an assignment withdrawal | Direct: a committed withdrawal drops the service's retained snapshots and flow bindings, so established flows fail and a reconnect selects from live assignments. |
+| `DropDepartedBackend` | `remove_absent_backends` on snapshot install | Direct: a binding whose selected backend left the installed member set is removed, so a reconnect can select a live backend instead of black-holing. |
 | `DropStaleNewFlow` | `snapshot_for_flow` with an expired or unavailable `snapshot_lease`; freshness-aware `local_advertises_vip` | Direct. Bound traffic may retain an old policy, while unbound packets and VIP ARP requests fail closed after lease expiry. |
 | `DropUnretainedFlow` | `snapshot_for_flow`; `remove_absent_backends` retains bindings whose epoch is missing | Direct. Missing history returns `FlowPolicyError::MissingEpoch`; there is no current-snapshot fallback. |
 | `UnsafeStartStaleFlow` | former unconditional use of `SnapshotHistory::current` | Negative regression. It demonstrates why an expired local policy must not authorize an unbound flow. |
@@ -371,12 +373,13 @@ drawn from the non-draining members, and each flow is pinned to one backend of
 its policy version's eligible set. The concrete leader-preferred advertiser
 and rendezvous-hash winner are valid instances, so the protocol obligations the
 model checks (one advertiser per version, a stable pinned backend) apply to
-them; only a determinism test is needed for the concrete functions. Still
-outside the model: withdrawing an assignment drops that service's retained
-flow bindings in the router, snapshot installs are accepted in arrival order
-rather than by numeric version comparison, `remove_absent_backends` can
-terminate a binding when its selected backend leaves the current member set,
-the 64-bit epoch does not include the assignment sequence, and
+them; only a determinism test is needed for the concrete functions. The model
+ends a binding when the committed assignment is withdrawn or when the pinned
+backend leaves the installed member set, matching the router's hard-stop
+behavior; `CommitDrain` remains the graceful path that retains established
+flows while excluding the node from new selection. Still outside the model:
+snapshot installs are accepted in arrival order rather than by numeric version
+comparison, the 64-bit epoch does not include the assignment sequence, and
 platform-compatibility services use a reduced digest.
 
 The model treats a policy version as the complete identity of one immutable
