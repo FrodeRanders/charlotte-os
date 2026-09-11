@@ -132,13 +132,13 @@ impl<'vas> Walker<'vas> {
         &mut self,
         parent_table_ptr: *mut PageTable,
         index: usize,
-    ) -> *mut PageTable {
-        let new_table = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().unwrap();
+    ) -> WalkerResult<*mut PageTable> {
+        let new_table = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame()?;
         unsafe {
             let new_table_ptr: *mut PageTable = new_table.into();
             core::ptr::write_bytes(new_table_ptr.cast::<u8>(), 0, PAGE_SIZE);
             (*parent_table_ptr)[index] = Descriptor::new_table(new_table);
-            new_table_ptr
+            Ok(new_table_ptr)
         }
     }
 
@@ -215,7 +215,7 @@ impl<'vas> Walker<'vas> {
             if !self.is_higher_half() {
                 self.address_space.ensure_hw_asid().ok_or(WalkerError::HardwareAsidExhausted)?;
             }
-            let new_root = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().unwrap();
+            let new_root = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame()?;
             unsafe {
                 let new_root_ptr: *mut PageTable = new_root.into();
                 core::ptr::write_bytes(new_root_ptr.cast::<u8>(), 0, PAGE_SIZE);
@@ -299,17 +299,17 @@ impl<'vas> Walker<'vas> {
         Self::prepare_map_walk_result(self.walk())?;
         self.ensure_root()?;
         if self.l1_ptr.is_null() {
-            self.l1_ptr = self.allocate_and_link_table(self.l0_ptr, self.vaddr.pml4_index());
+            self.l1_ptr = self.allocate_and_link_table(self.l0_ptr, self.vaddr.pml4_index())?;
         }
         if self.l2_ptr.is_null() {
-            self.l2_ptr = self.allocate_and_link_table(self.l1_ptr, self.vaddr.pdpt_index());
+            self.l2_ptr = self.allocate_and_link_table(self.l1_ptr, self.vaddr.pdpt_index())?;
         }
         if self.l3_ptr.is_null() {
             let l2e = unsafe { (*self.l2_ptr)[self.vaddr.pd_index()] };
             if l2e.is_valid() {
                 return Err(Self::already_mapped_error());
             }
-            self.l3_ptr = self.allocate_and_link_table(self.l2_ptr, self.vaddr.pd_index());
+            self.l3_ptr = self.allocate_and_link_table(self.l2_ptr, self.vaddr.pd_index())?;
         }
         unsafe {
             (*self.l3_ptr)[self.vaddr.pt_index()] = Descriptor::new_leaf(
@@ -377,10 +377,10 @@ impl<'vas> Walker<'vas> {
         Self::prepare_map_walk_result(self.walk_large_page())?;
         self.ensure_root()?;
         if self.l1_ptr.is_null() {
-            self.l1_ptr = self.allocate_and_link_table(self.l0_ptr, self.vaddr.pml4_index());
+            self.l1_ptr = self.allocate_and_link_table(self.l0_ptr, self.vaddr.pml4_index())?;
         }
         if self.l2_ptr.is_null() {
-            self.l2_ptr = self.allocate_and_link_table(self.l1_ptr, self.vaddr.pdpt_index());
+            self.l2_ptr = self.allocate_and_link_table(self.l1_ptr, self.vaddr.pdpt_index())?;
         }
         unsafe {
             if (*self.l2_ptr)[self.vaddr.pd_index()].is_valid() {
@@ -420,7 +420,7 @@ impl<'vas> Walker<'vas> {
         Self::prepare_map_walk_result(self.walk_huge_page())?;
         self.ensure_root()?;
         if self.l1_ptr.is_null() {
-            self.l1_ptr = self.allocate_and_link_table(self.l0_ptr, self.vaddr.pml4_index());
+            self.l1_ptr = self.allocate_and_link_table(self.l0_ptr, self.vaddr.pml4_index())?;
         }
         unsafe {
             if (*self.l1_ptr)[self.vaddr.pdpt_index()].is_valid() {
