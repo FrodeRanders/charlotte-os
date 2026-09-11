@@ -1007,6 +1007,67 @@ fn abort_pending_entry(entry: PendingRegistration, transport: &RelmsgRaftTranspo
     }
 }
 
+/// Relay one already-decoded admission request to the current leader.
+///
+/// Returns `Some(code)` when the caller must reply with `code`, or `None`
+/// once the request is queued and its reply deferred to the reactor.
+#[allow(clippy::too_many_arguments)]
+fn relay_to_leader(
+    node: &RaftNode,
+    transport: &RelmsgRaftTransport,
+    pending_queries: &mut Vec<PendingQuery>,
+    next_query_id: &mut u64,
+    session: u64,
+    reply: u64,
+    timeout_ms: u64,
+    tag: u8,
+    encode: impl FnOnce(u64, u64) -> Option<Vec<u8>>,
+    kind: impl FnOnce(u64) -> PendingQueryKind,
+) -> Option<i64> {
+    let Some(leader) = node.known_leader_id.clone() else {
+        return Some(dns::ERR_NOT_LEADER);
+    };
+    if pending_queries.len() >= MAX_IN_FLIGHT_CALLS || !transport.has_peer(&leader) {
+        return Some(dns::ERR_BUSY);
+    }
+    let request_id = *next_query_id;
+    *next_query_id = next_query_id.wrapping_add(1).max(1);
+    let Some(frame) = encode(session, request_id) else {
+        return Some(dns::ERR_TOO_LARGE);
+    };
+    pending_queries.push(PendingQuery {
+        query_id: request_id,
+        expected_leader: leader.clone(),
+        deadline: node.millis().saturating_add(timeout_ms),
+        kind: kind(reply),
+    });
+    transport.send_message(&leader, tag, frame);
+    None
+}
+
+/// Submit one admission command locally and record it for completion when it
+/// commits. Returns `Ok(())` when the caller must `continue` (the reply is
+/// deferred to the reactor), or `Err(code)` when the caller must reply.
+fn submit_deferred(
+    node: &mut RaftNode,
+    pending: &mut Vec<PendingRegistration>,
+    reply: u64,
+    build: impl FnOnce(&RaftNode) -> Result<Vec<u8>, i64>,
+) -> Result<(), i64> {
+    let command = build(node)?;
+    match node.submit_command(command, node.millis()) {
+        Ok(log_index) => {
+            pending.push(PendingRegistration::Deploy {
+                term: node.current_term,
+                log_index,
+                reply,
+            });
+            Ok(())
+        }
+        Err(code) => Err(code),
+    }
+}
+
 fn serve(ctx: &Context) -> ShutdownRequest {
     config::write_u32_release(dns::status::STAGE, 1);
     let mnemonic: Vec<u8> = match ctx.manifest_value(CLUSTER_KEY) {
@@ -2676,78 +2737,58 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     let request = read_named_deploy_request(&message);
                     let result = match request {
                         Some(request) if node.state == NodeState::Leader => {
-                            match node.submit_command(
-                                encode_deploy(
-                                    &request.name,
-                                    request.object_id,
-                                    if request.node_key == 0 {
-                                        node_identity::key_from_name(&node_name).unwrap_or(0)
-                                    } else {
-                                        request.node_key
-                                    },
-                                    &request.digest,
-                                    &request.descriptor,
-                                ),
-                                node.millis(),
+                            match submit_deferred(
+                                &mut node,
+                                &mut pending_registers,
+                                message.reply,
+                                |_node| {
+                                    Ok(encode_deploy(
+                                        &request.name,
+                                        request.object_id,
+                                        if request.node_key == 0 {
+                                            node_identity::key_from_name(&node_name).unwrap_or(0)
+                                        } else {
+                                            request.node_key
+                                        },
+                                        &request.digest,
+                                        &request.descriptor,
+                                    ))
+                                },
                             ) {
-                                Ok(log_index) => {
-                                    pending_registers.push(PendingRegistration::Deploy {
-                                        term: node.current_term,
-                                        log_index,
-                                        reply: message.reply,
-                                    });
-                                    continue;
-                                }
+                                Ok(()) => continue,
                                 Err(code) => code,
                             }
                         }
-                        Some(request) => {
-                            let Some(leader) = node.known_leader_id.clone() else {
-                                if message.reply != 0 {
-                                    ipc_reply(message.reply, dns::ERR_NOT_LEADER);
-                                }
-                                continue;
-                            };
-                            if pending_queries.len() >= MAX_IN_FLIGHT_CALLS
-                                || !transport.has_peer(&leader)
-                            {
-                                dns::ERR_BUSY
-                            } else {
-                                let request_id = next_query_id;
-                                next_query_id = next_query_id.wrapping_add(1).max(1);
-                                let relay = catten_services::rdeploy::Request {
-                                    session: dns_session,
-                                    request_id,
-                                    caller: node_name.clone(),
-                                    artifact: request.name,
-                                    object_id: request.object_id,
-                                    node_key: request.node_key,
-                                    digest: request.digest,
-                                    descriptor: request.descriptor,
-                                };
-                                let Some(frame) = catten_services::rdeploy::encode_request(&relay)
-                                else {
-                                    if message.reply != 0 {
-                                        ipc_reply(message.reply, dns::ERR_TOO_LARGE);
-                                    }
-                                    continue;
-                                };
-                                pending_queries.push(PendingQuery {
-                                    query_id: request_id,
-                                    expected_leader: leader.clone(),
-                                    deadline: node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS),
-                                    kind: PendingQueryKind::Deploy {
-                                        reply: message.reply,
+                        Some(request) => match relay_to_leader(
+                            &node,
+                            &transport,
+                            &mut pending_queries,
+                            &mut next_query_id,
+                            dns_session,
+                            message.reply,
+                            REMOTE_CALL_TIMEOUT_MS,
+                            catten_services::rdeploy::TAG_REQUEST,
+                            |session, request_id| {
+                                catten_services::rdeploy::encode_request(
+                                    &catten_services::rdeploy::Request {
+                                        session,
+                                        request_id,
+                                        caller: node_name.clone(),
+                                        artifact: request.name,
+                                        object_id: request.object_id,
+                                        node_key: request.node_key,
+                                        digest: request.digest,
+                                        descriptor: request.descriptor,
                                     },
-                                });
-                                transport.send_message(
-                                    &leader,
-                                    catten_services::rdeploy::TAG_REQUEST,
-                                    frame,
-                                );
-                                continue;
-                            }
-                        }
+                                )
+                            },
+                            |reply| PendingQueryKind::Deploy {
+                                reply,
+                            },
+                        ) {
+                            Some(code) => code,
+                            None => continue,
+                        },
                         None => dns::ERR_TOO_LARGE,
                     };
                     if message.reply != 0 {
@@ -2760,67 +2801,47 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         read_moved_bytes(&message, charlotte_launch::release::MAX_RELEASE_LEN);
                     let result = match envelope {
                         Some(envelope) if node.state == NodeState::Leader => {
-                            let automatic_node =
-                                node_identity::key_from_name(&node_name).unwrap_or(0);
-                            let eligible_nodes = placement_nodes(&node, &catalog);
-                            match release_command(&envelope, &eligible_nodes, automatic_node) {
-                                Ok(command) => match node.submit_command(command, node.millis()) {
-                                    Ok(log_index) => {
-                                        pending_registers.push(PendingRegistration::Deploy {
-                                            term: node.current_term,
-                                            log_index,
-                                            reply: message.reply,
-                                        });
-                                        continue;
-                                    }
-                                    Err(code) => code,
+                            match submit_deferred(
+                                &mut node,
+                                &mut pending_registers,
+                                message.reply,
+                                |node| {
+                                    let automatic_node =
+                                        node_identity::key_from_name(&node_name).unwrap_or(0);
+                                    let eligible_nodes = placement_nodes(node, &catalog);
+                                    release_command(&envelope, &eligible_nodes, automatic_node)
                                 },
+                            ) {
+                                Ok(()) => continue,
                                 Err(code) => code,
                             }
                         }
-                        Some(envelope) => {
-                            let Some(leader) = node.known_leader_id.clone() else {
-                                if message.reply != 0 {
-                                    ipc_reply(message.reply, dns::ERR_NOT_LEADER);
-                                }
-                                continue;
-                            };
-                            if pending_queries.len() >= MAX_IN_FLIGHT_CALLS
-                                || !transport.has_peer(&leader)
-                            {
-                                dns::ERR_BUSY
-                            } else {
-                                let request_id = next_query_id;
-                                next_query_id = next_query_id.wrapping_add(1).max(1);
-                                let relay = catten_services::rrelease::Request {
-                                    session: dns_session,
-                                    request_id,
-                                    caller: node_name.clone(),
-                                    envelope,
-                                };
-                                let Some(frame) = catten_services::rrelease::encode_request(&relay)
-                                else {
-                                    if message.reply != 0 {
-                                        ipc_reply(message.reply, dns::ERR_TOO_LARGE);
-                                    }
-                                    continue;
-                                };
-                                pending_queries.push(PendingQuery {
-                                    query_id: request_id,
-                                    expected_leader: leader.clone(),
-                                    deadline: node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS),
-                                    kind: PendingQueryKind::Release {
-                                        reply: message.reply,
+                        Some(envelope) => match relay_to_leader(
+                            &node,
+                            &transport,
+                            &mut pending_queries,
+                            &mut next_query_id,
+                            dns_session,
+                            message.reply,
+                            REMOTE_CALL_TIMEOUT_MS,
+                            catten_services::rrelease::TAG_REQUEST,
+                            |session, request_id| {
+                                catten_services::rrelease::encode_request(
+                                    &catten_services::rrelease::Request {
+                                        session,
+                                        request_id,
+                                        caller: node_name.clone(),
+                                        envelope,
                                     },
-                                });
-                                transport.send_message(
-                                    &leader,
-                                    catten_services::rrelease::TAG_REQUEST,
-                                    frame,
-                                );
-                                continue;
-                            }
-                        }
+                                )
+                            },
+                            |reply| PendingQueryKind::Release {
+                                reply,
+                            },
+                        ) {
+                            Some(code) => code,
+                            None => continue,
+                        },
                         None => dns::ERR_TOO_LARGE,
                     };
                     if message.reply != 0 {
@@ -2835,76 +2856,53 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     );
                     let result = match bundle {
                         Some(bundle) if node.state == NodeState::Leader => {
-                            let automatic_node =
-                                node_identity::key_from_name(&node_name).unwrap_or(0);
-                            let eligible_nodes = placement_nodes(&node, &catalog);
-                            match operations_command(
-                                &bundle,
-                                &admission_trust,
-                                time_conn.as_ref(),
-                                &eligible_nodes,
-                                automatic_node,
-                            ) {
-                                Ok(command) => match node.submit_command(command, node.millis()) {
-                                    Ok(log_index) => {
-                                        pending_registers.push(PendingRegistration::Deploy {
-                                            term: node.current_term,
-                                            log_index,
-                                            reply: message.reply,
-                                        });
-                                        continue;
-                                    }
-                                    Err(code) => code,
+                            match submit_deferred(
+                                &mut node,
+                                &mut pending_registers,
+                                message.reply,
+                                |node| {
+                                    let automatic_node =
+                                        node_identity::key_from_name(&node_name).unwrap_or(0);
+                                    let eligible_nodes = placement_nodes(node, &catalog);
+                                    operations_command(
+                                        &bundle,
+                                        &admission_trust,
+                                        time_conn.as_ref(),
+                                        &eligible_nodes,
+                                        automatic_node,
+                                    )
                                 },
+                            ) {
+                                Ok(()) => continue,
                                 Err(code) => code,
                             }
                         }
-                        Some(bundle) => {
-                            let Some(leader) = node.known_leader_id.clone() else {
-                                if message.reply != 0 {
-                                    ipc_reply(message.reply, dns::ERR_NOT_LEADER);
-                                }
-                                continue;
-                            };
-                            if pending_queries.len() >= MAX_IN_FLIGHT_CALLS
-                                || !transport.has_peer(&leader)
-                            {
-                                dns::ERR_BUSY
-                            } else {
-                                let request_id = next_query_id;
-                                next_query_id = next_query_id.wrapping_add(1).max(1);
-                                let relay = catten_services::roperations::Request {
-                                    session: dns_session,
-                                    request_id,
-                                    caller: node_name.clone(),
-                                    bundle,
-                                };
-                                let Some(frame) =
-                                    catten_services::roperations::encode_request(&relay)
-                                else {
-                                    if message.reply != 0 {
-                                        ipc_reply(message.reply, dns::ERR_TOO_LARGE);
-                                    }
-                                    continue;
-                                };
-                                pending_queries.push(PendingQuery {
-                                    query_id: request_id,
-                                    expected_leader: leader.clone(),
-                                    deadline: node
-                                        .millis()
-                                        .saturating_add(REMOTE_OPERATIONS_TIMEOUT_MS),
-                                    kind: PendingQueryKind::Operations {
-                                        reply: message.reply,
+                        Some(bundle) => match relay_to_leader(
+                            &node,
+                            &transport,
+                            &mut pending_queries,
+                            &mut next_query_id,
+                            dns_session,
+                            message.reply,
+                            REMOTE_OPERATIONS_TIMEOUT_MS,
+                            catten_services::roperations::TAG_REQUEST,
+                            |session, request_id| {
+                                catten_services::roperations::encode_request(
+                                    &catten_services::roperations::Request {
+                                        session,
+                                        request_id,
+                                        caller: node_name.clone(),
+                                        bundle,
                                     },
-                                });
-                                transport.send_message(
-                                    &leader,
-                                    catten_services::roperations::TAG_REQUEST,
-                                    frame,
-                                );
-                                continue;
-                            }
-                        }
+                                )
+                            },
+                            |reply| PendingQueryKind::Operations {
+                                reply,
+                            },
+                        ) {
+                            Some(code) => code,
+                            None => continue,
+                        },
                         None => dns::ERR_TOO_LARGE,
                     };
                     if message.reply != 0 {
@@ -2917,70 +2915,49 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         read_moved_bytes(&message, charlotte_launch::shutdown::ENCODED_LEN);
                     let result = match envelope {
                         Some(envelope) if node.state == NodeState::Leader => {
-                            match shutdown_command(
-                                &envelope,
-                                &catalog,
-                                &admission_trust,
-                                time_conn.as_ref(),
-                            ) {
-                                Ok(command) => match node.submit_command(command, node.millis()) {
-                                    Ok(log_index) => {
-                                        pending_registers.push(PendingRegistration::Deploy {
-                                            term: node.current_term,
-                                            log_index,
-                                            reply: message.reply,
-                                        });
-                                        continue;
-                                    }
-                                    Err(code) => code,
+                            match submit_deferred(
+                                &mut node,
+                                &mut pending_registers,
+                                message.reply,
+                                |_node| {
+                                    shutdown_command(
+                                        &envelope,
+                                        &catalog,
+                                        &admission_trust,
+                                        time_conn.as_ref(),
+                                    )
                                 },
+                            ) {
+                                Ok(()) => continue,
                                 Err(code) => code,
                             }
                         }
-                        Some(envelope) => {
-                            let Some(leader) = node.known_leader_id.clone() else {
-                                if message.reply != 0 {
-                                    ipc_reply(message.reply, dns::ERR_NOT_LEADER);
-                                }
-                                continue;
-                            };
-                            if pending_queries.len() >= MAX_IN_FLIGHT_CALLS
-                                || !transport.has_peer(&leader)
-                            {
-                                dns::ERR_BUSY
-                            } else {
-                                let request_id = next_query_id;
-                                next_query_id = next_query_id.wrapping_add(1).max(1);
-                                let relay = catten_services::rshutdown::Request {
-                                    session: dns_session,
-                                    request_id,
-                                    caller: node_name.clone(),
-                                    envelope,
-                                };
-                                let Some(frame) =
-                                    catten_services::rshutdown::encode_request(&relay)
-                                else {
-                                    if message.reply != 0 {
-                                        ipc_reply(message.reply, dns::ERR_TOO_LARGE);
-                                    }
-                                    continue;
-                                };
-                                pending_queries.push(PendingQuery {
-                                    query_id: request_id,
-                                    expected_leader: leader.clone(),
-                                    deadline: node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS),
-                                    kind: PendingQueryKind::Shutdown {
-                                        reply: message.reply,
+                        Some(envelope) => match relay_to_leader(
+                            &node,
+                            &transport,
+                            &mut pending_queries,
+                            &mut next_query_id,
+                            dns_session,
+                            message.reply,
+                            REMOTE_CALL_TIMEOUT_MS,
+                            catten_services::rshutdown::TAG_REQUEST,
+                            |session, request_id| {
+                                catten_services::rshutdown::encode_request(
+                                    &catten_services::rshutdown::Request {
+                                        session,
+                                        request_id,
+                                        caller: node_name.clone(),
+                                        envelope,
                                     },
-                                });
-                                transport.send_message(
-                                    &leader,
-                                    catten_services::rshutdown::TAG_REQUEST,
-                                    frame,
-                                );
-                                continue;
-                            }
-                        }
+                                )
+                            },
+                            |reply| PendingQueryKind::Shutdown {
+                                reply,
+                            },
+                        ) {
+                            Some(code) => code,
+                            None => continue,
+                        },
                         None => dns::ERR_TOO_LARGE,
                     };
                     if message.reply != 0 {
@@ -3011,69 +2988,48 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     );
                     let result = match envelope {
                         Some(envelope) if node.state == NodeState::Leader => {
-                            match ingress_policy_command(
-                                &envelope,
-                                &admission_trust,
-                                time_conn.as_ref(),
-                            ) {
-                                Ok(command) => match node.submit_command(command, node.millis()) {
-                                    Ok(log_index) => {
-                                        pending_registers.push(PendingRegistration::Deploy {
-                                            term: node.current_term,
-                                            log_index,
-                                            reply: message.reply,
-                                        });
-                                        continue;
-                                    }
-                                    Err(code) => code,
+                            match submit_deferred(
+                                &mut node,
+                                &mut pending_registers,
+                                message.reply,
+                                |_node| {
+                                    ingress_policy_command(
+                                        &envelope,
+                                        &admission_trust,
+                                        time_conn.as_ref(),
+                                    )
                                 },
+                            ) {
+                                Ok(()) => continue,
                                 Err(code) => code,
                             }
                         }
-                        Some(envelope) => {
-                            let Some(leader) = node.known_leader_id.clone() else {
-                                if message.reply != 0 {
-                                    ipc_reply(message.reply, dns::ERR_NOT_LEADER);
-                                }
-                                continue;
-                            };
-                            if pending_queries.len() >= MAX_IN_FLIGHT_CALLS
-                                || !transport.has_peer(&leader)
-                            {
-                                dns::ERR_BUSY
-                            } else {
-                                let request_id = next_query_id;
-                                next_query_id = next_query_id.wrapping_add(1).max(1);
-                                let relay = catten_services::ringress_policy::Request {
-                                    session: dns_session,
-                                    request_id,
-                                    caller: node_name.clone(),
-                                    envelope,
-                                };
-                                let Some(frame) =
-                                    catten_services::ringress_policy::encode_request(&relay)
-                                else {
-                                    if message.reply != 0 {
-                                        ipc_reply(message.reply, dns::ERR_TOO_LARGE);
-                                    }
-                                    continue;
-                                };
-                                pending_queries.push(PendingQuery {
-                                    query_id: request_id,
-                                    expected_leader: leader.clone(),
-                                    deadline: node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS),
-                                    kind: PendingQueryKind::IngressPolicy {
-                                        reply: message.reply,
+                        Some(envelope) => match relay_to_leader(
+                            &node,
+                            &transport,
+                            &mut pending_queries,
+                            &mut next_query_id,
+                            dns_session,
+                            message.reply,
+                            REMOTE_CALL_TIMEOUT_MS,
+                            catten_services::ringress_policy::TAG_REQUEST,
+                            |session, request_id| {
+                                catten_services::ringress_policy::encode_request(
+                                    &catten_services::ringress_policy::Request {
+                                        session,
+                                        request_id,
+                                        caller: node_name.clone(),
+                                        envelope,
                                     },
-                                });
-                                transport.send_message(
-                                    &leader,
-                                    catten_services::ringress_policy::TAG_REQUEST,
-                                    frame,
-                                );
-                                continue;
-                            }
-                        }
+                                )
+                            },
+                            |reply| PendingQueryKind::IngressPolicy {
+                                reply,
+                            },
+                        ) {
+                            Some(code) => code,
+                            None => continue,
+                        },
                         None => dns::ERR_TOO_LARGE,
                     };
                     if message.reply != 0 {
