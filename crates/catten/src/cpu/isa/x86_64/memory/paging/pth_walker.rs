@@ -79,7 +79,10 @@ impl<'vas> PthWalker<'vas> {
             {
                 return Err(Self::unmapped_error());
             }
-            Ok(pte.try_get_frame().unwrap().into())
+            let Ok(frame) = pte.try_get_frame() else {
+                return Err(Self::unmapped_error());
+            };
+            Ok(frame.into())
         }
     }
 
@@ -329,9 +332,11 @@ impl<'vas> PthWalker<'vas> {
             Ok(_) => {
                 unsafe {
                     // get the return value
-                    let paddr = (*self.pt_ptr)[self.vaddr.pt_index()].try_get_frame().unwrap();
-                    // deallocate all higher level tables that are now unused
                     let pte = &raw mut (*self.pt_ptr)[self.vaddr.pt_index()];
+                    let Ok(paddr) = (*pte).try_get_frame() else {
+                        return Err(Self::unmapped_error());
+                    };
+                    // deallocate all higher level tables that are now unused
                     if (*pte).is_present() {
                         // We do not deallocate the page frame here, as it is the responsibility of
                         // the VMM client calling this function to deallocate the frame if they need
@@ -428,7 +433,9 @@ impl<'vas> PthWalker<'vas> {
         self.walk_large_page()?;
         unsafe {
             let pde = &raw mut (*self.pd_ptr)[self.vaddr.pd_index()];
-            let paddr = (*pde).try_get_frame().unwrap();
+            let Ok(paddr) = (*pde).try_get_frame() else {
+                return Err(Self::unmapped_error());
+            };
             (*pde).set_present(false);
             core::arch::asm!("invlpg [{}]", in(reg) self.vaddr.into_ptr::<u8>());
             Ok(paddr)
@@ -476,7 +483,9 @@ impl<'vas> PthWalker<'vas> {
         self.walk_huge_page()?;
         unsafe {
             let pdpte = &raw mut (*self.pdpt_ptr)[self.vaddr.pdpt_index()];
-            let paddr = (*pdpte).try_get_frame().unwrap();
+            let Ok(paddr) = (*pdpte).try_get_frame() else {
+                return Err(Self::unmapped_error());
+            };
             (*pdpte).set_present(false);
             core::arch::asm!("invlpg [{}]", in(reg) self.vaddr.into_ptr::<u8>());
             Ok(paddr)
