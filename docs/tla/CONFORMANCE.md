@@ -366,15 +366,18 @@ catalog application of the resulting Raft command.
 | `UnsafeFallbackExistingPacket` | former `history.get(epoch).unwrap_or(current)` | Negative regression. It demonstrates why an unretained binding cannot be reinterpreted through the current snapshot. |
 | `UnsafeAdmitStaleReadiness` | missing generation comparison, retained only as a negative regression | Negative model only. Current `ingress_placement` compares each active registration's deployment generation with the desired generation before adding the node. |
 
-Several concrete selections are deliberately abstracted and are not checked
-by the model's `Winner`/`MinNode` definitions: the advertiser prefers the
-current Raft leader and only falls back to the minimum eligible node, the flow
-winner is a rendezvous hash rather than `MaxNode`, withdrawing an assignment
-drops that service's retained flow bindings, snapshot installs are accepted in
-arrival order rather than by numeric version comparison, and
-`remove_absent_backends` can terminate a binding when its selected backend
-leaves the current member set. The 64-bit epoch does not include the
-assignment sequence, and platform-compatibility services use a reduced digest.
+The model parameterizes both selections: a policy names exactly one advertiser
+drawn from the non-draining members, and each flow is pinned to one backend of
+its policy version's eligible set. The concrete leader-preferred advertiser
+and rendezvous-hash winner are valid instances, so the protocol obligations the
+model checks (one advertiser per version, a stable pinned backend) apply to
+them; only a determinism test is needed for the concrete functions. Still
+outside the model: withdrawing an assignment drops that service's retained
+flow bindings in the router, snapshot installs are accepted in arrival order
+rather than by numeric version comparison, `remove_absent_backends` can
+terminate a binding when its selected backend leaves the current member set,
+the 64-bit epoch does not include the assignment sequence, and
+platform-compatibility services use a reduced digest.
 
 The model treats a policy version as the complete identity of one immutable
 snapshot. Rust compresses membership epoch, deployment and service

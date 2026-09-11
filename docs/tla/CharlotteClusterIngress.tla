@@ -33,9 +33,6 @@ Generation == 0..MaxGeneration
 PolicyVersion == 1..MaxPolicyVersion
 MembershipPhase == {"Stable", "Joint"}
 
-MinNode(nodes) == CHOOSE n \in nodes : \A other \in nodes : n <= other
-MaxNode(nodes) == CHOOSE n \in nodes : \A other \in nodes : n >= other
-
 IngressMembersFor(phaseValue, current, next) ==
     IF phaseValue = "Stable" THEN current ELSE current \cap next
 
@@ -45,12 +42,11 @@ DerivedEligible(members, generation, replicas, ready, draining) ==
         /\ ready[n] = generation
         /\ n \notin draining}
 
-MakePolicy(members, generation, replicas, ready, draining, assigned) ==
+MakePolicy(members, generation, replicas, ready, draining, assigned, advertiser) ==
     LET eligible ==
             IF assigned
             THEN DerivedEligible(members, generation, replicas, ready, draining)
             ELSE {}
-        ingressMembers == members \ draining
     IN [members |-> members,
         generation |-> generation,
         replicas |-> replicas,
@@ -58,10 +54,20 @@ MakePolicy(members, generation, replicas, ready, draining, assigned) ==
         draining |-> draining,
         assigned |-> assigned,
         eligible |-> eligible,
-        advertiser |->
-            IF eligible /= {} /\ ingressMembers /= {}
-            THEN MinNode(ingressMembers)
-            ELSE NoNode]
+        advertiser |-> advertiser]
+
+\* Concrete routers select an advertiser and a backend with their own
+\* deterministic functions: a leader-preferred non-draining member and a
+\* rendezvous hash over a pinned immutable snapshot. The model checks only the
+\* protocol obligations those functions must satisfy: exactly one advertiser
+\* per policy version drawn from the non-draining members, and each flow
+\* pinned to one backend of its policy version's eligible set. It deliberately
+\* does not privilege a particular choice function.
+PoliciesFor(members, generation, replicas, ready, draining, assigned) ==
+    LET base ==
+            MakePolicy(members, generation, replicas, ready, draining, assigned, NoNode)
+    IN IF base.eligible = {} THEN {base}
+       ELSE { [base EXCEPT !.advertiser = adv] : adv \in base.members \ base.draining }
 
 PolicyType ==
     [members: SUBSET Node,
@@ -80,8 +86,6 @@ AppendBounded(sequence, version) ==
     THEN Append(sequence, version)
     ELSE Append(Tail(sequence), version)
 
-Winner(policy) == MaxNode(policy.eligible)
-
 VARIABLES membershipPhase, currentVoters, nextVoters,
           deploymentGeneration, replicas, readyGeneration, draining,
           assignmentSequence, serviceAssigned,
@@ -99,8 +103,8 @@ vars == <<membershipPhase, currentVoters, nextVoters,
           staleNewFlowAdmitted, flowRemapped>>
 
 InitialReady == [n \in Node |-> 0]
-InitialPolicy ==
-    MakePolicy(InitialVoters, 1, InitialReplicas, InitialReady, {}, TRUE)
+InitialPolicies ==
+    PoliciesFor(InitialVoters, 1, InitialReplicas, InitialReady, {}, TRUE)
 
 Init ==
     /\ membershipPhase = "Stable"
@@ -113,7 +117,7 @@ Init ==
     /\ assignmentSequence = 0
     /\ serviceAssigned = TRUE
     /\ policyVersion = 1
-    /\ policies = [version \in PolicyVersion |-> InitialPolicy]
+    /\ \E initial \in InitialPolicies : policies = [version \in PolicyVersion |-> initial]
     /\ knownRoutes = [router \in Node |-> {router}]
     /\ routerPolicy = [router \in Node |-> 0]
     /\ history = [router \in Node |-> <<>>]
@@ -136,14 +140,13 @@ PublishReady(node) ==
     /\ LET nextReady == [readyGeneration EXCEPT ![node] = deploymentGeneration]
            nextVersion == policyVersion + 1
        IN /\ readyGeneration' = nextReady
-          /\ policies' =
-              [policies EXCEPT
-                  ![nextVersion] = MakePolicy(CurrentMembers,
-                                               deploymentGeneration,
-                                               replicas,
-                                               nextReady,
-                                               draining,
-                                               serviceAssigned)]
+          /\ \E nextPolicy \in PoliciesFor(CurrentMembers,
+                                           deploymentGeneration,
+                                           replicas,
+                                           nextReady,
+                                           draining,
+                                           serviceAssigned) :
+                 policies' = [policies EXCEPT ![nextVersion] = nextPolicy]
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, draining,
@@ -158,14 +161,13 @@ WithdrawReady(node) ==
     /\ LET nextReady == [readyGeneration EXCEPT ![node] = 0]
            nextVersion == policyVersion + 1
        IN /\ readyGeneration' = nextReady
-          /\ policies' =
-              [policies EXCEPT
-                  ![nextVersion] = MakePolicy(CurrentMembers,
-                                               deploymentGeneration,
-                                               replicas,
-                                               nextReady,
-                                               draining,
-                                               serviceAssigned)]
+          /\ \E nextPolicy \in PoliciesFor(CurrentMembers,
+                                           deploymentGeneration,
+                                           replicas,
+                                           nextReady,
+                                           draining,
+                                           serviceAssigned) :
+                 policies' = [policies EXCEPT ![nextVersion] = nextPolicy]
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, draining,
@@ -184,14 +186,13 @@ ReplaceDeployment(nextReplicas) ==
            nextVersion == policyVersion + 1
        IN /\ deploymentGeneration' = nextGeneration
           /\ replicas' = nextReplicas
-          /\ policies' =
-              [policies EXCEPT
-                  ![nextVersion] = MakePolicy(CurrentMembers,
-                                               nextGeneration,
-                                               nextReplicas,
-                                               readyGeneration,
-                                               draining,
-                                               serviceAssigned)]
+          /\ \E nextPolicy \in PoliciesFor(CurrentMembers,
+                                           nextGeneration,
+                                           nextReplicas,
+                                           readyGeneration,
+                                           draining,
+                                           serviceAssigned) :
+                 policies' = [policies EXCEPT ![nextVersion] = nextPolicy]
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     readyGeneration, draining,
@@ -207,14 +208,13 @@ CommitDrain(node) ==
     /\ LET nextDraining == draining \cup {node}
            nextVersion == policyVersion + 1
        IN /\ draining' = nextDraining
-          /\ policies' =
-              [policies EXCEPT
-                  ![nextVersion] = MakePolicy(CurrentMembers,
-                                               deploymentGeneration,
-                                               replicas,
-                                               readyGeneration,
-                                               nextDraining,
-                                               serviceAssigned)]
+          /\ \E nextPolicy \in PoliciesFor(CurrentMembers,
+                                           deploymentGeneration,
+                                           replicas,
+                                           readyGeneration,
+                                           nextDraining,
+                                           serviceAssigned) :
+                 policies' = [policies EXCEPT ![nextVersion] = nextPolicy]
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration,
@@ -234,14 +234,13 @@ CommitIngressAssignment(sequence, assigned) ==
     /\ LET nextVersion == policyVersion + 1
        IN /\ assignmentSequence' = sequence
           /\ serviceAssigned' = assigned
-          /\ policies' =
-              [policies EXCEPT
-                  ![nextVersion] = MakePolicy(CurrentMembers,
-                                               deploymentGeneration,
-                                               replicas,
-                                               readyGeneration,
-                                               draining,
-                                               assigned)]
+          /\ \E nextPolicy \in PoliciesFor(CurrentMembers,
+                                           deploymentGeneration,
+                                           replicas,
+                                           readyGeneration,
+                                           draining,
+                                           assigned) :
+                 policies' = [policies EXCEPT ![nextVersion] = nextPolicy]
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
@@ -259,14 +258,13 @@ BeginJoint(nextMembers) ==
            nextVersion == policyVersion + 1
        IN /\ membershipPhase' = "Joint"
           /\ nextVoters' = nextMembers
-          /\ policies' =
-              [policies EXCEPT
-                  ![nextVersion] = MakePolicy(active,
-                                               deploymentGeneration,
-                                               replicas,
-                                               readyGeneration,
-                                               draining,
-                                               serviceAssigned)]
+          /\ \E nextPolicy \in PoliciesFor(active,
+                                           deploymentGeneration,
+                                           replicas,
+                                           readyGeneration,
+                                           draining,
+                                           serviceAssigned) :
+                 policies' = [policies EXCEPT ![nextVersion] = nextPolicy]
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<currentVoters, deploymentGeneration, replicas,
                     readyGeneration, draining,
@@ -283,14 +281,13 @@ FinalizeJoint ==
        IN /\ membershipPhase' = "Stable"
           /\ currentVoters' = nextMembers
           /\ nextVoters' = {}
-          /\ policies' =
-              [policies EXCEPT
-                  ![nextVersion] = MakePolicy(nextMembers,
-                                               deploymentGeneration,
-                                               replicas,
-                                               readyGeneration,
-                                               draining,
-                                               serviceAssigned)]
+          /\ \E nextPolicy \in PoliciesFor(nextMembers,
+                                           deploymentGeneration,
+                                           replicas,
+                                           readyGeneration,
+                                           draining,
+                                           serviceAssigned) :
+                 policies' = [policies EXCEPT ![nextVersion] = nextPolicy]
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<deploymentGeneration, replicas, readyGeneration, draining,
                     assignmentSequence, serviceAssigned,
@@ -358,11 +355,11 @@ StartNewFlow(router, flow) ==
     /\ routerPolicy[router] /= 0
     /\ policies[routerPolicy[router]].advertiser = router
     /\ policies[routerPolicy[router]].eligible /= {}
-    /\ bindingPolicy' =
-        [bindingPolicy EXCEPT ![router][flow] = routerPolicy[router]]
-    /\ bindingBackend' =
-        [bindingBackend EXCEPT
-            ![router][flow] = Winner(policies[routerPolicy[router]])]
+    /\ \E backend \in policies[routerPolicy[router]].eligible :
+         /\ bindingPolicy' =
+             [bindingPolicy EXCEPT ![router][flow] = routerPolicy[router]]
+         /\ bindingBackend' =
+             [bindingBackend EXCEPT ![router][flow] = backend]
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
                     assignmentSequence, serviceAssigned,
@@ -411,13 +408,12 @@ UnsafeStartStaleFlow(router, flow) ==
     /\ routerPolicy[router] \in 1..(policyVersion - 1)
     /\ policies[routerPolicy[router]].advertiser = router
     /\ policies[routerPolicy[router]].eligible /= {}
-    /\ Winner(policies[routerPolicy[router]])
-        \notin policies[policyVersion].eligible
-    /\ bindingPolicy' =
-        [bindingPolicy EXCEPT ![router][flow] = routerPolicy[router]]
-    /\ bindingBackend' =
-        [bindingBackend EXCEPT
-            ![router][flow] = Winner(policies[routerPolicy[router]])]
+    /\ \E backend \in policies[routerPolicy[router]].eligible :
+         /\ backend \notin policies[policyVersion].eligible
+         /\ bindingPolicy' =
+             [bindingPolicy EXCEPT ![router][flow] = routerPolicy[router]]
+         /\ bindingBackend' =
+             [bindingBackend EXCEPT ![router][flow] = backend]
     /\ staleNewFlowAdmitted' = TRUE
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
@@ -434,12 +430,12 @@ UnsafeFallbackExistingPacket(router, flow) ==
     /\ bindingPolicy[router][flow] \notin SeqToSet(history[router])
     /\ routerPolicy[router] /= 0
     /\ policies[routerPolicy[router]].eligible /= {}
-    /\ Winner(policies[routerPolicy[router]]) /= bindingBackend[router][flow]
-    /\ bindingPolicy' =
-        [bindingPolicy EXCEPT ![router][flow] = routerPolicy[router]]
-    /\ bindingBackend' =
-        [bindingBackend EXCEPT
-            ![router][flow] = Winner(policies[routerPolicy[router]])]
+    /\ \E backend \in policies[routerPolicy[router]].eligible :
+         /\ backend /= bindingBackend[router][flow]
+         /\ bindingPolicy' =
+             [bindingPolicy EXCEPT ![router][flow] = routerPolicy[router]]
+         /\ bindingBackend' =
+             [bindingBackend EXCEPT ![router][flow] = backend]
     /\ flowRemapped' = TRUE
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
                     deploymentGeneration, replicas, readyGeneration, draining,
@@ -464,12 +460,13 @@ UnsafeAdmitStaleReadiness(node) ==
                                     replicas,
                                     readyGeneration,
                                     draining,
-                                    serviceAssigned)
+                                    serviceAssigned,
+                                    NoNode)
            unsafeEligible == safePolicy.eligible \cup {node}
            unsafePolicy ==
                [safePolicy EXCEPT
                    !.eligible = unsafeEligible,
-                   !.advertiser = MinNode(CurrentMembers \ draining)]
+                   !.advertiser = CHOOSE adv \in unsafeEligible : TRUE]
        IN /\ policies' = [policies EXCEPT ![nextVersion] = unsafePolicy]
           /\ policyVersion' = nextVersion
     /\ UNCHANGED <<membershipPhase, currentVoters, nextVoters,
@@ -542,10 +539,10 @@ CommittedPoliciesAreDerived ==
                                         policy.draining)
                    ELSE {}
            /\ policy.eligible \subseteq policy.members
-           /\ policy.advertiser =
+           /\ policy.advertiser \in
                 IF policy.eligible = {}
-                THEN NoNode
-                ELSE MinNode(policy.members \ policy.draining)
+                THEN {NoNode}
+                ELSE policy.members \ policy.draining
 
 CurrentPolicyMatchesAssignment ==
     policies[policyVersion].assigned = serviceAssigned
@@ -560,7 +557,8 @@ BoundFlowRemainsPinned ==
     \A router \in Node, flow \in Flow :
         bindingPolicy[router][flow] /= 0 =>
             /\ bindingPolicy[router][flow] \in 1..policyVersion
-            /\ bindingBackend[router][flow] = Winner(policies[bindingPolicy[router][flow]])
+            /\ bindingBackend[router][flow]
+                \in policies[bindingPolicy[router][flow]].eligible
 
 EmptyBindingHasNoBackend ==
     \A router \in Node, flow \in Flow :
