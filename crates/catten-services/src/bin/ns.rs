@@ -1165,7 +1165,10 @@ fn main(ctx: Context) -> ! {
                 }
                 memory_unmap(cap);
                 if message.reply != 0 {
-                    unsafe { ipc_reply_move(message.reply, cap, length as i64) };
+                    if ipc_reply_move(message.reply, cap, length as i64) != 0 {
+                        memory_close(cap);
+                        ipc_reply(message.reply, ns::ERR_INVALID);
+                    }
                 } else {
                     memory_close(cap);
                 }

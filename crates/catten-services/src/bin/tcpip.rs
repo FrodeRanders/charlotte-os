@@ -613,9 +613,19 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         }
                     };
                     match received {
-                        Some((len, true)) if len > 0 => {
+                        Some((len, true)) => {
                             memory_unmap(cap);
-                            ipc_reply_move(reply_token, cap, len as i64);
+                            if len > 0 {
+                                ipc_reply_move(reply_token, cap, len as i64);
+                            } else {
+                                // A zero-length UDP datagram or a TCP EOF is a
+                                // completed receive with no payload. The socket
+                                // ABI has no empty-buffer encoding, so complete
+                                // with the no-data result instead of stranding
+                                // the receive slot and spinning on the socket.
+                                memory_close(cap);
+                                ipc_reply(reply_token, 0);
+                            }
                             if completed_n < 8 {
                                 completed[completed_n] = *id;
                                 completed_n += 1;
@@ -656,6 +666,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
             match msg.opcode {
                 socket::OP_SOCKET => {
+                    if msg.memory != 0 {
+                        memory_close(msg.memory);
+                    }
                     if msg.arg0 != socket::DOMAIN_TCP && msg.arg0 != socket::DOMAIN_UDP {
                         ipc_reply(msg.reply, socket::ERR_BAD_DOMAIN);
                         continue;
@@ -760,6 +773,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     let entry = match state.sockets.get_mut(&msg.arg0) {
                         Some(e) => e,
                         None => {
+                            if msg.memory != 0 {
+                                memory_close(msg.memory);
+                            }
                             ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
                             continue;
                         }
@@ -831,6 +847,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     let entry = match state.sockets.get_mut(&msg.arg0) {
                         Some(e) => e,
                         None => {
+                            if msg.memory != 0 {
+                                memory_close(msg.memory);
+                            }
                             ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
                             continue;
                         }
@@ -887,6 +906,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 socket::OP_ACCEPT => {
+                    if msg.memory != 0 {
+                        memory_close(msg.memory);
+                    }
                     let entry = match state.sockets.get_mut(&msg.arg0) {
                         Some(e) => e,
                         None => {
@@ -919,6 +941,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     let entry = match state.sockets.get_mut(&sock_id) {
                         Some(e) => e,
                         None => {
+                            if msg.memory != 0 {
+                                memory_close(msg.memory);
+                            }
                             ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
                             continue;
                         }
@@ -971,6 +996,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 socket::OP_RECV => {
+                    if msg.memory != 0 {
+                        memory_close(msg.memory);
+                    }
                     let entry = match state.sockets.get_mut(&msg.arg0) {
                         Some(e) => e,
                         None => {
@@ -986,6 +1014,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 socket::OP_CANCEL_RECV => {
+                    if msg.memory != 0 {
+                        memory_close(msg.memory);
+                    }
                     let entry = match state.sockets.get_mut(&msg.arg0) {
                         Some(entry) => entry,
                         None => {
@@ -1000,6 +1031,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 socket::OP_CLOSE => {
+                    if msg.memory != 0 {
+                        memory_close(msg.memory);
+                    }
                     // Graceful close: transition to FIN-WAIT so queued
                     // transmit data (e.g. an httpd response) drains before the
                     // FIN; the reactor sweeps the socket once fully closed.
@@ -1049,6 +1083,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 socket::OP_STATUS => {
+                    if msg.memory != 0 {
+                        memory_close(msg.memory);
+                    }
                     // Move a page with the packed TcpipStatus snapshot so the
                     // httpd keyhole can render live service counters.
                     let cap = memory_alloc(1);
@@ -1086,6 +1123,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 socket::OP_CONNECTION_STATE => {
+                    if msg.memory != 0 {
+                        memory_close(msg.memory);
+                    }
                     let Some(entry) = state.sockets.get(&msg.arg0) else {
                         ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
                         continue;
@@ -1113,6 +1153,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 _ => {
+                    if msg.memory != 0 {
+                        memory_close(msg.memory);
+                    }
                     ipc_reply(msg.reply, socket::ERR_BAD_OPCODE);
                 }
             }

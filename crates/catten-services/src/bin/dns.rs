@@ -2436,6 +2436,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             config::write_u32_release(dns::status::IPC_REQUESTS_SERVED, served);
             match message.opcode {
                 dns::OP_REGISTER => {
+                    if message.memory != 0 {
+                        memory_close(message.memory);
+                    }
                     let name = packed_name(message.arg0);
                     if let Some(result) = register_name(
                         &mut node,
@@ -2986,6 +2989,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 dns::OP_SHUTDOWN_QUERY => {
+                    if message.memory != 0 {
+                        memory_close(message.memory);
+                    }
                     if let Some(entry) = catalog.shutdown_intent(message.arg0) {
                         let mut bytes =
                             Vec::with_capacity(8 + charlotte_launch::shutdown::ENCODED_LEN);
@@ -3090,6 +3096,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 dns::OP_DEPLOY_QUERY => {
+                    if message.memory != 0 {
+                        memory_close(message.memory);
+                    }
                     let artifact = packed_name(message.arg0);
                     if artifact.is_empty() {
                         if message.reply != 0 {
@@ -3130,6 +3139,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 dns::OP_DEPLOY_LIST => {
+                    if message.memory != 0 {
+                        memory_close(message.memory);
+                    }
                     let deployments = catalog.deployments();
                     let mut bytes = Vec::with_capacity(
                         2 + deployments.iter().map(|(name, _)| 1 + name.len()).sum::<usize>(),
@@ -3147,6 +3159,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 dns::OP_OPERATIONAL_LIST => {
+                    if message.memory != 0 {
+                        memory_close(message.memory);
+                    }
                     let stored = catalog.operational_bindings();
                     let bindings = stored
                         .iter()
@@ -3269,6 +3284,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 dns::OP_KEY => {
+                    if message.memory != 0 {
+                        memory_close(message.memory);
+                    }
                     // Answered from locally applied state: the ceremony's
                     // record replicates to every node.
                     if let Some(key) = catalog.cluster_key() {
@@ -3280,6 +3298,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 dns::OP_LOOKUP => {
+                    if message.memory != 0 {
+                        memory_close(message.memory);
+                    }
                     let name = packed_name(message.arg0);
                     let result = if name.is_empty() {
                         dns::ERR_TOO_LARGE
@@ -3451,6 +3472,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 dns::OP_STATUS => {
+                    if message.memory != 0 {
+                        memory_close(message.memory);
+                    }
                     let state = match node.state {
                         NodeState::Follower => 1,
                         NodeState::Candidate => 2,
@@ -3465,6 +3489,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 dns::OP_CATALOG => {
+                    if message.memory != 0 {
+                        memory_close(message.memory);
+                    }
                     // Dump the replicated name -> node catalog into a moved
                     // page: [count:u32][name_len:u8 name node_len:u8 node
                     // generation:u64]*.
