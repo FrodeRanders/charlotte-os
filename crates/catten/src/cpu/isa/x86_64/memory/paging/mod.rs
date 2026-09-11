@@ -1,5 +1,6 @@
 pub mod pte;
 pub mod pth_walker;
+use alloc::vec::Vec;
 use core::{
     arch::asm,
     iter::Iterator,
@@ -60,6 +61,9 @@ pub struct AddressSpace {
     // control register 3 i.e. top level page table base register
     cr3: u64,
     owns_root: bool,
+    /// Physical frames allocated for this address space's user mappings.
+    /// Page-table frames are recovered by the existing lower-half tree walk.
+    owned_frames: Vec<PAddr>,
 }
 
 impl AddressSpace {
@@ -93,7 +97,14 @@ impl AddressSpace {
         AddressSpace {
             cr3: <PAddr as Into<u64>>::into(new_pml4) & CR3_ADDRESS_MASK,
             owns_root: true,
+            owned_frames: Vec::new(),
         }
+    }
+
+    /// Record one physical frame that belongs to this user address space's
+    /// mappings and must be reclaimed when the address space is torn down.
+    pub fn register_user_frame(&mut self, frame: PAddr) {
+        self.owned_frames.push(frame);
     }
 
     pub fn get_cr3(&self) -> u64 {
@@ -155,6 +166,7 @@ impl AddressSpaceInterface for AddressSpace {
         AddressSpace {
             cr3,
             owns_root: false,
+            owned_frames: Vec::new(),
         }
     }
 
@@ -566,6 +578,9 @@ impl Drop for AddressSpace {
             .lock()
             .deallocate_frame(root_frame)
             .expect("failed to release user PML4 frame");
+        for frame in self.owned_frames.drain(..) {
+            let _ = PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame);
+        }
         self.owns_root = false;
     }
 }

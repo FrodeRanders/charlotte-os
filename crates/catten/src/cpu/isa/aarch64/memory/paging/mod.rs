@@ -41,6 +41,7 @@ use crate::{
         KERNEL_ASID,
         LazyLock,
         Mutex,
+        PHYSICAL_FRAME_ALLOCATOR,
     },
 };
 
@@ -189,6 +190,10 @@ pub struct AddressSpace {
     ttbr1_el1: u64,
     hw_asid: HwAsid,
     owns_hw_asid: bool,
+    /// Physical frames allocated for this address space's user mappings
+    /// (ELF segments, runtime pages, heap). Page-table frames are recovered by
+    /// walking the TTBR0 hierarchy at teardown.
+    owned_frames: Vec<PAddr>,
 }
 
 impl AddressSpace {
@@ -202,7 +207,14 @@ impl AddressSpace {
             ttbr1_el1: current.ttbr1_el1,
             hw_asid: 0,
             owns_hw_asid: false,
+            owned_frames: Vec::new(),
         }
+    }
+
+    /// Record one physical frame that belongs to this user address space's
+    /// mappings and must be reclaimed when the address space is torn down.
+    pub fn register_user_frame(&mut self, frame: PAddr) {
+        self.owned_frames.push(frame);
     }
 
     pub fn get_ttbr0(&self) -> u64 {
@@ -301,6 +313,7 @@ impl AddressSpaceInterface for AddressSpace {
             ttbr1_el1,
             hw_asid: ((ttbr0_el1 >> hw_asid_shift()) & 0xffff) as HwAsid,
             owns_hw_asid: false,
+            owned_frames: Vec::new(),
         }
     }
 
@@ -526,6 +539,35 @@ impl Drop for AddressSpace {
             super::tlb::inval_hardware_asid(self.hw_asid);
             HW_ASID_ALLOCATOR.lock().release(self.hw_asid);
             self.owns_hw_asid = false;
+        }
+
+        // Reclaim the private TTBR0 hierarchy and every frame this address
+        // space owned. The shared kernel (TTBR1) tree is untouched, and
+        // tables already released by `unmap_page` have their parent entries
+        // cleared, so the walk cannot visit them twice.
+        if self.ttbr0_el1 & TTBR_BADDR_MASK != 0 {
+            unsafe fn free_user_tables(table: *mut PageTable, level: u8) {
+                for entry in unsafe { &mut *table } {
+                    if !entry.is_valid() {
+                        continue;
+                    }
+                    // At level 3 the table/page bit pattern denotes a page,
+                    // so descent stops before interpreting leaves as tables.
+                    if level < 3 && entry.is_table() {
+                        let child = entry.frame();
+                        unsafe { free_user_tables(child.into(), level + 1) };
+                        let _ = PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(child);
+                    }
+                    entry.clear();
+                }
+            }
+            let root_frame = PAddr::try_from((self.ttbr0_el1 & TTBR_BADDR_MASK) as usize)
+                .expect("owned TTBR0 base is not a physical frame");
+            unsafe { free_user_tables(root_frame.into(), 0) };
+            let _ = PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(root_frame);
+        }
+        for frame in self.owned_frames.drain(..) {
+            let _ = PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame);
         }
     }
 }

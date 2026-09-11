@@ -306,10 +306,10 @@ fn map_elf_load_segment(asid: AddressSpaceId, image: &[u8], segment: ElfLoadSegm
             .lock()
             .allocate_frame()
             .expect("[loader] failed to allocate ELF LOAD frame");
-        ADDRESS_SPACE_TABLE
-            .lock()
-            .get_mut(asid)
-            .expect("[loader] AS not found")
+        let mut table = ADDRESS_SPACE_TABLE.lock();
+        let address_space = table.get_mut(asid).expect("[loader] AS not found");
+        address_space.register_user_frame(frame);
+        address_space
             .map_page(MemoryMapping {
                 vaddr,
                 paddr: frame,
@@ -415,16 +415,17 @@ fn map_user_page(asid: AddressSpaceId, vaddr: usize, page_type: PageType) -> PAd
         .lock()
         .allocate_frame()
         .expect("[loader] failed to allocate user data frame");
-    ADDRESS_SPACE_TABLE
-        .lock()
-        .get_mut(asid)
-        .expect("[loader] AS not found")
+    let mut table = ADDRESS_SPACE_TABLE.lock();
+    let address_space = table.get_mut(asid).expect("[loader] AS not found");
+    address_space.register_user_frame(frame);
+    address_space
         .map_page(MemoryMapping {
             vaddr: VAddr::from(vaddr),
             paddr: frame,
             page_type,
         })
         .expect("[loader] failed to map user data page");
+    drop(table);
     let hhdm: *mut u8 = frame.into();
     unsafe {
         core::ptr::write_bytes(hhdm, 0, PAGE_SIZE);
