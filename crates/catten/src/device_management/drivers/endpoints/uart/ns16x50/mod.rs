@@ -70,7 +70,10 @@ impl Ns16x50 {
     }
 
     fn read_char(&self) -> char {
-        while !self.received() {}
+        if !crate::klib::spin::bounded_spin(1_000_000, || self.received()) {
+            crate::early_logln!("[uart] receive never became ready");
+            return '\0';
+        }
         unsafe { (self.base).read() as char }
     }
 
@@ -110,7 +113,9 @@ impl Write for Ns16x50 {
     }
 
     fn write_char(&mut self, c: char) -> fmt::Result {
-        while self.is_transmit_empty() == 0 {}
+        if !crate::klib::spin::bounded_spin(1_000_000, || self.is_transmit_empty() != 0) {
+            return Err(fmt::Error);
+        }
         if c.is_ascii() {
             if c == '\n' {
                 unsafe {

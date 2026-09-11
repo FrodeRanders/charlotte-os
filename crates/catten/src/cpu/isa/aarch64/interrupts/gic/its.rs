@@ -229,12 +229,13 @@ fn encode_command(state: &mut ItsState, words: [u64; 4]) {
         mmio_write64(state.base, GITS_CWRITER, (next * GITS_CMDQ_ENTRY_SIZE) as u64);
     }
     // Wait for the ITS to consume the command (GITS_CREADR offset bits [5:19]).
-    loop {
+    if !crate::klib::spin::bounded_spin(1_000_000, || {
         let creadr = unsafe { mmio_read32(state.base, GITS_CREADR) };
-        if (creadr as usize) >> 5 == next {
-            break;
-        }
-        core::hint::spin_loop();
+        (creadr as usize) >> 5 == next
+    }) {
+        crate::early_logln!(
+            "[ITS] command queue did not drain; continuing without acknowledgement"
+        );
     }
 }
 

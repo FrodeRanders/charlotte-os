@@ -79,7 +79,12 @@ impl ApicTimer {
         for _ in 0..NUM_SAMPLES {
             Self::set_timer_initial_count(SAMPLE_TICKS);
             let tsc_start = rdtsc();
-            while Self::read_timer_current_count() > 0 {}
+            if !crate::klib::spin::bounded_spin(100_000_000, || {
+                Self::read_timer_current_count() == 0
+            }) {
+                crate::early_logln!("[APIC] timer did not reach zero during calibration");
+                break;
+            }
             let tsc_end = rdtsc();
             let duration = (tsc_end - tsc_start) as u128 * (*TSC_CYCLE_PERIOD).as_picos();
             let apic_timer_duration = duration / SAMPLE_TICKS as u128;

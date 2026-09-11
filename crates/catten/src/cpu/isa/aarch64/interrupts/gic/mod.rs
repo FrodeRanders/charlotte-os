@@ -213,8 +213,10 @@ impl GicV3 {
             waker &= !GICR_WAKER_PROCESSOR_SLEEP;
             mmio_write32(rd, GICR_WAKER, waker);
             // Wait until the redistributor signals it is awake.
-            while mmio_read32(rd, GICR_WAKER) & GICR_WAKER_CHILDREN_ASLEEP != 0 {
-                core::hint::spin_loop();
+            if !crate::klib::spin::bounded_spin(1_000_000, || {
+                mmio_read32(rd, GICR_WAKER) & GICR_WAKER_CHILDREN_ASLEEP == 0
+            }) {
+                crate::early_logln!("[GIC] redistributor did not wake; continuing");
             }
         }
     }
@@ -261,8 +263,10 @@ impl GicV3 {
             // leave LP0's PPI permanently undispatchable. Disable first and
             // wait for the redistributor write to complete.
             mmio_write32(sgi, GICR_ICENABLER0, 1 << intid);
-            while mmio_read32(rd, GICR_CTLR) & GICR_CTLR_RWP != 0 {
-                core::hint::spin_loop();
+            if !crate::klib::spin::bounded_spin(1_000_000, || {
+                mmio_read32(rd, GICR_CTLR) & GICR_CTLR_RWP == 0
+            }) {
+                crate::early_logln!("[GIC] redistributor register write did not complete");
             }
             // Group 1 (non-secure): set the corresponding bit in IGROUPR0.
             let mut group = mmio_read32(sgi, GICR_IGROUPR0);
@@ -275,8 +279,10 @@ impl GicV3 {
             core::ptr::write_volatile(prio_ptr, priority);
             // Enable the interrupt.
             mmio_write32(sgi, GICR_ISENABLER0, 1 << intid);
-            while mmio_read32(rd, GICR_CTLR) & GICR_CTLR_RWP != 0 {
-                core::hint::spin_loop();
+            if !crate::klib::spin::bounded_spin(1_000_000, || {
+                mmio_read32(rd, GICR_CTLR) & GICR_CTLR_RWP == 0
+            }) {
+                crate::early_logln!("[GIC] redistributor register write did not complete");
             }
         }
     }

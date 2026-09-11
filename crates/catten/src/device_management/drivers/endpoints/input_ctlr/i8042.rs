@@ -55,11 +55,19 @@ pub struct Ps2Status {
 
 impl I8042 {
     fn wait_input_empty(&self) {
-        unsafe { while self.status.read() & STATUS_INPUT_BUFFER != 0 {} }
+        if !crate::klib::spin::bounded_spin(1_000_000, || unsafe {
+            self.status.read() & STATUS_INPUT_BUFFER == 0
+        }) {
+            crate::early_logln!("[i8042] input buffer did not drain");
+        }
     }
 
     fn wait_output_full(&self) {
-        unsafe { while self.status.read() & STATUS_OUTPUT_BUFFER == 0 {} }
+        if !crate::klib::spin::bounded_spin(1_000_000, || unsafe {
+            self.status.read() & STATUS_OUTPUT_BUFFER != 0
+        }) {
+            crate::early_logln!("[i8042] output buffer stayed empty");
+        }
     }
 
     unsafe fn send_keyboard_command(&self, cmd: u8) -> bool {
@@ -107,10 +115,16 @@ impl I8042 {
             driver.wait_input_empty();
             driver.status.write(CMD_DISABLE_MOUSE);
 
-            // Flush.
-            while driver.status.read() & STATUS_OUTPUT_BUFFER != 0 {
-                let _nothing = driver.data.read();
-            }
+            // Flush within a bounded drain so a stuck controller cannot hang
+            // bring-up.
+            let _ = crate::klib::spin::bounded_spin(100_000, || {
+                if driver.status.read() & STATUS_OUTPUT_BUFFER != 0 {
+                    let _ = driver.data.read();
+                    false
+                } else {
+                    true
+                }
+            });
 
             driver.wait_input_empty();
             driver.status.write(CMD_CONTROLLER_TEST);
