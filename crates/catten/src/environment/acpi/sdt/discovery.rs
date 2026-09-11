@@ -43,12 +43,17 @@ pub fn find_table_physical(signature: [u8; 4]) -> Option<u64> {
         crate::logln!("[acpi-discovery] XSDT checksum invalid");
         return None;
     }
-    let data_len = xsdt.length as usize - size_of::<SdtHeader>();
+    let data_len = (xsdt.length as usize)
+        .saturating_sub(size_of::<SdtHeader>())
+        .min(crate::environment::acpi::MAX_ACPI_TABLE_LEN as usize);
     let entry_count = data_len / size_of::<u64>();
     let entries =
         unsafe { (PAddr::from(xsdt_addr) + size_of::<SdtHeader>()).into_hhdm_ptr::<u64>() };
     for i in 0..entry_count {
         let table_addr = unsafe { entries.add(i).read_unaligned() };
+        if table_addr == 0 {
+            continue;
+        }
         let header: &SdtHeader = unsafe { &*PAddr::from(table_addr).into_hhdm_ptr::<SdtHeader>() };
         if header.signature == signature {
             return Some(table_addr);

@@ -214,8 +214,17 @@ pub struct Xsdp {
     reserved: [u8; 3],
 }
 
+/// Largest ACPI table the kernel will walk. Firmware-supplied lengths are
+/// untrusted, so a length outside the header size and this cap is rejected
+/// before any byte is read.
+pub const MAX_ACPI_TABLE_LEN: u32 = 64 * 1024;
+
 impl Xsdp {
     fn validate(&self) -> bool {
+        let header_len = size_of::<Self>() as u32;
+        if self.length < header_len || self.length > MAX_ACPI_TABLE_LEN {
+            return false;
+        }
         let mut sum = 0u8;
         unsafe {
             let ptr = &raw const *self as *const u8;
@@ -243,6 +252,10 @@ pub struct SdtHeader {
 
 impl SdtHeader {
     pub fn validate(&self) -> bool {
+        let header_len = size_of::<Self>() as u32;
+        if self.length < header_len || self.length > MAX_ACPI_TABLE_LEN {
+            return false;
+        }
         let mut sum = 0u8;
         unsafe {
             let ptr = &raw const *self as *const u8;
@@ -293,7 +306,9 @@ fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
     let xsdt_data_ptr = unsafe {
         NonNull::new_unchecked((xsdt_addr + size_of::<SdtHeader>()).into_hhdm_mut::<u64>())
     };
-    let data_length = xsdt_header.length as usize - size_of::<SdtHeader>();
+    let data_length = (xsdt_header.length as usize)
+        .saturating_sub(size_of::<SdtHeader>())
+        .min(MAX_ACPI_TABLE_LEN as usize);
     let num_entries = data_length / size_of::<u64>();
     logln!(
         "[ACPI] XSDT data physical address: {:?}, number of entries: {}",
@@ -303,7 +318,9 @@ fn parse_xsdt(xsdt_addr: PAddr) -> HashMap<AcpiTableType, Vec<PAddr>> {
     let mut table_addrs = Vec::<PAddr>::with_capacity(num_entries);
     for i in 0..num_entries {
         let entry_addr = unsafe { xsdt_data_ptr.as_ptr().add(i).read_unaligned() };
-        table_addrs.push(PAddr::from(entry_addr));
+        if entry_addr != 0 {
+            table_addrs.push(PAddr::from(entry_addr));
+        }
     }
 
     for table_addr in &table_addrs {

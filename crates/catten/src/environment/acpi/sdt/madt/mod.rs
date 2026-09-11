@@ -84,11 +84,15 @@ pub struct Madt {
 impl Madt {
     pub fn parse(&self) -> MadtEntryIndex {
         let mut ptr_matrix: [Vec<NonNull<MadtEntryGeneric>>; NUM_ENTRY_TYPES] = Default::default();
-        let iter = MadtEntryIter::new(self);
-        for entry_ptr in iter {
-            let entry_type = unsafe { entry_ptr.as_ref() }.entry_type as usize;
-            if entry_type < NUM_ENTRY_TYPES {
-                ptr_matrix[entry_type].push(entry_ptr);
+        // A firmware-supplied MADT length is untrusted; reject anything that
+        // is not a valid, bounded table before walking entries.
+        if self.header.validate() {
+            let iter = MadtEntryIter::new(self);
+            for entry_ptr in iter {
+                let entry_type = unsafe { entry_ptr.as_ref() }.entry_type as usize;
+                if entry_type < NUM_ENTRY_TYPES {
+                    ptr_matrix[entry_type].push(entry_ptr);
+                }
             }
         }
         MadtEntryIndex {
