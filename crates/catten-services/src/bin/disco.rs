@@ -371,7 +371,7 @@ fn send_raw_frame(net_conn: u64, frame: &[u8]) -> bool {
     }
     DIAG_CALLED.fetch_add(1, Ordering::Relaxed);
     config::write::<u32>(status::SEND_PROGRESS, 4);
-    let (result, returned_cap) = unsafe { wait_reply(call, 0) };
+    let (result, returned_cap) = unsafe { wait_reply(call) };
     if returned_cap != 0 {
         ipc_close(returned_cap);
     }
@@ -546,7 +546,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     if status_call == 0 {
         unsafe { thread_exit() };
     }
-    let (status, status_cap) = unsafe { wait_reply(status_call, 0) };
+    let (status, status_cap) = unsafe { wait_reply(status_call) };
     if status_cap != 0 {
         ipc_close(status_cap);
     }
@@ -601,7 +601,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     if registration == 0 {
         unsafe { thread_exit() };
     }
-    let (reg_gen, registration_cap) = unsafe { wait_reply(registration, 0) };
+    let (reg_gen, registration_cap) = unsafe { wait_reply(registration) };
     if registration_cap != 0 {
         ipc_close(registration_cap);
     }

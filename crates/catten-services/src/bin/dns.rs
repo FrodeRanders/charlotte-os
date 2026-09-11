@@ -193,7 +193,6 @@ use transport::{
 
 const LOOP_TICK_MS: u64 = 25;
 const RAFT_TIMER_COOKIE: u64 = 0x444e_535f_5449_434b;
-const REPLY_SPINS: u64 = u64::MAX;
 
 const CLUSTER_KEY: u64 = manifest_key(b"cluster");
 const ELECTION_KEY: u64 = manifest_key(b"elect-ms");
@@ -238,7 +237,7 @@ fn reply_lookup(
     if entry.node == local_node {
         let lookup = ipc_scalar_call(ns_conn, ns::OP_TRY_LOOKUP, catten_services::name(name));
         let (generation, connection) = if lookup != 0 {
-            unsafe { wait_reply(lookup, REPLY_SPINS) }
+            unsafe { wait_reply(lookup) }
         } else {
             (0, 0)
         };
@@ -291,7 +290,7 @@ fn local_publication(ns_conn: u64, attached_connection: u64, name: &[u8]) -> Opt
     if lookup == 0 {
         return None;
     }
-    let (generation, connection) = unsafe { wait_reply(lookup, REPLY_SPINS) };
+    let (generation, connection) = unsafe { wait_reply(lookup) };
     if generation >= 1 && connection != 0 {
         Some((connection, generation as u64))
     } else {
@@ -385,7 +384,7 @@ fn local_generation(ns_conn: u64, name: &[u8]) -> u64 {
     if lookup == 0 {
         return 0;
     }
-    let (generation, connection) = unsafe { wait_reply(lookup, REPLY_SPINS) };
+    let (generation, connection) = unsafe { wait_reply(lookup) };
     if connection != 0 {
         ipc_close(connection);
     }
@@ -1107,7 +1106,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     if net_lookup == 0 {
         fatal(2);
     }
-    let (net_generation, net_conn) = unsafe { wait_reply(net_lookup, REPLY_SPINS) };
+    let (net_generation, net_conn) = unsafe { wait_reply(net_lookup) };
     if net_generation < 1 || net_conn == 0 {
         fatal(3);
     }
@@ -1115,7 +1114,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     if status_call == 0 {
         fatal(4);
     }
-    let (status, _) = unsafe { wait_reply(status_call, REPLY_SPINS) };
+    let (status, _) = unsafe { wait_reply(status_call) };
     let (link, local_mac) = charlotte_protocol_net::decode_status(status);
     if link == 0 {
         fatal(5);
@@ -1138,7 +1137,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     if relmsg_lookup == 0 {
         fatal(8);
     }
-    let (relmsg_generation, relmsg_conn) = unsafe { wait_reply(relmsg_lookup, REPLY_SPINS) };
+    let (relmsg_generation, relmsg_conn) = unsafe { wait_reply(relmsg_lookup) };
     if relmsg_generation < 1 || relmsg_conn == 0 {
         fatal(9);
     }
@@ -1146,7 +1145,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     if disco_lookup == 0 {
         fatal(10);
     }
-    let (disco_generation, disco_conn) = unsafe { wait_reply(disco_lookup, REPLY_SPINS) };
+    let (disco_generation, disco_conn) = unsafe { wait_reply(disco_lookup) };
     if disco_generation < 1 || disco_conn == 0 {
         fatal(11);
     }
@@ -1170,7 +1169,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     if register == 0 {
         fatal(14);
     }
-    let (generation, _) = unsafe { wait_reply(register, REPLY_SPINS) };
+    let (generation, _) = unsafe { wait_reply(register) };
     if generation < 1 {
         fatal(15);
     }
@@ -1203,7 +1202,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     if raft_register == 0 {
         fatal(19);
     }
-    let (raft_generation, _) = unsafe { wait_reply(raft_register, REPLY_SPINS) };
+    let (raft_generation, _) = unsafe { wait_reply(raft_register) };
     if raft_generation < 1 {
         fatal(20);
     }
@@ -3974,8 +3973,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         if local_reg == 0 {
                             None
                         } else {
-                            let (local_generation, _) =
-                                unsafe { wait_reply(local_reg, REPLY_SPINS) };
+                            let (local_generation, _) = unsafe { wait_reply(local_reg) };
                             (local_generation >= 1).then_some(local_generation as u64)
                         }
                     };

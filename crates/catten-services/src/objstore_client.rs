@@ -10,7 +10,6 @@ use alloc::vec::Vec;
 
 use catten_syscall::*;
 
-const REPLY_SPINS: u64 = u64::MAX;
 const BUFFER_VADDR: usize = 0x0000_0000_2000_0000;
 
 /// Looks up the object-store connection. `wait_for_service` selects a
@@ -31,7 +30,7 @@ pub(crate) fn connect(ns_conn: u64, wait_for_service: bool) -> Option<u64> {
     if lookup == 0 {
         return None;
     }
-    let (generation, conn) = unsafe { crate::wait_reply(lookup, REPLY_SPINS) };
+    let (generation, conn) = unsafe { crate::wait_reply(lookup) };
     if generation < 1 || conn == 0 {
         return None;
     }
@@ -43,7 +42,7 @@ pub(crate) fn create_at(obj_conn: u64, object_id: u64) -> bool {
     if call == 0 {
         return false;
     }
-    let (result, _) = unsafe { crate::wait_reply(call, REPLY_SPINS) };
+    let (result, _) = unsafe { crate::wait_reply(call) };
     result == charlotte_protocol_objstore::ERR_OK
         || result == charlotte_protocol_objstore::ERR_EXISTS
 }
@@ -66,7 +65,7 @@ pub(crate) fn write(obj_conn: u64, object_id: u64, data: &[u8]) -> bool {
         memory_close(size_mem);
         return false;
     }
-    let (size_result, _) = unsafe { crate::wait_reply(size_call, REPLY_SPINS) };
+    let (size_result, _) = unsafe { crate::wait_reply(size_call) };
     memory_close(size_mem);
     if size_result != 0 {
         return false;
@@ -89,7 +88,7 @@ pub(crate) fn write(obj_conn: u64, object_id: u64, data: &[u8]) -> bool {
     if call == 0 {
         return false;
     }
-    let (result, _) = unsafe { crate::wait_reply(call, REPLY_SPINS) };
+    let (result, _) = unsafe { crate::wait_reply(call) };
     result == 0
 }
 
@@ -151,6 +150,6 @@ pub(crate) fn flush(obj_conn: u64) -> bool {
     if call == 0 {
         return false;
     }
-    let (result, _) = unsafe { crate::wait_reply(call, REPLY_SPINS) };
+    let (result, _) = unsafe { crate::wait_reply(call) };
     result == 0
 }

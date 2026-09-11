@@ -1996,12 +1996,12 @@ pub mod rquery {
 /// Block until a pending call completes, returning
 /// `(result, returned_connection_cap)`.
 ///
-/// `max_spins` is retained for source compatibility; reply waiting is now
-/// scheduler-backed and has no arbitrary boot-time deadline.
+/// The wait is scheduler-backed and unbounded; a caller that needs a deadline
+/// must poll an owned [`catten_rt::owned::PendingCall`] instead.
 /// # Safety
 ///
 /// `call` must be a live pending-call capability owned by the caller.
-pub unsafe fn wait_reply(call: u64, _max_spins: u64) -> (i64, u64) {
+pub unsafe fn wait_reply(call: u64) -> (i64, u64) {
     let (status, result, cap) = catten_syscall::ipc_reply_wait(call);
     catten_syscall::ipc_close(call);
     if status == 0 {
@@ -2023,7 +2023,7 @@ pub unsafe fn wait_reply(call: u64, _max_spins: u64) -> (i64, u64) {
 pub fn wait_for_registered_name(ns_conn: u64, name: u64) -> Option<(i64, u64)> {
     let call = scalar_call_with_backpressure(ns_conn, ns::OP_LOOKUP, name);
 
-    let (generation, connection) = unsafe { wait_reply(call, 0) };
+    let (generation, connection) = unsafe { wait_reply(call) };
     if generation >= 1 && connection != 0 {
         Some((generation, connection))
     } else {

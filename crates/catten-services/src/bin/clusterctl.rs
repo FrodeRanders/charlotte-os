@@ -51,7 +51,6 @@ use charlotte_protocol_disco::{
     parse_cluster_answer,
 };
 
-const REPLY_SPINS: u64 = 50_000_000;
 const STAGE_SERVING: u32 = 6;
 
 fn fail(stage: u32) -> ! {
@@ -772,7 +771,7 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
                             if call == 0 {
                                 clusterctl::ERR_NOT_LEADER
                             } else {
-                                unsafe { wait_reply(call, REPLY_SPINS) }.0
+                                unsafe { wait_reply(call) }.0
                             }
                         }
                         Some(_) => clusterctl::ERR_UNTRUSTED_KEY,

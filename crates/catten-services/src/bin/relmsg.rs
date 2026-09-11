@@ -71,7 +71,6 @@ use charlotte_protocol_msg::{
 };
 use charlotte_protocol_net::decode_status;
 
-const REPLY_SPINS: u64 = 50_000_000;
 const MAX_RECEIVED_MESSAGES: usize = 32;
 const MAX_REASSEMBLY_FRAGMENTS: usize = relmsg::MAX_MSG.div_ceil(MAX_PAYLOAD_SIZE);
 const MAX_QUEUED_RECEIVE_BYTES: usize = 4 * relmsg::MAX_MSG;
@@ -220,7 +219,7 @@ fn send_frame(net_conn: u64, frame: &[u8]) -> bool {
         memory_close(cap);
         return false;
     }
-    let (result, _) = unsafe { wait_reply(call, REPLY_SPINS) };
+    let (result, _) = unsafe { wait_reply(call) };
     config::write::<i64>(status::LAST_SEND_RESULT, result);
     if result != 0 {
         DIAG_SEND_FAILURES.fetch_add(1, Ordering::Relaxed);
@@ -481,7 +480,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     if status_call == 0 {
         unsafe { thread_exit() };
     }
-    let (status, _) = unsafe { wait_reply(status_call, REPLY_SPINS) };
+    let (status, _) = unsafe { wait_reply(status_call) };
     let (link, local_mac) = decode_status(status);
     if link == 0 {
         unsafe { thread_exit() };
@@ -504,7 +503,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     if registration == 0 {
         unsafe { thread_exit() };
     }
-    let (generation, _) = unsafe { wait_reply(registration, REPLY_SPINS) };
+    let (generation, _) = unsafe { wait_reply(registration) };
     if generation < 1 {
         unsafe { thread_exit() };
     }

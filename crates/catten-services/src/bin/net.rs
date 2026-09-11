@@ -53,7 +53,6 @@ use catten_syscall::{
 };
 use charlotte_launch::net_status as status;
 
-const REPLY_SPINS: u64 = 50_000_000;
 // The kernel-assigned base of the delegated virtio BAR, set once at map
 // time. The device-config/ISR/doorbell helpers must read it: the old fixed
 // 0x400000 vaddr was not the mapped base and dereferenced stale addresses.
@@ -489,7 +488,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     if reg == 0 {
         unsafe { thread_exit() };
     }
-    let (generation, _) = unsafe { wait_reply(reg, REPLY_SPINS) };
+    let (generation, _) = unsafe { wait_reply(reg) };
     if generation < 1 {
         unsafe { thread_exit() };
     }

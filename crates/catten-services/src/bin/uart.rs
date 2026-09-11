@@ -49,8 +49,6 @@ use catten_syscall::{
 };
 use charlotte_launch::uart_status as status;
 
-const REPLY_SPINS: u64 = 50_000_000;
-
 static MMIO_BASE: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
 
 #[inline]
@@ -121,7 +119,7 @@ fn main(ctx: Context) -> ! {
     if register == 0 {
         unsafe { thread_exit() };
     }
-    let (generation, _) = unsafe { wait_reply(register, REPLY_SPINS) };
+    let (generation, _) = unsafe { wait_reply(register) };
     if generation < 1 {
         unsafe { thread_exit() };
     }

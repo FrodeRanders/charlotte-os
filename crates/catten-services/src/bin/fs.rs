@@ -37,7 +37,6 @@ use catten_syscall::{
     *,
 };
 
-const REPLY_SPINS: u64 = u64::MAX;
 const ROOT_ID: u64 = 100;
 const MAX_DIR_SIZE: usize = 4096;
 
@@ -52,7 +51,7 @@ fn objstore_connect(ns_conn: u64) -> Option<u64> {
     if lookup == 0 {
         return None;
     }
-    let (generation, conn) = unsafe { catten_services::wait_reply(lookup, REPLY_SPINS) };
+    let (generation, conn) = unsafe { catten_services::wait_reply(lookup) };
     if generation < 1 || conn == 0 {
         return None;
     }
@@ -78,7 +77,7 @@ fn obj_write(obj_conn: u64, object_id: u64, data: &[u8]) -> bool {
         memory_close(size_mem);
         return false;
     }
-    let (size_result, _) = unsafe { catten_services::wait_reply(size_call, REPLY_SPINS) };
+    let (size_result, _) = unsafe { catten_services::wait_reply(size_call) };
     memory_close(size_mem);
     if size_result != 0 {
         return false;
@@ -102,7 +101,7 @@ fn obj_write(obj_conn: u64, object_id: u64, data: &[u8]) -> bool {
     if call == 0 {
         return false;
     }
-    let (result, _) = unsafe { catten_services::wait_reply(call, REPLY_SPINS) };
+    let (result, _) = unsafe { catten_services::wait_reply(call) };
     result == 0
 }
 
@@ -148,7 +147,7 @@ fn obj_create(obj_conn: u64) -> u64 {
     if call == 0 {
         return 0;
     }
-    let (id, _) = unsafe { catten_services::wait_reply(call, REPLY_SPINS) };
+    let (id, _) = unsafe { catten_services::wait_reply(call) };
     if id <= 0 {
         0
     } else {
@@ -167,7 +166,7 @@ fn obj_flush(obj_conn: u64) -> bool {
     if call == 0 {
         return false;
     }
-    let (result, _) = unsafe { catten_services::wait_reply(call, REPLY_SPINS) };
+    let (result, _) = unsafe { catten_services::wait_reply(call) };
     result == 0
 }
 
@@ -370,7 +369,7 @@ fn main(ctx: Context) -> ! {
     if register == 0 {
         unsafe { thread_exit() };
     }
-    let (generation, _) = unsafe { catten_services::wait_reply(register, REPLY_SPINS) };
+    let (generation, _) = unsafe { catten_services::wait_reply(register) };
     if generation < 1 {
         unsafe { thread_exit() };
     }

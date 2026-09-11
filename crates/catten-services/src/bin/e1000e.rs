@@ -481,7 +481,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     if registration == 0 {
         unsafe { thread_exit() };
     }
-    let (generation, _) = unsafe { wait_reply(registration, 0) };
+    let (generation, _) = unsafe { wait_reply(registration) };
     if generation < 1 || ipc_endpoint_bind_cq(ep, 0) != 0 {
         unsafe { thread_exit() };
     }
