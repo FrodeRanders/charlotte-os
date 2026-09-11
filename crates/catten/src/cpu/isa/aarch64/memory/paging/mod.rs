@@ -202,6 +202,10 @@ pub struct AddressSpace {
     ttbr1_el1: u64,
     hw_asid: HwAsid,
     owns_hw_asid: bool,
+    /// Whether this object owns (and must release) the TTBR0 hierarchy it
+    /// names. Snapshots taken with [`AddressSpaceInterface::get_current`] are
+    /// borrowed views of a live address space and must never free its tables.
+    owns_root: bool,
     /// Physical frames allocated for this address space's user mappings
     /// (ELF segments, runtime pages, heap). Page-table frames are recovered by
     /// walking the TTBR0 hierarchy at teardown.
@@ -219,6 +223,7 @@ impl AddressSpace {
             ttbr1_el1: current.ttbr1_el1,
             hw_asid: 0,
             owns_hw_asid: false,
+            owns_root: true,
             owned_frames: Vec::new(),
         }
     }
@@ -325,6 +330,7 @@ impl AddressSpaceInterface for AddressSpace {
             ttbr1_el1,
             hw_asid: ((ttbr0_el1 >> hw_asid_shift()) & 0xffff) as HwAsid,
             owns_hw_asid: false,
+            owns_root: false,
             owned_frames: Vec::new(),
         }
     }
@@ -549,6 +555,13 @@ impl AddressSpaceInterface for AddressSpace {
 
 impl Drop for AddressSpace {
     fn drop(&mut self) {
+        // Borrowed snapshots (e.g. `get_current`) name a live address space's
+        // tables without owning them; releasing them here would free the
+        // hierarchy out from under the running domain.
+        if !self.owns_root {
+            return;
+        }
+
         if self.owns_hw_asid && self.hw_asid != 0 {
             // A tag cannot be reused until all cores have discarded entries
             // belonging to its previous page-table lifetime.
