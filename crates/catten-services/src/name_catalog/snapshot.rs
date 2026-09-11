@@ -348,7 +348,9 @@ impl NameCatalog {
                     let Some((replica_count, mut position)) = read_u16(data, after_entry) else {
                         return;
                     };
-                    let mut nodes = Vec::with_capacity(usize::from(replica_count));
+                    let mut nodes = Vec::with_capacity(
+                        usize::from(replica_count).min(data.len().saturating_sub(position)),
+                    );
                     let mut seen = BTreeSet::new();
                     for _ in 0..replica_count {
                         let Some((node, next)) = read_u64(data, position) else {

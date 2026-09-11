@@ -744,17 +744,36 @@ impl RaftNode {
 
         let mut accepted = false;
         let mut next_offset = 0;
+        let mut oversized = false;
         if let Some(ref mut snap) = self.pending_snapshot {
             next_offset = snap.offset;
             if req.last_included_index == snap.last_included_index
                 && req.last_included_term == snap.last_included_term
                 && req.offset == snap.offset
             {
-                snap.data.extend_from_slice(&req.data);
-                snap.offset += req.data.len() as u64;
-                next_offset = snap.offset;
-                accepted = true;
+                if snap.data.len().saturating_add(req.data.len()) > crate::types::MAX_SNAPSHOT_BYTES
+                {
+                    oversized = true;
+                } else {
+                    snap.data.extend_from_slice(&req.data);
+                    snap.offset += req.data.len() as u64;
+                    next_offset = snap.offset;
+                    accepted = true;
+                }
             }
+        }
+        if oversized {
+            // Drop the partial stream and tell the leader to restart so a
+            // hostile or buggy peer cannot grow follower memory without bound.
+            self.pending_snapshot = None;
+            return InstallSnapshotResponse {
+                peer_id: self.me.id.clone(),
+                term: self.current_term,
+                success: false,
+                last_included_index: req.last_included_index,
+                next_offset: 0,
+                done: false,
+            };
         }
 
         let installed = accepted && req.done;

@@ -529,6 +529,10 @@ impl<'a> Decoder<'a> {
         Ok(())
     }
 
+    fn remaining(&self) -> usize {
+        self.bytes.len().saturating_sub(self.offset)
+    }
+
     fn done(&self) -> bool {
         self.offset == self.bytes.len()
     }
@@ -566,7 +570,7 @@ pub fn parse_api_versions(frame: &[u8], correlation: i32) -> Result<ApiVersions,
     let mut decoder = response(frame, correlation)?;
     let error = decoder.i16()?;
     let count = decoder.array_len()?;
-    let mut versions = Vec::with_capacity(count);
+    let mut versions = Vec::with_capacity(count.min(decoder.remaining()));
     for _ in 0..count {
         versions.push(ApiVersion {
             api_key: decoder.i16()?,
@@ -598,7 +602,7 @@ pub fn parse_sasl_handshake(frame: &[u8], correlation: i32) -> Result<SaslHandsh
     let mut decoder = response(frame, correlation)?;
     let error = decoder.i16()?;
     let count = decoder.array_len()?;
-    let mut mechanisms = Vec::with_capacity(count);
+    let mut mechanisms = Vec::with_capacity(count.min(decoder.remaining()));
     for _ in 0..count {
         mechanisms.push(decoder.string()?);
     }
@@ -689,7 +693,7 @@ pub fn parse_metadata(
 pub fn parse_metadata_many(frame: &[u8], correlation: i32) -> Result<MetadataBatch, Error> {
     let mut decoder = response(frame, correlation)?;
     let broker_count = decoder.array_len()?;
-    let mut brokers = Vec::with_capacity(broker_count);
+    let mut brokers = Vec::with_capacity(broker_count.min(decoder.remaining()));
     for _ in 0..broker_count {
         brokers.push(Broker {
             node_id: decoder.i32()?,
@@ -700,13 +704,13 @@ pub fn parse_metadata_many(frame: &[u8], correlation: i32) -> Result<MetadataBat
     }
     let _controller_id = decoder.i32()?;
     let topic_count = decoder.array_len()?;
-    let mut topics = Vec::with_capacity(topic_count);
+    let mut topics = Vec::with_capacity(topic_count.min(decoder.remaining()));
     for _ in 0..topic_count {
         let error = decoder.i16()?;
         let topic = decoder.string_bytes()?.to_vec();
         let _internal = decoder.bool()?;
         let partition_count = decoder.array_len()?;
-        let mut partitions = Vec::with_capacity(partition_count);
+        let mut partitions = Vec::with_capacity(partition_count.min(decoder.remaining()));
         for _ in 0..partition_count {
             let metadata = PartitionMetadata {
                 error: decoder.i16()?,
@@ -846,7 +850,7 @@ pub fn parse_join_group(frame: &[u8], correlation: i32) -> Result<JoinGroup, Err
     if member_count > MAX_GROUP_MEMBERS {
         return Err(Error::TooLarge);
     }
-    let mut members = Vec::with_capacity(member_count);
+    let mut members = Vec::with_capacity(member_count.min(decoder.remaining()));
     for _ in 0..member_count {
         members.push(GroupMember {
             member_id: decoder.string_bytes()?.to_vec(),
@@ -1458,7 +1462,7 @@ pub fn parse_fetch(
             let high_watermark = decoder.i64()?;
             let last_stable_offset = decoder.i64()?;
             let aborted_len = decoder.nullable_array_len()?.unwrap_or(0);
-            let mut aborted = Vec::with_capacity(aborted_len);
+            let mut aborted = Vec::with_capacity(aborted_len.min(decoder.remaining()));
             for _ in 0..aborted_len {
                 aborted.push((decoder.i64()?, decoder.i64()?));
             }

@@ -184,3 +184,7 @@ pub const ERR_CONFIG_IN_PROGRESS: i64 = -8;
 /// Leaves room for Raft metadata and peer IDs in CharlotteOS's one-page IPC
 /// transport object.
 pub const MAX_COMMAND_BYTES: usize = 3000;
+
+/// Upper bound on a reassembled snapshot stream. Chunks arrive one RPC at a
+/// time, so without a ceiling a peer could grow follower memory without limit.
+pub const MAX_SNAPSHOT_BYTES: usize = 64 * 1024 * 1024;

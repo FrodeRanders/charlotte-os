@@ -64,6 +64,7 @@ const CMD_INGRESS_POLICY: u8 = 0x0c;
 /// Bounds on the replicated record collections. Tombstones are monotonic by
 /// design, so a cap applies only to new keys; replacing an existing entry
 /// always succeeds.
+const MAX_ENTRIES: usize = 4_096;
 const MAX_DEPLOYMENTS: usize = 4_096;
 const MAX_RELEASES: usize = 4_096;
 const MAX_OPERATIONAL_BINDINGS: usize = 8_192;
@@ -602,6 +603,9 @@ impl NameCatalog {
                     return generation.to_le_bytes().to_vec();
                 }
                 let mut entries = self.entries.lock();
+                if !entries.contains_key(name) && entries.len() >= MAX_ENTRIES {
+                    return 0u64.to_le_bytes().to_vec();
+                }
                 let generation = match entries.get(name) {
                     Some(entry) => entry
                         .generation
@@ -799,7 +803,9 @@ impl NameCatalog {
                 if node_count == 0 {
                     return Vec::new();
                 }
-                let mut nodes = Vec::with_capacity(usize::from(node_count));
+                let mut nodes = Vec::with_capacity(
+                    usize::from(node_count).min(command.len().saturating_sub(position)),
+                );
                 let mut seen = BTreeSet::new();
                 for _ in 0..node_count {
                     let Some((node, next)) = read_u64(command, position) else {
@@ -864,7 +870,10 @@ impl NameCatalog {
                 else {
                     return Vec::new();
                 };
-                let mut assignments = Vec::with_capacity(usize::from(descriptor_count));
+                let mut assignments = Vec::with_capacity(
+                    usize::from(descriptor_count)
+                        .min(command.len().saturating_sub(assignment_position)),
+                );
                 if command[0] == CMD_RELEASE {
                     for _ in 0..descriptor_count {
                         let Some((node, next)) = read_u64(command, assignment_position) else {
@@ -887,7 +896,10 @@ impl NameCatalog {
                         if replica_count == 0 {
                             return Vec::new();
                         }
-                        let mut nodes = Vec::with_capacity(usize::from(replica_count));
+                        let mut nodes = Vec::with_capacity(
+                            usize::from(replica_count)
+                                .min(command.len().saturating_sub(assignment_position)),
+                        );
                         let mut seen = BTreeSet::new();
                         for _ in 0..replica_count {
                             let Some((node, next)) = read_u64(command, assignment_position) else {
@@ -978,7 +990,9 @@ impl NameCatalog {
                 }
 
                 let mut deployments = self.deployments.lock();
-                let mut planned_deployments = Vec::with_capacity(usize::from(descriptor_count));
+                let mut planned_deployments = Vec::with_capacity(
+                    usize::from(descriptor_count).min(command.len().saturating_sub(after_envelope)),
+                );
                 for (index, descriptor_bytes) in envelope.descriptors().enumerate() {
                     let Some(descriptor) = charlotte_launch::deployment::decode(descriptor_bytes)
                     else {
