@@ -13,11 +13,12 @@ pub struct PerCpuData {
 }
 
 #[unsafe(no_mangle)]
-pub static mut PER_CPU: [PerCpuData; crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS] = [const {
-    PerCpuData {
+pub static PER_CPU: [crate::klib::sync_cell::SyncUnsafeCell<PerCpuData>;
+    crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS] = [const {
+    crate::klib::sync_cell::SyncUnsafeCell::new(PerCpuData {
         kernel_stack: 0,
         user_stack: 0,
-    }
+    })
 };
     crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS];
 
@@ -58,7 +59,7 @@ pub fn init_lp_state() {
     // per-CPU area. Ring-3 entry swaps to the zero user GS base; SYSCALL and
     // interrupt entry swap the per-CPU base back in before running Rust code.
     let lp_id = get_lp_id() as usize;
-    let per_cpu_addr = unsafe { core::ptr::addr_of!(PER_CPU[lp_id]) } as u64;
+    let per_cpu_addr = PER_CPU[lp_id].get() as u64;
     unsafe {
         core::arch::asm!(
             "wrgsbase {}",
@@ -357,7 +358,7 @@ pub extern "C" fn cond_yield_lp() {
         if next_asid != crate::memory::KERNEL_ASID {
             crate::cpu::isa::x86_64::init::gdt::write_rsp0(next_stack_top);
             unsafe {
-                PER_CPU[lp_id].kernel_stack = next_stack_top;
+                (*PER_CPU[lp_id].get()).kernel_stack = next_stack_top;
             }
         }
         switch_ctx(curr_rsp0_ptr, next_rsp0_ptr);

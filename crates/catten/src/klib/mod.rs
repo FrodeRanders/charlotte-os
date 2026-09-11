@@ -13,4 +13,5 @@ pub mod observer;
 pub mod size;
 pub mod spin;
 pub mod statistics;
+pub mod sync_cell;
 pub mod time;
