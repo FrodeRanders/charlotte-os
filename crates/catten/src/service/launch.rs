@@ -340,6 +340,21 @@ pub fn launch_entropy(ns: &NameServiceHandle) -> Option<ServiceDomain> {
 static STEADY_STATE: LazyLock<crate::cpu::multiprocessor::spin::mutex::Mutex<Option<SteadyState>>> =
     LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
+/// Observers parked on publication of [`STEADY_STATE`].
+static STEADY_STATE_OBSERVERS: LazyLock<
+    crate::cpu::multiprocessor::spin::mutex::Mutex<
+        Vec<alloc::sync::Weak<dyn crate::klib::observer::Observer>>,
+    >,
+> = LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(Vec::new()));
+
+struct SteadyStatePublication;
+
+impl crate::klib::observer::Observable for SteadyStatePublication {
+    fn register_observer(&self, observer: alloc::sync::Weak<dyn crate::klib::observer::Observer>) {
+        STEADY_STATE_OBSERVERS.lock().push(observer);
+    }
+}
+
 /// Spawn the block driver for the first discovered storage controller and the
 /// object store on top of it.
 ///
@@ -967,20 +982,32 @@ pub extern "C" fn launch_steady_state() {
         appliance,
         deployment,
     });
+    for observer in STEADY_STATE_OBSERVERS.lock().drain(..) {
+        if let Some(observer) = observer.upgrade() {
+            observer.notify();
+        }
+    }
     logln!("[launch] steady-state service set published.");
 }
 
-/// Read the published steady-state service set, blocking (cooperatively)
-/// until the launch thread has published it.
+/// Read the published steady-state service set, blocking until the launch
+/// thread has published it.
+///
+/// Parks on the publication observable rather than spinning, and gives the
+/// launch a generous bound: a launcher that failed before publishing must
+/// not leave the caller marked Blocked forever or pin a logical processor.
 pub fn steady_state() -> SteadyState {
-    loop {
-        let guard = STEADY_STATE.lock();
-        if let Some(state) = guard.as_ref() {
-            return *state;
+    for _ in 0..120 {
+        if let Some(state) = *STEADY_STATE.lock() {
+            return state;
         }
-        drop(guard);
-        crate::cpu::scheduler::yield_lp();
+        if crate::cpu::scheduler::block_until(&SteadyStatePublication, 1_000, || {
+            STEADY_STATE.lock().is_some()
+        }) {
+            break;
+        }
     }
+    STEADY_STATE.lock().as_ref().copied().expect("steady-state services were never published")
 }
 
 /// Transfer the launched service set into the node-shutdown coordinator.
