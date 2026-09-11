@@ -5,7 +5,6 @@
 #![feature(likely_unlikely)]
 #![feature(step_trait)]
 #![cfg_attr(target_arch = "x86_64", feature(abi_custom))]
-#![allow(static_mut_refs)]
 #![allow(named_asm_labels)]
 
 //! # Catten

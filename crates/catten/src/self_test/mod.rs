@@ -7,6 +7,11 @@
 //! path; it is also the canonical smoke test used by `scripts/run-aarch64.sh`
 //! to prove a boot image (virt or `--sbsa-ref`) is healthy.
 //!
+//! Self-test fixtures keep process-global `static mut` state and run one
+//! verifier at a time, so the `static_mut_refs` lint is allowed within this
+//! tree only; production kernel code uses `SyncUnsafeCell` accessors instead.
+#![allow(static_mut_refs)]
+//!
 //! ## Execution model
 //!
 //! The tests split into two phases, because most of the kernel's *async*

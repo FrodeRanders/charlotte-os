@@ -3,7 +3,9 @@ use core::{
     mem::MaybeUninit,
 };
 
-static mut IDTR: MaybeUninit<Idtr> = MaybeUninit::uninit();
+use crate::klib::sync_cell::SyncUnsafeCell;
+
+static IDTR: SyncUnsafeCell<MaybeUninit<Idtr>> = SyncUnsafeCell::new(MaybeUninit::uninit());
 
 const N_INTERRUPT_VECTORS: usize = 256;
 
@@ -69,11 +71,12 @@ impl Idt {
 
     pub fn load(&self) {
         unsafe {
-            IDTR.write(Idtr::new(
+            let idtr = IDTR.get();
+            (*idtr).write(Idtr::new(
                 size_of::<InterruptGate>() as u16 * N_INTERRUPT_VECTORS as u16 - 1u16,
                 self as *const Idt as u64,
             ));
-            asm_load_idt(IDTR.as_ptr());
+            asm_load_idt((*idtr).as_ptr());
         }
     }
 }
