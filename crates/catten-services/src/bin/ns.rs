@@ -68,6 +68,10 @@ struct Registration {
     connection: u64,
     generation: i64,
     access_key: u64,
+    /// Stable principal of the domain that created the registration, when the
+    /// kernel-authenticated envelope supplied one. Only this principal (or a
+    /// service manager) may retire the registration.
+    registrar: Option<PrincipalId>,
 }
 
 type Registry = BTreeMap<Vec<u8>, Registration>;
@@ -508,6 +512,7 @@ fn register(
     policy: &mut PolicyStore,
     audit: &mut AuditLog,
     publisher: DomainIdentity,
+    registrar: Option<PrincipalId>,
     key: Vec<u8>,
     connection: u64,
     access_key: u64,
@@ -548,6 +553,7 @@ fn register(
             connection,
             generation,
             access_key,
+            registrar,
         },
     );
     if let Some(previous) = previous
@@ -692,6 +698,7 @@ fn main(ctx: Context) -> ! {
                         &mut policy,
                         &mut audit,
                         own_identity,
+                        PrincipalId::new(message.sender_principal),
                         scalar_key(message.arg0),
                         message.connection,
                         0,
@@ -715,6 +722,7 @@ fn main(ctx: Context) -> ! {
                         &mut policy,
                         &mut audit,
                         own_identity,
+                        PrincipalId::new(message.sender_principal),
                         scalar_key(message.arg0),
                         message.connection,
                         access_key,
@@ -736,6 +744,7 @@ fn main(ctx: Context) -> ! {
                         &mut policy,
                         &mut audit,
                         own_identity,
+                        PrincipalId::new(message.sender_principal),
                         key,
                         connection,
                         0,
@@ -774,11 +783,17 @@ fn main(ctx: Context) -> ! {
                     .get(&key)
                     .filter(|registration| registration.connection != 0)
                     .map(|registration| registration.generation);
-                let result = match current {
-                    Some(generation)
-                        if policy
-                            .unpublish_service(own_identity, &key, generation as u64)
-                            .is_ok() =>
+                let actor = synchronize_sender(&mut policy, &message);
+                let authorized = match &actor {
+                    Ok(identity) => policy
+                        .roles_for(*identity)
+                        .is_some_and(|roles| roles.contains(Roles::SERVICE_MANAGER)),
+                    Err(_) => false,
+                };
+                let result = match (current, actor) {
+                    (Some(generation), Ok(actor))
+                        if authorized
+                            && policy.unpublish_service(actor, &key, generation as u64).is_ok() =>
                     {
                         let registration = registry.get_mut(&key).expect("registration vanished");
                         ipc_close(registration.connection);
@@ -799,10 +814,23 @@ fn main(ctx: Context) -> ! {
                 let current = registry
                     .get(&key)
                     .filter(|registration| registration.connection != 0)
-                    .map(|registration| registration.generation);
+                    .map(|registration| (registration.generation, registration.registrar));
+                let actor = synchronize_sender(&mut policy, &message);
+                let actor_principal = match &actor {
+                    Ok(identity) => policy.principal_for(*identity),
+                    Err(_) => None,
+                };
+                let actor_is_manager = match &actor {
+                    Ok(identity) => policy
+                        .roles_for(*identity)
+                        .is_some_and(|roles| roles.contains(Roles::SERVICE_MANAGER)),
+                    Err(_) => false,
+                };
                 let result = match (current, expected_generation) {
-                    (Some(generation), Some(expected))
+                    (Some((generation, registrar)), Some(expected))
                         if u64::try_from(generation) == Ok(expected)
+                            && (actor_is_manager
+                                || registrar.is_some() && registrar == actor_principal)
                             && policy.unpublish_service(own_identity, &key, expected).is_ok() =>
                     {
                         let registration = registry.get_mut(&key).expect("registration vanished");
@@ -862,6 +890,10 @@ fn main(ctx: Context) -> ! {
             ns::OP_REGISTER_AUTHORIZED => {
                 let request = read_authorization_request(&message);
                 let actor = synchronize_sender(&mut policy, &message);
+                let registrar = match &actor {
+                    Ok(identity) => policy.principal_for(*identity),
+                    Err(_) => None,
+                };
                 let result = match (request.as_deref().and_then(wire::decode), actor) {
                     (
                         Some(wire::Request::Publish {
@@ -875,6 +907,7 @@ fn main(ctx: Context) -> ! {
                         &mut policy,
                         &mut audit,
                         actor,
+                        registrar,
                         service.to_vec(),
                         message.connection,
                         0,

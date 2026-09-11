@@ -829,6 +829,36 @@ impl RaftNode {
         }
     }
 
+    /// Consume one asynchronous InstallSnapshot outcome on the leader side.
+    pub fn handle_install_snapshot_response(
+        &mut self,
+        peer_id: &str,
+        response: InstallSnapshotResponse,
+        sent_next_offset: u64,
+        sent_done: bool,
+        current_millis: u64,
+    ) {
+        if response.term > self.current_term {
+            self.step_down(response.term, current_millis);
+        } else if self.state == NodeState::Leader && response.term == self.current_term {
+            if response.success {
+                self.snapshot_offsets.insert(peer_id.to_string(), sent_next_offset);
+                if sent_done {
+                    self.match_index.insert(peer_id.to_string(), response.last_included_index);
+                    self.next_index.insert(peer_id.to_string(), response.last_included_index + 1);
+                    self.snapshot_offsets.insert(peer_id.to_string(), 0);
+                    self.advance_commit_index();
+                }
+            } else {
+                // The follower rejected the chunk and reports the offset it
+                // can accept next (zero once its pending buffer is gone).
+                // Rewind so a restarted or partially-buffered follower
+                // resumes instead of rejecting every later chunk.
+                self.snapshot_offsets.insert(peer_id.to_string(), response.next_offset);
+            }
+        }
+    }
+
     pub fn broadcast_heartbeat(&mut self, current_millis: u64) {
         self.current_millis = current_millis;
         self.transport.set_current_millis(current_millis);
@@ -960,21 +990,13 @@ impl RaftNode {
                     sent_next_offset,
                     sent_done,
                 } => {
-                    if response.term > self.current_term {
-                        self.step_down(response.term, current_millis);
-                    } else if self.state == NodeState::Leader
-                        && response.term == self.current_term
-                        && response.success
-                    {
-                        self.snapshot_offsets.insert(peer_id.clone(), sent_next_offset);
-                        if sent_done {
-                            self.match_index.insert(peer_id.clone(), response.last_included_index);
-                            self.next_index
-                                .insert(peer_id.clone(), response.last_included_index + 1);
-                            self.snapshot_offsets.insert(peer_id, 0);
-                            self.advance_commit_index();
-                        }
-                    }
+                    self.handle_install_snapshot_response(
+                        &peer_id,
+                        response,
+                        sent_next_offset,
+                        sent_done,
+                        current_millis,
+                    );
                 }
             }
         }
@@ -1390,6 +1412,7 @@ mod tests {
             AppendEntriesRequest,
             AppendEntriesResponse,
             InstallSnapshotRequest,
+            InstallSnapshotResponse,
             LogEntry,
             NodeState,
             Peer,
@@ -1982,6 +2005,59 @@ mod tests {
         assert_eq!(store.last_index(), 3);
         assert_eq!(store.term_at(3), 3);
         assert_eq!(store.entry_at(3).unwrap().data, vec![3]);
+    }
+
+    #[test]
+    fn rejected_snapshot_chunk_rewinds_the_send_offset() {
+        // A follower that lost its pending buffer (or has partial data) reports
+        // the offset it can accept next. The leader must rewind instead of
+        // resending chunks that will be rejected forever.
+        let mut node = node_with_voters(&["n1"]);
+        node.start_election(200);
+        assert_eq!(node.state, NodeState::Leader);
+        let term = node.current_term;
+
+        node.snapshot_offsets.insert("n2".to_string(), 512);
+        node.handle_install_snapshot_response(
+            "n2",
+            InstallSnapshotResponse {
+                peer_id: "n2".to_string(),
+                term,
+                success: false,
+                last_included_index: 0,
+                next_offset: 0,
+                done: false,
+            },
+            640,
+            false,
+            201,
+        );
+        assert_eq!(
+            node.snapshot_offsets.get("n2"),
+            Some(&0),
+            "a restarted follower rewinds the leader to offset zero"
+        );
+
+        node.snapshot_offsets.insert("n2".to_string(), 512);
+        node.handle_install_snapshot_response(
+            "n2",
+            InstallSnapshotResponse {
+                peer_id: "n2".to_string(),
+                term,
+                success: false,
+                last_included_index: 0,
+                next_offset: 128,
+                done: false,
+            },
+            640,
+            false,
+            201,
+        );
+        assert_eq!(
+            node.snapshot_offsets.get("n2"),
+            Some(&128),
+            "a partially buffered follower resumes at its accepted offset"
+        );
     }
 
     #[test]

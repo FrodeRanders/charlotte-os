@@ -59,7 +59,10 @@ policy-administrator role, and `OP_LOOKUP_AUTHORIZED` performs a default-deny
 decision followed by an attenuated connection delegation. The caller cannot
 supply or override its identity in request bytes. Deferred lookups retain the
 same exact `DomainIdentity`, and stale ASID generations are rejected rather
-than being rebound.
+than being rebound. `OP_UNREGISTER` requires the service-manager role.
+`OP_UNREGISTER_GENERATION` is restricted to the stable principal recorded when
+the registration was created, or a service-manager caller, so ordinary clients
+cannot retire names they did not publish.
 
 Authorization decisions and delegation failures enter a bounded FIFO audit
 stream containing sequence, exact caller identity, stable principal, service,

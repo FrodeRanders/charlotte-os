@@ -769,10 +769,17 @@ fn unroute_interrupt(intid: u32) {
 pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError> {
     let object = {
         let mut devices = DEVICES.lock();
-        devices
+        let object = devices
             .get_mut(&asid)
             .and_then(|caps| caps.caps.remove(&cap))
-            .ok_or(DeviceError::UnknownCapability)?
+            .ok_or(DeviceError::UnknownCapability)?;
+        if let DeviceObject::Interrupt(irq) = &object {
+            // Keep the capability-table lock through route removal so a
+            // concurrent grant of the same INTID cannot publish a replacement
+            // route that this teardown then disables.
+            unroute_interrupt(irq.intid);
+        }
+        object
     };
     match object {
         DeviceObject::Mmio(region) => {
@@ -783,7 +790,7 @@ pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError
                 crate::cpu::isa::memory::tlb::inval_range_user(asid, base, region.pages);
             }
         }
-        DeviceObject::Interrupt(irq) => unroute_interrupt(irq.intid),
+        DeviceObject::Interrupt(_) => {}
         DeviceObject::DmaDomain {
             id,
         } => {

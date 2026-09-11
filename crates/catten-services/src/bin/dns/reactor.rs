@@ -1,7 +1,11 @@
 //! Small, independently reviewable phases of the DNS event reactor.
 
 use alloc::{
-    collections::VecDeque,
+    collections::{
+        BTreeMap,
+        VecDeque,
+    },
+    string::String,
     vec::Vec,
 };
 
@@ -53,6 +57,7 @@ pub(super) fn drain_local_unregistrations(calls: &mut Vec<u64>) {
 pub(super) fn drive_local_calls(
     pending: &mut Vec<PendingLocalCall>,
     completed: &mut VecDeque<CompletedCall>,
+    next_reply_ordinal: &mut BTreeMap<String, u64>,
     remote_calls_served: &mut u32,
     transport: &RelmsgRaftTransport,
     now: u64,
@@ -78,15 +83,21 @@ pub(super) fn drive_local_calls(
                 call_id,
                 target_generation,
                 peer,
-                settled_after_ack,
             } => {
+                // Reserve the reply ordinal here, in reply-send order, so the
+                // per-peer ACK count can identify this entry as settled even
+                // when concurrently admitted calls complete out of order.
+                let reply_ordinal = next_reply_ordinal.entry(peer.clone()).or_insert_with(|| {
+                    transport.acknowledged_count_for(&peer, catten_services::rcall::TAG_REPLY)
+                });
+                *reply_ordinal = reply_ordinal.saturating_add(1);
                 completed.push_back(CompletedCall {
                     caller,
                     session,
                     call_id,
                     result,
                     peer: peer.clone(),
-                    settled_after_ack,
+                    settled_after_ack: *reply_ordinal,
                 });
                 *remote_calls_served = remote_calls_served.wrapping_add(1);
                 config::write_u32_release(dns::status::REMOTE_CALLS_SERVED, *remote_calls_served);

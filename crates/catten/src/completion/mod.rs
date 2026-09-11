@@ -801,23 +801,19 @@ pub fn complete(
 ) -> Result<(), CapError> {
     let completion = completion_of(asid, cap)?;
 
-    // Transition first so the CQ entry carries the effective terminal result.
-    let Some(effective) = completion.complete(result) else {
-        // Already terminal: idempotent no-op, no duplicate CQ entry.
-        return Ok(());
-    };
-
-    // Publish the completion entry to the shared CQ ring *before* waking any
-    // waiter. A userspace consumer that blocks in `wait` and then drains the
-    // ring the moment it is woken must observe the entry, so the ring write has
-    // to happen-before the wake, not after it. Capability-backed completions
-    // are delivered to the default queue.
+    // Transition and publish under one registry hold so a concurrent poll or
+    // close cannot remove the capability between the terminal transition and
+    // the CQ insertion and leave a terminal operation untracked. The ring
+    // write must also happen-before the wake, so a userspace consumer that
+    // blocks in `wait` and drains the ring the moment it is woken observes
+    // the entry. Capability-backed completions go to the default queue.
     {
         let mut registry = COMPLETIONS.write();
+        let Some(effective) = completion.complete(result) else {
+            // Already terminal: idempotent no-op, no duplicate CQ entry.
+            return Ok(());
+        };
         if let Some(as_completions) = registry.get_mut(&asid)
-            // poll/close may race the state transition above. Do not publish
-            // into a replacement address space, or after the cap consumer has
-            // already closed the only remaining result.
             && as_completions
                 .table
                 .get(&cap)

@@ -36,7 +36,6 @@ pub(super) enum LocalCallDestination {
         call_id: u64,
         target_generation: u64,
         peer: String,
-        settled_after_ack: u64,
     },
 }
 

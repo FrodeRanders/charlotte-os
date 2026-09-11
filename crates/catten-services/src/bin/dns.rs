@@ -1246,7 +1246,6 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                         < DEDUP_WINDOW;
 
                                     if !duplicate_pending {
-                                        let mut reserved_reply_ordinal = None;
                                         let result = if let Some(result) = cached_result {
                                             Some(result)
                                         } else if !has_dedup_capacity {
@@ -1263,19 +1262,6 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                     {
                                                         Some(dns::ERR_BUSY)
                                                     } else {
-                                                        let reply_ordinal = next_reply_ordinal
-                                                            .entry(source_peer.clone())
-                                                            .or_insert_with(|| {
-                                                                transport
-                                                                    .acknowledged_count_for(
-                                                                        &source_peer,
-                                                                        catten_services::rcall::TAG_REPLY,
-                                                                    )
-                                                            });
-                                                        *reply_ordinal =
-                                                            reply_ordinal.saturating_add(1);
-                                                        reserved_reply_ordinal =
-                                                            Some(*reply_ordinal);
                                                         let destination =
                                                             LocalCallDestination::Remote {
                                                                 caller: caller.clone(),
@@ -1283,8 +1269,6 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                                 call_id,
                                                                 target_generation,
                                                                 peer: source_peer.clone(),
-                                                                settled_after_ack: reserved_reply_ordinal
-                                                                    .expect("reply ordinal reserved"),
                                                             };
                                                         match begin_local_call(
                                                             ns_conn,
@@ -1312,20 +1296,21 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                         };
 
                                         if let Some(result) = result {
-                                            let settled_after_ack =
-                                                reserved_reply_ordinal.unwrap_or_else(|| {
-                                                    let reply_ordinal = next_reply_ordinal
-                                                        .entry(source_peer.clone())
-                                                        .or_insert_with(|| {
-                                                            transport.acknowledged_count_for(
-                                                                &source_peer,
-                                                                catten_services::rcall::TAG_REPLY,
-                                                            )
-                                                        });
-                                                    *reply_ordinal =
-                                                        reply_ordinal.saturating_add(1);
-                                                    *reply_ordinal
+                                            // Reserve the reply ordinal at the point the
+                                            // reply is actually sent, so the per-peer ACK
+                                            // count corresponds to send order even when
+                                            // concurrently admitted calls complete out of
+                                            // order.
+                                            let reply_ordinal = next_reply_ordinal
+                                                .entry(source_peer.clone())
+                                                .or_insert_with(|| {
+                                                    transport.acknowledged_count_for(
+                                                        &source_peer,
+                                                        catten_services::rcall::TAG_REPLY,
+                                                    )
                                                 });
+                                            *reply_ordinal = reply_ordinal.saturating_add(1);
+                                            let settled_after_ack = *reply_ordinal;
                                             if cached_result.is_none() && has_dedup_capacity {
                                                 completed_calls.push_back(CompletedCall {
                                                     caller,
@@ -4060,6 +4045,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         drive_local_calls(
             &mut pending_local_calls,
             &mut completed_calls,
+            &mut next_reply_ordinal,
             &mut remote_calls_served,
             &transport,
             node.millis(),
