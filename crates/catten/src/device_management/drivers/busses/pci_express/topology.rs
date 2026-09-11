@@ -16,6 +16,7 @@ use crate::{
         Error,
         MAX_DEVICES_PER_BUS,
         MAX_FUNCTIONS_PER_DEVICE,
+        MAX_PCIE_BRIDGE_DEPTH,
         device_class::PciIdentifier,
         ecam,
         ecam::pcie::PcieCfgSpace,
@@ -182,7 +183,12 @@ impl PcieSegmentGroup {
             ecam_vaddr,
             start_bus_num,
             end_bus_num,
-            root_bus: PcieBusSegment::new_boxed(ecam_vaddr, pcie_segment_group_num, start_bus_num),
+            root_bus: PcieBusSegment::new_boxed(
+                ecam_vaddr,
+                pcie_segment_group_num,
+                start_bus_num,
+                0,
+            ),
         }
     }
 }
@@ -205,6 +211,7 @@ impl PcieBusSegment {
         ecam_vaddr: VAddr,
         segment_group_num: PcieSegmentGroupNum,
         bus_num: PcieBusSegmentNum,
+        depth: u8,
     ) -> Box<Self> {
         logln!(
             "[drivers::busses::pci_express] Enumerating PCIe bus segment {} of segment group {}",
@@ -222,7 +229,8 @@ impl PcieBusSegment {
             segment_group_num
         );
         for device_num in 0..MAX_DEVICES_PER_BUS {
-            let device = PcieDevice::new(ecam_vaddr, segment_group_num, bus_num, device_num as u8);
+            let device =
+                PcieDevice::new(ecam_vaddr, segment_group_num, bus_num, device_num as u8, depth);
             if !matches!(device, PcieDevice::Empty) {
                 bus.devices.push(device);
             }
@@ -244,6 +252,7 @@ impl PcieDevice {
         segment_group_num: PcieSegmentGroupNum,
         bus_num: PcieBusSegmentNum,
         device_num: u8,
+        depth: u8,
     ) -> Self {
         let cfg_space_vaddr = ecam_vaddr
             + PcieLocation::new(
@@ -263,6 +272,7 @@ impl PcieDevice {
                 segment_group_num,
                 bus_num,
                 device_num,
+                depth,
             ))
         } else {
             PcieDevice::SingleFunc(PcieSingleFuncDevice::new(
@@ -270,6 +280,7 @@ impl PcieDevice {
                 segment_group_num,
                 bus_num,
                 device_num,
+                depth,
             ))
         }
     }
@@ -287,6 +298,7 @@ impl PcieSingleFuncDevice {
         segment_group_num: PcieSegmentGroupNum,
         bus_num: PcieBusSegmentNum,
         device_num: u8,
+        depth: u8,
     ) -> Self {
         PcieSingleFuncDevice {
             number: PcieDeviceNum(device_num),
@@ -296,6 +308,7 @@ impl PcieSingleFuncDevice {
                 bus_num,
                 device_num,
                 PcieFunctionNum(0),
+                depth,
             ),
         }
     }
@@ -313,6 +326,7 @@ impl PcieMultiFuncDevice {
         segment_group_num: PcieSegmentGroupNum,
         bus_num: PcieBusSegmentNum,
         device_num: u8,
+        depth: u8,
     ) -> Self {
         let mut functions: [PcieFunction; MAX_FUNCTIONS_PER_DEVICE] =
             [const { PcieFunction::Empty }; MAX_FUNCTIONS_PER_DEVICE];
@@ -323,6 +337,7 @@ impl PcieMultiFuncDevice {
                 bus_num,
                 device_num,
                 PcieFunctionNum::try_from(i as u8).unwrap(),
+                depth,
             );
         }
 
@@ -372,6 +387,7 @@ impl PcieFunction {
         bus_num: PcieBusSegmentNum,
         device_num: u8,
         function_num: PcieFunctionNum,
+        depth: u8,
     ) -> Self {
         let cfg_space_vaddr = ecam_vaddr
             + PcieLocation::new(
@@ -385,12 +401,22 @@ impl PcieFunction {
         if !cfg_space.has_device_present() {
             PcieFunction::Empty
         } else if cfg_space.device_is_bridge() {
+            if depth >= MAX_PCIE_BRIDGE_DEPTH {
+                logln!(
+                    "[drivers::busses::pci_express] Bridge nesting limit reached at bus {} device \
+                     {}; not descending",
+                    bus_num,
+                    device_num
+                );
+                return PcieFunction::Empty;
+            }
             let secondary_bus_segment_number =
                 unsafe { cfg_space.header.bridge.get_secondary_bus_num() };
             PcieFunction::Bridge(PcieBusSegment::new_boxed(
                 ecam_vaddr,
                 segment_group_num,
                 secondary_bus_segment_number,
+                depth + 1,
             ))
         } else {
             PcieFunction::Endpoint(Box::new(PcieEndpoint::new(
@@ -944,12 +970,14 @@ pub fn lookup_first_ahci(topology: &PcieTopology) -> Option<(u64, u32, u32, Opti
                     let header = unsafe { &(*cfg.as_ptr()).header.endpoint };
                     // The HBA register block (ABAR) is memory BAR 5.
                     let bar5 = header.bar(5) as u64;
-                    let abar = if bar5 & 0x4 != 0 {
-                        let bar6 = header.bar(6) as u64;
-                        (bar5 & 0xffff_fff0) | ((bar6 & 0xffff_ffff) << 32)
-                    } else {
-                        bar5 & 0xffff_fff0
-                    };
+                    if bar5 & 0x4 != 0 {
+                        // A 64-bit BAR cannot start in the last BAR slot:
+                        // there is no BAR6 to hold its upper half. Treat the
+                        // firmware descriptor as malformed instead of reading
+                        // past the BAR array.
+                        continue;
+                    }
+                    let abar = bar5 & 0xffff_fff0;
                     let legacy_irq = header.interrupt_line() as u32;
                     if abar != 0 {
                         return Some((abar, legacy_irq, requester_id, None));

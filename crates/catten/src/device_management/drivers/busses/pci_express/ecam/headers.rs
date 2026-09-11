@@ -138,8 +138,17 @@ impl CfgEndpointHeader {
         }
     }
 
+    /// Read one 32-bit BAR. Out-of-range indices return 0 instead of
+    /// panicking, since the index may be derived from firmware-supplied
+    /// descriptors. The header is `repr(C, packed)`, so the load is
+    /// unaligned.
     pub fn bar(&self, index: usize) -> u32 {
-        self.bars[index]
+        const BAR_COUNT: usize = 6;
+        if index >= BAR_COUNT {
+            return 0;
+        }
+        let base: *const u32 = core::ptr::addr_of!(self.bars).cast();
+        unsafe { base.add(index).read_unaligned() }
     }
 
     pub fn interrupt_line(&self) -> u8 {
