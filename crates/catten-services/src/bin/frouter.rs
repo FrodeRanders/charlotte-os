@@ -96,6 +96,9 @@ struct Route {
     ethertype: u16,
     conn: Connection,
     opcode: u32,
+    /// Registration generation this connection was resolved from. A newer
+    /// generation (service restart or replacement) retargets the route.
+    generation: u64,
 }
 
 struct RouteLookup {
@@ -518,15 +521,12 @@ fn refresh_routes(
     ns_conn: ConnectionRef<'_>,
 ) {
     for lookup in lookups {
-        if routes.iter().any(|route| route.ethertype == lookup.ethertype) {
-            continue;
-        }
-
         if lookup.call.is_none() {
             // OP_LOOKUP intentionally remains pending while the service is
-            // absent. This is the name service's synchronization mechanism;
-            // keeping the call in this small fixed table makes it asynchronous
-            // from the router's point of view and bounds retained authority.
+            // absent. Re-issue it after every completion so a service that
+            // re-registers (a restart, an upgrade, or a replacement instance)
+            // becomes the route target instead of the first registration
+            // being kept forever.
             lookup.call = ns_conn.call(ns::OP_LOOKUP, lookup.name).ok();
             continue;
         }
@@ -539,11 +539,22 @@ fn refresh_routes(
                 if result.result >= 1
                     && let Some(connection) = result.connection
                 {
-                    routes.push(Route {
-                        ethertype: lookup.ethertype,
-                        conn: connection,
-                        opcode: lookup.opcode,
-                    });
+                    let generation = result.result as u64;
+                    if let Some(route) =
+                        routes.iter_mut().find(|route| route.ethertype == lookup.ethertype)
+                    {
+                        if route.generation != generation {
+                            route.conn = connection;
+                            route.generation = generation;
+                        }
+                    } else {
+                        routes.push(Route {
+                            ethertype: lookup.ethertype,
+                            conn: connection,
+                            opcode: lookup.opcode,
+                            generation,
+                        });
+                    }
                 }
             }
             Err(_) => lookup.call = None,
@@ -682,6 +693,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             // be localized: if rx stops advancing here, frames are not reaching
             // the demultiplexer from the NIC driver.
             let tick = HEARTBEAT_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+            if tick & 0x3f == 0 {
+                // Re-resolve consumer routes so a newer registration (for
+                // example a restarted service) takes over from a stale one.
+                refresh_routes(&mut routes, &mut route_lookups, ns_conn);
+                config::write::<u32>(status::ROUTES, routes.len() as u32);
+            }
             if tick & 0xff == 0 {
                 catten_rt::logln!(
                     "[frouter] hb rx={} fwd={} dropped={} unknown={} routes={} ingress={}/{}/{} \
