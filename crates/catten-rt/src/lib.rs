@@ -423,23 +423,108 @@ pub fn run_main(main: fn(Context) -> !) -> ! {
     if !config::launch_header_is_compatible() {
         domain_abort();
     }
+    // Publish the standard heap record even before the first allocation.
+    publish_heap_status();
     main(Context)
 }
 
 // ---- allocator support (used by entry! macro) -----------------------------
+
+use core::{
+    alloc::{
+        GlobalAlloc,
+        Layout,
+    },
+    sync::atomic::{
+        AtomicBool,
+        AtomicUsize,
+        Ordering,
+    },
+};
 
 pub use talc::{
     TalcLock,
     source::Claim,
 };
 
-pub type HeapLock = TalcLock<spin::Mutex<()>, Claim>;
+/// The per-domain heap arena with standard status-page accounting.
+///
+/// Every allocation and free updates this domain's published heap counters
+/// (`charlotte_launch::heap_status`) so the kernel can expose current and peak
+/// usage alongside the per-thread statistics. The allocator itself remains a
+/// single talc arena shared by the domain's threads.
+pub struct HeapLock {
+    inner: TalcLock<spin::Mutex<()>, Claim>,
+}
+
+static HEAP_ALLOCATED: AtomicUsize = AtomicUsize::new(0);
+static HEAP_PEAK: AtomicUsize = AtomicUsize::new(0);
+static HEAP_STATUS_PUBLISHED: AtomicBool = AtomicBool::new(false);
 
 /// Construct the heap arena at the canonical heap virtual address.
 pub const fn heap() -> HeapLock {
-    TalcLock::new(unsafe {
-        Claim::new(charlotte_launch::HEAP_VADDR as *mut u8, charlotte_launch::HEAP_SIZE)
-    })
+    HeapLock {
+        inner: TalcLock::new(unsafe {
+            Claim::new(charlotte_launch::HEAP_VADDR as *mut u8, charlotte_launch::HEAP_SIZE)
+        }),
+    }
+}
+
+/// Publish the domain's standard heap record to its status page.
+fn publish_heap_status() {
+    use charlotte_launch::{
+        STATUS_VADDR,
+        heap_status,
+    };
+    let base = STATUS_VADDR as *mut u8;
+    unsafe {
+        if !HEAP_STATUS_PUBLISHED.load(Ordering::Relaxed) {
+            HEAP_STATUS_PUBLISHED.store(true, Ordering::Relaxed);
+            (base.add(heap_status::MAGIC_OFFSET) as *mut u64).write_volatile(heap_status::MAGIC);
+            (base.add(heap_status::VERSION_OFFSET) as *mut u64)
+                .write_volatile(heap_status::VERSION);
+            (base.add(heap_status::CAPACITY_OFFSET) as *mut u64)
+                .write_volatile(charlotte_launch::HEAP_SIZE as u64);
+        }
+        (base.add(heap_status::ALLOCATED_OFFSET) as *mut u64)
+            .write_volatile(HEAP_ALLOCATED.load(Ordering::Relaxed) as u64);
+        (base.add(heap_status::PEAK_OFFSET) as *mut u64)
+            .write_volatile(HEAP_PEAK.load(Ordering::Relaxed) as u64);
+    }
+}
+
+unsafe impl GlobalAlloc for HeapLock {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let ptr = unsafe { self.inner.alloc(layout) };
+        if !ptr.is_null() {
+            let allocated =
+                HEAP_ALLOCATED.fetch_add(layout.size(), Ordering::Relaxed) + layout.size();
+            HEAP_PEAK.fetch_max(allocated, Ordering::Relaxed);
+            publish_heap_status();
+        }
+        ptr
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        unsafe { self.inner.dealloc(ptr, layout) };
+        HEAP_ALLOCATED.fetch_sub(layout.size(), Ordering::Relaxed);
+        publish_heap_status();
+    }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        let new_ptr = unsafe { self.inner.realloc(ptr, layout, new_size) };
+        if !new_ptr.is_null() {
+            if new_size >= layout.size() {
+                let grown = new_size - layout.size();
+                let allocated = HEAP_ALLOCATED.fetch_add(grown, Ordering::Relaxed) + grown;
+                HEAP_PEAK.fetch_max(allocated, Ordering::Relaxed);
+            } else {
+                HEAP_ALLOCATED.fetch_sub(layout.size() - new_size, Ordering::Relaxed);
+            }
+            publish_heap_status();
+        }
+        new_ptr
+    }
 }
 
 // ---- plumbing (not user-facing) -------------------------------------------

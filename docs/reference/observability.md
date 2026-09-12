@@ -46,12 +46,17 @@ address space. Each snapshot contains:
   (committed is what demand growth has mapped; touched is a high-water mark
   sampled at context switches).
 
-The version-3 snapshot appends a per-domain section with the accounting
+The version-4 snapshot appends a per-domain section with the accounting
 described in [adaptive resource policy](../architecture/adaptive-resource-policy.md):
 owned frames, live and high-water reserved stack pages, touched stack high-water
-folded from retired threads, and live and high-water thread counts. A caller
-without the system-observer capability sees only its own domain; the
-system-observer capability widens both sections to the machine.
+folded from retired threads, live and high-water thread counts, and — when the
+domain publishes it — heap capacity, currently allocated bytes, and the peak
+high-water mark. Heap facts come from the standard
+`charlotte_launch::heap_status` record that `catten-rt` maintains in the
+domain's own status page; the kernel only reads that page and never inspects
+allocator internals. A caller without the system-observer capability sees only
+its own domain; the system-observer capability widens both sections to the
+machine.
 
 The observe service also samples those aggregates once per second into a
 bounded in-memory ring and serves it through `observability::OP_HISTORY`. The

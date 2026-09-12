@@ -179,7 +179,7 @@ pub struct DomainIdentityInfo {
 // ---- observability wire format ---------------------------------------------
 
 pub const THREAD_STATISTICS_MAGIC: u64 = 0x3154_4154_534f_4343; // "CCOSTAT1"
-pub const THREAD_STATISTICS_VERSION: u64 = 3;
+pub const THREAD_STATISTICS_VERSION: u64 = 4;
 
 pub mod thread_statistics_header {
     pub const MAGIC: usize = 0;
@@ -224,7 +224,12 @@ pub mod thread_domain_record {
     pub const STACK_PAGES_USED_HIGH_WATER: usize = 4;
     pub const THREADS: usize = 5;
     pub const THREADS_HIGH_WATER: usize = 6;
-    pub const WORDS: usize = 7;
+    /// One when the domain published a valid `heap_status` record.
+    pub const HEAP_STATUS_VALID: usize = 7;
+    pub const HEAP_CAPACITY_BYTES: usize = 8;
+    pub const HEAP_ALLOCATED_BYTES: usize = 9;
+    pub const HEAP_PEAK_BYTES: usize = 10;
+    pub const WORDS: usize = 11;
 }
 
 pub const THREAD_STATISTICS_HEADER_U64S: usize = thread_statistics_header::WORDS;

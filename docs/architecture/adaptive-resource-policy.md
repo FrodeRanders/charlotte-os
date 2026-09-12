@@ -20,7 +20,7 @@ and structures sized by constants.
 |---|---|---|
 | Physical frames | All `MEMMAP_USABLE` RAM, no RAM cap; bitmap sized to the highest usable address | `crates/catten/src/memory/physical/mod.rs` |
 | Kernel heap | 8 MiB initial + pre-mapped growth reserve derived from usable RAM: `clamp(usable/64, 64 MiB, 256 MiB)`, 2 MiB-aligned (Phase 2) | `crates/catten/src/memory/allocators/global_allocator.rs` |
-| Domain heap | Fixed 4 MiB per domain | `crates/charlotte-launch/src/lib.rs` |
+| Domain heap | Fixed 4 MiB per domain; capacity, live allocation, and peak are sensed through the standard status-page record | `crates/charlotte-launch/src/lib.rs`, `crates/catten-rt/src/lib.rs` |
 | User stack | Signed per deployment, 1–64 pages (4 KiB–256 KiB), inherited by every thread; kernel-launched services without a descriptor adapt to the principal's previous high-water (Phase 3); both architectures commit one page and grow on fault up to that budget (Phase 4) | `crates/catten/src/memory/mod.rs`, `crates/charlotte-launch/src/deployment.rs`, `crates/charlotte-lifecycle/src/lib.rs`, `crates/catten/src/cpu/isa/*/lp/thread_context*` |
 | User threads | Signed maximum, 1–64 per domain | `crates/catten/src/cpu/scheduler/system_scheduler/mod.rs` |
 | CQ rings, endpoint queues | Mostly static entry counts; endpoint capacity is caller-chosen at create | `crates/catten/src/completion/cq.rs`, `crates/catten/src/ipc/mod.rs` |
@@ -86,13 +86,14 @@ Phase 1 changes no allocation behavior. It adds:
   low-water mark, updated from the context-switch path (AArch64 reads banked
   `SP_EL0`; x86-64 uses the per-LP user-RSP scratch slot saved on SYSCALL
   entry). Sampling is lock-free and never allocates.
-- **Wire exposure**: the `CCOSTAT` snapshot is version 3. Thread records carry
+- **Wire exposure**: the `CCOSTAT` snapshot is version 4. Thread records carry
   `STACK_RESERVED_PAGES` (budget), `STACK_COMMITTED_PAGES` (mapped pages; the
-  difference is the remaining growth headroom), and `STACK_USED_PAGES`; an appended per-domain
-  section reports `ASID`, owned frames, reserved/high-water stack pages,
-  touched high-water, and thread counts. Callers without the observer
-  capability see only their own domain, preserving the existing capability
-  posture (`docs/reference/observability.md`).
+  difference is the remaining growth headroom), and `STACK_USED_PAGES`; an
+  appended per-domain section reports `ASID`, owned frames, reserved/high-water
+  stack pages, touched high-water, thread counts, and the heap record
+  (validity, capacity, allocated, peak) when the domain publishes one. Callers
+  without the observer capability see only their own domain, preserving the
+  existing capability posture (`docs/reference/observability.md`).
 - **Aggregation semantics**: live per-thread high-water is reported directly in
   the thread records. The per-domain touched high-water is folded in when a
   thread is retired, so a long-lived thread's current mark is visible per
@@ -193,6 +194,72 @@ default until their observed usage actually reaches it.
 The remaining Phase 3 work is applying a similar policy to the domain heap and
 CQ capacities, which needs a controller surface rather than a per-launch
 formula, and letting the placement layer see node pressure (Phase 4).
+
+## Heap sensing and sizing
+
+Heap sensing is implemented. `catten-rt` wraps the domain's talc arena with an
+accounting layer that publishes `charlotte_launch::heap_status` (magic/version,
+capacity, currently allocated bytes, peak bytes) into the reserved region of
+the domain's own status page. The kernel reads that page when it builds the
+domain records and exposes it as `CCOSTAT` v4, so `httpd`/`/metrics` shows live
+and peak heap per domain. Observed peaks on the default boot are tens of
+kilobytes against a 4 MiB capacity, which is the argument for sizing rather
+than a fixed reservation.
+
+Heap sizing is staged next:
+
+1. Map `heap_pages` at load instead of the fixed `HEAP_PAGES`, write the actual
+   size into the launch header (the field already exists), and make `catten-rt`
+   claim the header size rather than the compile-time constant. That requires a
+   lazy allocator initialization in the entry path, because the arena is
+   currently a `const` claim.
+2. Choose the size with the Phase 3 discipline: previous generation's peak plus
+   a margin, clamped to the VA window (`STATUS_VADDR - HEAP_VADDR`, about
+   4.9 MiB with the current layout) and damped by the free-frame reserve.
+   Kernel-launched services can do this immediately; a signed per-deployment
+   heap limit needs a `CDEPLOY6` descriptor field.
+
+The VA layout caps any single heap at roughly 4.9 MiB. Growing beyond that, or
+giving each shard its own arena, is a layout decision; the shard-local study
+below frames it.
+
+### Shard-local heap (study)
+
+The heap is the one serialization point inside a domain: `catten-rt` exposes a
+single talc arena behind a spin mutex, so any two shards that allocate contend
+even though their CQs and stacks are shard-local. Three shapes are worth
+comparing:
+
+- **Per-shard arenas with a routing header.** Allocate from the calling shard's
+  arena; store the arena index in a small per-allocation header so `dealloc`
+  returns the block to its owner. Sharing pointers across shards then works by
+  default, at the cost of a header word and a cross-shard free path.
+- **Per-shard arenas plus an explicit shared arena.** Keep a domain-level
+  shared arena for data that intentionally crosses shards and a per-shard arena
+  for everything else. The type system can express the distinction (shared
+  versus shard-local owners), giving zero-overhead frees on the local path
+  while making cross-shard sharing an explicit decision — the same
+  qualified-sharing discipline the capability model applies across domains.
+- **Keep one arena, reduce hold time.** The talc critical section is short and
+  the contention may not be measurable; the new peak counter and allocation
+  rates can decide this before any restructuring.
+
+Does shard locality constrain LP placement? Not directly. Shards are logical
+work partitions; services already pin shard workers to LPs (`SHARD_CQ_COUNT`
+rings, `pinned_lp`/`affinity_lp`), but shards and LPs are not one-to-one. A
+per-shard arena follows the shard, which is the stable identity, so migration
+does not move an arena and a shard that outlives an LP keeps its locality. The
+property to preserve is "the allocating thread usually frees in the same
+shard", which scheduler affinity already encourages; shard-local heaps
+reinforce the recommended model rather than impose new placement constraints.
+
+Qualifying memory for sharing within the protected domain is a userspace
+allocator concern, not a kernel one: all shards share one address space, so the
+kernel cannot distinguish pointers and should not try. The practical mechanism
+is a typed allocator API in `catten-rt` (shard-local versus shared owners with
+`dealloc` routing), plus the rule that a shard-local allocation must not escape
+its shard. That keeps the fast path uncontended per shard while making
+deliberate sharing cost one indirection.
 
 ## Phase 4: in-life adaptation
 

@@ -309,6 +309,10 @@ struct DomainRow {
     stack_pages_used_high_water: u64,
     threads: u64,
     threads_high_water: u64,
+    heap_valid: u64,
+    heap_capacity_bytes: u64,
+    heap_allocated_bytes: u64,
+    heap_peak_bytes: u64,
 }
 
 struct ThreadReport {
@@ -407,6 +411,10 @@ fn thread_report(observe_conn: ConnectionRef<'_>) -> Option<ThreadReport> {
             stack_pages_used_high_water: rec[thread_domain::STACK_PAGES_USED_HIGH_WATER],
             threads: rec[thread_domain::THREADS],
             threads_high_water: rec[thread_domain::THREADS_HIGH_WATER],
+            heap_valid: rec[thread_domain::HEAP_STATUS_VALID],
+            heap_capacity_bytes: rec[thread_domain::HEAP_CAPACITY_BYTES],
+            heap_allocated_bytes: rec[thread_domain::HEAP_ALLOCATED_BYTES],
+            heap_peak_bytes: rec[thread_domain::HEAP_PEAK_BYTES],
         });
     }
     Some(ThreadReport {
@@ -631,15 +639,24 @@ fn render_threads(s: &mut String, report: &ThreadReport) {
         }
         let _ = write!(
             s,
-            "{{\"asid\":{},\"owned_frames\":{},\"stack_pages\":{},\"stack_pages_high_water\":{},\"\
-             stack_used_high_water\":{},\"threads\":{},\"threads_high_water\":{}}}",
+            concat!(
+                "{{\"asid\":{},\"owned_frames\":{},\"stack_pages\":{},",
+                "\"stack_pages_high_water\":{},\"stack_used_high_water\":{},",
+                "\"threads\":{},\"threads_high_water\":{},",
+                "\"heap_valid\":{},\"heap_capacity_bytes\":{},",
+                "\"heap_allocated_bytes\":{},\"heap_peak_bytes\":{}}}"
+            ),
             domain.asid,
             domain.owned_frames,
             domain.user_stack_pages,
             domain.user_stack_pages_high_water,
             domain.stack_pages_used_high_water,
             domain.threads,
-            domain.threads_high_water
+            domain.threads_high_water,
+            domain.heap_valid,
+            domain.heap_capacity_bytes,
+            domain.heap_allocated_bytes,
+            domain.heap_peak_bytes
         );
     }
     s.push_str("]}");

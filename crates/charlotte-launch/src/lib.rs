@@ -175,6 +175,29 @@ pub mod lifecycle {
     );
 }
 
+/// Standard per-domain heap accounting published by `catten-rt` in the
+/// mutable status page. The kernel reads this region when it builds the
+/// domain records of the observability snapshot, so every service's heap
+/// usage is visible without a per-service protocol.
+pub mod heap_status {
+    use super::STATUS_PAGE_SIZE;
+
+    /// Reserved at the top of the status page, below the lifecycle tail.
+    pub const OFFSET: usize = STATUS_PAGE_SIZE as usize - 256;
+    /// "CCHEAP01", little-endian.
+    pub const MAGIC: u64 = 0x3130_5041_4548_4343;
+    pub const VERSION: u64 = 1;
+
+    pub const MAGIC_OFFSET: usize = OFFSET;
+    pub const VERSION_OFFSET: usize = OFFSET + 8;
+    pub const CAPACITY_OFFSET: usize = OFFSET + 16;
+    pub const ALLOCATED_OFFSET: usize = OFFSET + 24;
+    pub const PEAK_OFFSET: usize = OFFSET + 32;
+    pub const BYTES: usize = 40;
+
+    const _: () = assert!(OFFSET + BYTES <= super::lifecycle::STATUS_OFFSET);
+}
+
 /// Frame-router diagnostic status-page byte offsets.
 pub mod frouter_status {
     pub const STAGE: usize = 0;

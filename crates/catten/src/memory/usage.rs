@@ -22,6 +22,7 @@ use crate::memory::{
     LazyLock,
     Mutex,
     address_space_handle_is_current,
+    physical::PAddr,
 };
 
 /// One domain's accounted resource usage at snapshot time.
@@ -47,6 +48,9 @@ pub struct DomainUsageSnapshot {
 #[derive(Debug, Clone, Copy, Default)]
 struct DomainUsage {
     snapshot: DomainUsageSnapshot,
+    /// Physical frame of the domain's mutable status page, where `catten-rt`
+    /// publishes standard heap accounting.
+    status_frame: Option<PAddr>,
 }
 
 type DomainUsageTable = BTreeMap<AddressSpaceId, (AddressSpaceHandle, DomainUsage)>;
@@ -77,10 +81,40 @@ pub(crate) fn register_domain(handle: AddressSpaceHandle) {
             handle,
             DomainUsage {
                 snapshot: DomainUsageSnapshot::default(),
+                status_frame: None,
             },
         ),
     );
     debug_assert!(previous.is_none(), "domain accounting survived ASID teardown");
+}
+
+/// Record the domain's status frame once the loader maps it.
+pub(crate) fn register_status_frame(asid: AddressSpaceId, frame: PAddr) {
+    if let Some((_, usage)) = DOMAIN_USAGE.lock().get_mut(&asid) {
+        usage.status_frame = Some(frame);
+    }
+}
+
+/// Read the domain's published heap accounting: `(capacity, allocated, peak)`
+/// bytes, or `None` when the status page does not carry a valid record.
+pub(crate) fn domain_heap_status(asid: AddressSpaceId) -> Option<(u64, u64, u64)> {
+    let frame = {
+        let table = DOMAIN_USAGE.lock();
+        table.get(&asid)?.1.status_frame?
+    };
+    use charlotte_launch::heap_status;
+    let base: *const u8 = frame.into();
+    let read = |offset: usize| unsafe { (base.add(offset) as *const u64).read_volatile() };
+    if read(heap_status::MAGIC_OFFSET) != heap_status::MAGIC
+        || read(heap_status::VERSION_OFFSET) != heap_status::VERSION
+    {
+        return None;
+    }
+    Some((
+        read(heap_status::CAPACITY_OFFSET),
+        read(heap_status::ALLOCATED_OFFSET),
+        read(heap_status::PEAK_OFFSET),
+    ))
 }
 
 /// Drop a domain's accounting when its address space is torn down.
