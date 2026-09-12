@@ -143,6 +143,14 @@ mod kernel {
         catten_syscall::ipc_endpoint_bind_cq(endpoint, cq)
     }
 
+    pub fn ipc_endpoint_resize(endpoint: u64, capacity: usize) -> u64 {
+        catten_syscall::ipc_endpoint_resize(endpoint, capacity)
+    }
+
+    pub fn ipc_endpoint_status(endpoint: u64) -> (u64, u64, u64) {
+        catten_syscall::ipc_endpoint_status(endpoint)
+    }
+
     pub fn ipc_recv(endpoint: u64) -> catten_syscall::IpcMessage {
         catten_syscall::ipc_recv(endpoint)
     }
@@ -557,6 +565,14 @@ mod kernel {
 
     pub fn ipc_endpoint_bind_cq(_endpoint: u64, _cq: u32) -> u64 {
         with_state(|state| state.ipc_bind)
+    }
+
+    pub fn ipc_endpoint_resize(_endpoint: u64, capacity: usize) -> u64 {
+        capacity as u64
+    }
+
+    pub fn ipc_endpoint_status(_endpoint: u64) -> (u64, u64, u64) {
+        (0, 0, 0)
     }
 
     pub fn ipc_recv(_endpoint: u64) -> catten_syscall::IpcMessage {

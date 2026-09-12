@@ -695,6 +695,72 @@ pub fn test_endpoint_ipc() {
 /// a "name service" domain by attaching it to a call. The name service later
 /// returns attenuated connections to a "client" domain at reply time, minted
 /// from the connection it holds rather than from an endpoint it owns.
+pub fn test_endpoint_resize() {
+    logln!("Testing endpoint capacity adaptation...");
+
+    let server = 0x5300;
+    let client = 0x5400;
+    let endpoint =
+        ipc::endpoint_create(server, 0x5245_5349, 1, 2).expect("resize endpoint_create failed");
+    let connection = ipc::connection_delegate(
+        server,
+        endpoint,
+        client,
+        ConnectionRights::SEND | ConnectionRights::CALL,
+    )
+    .expect("resize connection_delegate failed");
+
+    for opcode in 0..2 {
+        ipc::scalar_send(client, connection, opcode, 0).expect("fill should enqueue");
+    }
+    assert_eq!(
+        ipc::scalar_send(client, connection, 2, 0),
+        Err(IpcError::QueueFull),
+        "a full endpoint must reject sends at its admission bound"
+    );
+    assert_eq!(
+        ipc::endpoint_status(server, endpoint),
+        Ok((2, 2, 2)),
+        "status must report capacity, depth, and high-water"
+    );
+    assert_eq!(
+        ipc::endpoint_resize(server, endpoint, 0),
+        Err(IpcError::QueueFull),
+        "zero capacity must be rejected"
+    );
+    assert_eq!(
+        ipc::endpoint_resize(client, endpoint, 4),
+        Err(IpcError::WrongType),
+        "a non-owner must not resolve the endpoint capability for resize"
+    );
+    assert_eq!(
+        ipc::endpoint_resize(server, endpoint, crate::ipc::MAX_ENDPOINT_CAPACITY + 1),
+        Ok(crate::ipc::MAX_ENDPOINT_CAPACITY),
+        "resize must clamp to the platform maximum"
+    );
+    assert_eq!(ipc::endpoint_resize(server, endpoint, 4), Ok(4));
+    for opcode in 2..4 {
+        ipc::scalar_send(client, connection, opcode, 0).expect("grown endpoint must accept sends");
+    }
+    assert_eq!(
+        ipc::endpoint_status(server, endpoint),
+        Ok((4, 4, 4)),
+        "high-water must follow the deepest queue"
+    );
+
+    assert_eq!(ipc::endpoint_resize(server, endpoint, 1), Ok(1));
+    for _ in 0..4 {
+        ipc::receive(server, endpoint).expect("drain should receive queued messages");
+    }
+    ipc::scalar_send(client, connection, 9, 0).expect("shrunk endpoint must accept after drain");
+    assert_eq!(
+        ipc::endpoint_status(server, endpoint),
+        Ok((1, 1, 4)),
+        "high-water must survive shrink and drain"
+    );
+    ipc::close_cap(server, endpoint).expect("resize endpoint close failed");
+}
+
 pub fn test_endpoint_ipc_connection_attach() {
     logln!("Testing endpoint IPC connection attachment and re-delegation...");
 

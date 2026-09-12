@@ -269,6 +269,7 @@ pub fn run_synchronous_self_tests() {
     completion::test_completion_caps();
     completion::test_detached_operations();
     ipc::test_endpoint_ipc();
+    ipc::test_endpoint_resize();
     ipc::test_endpoint_ipc_connection_attach();
     ipc::test_endpoint_ipc_connection_copy();
     ipc::test_vector_ipc_transaction_rollback();

@@ -337,6 +337,31 @@ impl Endpoint {
         }
     }
 
+    /// Resize this endpoint's admission bound, preserving queued messages.
+    ///
+    /// The returned capacity is the platform-clamped value actually applied.
+    /// A bound below the current depth rejects new sends until the queue
+    /// drains; nothing is lost.
+    pub fn resize(&self, capacity: usize) -> Result<usize, IpcError> {
+        let applied = kernel::ipc_endpoint_resize(self.raw_handle(), capacity);
+        if applied == 0 {
+            return Err(IpcError::CreationFailed);
+        }
+        Ok(applied as usize)
+    }
+
+    /// Read `(capacity, queued depth, depth high-water)` for this endpoint.
+    ///
+    /// The high-water mark is the deepest the queue has ever been, which is
+    /// the evidence a service uses to raise `capacity`.
+    pub fn status(&self) -> Result<(usize, usize, usize), IpcError> {
+        let (capacity, depth, high_water) = kernel::ipc_endpoint_status(self.raw_handle());
+        if capacity == 0 {
+            return Err(IpcError::CreationFailed);
+        }
+        Ok((capacity as usize, depth as usize, high_water as usize))
+    }
+
     pub fn into_raw(mut self) -> u64 {
         self.cap.take().expect("endpoint capability already consumed")
     }

@@ -321,15 +321,22 @@ Two negative models deliberately violate the budget on growth and leak on
 kill, and the checker must produce the expected counterexample for each. Any
 implementation that changes the accounting must keep the traces conforming.
 
-### Resizable completion and endpoint capacities
+### Resizable endpoint capacities (implemented) and CQ rings
 
-Backlog high-water marks already exist per CQ (`completion::cq_pending`) and
-per endpoint; capacities are caller-chosen at create but fixed for the
-lifetime. A resize operation would act on the same high-water evidence that
-drives stack sizing, bounded by the hard caps in `charlotte-launch` and IPC,
-and must preserve the no-unbounded-queue invariant. This is a candidate for a
-small state model once the exact resize protocol (drain, publish, swap ring)
-is chosen.
+Endpoints now expose capacity adaptation. `IPC_ENDPOINT_RESIZE` (80) changes
+the admission bound, clamped to `MAX_ENDPOINT_CAPACITY`; queued messages are
+preserved, and a bound below the current depth only rejects new sends until
+the queue drains. `IPC_ENDPOINT_STATUS` (81) returns capacity, queued depth,
+and the depth high-water, and `catten-rt`'s owned `Endpoint` wraps both. A
+service reactor can raise its bound as the high-water approaches capacity and
+lower it when idle, always inside the hard cap.
+
+CQ rings are different. The ring is a single EL0-mapped page whose modulus is
+cached from the launch layout, and its physical capacity is at most 127
+entries. The bounded, non-lossy backlog already absorbs bursts beyond the
+ring's free space, so an in-life CQ resize needs a multi-page ring ABI (or
+consumers re-reading a published capacity) before an actuator is meaningful;
+backlog high-water remains the sizing evidence at deployment time.
 
 ### Capacity-aware placement (sensor and policy landed, wiring staged)
 

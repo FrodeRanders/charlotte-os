@@ -229,6 +229,12 @@ pub mod call_no {
     /// Read the architectural monotonic counter into x0 and its frequency in
     /// hertz into x1. This read-only query performs no allocation or locking.
     pub const MONOTONIC_CLOCK: u16 = SyscallNumber::MonotonicClock as u16;
+    /// Resize an owned endpoint's admission bound. x1=endpoint cap,
+    /// x2=new capacity; returns the effective capacity in x0 or zero.
+    pub const IPC_ENDPOINT_RESIZE: u16 = SyscallNumber::IpcEndpointResize as u16;
+    /// Read an owned endpoint's capacity, depth, and depth high-water into
+    /// x0/x1/x2; x0 zero means the call failed.
+    pub const IPC_ENDPOINT_STATUS: u16 = SyscallNumber::IpcEndpointStatus as u16;
     /// Send a vector of memory-object caps. x1=connection, x2=opcode,
     /// x3=arg0, x4=cap_vector_page. Returns an IPC status code in x0.
     pub const IPC_VECTOR_SEND: u16 = SyscallNumber::IpcVectorSend as u16;
@@ -322,6 +328,8 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::CqWake => sys_cq_wake(frame),
         SyscallNumber::CqWaitTimeout => sys_cq_wait_timeout(frame),
         SyscallNumber::IpcEndpointBindCq => sys_ipc_endpoint_bind_cq(frame),
+        SyscallNumber::IpcEndpointResize => sys_ipc_endpoint_resize(frame),
+        SyscallNumber::IpcEndpointStatus => sys_ipc_endpoint_status(frame),
         SyscallNumber::DeviceMmioMap => sys_device_mmio_map(frame),
         SyscallNumber::DeviceMmioUnmap => sys_device_mmio_unmap(frame),
         SyscallNumber::DeviceIrqBindCq => sys_device_irq_bind_cq(frame),
@@ -1249,6 +1257,30 @@ fn sys_ipc_endpoint_create(frame: &mut TrapFrame) {
     let version = frame.regs[2] as u32;
     let capacity = frame.regs[3] as usize;
     frame.regs[0] = ipc::endpoint_create(asid, interface, version, capacity).unwrap_or(0);
+}
+
+fn sys_ipc_endpoint_resize(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let endpoint = frame.regs[1];
+    let capacity = frame.regs[2] as usize;
+    frame.regs[0] = ipc::endpoint_resize(asid, endpoint, capacity).unwrap_or(0) as u64;
+}
+
+fn sys_ipc_endpoint_status(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let endpoint = frame.regs[1];
+    match ipc::endpoint_status(asid, endpoint) {
+        Ok((capacity, depth, high_water)) => {
+            frame.regs[0] = capacity as u64;
+            frame.regs[1] = depth as u64;
+            frame.regs[2] = high_water as u64;
+        }
+        Err(_) => {
+            frame.regs[0] = 0;
+            frame.regs[1] = 0;
+            frame.regs[2] = 0;
+        }
+    }
 }
 
 fn sys_ipc_connect(frame: &mut TrapFrame) {

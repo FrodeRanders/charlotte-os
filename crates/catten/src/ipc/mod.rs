@@ -207,6 +207,8 @@ struct Endpoint {
     interface: u64,
     version: u32,
     capacity: usize,
+    /// Deepest the queue has been, for capacity policy.
+    high_water: usize,
     queue: VecDeque<QueuedMessage>,
     /// Threads waiting for the endpoint to become readable. These observers
     /// fire on message arrival and endpoint closure.
@@ -353,6 +355,7 @@ pub fn endpoint_create(
             interface,
             version,
             capacity,
+            high_water: 0,
             queue: VecDeque::new(),
             readiness_observers: ConcurrentQueue::unbounded(),
             close_observers: ConcurrentQueue::unbounded(),
@@ -406,6 +409,54 @@ pub fn endpoint_bind_cq(
         crate::completion::wake(owner, cq);
     }
     Ok(())
+}
+
+/// Resize an owned endpoint's admission bound, clamped to the platform
+/// maximum. Existing queued messages are preserved; a shrunken bound only
+/// rejects new sends until the queue drains. Returns the effective capacity.
+pub fn endpoint_resize(
+    owner: AddressSpaceId,
+    endpoint_cap: CapabilityId,
+    new_capacity: usize,
+) -> Result<usize, IpcError> {
+    if new_capacity == 0 {
+        return Err(IpcError::QueueFull);
+    }
+    let capacity = new_capacity.min(MAX_ENDPOINT_CAPACITY);
+    let mut ipc = IPC.write();
+    let endpoint_id = match ipc.cap(owner, endpoint_cap)? {
+        Capability::Endpoint {
+            endpoint,
+            ..
+        } => endpoint,
+        _ => return Err(IpcError::WrongType),
+    };
+    let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
+    if endpoint.owner != owner {
+        return Err(IpcError::PermissionDenied);
+    }
+    endpoint.capacity = capacity;
+    Ok(capacity)
+}
+
+/// Read an owned endpoint's `(capacity, depth, high-water depth)`.
+pub fn endpoint_status(
+    owner: AddressSpaceId,
+    endpoint_cap: CapabilityId,
+) -> Result<(usize, usize, usize), IpcError> {
+    let ipc = IPC.read();
+    let endpoint_id = match ipc.cap(owner, endpoint_cap)? {
+        Capability::Endpoint {
+            endpoint,
+            ..
+        } => endpoint,
+        _ => return Err(IpcError::WrongType),
+    };
+    let endpoint = ipc.endpoints.get(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
+    if endpoint.owner != owner {
+        return Err(IpcError::PermissionDenied);
+    }
+    Ok((endpoint.capacity, endpoint.queue.len(), endpoint.high_water))
 }
 
 pub fn connection_mint(
@@ -1095,6 +1146,7 @@ fn enqueue_message(
         memory,
         connection,
     });
+    endpoint.high_water = endpoint.high_water.max(endpoint.queue.len());
     // Coalesced readiness (§9.4): only the empty→nonempty transition posts a
     // CQ wake; further messages are observed when the receiver drains.
     let cq_wake = if was_empty {

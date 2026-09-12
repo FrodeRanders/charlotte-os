@@ -151,6 +151,8 @@ define_syscall_numbers!(
     (SpawnOperationalConnector, 77),
     (RequestNodeShutdown, 78),
     (MonotonicClock, 79),
+    (IpcEndpointResize, 80),
+    (IpcEndpointStatus, 81),
 );
 
 /// Supervisor-assigned roles carried in the kernel-authenticated IPC sender
@@ -2312,6 +2314,26 @@ pub unsafe fn ipc_recv_vec_authenticated(endpoint: u64, result_page: u64) -> Ipc
 /// Mirrors the AArch64 authenticated vector-receive ABI.
 pub unsafe fn ipc_recv_vec_authenticated(endpoint: u64, result_page: u64) -> IpcMessage {
     unsafe { ipc_recv_vec(endpoint, result_page) }
+}
+
+/// Resize an owned endpoint's admission bound.
+///
+/// The queue is kernel-side, so existing queued messages are preserved even
+/// when the bound shrinks below the current depth; new sends fail until the
+/// queue drains below the new bound. Returns the effective capacity (clamped
+/// to the platform maximum) or zero on failure.
+#[inline]
+pub fn ipc_endpoint_resize(endpoint: u64, capacity: usize) -> u64 {
+    unsafe { svc3(SyscallNumber::IpcEndpointResize, endpoint, capacity as u64, 0) }
+}
+
+/// Read an owned endpoint's `(capacity, queued depth, depth high-water)`.
+///
+/// A zero capacity means the call failed. The high-water mark lets a service
+/// decide whether its admission bound needs to grow.
+#[inline]
+pub fn ipc_endpoint_status(endpoint: u64) -> (u64, u64, u64) {
+    unsafe { svc3_x2(SyscallNumber::IpcEndpointStatus, endpoint, 0, 0) }
 }
 
 /// Snapshot scheduler statistics. With capability zero, the result contains
