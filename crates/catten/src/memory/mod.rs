@@ -259,7 +259,8 @@ pub fn domain_limits(asid: AddressSpaceId) -> DomainLimits {
 pub(crate) fn commit_user_heap_page(asid: AddressSpaceId, fault_addr: usize) -> bool {
     let page_size = crate::cpu::isa::memory::paging::PAGE_SIZE;
     let start = charlotte_launch::HEAP_VADDR;
-    let end = start + charlotte_launch::HEAP_SIZE;
+    let capacity = usage::domain_heap_capacity(asid).unwrap_or(charlotte_launch::HEAP_SIZE);
+    let end = start + capacity;
     if !(start..end).contains(&fault_addr) {
         return false;
     }
@@ -361,14 +362,22 @@ fn close_user_address_space_locked(
     // page-table hierarchy itself is returned to the frame allocator.
     crate::cpu::isa::memory::tlb::inval_asid(asid);
 
-    // Retain this generation's stack high-water mark for the service
-    // principal before the authority and accounting entries disappear. The
-    // launch path uses it to size the principal's next generation.
+    // Retain this generation's stack high-water mark and heap peak for the
+    // service principal before the authority and accounting entries
+    // disappear. The launch path uses them to size the principal's next
+    // generation.
     if let Some(principal) =
         DOMAIN_AUTHORITIES.lock().get(&asid).map(|authority| authority.principal)
-        && let Some(usage) = usage::domain_usage(asid)
     {
-        usage::remember_principal_stack_high_water(principal, usage.stack_pages_used_high_water);
+        if let Some(usage) = usage::domain_usage(asid) {
+            usage::remember_principal_stack_high_water(
+                principal,
+                usage.stack_pages_used_high_water,
+            );
+        }
+        if let Some((_, _, peak)) = usage::domain_heap_status(asid) {
+            usage::remember_principal_heap_peak(principal, peak);
+        }
     }
 
     let removed_authority = DOMAIN_AUTHORITIES.lock().remove(&asid);

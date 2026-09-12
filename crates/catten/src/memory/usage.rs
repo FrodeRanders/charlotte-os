@@ -51,6 +51,8 @@ struct DomainUsage {
     /// Physical frame of the domain's mutable status page, where `catten-rt`
     /// publishes standard heap accounting.
     status_frame: Option<PAddr>,
+    /// Heap capacity chosen at load; faults beyond it are domain errors.
+    heap_bytes: Option<usize>,
 }
 
 type DomainUsageTable = BTreeMap<AddressSpaceId, (AddressSpaceHandle, DomainUsage)>;
@@ -63,6 +65,12 @@ static DOMAIN_USAGE: LazyLock<Mutex<DomainUsageTable>> =
 /// the launch path size the next generation from the previous one; it is
 /// deliberately in-memory and cold-starts at the default policy after reboot.
 static PRINCIPAL_STACK_HIGH_WATER: LazyLock<Mutex<BTreeMap<u64, u64>>> =
+    LazyLock::new(|| Mutex::new(BTreeMap::new()));
+
+/// Highest heap peak observed for one service principal, across address-space
+/// generations within this boot. Like the stack table it is deliberately
+/// in-memory: a reboot cold-starts at the default capacity.
+static PRINCIPAL_HEAP_PEAK: LazyLock<Mutex<BTreeMap<u64, u64>>> =
     LazyLock::new(|| Mutex::new(BTreeMap::new()));
 
 fn with_usage(asid: AddressSpaceId, update: impl FnOnce(&mut DomainUsage)) {
@@ -82,6 +90,7 @@ pub(crate) fn register_domain(handle: AddressSpaceHandle) {
             DomainUsage {
                 snapshot: DomainUsageSnapshot::default(),
                 status_frame: None,
+                heap_bytes: None,
             },
         ),
     );
@@ -93,6 +102,34 @@ pub(crate) fn register_status_frame(asid: AddressSpaceId, frame: PAddr) {
     if let Some((_, usage)) = DOMAIN_USAGE.lock().get_mut(&asid) {
         usage.status_frame = Some(frame);
     }
+}
+
+/// Record the heap capacity the loader chose for this domain.
+pub(crate) fn register_heap_capacity(asid: AddressSpaceId, bytes: usize) {
+    if let Some((_, usage)) = DOMAIN_USAGE.lock().get_mut(&asid) {
+        usage.heap_bytes = Some(bytes);
+    }
+}
+
+/// Heap capacity chosen for `asid`, if the domain registered one.
+pub(crate) fn domain_heap_capacity(asid: AddressSpaceId) -> Option<usize> {
+    DOMAIN_USAGE.lock().get(&asid)?.1.heap_bytes
+}
+
+/// Remember a retired generation's heap peak for its principal.
+pub(crate) fn remember_principal_heap_peak(principal: u64, peak_bytes: u64) {
+    if peak_bytes == 0 {
+        return;
+    }
+    let mut table = PRINCIPAL_HEAP_PEAK.lock();
+    let entry = table.entry(principal).or_insert(0);
+    *entry = (*entry).max(peak_bytes);
+}
+
+/// Highest heap peak recorded for `principal`, or zero when the principal has
+/// not run yet in this boot.
+pub(crate) fn principal_heap_peak(principal: u64) -> u64 {
+    PRINCIPAL_HEAP_PEAK.lock().get(&principal).copied().unwrap_or(0)
 }
 
 /// Read the domain's published heap accounting: `(capacity, allocated, peak)`

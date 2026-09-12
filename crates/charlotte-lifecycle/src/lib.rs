@@ -105,6 +105,28 @@ pub fn adaptive_stack_pages(
     pages.clamp(default_pages, max_pages)
 }
 
+/// Choose the heap capacity for the next generation of a service from the
+/// previous generation's peak allocation.
+///
+/// Twice the observed peak plus 256 KiB of slack is rounded up to a page and
+/// clamped to `[min_bytes, max_bytes]`. A zero peak — no recorded history, for
+/// example a cold boot — selects `default_bytes`, so the first generation of
+/// every service keeps the full default capacity.
+pub fn adaptive_heap_bytes(
+    previous_peak_bytes: u64,
+    default_bytes: usize,
+    min_bytes: usize,
+    max_bytes: usize,
+) -> usize {
+    if previous_peak_bytes == 0 {
+        return default_bytes;
+    }
+    let peak = usize::try_from(previous_peak_bytes).unwrap_or(usize::MAX);
+    let with_slack = peak.saturating_mul(2).saturating_add(256 * 1024);
+    let rounded = with_slack.checked_next_multiple_of(4096).unwrap_or(usize::MAX);
+    rounded.clamp(min_bytes, max_bytes)
+}
+
 /// Damp stack growth while physical memory is scarce.
 ///
 /// Returns `desired_pages` when free frames are at or above `reserve_frames`,
@@ -138,6 +160,15 @@ mod tests {
         classify_timed_wait,
         damp_stack_growth,
     };
+
+    #[test]
+    fn adaptive_heap_bytes_sizes_from_peak_or_default() {
+        use super::adaptive_heap_bytes;
+        assert_eq!(adaptive_heap_bytes(0, 4 << 20, 1 << 20, 5 << 20), 4 << 20);
+        assert_eq!(adaptive_heap_bytes(1, 4 << 20, 1 << 20, 5 << 20), 1 << 20);
+        assert_eq!(adaptive_heap_bytes(1 << 20, 4 << 20, 1 << 20, 5 << 20), 2 << 20 | 1 << 18);
+        assert_eq!(adaptive_heap_bytes(u64::MAX, 4 << 20, 1 << 20, 5 << 20), 5 << 20);
+    }
 
     #[test]
     fn damp_stack_growth_only_withholds_history_based_growth() {

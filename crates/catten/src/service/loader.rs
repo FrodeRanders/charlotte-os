@@ -471,19 +471,34 @@ pub fn try_load_domain(image: &[u8]) -> Result<LoadedDomain, AddressSpaceRegistr
     } else {
         0
     };
-    crate::memory::register_domain_authority(
-        address_space,
-        charlotte_launch::artifact_principal_id(metadata.name()),
-        roles,
-    );
+    let principal = charlotte_launch::artifact_principal_id(metadata.name());
+    crate::memory::register_domain_authority(address_space, principal, roles);
     let asid = address_space.id();
     let entry_vaddr = load_user_elf(asid, image);
+
+    // Size the heap claim from the principal's previous peak. A cold boot or
+    // a first generation keeps the full default capacity; only a restarted
+    // principal shrinks toward its observed peak.
+    let heap_bytes = charlotte_lifecycle::adaptive_heap_bytes(
+        usage::principal_heap_peak(principal),
+        charlotte_launch::HEAP_SIZE,
+        charlotte_launch::MIN_HEAP_SIZE,
+        charlotte_launch::HEAP_VA_LIMIT,
+    );
+    if heap_bytes != charlotte_launch::HEAP_SIZE {
+        crate::logln!(
+            "[loader] adaptive heap: principal={} capacity_bytes={}",
+            principal,
+            heap_bytes
+        );
+    }
 
     // EL0 may inspect launch data but cannot mutate it. The supervisor still
     // populates the physical frame through the kernel's direct mapping before
     // and, where necessary, immediately after the initial thread is started.
     let config_frame = map_user_page(asid, CONFIG_VADDR, PageType::UserRoData);
-    crate::service::bootstrap::write_launch_header(config_frame);
+    crate::service::bootstrap::write_launch_header(config_frame, heap_bytes);
+    usage::register_heap_capacity(asid, heap_bytes);
     let status_frame = map_user_data_page(asid, STATUS_VADDR);
     usage::register_status_frame(asid, status_frame);
     let cq_frame = map_user_data_page(asid, CQ_VADDR);

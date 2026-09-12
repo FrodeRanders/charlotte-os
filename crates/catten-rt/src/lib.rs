@@ -435,8 +435,11 @@ use core::{
         GlobalAlloc,
         Layout,
     },
+    cell::UnsafeCell,
+    mem::MaybeUninit,
     sync::atomic::{
         AtomicBool,
+        AtomicU8,
         AtomicUsize,
         Ordering,
     },
@@ -451,12 +454,23 @@ pub use talc::{
 ///
 /// Every allocation and free updates this domain's published heap counters
 /// (`charlotte_launch::heap_status`) so the kernel can expose current and peak
-/// usage alongside the per-thread statistics. The allocator itself remains a
-/// single talc arena shared by the domain's threads.
+/// usage alongside the per-thread statistics. The arena is claimed lazily from
+/// the launch header's `heap_size`, so a deployment can be sized without
+/// rebuilding the runtime. It remains a single talc arena shared by the
+/// domain's threads.
 pub struct HeapLock {
-    inner: TalcLock<spin::Mutex<()>, Claim>,
+    arena: UnsafeCell<MaybeUninit<TalcLock<spin::Mutex<()>, Claim>>>,
 }
 
+// SAFETY: the arena is written exactly once by the initializer state machine
+// below and only read through `&TalcLock` afterwards; talc's own lock
+// serializes all mutable access.
+unsafe impl Sync for HeapLock {}
+
+const HEAP_UNINITIALIZED: u8 = 0;
+const HEAP_INITIALIZING: u8 = 1;
+const HEAP_READY: u8 = 2;
+static HEAP_ARENA_STATE: AtomicU8 = AtomicU8::new(HEAP_UNINITIALIZED);
 static HEAP_ALLOCATED: AtomicUsize = AtomicUsize::new(0);
 static HEAP_PEAK: AtomicUsize = AtomicUsize::new(0);
 static HEAP_STATUS_PUBLISHED: AtomicBool = AtomicBool::new(false);
@@ -464,9 +478,57 @@ static HEAP_STATUS_PUBLISHED: AtomicBool = AtomicBool::new(false);
 /// Construct the heap arena at the canonical heap virtual address.
 pub const fn heap() -> HeapLock {
     HeapLock {
-        inner: TalcLock::new(unsafe {
-            Claim::new(charlotte_launch::HEAP_VADDR as *mut u8, charlotte_launch::HEAP_SIZE)
-        }),
+        arena: UnsafeCell::new(MaybeUninit::uninit()),
+    }
+}
+
+/// Heap capacity from the launch header, page-aligned and clamped to the
+/// virtual layout window.
+fn configured_heap_bytes() -> usize {
+    const PAGE: usize = 4096;
+    let requested = crate::config::launch_layout().heap_size as usize;
+    let candidate = if requested == 0 {
+        charlotte_launch::HEAP_SIZE
+    } else {
+        requested
+    };
+    candidate.clamp(PAGE, charlotte_launch::HEAP_VA_LIMIT) & !(PAGE - 1)
+}
+
+impl HeapLock {
+    fn arena(&self) -> &TalcLock<spin::Mutex<()>, Claim> {
+        if HEAP_ARENA_STATE.load(Ordering::Acquire) != HEAP_READY {
+            self.initialize();
+        }
+        // SAFETY: the state machine guarantees the arena is initialized and
+        // it lives for the lifetime of the program.
+        unsafe { (*self.arena.get()).assume_init_ref() }
+    }
+
+    fn initialize(&self) {
+        match HEAP_ARENA_STATE.compare_exchange(
+            HEAP_UNINITIALIZED,
+            HEAP_INITIALIZING,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(_) => {
+                let capacity = configured_heap_bytes();
+                let arena = TalcLock::new(unsafe {
+                    Claim::new(charlotte_launch::HEAP_VADDR as *mut u8, capacity)
+                });
+                // SAFETY: this thread won the initializing transition, so no
+                // other thread can observe the arena before the publish below.
+                unsafe { (*self.arena.get()).write(arena) };
+                HEAP_ARENA_STATE.store(HEAP_READY, Ordering::Release);
+            }
+            Err(HEAP_INITIALIZING) => {
+                while HEAP_ARENA_STATE.load(Ordering::Acquire) != HEAP_READY {
+                    core::hint::spin_loop();
+                }
+            }
+            _ => {}
+        }
     }
 }
 
@@ -484,7 +546,7 @@ fn publish_heap_status() {
             (base.add(heap_status::VERSION_OFFSET) as *mut u64)
                 .write_volatile(heap_status::VERSION);
             (base.add(heap_status::CAPACITY_OFFSET) as *mut u64)
-                .write_volatile(charlotte_launch::HEAP_SIZE as u64);
+                .write_volatile(configured_heap_bytes() as u64);
         }
         (base.add(heap_status::ALLOCATED_OFFSET) as *mut u64)
             .write_volatile(HEAP_ALLOCATED.load(Ordering::Relaxed) as u64);
@@ -495,7 +557,7 @@ fn publish_heap_status() {
 
 unsafe impl GlobalAlloc for HeapLock {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let ptr = unsafe { self.inner.alloc(layout) };
+        let ptr = unsafe { self.arena().alloc(layout) };
         if !ptr.is_null() {
             let allocated =
                 HEAP_ALLOCATED.fetch_add(layout.size(), Ordering::Relaxed) + layout.size();
@@ -506,13 +568,13 @@ unsafe impl GlobalAlloc for HeapLock {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        unsafe { self.inner.dealloc(ptr, layout) };
+        unsafe { self.arena().dealloc(ptr, layout) };
         HEAP_ALLOCATED.fetch_sub(layout.size(), Ordering::Relaxed);
         publish_heap_status();
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        let new_ptr = unsafe { self.inner.realloc(ptr, layout, new_size) };
+        let new_ptr = unsafe { self.arena().realloc(ptr, layout, new_size) };
         if !new_ptr.is_null() {
             if new_size >= layout.size() {
                 let grown = new_size - layout.size();

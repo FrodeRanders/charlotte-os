@@ -20,7 +20,7 @@ and structures sized by constants.
 |---|---|---|
 | Physical frames | All `MEMMAP_USABLE` RAM, no RAM cap; bitmap sized to the highest usable address | `crates/catten/src/memory/physical/mod.rs` |
 | Kernel heap | 8 MiB initial + pre-mapped growth reserve derived from usable RAM: `clamp(usable/64, 64 MiB, 256 MiB)`, 2 MiB-aligned (Phase 2) | `crates/catten/src/memory/allocators/global_allocator.rs` |
-| Domain heap | 4 MiB virtual window per domain, backed on first touch; capacity, live allocation, and peak are sensed through the standard status-page record | `crates/charlotte-launch/src/lib.rs`, `crates/catten-rt/src/lib.rs`, `crates/catten/src/memory/mod.rs` |
+| Domain heap | Virtual window with a load-time capacity adapted from the principal's previous peak, backed on first touch; live allocation and peak are sensed through the standard status-page record | `crates/catten-rt/src/lib.rs`, `crates/catten/src/memory/mod.rs`, `crates/catten/src/service/loader.rs` |
 | User stack | Signed per deployment, 1–64 pages (4 KiB–256 KiB), inherited by every thread; kernel-launched services without a descriptor adapt to the principal's previous high-water (Phase 3); both architectures commit one page and grow on fault up to that budget (Phase 4) | `crates/catten/src/memory/mod.rs`, `crates/charlotte-launch/src/deployment.rs`, `crates/charlotte-lifecycle/src/lib.rs`, `crates/catten/src/cpu/isa/*/lp/thread_context*` |
 | User threads | Signed maximum, 1–64 per domain | `crates/catten/src/cpu/scheduler/system_scheduler/mod.rs` |
 | CQ rings, endpoint queues | Mostly static entry counts; endpoint capacity is caller-chosen at create | `crates/catten/src/completion/cq.rs`, `crates/catten/src/ipc/mod.rs` |
@@ -214,11 +214,15 @@ per-domain owned frames from 1024 reserved heap pages plus metadata to tens of
 pages, while the full 4 MiB capacity stays available — so a service can never
 fail an allocation because a capacity policy guessed too small.
 
-Capacity sizing remains a future, orthogonal step: map `heap_pages` from the
-launch header, make `catten-rt` claim the header size via a lazy allocator
-initialization, and choose the size from the principal's previous peak. That
-buys VA and claim bounds rather than physical memory, and a signed
-per-deployment heap limit would need a `CDEPLOY6` descriptor field.
+Capacity sizing is implemented alongside it. The loader chooses the capacity
+with `charlotte_lifecycle::adaptive_heap_bytes` — twice the principal's
+previous heap peak plus 256 KiB, clamped to `[MIN_HEAP_SIZE, HEAP_VA_LIMIT]` —
+writes it into the launch header, registers it so faults beyond the claim stay
+domain errors, and `catten-rt` claims exactly that size through a lazy arena
+initialization. A cold boot keeps the 4 MiB default; a restarted principal
+shrinks toward its observed peak (the default boot's raft-storage restart
+exercises this path). A signed per-deployment heap limit would still need a
+`CDEPLOY6` descriptor field.
 
 The VA layout caps any single heap at roughly 4.9 MiB. Growing beyond that, or
 giving each shard its own arena, is a layout decision; the shard-local study

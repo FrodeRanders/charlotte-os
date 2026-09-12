@@ -407,7 +407,7 @@ pub fn test_el0_sitas() {
 
         // `basic_kv` receives an empty launch Context; crt0 therefore enters main
         // without consuming a launch input stream. ASID stays kernel-private.
-        crate::service::bootstrap::write_launch_header(config_frame);
+        crate::service::bootstrap::write_launch_header(config_frame, charlotte_launch::HEAP_SIZE);
         crate::service::bootstrap::write_manifest(config_frame, &[]);
 
         // Spawn the EL0 thread at the ELF entry point.

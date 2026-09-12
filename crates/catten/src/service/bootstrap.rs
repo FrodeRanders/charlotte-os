@@ -38,13 +38,12 @@ pub const SHARD_CQ_BASE_OFFSET: usize = 2064;
 /// Must match `catten_rt::config::SHARD_CQ_COUNT_OFFSET`.
 pub const SHARD_CQ_COUNT_OFFSET: usize = 2072;
 
-pub fn write_launch_header(config_frame: PAddr) {
+pub fn write_launch_header(config_frame: PAddr, heap_bytes: usize) {
     let base: *mut u8 = config_frame.into();
     unsafe {
-        core::ptr::write_volatile(
-            base.add(LAUNCH_HEADER_OFFSET) as *mut LaunchHeader,
-            LaunchHeader::new(),
-        );
+        let mut header = LaunchHeader::new();
+        header.heap_size = heap_bytes as u64;
+        core::ptr::write_volatile(base.add(LAUNCH_HEADER_OFFSET) as *mut LaunchHeader, header);
         core::ptr::write_volatile(
             base.add(charlotte_launch::lifecycle::CONTROL_MAGIC_OFFSET) as *mut u64,
             charlotte_launch::lifecycle::CONTROL_MAGIC,

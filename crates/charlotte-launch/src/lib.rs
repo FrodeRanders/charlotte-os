@@ -12,12 +12,19 @@ pub const HEAP_VADDR: usize = 0x0000_0000_0030_0000;
 /// 1 GiB disk used by the VMware appliance. Four MiB leaves working room for
 /// ordinary service allocations while remaining below the status page.
 pub const HEAP_SIZE: usize = 0x40_0000;
+/// Smallest capacity an adapted heap may receive. Well above every observed
+/// service peak, so shrinking a restarted service cannot starve it.
+pub const MIN_HEAP_SIZE: usize = 0x10_0000;
 /// Mutable program status/output page, deliberately separate from launch
 /// configuration so applications cannot overwrite their launch contract.
 // Kept below the per-shard CQ reservation at 0x0080_0000 and well above the
 // linked application image, which begins at 0x0002_0000.
 pub const STATUS_VADDR: usize = 0x0000_0000_007f_0000;
 pub const STATUS_PAGE_SIZE: u32 = 4096;
+/// Largest heap capacity the fixed virtual layout can hold.
+pub const HEAP_VA_LIMIT: usize = STATUS_VADDR - HEAP_VADDR;
+const _: () = assert!(HEAP_SIZE <= HEAP_VA_LIMIT);
+const _: () = assert!(MIN_HEAP_SIZE <= HEAP_SIZE);
 
 /// Default and hard upper bound for an EL0 thread's launch-time stack limit.
 ///
