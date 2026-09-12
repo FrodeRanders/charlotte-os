@@ -120,6 +120,14 @@ run_expected_violation CharlotteScheduler CharlotteScheduler_unsafe.cfg \
     ReapOnlyOffCpu UnsafeRemoteAbort
 run_expected_violation CharlotteScheduler CharlotteScheduler_domain_abort_unsafe.cfg \
     AbortingThreadsDoomed UnsafeSpawnDuringAbort
+run_model CharlotteStackGrowth CharlotteStackGrowth_small.cfg \
+    Fault Grow Kill Exit
+run_expected_violation CharlotteStackGrowth \
+    CharlotteStackGrowth_grow_unsafe.cfg \
+    CommittedWithinBudget UnsafeGrowOverBudget
+run_expected_violation CharlotteStackGrowth \
+    CharlotteStackGrowth_leak_unsafe.cfg \
+    DeadDomainsReleaseFrames UnsafeKillWithoutRelease
 run_model CharlotteThreadJoin CharlotteThreadJoin_small.cfg \
     Spawn RejectExhaustedSpawn CaptureHandle Exit ObserveJoin Reap
 run_expected_violation CharlotteThreadJoin CharlotteThreadJoin_unsafe.cfg \

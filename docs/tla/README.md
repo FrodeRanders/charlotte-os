@@ -1,6 +1,6 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for twenty-two
+This directory contains finite, executable specifications for twenty-three
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
@@ -12,6 +12,7 @@ CharlotteOS subsystems:
 | Timed-wait wake races | `CharlotteTimedWait.tla` | `CharlotteTimedWait_small.cfg` |
 | Scheduler thread lifecycle | `CharlotteScheduler.tla` | `CharlotteScheduler_small.cfg` |
 | Generation-bound thread joins | `CharlotteThreadJoin.tla` | `CharlotteThreadJoin_small.cfg` |
+| Demand-grown stack budgets | `CharlotteStackGrowth.tla` | `CharlotteStackGrowth_small.cfg` |
 | Reusable ASID generation identity | `CharlotteAddressSpace.tla` | `CharlotteAddressSpace_small.cfg` |
 | AArch64 hardware-ASID recycling | `CharlotteHardwareAsid.tla` | `CharlotteHardwareAsid_small.cfg` |
 | Deferred interrupt-route reuse | `CharlotteInterruptRoute.tla` | `CharlotteInterruptRoute_small.cfg` |
@@ -48,9 +49,9 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all twenty-two complete fast configurations plus expected-failure
-  IPC-transaction, endpoint-observer, CQ-buffer, timed-wait, scheduler, thread-join, domain-abort, address-space,
-  hardware-ASID, interrupt-route, service-lifecycle, DMA, authorization,
+- runs all twenty-three complete fast configurations plus expected-failure
+  IPC-transaction, endpoint-observer, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
+  domain-abort, address-space, hardware-ASID, interrupt-route, service-lifecycle, DMA, authorization,
   Raft-join, cluster-ingress, and reliable-message regression configurations;
 - enables TLC action coverage;
 - places checkpoints and traces in a temporary directory;
@@ -86,6 +87,10 @@ java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
   CharlotteThreadJoin -config CharlotteThreadJoin_small.cfg \
+  -workers auto -coverage 1
+
+java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \
+  CharlotteStackGrowth -config CharlotteStackGrowth_small.cfg \
   -workers auto -coverage 1
 
 java -XX:+UseParallelGC -cp tla2tools.jar tlc2.TLC \

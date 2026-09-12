@@ -195,16 +195,65 @@ formula, and letting the placement layer see node pressure (Phase 4).
 
 ## Phase 4: in-life adaptation
 
-- **Demand-grown user stacks.** A guard page plus a recoverable EL0 fault that
-  extends the stack within a per-domain page budget; over-budget overflows kill
-  the domain cleanly. Today a stack fault aborts the whole address space
-  (`crates/catten/src/cpu/isa/aarch64/interrupts/mod.rs`), so this needs a
-  recoverable fault path and a budget protocol that should be modeled in TLA+.
-- **Resizable completion/endpoint capacities** driven by backlog high-water
-  marks, always within hard caps.
-- **Capacity-aware placement.** Publish per-node resource pressure through
-  discovery and let the Raft leader place from synchronized inputs; local
-  controllers must not diverge replicated decisions.
+Phase 4 changes behavior while a domain runs, so each mechanism needs an
+explicit failure story before implementation.
+
+### Demand-grown user stacks
+
+Today a thread's user stack is a fixed reservation placed at a fixed virtual
+address, and a translation fault outside it aborts the entire address space
+(`crates/catten/src/cpu/isa/aarch64/interrupts/mod.rs`). The design is:
+
+- Each stack reserves a guard page below the lowest committed page. A fault in
+  the domain's own stack VA range is identified by the kernel rather than
+  treated as an arbitrary translation fault.
+- The recoverable path charges one page from the thread's stack budget, maps
+  it into the address space under the serializing address-space lifecycle
+  lock, and returns to retry the faulting instruction. The existing adaptive
+  size becomes the budget ceiling, not the reservation.
+- A fault with the budget exhausted kills the domain through the ordinary
+  teardown path: all stack frames return to the frame allocator exactly once,
+  threads are retired, and the supervisor observes a clean domain-exit rather
+  than a wedged LP.
+- The free-frame reserve that damps Phase 3 growth also gates in-life growth,
+  so a node under pressure fails closed instead of exhausting the pool.
+- Kernel stacks are out of scope; they remain fixed-size and are never grown
+  from a fault.
+
+Because this protocol acquires and releases a finite resource across a fault
+edge, it is modeled in TLA+ before implementation: see
+`docs/tla/CharlotteStackGrowth.tla`, registered in `docs/tla/check.sh`. The
+model's safety invariants are:
+
+- `CommittedWithinBudget`: a domain never commits more stack pages than its
+  budget allows;
+- `FrameConservation`: committed pages plus free frames equal the pool, so a
+  growth or teardown neither leaks nor double-counts;
+- `DeadDomainsReleaseFrames`: a killed or exited domain has returned every
+  committed frame.
+
+Two negative models deliberately violate the budget on growth and leak on
+kill, and the checker must produce the expected counterexample for each. Any
+implementation that changes the accounting must keep the traces conforming.
+
+### Resizable completion and endpoint capacities
+
+Backlog high-water marks already exist per CQ (`completion::cq_pending`) and
+per endpoint; capacities are caller-chosen at create but fixed for the
+lifetime. A resize operation would act on the same high-water evidence that
+drives stack sizing, bounded by the hard caps in `charlotte-launch` and IPC,
+and must preserve the no-unbounded-queue invariant. This is a candidate for a
+small state model once the exact resize protocol (drain, publish, swap ring)
+is chosen.
+
+### Capacity-aware placement
+
+The placement layer is deterministic over membership and readiness and has no
+capacity input. The safe shape is: nodes publish resource pressure through
+discovery (a wire change), the Raft leader computes placement from
+synchronized inputs, and local controllers never diverge replicated decisions.
+This is policy work first; formal treatment belongs with the existing
+cluster-ingress and Raft models.
 
 ## Verification
 

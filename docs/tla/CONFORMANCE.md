@@ -462,3 +462,22 @@ The five negative actions define concrete regression obligations for the
 implementation: ordinary callers cannot mutate rules; a decision cannot be
 redeemed for another principal; policy and service replacement fence stale
 decisions; and minting cannot amplify rights.
+
+## Demand-grown stack budget
+
+`CharlotteStackGrowth.tla` models the resource accounting a recoverable EL0
+guard fault will implement. It is a **design model**: the kernel currently
+treats a stack fault as a fatal address-space abort, so the mapping below is
+the intended refinement, not an implemented one.
+
+| TLA+ action | Intended CharlotteOS implementation | Correspondence |
+|---|---|---|
+| `Fault` | AArch64 EL0 translation fault whose FAR lies in the domain's stack VA range below the committed pages | Planned: the abort dispatcher in `cpu/isa/aarch64/interrupts/mod.rs` must classify stack-guard faults before the generic fatal path. |
+| `Grow` | Map one additional page under the address-space lifecycle lock and retry the faulting instruction | Planned: thread-context stack records gain a committed cursor; growth charges the per-thread budget and checks the frame-allocator free pool. |
+| `Kill` | Budget exhausted: fail closed through the ordinary domain teardown path | Planned: reuses `close_user_address_space_handle`, retiring threads and releasing frames exactly once. |
+| `Exit` | Clean thread/domain exit releasing the stack reservation | Direct once demand growth lands; the existing `deallocate_user_stack` path already returns every mapped page. |
+
+The two negative configurations (`UnsafeGrowOverBudget` and
+`UnsafeKillWithoutRelease`) fix the regression obligations: growth must never
+pass the signed or adaptive budget, and a killed domain must return every
+committed frame before its slot is reused.
