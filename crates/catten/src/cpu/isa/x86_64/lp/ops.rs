@@ -261,6 +261,15 @@ pub extern "C" fn cond_yield_lp() {
                             let curr_thread = tt_guard
                                 .get_mut(curr_tid)
                                 .expect("Current thread not found during yield.");
+                            // The scratch slot holds the RSP saved by the last
+                            // SYSCALL entry on this LP. It is a conservative
+                            // high-water sample: a CPU-bound thread that never
+                            // entered the kernel between switches keeps its
+                            // previous value.
+                            let user_sp = unsafe {
+                                (*PER_CPU[get_lp_id() as usize].get()).user_stack as usize
+                            };
+                            curr_thread.context.sample_user_stack_pointer(user_sp);
                             let curr_rsp0_ptr = &raw mut curr_thread.context.rsp_cpl0;
                             let next_thread = tt_guard
                                 .get_mut(next_tid)

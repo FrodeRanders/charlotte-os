@@ -32,6 +32,7 @@ use crate::{
             VAddr,
         },
         physical::PAddr,
+        usage,
     },
 };
 /// Number of pages backing the heap declared by the launch ABI.
@@ -316,6 +317,7 @@ fn map_elf_load_segment(asid: AddressSpaceId, image: &[u8], segment: ElfLoadSegm
                 page_type,
             })
             .expect("[loader] failed to map ELF LOAD page");
+        usage::note_owned_frame(asid);
 
         let hhdm: *mut u8 = frame.into();
         unsafe {
@@ -425,6 +427,7 @@ fn map_user_page(asid: AddressSpaceId, vaddr: usize, page_type: PageType) -> PAd
             page_type,
         })
         .expect("[loader] failed to map user data page");
+    usage::note_owned_frame(asid);
     drop(table);
     let hhdm: *mut u8 = frame.into();
     unsafe {

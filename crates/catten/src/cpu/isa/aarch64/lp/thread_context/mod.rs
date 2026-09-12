@@ -149,6 +149,9 @@ pub struct ThreadContext {
     pub on_cpu: AtomicU8,
     _kernel_stack_buf: VAddr,
     _user_stack: Option<UserStack>,
+    /// Lowest user stack pointer observed for this thread. Sampling happens
+    /// from the context-switch path, so it must remain a plain relaxed atomic.
+    user_stack_low_water: AtomicUsize,
 }
 
 impl Drop for ThreadContext {
@@ -175,6 +178,33 @@ impl ThreadContext {
     pub(crate) fn kernel_stack_contains(&self, address: usize) -> bool {
         let base: usize = self._kernel_stack_buf.into();
         (base..base + INIT_KERNEL_STACK_PAGES * PAGE_SIZE).contains(&address)
+    }
+
+    /// Fold one observed user stack pointer into the thread's high-water
+    /// estimate. Kernel threads have no user stack and ignore the sample. The
+    /// bounds check also rejects a stale pointer from a previous occupant of
+    /// this LP, whose stack lies in a different VA stride.
+    pub(crate) fn sample_user_stack_pointer(&self, sp: usize) {
+        let Some(stack) = self._user_stack else {
+            return;
+        };
+        let base: usize = stack.base.into();
+        let top = base + stack.pages * PAGE_SIZE;
+        if (base..top).contains(&sp) {
+            self.user_stack_low_water.fetch_min(sp, Ordering::Relaxed);
+        }
+    }
+
+    /// Reserved and touched pages of this thread's user stack.
+    pub(crate) fn user_stack_usage(&self) -> (usize, usize) {
+        let Some(stack) = self._user_stack else {
+            return (0, 0);
+        };
+        let base: usize = stack.base.into();
+        let top = base + stack.pages * PAGE_SIZE;
+        let low_water = self.user_stack_low_water.load(Ordering::Relaxed).clamp(base, top);
+        let used = (top - low_water).div_ceil(PAGE_SIZE).min(stack.pages);
+        (stack.pages, used)
     }
 
     /// Create the context for a kernel thread that begins executing at
@@ -217,6 +247,7 @@ impl ThreadContext {
             on_cpu: AtomicU8::new(0),
             _kernel_stack_buf: kernel_stack_buf,
             _user_stack: None,
+            user_stack_low_water: AtomicUsize::new(0),
         })
     }
 
@@ -362,6 +393,7 @@ impl ThreadContext {
             on_cpu: AtomicU8::new(0),
             _kernel_stack_buf: kernel_stack_buf,
             _user_stack: Some(user_stack),
+            user_stack_low_water: AtomicUsize::new(user_stack_top_va),
         })
     }
 }

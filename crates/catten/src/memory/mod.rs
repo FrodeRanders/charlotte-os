@@ -4,6 +4,7 @@ pub mod allocators;
 pub mod linear;
 pub mod object;
 pub mod physical;
+pub mod usage;
 
 pub use linear::VAddr;
 pub use physical::{
@@ -214,6 +215,7 @@ pub fn register_user_address_space(
     };
     let previous = DOMAIN_LIMITS.lock().insert(id, (handle, DomainLimits::default()));
     debug_assert!(previous.is_none(), "domain limits survived ASID teardown");
+    usage::register_domain(handle);
     Ok(handle)
 }
 
@@ -312,6 +314,7 @@ fn close_user_address_space_locked(
     }
 
     DOMAIN_LIMITS.lock().remove(&asid);
+    usage::unregister_domain(asid);
 
     ADDRESS_SPACE_TABLE
         .lock()

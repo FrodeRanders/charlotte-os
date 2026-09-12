@@ -179,7 +179,7 @@ pub struct DomainIdentityInfo {
 // ---- observability wire format ---------------------------------------------
 
 pub const THREAD_STATISTICS_MAGIC: u64 = 0x3154_4154_534f_4343; // "CCOSTAT1"
-pub const THREAD_STATISTICS_VERSION: u64 = 1;
+pub const THREAD_STATISTICS_VERSION: u64 = 2;
 
 pub mod thread_statistics_header {
     pub const MAGIC: usize = 0;
@@ -188,7 +188,9 @@ pub mod thread_statistics_header {
     pub const RECORD_COUNT: usize = 3;
     pub const COUNTER_FREQUENCY_HZ: usize = 4;
     pub const MONOTONIC_TICKS: usize = 5;
-    pub const WORDS: usize = 6;
+    pub const DOMAIN_RECORD_BYTES: usize = 6;
+    pub const DOMAIN_RECORD_COUNT: usize = 7;
+    pub const WORDS: usize = 8;
 }
 
 pub mod thread_statistics_record {
@@ -208,11 +210,25 @@ pub mod thread_statistics_record {
     pub const SUM_OF_SQUARES_HIGH: usize = 13;
     pub const SATURATED: usize = 14;
     pub const CURRENT_SLICE_STARTED_AT: usize = 15;
-    pub const WORDS: usize = 16;
+    pub const STACK_RESERVED_PAGES: usize = 16;
+    pub const STACK_USED_PAGES: usize = 17;
+    pub const WORDS: usize = 18;
+}
+
+pub mod thread_domain_record {
+    pub const ASID: usize = 0;
+    pub const OWNED_FRAMES: usize = 1;
+    pub const USER_STACK_PAGES: usize = 2;
+    pub const USER_STACK_PAGES_HIGH_WATER: usize = 3;
+    pub const STACK_PAGES_USED_HIGH_WATER: usize = 4;
+    pub const THREADS: usize = 5;
+    pub const THREADS_HIGH_WATER: usize = 6;
+    pub const WORDS: usize = 7;
 }
 
 pub const THREAD_STATISTICS_HEADER_U64S: usize = thread_statistics_header::WORDS;
 pub const THREAD_STATISTICS_RECORD_U64S: usize = thread_statistics_record::WORDS;
+pub const THREAD_STATISTICS_DOMAIN_RECORD_U64S: usize = thread_domain_record::WORDS;
 pub const OBSERVABILITY_NONE: u64 = u64::MAX;
 
 // ---- op codes --------------------------------------------------------------

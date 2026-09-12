@@ -71,10 +71,12 @@ use catten_services::{
 };
 use catten_syscall::{
     OBSERVABILITY_NONE,
+    THREAD_STATISTICS_DOMAIN_RECORD_U64S,
     THREAD_STATISTICS_HEADER_U64S,
     THREAD_STATISTICS_MAGIC,
     THREAD_STATISTICS_RECORD_U64S,
     THREAD_STATISTICS_VERSION,
+    thread_domain_record as thread_domain,
     thread_exit,
     thread_statistics_header as thread_header,
     thread_statistics_record as thread_record,
@@ -91,6 +93,8 @@ const SENTINEL: u32 = 0x4854_5450; // "HTTP"
 /// every scheduler-visible thread (including this service) is represented; the
 /// response is already multi-segment, so a single TCP segment is no bound.
 const THREAD_SAMPLE_ROWS: usize = 64;
+/// Cap on rendered per-domain resource rows in the observe snapshot.
+const DOMAIN_SAMPLE_ROWS: usize = 128;
 
 /// Extract the request target from a `GET <path> HTTP/1.1` request line.
 /// Returns `/` when the line is unparsable, so a malformed request still
@@ -289,12 +293,25 @@ struct ThreadRow {
     max_ticks: u64,
     runtime_ticks: u128,
     saturated: u64,
+    stack_pages: u64,
+    stack_used_pages: u64,
+}
+
+struct DomainRow {
+    asid: u64,
+    owned_frames: u64,
+    user_stack_pages: u64,
+    user_stack_pages_high_water: u64,
+    stack_pages_used_high_water: u64,
+    threads: u64,
+    threads_high_water: u64,
 }
 
 struct ThreadReport {
     freq_hz: u64,
     mono_ticks: u64,
     rows: alloc::vec::Vec<ThreadRow>,
+    domains: alloc::vec::Vec<DomainRow>,
 }
 
 /// Fetch and parse the observe service's system-wide thread snapshot
@@ -302,7 +319,9 @@ struct ThreadReport {
 fn thread_report(observe_conn: ConnectionRef<'_>) -> Option<ThreadReport> {
     let header_words = THREAD_STATISTICS_HEADER_U64S;
     let word_bytes = core::mem::size_of::<u64>();
-    let max_len = (header_words + THREAD_SAMPLE_ROWS * THREAD_STATISTICS_RECORD_U64S)
+    let max_len = (header_words
+        + THREAD_SAMPLE_ROWS * THREAD_STATISTICS_RECORD_U64S
+        + DOMAIN_SAMPLE_ROWS * THREAD_STATISTICS_DOMAIN_RECORD_U64S)
         .checked_mul(word_bytes)?;
     let bytes = read_moved(observe_conn, observability::OP_THREAD_SNAPSHOT, 0, max_len)?;
     let len = bytes.len();
@@ -314,6 +333,8 @@ fn thread_report(observe_conn: ConnectionRef<'_>) -> Option<ThreadReport> {
         || header[thread_header::VERSION] != THREAD_STATISTICS_VERSION
         || header[thread_header::RECORD_BYTES]
             != (THREAD_STATISTICS_RECORD_U64S * word_bytes) as u64
+        || header[thread_header::DOMAIN_RECORD_BYTES]
+            != (THREAD_STATISTICS_DOMAIN_RECORD_U64S * word_bytes) as u64
     {
         return None;
     }
@@ -341,12 +362,38 @@ fn thread_report(observe_conn: ConnectionRef<'_>) -> Option<ThreadReport> {
             runtime_ticks: ((rec[thread_record::TOTAL_TICKS_HIGH] as u128) << 64)
                 | rec[thread_record::TOTAL_TICKS_LOW] as u128,
             saturated: rec[thread_record::SATURATED],
+            stack_pages: rec[thread_record::STACK_RESERVED_PAGES],
+            stack_used_pages: rec[thread_record::STACK_USED_PAGES],
+        });
+    }
+    let domain_base_words = header_words + count * THREAD_STATISTICS_RECORD_U64S;
+    let max_domains_by_len = (len.saturating_sub(domain_base_words * word_bytes))
+        / (THREAD_STATISTICS_DOMAIN_RECORD_U64S * word_bytes);
+    let domain_count =
+        (header[thread_header::DOMAIN_RECORD_COUNT] as usize).min(max_domains_by_len);
+    let mut domains = alloc::vec::Vec::with_capacity(domain_count);
+    for i in 0..domain_count {
+        let base = (domain_base_words + i * THREAD_STATISTICS_DOMAIN_RECORD_U64S) * word_bytes;
+        let mut rec: [u64; THREAD_STATISTICS_DOMAIN_RECORD_U64S] =
+            [0; THREAD_STATISTICS_DOMAIN_RECORD_U64S];
+        for (slot, word) in rec.iter_mut().zip(bytes[base..].chunks_exact(word_bytes)) {
+            *slot = u64::from_le_bytes(word.try_into().ok()?);
+        }
+        domains.push(DomainRow {
+            asid: rec[thread_domain::ASID],
+            owned_frames: rec[thread_domain::OWNED_FRAMES],
+            user_stack_pages: rec[thread_domain::USER_STACK_PAGES],
+            user_stack_pages_high_water: rec[thread_domain::USER_STACK_PAGES_HIGH_WATER],
+            stack_pages_used_high_water: rec[thread_domain::STACK_PAGES_USED_HIGH_WATER],
+            threads: rec[thread_domain::THREADS],
+            threads_high_water: rec[thread_domain::THREADS_HIGH_WATER],
         });
     }
     Some(ThreadReport {
         freq_hz: header[thread_header::COUNTER_FREQUENCY_HZ],
         mono_ticks: header[thread_header::MONOTONIC_TICKS],
         rows,
+        domains,
     })
 }
 
@@ -491,7 +538,8 @@ fn render_threads(s: &mut String, report: &ThreadReport) {
         let _ = write!(
             s,
             ",\"generation\":{},\"dispatch\":{},\"samples\":{},\"runtime_ticks\":{},\"runtime_ms\"\
-             :{},\"cpu_pct\":{},\"min_ticks\":{},\"max_ticks\":{},\"saturated\":{}}}",
+             :{},\"cpu_pct\":{},\"min_ticks\":{},\"max_ticks\":{},\"saturated\":{},\"stack_pages\"\
+             :{},\"stack_used_pages\":{}}}",
             row.generation,
             row.dispatch,
             row.sample_count,
@@ -500,7 +548,27 @@ fn render_threads(s: &mut String, report: &ThreadReport) {
             cpu_pct,
             row.min_ticks,
             row.max_ticks,
-            row.saturated
+            row.saturated,
+            row.stack_pages,
+            row.stack_used_pages
+        );
+    }
+    s.push_str("],\"domains\":[");
+    for (i, domain) in report.domains.iter().enumerate() {
+        if i > 0 {
+            s.push(',');
+        }
+        let _ = write!(
+            s,
+            "{{\"asid\":{},\"owned_frames\":{},\"stack_pages\":{},\"stack_pages_high_water\":{},\"\
+             stack_used_high_water\":{},\"threads\":{},\"threads_high_water\":{}}}",
+            domain.asid,
+            domain.owned_frames,
+            domain.user_stack_pages,
+            domain.user_stack_pages_high_water,
+            domain.stack_pages_used_high_water,
+            domain.threads,
+            domain.threads_high_water
         );
     }
     s.push_str("]}");

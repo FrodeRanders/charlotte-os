@@ -694,6 +694,10 @@ pub fn test_syscall_dispatch() {
         assert_eq!(
             usize::try_from(field(header::RECORD_COUNT)).expect("record count exceeds usize")
                 * usize::try_from(field(header::RECORD_BYTES)).expect("record size exceeds usize")
+                + usize::try_from(field(header::DOMAIN_RECORD_COUNT))
+                    .expect("domain record count exceeds usize")
+                    * usize::try_from(field(header::DOMAIN_RECORD_BYTES))
+                        .expect("domain record size exceeds usize")
                 + THREAD_STATISTICS_HEADER_U64S * size_of::<u64>(),
             length,
             "THREAD_STATISTICS exact length should match its header"

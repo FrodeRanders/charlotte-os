@@ -452,31 +452,44 @@ fn hardware_random_u64() -> Option<u64> {
 fn sys_thread_statistics(frame: &mut TrapFrame) {
     use catten_syscall::{
         OBSERVABILITY_NONE,
+        THREAD_STATISTICS_DOMAIN_RECORD_U64S,
         THREAD_STATISTICS_HEADER_U64S,
         THREAD_STATISTICS_MAGIC,
         THREAD_STATISTICS_RECORD_U64S,
         THREAD_STATISTICS_VERSION,
+        thread_domain_record as domain_record,
         thread_statistics_header as header,
         thread_statistics_record as record,
     };
 
     let asid = caller_asid(frame);
     let observer_cap = frame.regs[1];
-    let snapshots = if observer_cap == 0 {
-        crate::cpu::scheduler::threads::statistics_for_asid(asid)
-    } else if crate::capability::contains(
-        asid,
-        observer_cap,
-        crate::capability::ObjectKind::SystemObserver,
-    ) {
-        crate::cpu::scheduler::threads::system_statistics()
-    } else {
+    let observer = observer_cap != 0
+        && crate::capability::contains(
+            asid,
+            observer_cap,
+            crate::capability::ObjectKind::SystemObserver,
+        );
+    if observer_cap != 0 && !observer {
         frame.regs[0] = 0;
         frame.regs[1] = 0;
         return;
+    }
+    let snapshots = if observer {
+        crate::cpu::scheduler::threads::system_statistics()
+    } else {
+        crate::cpu::scheduler::threads::statistics_for_asid(asid)
+    };
+    let domains: alloc::vec::Vec<_> = if observer {
+        crate::memory::usage::all_domain_usage()
+    } else {
+        crate::memory::usage::domain_usage(asid)
+            .map(|usage| alloc::vec![(asid, usage)])
+            .unwrap_or_default()
     };
     let exact_len = (THREAD_STATISTICS_HEADER_U64S
-        + snapshots.len() * THREAD_STATISTICS_RECORD_U64S)
+        + snapshots.len() * THREAD_STATISTICS_RECORD_U64S
+        + domains.len() * THREAD_STATISTICS_DOMAIN_RECORD_U64S)
         * core::mem::size_of::<u64>();
     let pages = exact_len.div_ceil(4096);
     let Ok(cap) = object::allocate(asid, pages) else {
@@ -494,6 +507,9 @@ fn sys_thread_statistics(frame: &mut TrapFrame) {
     header_words[header::RECORD_COUNT] = snapshots.len() as u64;
     header_words[header::COUNTER_FREQUENCY_HZ] = crate::cpu::scheduler::counter_frequency_hz();
     header_words[header::MONOTONIC_TICKS] = crate::cpu::scheduler::monotonic_ticks();
+    header_words[header::DOMAIN_RECORD_BYTES] =
+        (THREAD_STATISTICS_DOMAIN_RECORD_U64S * core::mem::size_of::<u64>()) as u64;
+    header_words[header::DOMAIN_RECORD_COUNT] = domains.len() as u64;
     for value in header_words {
         push_u64(&mut bytes, value);
     }
@@ -518,6 +534,23 @@ fn sys_thread_statistics(frame: &mut TrapFrame) {
         record_words[record::SATURATED] = u64::from(statistics.saturated);
         record_words[record::CURRENT_SLICE_STARTED_AT] =
             snapshot.current_slice_started_at.unwrap_or(OBSERVABILITY_NONE);
+        record_words[record::STACK_RESERVED_PAGES] = snapshot.stack_reserved_pages;
+        record_words[record::STACK_USED_PAGES] = snapshot.stack_used_pages;
+        for value in record_words {
+            push_u64(&mut bytes, value);
+        }
+    }
+    for (domain_asid, usage) in domains {
+        let mut record_words = [0; THREAD_STATISTICS_DOMAIN_RECORD_U64S];
+        record_words[domain_record::ASID] = domain_asid as u64;
+        record_words[domain_record::OWNED_FRAMES] = usage.owned_frames;
+        record_words[domain_record::USER_STACK_PAGES] = usage.user_stack_pages;
+        record_words[domain_record::USER_STACK_PAGES_HIGH_WATER] =
+            usage.user_stack_pages_high_water;
+        record_words[domain_record::STACK_PAGES_USED_HIGH_WATER] =
+            usage.stack_pages_used_high_water;
+        record_words[domain_record::THREADS] = usage.threads;
+        record_words[domain_record::THREADS_HIGH_WATER] = usage.threads_high_water;
         for value in record_words {
             push_u64(&mut bytes, value);
         }

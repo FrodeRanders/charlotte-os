@@ -299,6 +299,8 @@ pub struct ThreadStatisticsSnapshot {
     pub dispatch_count: u64,
     pub runtime_ticks: StatisticsSnapshot,
     pub current_slice_started_at: Option<u64>,
+    pub stack_reserved_pages: u64,
+    pub stack_used_pages: u64,
 }
 
 #[derive(Debug)]
@@ -351,21 +353,22 @@ impl Thread {
                 charlotte_lifecycle::claim_generation(next).map(|(_, following)| following)
             })
             .unwrap_or_else(|_| panic!("thread generation namespace exhausted"));
+        let context = if asid != KERNEL_ASID {
+            let limits = crate::memory::domain_limits(asid);
+            let context = ThreadContext::create_user_thread_context(
+                asid,
+                entry_point,
+                limits.user_stack_pages,
+            )
+            .expect("Error creating user thread context");
+            crate::memory::usage::note_thread_created(asid, limits.user_stack_pages);
+            context
+        } else {
+            ThreadContext::create_kernel_thread_context(entry_point)
+                .expect("Error creating kernel thread context")
+        };
         Thread {
-            context: Box::new(
-                if asid != KERNEL_ASID {
-                    let limits = crate::memory::domain_limits(asid);
-                    ThreadContext::create_user_thread_context(
-                        asid,
-                        entry_point,
-                        limits.user_stack_pages,
-                    )
-                    .expect("Error creating user thread context")
-                } else {
-                    ThreadContext::create_kernel_thread_context(entry_point)
-                        .expect("Error creating kernel thread context")
-                },
-            ),
+            context: Box::new(context),
             asid,
             generation,
             state: ThreadState::NeedsLpAssignment,
@@ -389,6 +392,7 @@ impl Thread {
             ThreadState::NeedsLpAssignment => ThreadStateKind::NeedsLpAssignment,
             ThreadState::Blocked(_) => ThreadStateKind::Blocked,
         };
+        let (stack_reserved_pages, stack_used_pages) = self.context.user_stack_usage();
         ThreadStatisticsSnapshot {
             tid,
             generation: self.generation,
@@ -399,6 +403,8 @@ impl Thread {
             dispatch_count: self.dispatch_count,
             runtime_ticks: self.runtime_ticks.snapshot(),
             current_slice_started_at: self.last_dispatch_tick,
+            stack_reserved_pages: stack_reserved_pages as u64,
+            stack_used_pages: stack_used_pages as u64,
         }
     }
 
@@ -472,6 +478,10 @@ impl Observable for Thread {
 
 impl Drop for Thread {
     fn drop(&mut self) {
+        if self.asid != KERNEL_ASID {
+            let (reserved, used) = self.context.user_stack_usage();
+            crate::memory::usage::note_thread_released(self.asid, reserved, used);
+        }
         for observer in self.exit_observers.lock().iter() {
             if let Some(observer) = observer.upgrade() {
                 observer.notify();

@@ -32,6 +32,9 @@ logic, and external managed infrastructure at explicit boundaries.
   object storage, and Raft persistence.
 - [Live upgrade](live-upgrade.md) — supervisor-mediated state handoff and
   generation replacement.
+- [Adaptive resource policy](adaptive-resource-policy.md) — staged adaptation
+  of memory, stacks, and buffers to the machine and workload, starting from
+  per-domain accounting and stack high-water observation.
 
 ## Security and cluster direction
 

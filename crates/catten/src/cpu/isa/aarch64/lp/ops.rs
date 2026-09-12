@@ -187,6 +187,21 @@ pub fn cond_yield_lp_from_irq() {
     cond_yield_lp_impl(false);
 }
 
+/// The interrupted or preempted thread's user stack pointer. `SP_EL0` is
+/// banked, so this remains the EL0 value even while executing the EL1 lock
+/// path that leads to a context switch.
+fn current_user_stack_pointer() -> usize {
+    let sp: usize;
+    unsafe {
+        core::arch::asm!(
+            "mrs {}, sp_el0",
+            out(reg) sp,
+            options(nomem, nostack, preserves_flags)
+        );
+    }
+    sp
+}
+
 fn cond_yield_lp_impl(allow_force_unmask: bool) {
     let interrupts_were_enabled = get_int_state();
     // Set when the "only runnable thread is current" path needs to restore
@@ -216,6 +231,9 @@ fn cond_yield_lp_impl(allow_force_unmask: bool) {
                             let curr_thread = tt_guard
                                 .get_mut(curr_tid)
                                 .expect("Current thread not found during yield.");
+                            curr_thread
+                                .context
+                                .sample_user_stack_pointer(current_user_stack_pointer());
                             let curr_sp_ptr = &raw mut curr_thread.context.saved_sp;
                             let curr_on_cpu = (&raw mut curr_thread.context.on_cpu).cast::<u8>();
                             let next_thread = tt_guard
