@@ -178,10 +178,13 @@ extern "C" fn ih_page_fault(error_code: u64, rip: VAddr, cr2: VAddr) {
         let asid = crate::cpu::isa::x86_64::memory::paging::CURRENT_LOGICAL_ASID
             [crate::cpu::isa::x86_64::lp::ops::get_lp_id() as usize]
             .load(core::sync::atomic::Ordering::Acquire);
-        if asid != crate::memory::KERNEL_ASID
-            && crate::cpu::scheduler::threads::grow_current_user_stack(asid, cr2.into()).is_some()
-        {
-            return;
+        if asid != crate::memory::KERNEL_ASID {
+            let fault_addr: usize = cr2.into();
+            if crate::cpu::scheduler::threads::grow_current_user_stack(asid, fault_addr).is_some()
+                || crate::memory::commit_user_heap_page(asid, fault_addr)
+            {
+                return;
+            }
         }
     }
     panic!(

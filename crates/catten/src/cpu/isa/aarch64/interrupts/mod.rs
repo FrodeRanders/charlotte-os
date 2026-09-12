@@ -259,6 +259,14 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
                 }
                 return; // retry the faulting instruction
             }
+            // First touch of a heap page commits it on demand; the commit
+            // path invalidated the new translation itself.
+            if is_tf
+                && asid != crate::memory::KERNEL_ASID
+                && crate::memory::commit_user_heap_page(asid, far_el1 as usize)
+            {
+                return; // retry the faulting instruction
+            }
             early_logln!(
                 "FATAL EL0 DATA/INST ABORT: ASID={} ESR={:x} ELR={:x} FAR={:x}",
                 asid,

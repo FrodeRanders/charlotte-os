@@ -488,9 +488,9 @@ pub fn try_load_domain(image: &[u8]) -> Result<LoadedDomain, AddressSpaceRegistr
     usage::register_status_frame(asid, status_frame);
     let cq_frame = map_user_data_page(asid, CQ_VADDR);
     let _input_frame = map_user_data_page(asid, INPUT_VADDR);
-    for i in 0..HEAP_PAGES {
-        let _ = map_user_data_page(asid, HEAP_VADDR + i * PAGE_SIZE);
-    }
+    // The heap's virtual range is reserved by the layout check but is not
+    // backed with frames here: the first touch of each heap page faults and
+    // commits a frame on demand, so physical use tracks allocation demand.
     crate::completion::open_address_space_with_cq_phys(
         asid,
         COMPLETION_CAPACITY,

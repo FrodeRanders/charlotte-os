@@ -249,6 +249,59 @@ pub fn domain_limits(asid: AddressSpaceId) -> DomainLimits {
     DOMAIN_LIMITS.lock().get(&asid).map(|(_, limits)| *limits).unwrap_or_default()
 }
 
+/// Commit one zeroed page on demand inside the fixed user heap window.
+///
+/// The loader reserves the heap's virtual range but does not back it with
+/// frames; the first touch of each page faults, commits a frame owned by the
+/// address space (so teardown releases it with the other owned frames), and
+/// returns to retry. Returns `false` outside the window or when a frame cannot
+/// be obtained or mapped, leaving the fatal fault path to retire the domain.
+pub(crate) fn commit_user_heap_page(asid: AddressSpaceId, fault_addr: usize) -> bool {
+    let page_size = crate::cpu::isa::memory::paging::PAGE_SIZE;
+    let start = charlotte_launch::HEAP_VADDR;
+    let end = start + charlotte_launch::HEAP_SIZE;
+    if !(start..end).contains(&fault_addr) {
+        return false;
+    }
+    let page = fault_addr & !(page_size - 1);
+    let frame = match PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame() {
+        Ok(frame) => frame,
+        Err(_) => return false,
+    };
+    let page_ptr: *mut u8 = frame.into();
+    unsafe {
+        core::ptr::write_bytes(page_ptr, 0, page_size);
+    }
+    let mapped = {
+        let mut table = ADDRESS_SPACE_TABLE.lock();
+        match table.get_mut(asid) {
+            Ok(address_space) => {
+                if address_space
+                    .map_page(linear::MemoryMapping {
+                        vaddr: VAddr::from(page),
+                        paddr: frame,
+                        page_type: linear::PageType::UserData,
+                    })
+                    .is_ok()
+                {
+                    address_space.register_user_frame(frame);
+                    true
+                } else {
+                    false
+                }
+            }
+            Err(_) => false,
+        }
+    };
+    if !mapped {
+        let _ = PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame);
+        return false;
+    }
+    usage::note_owned_frame(asid);
+    crate::cpu::isa::memory::tlb::inval_range_user(asid, VAddr::from(page), 1);
+    true
+}
+
 /// Return the identity currently occupying `asid`.
 pub fn current_address_space_handle(asid: AddressSpaceId) -> Option<AddressSpaceHandle> {
     let table = ADDRESS_SPACE_TABLE.lock();
