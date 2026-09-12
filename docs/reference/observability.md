@@ -46,10 +46,12 @@ address space. Each snapshot contains:
   (committed is what demand growth has mapped; touched is a high-water mark
   sampled at context switches).
 
-The version-6 snapshot header adds the machine-wide `free_frames` and
-`usable_frames` from the frame allocator, which is the node pressure signal a
-placement controller consumes. The version-4-style per-domain section carries
-the accounting
+The version-7 snapshot header adds the machine-wide `free_frames` and
+`usable_frames` from the frame allocator, the online `logical_processors`
+count, and `cpu_busy_ticks`, the sum of every thread's completed on-CPU ticks.
+Delta `cpu_busy_ticks` over an interval divided by the monotonic delta times
+`logical_processors` is node CPU utilization. The version-4-style per-domain
+section carries the accounting
 described in [adaptive resource policy](../architecture/adaptive-resource-policy.md):
 owned frames, live and high-water reserved stack pages, touched stack high-water
 folded from retired threads, live and high-water thread counts, and — when the
@@ -62,7 +64,8 @@ allocator internals. A caller without the system-observer capability sees only
 its own domain; the system-observer capability widens both sections to the
 machine.
 
-`httpd` renders the pressure pair in `meta` as `free_frames`/`usable_frames`,
+`httpd` renders `free_frames`/`usable_frames`, `logical_processors`,
+`cpu_busy_ticks`, and the request-to-request `cpu_busy_pct` in `meta`,
 and additionally folds the domain rows into a top-level `heap` section:
 cumulative allocations and allocated bytes, an allocation rate computed from
 the delta since the previous request, and the total lock-spin count. A nonzero

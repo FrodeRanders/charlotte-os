@@ -498,10 +498,15 @@ fn sys_thread_statistics(frame: &mut TrapFrame) {
         return;
     };
 
+    let cpu_busy_ticks = snapshots
+        .iter()
+        .fold(0u128, |sum, snapshot| sum.saturating_add(snapshot.runtime_ticks.total));
     let mut bytes = alloc::vec::Vec::with_capacity(exact_len);
     let mut header_words = [0; THREAD_STATISTICS_HEADER_U64S];
     header_words[header::MAGIC] = THREAD_STATISTICS_MAGIC;
     header_words[header::VERSION] = THREAD_STATISTICS_VERSION;
+    header_words[header::LOGICAL_PROCESSORS] = crate::cpu::multiprocessor::get_lp_count() as u64;
+    header_words[header::CPU_BUSY_TICKS] = u64::try_from(cpu_busy_ticks).unwrap_or(u64::MAX);
     header_words[header::RECORD_BYTES] =
         (THREAD_STATISTICS_RECORD_U64S * core::mem::size_of::<u64>()) as u64;
     header_words[header::RECORD_COUNT] = snapshots.len() as u64;

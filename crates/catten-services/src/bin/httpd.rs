@@ -272,6 +272,7 @@ struct Prev {
     frouter_rx: u32,
     forwarded: u32,
     heap_allocations: u64,
+    cpu_busy_ticks: u64,
 }
 
 /// This service's own request counters, reported under the `http` key so the
@@ -324,6 +325,8 @@ struct ThreadReport {
     mono_ticks: u64,
     free_frames: u64,
     usable_frames: u64,
+    logical_processors: u64,
+    cpu_busy_ticks: u64,
     rows: alloc::vec::Vec<ThreadRow>,
     domains: alloc::vec::Vec<DomainRow>,
 }
@@ -431,6 +434,8 @@ fn thread_report(observe_conn: ConnectionRef<'_>) -> Option<ThreadReport> {
         mono_ticks: header[thread_header::MONOTONIC_TICKS],
         free_frames: header[thread_header::FREE_FRAMES],
         usable_frames: header[thread_header::USABLE_FRAMES],
+        logical_processors: header[thread_header::LOGICAL_PROCESSORS],
+        cpu_busy_ticks: header[thread_header::CPU_BUSY_TICKS],
         rows,
         domains,
     })
@@ -888,16 +893,36 @@ fn build_json(
     #[rustfmt::skip]
     let (free_frames, usable_frames) =
         report.as_ref().map_or((0, 0), |r| (r.free_frames, r.usable_frames));
+    let (logical_processors, cpu_busy_ticks) =
+        report.as_ref().map_or((0, 0), |r| (r.logical_processors, r.cpu_busy_ticks));
+    let cpu_delta = if prev.initialized {
+        cpu_busy_ticks.saturating_sub(prev.cpu_busy_ticks)
+    } else {
+        0
+    };
+    let mono_delta = if prev.initialized && mono_ticks > prev.mono_ticks {
+        mono_ticks - prev.mono_ticks
+    } else {
+        0
+    };
+    let cpu_busy_pct = if logical_processors > 0 && mono_delta > 0 {
+        cpu_delta.saturating_mul(100) / mono_delta.saturating_mul(logical_processors)
+    } else {
+        0
+    };
     let _ = write!(
         &mut s,
         "{{\"meta\":{{\"uptime_ms\":{},\"interval_ms\":{},\"counter_hz\":{},\"free_frames\":{},\"\
-         usable_frames\":{}}},\"node\":{{\"mac\":\"{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\",\"\
-         link\":{}}},",
+         usable_frames\":{},\"logical_processors\":{},\"cpu_busy_ticks\":{},\"cpu_busy_pct\":{}}},\
+         \"node\":{{\"mac\":\"{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\",\"link\":{}}},",
         uptime_ms,
         interval_ms,
         freq_hz,
         free_frames,
         usable_frames,
+        logical_processors,
+        cpu_busy_ticks,
+        cpu_busy_pct,
         mac[0],
         mac[1],
         mac[2],
@@ -1090,6 +1115,7 @@ fn build_json(
 
     prev.initialized = true;
     prev.mono_ticks = mono_ticks;
+    prev.cpu_busy_ticks = cpu_busy_ticks;
     prev.rx_frames = rx;
     prev.tx_sends = tx;
     s
@@ -1143,6 +1169,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         frouter_rx: 0,
         forwarded: 0,
         heap_allocations: 0,
+        cpu_busy_ticks: 0,
     };
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {

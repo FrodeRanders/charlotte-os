@@ -30,15 +30,30 @@ pub enum AdmissionError {
     InsufficientCapacity,
 }
 
+/// Sentinel for a node that has not reported CPU load yet.
+pub const CPU_LOAD_UNKNOWN: u16 = u16::MAX;
+
 /// Coarse per-node pressure sample used by the deterministic resolver.
 ///
 /// The leader fills this from committed capacity reports; an absent node is
 /// treated as unknown (neutral), never as exhausted, so mixed-version clusters
 /// keep making progress.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NodeCapacity {
     pub free_frames: u64,
     pub usable_frames: u64,
+    /// Recent CPU occupancy in permille, or [`CPU_LOAD_UNKNOWN`].
+    pub cpu_load_permille: u16,
+}
+
+impl Default for NodeCapacity {
+    fn default() -> Self {
+        Self {
+            free_frames: 0,
+            usable_frames: 0,
+            cpu_load_permille: CPU_LOAD_UNKNOWN,
+        }
+    }
 }
 
 pub type NodeCapacityView = BTreeMap<u64, NodeCapacity>;
@@ -64,6 +79,26 @@ fn capacity_bucket(capacity: &NodeCapacityView, node: u64) -> u8 {
     } else {
         3
     }
+}
+
+/// Soft CPU-load bucket. Heavy occupancy ranks last but never excludes a
+/// node, so placement still proceeds when every node is busy.
+fn cpu_bucket(capacity: &NodeCapacityView, node: u64) -> u8 {
+    let Some(sample) = capacity.get(&node) else {
+        return 2;
+    };
+    match sample.cpu_load_permille {
+        CPU_LOAD_UNKNOWN => 2,
+        load if load >= 950 => 0,
+        load if load >= 750 => 1,
+        load if load >= 500 => 2,
+        _ => 3,
+    }
+}
+
+/// Combined pressure rank: the worse of memory and CPU pressure.
+fn pressure_bucket(capacity: &NodeCapacityView, node: u64) -> u8 {
+    capacity_bucket(capacity, node).min(cpu_bucket(capacity, node))
 }
 
 /// Fixed pages the loader maps for every domain besides its stack and heap:
@@ -204,7 +239,7 @@ pub fn resolve_descriptor_assignments_with_capacity(
                         let mut score_input = descriptor.artifact_name.to_vec();
                         score_input.extend_from_slice(&node.to_le_bytes());
                         (
-                            capacity_bucket(capacity, *node),
+                            pressure_bucket(capacity, *node),
                             charlotte_launch::fnv1a(&score_input),
                             core::cmp::Reverse(*node),
                         )
@@ -259,7 +294,7 @@ pub fn resolve_descriptor_assignments_with_capacity(
             let mut score_input = seed.clone();
             score_input.extend_from_slice(&node.to_le_bytes());
             (
-                core::cmp::Reverse(capacity_bucket(capacity, *node)),
+                core::cmp::Reverse(pressure_bucket(capacity, *node)),
                 core::cmp::Reverse(charlotte_launch::fnv1a(&score_input)),
                 *node,
             )
@@ -592,10 +627,12 @@ mod tests {
         let ample = NodeCapacity {
             free_frames: 900,
             usable_frames: 1000,
+            cpu_load_permille: CPU_LOAD_UNKNOWN,
         };
         let low = NodeCapacity {
             free_frames: 60,
             usable_frames: 1000,
+            cpu_load_permille: CPU_LOAD_UNKNOWN,
         };
         let pressured = baseline[0][0];
         let mut capacity = NodeCapacityView::new();
@@ -611,6 +648,7 @@ mod tests {
         let exhausted = NodeCapacity {
             free_frames: 10,
             usable_frames: 1000,
+            cpu_load_permille: CPU_LOAD_UNKNOWN,
         };
         let mut capacity = NodeCapacityView::new();
         for node in [1, 2, 3] {
@@ -624,6 +662,62 @@ mod tests {
         let selected =
             resolve_release_assignments_with_capacity(&release, &[1, 2, 3], 0, &capacity).unwrap();
         assert_ne!(selected[0][0], 1);
+    }
+
+    #[test]
+    fn cpu_pressure_demotes_but_never_excludes() {
+        let pair = KeyPair::from_seed([0x5a; 32].into());
+        let policy = charlotte_launch::placement::PlacementPolicy {
+            replicas: 1,
+            max_instances_per_node: 1,
+            min_distinct_nodes: 1,
+            flags: charlotte_launch::placement::SPREAD_REPLICAS,
+            affinity_group: 0,
+            anti_affinity_group: 0,
+        };
+        let release = policy_release(&pair, &[(b"orders", policy)]);
+        let baseline = resolve_release_assignments(&release, &[1, 2, 3], 0).unwrap();
+        let busy = baseline[0][0];
+        let idle = |node: u64| {
+            (
+                node,
+                NodeCapacity {
+                    free_frames: 900,
+                    usable_frames: 1000,
+                    cpu_load_permille: 100,
+                },
+            )
+        };
+        let mut capacity = NodeCapacityView::from_iter([1, 2, 3].map(idle));
+        capacity.insert(
+            busy,
+            NodeCapacity {
+                free_frames: 900,
+                usable_frames: 1000,
+                cpu_load_permille: 980,
+            },
+        );
+        let selected =
+            resolve_release_assignments_with_capacity(&release, &[1, 2, 3], 0, &capacity).unwrap();
+        assert_ne!(selected[0][0], busy);
+
+        // A fully occupied node set still places; CPU is a preference only.
+        let occupied = NodeCapacityView::from_iter([1, 2, 3].map(|node| {
+            (
+                node,
+                NodeCapacity {
+                    free_frames: 900,
+                    usable_frames: 1000,
+                    cpu_load_permille: 980,
+                },
+            )
+        }));
+        assert_eq!(
+            resolve_release_assignments_with_capacity(&release, &[1, 2, 3], 0, &occupied)
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     #[test]
@@ -642,6 +736,7 @@ mod tests {
         let tight = NodeCapacity {
             free_frames: 30,
             usable_frames: 1000,
+            cpu_load_permille: CPU_LOAD_UNKNOWN,
         };
         let mut capacity = NodeCapacityView::new();
         capacity.insert(1, tight);
@@ -653,6 +748,7 @@ mod tests {
         let roomy = NodeCapacity {
             free_frames: 200,
             usable_frames: 1000,
+            cpu_load_permille: CPU_LOAD_UNKNOWN,
         };
         let mut capacity = NodeCapacityView::new();
         capacity.insert(1, roomy);

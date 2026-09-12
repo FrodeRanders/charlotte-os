@@ -347,6 +347,12 @@ capacity input yet. Two slices are implemented:
   nodes stay eligible and a cold cluster behaves exactly as before. The
   capacity-aware entry points are additive; existing callers pass an empty view
   and are unchanged.
+- **CPU load**: the snapshot header now carries online logical processors and
+  the machine's cumulative on-CPU ticks, so a consumer derives node CPU
+  utilization by differencing two samples. The resolver treats CPU load as a
+  soft signal: heavy occupancy (≥95% in permille terms) ranks a node last
+  before the stable hash, but never excludes it, so placement proceeds when
+  every node is busy. Explicit CPU shares or quotas remain out of scope.
 
 The remaining wiring is the deterministic distributed part: a committed
 per-node capacity table in the name catalog (new command plus snapshot

@@ -179,7 +179,7 @@ pub struct DomainIdentityInfo {
 // ---- observability wire format ---------------------------------------------
 
 pub const THREAD_STATISTICS_MAGIC: u64 = 0x3154_4154_534f_4343; // "CCOSTAT1"
-pub const THREAD_STATISTICS_VERSION: u64 = 6;
+pub const THREAD_STATISTICS_VERSION: u64 = 7;
 
 pub mod thread_statistics_header {
     pub const MAGIC: usize = 0;
@@ -194,7 +194,13 @@ pub mod thread_statistics_header {
     pub const FREE_FRAMES: usize = 8;
     /// Machine-wide physical frames discovered at boot.
     pub const USABLE_FRAMES: usize = 9;
-    pub const WORDS: usize = 10;
+    /// Online logical processors, the denominator for CPU utilization.
+    pub const LOGICAL_PROCESSORS: usize = 10;
+    /// Machine-wide on-CPU ticks across every thread. Delta over an interval
+    /// divided by `LOGICAL_PROCESSORS` times the monotonic delta is the node's
+    /// CPU utilization.
+    pub const CPU_BUSY_TICKS: usize = 11;
+    pub const WORDS: usize = 12;
 }
 
 pub mod thread_statistics_record {
