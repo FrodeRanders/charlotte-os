@@ -166,10 +166,26 @@ extern "C" fn ih_general_protection_fault(error_code: u64, fault_addr: VAddr, ra
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn ih_page_fault(error_code: u64, fault_addr: VAddr, cr2: VAddr) {
+extern "C" fn ih_page_fault(error_code: u64, rip: VAddr, cr2: VAddr) {
+    // Demand-grown user stack: a not-present, user-mode, data access to the
+    // guard region is growth, not a fault. Instruction fetches and protection
+    // violations stay fatal. The mapping path invalidated the faulting
+    // translation, so the ISR epilogue's `iretq` retries the instruction.
+    let not_present = error_code & 0b1 == 0;
+    let user = error_code & 0b100 != 0;
+    let data = error_code & 0b1_0000 == 0;
+    if not_present && user && data {
+        let asid = crate::cpu::isa::x86_64::memory::paging::CURRENT_LOGICAL_ASID
+            [crate::cpu::isa::x86_64::lp::ops::get_lp_id() as usize]
+            .load(core::sync::atomic::Ordering::Acquire);
+        if asid != crate::memory::KERNEL_ASID
+            && crate::cpu::scheduler::threads::grow_current_user_stack(asid, cr2.into()).is_some()
+        {
+            return;
+        }
+    }
     panic!(
-        "Page fault at RIP={fault_addr:?} and faulting address={cr2:?} with error code \
-         0b{error_code:b}"
+        "Page fault at RIP={rip:?} and faulting address={cr2:?} with error code 0b{error_code:b}"
     );
 }
 

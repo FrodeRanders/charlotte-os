@@ -49,9 +49,6 @@ use crate::{
 };
 
 const INIT_KERNEL_STACK_PAGES: usize = 16;
-/// Pages committed at thread creation. Further pages are mapped on demand by
-/// the guard-fault path up to the thread's budget.
-const INITIAL_USER_STACK_PAGES: usize = 1;
 
 #[derive(Debug, Clone, Copy)]
 struct UserStack {
@@ -375,7 +372,7 @@ impl ThreadContext {
         // committed here. The guard-fault path maps the rest downward on
         // demand, so a large signed budget no longer reserves every frame.
         let user_stack_top_va = stack_base + user_stack_pages * PAGE_SIZE;
-        let initial_pages = user_stack_pages.clamp(1, INITIAL_USER_STACK_PAGES);
+        let initial_pages = user_stack_pages.clamp(1, charlotte_launch::INITIAL_USER_STACK_PAGES);
         let mapped_low = user_stack_top_va - initial_pages * PAGE_SIZE;
         // Pre-allocate all frames first (under the frame allocator lock), then
         // map them (inside the AS table lock).  Order matches el0.rs.

@@ -21,7 +21,7 @@ and structures sized by constants.
 | Physical frames | All `MEMMAP_USABLE` RAM, no RAM cap; bitmap sized to the highest usable address | `crates/catten/src/memory/physical/mod.rs` |
 | Kernel heap | 8 MiB initial + pre-mapped growth reserve derived from usable RAM: `clamp(usable/64, 64 MiB, 256 MiB)`, 2 MiB-aligned (Phase 2) | `crates/catten/src/memory/allocators/global_allocator.rs` |
 | Domain heap | Fixed 4 MiB per domain | `crates/charlotte-launch/src/lib.rs` |
-| User stack | Signed per deployment, 1–64 pages (4 KiB–256 KiB), inherited by every thread; kernel-launched services without a descriptor adapt to the principal's previous high-water (Phase 3); AArch64 commits one page and grows on fault up to that budget (Phase 4) | `crates/catten/src/memory/mod.rs`, `crates/charlotte-launch/src/deployment.rs`, `crates/charlotte-lifecycle/src/lib.rs`, `crates/catten/src/cpu/isa/aarch64/lp/thread_context/mod.rs` |
+| User stack | Signed per deployment, 1–64 pages (4 KiB–256 KiB), inherited by every thread; kernel-launched services without a descriptor adapt to the principal's previous high-water (Phase 3); both architectures commit one page and grow on fault up to that budget (Phase 4) | `crates/catten/src/memory/mod.rs`, `crates/charlotte-launch/src/deployment.rs`, `crates/charlotte-lifecycle/src/lib.rs`, `crates/catten/src/cpu/isa/*/lp/thread_context*` |
 | User threads | Signed maximum, 1–64 per domain | `crates/catten/src/cpu/scheduler/system_scheduler/mod.rs` |
 | CQ rings, endpoint queues | Mostly static entry counts; endpoint capacity is caller-chosen at create | `crates/catten/src/completion/cq.rs`, `crates/catten/src/ipc/mod.rs` |
 | Service buffers | Compile-time constants (network, relmsg, Raft, storage) | `crates/catten-services`, `charlotte-protocol-*` |
@@ -199,16 +199,16 @@ formula, and letting the placement layer see node pressure (Phase 4).
 Phase 4 changes behavior while a domain runs, so each mechanism needs an
 explicit failure story before implementation.
 
-### Demand-grown user stacks (implemented on AArch64)
+### Demand-grown user stacks (implemented)
 
 Threads now start with one committed stack page and grow downward a page at a
-time on translation faults, bounded by the signed or adaptive budget. Both data
-and instruction aborts from EL0 pass through the same classification; only
-faults inside a thread's own growable guard region that stay within its budget
+time on translation faults, bounded by the signed or adaptive budget. Both
+architectures classify data-access faults (AArch64 data/instruction aborts,
+x86-64 not-present user-mode data page faults) against the growable guard
+region; only faults inside a thread's own region that stay within its budget
 and the free-frame reserve are handled. Everything else remains fatal and
 aborts the address space, so an over-budget fault is a clean domain kill and
-`ThreadContext::drop` releases exactly the committed pages. x86-64 still
-commits the full budget eagerly until the protocol is ported.
+`ThreadContext::drop` releases exactly the committed pages.
 
 The design this implements is:
 
