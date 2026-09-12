@@ -261,9 +261,15 @@ fn test_stale_interrupt_wake(old: u64) -> u64 {
         .expect("[device] stale-wake replacement interrupt grant failed");
     crate::device::interrupt_bind_cq(DEV_ASID, replacement, 0)
         .expect("[device] stale-wake replacement bind failed");
+    // `drain_deferred_wakes` is global: the restarted PL011 driver and any
+    // other live route can legitimately contribute wakes while this test runs,
+    // so verify the replacement queue's own generation instead of the drain
+    // count.
+    let replacement_generation = crate::completion::cq_work_generation(DEV_ASID, 0);
+    crate::device::drain_deferred_wakes();
     assert_eq!(
-        crate::device::drain_deferred_wakes(),
-        0,
+        crate::completion::cq_work_generation(DEV_ASID, 0),
+        replacement_generation,
         "wake from retired interrupt route reached its replacement"
     );
     crate::device::close_cap(DEV_ASID, replacement)

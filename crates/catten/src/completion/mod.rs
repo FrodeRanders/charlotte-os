@@ -1312,6 +1312,21 @@ pub fn cq_pending(asid: AddressSpaceId, cq: CqId) -> u32 {
     as_completions.cqs.get(&cq).map(CqState::ring_pending).unwrap_or(0)
 }
 
+/// Inspection: the monotonic work generation of queue `cq` of `asid`.
+///
+/// Bumped by every explicit [`wake`] and completion post. The device
+/// self-test uses it to prove a deferred wake queued for a retired interrupt
+/// route never reaches a replacement that reuses the same ASID/queue tuple,
+/// independently of unrelated wakes drained from the global queue.
+pub fn cq_work_generation(asid: AddressSpaceId, cq: CqId) -> u64 {
+    let registry = COMPLETIONS.read();
+    registry
+        .get(&asid)
+        .and_then(|as_completions| as_completions.cqs.get(&cq))
+        .map(|state| state.work_generation)
+        .unwrap_or(0)
+}
+
 /// Posts an explicit wake to the waiters of one queue (architecture doc
 /// §7.3/§9.4): bumps the work generation so a thread blocked in
 /// [`wait_on_cq`]/[`wait_on_cq_timeout`] returns even though no completion
