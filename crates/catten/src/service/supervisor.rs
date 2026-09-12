@@ -400,9 +400,6 @@ pub(crate) fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
 /// high-water mark, one page of headroom is added, clamped to the default
 /// and signed maxima; a cold boot or an unknown principal keeps the default.
 /// Signed descriptor limits never pass through here.
-/// Free frames below one sixteenth of usable RAM damp history-based growth.
-const STACK_GROWTH_RESERVE_DIVISOR: u64 = 16;
-
 fn adaptive_service_limits(address_space: crate::memory::AddressSpaceHandle) -> ServiceLimits {
     let default_limits = ServiceLimits::default();
     let Some(authority) = crate::memory::domain_authority(address_space.id()) else {
@@ -422,7 +419,7 @@ fn adaptive_service_limits(address_space: crate::memory::AddressSpaceHandle) -> 
         let total_frames = allocator.usable_bytes() / loader::PAGE_SIZE as u64;
         (allocator.free_frames() as u64, total_frames)
     };
-    let reserve_frames = (total_frames / STACK_GROWTH_RESERVE_DIVISOR).max(1);
+    let reserve_frames = (total_frames / charlotte_lifecycle::STACK_GROWTH_RESERVE_DIVISOR).max(1);
     let pages = charlotte_lifecycle::damp_stack_growth(
         desired,
         charlotte_launch::DEFAULT_USER_STACK_PAGES,

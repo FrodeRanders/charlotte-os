@@ -465,17 +465,16 @@ decisions; and minting cannot amplify rights.
 
 ## Demand-grown stack budget
 
-`CharlotteStackGrowth.tla` models the resource accounting a recoverable EL0
-guard fault will implement. It is a **design model**: the kernel currently
-treats a stack fault as a fatal address-space abort, so the mapping below is
-the intended refinement, not an implemented one.
+`CharlotteStackGrowth.tla` models the resource accounting the AArch64
+guard-fault path implements. The mapping below is implemented for AArch64;
+x86-64 still commits the full stack budget eagerly and is the remaining port.
 
-| TLA+ action | Intended CharlotteOS implementation | Correspondence |
+| TLA+ action | CharlotteOS implementation | Correspondence |
 |---|---|---|
-| `Fault` | AArch64 EL0 translation fault whose FAR lies in the domain's stack VA range below the committed pages | Planned: the abort dispatcher in `cpu/isa/aarch64/interrupts/mod.rs` must classify stack-guard faults before the generic fatal path. |
-| `Grow` | Map one additional page under the address-space lifecycle lock and retry the faulting instruction | Planned: thread-context stack records gain a committed cursor; growth charges the per-thread budget and checks the frame-allocator free pool. |
-| `Kill` | Budget exhausted: fail closed through the ordinary domain teardown path | Planned: reuses `close_user_address_space_handle`, retiring threads and releasing frames exactly once. |
-| `Exit` | Clean thread/domain exit releasing the stack reservation | Direct once demand growth lands; the existing `deallocate_user_stack` path already returns every mapped page. |
+| `Fault` | AArch64 EL0 data/instruction abort whose FAR lies in the thread's stack region below its committed pages | Direct: `sync_dispatcher` classifies translation faults in the growable guard region before the generic fatal path (`cpu/isa/aarch64/interrupts/mod.rs`). |
+| `Grow` | Map the faulting page(s) under the address-space table lock and retry the instruction | Direct for one-page-at-a-time growth: `ThreadContext::grow_user_stack` charges the per-thread budget, checks the free-frame reserve, and commits each page as it is mapped so a partial failure leaves an exact count. |
+| `Kill` | Budget exhausted or pressure reserve breached: fail closed through the ordinary domain teardown path | Direct: the fault falls through to `abort_address_space`, retiring threads and releasing committed frames exactly once in `ThreadContext::drop`. |
+| `Exit` | Clean thread/domain exit releasing the committed stack | Direct: `deallocate_user_stack` returns every committed page. |
 
 The two negative configurations (`UnsafeGrowOverBudget` and
 `UnsafeKillWithoutRelease`) fix the regression obligations: growth must never

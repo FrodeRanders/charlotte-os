@@ -82,6 +82,10 @@ pub const fn classify_timed_wait(
     }
 }
 
+/// Free frames below one sixteenth of usable RAM damp history-based growth and
+/// refuse in-life stack growth, so a pressured node fails closed.
+pub const STACK_GROWTH_RESERVE_DIVISOR: u64 = 16;
+
 /// Choose the user-stack page count for the next generation of a service from
 /// the previous generation's touched high-water mark.
 ///

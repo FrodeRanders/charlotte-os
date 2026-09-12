@@ -237,6 +237,28 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
                 }
                 return; // retry the faulting instruction
             }
+            // A translation fault below the committed stack is demand growth,
+            // not a domain fault, while the thread's budget and the free-frame
+            // reserve allow it. Only the faulting page needs invalidation:
+            // pages committed by this growth have never been accessed, so no
+            // stale descriptors exist for them.
+            if is_tf
+                && asid != crate::memory::KERNEL_ASID
+                && crate::cpu::scheduler::threads::grow_current_user_stack(asid, far_el1 as usize)
+                    .is_some()
+            {
+                unsafe {
+                    asm!(
+                        "dsb ishst",
+                        "tlbi vaae1is, {va}",
+                        "dsb ish",
+                        "isb",
+                        va = in(reg) far_el1 >> 12,
+                        options(nomem, nostack, preserves_flags),
+                    );
+                }
+                return; // retry the faulting instruction
+            }
             early_logln!(
                 "FATAL EL0 DATA/INST ABORT: ASID={} ESR={:x} ELR={:x} FAR={:x}",
                 asid,

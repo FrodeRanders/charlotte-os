@@ -432,6 +432,28 @@ impl Thread {
     }
 }
 
+/// Extend the current user thread's stack to cover one faulting address.
+///
+/// Runs in the synchronous EL0 fault path, so it must not treat transient
+/// contention as a failure: the scheduler and thread-table locks are the
+/// interrupt-masking multiprocessor locks, whose owner always makes progress.
+/// Returns the new committed low address when a page was mapped. x86-64 still
+/// commits its full stack budget at creation.
+#[cfg(target_arch = "aarch64")]
+pub(crate) fn grow_current_user_stack(asid: AddressSpaceId, fault_addr: usize) -> Option<usize> {
+    let (tid, generation) = {
+        let scheduler = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER.read();
+        let local = scheduler.get_lp_scheduler().lock();
+        local.get_current_handle()?
+    };
+    let mut table = MASTER_THREAD_TABLE.write();
+    let thread = table.get_mut(tid).ok()?;
+    if thread.generation != generation || thread.asid != asid {
+        return None;
+    }
+    thread.context.grow_user_stack(fault_addr)
+}
+
 /// Return owned snapshots for threads in one address space.
 ///
 /// The filter is intentional: an eventual userspace export syscall can expose
