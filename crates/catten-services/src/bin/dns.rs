@@ -777,6 +777,9 @@ fn release_command(
                 operations_admission::AdmissionError::UnsatisfiablePlacement => {
                     clusterctl::ERR_UNSATISFIABLE_PLACEMENT
                 }
+                operations_admission::AdmissionError::InsufficientCapacity => {
+                    clusterctl::ERR_INSUFFICIENT_CAPACITY
+                }
                 _ => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
             })?;
     catten_services::name_catalog::encode_release_replicas(envelope, &assignments)
@@ -821,6 +824,9 @@ fn operations_command(
             operations_admission::AdmissionError::TooLarge => clusterctl::ERR_TOO_LARGE,
             operations_admission::AdmissionError::UnsatisfiablePlacement => {
                 clusterctl::ERR_UNSATISFIABLE_PLACEMENT
+            }
+            operations_admission::AdmissionError::InsufficientCapacity => {
+                clusterctl::ERR_INSUFFICIENT_CAPACITY
             }
             operations_admission::AdmissionError::Invalid
             | operations_admission::AdmissionError::WrongCluster

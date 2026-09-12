@@ -1887,6 +1887,9 @@ pub mod clusterctl {
     pub const ERR_UNSATISFIABLE_PLACEMENT: i64 = -19;
     /// Accepting the command would exceed a bounded replicated collection.
     pub const ERR_CAPACITY: i64 = -20;
+    /// Eligible nodes exist, but none can host the deployment's declared
+    /// resource demand (currently its stack reservation and runtime pages).
+    pub const ERR_INSUFFICIENT_CAPACITY: i64 = -21;
 }
 
 /// Remote-invocation wire protocol carried over the reliable message layer.

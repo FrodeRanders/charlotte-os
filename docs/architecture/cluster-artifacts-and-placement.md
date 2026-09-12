@@ -223,11 +223,21 @@ leader continuously recomputes automatic assignments after membership or
 drain-state changes and commits generation-fenced replacement sets through
 Raft. Pinned singleton descriptors remain fixed.
 
-This is deliberately still a bounded scheduler. It does not yet model resource
-requests against node capacity, arbitrary labels, named failure domains,
-rollout surge/unavailability, or automatic rollback. The current runtime also
-runs at most one instance of a given artifact on each node, even though the
-policy type reserves a larger per-node limit for a future scheduler.
+The resolver now checks the descriptor's signed memory demand — its stack
+budget for every declared thread plus the fixed runtime pages — against
+per-node capacity and fails with `ERR_INSUFFICIENT_CAPACITY` when enough nodes
+exist but none has room; too few eligible nodes still returns
+`ERR_UNSATISFIABLE_PLACEMENT`. Capacity is supplied as a committed per-node
+view once the reporting path lands (see
+[adaptive resource policy](adaptive-resource-policy.md)); no capacity input
+means the historical ranking, so a cold cluster is unchanged.
+
+This is deliberately still a bounded scheduler. It does not yet model explicit
+heap, storage, or processor requests (those need signed descriptor fields and
+node sensors), arbitrary labels, named failure domains, rollout
+surge/unavailability, or automatic rollback. The current runtime also runs at
+most one instance of a given artifact on each node, even though the policy
+type reserves a larger per-node limit for a future scheduler.
 
 A bootstrap cluster identity can be bound atomically to an artifact name with
 `--cluster-service artifact=VIP:port`; the option is repeatable for independent

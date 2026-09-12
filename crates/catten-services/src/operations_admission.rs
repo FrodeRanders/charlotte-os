@@ -24,7 +24,10 @@ pub enum AdmissionError {
     WrongOperationsKey,
     WrongRecipient,
     WrongReleaseKey,
+    /// Too few eligible nodes exist for the signed replica policy.
     UnsatisfiablePlacement,
+    /// Enough nodes exist, but none can host the declared resource demand.
+    InsufficientCapacity,
 }
 
 /// Coarse per-node pressure sample used by the deterministic resolver.
@@ -61,6 +64,38 @@ fn capacity_bucket(capacity: &NodeCapacityView, node: u64) -> u8 {
     } else {
         3
     }
+}
+
+/// Fixed pages the loader maps for every domain besides its stack and heap:
+/// config, status, input, the default completion queue, and four shard rings.
+const DOMAIN_RUNTIME_PAGES: u64 = 8;
+
+/// Worst-case resident memory one descriptor implies on a node: every thread's
+/// stack budget plus the fixed runtime pages.
+///
+/// The heap is demand-committed rather than reserved, so it is not part of the
+/// demand; an explicit signed heap request arrives with a future descriptor
+/// version, and storage or processor requests need their own node sensors.
+fn descriptor_memory_demand(
+    descriptor: &charlotte_launch::deployment::DeploymentDescriptor<'_>,
+) -> u64 {
+    u64::from(descriptor.max_threads)
+        .saturating_mul(u64::from(descriptor.stack_pages_per_thread))
+        .saturating_add(DOMAIN_RUNTIME_PAGES)
+}
+
+/// Whether a node's committed free frames cover `demand_frames` plus its own
+/// free-frame reserve. Unknown capacity is optimistic so mixed-version
+/// clusters keep making progress.
+fn node_can_host(capacity: &NodeCapacityView, node: u64, demand_frames: u64) -> bool {
+    let Some(sample) = capacity.get(&node) else {
+        return true;
+    };
+    if sample.usable_frames == 0 {
+        return true;
+    }
+    let reserve = (sample.usable_frames / 16).max(1);
+    sample.free_frames.min(sample.usable_frames) >= demand_frames.saturating_add(reserve)
 }
 
 /// Resolve each signed component policy to a concrete, unique node set.
@@ -125,13 +160,9 @@ pub fn resolve_descriptor_assignments_with_capacity(
     automatic_node: u64,
     capacity: &NodeCapacityView,
 ) -> Result<Vec<Vec<u64>>, AdmissionError> {
-    let mut candidates = eligible_nodes
-        .iter()
-        .copied()
-        .filter(|node| *node != 0 && capacity_bucket(capacity, *node) > 0)
-        .collect::<Vec<_>>();
-    candidates.sort_unstable();
-    candidates.dedup();
+    let mut eligible = eligible_nodes.iter().copied().filter(|node| *node != 0).collect::<Vec<_>>();
+    eligible.sort_unstable();
+    eligible.dedup();
     let descriptors = descriptor_bytes
         .iter()
         .map(|bytes| charlotte_launch::deployment::decode(bytes).ok_or(AdmissionError::Invalid))
@@ -153,6 +184,15 @@ pub fn resolve_descriptor_assignments_with_capacity(
         }
         let policy = descriptor.placement;
         policy.validate_shape().map_err(|_| AdmissionError::Invalid)?;
+        // Feasible targets for this component's declared memory reservation.
+        let demand = descriptor_memory_demand(&descriptor);
+        let candidates = eligible
+            .iter()
+            .copied()
+            .filter(|node| {
+                capacity_bucket(capacity, *node) > 0 && node_can_host(capacity, *node, demand)
+            })
+            .collect::<Vec<_>>();
         if policy == charlotte_launch::placement::PlacementPolicy::singleton() {
             let selected = if automatic_node != 0 && candidates.contains(&automatic_node) {
                 automatic_node
@@ -169,19 +209,35 @@ pub fn resolve_descriptor_assignments_with_capacity(
                             core::cmp::Reverse(*node),
                         )
                     })
-                    .ok_or(AdmissionError::UnsatisfiablePlacement)?
+                    .ok_or(
+                        if eligible.is_empty() {
+                            AdmissionError::UnsatisfiablePlacement
+                        } else {
+                            AdmissionError::InsufficientCapacity
+                        },
+                    )?
             };
             assignments[index] = Some(vec![selected]);
             continue;
         }
         let every = policy.flags & charlotte_launch::placement::EVERY_ELIGIBLE_NODE != 0;
+        if every && candidates.is_empty() {
+            return Err(if eligible.is_empty() {
+                AdmissionError::UnsatisfiablePlacement
+            } else {
+                AdmissionError::InsufficientCapacity
+            });
+        }
         let wanted = if every {
             candidates.len()
         } else {
             usize::from(policy.replicas)
         };
-        if wanted == 0 || wanted > candidates.len() {
+        if wanted == 0 || wanted > eligible.len() {
             return Err(AdmissionError::UnsatisfiablePlacement);
+        }
+        if wanted > candidates.len() {
+            return Err(AdmissionError::InsufficientCapacity);
         }
         let seed = if policy.flags & charlotte_launch::placement::COLOCATE_AFFINITY_GROUP != 0 {
             policy.affinity_group.to_le_bytes().to_vec()
@@ -563,11 +619,53 @@ mod tests {
         capacity.insert(1, exhausted);
         assert_eq!(
             resolve_release_assignments_with_capacity(&release, &[1], 0, &capacity),
-            Err(AdmissionError::UnsatisfiablePlacement)
+            Err(AdmissionError::InsufficientCapacity)
         );
         let selected =
             resolve_release_assignments_with_capacity(&release, &[1, 2, 3], 0, &capacity).unwrap();
         assert_ne!(selected[0][0], 1);
+    }
+
+    #[test]
+    fn declared_memory_demand_fails_only_on_capacity() {
+        let pair = KeyPair::from_seed([0x59; 32].into());
+        let policy = charlotte_launch::placement::PlacementPolicy {
+            replicas: 1,
+            max_instances_per_node: 1,
+            min_distinct_nodes: 1,
+            flags: charlotte_launch::placement::SPREAD_REPLICAS,
+            affinity_group: 0,
+            anti_affinity_group: 0,
+        };
+        let release = policy_release(&pair, &[(b"orders", policy)]);
+        // Demand = 4 threads x 4 stack pages + 8 runtime pages = 24 frames.
+        let tight = NodeCapacity {
+            free_frames: 30,
+            usable_frames: 1000,
+        };
+        let mut capacity = NodeCapacityView::new();
+        capacity.insert(1, tight);
+        assert_eq!(
+            resolve_release_assignments_with_capacity(&release, &[1], 0, &capacity),
+            Err(AdmissionError::InsufficientCapacity)
+        );
+
+        let roomy = NodeCapacity {
+            free_frames: 200,
+            usable_frames: 1000,
+        };
+        let mut capacity = NodeCapacityView::new();
+        capacity.insert(1, roomy);
+        assert_eq!(
+            resolve_release_assignments_with_capacity(&release, &[1], 0, &capacity).unwrap(),
+            vec![vec![1]]
+        );
+
+        // Too few eligible nodes is a spread failure, not a capacity failure.
+        assert_eq!(
+            resolve_release_assignments_with_capacity(&release, &[0], 0, &capacity),
+            Err(AdmissionError::UnsatisfiablePlacement)
+        );
     }
 
     #[test]
