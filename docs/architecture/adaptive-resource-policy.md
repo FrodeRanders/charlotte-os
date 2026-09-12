@@ -99,6 +99,11 @@ Phase 1 changes no allocation behavior. It adds:
   reserved stack pages and thread counts are live.
 - **Presentation**: the observe service forwards the page unchanged; httpd
   renders the new fields in `GET /metrics` and the dashboard.
+- **In-memory history**: the observe service samples system aggregates every
+  second into a bounded 256-sample ring and serves it through `OP_HISTORY`
+  (`CCHIST` wire format). httpd renders the most recent samples as the
+  `history` section. The ring is lost on restart; this is the intended first
+  sink, with durable archival still to come.
 
 It is careful about the hot paths: context-switch sampling uses one atomic
 operation; scheduler, loader, and teardown hooks are off the interrupt path.
@@ -119,8 +124,8 @@ part of the phase rather than an afterthought:
 - **Timestamps.** Every sample carries monotonic ticks and frequency; wall
   clock is correlated through the time service, not assumed.
 - **Sinks, in order of increasing trust cost:**
-  1. an in-memory history ring in the observe service (bounded, lost on
-     reboot, immediately useful in CI and on a dev machine);
+  1. an in-memory history ring in the observe service (implemented: bounded,
+     lost on reboot, immediately useful in CI and on a dev machine);
   2. an append-only archive on the local object store (analyzable from a
      captured NVMe image, no new egress policy);
   3. remote/cluster sinks through the existing S3 client or a dedicated

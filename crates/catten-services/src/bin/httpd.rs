@@ -19,6 +19,7 @@
 //!   counters (`relmsg::OP_DIAG`)
 //! - `threads` — system-wide thread statistics via the observe service's `OP_THREAD_SNAPSHOT`
 //!   (backed by the kernel SystemObserver capability)
+//! - `history` — the observe service's bounded resource-history ring (`OP_HISTORY`)
 //! - `http`    — this server's own counters and request rate
 //!
 //! Cumulative counters are paired with `*_delta`/`*_rate` fields measured
@@ -95,6 +96,8 @@ const SENTINEL: u32 = 0x4854_5450; // "HTTP"
 const THREAD_SAMPLE_ROWS: usize = 64;
 /// Cap on rendered per-domain resource rows in the observe snapshot.
 const DOMAIN_SAMPLE_ROWS: usize = 128;
+/// Cap on rendered history samples in the JSON report.
+const HISTORY_RENDER_ROWS: usize = 120;
 
 /// Extract the request target from a `GET <path> HTTP/1.1` request line.
 /// Returns `/` when the line is unparsable, so a malformed request still
@@ -314,6 +317,21 @@ struct ThreadReport {
     domains: alloc::vec::Vec<DomainRow>,
 }
 
+struct HistoryRow {
+    ticks: u64,
+    threads: u64,
+    domains: u64,
+    owned_frames: u64,
+    stack_pages: u64,
+    stack_used_high_water: u64,
+    threads_high_water: u64,
+}
+
+struct HistoryReport {
+    interval_ms: u64,
+    rows: alloc::vec::Vec<HistoryRow>,
+}
+
 /// Fetch and parse the observe service's system-wide thread snapshot
 /// (`CCOSTAT1` wire format).
 fn thread_report(observe_conn: ConnectionRef<'_>) -> Option<ThreadReport> {
@@ -394,6 +412,56 @@ fn thread_report(observe_conn: ConnectionRef<'_>) -> Option<ThreadReport> {
         mono_ticks: header[thread_header::MONOTONIC_TICKS],
         rows,
         domains,
+    })
+}
+
+/// Fetch and parse the observe service's bounded resource history.
+fn history_report(observe_conn: ConnectionRef<'_>) -> Option<HistoryReport> {
+    use observability::{
+        HISTORY_MAGIC,
+        HISTORY_VERSION,
+        history_header as header,
+        history_record as record,
+    };
+
+    let word_bytes = core::mem::size_of::<u64>();
+    let max_len = (header::WORDS + observability::HISTORY_CAPACITY * record::WORDS)
+        .checked_mul(word_bytes)?;
+    let bytes = read_moved(observe_conn, observability::OP_HISTORY, 0, max_len)?;
+    let len = bytes.len();
+    let mut history_header_words = [0u64; header::WORDS];
+    for (slot, word) in history_header_words.iter_mut().zip(bytes.chunks_exact(word_bytes)) {
+        *slot = u64::from_le_bytes(word.try_into().ok()?);
+    }
+    if history_header_words[header::MAGIC] != HISTORY_MAGIC
+        || history_header_words[header::VERSION] != HISTORY_VERSION
+        || history_header_words[header::RECORD_BYTES] != (record::WORDS * word_bytes) as u64
+    {
+        return None;
+    }
+    let max_by_len =
+        (len.saturating_sub(header::WORDS * word_bytes)) / (record::WORDS * word_bytes);
+    let count = (history_header_words[header::RECORD_COUNT] as usize).min(max_by_len);
+    let mut rows = alloc::vec::Vec::with_capacity(count);
+    for i in 0..count {
+        let base = (header::WORDS + i * record::WORDS) * word_bytes;
+        let mut rec: [u64; record::WORDS] = [0; record::WORDS];
+        for (slot, word) in rec.iter_mut().zip(bytes[base..].chunks_exact(word_bytes)) {
+            *slot = u64::from_le_bytes(word.try_into().ok()?);
+        }
+        rows.push(HistoryRow {
+            ticks: rec[record::MONOTONIC_TICKS],
+            threads: rec[record::THREADS],
+            domains: rec[record::DOMAINS],
+            owned_frames: rec[record::OWNED_FRAMES],
+            stack_pages: rec[record::STACK_PAGES],
+            stack_used_high_water: rec[record::STACK_USED_HIGH_WATER],
+            threads_high_water: rec[record::THREADS_HIGH_WATER],
+        });
+    }
+    Some(HistoryReport {
+        interval_ms: history_header_words[header::SAMPLE_INTERVAL_MS],
+        rows,
     })
 }
 
@@ -569,6 +637,32 @@ fn render_threads(s: &mut String, report: &ThreadReport) {
             domain.stack_pages_used_high_water,
             domain.threads,
             domain.threads_high_water
+        );
+    }
+    s.push_str("]}");
+}
+
+fn render_history(s: &mut String, history: &HistoryReport) {
+    let start = history.rows.len().saturating_sub(HISTORY_RENDER_ROWS);
+    let _ = write!(s, "\"history\":{{\"interval_ms\":{},\"samples\":[", history.interval_ms);
+    for (i, row) in history.rows[start..].iter().enumerate() {
+        if i > 0 {
+            s.push(',');
+        }
+        let _ = write!(
+            s,
+            concat!(
+                "{{\"ticks\":{},\"threads\":{},\"domains\":{},",
+                "\"owned_frames\":{},\"stack_pages\":{},",
+                "\"stack_used_high_water\":{},\"threads_high_water\":{}}}"
+            ),
+            row.ticks,
+            row.threads,
+            row.domains,
+            row.owned_frames,
+            row.stack_pages,
+            row.stack_used_high_water,
+            row.threads_high_water
         );
     }
     s.push_str("]}");
@@ -888,8 +982,17 @@ fn build_json(
         s.push_str("\"threads\":null,");
     }
 
+    // observe: bounded resource history from the same service.
+    match services.observe_conn.as_ref().and_then(|conn| history_report(conn.as_ref())) {
+        Some(history) => {
+            render_history(&mut s, &history);
+            s.push(',');
+        }
+        None => s.push_str("\"history\":null,"),
+    }
+
     let _ = write!(
-        &mut s,
+        s,
         "\"http\":{{\"requests\":{},\"bytes_sent\":{},\"uptime_ms\":{},\"interval_ms\":{},\"\
          requests_rate\":{},\"paths\":{{\"root\":{},\"metrics\":{},\"other\":{}}}}}}}",
         counters.requests,

@@ -1134,8 +1134,44 @@ pub mod observability {
     /// its exact byte length.
     pub const OP_THREAD_SNAPSHOT: u32 = 1;
 
+    /// Reply moves a memory object containing a bounded history of system
+    /// resource samples in the `CCHIST` wire format below. The scalar result
+    /// is its exact byte length. History is retained in the observe service's
+    /// own heap and lost on restart.
+    pub const OP_HISTORY: u32 = 2;
+
     pub const ERR_UNAVAILABLE: i64 = -1;
     pub const ERR_BAD_OPCODE: i64 = -2;
+
+    /// `CCHIST01`, little-endian.
+    pub const HISTORY_MAGIC: u64 = 0x3130_5453_4948_4343;
+    pub const HISTORY_VERSION: u64 = 1;
+
+    pub mod history_header {
+        pub const MAGIC: usize = 0;
+        pub const VERSION: usize = 1;
+        pub const RECORD_BYTES: usize = 2;
+        pub const RECORD_COUNT: usize = 3;
+        pub const COUNTER_FREQUENCY_HZ: usize = 4;
+        pub const SAMPLE_INTERVAL_MS: usize = 5;
+        pub const WORDS: usize = 6;
+    }
+
+    pub mod history_record {
+        pub const MONOTONIC_TICKS: usize = 0;
+        pub const THREADS: usize = 1;
+        pub const DOMAINS: usize = 2;
+        pub const OWNED_FRAMES: usize = 3;
+        pub const STACK_PAGES: usize = 4;
+        pub const STACK_USED_HIGH_WATER: usize = 5;
+        pub const THREADS_HIGH_WATER: usize = 6;
+        pub const WORDS: usize = 7;
+    }
+
+    /// Sample cadence published in the history header.
+    pub const HISTORY_SAMPLE_INTERVAL_MS: u64 = 1_000;
+    /// Bounded ring capacity: about four minutes of history per MiB-free heap.
+    pub const HISTORY_CAPACITY: usize = 256;
 }
 
 /// Frame demultiplexer status protocol.

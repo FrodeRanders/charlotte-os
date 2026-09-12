@@ -52,6 +52,15 @@ folded from retired threads, and live and high-water thread counts. A caller
 without the system-observer capability sees only its own domain; the
 system-observer capability widens both sections to the machine.
 
+The observe service also samples those aggregates once per second into a
+bounded in-memory ring and serves it through `observability::OP_HISTORY`. The
+`CCHIST` payload carries a header (magic, version, record size, record count,
+counter frequency, sample interval) followed by one record per sample:
+monotonic ticks, thread and domain counts, total owned frames, total reserved
+stack pages, and the touched/high-water maxima. The ring holds roughly four
+minutes of history and is lost when the service restarts; durable archival
+remains future work.
+
 Threads do not currently carry human-readable names. The snapshot identifies
 them by thread ID, generation, and owning address-space ID; application and
 service names belong to the name-service registry and are not thread labels.
