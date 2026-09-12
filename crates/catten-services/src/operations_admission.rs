@@ -325,6 +325,25 @@ pub fn verify_and_encode(
     eligible_nodes: &[u64],
     automatic_node: u64,
 ) -> Result<Vec<u8>, AdmissionError> {
+    verify_and_encode_with_capacity(
+        bundle_bytes,
+        trust,
+        now_unix_seconds,
+        eligible_nodes,
+        automatic_node,
+        &NodeCapacityView::new(),
+    )
+}
+
+/// Capacity-aware variant of [`verify_and_encode`].
+pub fn verify_and_encode_with_capacity(
+    bundle_bytes: &[u8],
+    trust: &charlotte_launch::trust::AdmissionTrust,
+    now_unix_seconds: u64,
+    eligible_nodes: &[u64],
+    automatic_node: u64,
+    capacity: &NodeCapacityView,
+) -> Result<Vec<u8>, AdmissionError> {
     use charlotte_launch::operations_bundle::VerifyOutcome;
 
     if bundle_bytes.len() > charlotte_launch::operations_bundle::MAX_BUNDLE_LEN {
@@ -349,7 +368,12 @@ pub fn verify_and_encode(
     }
     let bundle =
         charlotte_launch::operations_bundle::decode(bundle_bytes).ok_or(AdmissionError::Invalid)?;
-    let assignments = resolve_release_assignments(bundle.release, eligible_nodes, automatic_node)?;
+    let assignments = resolve_release_assignments_with_capacity(
+        bundle.release,
+        eligible_nodes,
+        automatic_node,
+        capacity,
+    )?;
     crate::name_catalog::encode_release_replicas_with_operations(bundle_bytes, &assignments)
         .ok_or(AdmissionError::TooLarge)
 }

@@ -425,6 +425,8 @@ unsafe fn svc3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             69 => asm!("svc #69", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             74 => asm!("svc #74", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             78 => asm!("svc #78", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            80 => asm!("svc #80", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            82 => asm!("svc #82", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             _ => panic!("syscall {:?} has no svc3 emitter", imm),
         }
     }
@@ -967,6 +969,8 @@ unsafe fn svc3_x2(imm: SyscallNumber, arg1: u64, arg2: u64, _arg3: u64) -> (u64,
             54 => asm!("mov x1, x4", "svc #54", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x4") arg1, options(nostack, nomem, preserves_flags)),
             66 => asm!("svc #66", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             67 => asm!("svc #67", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
+            81 => asm!("svc #81", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
+            82 => asm!("svc #82", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, options(nostack, nomem, preserves_flags)),
             _ => panic!("syscall {:?} has no svc3_x2 emitter", imm),
         }
     }

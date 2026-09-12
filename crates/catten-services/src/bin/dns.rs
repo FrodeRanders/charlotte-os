@@ -569,6 +569,7 @@ fn reconcile_replica_placements(
     node: &mut RaftNode,
     catalog: &NameCatalog,
     pending: &mut Vec<PendingRegistration>,
+    capacity: &operations_admission::NodeCapacityView,
 ) {
     if node.state != NodeState::Leader {
         return;
@@ -586,10 +587,11 @@ fn reconcile_replica_placements(
         .collect::<Vec<_>>();
     let descriptors =
         deployments.iter().map(|(_, entry)| entry.descriptor.as_slice()).collect::<Vec<_>>();
-    let Ok(assignments) = operations_admission::resolve_descriptor_assignments(
+    let Ok(assignments) = operations_admission::resolve_descriptor_assignments_with_capacity(
         &descriptors,
         &candidates,
         automatic_node,
+        capacity,
     ) else {
         return;
     };
@@ -751,6 +753,60 @@ fn drain_raft_admin(endpoint: u64, node: &mut RaftNode) {
     }
 }
 
+/// Bounded advisory capacity view for the current leader.
+///
+/// Reports are telemetry, not replicated state: entries refill within one
+/// sampling interval after a leader change, unknown nodes stay neutral in the
+/// resolver, and placement decisions remain committed Raft commands.
+const MAX_NODE_CAPACITY_ENTRIES: usize = 256;
+const CAPACITY_REPORT_INTERVAL_MS: u64 = 5_000;
+
+struct NodeCapacityTable {
+    entries: alloc::collections::BTreeMap<u64, (u64, operations_admission::NodeCapacity)>,
+}
+
+impl NodeCapacityTable {
+    fn new() -> Self {
+        Self {
+            entries: alloc::collections::BTreeMap::new(),
+        }
+    }
+
+    fn record(&mut self, report: catten_services::rcapacity::Report) {
+        if report.node_key == 0
+            || report.usable_frames == 0
+            || report.free_frames > report.usable_frames
+        {
+            return;
+        }
+        if let Some((epoch, _)) = self.entries.get(&report.node_key)
+            && report.epoch <= *epoch
+        {
+            return;
+        }
+        if self.entries.len() >= MAX_NODE_CAPACITY_ENTRIES
+            && !self.entries.contains_key(&report.node_key)
+        {
+            return;
+        }
+        self.entries.insert(
+            report.node_key,
+            (
+                report.epoch,
+                operations_admission::NodeCapacity {
+                    free_frames: report.free_frames,
+                    usable_frames: report.usable_frames,
+                    cpu_load_permille: report.cpu_load_permille,
+                },
+            ),
+        );
+    }
+
+    fn view(&self) -> operations_admission::NodeCapacityView {
+        self.entries.iter().map(|(key, (_, capacity))| (*key, *capacity)).collect()
+    }
+}
+
 fn placement_nodes(node: &RaftNode, catalog: &NameCatalog) -> Vec<u64> {
     let draining =
         catalog.ingress_draining_nodes().into_iter().map(|(node, _)| node).collect::<BTreeSet<_>>();
@@ -770,18 +826,23 @@ fn release_command(
     envelope: &[u8],
     eligible_nodes: &[u64],
     automatic_node: u64,
+    capacity: &operations_admission::NodeCapacityView,
 ) -> Result<Vec<u8>, i64> {
-    let assignments =
-        operations_admission::resolve_release_assignments(envelope, eligible_nodes, automatic_node)
-            .map_err(|error| match error {
-                operations_admission::AdmissionError::UnsatisfiablePlacement => {
-                    clusterctl::ERR_UNSATISFIABLE_PLACEMENT
-                }
-                operations_admission::AdmissionError::InsufficientCapacity => {
-                    clusterctl::ERR_INSUFFICIENT_CAPACITY
-                }
-                _ => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
-            })?;
+    let assignments = operations_admission::resolve_release_assignments_with_capacity(
+        envelope,
+        eligible_nodes,
+        automatic_node,
+        capacity,
+    )
+    .map_err(|error| match error {
+        operations_admission::AdmissionError::UnsatisfiablePlacement => {
+            clusterctl::ERR_UNSATISFIABLE_PLACEMENT
+        }
+        operations_admission::AdmissionError::InsufficientCapacity => {
+            clusterctl::ERR_INSUFFICIENT_CAPACITY
+        }
+        _ => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
+    })?;
     catten_services::name_catalog::encode_release_replicas(envelope, &assignments)
         .ok_or(dns::ERR_TOO_LARGE)
 }
@@ -816,26 +877,34 @@ fn operations_command(
     time: ConnectionRef<'_>,
     eligible_nodes: &[u64],
     automatic_node: u64,
+    capacity: &operations_admission::NodeCapacityView,
 ) -> Result<Vec<u8>, i64> {
     let now = trusted_unix_seconds(time).ok_or(clusterctl::ERR_TIME_UNAVAILABLE)?;
-    operations_admission::verify_and_encode(bundle, trust, now, eligible_nodes, automatic_node)
-        .map_err(|error| match error {
-            operations_admission::AdmissionError::Expired => clusterctl::ERR_EXPIRED_OPERATION,
-            operations_admission::AdmissionError::TooLarge => clusterctl::ERR_TOO_LARGE,
-            operations_admission::AdmissionError::UnsatisfiablePlacement => {
-                clusterctl::ERR_UNSATISFIABLE_PLACEMENT
-            }
-            operations_admission::AdmissionError::InsufficientCapacity => {
-                clusterctl::ERR_INSUFFICIENT_CAPACITY
-            }
-            operations_admission::AdmissionError::Invalid
-            | operations_admission::AdmissionError::WrongCluster
-            | operations_admission::AdmissionError::WrongOperationsKey
-            | operations_admission::AdmissionError::WrongRecipient
-            | operations_admission::AdmissionError::WrongReleaseKey => {
-                clusterctl::ERR_UNTRUSTED_DESCRIPTOR
-            }
-        })
+    operations_admission::verify_and_encode_with_capacity(
+        bundle,
+        trust,
+        now,
+        eligible_nodes,
+        automatic_node,
+        capacity,
+    )
+    .map_err(|error| match error {
+        operations_admission::AdmissionError::Expired => clusterctl::ERR_EXPIRED_OPERATION,
+        operations_admission::AdmissionError::TooLarge => clusterctl::ERR_TOO_LARGE,
+        operations_admission::AdmissionError::UnsatisfiablePlacement => {
+            clusterctl::ERR_UNSATISFIABLE_PLACEMENT
+        }
+        operations_admission::AdmissionError::InsufficientCapacity => {
+            clusterctl::ERR_INSUFFICIENT_CAPACITY
+        }
+        operations_admission::AdmissionError::Invalid
+        | operations_admission::AdmissionError::WrongCluster
+        | operations_admission::AdmissionError::WrongOperationsKey
+        | operations_admission::AdmissionError::WrongRecipient
+        | operations_admission::AdmissionError::WrongReleaseKey => {
+            clusterctl::ERR_UNTRUSTED_DESCRIPTOR
+        }
+    })
 }
 
 fn shutdown_command(
@@ -1302,6 +1371,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut next_joint_diagnostic_ms = 0u64;
     let mut timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
     let mut last_heartbeat_broadcast = 0u64;
+    let mut node_capacity = NodeCapacityTable::new();
+    let mut next_capacity_report_ms = 0u64;
 
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
@@ -1335,6 +1406,34 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             if completion.cookie == RAFT_TIMER_COOKIE {
                 tick_due = true;
                 timer_armed = false;
+            }
+        }
+
+        // Report local capacity to the current leader. The leader keeps the
+        // advisory view; followers refresh it within one interval after a
+        // leader change, and unknown nodes stay neutral in the resolver.
+        if node.millis() >= next_capacity_report_ms {
+            next_capacity_report_ms = node.millis().saturating_add(CAPACITY_REPORT_INTERVAL_MS);
+            let (free_frames, usable_frames, cpu_load_permille) = catten_syscall::node_pressure();
+            if let Some(node_key) = node_identity::key_from_name(&node_name) {
+                let report = catten_services::rcapacity::Report {
+                    node_key,
+                    epoch: catten_syscall::monotonic_clock().0,
+                    free_frames,
+                    usable_frames,
+                    cpu_load_permille: cpu_load_permille.min(u64::from(u16::MAX)) as u16,
+                };
+                if node.state == NodeState::Leader {
+                    node_capacity.record(report);
+                } else if let Some(leader) = node.known_leader_id.clone()
+                    && transport.has_peer(&leader)
+                {
+                    transport.send_message(
+                        &leader,
+                        catten_services::rcapacity::TAG_REQUEST,
+                        catten_services::rcapacity::encode_request(report),
+                    );
+                }
             }
         }
 
@@ -1856,6 +1955,22 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     });
                                 }
                             }
+                            Some(catten_services::rcapacity::TAG_REQUEST) => {
+                                // Advisory capacity from a committed member;
+                                // the sender must own the node key it claims.
+                                if node.state == NodeState::Leader
+                                    && let Some(report) =
+                                        catten_services::rcapacity::decode_request(frame)
+                                    && transport.peer_id_for_mac(&source_mac).is_some_and(
+                                        |peer| {
+                                            node_identity::key_from_name(peer.as_bytes())
+                                                == Some(report.node_key)
+                                        },
+                                    )
+                                {
+                                    node_capacity.record(report);
+                                }
+                            }
                             Some(catten_services::rregister::TAG_REPLY) => {
                                 // The leader acknowledged a relayed register:
                                 // publish the locally hosted service.
@@ -2016,6 +2131,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             &request.envelope,
                                             &eligible_nodes,
                                             automatic_node,
+                                            &node_capacity.view(),
                                         ) {
                                             Ok(command) => match node
                                                 .submit_command(command, node.millis())
@@ -2095,6 +2211,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             time_conn.as_ref(),
                                             &eligible_nodes,
                                             automatic_node,
+                                            &node_capacity.view(),
                                         ) {
                                             Ok(command) => match node
                                                 .submit_command(command, node.millis())
@@ -2476,7 +2593,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // committed, non-draining voter set into concrete desired replicas.
         // Generation fencing makes a leadership change or repeated pass
         // harmless.
-        reconcile_replica_placements(&mut node, &catalog, &mut pending_registers);
+        reconcile_replica_placements(
+            &mut node,
+            &catalog,
+            &mut pending_registers,
+            &node_capacity.view(),
+        );
 
         // Settle event-broker waiters from the *applied* catalog: any entry
         // that landed in this iteration (via replication or a local commit)
@@ -2838,7 +2960,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     let automatic_node =
                                         node_identity::key_from_name(&node_name).unwrap_or(0);
                                     let eligible_nodes = placement_nodes(node, &catalog);
-                                    release_command(&envelope, &eligible_nodes, automatic_node)
+                                    release_command(
+                                        &envelope,
+                                        &eligible_nodes,
+                                        automatic_node,
+                                        &node_capacity.view(),
+                                    )
                                 },
                             ) {
                                 Ok(()) => continue,
@@ -2899,6 +3026,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                         time_conn.as_ref(),
                                         &eligible_nodes,
                                         automatic_node,
+                                        &node_capacity.view(),
                                     )
                                 },
                             ) {

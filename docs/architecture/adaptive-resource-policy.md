@@ -338,10 +338,10 @@ ring's free space, so an in-life CQ resize needs a multi-page ring ABI (or
 consumers re-reading a published capacity) before an actuator is meaningful;
 backlog high-water remains the sizing evidence at deployment time.
 
-### Capacity-aware placement (sensor and policy landed, wiring staged)
+### Capacity-aware placement (advisory reporting implemented)
 
-The placement layer is deterministic over membership and readiness and has no
-capacity input yet. Two slices are implemented:
+The placement layer is deterministic over membership and readiness. Three
+slices are implemented:
 
 - **Sensor**: the `CCOSTAT` header now carries machine-wide `free_frames` and
   `usable_frames` from the frame allocator, exposed through `observe` and
@@ -361,15 +361,27 @@ capacity input yet. Two slices are implemented:
   before the stable hash, but never excludes it, so placement proceeds when
   every node is busy. Explicit CPU shares or quotas remain out of scope.
 
-The remaining wiring is the deterministic distributed part: a committed
-per-node capacity table in the name catalog (new command plus snapshot
-version), each node reporting its pressure into Raft, and the leader resolving
-from applied state rather than the eventually-consistent discovery cache.
-Discovery may carry the sample as transport, but the resolver must read
-committed values. Only then should pressure changes be able to trigger
-reassignment, with generation fences and hysteresis; the existing cluster
-ingress and Raft models then need a capacity action only if capacity can
-change replica sets without a deployment-generation change.
+- **Advisory reporting**: every `dns` instance samples its local
+  `NODE_PRESSURE` syscall (82, returning free frames, usable frames, and CPU
+  load in permille) once per `CAPACITY_REPORT_INTERVAL_MS` (5 s). A leader
+  records its own sample directly; a follower relays a 34-byte `rcapacity`
+  frame (tag `0x21`) to the current leader. The leader keeps a bounded
+  (`MAX_NODE_CAPACITY_ENTRIES = 256`), epoch-fenced table, accepts a report only
+  when the sender MAC maps to a known peer whose name matches the claimed node
+  key, and feeds the resulting `NodeCapacityView` into
+  `release_command`, `operations_command`, and
+  `reconcile_replica_placements`. Placement decisions remain ordinary committed
+  Raft commands; reports are telemetry, not replicated state, so the table
+  refills within one interval after a leader change and unknown nodes stay
+  neutral.
+
+The remaining deterministic wiring is a committed per-node capacity table in
+the name catalog (new command plus snapshot version), so the resolver reads
+applied state rather than an advisory table that is lost on leader change.
+Only then should pressure changes be able to trigger reassignment, with
+generation fences and hysteresis; the existing cluster ingress and Raft models
+then need a capacity action only if capacity can change replica sets without a
+deployment-generation change.
 
 ## Verification
 
