@@ -41,6 +41,30 @@ pub fn test_allocator() {
         8,
         "adaptive stack policy lost its one-page headroom"
     );
+
+    // The free-frame sensor must track allocation exactly, and pressure must
+    // withhold growth above the default without ever shrinking below it.
+    {
+        use crate::memory::PHYSICAL_FRAME_ALLOCATOR;
+        let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+        let before = allocator.free_frames();
+        let frame = allocator.allocate_frame().expect("free-frame accounting probe failed");
+        assert_eq!(allocator.free_frames(), before - 1, "allocation must decrement free frames");
+        allocator.deallocate_frame(frame).expect("free-frame accounting probe free failed");
+        assert_eq!(allocator.free_frames(), before, "deallocation must restore free frames");
+        let usable_frames = allocator.usable_bytes() / 4096;
+        assert!((before as u64) <= usable_frames, "free frames cannot exceed usable frames");
+        assert_eq!(
+            charlotte_lifecycle::damp_stack_growth(8, 4, before as u64 - 1, before as u64),
+            4,
+            "memory pressure must withhold history-based stack growth"
+        );
+        assert_eq!(
+            charlotte_lifecycle::damp_stack_growth(8, 4, before as u64, before as u64),
+            8,
+            "stack growth must resume at the reserve boundary"
+        );
+    }
     logln!("Kernel allocator self-test: adaptive stack policy plumbing verified");
     logln!("Kernel allocator self-test: Allocating 1050 bytes...");
     let layout_1050 = Layout::from_size_align(1050, 64).unwrap();

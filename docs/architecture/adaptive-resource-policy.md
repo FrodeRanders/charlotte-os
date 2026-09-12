@@ -177,15 +177,21 @@ principal:
 - signed deployment descriptors still win — they never pass through the
   adaptive path.
 
-Every decision with recorded history is logged as
-`[supervisor] adaptive stack: principal=... high_water_pages=... stack_pages=...`.
+Growth is damped by memory pressure. The frame allocator maintains an exact
+free-frame count on every bitmap transition, and the supervisor withholds
+history-based growth whenever free frames fall below one sixteenth of usable
+RAM, falling back to the default; pressure never shrinks a stack below what a
+first generation would receive. Every decision with recorded history is logged
+as
+`[supervisor] adaptive stack: principal=... high_water_pages=... free_frames=...
+reserve_frames=... stack_pages=...`.
 On a default boot only restarting services (for example the UART driver after
 its uncooperative-exit test) exercise the path, and the clamp keeps them at the
 default until their observed usage actually reaches it.
 
-The remaining Phase 3 work is pressure-aware sizing (free frames, live domain
-count) and applying a similar policy to the domain heap and CQ capacities; both
-need a controller surface rather than a per-launch formula.
+The remaining Phase 3 work is applying a similar policy to the domain heap and
+CQ capacities, which needs a controller surface rather than a per-launch
+formula, and letting the placement layer see node pressure (Phase 4).
 
 ## Phase 4: in-life adaptation
 

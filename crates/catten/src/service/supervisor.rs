@@ -400,6 +400,9 @@ pub(crate) fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
 /// high-water mark, one page of headroom is added, clamped to the default
 /// and signed maxima; a cold boot or an unknown principal keeps the default.
 /// Signed descriptor limits never pass through here.
+/// Free frames below one sixteenth of usable RAM damp history-based growth.
+const STACK_GROWTH_RESERVE_DIVISOR: u64 = 16;
+
 fn adaptive_service_limits(address_space: crate::memory::AddressSpaceHandle) -> ServiceLimits {
     let default_limits = ServiceLimits::default();
     let Some(authority) = crate::memory::domain_authority(address_space.id()) else {
@@ -409,15 +412,30 @@ fn adaptive_service_limits(address_space: crate::memory::AddressSpaceHandle) -> 
     if high_water == 0 {
         return default_limits;
     }
-    let pages = charlotte_lifecycle::adaptive_stack_pages(
+    let desired = charlotte_lifecycle::adaptive_stack_pages(
         high_water,
         charlotte_launch::DEFAULT_USER_STACK_PAGES,
         charlotte_launch::MAX_USER_STACK_PAGES,
     );
+    let (free_frames, total_frames) = {
+        let allocator = crate::memory::PHYSICAL_FRAME_ALLOCATOR.lock();
+        let total_frames = allocator.usable_bytes() / loader::PAGE_SIZE as u64;
+        (allocator.free_frames() as u64, total_frames)
+    };
+    let reserve_frames = (total_frames / STACK_GROWTH_RESERVE_DIVISOR).max(1);
+    let pages = charlotte_lifecycle::damp_stack_growth(
+        desired,
+        charlotte_launch::DEFAULT_USER_STACK_PAGES,
+        free_frames,
+        reserve_frames,
+    );
     crate::logln!(
-        "[supervisor] adaptive stack: principal={} high_water_pages={} stack_pages={}",
+        "[supervisor] adaptive stack: principal={} high_water_pages={} free_frames={} \
+         reserve_frames={} stack_pages={}",
         authority.principal,
         high_water,
+        free_frames,
+        reserve_frames,
         pages
     );
     default_limits.with_user_stack_size(pages * charlotte_launch::USER_STACK_PAGE_SIZE)

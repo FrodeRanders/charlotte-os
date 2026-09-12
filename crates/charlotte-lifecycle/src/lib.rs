@@ -101,6 +101,25 @@ pub fn adaptive_stack_pages(
     pages.clamp(default_pages, max_pages)
 }
 
+/// Damp stack growth while physical memory is scarce.
+///
+/// Returns `desired_pages` when free frames are at or above `reserve_frames`,
+/// and falls back to `floor_pages` below the reserve. The floor is the ordinary
+/// default, so pressure only withholds growth justified by history; it never
+/// pushes a service below the size its first generation would receive.
+pub fn damp_stack_growth(
+    desired_pages: usize,
+    floor_pages: usize,
+    free_frames: u64,
+    reserve_frames: u64,
+) -> usize {
+    if free_frames < reserve_frames {
+        desired_pages.min(floor_pages)
+    } else {
+        desired_pages.max(floor_pages)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -113,7 +132,17 @@ mod tests {
         claim_generation,
         classify_join,
         classify_timed_wait,
+        damp_stack_growth,
     };
+
+    #[test]
+    fn damp_stack_growth_only_withholds_history_based_growth() {
+        assert_eq!(damp_stack_growth(8, 4, 100, 50), 8);
+        assert_eq!(damp_stack_growth(8, 4, 50, 50), 8);
+        assert_eq!(damp_stack_growth(8, 4, 49, 50), 4);
+        assert_eq!(damp_stack_growth(4, 4, 0, 50), 4);
+        assert_eq!(damp_stack_growth(2, 4, 100, 50), 4);
+    }
 
     #[test]
     fn adaptive_stack_pages_adds_headroom_and_clamps() {

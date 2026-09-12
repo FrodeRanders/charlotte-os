@@ -62,6 +62,7 @@ pub struct PhysicalFrameAllocator {
     bitmap_len: usize,
     next_free_hint: usize,
     usable_bytes: u64,
+    free_frames: usize,
 }
 
 unsafe impl Send for PhysicalFrameAllocator {}
@@ -74,6 +75,14 @@ impl PhysicalFrameAllocator {
     /// compile-time constant.
     pub fn usable_bytes(&self) -> u64 {
         self.usable_bytes
+    }
+
+    /// Frames currently available for allocation.
+    ///
+    /// Maintained incrementally on every bitmap transition, so runtime
+    /// resource policies can sense memory pressure without scanning.
+    pub fn free_frames(&self) -> usize {
+        self.free_frames
     }
 
     fn addr_to_bitmap_index(&self, addr: PAddr) -> Result<(usize, usize), Error> {
@@ -97,6 +106,7 @@ impl PhysicalFrameAllocator {
             } else {
                 // set the bit corresponding to the frame being marked unavailable
                 *self.bitmap_ptr.add(byte_idx) |= 1 << bit_idx;
+                self.free_frames = self.free_frames.saturating_sub(1);
                 Ok(())
             }
         }
@@ -124,6 +134,7 @@ impl PhysicalFrameAllocator {
                     let bit_idx = (!byte_val).trailing_zeros() as usize;
                     curr_byte_ptr.write_volatile(byte_val | (1 << bit_idx));
                     self.next_free_hint = byte_idx;
+                    self.free_frames = self.free_frames.saturating_sub(1);
                     let raw_addr = (byte_idx * BITS_PER_BYTE + bit_idx) * PAGE_FRAME_SIZE;
                     let hb = HEAP_PHYS_BASE.load(core::sync::atomic::Ordering::Relaxed);
                     if hb != 0 && raw_addr >= hb && raw_addr < hb + crate::klib::size::mebibytes(2)
@@ -214,6 +225,7 @@ impl PhysicalFrameAllocator {
                     // clear the bit corresponding to the frame being deallocated
                     *self.bitmap_ptr.add(byte_idx) &= !(1 << bit_idx);
                     self.next_free_hint = self.next_free_hint.min(byte_idx);
+                    self.free_frames = self.free_frames.saturating_add(1);
                     Ok(())
                 }
             }
@@ -305,11 +317,12 @@ impl From<&MemmapResponse> for PhysicalFrameAllocator {
             .filter(|entry| entry.type_ == MEMMAP_USABLE)
             .map(|entry| entry.length)
             .sum();
-        let pfa = PhysicalFrameAllocator {
+        let mut pfa = PhysicalFrameAllocator {
             bitmap_ptr: unsafe { bitmap_addr.into_hhdm_mut::<u8>() },
             bitmap_len: bitmap_size,
             next_free_hint: 0,
             usable_bytes,
+            free_frames: 0,
         };
         // Initially mark all frames as unavailable.
         early_logln!("Clearing PhysicalFrameAllocator bitmap...");
@@ -326,7 +339,13 @@ impl From<&MemmapResponse> for PhysicalFrameAllocator {
         }
         // Mark the bitmap region as unusable.
         mark_pfa_bitmap_unusable(pfa.bitmap_ptr, bitmap_addr, bitmap_size);
-        early_logln!("PhysicalFrameAllocator bitmap initialized.");
+        // Count the initial free set once, then maintain it incrementally.
+        let mut free_frames = 0usize;
+        for index in 0..bitmap_size {
+            free_frames += unsafe { *pfa.bitmap_ptr.add(index) }.count_zeros() as usize;
+        }
+        pfa.free_frames = free_frames;
+        early_logln!("PhysicalFrameAllocator bitmap initialized ({} free frames).", free_frames);
 
         pfa
     }
