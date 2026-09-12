@@ -308,6 +308,16 @@ fn close_user_address_space_locked(
     // page-table hierarchy itself is returned to the frame allocator.
     crate::cpu::isa::memory::tlb::inval_asid(asid);
 
+    // Retain this generation's stack high-water mark for the service
+    // principal before the authority and accounting entries disappear. The
+    // launch path uses it to size the principal's next generation.
+    if let Some(principal) =
+        DOMAIN_AUTHORITIES.lock().get(&asid).map(|authority| authority.principal)
+        && let Some(usage) = usage::domain_usage(asid)
+    {
+        usage::remember_principal_stack_high_water(principal, usage.stack_pages_used_high_water);
+    }
+
     let removed_authority = DOMAIN_AUTHORITIES.lock().remove(&asid);
     if let Some(authority) = removed_authority {
         debug_assert_eq!(authority.address_space, handle);

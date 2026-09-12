@@ -21,7 +21,7 @@ and structures sized by constants.
 | Physical frames | All `MEMMAP_USABLE` RAM, no RAM cap; bitmap sized to the highest usable address | `crates/catten/src/memory/physical/mod.rs` |
 | Kernel heap | 8 MiB initial + pre-mapped growth reserve derived from usable RAM: `clamp(usable/64, 64 MiB, 256 MiB)`, 2 MiB-aligned (Phase 2) | `crates/catten/src/memory/allocators/global_allocator.rs` |
 | Domain heap | Fixed 4 MiB per domain | `crates/charlotte-launch/src/lib.rs` |
-| User stack | Signed per deployment, 1–64 pages (4 KiB–256 KiB), inherited by every thread | `crates/catten/src/memory/mod.rs`, `crates/charlotte-launch/src/deployment.rs` |
+| User stack | Signed per deployment, 1–64 pages (4 KiB–256 KiB), inherited by every thread; kernel-launched services without a descriptor adapt to the principal's previous high-water (Phase 3) | `crates/catten/src/memory/mod.rs`, `crates/charlotte-launch/src/deployment.rs`, `crates/charlotte-lifecycle/src/lib.rs` |
 | User threads | Signed maximum, 1–64 per domain | `crates/catten/src/cpu/scheduler/system_scheduler/mod.rs` |
 | CQ rings, endpoint queues | Mostly static entry counts; endpoint capacity is caller-chosen at create | `crates/catten/src/completion/cq.rs`, `crates/catten/src/ipc/mod.rs` |
 | Service buffers | Compile-time constants (network, relmsg, Raft, storage) | `crates/catten-services`, `charlotte-protocol-*` |
@@ -161,17 +161,31 @@ heap, and CQ ring capacities remain fixed; deriving those (from installed RAM
 and expected domain/service counts) is the next piece of Phase 2 and is low
 risk because it happens once, before concurrency exists.
 
-## Phase 3: creation-time feedback
+## Phase 3: creation-time feedback (implemented baseline)
 
-A supervisor-side controller chooses `ServiceLimits` per launch from:
+The supervisor now chooses the stack allocation for services launched without
+a signed deployment descriptor from the previous generation of the same
+principal:
 
-- the previous generation's stack high-water mark for the same service
-  identity, plus a safety margin;
-- current free frames, live domain count, and thread pressure;
-- the signed maximum as a hard clamp.
+- when an address space is torn down, `memory::usage` retains its touched
+  stack high-water mark in a per-principal table (in memory, reset at boot);
+- the next launch calls the pure `charlotte_lifecycle::adaptive_stack_pages`
+  policy: the recorded mark plus one page of headroom, clamped to the default
+  and signed maxima;
+- a cold boot or an unknown principal selects the default, so the first
+  generation of every service is deterministic and CI behavior is unchanged;
+- signed deployment descriptors still win — they never pass through the
+  adaptive path.
 
-This is the first genuine control loop. It must be observable (every decision
-logged or published) and pin-able for tests.
+Every decision with recorded history is logged as
+`[supervisor] adaptive stack: principal=... high_water_pages=... stack_pages=...`.
+On a default boot only restarting services (for example the UART driver after
+its uncooperative-exit test) exercise the path, and the clamp keeps them at the
+default until their observed usage actually reaches it.
+
+The remaining Phase 3 work is pressure-aware sizing (free frames, live domain
+count) and applying a similar policy to the domain heap and CQ capacities; both
+need a controller surface rather than a per-launch formula.
 
 ## Phase 4: in-life adaptation
 

@@ -389,7 +389,38 @@ pub(crate) fn start_domain_with_limits(
 }
 
 pub(crate) fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
-    start_domain_with_limits(loaded, ServiceLimits::default())
+    let limits = adaptive_service_limits(loaded.address_space);
+    start_domain_with_limits(loaded, limits)
+}
+
+/// Execution limits for a service launched without a signed deployment
+/// descriptor.
+///
+/// When a previous generation of the same principal recorded a stack
+/// high-water mark, one page of headroom is added, clamped to the default
+/// and signed maxima; a cold boot or an unknown principal keeps the default.
+/// Signed descriptor limits never pass through here.
+fn adaptive_service_limits(address_space: crate::memory::AddressSpaceHandle) -> ServiceLimits {
+    let default_limits = ServiceLimits::default();
+    let Some(authority) = crate::memory::domain_authority(address_space.id()) else {
+        return default_limits;
+    };
+    let high_water = crate::memory::usage::principal_stack_high_water(authority.principal);
+    if high_water == 0 {
+        return default_limits;
+    }
+    let pages = charlotte_lifecycle::adaptive_stack_pages(
+        high_water,
+        charlotte_launch::DEFAULT_USER_STACK_PAGES,
+        charlotte_launch::MAX_USER_STACK_PAGES,
+    );
+    crate::logln!(
+        "[supervisor] adaptive stack: principal={} high_water_pages={} stack_pages={}",
+        authority.principal,
+        high_water,
+        pages
+    );
+    default_limits.with_user_stack_size(pages * charlotte_launch::USER_STACK_PAGE_SIZE)
 }
 
 /// Load and start the name service.
@@ -615,7 +646,7 @@ pub fn spawn_with_manifest(
     rights: ConnectionRights,
     manifest: &[bootstrap::ManifestEntry<'_>],
 ) -> ServiceDomain {
-    spawn_with_manifest_and_limits(image, name_service, rights, manifest, ServiceLimits::default())
+    spawn_with_manifest_policy(image, name_service, rights, manifest, adaptive_service_limits)
 }
 
 /// Spawn a service with an explicit kernel-enforced resource policy.
@@ -626,6 +657,19 @@ pub fn spawn_with_manifest_and_limits(
     manifest: &[bootstrap::ManifestEntry<'_>],
     limits: ServiceLimits,
 ) -> ServiceDomain {
+    spawn_with_manifest_policy(image, name_service, rights, manifest, |_| limits)
+}
+
+fn spawn_with_manifest_policy<F>(
+    image: &[u8],
+    name_service: &NameServiceHandle,
+    rights: ConnectionRights,
+    manifest: &[bootstrap::ManifestEntry<'_>],
+    limits: F,
+) -> ServiceDomain
+where
+    F: FnOnce(crate::memory::AddressSpaceHandle) -> ServiceLimits,
+{
     let loaded = loader::load_domain(image);
     let connection = ipc::connection_delegate(
         name_service.domain.asid,
@@ -636,6 +680,7 @@ pub fn spawn_with_manifest_and_limits(
     .expect("[supervisor] bootstrap connection delegation failed");
     bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
     bootstrap::write_manifest(loaded.config_frame, manifest);
+    let limits = limits(loaded.address_space);
     start_domain_with_limits(loaded, limits)
 }
 

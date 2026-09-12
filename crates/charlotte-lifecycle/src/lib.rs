@@ -82,6 +82,25 @@ pub const fn classify_timed_wait(
     }
 }
 
+/// Choose the user-stack page count for the next generation of a service from
+/// the previous generation's touched high-water mark.
+///
+/// One page of headroom is added to the observed high-water mark, and the
+/// result is clamped to `[default_pages, max_pages]`. A zero high-water mark —
+/// no recorded history, for example a cold boot — selects the default, so the
+/// first generation of every service always gets the same policy.
+pub fn adaptive_stack_pages(
+    previous_high_water_pages: u64,
+    default_pages: usize,
+    max_pages: usize,
+) -> usize {
+    if previous_high_water_pages == 0 {
+        return default_pages;
+    }
+    let pages = usize::try_from(previous_high_water_pages).unwrap_or(usize::MAX).saturating_add(1);
+    pages.clamp(default_pages, max_pages)
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -90,10 +109,21 @@ mod tests {
         JoinDisposition,
         ThreadIdentity,
         TimedWaitOutcome,
+        adaptive_stack_pages,
         claim_generation,
         classify_join,
         classify_timed_wait,
     };
+
+    #[test]
+    fn adaptive_stack_pages_adds_headroom_and_clamps() {
+        assert_eq!(adaptive_stack_pages(0, 4, 64), 4);
+        assert_eq!(adaptive_stack_pages(1, 4, 64), 4);
+        assert_eq!(adaptive_stack_pages(4, 4, 64), 5);
+        assert_eq!(adaptive_stack_pages(63, 4, 64), 64);
+        assert_eq!(adaptive_stack_pages(64, 4, 64), 64);
+        assert_eq!(adaptive_stack_pages(u64::MAX, 4, 64), 64);
+    }
 
     #[test]
     fn generation_claims_fail_closed_before_wrap_or_zero() {

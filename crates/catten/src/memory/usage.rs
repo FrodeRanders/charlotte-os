@@ -54,6 +54,13 @@ type DomainUsageTable = BTreeMap<AddressSpaceId, (AddressSpaceHandle, DomainUsag
 static DOMAIN_USAGE: LazyLock<Mutex<DomainUsageTable>> =
     LazyLock::new(|| Mutex::new(BTreeMap::new()));
 
+/// Highest touched stack high-water mark observed for one service principal,
+/// across address-space generations within this boot. The table is what lets
+/// the launch path size the next generation from the previous one; it is
+/// deliberately in-memory and cold-starts at the default policy after reboot.
+static PRINCIPAL_STACK_HIGH_WATER: LazyLock<Mutex<BTreeMap<u64, u64>>> =
+    LazyLock::new(|| Mutex::new(BTreeMap::new()));
+
 fn with_usage(asid: AddressSpaceId, update: impl FnOnce(&mut DomainUsage)) {
     let mut table = DOMAIN_USAGE.lock();
     let Some((_, usage)) = table.get_mut(&asid) else {
@@ -128,4 +135,20 @@ pub(crate) fn domain_usage(asid: AddressSpaceId) -> Option<DomainUsageSnapshot> 
 /// Snapshot every live domain's accounting.
 pub(crate) fn all_domain_usage() -> Vec<(AddressSpaceId, DomainUsageSnapshot)> {
     DOMAIN_USAGE.lock().iter().map(|(asid, (_, usage))| (*asid, usage.snapshot)).collect()
+}
+
+/// Remember a retired generation's stack high-water mark for its principal.
+pub(crate) fn remember_principal_stack_high_water(principal: u64, pages: u64) {
+    if pages == 0 {
+        return;
+    }
+    let mut table = PRINCIPAL_STACK_HIGH_WATER.lock();
+    let entry = table.entry(principal).or_insert(0);
+    *entry = (*entry).max(pages);
+}
+
+/// Highest stack high-water mark recorded for `principal`, or zero when the
+/// principal has not run yet in this boot.
+pub(crate) fn principal_stack_high_water(principal: u64) -> u64 {
+    PRINCIPAL_STACK_HIGH_WATER.lock().get(&principal).copied().unwrap_or(0)
 }

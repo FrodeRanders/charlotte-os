@@ -26,6 +26,22 @@ pub fn test_allocator() {
     const LARGE_PAGE: usize = 2 * 1024 * 1024;
     assert_eq!(reserve % LARGE_PAGE, 0, "kernel heap growth reserve must be large-page aligned");
     logln!("Kernel allocator self-test: heap growth reserve is {} MiB", reserve / (1024 * 1024));
+
+    // Resource-policy plumbing: a retired generation's recorded high-water
+    // mark must survive domain teardown and feed the next launch decision.
+    const POLICY_TEST_PRINCIPAL: u64 = u64::MAX;
+    crate::memory::usage::remember_principal_stack_high_water(POLICY_TEST_PRINCIPAL, 7);
+    assert_eq!(
+        crate::memory::usage::principal_stack_high_water(POLICY_TEST_PRINCIPAL),
+        7,
+        "principal stack high-water was not retained"
+    );
+    assert_eq!(
+        charlotte_lifecycle::adaptive_stack_pages(7, 4, 64),
+        8,
+        "adaptive stack policy lost its one-page headroom"
+    );
+    logln!("Kernel allocator self-test: adaptive stack policy plumbing verified");
     logln!("Kernel allocator self-test: Allocating 1050 bytes...");
     let layout_1050 = Layout::from_size_align(1050, 64).unwrap();
     let ptr = unsafe { alloc(layout_1050) };
