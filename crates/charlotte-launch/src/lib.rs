@@ -200,7 +200,13 @@ pub mod heap_status {
     pub const CAPACITY_OFFSET: usize = OFFSET + 16;
     pub const ALLOCATED_OFFSET: usize = OFFSET + 24;
     pub const PEAK_OFFSET: usize = OFFSET + 32;
-    pub const BYTES: usize = 40;
+    /// Cumulative successful allocations, for rate derivation.
+    pub const ALLOCATIONS_OFFSET: usize = OFFSET + 40;
+    /// Cumulative bytes ever allocated, for byte-rate derivation.
+    pub const TOTAL_ALLOCATED_OFFSET: usize = OFFSET + 48;
+    /// Cumulative arena-lock spin iterations: nonzero means shard contention.
+    pub const LOCK_SPINS_OFFSET: usize = OFFSET + 56;
+    pub const BYTES: usize = 64;
 
     const _: () = assert!(OFFSET + BYTES <= super::lifecycle::STATUS_OFFSET);
 }

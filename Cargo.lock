@@ -187,6 +187,7 @@ dependencies = [
  "catten-syscall",
  "charlotte-launch",
  "charlotte-lifecycle",
+ "lock_api",
  "spin 0.9.9",
  "talc",
 ]

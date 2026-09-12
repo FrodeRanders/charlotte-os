@@ -203,7 +203,10 @@ capacity, currently allocated bytes, peak bytes) into the reserved region of
 the domain's own status page. The kernel reads that page when it builds the
 domain records and exposes it as `CCOSTAT` v4, so `httpd`/`/metrics` shows live
 and peak heap per domain. Observed peaks on the default boot are tens of
-kilobytes against the 4 MiB capacity.
+kilobytes against the 4 MiB capacity. The same record carries cumulative
+allocations and allocated bytes plus the arena-lock spin count, and httpd
+derives an allocation rate and reports the spin total — the measurement base
+for deciding whether the heap needs sharding.
 
 Physical sizing is implemented by demand commitment rather than by shrinking
 the mapped reservation. The loader reserves the heap's virtual window but maps
@@ -246,8 +249,10 @@ comparing:
   while making cross-shard sharing an explicit decision — the same
   qualified-sharing discipline the capability model applies across domains.
 - **Keep one arena, reduce hold time.** The talc critical section is short and
-  the contention may not be measurable; the new peak counter and allocation
-  rates can decide this before any restructuring.
+  the contention may not be measurable. The heap record now publishes
+  cumulative allocations, allocated bytes, and arena-lock spin iterations, and
+  `httpd` derives an allocation rate, so this option is decided by evidence:
+  zero spins means no restructuring is justified yet.
 
 Does shard locality constrain LP placement? Not directly. Shards are logical
 work partitions; services already pin shard workers to LPs (`SHARD_CQ_COUNT`

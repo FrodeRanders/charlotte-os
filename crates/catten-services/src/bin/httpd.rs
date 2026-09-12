@@ -271,6 +271,7 @@ struct Prev {
     tx_sends: u32,
     frouter_rx: u32,
     forwarded: u32,
+    heap_allocations: u64,
 }
 
 /// This service's own request counters, reported under the `http` key so the
@@ -313,6 +314,9 @@ struct DomainRow {
     heap_capacity_bytes: u64,
     heap_allocated_bytes: u64,
     heap_peak_bytes: u64,
+    heap_allocations: u64,
+    heap_total_allocated_bytes: u64,
+    heap_lock_spins: u64,
 }
 
 struct ThreadReport {
@@ -415,6 +419,9 @@ fn thread_report(observe_conn: ConnectionRef<'_>) -> Option<ThreadReport> {
             heap_capacity_bytes: rec[thread_domain::HEAP_CAPACITY_BYTES],
             heap_allocated_bytes: rec[thread_domain::HEAP_ALLOCATED_BYTES],
             heap_peak_bytes: rec[thread_domain::HEAP_PEAK_BYTES],
+            heap_allocations: rec[thread_domain::HEAP_ALLOCATIONS],
+            heap_total_allocated_bytes: rec[thread_domain::HEAP_TOTAL_ALLOCATED_BYTES],
+            heap_lock_spins: rec[thread_domain::HEAP_LOCK_SPINS],
         });
     }
     Some(ThreadReport {
@@ -644,7 +651,9 @@ fn render_threads(s: &mut String, report: &ThreadReport) {
                 "\"stack_pages_high_water\":{},\"stack_used_high_water\":{},",
                 "\"threads\":{},\"threads_high_water\":{},",
                 "\"heap_valid\":{},\"heap_capacity_bytes\":{},",
-                "\"heap_allocated_bytes\":{},\"heap_peak_bytes\":{}}}"
+                "\"heap_allocated_bytes\":{},\"heap_peak_bytes\":{},",
+                "\"heap_allocations\":{},\"heap_total_allocated_bytes\":{},",
+                "\"heap_lock_spins\":{}}}"
             ),
             domain.asid,
             domain.owned_frames,
@@ -656,7 +665,10 @@ fn render_threads(s: &mut String, report: &ThreadReport) {
             domain.heap_valid,
             domain.heap_capacity_bytes,
             domain.heap_allocated_bytes,
-            domain.heap_peak_bytes
+            domain.heap_peak_bytes,
+            domain.heap_allocations,
+            domain.heap_total_allocated_bytes,
+            domain.heap_lock_spins
         );
     }
     s.push_str("]}");
@@ -1011,6 +1023,39 @@ fn build_json(
         None => s.push_str("\"history\":null,"),
     }
 
+    // Node heap summary: cumulative totals plus the allocation rate since the
+    // previous request. Nonzero lock spins are the contention evidence for
+    // deciding whether the heap needs sharding.
+    let (heap_allocations, heap_total_bytes, heap_lock_spins) =
+        report.as_ref().map_or((0, 0, 0), |r| {
+            r.domains.iter().fold((0u64, 0u64, 0u64), |(allocs, bytes, spins), domain| {
+                (
+                    allocs + domain.heap_allocations,
+                    bytes + domain.heap_total_allocated_bytes,
+                    spins + domain.heap_lock_spins,
+                )
+            })
+        });
+    let allocations_delta = if prev.initialized {
+        heap_allocations.saturating_sub(prev.heap_allocations)
+    } else {
+        0
+    };
+    let allocations_rate = allocations_delta
+        .checked_mul(1000)
+        .and_then(|scaled| scaled.checked_div(interval_ms))
+        .unwrap_or(0);
+    let _ = write!(
+        s,
+        concat!(
+            "\"heap\":{{\"allocations_total\":{},\"allocations_delta\":{},",
+            "\"allocations_rate\":{},\"bytes_allocated_total\":{},",
+            "\"lock_spins_total\":{}}},"
+        ),
+        heap_allocations, allocations_delta, allocations_rate, heap_total_bytes, heap_lock_spins
+    );
+    prev.heap_allocations = heap_allocations;
+
     let _ = write!(
         s,
         "\"http\":{{\"requests\":{},\"bytes_sent\":{},\"uptime_ms\":{},\"interval_ms\":{},\"\
@@ -1079,6 +1124,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         tx_sends: 0,
         frouter_rx: 0,
         forwarded: 0,
+        heap_allocations: 0,
     };
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {

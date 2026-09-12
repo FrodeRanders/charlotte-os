@@ -375,8 +375,8 @@ fn close_user_address_space_locked(
                 usage.stack_pages_used_high_water,
             );
         }
-        if let Some((_, _, peak)) = usage::domain_heap_status(asid) {
-            usage::remember_principal_heap_peak(principal, peak);
+        if let Some(status) = usage::domain_heap_status(asid) {
+            usage::remember_principal_heap_peak(principal, status.peak_bytes);
         }
     }
 

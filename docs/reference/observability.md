@@ -46,17 +46,24 @@ address space. Each snapshot contains:
   (committed is what demand growth has mapped; touched is a high-water mark
   sampled at context switches).
 
-The version-4 snapshot appends a per-domain section with the accounting
+The version-5 snapshot appends a per-domain section with the accounting
 described in [adaptive resource policy](../architecture/adaptive-resource-policy.md):
 owned frames, live and high-water reserved stack pages, touched stack high-water
 folded from retired threads, live and high-water thread counts, and — when the
-domain publishes it — heap capacity, currently allocated bytes, and the peak
-high-water mark. Heap facts come from the standard
+domain publishes it — heap capacity, currently allocated bytes, the peak
+high-water mark, cumulative successful allocations and allocated bytes, and the
+cumulative arena-lock spin count. Heap facts come from the standard
 `charlotte_launch::heap_status` record that `catten-rt` maintains in the
 domain's own status page; the kernel only reads that page and never inspects
 allocator internals. A caller without the system-observer capability sees only
 its own domain; the system-observer capability widens both sections to the
 machine.
+
+`httpd` additionally folds the domain rows into a top-level `heap` section:
+cumulative allocations and allocated bytes, an allocation rate computed from
+the delta since the previous request, and the total lock-spin count. A nonzero
+spin count is direct evidence that two shards contended for the domain's heap
+arena.
 
 The observe service also samples those aggregates once per second into a
 bounded in-memory ring and serves it through `observability::OP_HISTORY`. The

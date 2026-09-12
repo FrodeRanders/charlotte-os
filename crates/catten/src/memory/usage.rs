@@ -132,9 +132,22 @@ pub(crate) fn principal_heap_peak(principal: u64) -> u64 {
     PRINCIPAL_HEAP_PEAK.lock().get(&principal).copied().unwrap_or(0)
 }
 
-/// Read the domain's published heap accounting: `(capacity, allocated, peak)`
-/// bytes, or `None` when the status page does not carry a valid record.
-pub(crate) fn domain_heap_status(asid: AddressSpaceId) -> Option<(u64, u64, u64)> {
+/// One domain's published heap record.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct HeapStatus {
+    pub capacity_bytes: u64,
+    pub allocated_bytes: u64,
+    pub peak_bytes: u64,
+    /// Cumulative successful allocations and bytes, for rate derivation.
+    pub allocations: u64,
+    pub total_allocated_bytes: u64,
+    /// Cumulative arena-lock spin iterations; nonzero means shard contention.
+    pub lock_spins: u64,
+}
+
+/// Read the domain's published heap accounting, or `None` when the status page
+/// does not carry a valid record.
+pub(crate) fn domain_heap_status(asid: AddressSpaceId) -> Option<HeapStatus> {
     let frame = {
         let table = DOMAIN_USAGE.lock();
         table.get(&asid)?.1.status_frame?
@@ -147,11 +160,14 @@ pub(crate) fn domain_heap_status(asid: AddressSpaceId) -> Option<(u64, u64, u64)
     {
         return None;
     }
-    Some((
-        read(heap_status::CAPACITY_OFFSET),
-        read(heap_status::ALLOCATED_OFFSET),
-        read(heap_status::PEAK_OFFSET),
-    ))
+    Some(HeapStatus {
+        capacity_bytes: read(heap_status::CAPACITY_OFFSET),
+        allocated_bytes: read(heap_status::ALLOCATED_OFFSET),
+        peak_bytes: read(heap_status::PEAK_OFFSET),
+        allocations: read(heap_status::ALLOCATIONS_OFFSET),
+        total_allocated_bytes: read(heap_status::TOTAL_ALLOCATED_OFFSET),
+        lock_spins: read(heap_status::LOCK_SPINS_OFFSET),
+    })
 }
 
 /// Drop a domain's accounting when its address space is torn down.

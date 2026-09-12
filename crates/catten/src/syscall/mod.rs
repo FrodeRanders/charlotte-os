@@ -552,13 +552,14 @@ fn sys_thread_statistics(frame: &mut TrapFrame) {
             usage.stack_pages_used_high_water;
         record_words[domain_record::THREADS] = usage.threads;
         record_words[domain_record::THREADS_HIGH_WATER] = usage.threads_high_water;
-        if let Some((capacity, allocated, peak)) =
-            crate::memory::usage::domain_heap_status(domain_asid)
-        {
+        if let Some(heap) = crate::memory::usage::domain_heap_status(domain_asid) {
             record_words[domain_record::HEAP_STATUS_VALID] = 1;
-            record_words[domain_record::HEAP_CAPACITY_BYTES] = capacity;
-            record_words[domain_record::HEAP_ALLOCATED_BYTES] = allocated;
-            record_words[domain_record::HEAP_PEAK_BYTES] = peak;
+            record_words[domain_record::HEAP_CAPACITY_BYTES] = heap.capacity_bytes;
+            record_words[domain_record::HEAP_ALLOCATED_BYTES] = heap.allocated_bytes;
+            record_words[domain_record::HEAP_PEAK_BYTES] = heap.peak_bytes;
+            record_words[domain_record::HEAP_ALLOCATIONS] = heap.allocations;
+            record_words[domain_record::HEAP_TOTAL_ALLOCATED_BYTES] = heap.total_allocated_bytes;
+            record_words[domain_record::HEAP_LOCK_SPINS] = heap.lock_spins;
         }
         for value in record_words {
             push_u64(&mut bytes, value);

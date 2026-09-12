@@ -179,7 +179,7 @@ pub struct DomainIdentityInfo {
 // ---- observability wire format ---------------------------------------------
 
 pub const THREAD_STATISTICS_MAGIC: u64 = 0x3154_4154_534f_4343; // "CCOSTAT1"
-pub const THREAD_STATISTICS_VERSION: u64 = 4;
+pub const THREAD_STATISTICS_VERSION: u64 = 5;
 
 pub mod thread_statistics_header {
     pub const MAGIC: usize = 0;
@@ -229,7 +229,12 @@ pub mod thread_domain_record {
     pub const HEAP_CAPACITY_BYTES: usize = 8;
     pub const HEAP_ALLOCATED_BYTES: usize = 9;
     pub const HEAP_PEAK_BYTES: usize = 10;
-    pub const WORDS: usize = 11;
+    /// Cumulative successful allocations, for rate derivation.
+    pub const HEAP_ALLOCATIONS: usize = 11;
+    pub const HEAP_TOTAL_ALLOCATED_BYTES: usize = 12;
+    /// Cumulative arena-lock spin iterations; nonzero means shard contention.
+    pub const HEAP_LOCK_SPINS: usize = 13;
+    pub const WORDS: usize = 14;
 }
 
 pub const THREAD_STATISTICS_HEADER_U64S: usize = thread_statistics_header::WORDS;

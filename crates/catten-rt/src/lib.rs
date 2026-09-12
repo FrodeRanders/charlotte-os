@@ -440,6 +440,7 @@ use core::{
     sync::atomic::{
         AtomicBool,
         AtomicU8,
+        AtomicU64,
         AtomicUsize,
         Ordering,
     },
@@ -450,16 +451,60 @@ pub use talc::{
     source::Claim,
 };
 
+/// Cumulative arena-lock spin iterations. Incremented only on contention, so
+/// a nonzero value is direct evidence that two shards wanted the heap lock at
+/// the same time.
+static HEAP_LOCK_SPINS: AtomicU64 = AtomicU64::new(0);
+
+/// Raw spin mutex that lends the arena to talc and counts contended
+/// acquisitions without touching the fast path.
+pub struct CountingMutex {
+    held: AtomicBool,
+}
+
+unsafe impl lock_api::RawMutex for CountingMutex {
+    type GuardMarker = lock_api::GuardSend;
+
+    const INIT: Self = CountingMutex {
+        held: AtomicBool::new(false),
+    };
+
+    fn lock(&self) {
+        if self.held.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok() {
+            return;
+        }
+        loop {
+            HEAP_LOCK_SPINS.fetch_add(1, Ordering::Relaxed);
+            if self
+                .held
+                .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed)
+                .is_ok()
+            {
+                return;
+            }
+            core::hint::spin_loop();
+        }
+    }
+
+    fn try_lock(&self) -> bool {
+        self.held.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok()
+    }
+
+    unsafe fn unlock(&self) {
+        self.held.store(false, Ordering::Release);
+    }
+}
+
 /// The per-domain heap arena with standard status-page accounting.
 ///
 /// Every allocation and free updates this domain's published heap counters
-/// (`charlotte_launch::heap_status`) so the kernel can expose current and peak
-/// usage alongside the per-thread statistics. The arena is claimed lazily from
-/// the launch header's `heap_size`, so a deployment can be sized without
-/// rebuilding the runtime. It remains a single talc arena shared by the
-/// domain's threads.
+/// (`charlotte_launch::heap_status`) so the kernel can expose current, peak,
+/// rate, and lock-contention evidence alongside the per-thread statistics. The
+/// arena is claimed lazily from the launch header's `heap_size`, so a
+/// deployment can be sized without rebuilding the runtime. It remains a single
+/// talc arena shared by the domain's threads.
 pub struct HeapLock {
-    arena: UnsafeCell<MaybeUninit<TalcLock<spin::Mutex<()>, Claim>>>,
+    arena: UnsafeCell<MaybeUninit<TalcLock<CountingMutex, Claim>>>,
 }
 
 // SAFETY: the arena is written exactly once by the initializer state machine
@@ -473,6 +518,8 @@ const HEAP_READY: u8 = 2;
 static HEAP_ARENA_STATE: AtomicU8 = AtomicU8::new(HEAP_UNINITIALIZED);
 static HEAP_ALLOCATED: AtomicUsize = AtomicUsize::new(0);
 static HEAP_PEAK: AtomicUsize = AtomicUsize::new(0);
+static HEAP_ALLOCATIONS: AtomicU64 = AtomicU64::new(0);
+static HEAP_TOTAL_ALLOCATED: AtomicU64 = AtomicU64::new(0);
 static HEAP_STATUS_PUBLISHED: AtomicBool = AtomicBool::new(false);
 
 /// Construct the heap arena at the canonical heap virtual address.
@@ -496,7 +543,7 @@ fn configured_heap_bytes() -> usize {
 }
 
 impl HeapLock {
-    fn arena(&self) -> &TalcLock<spin::Mutex<()>, Claim> {
+    fn arena(&self) -> &TalcLock<CountingMutex, Claim> {
         if HEAP_ARENA_STATE.load(Ordering::Acquire) != HEAP_READY {
             self.initialize();
         }
@@ -552,6 +599,12 @@ fn publish_heap_status() {
             .write_volatile(HEAP_ALLOCATED.load(Ordering::Relaxed) as u64);
         (base.add(heap_status::PEAK_OFFSET) as *mut u64)
             .write_volatile(HEAP_PEAK.load(Ordering::Relaxed) as u64);
+        (base.add(heap_status::ALLOCATIONS_OFFSET) as *mut u64)
+            .write_volatile(HEAP_ALLOCATIONS.load(Ordering::Relaxed));
+        (base.add(heap_status::TOTAL_ALLOCATED_OFFSET) as *mut u64)
+            .write_volatile(HEAP_TOTAL_ALLOCATED.load(Ordering::Relaxed));
+        (base.add(heap_status::LOCK_SPINS_OFFSET) as *mut u64)
+            .write_volatile(HEAP_LOCK_SPINS.load(Ordering::Relaxed));
     }
 }
 
@@ -562,6 +615,8 @@ unsafe impl GlobalAlloc for HeapLock {
             let allocated =
                 HEAP_ALLOCATED.fetch_add(layout.size(), Ordering::Relaxed) + layout.size();
             HEAP_PEAK.fetch_max(allocated, Ordering::Relaxed);
+            HEAP_ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
+            HEAP_TOTAL_ALLOCATED.fetch_add(layout.size() as u64, Ordering::Relaxed);
             publish_heap_status();
         }
         ptr
@@ -580,9 +635,11 @@ unsafe impl GlobalAlloc for HeapLock {
                 let grown = new_size - layout.size();
                 let allocated = HEAP_ALLOCATED.fetch_add(grown, Ordering::Relaxed) + grown;
                 HEAP_PEAK.fetch_max(allocated, Ordering::Relaxed);
+                HEAP_TOTAL_ALLOCATED.fetch_add(grown as u64, Ordering::Relaxed);
             } else {
                 HEAP_ALLOCATED.fetch_sub(layout.size() - new_size, Ordering::Relaxed);
             }
+            HEAP_ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
             publish_heap_status();
         }
         new_ptr
