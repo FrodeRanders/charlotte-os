@@ -102,8 +102,16 @@ Phase 1 changes no allocation behavior. It adds:
 - **In-memory history**: the observe service samples system aggregates every
   second into a bounded 256-sample ring and serves it through `OP_HISTORY`
   (`CCHIST` wire format). httpd renders the most recent samples as the
-  `history` section. The ring is lost on restart; this is the intended first
-  sink, with durable archival still to come.
+  `history` section.
+- **Durable archive**: the same sampler writes to a bounded ring of
+  object-store chunks (`CCARCH01`): sixteen 8 KiB chunks under reserved IDs
+  `0xfffc_0000_0000_0001..16`, with the active chunk rewritten every ten
+  seconds and on rotation. Sequence numbers let an offline reader detect
+  overwritten history after the ring wraps. The store is resolved lazily
+  through the name service (`obj`), so the archive fails soft and never
+  delays sampling when storage is absent or restarting.
+  `scripts/telemetry-archive.py` reassembles the chunks from a captured NVMe
+  image for offline analysis.
 
 It is careful about the hot paths: context-switch sampling uses one atomic
 operation; scheduler, loader, and teardown hooks are off the interrupt path.
@@ -126,15 +134,16 @@ part of the phase rather than an afterthought:
 - **Sinks, in order of increasing trust cost:**
   1. an in-memory history ring in the observe service (implemented: bounded,
      lost on reboot, immediately useful in CI and on a dev machine);
-  2. an append-only archive on the local object store (analyzable from a
-     captured NVMe image, no new egress policy);
+  2. a chunked archive on the local object store (implemented: analyzable from
+     a captured NVMe image, no new egress policy);
   3. remote/cluster sinks through the existing S3 client or a dedicated
      telemetry endpoint (needs an explicit egress decision; observation does
      not imply ambient authority).
-- **Offline tooling.** A host-side analyzer, analogous to
-  `scripts/symbolize-kernel-panic.py`, should consume an archive and summarize
-  per-domain peaks, stack headroom, and growth trends. CI should archive the
-  telemetry file alongside the serial log.
+- **Offline tooling.** `scripts/telemetry-archive.py` reassembles the chunk
+  ring from a captured NVMe image and prints ordered samples (or NDJSON), so a
+  developer or operator can inspect trends without booting the node. CI should
+  archive the telemetry alongside the serial log when a run exercises the
+  archive.
 
 ## Phase 2: boot-time derivation
 
@@ -180,9 +189,9 @@ logged or published) and pin-able for tests.
 
 ## Open questions
 
-- Which durable sink comes first: local object-store archive or in-memory
-  history ring?
-- What is an acceptable telemetry volume/retention budget per node?
+- What is an acceptable telemetry volume/retention budget per node? The chunk
+  ring currently bounds the archive to sixteen 8 KiB objects and depends on
+  the writer rotating; there is no store-side eviction.
 - Should the resource controller be a distinct service or part of the
   supervisor?
 - Which measurements are safe to expose without the system-observer

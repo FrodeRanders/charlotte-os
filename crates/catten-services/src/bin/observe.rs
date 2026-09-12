@@ -17,6 +17,7 @@ use alloc::collections::VecDeque;
 use catten_rt::{
     Context,
     owned::{
+        Connection,
         Endpoint,
         OwnedMemory,
         ReceiveError,
@@ -25,7 +26,9 @@ use catten_rt::{
 };
 use catten_services::{
     ns,
+    objstore,
     observability,
+    try_registered_name_owned,
 };
 use catten_syscall::{
     IpcRights,
@@ -53,6 +56,156 @@ struct HistorySample {
     stack_pages: u64,
     stack_used_high_water: u64,
     threads_high_water: u64,
+}
+
+/// Durable archive: a bounded ring of fixed-size object-store chunks. Each
+/// flush rewrites the active chunk, so appends never require an append opcode
+/// or more than one directory slot per chunk. Sequence numbers let an offline
+/// reader detect overwritten history after the ring wraps.
+struct Archive {
+    connection: Connection,
+    chunk: alloc::vec::Vec<(u64, HistorySample)>,
+    chunk_index: u64,
+    session_ticks: u64,
+    next_sequence: u64,
+    last_flush_ticks: u64,
+}
+
+fn archive_records_per_chunk() -> usize {
+    use observability::{
+        archive_header as header,
+        archive_record as record,
+    };
+    (observability::ARCHIVE_CHUNK_BYTES / core::mem::size_of::<u64>() - header::WORDS)
+        / record::WORDS
+}
+
+impl Archive {
+    fn new(connection: Connection, ticks: u64) -> Self {
+        Self {
+            connection,
+            chunk: alloc::vec::Vec::new(),
+            chunk_index: 0,
+            session_ticks: ticks,
+            next_sequence: 1,
+            last_flush_ticks: ticks,
+        }
+    }
+
+    fn record(&mut self, sample: HistorySample) {
+        self.chunk.push((self.next_sequence, sample));
+        self.next_sequence = self.next_sequence.saturating_add(1);
+    }
+
+    fn due(&self, ticks: u64, flush_ticks: u64) -> bool {
+        !self.chunk.is_empty()
+            && (self.chunk.len() >= archive_records_per_chunk()
+                || ticks.saturating_sub(self.last_flush_ticks) >= flush_ticks)
+    }
+
+    fn rotate(&mut self) {
+        self.chunk.clear();
+        self.chunk_index = (self.chunk_index + 1) % observability::ARCHIVE_CHUNKS;
+    }
+
+    fn flush(&mut self, frequency_hz: u64) -> bool {
+        use observability::{
+            archive_header as header,
+            archive_record as record,
+        };
+        let exact_len =
+            (header::WORDS + self.chunk.len() * record::WORDS) * core::mem::size_of::<u64>();
+        let pages = exact_len.div_ceil(4096).max(1);
+        let Ok(memory) = OwnedMemory::allocate(pages) else {
+            return false;
+        };
+        let Ok(mut mapping) = memory.map_writable() else {
+            return false;
+        };
+        {
+            let bytes = mapping.as_mut_slice();
+            write_word(bytes, header::MAGIC, observability::ARCHIVE_MAGIC);
+            write_word(bytes, header::VERSION, observability::ARCHIVE_VERSION);
+            write_word(bytes, header::CHUNK_INDEX, self.chunk_index);
+            write_word(bytes, header::SESSION_TICKS, self.session_ticks);
+            write_word(
+                bytes,
+                header::FIRST_SEQUENCE,
+                self.chunk.first().map_or(0, |(sequence, _)| *sequence),
+            );
+            write_word(bytes, header::RECORD_COUNT, self.chunk.len() as u64);
+            write_word(bytes, header::COUNTER_FREQUENCY_HZ, frequency_hz);
+            for (index, (sequence, sample)) in self.chunk.iter().enumerate() {
+                let base = header::WORDS + index * record::WORDS;
+                write_word(bytes, base + record::SEQUENCE, *sequence);
+                write_word(bytes, base + record::MONOTONIC_TICKS, sample.ticks);
+                write_word(bytes, base + record::THREADS, sample.threads);
+                write_word(bytes, base + record::DOMAINS, sample.domains);
+                write_word(bytes, base + record::OWNED_FRAMES, sample.owned_frames);
+                write_word(bytes, base + record::STACK_PAGES, sample.stack_pages);
+                write_word(
+                    bytes,
+                    base + record::STACK_USED_HIGH_WATER,
+                    sample.stack_used_high_water,
+                );
+                write_word(bytes, base + record::THREADS_HIGH_WATER, sample.threads_high_water);
+            }
+        }
+        let Ok(memory) = mapping.unmap() else {
+            return false;
+        };
+
+        let object_id = observability::ARCHIVE_BASE_ID + self.chunk_index;
+        let connection = self.connection.as_ref();
+        let Ok(call) = connection.call(objstore::OP_CREATE_AT, object_id) else {
+            return false;
+        };
+        let Ok(result) = call.wait() else {
+            return false;
+        };
+        if result.result != objstore::ERR_OK && result.result != objstore::ERR_EXISTS {
+            return false;
+        }
+
+        let Ok(size_memory) = OwnedMemory::allocate(1) else {
+            return false;
+        };
+        let Ok(mut size_mapping) = size_memory.map_writable() else {
+            return false;
+        };
+        size_mapping.as_mut_slice()[..8].copy_from_slice(&(exact_len as u64).to_le_bytes());
+        let Ok(size_memory) = size_mapping.unmap() else {
+            return false;
+        };
+        let Ok(call) = connection.call_borrow_read(objstore::OP_SET_SIZE, object_id, &size_memory)
+        else {
+            return false;
+        };
+        let Ok(result) = call.wait() else {
+            return false;
+        };
+        if result.result != 0 {
+            return false;
+        }
+
+        let Ok(call) = connection.call_move(objstore::OP_WRITE, object_id, memory) else {
+            return false;
+        };
+        let Ok(result) = call.wait() else {
+            return false;
+        };
+        if result.result != 0 {
+            return false;
+        }
+
+        let Ok(call) = connection.call(objstore::OP_FLUSH, 0) else {
+            return false;
+        };
+        let Ok(result) = call.wait() else {
+            return false;
+        };
+        result.result == 0
+    }
 }
 
 /// Upper bound on records read from one kernel snapshot. The kernel bounds its
@@ -200,7 +353,10 @@ fn main(ctx: Context) -> ! {
     let (mut ticks, frequency_hz) = monotonic_clock();
     let interval_ticks =
         frequency_hz.saturating_mul(observability::HISTORY_SAMPLE_INTERVAL_MS) / 1000;
+    let flush_ticks = frequency_hz.saturating_mul(observability::ARCHIVE_FLUSH_INTERVAL_MS) / 1000;
     let mut next_sample_ticks = ticks.saturating_add(interval_ticks.max(1));
+    let mut next_archive_retry_ticks = ticks;
+    let mut archive: Option<Archive> = None;
     if let Some(sample) = snapshot_sample(system_observer) {
         history.push_back(sample);
     }
@@ -212,8 +368,42 @@ fn main(ctx: Context) -> ! {
                     history.pop_front();
                 }
                 history.push_back(sample);
+                if let Some(archive) = archive.as_mut() {
+                    archive.record(sample);
+                }
             }
             next_sample_ticks = ticks.saturating_add(interval_ticks.max(1));
+        }
+
+        // Storage may not exist yet (the object store starts after observe) or
+        // may be restarting. Look up infrequently and fail soft: a missing
+        // archive delays durability, never sampling.
+        if archive.is_none() && ticks >= next_archive_retry_ticks {
+            if let Some((_generation, connection)) =
+                try_registered_name_owned(ns_connection, objstore::NAME)
+            {
+                archive = Some(Archive::new(connection, ticks));
+            }
+            next_archive_retry_ticks = ticks.saturating_add(interval_ticks.max(1));
+        }
+
+        let mut drop_archive = false;
+        if let Some(current) = archive.as_mut()
+            && current.due(ticks, flush_ticks)
+        {
+            let full = current.chunk.len() >= archive_records_per_chunk();
+            if current.flush(frequency_hz) {
+                current.last_flush_ticks = ticks;
+                if full {
+                    current.rotate();
+                }
+            } else {
+                drop_archive = true;
+            }
+        }
+        if drop_archive {
+            catten_rt::logln!("[observe] telemetry archive flush failed; retrying later");
+            archive = None;
         }
 
         let remaining_ms = if ticks >= next_sample_ticks {

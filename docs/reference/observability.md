@@ -58,8 +58,19 @@ bounded in-memory ring and serves it through `observability::OP_HISTORY`. The
 counter frequency, sample interval) followed by one record per sample:
 monotonic ticks, thread and domain counts, total owned frames, total reserved
 stack pages, and the touched/high-water maxima. The ring holds roughly four
-minutes of history and is lost when the service restarts; durable archival
-remains future work.
+minutes of history and is lost when the service restarts.
+
+The same samples are archived durably. The archive is a bounded ring of
+sixteen 8 KiB objects in the local object store, addressed by the reserved IDs
+`0xfffc_0000_0000_0001` through `..16`; the service rewrites the active chunk
+at least every ten seconds and rotates when it fills. Each `CCARCH01` chunk
+carries a header (magic, version, chunk index, session ticks, first sequence,
+record count, counter frequency) followed by the same per-sample fields plus a
+sequence number, so an offline reader can detect overwritten chunks after the
+ring wraps. The store connection is resolved lazily through the name service,
+and a missing or restarting store only delays durability, never sampling.
+`scripts/fs-inspect.py` reads the raw chunks from a captured NVMe image, and
+`scripts/telemetry-archive.py` reassembles and prints the samples.
 
 Threads do not currently carry human-readable names. The snapshot identifies
 them by thread ID, generation, and owning address-space ID; application and

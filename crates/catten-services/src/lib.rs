@@ -1172,6 +1172,43 @@ pub mod observability {
     pub const HISTORY_SAMPLE_INTERVAL_MS: u64 = 1_000;
     /// Bounded ring capacity: about four minutes of history per MiB-free heap.
     pub const HISTORY_CAPACITY: usize = 256;
+
+    /// `CCARCH01`, little-endian.
+    pub const ARCHIVE_MAGIC: u64 = 0x3130_4843_5241_4343;
+    pub const ARCHIVE_VERSION: u64 = 1;
+    /// Stable object-store IDs for the archive chunk ring. The `0xfffc`
+    /// partition is reserved for telemetry between the Raft (0x8000), node
+    /// identity (0x9000), time (0xfffd), and artifact (0xfffe) partitions.
+    pub const ARCHIVE_BASE_ID: u64 = 0xfffc_0000_0000_0001;
+    /// Number of chunk objects in the ring. Bounds directory-slot use.
+    pub const ARCHIVE_CHUNKS: u64 = 16;
+    /// One chunk is two pages, the size the object store writes efficiently.
+    pub const ARCHIVE_CHUNK_BYTES: usize = 8192;
+    /// A partially filled chunk is rewritten at this cadence.
+    pub const ARCHIVE_FLUSH_INTERVAL_MS: u64 = 10_000;
+
+    pub mod archive_header {
+        pub const MAGIC: usize = 0;
+        pub const VERSION: usize = 1;
+        pub const CHUNK_INDEX: usize = 2;
+        pub const SESSION_TICKS: usize = 3;
+        pub const FIRST_SEQUENCE: usize = 4;
+        pub const RECORD_COUNT: usize = 5;
+        pub const COUNTER_FREQUENCY_HZ: usize = 6;
+        pub const WORDS: usize = 7;
+    }
+
+    pub mod archive_record {
+        pub const SEQUENCE: usize = 0;
+        pub const MONOTONIC_TICKS: usize = 1;
+        pub const THREADS: usize = 2;
+        pub const DOMAINS: usize = 3;
+        pub const OWNED_FRAMES: usize = 4;
+        pub const STACK_PAGES: usize = 5;
+        pub const STACK_USED_HIGH_WATER: usize = 6;
+        pub const THREADS_HIGH_WATER: usize = 7;
+        pub const WORDS: usize = 8;
+    }
 }
 
 /// Frame demultiplexer status protocol.
