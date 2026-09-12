@@ -179,7 +179,7 @@ pub struct DomainIdentityInfo {
 // ---- observability wire format ---------------------------------------------
 
 pub const THREAD_STATISTICS_MAGIC: u64 = 0x3154_4154_534f_4343; // "CCOSTAT1"
-pub const THREAD_STATISTICS_VERSION: u64 = 2;
+pub const THREAD_STATISTICS_VERSION: u64 = 3;
 
 pub mod thread_statistics_header {
     pub const MAGIC: usize = 0;
@@ -211,8 +211,9 @@ pub mod thread_statistics_record {
     pub const SATURATED: usize = 14;
     pub const CURRENT_SLICE_STARTED_AT: usize = 15;
     pub const STACK_RESERVED_PAGES: usize = 16;
-    pub const STACK_USED_PAGES: usize = 17;
-    pub const WORDS: usize = 18;
+    pub const STACK_COMMITTED_PAGES: usize = 17;
+    pub const STACK_USED_PAGES: usize = 18;
+    pub const WORDS: usize = 19;
 }
 
 pub mod thread_domain_record {

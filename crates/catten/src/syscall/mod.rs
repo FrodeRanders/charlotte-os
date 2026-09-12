@@ -535,6 +535,7 @@ fn sys_thread_statistics(frame: &mut TrapFrame) {
         record_words[record::CURRENT_SLICE_STARTED_AT] =
             snapshot.current_slice_started_at.unwrap_or(OBSERVABILITY_NONE);
         record_words[record::STACK_RESERVED_PAGES] = snapshot.stack_reserved_pages;
+        record_words[record::STACK_COMMITTED_PAGES] = snapshot.stack_committed_pages;
         record_words[record::STACK_USED_PAGES] = snapshot.stack_used_pages;
         for value in record_words {
             push_u64(&mut bytes, value);

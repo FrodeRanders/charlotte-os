@@ -300,6 +300,7 @@ pub struct ThreadStatisticsSnapshot {
     pub runtime_ticks: StatisticsSnapshot,
     pub current_slice_started_at: Option<u64>,
     pub stack_reserved_pages: u64,
+    pub stack_committed_pages: u64,
     pub stack_used_pages: u64,
 }
 
@@ -393,6 +394,7 @@ impl Thread {
             ThreadState::Blocked(_) => ThreadStateKind::Blocked,
         };
         let (stack_reserved_pages, stack_used_pages) = self.context.user_stack_usage();
+        let stack_committed_pages = self.context.user_stack_committed_pages();
         ThreadStatisticsSnapshot {
             tid,
             generation: self.generation,
@@ -404,6 +406,7 @@ impl Thread {
             runtime_ticks: self.runtime_ticks.snapshot(),
             current_slice_started_at: self.last_dispatch_tick,
             stack_reserved_pages: stack_reserved_pages as u64,
+            stack_committed_pages: stack_committed_pages as u64,
             stack_used_pages: stack_used_pages as u64,
         }
     }

@@ -86,12 +86,13 @@ Phase 1 changes no allocation behavior. It adds:
   low-water mark, updated from the context-switch path (AArch64 reads banked
   `SP_EL0`; x86-64 uses the per-LP user-RSP scratch slot saved on SYSCALL
   entry). Sampling is lock-free and never allocates.
-- **Wire exposure**: the `CCOSTAT` snapshot is version 2. Thread records add
-  `STACK_RESERVED_PAGES`/`STACK_USED_PAGES`; an appended per-domain section
-  reports `ASID`, owned frames, reserved/high-water stack pages, touched
-  high-water, and thread counts. Callers without the observer capability see
-  only their own domain, preserving the existing capability posture
-  (`docs/reference/observability.md`).
+- **Wire exposure**: the `CCOSTAT` snapshot is version 3. Thread records carry
+  `STACK_RESERVED_PAGES` (budget), `STACK_COMMITTED_PAGES` (mapped pages; the
+  difference is the remaining growth headroom), and `STACK_USED_PAGES`; an appended per-domain
+  section reports `ASID`, owned frames, reserved/high-water stack pages,
+  touched high-water, and thread counts. Callers without the observer
+  capability see only their own domain, preserving the existing capability
+  posture (`docs/reference/observability.md`).
 - **Aggregation semantics**: live per-thread high-water is reported directly in
   the thread records. The per-domain touched high-water is folded in when a
   thread is retired, so a long-lived thread's current mark is visible per

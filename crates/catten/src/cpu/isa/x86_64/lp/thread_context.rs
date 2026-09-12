@@ -245,6 +245,13 @@ impl ThreadContext {
         }
     }
 
+    /// Pages currently committed to this thread's user stack. x86-64 still
+    /// commits the full budget eagerly, so this equals the reserved count
+    /// until demand growth is ported.
+    pub(crate) fn user_stack_committed_pages(&self) -> usize {
+        self._user_stack_buf.map_or(0, |stack| stack.pages)
+    }
+
     /// Reserved and touched pages of this thread's user stack.
     pub(crate) fn user_stack_usage(&self) -> (usize, usize) {
         let Some(stack) = self._user_stack_buf else {

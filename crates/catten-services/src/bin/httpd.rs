@@ -297,6 +297,7 @@ struct ThreadRow {
     runtime_ticks: u128,
     saturated: u64,
     stack_pages: u64,
+    stack_committed_pages: u64,
     stack_used_pages: u64,
 }
 
@@ -381,6 +382,7 @@ fn thread_report(observe_conn: ConnectionRef<'_>) -> Option<ThreadReport> {
                 | rec[thread_record::TOTAL_TICKS_LOW] as u128,
             saturated: rec[thread_record::SATURATED],
             stack_pages: rec[thread_record::STACK_RESERVED_PAGES],
+            stack_committed_pages: rec[thread_record::STACK_COMMITTED_PAGES],
             stack_used_pages: rec[thread_record::STACK_USED_PAGES],
         });
     }
@@ -607,7 +609,7 @@ fn render_threads(s: &mut String, report: &ThreadReport) {
             s,
             ",\"generation\":{},\"dispatch\":{},\"samples\":{},\"runtime_ticks\":{},\"runtime_ms\"\
              :{},\"cpu_pct\":{},\"min_ticks\":{},\"max_ticks\":{},\"saturated\":{},\"stack_pages\"\
-             :{},\"stack_used_pages\":{}}}",
+             :{},\"stack_committed_pages\":{},\"stack_used_pages\":{}}}",
             row.generation,
             row.dispatch,
             row.sample_count,
@@ -618,6 +620,7 @@ fn render_threads(s: &mut String, report: &ThreadReport) {
             row.max_ticks,
             row.saturated,
             row.stack_pages,
+            row.stack_committed_pages,
             row.stack_used_pages
         );
     }

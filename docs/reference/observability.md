@@ -42,10 +42,11 @@ address space. Each snapshot contains:
   slices;
 - saturation status;
 - the start tick of a currently running slice, when applicable; and
-- reserved and touched pages of the thread's user stack (the touched value is
-  a high-water mark sampled at context switches).
+- reserved (budget), committed, and touched pages of the thread's user stack
+  (committed is what demand growth has mapped; touched is a high-water mark
+  sampled at context switches).
 
-The version-2 snapshot appends a per-domain section with the accounting
+The version-3 snapshot appends a per-domain section with the accounting
 described in [adaptive resource policy](../architecture/adaptive-resource-policy.md):
 owned frames, live and high-water reserved stack pages, touched stack high-water
 folded from retired threads, and live and high-water thread counts. A caller

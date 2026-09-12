@@ -215,6 +215,15 @@ impl ThreadContext {
         }
     }
 
+    /// Pages currently committed to this thread's user stack.
+    ///
+    /// The gap between this and the budget reported by
+    /// [`Self::user_stack_usage`] is the growth headroom the demand-grown
+    /// stack protocol can still charge.
+    pub(crate) fn user_stack_committed_pages(&self) -> usize {
+        self._user_stack.map_or(0, |stack| stack.committed_pages)
+    }
+
     /// Reserved (budget) and touched pages of this thread's user stack.
     pub(crate) fn user_stack_usage(&self) -> (usize, usize) {
         let Some(stack) = self._user_stack else {
