@@ -27,6 +27,42 @@ pub enum AdmissionError {
     UnsatisfiablePlacement,
 }
 
+/// Coarse per-node pressure sample used by the deterministic resolver.
+///
+/// The leader fills this from committed capacity reports; an absent node is
+/// treated as unknown (neutral), never as exhausted, so mixed-version clusters
+/// keep making progress.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct NodeCapacity {
+    pub free_frames: u64,
+    pub usable_frames: u64,
+}
+
+pub type NodeCapacityView = BTreeMap<u64, NodeCapacity>;
+
+/// Free frames below one sixteenth of usable memory exclude a node from new
+/// placements. Ranking prefers ample, then unknown or moderate, then low.
+fn capacity_bucket(capacity: &NodeCapacityView, node: u64) -> u8 {
+    const RESERVE_DIVISOR: u64 = 16;
+    let Some(sample) = capacity.get(&node) else {
+        return 2;
+    };
+    if sample.usable_frames == 0 {
+        return 2;
+    }
+    let free = sample.free_frames.min(sample.usable_frames);
+    let reserve = (sample.usable_frames / RESERVE_DIVISOR).max(1);
+    if free < reserve {
+        0
+    } else if free < sample.usable_frames / 8 {
+        1
+    } else if free < sample.usable_frames / 4 {
+        2
+    } else {
+        3
+    }
+}
+
 /// Resolve each signed component policy to a concrete, unique node set.
 /// Fixed singletons retain the historical leader placement. Replica choices
 /// use a stable per-artifact ranking; affinity groups share a ranking seed and
@@ -37,10 +73,30 @@ pub fn resolve_release_assignments(
     eligible_nodes: &[u64],
     automatic_node: u64,
 ) -> Result<Vec<Vec<u64>>, AdmissionError> {
+    resolve_release_assignments_with_capacity(
+        release_bytes,
+        eligible_nodes,
+        automatic_node,
+        &NodeCapacityView::new(),
+    )
+}
+
+/// Capacity-aware variant of [`resolve_release_assignments`].
+pub fn resolve_release_assignments_with_capacity(
+    release_bytes: &[u8],
+    eligible_nodes: &[u64],
+    automatic_node: u64,
+    capacity: &NodeCapacityView,
+) -> Result<Vec<Vec<u64>>, AdmissionError> {
     let release =
         charlotte_launch::release::decode(release_bytes).ok_or(AdmissionError::Invalid)?;
     let descriptors = release.descriptors().collect::<Vec<_>>();
-    resolve_descriptor_assignments(&descriptors, eligible_nodes, automatic_node)
+    resolve_descriptor_assignments_with_capacity(
+        &descriptors,
+        eligible_nodes,
+        automatic_node,
+        capacity,
+    )
 }
 
 /// Resolve an already decoded, stable descriptor ordering. The controller
@@ -50,8 +106,30 @@ pub fn resolve_descriptor_assignments(
     eligible_nodes: &[u64],
     automatic_node: u64,
 ) -> Result<Vec<Vec<u64>>, AdmissionError> {
-    let mut candidates =
-        eligible_nodes.iter().copied().filter(|node| *node != 0).collect::<Vec<_>>();
+    resolve_descriptor_assignments_with_capacity(
+        descriptor_bytes,
+        eligible_nodes,
+        automatic_node,
+        &NodeCapacityView::new(),
+    )
+}
+
+/// Capacity-aware variant of [`resolve_descriptor_assignments`].
+///
+/// Nodes below the free-frame reserve are excluded from new placements, and
+/// ranking prefers the least-pressured bucket before the stable hash order.
+/// Unknown nodes stay eligible and rank as moderate.
+pub fn resolve_descriptor_assignments_with_capacity(
+    descriptor_bytes: &[&[u8]],
+    eligible_nodes: &[u64],
+    automatic_node: u64,
+    capacity: &NodeCapacityView,
+) -> Result<Vec<Vec<u64>>, AdmissionError> {
+    let mut candidates = eligible_nodes
+        .iter()
+        .copied()
+        .filter(|node| *node != 0 && capacity_bucket(capacity, *node) > 0)
+        .collect::<Vec<_>>();
     candidates.sort_unstable();
     candidates.dedup();
     let descriptors = descriptor_bytes
@@ -85,7 +163,11 @@ pub fn resolve_descriptor_assignments(
                     .max_by_key(|node| {
                         let mut score_input = descriptor.artifact_name.to_vec();
                         score_input.extend_from_slice(&node.to_le_bytes());
-                        (charlotte_launch::fnv1a(&score_input), core::cmp::Reverse(*node))
+                        (
+                            capacity_bucket(capacity, *node),
+                            charlotte_launch::fnv1a(&score_input),
+                            core::cmp::Reverse(*node),
+                        )
                     })
                     .ok_or(AdmissionError::UnsatisfiablePlacement)?
             };
@@ -120,7 +202,11 @@ pub fn resolve_descriptor_assignments(
         ranked.sort_unstable_by_key(|node| {
             let mut score_input = seed.clone();
             score_input.extend_from_slice(&node.to_le_bytes());
-            (core::cmp::Reverse(charlotte_launch::fnv1a(&score_input)), *node)
+            (
+                core::cmp::Reverse(capacity_bucket(capacity, *node)),
+                core::cmp::Reverse(charlotte_launch::fnv1a(&score_input)),
+                *node,
+            )
         });
         let mut selected = ranked.into_iter().take(wanted).collect::<Vec<_>>();
         selected.sort_unstable();
@@ -418,6 +504,70 @@ mod tests {
         let fallback = resolve_release_assignments(&release, &[1, 3], 2).unwrap();
         assert_eq!(fallback[0].len(), 1);
         assert!(matches!(fallback[0][0], 1 | 3));
+    }
+
+    #[test]
+    fn capacity_gates_and_ranks_new_placements() {
+        let pair = KeyPair::from_seed([0x57; 32].into());
+        let policy = charlotte_launch::placement::PlacementPolicy {
+            replicas: 1,
+            max_instances_per_node: 1,
+            min_distinct_nodes: 1,
+            flags: charlotte_launch::placement::SPREAD_REPLICAS,
+            affinity_group: 0,
+            anti_affinity_group: 0,
+        };
+        let release = policy_release(&pair, &[(b"orders", policy)]);
+
+        // Unknown capacity leaves the historical ranking untouched.
+        let baseline = resolve_release_assignments(&release, &[1, 2, 3], 0).unwrap();
+        assert_eq!(
+            resolve_release_assignments_with_capacity(
+                &release,
+                &[1, 2, 3],
+                0,
+                &NodeCapacityView::new(),
+            )
+            .unwrap(),
+            baseline
+        );
+
+        // A pressured node loses to ample peers even when its hash wins.
+        let ample = NodeCapacity {
+            free_frames: 900,
+            usable_frames: 1000,
+        };
+        let low = NodeCapacity {
+            free_frames: 60,
+            usable_frames: 1000,
+        };
+        let pressured = baseline[0][0];
+        let mut capacity = NodeCapacityView::new();
+        for node in [1, 2, 3] {
+            capacity.insert(node, ample);
+        }
+        capacity.insert(pressured, low);
+        let selected =
+            resolve_release_assignments_with_capacity(&release, &[1, 2, 3], 0, &capacity).unwrap();
+        assert_ne!(selected[0][0], pressured);
+
+        // Below the reserve, a node is excluded from new placements.
+        let exhausted = NodeCapacity {
+            free_frames: 10,
+            usable_frames: 1000,
+        };
+        let mut capacity = NodeCapacityView::new();
+        for node in [1, 2, 3] {
+            capacity.insert(node, ample);
+        }
+        capacity.insert(1, exhausted);
+        assert_eq!(
+            resolve_release_assignments_with_capacity(&release, &[1], 0, &capacity),
+            Err(AdmissionError::UnsatisfiablePlacement)
+        );
+        let selected =
+            resolve_release_assignments_with_capacity(&release, &[1, 2, 3], 0, &capacity).unwrap();
+        assert_ne!(selected[0][0], 1);
     }
 
     #[test]

@@ -322,6 +322,8 @@ struct DomainRow {
 struct ThreadReport {
     freq_hz: u64,
     mono_ticks: u64,
+    free_frames: u64,
+    usable_frames: u64,
     rows: alloc::vec::Vec<ThreadRow>,
     domains: alloc::vec::Vec<DomainRow>,
 }
@@ -427,6 +429,8 @@ fn thread_report(observe_conn: ConnectionRef<'_>) -> Option<ThreadReport> {
     Some(ThreadReport {
         freq_hz: header[thread_header::COUNTER_FREQUENCY_HZ],
         mono_ticks: header[thread_header::MONOTONIC_TICKS],
+        free_frames: header[thread_header::FREE_FRAMES],
+        usable_frames: header[thread_header::USABLE_FRAMES],
         rows,
         domains,
     })
@@ -882,11 +886,25 @@ fn build_json(
 
     // rustfmt mishandles the escaped quote after this line continuation.
     #[rustfmt::skip]
+    let (free_frames, usable_frames) =
+        report.as_ref().map_or((0, 0), |r| (r.free_frames, r.usable_frames));
     let _ = write!(
         &mut s,
-        "{{\"meta\":{{\"uptime_ms\":{},\"interval_ms\":{},\"counter_hz\":{}}},\"node\":{{\"mac\":\
-         \"{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\",\"link\":{}}},",
-        uptime_ms, interval_ms, freq_hz, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], link
+        "{{\"meta\":{{\"uptime_ms\":{},\"interval_ms\":{},\"counter_hz\":{},\"free_frames\":{},\"\
+         usable_frames\":{}}},\"node\":{{\"mac\":\"{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\",\"\
+         link\":{}}},",
+        uptime_ms,
+        interval_ms,
+        freq_hz,
+        free_frames,
+        usable_frames,
+        mac[0],
+        mac[1],
+        mac[2],
+        mac[3],
+        mac[4],
+        mac[5],
+        link
     );
     let _ = write!(
         &mut s,

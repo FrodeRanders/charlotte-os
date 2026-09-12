@@ -179,7 +179,7 @@ pub struct DomainIdentityInfo {
 // ---- observability wire format ---------------------------------------------
 
 pub const THREAD_STATISTICS_MAGIC: u64 = 0x3154_4154_534f_4343; // "CCOSTAT1"
-pub const THREAD_STATISTICS_VERSION: u64 = 5;
+pub const THREAD_STATISTICS_VERSION: u64 = 6;
 
 pub mod thread_statistics_header {
     pub const MAGIC: usize = 0;
@@ -190,7 +190,11 @@ pub mod thread_statistics_header {
     pub const MONOTONIC_TICKS: usize = 5;
     pub const DOMAIN_RECORD_BYTES: usize = 6;
     pub const DOMAIN_RECORD_COUNT: usize = 7;
-    pub const WORDS: usize = 8;
+    /// Machine-wide physical frames currently available for allocation.
+    pub const FREE_FRAMES: usize = 8;
+    /// Machine-wide physical frames discovered at boot.
+    pub const USABLE_FRAMES: usize = 9;
+    pub const WORDS: usize = 10;
 }
 
 pub mod thread_statistics_record {

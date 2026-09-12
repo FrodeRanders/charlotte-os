@@ -46,7 +46,10 @@ address space. Each snapshot contains:
   (committed is what demand growth has mapped; touched is a high-water mark
   sampled at context switches).
 
-The version-5 snapshot appends a per-domain section with the accounting
+The version-6 snapshot header adds the machine-wide `free_frames` and
+`usable_frames` from the frame allocator, which is the node pressure signal a
+placement controller consumes. The version-4-style per-domain section carries
+the accounting
 described in [adaptive resource policy](../architecture/adaptive-resource-policy.md):
 owned frames, live and high-water reserved stack pages, touched stack high-water
 folded from retired threads, live and high-water thread counts, and — when the
@@ -59,7 +62,8 @@ allocator internals. A caller without the system-observer capability sees only
 its own domain; the system-observer capability widens both sections to the
 machine.
 
-`httpd` additionally folds the domain rows into a top-level `heap` section:
+`httpd` renders the pressure pair in `meta` as `free_frames`/`usable_frames`,
+and additionally folds the domain rows into a top-level `heap` section:
 cumulative allocations and allocated bytes, an allocation rate computed from
 the delta since the previous request, and the total lock-spin count. A nonzero
 spin count is direct evidence that two shards contended for the domain's heap

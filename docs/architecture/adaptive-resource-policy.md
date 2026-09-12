@@ -331,14 +331,32 @@ and must preserve the no-unbounded-queue invariant. This is a candidate for a
 small state model once the exact resize protocol (drain, publish, swap ring)
 is chosen.
 
-### Capacity-aware placement
+### Capacity-aware placement (sensor and policy landed, wiring staged)
 
 The placement layer is deterministic over membership and readiness and has no
-capacity input. The safe shape is: nodes publish resource pressure through
-discovery (a wire change), the Raft leader computes placement from
-synchronized inputs, and local controllers never diverge replicated decisions.
-This is policy work first; formal treatment belongs with the existing
-cluster-ingress and Raft models.
+capacity input yet. Two slices are implemented:
+
+- **Sensor**: the `CCOSTAT` header now carries machine-wide `free_frames` and
+  `usable_frames` from the frame allocator, exposed through `observe` and
+  rendered by httpd. Any service can obtain the pair through the existing
+  `observe` endpoint without holding the system-observer capability itself.
+- **Policy**: `operations_admission` accepts a `NodeCapacityView`
+  (`node_key -> NodeCapacity`). Nodes below a one-sixteenth free-frame reserve
+  are excluded from *new* placements, and ranking prefers ample over
+  unknown/moderate over low before the stable per-artifact hash, so unknown
+  nodes stay eligible and a cold cluster behaves exactly as before. The
+  capacity-aware entry points are additive; existing callers pass an empty view
+  and are unchanged.
+
+The remaining wiring is the deterministic distributed part: a committed
+per-node capacity table in the name catalog (new command plus snapshot
+version), each node reporting its pressure into Raft, and the leader resolving
+from applied state rather than the eventually-consistent discovery cache.
+Discovery may carry the sample as transport, but the resolver must read
+committed values. Only then should pressure changes be able to trigger
+reassignment, with generation fences and hysteresis; the existing cluster
+ingress and Raft models then need a capacity action only if capacity can
+change replica sets without a deployment-generation change.
 
 ## Verification
 

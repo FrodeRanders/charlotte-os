@@ -507,6 +507,12 @@ fn sys_thread_statistics(frame: &mut TrapFrame) {
     header_words[header::RECORD_COUNT] = snapshots.len() as u64;
     header_words[header::COUNTER_FREQUENCY_HZ] = crate::cpu::scheduler::counter_frequency_hz();
     header_words[header::MONOTONIC_TICKS] = crate::cpu::scheduler::monotonic_ticks();
+    {
+        let allocator = crate::memory::PHYSICAL_FRAME_ALLOCATOR.lock();
+        header_words[header::FREE_FRAMES] = allocator.free_frames() as u64;
+        header_words[header::USABLE_FRAMES] =
+            allocator.usable_bytes() / crate::cpu::isa::memory::paging::PAGE_SIZE as u64;
+    }
     header_words[header::DOMAIN_RECORD_BYTES] =
         (THREAD_STATISTICS_DOMAIN_RECORD_U64S * core::mem::size_of::<u64>()) as u64;
     header_words[header::DOMAIN_RECORD_COUNT] = domains.len() as u64;
