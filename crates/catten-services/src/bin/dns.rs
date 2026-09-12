@@ -67,12 +67,14 @@ use catten_services::{
     name_catalog::{
         CatalogEntry,
         NameCatalog,
+        NodeCapacityEntry,
         decode_query_result,
         encode_activate,
         encode_deploy,
         encode_deployment_result,
         encode_ingress_policy,
         encode_lookup_query,
+        encode_node_capacity,
         encode_reassign,
         encode_register,
         encode_register_deployment,
@@ -753,58 +755,39 @@ fn drain_raft_admin(endpoint: u64, node: &mut RaftNode) {
     }
 }
 
-/// Bounded advisory capacity view for the current leader.
-///
-/// Reports are telemetry, not replicated state: entries refill within one
-/// sampling interval after a leader change, unknown nodes stay neutral in the
-/// resolver, and placement decisions remain committed Raft commands.
-const MAX_NODE_CAPACITY_ENTRIES: usize = 256;
 const CAPACITY_REPORT_INTERVAL_MS: u64 = 5_000;
 
-struct NodeCapacityTable {
-    entries: alloc::collections::BTreeMap<u64, (u64, operations_admission::NodeCapacity)>,
-}
-
-impl NodeCapacityTable {
-    fn new() -> Self {
-        Self {
-            entries: alloc::collections::BTreeMap::new(),
-        }
-    }
-
-    fn record(&mut self, report: catten_services::rcapacity::Report) {
-        if report.node_key == 0
-            || report.usable_frames == 0
-            || report.free_frames > report.usable_frames
-        {
-            return;
-        }
-        if let Some((epoch, _)) = self.entries.get(&report.node_key)
-            && report.epoch <= *epoch
-        {
-            return;
-        }
-        if self.entries.len() >= MAX_NODE_CAPACITY_ENTRIES
-            && !self.entries.contains_key(&report.node_key)
-        {
-            return;
-        }
-        self.entries.insert(
-            report.node_key,
-            (
-                report.epoch,
-                operations_admission::NodeCapacity {
-                    free_frames: report.free_frames,
-                    usable_frames: report.usable_frames,
-                    cpu_load_permille: report.cpu_load_permille,
-                },
-            ),
-        );
-    }
-
-    fn view(&self) -> operations_admission::NodeCapacityView {
-        self.entries.iter().map(|(key, (_, capacity))| (*key, *capacity)).collect()
-    }
+/// Build a committed capacity command when a report changes the placement
+/// picture.
+///
+/// Workloads drift continuously, so the committed table would grow without
+/// bound if every sample were replicated; `capacity_sample_changed` filters
+/// unchanged samples. Placement decisions still read only applied state.
+fn capacity_command(
+    catalog: &NameCatalog,
+    report: catten_services::rcapacity::Report,
+) -> Option<Vec<u8>> {
+    let next = operations_admission::NodeCapacity {
+        free_frames: report.free_frames,
+        usable_frames: report.usable_frames,
+        cpu_load_permille: report.cpu_load_permille,
+    };
+    let previous =
+        catalog.node_capacity(report.node_key).map(|entry| operations_admission::NodeCapacity {
+            free_frames: entry.free_frames,
+            usable_frames: entry.usable_frames,
+            cpu_load_permille: entry.cpu_load_permille,
+        });
+    operations_admission::capacity_sample_changed(previous.as_ref(), &next).then(|| {
+        encode_node_capacity(&NodeCapacityEntry {
+            node_key: report.node_key,
+            boot_nonce: report.boot_nonce,
+            epoch: report.epoch,
+            free_frames: report.free_frames,
+            usable_frames: report.usable_frames,
+            cpu_load_permille: report.cpu_load_permille,
+        })
+    })
 }
 
 fn placement_nodes(node: &RaftNode, catalog: &NameCatalog) -> Vec<u64> {
@@ -1371,7 +1354,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut next_joint_diagnostic_ms = 0u64;
     let mut timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
     let mut last_heartbeat_broadcast = 0u64;
-    let mut node_capacity = NodeCapacityTable::new();
+    let capacity_boot_nonce = catten_syscall::random_u64().unwrap_or(0);
     let mut next_capacity_report_ms = 0u64;
 
     loop {
@@ -1409,22 +1392,31 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
         }
 
-        // Report local capacity to the current leader. The leader keeps the
-        // advisory view; followers refresh it within one interval after a
-        // leader change, and unknown nodes stay neutral in the resolver.
+        // Report local capacity. The leader proposes a committed sample when
+        // the report changes the placement picture; followers relay reports
+        // to the leader so every replica eventually resolves from applied
+        // state. Unknown nodes stay neutral in the resolver.
         if node.millis() >= next_capacity_report_ms {
             next_capacity_report_ms = node.millis().saturating_add(CAPACITY_REPORT_INTERVAL_MS);
             let (free_frames, usable_frames, cpu_load_permille) = catten_syscall::node_pressure();
             if let Some(node_key) = node_identity::key_from_name(&node_name) {
                 let report = catten_services::rcapacity::Report {
                     node_key,
+                    boot_nonce: capacity_boot_nonce,
                     epoch: catten_syscall::monotonic_clock().0,
                     free_frames,
                     usable_frames,
                     cpu_load_permille: cpu_load_permille.min(u64::from(u16::MAX)) as u16,
                 };
                 if node.state == NodeState::Leader {
-                    node_capacity.record(report);
+                    if let Some(command) = capacity_command(&catalog, report)
+                        && node.submit_command(command, node.millis()).is_ok()
+                    {
+                        catten_rt::logln!(
+                            "[dns] committed capacity sample for node {:016x}",
+                            report.node_key
+                        );
+                    }
                 } else if let Some(leader) = node.known_leader_id.clone()
                     && transport.has_peer(&leader)
                 {
@@ -1956,8 +1948,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 }
                             }
                             Some(catten_services::rcapacity::TAG_REQUEST) => {
-                                // Advisory capacity from a committed member;
-                                // the sender must own the node key it claims.
+                                // Capacity from a committed member; the sender
+                                // must own the node key it claims. The leader
+                                // commits a sample only when it changes the
+                                // placement picture.
                                 if node.state == NodeState::Leader
                                     && let Some(report) =
                                         catten_services::rcapacity::decode_request(frame)
@@ -1967,8 +1961,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                 == Some(report.node_key)
                                         },
                                     )
+                                    && let Some(command) = capacity_command(&catalog, report)
+                                    && node.submit_command(command, node.millis()).is_ok()
                                 {
-                                    node_capacity.record(report);
+                                    catten_rt::logln!(
+                                        "[dns] committed capacity sample for node {:016x}",
+                                        report.node_key
+                                    );
                                 }
                             }
                             Some(catten_services::rregister::TAG_REPLY) => {
@@ -2131,7 +2130,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             &request.envelope,
                                             &eligible_nodes,
                                             automatic_node,
-                                            &node_capacity.view(),
+                                            &catalog.node_capacity_view(),
                                         ) {
                                             Ok(command) => match node
                                                 .submit_command(command, node.millis())
@@ -2211,7 +2210,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             time_conn.as_ref(),
                                             &eligible_nodes,
                                             automatic_node,
-                                            &node_capacity.view(),
+                                            &catalog.node_capacity_view(),
                                         ) {
                                             Ok(command) => match node
                                                 .submit_command(command, node.millis())
@@ -2597,7 +2596,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             &mut node,
             &catalog,
             &mut pending_registers,
-            &node_capacity.view(),
+            &catalog.node_capacity_view(),
         );
 
         // Settle event-broker waiters from the *applied* catalog: any entry
@@ -2964,7 +2963,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                         &envelope,
                                         &eligible_nodes,
                                         automatic_node,
-                                        &node_capacity.view(),
+                                        &catalog.node_capacity_view(),
                                     )
                                 },
                             ) {
@@ -3026,7 +3025,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                         time_conn.as_ref(),
                                         &eligible_nodes,
                                         automatic_node,
-                                        &node_capacity.view(),
+                                        &catalog.node_capacity_view(),
                                     )
                                 },
                             ) {

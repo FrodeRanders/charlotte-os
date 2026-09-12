@@ -13,6 +13,7 @@ impl NameCatalog {
         let deployment_replicas = self.deployment_replicas.lock();
         let operational_bindings = self.operational_bindings.lock();
         let shutdown_intents = self.shutdown_intents.lock();
+        let node_capacity = self.node_capacity.lock();
         let ingress_policy = self.ingress_policy.lock();
         let mut size = 8 + 4; // magic + entry count
         for (name, entry) in entries.iter() {
@@ -25,7 +26,8 @@ impl NameCatalog {
         // adds the detached operational authorization for each binding; V12
         // appends node-targeted signed shutdown intents; V13 adds concrete
         // replica sets and per-node deployment readiness; V14 appends the
-        // operator-signed cluster ingress policy.
+        // operator-signed cluster ingress policy; V15 appends committed
+        // per-node capacity samples.
         size += 4;
         for (artifact, entry) in deployments.iter() {
             size += 4
@@ -68,8 +70,12 @@ impl NameCatalog {
             size += 8 + 4 + entry.envelope.len();
         }
         size += 1 + 8 + 32;
+        size += 4;
+        for _ in node_capacity.values() {
+            size += 8 + 8 + 8 + 8 + 8 + 2;
+        }
         let mut buf = Vec::with_capacity(size);
-        buf.extend_from_slice(&CATALOG_MAGIC_V14.to_le_bytes());
+        buf.extend_from_slice(&CATALOG_MAGIC_V15.to_le_bytes());
         buf.extend_from_slice(&(entries.len() as u32).to_le_bytes());
         for (name, entry) in entries.iter() {
             buf.extend_from_slice(&(name.len() as u32).to_le_bytes());
@@ -165,6 +171,15 @@ impl NameCatalog {
             buf.extend_from_slice(&0u64.to_le_bytes());
             buf.extend_from_slice(&[0u8; 32]);
         }
+        buf.extend_from_slice(&(node_capacity.len() as u32).to_le_bytes());
+        for entry in node_capacity.values() {
+            buf.extend_from_slice(&entry.node_key.to_le_bytes());
+            buf.extend_from_slice(&entry.boot_nonce.to_le_bytes());
+            buf.extend_from_slice(&entry.epoch.to_le_bytes());
+            buf.extend_from_slice(&entry.free_frames.to_le_bytes());
+            buf.extend_from_slice(&entry.usable_frames.to_le_bytes());
+            buf.extend_from_slice(&entry.cpu_load_permille.to_le_bytes());
+        }
         buf
     }
 
@@ -187,6 +202,7 @@ impl NameCatalog {
             && magic != CATALOG_MAGIC_V12
             && magic != CATALOG_MAGIC_V13
             && magic != CATALOG_MAGIC_V14
+            && magic != CATALOG_MAGIC_V15
         {
             return;
         }
@@ -223,6 +239,7 @@ impl NameCatalog {
                 || magic == CATALOG_MAGIC_V12
                 || magic == CATALOG_MAGIC_V13
                 || magic == CATALOG_MAGIC_V14
+                || magic == CATALOG_MAGIC_V15
             {
                 let Some(active) = data.get(after_generation) else {
                     return;
@@ -238,6 +255,7 @@ impl NameCatalog {
                 || magic == CATALOG_MAGIC_V12
                 || magic == CATALOG_MAGIC_V13
                 || magic == CATALOG_MAGIC_V14
+                || magic == CATALOG_MAGIC_V15
             {
                 let Some((generation, after_generation)) = read_u64(data, after_entry) else {
                     return;
@@ -270,6 +288,7 @@ impl NameCatalog {
             || magic == CATALOG_MAGIC_V12
             || magic == CATALOG_MAGIC_V13
             || magic == CATALOG_MAGIC_V14
+            || magic == CATALOG_MAGIC_V15
         {
             let Some(bytes) = data.get(pos..pos.saturating_add(4)) else {
                 return;
@@ -308,6 +327,7 @@ impl NameCatalog {
                     || magic == CATALOG_MAGIC_V12
                     || magic == CATALOG_MAGIC_V13
                     || magic == CATALOG_MAGIC_V14
+                    || magic == CATALOG_MAGIC_V15
                 {
                     let Some(digest) =
                         data.get(after_generation..after_generation.saturating_add(32))
@@ -329,6 +349,7 @@ impl NameCatalog {
                     || magic == CATALOG_MAGIC_V12
                     || magic == CATALOG_MAGIC_V13
                     || magic == CATALOG_MAGIC_V14
+                    || magic == CATALOG_MAGIC_V15
                 {
                     let Some((descriptor, after_descriptor)) = take_len_bytes(data, after_entry)
                     else {
@@ -343,6 +364,7 @@ impl NameCatalog {
                 };
                 let (replica_nodes, after_entry) = if magic == CATALOG_MAGIC_V13
                     || magic == CATALOG_MAGIC_V14
+                    || magic == CATALOG_MAGIC_V15
                 {
                     let Some((replica_count, mut position)) = read_u16(data, after_entry) else {
                         return;
@@ -390,6 +412,7 @@ impl NameCatalog {
             || magic == CATALOG_MAGIC_V12
             || magic == CATALOG_MAGIC_V13
             || magic == CATALOG_MAGIC_V14
+            || magic == CATALOG_MAGIC_V15
         {
             let Some(bytes) = data.get(pos..pos.saturating_add(4)) else {
                 return;
@@ -412,6 +435,7 @@ impl NameCatalog {
                     || magic == CATALOG_MAGIC_V12
                     || magic == CATALOG_MAGIC_V13
                     || magic == CATALOG_MAGIC_V14
+                    || magic == CATALOG_MAGIC_V15
                 {
                     let Some((operations_sequence, after_operations_sequence)) =
                         read_u64(data, after_generation)
@@ -456,6 +480,7 @@ impl NameCatalog {
             || magic == CATALOG_MAGIC_V12
             || magic == CATALOG_MAGIC_V13
             || magic == CATALOG_MAGIC_V14
+            || magic == CATALOG_MAGIC_V15
         {
             let Some(binding_count) = data
                 .get(pos..pos.saturating_add(4))
@@ -537,6 +562,7 @@ impl NameCatalog {
                     || magic == CATALOG_MAGIC_V12
                     || magic == CATALOG_MAGIC_V13
                     || magic == CATALOG_MAGIC_V14
+                    || magic == CATALOG_MAGIC_V15
                 {
                     let Some(signature) = data
                         .get(after_expiry + 32..after_expiry + 96)
@@ -605,7 +631,11 @@ impl NameCatalog {
         }
 
         let mut shutdown_intents = BTreeMap::new();
-        if magic == CATALOG_MAGIC_V12 || magic == CATALOG_MAGIC_V13 || magic == CATALOG_MAGIC_V14 {
+        if magic == CATALOG_MAGIC_V12
+            || magic == CATALOG_MAGIC_V13
+            || magic == CATALOG_MAGIC_V14
+            || magic == CATALOG_MAGIC_V15
+        {
             let Some(intent_count) = data
                 .get(pos..pos.saturating_add(4))
                 .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
@@ -648,7 +678,7 @@ impl NameCatalog {
         }
 
         let mut deployment_replicas = BTreeMap::new();
-        if magic == CATALOG_MAGIC_V13 || magic == CATALOG_MAGIC_V14 {
+        if magic == CATALOG_MAGIC_V13 || magic == CATALOG_MAGIC_V14 || magic == CATALOG_MAGIC_V15 {
             let Some(replica_name_count) = data
                 .get(pos..pos.saturating_add(4))
                 .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
@@ -705,7 +735,7 @@ impl NameCatalog {
             }
         }
 
-        let ingress_policy = if magic == CATALOG_MAGIC_V14 {
+        let ingress_policy = if magic == CATALOG_MAGIC_V14 || magic == CATALOG_MAGIC_V15 {
             let Some(present) = data.get(pos) else {
                 return;
             };
@@ -752,6 +782,7 @@ impl NameCatalog {
             || magic == CATALOG_MAGIC_V12
             || magic == CATALOG_MAGIC_V13
             || magic == CATALOG_MAGIC_V14
+            || magic == CATALOG_MAGIC_V15
         {
             let Some(present) = data.get(pos) else {
                 return;
@@ -765,6 +796,7 @@ impl NameCatalog {
                 || magic == CATALOG_MAGIC_V12
                 || magic == CATALOG_MAGIC_V13
                 || magic == CATALOG_MAGIC_V14
+                || magic == CATALOG_MAGIC_V15
             {
                 let Some((generation, after_generation)) = read_u64(data, pos + 1) else {
                     return;
@@ -783,6 +815,63 @@ impl NameCatalog {
                 cluster_key = Some(key);
                 cluster_key_generation = generation.max(1);
             }
+            pos = key_start + 32;
+        }
+
+        let mut node_capacity = BTreeMap::new();
+        if magic == CATALOG_MAGIC_V15 {
+            let Some(sample_count) = data
+                .get(pos..pos.saturating_add(4))
+                .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
+                .map(u32::from_le_bytes)
+            else {
+                return;
+            };
+            pos += 4;
+            if sample_count as usize > MAX_NODE_CAPACITY_ENTRIES {
+                return;
+            }
+            for _ in 0..sample_count {
+                let Some((node_key, after_node)) = read_u64(data, pos) else {
+                    return;
+                };
+                let Some((boot_nonce, after_nonce)) = read_u64(data, after_node) else {
+                    return;
+                };
+                let Some((epoch, after_epoch)) = read_u64(data, after_nonce) else {
+                    return;
+                };
+                let Some((free_frames, after_free)) = read_u64(data, after_epoch) else {
+                    return;
+                };
+                let Some((usable_frames, after_usable)) = read_u64(data, after_free) else {
+                    return;
+                };
+                let Some((cpu_load_permille, after_entry)) = read_u16(data, after_usable) else {
+                    return;
+                };
+                if node_key == 0
+                    || epoch == 0
+                    || usable_frames == 0
+                    || free_frames > usable_frames
+                    || node_capacity
+                        .insert(
+                            node_key,
+                            NodeCapacityEntry {
+                                node_key,
+                                boot_nonce,
+                                epoch,
+                                free_frames,
+                                usable_frames,
+                                cpu_load_permille,
+                            },
+                        )
+                        .is_some()
+                {
+                    return;
+                }
+                pos = after_entry;
+            }
         }
 
         // Publish the whole snapshot only after every section parsed; a
@@ -794,6 +883,7 @@ impl NameCatalog {
         *self.operational_bindings.lock() = operational_bindings;
         *self.shutdown_intents.lock() = shutdown_intents;
         *self.deployment_replicas.lock() = deployment_replicas;
+        *self.node_capacity.lock() = node_capacity;
         *self.ingress_policy.lock() = ingress_policy;
         *self.cluster_key.lock() = cluster_key;
         *self.cluster_key_generation.lock() = cluster_key_generation;

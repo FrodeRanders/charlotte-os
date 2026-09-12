@@ -60,11 +60,8 @@ pub type NodeCapacityView = BTreeMap<u64, NodeCapacity>;
 
 /// Free frames below one sixteenth of usable memory exclude a node from new
 /// placements. Ranking prefers ample, then unknown or moderate, then low.
-fn capacity_bucket(capacity: &NodeCapacityView, node: u64) -> u8 {
+fn memory_bucket_of(sample: &NodeCapacity) -> u8 {
     const RESERVE_DIVISOR: u64 = 16;
-    let Some(sample) = capacity.get(&node) else {
-        return 2;
-    };
     if sample.usable_frames == 0 {
         return 2;
     }
@@ -83,10 +80,7 @@ fn capacity_bucket(capacity: &NodeCapacityView, node: u64) -> u8 {
 
 /// Soft CPU-load bucket. Heavy occupancy ranks last but never excludes a
 /// node, so placement still proceeds when every node is busy.
-fn cpu_bucket(capacity: &NodeCapacityView, node: u64) -> u8 {
-    let Some(sample) = capacity.get(&node) else {
-        return 2;
-    };
+fn cpu_bucket_of(sample: &NodeCapacity) -> u8 {
     match sample.cpu_load_permille {
         CPU_LOAD_UNKNOWN => 2,
         load if load >= 950 => 0,
@@ -94,6 +88,38 @@ fn cpu_bucket(capacity: &NodeCapacityView, node: u64) -> u8 {
         load if load >= 500 => 2,
         _ => 3,
     }
+}
+
+fn capacity_bucket(capacity: &NodeCapacityView, node: u64) -> u8 {
+    capacity.get(&node).map_or(2, memory_bucket_of)
+}
+
+fn cpu_bucket(capacity: &NodeCapacityView, node: u64) -> u8 {
+    capacity.get(&node).map_or(2, cpu_bucket_of)
+}
+
+/// Whether a fresh sample is different enough from the committed one to
+/// justify a Raft command.
+///
+/// Workloads drift continuously, so committing every five-second sample would
+/// grow the log without improving placement. A report is committed when the
+/// memory or CPU bucket changes, when usable memory changes, or when free
+/// frames move by more than one sixteenth of usable memory. An absent previous
+/// sample is always committed, so a cold cluster seeds its table in one
+/// interval.
+pub fn capacity_sample_changed(previous: Option<&NodeCapacity>, next: &NodeCapacity) -> bool {
+    let Some(previous) = previous else {
+        return true;
+    };
+    if previous.usable_frames != next.usable_frames {
+        return true;
+    }
+    if memory_bucket_of(previous) != memory_bucket_of(next)
+        || cpu_bucket_of(previous) != cpu_bucket_of(next)
+    {
+        return true;
+    }
+    previous.free_frames.abs_diff(next.free_frames) > (next.usable_frames / 16).max(1)
 }
 
 /// Combined pressure rank: the worse of memory and CPU pressure.
@@ -686,6 +712,42 @@ mod tests {
         let selected =
             resolve_release_assignments_with_capacity(&release, &[1, 2, 3], 0, &capacity).unwrap();
         assert_ne!(selected[0][0], 1);
+    }
+
+    #[test]
+    fn capacity_sample_change_is_hysteretic() {
+        let sample = NodeCapacity {
+            free_frames: 800,
+            usable_frames: 1000,
+            cpu_load_permille: 100,
+        };
+        assert!(capacity_sample_changed(None, &sample));
+        assert!(!capacity_sample_changed(Some(&sample), &sample));
+        let drifted = NodeCapacity {
+            free_frames: 790,
+            ..sample
+        };
+        assert!(!capacity_sample_changed(Some(&sample), &drifted));
+        let bucket = NodeCapacity {
+            free_frames: 60,
+            ..sample
+        };
+        assert!(capacity_sample_changed(Some(&sample), &bucket));
+        let moved = NodeCapacity {
+            free_frames: 700,
+            ..sample
+        };
+        assert!(capacity_sample_changed(Some(&sample), &moved));
+        let busy = NodeCapacity {
+            cpu_load_permille: 800,
+            ..sample
+        };
+        assert!(capacity_sample_changed(Some(&sample), &busy));
+        let resized = NodeCapacity {
+            usable_frames: 2000,
+            ..sample
+        };
+        assert!(capacity_sample_changed(Some(&sample), &resized));
     }
 
     #[test]

@@ -29,6 +29,8 @@
 //! reassign:   0x0b | artifact_len:u32 | artifact | expected_generation:u64 |
 //!             replica_count:u16 | node_keys:[u64]
 //! ingress:    0x0c | envelope_len:u32 | signed_ingress_policy
+//! capacity:   0x0d | node_key:u64 | boot_nonce:u64 | epoch:u64 |
+//!             free_frames:u64 | usable_frames:u64 | cpu_load_permille:u16
 //! ```
 use alloc::{
     collections::{
@@ -60,6 +62,7 @@ const CMD_SHUTDOWN: u8 = 0x09;
 const CMD_RELEASE_REPLICAS: u8 = 0x0a;
 const CMD_REASSIGN: u8 = 0x0b;
 const CMD_INGRESS_POLICY: u8 = 0x0c;
+const CMD_NODE_CAPACITY: u8 = 0x0d;
 
 /// Bounds on the replicated record collections. Tombstones are monotonic by
 /// design, so a cap applies only to new keys; replacing an existing entry
@@ -69,6 +72,7 @@ const MAX_DEPLOYMENTS: usize = 4_096;
 const MAX_RELEASES: usize = 4_096;
 const MAX_OPERATIONAL_BINDINGS: usize = 8_192;
 const MAX_SHUTDOWN_INTENTS: usize = 4_096;
+const MAX_NODE_CAPACITY_ENTRIES: usize = 256;
 const CATALOG_MAGIC_V1: u64 = 0x4341_5441_4c4f_474d; // "CATALOGM"
 const CATALOG_MAGIC_V2: u64 = 0x4341_5441_4c4f_4732; // "CATALOG2"
 const CATALOG_MAGIC_V3: u64 = 0x4341_5441_4c4f_4733; // "CATALOG3"
@@ -83,6 +87,7 @@ const CATALOG_MAGIC_V11: u64 = 0x4341_5441_4c4f_4742; // "CATALOGB"
 const CATALOG_MAGIC_V12: u64 = 0x4341_5441_4c4f_4743; // "CATALOGC"
 const CATALOG_MAGIC_V13: u64 = 0x4341_5441_4c4f_4744; // "CATALOGD"
 const CATALOG_MAGIC_V14: u64 = 0x4341_5441_4c4f_4745; // "CATALOGE"
+const CATALOG_MAGIC_V15: u64 = 0x4341_5441_4c4f_4746; // "CATALOGF"
 
 /// Query tag prefix for a name lookup.
 const QUERY_LOOKUP: u8 = 0x01;
@@ -181,6 +186,23 @@ pub struct IngressPolicyEntry {
     pub envelope: Vec<u8>,
 }
 
+/// Latest committed capacity sample for one node.
+///
+/// The sample is written by the leader from an advisory `rcapacity` report
+/// and replicated through the log so every replica resolves placements from
+/// applied state. `boot_nonce` is generated once per reporter start, so a
+/// restart with a reset monotonic clock supersedes the previous boot's
+/// samples instead of being fenced out as stale.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NodeCapacityEntry {
+    pub node_key: u64,
+    pub boot_nonce: u64,
+    pub epoch: u64,
+    pub free_frames: u64,
+    pub usable_frames: u64,
+    pub cpu_load_permille: u16,
+}
+
 type DeploymentReplicaMap = BTreeMap<Vec<u8>, BTreeMap<Vec<u8>, CatalogEntry>>;
 
 pub struct NameCatalog {
@@ -192,6 +214,7 @@ pub struct NameCatalog {
     releases: spin::Mutex<BTreeMap<Vec<u8>, ReleaseEntry>>,
     operational_bindings: spin::Mutex<BTreeMap<Vec<u8>, OperationalBindingEntry>>,
     shutdown_intents: spin::Mutex<BTreeMap<u64, ShutdownIntentEntry>>,
+    node_capacity: spin::Mutex<BTreeMap<u64, NodeCapacityEntry>>,
     ingress_policy: spin::Mutex<Option<IngressPolicyEntry>>,
     cluster_key: spin::Mutex<Option<[u8; 32]>>,
     cluster_key_generation: spin::Mutex<u64>,
@@ -346,6 +369,7 @@ impl NameCatalog {
             releases: spin::Mutex::new(BTreeMap::new()),
             operational_bindings: spin::Mutex::new(BTreeMap::new()),
             shutdown_intents: spin::Mutex::new(BTreeMap::new()),
+            node_capacity: spin::Mutex::new(BTreeMap::new()),
             ingress_policy: spin::Mutex::new(None),
             cluster_key: spin::Mutex::new(None),
             cluster_key_generation: spin::Mutex::new(0),
@@ -491,6 +515,29 @@ impl NameCatalog {
 
     pub fn ingress_policy(&self) -> Option<IngressPolicyEntry> {
         self.ingress_policy.lock().clone()
+    }
+
+    /// The latest committed capacity sample for `node_key`, or `None`.
+    pub fn node_capacity(&self, node_key: u64) -> Option<NodeCapacityEntry> {
+        self.node_capacity.lock().get(&node_key).copied()
+    }
+
+    /// Committed capacity samples in the shape the placement resolver takes.
+    pub fn node_capacity_view(&self) -> crate::operations_admission::NodeCapacityView {
+        self.node_capacity
+            .lock()
+            .iter()
+            .map(|(node_key, entry)| {
+                (
+                    *node_key,
+                    crate::operations_admission::NodeCapacity {
+                        free_frames: entry.free_frames,
+                        usable_frames: entry.usable_frames,
+                        cpu_load_permille: entry.cpu_load_permille,
+                    },
+                )
+            })
+            .collect()
     }
 
     /// Nodes whose signed shutdown intent has committed, paired with the
@@ -1356,6 +1403,24 @@ impl NameCatalog {
                 });
                 (generation as i64).to_le_bytes().to_vec()
             }
+            Some(CMD_NODE_CAPACITY) => {
+                let Some(entry) = decode_node_capacity(command) else {
+                    return Vec::new();
+                };
+                let mut samples = self.node_capacity.lock();
+                if let Some(existing) = samples.get(&entry.node_key) {
+                    // Within one boot, samples are monotonic by epoch. A new
+                    // boot nonce supersedes the previous boot's samples so a
+                    // restart with a reset clock is not fenced out.
+                    if existing.boot_nonce == entry.boot_nonce && entry.epoch <= existing.epoch {
+                        return Vec::new();
+                    }
+                } else if samples.len() >= MAX_NODE_CAPACITY_ENTRIES {
+                    return crate::clusterctl::ERR_CAPACITY.to_le_bytes().to_vec();
+                }
+                samples.insert(entry.node_key, entry);
+                Vec::new()
+            }
             _ => Vec::new(),
         }
     }
@@ -1396,6 +1461,7 @@ impl StateMachine for NameCatalog {
         self.releases.lock().clear();
         self.operational_bindings.lock().clear();
         self.shutdown_intents.lock().clear();
+        self.node_capacity.lock().clear();
         *self.ingress_policy.lock() = None;
         *self.cluster_key.lock() = None;
         *self.cluster_key_generation.lock() = 0;
@@ -1474,6 +1540,34 @@ fn read_u16(bytes: &[u8], start: usize) -> Option<(u16, usize)> {
     let end = start.checked_add(2)?;
     let value = u16::from_le_bytes(bytes.get(start..end)?.try_into().ok()?);
     Some((value, end))
+}
+
+fn decode_node_capacity(command: &[u8]) -> Option<NodeCapacityEntry> {
+    if command.len() != 43 {
+        return None;
+    }
+    let (node_key, position) = read_u64(command, 1)?;
+    let (boot_nonce, position) = read_u64(command, position)?;
+    let (epoch, position) = read_u64(command, position)?;
+    let (free_frames, position) = read_u64(command, position)?;
+    let (usable_frames, position) = read_u64(command, position)?;
+    let (cpu_load_permille, end) = read_u16(command, position)?;
+    if end != command.len()
+        || node_key == 0
+        || epoch == 0
+        || usable_frames == 0
+        || free_frames > usable_frames
+    {
+        return None;
+    }
+    Some(NodeCapacityEntry {
+        node_key,
+        boot_nonce,
+        epoch,
+        free_frames,
+        usable_frames,
+        cpu_load_permille,
+    })
 }
 
 /// Encode a register command: `{name, node}`.
@@ -1865,6 +1959,20 @@ pub fn encode_ingress_policy(envelope: &[u8]) -> Option<Vec<u8>> {
     buf.extend_from_slice(&(envelope.len() as u32).to_le_bytes());
     buf.extend_from_slice(envelope);
     Some(buf)
+}
+
+/// Encode a committed node-capacity sample. Range and replay checks are
+/// repeated by the state machine.
+pub fn encode_node_capacity(entry: &NodeCapacityEntry) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(43);
+    buf.push(CMD_NODE_CAPACITY);
+    buf.extend_from_slice(&entry.node_key.to_le_bytes());
+    buf.extend_from_slice(&entry.boot_nonce.to_le_bytes());
+    buf.extend_from_slice(&entry.epoch.to_le_bytes());
+    buf.extend_from_slice(&entry.free_frames.to_le_bytes());
+    buf.extend_from_slice(&entry.usable_frames.to_le_bytes());
+    buf.extend_from_slice(&entry.cpu_load_permille.to_le_bytes());
+    buf
 }
 
 /// The replicated catalog viewed as an immediate [`Catalog`]: answers come

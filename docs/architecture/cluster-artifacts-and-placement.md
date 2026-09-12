@@ -228,9 +228,9 @@ budget for every declared thread plus the fixed runtime pages — against
 per-node capacity and fails with `ERR_INSUFFICIENT_CAPACITY` when enough nodes
 exist but none has room; too few eligible nodes still returns
 `ERR_UNSATISFIABLE_PLACEMENT`. Capacity is supplied as a committed per-node
-view once the reporting path lands (see
-[adaptive resource policy](adaptive-resource-policy.md)); no capacity input
-means the historical ranking, so a cold cluster is unchanged.
+view from the reporting path (see
+[adaptive resource policy](adaptive-resource-policy.md)); nodes without a
+committed sample keep the historical ranking, so a cold cluster is unchanged.
 
 This is deliberately still a bounded scheduler. It does not yet model explicit
 heap, storage, or processor requests (those need signed descriptor fields and

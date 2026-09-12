@@ -2457,15 +2457,19 @@ pub mod rregister {
 /// Advisory node-capacity reports from every node to the current leader.
 ///
 /// Fire-and-forget: a lost report is refreshed by the next sampling interval,
-/// and stale or unknown entries are neutral in the placement resolver. The
-/// final placement decision remains a committed Raft command.
+/// and stale or unknown entries are neutral in the placement resolver. A
+/// per-boot nonce lets the receiver fence reports within one boot while still
+/// accepting a restarted reporter whose monotonic clock has reset.
 pub mod rcapacity {
     pub const TAG_REQUEST: u8 = 0x21;
-    pub const FRAME_LEN: usize = 8 + 8 + 8 + 8 + 2;
+    pub const FRAME_LEN: usize = 8 + 8 + 8 + 8 + 8 + 2;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct Report {
         pub node_key: u64,
+        /// Random word generated once at service start. Zero when the
+        /// kernel entropy source was unavailable.
+        pub boot_nonce: u64,
         pub epoch: u64,
         pub free_frames: u64,
         pub usable_frames: u64,
@@ -2475,6 +2479,7 @@ pub mod rcapacity {
     pub fn encode_request(report: Report) -> alloc::vec::Vec<u8> {
         let mut frame = alloc::vec::Vec::with_capacity(FRAME_LEN);
         frame.extend_from_slice(&report.node_key.to_le_bytes());
+        frame.extend_from_slice(&report.boot_nonce.to_le_bytes());
         frame.extend_from_slice(&report.epoch.to_le_bytes());
         frame.extend_from_slice(&report.free_frames.to_le_bytes());
         frame.extend_from_slice(&report.usable_frames.to_le_bytes());
@@ -2482,16 +2487,20 @@ pub mod rcapacity {
         frame
     }
 
+    /// Decode a delivered frame, tag byte included, matching the transport's
+    /// receive convention.
     pub fn decode_request(frame: &[u8]) -> Option<Report> {
-        if frame.len() != FRAME_LEN {
+        if frame.len() != FRAME_LEN + 1 || frame[0] != TAG_REQUEST {
             return None;
         }
+        let payload = &frame[1..];
         Some(Report {
-            node_key: u64::from_le_bytes(frame[0..8].try_into().ok()?),
-            epoch: u64::from_le_bytes(frame[8..16].try_into().ok()?),
-            free_frames: u64::from_le_bytes(frame[16..24].try_into().ok()?),
-            usable_frames: u64::from_le_bytes(frame[24..32].try_into().ok()?),
-            cpu_load_permille: u16::from_le_bytes(frame[32..34].try_into().ok()?),
+            node_key: u64::from_le_bytes(payload[0..8].try_into().ok()?),
+            boot_nonce: u64::from_le_bytes(payload[8..16].try_into().ok()?),
+            epoch: u64::from_le_bytes(payload[16..24].try_into().ok()?),
+            free_frames: u64::from_le_bytes(payload[24..32].try_into().ok()?),
+            usable_frames: u64::from_le_bytes(payload[32..40].try_into().ok()?),
+            cpu_load_permille: u16::from_le_bytes(payload[40..42].try_into().ok()?),
         })
     }
 
@@ -2503,15 +2512,20 @@ pub mod rcapacity {
         fn capacity_report_round_trips() {
             let report = Report {
                 node_key: 0x1234,
+                boot_nonce: 0xfeed_face,
                 epoch: 7,
                 free_frames: 90_000,
                 usable_frames: 113_000,
                 cpu_load_permille: 420,
             };
-            let frame = encode_request(report);
-            assert_eq!(frame.len(), FRAME_LEN);
+            let payload = encode_request(report);
+            assert_eq!(payload.len(), FRAME_LEN);
+            let mut frame = alloc::vec::Vec::with_capacity(FRAME_LEN + 1);
+            frame.push(TAG_REQUEST);
+            frame.extend_from_slice(&payload);
             assert_eq!(decode_request(&frame), Some(report));
-            assert_eq!(decode_request(&frame[..FRAME_LEN - 1]), None);
+            assert_eq!(decode_request(&frame[..frame.len() - 1]), None);
+            assert_eq!(decode_request(&payload), None);
         }
     }
 }

@@ -263,6 +263,41 @@ fn ingress_policy_is_replay_fenced_and_survives_snapshot() {
 }
 
 #[test]
+fn node_capacity_is_replay_fenced_and_survives_snapshot() {
+    let catalog = NameCatalog::new();
+    let sample = |boot_nonce, epoch, free_frames| NodeCapacityEntry {
+        node_key: 0x1234,
+        boot_nonce,
+        epoch,
+        free_frames,
+        usable_frames: 1000,
+        cpu_load_permille: 250,
+    };
+    catalog.apply_with_result(1, &encode_node_capacity(&sample(7, 5, 600)));
+    assert_eq!(catalog.node_capacity(0x1234), Some(sample(7, 5, 600)));
+
+    // Within one boot, a lower epoch is a stale reorder and is ignored.
+    catalog.apply_with_result(1, &encode_node_capacity(&sample(7, 4, 100)));
+    assert_eq!(catalog.node_capacity(0x1234).unwrap().free_frames, 600);
+
+    // A new boot supersedes the previous boot even with a smaller epoch.
+    catalog.apply_with_result(1, &encode_node_capacity(&sample(9, 1, 700)));
+    assert_eq!(catalog.node_capacity(0x1234), Some(sample(9, 1, 700)));
+
+    // Out-of-range samples are rejected outright.
+    catalog.apply_with_result(1, &encode_node_capacity(&sample(9, 2, 2000)));
+    assert_eq!(catalog.node_capacity(0x1234).unwrap().free_frames, 700);
+
+    let view = catalog.node_capacity_view();
+    assert_eq!(view.get(&0x1234).unwrap().free_frames, 700);
+
+    let restored = NameCatalog::new();
+    restored.restore(&catalog.snapshot());
+    assert_eq!(restored.node_capacity(0x1234), catalog.node_capacity(0x1234));
+    assert_eq!(restored.node_capacity_view().get(&0x1234).unwrap().free_frames, 700);
+}
+
+#[test]
 fn deployment_generation_survives_activation_and_snapshot() {
     let catalog = NameCatalog::new();
     assert_eq!(
