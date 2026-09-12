@@ -61,11 +61,21 @@ pub struct PhysicalFrameAllocator {
     bitmap_ptr: *mut u8,
     bitmap_len: usize,
     next_free_hint: usize,
+    usable_bytes: u64,
 }
 
 unsafe impl Send for PhysicalFrameAllocator {}
 
 impl PhysicalFrameAllocator {
+    /// Total usable RAM discovered from the boot memory map, in bytes.
+    ///
+    /// Boot-time policies that size metadata structures from the machine (for
+    /// example the kernel heap growth reserve) consult this instead of a
+    /// compile-time constant.
+    pub fn usable_bytes(&self) -> u64 {
+        self.usable_bytes
+    }
+
     fn addr_to_bitmap_index(&self, addr: PAddr) -> Result<(usize, usize), Error> {
         let (byte_index, bit_offset) = addr_to_bitmap_index(addr)?;
         if byte_index >= self.bitmap_len {
@@ -289,10 +299,17 @@ impl From<&MemmapResponse> for PhysicalFrameAllocator {
         early_logln!("Finding best fit memory location for the PhysicalFrameAllocator bitmap...");
         let bitmap_addr: PAddr = find_mmap_best_fit(response, bitmap_size).unwrap();
         early_logln!("PhysicalFrameAllocator bitmap addr (physical): {:?}", bitmap_addr);
+        let usable_bytes = response
+            .entries()
+            .iter()
+            .filter(|entry| entry.type_ == MEMMAP_USABLE)
+            .map(|entry| entry.length)
+            .sum();
         let pfa = PhysicalFrameAllocator {
             bitmap_ptr: unsafe { bitmap_addr.into_hhdm_mut::<u8>() },
             bitmap_len: bitmap_size,
             next_free_hint: 0,
+            usable_bytes,
         };
         // Initially mark all frames as unavailable.
         early_logln!("Clearing PhysicalFrameAllocator bitmap...");

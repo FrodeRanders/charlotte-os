@@ -2,6 +2,7 @@ use core::{
     ptr::NonNull,
     sync::atomic::{
         AtomicPtr,
+        AtomicUsize,
         Ordering,
     },
 };
@@ -22,6 +23,7 @@ use crate::{
     },
     klib::size::mebibytes,
     memory::{
+        PHYSICAL_FRAME_ALLOCATOR,
         allocators::memory::{
             PageSize,
             try_allocate_and_map_range,
@@ -45,16 +47,45 @@ const INITIAL_HEAP_SIZE: usize = mebibytes(8);
 // talc lock is held — the lock-ordering deadlock that a concurrent
 // map-while-allocating could otherwise trigger (the reserve maps at boot,
 // before any concurrency exists).
-const HEAP_GROWTH_RESERVE: usize = mebibytes(64);
+//
+// The reserve scales with discovered RAM: one sixty-fourth of usable memory,
+// clamped between the historical 64 MiB floor and a 256 MiB ceiling, and
+// rounded up to the 2 MiB large-page granularity the arena is mapped with.
+pub(crate) const HEAP_RESERVE_FRACTION_DIVISOR: u64 = 64;
+pub(crate) const MIN_HEAP_GROWTH_RESERVE: usize = mebibytes(64);
+pub(crate) const MAX_HEAP_GROWTH_RESERVE: usize = mebibytes(256);
+pub(crate) static HEAP_GROWTH_RESERVE_BYTES: AtomicUsize =
+    AtomicUsize::new(MIN_HEAP_GROWTH_RESERVE);
 #[global_allocator]
 pub static PRIMARY_ALLOCATOR: TalcLock<MutexCore, ExtendOnOom> = TalcLock::new(ExtendOnOom::new());
 
+fn heap_growth_reserve_bytes(usable_bytes: u64) -> usize {
+    let scaled =
+        usize::try_from(usable_bytes / HEAP_RESERVE_FRACTION_DIVISOR).unwrap_or(usize::MAX);
+    let page = PageSize::Large.num_bytes();
+    let aligned = scaled.div_ceil(page) * page;
+    aligned.clamp(MIN_HEAP_GROWTH_RESERVE, MAX_HEAP_GROWTH_RESERVE)
+}
+
 pub fn init_primary_allocator() {
+    let usable_bytes = {
+        let allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+        allocator.usable_bytes()
+    };
+    let growth_reserve = heap_growth_reserve_bytes(usable_bytes);
+    HEAP_GROWTH_RESERVE_BYTES.store(growth_reserve, Ordering::Relaxed);
+    crate::early_logln!(
+        "Kernel heap: usable={} MiB initial={} MiB reserve={} MiB total={} MiB",
+        usable_bytes / mebibytes(1) as u64,
+        INITIAL_HEAP_SIZE / mebibytes(1),
+        growth_reserve / mebibytes(1),
+        (INITIAL_HEAP_SIZE + growth_reserve) / mebibytes(1)
+    );
     let base = LA_MAP.get_region(KernelAllocatorArena).base;
     try_allocate_and_map_range(
         base,
         PageSize::Large,
-        (INITIAL_HEAP_SIZE + HEAP_GROWTH_RESERVE) / PageSize::Large.num_bytes(),
+        (INITIAL_HEAP_SIZE + growth_reserve) / PageSize::Large.num_bytes(),
     )
     .expect("Failed to allocate and map the kernel heap and its growth reserve");
     unsafe {
@@ -64,7 +95,7 @@ pub fn init_primary_allocator() {
             .expect("Talc failed to claim the initial kernel heap");
         pa_lock.source.heap_ptr.store(returned_ptr.as_ptr(), Ordering::Release);
         pa_lock.source.reserve_end.store(
-            base.into_mut::<u8>().wrapping_add(INITIAL_HEAP_SIZE + HEAP_GROWTH_RESERVE),
+            base.into_mut::<u8>().wrapping_add(INITIAL_HEAP_SIZE + growth_reserve),
             Ordering::Release,
         );
     }

@@ -19,7 +19,7 @@ and structures sized by constants.
 | Resource | Today | Source |
 |---|---|---|
 | Physical frames | All `MEMMAP_USABLE` RAM, no RAM cap; bitmap sized to the highest usable address | `crates/catten/src/memory/physical/mod.rs` |
-| Kernel heap | 8 MiB initial + 64 MiB pre-mapped growth reserve; hard 72 MiB cap independent of installed RAM | `crates/catten/src/memory/allocators/global_allocator.rs` |
+| Kernel heap | 8 MiB initial + pre-mapped growth reserve derived from usable RAM: `clamp(usable/64, 64 MiB, 256 MiB)`, 2 MiB-aligned (Phase 2) | `crates/catten/src/memory/allocators/global_allocator.rs` |
 | Domain heap | Fixed 4 MiB per domain | `crates/charlotte-launch/src/lib.rs` |
 | User stack | Signed per deployment, 1–64 pages (4 KiB–256 KiB), inherited by every thread | `crates/catten/src/memory/mod.rs`, `crates/charlotte-launch/src/deployment.rs` |
 | User threads | Signed maximum, 1–64 per domain | `crates/catten/src/cpu/scheduler/system_scheduler/mod.rs` |
@@ -147,11 +147,19 @@ part of the phase rather than an afterthought:
 
 ## Phase 2: boot-time derivation
 
-Replace constants with formulas over the discovered memory map, with today's
-values as floors: kernel-heap reserve as a fraction of usable frames, initial
-stack defaults from installed RAM and expected domain counts, and CQ ring
-capacities from expected service counts. This is low risk because it happens
-once, before concurrency exists.
+The kernel-heap growth reserve is now derived from the discovered memory map
+instead of a constant: one sixty-fourth of usable RAM, clamped between the
+historical 64 MiB floor and a 256 MiB ceiling, and rounded up to the 2 MiB
+large-page granularity of the allocator arena. A 512 MiB QEMU node keeps the
+old 72 MiB total; an 8 GiB node maps a 136 MiB total heap; a large server caps
+at 264 MiB. The frame allocator now exposes `usable_bytes()` from the boot
+memory map, and the allocator self-test asserts the derived value stays inside
+its bounds and page-aligned.
+
+The initial 8 MiB heap claim is unchanged. Initial stack defaults, the domain
+heap, and CQ ring capacities remain fixed; deriving those (from installed RAM
+and expected domain/service counts) is the next piece of Phase 2 and is low
+risk because it happens once, before concurrency exists.
 
 ## Phase 3: creation-time feedback
 

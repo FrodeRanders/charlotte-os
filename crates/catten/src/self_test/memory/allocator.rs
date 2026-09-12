@@ -2,12 +2,30 @@ use alloc::alloc::{
     alloc,
     dealloc,
 };
-use core::alloc::Layout;
+use core::{
+    alloc::Layout,
+    sync::atomic::Ordering,
+};
 
-use crate::logln;
+use crate::{
+    logln,
+    memory::allocators::global_allocator::{
+        HEAP_GROWTH_RESERVE_BYTES,
+        MAX_HEAP_GROWTH_RESERVE,
+        MIN_HEAP_GROWTH_RESERVE,
+    },
+};
 
 pub fn test_allocator() {
     logln!("Starting the kernel allocator self-test...");
+    let reserve = HEAP_GROWTH_RESERVE_BYTES.load(Ordering::Relaxed);
+    assert!(
+        (MIN_HEAP_GROWTH_RESERVE..=MAX_HEAP_GROWTH_RESERVE).contains(&reserve),
+        "kernel heap growth reserve outside its configured bounds"
+    );
+    const LARGE_PAGE: usize = 2 * 1024 * 1024;
+    assert_eq!(reserve % LARGE_PAGE, 0, "kernel heap growth reserve must be large-page aligned");
+    logln!("Kernel allocator self-test: heap growth reserve is {} MiB", reserve / (1024 * 1024));
     logln!("Kernel allocator self-test: Allocating 1050 bytes...");
     let layout_1050 = Layout::from_size_align(1050, 64).unwrap();
     let ptr = unsafe { alloc(layout_1050) };
