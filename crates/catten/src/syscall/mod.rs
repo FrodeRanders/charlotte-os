@@ -229,6 +229,9 @@ pub mod call_no {
     /// Read the architectural monotonic counter into x0 and its frequency in
     /// hertz into x1. This read-only query performs no allocation or locking.
     pub const MONOTONIC_CLOCK: u16 = SyscallNumber::MonotonicClock as u16;
+    /// Node-local resource pressure: free frames in x0, usable frames in x1,
+    /// and lifetime CPU load in permille in x2. No capability and no allocation.
+    pub const NODE_PRESSURE: u16 = SyscallNumber::NodePressure as u16;
     /// Resize an owned endpoint's admission bound. x1=endpoint cap,
     /// x2=new capacity; returns the effective capacity in x0 or zero.
     pub const IPC_ENDPOINT_RESIZE: u16 = SyscallNumber::IpcEndpointResize as u16;
@@ -365,6 +368,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::CompletionSubmitDetachedTimer => sys_completion_submit_detached_timer(frame),
         SyscallNumber::RandomU64 => sys_random_u64(frame),
         SyscallNumber::MonotonicClock => sys_monotonic_clock(frame),
+        SyscallNumber::NodePressure => sys_node_pressure(frame),
     }
 }
 
@@ -387,6 +391,30 @@ fn sys_random_u64(frame: &mut TrapFrame) {
 fn sys_monotonic_clock(frame: &mut TrapFrame) {
     frame.regs[0] = crate::cpu::scheduler::monotonic_ticks();
     frame.regs[1] = crate::cpu::scheduler::counter_frequency_hz();
+}
+
+fn sys_node_pressure(frame: &mut TrapFrame) {
+    let (free_frames, usable_frames) = {
+        let allocator = crate::memory::PHYSICAL_FRAME_ALLOCATOR.lock();
+        (
+            allocator.free_frames() as u64,
+            allocator.usable_bytes() / crate::cpu::isa::memory::paging::PAGE_SIZE as u64,
+        )
+    };
+    let busy = crate::cpu::scheduler::threads::cpu_busy_ticks();
+    let logical_processors = crate::cpu::multiprocessor::get_lp_count().max(1) as u128;
+    let now = crate::cpu::scheduler::monotonic_ticks() as u128;
+    let cpu_load_permille = if now == 0 {
+        0
+    } else {
+        busy.saturating_mul(1000)
+            .checked_div(now.saturating_mul(logical_processors))
+            .unwrap_or(0)
+            .min(1000)
+    };
+    frame.regs[0] = free_frames;
+    frame.regs[1] = usable_frames;
+    frame.regs[2] = cpu_load_permille as u64;
 }
 
 fn random_u64() -> Option<u64> {

@@ -662,6 +662,16 @@ pub fn test_syscall_dispatch() {
         assert!(second.regs[0] >= first.regs[0], "MONOTONIC_CLOCK ticks must not decrease");
     }
 
+    {
+        let mut pressure = synthetic_trap_frame_in(memory_owner, 0, 0, 0, 0);
+        syscall::syscall_dispatch(&mut pressure, call_no::NODE_PRESSURE);
+        assert!(
+            pressure.regs[0] > 0 && pressure.regs[1] >= pressure.regs[0],
+            "NODE_PRESSURE must report free frames within usable frames"
+        );
+        assert!(pressure.regs[2] <= 1000, "NODE_PRESSURE CPU load must be a permille value");
+    }
+
     #[cfg(target_arch = "aarch64")]
     {
         use catten_syscall::{

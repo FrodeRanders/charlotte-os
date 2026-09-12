@@ -474,6 +474,18 @@ pub fn statistics_for_asid(asid: AddressSpaceId) -> Vec<ThreadStatisticsSnapshot
         .collect()
 }
 
+/// Cumulative on-CPU ticks across every thread on this node.
+///
+/// Lifetime busy time, divided by the monotonic counter and the online LP
+/// count, is the coarse node utilization reported by the node-pressure query.
+pub(crate) fn cpu_busy_ticks() -> u128 {
+    MASTER_THREAD_TABLE
+        .read()
+        .iter()
+        .filter_map(|thread| thread.as_ref())
+        .fold(0u128, |sum, thread| sum.saturating_add(thread.runtime_ticks.snapshot().total))
+}
+
 /// Snapshot all scheduler-visible threads. Callers must enforce the
 /// system-observer capability before invoking this function.
 #[allow(dead_code)]

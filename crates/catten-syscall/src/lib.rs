@@ -153,6 +153,7 @@ define_syscall_numbers!(
     (MonotonicClock, 79),
     (IpcEndpointResize, 80),
     (IpcEndpointStatus, 81),
+    (NodePressure, 82),
 );
 
 /// Supervisor-assigned roles carried in the kernel-authenticated IPC sender
@@ -2325,6 +2326,16 @@ pub unsafe fn ipc_recv_vec_authenticated(endpoint: u64, result_page: u64) -> Ipc
 #[inline]
 pub fn ipc_endpoint_resize(endpoint: u64, capacity: usize) -> u64 {
     unsafe { svc3(SyscallNumber::IpcEndpointResize, endpoint, capacity as u64, 0) }
+}
+
+/// Node-local resource pressure.
+///
+/// Returns `(free_frames, usable_frames, cpu_load_permille)`. These are coarse
+/// machine-wide aggregates with no per-domain detail; the call allocates
+/// nothing and briefly takes the frame-allocator and thread table locks.
+#[inline]
+pub fn node_pressure() -> (u64, u64, u64) {
+    unsafe { svc3_x2(SyscallNumber::NodePressure, 0, 0, 0) }
 }
 
 /// Read an owned endpoint's `(capacity, queued depth, depth high-water)`.
