@@ -128,7 +128,7 @@ charlotte-s3 = { path = "../charlotte-s3" }
 charlotte-kafka = { path = "../charlotte-kafka" }
 charlotte-kafka-step = { path = "../charlotte-kafka-step" }
 embedded-io = { version = "0.7", default-features = false }
-embedded-tls = { version = "0.19", default-features = false, features = ["alloc", "rustpki", "rsa", "p384", "ed25519"] }
+embedded-tls = { version = "0.19", default-features = false, features = ["alloc", "rustpki", "p384", "ed25519"] }
 rand_core = { version = "0.6", default-features = false }
 zeroize = { version = "1.9", default-features = false, features = ["alloc"] }
 p256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
