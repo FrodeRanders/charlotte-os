@@ -555,11 +555,31 @@ IMAGE="${IMAGE_DIR}/charlotte-${ARCH}-${PROFILE}${INSTANCE_SUFFIX}.img"
 KERNEL="./target/${TARGET_DIR}/${PROFILE}/catten"
 EFI_BOOT_FILE="BOOTAA64.EFI"
 
-# On macOS, firmware is under /opt/homebrew; on Linux it's under /usr/share.
-if [ -f "/opt/homebrew/share/qemu/edk2-aarch64-code.fd" ]; then
-    FIRMWARE="/opt/homebrew/share/qemu/edk2-aarch64-code.fd"
-else
-    FIRMWARE="/usr/share/AAVMF/AAVMF_CODE.fd"
+# Locate the AArch64 UEFI firmware. Distribution packaging puts it in
+# different places, so probe the common ones and allow an explicit override.
+FIRMWARE="${CATTEN_AARCH64_FIRMWARE:-}"
+if [ -z "$FIRMWARE" ]; then
+    for candidate in \
+        /opt/homebrew/share/qemu/edk2-aarch64-code.fd \
+        /usr/local/share/qemu/edk2-aarch64-code.fd \
+        /usr/share/AAVMF/AAVMF_CODE.fd \
+        /usr/share/qemu-efi-aarch64/QEMU_EFI.fd \
+        /usr/share/edk2/aarch64/QEMU_CODE.fd \
+        /usr/share/edk2/aarch64/QEMU_EFI.fd \
+        /usr/share/edk2-aarch64/QEMU_EFI.fd \
+        /usr/share/qemu/aavmf-aarch64-code.bin; do
+        if [ -f "$candidate" ]; then
+            FIRMWARE="$candidate"
+            break
+        fi
+    done
+fi
+if [ -z "$FIRMWARE" ] || [ ! -f "$FIRMWARE" ]; then
+    echo "error: AArch64 UEFI firmware not found" >&2
+    echo "       set CATTEN_AARCH64_FIRMWARE=/path/to/QEMU_EFI.fd, or install:" >&2
+    echo "       Debian/Ubuntu: apt install qemu-efi-aarch64" >&2
+    echo "       Fedora/RHEL:   dnf install edk2-aarch64" >&2
+    exit 1
 fi
 
 RELEASE_FLAG=""
