@@ -196,6 +196,17 @@ placement reassignments, and the subset forced by membership or drain. Keeping
 raw archive samples beside explicit controller counters lets operators inspect
 both what happened and why the placement actuator did—or did not—respond.
 
+The complementary cluster keyhole is served at `GET /cluster` with its
+versioned JSON at `GET /cluster/metrics`. DNS constructs one bounded
+`CLOBSV1` snapshot from locally applied Raft state; httpd strictly decodes and
+renders it. The result joins membership, leader/term/commit posture, filtered
+capacity freshness, desired and ready replicas, and each VIP's DSR advertiser
+and eligible backend set. It returns HTTP 503 instead of presenting a stale
+applied view as current. See
+[cluster observability](../architecture/cluster-observability.md) for the
+consistency contract, VIP behavior, drill-down plan, and access-control
+boundary.
+
 The `frouter` report includes `snapshot_fresh`,
 `snapshot_stale_dropped`, `missing_epoch_dropped`, and
 `snapshot_expirations`, plus `ingress_services`, the number of independently
@@ -215,3 +226,10 @@ The aggregation model follows the two explicit producer paths above: each
 service *voluntarily publishes* a status op, and the `observe` service is the
 sole holder of the system-observer capability; the httpd holds neither and
 queries both over IPC.
+
+The present node and cluster HTTP endpoints are unauthenticated. They are for
+an isolated operations network or test forwarding, not exposure to an
+untrusted network. The production design places both behind an
+operations-profiled mTLS frontend with attenuated read capabilities; the
+browser certificate procedure and the important separation from cluster
+signing keys are documented in the cluster-keyhole design above.

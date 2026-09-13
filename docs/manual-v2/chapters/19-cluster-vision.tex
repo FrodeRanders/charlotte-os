@@ -612,6 +612,49 @@ the controller requires similarly explicit filtering, dwell, authority bounds,
 and decision telemetry rather than feeding raw measurements directly into an
 actuator.
 
+\subsection{A keyhole into the cluster}
+\label{sec:cluster-keyhole}
+
+The node HTTP keyhole remains useful for diagnosis, but placement and ingress
+need an operator view whose subject is the cluster. The implemented
+\texttt{/cluster} dashboard and \texttt{/cluster/metrics} JSON endpoint join
+the Raft leader, term, commit index, and membership epoch with admitted and
+draining nodes, filtered capacity freshness, desired and ready replicas, and
+the advertiser and eligible backend set for each VIP. The schema is explicitly
+versioned as \texttt{charlotte.cluster.v1}.
+
+DNS constructs the underlying, bounded \texttt{CLOBSV1} record from one
+locally applied catalog view. It serves the record only while the same
+bounded-read lease used by DSR is valid; httpd decodes it and returns HTTP 503
+when no fresh record is available. Raw one-second observations remain in the
+node archive. The cluster view instead exposes the slower signals and
+decisions that drive placement, while retaining a per-node freshness marker
+so a committed resource promise is not confused with a recent capacity
+measurement.
+
+An unnamed operations VIP on port 80 can identify the built-in keyhole. The
+leader normally advertises that VIP, but DSR may deliver the connection to any
+admitted, non-draining member. Consequently each reply names both the leader
+and the serving node. Leadership movement changes the advertiser without
+making browser polling part of consensus or requiring the leader to terminate
+every connection.
+
+Membership presently supplies stable node identities and authenticated
+Ethernet routes, not management IP addresses. The dashboard therefore does
+not manufacture drill-down links from MAC addresses. A future signed, leased
+management-endpoint record can support an authenticated
+\texttt{/cluster/nodes/\{node-key\}/metrics} proxy, keeping node drill-down
+behind the same policy as the cluster view.
+
+The current port-80 adapter is unauthenticated and belongs only on a protected
+operations network or test forwarding. Production use requires a separate
+mTLS frontend with attenuated read capabilities. Its encrypted operational
+profile should contain the server identity and observer-client trust anchor;
+neither belongs in the application descriptor or Raft log. A browser then
+uses an operations-issued PKCS\#12 client identity with \texttt{clientAuth},
+not the cluster signing key. The complete boundary and browser setup are
+documented in \repofile|docs/architecture/cluster-observability.md|.
+
 \subsection{Focused stateless-handoff validation}
 
 The focused two-guest fixture starts the signed \texttt{greet} artifact on one

@@ -40,6 +40,8 @@ pub mod broker;
 /// Deterministic service/flow selection and packet helpers for distributed
 /// L2 ingress.
 pub mod cluster_ingress;
+/// Bounded, versioned cluster-observability snapshot shared by DNS and HTTP.
+pub mod cluster_observe;
 /// Replicated name catalog: the Raft state machine for the distributed name
 /// service.
 pub mod name_catalog;
@@ -1595,6 +1597,12 @@ pub mod dns {
     /// Return the effective canonical assignment table: committed policy when
     /// present, otherwise the launch-time bootstrap table.
     pub const OP_INGRESS_ASSIGNMENTS: u32 = 31;
+    /// Return a bounded, versioned snapshot of locally applied cluster state.
+    /// The producer answers only while its applied state satisfies the same
+    /// freshness bound used by ingress; callers decode the moved reply with
+    /// [`crate::cluster_observe`]. This is an observability read and never
+    /// starts consensus.
+    pub const OP_CLUSTER_SNAPSHOT: u32 = 32;
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub enum IngressAssignmentError {

@@ -273,6 +273,12 @@ repository history remain authoritative.
     \item \textbf{Observability HTTP:} the httpd keyhole aggregates the
         \texttt{observe} snapshot and per-service status into a JSON report
         served over the TCP/IP service during ordinary boots.
+        Its \texttt{/cluster} view renders a bounded, versioned snapshot of
+        fresh applied Raft posture, capacity, placement/readiness, and DSR
+        projection; an unnamed platform-service VIP can make it
+        location-independent while identifying leader and serving node
+        separately. Both views remain plain HTTP and require network
+        isolation until the planned operations-profiled mTLS frontend exists.
         \texttt{--http-test} adds QEMU host forwarding and validates the
         response; it does not enable the service.
     \item \textbf{IOMMU/SMMU integration:} coherent Arm SMMUv3 discovery via

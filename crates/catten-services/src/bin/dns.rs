@@ -61,6 +61,7 @@ use catten_services::{
         load_balancing_epoch,
         service_load_balancing_epoch,
     },
+    cluster_observe,
     clusterctl,
     disco,
     disk_raft::{
@@ -571,6 +572,222 @@ fn encode_effective_ingress_bindings(bindings: &[EffectiveIngressBinding]) -> Op
     let mut bytes = vec![0; charlotte_launch::ingress::encoded_len(&borrowed).ok()?];
     charlotte_launch::ingress::encode(&borrowed, &mut bytes).ok()?;
     Some(bytes)
+}
+
+/// Build the control-plane snapshot consumed by operator-facing adapters.
+///
+/// Every field comes from one locally applied Raft/catalog view. Dynamic
+/// capacity samples retain an explicit freshness bit because only the leader
+/// observes their receipt time; committed reservations remain useful even
+/// when a sample has expired. Missing discovery routes suppress only the
+/// derived ingress projection, never the underlying committed membership.
+fn cluster_observability_snapshot(
+    node: &RaftNode,
+    transport: &RelmsgRaftTransport,
+    catalog: &NameCatalog,
+    local_mac: [u8; 6],
+    ingress_services: &[charlotte_launch::ingress::ServiceBinding<'_>],
+    capacity_last_seen_ms: &BTreeMap<u64, (u64, u64)>,
+    controller: cluster_observe::ControllerCounters,
+) -> Option<Vec<u8>> {
+    if !node.can_serve_bounded_read(frouter::SNAPSHOT_SOURCE_MAX_AGE_MS) {
+        return None;
+    }
+
+    let now_ms = node.millis();
+    let self_key = node_identity::key_from_name(node.me.id.as_bytes())?;
+    let leader_id = if node.state == NodeState::Leader {
+        node.me.id.as_bytes().to_vec()
+    } else {
+        node.known_leader_id.as_deref().unwrap_or_default().as_bytes().to_vec()
+    };
+    let leader_key = node_identity::key_from_name(&leader_id);
+    let mut flags = cluster_observe::FLAG_FRESH_COMMITTED;
+    if node.state == NodeState::Leader {
+        flags |= cluster_observe::FLAG_LOCAL_LEADER;
+    }
+
+    let deployments = catalog.deployments();
+    let mut committed_frames = BTreeMap::<u64, u64>::new();
+    for (_, deployment) in &deployments {
+        let Some(descriptor) = charlotte_launch::deployment::decode(&deployment.descriptor) else {
+            continue;
+        };
+        let demand = operations_admission::descriptor_memory_demand(&descriptor);
+        for node_key in &deployment.replica_nodes {
+            let total = committed_frames.entry(*node_key).or_default();
+            *total = total.saturating_add(demand);
+        }
+    }
+
+    let draining = catalog
+        .ingress_draining_nodes()
+        .into_iter()
+        .map(|(node_key, _)| node_key)
+        .collect::<BTreeSet<_>>();
+    let active_members = node.cluster_configuration.active_voting_members();
+    if active_members.len() > cluster_observe::MAX_NODES {
+        flags |= cluster_observe::FLAG_TRUNCATED;
+    }
+    let mut nodes = active_members
+        .into_iter()
+        .filter_map(|peer| {
+            let node_key = node_identity::key_from_name(peer.id.as_bytes())?;
+            let mut node_flags = cluster_observe::NODE_MEMBER;
+            if node_key == self_key {
+                node_flags |= cluster_observe::NODE_SELF;
+            }
+            if leader_key == Some(node_key) {
+                node_flags |= cluster_observe::NODE_LEADER;
+            }
+            if draining.contains(&node_key) {
+                node_flags |= cluster_observe::NODE_DRAINING;
+            }
+            let mac = if node_key == self_key {
+                Some(local_mac)
+            } else {
+                transport.mac_for_peer(&peer.id)
+            }
+            .filter(|mac| *mac != [0; 6]);
+            if mac.is_some() {
+                node_flags |= cluster_observe::NODE_MAC_PRESENT;
+            }
+            let capacity = catalog.node_capacity(node_key);
+            if capacity.is_some() {
+                node_flags |= cluster_observe::NODE_CAPACITY_PRESENT;
+            }
+            let capacity_fresh = capacity.is_some_and(|entry| {
+                capacity_last_seen_ms.get(&node_key).is_some_and(|(nonce, seen_ms)| {
+                    *nonce == entry.boot_nonce
+                        && now_ms.saturating_sub(*seen_ms) <= CAPACITY_LEASE_MS
+                })
+            });
+            if capacity_fresh {
+                node_flags |= cluster_observe::NODE_CAPACITY_FRESH;
+            }
+            Some(cluster_observe::Node {
+                node_key,
+                flags: node_flags,
+                mac: mac.unwrap_or([0; 6]),
+                capacity_boot_nonce: capacity.map_or(0, |entry| entry.boot_nonce),
+                capacity_epoch: capacity.map_or(0, |entry| entry.epoch),
+                free_frames: capacity.map_or(0, |entry| entry.free_frames),
+                usable_frames: capacity.map_or(0, |entry| entry.usable_frames),
+                committed_frames: committed_frames.get(&node_key).copied().unwrap_or(0),
+                cpu_load_permille: capacity.map_or(0, |entry| entry.cpu_load_permille),
+            })
+        })
+        .collect::<Vec<_>>();
+    nodes.sort_unstable_by_key(|entry| entry.node_key);
+    nodes.truncate(cluster_observe::MAX_NODES);
+
+    if deployments.len() > cluster_observe::MAX_DEPLOYMENTS {
+        flags |= cluster_observe::FLAG_TRUNCATED;
+    }
+    let mut observed_deployments = Vec::new();
+    for (name, deployment) in deployments.into_iter().take(cluster_observe::MAX_DEPLOYMENTS) {
+        let placement = catalog.ingress_placement(&name);
+        let service_generation = placement.as_ref().map_or(0, |view| view.service_generation);
+        let mut ready_nodes = placement.map_or_else(Vec::new, |view| view.ready_nodes);
+        let mut desired_nodes = deployment.replica_nodes;
+        if desired_nodes.len() > cluster_observe::MAX_NODES
+            || ready_nodes.len() > cluster_observe::MAX_NODES
+        {
+            flags |= cluster_observe::FLAG_TRUNCATED;
+            desired_nodes.truncate(cluster_observe::MAX_NODES);
+            ready_nodes.truncate(cluster_observe::MAX_NODES);
+        }
+        let demand_frames = charlotte_launch::deployment::decode(&deployment.descriptor)
+            .map(|descriptor| operations_admission::descriptor_memory_demand(&descriptor))
+            .unwrap_or(0);
+        let state = if !ready_nodes.is_empty() && ready_nodes.len() == desired_nodes.len() {
+            clusterctl::ROLLOUT_READY
+        } else if ready_nodes.is_empty() {
+            clusterctl::ROLLOUT_COMMITTED
+        } else {
+            clusterctl::ROLLOUT_REPLACING
+        };
+        observed_deployments.push(cluster_observe::Deployment {
+            name,
+            state,
+            generation: deployment.generation,
+            service_generation,
+            object_id: deployment.object_id,
+            demand_frames,
+            desired_nodes,
+            ready_nodes,
+        });
+    }
+
+    let effective_ingress = effective_ingress_bindings(catalog, ingress_services);
+    if effective_ingress.len() > cluster_observe::MAX_INGRESS {
+        flags |= cluster_observe::FLAG_TRUNCATED;
+    }
+    let mut ingress = effective_ingress
+        .into_iter()
+        .take(cluster_observe::MAX_INGRESS)
+        .map(|binding| {
+            let projection = ingress_membership_snapshot(
+                node,
+                transport,
+                catalog,
+                local_mac,
+                binding.backend_name.as_deref(),
+            );
+            cluster_observe::Ingress {
+                service: binding.service,
+                backend_name: binding.backend_name,
+                projection_present: projection.is_some(),
+                member_count: projection
+                    .as_ref()
+                    .map_or(0, |snapshot| snapshot.members().len() as u16),
+                advertiser_node: projection
+                    .as_ref()
+                    .and_then(BackendSnapshot::vip_advertiser)
+                    .map(|backend| backend.node_id),
+                epoch: projection.as_ref().map_or(0, |snapshot| snapshot.epoch),
+                eligible_nodes: projection.map_or_else(Vec::new, |snapshot| {
+                    snapshot.backends().iter().map(|backend| backend.node_id).collect()
+                }),
+            }
+        })
+        .collect::<Vec<_>>();
+    ingress.sort_unstable_by_key(|entry| entry.service);
+
+    let controller = if node.state == NodeState::Leader {
+        controller
+    } else {
+        cluster_observe::ControllerCounters::default()
+    };
+    let state = match node.state {
+        NodeState::Follower => 1,
+        NodeState::Candidate => 2,
+        NodeState::Leader => 3,
+    };
+    let mut snapshot = cluster_observe::Snapshot {
+        flags,
+        state,
+        term: node.current_term,
+        commit_index: node.commit_index,
+        membership_epoch: node.membership_epoch(),
+        observed_millis: now_ms,
+        leader_id,
+        self_id: node.me.id.as_bytes().to_vec(),
+        controller,
+        nodes,
+        deployments: observed_deployments,
+        ingress,
+    };
+    loop {
+        if let Some(bytes) = cluster_observe::encode(&snapshot) {
+            return Some(bytes);
+        }
+        // Records are already individually bounded and canonical. If the
+        // aggregate exceeds 64 KiB, remove the largest collection's tail and
+        // make the loss explicit instead of failing the whole keyhole.
+        snapshot.flags |= cluster_observe::FLAG_TRUNCATED;
+        snapshot.deployments.pop()?;
+    }
 }
 
 fn reconcile_replica_placements(
@@ -3891,6 +4108,35 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         reply_move_bytes(message.reply, &bytes);
                     } else if message.reply != 0 {
                         ipc_reply(message.reply, dns::ERR_TOO_LARGE);
+                    }
+                }
+
+                dns::OP_CLUSTER_SNAPSHOT => {
+                    if message.memory != 0 {
+                        memory_close(message.memory);
+                    }
+                    let snapshot = cluster_observability_snapshot(
+                        &node,
+                        &transport,
+                        &catalog,
+                        local_mac,
+                        &ingress_services,
+                        &capacity_last_seen_ms,
+                        cluster_observe::ControllerCounters {
+                            capacity_reports_accepted,
+                            capacity_commands_proposed,
+                            placement_reassignments,
+                            forced_reassignments,
+                        },
+                    );
+                    match snapshot {
+                        Some(bytes) => reply_move_bytes(message.reply, &bytes),
+                        None if message.reply != 0 => {
+                            // A keyhole must not make stale local state look
+                            // like a current cluster-wide observation.
+                            ipc_reply(message.reply, dns::ERR_BUSY);
+                        }
+                        None => {}
                     }
                 }
 

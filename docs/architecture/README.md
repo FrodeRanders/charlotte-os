@@ -35,6 +35,8 @@ logic, and external managed infrastructure at explicit boundaries.
 - [Adaptive resource policy](adaptive-resource-policy.md) — staged adaptation
   of memory, stacks, and buffers to the machine and workload, starting from
   per-domain accounting and stack high-water observation.
+- [Cluster observability keyhole](cluster-observability.md) — a bounded view of
+  Raft posture, placement, readiness, capacity, and DSR behind a cluster VIP.
 
 ## Security and cluster direction
 

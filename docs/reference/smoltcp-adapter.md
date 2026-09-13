@@ -156,14 +156,28 @@ renders as `null` rather than stalling a request. It consumes the same socket
 API as the smoke client — one connection at a time, no keep-alive,
 deliberately not a web server.
 
-Two request targets are served, selected by the path of the `GET` request:
+The fixed request targets select a node or cluster view:
 
 - `GET /` (or `/index.html`) returns a self-refreshing HTML dashboard; its
   embedded script polls `GET /metrics` every five seconds and renders the
   report as cards, which is handy on VMware where there is no framebuffer.
 - `GET /metrics` (alias `/metric`) returns the JSON report described above.
+- `GET /cluster` returns the cluster dashboard.
+- `GET /cluster/metrics` returns the bounded `charlotte.cluster.v1` view of
+  applied Raft posture, node capacity freshness, application placement and
+  readiness, and DSR service projection. It returns 503 when the local
+  replica cannot satisfy the bounded-read freshness requirement.
 
 Anything else is a `404`.
+
+An operations-owned, unnamed `--cluster-service VIP:80` assignment makes the
+cluster dashboard location-independent. Normal DSR semantics still apply: the
+leader normally advertises the VIP, while any admitted, non-draining member
+may terminate the selected flow and serve a fresh applied snapshot. The JSON
+therefore distinguishes the actual leader from the serving node. Details,
+including why node management addresses are not guessed and how mTLS will
+protect both views, are in
+[cluster observability](../architecture/cluster-observability.md).
 
 The NIC, DHCP-configured TCP/IP service, and `httpd` are launched by default.
 The `--http-test` option below is a validation mode: it adds the QEMU host-port

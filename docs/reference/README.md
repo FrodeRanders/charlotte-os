@@ -10,8 +10,8 @@ should be updated with the implementation when those contracts change.
   and cross-subsystem lock-ordering rules.
 - [Raft conformance](raft-conformance.md) — required parity between
   `catten-graft`, the other Graft implementations, and the TLA+ projections.
-- [Observability](observability.md) — capability-preserving runtime statistics
-  and snapshot interfaces.
+- [Observability](observability.md) — capability-preserving runtime statistics,
+  snapshot interfaces, and the node/cluster keyholes.
 - [smoltcp adapter](smoltcp-adapter.md) — frame routing, adapter behavior, and
   the userspace TCP/IP service.
 - [UTC time service](time-service.md) — default launch behavior, internal IPC

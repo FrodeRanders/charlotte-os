@@ -1002,21 +1002,26 @@ if [ -n "$TIMEOUT" ]; then
         if [ "$HTTP_TEST" = "1" ] && [ "$HTTP_PROBED" = "0" ] \
             && grep -Fq "httpd is listening" "$LOG"; then
             HTTP_PROBED=1
-            echo ">>> Probing guest HTTP keyhole at http://127.0.0.1:${HTTP_HOST_PORT}/metrics ..."
+            echo ">>> Probing guest node and cluster keyholes through port ${HTTP_HOST_PORT} ..."
             for _ in 1 2 3 4 5 6 7 8; do
                 HTTP_BODY="$(curl -fsS --max-time 5 "http://127.0.0.1:${HTTP_HOST_PORT}/metrics" 2>&1 || true)"
-                if printf '%s' "$HTTP_BODY" | grep -Fq '"http":{"requests":'; then
+                HTTP_CLUSTER_BODY="$(curl -fsS --max-time 5 "http://127.0.0.1:${HTTP_HOST_PORT}/cluster/metrics" 2>&1 || true)"
+                if printf '%s' "$HTTP_BODY" | grep -Fq '"http":{"requests":' \
+                    && printf '%s' "$HTTP_CLUSTER_BODY" | python3 -c \
+                        'import json,sys; d=json.load(sys.stdin); assert d["schema"] == "charlotte.cluster.v1" and d["fresh_committed"] and d["raft"]["served_by"]'; then
                     HTTP_PROBE_OK=1
                     break
                 fi
                 sleep 2
             done
-            echo ">>> Guest HTTP keyhole response:"
+            echo ">>> Guest node keyhole response:"
             echo "$HTTP_BODY"
+            echo ">>> Guest cluster keyhole response:"
+            echo "$HTTP_CLUSTER_BODY"
             if [ "$HTTP_PROBE_OK" = "1" ]; then
-                echo ">>> HTTP keyhole validated from the host."
+                echo ">>> Node and cluster HTTP keyholes validated from the host."
             else
-                echo "error: guest HTTP keyhole did not return the expected JSON state page" >&2
+                echo "error: guest HTTP keyholes did not return both expected JSON views" >&2
             fi
         fi
         if [ "$KAFKA_TEST" = "1" ] && [ "$KAFKA_FENCING_TEST" = "0" ] \

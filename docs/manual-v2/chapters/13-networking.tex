@@ -251,6 +251,12 @@ internal placement and delivery mechanisms. In that sense the VIP is another
 step toward treating the cluster, rather than a selected server, as the
 computer.
 
+One such platform identity can front the cluster observability keyhole. Its
+DSR advertiser normally follows leadership, while any eligible member may serve a
+fresh applied cluster snapshot and explicitly identifies itself in the reply.
+The consistency and access-control contract is described in
+\autoref{sec:cluster-keyhole}.
+
 This is not a TCP proxy. The frame router that receives an
 external frame parses its five-tuple and uses deterministic rendezvous hashing
 to select an execution node. A local winner follows the ordinary

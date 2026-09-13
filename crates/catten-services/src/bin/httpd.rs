@@ -28,14 +28,18 @@
 //!
 //! Services that are not running are rendered as `null`; the aggregator uses
 //! non-blocking `ns::OP_TRY_LOOKUP` so an absent service never stalls a
-//! request. This is a deliberate keyhole, not a web server: no routing beyond
-//! two GET targets, no keep-alive, one connection at a time.
+//! request. This is a deliberate keyhole, not a general-purpose web server:
+//! it has a fixed set of read-only targets, no keep-alive, and serves one
+//! connection at a time.
 //!
-//! Two request targets are served, chosen by the path of the `GET` request:
+//! The request target selects either the node or cluster view:
 //!
 //! - `GET /` (or `/index.html`) returns a self-refreshing HTML dashboard whose embedded script
 //!   polls `GET /metrics` every five seconds; and
-//! - `GET /metrics` (alias `/metric`) returns the JSON report described above.
+//! - `GET /metrics` (alias `/metric`) returns the node JSON report described above;
+//! - `GET /cluster` returns the cluster dashboard; and
+//! - `GET /cluster/metrics` returns a bounded snapshot of committed placement, readiness, capacity
+//!   posture, and cluster ingress projection.
 //!
 //! Anything else is a `404`.
 #![no_std]
@@ -57,6 +61,7 @@ use catten_rt::{
     },
 };
 use catten_services::{
+    cluster_observe,
     disco,
     dns,
     frouter,
@@ -175,6 +180,38 @@ poll();setInterval(poll,5000);
 </html>
 "##;
 
+/// Cluster-oriented keyhole. The HTML is intentionally only a presentation
+/// adapter: `/cluster/metrics` supplies the same bounded, versioned snapshot
+/// that a non-browser operations client can consume.
+const CLUSTER_DASHBOARD: &str = r##"<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CharlotteOS cluster</title>
+<style>
+:root{--bg:#0e1117;--card:#161b22;--border:#30363d;--fg:#e6edf3;--dim:#8b949e;--accent:#58a6ff;--ok:#3fb950;--bad:#f85149}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+header{position:sticky;top:0;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bg);z-index:2;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+h1{margin:0;color:var(--accent);font-size:16px}.dim{color:var(--dim)}.ok{color:var(--ok)}.bad{color:var(--bad)}
+main{padding:12px;display:grid;gap:12px}.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;overflow:auto}
+h2{margin:0 0 8px;color:var(--accent);font-size:12px;text-transform:uppercase}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:4px 10px 4px 0;border-bottom:1px solid var(--border);white-space:nowrap}th{color:var(--dim)}a{color:var(--accent)}
+</style>
+</head>
+<body>
+<header><h1>CharlotteOS cluster</h1><span id="leader" class="dim">leader -</span><span id="term" class="dim">term -</span><span id="commit" class="dim">commit -</span><span id="fresh" class="bad">waiting</span><a href="/">serving node</a></header>
+<main><section class="card"><h2>Nodes</h2><div id="nodes"></div></section><section class="card"><h2>Deployments</h2><div id="deployments"></div></section><section class="card"><h2>Cluster ingress</h2><div id="ingress"></div></section><section class="card"><h2>Placement controller</h2><pre id="controller"></pre></section></main>
+<script>
+function e(s){return String(s==null?"-":s).replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function table(rows,cols){if(!rows.length)return '<span class="dim">empty</span>';let h='<table><tr>'+cols.map(c=>'<th>'+e(c[0])+'</th>').join('')+'</tr>';for(const r of rows)h+='<tr>'+cols.map(c=>'<td>'+e(c[1](r))+'</td>').join('')+'</tr>';return h+'</table>'}
+function list(v){return (v||[]).join(', ')}
+function show(d){leader.textContent='leader '+(d.raft.leader||'-');term.textContent='term '+d.raft.term;commit.textContent='commit '+d.raft.commit_index;fresh.textContent=d.fresh_committed?(d.truncated?'fresh · truncated':'fresh committed'):'stale';fresh.className=d.fresh_committed?'ok':'bad';nodes.innerHTML=table(d.nodes,[["node",r=>r.node_key],["role",r=>r.leader?'leader':(r.self?'serving node':'member')],["draining",r=>r.draining],["MAC",r=>r.mac],["capacity fresh",r=>r.capacity&&r.capacity.fresh],["free frames",r=>r.capacity&&r.capacity.free_frames],["committed",r=>r.committed_frames],["CPU permille",r=>r.capacity&&r.capacity.cpu_load_permille]]);deployments.innerHTML=table(d.deployments,[["application",r=>r.name],["state",r=>r.state],["generation",r=>r.generation],["desired",r=>list(r.desired_nodes)],["ready",r=>list(r.ready_nodes)],["frames/replica",r=>r.demand_frames]]);ingress.innerHTML=table(d.ingress,[["VIP",r=>r.vip+':'+r.port],["service",r=>r.backend_name||'platform'],["advertiser",r=>r.advertiser_node],["eligible",r=>list(r.eligible_nodes)],["epoch",r=>r.epoch]]);controller.textContent=JSON.stringify(d.controller,null,2)}
+async function poll(){try{const r=await fetch('/cluster/metrics',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);show(await r.json())}catch(err){fresh.textContent=err;fresh.className='bad'}}poll();setInterval(poll,5000)
+</script>
+</body>
+</html>
+"##;
+
 struct ServiceSet<'context> {
     ns_conn: ConnectionRef<'context>,
     tcp_conn: Connection,
@@ -262,6 +299,187 @@ fn push_json_string(s: &mut String, bytes: &[u8]) {
         }
     }
     s.push('"');
+}
+
+fn push_node_key(s: &mut String, node_key: u64) {
+    let _ = write!(s, "\"{node_key:016x}\"");
+}
+
+fn build_cluster_json(dns_conn: ConnectionRef<'_>) -> Option<String> {
+    let bytes =
+        read_moved(dns_conn, dns::OP_CLUSTER_SNAPSHOT, 0, cluster_observe::MAX_SNAPSHOT_LEN)?;
+    let snapshot = cluster_observe::decode(&bytes)?;
+    let mut s = String::new();
+    let _ = write!(
+        s,
+        concat!(
+            "{{\"schema\":\"charlotte.cluster.v1\",",
+            "\"fresh_committed\":{},\"served_by_leader\":{},\"truncated\":{},",
+            "\"raft\":{{\"state\":\"{}\",\"term\":{},\"commit_index\":{},",
+            "\"membership_epoch\":{},\"observed_millis\":{},\"leader\":"
+        ),
+        snapshot.flags & cluster_observe::FLAG_FRESH_COMMITTED != 0,
+        snapshot.flags & cluster_observe::FLAG_LOCAL_LEADER != 0,
+        snapshot.flags & cluster_observe::FLAG_TRUNCATED != 0,
+        state_name(snapshot.state as u64),
+        snapshot.term,
+        snapshot.commit_index,
+        snapshot.membership_epoch,
+        snapshot.observed_millis,
+    );
+    if snapshot.leader_id.is_empty() {
+        s.push_str("null");
+    } else {
+        push_json_string(&mut s, &snapshot.leader_id);
+    }
+    s.push_str(",\"served_by\":");
+    push_json_string(&mut s, &snapshot.self_id);
+    let _ = write!(
+        s,
+        concat!(
+            "}},\"controller\":{{\"local\":{},\"capacity_reports_accepted\":{},",
+            "\"capacity_commands_proposed\":{},\"placement_reassignments\":{},",
+            "\"forced_reassignments\":{}}},\"nodes\":["
+        ),
+        snapshot.flags & cluster_observe::FLAG_LOCAL_LEADER != 0,
+        snapshot.controller.capacity_reports_accepted,
+        snapshot.controller.capacity_commands_proposed,
+        snapshot.controller.placement_reassignments,
+        snapshot.controller.forced_reassignments,
+    );
+    for (index, node) in snapshot.nodes.iter().enumerate() {
+        if index != 0 {
+            s.push(',');
+        }
+        s.push_str("{\"node_key\":");
+        push_node_key(&mut s, node.node_key);
+        let _ = write!(
+            s,
+            concat!(
+                ",\"member\":{},\"self\":{},\"leader\":{},\"draining\":{},",
+                "\"committed_frames\":{},\"mac\":"
+            ),
+            node.flags & cluster_observe::NODE_MEMBER != 0,
+            node.flags & cluster_observe::NODE_SELF != 0,
+            node.flags & cluster_observe::NODE_LEADER != 0,
+            node.flags & cluster_observe::NODE_DRAINING != 0,
+            node.committed_frames,
+        );
+        if node.flags & cluster_observe::NODE_MAC_PRESENT != 0 {
+            let _ = write!(
+                s,
+                "\"{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}\"",
+                node.mac[0], node.mac[1], node.mac[2], node.mac[3], node.mac[4], node.mac[5]
+            );
+        } else {
+            s.push_str("null");
+        }
+        s.push_str(",\"management_endpoint\":null,\"capacity\":");
+        if node.flags & cluster_observe::NODE_CAPACITY_PRESENT != 0 {
+            let _ = write!(
+                s,
+                concat!(
+                    "{{\"fresh\":{},\"boot_nonce\":{},\"epoch\":{},",
+                    "\"free_frames\":{},\"usable_frames\":{},\"cpu_load_permille\":"
+                ),
+                node.flags & cluster_observe::NODE_CAPACITY_FRESH != 0,
+                node.capacity_boot_nonce,
+                node.capacity_epoch,
+                node.free_frames,
+                node.usable_frames,
+            );
+            if node.cpu_load_permille == u16::MAX {
+                s.push_str("null");
+            } else {
+                let _ = write!(s, "{}", node.cpu_load_permille);
+            }
+            s.push('}');
+        } else {
+            s.push_str("null");
+        }
+        s.push('}');
+    }
+    s.push_str("],\"deployments\":[");
+    for (index, deployment) in snapshot.deployments.iter().enumerate() {
+        if index != 0 {
+            s.push(',');
+        }
+        s.push_str("{\"name\":");
+        push_json_string(&mut s, &deployment.name);
+        let rollout = match deployment.state {
+            catten_services::clusterctl::ROLLOUT_COMMITTED => "committed",
+            catten_services::clusterctl::ROLLOUT_READY => "ready",
+            catten_services::clusterctl::ROLLOUT_REPLACING => "replacing",
+            _ => "unknown",
+        };
+        let _ = write!(
+            s,
+            concat!(
+                ",\"state\":\"{}\",\"generation\":{},\"service_generation\":{},",
+                "\"object_id\":{},\"demand_frames\":{},\"desired_nodes\":["
+            ),
+            rollout,
+            deployment.generation,
+            deployment.service_generation,
+            deployment.object_id,
+            deployment.demand_frames,
+        );
+        for (node_index, node) in deployment.desired_nodes.iter().enumerate() {
+            if node_index != 0 {
+                s.push(',');
+            }
+            push_node_key(&mut s, *node);
+        }
+        s.push_str("],\"ready_nodes\":[");
+        for (node_index, node) in deployment.ready_nodes.iter().enumerate() {
+            if node_index != 0 {
+                s.push(',');
+            }
+            push_node_key(&mut s, *node);
+        }
+        s.push_str("]}");
+    }
+    s.push_str("],\"ingress\":[");
+    for (index, ingress) in snapshot.ingress.iter().enumerate() {
+        if index != 0 {
+            s.push(',');
+        }
+        let _ = write!(
+            s,
+            concat!("{{\"vip\":\"{}.{}.{}.{}\",\"port\":{},\"protocol\":{},", "\"backend_name\":"),
+            ingress.service.address[0],
+            ingress.service.address[1],
+            ingress.service.address[2],
+            ingress.service.address[3],
+            ingress.service.port,
+            ingress.service.protocol,
+        );
+        if let Some(name) = &ingress.backend_name {
+            push_json_string(&mut s, name);
+        } else {
+            s.push_str("null");
+        }
+        let _ = write!(
+            s,
+            ",\"projection_present\":{},\"member_count\":{},\"epoch\":{},\"advertiser_node\":",
+            ingress.projection_present, ingress.member_count, ingress.epoch,
+        );
+        if let Some(node) = ingress.advertiser_node {
+            push_node_key(&mut s, node);
+        } else {
+            s.push_str("null");
+        }
+        s.push_str(",\"eligible_nodes\":[");
+        for (node_index, node) in ingress.eligible_nodes.iter().enumerate() {
+            if node_index != 0 {
+                s.push(',');
+            }
+            push_node_key(&mut s, *node);
+        }
+        s.push_str("]}");
+    }
+    s.push_str("]}");
+    Some(s)
 }
 
 struct Prev {
@@ -1255,10 +1473,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         let mut req = [0u8; 512];
         req[..req_len].copy_from_slice(&mapping.as_slice()[..req_len]);
 
-        // Route on the request target: HTML dashboard at `/`, JSON at
-        // `/metrics` (alias `/metric`), 404 otherwise. Account for the request
-        // up front so the `http` section reports the request being served,
-        // including the per-path breakdown.
+        // Route on the fixed node/cluster targets. Account for the request up
+        // front so the node report includes the request being served.
         counters.requests = counters.requests.wrapping_add(1);
         let path = request_path(&req[..req_len]);
         let (status_line, content_type, body) = if path == b"/" || path == b"/index.html" {
@@ -1271,6 +1487,29 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 "application/json",
                 build_json(&mac, link, &services, &counters, &mut prev),
             )
+        } else if path == b"/cluster" || path == b"/cluster/" || path == b"/cluster/index.html" {
+            counters.root = counters.root.wrapping_add(1);
+            ("HTTP/1.1 200 OK", "text/html; charset=utf-8", String::from(CLUSTER_DASHBOARD))
+        } else if path == b"/cluster/metrics" {
+            counters.metrics = counters.metrics.wrapping_add(1);
+            match services
+                .dns_conn
+                .as_ref()
+                .and_then(|connection| build_cluster_json(connection.as_ref()))
+                .or_else(|| {
+                    // DNS may register after httpd's optional startup lookup,
+                    // or may have restarted since then. A fresh name-service
+                    // connection keeps the cluster keyhole recoverable.
+                    let connection = try_lookup(services.ns_conn, dns::NAME)?;
+                    build_cluster_json(connection.as_ref())
+                }) {
+                Some(snapshot) => ("HTTP/1.1 200 OK", "application/json", snapshot),
+                None => (
+                    "HTTP/1.1 503 Service Unavailable",
+                    "application/json",
+                    String::from("{\"error\":\"fresh cluster snapshot unavailable\"}"),
+                ),
+            }
         } else {
             counters.other = counters.other.wrapping_add(1);
             ("HTTP/1.1 404 Not Found", "text/plain; charset=utf-8", String::from("not found"))
@@ -1282,7 +1521,15 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         response.push_str(content_type);
         response.push_str("\r\nContent-Length: ");
         let _ = write!(response, "{}", body.len());
-        response.push_str("\r\nConnection: close\r\n\r\n");
+        response.push_str(concat!(
+            "\r\nCache-Control: no-store",
+            "\r\nX-Content-Type-Options: nosniff",
+            "\r\nX-Frame-Options: DENY",
+            "\r\nContent-Security-Policy: default-src 'self'; script-src 'unsafe-inline'; ",
+            "style-src 'unsafe-inline'; connect-src 'self'; object-src 'none'; ",
+            "frame-ancestors 'none'",
+            "\r\nConnection: close\r\n\r\n"
+        ));
         response.push_str(&body);
         if socket.send_all(response.as_bytes(), 1200, ACCEPT_POLL_MS).is_err() {
             fail(0xe010);

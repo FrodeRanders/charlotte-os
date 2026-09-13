@@ -94,9 +94,10 @@ The main additions and extensions currently maintained here are:
   TCP/connected-UDP socket API. The `time` service uses it to sample NTP,
   calibrates the observe service's monotonic counter, persists holdover state
   in the object store, and publishes Unix, calendar, and ISO 8601 UTC over
-  endpoint IPC. A simple `httpd` service provides a self-refreshing dashboard
-  and a full-node JSON report with scheduler and per-service telemetry over
-  TCP, reachable from the host via SLIRP `hostfwd`
+  endpoint IPC. A simple `httpd` service provides self-refreshing node and
+  cluster dashboards: a full-node JSON report with scheduler and per-service
+  telemetry, and a bounded view of Raft posture, placement, readiness,
+  capacity, and DSR. They are reachable from the host via SLIRP `hostfwd`
   (`scripts/run-aarch64.sh --http-test`, then `curl localhost:8080`).
   Both QEMU runners attach a NIC by default: ordinary boots acquire a DHCP
   lease, start discovery and cluster formation, and synchronize UTC. The
