@@ -92,6 +92,54 @@ scripts/symbolize-kernel-panic.py \
 The failure is intermittent; the first observed run lasted 781 s of client
 traffic (about 6,800 records) before the panic.
 
+## Second reproduction (2026-09-13, aarch64)
+
+A later run reached 2,740 records (about 300 s) before the same fault class,
+now with the faulting instruction inside the dispatcher itself:
+
+```text
+KERNEL DATA/INST ABORT: ESR=96000007 ELR=ffffffff800a289c FAR=ffffffff8100000cc1a0
+Kernel backtrace: sp=0xffff8100000cb9e0 fp=0xffff8100000cba60
+  #00 0xffffffff800cb080  __rustc::rust_begin_unwind+0x74
+  #01 0xffffffff800f4894  core::panicking::assert_failed::<usize, usize>
+  #02 0xffffffff800a3154  sync_dispatcher+0x1380
+  #03 0xffffffff800006d8  sync_common+0x54
+```
+
+Disassembly of `ELR = sync_dispatcher+0xac8`:
+
+```text
+...  bl  note_owned_frame
+...  bl  inval_range_user
+...  ldp x20, x19, [sp, #0x1a0]      <- faulting instruction
+```
+
+`FAR = 0xffff8100000cc1a0` is exactly `SP + 0x1a0` with `SP` page-aligned at
+`0xffff8100000cc000`, so the dispatcher's own stack frame was reloaded from a
+page that had just become unmapped. The instructions immediately before the
+epilogue are the inlined tail of the page-mapping/accounting path in
+`crates/catten/src/memory/mod.rs:301-302` (`note_owned_frame` followed by
+`inval_range_user`), which runs when the kernel maps a frame into a user
+address space, for example while growing an EL0 stack.
+
+This refines the earlier hypothesis. The stack page is not merely reaped by
+the deferred thread list; it is unmapped inside a synchronous syscall that is
+still executing on it. The likely fault domain is the interaction between
+per-address-space frame accounting/direct-map unmapping and live kernel
+stacks: if a frame still backing a running kernel stack is released and the
+allocator unmaps it, the next stack access faults exactly this way. EL0 stack
+growth and the broker's thread churn are the stress that reaches it.
+
+The next investigation should therefore:
+
+1. instrument frame allocation/release with the owning ASID, frame, and
+   whether the frame is currently a kernel stack, and reproduce;
+2. audit the page-mapping and stack-growth paths (`memory/mod.rs` around
+   `map_page`/`note_owned_frame`, `grow_current_user_stack`) for releasing or
+   remapping a frame that still backs the running kernel stack;
+3. audit address-space teardown for the same hazard independent of the
+   deferred thread list.
+
 ## Suggested investigation
 
 1. Instrument staging and reaping with `(tid, generation, stack range,
