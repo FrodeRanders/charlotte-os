@@ -208,6 +208,14 @@ run_expected_violation CharlotteClusterIngress \
 run_expected_violation CharlotteClusterIngress \
     CharlotteClusterIngress_readiness_unsafe.cfg \
     CommittedPoliciesAreDerived UnsafeAdmitStaleReadiness
+run_model CharlottePlacementControl CharlottePlacementControl_small.cfg \
+    Observe SelectCandidate Tick PressureMove RemoveEligibility ForcedMove Admit
+run_expected_violation CharlottePlacementControl \
+    CharlottePlacementControl_dwell_unsafe.cfg \
+    PressureRespectsStability UnsafeEarlyPressureMove
+run_expected_violation CharlottePlacementControl \
+    CharlottePlacementControl_reserve_unsafe.cfg \
+    ReservationsPreserveReserve UnsafeAdmit
 run_model CharlotteRemoteCall CharlotteRemoteCall_small.cfg \
     Start ReplaceTarget Execute RejectStale QueueReply DuplicateRequest \
     DeliverReply Timeout SettleTransport RetireUncertainSession Evict

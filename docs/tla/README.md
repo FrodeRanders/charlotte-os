@@ -1,6 +1,6 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for twenty-three
+This directory contains finite, executable specifications for twenty-four
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
@@ -26,6 +26,7 @@ CharlotteOS subsystems:
 | Raft pre-membership join admission | `CharlotteRaftJoin.tla` | `CharlotteRaftJoin_small.cfg` |
 | Raft snapshot installation and recovery | `CharlotteRaftSnapshot.tla` | `CharlotteRaftSnapshot_small.cfg` |
 | Joint cluster placement, readiness, drain, and DSR ingress | `CharlotteClusterIngress.tla` | `CharlotteClusterIngress_small.cfg` |
+| Filtered placement control, dwell, and reservations | `CharlottePlacementControl.tla` | `CharlottePlacementControl_small.cfg` |
 | Remote-call identity, uncertainty, and bounded deduplication | `CharlotteRemoteCall.tla` | `CharlotteRemoteCall_small.cfg` |
 | Reliable-message restart/retry sessions | `CharlotteReliableMessage.tla` | `CharlotteReliableMessage_small.cfg` |
 
@@ -622,6 +623,22 @@ admission. A flow whose pinned epoch has left history remains a fail-closed
 tombstone instead of falling back to the current snapshot. The model includes
 the corresponding stale-new-flow and unretained-flow drop actions without
 pretending that asynchronous policy delivery is instantaneous.
+
+## Placement feedback-control model
+
+`CharlottePlacementControl.tla` isolates the controller that precedes a
+generation-fenced placement replacement. Raw per-node observations and the
+filtered control signal are separate state. Candidate selection reads only the
+filtered value; pressure movement requires a stable dwell and an expired
+cooldown, while membership or drain can remove a node from the eligible set and
+force immediate movement. A second state dimension accounts static resource
+promises independently of transient free-memory observations.
+
+The invariants require every admitted promise to preserve the node reserve and
+forbid a pressure movement that bypasses dwell or cooldown. Two negative
+configurations retain those failure modes. The finite model uses an EWMA alpha
+of 1/2 to keep the state graph small; Rust uses 1/4. The coefficient changes
+response speed, not the checked authority and sequencing properties.
 
 ## Remote-call model
 

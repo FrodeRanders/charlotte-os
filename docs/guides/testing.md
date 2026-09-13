@@ -95,6 +95,14 @@ cooperative exit, then returns the assignment with a test-injected zero grace
 period and requires forced termination, generation-safe reaping, and continued
 reachability through the replacement generation.
 
+`./scripts/run-distributed-ingress-test.sh` forms a three-member cluster and
+also validates the placement-control reporting path. Before failover, one
+leader must seed fresh filtered capacity state for all three members. After the
+VIP advertiser/leader is stopped, a surviving leader must rebuild fresh state
+for both remaining reporters; replicated samples from the former term do not
+extend the leader-local lease. The fixture continues to check established-flow
+survival, gratuitous ARP, and reconnect after backend loss.
+
 For a deterministic test that does not require networking or cluster
 formation, use:
 

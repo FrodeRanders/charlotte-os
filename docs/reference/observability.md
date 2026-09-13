@@ -187,6 +187,15 @@ in-flight, decoded frames); `disco::OP_LIST_PEERS` supplies the peer table;
 and `dns` also serves `raft::OP_CLUSTER_STATUS` for commit index, member
 count, and leader identity.
 
+The placement controller does not consume this detailed stream directly.
+`dns` obtains a five-second node-pressure sample, rejects replayed epochs, and
+low-pass filters memory and CPU before proposing a coarser Raft value. Its
+status page publishes four cumulative decision counters at offsets 52--64:
+accepted capacity observations, proposed filtered capacity commands, proposed
+placement reassignments, and the subset forced by membership or drain. Keeping
+raw archive samples beside explicit controller counters lets operators inspect
+both what happened and why the placement actuator did—or did not—respond.
+
 The `frouter` report includes `snapshot_fresh`,
 `snapshot_stale_dropped`, `missing_epoch_dropped`, and
 `snapshot_expirations`, plus `ingress_services`, the number of independently

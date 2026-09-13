@@ -332,12 +332,15 @@ ready owner. Ordinary distributed name lookup remains deterministic rather
 than caller-balanced; cluster-wide TCP traffic obtains replica load sharing at
 the DSR layer.
 
-Capacity-aware memory admission and CPU-pressure ranking are implemented.
-Signed explicit heap requests, label/failure-domain selection, multi-instance
-placement on one node, dependency-observed migration, rolling surge policy and
-automatic rollback remain open. Reassignment currently advances the whole
-deployment generation, so retained replicas restart alongside newly selected
-ones; a future per-replica revision can make that transition rolling.
+Capacity-aware memory admission, cross-release reservation accounting,
+CPU-pressure ranking, low-pass filtering, and dwell-controlled reassignment are
+implemented. Raw telemetry remains available independently of the filtered
+placement signal. Signed explicit heap/CPU/storage requests,
+label/failure-domain selection, multi-instance placement on one node,
+dependency-observed migration, rolling surge policy, and automatic rollback
+remain open. Reassignment currently advances the whole deployment generation,
+so retained replicas restart alongside newly selected ones; a future
+per-replica revision can make that transition rolling.
 
 Raft agreement does not authenticate a raw DNS mutation. The network ingress
 does: it admits only a descriptor signed by the offline cluster authority and
@@ -350,10 +353,11 @@ The signed notification, follower-to-leader admission relay, Raft descriptor
 replication, central S3 pull, grant-controller mediation, and scoped kernel
 launch are implemented. The agent handles full 48-byte artifact names and up
 to 64 independently reconciled application domains per node. The S3 connector
-must still be provisioned separately before notifying the cluster. The management endpoint
-now reports generation-safe `committed`, `replacing`, and `ready` rollout
+must still be provisioned separately before notifying the cluster. The
+management endpoint now reports generation-safe `committed`, `replacing`, and
+`ready` rollout
 conditions, and the QEMU runner has a RustFS-backed end-to-end deployment
-fixture. Replica-set placement is unit-tested and compiled into the AArch64
-services, but still needs a dedicated multi-node release/scale/failover QEMU
-fixture. Authenticated audit identities beyond the signing key and a
-production resource-aware release controller remain open.
+fixture. Replica-set placement and the control-policy primitives are
+unit-tested and compiled into the AArch64 services, but still need a dedicated
+multi-node pressure/scale/failover QEMU fixture. Authenticated audit identities
+beyond the signing key and explicit CPU/storage enforcement remain open.

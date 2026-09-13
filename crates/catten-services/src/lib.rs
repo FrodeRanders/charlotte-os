@@ -2471,7 +2471,10 @@ pub mod rregister {
 /// Fire-and-forget: a lost report is refreshed by the next sampling interval,
 /// and stale or unknown entries are neutral in the placement resolver. A
 /// per-boot nonce lets the receiver fence reports within one boot while still
-/// accepting a restarted reporter whose monotonic clock has reset.
+/// accepting a restarted reporter whose monotonic clock has reset. The nonce
+/// is an identity, not an ordering primitive: the enclosing reliable-message
+/// session supplies monotonic incarnation order and rejects delayed older
+/// sessions.
 pub mod rcapacity {
     pub const TAG_REQUEST: u8 = 0x21;
     pub const FRAME_LEN: usize = 8 + 8 + 8 + 8 + 8 + 2;

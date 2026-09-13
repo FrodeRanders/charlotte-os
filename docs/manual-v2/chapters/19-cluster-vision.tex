@@ -568,14 +568,29 @@ distinct nodes than the current eligible set fails admission.
 
 The scheduler remains intentionally bounded, but it now accounts for a useful
 minimum of node capacity. Each node reports free and usable frames plus recent
-CPU occupancy through the cluster's existing identity-checked peer path. Reports
-carry an entropy-derived boot incarnation and are committed through Raft;
-after three missed reporting intervals the leader treats a sample as unknown.
-The descriptor's stack budget and fixed runtime pages form a memory demand.
-Hard memory admission preserves a one-sixteenth reserve, while CPU pressure is
-a soft ranking signal. Every selected component debits a projected capacity
-view during one release decision, including explicit node pins, so several
-individually valid components cannot overcommit the same sample.
+CPU occupancy through the cluster's existing identity-checked peer path. The
+leader rejects replayed epochs and low-pass filters free memory and CPU with an
+integer EWMA before committing placement input through Raft. After three
+missed reporting intervals it treats a sample as unknown. A new boot
+incarnation resets the filter rather than blending unrelated processes.
+
+This does not filter the observability archive. Raw one-second samples retain
+short-lived spikes for diagnosis; the five-second report, EWMA, bucket
+hysteresis, and freshness lease form a distinct control signal. The
+descriptor's stack budget and fixed runtime pages form a memory promise. The
+leader reconstructs promises held by other catalog deployments before
+admitting a release, and every selected component debits projected dynamic and
+static headroom. If a report expires while a node retains commitments, those
+promises remain visible with no additional headroom instead of turning into an
+apparently empty node. Hard memory admission preserves a one-sixteenth reserve,
+while CPU pressure remains a soft ranking signal.
+
+Pressure may now change an existing replica set, but only when the same
+candidate survives a 30-second dwell; another pressure move is held for a
+60-second cooldown. Membership loss and committed drain bypass dwell because
+the old target is no longer eligible. The result is still committed as a
+generation-fenced reassignment, so replacement readiness and DSR eligibility
+advance together rather than following an uncommitted local judgment.
 
 The policy does not yet express heap, processor, or storage requests, labels,
 named failure domains, or more than one instance of an artifact on a node.
@@ -590,11 +605,12 @@ queue depth, and task snapshots are already observable inside a node
 call which. The target controller should aggregate these signals across
 nodes and use sustained behavior, not transient noise, to refine placement.
 
-The committed node-capacity reports are the first cluster-wide feedback loop,
-deliberately limited to slow, bucketed memory and CPU pressure. Detailed
-executor and communication metrics are not yet aggregated across nodes or used
-to move existing assignments; those measurements are inputs from which a
-stability-controlled placement controller can later be built.
+The node-capacity path is the first cluster-wide feedback loop, deliberately
+limited to slow memory and CPU pressure. Detailed executor and communication
+metrics are not yet aggregated across nodes or used for placement; extending
+the controller requires similarly explicit filtering, dwell, authority bounds,
+and decision telemetry rather than feeding raw measurements directly into an
+actuator.
 
 \subsection{Focused stateless-handoff validation}
 

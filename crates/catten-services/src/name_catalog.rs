@@ -192,7 +192,9 @@ pub struct IngressPolicyEntry {
 /// and replicated through the log so every replica resolves placements from
 /// applied state. `boot_nonce` is generated once per reporter start, so a
 /// restart with a reset monotonic clock supersedes the previous boot's
-/// samples instead of being fenced out as stale.
+/// samples instead of being fenced out as stale. The ingress transport orders
+/// service incarnations, so an older nonce cannot supersede a newer one after
+/// delayed delivery.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NodeCapacityEntry {
     pub node_key: u64,
@@ -533,6 +535,7 @@ impl NameCatalog {
                     crate::operations_admission::NodeCapacity {
                         free_frames: entry.free_frames,
                         usable_frames: entry.usable_frames,
+                        committed_frames: 0,
                         cpu_load_permille: entry.cpu_load_permille,
                     },
                 )

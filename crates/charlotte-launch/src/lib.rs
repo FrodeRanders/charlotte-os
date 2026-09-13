@@ -131,6 +131,15 @@ pub mod dns_status {
     pub const REMOTE_QUERIES_SERVED: usize = 44;
     /// Reliable-transport acknowledgements for remote query replies.
     pub const REMOTE_QUERY_REPLY_ACKS: usize = 48;
+    /// Strictly newer raw capacity observations accepted by this leader.
+    pub const CAPACITY_REPORTS_ACCEPTED: usize = 52;
+    /// Filtered capacity changes proposed to Raft.
+    pub const CAPACITY_COMMANDS_PROPOSED: usize = 56;
+    /// Pressure- or topology-driven placement changes proposed to Raft.
+    pub const PLACEMENT_REASSIGNMENTS: usize = 60;
+    /// Reassignments that bypassed dwell because a replica node became
+    /// ineligible through membership or drain state.
+    pub const FORCED_REASSIGNMENTS: usize = 64;
 }
 
 /// Status-page offsets written by the cluster deploy agent.

@@ -24,6 +24,7 @@ use alloc::{
         BTreeMap,
         BTreeSet,
         VecDeque,
+        btree_map::Entry,
     },
     string::ToString,
     sync::Arc,
@@ -577,6 +578,9 @@ fn reconcile_replica_placements(
     catalog: &NameCatalog,
     pending: &mut Vec<PendingRegistration>,
     capacity: &operations_admission::NodeCapacityView,
+    gates: &mut BTreeMap<Vec<u8>, operations_admission::ReassignmentGate>,
+    reassignment_count: &mut u32,
+    forced_reassignment_count: &mut u32,
 ) {
     if node.state != NodeState::Leader {
         return;
@@ -602,6 +606,9 @@ fn reconcile_replica_placements(
     ) else {
         return;
     };
+    let active_artifacts =
+        deployments.iter().map(|(artifact, _)| artifact.clone()).collect::<BTreeSet<_>>();
+    gates.retain(|artifact, _| active_artifacts.contains(artifact));
     for ((artifact, entry), nodes) in deployments.iter().zip(assignments) {
         if pending.len() >= MAX_IN_FLIGHT_CALLS {
             break;
@@ -619,10 +626,46 @@ fn reconcile_replica_placements(
         {
             continue;
         }
+        let forced = entry.replica_nodes.iter().any(|node| !candidates.contains(node));
+        let gate = gates.entry(artifact.clone()).or_default();
+        if !gate.ready(
+            &entry.replica_nodes,
+            &nodes,
+            forced,
+            node.millis(),
+            PLACEMENT_REASSIGN_DWELL_MS,
+            PLACEMENT_REASSIGN_COOLDOWN_MS,
+        ) {
+            continue;
+        }
         let Some(command) = encode_reassign(artifact, entry.generation, &nodes) else {
             continue;
         };
         if let Ok(log_index) = node.submit_command(command, node.millis()) {
+            gate.mark_submitted(node.millis());
+            *reassignment_count = reassignment_count.saturating_add(1);
+            config::write_u32_release(dns::status::PLACEMENT_REASSIGNMENTS, *reassignment_count);
+            if forced {
+                *forced_reassignment_count = forced_reassignment_count.saturating_add(1);
+                config::write_u32_release(
+                    dns::status::FORCED_REASSIGNMENTS,
+                    *forced_reassignment_count,
+                );
+            }
+            catten_rt::logln!(
+                "[dns] proposed {} reassignment for {}{}",
+                if forced {
+                    "topology"
+                } else {
+                    "pressure"
+                },
+                alloc::string::String::from_utf8_lossy(artifact),
+                if forced {
+                    " immediately"
+                } else {
+                    " after control dwell"
+                }
+            );
             pending.push(PendingRegistration::Placement {
                 term: node.current_term,
                 log_index,
@@ -762,6 +805,8 @@ fn drain_raft_admin(endpoint: u64, node: &mut RaftNode) {
 
 const CAPACITY_REPORT_INTERVAL_MS: u64 = 5_000;
 const CAPACITY_LEASE_MS: u64 = CAPACITY_REPORT_INTERVAL_MS * 3;
+const PLACEMENT_REASSIGN_DWELL_MS: u64 = 30_000;
+const PLACEMENT_REASSIGN_COOLDOWN_MS: u64 = 60_000;
 
 fn wait_capacity_call(mut call: PendingCall<'_>) -> Option<CallResult> {
     let (started, frequency_hz) = catten_syscall::monotonic_clock();
@@ -812,6 +857,108 @@ fn fresh_capacity_view(
     view
 }
 
+fn filter_capacity_report(
+    filters: &mut BTreeMap<u64, operations_admission::CapacityFilter>,
+    report: catten_services::rcapacity::Report,
+) -> Option<(catten_services::rcapacity::Report, bool)> {
+    let observed = operations_admission::NodeCapacity {
+        free_frames: report.free_frames,
+        usable_frames: report.usable_frames,
+        committed_frames: 0,
+        cpu_load_permille: report.cpu_load_permille,
+    };
+    let (filtered, seeded) = match filters.entry(report.node_key) {
+        Entry::Occupied(mut entry) => {
+            (entry.get_mut().observe(report.boot_nonce, report.epoch, observed)?, false)
+        }
+        Entry::Vacant(entry) => {
+            let filter = operations_admission::CapacityFilter::new(
+                report.boot_nonce,
+                report.epoch,
+                observed,
+            )?;
+            let filtered = filter.value();
+            entry.insert(filter);
+            (filtered, true)
+        }
+    };
+    Some((
+        catten_services::rcapacity::Report {
+            free_frames: filtered.free_frames,
+            usable_frames: filtered.usable_frames,
+            cpu_load_permille: filtered.cpu_load_permille,
+            ..report
+        },
+        seeded,
+    ))
+}
+
+/// Combine fresh control samples with the resource promises held by all
+/// previously committed deployments except artifacts replaced by this plan.
+fn capacity_with_reservations(
+    catalog: &NameCatalog,
+    mut capacity: operations_admission::NodeCapacityView,
+    replacing: &BTreeSet<Vec<u8>>,
+) -> operations_admission::NodeCapacityView {
+    for (artifact, entry) in catalog.deployments() {
+        if replacing.contains(&artifact) {
+            continue;
+        }
+        let Some(descriptor) = charlotte_launch::deployment::decode(&entry.descriptor) else {
+            continue;
+        };
+        let demand = operations_admission::descriptor_memory_demand(&descriptor);
+        for node in entry.replica_nodes {
+            if let Some(sample) = capacity.get_mut(&node) {
+                sample.committed_frames = sample.committed_frames.saturating_add(demand);
+            } else {
+                // Preserve already committed promises even while the node's
+                // dynamic report is stale. Zero dynamic headroom prevents a
+                // later release from treating that node as wholly unknown and
+                // spending the same reservation again.
+                capacity.insert(
+                    node,
+                    operations_admission::NodeCapacity {
+                        free_frames: 0,
+                        usable_frames: demand,
+                        committed_frames: demand,
+                        cpu_load_permille: operations_admission::CPU_LOAD_UNKNOWN,
+                    },
+                );
+            }
+        }
+    }
+    capacity
+}
+
+fn release_replacements(envelope: &[u8]) -> BTreeSet<Vec<u8>> {
+    charlotte_launch::release::decode(envelope).map_or_else(BTreeSet::new, |release| {
+        release
+            .descriptors()
+            .filter_map(charlotte_launch::deployment::decode)
+            .map(|descriptor| descriptor.artifact_name.to_vec())
+            .collect()
+    })
+}
+
+fn release_capacity_view(
+    catalog: &NameCatalog,
+    capacity: operations_admission::NodeCapacityView,
+    envelope: &[u8],
+) -> operations_admission::NodeCapacityView {
+    capacity_with_reservations(catalog, capacity, &release_replacements(envelope))
+}
+
+fn operations_capacity_view(
+    catalog: &NameCatalog,
+    capacity: operations_admission::NodeCapacityView,
+    bundle: &[u8],
+) -> operations_admission::NodeCapacityView {
+    let replacing = charlotte_launch::operations_bundle::decode(bundle)
+        .map_or_else(BTreeSet::new, |bundle| release_replacements(bundle.release));
+    capacity_with_reservations(catalog, capacity, &replacing)
+}
+
 /// Build a committed capacity command when a report changes the placement
 /// picture.
 ///
@@ -825,12 +972,14 @@ fn capacity_command(
     let next = operations_admission::NodeCapacity {
         free_frames: report.free_frames,
         usable_frames: report.usable_frames,
+        committed_frames: 0,
         cpu_load_permille: report.cpu_load_permille,
     };
     let previous_entry = catalog.node_capacity(report.node_key);
     let previous = previous_entry.map(|entry| operations_admission::NodeCapacity {
         free_frames: entry.free_frames,
         usable_frames: entry.usable_frames,
+        committed_frames: 0,
         cpu_load_permille: entry.cpu_load_permille,
     });
     let new_incarnation = previous_entry.is_some_and(|entry| entry.boot_nonce != report.boot_nonce);
@@ -1413,6 +1562,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut last_heartbeat_broadcast = 0u64;
     let mut capacity_boot_nonce = None;
     let mut capacity_last_seen_ms: BTreeMap<u64, (u64, u64)> = BTreeMap::new();
+    let mut capacity_filters: BTreeMap<u64, operations_admission::CapacityFilter> = BTreeMap::new();
+    let mut placement_gates: BTreeMap<Vec<u8>, operations_admission::ReassignmentGate> =
+        BTreeMap::new();
+    let mut capacity_reports_accepted = 0u32;
+    let mut capacity_commands_proposed = 0u32;
+    let mut placement_reassignments = 0u32;
+    let mut forced_reassignments = 0u32;
     let mut next_capacity_report_ms = 0u64;
 
     loop {
@@ -1474,15 +1630,36 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     cpu_load_permille: cpu_load_permille.min(u64::from(u16::MAX)) as u16,
                 };
                 if node.state == NodeState::Leader {
-                    capacity_last_seen_ms
-                        .insert(report.node_key, (report.boot_nonce, node.millis()));
-                    if let Some(command) = capacity_command(&catalog, report)
-                        && node.submit_command(command, node.millis()).is_ok()
+                    if let Some((control, seeded)) =
+                        filter_capacity_report(&mut capacity_filters, report)
                     {
-                        catten_rt::logln!(
-                            "[dns] proposed capacity sample for node {:016x}",
-                            report.node_key
+                        capacity_reports_accepted = capacity_reports_accepted.saturating_add(1);
+                        config::write_u32_release(
+                            dns::status::CAPACITY_REPORTS_ACCEPTED,
+                            capacity_reports_accepted,
                         );
+                        capacity_last_seen_ms
+                            .insert(control.node_key, (control.boot_nonce, node.millis()));
+                        if seeded {
+                            catten_rt::logln!(
+                                "[dns] seeded capacity control for node {:016x}",
+                                control.node_key
+                            );
+                        }
+                        if let Some(command) = capacity_command(&catalog, control)
+                            && node.submit_command(command, node.millis()).is_ok()
+                        {
+                            capacity_commands_proposed =
+                                capacity_commands_proposed.saturating_add(1);
+                            config::write_u32_release(
+                                dns::status::CAPACITY_COMMANDS_PROPOSED,
+                                capacity_commands_proposed,
+                            );
+                            catten_rt::logln!(
+                                "[dns] proposed filtered capacity for node {:016x}",
+                                control.node_key
+                            );
+                        }
                     }
                 } else if let Some(leader) = node.known_leader_id.clone()
                     && transport.has_peer(&leader)
@@ -2028,15 +2205,37 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                 == Some(report.node_key)
                                         },
                                     )
+                                    && let Some((control, seeded)) =
+                                        filter_capacity_report(&mut capacity_filters, report)
                                 {
-                                    capacity_last_seen_ms
-                                        .insert(report.node_key, (report.boot_nonce, node.millis()));
-                                    if let Some(command) = capacity_command(&catalog, report)
+                                    capacity_reports_accepted =
+                                        capacity_reports_accepted.saturating_add(1);
+                                    config::write_u32_release(
+                                        dns::status::CAPACITY_REPORTS_ACCEPTED,
+                                        capacity_reports_accepted,
+                                    );
+                                    capacity_last_seen_ms.insert(
+                                        control.node_key,
+                                        (control.boot_nonce, node.millis()),
+                                    );
+                                    if seeded {
+                                        catten_rt::logln!(
+                                            "[dns] seeded capacity control for node {:016x}",
+                                            control.node_key
+                                        );
+                                    }
+                                    if let Some(command) = capacity_command(&catalog, control)
                                         && node.submit_command(command, node.millis()).is_ok()
                                     {
+                                        capacity_commands_proposed =
+                                            capacity_commands_proposed.saturating_add(1);
+                                        config::write_u32_release(
+                                            dns::status::CAPACITY_COMMANDS_PROPOSED,
+                                            capacity_commands_proposed,
+                                        );
                                         catten_rt::logln!(
-                                            "[dns] proposed capacity sample for node {:016x}",
-                                            report.node_key
+                                            "[dns] proposed filtered capacity for node {:016x}",
+                                            control.node_key
                                         );
                                     }
                                 }
@@ -2197,15 +2396,20 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                         let automatic_node = node_identity::key_from_name(&node_name)
                                             .unwrap_or(0);
                                         let eligible_nodes = placement_nodes(&node, &catalog);
-                                        match release_command(
-                                            &request.envelope,
-                                            &eligible_nodes,
-                                            automatic_node,
-                                            &fresh_capacity_view(
+                                        let capacity = release_capacity_view(
+                                            &catalog,
+                                            fresh_capacity_view(
                                                 &catalog,
                                                 &capacity_last_seen_ms,
                                                 node.millis(),
                                             ),
+                                            &request.envelope,
+                                        );
+                                        match release_command(
+                                            &request.envelope,
+                                            &eligible_nodes,
+                                            automatic_node,
+                                            &capacity,
                                         ) {
                                             Ok(command) => match node
                                                 .submit_command(command, node.millis())
@@ -2279,17 +2483,22 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                         let automatic_node = node_identity::key_from_name(&node_name)
                                             .unwrap_or(0);
                                         let eligible_nodes = placement_nodes(&node, &catalog);
+                                        let capacity = operations_capacity_view(
+                                            &catalog,
+                                            fresh_capacity_view(
+                                                &catalog,
+                                                &capacity_last_seen_ms,
+                                                node.millis(),
+                                            ),
+                                            &request.bundle,
+                                        );
                                         match operations_command(
                                             &request.bundle,
                                             &admission_trust,
                                             time_conn.as_ref(),
                                             &eligible_nodes,
                                             automatic_node,
-                                            &fresh_capacity_view(
-                                                &catalog,
-                                                &capacity_last_seen_ms,
-                                                node.millis(),
-                                            ),
+                                            &capacity,
                                         ) {
                                             Ok(command) => match node
                                                 .submit_command(command, node.millis())
@@ -2678,6 +2887,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             &catalog,
             &mut pending_registers,
             &placement_capacity,
+            &mut placement_gates,
+            &mut placement_reassignments,
+            &mut forced_reassignments,
         );
 
         // Settle event-broker waiters from the *applied* catalog: any entry
@@ -3040,15 +3252,20 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     let automatic_node =
                                         node_identity::key_from_name(&node_name).unwrap_or(0);
                                     let eligible_nodes = placement_nodes(node, &catalog);
-                                    release_command(
-                                        &envelope,
-                                        &eligible_nodes,
-                                        automatic_node,
-                                        &fresh_capacity_view(
+                                    let capacity = release_capacity_view(
+                                        &catalog,
+                                        fresh_capacity_view(
                                             &catalog,
                                             &capacity_last_seen_ms,
                                             node.millis(),
                                         ),
+                                        &envelope,
+                                    );
+                                    release_command(
+                                        &envelope,
+                                        &eligible_nodes,
+                                        automatic_node,
+                                        &capacity,
                                     )
                                 },
                             ) {
@@ -3104,17 +3321,22 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     let automatic_node =
                                         node_identity::key_from_name(&node_name).unwrap_or(0);
                                     let eligible_nodes = placement_nodes(node, &catalog);
+                                    let capacity = operations_capacity_view(
+                                        &catalog,
+                                        fresh_capacity_view(
+                                            &catalog,
+                                            &capacity_last_seen_ms,
+                                            node.millis(),
+                                        ),
+                                        &bundle,
+                                    );
                                     operations_command(
                                         &bundle,
                                         &admission_trust,
                                         time_conn.as_ref(),
                                         &eligible_nodes,
                                         automatic_node,
-                                        &fresh_capacity_view(
-                                            &catalog,
-                                            &capacity_last_seen_ms,
-                                            node.millis(),
-                                        ),
+                                        &capacity,
                                     )
                                 },
                             ) {
@@ -4507,6 +4729,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             );
         }
         if logged_raft_term != node.current_term || logged_raft_state != node.state {
+            // Filter and freshness state is leader-local authority. Rebuild it
+            // after every leadership/term transition instead of allowing an
+            // observation accepted under an earlier control epoch to extend
+            // the new leader's lease.
+            capacity_filters.clear();
+            capacity_last_seen_ms.clear();
+            placement_gates.clear();
             logged_raft_term = node.current_term;
             logged_raft_state = node.state;
             catten_rt::logln!(

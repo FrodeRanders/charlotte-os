@@ -394,6 +394,21 @@ Boolean plus weak fairness, rather than a proof of the five-second timer. A
 later refinement should add advertiser failover and packets that move between
 ingress participants.
 
+## Cluster placement feedback control
+
+`CharlottePlacementControl` models the leader-local controller before its
+output enters `CharlotteClusterIngress` as `ReplaceDeployment`.
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `Observe` | `filter_capacity_report`; `CapacityFilter::observe` | Direct for separating raw reports from the filtered placement value and rejecting duplicate/decreasing epochs. The model uses alpha 1/2; Rust uses integer alpha 1/4 and resets on boot-incarnation or usable-memory change. |
+| `SelectCandidate` | `resolve_descriptor_assignments_with_capacity` | Abstracts deterministic bucket and rendezvous ranking to selection from filtered, feasible nodes. |
+| `Tick` | `RaftNode::millis`; `ReassignmentGate::ready` | Abstracts monotonic dwell and cooldown progress. Model ticks are logical units; Rust uses 30-second dwell and 60-second cooldown. |
+| `PressureMove` | `ReassignmentGate::ready`, then `encode_reassign` and `submit_command` | Direct for refusing pressure-only movement before dwell or during cooldown. Submission records the cooldown; catalog application supplies the generation fence. |
+| `RemoveEligibility` / `ForcedMove` | `placement_nodes`; the forced branch in `reconcile_replica_placements` | Abstracts committed drain and membership loss. An invalid current node bypasses dwell, but the resulting assignment still enters through Raft. |
+| `Admit` | `capacity_with_reservations`; `reserve_node_capacity` | Direct for reconstructing other deployments' promises and charging each selected instance against static and dynamic headroom. |
+| `UnsafeEarlyPressureMove` / `UnsafeAdmit` | Retained negative models | Demonstrate oscillation-prone actuation and cross-release overcommit when the corresponding guards are removed. |
+
 ## Remote-call identity and uncertainty
 
 | TLA+ action | Rust implementation | Correspondence |

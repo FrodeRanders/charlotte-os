@@ -42,6 +42,10 @@ pub const CPU_LOAD_UNKNOWN: u16 = u16::MAX;
 pub struct NodeCapacity {
     pub free_frames: u64,
     pub usable_frames: u64,
+    /// Static memory promises already committed to other deployments on this
+    /// node. This is a controller-side projection rather than a reported
+    /// sensor value.
+    pub committed_frames: u64,
     /// Recent CPU occupancy in permille, or [`CPU_LOAD_UNKNOWN`].
     pub cpu_load_permille: u16,
 }
@@ -51,8 +55,145 @@ impl Default for NodeCapacity {
         Self {
             free_frames: 0,
             usable_frames: 0,
+            committed_frames: 0,
             cpu_load_permille: CPU_LOAD_UNKNOWN,
         }
+    }
+}
+
+/// Per-node low-pass state used to turn faithful capacity observations into a
+/// stable placement-control signal.
+///
+/// Observability retains raw samples. This controller state deliberately does
+/// not: it rejects replayed epochs and applies an EWMA with alpha 1/4. A new
+/// reporter incarnation or a changed physical-memory size starts a new filter
+/// immediately instead of blending unrelated processes or boots. Incarnation
+/// order is supplied by the reliable-message transport's monotonic wire
+/// sessions; the random nonce distinguishes a restart but does not order two
+/// incarnations by itself.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CapacityFilter {
+    boot_nonce: u64,
+    epoch: u64,
+    filtered: NodeCapacity,
+}
+
+impl CapacityFilter {
+    pub fn new(boot_nonce: u64, epoch: u64, sample: NodeCapacity) -> Option<Self> {
+        (boot_nonce != 0 && epoch != 0).then_some(Self {
+            boot_nonce,
+            epoch,
+            filtered: sample,
+        })
+    }
+
+    pub fn boot_nonce(&self) -> u64 {
+        self.boot_nonce
+    }
+
+    pub fn epoch(&self) -> u64 {
+        self.epoch
+    }
+
+    pub fn value(&self) -> NodeCapacity {
+        self.filtered
+    }
+
+    /// Accept a strictly newer observation and return the resulting control
+    /// signal. `None` denotes an old or duplicate report.
+    pub fn observe(
+        &mut self,
+        boot_nonce: u64,
+        epoch: u64,
+        sample: NodeCapacity,
+    ) -> Option<NodeCapacity> {
+        if boot_nonce == 0 || epoch == 0 {
+            return None;
+        }
+        if boot_nonce == self.boot_nonce && epoch <= self.epoch {
+            return None;
+        }
+        if boot_nonce != self.boot_nonce || sample.usable_frames != self.filtered.usable_frames {
+            self.boot_nonce = boot_nonce;
+            self.epoch = epoch;
+            self.filtered = sample;
+            return Some(sample);
+        }
+        self.epoch = epoch;
+        self.filtered.free_frames = low_pass_u64(self.filtered.free_frames, sample.free_frames);
+        self.filtered.cpu_load_permille =
+            low_pass_cpu(self.filtered.cpu_load_permille, sample.cpu_load_permille);
+        // Committed reservations are supplied by the catalog projection, not
+        // by node reports, so filtering never manufactures them.
+        self.filtered.committed_frames = 0;
+        Some(self.filtered)
+    }
+}
+
+fn low_pass_u64(previous: u64, observed: u64) -> u64 {
+    if observed >= previous {
+        previous.saturating_add(observed.saturating_sub(previous).div_ceil(4))
+    } else {
+        previous.saturating_sub(previous.saturating_sub(observed).div_ceil(4))
+    }
+}
+
+fn low_pass_cpu(previous: u16, observed: u16) -> u16 {
+    if previous == CPU_LOAD_UNKNOWN || observed == CPU_LOAD_UNKNOWN {
+        return observed;
+    }
+    low_pass_u64(u64::from(previous), u64::from(observed)) as u16
+}
+
+/// Temporal hysteresis for one desired replica set.
+///
+/// The controller keeps one instance per artifact. Membership loss and drain
+/// can bypass the dwell interval, while pressure-only changes must remain
+/// identical for `dwell_ms` and may not follow a previous relocation until
+/// `cooldown_ms` has elapsed.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ReassignmentGate {
+    candidate: Vec<u64>,
+    candidate_since_ms: u64,
+    last_submission_ms: Option<u64>,
+}
+
+impl ReassignmentGate {
+    pub fn ready(
+        &mut self,
+        current: &[u64],
+        candidate: &[u64],
+        forced: bool,
+        now_ms: u64,
+        dwell_ms: u64,
+        cooldown_ms: u64,
+    ) -> bool {
+        if current == candidate {
+            self.candidate.clear();
+            self.candidate_since_ms = now_ms;
+            return false;
+        }
+        if forced {
+            self.candidate.clear();
+            self.candidate_since_ms = now_ms;
+            return true;
+        }
+        if self.candidate != candidate {
+            self.candidate.clear();
+            self.candidate.extend_from_slice(candidate);
+            self.candidate_since_ms = now_ms;
+            return false;
+        }
+        if self.last_submission_ms.is_some_and(|last| now_ms.saturating_sub(last) < cooldown_ms) {
+            return false;
+        }
+        now_ms.saturating_sub(self.candidate_since_ms) >= dwell_ms
+    }
+
+    pub fn mark_submitted(&mut self, now_ms: u64) {
+        self.last_submission_ms = Some(now_ms);
+        self.candidate.clear();
+        self.candidate_since_ms = now_ms;
     }
 }
 
@@ -137,7 +278,7 @@ const DOMAIN_RUNTIME_PAGES: u64 = 8;
 /// The heap is demand-committed rather than reserved, so it is not part of the
 /// demand; an explicit signed heap request arrives with a future descriptor
 /// version, and storage or processor requests need their own node sensors.
-fn descriptor_memory_demand(
+pub fn descriptor_memory_demand(
     descriptor: &charlotte_launch::deployment::DeploymentDescriptor<'_>,
 ) -> u64 {
     u64::from(descriptor.max_threads)
@@ -156,7 +297,10 @@ fn node_can_host(capacity: &NodeCapacityView, node: u64, demand_frames: u64) -> 
         return true;
     }
     let reserve = (sample.usable_frames / 16).max(1);
-    sample.free_frames.min(sample.usable_frames) >= demand_frames.saturating_add(reserve)
+    let dynamic_headroom = sample.free_frames.min(sample.usable_frames);
+    let static_headroom = sample.usable_frames.saturating_sub(reserve);
+    dynamic_headroom >= demand_frames.saturating_add(reserve)
+        && sample.committed_frames.saturating_add(demand_frames) <= static_headroom
 }
 
 /// Charge one planned instance against the same projected free-frame view used
@@ -171,6 +315,7 @@ fn reserve_node_capacity(capacity: &mut NodeCapacityView, node: u64, demand_fram
         && sample.usable_frames != 0
     {
         sample.free_frames = sample.free_frames.saturating_sub(demand_frames);
+        sample.committed_frames = sample.committed_frames.saturating_add(demand_frames);
     }
     true
 }
@@ -702,11 +847,13 @@ mod tests {
         let ample = NodeCapacity {
             free_frames: 900,
             usable_frames: 1000,
+            committed_frames: 0,
             cpu_load_permille: CPU_LOAD_UNKNOWN,
         };
         let low = NodeCapacity {
             free_frames: 60,
             usable_frames: 1000,
+            committed_frames: 0,
             cpu_load_permille: CPU_LOAD_UNKNOWN,
         };
         let pressured = baseline[0][0];
@@ -723,6 +870,7 @@ mod tests {
         let exhausted = NodeCapacity {
             free_frames: 10,
             usable_frames: 1000,
+            committed_frames: 0,
             cpu_load_permille: CPU_LOAD_UNKNOWN,
         };
         let mut capacity = NodeCapacityView::new();
@@ -744,6 +892,7 @@ mod tests {
         let sample = NodeCapacity {
             free_frames: 800,
             usable_frames: 1000,
+            committed_frames: 0,
             cpu_load_permille: 100,
         };
         assert!(capacity_sample_changed(None, &sample));
@@ -776,6 +925,59 @@ mod tests {
     }
 
     #[test]
+    fn capacity_control_filters_raw_samples_and_fences_replays() {
+        let initial = NodeCapacity {
+            free_frames: 800,
+            usable_frames: 1_000,
+            committed_frames: 0,
+            cpu_load_permille: 100,
+        };
+        let mut filter = CapacityFilter::new(7, 10, initial).unwrap();
+        let pressure = NodeCapacity {
+            free_frames: 400,
+            cpu_load_permille: 900,
+            ..initial
+        };
+        let filtered = filter.observe(7, 11, pressure).unwrap();
+        assert_eq!(filtered.free_frames, 700);
+        assert_eq!(filtered.cpu_load_permille, 300);
+        assert_eq!(filter.observe(7, 11, pressure), None);
+        assert_eq!(filter.observe(7, 9, pressure), None);
+
+        // Integer filtering still converges when the remaining difference is
+        // smaller than the denominator.
+        let near = NodeCapacity {
+            free_frames: 698,
+            cpu_load_permille: 302,
+            ..initial
+        };
+        let filtered = filter.observe(7, 12, near).unwrap();
+        assert_eq!(filtered.free_frames, 699);
+        assert_eq!(filtered.cpu_load_permille, 301);
+
+        // A new process incarnation is not blended with the previous one.
+        assert_eq!(filter.observe(8, 1, pressure), Some(pressure));
+        assert_eq!(filter.boot_nonce(), 8);
+        assert_eq!(filter.epoch(), 1);
+    }
+
+    #[test]
+    fn pressure_reassignment_requires_dwell_and_cooldown() {
+        let mut gate = ReassignmentGate::default();
+        assert!(!gate.ready(&[1], &[2], false, 1_000, 30_000, 60_000));
+        assert!(!gate.ready(&[1], &[2], false, 30_999, 30_000, 60_000));
+        assert!(gate.ready(&[1], &[2], false, 31_000, 30_000, 60_000));
+        gate.mark_submitted(31_000);
+
+        assert!(!gate.ready(&[2], &[3], false, 40_000, 30_000, 60_000));
+        assert!(!gate.ready(&[2], &[3], false, 80_000, 30_000, 60_000));
+        assert!(gate.ready(&[2], &[3], false, 91_000, 30_000, 60_000));
+
+        // Losing an assigned member bypasses control-policy timing.
+        assert!(gate.ready(&[3], &[1], true, 91_001, 30_000, 60_000));
+    }
+
+    #[test]
     fn cpu_pressure_demotes_but_never_excludes() {
         let pair = KeyPair::from_seed([0x5a; 32].into());
         let policy = charlotte_launch::placement::PlacementPolicy {
@@ -795,6 +997,7 @@ mod tests {
                 NodeCapacity {
                     free_frames: 900,
                     usable_frames: 1000,
+                    committed_frames: 0,
                     cpu_load_permille: 100,
                 },
             )
@@ -805,6 +1008,7 @@ mod tests {
             NodeCapacity {
                 free_frames: 900,
                 usable_frames: 1000,
+                committed_frames: 0,
                 cpu_load_permille: 980,
             },
         );
@@ -819,6 +1023,7 @@ mod tests {
                 NodeCapacity {
                     free_frames: 900,
                     usable_frames: 1000,
+                    committed_frames: 0,
                     cpu_load_permille: 980,
                 },
             )
@@ -847,6 +1052,7 @@ mod tests {
         let tight = NodeCapacity {
             free_frames: 30,
             usable_frames: 1000,
+            committed_frames: 0,
             cpu_load_permille: CPU_LOAD_UNKNOWN,
         };
         let mut capacity = NodeCapacityView::new();
@@ -859,6 +1065,7 @@ mod tests {
         let roomy = NodeCapacity {
             free_frames: 200,
             usable_frames: 1000,
+            committed_frames: 0,
             cpu_load_permille: CPU_LOAD_UNKNOWN,
         };
         let mut capacity = NodeCapacityView::new();
@@ -887,6 +1094,31 @@ mod tests {
             NodeCapacity {
                 free_frames: 100,
                 usable_frames: 1_000,
+                committed_frames: 0,
+                cpu_load_permille: CPU_LOAD_UNKNOWN,
+            },
+        )]);
+        assert_eq!(
+            resolve_release_assignments_with_capacity(&release, &[1], 1, &capacity),
+            Err(AdmissionError::InsufficientCapacity)
+        );
+    }
+
+    #[test]
+    fn reservations_from_other_releases_protect_static_headroom() {
+        let pair = KeyPair::from_seed([0x5c; 32].into());
+        let release = policy_release(
+            &pair,
+            &[(b"orders", charlotte_launch::placement::PlacementPolicy::singleton())],
+        );
+        // The descriptor needs 24 frames. Dynamic free memory looks ample,
+        // but prior promises leave fewer than 24 statically allocatable.
+        let capacity = NodeCapacityView::from_iter([(
+            1,
+            NodeCapacity {
+                free_frames: 900,
+                usable_frames: 1_000,
+                committed_frames: 920,
                 cpu_load_permille: CPU_LOAD_UNKNOWN,
             },
         )]);

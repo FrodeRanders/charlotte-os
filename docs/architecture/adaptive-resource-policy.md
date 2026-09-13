@@ -40,8 +40,9 @@ Existing runtime adaptation is real but localized:
 - userspace endpoint backpressure retries;
 - Raft election jitter/backoff and relmsg fragment-scaled retransmission;
 - leader-driven replica reconciliation over committed membership, with
-  committed per-node capacity samples as placement input and no pressure-driven
-  reassignment yet (`crates/charlotte-launch/src/placement.rs`; see
+  low-pass-filtered per-node capacity signals, reservation-aware admission,
+  and dwell-controlled pressure reassignment
+  (`crates/charlotte-launch/src/placement.rs`; see
   [cluster artifacts and placement](cluster-artifacts-and-placement.md)).
 
 ## Design principles
@@ -349,83 +350,73 @@ ring's free space, so an in-life CQ resize needs a multi-page ring ABI (or
 consumers re-reading a published capacity) before an actuator is meaningful;
 backlog high-water remains the sizing evidence at deployment time.
 
-### Capacity-aware placement (committed samples implemented)
+### Capacity-aware placement and controlled movement
 
-The placement layer is deterministic over membership and readiness. Four
+The placement layer is deterministic over membership and readiness. Five
 parts are implemented:
 
-- **Sensor**: the `CCOSTAT` header now carries machine-wide `free_frames` and
-  `usable_frames` from the frame allocator, exposed through `observe` and
-  rendered by httpd. Any service can obtain the pair through the existing
-  `observe` endpoint without holding the system-observer capability itself.
-- **Policy**: `operations_admission` accepts a `NodeCapacityView`
-  (`node_key -> NodeCapacity`). Nodes below a one-sixteenth free-frame reserve
-  are excluded from *new* placements, and ranking prefers ample over
-  unknown/moderate over low before the stable per-artifact hash, so unknown
-  nodes stay eligible and a cold cluster behaves exactly as before. The
-  capacity-aware entry points are additive; existing callers pass an empty view
-  and are unchanged.
-- **CPU load**: the snapshot header now carries online logical processors and
-  a monotonic machine-wide on-CPU counter that retains retired-thread runtime,
-  so a consumer derives node CPU utilization by differencing two samples.
-  `NODE_PRESSURE` performs the same interval calculation independently for
-  each calling protection-domain generation. The resolver treats CPU load as a
-  soft signal: heavy occupancy (≥95% in permille terms) ranks a node last
-  before the stable hash, but never excludes it, so placement proceeds when
-  every node is busy. Explicit CPU shares or quotas remain out of scope.
+- **Raw sensor data**: the `CCOSTAT` header carries machine-wide `free_frames`
+  and `usable_frames` from the frame allocator, exposed through `observe` and
+  rendered by httpd. It also carries online logical processors and a monotonic
+  on-CPU counter that retains retired-thread runtime. The one-second history
+  and object-store archive keep these unfiltered measurements for diagnosis.
+- **Local control sample**: `NODE_PRESSURE` derives interval CPU occupancy for
+  each calling protection-domain generation. Every `dns` instance samples it
+  every five seconds and reports free frames, usable frames, and CPU occupancy
+  in permille. A follower relays a 42-byte `rcapacity` frame to the leader;
+  the report includes a nonzero entropy-derived boot nonce and monotonic epoch.
+  Reporting is withheld until an entropy source is ready.
+- **Low-pass controller**: the leader identity-checks the reporting peer,
+  rejects duplicate or decreasing epochs, and applies an integer EWMA with
+  alpha 1/4 to free frames and CPU occupancy. A new boot incarnation or changed
+  physical-memory size resets the filter. Raft receives a `CMD_NODE_CAPACITY`
+  command only when this filtered value crosses a memory or CPU bucket, usable
+  memory changes, or free frames move by more than one sixteenth of usable
+  memory. A three-report freshness lease prevents an old committed value from
+  becoming authority after communication loss or leader failover.
+- **Reservation-aware admission**: `NodeCapacityView` combines the filtered
+  control signal with `committed_frames`, reconstructed from all other catalog
+  deployments. New placement preserves a one-sixteenth dynamic reserve and a
+  static total-capacity reserve. Every selected instance, including a pinned
+  one, debits both projected values. Artifacts replaced by the same release are
+  removed from the prior-reservation projection, avoiding double reservation.
+  If a dynamic report expires while the node still holds commitments, the
+  projection retains those promises with zero additional headroom; a later
+  release cannot reinterpret the node as empty. CPU remains a soft ranking
+  signal: heavy occupancy ranks a node last but does not make an otherwise
+  feasible cluster unavailable.
+- **Movement actuator**: reconciliation can derive a different replica set
+  from the filtered signal, but a pressure-only candidate must remain unchanged
+  for 30 seconds, and another pressure relocation cannot follow for 60 seconds.
+  Membership loss or committed drain bypasses dwell because the old assignment
+  is no longer eligible. The reassignment remains a generation-fenced Raft
+  command, and exact-generation readiness keeps DSR from using a replacement
+  before it publishes.
 
-- **Committed samples**: every `dns` instance samples its local
-  `NODE_PRESSURE` syscall (82, returning free frames, usable frames, and CPU
-  load in permille) once per `CAPACITY_REPORT_INTERVAL_MS` (5 s). A leader
-  samples itself; a follower relays a 42-byte `rcapacity` frame (tag `0x21`,
-  including a nonzero entropy-derived per-boot nonce so a restarted reporter
-  is not fenced out) to the current leader. If neither CPU entropy nor the
-  delegated VirtIO RNG is ready, reporting is withheld and retried instead of
-  publishing an ambiguous zero incarnation. The leader accepts a report only
-  when the sender MAC maps to
-  a known peer whose name matches the claimed node key, and proposes
-  `CMD_NODE_CAPACITY` (`0x0d`) only when the sample changes the placement
-  picture — a memory or CPU bucket change, a usable-memory change, or a
-  free-frame move beyond one sixteenth of usable memory. Workloads drift
-  continuously, so this hysteresis keeps the log small without hiding a real
-  pressure transition.
-
-  A changed boot nonce bypasses value hysteresis so the new incarnation is
-  committed. All replicas apply the command into the name catalog,
-  epoch-fenced within one boot nonce and capped at
-  `MAX_NODE_CAPACITY_ENTRIES = 256`, and the
-  leader resolves `release_command`, `operations_command`, and
-  `reconcile_replica_placements` from committed catalog state intersected with
-  a leader-local freshness lease of three report intervals. After failover,
-  nodes remain capacity-unknown until their next identity-checked report rather
-  than being judged by an arbitrarily old sample. The catalog snapshot is V15;
-  older snapshots restore with an empty table and unknown nodes stay neutral.
-  Within one release plan, every selected instance debits a projected copy of
-  the view, including explicitly pinned components, so individually feasible
-  declarations cannot overcommit one node cumulatively. Placement decisions
-  remain ordinary committed Raft commands.
-
-Pressure-driven *reassignment* is the next step: a committed capacity change
-alone does not move existing replicas. That needs generation fences and
-hysteresis so a transient dip cannot churn the replica set, and the cluster
-ingress and Raft models then need a capacity action only if capacity can
-change replica sets without a deployment-generation change.
+Raw telemetry and placement input are deliberately separate data products.
+Keeping spikes in the archive preserves evidence needed to tune policy;
+filtering only the control path prevents that fidelity from causing replica
+oscillation. DNS status counters expose accepted observations, proposed
+filtered updates, total reassignments, and topology-forced reassignments.
 
 ## Verification
 
 - Phase 1 is covered by the existing boot self-tests plus the versioned-wire
   self-test; accounting invariants (no negative counters, generation checks)
   are enforced in `memory::usage`.
-- Committed capacity reporting is covered by strict `rcapacity` validation,
-  the `capacity_sample_changed` hysteresis test, a cumulative reservation test,
-  and a catalog replay/snapshot test. The two-guest DNS test observes the
-  leader committing both its own
-  sample and the follower's relayed sample; the relay previously failed
-  silently because `rcapacity::decode_request` did not follow the transport's
-  tag-included receive convention.
-- Controller decisions in later phases need dedicated self-tests, a fixed
-  policy for CI, and a TLA+ treatment for any protocol that acquires or
-  releases authority (stack growth, placement).
+- Capacity control is covered by strict `rcapacity` validation, EWMA/replay
+  tests, bucket hysteresis tests, pressure dwell/cooldown tests, cumulative and
+  cross-release reservation tests, and a catalog replay/snapshot test. The
+  three-member distributed-ingress fixture requires one leader to seed fresh
+  control state for all reporters, then requires the successor leader to
+  rebuild state from the surviving reporters after failover. This also guards
+  the transport's tag-included receive convention for relayed `rcapacity`
+  frames.
+- `CharlottePlacementControl.tla` checks filtered candidate selection,
+  dwell/cooldown enforcement, topology-forced movement, and preservation of
+  static reservation headroom. The cluster-ingress model separately covers
+  generation-safe replacement and readiness. Direct pressure injection and
+  observation of a dwell-controlled QEMU relocation remain to be added.
 
 ## Open questions
 

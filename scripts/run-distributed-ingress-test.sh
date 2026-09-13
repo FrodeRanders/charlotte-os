@@ -13,6 +13,7 @@ WORK="/tmp/charlotte-ingress-fixture"
 mkdir -p "$WORK"
 for fixture_node in ingress-a ingress-b ingress-c; do
     : >"$WORK/${fixture_node}.qemu.pid"
+    : >"$WORK/${fixture_node}.capacity-start"
     : >"/tmp/charlotte-${fixture_node}-serial.log"
 done
 
@@ -66,6 +67,36 @@ wait_for_text() {
     done
 }
 
+wait_for_capacity_control() {
+    required="$1"
+    shift
+    deadline=$((SECONDS + PHASE_TIMEOUT))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        for node in "$@"; do
+            serial="/tmp/charlotte-${node}-serial.log"
+            [ -f "$serial" ] || continue
+            start_file="$WORK/${node}.capacity-start"
+            if [ -s "$start_file" ]; then
+                start="$(tr -d '[:space:]' <"$start_file")"
+                count="$(tail -n "+$start" "$serial" | sed -n \
+                    's/.*seeded capacity control for node \([0-9a-f][0-9a-f]*\).*/\1/p' \
+                    | sort -u | wc -l | tr -d '[:space:]')"
+            else
+                count="$(sed -n \
+                    's/.*seeded capacity control for node \([0-9a-f][0-9a-f]*\).*/\1/p' \
+                    "$serial" | sort -u | wc -l | tr -d '[:space:]')"
+            fi
+            if [ "${count:-0}" -ge "$required" ]; then
+                echo ">>> ${node} seeded fresh placement-control state for ${count} node(s)."
+                return 0
+            fi
+        done
+        sleep 1
+    done
+    echo "error: no candidate leader seeded capacity control for ${required} node(s)" >&2
+    return 1
+}
+
 python3 "$ROOT_DIR/scripts/qemu-stream-l2-hub.py" --listen "$HUB" --trace-tcp >"$WORK/hub.log" 2>&1 &
 hub_pid="$!"
 pids+=("$hub_pid")
@@ -104,6 +135,7 @@ for node in ingress-a ingress-b ingress-c; do
     wait_for_text "/tmp/charlotte-${node}-serial.log" \
         "MEMBERSHIP epoch=.*joint=false members=3"
 done
+wait_for_capacity_control 3 ingress-a ingress-b ingress-c
 kill -USR1 "$probe_pid"
 wait_for_text "$WORK/probe.log" "external FAILOVER WINDOW OPEN"
 
@@ -120,6 +152,10 @@ if [ -z "$owner" ]; then
 fi
 
 echo ">>> Stopping VIP advertiser ${owner}; backend flows remain on surviving members."
+for node in ingress-a ingress-b ingress-c; do
+    lines="$(wc -l <"/tmp/charlotte-${node}-serial.log" | tr -d '[:space:]')"
+    echo "$((lines + 1))" >"$WORK/${node}.capacity-start"
+done
 owner_qemu="$(tr -d '[:space:]' <"$WORK/${owner}.qemu.pid")"
 kill "$owner_qemu"
 
@@ -132,6 +168,7 @@ done
 for node in "${survivors[@]}"; do
     wait_for_text "/tmp/charlotte-${node}-serial.log" "SELFTEST COMPLETE: .*failed=0 pending=0"
 done
+wait_for_capacity_control 2 "${survivors[@]}"
 wait "$probe_pid"
 wait_for_text "$WORK/probe.log" \
     "external [1-9][0-9]* flow\(s\) survived the failover window"
@@ -147,4 +184,4 @@ if ! grep -Eq "VIP ADVERTISER ACQUIRED" "/tmp/charlotte-${survivors[0]}-serial.l
     exit 1
 fi
 
-echo ">>> Distributed ingress verified: remote selection, leader failover, gratuitous ARP, surviving established flow, and backend-loss reconnect."
+echo ">>> Distributed ingress verified: remote selection, leader failover, fresh capacity-control reconstruction, gratuitous ARP, surviving established flow, and backend-loss reconnect."

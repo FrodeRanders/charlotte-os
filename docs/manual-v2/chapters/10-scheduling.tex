@@ -174,9 +174,11 @@ failure. Signed deployment limits remain authoritative over feedback.
 
 These loops are intentionally separated by timescale. Fault handling enforces
 hard local bounds immediately; creation-time feedback changes only a later
-generation; cluster placement consumes five-second, hysteresis-filtered node
-reports. The arrangement applies cybernetic feedback without allowing
-short-lived noise to rewrite authority or oscillate execution continuously.
+generation; cluster placement consumes a separate five-second control stream,
+applies an EWMA and bucket hysteresis, and requires a stable candidate plus a
+relocation cooldown. Raw one-second telemetry remains unfiltered for diagnosis.
+The arrangement applies cybernetic feedback without allowing short-lived noise
+to rewrite authority or oscillate execution continuously.
 
 \subsection{Generation-safe retirement}
 
