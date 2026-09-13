@@ -250,3 +250,25 @@ drop. The limit is a kernel admission bound, not a protocol-name limit.
   TLS RustFS upload → signed atomic release → S3 pull → scoped launch →
   readiness path.
   It is a development fixture, not a production release controller.
+
+The fixture deploys the bundled `greet` artifact by default and accepts any
+externally signed ELF through environment overrides:
+
+```text
+CATTEN_DEPLOY_NAME=<artifact> CATTEN_DEPLOY_ELF=<path> \
+CATTEN_DEPLOY_OBJECT_KEY=deployments/<file>.elf \
+CATTEN_DEPLOY_STACK_PAGES=<n> CATTEN_DEPLOY_MAX_THREADS=<n> \
+CATTEN_DEPLOY_GRACE_MS=<ms> \
+CATTEN_DEPLOY_GRANTS="<service>=client <artifact>=publish" \
+CATTEN_APP_HOST_PORT=<host-port> CATTEN_APP_GUEST_PORT=<guest-port> \
+CATTEN_APP_HOLD_SECONDS=<seconds> \
+scripts/run-aarch64.sh debug --deployment-ingress-test --timeout 300
+```
+
+The ELF must already carry a CLS2 note from the cluster artifact key, since the
+fixture signs the descriptor, not the binary. `CATTEN_APP_HOST_PORT` and
+`CATTEN_APP_GUEST_PORT` add a SLIRP forward so a host client can reach the
+deployed service; `CATTEN_APP_HOLD_SECONDS` keeps the guest alive after
+readiness so that client can run before the runner exits. Out-of-tree projects
+drive this through `charlotte-kafka-broker/tools/qemu-smoke.sh`, which packages
+the artifact, deploys it, and runs the host smoke client end to end.

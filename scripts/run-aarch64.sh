@@ -98,6 +98,16 @@ KAFKA_COORDINATOR_TEST="0"
 KAFKA_FENCING_TEST="0"
 HTTP_HOST_PORT="${CATTEN_HTTP_HOST_PORT:-8080}"
 DEPLOY_HOST_PORT="${CATTEN_DEPLOY_HOST_PORT:-8081}"
+DEPLOY_NAME="${CATTEN_DEPLOY_NAME:-greet}"
+DEPLOY_ELF="${CATTEN_DEPLOY_ELF:-}"
+DEPLOY_OBJECT_KEY="${CATTEN_DEPLOY_OBJECT_KEY:-deployments/greet-e2e.elf}"
+DEPLOY_STACK_PAGES="${CATTEN_DEPLOY_STACK_PAGES:-4}"
+DEPLOY_MAX_THREADS="${CATTEN_DEPLOY_MAX_THREADS:-1}"
+DEPLOY_GRACE_MS="${CATTEN_DEPLOY_GRACE_MS:-5000}"
+DEPLOY_GRANTS="${CATTEN_DEPLOY_GRANTS:-greet=publish}"
+APP_HOST_PORT="${CATTEN_APP_HOST_PORT:-}"
+APP_GUEST_PORT="${CATTEN_APP_GUEST_PORT:-}"
+APP_HOLD_SECONDS="${CATTEN_APP_HOLD_SECONDS:-0}"
 LIVE_UPGRADE_TEST="0"
 SHUTDOWN_TEST="0"
 SMP="4"
@@ -184,6 +194,14 @@ done
 catten_boot_validate_port "--gdb-port" "$GDB_PORT"
 catten_boot_validate_port "CATTEN_HTTP_HOST_PORT" "$HTTP_HOST_PORT"
 catten_boot_validate_port "CATTEN_DEPLOY_HOST_PORT" "$DEPLOY_HOST_PORT"
+if [ -n "$APP_HOST_PORT" ] || [ -n "$APP_GUEST_PORT" ]; then
+    if [ -z "$APP_HOST_PORT" ] || [ -z "$APP_GUEST_PORT" ]; then
+        echo "error: CATTEN_APP_HOST_PORT and CATTEN_APP_GUEST_PORT must be set together" >&2
+        exit 1
+    fi
+    catten_boot_validate_port "CATTEN_APP_HOST_PORT" "$APP_HOST_PORT"
+    catten_boot_validate_port "CATTEN_APP_GUEST_PORT" "$APP_GUEST_PORT"
+fi
 if [ -n "$CLUSTER_SERVICE_NAME" ] && [ "${#CLUSTER_SERVICE_SPECS[@]}" -ne 1 ]; then
     echo "error: --cluster-service-name requires exactly one --cluster-service" >&2
     exit 1
@@ -573,10 +591,17 @@ if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
     echo ">>> Preparing signed central-store deployment fixture..."
     DEPLOYMENT_TEST_DIR="${ROOT_DIR}/target/deployment-ingress-test"
     mkdir -p "$DEPLOYMENT_TEST_DIR"
-    DEPLOYMENT_ELF="${CATTEN_AARCH64_SERVICE_BUNDLE}/greet.elf"
-    DEPLOYMENT_DESCRIPTOR="${DEPLOYMENT_TEST_DIR}/greet.cdep"
-    DEPLOYMENT_RELEASE="${DEPLOYMENT_TEST_DIR}/greet.crelease"
-    DEPLOYMENT_OBJECT_KEY="deployments/greet-e2e.elf"
+    if [ -z "$DEPLOY_ELF" ]; then
+        DEPLOY_ELF="${CATTEN_AARCH64_SERVICE_BUNDLE}/greet.elf"
+    fi
+    if [ ! -f "$DEPLOY_ELF" ]; then
+        echo "error: deployment ELF not found: $DEPLOY_ELF" >&2
+        exit 1
+    fi
+    DEPLOYMENT_ELF="$DEPLOY_ELF"
+    DEPLOYMENT_OBJECT_KEY="$DEPLOY_OBJECT_KEY"
+    DEPLOYMENT_DESCRIPTOR="${DEPLOYMENT_TEST_DIR}/${DEPLOY_NAME}.cdep"
+    DEPLOYMENT_RELEASE="${DEPLOYMENT_TEST_DIR}/${DEPLOY_NAME}.crelease"
     DEPLOYMENT_DIGEST="$($CLUSTER_SIGN_BIN sha256 "$DEPLOYMENT_ELF")"
     if [ -n "${CLUSTER_SIGN_PRIVATE_KEY:-}" ]; then
         DEPLOYMENT_PRIVATE_KEY="$CLUSTER_SIGN_PRIVATE_KEY"
@@ -585,14 +610,16 @@ if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
     fi
     DEPLOYMENT_SEQUENCE="$(date +%s)"
     docker compose -f "$RUSTFS_COMPOSE" run --rm --no-deps \
-        -v "${DEPLOYMENT_ELF}:/tmp/greet.elf:ro" \
+        -v "${DEPLOYMENT_ELF}:/tmp/${DEPLOY_NAME}.elf:ro" \
         --entrypoint /bin/sh init -ec \
-        'rc alias set local https://rustfs.test:9000 charlotte-test-access charlotte-test-secret-2026 && rc cp /tmp/greet.elf local/charlotte-test/deployments/greet-e2e.elf'
+        "rc alias set local https://rustfs.test:9000 charlotte-test-access charlotte-test-secret-2026 && rc cp /tmp/${DEPLOY_NAME}.elf local/charlotte-test/${DEPLOYMENT_OBJECT_KEY}"
+    # CATTEN_DEPLOY_GRANTS is a space-separated list of NAME=RIGHT entries.
     "$CLUSTER_SIGN_BIN" deployment-sign \
-        "$DEPLOYMENT_DESCRIPTOR" greet "$DEPLOYMENT_OBJECT_KEY" "$DEPLOYMENT_DIGEST" \
-        0 "$DEPLOYMENT_SEQUENCE" 4 1 5000 "$DEPLOYMENT_PRIVATE_KEY" greet=publish
+        "$DEPLOYMENT_DESCRIPTOR" "$DEPLOY_NAME" "$DEPLOYMENT_OBJECT_KEY" "$DEPLOYMENT_DIGEST" \
+        0 "$DEPLOYMENT_SEQUENCE" "$DEPLOY_STACK_PAGES" "$DEPLOY_MAX_THREADS" "$DEPLOY_GRACE_MS" \
+        "$DEPLOYMENT_PRIVATE_KEY" $DEPLOY_GRANTS
     "$CLUSTER_SIGN_BIN" release-sign \
-        "$DEPLOYMENT_RELEASE" deployment-ingress-e2e "$DEPLOYMENT_SEQUENCE" \
+        "$DEPLOYMENT_RELEASE" "${DEPLOY_NAME}-ingress-e2e" "$DEPLOYMENT_SEQUENCE" \
         "$DEPLOYMENT_PRIVATE_KEY" "$DEPLOYMENT_DESCRIPTOR"
 fi
 
@@ -872,15 +899,19 @@ QEMU_OPTS+=(-nic none)
 if [ "$NETWORK" = "1" ]; then
     case "$NET_BACKEND" in
         user)
+            APP_FWD=""
+            if [ -n "$APP_HOST_PORT" ]; then
+                APP_FWD=",hostfwd=tcp::${APP_HOST_PORT}-:${APP_GUEST_PORT}"
+            fi
             if [ -n "$CLUSTER_SERVICE" ]; then
-                QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${HTTP_HOST_PORT}-${CLUSTER_VIP}:${CLUSTER_TCP_PORT},hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444")
+                QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${HTTP_HOST_PORT}-${CLUSTER_VIP}:${CLUSTER_TCP_PORT},hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
             elif [ "$HTTP_TEST" = "1" ]; then
                 # Host-side keyhole: forward the configurable host port to
                 # guest port 80 so parallel/local runs need not contend for a
                 # hard-coded listener.
-                QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${HTTP_HOST_PORT}-:80,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444")
+                QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${HTTP_HOST_PORT}-:80,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
             else
-                QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444")
+                QEMU_OPTS+=(-netdev "user,id=charlotte-net,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
             fi
             ;;
         listen:*)
@@ -952,6 +983,7 @@ if [ -n "$TIMEOUT" ]; then
     SELFTEST_COMPLETE=0
     SELFTEST_COMPLETE_TICK=-1
     POWER_OFF_OBSERVED=0
+    DEPLOYMENT_READY_TICK=-1
     SHUTDOWN_INGRESS_SUBMITTED=0
     # A socket-linked peer may still be applying the final Raft entry or
     # consuming the causally ordered deployment barrier when this guest
@@ -1052,6 +1084,13 @@ if [ -n "$TIMEOUT" ]; then
             docker compose -f "$KAFKA_COMPOSE" up -d --wait "$KAFKA_FAULT_SERVICE"
             KAFKA_FAULT_RESTARTED=1
         fi
+        if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ] && [ -f "$DEPLOYMENT_RESULT_FILE" ] \
+            && [ "$DEPLOYMENT_READY_TICK" -lt 0 ]; then
+            DEPLOYMENT_READY_TICK=$tick
+            if [ "$APP_HOLD_SECONDS" -gt 0 ]; then
+                echo ">>> Deployment ready; keeping the guest alive for ${APP_HOLD_SECONDS}s for host probes."
+            fi
+        fi
         if grep -Fq "SELFTEST COMPLETE:" "$LOG"; then
             SELFTEST_COMPLETE=1
             if [ "$SELFTEST_COMPLETE_TICK" -lt 0 ]; then
@@ -1099,6 +1138,9 @@ if [ -n "$TIMEOUT" ]; then
                     || [ "$KAFKA_FAULT_RESTARTED" = "1" ]; } \
                 && { [ "$DEPLOYMENT_INGRESS_TEST" = "0" ] \
                     || [ -f "$DEPLOYMENT_RESULT_FILE" ]; } \
+                && { [ "$APP_HOLD_SECONDS" -eq 0 ] \
+                    || { [ "$DEPLOYMENT_READY_TICK" -ge 0 ] \
+                        && [ "$tick" -ge $((DEPLOYMENT_READY_TICK + APP_HOLD_SECONDS * 10)) ]; } } \
                 && [ "$tick" -ge $((SELFTEST_COMPLETE_TICK + CLUSTER_DRAIN_TICKS)) ]; then
                 break
             fi
