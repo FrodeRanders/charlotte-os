@@ -178,13 +178,13 @@ pub fn get_lp_local_base() -> crate::memory::VAddr {
 /// system.
 #[unsafe(no_mangle)]
 pub extern "C" fn cond_yield_lp() {
-    cond_yield_lp_impl(true);
+    cond_yield_lp_impl();
 }
 
-/// IRQ-tail scheduler entry. Unlike a normal thread yield, this path must not
-/// unmask before the vector epilogue restores the interrupted PSTATE.
+/// IRQ-tail scheduler entry. The shared implementation preserves the current
+/// interrupt state; the vector epilogue restores the interrupted PSTATE.
 pub fn cond_yield_lp_from_irq() {
-    cond_yield_lp_impl(false);
+    cond_yield_lp_impl();
 }
 
 /// The interrupted or preempted thread's user stack pointer. `SP_EL0` is
@@ -202,20 +202,8 @@ fn current_user_stack_pointer() -> usize {
     sp
 }
 
-fn cond_yield_lp_impl(allow_force_unmask: bool) {
+fn cond_yield_lp_impl() {
     let interrupts_were_enabled = get_int_state();
-    // Set when the "only runnable thread is current" path needs to restore
-    // interrupts even though the thread entered masked: re-arming the quantum
-    // is pointless while IRQs stay masked, because the PPI can never be
-    // delivered and no timer/device wake could ever make another thread
-    // runnable. The explicit IRQ-tail entry disables this behavior because it
-    // returns through
-    // `pop_volatile_regs`/`eret` with the frame already on the stack — a
-    // nested IRQ taken in that window pushes another frame whose restore
-    // walks past the stack top (observed as a same-EL data abort in
-    // `pop_volatile_regs` with FAR == the stack top). The tail's eret
-    // restores the interrupted thread's saved PSTATE regardless.
-    let mut force_unmask = false;
     mask_interrupts!();
     // Collect switch parameters and release all locks before calling switch_ctx.
     let switch_params: Option<(*mut u64, *const u64, *mut u8, *mut u8, usize)> = {
@@ -257,19 +245,6 @@ fn cond_yield_lp_impl(allow_force_unmask: bool) {
                         // and stops firing, which would freeze `sleep` and any
                         // other timer-driven wakeups.
                         lsched.clear_ctx_switch_pending();
-                        // A normal thread that yielded from a masked context
-                        // may find nothing else runnable. Re-arming the quantum is
-                        // useless while IRQs stay masked: the PPI can never be
-                        // delivered, so neither a timer nor a pending device
-                        // interrupt can ever make another thread runnable, and
-                        // the LP busy-spins forever with the wake stuck at the
-                        // GIC. Force the end-of-function unmask so the
-                        // re-armed timer (or a pending device interrupt) is
-                        // actually taken. The IRQ-tail entry passes false and
-                        // leaves restoration exclusively to eret.
-                        if allow_force_unmask && !interrupts_were_enabled {
-                            force_unmask = true;
-                        }
                         None
                     }
                 } else {
@@ -330,7 +305,14 @@ fn cond_yield_lp_impl(allow_force_unmask: bool) {
     // the dead thread's kernel stack.
     crate::cpu::scheduler::threads::reap_dead_threads();
     crate::cpu::scheduler::maybe_sample_rebalance();
-    if interrupts_were_enabled || force_unmask {
+    // Preserve the caller's interrupt state. In particular, a synchronous
+    // syscall enters with an exception frame on the current kernel stack. A
+    // same-thread yield must not enable IRQs below that frame: a nested IRQ can
+    // otherwise leave the outer restore walking past the stack top into its
+    // upper guard page. Fresh thread trampolines and the idle loop enable IRQs
+    // explicitly, so scheduler progress does not depend on changing a masked
+    // caller's state here.
+    if interrupts_were_enabled {
         unmask_interrupts!();
     }
 }

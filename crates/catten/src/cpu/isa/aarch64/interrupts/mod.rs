@@ -278,12 +278,25 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
         }
         0x25 | 0x21 => {
             // Abort from same EL: kernel fault — unrecoverable.
-            // Log and let the panic below fire.
+            // `frame_base` is the GPR-frame base after `push_volatile_regs`;
+            // adding the 11 saved pairs reconstructs SP at exception entry.
+            // Read the lock-free scheduler snapshot as well so a serial-only
+            // soak capture identifies the context whose kernel stack faulted.
+            const SAVED_GPR_FRAME_BYTES: usize = 11 * 16;
+            let lp = get_lp_id() as usize;
+            let diagnostic_base = lp * crate::cpu::scheduler::threads::SCHEDULER_DIAGNOSTIC_FIELDS;
+            let diagnostic = &crate::cpu::scheduler::threads::SCHEDULER_LP_DIAGNOSTICS;
             early_logln!(
-                "KERNEL DATA/INST ABORT: ESR={:x} ELR={:x} FAR={:x}",
+                "KERNEL DATA/INST ABORT: ESR={:x} ELR={:x} FAR={:x} exception_sp={:#x} lp={} \
+                 tid={} generation={} asid={}",
                 esr_el1,
                 elr_el1,
-                far_el1
+                far_el1,
+                frame_base as usize + SAVED_GPR_FRAME_BYTES,
+                lp,
+                diagnostic[diagnostic_base].load(core::sync::atomic::Ordering::Relaxed),
+                diagnostic[diagnostic_base + 1].load(core::sync::atomic::Ordering::Relaxed),
+                diagnostic[diagnostic_base + 2].load(core::sync::atomic::Ordering::Relaxed)
             );
         }
         0x2c => {

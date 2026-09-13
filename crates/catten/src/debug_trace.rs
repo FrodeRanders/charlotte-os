@@ -13,6 +13,8 @@ use core::sync::atomic::{
 
 #[cfg(feature = "scheduler_trace")]
 const CAPACITY: usize = 16_384;
+#[cfg(feature = "scheduler_trace")]
+const THREAD_LIFECYCLE_CAPACITY: usize = 8_192;
 
 #[repr(C)]
 #[cfg(feature = "scheduler_trace")]
@@ -24,6 +26,27 @@ struct TraceSlot {
     a: AtomicU64,
     b: AtomicU64,
     c: AtomicU64,
+}
+
+/// One self-contained thread-lifecycle record. Keeping all identity and stack
+/// fields in the same committed slot avoids having to correlate several
+/// ordinary three-word trace events while LPs are writing concurrently.
+#[repr(C)]
+#[cfg(feature = "scheduler_trace")]
+struct ThreadLifecycleSlot {
+    sequence: AtomicU64,
+    tick: AtomicU64,
+    phase: AtomicU64,
+    lp: AtomicU64,
+    queue_lp: AtomicU64,
+    tid: AtomicU64,
+    generation: AtomicU64,
+    asid: AtomicU64,
+    stack_base: AtomicU64,
+    stack_end: AtomicU64,
+    current_sp: AtomicU64,
+    on_cpu: AtomicU64,
+    abort_owner: AtomicU64,
 }
 
 #[cfg(feature = "scheduler_trace")]
@@ -41,10 +64,36 @@ impl TraceSlot {
     }
 }
 
+#[cfg(feature = "scheduler_trace")]
+impl ThreadLifecycleSlot {
+    const fn new() -> Self {
+        Self {
+            sequence: AtomicU64::new(0),
+            tick: AtomicU64::new(0),
+            phase: AtomicU64::new(0),
+            lp: AtomicU64::new(0),
+            queue_lp: AtomicU64::new(0),
+            tid: AtomicU64::new(0),
+            generation: AtomicU64::new(0),
+            asid: AtomicU64::new(0),
+            stack_base: AtomicU64::new(0),
+            stack_end: AtomicU64::new(0),
+            current_sp: AtomicU64::new(0),
+            on_cpu: AtomicU64::new(0),
+            abort_owner: AtomicU64::new(0),
+        }
+    }
+}
+
 #[unsafe(no_mangle)]
 #[used]
 #[cfg(feature = "scheduler_trace")]
 static DEBUG_TRACE: DebugTrace = DebugTrace::new();
+
+#[unsafe(no_mangle)]
+#[used]
+#[cfg(feature = "scheduler_trace")]
+static THREAD_LIFECYCLE_TRACE: ThreadLifecycleTrace = ThreadLifecycleTrace::new();
 
 #[cfg(feature = "scheduler_trace")]
 #[repr(C)]
@@ -76,6 +125,72 @@ impl DebugTrace {
         slot.sequence.store(committed, Ordering::Release);
     }
 }
+
+#[cfg(feature = "scheduler_trace")]
+#[repr(C)]
+struct ThreadLifecycleTrace {
+    write_index: AtomicU64,
+    slots: [ThreadLifecycleSlot; THREAD_LIFECYCLE_CAPACITY],
+}
+
+#[cfg(feature = "scheduler_trace")]
+impl ThreadLifecycleTrace {
+    const fn new() -> Self {
+        Self {
+            write_index: AtomicU64::new(0),
+            slots: [const { ThreadLifecycleSlot::new() }; THREAD_LIFECYCLE_CAPACITY],
+        }
+    }
+
+    fn push(&self, event: ThreadLifecycleEvent) {
+        let logical = self.write_index.fetch_add(1, Ordering::Relaxed);
+        let slot = &self.slots[logical as usize % THREAD_LIFECYCLE_CAPACITY];
+        let committed = logical.wrapping_mul(2).wrapping_add(2);
+        slot.sequence.store(committed - 1, Ordering::Relaxed);
+        slot.tick.store(read_tick(), Ordering::Relaxed);
+        slot.phase.store(event.phase, Ordering::Relaxed);
+        slot.lp.store(crate::cpu::isa::lp::ops::get_lp_id() as u64, Ordering::Relaxed);
+        slot.queue_lp.store(event.queue_lp as u64, Ordering::Relaxed);
+        slot.tid.store(event.tid as u64, Ordering::Relaxed);
+        slot.generation.store(event.generation, Ordering::Relaxed);
+        slot.asid.store(event.asid as u64, Ordering::Relaxed);
+        slot.stack_base.store(event.stack_base as u64, Ordering::Relaxed);
+        slot.stack_end.store(event.stack_end as u64, Ordering::Relaxed);
+        slot.current_sp.store(event.current_sp as u64, Ordering::Relaxed);
+        slot.on_cpu.store(event.on_cpu as u64, Ordering::Relaxed);
+        slot.abort_owner.store(event.abort_owner as u64, Ordering::Relaxed);
+        slot.sequence.store(committed, Ordering::Release);
+    }
+}
+
+pub const THREAD_LIFECYCLE_STAGE: u64 = 1;
+pub const THREAD_LIFECYCLE_REAP_DEFER: u64 = 2;
+pub const THREAD_LIFECYCLE_REAP_RECLAIM: u64 = 3;
+pub const THREAD_LIFECYCLE_STACK_DEALLOCATE: u64 = 4;
+
+/// Complete state captured at a thread retirement boundary.
+pub struct ThreadLifecycleEvent {
+    pub phase: u64,
+    pub queue_lp: usize,
+    pub tid: usize,
+    pub generation: u64,
+    pub asid: usize,
+    pub stack_base: usize,
+    pub stack_end: usize,
+    pub current_sp: usize,
+    pub on_cpu: u8,
+    pub abort_owner: usize,
+}
+
+#[inline]
+#[cfg(feature = "scheduler_trace")]
+pub fn trace_thread_lifecycle(event: ThreadLifecycleEvent) {
+    THREAD_LIFECYCLE_TRACE.push(event);
+}
+
+#[inline]
+#[cfg(not(feature = "scheduler_trace"))]
+pub fn trace_thread_lifecycle(_event: ThreadLifecycleEvent) {}
 
 #[cfg(target_arch = "aarch64")]
 #[cfg(feature = "scheduler_trace")]
@@ -126,6 +241,67 @@ pub fn dump() {
         );
     }
     crate::logln!("[TRACE] dump complete");
+}
+
+#[cfg(feature = "scheduler_trace")]
+pub fn dump_thread_lifecycle() {
+    let total = THREAD_LIFECYCLE_TRACE.write_index.load(Ordering::Acquire);
+    let retained = total.min(THREAD_LIFECYCLE_CAPACITY as u64);
+    let first = total - retained;
+    crate::logln!("[THREAD_LIFECYCLE] total={} retained={}", total, retained);
+    for logical in first..total {
+        let slot = &THREAD_LIFECYCLE_TRACE.slots[logical as usize % THREAD_LIFECYCLE_CAPACITY];
+        let expected = logical.wrapping_mul(2).wrapping_add(2);
+        if slot.sequence.load(Ordering::Acquire) != expected {
+            continue;
+        }
+        let tick = slot.tick.load(Ordering::Relaxed);
+        let phase = slot.phase.load(Ordering::Relaxed);
+        let lp = slot.lp.load(Ordering::Relaxed);
+        let queue_lp = slot.queue_lp.load(Ordering::Relaxed);
+        let tid = slot.tid.load(Ordering::Relaxed);
+        let generation = slot.generation.load(Ordering::Relaxed);
+        let asid = slot.asid.load(Ordering::Relaxed);
+        let stack_base = slot.stack_base.load(Ordering::Relaxed);
+        let stack_end = slot.stack_end.load(Ordering::Relaxed);
+        let current_sp = slot.current_sp.load(Ordering::Relaxed);
+        let on_cpu = slot.on_cpu.load(Ordering::Relaxed);
+        let abort_owner = slot.abort_owner.load(Ordering::Relaxed);
+        // Reject a slot that a concurrent writer wrapped and changed while the
+        // fields above were being sampled.
+        if slot.sequence.load(Ordering::Acquire) != expected {
+            continue;
+        }
+        crate::logln!(
+            "[THREAD_LIFECYCLE] sequence={} tick={} lp={} phase={} queue_lp={:#x} tid={:#x} \
+             generation={} asid={} stack={:#x}..{:#x} current_sp={:#x} on_cpu={} abort_owner={:#x}",
+            logical,
+            tick,
+            lp,
+            lifecycle_phase_name(phase),
+            queue_lp,
+            tid,
+            generation,
+            asid,
+            stack_base,
+            stack_end,
+            current_sp,
+            on_cpu,
+            abort_owner
+        );
+    }
+    crate::logln!("[THREAD_LIFECYCLE] dump complete");
+}
+
+#[cfg(feature = "scheduler_trace")]
+fn lifecycle_phase_name(phase: u64) -> &'static str {
+    match phase {
+        THREAD_LIFECYCLE_STAGE => "STAGE",
+        THREAD_LIFECYCLE_REAP_DEFER => "REAP_DEFER",
+        THREAD_LIFECYCLE_REAP_RECLAIM => "REAP_RECLAIM",
+        THREAD_LIFECYCLE_STACK_DEALLOCATE => "STACK_DEALLOCATE",
+        _ => "?",
+    }
 }
 
 #[cfg(feature = "scheduler_trace")]
@@ -325,6 +501,12 @@ pub fn start_watchdog() {
                         );
                         #[cfg(target_arch = "x86_64")]
                         request_lp0_nmi_snapshot();
+                        // The soak harness may stop QEMU as soon as its client
+                        // observes the failure, before the runner can attach a
+                        // debugger. Emit the sparse lifecycle recorder first so
+                        // stack ownership evidence survives in the serial log.
+                        crate::logln!("[watchdog] dumping thread lifecycle trace");
+                        dump_thread_lifecycle();
                         crate::logln!("[watchdog] dumping scheduler trace");
                         dump();
                         #[cfg(target_arch = "x86_64")]

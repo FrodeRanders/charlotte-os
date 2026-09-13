@@ -195,8 +195,14 @@ impl ThreadContext {
 
     /// Whether `address` lies in this context's mapped kernel-stack pages.
     pub(crate) fn kernel_stack_contains(&self, address: usize) -> bool {
+        let (base, end) = self.kernel_stack_bounds();
+        (base..end).contains(&address)
+    }
+
+    /// Bounds of the mapped kernel-stack pages, excluding both guard pages.
+    pub(crate) fn kernel_stack_bounds(&self) -> (usize, usize) {
         let base: usize = self._kernel_stack_buf.into();
-        (base..base + INIT_KERNEL_STACK_PAGES * PAGE_SIZE).contains(&address)
+        (base, base + INIT_KERNEL_STACK_PAGES * PAGE_SIZE)
     }
 
     /// Fold one observed user stack pointer into the thread's high-water

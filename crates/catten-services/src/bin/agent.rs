@@ -58,6 +58,8 @@ const STAGE_SHUTDOWN_READY: u32 = 10;
 const STAGE_CLUSTER_SHUTDOWN_ACCEPTED: u32 = 11;
 const STAGE_FAIL: u32 = 0xdead;
 const RETIREMENT_POLL_MS: u64 = 10;
+const LAUNCH_RETRY_BASE_MS: u64 = 1_000;
+const LAUNCH_RETRY_MAX_MS: u64 = 30_000;
 
 struct DeploymentInfo {
     generation: u64,
@@ -100,6 +102,71 @@ struct ActiveOperational {
     target_artifact: Vec<u8>,
     domain: DeployedArtifact,
     retiring: bool,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum LaunchRetryKind {
+    Deployment,
+    Operational,
+}
+
+struct LaunchRetry {
+    kind: LaunchRetryKind,
+    identity: Vec<u8>,
+    generation: u64,
+    failures: u32,
+    remaining_ms: u64,
+}
+
+fn retry_due(
+    retries: &[LaunchRetry],
+    kind: LaunchRetryKind,
+    identity: &[u8],
+    generation: u64,
+) -> bool {
+    retries
+        .iter()
+        .find(|retry| {
+            retry.kind == kind && retry.identity == identity && retry.generation == generation
+        })
+        .is_none_or(|retry| retry.remaining_ms == 0)
+}
+
+fn note_launch_failure(
+    retries: &mut Vec<LaunchRetry>,
+    kind: LaunchRetryKind,
+    identity: &[u8],
+    generation: u64,
+) {
+    // A replacement generation is a new desired state and must be tried
+    // immediately. Retain at most one retry record for a logical identity.
+    let failures = retries
+        .iter()
+        .find(|retry| {
+            retry.kind == kind && retry.identity == identity && retry.generation == generation
+        })
+        .map_or(1, |retry| retry.failures.saturating_add(1));
+    retries.retain(|retry| retry.kind != kind || retry.identity != identity);
+    let shift = failures.saturating_sub(1).min(5);
+    let remaining_ms = LAUNCH_RETRY_BASE_MS.saturating_mul(1u64 << shift).min(LAUNCH_RETRY_MAX_MS);
+    retries.push(LaunchRetry {
+        kind,
+        identity: identity.to_vec(),
+        generation,
+        failures,
+        remaining_ms,
+    });
+    catten_rt::logln!(
+        "[agent] launch attempt failed for {:?} generation={}; retry in {} ms (failure {})",
+        core::str::from_utf8(identity).unwrap_or("<invalid>"),
+        generation,
+        remaining_ms,
+        failures
+    );
+}
+
+fn clear_launch_retry(retries: &mut Vec<LaunchRetry>, kind: LaunchRetryKind, identity: &[u8]) {
+    retries.retain(|retry| retry.kind != kind || retry.identity != identity);
 }
 
 fn fail(stage: u32) -> ! {
@@ -302,7 +369,7 @@ fn fetch_from_central_store(
     cluster_key: &[u8; 32],
 ) -> Option<Vec<u8>> {
     catten_rt::logln!(
-        "[agent] fetching {:?} from S3 key {:?}",
+        "[agent] starting full S3 GET for {:?} key {:?}",
         core::str::from_utf8(descriptor.artifact_name).unwrap_or("<invalid>"),
         core::str::from_utf8(descriptor.object_key).unwrap_or("<invalid>")
     );
@@ -331,25 +398,83 @@ fn fetch_s3_object(
     max_len: usize,
     expected_digest: &[u8; 32],
 ) -> Option<Vec<u8>> {
-    let (_, connection) = try_registered_name_bytes_owned(names, b"s3")?;
+    let Some((_, connection)) = try_registered_name_bytes_owned(names, b"s3") else {
+        catten_rt::logln!("[agent] S3 GET unavailable: connector is not registered");
+        return None;
+    };
     let client = S3Client::new(connection.as_ref());
-    let (mut get, info) = client.get(charlotte_protocol_s3::ObjectRequest::get(key)).ok()?;
-    let expected_len = usize::try_from(info.content_length).ok()?;
+    let (mut get, info) = match client.get(charlotte_protocol_s3::ObjectRequest::get(key)) {
+        Ok(result) => result,
+        Err(error) => {
+            catten_rt::logln!("[agent] S3 GET begin failed for key {:?}: {:?}", key, error);
+            return None;
+        }
+    };
+    let Ok(expected_len) = usize::try_from(info.content_length) else {
+        catten_rt::logln!("[agent] S3 GET length does not fit usize for key {:?}", key);
+        return None;
+    };
     if info.status != 200 || expected_len == 0 || expected_len > max_len {
+        catten_rt::logln!(
+            "[agent] S3 GET rejected metadata for key {:?}: status={} length={} max={}",
+            key,
+            info.status,
+            expected_len,
+            max_len
+        );
         return None;
     }
     let mut bytes = Vec::with_capacity(expected_len);
-    while let Some(chunk) = get.read().ok()? {
+    loop {
+        let chunk = match get.read() {
+            Ok(Some(chunk)) => chunk,
+            Ok(None) => break,
+            Err(error) => {
+                catten_rt::logln!("[agent] S3 GET read failed for key {:?}: {:?}", key, error);
+                return None;
+            }
+        };
         let (memory, len) = chunk.into_parts();
-        let mapping = memory.map_read_only().ok()?;
-        bytes.extend_from_slice(mapping.as_slice().get(..len)?);
+        let mapping = match memory.map_read_only() {
+            Ok(mapping) => mapping,
+            Err((_, error)) => {
+                catten_rt::logln!("[agent] S3 GET chunk mapping failed: {:?}", error);
+                return None;
+            }
+        };
+        let Some(chunk_bytes) = mapping.as_slice().get(..len) else {
+            catten_rt::logln!("[agent] S3 GET returned an invalid chunk length {}", len);
+            return None;
+        };
+        bytes.extend_from_slice(chunk_bytes);
         if bytes.len() > expected_len {
+            catten_rt::logln!(
+                "[agent] S3 GET exceeded declared length for key {:?}: received={} expected={}",
+                key,
+                bytes.len(),
+                expected_len
+            );
             return None;
         }
     }
-    get.close().ok()?;
-    (bytes.len() == expected_len && charlotte_launch::sha256::digest(&bytes) == *expected_digest)
-        .then_some(bytes)
+    if let Err(error) = get.close() {
+        catten_rt::logln!("[agent] S3 GET close failed for key {:?}: {:?}", key, error);
+        return None;
+    }
+    if bytes.len() != expected_len {
+        catten_rt::logln!(
+            "[agent] S3 GET length mismatch for key {:?}: received={} expected={}",
+            key,
+            bytes.len(),
+            expected_len
+        );
+        return None;
+    }
+    if charlotte_launch::sha256::digest(&bytes) != *expected_digest {
+        catten_rt::logln!("[agent] S3 GET digest mismatch for key {:?}", key);
+        return None;
+    }
+    Some(bytes)
 }
 
 fn trusted_unix_seconds(names: ConnectionRef<'_>) -> Option<u64> {
@@ -663,6 +788,7 @@ fn serve(ctx: &Context) -> catten_rt::ShutdownRequest {
     let trust = manifest_admission_trust(ctx).unwrap_or_else(|| fail(STAGE_FAIL));
     let mut active: Vec<ActiveDeployment> = Vec::new();
     let mut operational: Vec<ActiveOperational> = Vec::new();
+    let mut launch_retries: Vec<LaunchRetry> = Vec::new();
     let mut observed_shutdown_generation = 0;
     if let Err(request) = wait_for_local_ready_or_shutdown(ctx, names) {
         return request;
@@ -702,6 +828,12 @@ fn serve(ctx: &Context) -> catten_rt::ShutdownRequest {
         }
         let desired_names = deployment_names(dns_connection.as_ref());
         let desired_operations = operational_bindings(dns_connection.as_ref());
+        launch_retries.retain(|retry| match retry.kind {
+            LaunchRetryKind::Deployment => desired_names.contains(&retry.identity),
+            LaunchRetryKind::Operational => desired_operations.iter().any(|binding| {
+                binding.profile_name == retry.identity && binding.generation == retry.generation
+            }),
+        });
 
         for running in &mut active {
             let still_desired =
@@ -775,18 +907,40 @@ fn serve(ctx: &Context) -> catten_rt::ShutdownRequest {
             {
                 continue;
             }
-            if let Some(deployment) =
-                query_deployment(dns_connection.as_ref(), &binding.target_artifact)
-                && let Some(running) = launch_operational(
-                    names,
-                    dns_connection.as_ref(),
-                    binding,
-                    &deployment,
-                    &trust,
-                    my_node_key,
-                )
-            {
+            let retry_identity = &binding.profile_name;
+            if !retry_due(
+                &launch_retries,
+                LaunchRetryKind::Operational,
+                retry_identity,
+                binding.generation,
+            ) {
+                continue;
+            }
+            let running = query_deployment(dns_connection.as_ref(), &binding.target_artifact)
+                .and_then(|deployment| {
+                    launch_operational(
+                        names,
+                        dns_connection.as_ref(),
+                        binding,
+                        &deployment,
+                        &trust,
+                        my_node_key,
+                    )
+                });
+            if let Some(running) = running {
+                clear_launch_retry(
+                    &mut launch_retries,
+                    LaunchRetryKind::Operational,
+                    retry_identity,
+                );
                 operational.push(running);
+            } else {
+                note_launch_failure(
+                    &mut launch_retries,
+                    LaunchRetryKind::Operational,
+                    retry_identity,
+                    binding.generation,
+                );
             }
         }
 
@@ -797,11 +951,25 @@ fn serve(ctx: &Context) -> catten_rt::ShutdownRequest {
             if active.iter().any(|running| running.name == name) {
                 continue;
             }
-            if let Some(entry) = query_deployment(dns_connection.as_ref(), &name)
-                && entry.replica_nodes.contains(&my_node_key)
-                && let Some(running) = launch(names, &name, &entry, &trust, my_node_key)
-            {
+            let Some(entry) = query_deployment(dns_connection.as_ref(), &name) else {
+                continue;
+            };
+            if !entry.replica_nodes.contains(&my_node_key) {
+                continue;
+            }
+            if !retry_due(&launch_retries, LaunchRetryKind::Deployment, &name, entry.generation) {
+                continue;
+            }
+            if let Some(running) = launch(names, &name, &entry, &trust, my_node_key) {
+                clear_launch_retry(&mut launch_retries, LaunchRetryKind::Deployment, &name);
                 active.push(running);
+            } else {
+                note_launch_failure(
+                    &mut launch_retries,
+                    LaunchRetryKind::Deployment,
+                    &name,
+                    entry.generation,
+                );
             }
         }
         let retirement_in_progress = active.iter().any(|running| running.retiring)
@@ -813,6 +981,9 @@ fn serve(ctx: &Context) -> catten_rt::ShutdownRequest {
         };
         if let Err(request) = sleep_ms_or_shutdown(ctx, delay) {
             return drain_for_node_shutdown(&mut active, &mut operational, request);
+        }
+        for retry in &mut launch_retries {
+            retry.remaining_ms = retry.remaining_ms.saturating_sub(delay);
         }
     }
 }

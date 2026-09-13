@@ -614,7 +614,7 @@ impl SystemScheduler {
         crate::cpu::scheduler::threads::account_retired_cpu_ticks(&thread);
         drop(table);
         record_exit(stage_lp, tid, thread.generation);
-        crate::cpu::scheduler::threads::stage_dead_thread(stage_lp, thread);
+        crate::cpu::scheduler::threads::stage_dead_thread(stage_lp, tid, thread);
         Ok(tid)
     }
 

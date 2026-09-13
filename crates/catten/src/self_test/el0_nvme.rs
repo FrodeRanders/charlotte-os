@@ -310,6 +310,131 @@ extern "C" fn verify_el0_nvme() {
     let ready =
         crate::ipc::wait_reply_timeout(crate::memory::KERNEL_ASID, completion_lookup, 60_000)
             .expect("[nvme] object-client completion reply error");
+    if !ready {
+        let object_threads =
+            crate::cpu::scheduler::threads::statistics_for_asid(object_client.asid);
+        let objstore_threads = crate::cpu::scheduler::threads::statistics_for_asid(objstore.asid);
+        let driver_threads = crate::cpu::scheduler::threads::statistics_for_asid(driver.asid);
+        let ns_threads = crate::cpu::scheduler::threads::statistics_for_asid(ns.domain.asid);
+        let ns_cfg: *const u8 = {
+            let base: *mut u8 = ns.domain.status_frame.into();
+            base
+        };
+        logln!(
+            "[nvme] object-client timeout diagnostics: asid={} tid={} generation={} stage={:#x} \
+             round_trip_bytes={} elf_size={} threads={:?}",
+            object_client.asid,
+            object_client.tid,
+            object_client.generation,
+            unsafe {
+                crate::self_test::status_u32(
+                    object_cfg,
+                    charlotte_launch::objstore_client_status::STAGE,
+                )
+            },
+            unsafe {
+                crate::self_test::status_u32(
+                    object_cfg,
+                    charlotte_launch::objstore_client_status::ROUND_TRIP_BYTES,
+                )
+            },
+            unsafe {
+                crate::self_test::status_u32(
+                    object_cfg,
+                    charlotte_launch::objstore_client_status::ELF_SIZE,
+                )
+            },
+            object_threads
+        );
+        logln!(
+            "[nvme] object-client timeout diagnostics: objstore stage={} error={:#x} \
+             block_result={:#x} block_op={:#x} reply_status={:#x} detail={:#x} threads={:?}",
+            unsafe {
+                crate::self_test::status_u32(objstore_cfg, charlotte_launch::objstore_status::STAGE)
+            },
+            unsafe {
+                crate::self_test::status_u32(objstore_cfg, charlotte_launch::objstore_status::ERROR)
+            },
+            unsafe {
+                crate::self_test::status_i64(
+                    objstore_cfg,
+                    charlotte_launch::objstore_status::BLOCK_RESULT,
+                )
+            },
+            unsafe {
+                crate::self_test::status_u32(
+                    objstore_cfg,
+                    charlotte_launch::objstore_status::BLOCK_OP,
+                )
+            },
+            unsafe {
+                crate::self_test::status_u32(
+                    objstore_cfg,
+                    charlotte_launch::objstore_status::REPLY_STATUS,
+                )
+            },
+            unsafe {
+                crate::self_test::status_u32(
+                    objstore_cfg,
+                    charlotte_launch::objstore_status::DETAIL,
+                )
+            },
+            objstore_threads
+        );
+        logln!(
+            "[nvme] object-client timeout diagnostics: driver stage={} detail={} irq_count={} \
+             io_dw3={:#x} io_status={} io_cid={} outstanding={} opcode={:#x} slot={} nblocks={} \
+             threads={:?}",
+            unsafe {
+                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::STAGE)
+            },
+            unsafe {
+                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::DETAIL)
+            },
+            unsafe {
+                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::IRQ_COUNT)
+            },
+            unsafe {
+                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::IO_CQE_DW3)
+            },
+            unsafe {
+                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::IO_STATUS)
+            },
+            unsafe {
+                crate::self_test::status_u32(
+                    driver_cfg,
+                    charlotte_launch::nvme_status::IO_COMMAND_ID,
+                )
+            },
+            unsafe {
+                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::OUTSTANDING)
+            },
+            unsafe {
+                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::LAST_OPCODE)
+            },
+            unsafe {
+                crate::self_test::status_u32(driver_cfg, charlotte_launch::nvme_status::LAST_SLOT)
+            },
+            unsafe {
+                crate::self_test::status_u32(
+                    driver_cfg,
+                    charlotte_launch::nvme_status::LAST_BLOCK_COUNT,
+                )
+            },
+            driver_threads
+        );
+        logln!(
+            "[nvme] object-client timeout diagnostics: name-service stage={} handled={} \
+             last_opcode={} waiters={} threads={:?}",
+            unsafe { crate::self_test::status_u32(ns_cfg, charlotte_launch::ns_status::STAGE) },
+            unsafe { crate::self_test::status_u32(ns_cfg, charlotte_launch::ns_status::HANDLED) },
+            unsafe {
+                crate::self_test::status_u32(ns_cfg, charlotte_launch::ns_status::LAST_OPCODE)
+            },
+            unsafe { crate::self_test::status_u32(ns_cfg, charlotte_launch::ns_status::WAITERS) },
+            ns_threads
+        );
+    }
     assert!(ready, "[nvme] object-client completion deadline expired");
     let completion = crate::ipc::poll_reply(crate::memory::KERNEL_ASID, completion_lookup)
         .expect("[nvme] object-client completion poll error")

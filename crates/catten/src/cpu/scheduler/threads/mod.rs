@@ -142,7 +142,10 @@ pub fn retirement_in_flight() -> bool {
 /// Stage a thread that has stopped being scheduled on `lp` for reaping by that
 /// same LP. The thread's stack is not freed until [`reap_dead_threads`] runs on
 /// `lp` after a context switch away from it.
-pub fn stage_dead_thread(lp: LpId, thread: Thread) {
+pub fn stage_dead_thread(lp: LpId, tid: ThreadId, mut thread: Thread) {
+    thread.retired_tid = Some(tid);
+    thread.reap_lp = Some(lp);
+    thread.trace_lifecycle(crate::debug_trace::THREAD_LIFECYCLE_STAGE, current_stack_pointer());
     DEAD_THREADS.write().entry(lp).or_default().push(thread);
 }
 
@@ -186,7 +189,7 @@ pub fn retire_requested_threads() {
             thread
         };
         record_exit(lp, tid, generation);
-        stage_dead_thread(lp, thread);
+        stage_dead_thread(lp, tid, thread);
     }
 }
 
@@ -215,8 +218,16 @@ pub fn reap_dead_threads() {
     // containing the instruction stream's current SP; leave it for the next
     // switch on this LP.
     let current_sp = current_stack_pointer();
-    let (deferred, reclaimable): (Vec<_>, Vec<_>) =
-        dead.into_iter().partition(|thread| thread.context.kernel_stack_contains(current_sp));
+    let (deferred, reclaimable): (Vec<_>, Vec<_>) = dead.into_iter().partition(|thread| {
+        let is_current_stack = thread.context.kernel_stack_contains(current_sp);
+        let phase = if is_current_stack {
+            crate::debug_trace::THREAD_LIFECYCLE_REAP_DEFER
+        } else {
+            crate::debug_trace::THREAD_LIFECYCLE_REAP_RECLAIM
+        };
+        thread.trace_lifecycle(phase, current_sp);
+        is_current_stack
+    });
     if !deferred.is_empty() {
         DEAD_THREADS.write().entry(lp).or_default().extend(deferred);
     }
@@ -359,6 +370,10 @@ pub struct Thread {
     /// context, after it has switched off this thread's stack.
     pub(crate) abort_requested: AtomicBool,
     pub(crate) abort_owner_lp: AtomicUsize,
+    /// Identity retained after removal from the master table for diagnostic
+    /// correlation with the deferred-reaping and stack-deallocation paths.
+    retired_tid: Option<ThreadId>,
+    reap_lp: Option<LpId>,
     exit_observers: Mutex<Vec<Weak<dyn Observer>>>,
 }
 
@@ -399,8 +414,26 @@ impl Thread {
             last_dispatch_tick: None,
             abort_requested: AtomicBool::new(false),
             abort_owner_lp: AtomicUsize::new(usize::MAX),
+            retired_tid: None,
+            reap_lp: None,
             exit_observers: Mutex::new(Vec::new()),
         }
+    }
+
+    fn trace_lifecycle(&self, phase: u64, current_sp: usize) {
+        let (stack_base, stack_end) = self.context.kernel_stack_bounds();
+        crate::debug_trace::trace_thread_lifecycle(crate::debug_trace::ThreadLifecycleEvent {
+            phase,
+            queue_lp: self.reap_lp.map_or(usize::MAX, |lp| lp as usize),
+            tid: self.retired_tid.unwrap_or(usize::MAX),
+            generation: self.generation,
+            asid: self.asid,
+            stack_base,
+            stack_end,
+            current_sp,
+            on_cpu: u8::from(self.context.is_on_cpu()),
+            abort_owner: self.abort_owner_lp.load(Ordering::Acquire),
+        });
     }
 
     pub fn statistics_snapshot(&self, tid: ThreadId) -> ThreadStatisticsSnapshot {
@@ -544,5 +577,13 @@ impl Drop for Thread {
                 observer.notify();
             }
         }
+        // `context` is the first field and is dropped immediately after this
+        // method returns. This record therefore identifies the kernel-stack
+        // deallocation that follows in `ThreadContext::drop`; the stack-arena
+        // trace records the allocator entry and completion by base address.
+        self.trace_lifecycle(
+            crate::debug_trace::THREAD_LIFECYCLE_STACK_DEALLOCATE,
+            current_stack_pointer(),
+        );
     }
 }

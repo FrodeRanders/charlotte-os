@@ -1169,10 +1169,15 @@ if [ -n "$TIMEOUT" ]; then
     if [ "$SCHEDULER_TRACE" = "1" ]; then
         TRACE_RAW="/tmp/charlotte${INSTANCE_SUFFIX}-scheduler-trace.bin"
         TRACE_TEXT="/tmp/charlotte${INSTANCE_SUFFIX}-scheduler-trace.log"
+        LIFECYCLE_TRACE_RAW="/tmp/charlotte${INSTANCE_SUFFIX}-thread-lifecycle-trace.bin"
+        LIFECYCLE_TRACE_TEXT="/tmp/charlotte${INSTANCE_SUFFIX}-thread-lifecycle-trace.log"
         TRACE_LLDB="/tmp/charlotte${INSTANCE_SUFFIX}-trace-lldb.log"
         read -r TRACE_ADDR TRACE_SIZE < <(nm -S "$KERNEL" | awk '$4 == "DEBUG_TRACE" { print "0x" $1, "0x" $2; exit }')
-        if [ -n "${TRACE_ADDR:-}" ] && command -v lldb >/dev/null 2>&1; then
+        read -r LIFECYCLE_TRACE_ADDR LIFECYCLE_TRACE_SIZE < <(nm -S "$KERNEL" | awk '$4 == "THREAD_LIFECYCLE_TRACE" { print "0x" $1, "0x" $2; exit }')
+        if [ -n "${TRACE_ADDR:-}" ] && [ -n "${LIFECYCLE_TRACE_ADDR:-}" ] \
+            && command -v lldb >/dev/null 2>&1; then
             TRACE_COUNT=$((TRACE_SIZE))
+            LIFECYCLE_TRACE_COUNT=$((LIFECYCLE_TRACE_SIZE))
             lldb --batch \
                 -o "settings set interpreter.stop-command-source-on-error false" \
                 -o "gdb-remote ${GDB_PORT}" \
@@ -1190,6 +1195,7 @@ if [ -n "$TIMEOUT" ]; then
                 -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp cpsr" \
                 -o "register read cntv_ctl_el0 cntv_cval_el0" \
                 -o "memory read --force --binary --size 1 --count ${TRACE_COUNT} --outfile ${TRACE_RAW} ${TRACE_ADDR}" \
+                -o "memory read --force --binary --size 1 --count ${LIFECYCLE_TRACE_COUNT} --outfile ${LIFECYCLE_TRACE_RAW} ${LIFECYCLE_TRACE_ADDR}" \
                 -o "process detach" "$KERNEL" >"$TRACE_LLDB" 2>&1 || true
             if [ -s "$TRACE_RAW" ]; then
                 python3 scripts/decode-scheduler-trace.py "$TRACE_RAW" >"$TRACE_TEXT"
@@ -1197,8 +1203,15 @@ if [ -n "$TIMEOUT" ]; then
             else
                 echo "warning: scheduler trace capture failed; see ${TRACE_LLDB}" >&2
             fi
+            if [ -s "$LIFECYCLE_TRACE_RAW" ]; then
+                python3 scripts/decode-thread-lifecycle-trace.py "$LIFECYCLE_TRACE_RAW" \
+                    >"$LIFECYCLE_TRACE_TEXT"
+                echo ">>> Thread lifecycle trace captured in ${LIFECYCLE_TRACE_TEXT}"
+            else
+                echo "warning: thread lifecycle trace capture failed; see ${TRACE_LLDB}" >&2
+            fi
         else
-            echo "warning: DEBUG_TRACE symbol or lldb unavailable; scheduler trace not captured" >&2
+            echo "warning: trace symbols or lldb unavailable; diagnostic traces not captured" >&2
         fi
     fi
     if [ "$DEBUG_SNAPSHOT" = "1" ]; then
