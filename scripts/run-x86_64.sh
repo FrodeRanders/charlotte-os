@@ -18,6 +18,7 @@
 #                         [--no-network]
 #                         [--net-test|--disco-test|--dns-test|--deploy-test]
 #                         [--tcpip-test|--http-test|--dhcp-test]
+#                         [--s3-test|--deployment-ingress-test]
 #                         [--live-upgrade-test|--shutdown-test]
 #                         [--nic virtio|e1000e] [--mac ADDRESS]
 #                         [--net-listen PORT|--net-connect HOST:PORT]
@@ -95,6 +96,18 @@ LIVE_UPGRADE_TEST="0"
 SHUTDOWN_TEST="0"
 HTTP_HOST_PORT="${CATTEN_HTTP_HOST_PORT:-8080}"
 DEPLOY_HOST_PORT="${CATTEN_DEPLOY_HOST_PORT:-8081}"
+S3_TEST="0"
+DEPLOYMENT_INGRESS_TEST="0"
+DEPLOY_NAME="${CATTEN_DEPLOY_NAME:-greet}"
+DEPLOY_ELF="${CATTEN_DEPLOY_ELF:-}"
+DEPLOY_OBJECT_KEY="${CATTEN_DEPLOY_OBJECT_KEY:-deployments/greet-e2e.elf}"
+DEPLOY_STACK_PAGES="${CATTEN_DEPLOY_STACK_PAGES:-4}"
+DEPLOY_MAX_THREADS="${CATTEN_DEPLOY_MAX_THREADS:-1}"
+DEPLOY_GRACE_MS="${CATTEN_DEPLOY_GRACE_MS:-5000}"
+DEPLOY_GRANTS="${CATTEN_DEPLOY_GRANTS:-greet=publish}"
+APP_HOST_PORT="${CATTEN_APP_HOST_PORT:-}"
+APP_GUEST_PORT="${CATTEN_APP_GUEST_PORT:-}"
+APP_HOLD_SECONDS="${CATTEN_APP_HOLD_SECONDS:-0}"
 NET_BACKEND="user"
 NET_MAC="52:54:00:12:34:56"
 NET_DEVICE="virtio"
@@ -131,6 +144,9 @@ while [ "$#" -gt 0 ]; do
         --tcpip-test)  NET_TEST="1"; TCPIP_TEST="1"; shift ;; # implies --net-test
         --http-test)   NET_TEST="1"; HTTP_TEST="1"; shift ;; # implies --net-test
         --dhcp-test)   NET_TEST="1"; DHCP_TEST="1"; shift ;; # implies --net-test
+        --s3-test)     NET_TEST="1"; DHCP_TEST="1"; S3_TEST="1"; shift ;;
+        --deployment-ingress-test)
+            NET_TEST="1"; DHCP_TEST="1"; S3_TEST="1"; DEPLOYMENT_INGRESS_TEST="1"; shift ;;
         --live-upgrade-test) LIVE_UPGRADE_TEST="1"; shift ;;
         --shutdown-test) SHUTDOWN_TEST="1"; shift ;;
         --net-listen)
@@ -173,6 +189,22 @@ if ! [[ "$DATA_SIZE_MIB" =~ ^[0-9]+$ ]] || [ "$DATA_SIZE_MIB" -lt 16 ]; then
 fi
 catten_boot_validate_port "CATTEN_HTTP_HOST_PORT" "$HTTP_HOST_PORT"
 catten_boot_validate_port "CATTEN_DEPLOY_HOST_PORT" "$DEPLOY_HOST_PORT"
+if [ -n "$APP_HOST_PORT" ] || [ -n "$APP_GUEST_PORT" ]; then
+    if [ -z "$APP_HOST_PORT" ] || [ -z "$APP_GUEST_PORT" ]; then
+        echo "error: CATTEN_APP_HOST_PORT and CATTEN_APP_GUEST_PORT must be set together" >&2
+        exit 1
+    fi
+    catten_boot_validate_port "CATTEN_APP_HOST_PORT" "$APP_HOST_PORT"
+    catten_boot_validate_port "CATTEN_APP_GUEST_PORT" "$APP_GUEST_PORT"
+fi
+if [ "$S3_TEST" = "1" ] && [ "$NET_BACKEND" != "user" ]; then
+    echo "error: --s3-test requires the default user network" >&2
+    exit 1
+fi
+if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ] && [ -z "$TIMEOUT" ]; then
+    echo "error: --deployment-ingress-test requires --timeout" >&2
+    exit 1
+fi
 if [ "$NET_BACKEND" != "user" ] && [ "$NETWORK" != "1" ]; then
     echo "error: socket networking is incompatible with --no-network" >&2
     exit 1
@@ -285,6 +317,9 @@ fi
 if [ "$DHCP_TEST" = "1" ]; then
     FEATURES="${FEATURES},dhcp_test"
 fi
+if [ "$S3_TEST" = "1" ]; then
+    FEATURES="${FEATURES},s3_test"
+fi
 if [ "$LIVE_UPGRADE_TEST" = "1" ]; then
     FEATURES="${FEATURES},live_upgrade_test"
 fi
@@ -298,9 +333,68 @@ fi
 # Build and sign the x86_64 service bundle. The bootstrap set is embedded at
 # compile time and the same signed artifacts seed the persistent object-store
 # image, so the bundle must exist before the kernel build.
+RUSTFS_COMPOSE="${ROOT_DIR}/docker/rustfs-s3-test/compose.yaml"
+RUSTFS_RUNNING="0"
+DEPLOYMENT_WORKER_PID=""
+QPID=""
+cleanup_fixtures() {
+    if [ -n "$QPID" ]; then
+        kill "$QPID" >/dev/null 2>&1 || true
+        wait "$QPID" >/dev/null 2>&1 || true
+    fi
+    if [ -n "$DEPLOYMENT_WORKER_PID" ]; then
+        kill "$DEPLOYMENT_WORKER_PID" >/dev/null 2>&1 || true
+    fi
+    if [ "$RUSTFS_RUNNING" = "1" ]; then
+        docker compose -f "$RUSTFS_COMPOSE" down --volumes --remove-orphans >/dev/null 2>&1 || true
+    fi
+}
+trap cleanup_fixtures EXIT
+
+if [ "$S3_TEST" = "1" ]; then
+    catten_boot_require_commands docker openssl
+    RUSTFS_TEST_DIR="${ROOT_DIR}/target/rustfs-s3-test"
+    export CATTEN_RUSTFS_CERT_DIR="${RUSTFS_TEST_DIR}/certs"
+    export CATTEN_RUSTFS_PORT="19000"
+    mkdir -p "$CATTEN_RUSTFS_CERT_DIR"
+    openssl ecparam -name prime256v1 -genkey -noout \
+        -out "$CATTEN_RUSTFS_CERT_DIR/ca.key"
+    openssl req -x509 -new -sha256 -days 2 \
+        -key "$CATTEN_RUSTFS_CERT_DIR/ca.key" \
+        -subj "/CN=CharlotteOS RustFS test CA" \
+        -addext "basicConstraints=critical,CA:TRUE" \
+        -addext "keyUsage=critical,keyCertSign,cRLSign" \
+        -out "$CATTEN_RUSTFS_CERT_DIR/ca.crt"
+    openssl ecparam -name prime256v1 -genkey -noout \
+        -out "$CATTEN_RUSTFS_CERT_DIR/rustfs_key.pem"
+    openssl req -new -sha256 \
+        -key "$CATTEN_RUSTFS_CERT_DIR/rustfs_key.pem" \
+        -subj "/CN=rustfs.test" \
+        -out "$CATTEN_RUSTFS_CERT_DIR/rustfs.csr"
+    openssl x509 -req -sha256 -days 2 \
+        -in "$CATTEN_RUSTFS_CERT_DIR/rustfs.csr" \
+        -CA "$CATTEN_RUSTFS_CERT_DIR/ca.crt" \
+        -CAkey "$CATTEN_RUSTFS_CERT_DIR/ca.key" \
+        -CAcreateserial \
+        -extfile "${ROOT_DIR}/docker/rustfs-s3-test/server-ext.cnf" \
+        -out "$CATTEN_RUSTFS_CERT_DIR/rustfs_cert.pem"
+    openssl x509 -in "$CATTEN_RUSTFS_CERT_DIR/ca.crt" -outform DER \
+        -out "$CATTEN_RUSTFS_CERT_DIR/ca.der"
+    chmod 0644 "$CATTEN_RUSTFS_CERT_DIR/ca.crt" \
+        "$CATTEN_RUSTFS_CERT_DIR/ca.der" \
+        "$CATTEN_RUSTFS_CERT_DIR/rustfs_cert.pem" \
+        "$CATTEN_RUSTFS_CERT_DIR/rustfs_key.pem"
+    export CATTEN_S3_TEST_CA_DER="$CATTEN_RUSTFS_CERT_DIR/ca.der"
+    echo ">>> Starting ephemeral TLS RustFS fixture on host port 19000..."
+    docker compose -f "$RUSTFS_COMPOSE" down --volumes --remove-orphans >/dev/null 2>&1 || true
+    RUSTFS_RUNNING="1"
+    docker compose -f "$RUSTFS_COMPOSE" up -d --wait rustfs
+    docker compose -f "$RUSTFS_COMPOSE" run --rm init
+fi
+
 echo ">>> Building and signing the x86_64 bootstrap service bundle..."
 SERVICE_BUNDLE="${ROOT_DIR}/target/embedded-services/x86_64-unknown-none"
-SERVICE_NAMES="ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk net e1000e nclient disco frouter dns agent greet shutdown_probe relmsg rclient tcpip tcpclient httpd time s3 rng fs clusterctl grantctl"
+SERVICE_NAMES="ns observe nvme objstore nvme_client objstore_client echo raft client servicemgr ahci virtio_blk net e1000e nclient disco frouter dns agent greet shutdown_probe relmsg rclient tcpip tcpclient httpd time s3 s3_smoke rng fs clusterctl grantctl deployd"
 if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" = "1" ]; then
     for svc in $SERVICE_NAMES; do
         if [ ! -f "$SERVICE_BUNDLE/$svc.elf" ]; then
@@ -313,6 +407,46 @@ else
     "${ROOT_DIR}/scripts/build-catten-services-x86_64.sh"
 fi
 export CATTEN_X86_64_SERVICE_BUNDLE="$SERVICE_BUNDLE"
+
+DEPLOYMENT_DESCRIPTOR=""
+DEPLOYMENT_RELEASE=""
+CLUSTER_SIGN_BIN="${ROOT_DIR}/target/debug/cluster-sign"
+if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
+    (cd /tmp && cargo build --quiet --manifest-path "${ROOT_DIR}/tools/cluster-sign/Cargo.toml")
+    echo ">>> Preparing signed central-store deployment fixture..."
+    DEPLOYMENT_TEST_DIR="${ROOT_DIR}/target/deployment-ingress-test"
+    mkdir -p "$DEPLOYMENT_TEST_DIR"
+    if [ -z "$DEPLOY_ELF" ]; then
+        DEPLOY_ELF="${SERVICE_BUNDLE}/greet.elf"
+    fi
+    if [ ! -f "$DEPLOY_ELF" ]; then
+        echo "error: deployment ELF not found: $DEPLOY_ELF" >&2
+        exit 1
+    fi
+    DEPLOYMENT_ELF="$DEPLOY_ELF"
+    DEPLOYMENT_OBJECT_KEY="$DEPLOY_OBJECT_KEY"
+    DEPLOYMENT_DESCRIPTOR="${DEPLOYMENT_TEST_DIR}/${DEPLOY_NAME}.cdep"
+    DEPLOYMENT_RELEASE="${DEPLOYMENT_TEST_DIR}/${DEPLOY_NAME}.crelease"
+    DEPLOYMENT_DIGEST="$($CLUSTER_SIGN_BIN sha256 "$DEPLOYMENT_ELF")"
+    if [ -n "${CLUSTER_SIGN_PRIVATE_KEY:-}" ]; then
+        DEPLOYMENT_PRIVATE_KEY="$CLUSTER_SIGN_PRIVATE_KEY"
+    else
+        DEPLOYMENT_PRIVATE_KEY="$(grep -v '^#' "${ROOT_DIR}/tools/cluster-sign/dev-key.hex" | tr -d '[:space:]')"
+    fi
+    DEPLOYMENT_SEQUENCE="$(date +%s)"
+    # CATTEN_DEPLOY_GRANTS is a space-separated list of NAME=RIGHT entries.
+    docker compose -f "$RUSTFS_COMPOSE" run --rm --no-deps \
+        -v "${DEPLOYMENT_ELF}:/tmp/${DEPLOY_NAME}.elf:ro" \
+        --entrypoint /bin/sh init -ec \
+        "rc alias set local https://rustfs.test:9000 charlotte-test-access charlotte-test-secret-2026 && rc cp /tmp/${DEPLOY_NAME}.elf local/charlotte-test/${DEPLOYMENT_OBJECT_KEY}"
+    "$CLUSTER_SIGN_BIN" deployment-sign \
+        "$DEPLOYMENT_DESCRIPTOR" "$DEPLOY_NAME" "$DEPLOYMENT_OBJECT_KEY" "$DEPLOYMENT_DIGEST" \
+        0 "$DEPLOYMENT_SEQUENCE" "$DEPLOY_STACK_PAGES" "$DEPLOY_MAX_THREADS" "$DEPLOY_GRACE_MS" \
+        "$DEPLOYMENT_PRIVATE_KEY" $DEPLOY_GRANTS
+    "$CLUSTER_SIGN_BIN" release-sign \
+        "$DEPLOYMENT_RELEASE" "${DEPLOY_NAME}-ingress-e2e" "$DEPLOYMENT_SEQUENCE" \
+        "$DEPLOYMENT_PRIVATE_KEY" "$DEPLOYMENT_DESCRIPTOR"
+fi
 
 if [ "$EL0_SMOKE" = "1" ]; then
     echo ">>> Building and signing the x86_64 smoke service ELF..."
@@ -420,10 +554,14 @@ QEMU_OPTS=(
 if [ "$NETWORK" = "1" ]; then
     case "$NET_BACKEND" in
         user)
+            APP_FWD=""
+            if [ -n "$APP_HOST_PORT" ]; then
+                APP_FWD=",hostfwd=tcp::${APP_HOST_PORT}-:${APP_GUEST_PORT}"
+            fi
             if [ "$HTTP_TEST" = "1" ]; then
-                QEMU_OPTS+=(-netdev "user,id=net0,hostfwd=tcp::${HTTP_HOST_PORT}-:80,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444")
+                QEMU_OPTS+=(-netdev "user,id=net0,hostfwd=tcp::${HTTP_HOST_PORT}-:80,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
             else
-                QEMU_OPTS+=(-netdev "user,id=net0,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444")
+                QEMU_OPTS+=(-netdev "user,id=net0,hostfwd=tcp::${DEPLOY_HOST_PORT}-:7444${APP_FWD}")
             fi
             ;;
         listen:*)
@@ -466,12 +604,32 @@ if [ -n "$TIMEOUT" ]; then
     QPID=$!
     SELFTEST_COMPLETE=0
     SELFTEST_COMPLETE_TICK=-1
+    DEPLOYMENT_READY_TICK=-1
     CLUSTER_DRAIN_TICKS=0
     if [ "$NET_BACKEND" != "user" ]; then
         CLUSTER_DRAIN_TICKS=150
     fi
     HTTP_PROBED=0
     HTTP_PROBE_OK=0
+    if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
+        DEPLOYMENT_RESULT_FILE="${ROOT_DIR}/target/deployment-ingress-test/result"
+        DEPLOYMENT_WORKER_LOG="${ROOT_DIR}/target/deployment-ingress-test/worker.log"
+        rm -f "$DEPLOYMENT_RESULT_FILE" "$DEPLOYMENT_WORKER_LOG"
+        (
+            deadline=$((SECONDS + TIMEOUT - 5))
+            until "$CLUSTER_SIGN_BIN" release-apply \
+                "$DEPLOYMENT_RELEASE" "127.0.0.1:${DEPLOY_HOST_PORT}" \
+                "$((deadline - SECONDS))"; do
+                if [ "$SECONDS" -ge "$deadline" ]; then
+                    echo "deployment ingress did not accept and realize the release before timeout"
+                    exit 1
+                fi
+                sleep 1
+            done
+            printf '%s\n' ready >"$DEPLOYMENT_RESULT_FILE"
+        ) >"$DEPLOYMENT_WORKER_LOG" 2>&1 &
+        DEPLOYMENT_WORKER_PID=$!
+    fi
     MAX_TICKS=$((TIMEOUT * 10))
     for ((tick = 0; tick < MAX_TICKS; tick++)); do
         sleep 0.1
@@ -504,6 +662,13 @@ if [ -n "$TIMEOUT" ]; then
             echo ">>> Guest cluster keyhole response:"
             echo "$HTTP_CLUSTER_BODY"
         fi
+        if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ] && [ -f "$DEPLOYMENT_RESULT_FILE" ] \
+            && [ "$DEPLOYMENT_READY_TICK" -lt 0 ]; then
+            DEPLOYMENT_READY_TICK=$tick
+            if [ "$APP_HOLD_SECONDS" -gt 0 ]; then
+                echo ">>> Deployment ready; keeping the guest alive for ${APP_HOLD_SECONDS}s for host probes."
+            fi
+        fi
         if grep -Fq "SELFTEST COMPLETE:" "$LOG"; then
             SELFTEST_COMPLETE=1
             if [ "$SELFTEST_COMPLETE_TICK" -lt 0 ]; then
@@ -514,7 +679,12 @@ if [ -n "$TIMEOUT" ]; then
                 fi
             fi
             if [ "$tick" -ge $((SELFTEST_COMPLETE_TICK + CLUSTER_DRAIN_TICKS)) ] \
-                && { [ "$HTTP_TEST" != "1" ] || [ "$HTTP_PROBE_OK" = "1" ]; }; then
+                && { [ "$HTTP_TEST" != "1" ] || [ "$HTTP_PROBE_OK" = "1" ]; } \
+                && { [ "$DEPLOYMENT_INGRESS_TEST" = "0" ] \
+                    || [ -f "$DEPLOYMENT_RESULT_FILE" ]; } \
+                && { [ "$APP_HOLD_SECONDS" -eq 0 ] \
+                    || { [ "$DEPLOYMENT_READY_TICK" -ge 0 ] \
+                        && [ "$tick" -ge $((DEPLOYMENT_READY_TICK + APP_HOLD_SECONDS * 10)) ]; } }; then
                 break
             fi
         fi
@@ -526,6 +696,17 @@ if [ -n "$TIMEOUT" ]; then
     if [ "$HTTP_TEST" = "1" ] && { [ "$HTTP_PROBED" = "0" ] || [ "$HTTP_PROBE_OK" = "0" ]; }; then
         echo "error: guest HTTP keyhole was not validated from the host" >&2
         exit 1
+    fi
+    if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
+        wait "$DEPLOYMENT_WORKER_PID" 2>/dev/null || true
+        DEPLOYMENT_WORKER_PID=""
+        echo ">>> Signed deployment fixture output:"
+        cat "$DEPLOYMENT_WORKER_LOG"
+        if [ ! -f "$DEPLOYMENT_RESULT_FILE" ]; then
+            echo "error: signed RustFS deployment did not become ready" >&2
+            exit 1
+        fi
+        echo ">>> Signed RustFS upload/atomic-release/pull/launch/readiness path validated."
     fi
     if [ "$SELFTEST_COMPLETE" -ne 1 ]; then
         echo "error: authoritative self-test result was not produced within ${TIMEOUT}s" >&2
