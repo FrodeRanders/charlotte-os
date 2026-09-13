@@ -149,6 +149,35 @@ This conservative approach preserves cache warmth and eliminates migration races
 where the waiter was registered). Stable affinity is the correctness default;
 migration is an opt-in optimization.
 
+\subsection{Protected-domain resource feedback}
+
+The scheduler and memory manager also provide the sensors for deliberately
+slow resource feedback. The versioned \texttt{CCOSTAT} record reports
+generation-qualified domain frame ownership, live and high-water thread and
+stack use, heap capacity and allocation peaks, node free/usable frames, online
+logical processors, and a monotonic machine-wide CPU-busy counter. Retired
+threads contribute permanently to that counter, so interval utilization does
+not fall when a short-lived worker exits. The \texttt{observe} service samples
+the aggregate once per second into a bounded in-memory history and writes the
+same resource fields asynchronously to a bounded object-store ring.
+
+New threads reserve a signed stack budget but initially commit one physical
+page. A stack translation fault may commit all pages down to the fault address
+only after preflighting the complete growth against both that budget and the
+node's free-frame reserve. Domain heap pages are likewise demand committed.
+For an unsigned kernel-launched service, a later generation may grow its stack
+or heap budget from the preceding generation's high-water mark, but never past
+the platform maximum. The heap policy keeps the historical 4 MiB capacity as a
+floor: demand commitment already saves physical memory, whereas shrinking the
+virtual claim would turn an ordinary workload change into an allocation
+failure. Signed deployment limits remain authoritative over feedback.
+
+These loops are intentionally separated by timescale. Fault handling enforces
+hard local bounds immediately; creation-time feedback changes only a later
+generation; cluster placement consumes five-second, hysteresis-filtered node
+reports. The arrangement applies cybernetic feedback without allowing
+short-lived noise to rewrite authority or oscillate execution continuously.
+
 \subsection{Generation-safe retirement}
 
 A numeric thread identifier is a recyclable table slot, not a permanent

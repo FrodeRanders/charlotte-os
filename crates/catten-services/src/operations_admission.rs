@@ -159,6 +159,22 @@ fn node_can_host(capacity: &NodeCapacityView, node: u64, demand_frames: u64) -> 
     sample.free_frames.min(sample.usable_frames) >= demand_frames.saturating_add(reserve)
 }
 
+/// Charge one planned instance against the same projected free-frame view used
+/// for the rest of this release. Unknown-capacity nodes remain optimistic, but
+/// a known node cannot satisfy several individually valid reservations whose
+/// combined demand exceeds its reported headroom.
+fn reserve_node_capacity(capacity: &mut NodeCapacityView, node: u64, demand_frames: u64) -> bool {
+    if !node_can_host(capacity, node, demand_frames) {
+        return false;
+    }
+    if let Some(sample) = capacity.get_mut(&node)
+        && sample.usable_frames != 0
+    {
+        sample.free_frames = sample.free_frames.saturating_sub(demand_frames);
+    }
+    true
+}
+
 /// Resolve each signed component policy to a concrete, unique node set.
 /// Fixed singletons retain the historical leader placement. Replica choices
 /// use a stable per-artifact ranking; affinity groups share a ranking seed and
@@ -221,6 +237,7 @@ pub fn resolve_descriptor_assignments_with_capacity(
     automatic_node: u64,
     capacity: &NodeCapacityView,
 ) -> Result<Vec<Vec<u64>>, AdmissionError> {
+    let mut projected_capacity = capacity.clone();
     let mut eligible = eligible_nodes.iter().copied().filter(|node| *node != 0).collect::<Vec<_>>();
     eligible.sort_unstable();
     eligible.dedup();
@@ -239,19 +256,23 @@ pub fn resolve_descriptor_assignments_with_capacity(
     let mut assignments = vec![None; descriptors.len()];
     for index in order {
         let descriptor = descriptors[index];
+        let demand = descriptor_memory_demand(&descriptor);
         if descriptor.node_key != 0 {
+            if !reserve_node_capacity(&mut projected_capacity, descriptor.node_key, demand) {
+                return Err(AdmissionError::InsufficientCapacity);
+            }
             assignments[index] = Some(vec![descriptor.node_key]);
             continue;
         }
         let policy = descriptor.placement;
         policy.validate_shape().map_err(|_| AdmissionError::Invalid)?;
         // Feasible targets for this component's declared memory reservation.
-        let demand = descriptor_memory_demand(&descriptor);
         let candidates = eligible
             .iter()
             .copied()
             .filter(|node| {
-                capacity_bucket(capacity, *node) > 0 && node_can_host(capacity, *node, demand)
+                capacity_bucket(&projected_capacity, *node) > 0
+                    && node_can_host(&projected_capacity, *node, demand)
             })
             .collect::<Vec<_>>();
         if policy == charlotte_launch::placement::PlacementPolicy::singleton() {
@@ -265,7 +286,7 @@ pub fn resolve_descriptor_assignments_with_capacity(
                         let mut score_input = descriptor.artifact_name.to_vec();
                         score_input.extend_from_slice(&node.to_le_bytes());
                         (
-                            pressure_bucket(capacity, *node),
+                            pressure_bucket(&projected_capacity, *node),
                             charlotte_launch::fnv1a(&score_input),
                             core::cmp::Reverse(*node),
                         )
@@ -278,6 +299,7 @@ pub fn resolve_descriptor_assignments_with_capacity(
                         },
                     )?
             };
+            debug_assert!(reserve_node_capacity(&mut projected_capacity, selected, demand));
             assignments[index] = Some(vec![selected]);
             continue;
         }
@@ -320,13 +342,16 @@ pub fn resolve_descriptor_assignments_with_capacity(
             let mut score_input = seed.clone();
             score_input.extend_from_slice(&node.to_le_bytes());
             (
-                core::cmp::Reverse(pressure_bucket(capacity, *node)),
+                core::cmp::Reverse(pressure_bucket(&projected_capacity, *node)),
                 core::cmp::Reverse(charlotte_launch::fnv1a(&score_input)),
                 *node,
             )
         });
         let mut selected = ranked.into_iter().take(wanted).collect::<Vec<_>>();
         selected.sort_unstable();
+        for node in selected.iter().copied() {
+            debug_assert!(reserve_node_capacity(&mut projected_capacity, node, demand));
+        }
         if policy.anti_affinity_group != 0 {
             anti_affinity
                 .entry(policy.anti_affinity_group)
@@ -847,6 +872,27 @@ mod tests {
         assert_eq!(
             resolve_release_assignments_with_capacity(&release, &[0], 0, &capacity),
             Err(AdmissionError::UnsatisfiablePlacement)
+        );
+    }
+
+    #[test]
+    fn release_reservations_are_charged_cumulatively() {
+        let pair = KeyPair::from_seed([0x5b; 32].into());
+        let policy = charlotte_launch::placement::PlacementPolicy::singleton();
+        let release = policy_release(&pair, &[(b"orders", policy), (b"payments", policy)]);
+        // Each descriptor needs 24 frames. With a 62-frame reserve, either one
+        // fits in 100 free frames, but the two together do not.
+        let capacity = NodeCapacityView::from_iter([(
+            1,
+            NodeCapacity {
+                free_frames: 100,
+                usable_frames: 1_000,
+                cpu_load_permille: CPU_LOAD_UNKNOWN,
+            },
+        )]);
+        assert_eq!(
+            resolve_release_assignments_with_capacity(&release, &[1], 1, &capacity),
+            Err(AdmissionError::InsufficientCapacity)
         );
     }
 

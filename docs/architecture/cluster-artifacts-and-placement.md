@@ -230,7 +230,11 @@ exist but none has room; too few eligible nodes still returns
 `ERR_UNSATISFIABLE_PLACEMENT`. Capacity is supplied as a committed per-node
 view from the reporting path (see
 [adaptive resource policy](adaptive-resource-policy.md)); nodes without a
-committed sample keep the historical ranking, so a cold cluster is unchanged.
+fresh committed sample keep the historical ranking, so a cold cluster is
+unchanged. Planning debits a projected view after every selected instance,
+including explicitly pinned singletons. A multi-component release therefore
+cannot pass by testing each component against the same undiminished free-frame
+sample.
 
 This is deliberately still a bounded scheduler. It does not yet model explicit
 heap, storage, or processor requests (those need signed descriptor fields and
@@ -328,7 +332,8 @@ ready owner. Ordinary distributed name lookup remains deterministic rather
 than caller-balanced; cluster-wide TCP traffic obtains replica load sharing at
 the DSR layer.
 
-Resource-aware scheduling, label/failure-domain selection, multi-instance
+Capacity-aware memory admission and CPU-pressure ranking are implemented.
+Signed explicit heap requests, label/failure-domain selection, multi-instance
 placement on one node, dependency-observed migration, rolling surge policy and
 automatic rollback remain open. Reassignment currently advances the whole
 deployment generation, so retained replicas restart alongside newly selected

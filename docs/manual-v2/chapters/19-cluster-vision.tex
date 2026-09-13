@@ -560,17 +560,27 @@ instances per node, minimum distinct nodes, \emph{every eligible node}, an
 affinity group, and an anti-affinity group. A request for concurrent
 replicas is invalid unless the artifact's signed CLS2 metadata contains
 \texttt{PARALLEL\_INSTANCES}. \texttt{CDEPLOY5} signs this policy, the
-leader resolves it to concrete assignments, and catalog-v13 snapshots retain
+leader resolves it to concrete assignments, and catalog-v15 snapshots retain
 both the desired set and per-node readiness. Affinity groups share a stable
 ranking seed; anti-affinity groups require unused nodes and fail closed when
 the eligible set cannot satisfy the separation. A policy that needs more
 distinct nodes than the current eligible set fails admission.
 
-The scheduler remains intentionally bounded. It does not yet account for CPU
-or memory capacity, labels, named failure domains, or more than one instance
-of an artifact on a node. Reassignment advances the whole deployment
-generation, so retained replicas restart rather than participating in a
-rolling surge/unavailability protocol.
+The scheduler remains intentionally bounded, but it now accounts for a useful
+minimum of node capacity. Each node reports free and usable frames plus recent
+CPU occupancy through the cluster's existing identity-checked peer path. Reports
+carry an entropy-derived boot incarnation and are committed through Raft;
+after three missed reporting intervals the leader treats a sample as unknown.
+The descriptor's stack budget and fixed runtime pages form a memory demand.
+Hard memory admission preserves a one-sixteenth reserve, while CPU pressure is
+a soft ranking signal. Every selected component debits a projected capacity
+view during one release decision, including explicit node pins, so several
+individually valid components cannot overcommit the same sample.
+
+The policy does not yet express heap, processor, or storage requests, labels,
+named failure domains, or more than one instance of an artifact on a node.
+Reassignment advances the whole deployment generation, so retained replicas
+restart rather than participating in a rolling surge/unavailability protocol.
 
 \subsection{Runtime observation: local substrate only}
 
@@ -580,9 +590,11 @@ queue depth, and task snapshots are already observable inside a node
 call which. The target controller should aggregate these signals across
 nodes and use sustained behavior, not transient noise, to refine placement.
 
-No cluster-wide metrics aggregation or feedback-driven placement loop is
-implemented today. The existing executor measurements are inputs from which
-that controller can later be built.
+The committed node-capacity reports are the first cluster-wide feedback loop,
+deliberately limited to slow, bucketed memory and CPU pressure. Detailed
+executor and communication metrics are not yet aggregated across nodes or used
+to move existing assignments; those measurements are inputs from which a
+stability-controlled placement controller can later be built.
 
 \subsection{Focused stateless-handoff validation}
 
@@ -910,10 +922,11 @@ application even if address-space identifiers have been reused. This bound is
 kernel admission policy, not a naming or descriptor-format limit.
 
 Automatic placement now covers singletons, fixed distinct-node replica sets,
-every eligible voter, stable affinity/anti-affinity ranking, rescheduling, and
+every eligible voter, stable affinity/anti-affinity ranking, cumulative
+memory-capacity admission, CPU-pressure ranking, rescheduling, and
 exact-generation readiness. The controller commits desired assignments
 through Raft while node agents remain mechanism-only reconcilers. It still
-needs capacity-aware selection, labels and named failure domains,
+needs explicit heap/CPU/storage requests, labels and named failure domains,
 multi-instance-per-node execution, rollout surge/unavailability, and rollback.
 
 The development runner's
@@ -999,10 +1012,11 @@ The focused deployment fixture validates that:
 \end{itemize}
 
 Separate multi-guest fixtures validate dynamic DNS/Raft admission, replica
-placement, and DSR failover. Evidence is still required for resource-aware
-placement, rolling replacement, stateful cross-node migration, artifact-store
-recovery, production key establishment and rotation, and production
-administrative authorization.
+placement, and DSR failover. Capacity-aware admission has unit and protocol
+coverage; multi-node pressure and freshness scenarios still need a dedicated
+fixture. Evidence is also required for rolling replacement, stateful cross-node
+migration, artifact-store recovery, production key establishment and rotation,
+and production administrative authorization.
 
 \section{Remaining implementation boundary}
 
@@ -1032,9 +1046,10 @@ system contains the following substantial coordination and trust work:
         telemetry into unstable placement decisions.
 
     \item \textbf{Placement and rollout depth.} The leader currently resolves
-        fixed and every-node replica policy, basic affinity/anti-affinity, and
-        drain-aware membership into assignments. The next scheduler adds node
-        capacity, trust labels, named failure domains, health and communication
+        fixed and every-node replica policy, basic affinity/anti-affinity,
+        drain-aware membership, cumulative frame demand, and soft CPU pressure
+        into assignments. The next scheduler adds typed heap/CPU/storage
+        requests, trust labels, named failure domains, health and communication
         signals, multi-instance-per-node execution, and rolling
         surge/unavailability and rollback policy.
 
@@ -1214,9 +1229,10 @@ two-guest tests isolate particular transitions; three-guest fixtures exercise
 membership, placement, and failover; generic tests and safety models cover
 larger or exhaustively explored configurations.
 
-The next decisive evidence concerns resource-aware and rolling placement,
-state transfer, production trust lifecycle, failure recovery, administration,
-and sustained operations. Observing those mechanisms will show which
-complexity genuinely disappears and which merely moves.
+The next decisive evidence concerns richer resource declarations, stable
+feedback-driven movement, rolling placement, state transfer, production trust
+lifecycle, failure recovery, administration, and sustained operations.
+Observing those mechanisms will show which complexity genuinely disappears and
+which merely moves.
 
 \endinput

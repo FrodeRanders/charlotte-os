@@ -1145,7 +1145,7 @@ pub mod observability {
 
     /// `CCHIST01`, little-endian.
     pub const HISTORY_MAGIC: u64 = 0x3130_5453_4948_4343;
-    pub const HISTORY_VERSION: u64 = 1;
+    pub const HISTORY_VERSION: u64 = 2;
 
     pub mod history_header {
         pub const MAGIC: usize = 0;
@@ -1165,7 +1165,13 @@ pub mod observability {
         pub const STACK_PAGES: usize = 4;
         pub const STACK_USED_HIGH_WATER: usize = 5;
         pub const THREADS_HIGH_WATER: usize = 6;
-        pub const WORDS: usize = 7;
+        pub const FREE_FRAMES: usize = 7;
+        pub const USABLE_FRAMES: usize = 8;
+        pub const LOGICAL_PROCESSORS: usize = 9;
+        pub const CPU_BUSY_TICKS: usize = 10;
+        pub const HEAP_ALLOCATED_BYTES: usize = 11;
+        pub const HEAP_PEAK_BYTES: usize = 12;
+        pub const WORDS: usize = 13;
     }
 
     /// Sample cadence published in the history header.
@@ -1175,7 +1181,7 @@ pub mod observability {
 
     /// `CCARCH01`, little-endian.
     pub const ARCHIVE_MAGIC: u64 = 0x3130_4843_5241_4343;
-    pub const ARCHIVE_VERSION: u64 = 1;
+    pub const ARCHIVE_VERSION: u64 = 2;
     /// Stable object-store IDs for the archive chunk ring. The `0xfffc`
     /// partition is reserved for telemetry between the Raft (0x8000), node
     /// identity (0x9000), time (0xfffd), and artifact (0xfffe) partitions.
@@ -1207,7 +1213,13 @@ pub mod observability {
         pub const STACK_PAGES: usize = 5;
         pub const STACK_USED_HIGH_WATER: usize = 6;
         pub const THREADS_HIGH_WATER: usize = 7;
-        pub const WORDS: usize = 8;
+        pub const FREE_FRAMES: usize = 8;
+        pub const USABLE_FRAMES: usize = 9;
+        pub const LOGICAL_PROCESSORS: usize = 10;
+        pub const CPU_BUSY_TICKS: usize = 11;
+        pub const HEAP_ALLOCATED_BYTES: usize = 12;
+        pub const HEAP_PEAK_BYTES: usize = 13;
+        pub const WORDS: usize = 14;
     }
 }
 
@@ -2467,8 +2479,8 @@ pub mod rcapacity {
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct Report {
         pub node_key: u64,
-        /// Random word generated once at service start. Zero when the
-        /// kernel entropy source was unavailable.
+        /// Nonzero random word generated once at service start. Reporting is
+        /// withheld until either CPU or delegated VirtIO entropy is available.
         pub boot_nonce: u64,
         pub epoch: u64,
         pub free_frames: u64,
@@ -2494,14 +2506,21 @@ pub mod rcapacity {
             return None;
         }
         let payload = &frame[1..];
-        Some(Report {
+        let report = Report {
             node_key: u64::from_le_bytes(payload[0..8].try_into().ok()?),
             boot_nonce: u64::from_le_bytes(payload[8..16].try_into().ok()?),
             epoch: u64::from_le_bytes(payload[16..24].try_into().ok()?),
             free_frames: u64::from_le_bytes(payload[24..32].try_into().ok()?),
             usable_frames: u64::from_le_bytes(payload[32..40].try_into().ok()?),
             cpu_load_permille: u16::from_le_bytes(payload[40..42].try_into().ok()?),
-        })
+        };
+        (report.node_key != 0
+            && report.boot_nonce != 0
+            && report.epoch != 0
+            && report.usable_frames != 0
+            && report.free_frames <= report.usable_frames
+            && report.cpu_load_permille <= 1000)
+            .then_some(report)
     }
 
     #[cfg(test)]
@@ -2526,6 +2545,13 @@ pub mod rcapacity {
             assert_eq!(decode_request(&frame), Some(report));
             assert_eq!(decode_request(&frame[..frame.len() - 1]), None);
             assert_eq!(decode_request(&payload), None);
+
+            let mut invalid = frame.clone();
+            invalid[9..17].copy_from_slice(&0u64.to_le_bytes());
+            assert_eq!(decode_request(&invalid), None, "zero boot nonce must be rejected");
+            let mut invalid = frame;
+            invalid[41..43].copy_from_slice(&1001u16.to_le_bytes());
+            assert_eq!(decode_request(&invalid), None, "CPU load must be bounded permille");
         }
     }
 }

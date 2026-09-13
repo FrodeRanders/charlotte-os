@@ -333,9 +333,15 @@ struct ThreadReport {
 
 struct HistoryRow {
     ticks: u64,
+    free_frames: u64,
+    usable_frames: u64,
+    logical_processors: u64,
+    cpu_busy_ticks: u64,
     threads: u64,
     domains: u64,
     owned_frames: u64,
+    heap_allocated_bytes: u64,
+    heap_peak_bytes: u64,
     stack_pages: u64,
     stack_used_high_water: u64,
     threads_high_water: u64,
@@ -477,9 +483,15 @@ fn history_report(observe_conn: ConnectionRef<'_>) -> Option<HistoryReport> {
         }
         rows.push(HistoryRow {
             ticks: rec[record::MONOTONIC_TICKS],
+            free_frames: rec[record::FREE_FRAMES],
+            usable_frames: rec[record::USABLE_FRAMES],
+            logical_processors: rec[record::LOGICAL_PROCESSORS],
+            cpu_busy_ticks: rec[record::CPU_BUSY_TICKS],
             threads: rec[record::THREADS],
             domains: rec[record::DOMAINS],
             owned_frames: rec[record::OWNED_FRAMES],
+            heap_allocated_bytes: rec[record::HEAP_ALLOCATED_BYTES],
+            heap_peak_bytes: rec[record::HEAP_PEAK_BYTES],
             stack_pages: rec[record::STACK_PAGES],
             stack_used_high_water: rec[record::STACK_USED_HIGH_WATER],
             threads_high_water: rec[record::THREADS_HIGH_WATER],
@@ -695,7 +707,10 @@ fn render_history(s: &mut String, history: &HistoryReport) {
             concat!(
                 "{{\"ticks\":{},\"threads\":{},\"domains\":{},",
                 "\"owned_frames\":{},\"stack_pages\":{},",
-                "\"stack_used_high_water\":{},\"threads_high_water\":{}}}"
+                "\"stack_used_high_water\":{},\"threads_high_water\":{},",
+                "\"free_frames\":{},\"usable_frames\":{},",
+                "\"logical_processors\":{},\"cpu_busy_ticks\":{},",
+                "\"heap_allocated_bytes\":{},\"heap_peak_bytes\":{}}}"
             ),
             row.ticks,
             row.threads,
@@ -703,7 +718,13 @@ fn render_history(s: &mut String, history: &HistoryReport) {
             row.owned_frames,
             row.stack_pages,
             row.stack_used_high_water,
-            row.threads_high_water
+            row.threads_high_water,
+            row.free_frames,
+            row.usable_frames,
+            row.logical_processors,
+            row.cpu_busy_ticks,
+            row.heap_allocated_bytes,
+            row.heap_peak_bytes
         );
     }
     s.push_str("]}");

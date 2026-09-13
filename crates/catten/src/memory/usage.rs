@@ -53,6 +53,10 @@ struct DomainUsage {
     status_frame: Option<PAddr>,
     /// Heap capacity chosen at load; faults beyond it are domain errors.
     heap_bytes: Option<usize>,
+    /// Previous node-wide counter sample taken by this domain. Keeping this
+    /// generation-scoped prevents another caller from shortening or otherwise
+    /// perturbing the interval used for placement load.
+    cpu_sample: Option<(u64, u128)>,
 }
 
 type DomainUsageTable = BTreeMap<AddressSpaceId, (AddressSpaceHandle, DomainUsage)>;
@@ -91,10 +95,40 @@ pub(crate) fn register_domain(handle: AddressSpaceHandle) {
                 snapshot: DomainUsageSnapshot::default(),
                 status_frame: None,
                 heap_bytes: None,
+                cpu_sample: None,
             },
         ),
     );
     debug_assert!(previous.is_none(), "domain accounting survived ASID teardown");
+}
+
+/// Derive this domain's interval CPU occupancy from monotonic node counters.
+/// The first query uses the boot-to-now interval; later queries use only time
+/// since this same domain's previous query.
+pub(crate) fn node_cpu_load_permille(
+    asid: AddressSpaceId,
+    now_ticks: u64,
+    busy_ticks: u128,
+    logical_processors: u64,
+) -> u64 {
+    let previous = DOMAIN_USAGE
+        .lock()
+        .get_mut(&asid)
+        .and_then(|(_, usage)| usage.cpu_sample.replace((now_ticks, busy_ticks)));
+    let (elapsed, busy) = previous
+        .filter(|(previous_ticks, previous_busy)| {
+            now_ticks > *previous_ticks && busy_ticks >= *previous_busy
+        })
+        .map_or((u128::from(now_ticks), busy_ticks), |(previous_ticks, previous_busy)| {
+            (u128::from(now_ticks - previous_ticks), busy_ticks - previous_busy)
+        });
+    if elapsed == 0 {
+        return 0;
+    }
+    busy.saturating_mul(1000)
+        .checked_div(elapsed.saturating_mul(u128::from(logical_processors.max(1))))
+        .unwrap_or(0)
+        .min(1000) as u64
 }
 
 /// Record the domain's status frame once the loader maps it.

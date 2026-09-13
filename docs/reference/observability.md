@@ -48,9 +48,11 @@ address space. Each snapshot contains:
 
 The version-7 snapshot header adds the machine-wide `free_frames` and
 `usable_frames` from the frame allocator, the online `logical_processors`
-count, and `cpu_busy_ticks`, the sum of every thread's completed on-CPU ticks.
-Delta `cpu_busy_ticks` over an interval divided by the monotonic delta times
-`logical_processors` is node CPU utilization. The version-4-style per-domain
+count, and `cpu_busy_ticks`, a monotonic sum of completed slices, currently
+active slices, and retired threads' on-CPU ticks. Delta `cpu_busy_ticks` over
+an interval divided by the monotonic delta times `logical_processors` is node
+CPU utilization. The
+version-4-style per-domain
 section carries the accounting
 described in [adaptive resource policy](../architecture/adaptive-resource-policy.md):
 owned frames, live and high-water reserved stack pages, touched stack high-water
@@ -74,21 +76,28 @@ arena.
 
 The observe service also samples those aggregates once per second into a
 bounded in-memory ring and serves it through `observability::OP_HISTORY`. The
-`CCHIST` payload carries a header (magic, version, record size, record count,
-counter frequency, sample interval) followed by one record per sample:
+version-2 `CCHIST` payload carries a header (magic, version, record size, record
+count, counter frequency, sample interval) followed by one record per sample:
 monotonic ticks, thread and domain counts, total owned frames, total reserved
-stack pages, and the touched/high-water maxima. The ring holds roughly four
-minutes of history and is lost when the service restarts.
+stack pages, touched/high-water maxima, free and usable frames, logical
+processors, cumulative CPU-busy ticks, and aggregate live and peak heap bytes.
+The ring holds roughly four minutes of history and is lost when the service
+restarts.
 
 The same samples are archived durably. The archive is a bounded ring of
 sixteen 8 KiB objects in the local object store, addressed by the reserved IDs
 `0xfffc_0000_0000_0001` through `..16`; the service rewrites the active chunk
-at least every ten seconds and rotates when it fills. Each `CCARCH01` chunk
+at least every ten seconds and rotates when it fills. Each version-2
+`CCARCH01` chunk
 carries a header (magic, version, chunk index, session ticks, first sequence,
 record count, counter frequency) followed by the same per-sample fields plus a
 sequence number, so an offline reader can detect overwritten chunks after the
-ring wraps. The store connection is resolved lazily through the name service,
-and a missing or restarting store only delays durability, never sampling.
+ring wraps. The store connection is resolved lazily through the name service.
+Create, resize, write, and flush proceed as an owned asynchronous state machine
+with a two-second deadline; a missing, stalled, or restarting store therefore
+never blocks sampling. On reconnect, the service backfills the most recent
+chunk-sized window from its bounded in-memory history; a longer outage appears
+as an explicit sequence/session gap rather than unbounded buffering.
 `scripts/fs-inspect.py` reads the raw chunks from a captured NVMe image, and
 `scripts/telemetry-archive.py` reassembles and prints the samples.
 

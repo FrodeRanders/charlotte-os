@@ -168,6 +168,7 @@ mod tests {
         assert_eq!(adaptive_heap_bytes(1, 4 << 20, 1 << 20, 5 << 20), 1 << 20);
         assert_eq!(adaptive_heap_bytes(1 << 20, 4 << 20, 1 << 20, 5 << 20), 2 << 20 | 1 << 18);
         assert_eq!(adaptive_heap_bytes(u64::MAX, 4 << 20, 1 << 20, 5 << 20), 5 << 20);
+        assert_eq!(adaptive_heap_bytes(1, 4 << 20, 4 << 20, 5 << 20), 4 << 20);
     }
 
     #[test]

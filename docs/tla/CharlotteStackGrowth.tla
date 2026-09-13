@@ -10,10 +10,11 @@
 
 EXTENDS Naturals, FiniteSets
 
-CONSTANTS Domains, MaxBudget, TotalFrames
+CONSTANTS Domains, MaxBudget, TotalFrames, ReserveFrames
 
 ASSUME MaxBudget > 0
 ASSUME TotalFrames >= 1
+ASSUME ReserveFrames < TotalFrames
 ASSUME IsFiniteSet(Domains)
 
 VARIABLES alive, budget, committed, freeFrames, faults, kills
@@ -46,7 +47,7 @@ Grow(d) ==
     /\ alive[d]
     /\ faults[d] > 0
     /\ committed[d] < budget[d]
-    /\ freeFrames > 0
+    /\ freeFrames > ReserveFrames
     /\ committed' = [committed EXCEPT ![d] = @ + 1]
     /\ freeFrames' = freeFrames - 1
     /\ faults' = [faults EXCEPT ![d] = @ - 1]
@@ -80,10 +81,13 @@ FrameConservation == freeFrames + DomainSum(Domains) = TotalFrames
 
 DeadDomainsReleaseFrames == \A d \in Domains: ~alive[d] => committed[d] = 0
 
+FreeReservePreserved == freeFrames >= ReserveFrames
+
 Invariants ==
     /\ CommittedWithinBudget
     /\ FrameConservation
     /\ DeadDomainsReleaseFrames
+    /\ FreeReservePreserved
 
 SafeNext ==
     \/ \E d \in Domains: Fault(d)

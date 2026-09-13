@@ -476,13 +476,14 @@ pub fn try_load_domain(image: &[u8]) -> Result<LoadedDomain, AddressSpaceRegistr
     let asid = address_space.id();
     let entry_vaddr = load_user_elf(asid, image);
 
-    // Size the heap claim from the principal's previous peak. A cold boot or
-    // a first generation keeps the full default capacity; only a restarted
-    // principal shrinks toward its observed peak.
+    // Size the heap claim from the principal's previous peak without reducing
+    // the historical default. Demand commitment already saves physical frames;
+    // shrinking virtual capacity would only turn a workload change into an
+    // avoidable allocation failure.
     let heap_bytes = charlotte_lifecycle::adaptive_heap_bytes(
         usage::principal_heap_peak(principal),
         charlotte_launch::HEAP_SIZE,
-        charlotte_launch::MIN_HEAP_SIZE,
+        charlotte_launch::HEAP_SIZE,
         charlotte_launch::HEAP_VA_LIMIT,
     );
     if heap_bytes != charlotte_launch::HEAP_SIZE {

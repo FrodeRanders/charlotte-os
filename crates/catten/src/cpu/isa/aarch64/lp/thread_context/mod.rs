@@ -254,7 +254,8 @@ impl ThreadContext {
         };
         let reserve_frames =
             (total_frames / charlotte_lifecycle::STACK_GROWTH_RESERVE_DIVISOR).max(1);
-        if free_frames < reserve_frames {
+        let required_frames = ((low - page) / PAGE_SIZE) as u64;
+        if free_frames < reserve_frames.saturating_add(required_frames) {
             return None;
         }
         let asid = stack.asid;

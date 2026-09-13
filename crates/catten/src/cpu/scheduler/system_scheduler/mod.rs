@@ -611,6 +611,7 @@ impl SystemScheduler {
             return Err(Error::InvalidThread);
         }
         let thread = table.take_element(tid).map_err(|_| Error::InvalidThread)?;
+        crate::cpu::scheduler::threads::account_retired_cpu_ticks(&thread);
         drop(table);
         record_exit(stage_lp, tid, thread.generation);
         crate::cpu::scheduler::threads::stage_dead_thread(stage_lp, thread);

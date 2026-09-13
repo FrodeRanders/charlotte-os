@@ -82,6 +82,21 @@ pub type ThreadGeneration = u64;
 
 static NEXT_THREAD_GENERATION: AtomicU64 = AtomicU64::new(1);
 
+/// Runtime retained after a thread leaves [`MASTER_THREAD_TABLE`]. Keeping the
+/// retired contribution makes the node-wide busy counter monotonic, which is
+/// required for interval load samples in userspace.
+static RETIRED_CPU_BUSY_TICKS: AtomicU64 = AtomicU64::new(0);
+
+pub(crate) fn account_retired_cpu_ticks(thread: &Thread) {
+    let now = crate::cpu::scheduler::monotonic_ticks();
+    let active = thread.last_dispatch_tick.map_or(0, |started| now.saturating_sub(started));
+    let ticks = thread.runtime_ticks.snapshot().total.saturating_add(u128::from(active));
+    let ticks = u64::try_from(ticks).unwrap_or(u64::MAX);
+    let _ = RETIRED_CPU_BUSY_TICKS.try_update(Ordering::Relaxed, Ordering::Relaxed, |total| {
+        Some(total.saturating_add(ticks))
+    });
+}
+
 /// Threads that have exited but are awaiting reaping, keyed by the logical
 /// processor on which they last executed. A thread cannot free its own kernel
 /// stack (in `ThreadContext::drop`) while it is still executing on it, so
@@ -166,7 +181,9 @@ pub fn retire_requested_threads() {
             if !still_requested {
                 continue;
             }
-            table.take_element(tid).expect("validated abort target disappeared")
+            let thread = table.take_element(tid).expect("validated abort target disappeared");
+            account_retired_cpu_ticks(&thread);
+            thread
         };
         record_exit(lp, tid, generation);
         stage_dead_thread(lp, thread);
@@ -476,14 +493,19 @@ pub fn statistics_for_asid(asid: AddressSpaceId) -> Vec<ThreadStatisticsSnapshot
 
 /// Cumulative on-CPU ticks across every thread on this node.
 ///
-/// Lifetime busy time, divided by the monotonic counter and the online LP
-/// count, is the coarse node utilization reported by the node-pressure query.
+/// Retired contributions are retained so callers can derive interval
+/// utilization by differencing this value and the monotonic counter.
 pub(crate) fn cpu_busy_ticks() -> u128 {
-    MASTER_THREAD_TABLE
-        .read()
-        .iter()
-        .filter_map(|thread| thread.as_ref())
-        .fold(0u128, |sum, thread| sum.saturating_add(thread.runtime_ticks.snapshot().total))
+    let now = crate::cpu::scheduler::monotonic_ticks();
+    let live = MASTER_THREAD_TABLE.read().iter().filter_map(|thread| thread.as_ref()).fold(
+        0u128,
+        |sum, thread| {
+            let active = thread.last_dispatch_tick.map_or(0, |started| now.saturating_sub(started));
+            sum.saturating_add(thread.runtime_ticks.snapshot().total)
+                .saturating_add(u128::from(active))
+        },
+    );
+    u128::from(RETIRED_CPU_BUSY_TICKS.load(Ordering::Relaxed)).saturating_add(live)
 }
 
 /// Snapshot all scheduler-visible threads. Callers must enforce the

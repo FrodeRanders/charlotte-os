@@ -87,7 +87,7 @@ Phase 1 changes no allocation behavior. It adds:
   low-water mark, updated from the context-switch path (AArch64 reads banked
   `SP_EL0`; x86-64 uses the per-LP user-RSP scratch slot saved on SYSCALL
   entry). Sampling is lock-free and never allocates.
-- **Wire exposure**: the `CCOSTAT` snapshot is version 4. Thread records carry
+- **Wire exposure**: the `CCOSTAT` snapshot is version 7. Thread records carry
   `STACK_RESERVED_PAGES` (budget), `STACK_COMMITTED_PAGES` (mapped pages; the
   difference is the remaining growth headroom), and `STACK_USED_PAGES`; an
   appended per-domain section reports `ASID`, owned frames, reserved/high-water
@@ -96,23 +96,28 @@ Phase 1 changes no allocation behavior. It adds:
   without the observer capability see only their own domain, preserving the
   existing capability posture (`docs/reference/observability.md`).
 - **Aggregation semantics**: live per-thread high-water is reported directly in
-  the thread records. The per-domain touched high-water is folded in when a
-  thread is retired, so a long-lived thread's current mark is visible per
-  thread while the domain aggregate reflects only completed threads. Per-domain
-  reserved stack pages and thread counts are live.
+  the thread records. The per-domain touched high-water retains retired-thread
+  contributions; consumers take the maximum of that aggregate and the live
+  thread records. Per-domain reserved stack pages and thread counts are live.
 - **Presentation**: the observe service forwards the page unchanged; httpd
   renders the new fields in `GET /metrics` and the dashboard.
 - **In-memory history**: the observe service samples system aggregates every
   second into a bounded 256-sample ring and serves it through `OP_HISTORY`
-  (`CCHIST` wire format). httpd renders the most recent samples as the
-  `history` section.
+  (`CCHIST` version 2). Besides domain, thread, stack, and owned-frame totals,
+  each record carries free/usable frames, logical processors, the monotonic
+  CPU-busy counter, and aggregate live/peak heap bytes. httpd renders the most
+  recent samples as the `history` section.
 - **Durable archive**: the same sampler writes to a bounded ring of
-  object-store chunks (`CCARCH01`): sixteen 8 KiB chunks under reserved IDs
+  object-store chunks (`CCARCH01`, version 2): sixteen 8 KiB chunks under reserved IDs
   `0xfffc_0000_0000_0001..16`, with the active chunk rewritten every ten
   seconds and on rotation. Sequence numbers let an offline reader detect
   overwritten history after the ring wraps. The store is resolved lazily
-  through the name service (`obj`), so the archive fails soft and never
-  delays sampling when storage is absent or restarting.
+  through the name service (`obj`). Flushes are an asynchronous four-stage
+  create/size/write/flush transaction with a two-second deadline; all memory,
+  connection, and pending-call resources remain in one owning state machine.
+  A missing, slow, or restarting store therefore delays durability without
+  blocking the one-second sampler; reconnection backfills the most recent
+  chunk-sized window from in-memory history.
   `scripts/telemetry-archive.py` reassembles the chunks from a captured NVMe
   image for offline analysis.
 
@@ -159,10 +164,10 @@ at 264 MiB. The frame allocator now exposes `usable_bytes()` from the boot
 memory map, and the allocator self-test asserts the derived value stays inside
 its bounds and page-aligned.
 
-The initial 8 MiB heap claim is unchanged. Initial stack defaults, the domain
-heap, and CQ ring capacities remain fixed; deriving those (from installed RAM
-and expected domain/service counts) is the next piece of Phase 2 and is low
-risk because it happens once, before concurrency exists.
+The initial 8 MiB kernel-heap claim is unchanged. Domain heap pages and user
+stack pages are committed on demand within their launch budgets. CQ ring
+capacities remain fixed; deriving those from expected domain/service counts is
+still a possible boot-time policy because it happens before concurrency exists.
 
 ## Phase 3: creation-time feedback (implemented baseline)
 
@@ -192,9 +197,9 @@ On a default boot only restarting services (for example the UART driver after
 its uncooperative-exit test) exercise the path, and the clamp keeps them at the
 default until their observed usage actually reaches it.
 
-The remaining Phase 3 work is applying a similar policy to the domain heap and
-CQ capacities, which needs a controller surface rather than a per-launch
-formula, and letting the placement layer see node pressure (Phase 4).
+The same creation-time feedback now applies to the domain heap, and committed
+node pressure feeds placement. CQ capacity feedback remains future work because
+the current one-page CQ ABI does not support resizing its physical ring.
 
 ## Heap sensing and physical sizing
 
@@ -202,7 +207,7 @@ Heap sensing is implemented. `catten-rt` wraps the domain's talc arena with an
 accounting layer that publishes `charlotte_launch::heap_status` (magic/version,
 capacity, currently allocated bytes, peak bytes) into the reserved region of
 the domain's own status page. The kernel reads that page when it builds the
-domain records and exposes it as `CCOSTAT` v4, so `httpd`/`/metrics` shows live
+domain records and exposes it as `CCOSTAT` v7, so `httpd`/`/metrics` shows live
 and peak heap per domain. Observed peaks on the default boot are tens of
 kilobytes against the 4 MiB capacity. The same record carries cumulative
 allocations and allocated bytes plus the arena-lock spin count, and httpd
@@ -220,13 +225,14 @@ fail an allocation because a capacity policy guessed too small.
 
 Capacity sizing is implemented alongside it. The loader chooses the capacity
 with `charlotte_lifecycle::adaptive_heap_bytes` — twice the principal's
-previous heap peak plus 256 KiB, clamped to `[MIN_HEAP_SIZE, HEAP_VA_LIMIT]` —
+previous heap peak plus 256 KiB, clamped to `[HEAP_SIZE, HEAP_VA_LIMIT]` —
 writes it into the launch header, registers it so faults beyond the claim stay
 domain errors, and `catten-rt` claims exactly that size through a lazy arena
-initialization. A cold boot keeps the 4 MiB default; a restarted principal
-shrinks toward its observed peak (the default boot's raft-storage restart
-exercises this path). A signed per-deployment heap limit would still need a
-`CDEPLOY6` descriptor field.
+initialization. A cold boot and a lightly loaded restart keep the historical
+4 MiB capacity; evidence may grow a later generation but never shrink it below
+that compatibility floor. Demand commitment, rather than a guessed smaller
+virtual limit, supplies the physical-memory saving. A signed per-deployment
+heap limit would still need a descriptor field.
 
 The VA layout caps any single heap at roughly 4.9 MiB. Growing beyond that, or
 giving each shard its own arena, is a layout decision; the shard-local study
@@ -293,10 +299,12 @@ The design this implements is:
 - Each stack reserves a guard page below the lowest committed page. A fault in
   the domain's own stack VA range is identified by the kernel rather than
   treated as an arbitrary translation fault.
-- The recoverable path charges one page from the thread's stack budget, maps
-  it into the address space under the serializing address-space lifecycle
-  lock, and returns to retry the faulting instruction. The existing adaptive
-  size becomes the budget ceiling, not the reservation.
+- The recoverable path preflights every page between the current stack bottom
+  and the faulting page against both the budget and the node reserve, then maps
+  those pages under the serializing address-space lifecycle lock and returns to
+  retry the instruction. This covers instructions that move the stack pointer
+  by several pages while preserving the reserve after the complete growth.
+  The adaptive size is the budget ceiling, not a physical reservation.
 - A fault with the budget exhausted kills the domain through the ordinary
   teardown path: all stack frames return to the frame allocator exactly once,
   threads are retired, and the supervisor observes a clean domain-exit rather
@@ -316,7 +324,9 @@ model's safety invariants are:
 - `FrameConservation`: committed pages plus free frames equal the pool, so a
   growth or teardown neither leaks nor double-counts;
 - `DeadDomainsReleaseFrames`: a killed or exited domain has returned every
-  committed frame.
+  committed frame;
+- `FreeReservePreserved`: successful growth leaves the configured free-frame
+  reserve intact.
 
 Two negative models deliberately violate the budget on growth and leak on
 kill, and the checker must produce the expected counterexample for each. Any
@@ -342,7 +352,7 @@ backlog high-water remains the sizing evidence at deployment time.
 ### Capacity-aware placement (committed samples implemented)
 
 The placement layer is deterministic over membership and readiness. Four
-slices are implemented:
+parts are implemented:
 
 - **Sensor**: the `CCOSTAT` header now carries machine-wide `free_frames` and
   `usable_frames` from the frame allocator, exposed through `observe` and
@@ -356,8 +366,10 @@ slices are implemented:
   capacity-aware entry points are additive; existing callers pass an empty view
   and are unchanged.
 - **CPU load**: the snapshot header now carries online logical processors and
-  the machine's cumulative on-CPU ticks, so a consumer derives node CPU
-  utilization by differencing two samples. The resolver treats CPU load as a
+  a monotonic machine-wide on-CPU counter that retains retired-thread runtime,
+  so a consumer derives node CPU utilization by differencing two samples.
+  `NODE_PRESSURE` performs the same interval calculation independently for
+  each calling protection-domain generation. The resolver treats CPU load as a
   soft signal: heavy occupancy (≥95% in permille terms) ranks a node last
   before the stable hash, but never excludes it, so placement proceeds when
   every node is busy. Explicit CPU shares or quotas remain out of scope.
@@ -366,8 +378,11 @@ slices are implemented:
   `NODE_PRESSURE` syscall (82, returning free frames, usable frames, and CPU
   load in permille) once per `CAPACITY_REPORT_INTERVAL_MS` (5 s). A leader
   samples itself; a follower relays a 42-byte `rcapacity` frame (tag `0x21`,
-  including a per-boot nonce so a restarted reporter is not fenced out) to the
-  current leader. The leader accepts a report only when the sender MAC maps to
+  including a nonzero entropy-derived per-boot nonce so a restarted reporter
+  is not fenced out) to the current leader. If neither CPU entropy nor the
+  delegated VirtIO RNG is ready, reporting is withheld and retried instead of
+  publishing an ambiguous zero incarnation. The leader accepts a report only
+  when the sender MAC maps to
   a known peer whose name matches the claimed node key, and proposes
   `CMD_NODE_CAPACITY` (`0x0d`) only when the sample changes the placement
   picture — a memory or CPU bucket change, a usable-memory change, or a
@@ -375,14 +390,20 @@ slices are implemented:
   continuously, so this hysteresis keeps the log small without hiding a real
   pressure transition.
 
-  All replicas apply the command into the name catalog, epoch-fenced within
-  one boot nonce and capped at `MAX_NODE_CAPACITY_ENTRIES = 256`, and the
+  A changed boot nonce bypasses value hysteresis so the new incarnation is
+  committed. All replicas apply the command into the name catalog,
+  epoch-fenced within one boot nonce and capped at
+  `MAX_NODE_CAPACITY_ENTRIES = 256`, and the
   leader resolves `release_command`, `operations_command`, and
-  `reconcile_replica_placements` from `NameCatalog::node_capacity_view()` —
-  applied state rather than a leader-local cache, so a failover does not lose
-  the table. The catalog snapshot is V15; older snapshots restore with an
-  empty table and unknown nodes stay neutral. Placement decisions remain
-  ordinary committed Raft commands.
+  `reconcile_replica_placements` from committed catalog state intersected with
+  a leader-local freshness lease of three report intervals. After failover,
+  nodes remain capacity-unknown until their next identity-checked report rather
+  than being judged by an arbitrarily old sample. The catalog snapshot is V15;
+  older snapshots restore with an empty table and unknown nodes stay neutral.
+  Within one release plan, every selected instance debits a projected copy of
+  the view, including explicitly pinned components, so individually feasible
+  declarations cannot overcommit one node cumulatively. Placement decisions
+  remain ordinary committed Raft commands.
 
 Pressure-driven *reassignment* is the next step: a committed capacity change
 alone does not move existing replicas. That needs generation fences and
@@ -395,9 +416,10 @@ change replica sets without a deployment-generation change.
 - Phase 1 is covered by the existing boot self-tests plus the versioned-wire
   self-test; accounting invariants (no negative counters, generation checks)
   are enforced in `memory::usage`.
-- Committed capacity reporting is covered by the `rcapacity` frame round-trip,
-  the `capacity_sample_changed` hysteresis test, and a catalog replay/snapshot
-  test. The two-guest DNS test observes the leader committing both its own
+- Committed capacity reporting is covered by strict `rcapacity` validation,
+  the `capacity_sample_changed` hysteresis test, a cumulative reservation test,
+  and a catalog replay/snapshot test. The two-guest DNS test observes the
+  leader committing both its own
   sample and the follower's relayed sample; the relay previously failed
   silently because `rcapacity::decode_request` did not follow the transport's
   tag-included receive convention.

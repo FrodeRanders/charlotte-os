@@ -402,19 +402,13 @@ fn sys_node_pressure(frame: &mut TrapFrame) {
         )
     };
     let busy = crate::cpu::scheduler::threads::cpu_busy_ticks();
-    let logical_processors = crate::cpu::multiprocessor::get_lp_count().max(1) as u128;
-    let now = crate::cpu::scheduler::monotonic_ticks() as u128;
-    let cpu_load_permille = if now == 0 {
-        0
-    } else {
-        busy.saturating_mul(1000)
-            .checked_div(now.saturating_mul(logical_processors))
-            .unwrap_or(0)
-            .min(1000)
-    };
+    let logical_processors = crate::cpu::multiprocessor::get_lp_count().max(1) as u64;
+    let now = crate::cpu::scheduler::monotonic_ticks();
+    let cpu_load_permille =
+        crate::memory::usage::node_cpu_load_permille(frame.asid, now, busy, logical_processors);
     frame.regs[0] = free_frames;
     frame.regs[1] = usable_frames;
-    frame.regs[2] = cpu_load_permille as u64;
+    frame.regs[2] = cpu_load_permille;
 }
 
 fn random_u64() -> Option<u64> {
@@ -534,9 +528,13 @@ fn sys_thread_statistics(frame: &mut TrapFrame) {
         return;
     };
 
-    let cpu_busy_ticks = snapshots
-        .iter()
-        .fold(0u128, |sum, snapshot| sum.saturating_add(snapshot.runtime_ticks.total));
+    let cpu_busy_ticks = if observer {
+        crate::cpu::scheduler::threads::cpu_busy_ticks()
+    } else {
+        snapshots
+            .iter()
+            .fold(0u128, |sum, snapshot| sum.saturating_add(snapshot.runtime_ticks.total))
+    };
     let mut bytes = alloc::vec::Vec::with_capacity(exact_len);
     let mut header_words = [0; THREAD_STATISTICS_HEADER_U64S];
     header_words[header::MAGIC] = THREAD_STATISTICS_MAGIC;

@@ -1554,9 +1554,11 @@ fn decode_node_capacity(command: &[u8]) -> Option<NodeCapacityEntry> {
     let (cpu_load_permille, end) = read_u16(command, position)?;
     if end != command.len()
         || node_key == 0
+        || boot_nonce == 0
         || epoch == 0
         || usable_frames == 0
         || free_frames > usable_frames
+        || cpu_load_permille > 1000
     {
         return None;
     }
