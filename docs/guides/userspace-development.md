@@ -203,3 +203,45 @@ AArch64 and x86-64 builds.
 `FrodeRanders/sitas` at the pinned revision recorded in the workflow and places
 it at the path expected by `crates/catten-user/Cargo.toml`; developer checkouts
 may provide the same sibling repository locally.
+
+## Building an out-of-tree application
+
+Applications that live in their own repository do not edit or stage files into
+this tree. They consume the platform definition and the signing and deployment
+tools, and hand a signed artifact plus a signed deployment descriptor back to
+the cluster:
+
+1. **Compile.** `scripts/build-external-elf.sh` builds a Cargo binary target
+   for `aarch64` or `x86_64` with the pinned toolchain, the platform linker
+   script, and `-Z json-target-spec`/`-Z build-std`. It generates a build-local
+   target specification with an absolute path to the linker script, strips the
+   result, and rejects writable-executable or page-overlapping LOAD segments.
+   The application is responsible for pinning the same CharlotteOS revision in
+   its Cargo dependencies.
+2. **Sign.** `cluster-sign elf-sign` adds the CLS2 note with the application's
+   chosen name, class, version, rollback counter, flags, and provenance. The
+   in-tree `artifact-policy.tsv` and `scripts/sign-service-elfs.sh` are
+   conveniences for bundled services; an out-of-tree artifact calls
+   `cluster-sign` directly.
+3. **Deploy.** `cluster-sign deployment-sign` creates a `CDEPLOY5` descriptor
+   binding the artifact digest, object key, placement, thread/stack limits, and
+   capability grants, and `deployment-notify` submits it to `deployd`. See
+   [Signed deployment notification](../reference/deployment-ingress.md) and
+   [Capability grant controller](../reference/capability-grant-controller.md).
+
+Build the platform tooling once and export a self-contained SDK tarball for
+application projects:
+
+```sh
+scripts/export-app-sdk.sh --output /tmp/charlotte-app-sdk.tar.gz
+```
+
+The tarball contains `build-external-elf.sh`, both architecture platform
+definitions, a standalone `cluster-sign` workspace, the publicly known
+development keys, and a `VERSION` file recording the OS revision and pinned
+toolchain. A project unpacks it and builds against it without a CharlotteOS
+checkout.
+
+The `charlotte-kafka-broker` repository is the reference out-of-tree project:
+its `tools/charlotte-sdk.sh`, `tools/build-elf.sh`, and `tools/package.sh`
+resolve either a checkout or an exported SDK, build the EL0 image, and sign it.

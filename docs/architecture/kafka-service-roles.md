@@ -163,9 +163,11 @@ deployment descriptor. The descriptor may name both the exact Kafka
 access-point and procedure service; the owned grant client acquires those
 connections without exposing the name service. Signed descriptors can now be
 notified off-cluster, replicated through Raft, and used by the assigned node to
-pull and scoped-launch an ELF through S3. General Kafka-step rollout remains
-integration work because the first agent is still specialized to the short
-`greet` deployment name and the S3 connector is separately provisioned.
+pull and scoped-launch an ELF through S3. The node agent reconciles full
+48-byte artifact names, so generated Kafka-step rollout no longer waits on
+artifact-name support. What remains is release orchestration: coordinated
+rollback, rolling replacement, and provisioning the per-component S3 connector
+profile and Kafka bindings.
 Fixed-partition Kafka group membership is implemented in the connector;
 controller-managed stable instance leases and cooperative assignor
 interoperability remain future work.

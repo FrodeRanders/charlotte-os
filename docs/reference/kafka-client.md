@@ -174,9 +174,10 @@ failures abort and redeliver without charging the business attempt count.
 The scoped launch API gives the runner `grantctl` and a signed descriptor
 rather than a name-service connection. The descriptor can authorize the exact
 connector and procedure names, and `catten_services::grant_client` returns only
-those attenuated connections. The node agent now supports signed central-S3
-pull and scoped launch. It remains specialized to the short `greet` deployment,
-so generated Kafka-step rollout still needs the generic multi-artifact agent.
+those attenuated connections. The node agent supports signed central-S3 pull
+and scoped launch for arbitrary artifact names. Generated Kafka-step rollout
+still needs the release and rollback controller plus per-component connector
+provisioning; artifact-name specialization is no longer a blocker.
 
 ## Kafka behavior and failure semantics
 
