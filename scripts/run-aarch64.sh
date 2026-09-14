@@ -887,7 +887,7 @@ fi
 
 QEMU_OPTS+=(-smp "$SMP")
 
-if [ -n "$GDB" ]; then
+if [ -n "$GDB" ] || [ "${CATTEN_QEMU_DEBUG_STUB:-0}" = "1" ]; then
     QEMU_OPTS+=(-gdb "tcp::${GDB_PORT}")
 fi
 

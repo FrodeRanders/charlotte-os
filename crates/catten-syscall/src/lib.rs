@@ -1544,6 +1544,12 @@ pub mod device_status {
     pub const ALREADY_BOUND: DeviceStatusCode = 7;
     pub const NOT_PAGE_ALIGNED: DeviceStatusCode = 8;
     pub const INVALID_INTERRUPT: DeviceStatusCode = 9;
+    pub const INTERRUPT_IN_USE: DeviceStatusCode = 10;
+    pub const INVALID_ADDRESS_SPACE: DeviceStatusCode = 11;
+    pub const INVALID_RANGE: DeviceStatusCode = 12;
+    pub const DMA_UNAVAILABLE: DeviceStatusCode = 13;
+    pub const DMA_INVALID: DeviceStatusCode = 14;
+    pub const UNMAP_FAILED: DeviceStatusCode = 15;
 }
 
 /// Map an MMIO region capability into the caller's address space at

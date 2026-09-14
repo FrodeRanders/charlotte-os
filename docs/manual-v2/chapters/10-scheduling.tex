@@ -204,7 +204,7 @@ overview.
     \item \textbf{Interrupt-masking spin \texttt{Mutex}} guards the frame
         allocator, memory-object registry, address-space table, kernel address
         space, domain-authority table, address-space lifecycle, scratch-window
-        cursor, and the global allocator. It attempts acquisition with
+        allocator, and the global allocator. It attempts acquisition with
         maskable IRQs disabled and keeps them disabled while owned. A failed
         attempt restores the caller's interrupt state before spinning, then
         retries with IRQs masked. The ownership masking exists to prevent a

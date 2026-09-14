@@ -352,6 +352,7 @@ fn close_user_address_space_locked(
     // their pinned frames.
     crate::device::close_address_space(asid);
     object::close_address_space(asid);
+    object::close_scratch_address_space(asid);
     crate::ipc::close_address_space(asid);
     crate::completion::close_address_space(asid);
     crate::syscall::close_mailbox_address_space(asid);

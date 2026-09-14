@@ -187,7 +187,7 @@ the never-issued property is preserved. The safe model exercises
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
-| Address-space `Allocate` / `CaptureHandle` | `register_user_address_space`, `AddressSpaceHandle` | Direct for recyclable numeric ASID plus monotonic software generation. The scratch-window cursor is keyed by ASID with a stored generation field, so a recycled ASID resets it on first use. |
+| Address-space `Allocate` / `CaptureHandle` | `register_user_address_space`, `AddressSpaceHandle` | Direct for recyclable numeric ASID plus monotonic software generation. The scratch-window allocator is keyed by ASID with a stored generation field, so a recycled ASID receives fresh allocation state. Unmapped ranges are recycled only after page-table removal and TLB invalidation. |
 | Address-space `CloseExact` | `close_user_address_space_handle`; generation checks in teardown and scratch reservation; `ADDRESS_SPACE_LIFECYCLE` serialization in map/unmap | Direct for rejecting a stale handle after ASID reuse. Map/unmap do not compare generations themselves; they hold `ADDRESS_SPACE_LIFECYCLE`, which close also holds, so a mapping cannot straddle a close/reuse boundary. |
 | Hardware-ASID `Allocate` / `Retire` / `Invalidate` | AArch64 hardware-ASID allocator and TLB invalidation | Abstract: page-table contents are omitted; tag reuse is allowed only after invalidation removes stale translations. |
 | Interrupt-route `Bind` / `QueueWake` / `Unbind` / `DrainSafe` | device interrupt binding, route generation, deferred wake drain | Direct for generation-fenced delivery. GIC register programming and MPIDR routing are below the model boundary. |

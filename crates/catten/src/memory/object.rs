@@ -119,6 +119,9 @@ impl DmaPin {
 struct MemoryMappingState {
     base: VAddr,
     writable: bool,
+    /// This mapping owns its virtual range in the kernel-assigned scratch
+    /// window and returns it only after unmapping and TLB invalidation.
+    scratch: bool,
 }
 
 #[derive(Debug)]
@@ -398,8 +401,9 @@ pub(crate) fn write_bytes(
 /// space; each AS has its own page table, so the same window base is valid
 /// in every AS. 512 MiB gives the boot storm (every store-sourced service
 /// ELF is mapped several times: buffer, transfer chunk, copy-back, hash)
-/// comfortable headroom; exhaustion is not a practical concern because the
-/// window is virtual and pages are only committed while mapped.
+/// comfortable headroom. Scratch virtual ranges are recycled after unmapping;
+/// the size is therefore a bound on concurrently mapped scratch memory rather
+/// than on the number of mappings performed during an address-space lifetime.
 const SCRATCH_WINDOW_BASE: u64 = 0x0000_0000_4000_0000;
 const SCRATCH_WINDOW_PAGES: usize = (512 * 1024 * 1024) / PAGE_SIZE;
 const SCRATCH_WINDOW_SIZE: usize = SCRATCH_WINDOW_PAGES * PAGE_SIZE;
@@ -407,8 +411,71 @@ const SCRATCH_WINDOW_SIZE: usize = SCRATCH_WINDOW_PAGES * PAGE_SIZE;
 /// Scratch allocation belongs to an address-space *lifetime*, not merely its
 /// recyclable numeric ASID. A new generation starts again at the window base;
 /// stale entries are harmless and are replaced on first use by the new owner.
-static SCRATCH_WINDOW_NEXT: crate::memory::LazyLock<
-    crate::memory::Mutex<BTreeMap<AddressSpaceId, (usize, usize)>>,
+#[derive(Debug)]
+struct ScratchWindow {
+    generation: usize,
+    /// First byte never allocated from the window's high end.
+    next: usize,
+    /// Coalesced free extents, keyed by byte offset from the window base.
+    free: BTreeMap<usize, usize>,
+}
+
+impl ScratchWindow {
+    fn new(generation: usize) -> Self {
+        Self {
+            generation,
+            next: 0,
+            free: BTreeMap::new(),
+        }
+    }
+
+    fn reserve(&mut self, bytes: usize) -> Result<usize, MemoryObjectError> {
+        if let Some((offset, extent)) = self
+            .free
+            .iter()
+            .find_map(|(offset, extent)| (*extent >= bytes).then_some((*offset, *extent)))
+        {
+            self.free.remove(&offset);
+            if extent > bytes {
+                self.free.insert(offset + bytes, extent - bytes);
+            }
+            return Ok(offset);
+        }
+
+        let offset = self.next;
+        let end = offset.checked_add(bytes).ok_or(MemoryObjectError::OutOfScratch)?;
+        if end > SCRATCH_WINDOW_SIZE {
+            return Err(MemoryObjectError::OutOfScratch);
+        }
+        self.next = end;
+        Ok(offset)
+    }
+
+    fn release(&mut self, mut offset: usize, mut bytes: usize) {
+        if let Some((previous_offset, previous_bytes)) =
+            self.free.range(..offset).next_back().map(|(offset, bytes)| (*offset, *bytes))
+            && previous_offset + previous_bytes == offset
+        {
+            self.free.remove(&previous_offset);
+            offset = previous_offset;
+            bytes += previous_bytes;
+        }
+
+        while let Some(next_bytes) = self.free.remove(&(offset + bytes)) {
+            bytes += next_bytes;
+        }
+
+        if offset + bytes == self.next {
+            self.next = offset;
+        } else {
+            let replaced = self.free.insert(offset, bytes);
+            debug_assert!(replaced.is_none(), "scratch extent released twice");
+        }
+    }
+}
+
+static SCRATCH_WINDOWS: crate::memory::LazyLock<
+    crate::memory::Mutex<BTreeMap<AddressSpaceId, ScratchWindow>>,
 > = crate::memory::LazyLock::new(|| crate::memory::Mutex::new(BTreeMap::new()));
 
 /// Reserve `pages` consecutive pages in an address space's scratch window at
@@ -423,25 +490,52 @@ pub(crate) fn reserve_scratch(
     let generation = crate::memory::current_address_space_handle(asid)
         .ok_or(MemoryObjectError::AddressSpaceMissing)?
         .generation();
-    let mut windows = SCRATCH_WINDOW_NEXT.lock();
-    let entry = windows.entry(asid).or_insert((generation, 0));
-    if entry.0 != generation {
-        *entry = (generation, 0);
+    let mut windows = SCRATCH_WINDOWS.lock();
+    let window = windows.entry(asid).or_insert_with(|| ScratchWindow::new(generation));
+    if window.generation != generation {
+        *window = ScratchWindow::new(generation);
     }
-    let slot = entry.1;
-    let end = slot.checked_add(bytes).ok_or(MemoryObjectError::OutOfScratch)?;
-    if end > SCRATCH_WINDOW_SIZE {
-        return Err(MemoryObjectError::OutOfScratch);
-    }
-    entry.1 = end;
+    let slot = window.reserve(bytes)?;
     Ok(VAddr::from(SCRATCH_WINDOW_BASE + (slot as u64)))
 }
 
+/// Return a scratch mapping's virtual range after its page-table entries have
+/// been removed and the corresponding TLB invalidation has completed.
+pub(crate) fn release_scratch(
+    asid: AddressSpaceId,
+    base: VAddr,
+    pages: usize,
+) -> Result<(), MemoryObjectError> {
+    let base = <VAddr as Into<usize>>::into(base);
+    let window_base = SCRATCH_WINDOW_BASE as usize;
+    let offset = base.checked_sub(window_base).ok_or(MemoryObjectError::OutOfScratch)?;
+    let bytes = pages.checked_mul(PAGE_SIZE).ok_or(MemoryObjectError::OutOfScratch)?;
+    let end = offset.checked_add(bytes).ok_or(MemoryObjectError::OutOfScratch)?;
+    if offset % PAGE_SIZE != 0 || bytes == 0 || end > SCRATCH_WINDOW_SIZE {
+        return Err(MemoryObjectError::OutOfScratch);
+    }
+
+    let generation = crate::memory::current_address_space_handle(asid)
+        .ok_or(MemoryObjectError::AddressSpaceMissing)?
+        .generation();
+    let mut windows = SCRATCH_WINDOWS.lock();
+    let window = windows.get_mut(&asid).ok_or(MemoryObjectError::OutOfScratch)?;
+    if window.generation != generation {
+        return Err(MemoryObjectError::AddressSpaceMissing);
+    }
+    window.release(offset, bytes);
+    Ok(())
+}
+
+/// Forget all scratch allocation state when this exact address-space lifetime
+/// is torn down. The caller holds `ADDRESS_SPACE_LIFECYCLE`, so a recycled ASID
+/// cannot race this removal.
+pub(crate) fn close_scratch_address_space(asid: AddressSpaceId) {
+    SCRATCH_WINDOWS.lock().remove(&asid);
+}
+
 /// Map a memory object into the calling address space's scratch window at a
-/// kernel-assigned virtual address and return it. Pages are handed out
-/// monotonically and never reused (the window is virtual, so exhaustion is
-/// not a practical concern), which makes collisions impossible by
-/// construction.
+/// kernel-assigned virtual address and return it.
 pub fn map_any(
     asid: AddressSpaceId,
     cap: MemoryObjectCap,
@@ -450,21 +544,24 @@ pub fn map_any(
     // The scratch reservation and page-table installation belong to the same
     // address-space lifetime. Otherwise teardown/reuse could occur between
     // them and apply the old generation's reservation to the new occupant.
-    let (base, pages, result) = {
-        let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
-        let pages = {
-            let registry = MEMORY_OBJECTS.lock();
-            let cap_entry = registry.lookup(asid, cap)?;
-            let object = registry
-                .objects
-                .get(&cap_entry.object)
-                .ok_or(MemoryObjectError::UnknownCapability)?;
-            object.frames.len()
-        };
-        let base = reserve_scratch(asid, pages)?;
-        (base, pages, map_locked(asid, cap, base, writable))
+    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+    let pages = {
+        let registry = MEMORY_OBJECTS.lock();
+        let cap_entry = registry.lookup(asid, cap)?;
+        let object =
+            registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
+        object.frames.len()
     };
+    let base = reserve_scratch(asid, pages)?;
+    let result = map_locked(asid, cap, base, writable, true);
     crate::cpu::isa::memory::tlb::inval_range_user(asid, base, pages);
+    if let Err(error) = result {
+        // If rollback itself failed, retaining the virtual range is safer than
+        // aliasing a page-table entry that may still exist.
+        if error != MemoryObjectError::UnmapFailed {
+            let _ = release_scratch(asid, base, pages);
+        }
+    }
     result.map(|_| base)
 }
 
@@ -479,20 +576,18 @@ pub fn map(
     }
 
     // Serialize against address-space teardown/reuse for the complete map.
-    let (pages, result) = {
-        let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
-        let pages = {
-            let registry = MEMORY_OBJECTS.lock();
-            let cap_entry = registry.lookup(asid, cap)?;
-            registry
-                .objects
-                .get(&cap_entry.object)
-                .ok_or(MemoryObjectError::UnknownCapability)?
-                .frames
-                .len()
-        };
-        (pages, map_locked(asid, cap, base, writable))
+    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+    let pages = {
+        let registry = MEMORY_OBJECTS.lock();
+        let cap_entry = registry.lookup(asid, cap)?;
+        registry
+            .objects
+            .get(&cap_entry.object)
+            .ok_or(MemoryObjectError::UnknownCapability)?
+            .frames
+            .len()
     };
+    let result = map_locked(asid, cap, base, writable, false);
     crate::cpu::isa::memory::tlb::inval_range_user(asid, base, pages);
     result
 }
@@ -503,6 +598,7 @@ fn map_locked(
     cap: MemoryObjectCap,
     base: VAddr,
     writable: bool,
+    scratch: bool,
 ) -> Result<(), MemoryObjectError> {
     let (object_id, frames, page_type) = {
         let mut registry = MEMORY_OBJECTS.lock();
@@ -540,6 +636,7 @@ fn map_locked(
             MemoryMappingState {
                 base,
                 writable,
+                scratch,
             },
         );
         // Do not hold the memory-object registry while taking the address-space
@@ -565,11 +662,16 @@ fn map_locked(
                         })
                         .is_err()
                     {
+                        let mut cleanup_failed = false;
                         for cleanup_index in 0..mapped_pages {
                             let cleanup_vaddr = base + (cleanup_index * PAGE_SIZE);
-                            let _ = address_space.unmap_page(cleanup_vaddr);
+                            cleanup_failed |= address_space.unmap_page(cleanup_vaddr).is_err();
                         }
-                        result = Err(MemoryObjectError::MapFailed);
+                        result = Err(if cleanup_failed {
+                            MemoryObjectError::UnmapFailed
+                        } else {
+                            MemoryObjectError::MapFailed
+                        });
                         break;
                     }
                     mapped_pages += 1;
@@ -592,15 +694,16 @@ fn map_locked(
 }
 
 pub fn unmap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), MemoryObjectError> {
-    let (base, pages, result) = {
-        let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+    let (base, pages, scratch, result) = {
         let mut registry = MEMORY_OBJECTS.lock();
         let cap_entry = registry.lookup(asid, cap)?;
         let object = registry
             .objects
             .get_mut(&cap_entry.object)
             .ok_or(MemoryObjectError::UnknownCapability)?;
-        let base = object.mappings.get(&asid).ok_or(MemoryObjectError::NotMapped)?.base;
+        let mapping = *object.mappings.get(&asid).ok_or(MemoryObjectError::NotMapped)?;
+        let base = mapping.base;
         let pages = object.frames.len();
 
         let mut table = ADDRESS_SPACE_TABLE.lock();
@@ -621,9 +724,12 @@ pub fn unmap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), MemoryObj
         if result.is_ok() {
             object.mappings.remove(&asid);
         }
-        (base, pages, result)
+        (base, pages, mapping.scratch, result)
     };
     crate::cpu::isa::memory::tlb::inval_range_user(asid, base, pages);
+    if result.is_ok() && scratch {
+        release_scratch(asid, base, pages)?;
+    }
     result
 }
 
@@ -1128,15 +1234,29 @@ pub fn close_address_space(asid: AddressSpaceId) {
                 let object = registry.objects.get_mut(&object_id).unwrap();
                 object.destroy_when_unpinned = true;
                 for (mapped_asid, mapping) in core::mem::take(&mut object.mappings) {
-                    let _ = unmap_pages(mapped_asid, mapping.base, object.frames.len());
-                    invalidations.push((mapped_asid, mapping.base, object.frames.len()));
+                    let pages = object.frames.len();
+                    let unmapped = unmap_pages(mapped_asid, mapping.base, pages).is_ok();
+                    invalidations.push((
+                        mapped_asid,
+                        mapping.base,
+                        pages,
+                        mapping.scratch,
+                        unmapped,
+                    ));
                 }
                 continue;
             }
             if let Some(object) = registry.objects.remove(&object_id) {
                 for (mapped_asid, mapping) in object.mappings {
-                    let _ = unmap_pages(mapped_asid, mapping.base, object.frames.len());
-                    invalidations.push((mapped_asid, mapping.base, object.frames.len()));
+                    let pages = object.frames.len();
+                    let unmapped = unmap_pages(mapped_asid, mapping.base, pages).is_ok();
+                    invalidations.push((
+                        mapped_asid,
+                        mapping.base,
+                        pages,
+                        mapping.scratch,
+                        unmapped,
+                    ));
                 }
                 remove_caps_for_object(&mut registry, object_id);
                 frames_to_free.extend(object.frames);
@@ -1145,8 +1265,9 @@ pub fn close_address_space(asid: AddressSpaceId) {
 
         for object in registry.objects.values_mut() {
             if let Some(mapping) = object.mappings.remove(&asid) {
-                let _ = unmap_pages(asid, mapping.base, object.frames.len());
-                invalidations.push((asid, mapping.base, object.frames.len()));
+                let pages = object.frames.len();
+                let unmapped = unmap_pages(asid, mapping.base, pages).is_ok();
+                invalidations.push((asid, mapping.base, pages, mapping.scratch, unmapped));
             }
             match &mut object.lend_state {
                 LendState::None => {}
@@ -1183,8 +1304,13 @@ pub fn close_address_space(asid: AddressSpaceId) {
     // Mapping removal and frame reuse must be separated by a completed
     // cross-LP shootdown. An object owned by the closing domain may still have
     // mappings in other, live address spaces.
-    for (mapped_asid, base, pages) in invalidations {
+    for (mapped_asid, base, pages, scratch, unmapped) in invalidations {
         crate::cpu::isa::memory::tlb::inval_range_user(mapped_asid, base, pages);
+        // The closing AS loses its complete scratch allocator below. Return
+        // ranges mapped into other live domains so their windows do not leak.
+        if mapped_asid != asid && scratch && unmapped {
+            let _ = release_scratch(mapped_asid, base, pages);
+        }
     }
 
     if !frames_to_free.is_empty() {
@@ -1319,8 +1445,12 @@ pub(crate) fn unpin_copy(pin: CopyPin) {
 fn unmap_pages(asid: AddressSpaceId, base: VAddr, pages: usize) -> Result<(), MemoryObjectError> {
     let mut table = ADDRESS_SPACE_TABLE.lock();
     let address_space = table.get_mut(asid).map_err(|_| MemoryObjectError::AddressSpaceMissing)?;
+    let mut failed = false;
     for index in 0..pages {
-        let _ = address_space.unmap_page(base + (index * PAGE_SIZE));
+        failed |= address_space.unmap_page(base + (index * PAGE_SIZE)).is_err();
+    }
+    if failed {
+        return Err(MemoryObjectError::UnmapFailed);
     }
     Ok(())
 }

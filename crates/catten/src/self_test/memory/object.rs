@@ -43,6 +43,49 @@ pub fn test_memory_objects() {
         "one allocation must not exceed the per-request resource bound"
     );
 
+    // Kernel-assigned scratch virtual addresses are a reusable resource, not
+    // a lifetime allocation counter. Exercise adjacent-range coalescing and
+    // rollback after a reservation whose mapping is rejected.
+    let scratch_one = object::allocate(owner, 1).expect("scratch one-page allocation failed");
+    let scratch_two = object::allocate(owner, 2).expect("scratch two-page allocation failed");
+    let first_scratch =
+        object::map_any(owner, scratch_one, true).expect("scratch one-page map failed");
+    let second_scratch =
+        object::map_any(owner, scratch_two, true).expect("scratch two-page map failed");
+    assert_eq!(
+        second_scratch,
+        first_scratch + 4096usize,
+        "adjacent scratch reservations must be contiguous"
+    );
+    object::unmap(owner, scratch_one).expect("scratch one-page unmap failed");
+    object::unmap(owner, scratch_two).expect("scratch two-page unmap failed");
+    object::close_cap(owner, scratch_one).expect("scratch one-page close failed");
+    object::close_cap(owner, scratch_two).expect("scratch two-page close failed");
+
+    let scratch_three = object::allocate(owner, 3).expect("scratch three-page allocation failed");
+    let coalesced_scratch =
+        object::map_any(owner, scratch_three, true).expect("coalesced scratch map failed");
+    assert_eq!(coalesced_scratch, first_scratch, "unmapped adjacent scratch extents must coalesce");
+    object::unmap(owner, scratch_three).expect("coalesced scratch unmap failed");
+
+    let explicit_base = VAddr::from(0x32000usize);
+    object::map(owner, scratch_three, explicit_base, true)
+        .expect("explicit map before scratch rollback failed");
+    assert_eq!(
+        object::map_any(owner, scratch_three, true),
+        Err(MemoryObjectError::AlreadyMapped),
+        "map_any must reject an already mapped object"
+    );
+    object::unmap(owner, scratch_three).expect("explicit map cleanup failed");
+    let rollback_scratch =
+        object::map_any(owner, scratch_three, true).expect("scratch map after rollback failed");
+    assert_eq!(
+        rollback_scratch, first_scratch,
+        "a failed scratch mapping must return its reservation"
+    );
+    object::unmap(owner, scratch_three).expect("scratch rollback unmap failed");
+    object::close_cap(owner, scratch_three).expect("scratch three-page close failed");
+
     let cap = object::allocate(owner, 2).expect("memory object: allocation failed");
     let initial = object::info(owner, cap).expect("memory object: missing owner cap");
     assert_eq!(initial.owner, owner);

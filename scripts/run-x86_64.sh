@@ -590,8 +590,18 @@ if [ "$NETWORK" = "1" ]; then
     esac
 fi
 
-if [ -n "$GDB" ]; then
+if [ -n "$GDB" ] || [ "${CATTEN_QEMU_DEBUG_STUB:-0}" = "1" ]; then
     QEMU_OPTS+=(-gdb "tcp::${GDB_PORT}")
+fi
+
+if [ "${CATTEN_QEMU_MONITOR:-0}" = "1" ]; then
+    QEMU_OPTS+=(-monitor "unix:/tmp/charlotte${INSTANCE_SUFFIX}-monitor.sock,server=on,wait=off")
+fi
+
+if [ "$NETWORK" = "1" ] && [ "${CATTEN_QEMU_NET_DUMP:-0}" = "1" ]; then
+    QEMU_OPTS+=(
+        -object "filter-dump,id=charlotte-net-dump,netdev=net0,file=/tmp/charlotte${INSTANCE_SUFFIX}-net.pcap"
+    )
 fi
 
 if [ -n "$TIMEOUT" ]; then
@@ -602,6 +612,9 @@ if [ -n "$TIMEOUT" ]; then
     echo ">>> Booting under QEMU (${TIMEOUT}s timeout, serial to ${LOG})..."
     qemu-system-x86_64 "${QEMU_OPTS[@]}" $GDB &
     QPID=$!
+    if [ -n "${CATTEN_QEMU_PID_FILE:-}" ]; then
+        printf '%s\n' "$QPID" >"$CATTEN_QEMU_PID_FILE"
+    fi
     SELFTEST_COMPLETE=0
     SELFTEST_COMPLETE_TICK=-1
     DEPLOYMENT_READY_TICK=-1

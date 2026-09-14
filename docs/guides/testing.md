@@ -181,6 +181,17 @@ mount-free UEFI boot image from an already-built kernel, use
 `scripts/create-boot-image.sh`; the Justfile's `create-image` recipe delegates
 to the same implementation.
 
+Long-running external harnesses can retain a live guest for post-failure
+inspection without depending on architecture-specific command-line switches.
+Set `CATTEN_QEMU_DEBUG_STUB=1` and pass `--gdb-port PORT` to expose the QEMU GDB
+stub, `CATTEN_QEMU_PID_FILE=PATH` to record the QEMU process ID,
+`CATTEN_QEMU_MONITOR=1` to create the instance's monitor socket, and
+`CATTEN_QEMU_NET_DUMP=1` to capture packets when networking is enabled. The
+Kafka broker soak harness enables these controls and, on client or readiness
+failure, detaches from its still-running runner instead of killing the guest.
+Its `--cleanup-on-failure` option restores teardown behavior for unattended
+automation.
+
 `catten-rt`, `catten-syscall`, and `charlotte-launch` also retain disabled
 standalone harnesses. They contain target runtime/ABI support and currently
 contain no dormant `#[test]` functions. Their host-compatible portions are

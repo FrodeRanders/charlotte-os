@@ -101,6 +101,9 @@ pub enum DeviceError {
     NotMapped,
     /// The kernel could not install (or remove) the requested page mapping.
     MapFailed,
+    /// One or more page-table entries could not be removed. The virtual range
+    /// remains quarantined rather than being reused.
+    UnmapFailed,
     /// The interrupt object is not bound to a completion queue.
     NotBound,
     /// The interrupt object is already bound to a completion queue.
@@ -126,6 +129,17 @@ struct MmioRegion {
     pages: usize,
     /// The user virtual base at which the region is currently mapped, if any.
     mapped: Option<VAddr>,
+    /// Whether `mapped` owns a kernel-assigned scratch-window range.
+    scratch_mapped: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct MmioMapping {
+    base: VAddr,
+    phys_base: usize,
+    pages: usize,
+    writable: bool,
+    scratch: bool,
 }
 
 /// An interrupt source granted to a driver domain. Delivery-side state
@@ -437,6 +451,7 @@ pub fn grant_mmio(
             phys_base,
             pages,
             mapped: None,
+            scratch_mapped: false,
         }),
     ))
 }
@@ -583,8 +598,8 @@ pub fn mmio_map(
     }
     // Serialize the capability check, page-table update, and mapping record
     // against teardown and ASID reuse.
+    let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
     let (pages, result) = {
-        let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
         let mut devices = DEVICES.lock();
         let object = lookup_mut(&mut devices, asid, cap)?;
         let DeviceObject::Mmio(region) = object else {
@@ -594,7 +609,18 @@ pub fn mmio_map(
             return Err(DeviceError::AlreadyMapped);
         }
         let (phys_base, pages) = (region.phys_base, region.pages);
-        let result = map_mmio_at(&mut devices, asid, cap, base, phys_base, pages, writable);
+        let result = map_mmio_at(
+            &mut devices,
+            asid,
+            cap,
+            MmioMapping {
+                base,
+                phys_base,
+                pages,
+                writable,
+                scratch: false,
+            },
+        );
         (pages, result)
     };
     crate::cpu::isa::memory::tlb::inval_range_user(asid, base, pages);
@@ -611,8 +637,8 @@ pub fn mmio_map_any(
 ) -> Result<VAddr, DeviceError> {
     // Take lifecycle before DEVICES: teardown uses the same ordering. The
     // scratch reservation and MMIO mapping must target one AS generation.
+    let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
     let (base, pages, result) = {
-        let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
         let mut devices = DEVICES.lock();
         let object = lookup_mut(&mut devices, asid, cap)?;
         let DeviceObject::Mmio(region) = object else {
@@ -621,10 +647,26 @@ pub fn mmio_map_any(
         let (phys_base, pages) = (region.phys_base, region.pages);
         let base = crate::memory::object::reserve_scratch(asid, pages)
             .map_err(|_| DeviceError::MapFailed)?;
-        let result = map_mmio_at(&mut devices, asid, cap, base, phys_base, pages, writable);
+        let result = map_mmio_at(
+            &mut devices,
+            asid,
+            cap,
+            MmioMapping {
+                base,
+                phys_base,
+                pages,
+                writable,
+                scratch: true,
+            },
+        );
         (base, pages, result)
     };
     crate::cpu::isa::memory::tlb::inval_range_user(asid, base, pages);
+    if let Err(error) = result
+        && error != DeviceError::UnmapFailed
+    {
+        let _ = crate::memory::object::release_scratch(asid, base, pages);
+    }
     result.map(|_| base)
 }
 
@@ -632,33 +674,36 @@ fn map_mmio_at(
     devices: &mut impl core::ops::DerefMut<Target = BTreeMap<AddressSpaceId, AsDeviceCaps>>,
     asid: AddressSpaceId,
     cap: DeviceCap,
-    base: VAddr,
-    phys_base: usize,
-    pages: usize,
-    writable: bool,
+    mapping: MmioMapping,
 ) -> Result<(), DeviceError> {
-    for index in 0..pages {
-        let vaddr = base + (index * PAGE_SIZE);
-        let frame = PAddr::from((phys_base + index * PAGE_SIZE) as u64);
-        if arch_map_user_mmio(asid, vaddr, frame, writable).is_err() {
+    for index in 0..mapping.pages {
+        let vaddr = mapping.base + (index * PAGE_SIZE);
+        let frame = PAddr::from((mapping.phys_base + index * PAGE_SIZE) as u64);
+        if arch_map_user_mmio(asid, vaddr, frame, mapping.writable).is_err() {
+            let mut cleanup_failed = false;
             for cleanup in 0..index {
-                let _ = arch_unmap(asid, base + (cleanup * PAGE_SIZE));
+                cleanup_failed |= arch_unmap(asid, mapping.base + (cleanup * PAGE_SIZE)).is_err();
             }
-            return Err(DeviceError::MapFailed);
+            return Err(if cleanup_failed {
+                DeviceError::UnmapFailed
+            } else {
+                DeviceError::MapFailed
+            });
         }
     }
 
     // Re-borrow to record the mapping (the map may have taken the AS table lock).
     if let Ok(DeviceObject::Mmio(region)) = lookup_mut(devices, asid, cap) {
-        region.mapped = Some(base);
+        region.mapped = Some(mapping.base);
+        region.scratch_mapped = mapping.scratch;
     }
     Ok(())
 }
 
 /// Unmap a previously mapped MMIO region from the caller's address space.
 pub fn mmio_unmap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError> {
-    let (base, pages) = {
-        let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+    let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+    let (base, pages, scratch, result) = {
         let mut devices = DEVICES.lock();
         let object = lookup_mut(&mut devices, asid, cap)?;
         let DeviceObject::Mmio(region) = object else {
@@ -666,16 +711,30 @@ pub fn mmio_unmap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceErro
         };
         let base = region.mapped.ok_or(DeviceError::NotMapped)?;
         let pages = region.pages;
+        let scratch = region.scratch_mapped;
+        let mut failed = false;
         for index in 0..pages {
-            let _ = arch_unmap(asid, base + (index * PAGE_SIZE));
+            failed |= arch_unmap(asid, base + (index * PAGE_SIZE)).is_err();
         }
-        if let Ok(DeviceObject::Mmio(region)) = lookup_mut(&mut devices, asid, cap) {
+        let result = if failed {
+            Err(DeviceError::UnmapFailed)
+        } else {
+            Ok(())
+        };
+        if result.is_ok()
+            && let Ok(DeviceObject::Mmio(region)) = lookup_mut(&mut devices, asid, cap)
+        {
             region.mapped = None;
+            region.scratch_mapped = false;
         }
-        (base, pages)
+        (base, pages, scratch, result)
     };
     crate::cpu::isa::memory::tlb::inval_range_user(asid, base, pages);
-    Ok(())
+    if result.is_ok() && scratch {
+        crate::memory::object::release_scratch(asid, base, pages)
+            .map_err(|_| DeviceError::UnmapFailed)?;
+    }
+    result
 }
 
 // ---- interrupt operations --------------------------------------------------
@@ -767,6 +826,8 @@ fn unroute_interrupt(intid: u32) {
 /// Close a device capability, releasing its resources: an MMIO region is
 /// unmapped, an interrupt source is masked and its route removed.
 pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError> {
+    let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+    let mut close_error = None;
     let object = {
         let mut devices = DEVICES.lock();
         let object = devices
@@ -784,10 +845,20 @@ pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError
     match object {
         DeviceObject::Mmio(region) => {
             if let Some(base) = region.mapped {
+                let mut failed = false;
                 for index in 0..region.pages {
-                    let _ = arch_unmap(asid, base + (index * PAGE_SIZE));
+                    failed |= arch_unmap(asid, base + (index * PAGE_SIZE)).is_err();
                 }
                 crate::cpu::isa::memory::tlb::inval_range_user(asid, base, region.pages);
+                if !failed && region.scratch_mapped {
+                    let _ = crate::memory::object::release_scratch(asid, base, region.pages);
+                }
+                if failed {
+                    // The capability is still consumed: partial unmapping
+                    // cannot be rolled back into a sound owned MMIO object.
+                    // Its scratch range remains quarantined for this AS.
+                    close_error = Some(DeviceError::UnmapFailed);
+                }
             }
         }
         DeviceObject::Interrupt(_) => {}
@@ -803,7 +874,7 @@ pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError
     }
     let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Device);
     assert!(revoked, "device payload capability was absent from unified table");
-    Ok(())
+    close_error.map_or(Ok(()), Err)
 }
 
 /// Inspection: the owning address space of the interrupt route for `intid`,

@@ -151,6 +151,54 @@ struct TcpipState {
     next_ephemeral: u16,
 }
 
+#[derive(Default)]
+struct SocketSummary {
+    tcp_listen: usize,
+    tcp_connecting: usize,
+    tcp_established: usize,
+    tcp_closing: usize,
+    tcp_closed: usize,
+    udp: usize,
+    recv_pending: usize,
+    recv_ready: usize,
+    send_ready: usize,
+}
+
+fn summarize_sockets(state: &TcpipState, sockets: &SocketSet<'_>) -> SocketSummary {
+    let mut summary = SocketSummary::default();
+    for entry in state.sockets.values() {
+        if entry.recv_pending.is_some() {
+            summary.recv_pending += 1;
+        }
+        match entry.kind {
+            SocketKind::Tcp => {
+                let socket = sockets.get::<TcpSocket>(entry.handle);
+                match socket.state() {
+                    TcpState::Closed => summary.tcp_closed += 1,
+                    TcpState::Listen => summary.tcp_listen += 1,
+                    TcpState::SynSent | TcpState::SynReceived => summary.tcp_connecting += 1,
+                    TcpState::Established => summary.tcp_established += 1,
+                    TcpState::FinWait1
+                    | TcpState::FinWait2
+                    | TcpState::CloseWait
+                    | TcpState::Closing
+                    | TcpState::LastAck
+                    | TcpState::TimeWait => summary.tcp_closing += 1,
+                }
+                summary.recv_ready += usize::from(socket.can_recv());
+                summary.send_ready += usize::from(socket.can_send());
+            }
+            SocketKind::Udp => {
+                let socket = sockets.get::<UdpSocket>(entry.handle);
+                summary.udp += 1;
+                summary.recv_ready += usize::from(socket.can_recv());
+                summary.send_ready += usize::from(socket.can_send());
+            }
+        }
+    }
+    summary
+}
+
 impl TcpipState {
     fn alloc_sock_id(&mut self) -> u64 {
         let id = self.next_sock_id;
@@ -429,6 +477,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut ticks: u64 = 0;
     let mut elapsed_ms: u64 = 1;
     let mut rx_total: u32 = 0;
+    let mut rx_map_errors: u32 = 0;
+    let mut rx_last_map_status: u32 = 0;
     let mut tx_ok: u32 = 0;
     let mut tx_err: u32 = 0;
     let dhcp_mode: u32 = if dhcp {
@@ -484,17 +534,32 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             catten_rt::logln!("[tcpip] installed {} committed cluster VIP(s)", service_vips.len());
         }
 
-        // Periodic heartbeat (~every 1024 reactor iterations) so a stall can be
-        // localized: if rx_total stops advancing here, forwarded frames (e.g.
-        // ACKs) are not reaching the stack from the frouter.
+        // Periodic heartbeat (~every 1024 reactor iterations) with enough
+        // protocol state to distinguish a dead listener, a stranded deferred
+        // receive, socket backpressure, and loss before the stack. `tx_ok` and
+        // `tx_err` count client OP_SEND calls, not emitted Ethernet frames.
         let tick = HEARTBEAT_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         if tick & 0x3ff == 0 {
+            let summary = summarize_sockets(&state, &sockets);
             catten_rt::logln!(
-                "[tcpip] hb rx={} tx_ok={} tx_err={} sockets={}",
+                "[tcpip] hb rx={} rxq={} rx_map_err={}:{} tx_ok={} tx_err={} sockets={} \
+                 tcp=l{}/c{}/e{}/x{}/z{} udp={} recv={}/{} send_ready={}",
                 rx_total,
+                device.rx_len(),
+                rx_map_errors,
+                rx_last_map_status,
                 tx_ok,
                 tx_err,
-                state.sockets.len()
+                state.sockets.len(),
+                summary.tcp_listen,
+                summary.tcp_connecting,
+                summary.tcp_established,
+                summary.tcp_closing,
+                summary.tcp_closed,
+                summary.udp,
+                summary.recv_pending,
+                summary.recv_ready,
+                summary.send_ready
             );
         }
 
@@ -1067,16 +1132,20 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     }
                     let (scratch_vaddr_2_map_status, scratch_vaddr_2_vaddr) =
                         memory_map_any(msg.memory, false);
-                    if scratch_vaddr_2_map_status == 0 {
-                        let frame = unsafe {
-                            core::slice::from_raw_parts(
-                                scratch_vaddr_2_vaddr as *const u8,
-                                frame_len,
-                            )
-                        };
-                        device.push_rx(frame.to_vec());
-                        memory_unmap(msg.memory);
+                    if scratch_vaddr_2_map_status != 0 {
+                        memory_close(msg.memory);
+                        rx_map_errors = rx_map_errors.wrapping_add(1);
+                        rx_last_map_status = scratch_vaddr_2_map_status as u32;
+                        config::write::<u32>(status::RX_MAP_ERRORS, rx_map_errors);
+                        config::write::<u32>(status::RX_LAST_MAP_STATUS, rx_last_map_status);
+                        ipc_reply(msg.reply, socket::ERR_WOULD_BLOCK);
+                        continue;
                     }
+                    let frame = unsafe {
+                        core::slice::from_raw_parts(scratch_vaddr_2_vaddr as *const u8, frame_len)
+                    };
+                    device.push_rx(frame.to_vec());
+                    memory_unmap(msg.memory);
                     memory_close(msg.memory);
                     rx_total = rx_total.wrapping_add(1);
                     config::write::<u32>(status::RX_TOTAL, rx_total);

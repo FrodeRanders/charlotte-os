@@ -15,7 +15,7 @@ the defining module.
 
 | Family | Module | Interrupt policy | Blocking? | Typical users |
 |---|---|---|---|---|
-| Interrupt-masking spin `Mutex` | `cpu/multiprocessor/spin/mutex.rs` | Masks IRQs while owned; restores the caller's state while contending | No (spin) | Frame allocator, memory-object registry, address-space table, kernel AS, domain authorities, AS lifecycle, scratch window, talc |
+| Interrupt-masking spin `Mutex` | `cpu/multiprocessor/spin/mutex.rs` | Masks IRQs while owned; restores the caller's state while contending | No (spin) | Frame allocator, memory-object registry, address-space table, kernel AS, domain authorities, AS lifecycle, scratch-window allocator, talc |
 | Interrupt-masking spin `RwLock` | `cpu/multiprocessor/spin/rwlock.rs` | Masks IRQs while owned; nesting-aware save/restore and interruptible contention | No (spin) | `MASTER_THREAD_TABLE`, `DEAD_THREADS`, `SYSTEM_SCHEDULER`, `IPC`, `COMPLETIONS`, `USER_MAILBOX_CAPS`, each `PerLp` slot |
 | External `spin` crate | `spin::{Mutex, RwLock, LazyLock}` | None (manual, see §3) | No (spin) | Stack allocator arena + guard-page map; one-time lazy init everywhere |
 | talc global-allocator lock | `TalcLock<MutexCore, ExtendOnOom>` in `memory/allocators/global_allocator.rs` | Masks IRQs (reuses the spin `MutexCore`) | No (spin) | Kernel heap |

@@ -389,6 +389,10 @@ pub mod tcpip_status {
     pub const ERROR: usize = 16;
     /// Last completed startup operation, for supervisor diagnostics.
     pub const DETAIL: usize = 20;
+    /// Frames rejected because their transferred memory could not be mapped.
+    pub const RX_MAP_ERRORS: usize = 24;
+    /// Raw memory-map status from the most recent rejected frame.
+    pub const RX_LAST_MAP_STATUS: usize = 28;
 }
 
 pub mod tcpclient_status {

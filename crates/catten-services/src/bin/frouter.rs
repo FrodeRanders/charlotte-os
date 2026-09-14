@@ -960,19 +960,30 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         index += 1;
                         continue;
                     }
-                    Ok(Some(result)) => Some(result.result),
-                    Err(_) => None,
+                    Ok(Some(result)) => Ok(result.result),
+                    Err(_) => Err(()),
                 };
                 let pending = pending_forwards.swap_remove(index);
-                if outcome.is_some_and(|result| result != catten_syscall::IPC_REPLY_ENDPOINT_CLOSED)
-                {
-                    forwarded = forwarded.wrapping_add(1);
-                } else {
-                    dropped = dropped.wrapping_add(1);
-                    if let Some(stale_index) =
-                        routes.iter().position(|route| route.ethertype == pending.route_ethertype)
-                    {
-                        routes.remove(stale_index);
+                match outcome {
+                    Ok(result) if result >= 0 => forwarded = forwarded.wrapping_add(1),
+                    Ok(result) => {
+                        dropped = dropped.wrapping_add(1);
+                        if result == catten_syscall::IPC_REPLY_ENDPOINT_CLOSED
+                            && let Some(stale_index) = routes
+                                .iter()
+                                .position(|route| route.ethertype == pending.route_ethertype)
+                        {
+                            routes.remove(stale_index);
+                        }
+                    }
+                    Err(()) => {
+                        dropped = dropped.wrapping_add(1);
+                        if let Some(stale_index) = routes
+                            .iter()
+                            .position(|route| route.ethertype == pending.route_ethertype)
+                        {
+                            routes.remove(stale_index);
+                        }
                     }
                 }
             }

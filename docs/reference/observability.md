@@ -153,6 +153,19 @@ High-frequency functions may need sampling. Instrumentation overhead must
 itself be benchmarked; collecting every possible measurement would work against
 the system's predictability objective.
 
+The TCP/IP serial heartbeat is the low-cost transport diagnostic used for long
+soak runs. Besides cumulative accepted-frame and socket-client send counters,
+it reports the receive-queue depth and memory-mapping failures as
+`rx_map_err=count:last_status`. A mapping failure rejects that frame to the
+frame router and increments the status-page `RX_MAP_ERRORS`; it is no longer
+reported as successfully accepted. The heartbeat summarizes TCP sockets as
+`l/c/e/x/z`: listening, connecting, established, closing, and closed. It also
+reports UDP sockets, deferred receives as `pending/ready`, and sockets currently
+able to accept a send. The `tx_ok` and `tx_err` fields count `OP_SEND` requests
+made by socket clients; they are not Ethernet frame counters. This distinction
+matters when correlating a live TCP stack with an application that has stopped
+issuing replies.
+
 ## External protocols
 
 Endpoint IPC is the implemented observability protocol. The `httpd` keyhole

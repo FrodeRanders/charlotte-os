@@ -345,6 +345,17 @@ fn test_mmio_map_unmap() {
         "[device] double-mapping an MMIO region must fail"
     );
     device::mmio_unmap(asid, cap).expect("[device] mmio_unmap failed");
+
+    let first_scratch =
+        device::mmio_map_any(asid, cap, true).expect("[device] first scratch MMIO map failed");
+    device::mmio_unmap(asid, cap).expect("[device] first scratch MMIO unmap failed");
+    let reused_scratch =
+        device::mmio_map_any(asid, cap, true).expect("[device] reused scratch MMIO map failed");
+    assert_eq!(
+        reused_scratch, first_scratch,
+        "[device] unmapped MMIO scratch address must be reusable"
+    );
+    device::mmio_unmap(asid, cap).expect("[device] reused scratch MMIO unmap failed");
     device::close_cap(asid, cap).expect("[device] close_cap (real AS) failed");
 
     // Return the stand-in frame and tear down the throwaway address space.

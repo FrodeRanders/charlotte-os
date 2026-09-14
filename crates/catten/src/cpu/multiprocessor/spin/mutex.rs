@@ -19,8 +19,8 @@ pub type Mutex<T> = lock_api::Mutex<MutexCore, T>;
 /// masking maskable interrupts for the complete ownership interval.
 ///
 /// It guards the frame allocator, the address-space table, the kernel address
-/// space, domain-authority and lifecycle state, the scratch-window cursor, and
-/// the global (talc) allocator. The interrupt masking is essential: these
+/// space, domain-authority and lifecycle state, the scratch-window allocator,
+/// and the global (talc) allocator. The interrupt masking is essential: these
 /// locks are taken from both preemptible kernel threads and synchronous EL0
 /// exception paths, so a timer-preempted owner could otherwise be starved by
 /// every other LP spinning for the lock with IRQs masked.
