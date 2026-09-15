@@ -29,6 +29,13 @@ extern "C" fn verify_el0_s3() {
     use crate::cpu::scheduler::yield_lp;
 
     let ns = unsafe { S3_NS.as_ref() }.expect("[s3-test] name service missing");
+    let time_status: *const u8 = {
+        let appliance = crate::service::launch::steady_state()
+            .appliance
+            .expect("[s3-test] network appliance missing from steady state");
+        let base: *mut u8 = appliance.time.status_frame.into();
+        base
+    };
     let ca_der = include_bytes!(env!("CATTEN_S3_TEST_CA_DER"));
     let service = crate::service::launch::launch_s3_profile(
         ns,
@@ -84,7 +91,37 @@ extern "C" fn verify_el0_s3() {
             return;
         }
         if error != 0 {
-            logln!("[s3-test] FAILURE: smoke error={:#x} stage={}", error, stage);
+            let time_state = unsafe {
+                crate::self_test::status_u32(time_status, charlotte_launch::time_status::SYNC_STATE)
+            };
+            let time_failures = unsafe {
+                crate::self_test::status_u32(
+                    time_status,
+                    charlotte_launch::time_status::NTP_FAILURES,
+                )
+            };
+            let time_setup_phase = unsafe {
+                crate::self_test::status_u32(
+                    time_status,
+                    charlotte_launch::time_status::NTP_SETUP_PHASE,
+                )
+            };
+            let time_setup_status = unsafe {
+                crate::self_test::status_u32(
+                    time_status,
+                    charlotte_launch::time_status::NTP_SETUP_STATUS,
+                )
+            };
+            logln!(
+                "[s3-test] FAILURE: smoke error={:#x} stage={} time_state={} ntp_failures={} \
+                 ntp_setup_phase={} ntp_setup_status={:#x}",
+                error,
+                stage,
+                time_state,
+                time_failures,
+                time_setup_phase,
+                time_setup_status
+            );
             crate::self_test::results::fail(crate::self_test::results::TestId::S3);
             return;
         }

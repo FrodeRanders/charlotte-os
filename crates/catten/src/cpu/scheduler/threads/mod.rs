@@ -524,6 +524,18 @@ pub fn statistics_for_asid(asid: AddressSpaceId) -> Vec<ThreadStatisticsSnapshot
         .collect()
 }
 
+/// Return the number of scheduler-table entries currently owned by an address
+/// space. This is intentionally a cheap diagnostic/accounting primitive; it
+/// does not include threads that have already been removed from the table and
+/// are waiting for deferred stack reaping.
+pub fn thread_count_for_asid(asid: AddressSpaceId) -> usize {
+    MASTER_THREAD_TABLE
+        .read()
+        .iter()
+        .filter(|thread| thread.as_ref().is_some_and(|thread| thread.asid == asid))
+        .count()
+}
+
 /// Cumulative on-CPU ticks across every thread on this node.
 ///
 /// Retired contributions are retained so callers can derive interval

@@ -31,6 +31,10 @@
 //! - `vips`: optional canonical table of cluster-service IPv4/TCP identities accepted by every
 //!   backend. The frame router independently restricts ARP advertisement and distributes each
 //!   service's flows from its committed placement/readiness projection.
+//! - `sockslot`: bounded SocketSet capacity (default 64, policy ceiling 1024), clamped to the tcpip
+//!   domain's heap at startup. One slot is reserved for DHCP while address acquisition is active.
+//! - `sockquot`: maximum number of sockets owned by one authenticated domain (default 16).
+//! - `bufquot`: maximum TCP/UDP buffer bytes charged to one authenticated domain (default 512 KiB).
 #![no_std]
 #![no_main]
 
@@ -65,7 +69,7 @@ use catten_services::{
 use catten_syscall::{
     cq_read,
     cq_wait_timeout,
-    ipc_recv,
+    ipc_recv_authenticated,
     ipc_reply,
     ipc_reply_move,
     ipc_status,
@@ -123,6 +127,67 @@ const CLOCK_TIMER_COOKIE: u64 = 0x5443_5049_434c_4b31;
 /// single-page buffer forces the sender to stall mid-stream while the peer
 /// drains it; a larger buffer lets a full report be accepted without blocking.
 const SOCKET_BUF: usize = 16 * 1024;
+const UDP_PACKET_SLOTS: usize = 4;
+const UDP_BUF: usize = 4096;
+/// Leave room in the tcpip heap for smoltcp metadata, request handling, and
+/// ordinary service allocations when deriving socket-table capacity.
+const SOCKET_HEAP_RESERVE_BYTES: usize = 512 * 1024;
+/// Graceful TCP close can remain in FIN-WAIT/TIME-WAIT when a peer has
+/// disappeared.  Do not let such sockets consume a tenant's quota forever:
+/// after this interval the service aborts the protocol state and reclaims the
+/// socket slot and buffers.
+const SOCKET_CLOSE_GRACE_MS: u64 = 5_000;
+
+/// Socket ownership is tied to the authenticated sender identity, not to the
+/// numeric socket id. The address-space id prevents two live instances of the
+/// same artifact principal from sharing sockets; the generation makes an id
+/// recyclable without reviving the previous owner's authority.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct SocketOwner {
+    address_space: u64,
+    generation: u64,
+    principal: u64,
+}
+
+impl SocketOwner {
+    fn from_message(message: &catten_syscall::IpcMessage) -> Self {
+        Self {
+            address_space: message.sender,
+            generation: message.sender_generation,
+            principal: message.sender_principal,
+        }
+    }
+}
+
+fn tcpip_policy_value(ctx: &Context, key: u64, default: usize, maximum: usize) -> usize {
+    match ctx.manifest_value(key) {
+        None => default,
+        Some(ManifestValue::Unsigned(value)) => usize::try_from(value)
+            .ok()
+            .filter(|value| (1..=maximum).contains(value))
+            .unwrap_or_else(|| fail(0xe009)),
+        Some(_) => fail(0xe009),
+    }
+}
+
+fn socket_buffer_bytes(kind: SocketKind) -> usize {
+    match kind {
+        SocketKind::Tcp => SOCKET_BUF * 2,
+        SocketKind::Udp => {
+            UDP_BUF * 2 + UDP_PACKET_SLOTS * core::mem::size_of::<UdpPacketMetadata>() * 2
+        }
+    }
+}
+
+/// Clamp the launch ceiling to the memory granted to this tcpip domain. TCP
+/// is the largest supported socket allocation, so its footprint is the safe
+/// bound for either protocol. Retain enough slots for reserved protocol
+/// sockets; application opens then fail normally if no capacity remains.
+fn resource_socket_capacity(heap_bytes: usize, requested: usize, reserved: usize) -> usize {
+    let heap_slots =
+        heap_bytes.saturating_sub(SOCKET_HEAP_RESERVE_BYTES) / socket_buffer_bytes(SocketKind::Tcp);
+    requested.min(heap_slots.max(reserved.max(1)))
+}
 
 /// Monotonic reactor-tick counter for periodic heartbeat logging.
 static HEARTBEAT_TICKS: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
@@ -130,6 +195,13 @@ static HEARTBEAT_TICKS: core::sync::atomic::AtomicU64 = core::sync::atomic::Atom
 struct SocketEntry {
     handle: smoltcp::iface::SocketHandle,
     kind: SocketKind,
+    owner: SocketOwner,
+    buffer_bytes: usize,
+    /// Set once the client has successfully bound, listened, or connected
+    /// the socket. smoltcp reports a newly allocated but not-yet-configured
+    /// socket as closed, so that state must not be reaped between OP_SOCKET
+    /// and the follow-up operation.
+    activated: bool,
     /// UDP has no connected state in smoltcp. The service remembers the peer
     /// selected by `OP_CONNECT` and filters received datagrams to it.
     udp_remote: Option<IpEndpoint>,
@@ -137,6 +209,10 @@ struct SocketEntry {
     /// Set by `OP_CLOSE`: the socket was gracefully closed and may be swept
     /// from the set once it reaches a final state.
     closing: bool,
+    /// Reactor time at which graceful close was requested.  This is used to
+    /// bound how long a peer that never completes the FIN handshake can hold
+    /// the owner's socket quota.
+    close_started_ms: Option<u64>,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -219,6 +295,28 @@ impl TcpipState {
             port + 1
         };
         port
+    }
+
+    fn owner_socket_count(&self, owner: SocketOwner) -> usize {
+        self.sockets.values().filter(|entry| entry.owner == owner).count()
+    }
+
+    fn owner_buffer_bytes(&self, owner: SocketOwner) -> usize {
+        self.sockets
+            .values()
+            .filter(|entry| entry.owner == owner)
+            .map(|entry| entry.buffer_bytes)
+            .sum()
+    }
+
+    fn owned_entry_mut(&mut self, socket_id: u64, owner: SocketOwner) -> Option<&mut SocketEntry> {
+        let entry = self.sockets.get_mut(&socket_id)?;
+        (entry.owner == owner).then_some(entry)
+    }
+
+    fn owned_entry(&self, socket_id: u64, owner: SocketOwner) -> Option<&SocketEntry> {
+        let entry = self.sockets.get(&socket_id)?;
+        (entry.owner == owner).then_some(entry)
     }
 }
 
@@ -462,7 +560,45 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             iface.routes_mut().add_default_ipv4_route(gw).ok();
         }
     }
-    let mut sock_storage: [_; 16] = Default::default();
+    let requested_socket_slots = tcpip_policy_value(
+        ctx,
+        charlotte_launch::tcpip_config::SOCKET_SLOTS_KEY,
+        charlotte_launch::tcpip_config::DEFAULT_SOCKET_SLOTS,
+        charlotte_launch::tcpip_config::MAX_SOCKET_SLOTS,
+    );
+    let sockets_per_principal = tcpip_policy_value(
+        ctx,
+        charlotte_launch::tcpip_config::SOCKET_QUOTA_KEY,
+        charlotte_launch::tcpip_config::DEFAULT_SOCKETS_PER_PRINCIPAL,
+        charlotte_launch::tcpip_config::MAX_SOCKETS_PER_PRINCIPAL,
+    );
+    let buffer_bytes_per_principal = tcpip_policy_value(
+        ctx,
+        charlotte_launch::tcpip_config::BUFFER_QUOTA_KEY,
+        charlotte_launch::tcpip_config::DEFAULT_BUFFER_BYTES_PER_PRINCIPAL,
+        charlotte_launch::tcpip_config::MAX_BUFFER_BYTES_PER_PRINCIPAL,
+    );
+    let reserved_slots = usize::from(dhcp);
+    let socket_slots =
+        resource_socket_capacity(ctx.heap_layout().size, requested_socket_slots, reserved_slots);
+    catten_rt::logln!(
+        "[tcpip] socket policy requested_slots={} effective_slots={} per_owner={} buffer_quota={} \
+         KiB heap={} KiB",
+        requested_socket_slots,
+        socket_slots,
+        sockets_per_principal,
+        buffer_bytes_per_principal / 1024,
+        ctx.heap_layout().size / 1024,
+    );
+    if socket_slots < requested_socket_slots {
+        catten_rt::logln!(
+            "[tcpip] socket capacity clamped by heap: requested={} effective={}",
+            requested_socket_slots,
+            socket_slots
+        );
+    }
+    let mut sock_storage: Vec<smoltcp::iface::SocketStorage<'_>> =
+        core::iter::repeat_with(Default::default).take(socket_slots).collect();
     let mut sockets = SocketSet::new(&mut sock_storage[..]);
     let dhcp_handle = if dhcp {
         Some(sockets.add(dhcpv4::Socket::new()))
@@ -481,6 +617,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut rx_last_map_status: u32 = 0;
     let mut tx_ok: u32 = 0;
     let mut tx_err: u32 = 0;
+    let mut quota_rejections: u64 = 0;
     let dhcp_mode: u32 = if dhcp {
         1
     } else {
@@ -620,15 +757,58 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         }
 
         // Sweep sockets that have fully closed (graceful close finished) so
-        // their handles are recycled.
+        // their handles are recycled. A peer may never complete the FIN
+        // handshake, or the owner's best-effort OP_CLOSE may be lost when the
+        // request queue is full. Track terminal TCP states as well and
+        // force-abort them after a bounded interval. This keeps reconnect
+        // churn from exhausting a principal's quota with unusable sockets.
         let mut closing: [u64; 8] = [0; 8];
         let mut closing_n: usize = 0;
-        for (id, entry) in state.sockets.iter() {
+        for (id, entry) in state.sockets.iter_mut() {
+            let (is_open, tcp_terminal) = match entry.kind {
+                SocketKind::Tcp => {
+                    let socket = sockets.get::<TcpSocket>(entry.handle);
+                    (
+                        socket.is_open(),
+                        matches!(
+                            socket.state(),
+                            TcpState::FinWait1
+                                | TcpState::FinWait2
+                                | TcpState::CloseWait
+                                | TcpState::Closing
+                                | TcpState::LastAck
+                                | TcpState::TimeWait
+                        ),
+                    )
+                }
+                SocketKind::Udp => (sockets.get::<UdpSocket>(entry.handle).is_open(), false),
+            };
+            if entry.activated && tcp_terminal && entry.close_started_ms.is_none() {
+                // The peer may have initiated the close, leaving no client
+                // OP_CLOSE request for us to observe.
+                entry.close_started_ms = Some(ticks);
+            }
+            if entry
+                .close_started_ms
+                .is_some_and(|started| ticks.saturating_sub(started) >= SOCKET_CLOSE_GRACE_MS)
+                && is_open
+            {
+                match entry.kind {
+                    SocketKind::Tcp => sockets.get_mut::<TcpSocket>(entry.handle).abort(),
+                    SocketKind::Udp => sockets.get_mut::<UdpSocket>(entry.handle).close(),
+                }
+            }
+            // A freshly opened socket is also reported as closed by smoltcp
+            // until the client binds/listens/connects it.  Do not reap such
+            // an entry between OP_SOCKET and the follow-up operation. An
+            // activated socket is eligible once smoltcp has reached a terminal
+            // state, and an explicit OP_CLOSE makes even an unactivated socket
+            // eligible.
             let closed = match entry.kind {
                 SocketKind::Tcp => !sockets.get::<TcpSocket>(entry.handle).is_open(),
                 SocketKind::Udp => !sockets.get::<UdpSocket>(entry.handle).is_open(),
             };
-            if entry.closing && closed && closing_n < 8 {
+            if (entry.closing || entry.activated) && closed && closing_n < 8 {
                 closing[closing_n] = *id;
                 closing_n += 1;
             }
@@ -711,7 +891,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         }
 
         loop {
-            let msg = ipc_recv(endpoint.as_raw());
+            let msg = ipc_recv_authenticated(endpoint.as_raw());
             let _attachments = catten_services::RequestAttachments::new(msg.memory, msg.connection);
             if msg.status == ipc_status::NO_MESSAGE {
                 break;
@@ -730,6 +910,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 continue;
             }
 
+            let owner = SocketOwner::from_message(&msg);
             match msg.opcode {
                 socket::OP_SOCKET => {
                     if msg.memory != 0 {
@@ -739,24 +920,59 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         ipc_reply(msg.reply, socket::ERR_BAD_DOMAIN);
                         continue;
                     }
-                    if state.sockets.len() >= socket::MAX_SOCKETS {
+                    let kind = if msg.arg0 == socket::DOMAIN_TCP {
+                        SocketKind::Tcp
+                    } else {
+                        SocketKind::Udp
+                    };
+                    let application_capacity = socket_slots.saturating_sub(reserved_slots);
+                    let buffer_bytes = socket_buffer_bytes(kind);
+                    if state.sockets.len() >= application_capacity {
+                        catten_rt::logln!(
+                            "[tcpip] socket admission rejected: total={} capacity={} owner={:?}",
+                            state.sockets.len(),
+                            application_capacity,
+                            owner
+                        );
                         ipc_reply(msg.reply, socket::ERR_TOO_MANY_SOCKETS);
                         continue;
                     }
-                    let (handle, kind) = if msg.arg0 == socket::DOMAIN_TCP {
+                    let owner_sockets = state.owner_socket_count(owner);
+                    let owner_buffers = state.owner_buffer_bytes(owner);
+                    if owner_sockets >= sockets_per_principal
+                        || owner_buffers.saturating_add(buffer_bytes) > buffer_bytes_per_principal
+                    {
+                        quota_rejections = quota_rejections.saturating_add(1);
+                        if quota_rejections <= 3 || quota_rejections.is_power_of_two() {
+                            catten_rt::logln!(
+                                "[tcpip] socket admission rejected (count={}): \
+                                 owner_sockets={}/{} owner_buffers={}/{} total={} owner={:?}",
+                                quota_rejections,
+                                owner_sockets,
+                                sockets_per_principal,
+                                owner_buffers,
+                                buffer_bytes_per_principal,
+                                state.sockets.len(),
+                                owner
+                            );
+                        }
+                        ipc_reply(msg.reply, socket::ERR_QUOTA_EXCEEDED);
+                        continue;
+                    }
+                    let handle = if kind == SocketKind::Tcp {
                         let rx = TcpSocketBuffer::new(vec![0u8; SOCKET_BUF]);
                         let tx = TcpSocketBuffer::new(vec![0u8; SOCKET_BUF]);
-                        (sockets.add(TcpSocket::new(rx, tx)), SocketKind::Tcp)
+                        sockets.add(TcpSocket::new(rx, tx))
                     } else {
                         let rx = UdpPacketBuffer::new(
-                            vec![UdpPacketMetadata::EMPTY; 4],
-                            vec![0u8; 4096],
+                            vec![UdpPacketMetadata::EMPTY; UDP_PACKET_SLOTS],
+                            vec![0u8; UDP_BUF],
                         );
                         let tx = UdpPacketBuffer::new(
-                            vec![UdpPacketMetadata::EMPTY; 4],
-                            vec![0u8; 4096],
+                            vec![UdpPacketMetadata::EMPTY; UDP_PACKET_SLOTS],
+                            vec![0u8; UDP_BUF],
                         );
-                        (sockets.add(UdpSocket::new(rx, tx)), SocketKind::Udp)
+                        sockets.add(UdpSocket::new(rx, tx))
                     };
                     let id = state.alloc_sock_id();
                     state.sockets.insert(
@@ -764,9 +980,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         SocketEntry {
                             handle,
                             kind,
+                            owner,
+                            buffer_bytes,
+                            activated: false,
                             udp_remote: None,
                             recv_pending: None,
                             closing: false,
+                            close_started_ms: None,
                         },
                     );
                     config::write::<u32>(status::SOCKETS, state.sockets.len() as u32);
@@ -803,7 +1023,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     let remote =
                         IpEndpoint::new(IpAddress::Ipv4(Ipv4Address::new(a, b, c, d)), port);
                     let local_port = state.alloc_ephemeral_port();
-                    let entry = match state.sockets.get_mut(&msg.arg0) {
+                    let entry = match state.owned_entry_mut(msg.arg0, owner) {
                         Some(e) => e,
                         None => {
                             ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
@@ -829,6 +1049,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         }
                     };
                     if connected {
+                        entry.activated = true;
                         ipc_reply(msg.reply, 0);
                     } else {
                         ipc_reply(msg.reply, socket::ERR_CONNECTION_REFUSED);
@@ -836,7 +1057,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 socket::OP_BIND => {
-                    let entry = match state.sockets.get_mut(&msg.arg0) {
+                    let entry = match state.owned_entry_mut(msg.arg0, owner) {
                         Some(e) => e,
                         None => {
                             if msg.memory != 0 {
@@ -865,6 +1086,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         }
                     };
                     if bound {
+                        entry.activated = true;
                         ipc_reply(msg.reply, 0);
                     } else {
                         ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
@@ -872,7 +1094,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 socket::OP_BIND_IPV4 => {
-                    let entry = match state.sockets.get_mut(&msg.arg0) {
+                    let entry = match state.owned_entry_mut(msg.arg0, owner) {
                         Some(entry) => entry,
                         None => {
                             if msg.memory != 0 {
@@ -899,6 +1121,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             sockets.get_mut::<UdpSocket>(entry.handle).bind(listen).is_ok()
                         }
                     };
+                    if bound {
+                        entry.activated = true;
+                    }
                     ipc_reply(
                         msg.reply,
                         if bound {
@@ -910,7 +1135,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 socket::OP_LISTEN => {
-                    let entry = match state.sockets.get_mut(&msg.arg0) {
+                    let entry = match state.owned_entry_mut(msg.arg0, owner) {
                         Some(e) => e,
                         None => {
                             if msg.memory != 0 {
@@ -939,13 +1164,16 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     };
                     let sock = sockets.get_mut::<TcpSocket>(entry.handle);
                     match sock.listen(listen) {
-                        Ok(()) => ipc_reply(msg.reply, 0),
+                        Ok(()) => {
+                            entry.activated = true;
+                            ipc_reply(msg.reply, 0)
+                        }
                         Err(_) => ipc_reply(msg.reply, socket::ERR_BAD_SOCKET),
                     };
                 }
 
                 socket::OP_LISTEN_IPV4 => {
-                    let entry = match state.sockets.get_mut(&msg.arg0) {
+                    let entry = match state.owned_entry_mut(msg.arg0, owner) {
                         Some(entry) if entry.kind == SocketKind::Tcp => entry,
                         _ => {
                             if msg.memory != 0 {
@@ -968,6 +1196,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         .get_mut::<TcpSocket>(entry.handle)
                         .listen(listen)
                         .map_or(socket::ERR_BAD_SOCKET, |()| 0);
+                    if result == 0 {
+                        entry.activated = true;
+                    }
                     ipc_reply(msg.reply, result);
                 }
 
@@ -975,7 +1206,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     if msg.memory != 0 {
                         memory_close(msg.memory);
                     }
-                    let entry = match state.sockets.get_mut(&msg.arg0) {
+                    let entry = match state.owned_entry_mut(msg.arg0, owner) {
                         Some(e) => e,
                         None => {
                             ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
@@ -1004,7 +1235,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     // length (high 32 bits); the memory object is one page.
                     let sock_id = (msg.arg0 & 0xffff_ffff) as u64;
                     let payload_len = (msg.arg0 >> 32) as usize;
-                    let entry = match state.sockets.get_mut(&sock_id) {
+                    let entry = match state.owned_entry_mut(sock_id, owner) {
                         Some(e) => e,
                         None => {
                             if msg.memory != 0 {
@@ -1065,7 +1296,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     if msg.memory != 0 {
                         memory_close(msg.memory);
                     }
-                    let entry = match state.sockets.get_mut(&msg.arg0) {
+                    let entry = match state.owned_entry_mut(msg.arg0, owner) {
                         Some(e) => e,
                         None => {
                             ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
@@ -1083,7 +1314,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     if msg.memory != 0 {
                         memory_close(msg.memory);
                     }
-                    let entry = match state.sockets.get_mut(&msg.arg0) {
+                    let entry = match state.owned_entry_mut(msg.arg0, owner) {
                         Some(entry) => entry,
                         None => {
                             ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
@@ -1103,18 +1334,21 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     // Graceful close: transition to FIN-WAIT so queued
                     // transmit data (e.g. an httpd response) drains before the
                     // FIN; the reactor sweeps the socket once fully closed.
-                    if let Some(entry) = state.sockets.get_mut(&msg.arg0) {
-                        if let Some(token) = entry.recv_pending.take() {
-                            ipc_reply(token, 0);
+                    let Some(entry) = state.owned_entry_mut(msg.arg0, owner) else {
+                        ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
+                        continue;
+                    };
+                    if let Some(token) = entry.recv_pending.take() {
+                        ipc_reply(token, 0);
+                    }
+                    entry.closing = true;
+                    entry.close_started_ms = Some(ticks);
+                    match entry.kind {
+                        SocketKind::Tcp => {
+                            sockets.get_mut::<TcpSocket>(entry.handle).close();
                         }
-                        entry.closing = true;
-                        match entry.kind {
-                            SocketKind::Tcp => {
-                                sockets.get_mut::<TcpSocket>(entry.handle).close();
-                            }
-                            SocketKind::Udp => {
-                                sockets.get_mut::<UdpSocket>(entry.handle).close();
-                            }
+                        SocketKind::Udp => {
+                            sockets.get_mut::<UdpSocket>(entry.handle).close();
                         }
                     }
                     config::write::<u32>(status::SOCKETS, state.sockets.len() as u32);
@@ -1180,6 +1414,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         dhcp_mode,
                         gateway_ip,
                         mtu as u32,
+                        socket_slots as u32,
+                        sockets_per_principal as u32,
+                        buffer_bytes_per_principal as u32,
+                        requested_socket_slots as u32,
                     ];
                     unsafe {
                         core::ptr::copy_nonoverlapping(
@@ -1196,7 +1434,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     if msg.memory != 0 {
                         memory_close(msg.memory);
                     }
-                    let Some(entry) = state.sockets.get(&msg.arg0) else {
+                    let Some(entry) = state.owned_entry(msg.arg0, owner) else {
                         ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
                         continue;
                     };

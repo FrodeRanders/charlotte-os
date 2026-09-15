@@ -194,7 +194,9 @@ between consecutive requests, and per-counter `*_delta`/`*_rate` fields for
 `tcpip` and `frouter` — all with integer arithmetic, no floating point and no
 dependency on a real-time clock. Services publish richer diagnostics through
 the protocol as well: `socket::OP_STATUS` carries send errors, DHCP mode,
-gateway, and MTU; `relmsg::OP_DIAG` and `disco::OP_DIAG` move a page of live
+gateway, MTU, total SocketSet capacity, and the per-domain socket and buffer
+quotas (including the requested ceiling and heap-clamped effective capacity);
+`relmsg::OP_DIAG` and `disco::OP_DIAG` move a page of live
 transport/probe counters (peers, retransmits, send failures, received,
 in-flight, decoded frames); `disco::OP_LIST_PEERS` supplies the peer table;
 and `dns` also serves `raft::OP_CLUSTER_STATUS` for commit index, member

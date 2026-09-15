@@ -84,6 +84,31 @@ pub struct ClusterTcpService {
     pub backend_name: Option<&'static [u8]>,
 }
 
+/// Launch policy for the shared TCP/IP service.
+///
+/// The policy is deliberately attached to the service launch rather than
+/// exposed through the socket protocol. Applications can consume their
+/// authenticated socket capability, but cannot enlarge the shared stack or
+/// another domain's budget. Values are checked against the platform bounds by
+/// the TCP/IP service before it allocates its SocketSet.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct TcpipSocketPolicy {
+    pub socket_slots: usize,
+    pub sockets_per_principal: usize,
+    pub buffer_bytes_per_principal: usize,
+}
+
+impl Default for TcpipSocketPolicy {
+    fn default() -> Self {
+        Self {
+            socket_slots: charlotte_launch::tcpip_config::DEFAULT_SOCKET_SLOTS,
+            sockets_per_principal: charlotte_launch::tcpip_config::DEFAULT_SOCKETS_PER_PRINCIPAL,
+            buffer_bytes_per_principal:
+                charlotte_launch::tcpip_config::DEFAULT_BUFFER_BYTES_PER_PRINCIPAL,
+        }
+    }
+}
+
 fn parse_cluster_tcp_service(value: &'static str) -> Option<ClusterTcpService> {
     let (backend_name, endpoint) = value
         .split_once('=')
@@ -594,7 +619,13 @@ pub fn launch_node_cluster_with_trust_and_services(
 
 /// Spawn `tcpip` in DHCP mode, the NTP-backed time service, and `httpd`.
 pub fn launch_network_appliance(ns: &NameServiceHandle, persist_time: bool) -> NetworkAppliance {
-    launch_network_appliance_with_services_mode(ns, persist_time, &[], true)
+    launch_network_appliance_with_services_mode(
+        ns,
+        persist_time,
+        &[],
+        true,
+        TcpipSocketPolicy::default(),
+    )
 }
 
 /// Spawn the IP/application-facing network services with optional local VIP
@@ -604,7 +635,13 @@ pub fn launch_network_appliance_with_service(
     persist_time: bool,
     service: Option<ClusterTcpService>,
 ) -> NetworkAppliance {
-    launch_network_appliance_with_services_mode(ns, persist_time, service.as_slice(), true)
+    launch_network_appliance_with_services_mode(
+        ns,
+        persist_time,
+        service.as_slice(),
+        true,
+        TcpipSocketPolicy::default(),
+    )
 }
 
 pub fn launch_network_appliance_with_services(
@@ -612,7 +649,26 @@ pub fn launch_network_appliance_with_services(
     persist_time: bool,
     services: &[ClusterTcpService],
 ) -> NetworkAppliance {
-    launch_network_appliance_with_services_mode(ns, persist_time, services, true)
+    launch_network_appliance_with_services_mode(
+        ns,
+        persist_time,
+        services,
+        true,
+        TcpipSocketPolicy::default(),
+    )
+}
+
+/// Spawn the IP/application-facing network services with an explicit TCP/IP
+/// capacity and per-principal quota policy. This is a launch-authorized
+/// setting; callers must use values within the bounds in
+/// [`charlotte_launch::tcpip_config`].
+pub fn launch_network_appliance_with_policy(
+    ns: &NameServiceHandle,
+    persist_time: bool,
+    services: &[ClusterTcpService],
+    policy: TcpipSocketPolicy,
+) -> NetworkAppliance {
+    launch_network_appliance_with_services_mode(ns, persist_time, services, true, policy)
 }
 
 fn launch_network_appliance_with_services_mode(
@@ -620,33 +676,60 @@ fn launch_network_appliance_with_services_mode(
     persist_time: bool,
     services: &[ClusterTcpService],
     dhcp: bool,
+    socket_policy: TcpipSocketPolicy,
 ) -> NetworkAppliance {
     const DHCP_KEY: u64 = charlotte_launch::manifest_key(b"dhcp");
     const INGRESS_SERVICES_KEY: u64 = charlotte_launch::manifest_key(b"vips");
     let encoded_services = encode_cluster_tcp_services(services);
-    let dhcp_entry = ManifestEntry {
-        key: DHCP_KEY,
-        flags: 0,
-        value: ManifestValue::Bytes(b"1"),
-    };
-    let ingress_entry = ManifestEntry {
-        key: INGRESS_SERVICES_KEY,
-        flags: 0,
-        value: ManifestValue::Bytes(&encoded_services),
-    };
-    let ingress_entries = [ingress_entry];
-    let dhcp_ingress_entries = [dhcp_entry, ingress_entry];
-    let manifest: &[ManifestEntry<'_>] = match (dhcp, !services.is_empty()) {
-        (true, true) => &dhcp_ingress_entries,
-        (true, false) => core::slice::from_ref(&dhcp_entry),
-        (false, true) => &ingress_entries,
-        (false, false) => &[],
-    };
+    let mut manifest = [
+        ManifestEntry {
+            key: charlotte_launch::tcpip_config::SOCKET_SLOTS_KEY,
+            flags: 0,
+            value: ManifestValue::Unsigned(socket_policy.socket_slots as u64),
+        },
+        ManifestEntry {
+            key: charlotte_launch::tcpip_config::SOCKET_QUOTA_KEY,
+            flags: 0,
+            value: ManifestValue::Unsigned(socket_policy.sockets_per_principal as u64),
+        },
+        ManifestEntry {
+            key: charlotte_launch::tcpip_config::BUFFER_QUOTA_KEY,
+            flags: 0,
+            value: ManifestValue::Unsigned(socket_policy.buffer_bytes_per_principal as u64),
+        },
+        ManifestEntry {
+            key: 0,
+            flags: 0,
+            value: ManifestValue::Unsigned(0),
+        },
+        ManifestEntry {
+            key: 0,
+            flags: 0,
+            value: ManifestValue::Unsigned(0),
+        },
+    ];
+    let mut manifest_len = 3;
+    if dhcp {
+        manifest[manifest_len] = ManifestEntry {
+            key: DHCP_KEY,
+            flags: 0,
+            value: ManifestValue::Bytes(b"1"),
+        };
+        manifest_len += 1;
+    }
+    if !services.is_empty() {
+        manifest[manifest_len] = ManifestEntry {
+            key: INGRESS_SERVICES_KEY,
+            flags: 0,
+            value: ManifestValue::Bytes(&encoded_services),
+        };
+        manifest_len += 1;
+    }
     let tcpip = crate::service::supervisor::spawn_with_manifest(
         crate::service::store::service_elf(b"tcpip").expect("[launch] tcpip.elf"),
         ns,
         ConnectionRights::CALL,
-        manifest,
+        &manifest[..manifest_len],
     );
     let httpd = crate::service::supervisor::spawn_with_manifest(
         crate::service::store::service_elf(b"httpd").expect("[launch] httpd.elf"),
@@ -965,6 +1048,7 @@ pub extern "C" fn launch_steady_state() {
                 storage.is_some(),
                 &cluster_services,
                 option_env!("CATTEN_CLUSTER_STATIC_NETWORK") != Some("1"),
+                TcpipSocketPolicy::default(),
             )),
         ),
         None => (None, None),

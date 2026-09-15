@@ -61,6 +61,12 @@ The time service emits a heartbeat every 60 seconds with synchronization,
 sample, active-NTP, and persistence state so a long-running test can distinguish
 a quiet healthy service from a stalled control loop.
 
+The status page also records the last NTP setup phase and scalar status. Phases
+1--4 cover UDP-socket and address-memory preparation, 5--6 cover UDP connect,
+7--9 cover packet-memory preparation, and 10--11 cover packet submission. A
+zero phase means the most recent attempt was set up successfully; the status
+value is `u32::MAX` when setup failed before a service result was returned.
+
 The steady-state launch manifest currently selects Cloudflare's documented
 anycast NTP address `162.159.200.1`. `ntp_ip` can override it with four raw
 IPv4 bytes. When local storage exists, the `persist` manifest flag enables the

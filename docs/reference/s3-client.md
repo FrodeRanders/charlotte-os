@@ -170,6 +170,12 @@ client API applications use:
 scripts/run-aarch64.sh --s3-test --timeout 240
 ```
 
+If the smoke test stops at stage 1, it has not reached TLS yet: stage 1 is the
+initial PUT setup, which requires synchronized UTC for SigV4. Inspect the time
+service heartbeat and its NTP setup phase before investigating certificates or
+RustFS. The smoke verifier includes the time state, NTP failure count, and last
+setup result in its failure diagnostic.
+
 Docker, Docker Compose, and OpenSSL are required. The fixture binds only to
 host port `19000`; QEMU's user-network gateway is `10.0.2.2`, while TLS and
 SigV4 use the certificate name `rustfs.test`. The runner removes the container

@@ -235,6 +235,18 @@ that compatibility floor. Demand commitment, rather than a guessed smaller
 virtual limit, supplies the physical-memory saving. A signed per-deployment
 heap limit would still need a descriptor field.
 
+The same launch-time capacity is now used by the shared TCP/IP service. Its
+manifest may request up to 1024 socket slots, but the service derives an
+effective ceiling from the heap size in its launch header, reserving room for
+smoltcp metadata and normal request handling. Thus a default 4 MiB tcpip domain
+keeps the conservative 64-slot setting, while a later generation granted a
+larger heap can safely admit more server sockets without changing the protocol
+or rebuilding the kernel. The status page and HTTP keyhole expose both the
+requested ceiling and the effective, heap-clamped capacity. The current virtual
+layout limits that growth to roughly 140 TCP-sized slots; reaching a true
+1024-socket TCP service requires moving the heap/CQ layout or moving buffers
+out of the domain heap.
+
 The VA layout caps any single heap at roughly 4.9 MiB. Growing beyond that, or
 giving each shard its own arena, is a layout decision; the shard-local study
 below frames it.

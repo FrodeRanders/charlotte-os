@@ -124,7 +124,42 @@ state aggregated across the node:
 - `ns` — the node-local name-service registry: registered-service catalog
   and pending lookups (`ns::OP_STATUS`, via the bootstrap connection)
 - `tcpip` — ip, rx/tx frames, open sockets, send errors, DHCP mode, gateway,
-  MTU (`socket::OP_STATUS`)
+  MTU, SocketSet capacity, per-domain socket quota, and per-domain buffer
+  quota (`socket::OP_STATUS`)
+
+### Socket capacity and ownership
+
+The TCP/IP service allocates its smoltcp `SocketSet` once at startup. Its
+launch manifest accepts the bounded `sockslot`, `sockquot`, and `bufquot`
+values (64 slots, 16 sockets per domain, and 512 KiB per-domain buffers by
+default; the policy ceilings are 1024, 1024, and 32 MiB respectively). The
+effective socket capacity is clamped to the tcpip domain's heap, so a normal
+4 MiB domain remains at 64 slots while a larger launch budget can support more.
+With the current virtual layout that resource-derived ceiling is roughly 140
+TCP-sized slots; 1024 concurrent TCP sockets needs a larger heap window or a
+shared/out-of-heap buffer design.
+A DHCP
+socket consumes one of the slots, so the service derives the application
+capacity from the actual storage after reserving that socket.
+Kernel launch code may select another bounded policy with
+`launch_network_appliance_with_policy`; ordinary boots use the defaults.
+
+Socket requests are received through the authenticated IPC envelope. Every
+socket is tagged with the sender address-space, generation, and artifact
+principal; operations from another domain are rejected as an invalid socket.
+Socket and buffer budgets are accounted against that identity, preventing one
+application from exhausting the shared network service. This is a service-side
+quota: the physical pages are still owned by the tcpip domain, and kernel-level
+cross-domain memory charging is a later accounting refinement. The status
+snapshot also reports the configured capacity and quotas. Domain-death
+reclamation is kept as an explicit lifecycle integration point; generation
+checks prevent stale access while that notification path is developed. A
+graceful close is reclaimed as soon as smoltcp reaches a terminal state; if a
+peer leaves the connection in FIN-WAIT/TIME-WAIT, tcpip force-aborts it after a
+bounded five-second grace period. This prevents reconnect churn from pinning a
+tenant's quota indefinitely. Applications should still close sockets promptly,
+and callers retrying admission receive bounded backoff rather than an
+unbounded error stream.
 - `frouter` — rx/forwarded/dropped/unknown/routes (`frouter::OP_STATUS`)
 - `dns` — Raft state/term plus the replicated `name -> node` cluster catalog
   (`dns::OP_STATUS` + `dns::OP_CATALOG`), plus the cluster posture

@@ -892,7 +892,20 @@ fn sys_spawn_thread(frame: &mut TrapFrame) {
     let generation = thread.generation;
     let tid = match publish_thread(thread) {
         Ok(tid) => tid,
-        Err(_) => crate::cpu::scheduler::abort_address_space(asid),
+        Err(error) => {
+            let table_threads = crate::cpu::scheduler::threads::thread_count_for_asid(asid);
+            let max_threads = crate::memory::current_address_space_handle(asid)
+                .map(|_| crate::memory::domain_limits(asid).max_threads);
+            crate::early_logln!(
+                "SPAWN_THREAD: address space {} rejected new thread: {:?} table_threads={} \
+                 max_threads={:?}",
+                asid,
+                error,
+                table_threads,
+                max_threads
+            );
+            crate::cpu::scheduler::abort_address_space(asid)
+        }
     };
     SYSTEM_SCHEDULER.read().submit_to_lp(tid, target_lp).unwrap_or_else(|_| {
         let lpc = crate::cpu::multiprocessor::get_lp_count();

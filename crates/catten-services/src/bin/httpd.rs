@@ -1116,6 +1116,14 @@ fn build_json(
     let dhcp_mode = status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_DHCP_MODE as usize]);
     let gateway = status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_GATEWAY as usize]);
     let mtu = status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_MTU as usize]);
+    let socket_capacity =
+        status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_SOCKET_CAPACITY as usize]);
+    let socket_quota =
+        status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_SOCKET_QUOTA as usize]);
+    let buffer_quota =
+        status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_BUFFER_QUOTA as usize]);
+    let socket_ceiling =
+        status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_SOCKET_CEILING as usize]);
 
     let rx_delta = if prev.initialized {
         rx.saturating_sub(prev.rx_frames)
@@ -1172,10 +1180,7 @@ fn build_json(
     );
     let _ = write!(
         &mut s,
-        "\"tcpip\":{{\"ip\":\"{}.{}.{}.{}\",\"rx_frames\":{},\"tx_sends\":{},\"sockets\":{},\"\
-         listen_port\":{},\"tx_send_errors\":{},\"dhcp\":{},\"gateway\":\"{}.{}.{}.{}\",\"mtu\":\
-         {},\"rx_frames_delta\":{},\"tx_sends_delta\":{},\"rx_frames_rate\":{},\"tx_sends_rate\":\
-         {}}},",
+        r#""tcpip":{{"ip":"{}.{}.{}.{}","rx_frames":{},"tx_sends":{},"sockets":{},"listen_port":{},"tx_send_errors":{},"dhcp":{},"gateway":"{}.{}.{}.{}","mtu":{},"socket_capacity":{},"socket_ceiling":{},"socket_quota":{},"buffer_quota_bytes":{},"rx_frames_delta":{},"tx_sends_delta":{},"rx_frames_rate":{},"tx_sends_rate":{}}},"#,
         (ip >> 24) & 0xff,
         (ip >> 16) & 0xff,
         (ip >> 8) & 0xff,
@@ -1191,6 +1196,10 @@ fn build_json(
         (gateway >> 8) & 0xff,
         gateway & 0xff,
         mtu,
+        socket_capacity,
+        socket_ceiling,
+        socket_quota,
+        buffer_quota,
         rx_delta,
         tx_delta,
         rate(rx_delta, interval_ms),

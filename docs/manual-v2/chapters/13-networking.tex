@@ -225,6 +225,35 @@ socket-API protocol (\texttt{OP\_SOCKET}, \texttt{OP\_CONNECT},
 \texttt{OP\_RECV}, \texttt{OP\_CLOSE}). Legacy software that requires TCP/IP
 connects to this service.
 
+The service allocates its smoltcp socket table once at launch. Its launch
+manifest supplies bounded \texttt{sockslot}, \texttt{sockquot}, and
+\texttt{bufquot} policy values; the defaults are 64 total slots, 16 sockets per
+authenticated domain, and 512~KiB of TCP/UDP buffers per domain (policy
+ceilings are 1024, 1024, and 32~MiB). The effective socket capacity is clamped
+to the heap granted to the TCP/IP domain, so a normal 4~MiB domain remains at
+64 slots while a larger launch budget can support more. The current virtual
+layout yields roughly 140 TCP-sized slots at its maximum heap window; reaching
+1024 concurrent TCP sockets requires moving that window or using shared
+buffers outside the domain heap. DHCP consumes
+one table slot, so application capacity is derived from the actual table rather
+than from a second hard-coded limit. Every request is received through the
+authenticated IPC envelope, and each socket is owned by the sender's
+address-space generation and artifact principal. Other domains cannot operate
+the socket, and their socket and buffer allocations cannot exhaust a neighbour's
+quota. These are service-side quotas; the backing pages remain part of the
+TCP/IP domain's memory accounting until the socket is released. The status
+snapshot exposes the configured capacity and quotas. Reclaim on domain death
+remains an explicit lifecycle integration point; generation checks prevent
+stale access while that notification path is completed.
+Graceful closes are reclaimed when smoltcp reaches a terminal state; a peer
+that leaves a connection in FIN-WAIT/TIME-WAIT is force-aborted after a bounded
+five-second grace period. This keeps reconnect churn from pinning a domain's
+quota indefinitely. Admission retries use bounded backoff and rate-limited
+diagnostics so temporary pressure does not flood the service log.
+Kernel launch code can select a different bounded policy through
+	exttt{launch_network_appliance_with_policy}; ordinary boots use these
+defaults.
+
 The architecture runners attach a NIC by default. Hardware discovery starts
 the driver and frame router, followed by discovery, cluster services, and the
 DHCP-configured TCP/IP service. The \texttt{--no-network} runner option is the

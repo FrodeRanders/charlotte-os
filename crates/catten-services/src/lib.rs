@@ -752,7 +752,9 @@ pub mod block {
 /// from the name service and calls socket operations on the returned
 /// connection capability. TCP and connected UDP sockets share the same
 /// operations. Data payloads use memory-object transfer (`Move` for send,
-/// `Move` on reply for recv).
+/// `Move` on reply for recv). The service authenticates the sender envelope,
+/// binds each socket to that sender generation/principal, and enforces the
+/// launch-configured per-principal socket and buffer quotas.
 pub mod socket {
     use catten_rt::owned::{
         CallResult,
@@ -821,9 +823,19 @@ pub mod socket {
     pub const STATUS_OFFSET_GATEWAY: u32 = 7;
     /// Interface MTU in bytes.
     pub const STATUS_OFFSET_MTU: u32 = 8;
-    pub const STATUS_WORDS: usize = 9;
+    /// Effective SocketSet slots after heap-based resource clamping, including
+    /// the reserved DHCP slot when active.
+    pub const STATUS_OFFSET_SOCKET_CAPACITY: u32 = 9;
+    /// Per-principal socket quota from the launch policy.
+    pub const STATUS_OFFSET_SOCKET_QUOTA: u32 = 10;
+    /// Per-principal buffer quota in bytes from the launch policy.
+    pub const STATUS_OFFSET_BUFFER_QUOTA: u32 = 11;
+    /// Requested socket-table ceiling before heap-based clamping.
+    pub const STATUS_OFFSET_SOCKET_CEILING: u32 = 12;
+    pub const STATUS_WORDS: usize = 13;
     pub const STATUS_MAGIC: u32 = 0x5443_5053;
 
+    /// Shared SocketSet capacity (after reserving DHCP, when enabled) is full.
     pub const ERR_TOO_MANY_SOCKETS: i64 = -1;
     pub const ERR_BAD_SOCKET: i64 = -2;
     pub const ERR_CONNECTION_REFUSED: i64 = -3;
@@ -831,10 +843,15 @@ pub mod socket {
     pub const ERR_WOULD_BLOCK: i64 = -5;
     pub const ERR_BAD_DOMAIN: i64 = -6;
     pub const ERR_BAD_OPCODE: i64 = -7;
+    /// The caller's per-principal socket or buffer budget is exhausted.
+    pub const ERR_QUOTA_EXCEEDED: i64 = -8;
 
     pub const DOMAIN_TCP: u64 = 1;
     pub const DOMAIN_UDP: u64 = 2;
 
+    /// Legacy source-compatibility value. Socket capacity is now selected by
+    /// the authenticated launch policy and this value is not enforced.
+    #[deprecated(note = "socket capacity is configured by the tcpip launch policy")]
     pub const MAX_SOCKETS: usize = 16;
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]

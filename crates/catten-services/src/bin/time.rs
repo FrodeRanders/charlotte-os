@@ -263,6 +263,23 @@ struct NtpSample {
     leap_indicator: u8,
 }
 
+const NTP_SETUP_SOCKET: u32 = 1;
+const NTP_SETUP_ADDRESS_MEMORY: u32 = 2;
+const NTP_SETUP_ADDRESS_MAP: u32 = 3;
+const NTP_SETUP_ADDRESS_UNMAP: u32 = 4;
+const NTP_SETUP_CONNECT_SUBMIT: u32 = 5;
+const NTP_SETUP_CONNECT_RESULT: u32 = 6;
+const NTP_SETUP_PACKET_MEMORY: u32 = 7;
+const NTP_SETUP_PACKET_MAP: u32 = 8;
+const NTP_SETUP_PACKET_UNMAP: u32 = 9;
+const NTP_SETUP_SEND_SUBMIT: u32 = 10;
+const NTP_SETUP_SEND_RESULT: u32 = 11;
+
+fn ntp_setup_failed(phase: u32, status: u32) {
+    config::write::<u32>(status::NTP_SETUP_PHASE, phase);
+    config::write::<u32>(status::NTP_SETUP_STATUS, status);
+}
+
 fn fail(code: u32) -> ! {
     config::write::<u32>(status::ERROR, code);
     catten_syscall::el0_log(0x454d_4954, code as u64); // "TIME"
@@ -354,30 +371,158 @@ fn start_attempt<'connection>(
     mono: MonoClock,
     model: &mut Option<ClockModel>,
 ) -> Option<Attempt<'connection>> {
-    let socket = socket::OwnedSocket::open(tcp_conn, socket::DOMAIN_UDP).ok()?;
+    let socket = match socket::OwnedSocket::open(tcp_conn, socket::DOMAIN_UDP) {
+        Ok(socket) => socket,
+        Err(error) => {
+            ntp_setup_failed(NTP_SETUP_SOCKET, u32::MAX);
+            catten_rt::logln!("[time] NTP setup phase={} socket={:?}", NTP_SETUP_SOCKET, error);
+            return None;
+        }
+    };
 
-    let address_memory = OwnedMemory::allocate(1).ok()?;
-    let mut address_mapping = address_memory.map_writable().ok()?;
+    let address_memory = match OwnedMemory::allocate(1) {
+        Ok(memory) => memory,
+        Err(error) => {
+            ntp_setup_failed(NTP_SETUP_ADDRESS_MEMORY, u32::MAX);
+            catten_rt::logln!(
+                "[time] NTP setup phase={} address memory={:?}",
+                NTP_SETUP_ADDRESS_MEMORY,
+                error
+            );
+            return None;
+        }
+    };
+    let mut address_mapping = match address_memory.map_writable() {
+        Ok(mapping) => mapping,
+        Err((_, error)) => {
+            ntp_setup_failed(NTP_SETUP_ADDRESS_MAP, u32::MAX);
+            catten_rt::logln!(
+                "[time] NTP setup phase={} address map={:?}",
+                NTP_SETUP_ADDRESS_MAP,
+                error
+            );
+            return None;
+        }
+    };
     address_mapping.as_mut_slice()[..4].copy_from_slice(&server_ipv4);
     address_mapping.as_mut_slice()[4..6].copy_from_slice(&NTP_PORT.to_le_bytes());
-    let address_memory = address_mapping.unmap().ok()?;
-    let connect = tcp_conn.call_move(socket::OP_CONNECT, socket.id(), address_memory).ok()?;
-    if wait_scalar(connect).is_none_or(|(result, _)| result != 0) {
+    let address_memory = match address_mapping.unmap() {
+        Ok(memory) => memory,
+        Err((_, error)) => {
+            ntp_setup_failed(NTP_SETUP_ADDRESS_UNMAP, u32::MAX);
+            catten_rt::logln!(
+                "[time] NTP setup phase={} address unmap={:?}",
+                NTP_SETUP_ADDRESS_UNMAP,
+                error
+            );
+            return None;
+        }
+    };
+    let connect = match tcp_conn.call_move(socket::OP_CONNECT, socket.id(), address_memory) {
+        Ok(call) => call,
+        Err((_, error)) => {
+            ntp_setup_failed(NTP_SETUP_CONNECT_SUBMIT, u32::MAX);
+            catten_rt::logln!(
+                "[time] NTP setup phase={} connect submit={:?}",
+                NTP_SETUP_CONNECT_SUBMIT,
+                error
+            );
+            return None;
+        }
+    };
+    let (connect_result, _) = match wait_scalar(connect) {
+        Some(result) => result,
+        None => {
+            ntp_setup_failed(NTP_SETUP_CONNECT_RESULT, u32::MAX);
+            catten_rt::logln!(
+                "[time] NTP setup phase={} connect wait failed",
+                NTP_SETUP_CONNECT_RESULT
+            );
+            return None;
+        }
+    };
+    if connect_result != 0 {
+        ntp_setup_failed(NTP_SETUP_CONNECT_RESULT, connect_result as u32);
+        catten_rt::logln!(
+            "[time] NTP setup phase={} connect result={}",
+            NTP_SETUP_CONNECT_RESULT,
+            connect_result
+        );
         return None;
     }
 
     let request_transmit = ntp_request_token(model, mono);
-    let packet_memory = OwnedMemory::allocate(1).ok()?;
-    let mut packet_mapping = packet_memory.map_writable().ok()?;
+    let packet_memory = match OwnedMemory::allocate(1) {
+        Ok(memory) => memory,
+        Err(error) => {
+            ntp_setup_failed(NTP_SETUP_PACKET_MEMORY, u32::MAX);
+            catten_rt::logln!(
+                "[time] NTP setup phase={} packet memory={:?}",
+                NTP_SETUP_PACKET_MEMORY,
+                error
+            );
+            return None;
+        }
+    };
+    let mut packet_mapping = match packet_memory.map_writable() {
+        Ok(mapping) => mapping,
+        Err((_, error)) => {
+            ntp_setup_failed(NTP_SETUP_PACKET_MAP, u32::MAX);
+            catten_rt::logln!(
+                "[time] NTP setup phase={} packet map={:?}",
+                NTP_SETUP_PACKET_MAP,
+                error
+            );
+            return None;
+        }
+    };
     packet_mapping.as_mut_slice()[..NTP_PACKET_LEN].fill(0);
     packet_mapping.as_mut_slice()[0] = 0x23; // LI=0, VN=4, mode=client
     packet_mapping.as_mut_slice()[40..48].copy_from_slice(&request_transmit.to_be_bytes());
-    let packet_memory = packet_mapping.unmap().ok()?;
+    let packet_memory = match packet_mapping.unmap() {
+        Ok(memory) => memory,
+        Err((_, error)) => {
+            ntp_setup_failed(NTP_SETUP_PACKET_UNMAP, u32::MAX);
+            catten_rt::logln!(
+                "[time] NTP setup phase={} packet unmap={:?}",
+                NTP_SETUP_PACKET_UNMAP,
+                error
+            );
+            return None;
+        }
+    };
     let packed_send = ((NTP_PACKET_LEN as u64) << 32) | (socket.id() & 0xffff_ffff);
-    let send = tcp_conn.call_move(socket::OP_SEND, packed_send, packet_memory).ok()?;
-    if wait_scalar(send).is_none_or(|(result, _)| result != NTP_PACKET_LEN as i64) {
+    let send = match tcp_conn.call_move(socket::OP_SEND, packed_send, packet_memory) {
+        Ok(call) => call,
+        Err((_, error)) => {
+            ntp_setup_failed(NTP_SETUP_SEND_SUBMIT, u32::MAX);
+            catten_rt::logln!(
+                "[time] NTP setup phase={} send submit={:?}",
+                NTP_SETUP_SEND_SUBMIT,
+                error
+            );
+            return None;
+        }
+    };
+    let (send_result, _) = match wait_scalar(send) {
+        Some(result) => result,
+        None => {
+            ntp_setup_failed(NTP_SETUP_SEND_RESULT, u32::MAX);
+            catten_rt::logln!("[time] NTP setup phase={} send wait failed", NTP_SETUP_SEND_RESULT);
+            return None;
+        }
+    };
+    if send_result != NTP_PACKET_LEN as i64 {
+        ntp_setup_failed(NTP_SETUP_SEND_RESULT, send_result as u32);
+        catten_rt::logln!(
+            "[time] NTP setup phase={} send result={}",
+            NTP_SETUP_SEND_RESULT,
+            send_result
+        );
         return None;
     }
+    config::write::<u32>(status::NTP_SETUP_PHASE, 0);
+    config::write::<u32>(status::NTP_SETUP_STATUS, 0);
     let recv_call = tcp_conn.call(socket::OP_RECV, socket.id()).ok()?;
     Some(Attempt {
         recv_call,

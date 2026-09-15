@@ -420,6 +420,13 @@ pub mod time_status {
     /// 2 set-size, 3 write, 4 flush.
     pub const PERSIST_STAGE: usize = 32;
     pub const PERSIST_TIMEOUTS: usize = 36;
+    /// Last NTP request setup phase that failed (zero after a successful
+    /// setup; nonzero values identify socket, address, connect, or send).
+    pub const NTP_SETUP_PHASE: usize = 40;
+    /// Last scalar status returned by the failing NTP setup operation, when
+    /// one was available. A value of `u32::MAX` means the operation failed
+    /// before a service status could be returned.
+    pub const NTP_SETUP_STATUS: usize = 44;
 }
 
 /// S3 client-service diagnostic status-page offsets.
@@ -612,6 +619,30 @@ pub const fn manifest_key(bytes: &[u8]) -> u64 {
         index += 1;
     }
     u64::from_le_bytes(packed)
+}
+
+/// Launch-manifest policy for the shared TCP/IP service. The socket set is
+/// allocated once when `tcpip` starts; the bounds keep an operator-supplied
+/// value from turning a service launch into an unbounded heap allocation.
+pub mod tcpip_config {
+    use super::manifest_key;
+
+    pub const SOCKET_SLOTS_KEY: u64 = manifest_key(b"sockslot");
+    pub const SOCKET_QUOTA_KEY: u64 = manifest_key(b"sockquot");
+    pub const BUFFER_QUOTA_KEY: u64 = manifest_key(b"bufquot");
+
+    pub const DEFAULT_SOCKET_SLOTS: usize = 64;
+    /// A high policy ceiling for server-oriented launches. The effective
+    /// capacity is clamped to the tcpip domain's actual heap at startup.
+    pub const MAX_SOCKET_SLOTS: usize = 1024;
+    pub const DEFAULT_SOCKETS_PER_PRINCIPAL: usize = 16;
+    pub const MAX_SOCKETS_PER_PRINCIPAL: usize = 1024;
+    pub const DEFAULT_BUFFER_BYTES_PER_PRINCIPAL: usize = 512 * 1024;
+    pub const MAX_BUFFER_BYTES_PER_PRINCIPAL: usize = 32 * 1024 * 1024;
+
+    const _: () = assert!(DEFAULT_SOCKET_SLOTS <= MAX_SOCKET_SLOTS);
+    const _: () = assert!(DEFAULT_SOCKETS_PER_PRINCIPAL <= MAX_SOCKETS_PER_PRINCIPAL);
+    const _: () = assert!(DEFAULT_BUFFER_BYTES_PER_PRINCIPAL <= MAX_BUFFER_BYTES_PER_PRINCIPAL);
 }
 
 /// Well-known node-local name that the kernel registers with the name service
