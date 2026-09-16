@@ -227,8 +227,8 @@ connects to this service.
 
 The service allocates its smoltcp socket table once at launch. Its launch
 manifest supplies bounded \texttt{sockslot}, \texttt{sockquot}, and
-\texttt{bufquot} policy values; the defaults are 64 total slots, 16 sockets per
-authenticated domain, and 512~KiB of TCP/UDP buffers per domain (policy
+\texttt{bufquot} policy values; the defaults are 64 total slots, 64 sockets per
+authenticated domain, and 2~MiB of TCP/UDP buffers per domain (policy
 ceilings are 1024, 1024, and 32~MiB). The effective socket capacity is clamped
 to the heap granted to the TCP/IP domain, so a normal 4~MiB domain remains at
 64 slots while a larger launch budget can support more. The current virtual

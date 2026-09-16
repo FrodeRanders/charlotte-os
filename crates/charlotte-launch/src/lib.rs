@@ -635,9 +635,14 @@ pub mod tcpip_config {
     /// A high policy ceiling for server-oriented launches. The effective
     /// capacity is clamped to the tcpip domain's actual heap at startup.
     pub const MAX_SOCKET_SLOTS: usize = 1024;
-    pub const DEFAULT_SOCKETS_PER_PRINCIPAL: usize = 16;
+    /// Default per-domain socket budget. This matches the default shared
+    /// SocketSet capacity; the actual usable value is still bounded by that
+    /// global table and by the tcpip heap.
+    pub const DEFAULT_SOCKETS_PER_PRINCIPAL: usize = 64;
     pub const MAX_SOCKETS_PER_PRINCIPAL: usize = 1024;
-    pub const DEFAULT_BUFFER_BYTES_PER_PRINCIPAL: usize = 512 * 1024;
+    /// 64 TCP-sized sockets (two 16 KiB buffers per socket). UDP sockets use
+    /// less, but share the same byte budget.
+    pub const DEFAULT_BUFFER_BYTES_PER_PRINCIPAL: usize = 2 * 1024 * 1024;
     pub const MAX_BUFFER_BYTES_PER_PRINCIPAL: usize = 32 * 1024 * 1024;
 
     const _: () = assert!(DEFAULT_SOCKET_SLOTS <= MAX_SOCKET_SLOTS);

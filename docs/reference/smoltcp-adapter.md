@@ -131,7 +131,7 @@ state aggregated across the node:
 
 The TCP/IP service allocates its smoltcp `SocketSet` once at startup. Its
 launch manifest accepts the bounded `sockslot`, `sockquot`, and `bufquot`
-values (64 slots, 16 sockets per domain, and 512 KiB per-domain buffers by
+values (64 slots, 64 sockets per domain, and 2 MiB per-domain buffers by
 default; the policy ceilings are 1024, 1024, and 32 MiB respectively). The
 effective socket capacity is clamped to the tcpip domain's heap, so a normal
 4 MiB domain remains at 64 slots while a larger launch budget can support more.

@@ -106,6 +106,14 @@ and requester-specific VT-d domain to the userspace E1000E driver, waits for
 link negotiation without busy waiting, and then publishes the hardware-neutral
 `net0` service.
 
+NAT is convenient for first-boot qualification, but it is not required by
+CharlotteOS. For a node that should participate in the surrounding network,
+select a bridged adapter (or a host-only network with a DHCP service) in
+Fusion/Workstation. The guest's normal DHCP client then obtains its node
+address from that network, and clients can connect directly to the advertised
+service ports. No host-port forwarding is needed in this mode; forwarding is a
+property of QEMU's user-mode network, not of the CharlotteOS node.
+
 Serial output makes that sequence visible even though CharlotteOS does not
 need console input:
 

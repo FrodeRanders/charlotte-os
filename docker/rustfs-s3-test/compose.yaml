@@ -4,7 +4,10 @@ services:
   rustfs:
     image: ${CATTEN_RUSTFS_IMAGE:-rustfs/rustfs:latest}
     ports:
-      - "127.0.0.1:${CATTEN_RUSTFS_PORT:-19000}:9000"
+      # Keep localhost-only binding for QEMU fixtures. A bridged VMware guest
+      # can reach the host directly when CATTEN_RUSTFS_BIND_ADDRESS is set to
+      # the host's LAN address (or 0.0.0.0 for a deliberately broad fixture).
+      - "${CATTEN_RUSTFS_BIND_ADDRESS:-127.0.0.1}:${CATTEN_RUSTFS_PORT:-19000}:9000"
     environment:
       RUSTFS_ADDRESS: 0.0.0.0:9000
       RUSTFS_VOLUMES: /data

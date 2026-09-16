@@ -33,8 +33,8 @@
 //!   service's flows from its committed placement/readiness projection.
 //! - `sockslot`: bounded SocketSet capacity (default 64, policy ceiling 1024), clamped to the tcpip
 //!   domain's heap at startup. One slot is reserved for DHCP while address acquisition is active.
-//! - `sockquot`: maximum number of sockets owned by one authenticated domain (default 16).
-//! - `bufquot`: maximum TCP/UDP buffer bytes charged to one authenticated domain (default 512 KiB).
+//! - `sockquot`: maximum number of sockets owned by one authenticated domain (default 64).
+//! - `bufquot`: maximum TCP/UDP buffer bytes charged to one authenticated domain (default 2 MiB).
 #![no_std]
 #![no_main]
 

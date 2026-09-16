@@ -324,6 +324,14 @@ python3 scripts/fs-inspect.py os-images/nvme-disk.img tree
 python3 scripts/fs-inspect.py os-images/nvme-disk.img cat /path/to/file
 ```
 
+`objects` reads only each object's prefix and compares it with the `MAGIC`
+constants found in the Rust sources under `crates/`. Matching output includes
+the literal magic, constant name, and source location, so ELF, Raft-log,
+catalog, calibration, and archive objects can be recognized without a second
+hand-maintained table. Unrecognized prefixes are printed in escaped form for
+follow-up investigation; an object is not considered invalid merely because
+its format is not yet described by a source constant.
+
 The `metadata` command prints the numeric and symbolic object/filesystem flags,
 directory generation, header placement, logical and allocated lengths, hash,
 and every extent. Unknown flag bits are retained as `UNKNOWN(...)` rather than

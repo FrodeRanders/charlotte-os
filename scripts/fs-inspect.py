@@ -8,13 +8,16 @@ Usage:
     python3 scripts/fs-inspect.py <image> dump <object-id>
     python3 scripts/fs-inspect.py <image> cat <path>
     python3 scripts/fs-inspect.py <image> raw <object-id>
-    python3 scripts/fs-inspect.py <image> objects
+    python3 scripts/fs-inspect.py <image> objects             # source magic matches
     python3 scripts/fs-inspect.py <image> metadata [object-id|path]
     python3 scripts/fs-inspect.py <image> info
 """
 
+import ast
 from dataclasses import dataclass
 import os
+from pathlib import Path
+import re
 import struct
 import sys
 import zlib
@@ -41,6 +44,87 @@ MAX_EXTENTS = 16
 HASH_FNV1A64 = 2
 
 ROOT_ID = 100
+
+
+@dataclass(frozen=True)
+class MagicDefinition:
+    value: bytes
+    name: str
+    source: str
+    line: int
+
+
+RUST_MAGIC_CONST = re.compile(
+    r"\b(?:pub\s+)?const\s+([A-Z][A-Z0-9_]*)\s*:[^=]+=(.*?);"
+)
+RUST_BYTE_LITERAL = re.compile(r"\*?b\"(?:\\.|[^\"\\])*\"")
+RUST_HEX_LITERAL = re.compile(r"0x([0-9a-fA-F_]+)")
+RUST_COMMENT_STRING = re.compile(r'//\s*"([^"\\]*(?:\\.[^"\\]*)*)"')
+
+
+def _decode_rust_bytes(literal):
+    try:
+        value = ast.literal_eval(literal.lstrip("*"))
+    except (SyntaxError, ValueError):
+        return None
+    return value if isinstance(value, bytes) else None
+
+
+def _looks_like_magic(value):
+    if not value or len(value) > 32:
+        return False
+    printable = sum(byte == 0 or 0x20 <= byte < 0x7F for byte in value)
+    return printable * 2 >= len(value)
+
+
+def load_magic_definitions():
+    """Collect magic constants from the Rust sources beside this tool.
+
+    The object store is deliberately format-agnostic, so keeping a second
+    hand-written list here would drift as catalog and connector formats evolve.
+    Constants with byte-string values are read directly. Integer constants use
+    an adjacent ``// "TEXT"`` comment when present (the Rust code writes them
+    little-endian); otherwise a printable little-endian representation is used.
+    """
+    root = Path(__file__).resolve().parents[1]
+    definitions = {}
+    for path in sorted((root / "crates").rglob("*.rs")):
+        relative = path.relative_to(root)
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for line_number, line in enumerate(lines, 1):
+            for match in RUST_MAGIC_CONST.finditer(line):
+                name, expression = match.groups()
+                if "MAGIC" not in name:
+                    continue
+                byte_match = RUST_BYTE_LITERAL.search(expression)
+                value = _decode_rust_bytes(byte_match.group(0)) if byte_match else None
+                if value is None:
+                    comment = RUST_COMMENT_STRING.search(line)
+                    if comment:
+                        value = _decode_rust_bytes(f'b"{comment.group(1)}"')
+                if value is None:
+                    integer = RUST_HEX_LITERAL.search(expression)
+                    if integer:
+                        number = int(integer.group(1).replace("_", ""), 16)
+                        length = max(1, (number.bit_length() + 7) // 8)
+                        value = number.to_bytes(length, "little")
+                if not _looks_like_magic(value):
+                    continue
+                definition = MagicDefinition(value, name, str(relative), line_number)
+                definitions.setdefault(value, []).append(definition)
+    return definitions
+
+
+def format_magic(value):
+    if not value:
+        return "none"
+    return "".join(
+        chr(byte) if 0x20 <= byte < 0x7F else "\\0" if byte == 0 else f"\\x{byte:02x}"
+        for byte in value
+    )
 
 
 def u16(data, offset):
@@ -324,6 +408,22 @@ class ObjectStore:
             raise ValueError(f"object {obj_id}: FNV-1a content hash mismatch")
         return result
 
+    def read_object_prefix(self, obj_id, limit=64):
+        """Read only the beginning of an object without hashing its whole body."""
+        record = self.objects.get(obj_id)
+        if record is None or limit <= 0:
+            return None
+        remaining = min(record.data_len, limit)
+        chunks = []
+        for lba, blocks in record.extents:
+            if remaining == 0:
+                break
+            chunk = self._block_slice(lba, blocks)
+            used = min(remaining, len(chunk))
+            chunks.append(bytes(chunk[:used]))
+            remaining -= used
+        return b"".join(chunks)
+
 
 class Filesystem:
     FLAG_DIR = 1
@@ -388,6 +488,23 @@ def format_size(size):
     if size < 1024 * 1024:
         return f"{size / 1024:.1f}K"
     return f"{size / (1024 * 1024):.1f}M"
+
+
+def describe_object_magic(data, definitions):
+    if not data:
+        return "magic=none"
+    matches = []
+    for value, entries in definitions.items():
+        if data.startswith(value):
+            matches.append((len(value), value, entries))
+    if not matches:
+        prefix = format_magic(data[:16])
+        return f"magic=unknown(prefix={prefix})"
+    _, value, entries = max(matches, key=lambda item: item[0])
+    sources = ", ".join(
+        f"{entry.name}@{entry.source}:{entry.line}" for entry in entries
+    )
+    return f"magic={format_magic(value)} ({sources})"
 
 
 def describe_flags(value, known, zero_name=None):
@@ -544,11 +661,16 @@ def main():
         if command == "info":
             print_info(store)
         elif command == "objects":
+            magic_definitions = load_magic_definitions()
             for obj_id, record in sorted(store.objects.items()):
                 extents = ",".join(f"{lba}+{blocks}" for lba, blocks in record.extents) or "-"
+                magic = describe_object_magic(
+                    store.read_object_prefix(obj_id), magic_definitions
+                )
                 print(
                     f"{obj_id:>8}  gen={record.entry.generation:<5} "
-                    f"size={record.data_len:<10} header={record.entry.header_lba} extents={extents}"
+                    f"size={record.data_len:<10} header={record.entry.header_lba} "
+                    f"extents={extents}  {magic}"
                 )
         elif command == "metadata":
             if len(sys.argv) < 4:
