@@ -251,7 +251,7 @@ five-second grace period. This keeps reconnect churn from pinning a domain's
 quota indefinitely. Admission retries use bounded backoff and rate-limited
 diagnostics so temporary pressure does not flood the service log.
 Kernel launch code can select a different bounded policy through
-	exttt{launch_network_appliance_with_policy}; ordinary boots use these
+\texttt{launch\_network\_appliance\_with\_policy} where ordinary boots use these
 defaults.
 
 The architecture runners attach a NIC by default. Hardware discovery starts
