@@ -87,12 +87,15 @@ fn acquire_once(
 /// Publish one application-owned endpoint under an exact signed descriptor
 /// grant. The controller and name service receive only delegated connections;
 /// this function retains ownership of `endpoint` for the serving loop.
+/// Uses a five-second total deadline. Publication is not automatically retried:
+/// timeout cannot establish whether the remote registration already happened.
 pub fn publish(
     controller: ConnectionRef<'_>,
     descriptor: &LaunchMemoryRef<'_>,
     service: &[u8],
     endpoint: &Endpoint,
 ) -> Result<i64, Error> {
+    let deadline = crate::deadline::Deadline::after(5_000);
     let descriptor_mapping = descriptor.map_read_only().map_err(Error::Memory)?;
     let request = OwnedMemory::allocate(1).map_err(Error::Memory)?;
     let mut request_mapping = request.map_writable().map_err(|(_, error)| Error::Memory(error))?;
@@ -104,7 +107,7 @@ pub fn publish(
     )
     .ok_or(Error::InvalidRequest)?;
     let request = request_mapping.unmap().map_err(|(_, error)| Error::Memory(error))?;
-    let reply = controller
+    let mut pending = controller
         .call_connection_copy(
             grant::OP_PUBLISH,
             len as u64,
@@ -112,9 +115,16 @@ pub fn publish(
             IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
             &request,
         )
-        .map_err(Error::Ipc)?
-        .wait()
         .map_err(Error::Ipc)?;
+    let reply = loop {
+        if deadline.expired() {
+            return Err(Error::Service(grant::ERR_UNAVAILABLE));
+        }
+        if let Some(reply) = pending.poll().map_err(Error::Ipc)? {
+            break reply;
+        }
+        crate::sleep_ms(5);
+    };
     if reply.result < 1 {
         Err(Error::Service(reply.result))
     } else if reply.connection.is_some() || reply.memory.is_some() {

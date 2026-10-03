@@ -798,6 +798,35 @@ pub fn try_spawn_with_deployment_descriptor(
     deployment_key: &[u8; 32],
     artifact_key: &[u8; 32],
 ) -> Result<ServiceDomain, ProfileLaunchError> {
+    try_spawn_deployment_with_manifest(image, descriptor_bytes, deployment_key, artifact_key, &[])
+}
+
+/// Test-only diagnostic data injection. This shares the production verifier,
+/// policy binding and bootstrap delegation; it grants no additional caps.
+#[cfg(feature = "security_test")]
+pub(crate) fn try_spawn_security_probe(
+    image: &[u8],
+    descriptor_bytes: &[u8],
+    deployment_key: &[u8; 32],
+    artifact_key: &[u8; 32],
+    manifest: &[bootstrap::ManifestEntry<'_>],
+) -> Result<ServiceDomain, ProfileLaunchError> {
+    try_spawn_deployment_with_manifest(
+        image,
+        descriptor_bytes,
+        deployment_key,
+        artifact_key,
+        manifest,
+    )
+}
+
+fn try_spawn_deployment_with_manifest(
+    image: &[u8],
+    descriptor_bytes: &[u8],
+    deployment_key: &[u8; 32],
+    artifact_key: &[u8; 32],
+    manifest: &[bootstrap::ManifestEntry<'_>],
+) -> Result<ServiceDomain, ProfileLaunchError> {
     let descriptor = charlotte_launch::deployment::decode(descriptor_bytes)
         .ok_or(ProfileLaunchError::InvalidDeploymentDescriptor)?;
     if charlotte_launch::deployment::verify(descriptor_bytes, deployment_key)
@@ -855,7 +884,7 @@ pub fn try_spawn_with_deployment_descriptor(
     };
     bootstrap::write_bootstrap_cap(transaction.loaded().config_frame, connection);
     bootstrap::write_profile_cap(transaction.loaded().config_frame, target, profile_metadata);
-    bootstrap::write_manifest(transaction.loaded().config_frame, &[]);
+    bootstrap::write_manifest(transaction.loaded().config_frame, manifest);
     Ok(start_domain_with_limits(transaction.finish(), limits))
 }
 

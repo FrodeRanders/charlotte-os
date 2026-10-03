@@ -62,6 +62,7 @@
 #   --mac ADDRESS  Set the guest NIC MAC address
 #   --live-upgrade-test  Run the isolated EL0 service lifecycle/upgrade integration test
 #   --shutdown-test  Run the isolated cooperative/forced domain-shutdown test
+#   --security-test  Verify scoped grants, independent roots, cancellation and raw-frame denial
 #   --smp N        Number of CPUs (default: 4)
 #   --timeout S    Kill QEMU after S seconds, capturing serial output (default: run interactively)
 #   --fresh-storage  Recreate this instance's NVMe store from the blessed bundle
@@ -112,6 +113,7 @@ APP_GUEST_PORT="${CATTEN_APP_GUEST_PORT:-}"
 APP_HOLD_SECONDS="${CATTEN_APP_HOLD_SECONDS:-0}"
 LIVE_UPGRADE_TEST="0"
 SHUTDOWN_TEST="0"
+SECURITY_TEST="0"
 SMP="4"
 TIMEOUT=""
 CLEAN_BUILD="0"
@@ -181,6 +183,7 @@ while [ "$#" -gt 0 ]; do
             NET_MAC="$2"; shift 2 ;;
         --live-upgrade-test) LIVE_UPGRADE_TEST="1"; shift ;;
         --shutdown-test) SHUTDOWN_TEST="1"; shift ;;
+        --security-test) SECURITY_TEST="1"; shift ;;
         --smp)
             [ "$#" -ge 2 ] || { echo "Missing value for --smp" >&2; exit 1; }
             SMP="$2"; shift 2 ;;
@@ -294,7 +297,7 @@ fi
 if [ "$NETWORK" != "1" ] && { [ "$NET_TEST" = "1" ] || [ "$RELMSG_TEST" = "1" ] \
     || [ "$DISCO_TEST" = "1" ] || [ "$DNS_TEST" = "1" ] || [ "$DEPLOY_TEST" = "1" ] \
     || [ "$TCPIP_TEST" = "1" ] || [ "$HTTP_TEST" = "1" ] || [ "$DHCP_TEST" = "1" ] \
-    || [ "$CLUSTER_INGRESS_TEST" = "1" ] \
+    || [ "$CLUSTER_INGRESS_TEST" = "1" ] || [ "$SECURITY_TEST" = "1" ] \
     || [ "$S3_TEST" = "1" ] || [ "$DEPLOYMENT_INGRESS_TEST" = "1" ] \
     || [ "$SHUTDOWN_INGRESS_TEST" = "1" ] || [ "$KAFKA_TEST" = "1" ]; }; then
     echo "error: network verification options are incompatible with --no-network" >&2
@@ -332,6 +335,14 @@ if [ "$SBSA_REF" = "1" ] && [ "$USE_HVF" = "1" ]; then
 fi
 if [ "$LIVE_UPGRADE_TEST" = "1" ] && [ "$USE_HVF" = "1" ]; then
     echo "error: --live-upgrade-test requires the protected-DMA object store and is incompatible with --hvf" >&2
+    exit 1
+fi
+if [ "$SECURITY_TEST" = "1" ] && [ "$USE_HVF" = "1" ]; then
+    echo "error: --security-test requires protected-DMA networking (use TCG/KVM, not HVF)" >&2
+    exit 1
+fi
+if [ "$SECURITY_TEST" = "1" ] && { [ "$SHUTDOWN_TEST" = "1" ] || [ "$LIVE_UPGRADE_TEST" = "1" ] || [ "$CLUSTER_INGRESS_TEST" = "1" ]; }; then
+    echo "error: --security-test cannot be combined with isolated shutdown/upgrade/ingress suites" >&2
     exit 1
 fi
 if [ "$NETWORK" = "1" ] && [ "$USE_HVF" = "1" ]; then
@@ -602,6 +613,13 @@ if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" != "1" ]; then
     "${ROOT_DIR}/scripts/build-catten-user.sh" --embed
 fi
 export CATTEN_AARCH64_SERVICE_BUNDLE="${ROOT_DIR}/target/embedded-services/aarch64-unknown-none"
+if [ "$SECURITY_TEST" = "1" ]; then
+    mkdir -p "$ROOT_DIR/target/security-test"
+    CATTEN_SECURITY_TEST_DIR="$(mktemp -d "$ROOT_DIR/target/security-test/fixture.XXXXXX")"
+    export CATTEN_SECURITY_TEST_DIR
+    bash "$ROOT_DIR/scripts/generate-security-test-fixtures.sh" \
+        "$CATTEN_AARCH64_SERVICE_BUNDLE/security_probe.elf" "$CATTEN_SECURITY_TEST_DIR"
+fi
 
 DEPLOYMENT_DESCRIPTOR=""
 DEPLOYMENT_RELEASE=""
@@ -715,6 +733,9 @@ if [ "$LIVE_UPGRADE_TEST" = "1" ]; then
 fi
 if [ "$SHUTDOWN_TEST" = "1" ]; then
     FEATURES="${FEATURES},shutdown_test"
+fi
+if [ "$SECURITY_TEST" = "1" ]; then
+    FEATURES="${FEATURES},security_test"
 fi
 
 if [ "$SCHEDULER_TRACE" = "1" ]; then

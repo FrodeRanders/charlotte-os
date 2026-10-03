@@ -125,6 +125,17 @@
 //! authoritative verdict is produced by the coordinator thread and observed
 //! by `scripts/run-aarch64.sh` under `--timeout`.
 
+#[cfg(all(
+    feature = "security_test",
+    any(
+        feature = "shutdown_test",
+        feature = "live_upgrade_test",
+        feature = "cluster_ingress_test",
+        feature = "hvf_compat"
+    )
+))]
+compile_error!("security_test requires the ordinary service suite and TCG/KVM");
+
 pub mod adversarial;
 pub mod completion;
 pub mod cq;
@@ -156,6 +167,8 @@ pub mod el0_pingpong;
 pub mod el0_raft;
 #[cfg(feature = "s3_test")]
 pub mod el0_s3;
+#[cfg(feature = "security_test")]
+pub mod el0_security;
 pub mod el0_service;
 #[cfg(feature = "shutdown_test")]
 pub mod el0_shutdown;
@@ -337,6 +350,8 @@ pub fn run_deferred_self_tests() {
     el0_pingpong::test_el0_ping_pong();
     el0_service::test_el0_service();
     cq::test_cq_ring();
+    #[cfg(feature = "security_test")]
+    el0_security::test_el0_security();
     cq_completion::test_cq_ring_in_completion();
     cq_wait::test_cq_wait_wake();
     device::test_device_capabilities();

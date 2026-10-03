@@ -300,3 +300,9 @@ name = "shutdown_probe"
 path = "src/bin/shutdown_probe.rs"
 test = false
 bench = false
+
+[[bin]]
+name = "security_probe"
+path = "src/bin/security_probe.rs"
+test = false
+bench = false

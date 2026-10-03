@@ -65,6 +65,10 @@ Cancellation therefore cannot strand grant requests in that shared waitlist.
 within one five-second total monotonic budget, polling each owned call so
 expiry cancels it. Authorization and malformed-request errors are not retried.
 Applications may choose a later retry policy after the helper returns.
+`grant_client::publish` also polls within a five-second total budget and
+cancels its owned call on expiry. It does not automatically retry: a timeout
+does not establish whether the remote registration already happened. Reconcile
+the publication state before deciding whether to repeat that operation.
 Shutdown drops every pending controller operation before
 acknowledging completion.
 
@@ -80,3 +84,23 @@ name, not an IP address, username, password, certificate, bucket, broker, or
 topic credential. Platform connector profiles retain those values. Thus an
 application can acquire multiple independently named Kafka endpoints while
 remaining unable to inspect or reuse the underlying connector identity.
+
+## Adversarial guest verification
+
+The opt-in `--security-test` runs scoped EL0 applications with freshly generated,
+independent artifact and deployment roots. It checks wrong-role root rejection,
+substitution of a valid but unadmitted descriptor, excess and undeclared rights,
+publication, and the absence of ambient name-service authority. Returned client
+connections must support their granted calls but refuse re-delegation; an
+explicitly mintable connection provides the positive control for that check.
+
+A second application generates cancelled missing-service requests while the
+primary application acquires a registered service. A separate, deliberately
+silent endpoint exercises the publication helper's timeout. Two successive
+primary launches check recovery, advancing publication generations, and fencing
+of the retired launch policy. Ordinary tcpip calls remain available while raw
+frame injection and ungranted SEND are rejected.
+
+This bounded two-application test is not a starvation proof. Forced ASID reuse,
+controller replacement, allocation-failure injection and aggregate resource
+budgets need additional coverage. See [test paths](../guides/testing.md).

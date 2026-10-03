@@ -25,12 +25,12 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-08 | Open | Authenticate enrolled nodes and control/data peer traffic, add replay protection, and bound discovery state. A trusted L2 segment remains an explicit deployment prerequisite. |
 | SEC-09 | Open | Distinguish authenticated security time from observational SNTP/holdover; enforce freshness and uncertainty at security-policy gates. |
 | SEC-10 | Open | Authenticated encrypted access to node and cluster management, browser-client provisioning, and access policy remain necessary. |
-| SEC-11 | Implemented for scoped applications | Scoped application mapping now uses the configured artifact key. grantctl relies on launcher attestation, which used the configured deployment key. Bundled platform-service trust and production provisioning still belong to SEC-04. Custom-root end-to-end deployment remains to be tested. |
+| SEC-11 | Implemented for scoped applications | Scoped application mapping uses the configured artifact key; grantctl relies on launcher attestation under the configured deployment key. Independent roots are tested through real scoped launch and grant IPC. The complete S3/Raft release pipeline with those roots remains to be tested. Bundled platform-service trust and production provisioning still belong to SEC-04. |
 | SEC-12 | Open | Attenuate local object-store authority to object sets/namespaces; retain an explicitly separate administration endpoint. |
 | SEC-13 | Implemented in this repository | Signing/decryption commands enforce restricted bounded key files; generation never prints private material; build/deployment/shutdown scripts pass paths and reject the old secret-valued environment variable without expanding it. Only the exact public artifact fixture retains warned argv compatibility. Sibling broker/Durga callers still need file-path migration; host custody, ACL review and agent/HSM signing remain separate work. |
 | SEC-14 | Mitigated; audit corrected | Cargo.lock is already tracked. Main build/test runners and CI now enforce --locked; CI actions are commit-pinned, token permissions are read-only, and checkout does not persist credentials. Advisory/license scans and a release dependency inventory remain. |
 | SEC-15 | Mitigated | SigV4 prefixed secret, derived keys, HMAC block/pads and inner digest use zeroizing owners. TLS record buffers are wiped after dropping their borrower, including handshake failure. This is not a complete audit of crypto-library state or compiler-created secret copies. |
-| SEC-16 | Implemented | grantctl polls bounded concurrent operations, with per-sender/generation limits and total deadlines; its non-parking authorized lookup cannot leave cancelled grant requests in the shared name-service waitlist. The application helper retries within a total deadline. End-to-end stalled-target/flood testing remains. |
+| SEC-16 | Implemented | grantctl polls bounded concurrent operations with per-sender/generation limits and total deadlines. Non-parking authorized lookup avoids a shared name-service waitlist leak. Acquisition retries and publication waits have total deadlines. A two-application cancellation stress and silent-endpoint publication timeout pass in the guest; many-client fairness and controller-replacement testing remain. |
 
 ## Enforced contracts
 
@@ -190,10 +190,10 @@ implementation proof is claimed.
 
 ## Next implementation order
 
-1. Add adversarial scoped-application integration tests for descriptor
-   substitution, concurrent unavailable/available grant requests, cancellation,
-   generation reuse, and unauthorized raw-frame calls. Exercise independently
-   generated artifact/deployment roots end to end.
+1. Extend scoped-application integration coverage to forced generation reuse,
+   controller replacement, allocation failure and many-client fairness. Test
+   independent artifact/deployment roots through the complete remote S3/Raft
+   release pipeline; direct scoped-launch/grant tests are documented below.
 2. Implement protected production bootstrap trust and recipient-key provisioning;
    only then enable production images without fixture fallback. Migrate sibling
    broker/Durga templates to the new signing file-path interface. Keep developer
@@ -278,3 +278,86 @@ The earlier network/HTTP boot evidence belongs to the first pass, not this
 follow-up. This pass did not exercise a production provisioning path, x86-64
 guest execution, OS ACL enforcement, a compromised signer workstation, or
 sibling broker/Durga real-key packaging.
+
+## Follow-up: adversarial scoped launch and grant IPC — 2026-10-04
+
+The signing/development-trust pass was committed as `462c0c3a`. This follow-up
+adds `--security-test` and a real EL0 `security_probe`, using the production
+scoped-launch verifier and grant controller. Its diagnostic launch metadata
+contains no additional capabilities. Two fresh, independent signing roots are
+generated per run; only the public roots and signed fixtures enter the kernel.
+The bundled platform services still use explicitly identified development trust.
+
+The probe's ten result bits cover:
+
+| Bit | Required observation |
+| --- | --- |
+| `0x001` | Both descriptors verify under the fresh deployment root; the alternate names the same signed ELF but has a newer sequence. |
+| `0x002` | The valid alternate descriptor cannot replace the application's admitted policy. |
+| `0x004` | The admitted CALL-only tcpip grant cannot acquire SEND/CALL rights. |
+| `0x008` | An undeclared logical service is denied without returned authority. |
+| `0x010` | An explicitly granted application endpoint can be published without ambient naming authority. |
+| `0x020` | Returned application connections cannot be re-delegated; explicitly mintable connections pass the corresponding IPC submission control. |
+| `0x040` | Missing and available grants coexist, with the available connection completing a real call. |
+| `0x080` | Acquisition and calls recover after 384 cancelled requests. |
+| `0x100` | Ungranted SEND fails in the kernel, and an ordinary CALL cannot inject a raw frame into tcpip. |
+| `0x200` | Publication to a separately hosted, deliberately silent endpoint expires within the helper's budget. |
+
+The kernel also rejects swapped artifact/deployment roots before launch. It
+retires and relaunches the primary probe, requires an advancing publication
+generation, and rejects the retired descriptor's attestation both immediately
+after retirement and while the replacement is live. A second application
+generates cancelled missing-service requests concurrently. Every transient
+userspace request, returned connection and endpoint remains a typed owner.
+
+This work found another unbounded wait: `grant_client::publish` previously used
+`PendingCall::wait()`. It now polls under a five-second total monotonic budget;
+expiry drops and cancels the pending call. Publication is not automatically
+retried because a lost reply does not establish whether registration happened.
+Applications must reconcile that state before choosing a retry.
+
+During harness development, one negative assertion incorrectly expected a
+status-bearing error from an ABI that returns a zero capability on submission
+failure. A second attempted timeout fixture used same-domain memory-copy IPC,
+which the kernel deliberately refuses. The corrected tests use a mintable
+positive control and a separate silent domain. Those earlier test failures are
+not evidence of a production kernel panic at either boundary.
+
+Validation:
+
+- A four-LP AArch64/TCG guest passed **19 tests, 0 failed, 0 pending**, including
+  all ten probe bits in two successive scoped launches. The concurrent actor
+  submitted 4,416 cancelled requests in the first successful capture.
+  A fresh-root repeat with the stronger live-replacement fencing assertion
+  passed all 19 tests again, with 4,468 concurrent cancelled requests. Both
+  captures reused the primary probe's ASID, although the fixture does not force
+  that allocator choice.
+- The host test runner passed, including all seven signer key-file tests.
+- Both signed service bundles built. Service Clippy passed on AArch64 and
+  x86-64; kernel Clippy passed with the AArch64 security feature and the ordinary
+  x86-64 configuration. Formatting, diff and shell syntax checks passed.
+- The runner rejects no-network, HVF and isolated-suite combinations before
+  building. Fixture generation refuses a nonempty output directory.
+- CI's AArch64 boot job now enables this regression verifier; x86-64's guest
+  job remains unchanged.
+
+The initial successful kernel SHA-256 was
+`eb205b0a46182d2f26a1464485d5bdbfffde9e09508b4fa3be32e0715c030039`.
+The repeat's kernel SHA-256 was
+`380a55643365733503adf90e057b08253f70c5f854d44af7218af891734422b6`.
+Temporary evidence is in `/private/tmp/charlotte-security-grants-run.log`,
+`/private/tmp/charlotte-security-grants-20261004-serial.log`, and
+`/private/tmp/charlotte-security-probe-*-clippy.log`,
+`/private/tmp/charlotte-security-probe-host-tests.log` and
+`/private/tmp/charlotte-security-probe-x86-services.log`. Repeated runs overwrite
+the guest logs; signed fixtures remain under ignored `target/security-test`.
+Only the dedicated guest/storage instance was used; existing soak workloads
+were not stopped or modified.
+
+This is bounded two-application coverage, not a proof of starvation freedom or
+aggregate resource containment. Forced ASID reuse, grant-controller restart,
+allocation-failure rollback and many-client saturation need additional tests.
+Independent roots are exercised from direct scoped launch through application
+IPC, not through the complete S3 retrieval/Raft release path. Production root
+provisioning, authenticated security time, peer and management authentication,
+and the remaining open audit findings are still outstanding.

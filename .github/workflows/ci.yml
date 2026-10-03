@@ -206,7 +206,7 @@ jobs:
         include:
           - target: aarch64-unknown-none-catten
             rust_target: aarch64-unknown-none
-            boot: scripts/run-aarch64.sh debug --smp 4 --timeout 180
+            boot: scripts/run-aarch64.sh debug --smp 4 --security-test --timeout 180
           - target: x86_64-unknown-none-catten
             rust_target: x86_64-unknown-none
             boot: scripts/run-x86_64.sh debug --smp 4 --timeout 480

@@ -112,10 +112,11 @@ pub enum TestId {
     Kafka = 26,
     Shutdown = 27,
     Ingress = 28,
+    Security = 29,
 }
 
 impl TestId {
-    const ALL: [Self; 29] = [
+    const ALL: [Self; 30] = [
         Self::El0,
         Self::RaftStorage,
         Self::El0Ipc,
@@ -145,6 +146,7 @@ impl TestId {
         Self::Kafka,
         Self::Shutdown,
         Self::Ingress,
+        Self::Security,
     ];
 
     const fn name(self) -> &'static str {
@@ -178,6 +180,7 @@ impl TestId {
             Self::Kafka => "kafka",
             Self::Shutdown => "domain-shutdown",
             Self::Ingress => "distributed-ingress",
+            Self::Security => "scoped-launch-security",
         }
     }
 }
@@ -330,6 +333,8 @@ pub fn register_boot_suite() {
     register(TestId::S3);
     #[cfg(feature = "kafka_test")]
     register(TestId::Kafka);
+    #[cfg(feature = "security_test")]
+    register(TestId::Security);
     #[cfg(feature = "clusterctl_test")]
     {
         register(TestId::Clusterctl);

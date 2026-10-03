@@ -48,4 +48,5 @@ grantctl           admin       1       1        0x0   -
 # from fetching executable code at runtime.
 greet              service     1       1        0x7   -
 shutdown_probe     service     1       1        0x0   -
+security_probe     service     1       1        0x1   -
 smoke              service     1       1        0x0   -

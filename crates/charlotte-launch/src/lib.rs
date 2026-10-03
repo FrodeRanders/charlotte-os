@@ -920,3 +920,20 @@ pub fn development_admission_trust(cluster: &[u8]) -> Option<trust::AdmissionTru
         recipient_key: DEVELOPMENT_RECIPIENT_PUBLIC_KEY,
     })
 }
+
+/// Diagnostic ABI for the opt-in scoped-launch security integration probe.
+/// These fields carry test evidence, never application authority.
+pub mod security_probe_status {
+    pub const STAGE: usize = 0;
+    pub const CHECKS: usize = 4;
+    pub const FAILURE: usize = 8;
+    pub const REQUESTS: usize = 12;
+    pub const PUBLICATION_GENERATION: usize = 16;
+    pub const STARTED: u32 = 1;
+    pub const PASSED: u32 = 2;
+    pub const FAILED: u32 = 3;
+    pub const EXPECTED_CHECKS: u32 = 0x3ff;
+    pub const MODE_KEY: u64 = super::manifest_key(b"sectmode");
+    pub const ALTERNATE_KEY: u64 = super::manifest_key(b"sectalt");
+    pub const DEPLOYMENT_KEY: u64 = super::manifest_key(b"sectkey");
+}

@@ -24,7 +24,7 @@ The runner currently covers:
 | `charlotte-smoltcp` | receive-queue bounds and clock progression |
 | `charlotte-launch` | checked user-address mapping ranges, alias/kernel/null rejection and overflow boundaries |
 | `catten-services` | shared authorization/client logic, resource adapters and total monotonic deadlines |
-| `cluster-sign` | digest, signed metadata, and placement-policy self-tests |
+| `cluster-sign` | restricted key-file handling, digest, signed metadata, and placement-policy self-tests |
 
 The script invokes Cargo from a temporary directory. This is necessary because
 the repository's `.cargo/config.toml` asks Cargo to rebuild `core`, `alloc`, and
@@ -54,6 +54,39 @@ is compiled. `--net-test`, `--dhcp-test`, `--disco-test`, and related options
 register additional target verifiers; `--no-network` is the explicit runtime
 opt-out. Tests should never be the mechanism that enables a production
 capability.
+
+### Scoped-launch security verifier
+
+```sh
+CATTEN_HTTP_HOST_PORT=18081 CATTEN_DEPLOY_HOST_PORT=17445 \
+  scripts/run-aarch64.sh --security-test --instance security-grants --fresh-storage --timeout 100
+```
+
+This verifier needs ordinary networking and TCG/KVM, not HVF. It cannot be
+combined with isolated shutdown, upgrade or ingress suites. Fixture generation
+creates fresh, independent artifact and deployment signing roots in a private
+directory under ignored `target/security-test`. Private key files are mode 0600;
+only public keys, signed descriptors and the signed probe ELF enter the test
+kernel. These roots test the configurable launcher path; they do not provision
+production trust or replace the bundled platform-service development root.
+
+The application receives its admitted descriptor and grant-controller
+connection, without a name-service connection. A second valid descriptor names
+the same ELF but widens tcpip rights. The controller must reject this replacement
+policy, undeclared services, excess rights and re-delegation of client authority.
+Positive controls establish publication and ordinary calls. Missing targets and
+cancelled requests must not prevent acquisition of the available endpoint;
+a separately hosted silent endpoint tests the publication helper's deadline.
+
+The primary probe performs 384 cancelled requests in each of two launches. A
+concurrent probe submits at least 512 more. All ten result bits (`0x3ff`) must
+pass, publication generations must advance, and the retired descriptor must no
+longer attest. The ordinary boot suite, network verifier and security verifier
+register 19 tests in this configuration.
+
+This does not force ASID reuse, restart the grant controller, inject allocation
+failures or prove many-client fairness. It does not exercise the complete S3/Raft
+release pipeline with independent roots, or establish production key custody.
 
 The HTTP verifier also runs EOF and idle-client availability probes before the
 node/cluster JSON checks. Use an isolated instance and unused forwarded ports:
