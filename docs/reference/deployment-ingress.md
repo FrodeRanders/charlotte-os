@@ -8,7 +8,8 @@ store credentials.
 ## Operational flow
 
 1. Build a self-contained CharlotteOS ELF and sign its CLS2 note with the
-   offline cluster private key.
+   offline artifact signing key. Pass its restricted file path to the signer,
+   never its bytes; see [Signing and development trust](../guides/signing-and-trust.md).
 2. Calculate the SHA-256 of the final signed ELF.
 3. Upload those immutable bytes from CI or an operator workstation to the
    central RustFS, Dell EMC ECS, or other compatible store.
@@ -43,7 +44,7 @@ For the current demonstration service, the final signing steps resemble:
 
 ```text
 cluster-sign deployment-sign greet.cdep greet releases/greet-42.elf \
-  <sha256-of-signed-elf> 0 42 4 1 5000 <private-key-hex> \
+  <sha256-of-signed-elf> 0 42 4 1 5000 <private-key-file> \
   greet=publish
 cluster-sign deployment-notify greet.cdep 127.0.0.1:8081
 cluster-sign deployment-status greet 127.0.0.1:8081 120
@@ -55,9 +56,9 @@ the grants:
 
 ```text
 cluster-sign deployment-sign orders.cdep orders releases/orders-42.elf \
-  <sha256-of-signed-elf> 0 42 8 8 15000 <private-key-hex> \
+  <sha256-of-signed-elf> 0 42 8 8 15000 <private-key-file> \
   --replicas=3 --spread-replicas --anti-affinity-group=42 orders=publish
-cluster-sign release-sign orders.crelease orders 42 <private-key-hex> orders.cdep
+cluster-sign release-sign orders.crelease orders 42 <private-key-file> orders.cdep
 cluster-sign release-apply orders.crelease 127.0.0.1:8081 120
 ```
 
@@ -66,7 +67,7 @@ committed Raft deployment generation. Repeating the exact same descriptor is
 idempotent. A lower signed sequence, or different signed bytes at the same
 sequence, returns HTTP `409 Conflict`.
 
-The `4 1 5000` between the deployment sequence and private key in the example means
+The `4 1 5000` between the deployment sequence and key-file path in the example means
 four 4 KiB stack pages per thread and at most one active thread, including the
 bootstrap thread, with five seconds to drain before forced retirement. Valid
 `CDEPLOY5` execution values are 1 through 64; shutdown grace is zero through
@@ -93,7 +94,7 @@ For all-or-nothing admission, wrap the independently signed descriptors in a
 signed `CRELEASE` envelope and apply that envelope instead:
 
 ```text
-cluster-sign release-sign orders.crelease orders 42 <private-key-hex> \
+cluster-sign release-sign orders.crelease orders 42 <private-key-file> \
   ingest.cdep validate.cdep publish.cdep
 cluster-sign release-verify orders.crelease <public-key-hex>
 cluster-sign release-apply orders.crelease 127.0.0.1:8081 120

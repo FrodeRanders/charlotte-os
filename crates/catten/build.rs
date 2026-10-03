@@ -1,6 +1,18 @@
 use std::env;
 
 fn main() {
+    println!("cargo:rerun-if-env-changed=CATTEN_TRUST_MODE");
+    match env::var("CATTEN_TRUST_MODE") {
+        Err(env::VarError::NotPresent) => {}
+        Ok(mode) if mode == "development" => {}
+        Ok(mode) if mode == "production" => panic!(
+            "production images are disabled: protected trust and recipient-key provisioning is \
+             not implemented; development fixtures must not protect real credentials"
+        ),
+        _ => panic!("CATTEN_TRUST_MODE must be development or production"),
+    }
+    println!("cargo:rustc-env=CATTEN_TRUST_MODE=development");
+    println!("cargo:warning=DEVELOPMENT image: public fixture trust; do not deploy real secrets");
     let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
 
     match arch.as_str() {

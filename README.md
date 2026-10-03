@@ -331,7 +331,11 @@ by the key ceremony, and the EL0 loader (which refuses any unsigned or invalidly
 signed image -- the build pipeline signs every staged service ELF with a
 *publicly known* version-controlled development key in
 `tools/cluster-sign/dev-key.hex`) and the deploy path validate both bytes
-and logical identity. Known third-party-containing services can therefore be
+and logical identity. Builds and boot logs identify these as development
+images; `CATTEN_TRUST_MODE=production` fails closed until protected provisioning
+exists. Signing commands accept private-key file paths, not real key bytes in
+argv; see [Signing and development trust](docs/guides/signing-and-trust.md).
+Known third-party-containing services can therefore be
 admitted once with an SBOM/provenance digest and traded internally without
 runtime Internet dependency fetching. Bootstrap and Raft durability are still
 per-node. Signed replica sets, affinity/anti-affinity, exact-generation

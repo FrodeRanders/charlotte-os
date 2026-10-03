@@ -9,6 +9,8 @@ These documents contain repeatable workflows rather than architectural claims.
   provenance, update validation, and measured/Secure Boot boundaries.
 - [Userspace development](userspace-development.md) — `catten-rt`, entry
   points, launch manifests, capabilities, and service packaging.
+- [Signing and development trust](signing-and-trust.md) — restricted key-file
+  inputs, fixture compatibility, and the fail-closed production-image gate.
 - [Userspace resource ownership](resource-ownership.md) — RAII, typed mappings,
   IPC transfer/borrowing, server replies, cancellation, and raw boundaries.
 - [Cooperative shutdown](shutdown.md) — signed grace periods, lifecycle-aware

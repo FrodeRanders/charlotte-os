@@ -1,6 +1,6 @@
 # Security remediation — 2026-10-03
 
-This records the first implementation pass following the
+This records implementation passes following the
 [security audit](2026-10-03-security-audit.md) of revision
 `42183c57ce4c0b32a6010246f6eee1b6262ebb4e`. It is not a declaration that the
 audit is closed or that CharlotteOS is ready for hostile production workloads.
@@ -8,8 +8,8 @@ Implementation and validation span 2026-10-03–04 local time.
 
 ## Finding ledger
 
-“Implemented” means the identified code defect has a correction in this working
-tree. Validation scope is listed separately; it does not imply that every
+“Implemented” means the identified code defect has a correction in the code.
+Validation scope is listed separately; it does not imply that every
 acceptance test proposed by the audit has run. “Mitigated” leaves part of the
 finding open. “Open” means no correction was implemented in this pass.
 
@@ -18,7 +18,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-01 | Implemented | Raw explicit mapping addresses and complete ranges are checked before address normalization or page-table mutation; both architectures reject user-accessible mappings outside the user window. |
 | SEC-02 | Implemented | Kernel records the exact admitted descriptor digest against the domain generation; grantctl obtains attestation instead of accepting another signed policy for the same artifact name. |
 | SEC-03 | Implemented | Legacy and capability mailbox queues are domain-local and discarded on domain teardown. |
-| SEC-04 | Open | Explicit development/production modes, independently provisioned role keys, fixture rejection, protected boot and recipient-key provisioning remain necessary. |
+| SEC-04 | Mitigated | Builds and boot logs identify development trust; production and unknown modes fail closed in scripted and direct kernel builds. Protected bootstrap roots, fixture-free production provisioning and recipient-key custody remain unimplemented. |
 | SEC-05 | Implemented | tcpip rejects raw frame ingress unless the authenticated sender is the exact live, kernel-designated frouter. Separate socket/VIP binding policy remains future hardening. |
 | SEC-06 | Mitigated | HTTP EOF, peer-raced accept and transport failures close one connection, not the server; listener-setup resource failures retry with backoff. httpd has a five-second request wait and bounded send retries; deployd has five-second header and thirty-second total receive budgets. Serial admission remains vulnerable to sustained connection floods. |
 | SEC-07 | Open | Aggregate memory, capability, endpoint, completion and queued-work accounting needs a common kernel admission/budget mechanism. Per-object bounds and these service limits do not replace it. |
@@ -27,7 +27,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-10 | Open | Authenticated encrypted access to node and cluster management, browser-client provisioning, and access policy remain necessary. |
 | SEC-11 | Implemented for scoped applications | Scoped application mapping now uses the configured artifact key. grantctl relies on launcher attestation, which used the configured deployment key. Bundled platform-service trust and production provisioning still belong to SEC-04. Custom-root end-to-end deployment remains to be tested. |
 | SEC-12 | Open | Attenuate local object-store authority to object sets/namespaces; retain an explicitly separate administration endpoint. |
-| SEC-13 | Open | Migrate all signing commands and callers to restricted key files/descriptors or a signer; do not put real private keys in positional arguments or traced shell variables. |
+| SEC-13 | Implemented in this repository | Signing/decryption commands enforce restricted bounded key files; generation never prints private material; build/deployment/shutdown scripts pass paths and reject the old secret-valued environment variable without expanding it. Only the exact public artifact fixture retains warned argv compatibility. Sibling broker/Durga callers still need file-path migration; host custody, ACL review and agent/HSM signing remain separate work. |
 | SEC-14 | Mitigated; audit corrected | Cargo.lock is already tracked. Main build/test runners and CI now enforce --locked; CI actions are commit-pinned, token permissions are read-only, and checkout does not persist credentials. Advisory/license scans and a release dependency inventory remain. |
 | SEC-15 | Mitigated | SigV4 prefixed secret, derived keys, HMAC block/pads and inner digest use zeroizing owners. TLS record buffers are wiped after dropping their borrower, including handshake failure. This is not a complete audit of crypto-library state or compiler-created secret copies. |
 | SEC-16 | Implemented | grantctl polls bounded concurrent operations, with per-sender/generation limits and total deadlines; its non-parking authorized lookup cannot leave cancelled grant requests in the shared name-service waitlist. The application helper retries within a total deadline. End-to-end stalled-target/flood testing remains. |
@@ -194,9 +194,10 @@ implementation proof is claimed.
    substitution, concurrent unavailable/available grant requests, cancellation,
    generation reuse, and unauthorized raw-frame calls. Exercise independently
    generated artifact/deployment roots end to end.
-2. Make production trust explicit and fail closed without provisioning; migrate
-   signing-key input away from argv. Keep developer fixtures available only as
-   visibly identified development infrastructure.
+2. Implement protected production bootstrap trust and recipient-key provisioning;
+   only then enable production images without fixture fallback. Migrate sibling
+   broker/Durga templates to the new signing file-path interface. Keep developer
+   fixtures visibly identified and separate from real credentials.
 3. Introduce aggregate kernel resource reservations/accounting with rollback
    and release on all cancellation/transfer/teardown paths. Reserve essential
    service capacity and test exhaustion without kernel panic or starvation.
@@ -210,3 +211,70 @@ Until those controls exist, retain the audit's operational restrictions: use
 only public fixtures, no real credentials under development recipient keys,
 trusted network segments and management access, and no mutually distrustful
 application workload assumptions.
+
+## Follow-up: signing and explicit development images — 2026-10-04
+
+The first pass was committed as `b3a77f6c`. This follow-up addresses signing
+input and makes the remaining production-trust boundary explicit.
+
+`elf-sign`, `deployment-sign`, `release-sign` and `shutdown-sign` take a private
+key-file path. Operational signing and recipient decryption use the same
+restricted reader. It opens once with Unix no-follow/nonblocking flags, checks
+the opened descriptor's type, owner and group/other permission bits, limits
+input to 4096 bytes, and zeroizes read, filtered and decoded buffers. Known
+public fixture contents are exempt from secrecy-related mode checks; filenames
+are not an exemption. Non-Unix real-key use is refused pending ACL support.
+Hex decoding now rejects malformed UTF-8 hex without slicing panics.
+
+Key generation uses exclusive creation, creates owner-only private files,
+rejects existing output files and does not print private bytes. The signer
+rejects real raw hex argv keys without echoing them. It retains warned
+compatibility only for the exact publicly known artifact fixture, so existing
+broker demos are not silently broken. A caller that already put a real key in
+argv has exposed it before rejection; the signer cannot undo that exposure.
+
+In-repository build/deployment/shutdown callers pass file paths and reject
+`CLUSTER_SIGN_PRIVATE_KEY` by checking presence, never value—even with `bash -x`.
+Use `CLUSTER_SIGN_KEY_FILE` instead. Signer invocations in these callers now
+select the repository's pinned toolchain outside the bare-metal Cargo config.
+The host-test wrapper runs signer unit tests, and CI lints its test target too.
+
+`CATTEN_TRUST_MODE` defaults to `development`. The scripts and kernel build
+script refuse `production`, unknown and empty values. Build output and boot
+logs warn that fixture trust must not protect real credentials. This is an
+intentional safety gate, **not a production provisioning implementation**.
+No production root is loaded and no real recipient secret is embedded by this
+change. See [Signing and development trust](../../guides/signing-and-trust.md).
+
+Follow-up validation:
+
+- The full host-test wrapper passed, now including seven signer unit tests.
+  New coverage exercises generation, 0600/0400 inputs, rejection of 0644/0640/
+  0602 real-key files, symlinks, FIFOs, non-regular/oversized/malformed inputs,
+  non-overwrite and rollback, public-fixture-only argv compatibility, and
+  file-based deployment/release/shutdown signature verification.
+- Shell tests passed for the development default, production/unknown/empty
+  rejection, early refusal by both runners and bundle/user builders, and
+  non-disclosure of the retired secret-valued variable under `bash -x`.
+- Direct kernel Cargo checks deliberately failed for production, unknown and
+  empty modes at the build-script gate, before producing a new kernel image.
+- AArch64 and x86-64 service bundles built and were signed using file paths.
+  Kernel Clippy passed for both architectures; host signer Clippy passed with
+  all targets on the pinned toolchain. Formatting, diff checks, shell syntax
+  checks and CI YAML parsing passed.
+- A separate no-network AArch64 guest passed **17 tests, 0 failed, 0 pending**,
+  and emitted the explicit development-trust boot warning. Kernel SHA-256:
+  `4b9428cc95d31c4d65abe78f35e321ebd6138acf8e9c41dfd0f2412c71963480`.
+  This used only the named `security-signing-20261004` instance and its own
+  storage image; existing soak guests/storage were not touched.
+
+Temporary follow-up evidence is in
+`/private/tmp/charlotte-security-signing-host-tests.log`,
+`/private/tmp/charlotte-security-signing-aarch64-services.log`,
+`/private/tmp/charlotte-security-signing-x86-services.log`,
+`/private/tmp/charlotte-security-signing-boot-run.log`, and
+`/private/tmp/charlotte-security-signing-20261004-serial.log`.
+The earlier network/HTTP boot evidence belongs to the first pass, not this
+follow-up. This pass did not exercise a production provisioning path, x86-64
+guest execution, OS ACL enforcement, a compromised signer workstation, or
+sibling broker/Durga real-key packaging.

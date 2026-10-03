@@ -1042,9 +1042,19 @@ panic. By default the build signs staged services using the
 version-controlled development keypair at
 \repofile|tools/cluster-sign/dev-key.hex|, whose public half is the embedded
 \texttt{CLUSTER\_PUBLIC\_KEY}. A different key can be supplied through
-\texttt{CLUSTER\_SIGN\_PRIVATE\_KEY}, with a kernel rebuilt to embed its
-public half. A production key would be held outside the repository under
-organizational key-management procedures.
+\texttt{CLUSTER\_SIGN\_KEY\_FILE}; its value is a restricted key-file path,
+never the private bytes. Changing the signing file does not change the
+kernel's bootstrap root. Signing commands read private files through bounded,
+zeroizing buffers and enforce owner-only Unix permissions, except for the
+exact publicly known fixtures. Key generation writes a new mode-0600 file
+without printing private material.
+
+Build output and boot logs explicitly identify the current images as
+development images. Selecting \texttt{CATTEN\_TRUST\_MODE=production}
+refuses the build: protected bootstrap trust and recipient-key provisioning
+are not implemented. Independently generated role keys and protected boot
+remain prerequisites for production; file-based signing alone does not
+establish those properties.
 
 Store resolution and deployment additionally check the signed logical name,
 and the manifest pins the full ELF SHA-256. The demonstrated

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+bash "$repo_root/scripts/tests/test-signing-policy.sh"
 toolchain="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' "$repo_root/rust-toolchain.toml")"
 host_cargo="$(rustup which --toolchain "$toolchain" cargo)"
 host_rustc="$(rustup which --toolchain "$toolchain" rustc)"
@@ -31,6 +32,9 @@ for manifest in "${manifests[@]}"; do
     RUSTC="$host_rustc" RUSTDOC="$host_rustdoc" "$host_cargo" test --locked \
         --manifest-path "$repo_root/$manifest"
 done
+
+RUSTC="$host_rustc" RUSTDOC="$host_rustdoc" "$host_cargo" test --locked \
+    --manifest-path "$repo_root/tools/cluster-sign/Cargo.toml"
 
 RUSTC="$host_rustc" RUSTDOC="$host_rustdoc" "$host_cargo" run --locked --quiet \
     --manifest-path "$repo_root/tools/cluster-sign/Cargo.toml" \

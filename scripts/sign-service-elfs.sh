@@ -2,7 +2,7 @@
 #
 # sign-service-elfs.sh — sign every staged service ELF in a bundle directory
 # with the cluster's private key (the version-controlled development key by
-# default, or $CLUSTER_SIGN_PRIVATE_KEY). Called by the build scripts after
+# default, or the file at $CLUSTER_SIGN_KEY_FILE). Called by the build scripts after
 # staging so that every image the kernel embeds — and therefore every image
 # the EL0 loader accepts — carries a valid .note.charlotte-sig signature.
 #
@@ -14,18 +14,16 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/scripts/lib/signing-policy.sh"
+catten_require_development_trust
+SIGN_TOOLCHAIN="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' "$ROOT/rust-toolchain.toml")"
 BUNDLE="${1:?usage: sign-service-elfs.sh <bundle-dir> [service-name ...]}"
 shift
 BUNDLE="$(cd "$BUNDLE" && pwd)"
 POLICY="$ROOT/crates/catten-services/artifact-policy.tsv"
 
-if [ -n "${CLUSTER_SIGN_PRIVATE_KEY:-}" ]; then
-    PRIVATE_KEY="$CLUSTER_SIGN_PRIVATE_KEY"
-else
-    KEY_FILE="$ROOT/tools/cluster-sign/dev-key.hex"
-    # The key file carries a comment line; take the last non-empty line.
-    PRIVATE_KEY="$(grep -v '^#' "$KEY_FILE" | tr -d '[:space:]')"
-fi
+KEY_FILE="$(catten_signing_key_file "$ROOT")"
+echo ">>> DEVELOPMENT signing: fixture-root images are not suitable for real credentials."
 
 ELFS=()
 if [ "$#" -eq 0 ]; then
@@ -68,8 +66,8 @@ EOF
     # The tool builds cleanly only when cargo's config discovery starts
     # outside the repo (the root config pins build-std for the kernel
     # toolchain); run it from /tmp with an explicit manifest path.
-    (cd /tmp && cargo run --locked --quiet --manifest-path "$ROOT/tools/cluster-sign/Cargo.toml" \
-        -- elf-sign "$elf" "$name" "$PRIVATE_KEY" "$class" "$version" "$rollback" \
+    (cd /tmp && cargo +"$SIGN_TOOLCHAIN" run --locked --quiet --manifest-path "$ROOT/tools/cluster-sign/Cargo.toml" \
+        -- elf-sign "$elf" "$name" "$KEY_FILE" "$class" "$version" "$rollback" \
         "$flags" "$provenance" >/dev/null)
     echo ">>> Blessed $(basename "$elf") as $name ($class, release $version, flags $flags)."
 done

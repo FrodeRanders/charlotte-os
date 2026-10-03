@@ -118,7 +118,7 @@ retries are safe because descriptor admission is idempotent.
 The preferred multi-component form is a signed release envelope:
 
 ```text
-cluster-sign release-sign orders.crelease orders 42 <private-key-hex> \
+cluster-sign release-sign orders.crelease orders 42 <private-key-file> \
   receive.cdep transform.cdep publish.cdep
 cluster-sign release-apply orders.crelease 127.0.0.1:8081 120
 ```
@@ -157,7 +157,7 @@ canonical bounded wire format used by the kernel and userspace. For example:
 
 ```text
 cluster-sign deployment-sign orders.cdep orders releases/orders-a5.elf \
-  <artifact-sha256> 0 7 16 8 15000 <private-key-hex> --replicas=3 \
+  <artifact-sha256> 0 7 16 8 15000 <private-key-file> --replicas=3 \
   --spread-replicas --anti-affinity-group=42 \
   kafka/orders/input=call kafka/orders/output=client
 ```

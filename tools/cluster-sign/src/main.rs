@@ -5,7 +5,10 @@
 //! into subtly different interpretations of the signed byte stream.
 
 #[cfg(unix)]
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{
+    MetadataExt,
+    OpenOptionsExt,
+};
 use std::{
     env,
     fs::{
@@ -182,30 +185,39 @@ fn hex_decode(value: &str) -> Result<Vec<u8>> {
     if !value.len().is_multiple_of(2) {
         return Err("hex input must contain an even number of digits".to_owned());
     }
-    (0..value.len())
-        .step_by(2)
-        .map(|index| {
-            u8::from_str_radix(&value[index..index + 2], 16)
-                .map_err(|_| format!("invalid hex digit at byte {index}"))
+    value
+        .as_bytes()
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .enumerate()
+        .map(|(index, digits)| {
+            decode_hex_pair(digits)
+                .ok_or_else(|| format!("invalid hex digit at byte {}", index * 2))
         })
         .collect()
 }
 
-fn hex_encode(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+fn decode_hex_pair(digits: &[u8]) -> Option<u8> {
+    fn nibble(byte: u8) -> Option<u8> {
+        match byte {
+            b'0'..=b'9' => Some(byte - b'0'),
+            b'a'..=b'f' => Some(byte - b'a' + 10),
+            b'A'..=b'F' => Some(byte - b'A' + 10),
+            _ => None,
+        }
+    }
+    Some(nibble(digits[0])? * 16 + nibble(digits[1])?)
 }
 
-fn rust_array(bytes: &[u8]) -> String {
-    let mut out = String::from("[\n");
-    for chunk in bytes.chunks(16) {
-        out.push_str("    ");
-        for byte in chunk {
-            out.push_str(&format!("0x{byte:02x}, "));
-        }
-        out.push('\n');
+fn hex_encode(bytes: &[u8]) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        encoded.push(DIGITS[usize::from(byte >> 4)] as char);
+        encoded.push(DIGITS[usize::from(byte & 15)] as char);
     }
-    out.push(']');
-    out
+    encoded
 }
 
 fn parse_class(value: Option<&String>) -> Result<ArtifactClass> {
@@ -266,7 +278,100 @@ fn read_hex_key(path: &str, length: usize, label: &str) -> Result<Vec<u8>> {
     parse_fixed_hex(&encoded, length, label)
 }
 
+// These are PUBLIC test fixtures, not a backdoor for arbitrary argv secrets.
+// Keep old out-of-tree demo scripts working while refusing real hex keys.
+fn development_fixture_hex(contents: &str) -> String {
+    // Reserve once so filtering a private file cannot leave earlier growth
+    // allocations containing fragments of its secret text.
+    let mut encoded = String::with_capacity(contents.len());
+    for line in contents.lines().map(str::trim) {
+        if !line.is_empty() && !line.starts_with('#') {
+            encoded.push_str(line);
+        }
+    }
+    encoded
+}
+
+fn is_development_secret(encoded: &str) -> bool {
+    [
+        include_str!("../dev-key.hex"),
+        include_str!("../dev-operations-key.hex"),
+        include_str!("../dev-recipient-key.hex"),
+    ]
+    .iter()
+    .any(|fixture| encoded.eq_ignore_ascii_case(&development_fixture_hex(fixture)))
+}
+
+fn read_private_key(path: &str, length: usize) -> Result<Zeroizing<Vec<u8>>> {
+    const MAX_KEY_FILE_BYTES: u64 = 4096;
+    let mut options = OpenOptions::new();
+    options.read(true);
+    // Inspect metadata on the opened descriptor, not a pathname checked and
+    // reopened later. Nonblocking/no-follow also prevents FIFO/symlink traps.
+    #[cfg(unix)]
+    options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    let file = options.open(path).map_err(|_| "cannot open private-key file".to_owned())?;
+    let metadata = file.metadata().map_err(|_| "cannot inspect private-key file".to_owned())?;
+    if !metadata.is_file() || metadata.len() > MAX_KEY_FILE_BYTES {
+        return Err("private key must be a regular file of at most 4096 bytes".to_owned());
+    }
+    let mut contents = Zeroizing::new(Vec::with_capacity(MAX_KEY_FILE_BYTES as usize + 1));
+    file.take(MAX_KEY_FILE_BYTES + 1)
+        .read_to_end(&mut contents)
+        .map_err(|_| "cannot read private-key file".to_owned())?;
+    if contents.len() as u64 > MAX_KEY_FILE_BYTES {
+        return Err("private-key file exceeds 4096 bytes".to_owned());
+    }
+    let text =
+        std::str::from_utf8(&contents).map_err(|_| "private-key file is not UTF-8".to_owned())?;
+    let encoded = Zeroizing::new(development_fixture_hex(text));
+    if !is_development_secret(&encoded) {
+        #[cfg(unix)]
+        {
+            // Host tooling only; no Charlotte capability is acquired here.
+            let effective_uid = unsafe { libc::geteuid() };
+            if metadata.uid() != effective_uid || metadata.mode() & 0o077 != 0 {
+                return Err("private-key file must be owned by this user with no group/other \
+                            permissions (use mode 0600 or 0400)"
+                    .to_owned());
+            }
+        }
+        #[cfg(not(unix))]
+        return Err("private-key file ACL enforcement is not implemented on this host".to_owned());
+    }
+    if encoded.len() != length * 2 {
+        return Err(format!("private-key file must encode exactly {length} bytes"));
+    }
+    let mut decoded = Zeroizing::new(Vec::with_capacity(length));
+    for digits in encoded.as_bytes().as_chunks::<2>().0 {
+        decoded.push(decode_hex_pair(digits).ok_or_else(|| "invalid private-key hex".to_owned())?);
+    }
+    Ok(decoded)
+}
+
+fn read_signing_key(reference: &str) -> Result<SecretKey> {
+    let bytes = if reference.len() == SecretKey::BYTES * 2
+        && reference.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        if !reference.eq_ignore_ascii_case(&development_fixture_hex(include_str!("../dev-key.hex")))
+        {
+            return Err("private keys in argv are no longer accepted; pass a mode-0600 key-file \
+                        path (not its contents)"
+                .to_owned());
+        }
+        eprintln!("warning: legacy PUBLIC development fixture in argv; migrate to a key-file path");
+        Zeroizing::new(hex_decode(reference)?)
+    } else {
+        read_private_key(reference, SecretKey::BYTES)?
+    };
+    SecretKey::from_slice(&bytes).map_err(|_| "invalid Ed25519 private-key file".to_owned())
+}
+
 fn write_new_file(path: &str, bytes: &[u8], secret: bool) -> Result<()> {
+    #[cfg(not(unix))]
+    if secret {
+        return Err("private-file ACL enforcement is not implemented on this host".to_owned());
+    }
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
@@ -343,6 +448,21 @@ fn operations_signing_generate(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+fn signing_generate(args: &[String]) -> Result<()> {
+    if args.len() != 2 {
+        return Err("usage: cluster-sign generate <private-key-file> <public-key-file>".to_owned());
+    }
+    let pair = KeyPair::generate();
+    write_new_hex_key(&args[0], pair.sk.as_ref(), true)?;
+    if let Err(error) = write_new_hex_key(&args[1], pair.pk.as_ref(), false) {
+        let _ = fs::remove_file(&args[0]);
+        return Err(error);
+    }
+    println!("generated Ed25519 key: public={} key-id={}", args[1], hex_encode(pair.pk.as_ref()));
+    println!("private key written mode 0600 to {}; private bytes are never printed", args[0]);
+    Ok(())
+}
+
 fn operations_seal(args: &[String]) -> Result<()> {
     let output = args.first().ok_or_else(|| "missing envelope output path".to_owned())?;
     let profile_name = args.get(1).ok_or_else(|| "missing profile name".to_owned())?;
@@ -375,11 +495,10 @@ fn operations_seal(args: &[String]) -> Result<()> {
     )?
     .try_into()
     .unwrap();
-    let operational_secret_bytes = Zeroizing::new(read_hex_key(
+    let operational_secret_bytes = read_private_key(
         args.get(8).ok_or_else(|| "missing operational signing-key path".to_owned())?,
         64,
-        "operational Ed25519 secret key",
-    )?);
+    )?;
     let operational_secret = SecretKey::from_slice(&operational_secret_bytes)
         .map_err(|_| "invalid operational Ed25519 secret key".to_owned())?;
     let profile_path = args.get(9).ok_or_else(|| "missing plaintext profile path".to_owned())?;
@@ -475,14 +594,12 @@ fn operations_open(args: &[String]) -> Result<()> {
         args.get(3).ok_or_else(|| "missing current Unix time".to_owned())?,
         "current Unix time",
     )?;
-    let recipient_private: [u8; 32] = read_hex_key(
+    let recipient_bytes = read_private_key(
         args.get(4).ok_or_else(|| "missing recipient private-key path".to_owned())?,
         32,
-        "recipient private key",
-    )?
-    .try_into()
-    .unwrap();
-    let recipient_private = Zeroizing::new(recipient_private);
+    )?;
+    let recipient_private =
+        Zeroizing::new(<[u8; 32]>::try_from(recipient_bytes.as_slice()).unwrap());
     let operational_public: [u8; 32] = read_hex_key(
         args.get(5).ok_or_else(|| "missing operational public-key path".to_owned())?,
         32,
@@ -530,11 +647,10 @@ fn operations_bundle_sign(args: &[String]) -> Result<()> {
     )?
     .try_into()
     .unwrap();
-    let operational_secret_bytes = Zeroizing::new(read_hex_key(
+    let operational_secret_bytes = read_private_key(
         args.get(4).ok_or_else(|| "missing operational signing-key path".to_owned())?,
         64,
-        "operational Ed25519 secret key",
-    )?);
+    )?;
     let operational_secret = SecretKey::from_slice(&operational_secret_bytes)
         .map_err(|_| "invalid operational Ed25519 secret key".to_owned())?;
     let operational_public = operational_secret.public_key();
@@ -732,14 +848,13 @@ fn operations_bundle_notify(args: &[String]) -> Result<()> {
 fn elf_sign(args: &[String]) -> Result<()> {
     let path = args.first().ok_or_else(|| "missing ELF path".to_owned())?;
     let name = args.get(1).ok_or_else(|| "missing artifact name".to_owned())?;
-    let secret_hex = args.get(2).ok_or_else(|| "missing private key".to_owned())?;
+    let key_file = args.get(2).ok_or_else(|| "missing private-key file".to_owned())?;
     let class = parse_class(args.get(3))?;
     let version = parse_u64(args.get(4), "artifact version", 1)?;
     let rollback = parse_u64(args.get(5), "rollback counter", version)?;
     let flags = parse_u32(args.get(6), "artifact flags", 0)?;
     let provenance_digest = parse_digest(args.get(7))?;
-    let secret = SecretKey::from_slice(&hex_decode(secret_hex)?)
-        .map_err(|_| "private key must be an Ed25519 secret key".to_owned())?;
+    let secret = read_signing_key(key_file)?;
     let public = secret.public_key();
     let metadata = ArtifactMetadata::new(name.as_bytes(), class, version, rollback, flags)
         .ok_or_else(|| "artifact name must be 1..=48 non-NUL bytes".to_owned())?
@@ -906,10 +1021,8 @@ fn deployment_sign(args: &[String]) -> Result<()> {
     )?
     .try_into()
     .map_err(|_| "shutdown grace milliseconds exceed the descriptor width".to_owned())?;
-    let secret = SecretKey::from_slice(&hex_decode(
-        args.get(9).ok_or_else(|| "missing private key".to_owned())?,
-    )?)
-    .map_err(|_| "private key must be an Ed25519 secret key".to_owned())?;
+    let secret =
+        read_signing_key(args.get(9).ok_or_else(|| "missing private-key file".to_owned())?)?;
     let (placement, parsed_grants) = parse_placement_and_grants(&args[10..])?;
     let grants = parsed_grants
         .iter()
@@ -999,10 +1112,8 @@ fn release_sign(args: &[String]) -> Result<()> {
         args.get(2).ok_or_else(|| "missing release sequence".to_owned())?,
         "release sequence",
     )?;
-    let secret = SecretKey::from_slice(&hex_decode(
-        args.get(3).ok_or_else(|| "missing private key".to_owned())?,
-    )?)
-    .map_err(|_| "private key must be an Ed25519 secret key".to_owned())?;
+    let secret =
+        read_signing_key(args.get(3).ok_or_else(|| "missing private-key file".to_owned())?)?;
     let paths = args.get(4..).filter(|paths| !paths.is_empty()).ok_or_else(|| {
         "release-sign requires at least one signed deployment descriptor".to_owned()
     })?;
@@ -1105,10 +1216,8 @@ fn shutdown_sign(args: &[String]) -> Result<()> {
     )?
     .try_into()
     .map_err(|_| "phase grace milliseconds exceed the intent width".to_owned())?;
-    let secret = SecretKey::from_slice(&hex_decode(
-        args.get(7).ok_or_else(|| "missing private key".to_owned())?,
-    )?)
-    .map_err(|_| "private key must be an Ed25519 secret key".to_owned())?;
+    let secret =
+        read_signing_key(args.get(7).ok_or_else(|| "missing private-key file".to_owned())?)?;
     let fields = shutdown::ShutdownFields {
         sequence,
         target_node,
@@ -1246,11 +1355,10 @@ fn ingress_policy_sign(args: &[String]) -> Result<()> {
     )?
     .try_into()
     .unwrap();
-    let secret_bytes = Zeroizing::new(read_hex_key(
+    let secret_bytes = read_private_key(
         args.get(5).ok_or_else(|| "missing operational signing-key path".to_owned())?,
         64,
-        "operational Ed25519 secret key",
-    )?);
+    )?;
     let secret = SecretKey::from_slice(&secret_bytes)
         .map_err(|_| "invalid operational Ed25519 secret key".to_owned())?;
     let assignment_args = args.get(6..).unwrap_or_default();
@@ -1702,21 +1810,7 @@ fn release_apply(args: &[String]) -> Result<()> {
 fn run() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     match args.get(1).map(String::as_str) {
-        Some("generate") => {
-            let pair = KeyPair::generate();
-            println!("public key (hex):  {}", hex_encode(pair.pk.as_ref()));
-            println!("private key (hex): {}", hex_encode(pair.sk.as_ref()));
-            println!(
-                "\npub const CLUSTER_PUBLIC_KEY: [u8; 32] = {};",
-                rust_array(pair.pk.as_ref())
-            );
-            println!(
-                "\n// Keep this 64-byte secret outside the cluster:\npub const \
-                 CLUSTER_PRIVATE_KEY: [u8; 64] = {};",
-                rust_array(pair.sk.as_ref())
-            );
-            Ok(())
-        }
+        Some("generate") => signing_generate(&args[2..]),
         Some("elf-sign") => elf_sign(&args[2..]),
         Some("elf-verify") => elf_verify(&args[2..]),
         Some("deployment-sign") => deployment_sign(&args[2..]),
@@ -1841,44 +1935,44 @@ fn run() -> Result<()> {
             );
             Ok(())
         }
-        _ => {
-            Err("usage: cluster-sign generate | elf-sign <elf> <name> <privkey-hex> \
-                 [service|driver|bootstrap|admin] [version] [rollback] [flags] \
-                 [provenance-sha256|-] | elf-verify <elf> <name> <pubkey-hex> | sha256 <file> | \
-                 deployment-sign <output> <artifact-name> <object-key> <artifact-sha256> \
-                 <node-key> <sequence> <stack-pages-per-thread> <max-threads> <shutdown-grace-ms> \
-                 <privkey-hex> [--replicas=N | --every-eligible-node] [--min-distinct-nodes=N] \
-                 [--max-instances-per-node=N] [--spread-replicas] [--affinity-group=N] \
-                 [--anti-affinity-group=N] [service=send|call|client|publish ...] | \
-                 deployment-verify <descriptor> <pubkey-hex> | deployment-notify <descriptor> \
-                 [host:port] | deployment-status <artifact-name> [host:port] [wait-seconds] | \
-                 deployment-apply <host:port> <wait-seconds> <descriptor>... | release-sign \
-                 <output> <release-name> <sequence> <privkey-hex> <descriptor>... | \
-                 release-verify <release> <pubkey-hex> | release-notify <release> [host:port] | \
-                 release-apply <release> [host:port] [wait-seconds] | shutdown-sign <output> \
-                 <sequence> <target-node> <not-before-unix> <expires-unix> <node-grace-ms> \
-                 <phase-grace-ms> <privkey-hex> | shutdown-verify <intent> <pubkey-hex> | \
-                 shutdown-notify <intent> [host:port] | ingress-policy-sign <output> <sequence> \
-                 <not-before-unix> <expires-unix> <cluster-id-hex> <ops-ed25519-private-key-file> \
-                 ([NAME=]VIP:PORT... | --clear) | ingress-policy-verify <policy> <cluster-id-hex> \
-                 <ops-ed25519-public-key-file> | ingress-policy-notify <policy> [host:port] | \
-                 ingress-policy-status [host:port] | node-key <mac-address> | \
-                 operations-recipient-generate <private-key-file> <public-key-file> | \
-                 operations-signing-generate <private-key-file> <public-key-file> | \
-                 operations-seal <output> <profile-name> <s3|kafka> <cluster-id-hex> \
-                 <release-sha256> <sequence> <expires-unix> <recipient-public-key-file> \
-                 <ops-ed25519-private-key-file> <profile-file> | operations-verify <envelope> \
-                 <ops-ed25519-public-key-file> | operations-open <envelope> <cluster-id-hex> \
-                 <release-sha256> <now-unix> <recipient-private-key-file> \
-                 <ops-ed25519-public-key-file> <output> | operations-bundle-sign <output> \
-                 <bundle-sequence> <cluster-id-hex> <release-ed25519-public-key-hex> \
-                 <ops-ed25519-private-key-file> <recipient-public-key-file> <release> \
-                 (<target-artifact> <object-key> <envelope>)... | operations-bundle-verify \
-                 <bundle> <cluster-id-hex> <release-ed25519-public-key-hex> \
-                 <ops-ed25519-public-key-file> <recipient-public-key-file> <now-unix> | \
-                 operations-bundle-notify <bundle> [host:port] | cluster-id <mnemonic> | selftest"
-                .to_owned())
-        }
+        _ => Err("usage: cluster-sign generate <private-key-file> <public-key-file> | elf-sign \
+                  <elf> <name> <private-key-file> [service|driver|bootstrap|admin] [version] \
+                  [rollback] [flags] [provenance-sha256|-] | elf-verify <elf> <name> \
+                  <pubkey-hex> | sha256 <file> | deployment-sign <output> <artifact-name> \
+                  <object-key> <artifact-sha256> <node-key> <sequence> <stack-pages-per-thread> \
+                  <max-threads> <shutdown-grace-ms> <private-key-file> [--replicas=N | \
+                  --every-eligible-node] [--min-distinct-nodes=N] [--max-instances-per-node=N] \
+                  [--spread-replicas] [--affinity-group=N] [--anti-affinity-group=N] \
+                  [service=send|call|client|publish ...] | deployment-verify <descriptor> \
+                  <pubkey-hex> | deployment-notify <descriptor> [host:port] | deployment-status \
+                  <artifact-name> [host:port] [wait-seconds] | deployment-apply <host:port> \
+                  <wait-seconds> <descriptor>... | release-sign <output> <release-name> \
+                  <sequence> <private-key-file> <descriptor>... | release-verify <release> \
+                  <pubkey-hex> | release-notify <release> [host:port] | release-apply <release> \
+                  [host:port] [wait-seconds] | shutdown-sign <output> <sequence> <target-node> \
+                  <not-before-unix> <expires-unix> <node-grace-ms> <phase-grace-ms> \
+                  <private-key-file> | shutdown-verify <intent> <pubkey-hex> | shutdown-notify \
+                  <intent> [host:port] | ingress-policy-sign <output> <sequence> \
+                  <not-before-unix> <expires-unix> <cluster-id-hex> \
+                  <ops-ed25519-private-key-file> ([NAME=]VIP:PORT... | --clear) | \
+                  ingress-policy-verify <policy> <cluster-id-hex> <ops-ed25519-public-key-file> \
+                  | ingress-policy-notify <policy> [host:port] | ingress-policy-status \
+                  [host:port] | node-key <mac-address> | operations-recipient-generate \
+                  <private-key-file> <public-key-file> | operations-signing-generate \
+                  <private-key-file> <public-key-file> | operations-seal <output> <profile-name> \
+                  <s3|kafka> <cluster-id-hex> <release-sha256> <sequence> <expires-unix> \
+                  <recipient-public-key-file> <ops-ed25519-private-key-file> <profile-file> | \
+                  operations-verify <envelope> <ops-ed25519-public-key-file> | operations-open \
+                  <envelope> <cluster-id-hex> <release-sha256> <now-unix> \
+                  <recipient-private-key-file> <ops-ed25519-public-key-file> <output> | \
+                  operations-bundle-sign <output> <bundle-sequence> <cluster-id-hex> \
+                  <release-ed25519-public-key-hex> <ops-ed25519-private-key-file> \
+                  <recipient-public-key-file> <release> (<target-artifact> <object-key> \
+                  <envelope>)... | operations-bundle-verify <bundle> <cluster-id-hex> \
+                  <release-ed25519-public-key-hex> <ops-ed25519-public-key-file> \
+                  <recipient-public-key-file> <now-unix> | operations-bundle-notify <bundle> \
+                  [host:port] | cluster-id <mnemonic> | selftest"
+            .to_owned()),
     }
 }
 
@@ -1895,6 +1989,181 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    struct TestDirectory(std::path::PathBuf);
+
+    #[cfg(unix)]
+    impl TestDirectory {
+        fn new() -> Self {
+            use std::{
+                os::unix::fs::DirBuilderExt,
+                sync::atomic::{
+                    AtomicUsize,
+                    Ordering,
+                },
+            };
+            static NEXT: AtomicUsize = AtomicUsize::new(0);
+            let path = env::temp_dir().join(format!(
+                "charlotte-key-test-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            fs::DirBuilder::new().mode(0o700).create(&path).unwrap();
+            Self(path)
+        }
+
+        fn path(&self, name: &str) -> String {
+            self.0.join(name).to_str().unwrap().to_owned()
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            // Only this test's uniquely created, owned directory is removed.
+            fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+
+    #[test]
+    fn hex_rejects_unicode_without_panicking() {
+        for malformed in ["0é0", "é00", "☃x", "zz", "0"] {
+            assert!(hex_decode(malformed).is_err());
+        }
+        assert_eq!(hex_decode("00aBff").unwrap(), [0, 0xab, 0xff]);
+    }
+
+    #[test]
+    fn argv_only_accepts_the_public_legacy_artifact_fixture() {
+        let pair = KeyPair::generate();
+        let secret_hex = Zeroizing::new(hex_encode(pair.sk.as_ref()));
+        let error = read_signing_key(&secret_hex).err().unwrap();
+        assert!(error.contains("argv"));
+        assert!(!error.contains(secret_hex.as_str()));
+        let fixture = development_fixture_hex(include_str!("../dev-key.hex"));
+        assert_eq!(
+            read_signing_key(&fixture).unwrap().public_key().as_ref(),
+            &charlotte_launch::CLUSTER_PUBLIC_KEY
+        );
+        assert!(read_signing_key(&development_fixture_hex(include_str!(
+            "../dev-operations-key.hex"
+        )))
+        .is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restricted_files_sign_and_never_overwrite_keys() {
+        let directory = TestDirectory::new();
+        let private = directory.path("signing.hex");
+        let public = directory.path("signing.pub");
+        signing_generate(&[private.clone(), public.clone()]).unwrap();
+        assert_eq!(fs::metadata(&private).unwrap().mode() & 0o777, 0o600);
+        let key = read_signing_key(&private).unwrap();
+        assert_eq!(read_hex_key(&public, 32, "public key").unwrap(), key.public_key().as_ref());
+        assert!(signing_generate(&[private.clone(), public.clone()]).is_err());
+        assert_eq!(read_signing_key(&private).unwrap().as_ref(), key.as_ref());
+        assert!(signing_generate(&[]).is_err());
+
+        let new_private = directory.path("rollback.hex");
+        assert!(signing_generate(&[new_private.clone(), public]).is_err());
+        assert!(!std::path::Path::new(&new_private).exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_file_checks_reject_unsafe_sources_and_bad_encoding() {
+        use std::os::unix::fs::{
+            symlink,
+            PermissionsExt,
+        };
+        let directory = TestDirectory::new();
+        let path = directory.path("key.hex");
+        let pair = KeyPair::generate();
+        write_new_hex_key(&path, pair.sk.as_ref(), true).unwrap();
+        for mode in [0o644, 0o640, 0o602] {
+            fs::set_permissions(&path, fs::Permissions::from_mode(mode)).unwrap();
+            assert!(read_private_key(&path, 64).err().unwrap().contains("mode"));
+        }
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+        assert_eq!(read_private_key(&path, 64).unwrap().as_slice(), pair.sk.as_ref());
+        let alias = directory.path("alias.hex");
+        symlink(&path, &alias).unwrap();
+        assert!(read_private_key(&alias, 64).is_err());
+        assert!(read_private_key(directory.0.to_str().unwrap(), 64).is_err());
+        let fifo = directory.path("fifo");
+        let fifo_name = std::ffi::CString::new(fifo.as_str()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo_name.as_ptr(), 0o600) }, 0);
+        assert!(read_private_key(&fifo, 64).is_err());
+
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        for malformed in ["0".repeat(8192), "zz".repeat(64), "é".repeat(64), "00".to_owned()] {
+            fs::write(&path, malformed).unwrap();
+            assert!(read_private_key(&path, 64).is_err());
+        }
+        // Permissions are exempted by exact PUBLIC fixture contents, not name.
+        fs::write(&path, include_str!("../dev-key.hex")).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(read_signing_key(&path).is_ok());
+        fs::write(&path, hex_encode(pair.sk.as_ref())).unwrap();
+        assert!(read_signing_key(&path).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn all_signed_control_envelopes_use_key_files() {
+        let directory = TestDirectory::new();
+        let private = directory.path("key.hex");
+        let pair = KeyPair::generate();
+        write_new_hex_key(&private, pair.sk.as_ref(), true).unwrap();
+        let public: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
+        let descriptor = directory.path("app.cdep");
+        deployment_sign(&[
+            descriptor.clone(),
+            "app".into(),
+            "apps/app.elf".into(),
+            "a5".repeat(32),
+            "0".into(),
+            "1".into(),
+            "4".into(),
+            "1".into(),
+            "5000".into(),
+            private.clone(),
+        ])
+        .unwrap();
+        let bytes = fs::read(&descriptor).unwrap();
+        assert_eq!(deployment::verify(&bytes, public), deployment::VerifyOutcome::Valid);
+        let release_path = directory.path("app.crelease");
+        release_sign(&[
+            release_path.clone(),
+            "release".into(),
+            "1".into(),
+            private.clone(),
+            descriptor,
+        ])
+        .unwrap();
+        assert_eq!(
+            release::verify(&fs::read(release_path).unwrap(), public),
+            release::VerifyOutcome::Valid
+        );
+        let shutdown_path = directory.path("node.cshutdown");
+        shutdown_sign(&[
+            shutdown_path.clone(),
+            "1".into(),
+            "1".into(),
+            "1".into(),
+            "301".into(),
+            "60000".into(),
+            "5000".into(),
+            private,
+        ])
+        .unwrap();
+        assert_eq!(
+            shutdown::verify(&fs::read(shutdown_path).unwrap(), public),
+            shutdown::VerifyOutcome::Valid
+        );
+    }
 
     fn signed_descriptor(pair: &KeyPair, name: &[u8], sequence: u64) -> Vec<u8> {
         let fields = DescriptorFields {

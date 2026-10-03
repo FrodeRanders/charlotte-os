@@ -12,6 +12,13 @@ node-pickup path, and the production hardening that remains. It is not a claim
 that private-key custody, rotation, audit, or connector rollout is production
 ready.
 
+Current builds and boot logs explicitly identify development trust.
+`CATTEN_TRUST_MODE=production` refuses the build until protected provisioning
+exists. Offline signing/decryption now reads restricted key files instead of
+real private keys in argv; see
+[Signing and development trust](../guides/signing-and-trust.md). Those tooling
+controls do not establish production key custody inside a running cluster.
+
 ## Separation of responsibilities
 
 | Role | Supplies | Must not receive |
@@ -228,6 +235,8 @@ are QEMU fixtures analogous to the existing artifact development key. They
 must never be used in a real environment. Production provisioning must replace
 the public launch trust and keep both private keys in the responsible
 organisational KMS/cluster secrets boundary.
+The existing launcher injection API does not itself provide that custody or
+authorize a production boot image.
 
 ## Privileged object retrieval, decryption, and launch
 

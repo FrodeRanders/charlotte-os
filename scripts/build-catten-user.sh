@@ -15,6 +15,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/scripts/lib/signing-policy.sh"
+catten_require_development_trust
 cd "$ROOT"
 
 MANIFEST="crates/catten-user/Cargo.toml"
@@ -98,7 +100,7 @@ if [ "$EMBED" -eq 1 ]; then
     cp /tmp/catten-user.elf "$DEST"
     echo ">>> Copied ELF to $DEST"
     # The loader refuses unsigned images: sign the staged ELF with the
-    # cluster's development key (or $CLUSTER_SIGN_PRIVATE_KEY).
+    # cluster's development key (or the file at $CLUSTER_SIGN_KEY_FILE).
     "$ROOT/scripts/sign-service-elfs.sh" "$(dirname "$DEST")" sitas-user
 
     # Read the ELF entry point. The kernel ELF loader starts exactly there.

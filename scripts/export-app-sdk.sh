@@ -93,6 +93,10 @@ any service binary.
   `sha256`, `deployment-sign`, `deployment-notify`, and `deployment-status`.
 - `keys/` holds the publicly known development keys only. Production keys are
   held offline and never belong in an SDK.
+- Private-key arguments to signing commands are restricted file paths, not
+  hexadecimal bytes. `cluster-sign generate PRIVATE_FILE PUBLIC_FILE` creates
+  a new mode-0600 private file and never prints its contents. Current OS images
+  use development trust; production image provisioning is not implemented.
 - `VERSION` records the SDK schema, the CharlotteOS revision, and the pinned
   toolchain.
 

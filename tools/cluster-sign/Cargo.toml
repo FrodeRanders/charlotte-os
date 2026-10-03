@@ -9,3 +9,6 @@ charlotte-launch = { path = "../../crates/charlotte-launch" }
 getrandom = { version = "0.4", features = ["sys_rng"] }
 rand_core = "0.10.0"
 zeroize = "1.9"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

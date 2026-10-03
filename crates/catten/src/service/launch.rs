@@ -1036,6 +1036,9 @@ pub fn launch_kafka_step(ns: &NameServiceHandle, profile: &KafkaStepProfile<'_>)
 /// cluster + appliance follow the network. The self-test suite verifies the
 /// launched services instead of spawning them.
 pub extern "C" fn launch_steady_state() {
+    logln!(
+        "[security] DEVELOPMENT image: public fixture trust; not suitable for real credentials."
+    );
     let ns = crate::service::supervisor::node_name_service();
     let storage = launch_storage(&ns);
     let entropy = launch_entropy(&ns);

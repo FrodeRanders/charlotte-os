@@ -418,6 +418,7 @@ dependencies = [
  "charlotte-launch",
  "ed25519-compact",
  "getrandom",
+ "libc",
  "rand_core 0.10.1",
  "zeroize",
 ]

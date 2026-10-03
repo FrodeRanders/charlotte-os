@@ -73,6 +73,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # shellcheck source=lib/boot-common.sh
 source "${SCRIPT_DIR}/lib/boot-common.sh"
+source "${SCRIPT_DIR}/lib/signing-policy.sh"
+catten_require_development_trust
 
 ARCH="aarch64"
 PROFILE="debug"
@@ -604,8 +606,9 @@ export CATTEN_AARCH64_SERVICE_BUNDLE="${ROOT_DIR}/target/embedded-services/aarch
 DEPLOYMENT_DESCRIPTOR=""
 DEPLOYMENT_RELEASE=""
 CLUSTER_SIGN_BIN="${ROOT_DIR}/target/debug/cluster-sign"
+SIGN_TOOLCHAIN="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' "$ROOT_DIR/rust-toolchain.toml")"
 if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ] || [ "$SHUTDOWN_INGRESS_TEST" = "1" ]; then
-    (cd /tmp && cargo build --locked --quiet --manifest-path "${ROOT_DIR}/tools/cluster-sign/Cargo.toml")
+    (cd /tmp && cargo +"$SIGN_TOOLCHAIN" build --locked --quiet --manifest-path "${ROOT_DIR}/tools/cluster-sign/Cargo.toml")
 fi
 if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
     echo ">>> Preparing signed central-store deployment fixture..."
@@ -623,11 +626,7 @@ if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
     DEPLOYMENT_DESCRIPTOR="${DEPLOYMENT_TEST_DIR}/${DEPLOY_NAME}.cdep"
     DEPLOYMENT_RELEASE="${DEPLOYMENT_TEST_DIR}/${DEPLOY_NAME}.crelease"
     DEPLOYMENT_DIGEST="$($CLUSTER_SIGN_BIN sha256 "$DEPLOYMENT_ELF")"
-    if [ -n "${CLUSTER_SIGN_PRIVATE_KEY:-}" ]; then
-        DEPLOYMENT_PRIVATE_KEY="$CLUSTER_SIGN_PRIVATE_KEY"
-    else
-        DEPLOYMENT_PRIVATE_KEY="$(grep -v '^#' "${ROOT_DIR}/tools/cluster-sign/dev-key.hex" | tr -d '[:space:]')"
-    fi
+    DEPLOYMENT_KEY_FILE="$(catten_signing_key_file "$ROOT_DIR")"
     DEPLOYMENT_SEQUENCE="$(date +%s)"
     docker compose -f "$RUSTFS_COMPOSE" run --rm --no-deps \
         -v "${DEPLOYMENT_ELF}:/tmp/${DEPLOY_NAME}.elf:ro" \
@@ -637,10 +636,10 @@ if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
     "$CLUSTER_SIGN_BIN" deployment-sign \
         "$DEPLOYMENT_DESCRIPTOR" "$DEPLOY_NAME" "$DEPLOYMENT_OBJECT_KEY" "$DEPLOYMENT_DIGEST" \
         0 "$DEPLOYMENT_SEQUENCE" "$DEPLOY_STACK_PAGES" "$DEPLOY_MAX_THREADS" "$DEPLOY_GRACE_MS" \
-        "$DEPLOYMENT_PRIVATE_KEY" $DEPLOY_GRANTS
+        "$DEPLOYMENT_KEY_FILE" $DEPLOY_GRANTS
     "$CLUSTER_SIGN_BIN" release-sign \
         "$DEPLOYMENT_RELEASE" "${DEPLOY_NAME}-ingress-e2e" "$DEPLOYMENT_SEQUENCE" \
-        "$DEPLOYMENT_PRIVATE_KEY" "$DEPLOYMENT_DESCRIPTOR"
+        "$DEPLOYMENT_KEY_FILE" "$DEPLOYMENT_DESCRIPTOR"
 fi
 
 # Feature selection.
@@ -1131,17 +1130,12 @@ if [ -n "$TIMEOUT" ]; then
                 SHUTDOWN_TEST_DIR="${ROOT_DIR}/target/shutdown-ingress-test"
                 SHUTDOWN_INTENT="${SHUTDOWN_TEST_DIR}/node.cshutdown"
                 mkdir -p "$SHUTDOWN_TEST_DIR"
-                if [ -n "${CLUSTER_SIGN_PRIVATE_KEY:-}" ]; then
-                    SHUTDOWN_PRIVATE_KEY="$CLUSTER_SIGN_PRIVATE_KEY"
-                else
-                    SHUTDOWN_PRIVATE_KEY="$(grep -v '^#' \
-                        "${ROOT_DIR}/tools/cluster-sign/dev-key.hex" | tr -d '[:space:]')"
-                fi
+                SHUTDOWN_KEY_FILE="$(catten_signing_key_file "$ROOT_DIR")"
                 SHUTDOWN_NOW="$(date +%s)"
                 SHUTDOWN_TARGET="$($CLUSTER_SIGN_BIN node-key "$NET_MAC")"
                 "$CLUSTER_SIGN_BIN" shutdown-sign "$SHUTDOWN_INTENT" \
                     "$SHUTDOWN_NOW" "$SHUTDOWN_TARGET" "$SHUTDOWN_NOW" \
-                    "$((SHUTDOWN_NOW + 300))" 60000 5000 "$SHUTDOWN_PRIVATE_KEY"
+                    "$((SHUTDOWN_NOW + 300))" 60000 5000 "$SHUTDOWN_KEY_FILE"
                 SHUTDOWN_ACCEPTED=0
                 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
                     if "$CLUSTER_SIGN_BIN" shutdown-notify "$SHUTDOWN_INTENT" \

@@ -80,6 +80,7 @@ jobs:
           cd /tmp
           cargo clippy --locked \
             --manifest-path "$GITHUB_WORKSPACE/tools/cluster-sign/Cargo.toml" \
+            --all-targets \
             -- -D warnings
 
   host-tests:

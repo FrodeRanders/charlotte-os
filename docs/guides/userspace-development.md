@@ -222,7 +222,10 @@ the cluster:
    chosen name, class, version, rollback counter, flags, and provenance. The
    in-tree `artifact-policy.tsv` and `scripts/sign-service-elfs.sh` are
    conveniences for bundled services; an out-of-tree artifact calls
-   `cluster-sign` directly.
+   `cluster-sign` directly. Its private-key argument is a restricted key-file
+   path, not hexadecimal key bytes. See
+   [Signing and development trust](signing-and-trust.md) for generation and
+   migration instructions.
 3. **Deploy.** `cluster-sign deployment-sign` creates a `CDEPLOY5` descriptor
    binding the artifact digest, object key, placement, thread/stack limits, and
    capability grants, and `deployment-notify` submits it to `deployd`. See

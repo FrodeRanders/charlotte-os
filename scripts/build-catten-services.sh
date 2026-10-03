@@ -4,12 +4,14 @@
 #
 # Every staged ELF is signed with the cluster's private key (the
 # version-controlled development key in tools/cluster-sign/dev-key.hex by
-# default, $CLUSTER_SIGN_PRIVATE_KEY for a live key) before the kernel
+# default, $CLUSTER_SIGN_KEY_FILE for another signing-key file) before the kernel
 # embeds it: the EL0 loader refuses any image that is not validly signed, so
 # the whole bundle must carry signature notes.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/scripts/lib/signing-policy.sh"
+catten_require_development_trust
 cd "$ROOT"
 
 MODE="build"

@@ -221,4 +221,4 @@ fi
 ENTRY="$("$READOBJ" -h "$OUTPUT" | awk '/Entry:/ {print $2}')"
 SIZE="$(wc -c < "$OUTPUT")"
 echo ">>> ELF: $OUTPUT ($SIZE bytes, $LOAD_COUNT LOAD segments, entry $ENTRY)"
-echo ">>> Signing is a separate step: cluster-sign elf-sign <elf> <name> <key> ..."
+echo ">>> Signing is a separate step: cluster-sign elf-sign <elf> <name> <private-key-file> ..."
