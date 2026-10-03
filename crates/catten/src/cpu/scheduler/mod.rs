@@ -1,6 +1,6 @@
 //! Kernel thread scheduler — spawn, block, abort, yield.
 //!
-//! A thread is a kernel-scheduled execution context.  The scheduler
+//! A thread is a kernel-scheduled execution context. The scheduler
 //! assigns threads to logical processors (LPs), runs a per-LP
 //! round-robin policy with a configurable quantum, and provides
 //! cooperative `yield_lp`, blocking `sleep`, and thread exit.
@@ -60,7 +60,8 @@ const REBALANCE_SAMPLE_MILLIS: u64 = 10;
 static LAST_REBALANCE_SAMPLE_MILLIS: AtomicU64 = AtomicU64::new(0);
 
 /// Current monotonic time in milliseconds since the architecture counter's
-/// epoch. Suitable for deadlines; it is not wall-clock time.
+/// epoch. Observe that this is not wall-clock time and is meant to handle
+/// deadlines.
 pub fn monotonic_millis() -> u64 {
     use crate::cpu::isa::{
         interface::timers::LpTimerIfce,
@@ -92,8 +93,8 @@ pub fn counter_frequency_hz() -> u64 {
     1_000_000_000_000 / LpTimer::get_ts_cycle_period().as_picos() as u64
 }
 
-/// Creates a new thread and submit it to the system scheduler for assignment to a logical processor
-/// and then execution.
+/// Creates a new thread and submit it to the system scheduler for assignment
+/// to a logical processor (LP) and then execution.
 pub fn spawn_thread(asid: AddressSpaceId, entry_point: extern "C" fn()) -> ThreadId {
     spawn_thread_with_migration(asid, entry_point, false)
 }
@@ -125,8 +126,8 @@ pub(crate) fn spawn_thread_after_publish(
 /// Spawn non-migratable work on a specific LP.
 ///
 /// This is used when the creator is about to block on the new thread's
-/// startup handshake: placing both on one LP makes that block hand execution
-/// directly to the child without depending on a remote admission IPI.
+/// startup handshake. Placing both on one LP makes that block handing
+/// execution directly to the child without depending on a remote admission IPI.
 pub fn spawn_thread_on_lp(
     asid: AddressSpaceId,
     entry_point: extern "C" fn(),
@@ -195,27 +196,31 @@ pub fn maybe_sample_rebalance() {
 }
 
 /// Returns the address-space id of the currently running thread, if execution
-/// is currently inside scheduler-managed thread context.
+/// is currently inside a scheduler-managed thread context.
 pub fn current_thread_asid() -> Option<AddressSpaceId> {
     let tid = system_scheduler::get_thread_id()?;
     MASTER_THREAD_TABLE.read().get(tid).ok().map(|thread| thread.asid)
 }
 
-/// Unconditionally yields the current logical processor to the scheduler for a context switch.
+/// Unconditionally yields the current logical processor to the scheduler
+/// for a context switch.
 ///
-/// This can safely be called from anywhere including outside of thread context. However if it is
-/// called from interrupt context then it will cause an immediate context switch never to return
-/// which will essentially cause the remainder of the ISR to get skipped. This is almost never what
-/// is intended thus for interrupt service it is recommended instead to set the context switch
-/// pending variable on the current LP's local scheduler and then have the switch happen at the end
-/// of the ISR at which point all ISRs with the sole exception of double fault and other ISA
-/// specific analogues call `cond_yield_lp` to carry out pending context switches.
+/// This can safely be called from anywhere including outside of thread context.
+/// However, if it is called from interrupt context then it will cause an immediate
+/// context switch, never to return, which will essentially cause the remainder of
+/// the ISR to get skipped. This is almost never what is intended!
+///
+/// For interrupt service it is recommended instead to set the context switch pending
+/// variable on the current LP's local scheduler and then have the switch happen at
+/// the end of the ISR, at which point all ISRs (with the sole exception of double
+/// fault and other ISA specific analogues) call `cond_yield_lp` to carry out pending
+/// context switches.
 pub fn yield_lp() {
     // Deliver any device-interrupt wakes queued from interrupt context
     // (architecture doc §10.2): the interrupt path is lock-free and defers the
-    // actual `completion::wake` to thread context. Draining here — on every
-    // cooperative yield across every LP — makes a driver blocked in `CQ_WAIT`
-    // runnable promptly without the interrupt handler ever taking a lock.
+    // actual `completion::wake` to thread context. Draining here (on every
+    // cooperative yield across every LP) makes a driver blocked in `CQ_WAIT`
+    // promptly runnable without the interrupt handler ever taking a lock.
     crate::device::drain_deferred_wakes();
     if SCHED_TRACE {
         let sched = SYSTEM_SCHEDULER.read();
@@ -239,12 +244,13 @@ pub fn yield_lp() {
 
 /// Aborts the current thread without calling any exit handlers.
 ///
-/// This is the default way to exit a thread in the kernel since kernel threads should not carry any
-/// state that is so complex that it requires exit handlers. For the userspace exit call this should
-/// only be called after exit handlers have been run and any pending upcalls have been attempted to
-/// be delivered. It is expected that exit handlers will be called from userspace itself via a given
-/// program's runtime library, however upcalls are still solely the purview of the kernel and we
-/// should at least attempt delivery prior to abort.
+/// This is the default way to exit a thread in the kernel since kernel threads
+/// should not carry any state that is so complex that it requires exit handlers.
+/// For the userspace exit call, this should only be called after exit handlers
+/// have been run and any pending upcalls have been attempted to be delivered.
+/// It is expected that exit handlers will be called from userspace itself via a
+/// given program's runtime library. However, upcalls are still solely the purview
+/// of the kernel and we should at least attempt delivery prior to abort.
 pub fn abort() -> ! {
     // Bind `tid` to a value so the temporary SYSTEM_SCHEDULER read guard and LP
     // scheduler lock in the scrutinee are released before the body runs;
@@ -348,10 +354,11 @@ pub fn sleep_millis(milliseconds: u64) {
 /// the thread parks in `Blocked` state with its waker registered on
 /// `observable` (exactly like `sleep`, `wait_reply`, and `cq_wait`), so the
 /// LP is free to idle, drain deferred device wakes, and deliver timer PPIs
-/// while the wait is in flight. The deadline watchdog is a timer event whose
-/// observer re-submits the thread, so a missed observable notification
-/// cannot hang the system silently — the caller re-checks `condition` and
-/// fails loudly.
+/// while the wait is in flight.
+///
+/// The deadline watchdog is a timer event whose observer re-submits the thread,
+/// so a missed observable notification cannot hang the system silently — the
+/// caller re-checks `condition` and fails loudly.
 ///
 /// Returns `false` if the timeout expired before `condition` held. The
 /// caller is responsible for pruning stale observers on long-lived
@@ -414,6 +421,7 @@ pub fn block_until(
             let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
         }
         yield_lp();
+
         // Observable notification may have won. Do not retain the unused
         // watchdog until the original absolute deadline.
         let _ = crate::timers::cancel_event(timeout_handle);
@@ -428,9 +436,10 @@ pub fn block_until(
 /// race between "the thread is still registered" and "the thread is already
 /// gone" impossible: either the observer is registered before the thread is
 /// taken (and fires when the thread is dropped), or the lookup fails here and
-/// the caller completes the capability immediately. Without the write lock, a
-/// thread could be taken and dropped between the lookup and the registration,
-/// orphaning the observer forever.
+/// the caller completes the capability immediately.
+///
+/// Without the write lock, a thread could be taken and dropped between the
+/// lookup and the registration, orphaning the observer forever.
 pub fn observe_thread_exit(
     thread_id: ThreadId,
     observer: Weak<dyn Observer>,
@@ -444,10 +453,11 @@ pub fn observe_thread_exit(
 /// registers an exit observer the slot may already hold a *different* thread
 /// that shares the caller's tid. Registering on that thread would leave the
 /// joiner waiting for an exit that never comes (or, worse, complete on the
-/// wrong thread's drop). Callers that captured a thread at spawn time — e.g.
-/// a `ServiceDomain` handle — must pass its `generation` so a recycled slot
-/// is detected and reported as `Err`, letting the caller complete immediately
-/// instead of joining a stranger.
+/// wrong thread's drop).
+///
+/// Callers that captured a thread at spawn time — e.g. a `ServiceDomain` handle —
+/// must pass its `generation` so a recycled slot is detected and reported as `Err`,
+/// letting the caller complete immediately instead of joining a stranger.
 pub fn observe_thread_exit_with_generation(
     thread_id: ThreadId,
     expected_generation: ThreadGeneration,

@@ -5,7 +5,7 @@
 //! (single-consumer) and an arbitrary number of cloneable [`ShardSender<M>`]
 //! handles.
 //!
-//! This is the kernel realization of sitas's `ShardSender<M>` /
+//! This is the kernel realization of Sitas's `ShardSender<M>` /
 //! `ShardReceiver<M>` / `ShardMailbox<M>` pattern: senders push owned `M`
 //! values into the target LP's bounded queue and deliver a wake IPI; the
 //! receiver drains the queue at its leisure.

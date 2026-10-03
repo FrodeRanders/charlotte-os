@@ -2,8 +2,8 @@
 \label{chap:networking}
 
 CharlotteOS treats networking as an extension of its message-passing and
-capability model rather than making TCP/IP the native interface for all
-communication.
+capability model. TCP/IP is available for interoperability, while native
+communication remains capability-based.
 
 The guiding principle is:
 
@@ -14,20 +14,20 @@ The guiding principle is:
 \section{Sockets as a compatibility interface}
 
 The Berkeley socket API (\texttt{socket()}, \texttt{connect()}, \texttt{send()},
-\texttt{recv()}) remains useful for compatibility, but CharlotteOS does not use
-it as the native service interface:
+\texttt{recv()}) remains useful for compatibility. CharlotteOS places it in a
+TCP/IP service; native service interfaces use capabilities:
 
 \begin{itemize}
-    \item Network addresses do not bind Charlotte service identity:
+    \item Network addresses do not define Charlotte service identity:
         \texttt{10.2.3.17:443} locates an endpoint. DNS or another directory can
-        associate that address with a service, but the association is outside
-        the socket handle.
+        associate that address with a service, while the association remains
+        outside the socket handle.
 
     \item TCP sockets expose byte streams: an application protocol must add its
         own message boundaries. Charlotte's native IPC preserves them.
 
     \item Socket authority usually comes from process and network policy:
-        sandboxes, firewalls, and namespaces can restrict reachability, but the
+        sandboxes, firewalls, and namespaces restrict reachability, while the
         socket API does not require a delegated capability naming the target
         service. Charlotte's native path does.
 
@@ -36,19 +36,20 @@ it as the native service interface:
         service API keeps that choice below the application protocol.
 \end{itemize}
 
-CharlotteOS instead uses layers with separate responsibilities.
+CharlotteOS therefore separates the stack into layers with distinct
+responsibilities.
 
-The stack below is the target architecture. The current repository contains a
-userspace virtio-net driver, an Intel 82574L/E1000E driver, a frame
-demultiplexer (``frouter''), and a reliable-message service with fragmentation.
-It also contains a distributed name service that replicates a
-\texttt{name $\rightarrow$ \{node, generation\}} catalog across cluster members,
-a smoltcp TCP/IP service, and a remote-invocation path through the catalog. The
-NIC/TCP path is runtime-validated on macOS QEMU TCG with both virtio-net and
-E1000E (\texttt{--relmsg-test},
-\texttt{--disco-test}, \texttt{--dns-test}, \texttt{--tcpip-test}), and a remote
-scalar-call prototype is implemented (\texttt{dns::OP\_CALL}); general
-remote capability delegation is not.
+The stack below describes the target architecture. The repository already
+contains userspace virtio-net and Intel 82574L/E1000E drivers, the ``frouter''
+frame demultiplexer, and a reliable-message service with fragmentation. It also
+contains a distributed name service that replicates a
+\texttt{name $\rightarrow$ \{node, generation\}} catalog across cluster
+members, a smoltcp TCP/IP service, and a catalog-routed remote invocation path.
+The NIC/TCP path is runtime-validated on macOS QEMU TCG with both supported NIC
+models (\texttt{--relmsg-test}, \texttt{--disco-test},
+\texttt{--dns-test}, and \texttt{--tcpip-test}). The current remote-call
+prototype carries scalar arguments and results; general remote capability
+delegation remains future work.
 
 \section{The native protocol stack}
 
@@ -86,14 +87,13 @@ endpoint protocol has two operations:
         receive; the driver replies with a frame buffer.
 \end{itemize}
 
-Ethernet is a generic frame transport that can carry IP, ARP, LLDP, custom protocols, 
-or CharlotteOS native messages. The driver provides the frames and higher layers 
-interpret them.
+Ethernet is a generic frame transport. It can carry IP, ARP, LLDP, custom
+protocols, or CharlotteOS native messages; higher layers interpret the frames.
 
 \subsection{Reliable message layer}
 
-This layer provides sequenced, acknowledged, reliable delivery of \textbf{messages}
-(not streams) over the raw frame transport. It handles:
+This layer provides sequenced, acknowledged delivery of \textbf{messages} over
+the raw frame transport. It handles:
 
 \begin{itemize}
     \item Sequencing (each message has a monotonic sequence number).
@@ -104,8 +104,8 @@ This layer provides sequenced, acknowledged, reliable delivery of \textbf{messag
     \item Congestion control (bounded in-flight windows).
 \end{itemize}
 
-The abstraction exported is a \textbf{reliable message}, not a byte stream.
-This is the building block for RPC, consensus protocols, and distributed objects.
+The exported abstraction is a \textbf{reliable message}. It is the transport
+for RPC, consensus protocols, and distributed objects.
 
 Fragmentation is implemented: a message larger than one frame's payload (1454
 bytes in wire protocol v3) is split across frames that share the message's
@@ -134,10 +134,10 @@ are bounded; a full delivery queue withholds sequence advancement and its
 acknowledgement, applying retransmission-based backpressure. An incomplete
 fragmented message does not emit one useless cumulative acknowledgement per
 fragment, and retransmission grace scales with retained fragment count up to a
-fixed cap; one-frame RPCs retain the 200~ms retry. The transport still permits
-one in-flight message per peer and retains fragments for retry, so bulk streams
-should use a streaming or object-store protocol rather than treating the
-32-bit representation as a recommended message size.
+fixed cap; one-frame RPCs retain the 200~ms retry. The transport permits one
+in-flight message per peer and retains fragments for retry. Bulk data belongs
+in a streaming or object-store protocol, while reliable messages remain bounded
+and easy to account for.
 
 \subsection{RPC layer}
 
@@ -145,17 +145,17 @@ The RPC layer provides request/reply semantics over the reliable message layer:
 
 \begin{itemize}
     \item Synchronous-looking futures: \texttt{service.call(opcode, args).await?}
-    \item Asynchronous invocation: the \texttt{Future} is backed by a
-        pending RPC call; the shard continues other work while waiting.
-    \item Object references: the target architecture can represent
-        delegated remote authority; general remote capability delegation is not
-        implemented.
-    \item Serialization: typed protocol crates handle encoding/decoding
-        between Rust types and the wire format.
+    \item Asynchronous invocation: a pending RPC call backs the
+        \texttt{Future}, allowing the shard to continue while it waits.
+    \item Object references: the target architecture can represent delegated
+        remote authority; general remote capability delegation remains future
+        work.
+    \item Serialization: typed protocol crates encode and decode Rust values
+        on the wire.
 \end{itemize}
 
 The implemented DNS v3 remote-call path is narrower than this target model. It
-currently carries scalar opcode/argument calls. A request is identified by
+carries scalar opcode/argument calls. A request is identified by
 caller node, caller DNS-session generation, and call ID, and a reply is
 accepted only from the expected peer. The implementation bounds outstanding
 calls at 64, returns \texttt{ERR\_UNCERTAIN} after five seconds (execution may
@@ -166,15 +166,14 @@ rejects stale generations before execution. Remote object-capability
 delegation remains future work.
 
 Registration uses two replicated phases. A \texttt{prepare} command allocates
-the next generation but remains invisible. After the owner successfully
-publishes its node-local endpoint, a generation-fenced \texttt{activate}
-command makes the entry visible. Failed local publication therefore leaves an
-inactive tombstone rather than a remotely resolvable ghost. Automatic
-replicated unregistration when the hosted service dies remains future work,
-but explicit unregistration is implemented. Its replicated tombstone must
-match the owning node and distributed generation. Subsequent removal from the
-node-local name service must also match the local generation captured before
-the proposal, so a delayed operation cannot remove a replacement instance.
+the next generation while keeping it invisible. After the owner publishes its
+node-local endpoint, a generation-fenced \texttt{activate} command makes the
+entry visible. Failed local publication leaves an inactive tombstone rather
+than a remotely resolvable ghost. Explicit unregistration is implemented;
+automatic unregistration after service death remains future work. The
+replicated tombstone must match the owning node and distributed generation, and
+local removal must match the generation captured before the proposal. A delayed
+operation therefore cannot remove a replacement instance.
 
 Lookup and call-routing decisions do not use follower-local catalog state. A
 follower sends a correlated query to the known leader, and the leader answers
@@ -201,11 +200,11 @@ described above.
 
 \section{TCP/IP as a compatibility service}
 
-TCP/IP is supported as a userspace compatibility service. The frouter owns
-the NIC's deferred \texttt{OP\_RECV} and routes IPv4 (\texttt{0x0800}) and
-ARP (\texttt{0x0806}) frames to the \texttt{tcpip} service's \texttt{OP\_FRAME}
-ingress; a smoltcp \texttt{phy::Device} adapter pulls those frames and transmits via
-\texttt{OP\_SEND}:
+TCP/IP is provided by a userspace compatibility service. The frouter owns the
+NIC's deferred \texttt{OP\_RECV} and routes IPv4 (\texttt{0x0800}) and ARP
+(\texttt{0x0806}) frames to the \texttt{tcpip} service's \texttt{OP\_FRAME}
+ingress. A smoltcp \texttt{phy::Device} adapter consumes those frames and
+transmits through \texttt{OP\_SEND}:
 
 \begin{lstlisting}[style=rustCode]
 // smoltcp adapter (receive is fed by the frouter's OP_FRAME ingress):
@@ -218,12 +217,12 @@ fn transmit(&mut self, now: Instant) -> Option<...> {
 }
 \end{lstlisting}
 
-The TCP/IP stack itself uses smoltcp 0.13. It is wrapped in a userspace
-service that registers as \texttt{"tcpip"} and serves clients through a
-socket-API protocol (\texttt{OP\_SOCKET}, \texttt{OP\_CONNECT},
+The stack uses smoltcp 0.13. It runs in a userspace service registered as
+\texttt{"tcpip"} and serves clients through a socket protocol
+(\texttt{OP\_SOCKET}, \texttt{OP\_CONNECT},
 \texttt{OP\_BIND}/\texttt{OP\_LISTEN}, \texttt{OP\_ACCEPT}, \texttt{OP\_SEND},
-\texttt{OP\_RECV}, \texttt{OP\_CLOSE}). Legacy software that requires TCP/IP
-connects to this service.
+\texttt{OP\_RECV}, and \texttt{OP\_CLOSE}). Software that requires
+TCP/IP connects to this service.
 
 The service allocates its smoltcp socket table once at launch. Its launch
 manifest supplies bounded \texttt{sockslot}, \texttt{sockquot}, and
@@ -256,39 +255,35 @@ defaults.
 
 The architecture runners attach a NIC by default. Hardware discovery starts
 the driver and frame router, followed by discovery, cluster services, and the
-DHCP-configured TCP/IP service. The \texttt{--no-network} runner option is the
-explicit isolated-boot configuration. Options ending in \texttt{-test} add
-verification workloads and result reporting; they do not enable the runtime
-services.
+DHCP-configured TCP/IP service. The \texttt{--no-network} option explicitly
+selects an isolated boot. Options ending in \texttt{-test} add verification
+workloads and result reporting; they do not enable the runtime services.
 
 \section{Cluster-wide TCP ingress and direct server return}
 \label{sec:distributed-l2-ingress}
 
 Charlotte can expose a bounded table of launch-authorized IPv4 TCP services as
-cluster \texttt{VIP:port} identities. Charlotte therefore supports two complementary addressing
-modes. A node's DHCP or static address names that particular machine and is
-appropriate for intentionally node-specific client/server traffic. Each VIP
-names a service in the cluster: an external client need not know which node
-admits the packet or owns the connection, and those roles can change without
-changing the client's service address.
+cluster \texttt{VIP:port} identities. This gives clients two complementary
+addressing modes. A node's DHCP or static address names that machine and suits
+intentionally node-specific traffic. A VIP names a service in the cluster, so
+the client need not know which node admits the packet or owns the connection.
+Those roles can change without changing the service address.
 
 Direct Server Return is often introduced as a load-balancing technique, and
-Charlotte does distribute five-tuples across eligible execution nodes. Here it
-also provides a cluster facade. The stable external identity belongs to the
-cluster service, while individual node addresses and MAC routes remain
-internal placement and delivery mechanisms. In that sense the VIP is another
-step toward treating the cluster, rather than a selected server, as the
-computer.
+Charlotte uses it to distribute five-tuples across eligible execution nodes.
+It also provides a cluster facade: the stable external identity belongs to the
+service, while node addresses and MAC routes remain internal placement and
+delivery details. The VIP thus lets clients address the cluster as a whole.
 
-One such platform identity can front the cluster observability keyhole. Its
-DSR advertiser normally follows leadership, while any eligible member may serve a
-fresh applied cluster snapshot and explicitly identifies itself in the reply.
+One such platform identity can front the cluster observability keyhole. Its DSR
+advertiser normally follows leadership, while any eligible member may serve a
+fresh applied cluster snapshot and identify itself in the reply.
 The consistency and access-control contract is described in
 \autoref{sec:cluster-keyhole}.
 
-This is not a TCP proxy. The frame router that receives an
-external frame parses its five-tuple and uses deterministic rendezvous hashing
-to select an execution node. A local winner follows the ordinary
+The frame router does not proxy the TCP stream. It parses the external frame's
+five-tuple and uses deterministic rendezvous hashing to select an execution
+node. A local winner follows the ordinary
 \texttt{OP\_FRAME} path into smoltcp. For a remote winner, the router changes
 the Ethernet delivery into a compact one-hop Charlotte envelope and moves the
 same memory object back through \texttt{net::OP\_SEND}. The envelope carries
@@ -299,38 +294,37 @@ The
 backend smoltcp instance owns the only TCP state and sends its VIP response
 directly to the client.
 
-Eligibility comes from the committed configuration of the DNS-owned Raft
-member, never from discovery alone. DNS materializes an immutable snapshot of
-stable node keys and discovery-associated MAC routes, separating admitted
-members from the subset eligible for new flows. The router refreshes this snapshot asynchronously; no consensus operation occurs
-on the packet path. During joint consensus, only voters common to the old and
-new sets accept new flows. This delays a joiner until finalization and removes
-a departing node from the committed projection promptly. Packet-path adoption
-still depends on a successful asynchronous refresh.
+Eligibility comes from the DNS-owned Raft member's committed configuration,
+with discovery supplying the associated MAC routes. DNS materializes an
+immutable snapshot that distinguishes admitted members from those eligible for
+new flows. The router refreshes this snapshot asynchronously; consensus never
+runs on the packet path. During joint consensus, only voters common to the old
+and new sets accept new flows. A joiner therefore waits for finalization, while
+a departing node is removed from the committed projection promptly. The router
+adopts the change after a successful refresh.
 
 An operator-signed, committed node-shutdown intent removes its target from new
-flow selection before local teardown, while retaining its admitted route for
-observed flows during the grace interval. Each service has an independent
-load-balancing epoch: a stable
-fingerprint of the committed configuration index, service name, deployment
-and registration generations, ready-node set, and replicated drain
-generations. Each router retains four recent sets and a bounded 1,024-entry
-\texttt{FlowKey $\rightarrow$ epoch} table. Observed connections retain their
-set across additions; when a backend is removed, only bindings selecting that
-backend are released for reconnection. Rendezvous selection is independent of
-member ordering, so a replacement ingress participant with the same epoch
-selects the same live backend without shared connection tracking.
+flow selection before local teardown, while retaining its route for observed
+flows during the grace interval. Each service has an independent
+load-balancing epoch: a stable fingerprint of the committed configuration
+index, service name, deployment and registration generations, ready-node set,
+and replicated drain generations. Each router retains four recent sets and a
+bounded 1,024-entry \texttt{FlowKey $\rightarrow$ epoch} table. Existing
+connections retain their epoch across additions; when a backend is removed,
+only bindings that selected it are released for reconnection. Because rendezvous
+selection is independent of member ordering, a replacement participant with
+the same epoch makes the same choice without shared connection tracking.
 
 A complete refresh grants a five-second monotonic lease for VIP advertisement
 and unbound-flow admission; the normal one-second poll renews it. A failed or
 incomplete refresh may leave the last complete snapshot available to existing
 bindings, but lease expiry suppresses ARP replies and rejects unbound traffic.
-DNS answers the refresh only when the local Raft state has current cluster
-evidence: a leader holds recent quorum contact, or a follower successfully
-matched and applied its recognized leader's log within the previous second.
-Rejected replication does not renew this witness. Source evidence therefore
-expires within one second of lost contact, followed by at most the router's
-five-second admission lease.
+DNS answers a refresh only while the local Raft state has current cluster
+evidence: a leader has recent quorum contact, or a follower matched and applied
+its recognized leader's log within the previous second. Rejected replication
+does not renew this witness. Source evidence therefore expires within one
+second of lost contact, followed by at most the router's five-second admission
+lease.
 Snapshot history and flow bindings are bounded independently. If a live
 binding names an epoch that has left history, it remains as a fail-closed
 tombstone and its packets are dropped rather than reinterpreted through the
@@ -339,49 +333,50 @@ state, an availability limit that cannot be eliminated without shared
 connection tracking or additional packet metadata.
 
 VIP acceptance and advertisement are separate. Every participating node
-installs each configured VIP as a \texttt{/32} smoltcp address, while DSR admits new flows
-only to the ready backend subset. Only one admitted, non-draining ingress
-participant passes VIP ARP requests. It normally follows the current Raft
-leader and need not run the application itself. A newly selected advertiser
-emits gratuitous ARP, so ingress ownership can move without altering backend
-membership. No node advertises a VIP when its backend set is empty. The current
-launch-manifest transport supports 16 IPv4/TCP service assignments and the
-packet policy supports at most 64 admitted members;
+installs each configured VIP as a \texttt{/32} smoltcp address, while DSR admits
+new flows only to ready backends. One admitted, non-draining ingress participant
+answers VIP ARP requests. It normally follows the current Raft leader and need
+not run the application. A newly selected advertiser emits gratuitous ARP, so
+ingress ownership can move without changing backend membership. No node
+advertises a VIP when its backend set is empty. The current launch-manifest
+transport supports 16 IPv4/TCP service assignments and the packet policy
+supports at most 64 admitted members;
 IPv6 neighbour discovery, a service-only drain operation, automatic failed-member
 removal, and transparent TCP-state migration are future work. The
 precise bounds, failure semantics, and status fields are documented in
 \repofile|docs/architecture/distributed-l2-ingress.md|.
 
 The operations-owned bootstrap policy may bind each VIP and TCP port to a
-deployed application name. DNS evaluates each assignment independently and intersects
-admitted membership with the application's committed replica set and
-its per-node exact-generation readiness registrations. After movement or replacement,
-the stale generation is absent from newly derived eligibility; eligibility
-remains empty until the target node's agent publishes the matching generation.
-Routers keep separate leases, histories, and flow bindings for every service
-and adopt each result on successful refresh. Retained epochs continue to
-route observed flows during the drain window. Omitting the name keeps a
-compatibility mode in which every admitted, non-draining member runs the
+deployed application name. DNS evaluates each assignment independently,
+intersecting admitted membership with the application's committed replica set
+and exact-generation readiness registrations. After movement or replacement,
+the stale generation is excluded from the derived eligibility set; that set
+remains empty until the target node publishes the matching generation. Routers
+keep separate leases, histories, and flow bindings for each service and adopt
+new results after a successful refresh. Retained epochs continue to route
+observed flows during the drain window. Omitting the application name preserves
+a compatibility mode in which every admitted, non-draining member serves the
 platform service. Fixed replica counts and \emph{every eligible node}
-placements widen the service-specific backend set as their node agents publish
-readiness. A leader-side controller reconciles automatic assignments after
-membership and drain-state changes. The runner accepts repeatable
+placements widen a service's backend set as agents publish readiness. A
+leader-side controller reconciles automatic assignments after membership or
+drain-state changes. The runner accepts repeatable
 \texttt{--cluster-service NAME=VIP:PORT} options; the older paired
 \texttt{--cluster-service}/\texttt{--cluster-service-name} form remains a
 single-assignment compatibility spelling. Address-specific socket binds allow
 distinct VIPs to use the same conventional TCP port.
 
 The bootstrap table ceases to be authoritative after the first committed
-ingress policy. The variable-length 	exttt{CINGPOL1} envelope binds a complete
+ingress policy. The variable-length \texttt{CINGPOL1} envelope binds a complete
 replacement table, monotonic sequence, cluster identity, and UTC validity
-interval under the independent operations signing key. It can enter through
-any member; the leader re-verifies the signature and trusted UTC before Raft
-submission. Exact retries are idempotent, stale or conflicting sequences fail,
+interval under the independent operations signing key. It may enter through any
+member; the leader re-verifies the signature and trusted UTC before proposing
+it to Raft. Exact retries are idempotent, stale or conflicting sequences fail,
 and an empty signed table withdraws all VIPs. Catalog-v14 snapshots retain the
-envelope and replay fence. DNS serves the applied table, frame routers reconcile
-service state by stable packed identity, and TCP/IP reconciles its 	exttt{/32}
-addresses without restarting the nodes. Applications using exact-address
-listeners poll their typed assignments and rebind after an address change.
+envelope and replay fence. DNS serves the applied table, frame routers
+reconcile service state by stable packed identity, and TCP/IP reconciles its
+\texttt{/32} addresses without restarting nodes. Applications using
+exact-address listeners poll their typed assignments and rebind after an
+address change.
 
 \architecturewidefigure{cluster-management-dsr}
     {Cluster management supplies DSR with an exact-generation eligible-backend
@@ -396,8 +391,8 @@ then chooses only among authorized ready replicas; the selected replica owns
 TCP and replies directly. An empty ready set suppresses VIP advertisement.
 The joint TLA+ model in
 \autoref{subsec:formal-cluster-ingress} checks this control-plane-to-packet-path
-composition and preserves counterexamples for the two router freshness and
-history regressions that the implementation now rejects.
+composition. It records counterexamples for router-freshness and history
+regressions, both of which the implementation rejects.
 
 Operational Vote, AppendEntries, and InstallSnapshot RPCs use private
 EtherType \texttt{0x88b7}, while admission and DNS application/control traffic
@@ -439,9 +434,9 @@ required. The detailed wire contract and security limitations are recorded in
 \section{Capability-scoped external data services}
 \label{sec:external-data-services}
 
-CharlotteOS has narrow S3 and Kafka compatibility services on top of the
+CharlotteOS provides narrow S3 and Kafka compatibility services on top of the
 userspace TCP/IP stack. They preserve the capability model at the application
-boundary even though they communicate with conventional external systems:
+boundary while communicating with conventional external systems:
 
 \begin{center}
 \begin{tikzpicture}[
@@ -457,12 +452,12 @@ boundary even though they communicate with conventional external systems:
 \end{center}
 
 An application receives neither a generic network capability nor the remote
-credentials and protocol state. Instead, each service instance is provisioned
-with one bounded profile. The connection to that instance is the authority to
-use only the profile's endpoint, namespace, and operation rights. The
-application-side helpers build on \texttt{catten\_rt::owned}: moved memory
-pages carry payloads, and each remote stream, delivery, consumer, or transaction
-has an explicit consuming teardown plus a best-effort \texttt{Drop} fallback.
+credentials and protocol state. Each service instance is provisioned with one
+bounded profile, and its connection grants only that profile's endpoint,
+namespace, and operation rights. Application-side helpers build on
+\texttt{catten\_rt::owned}: moved memory pages carry payloads, and every remote
+stream, delivery, consumer, or transaction has an explicit consuming teardown
+with a best-effort \texttt{Drop} fallback.
 
 These services are not launched unconditionally. A trusted provisioning path
 must supply their profiles, including secrets and trust anchors. The
@@ -482,13 +477,13 @@ relative to the granted prefix. The service rejects absolute paths and
 signs them with AWS Signature Version~4. The secret key remains inside the
 service address space.
 
-The implemented data plane provides streaming GET and PUT, HEAD, DELETE,
-ranged GET, and create-only PUT. Object bodies cross the application boundary
-as moved, bounded memory chunks; response metadata includes length, ETag,
-version id, and request id. The HTTP/1.1 adapter accepts fixed-length and
-chunked responses. Bucket listing, multipart upload, presigned URLs, automatic
-region discovery, and a general AWS API are not implemented. A LIST right is
-reserved in the profile format but currently has no operation.
+The data plane provides streaming GET and PUT, HEAD, DELETE, ranged GET, and
+create-only PUT. Object bodies cross the application boundary as moved,
+bounded memory chunks; response metadata includes length, ETag, version ID,
+and request ID. The HTTP/1.1 adapter accepts fixed-length and chunked
+responses. Bucket listing, multipart upload, presigned URLs, automatic region
+discovery, and a general AWS API are outside the current scope. The profile
+format reserves a LIST right, but no LIST operation exists yet.
 
 TLS profiles require an explicit DER trust anchor, a matching server name,
 system entropy, and synchronized UTC from the time service. Certificate
@@ -513,14 +508,14 @@ The transport-independent Signature V4 and HTTP code lives in
 \label{sec:kafka-service}
 
 One \texttt{kafka} service instance has a stable profile-selected identity and
-grants access to at most 32 explicitly provisioned broker endpoints, a
-fixed consume topic/partition, an ordered allow-list of produce routes, a
-consumer group, transactional id, and connector rights ceiling. It owns the broker socket,
-producer ids, producer epochs, per-route sequence numbers, and consumer-group membership.
-Applications can produce idempotently, open a fixed-partition group consumer at
-the group's committed offset (or the earliest retained offset), poll with
-\texttt{read\_committed} isolation, commit or release a delivery, and close the
-consumer.
+grants access to at most 32 explicitly provisioned broker endpoints, a fixed
+consume topic/partition, an ordered allow-list of produce routes, a consumer
+group, a transactional ID, and a connector rights ceiling. It owns the broker socket,
+producer IDs and epochs, per-route sequence numbers, and consumer-group
+membership. Applications can produce idempotently, open a fixed-partition group
+consumer at the group's committed offset (or the earliest retained offset),
+poll with \texttt{read\_committed} isolation, commit or release a delivery, and
+close the consumer.
 
 The complete version-6 broker profile is serialized into one immutable object,
 covered by a SHA-256 integrity digest, and transferred to \texttt{kafka} with a
@@ -528,9 +523,9 @@ kernel-enforced \texttt{MAP\_READ}-only launch capability. Typed capability
 metadata carries the exact meaningful byte length rather than overloading a
 generic flags field. The service validates the size, version, digest, UTF-8 DNS
 host-label syntax, field bounds, route and broker counts, configurable ceilings,
-and duplicate routes or endpoints before opening a broker connection. The hard ceiling is 64
-produce routes, while deployment policy may select a lower limit. Metadata for
-all distinct declared topics is requested in one broker exchange.
+and duplicate routes or endpoints before opening a broker connection. The hard
+ceiling is 64 produce routes, while deployment policy may select a lower limit.
+Metadata for all distinct declared topics is requested in one broker exchange.
 The digest detects corruption; authenticity and provenance come from the
 trusted launcher and the read-only capability.
 
@@ -562,8 +557,8 @@ cannot create or rename access points through the Kafka ABI.
 Only the broker-facing service receives this profile. Producer, consumer, and
 transactional-step logic receives a connection capability to one provisioned
 authority endpoint, never its broker address, trust material, SASL/SCRAM
-credentials, or mTLS identity. Credential rotation can therefore replace the connector
-profile without rebuilding application or procedure artifacts.
+credentials, or mTLS identity. Credential rotation can therefore replace the
+connector profile without rebuilding application or procedure artifacts.
 
 The transaction owner supports the consume--transform--produce path. An
 application can produce records, move one consumed delivery's next group
@@ -571,22 +566,22 @@ offset into the same Kafka transaction, and then commit or abort. Committing
 consumes the transaction resource; dropping an unfinished transaction attempts
 an abort. Dropping an uncommitted delivery releases it for redelivery rather
 than silently advancing the group offset. These linear owners make the local
-lifecycle explicit, but they do not turn arbitrary application side effects
-outside Kafka into an exactly-once transaction.
+lifecycle explicit. They do not make arbitrary application side effects outside
+Kafka part of an exactly-once transaction.
 
 The connector joins its configured group with the bounded
 \texttt{charlotte-fixed-v1} assignor. Each member advertises exactly the
 topic/partition authorized by its immutable profile. The group leader assigns
-each such partition once; duplicate connectors remain heartbeating standbys
-with an empty assignment and can take ownership after membership changes. One
-connector admits one local consumer because it owns one membership. Ordinary
-offset commits carry the active generation and member id. Transactional offset
-commits use Kafka's flexible version-3 schema and carry the same fencing
-identity. A rebalance revokes outstanding deliveries, aborts a touched
-transaction, synchronizes the new assignment, and reloads its committed offset
-before polling resumes. The service loop uses monotonic deadlines to heartbeat
-even without application calls. Conventional consumers that do not advertise
-this assignor cannot share the group.
+each partition once; duplicate connectors remain heartbeating standbys with an
+empty assignment and can take ownership after membership changes. One connector
+admits one local consumer because it owns one membership. Ordinary offset
+commits carry the active generation and member ID. Transactional offset commits
+use Kafka's flexible version-3 schema and carry the same fencing identity. A
+rebalance revokes outstanding deliveries, aborts a touched transaction,
+synchronizes the new assignment, and reloads its committed offset before
+polling resumes. The service loop uses monotonic deadlines to heartbeat even
+without application calls. Conventional consumers that do not advertise this
+assignor cannot share the group.
 
 The connector's bounded status page reports metadata refresh count and age,
 reconnects, retries, terminal failures, fences, group state, consumer lag, and
@@ -682,10 +677,9 @@ transports include:
         systems.
 \end{itemize}
 
-The intended RPC layer and everything above it should remain unchanged across
-transports.
-This is the same principle that makes local IPC transparent to the application
-when it moves from same-process to same-machine to different-machine.
+The RPC layer and everything above it should remain unchanged across these
+transports. The same principle makes local IPC transparent when communication
+moves from within a process to another machine.
 
 \section{Zero-copy networking}
 
@@ -706,14 +700,14 @@ The intended network stack avoids copying whenever practical:
         is implemented with AArch64 SMMUv3 and x86-64 VT-d/AMD-Vi.
 \end{itemize}
 
-This is the memory-object transfer model (\autoref{chap:memory-objects}) applied
-to networking.
+This is the memory-object transfer model (\autoref{chap:memory-objects})
+applied to networking.
 
 \section{Network authority and transport}
 
 \begin{enumerate}
-    \item Remote invocation follows the local call shape: the target API
-        keeps transport choices out of application protocols. This permits:
+    \item Remote invocation follows the local call shape: the target API keeps
+        transport choices out of application protocols. This permits:
         \begin{itemize}
             \item Services can be relocated without application changes.
             \item Testing can substitute a local mock for a remote service.
@@ -726,10 +720,10 @@ to networking.
         capability rather than relying on \texttt{host:port} reachability. Network
         access alone does not mint that capability.
 
-    \item Copy avoidance is a design goal: page ownership transfer can
-        avoid intermediate payload copies. CPU mappings are MMU-enforced; DMA
-        isolation is implemented with SMMUv3, VT-d, and AMD-Vi. No performance
-        comparison with sockets has yet been established.
+    \item Copy avoidance is a design goal: page ownership transfer can avoid
+        intermediate payload copies. CPU mappings are MMU-enforced; DMA
+        isolation uses SMMUv3, VT-d, and AMD-Vi. A performance comparison with
+        conventional sockets remains to be established.
 
     \item Message boundaries are preserved: the native abstraction is a
         message with identity, ownership, metadata, and boundaries. There is no

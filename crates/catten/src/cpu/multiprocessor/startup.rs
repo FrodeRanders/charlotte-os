@@ -64,8 +64,10 @@ pub static ID_COUNTER: AtomicU32 = AtomicU32::new(0);
 /// Per-LP table capacity shared by the MPIDR routing table and the
 /// architecture-independent admission check below.
 const MAX_TRACKED_LPS: usize = 256;
+
 #[cfg(target_arch = "aarch64")]
 const UNKNOWN_MPIDR: u64 = u64::MAX;
+
 /// Hardware affinity indexed by Charlotte's scheduler-local LP id.
 ///
 /// Secondary processors enter concurrently, so their logical ids need not
@@ -86,6 +88,7 @@ pub fn mpidr_for_lp(lp_id: crate::cpu::isa::lp::LpId) -> Option<u64> {
 /// after the global ID counter is initialized and before scheduler admission.
 pub unsafe fn assign_id() {
     let lp_id = ID_COUNTER.fetch_add(1, Ordering::SeqCst);
+
     // Per-LP tables (per-CPU data, scheduler state, interrupt save state) are
     // sized for MAX_TRACKED_LPS, so reject an over-capacity LP on every
     // architecture rather than indexing out of bounds later.
@@ -93,6 +96,7 @@ pub unsafe fn assign_id() {
         (lp_id as usize) < MAX_TRACKED_LPS,
         "logical processor id {lp_id} exceeds the per-LP table capacity ({MAX_TRACKED_LPS})"
     );
+    
     store_lp_id(lp_id);
     #[cfg(target_arch = "aarch64")]
     LP_MPIDRS

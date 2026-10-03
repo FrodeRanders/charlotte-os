@@ -40,7 +40,7 @@ pub trait LpScheduler: Debug + Send {
     fn get_current_handle(&self) -> Option<(ThreadId, ThreadGeneration)>;
     fn is_ctx_switch_pending(&self) -> bool;
     /* The following two functions should use interior mutability to access an internal atomic
-     * for safe lock free operaton. */
+     * for safe lock free operation. */
     fn set_ctx_switch_pending(&self);
     /* This should clear the pending context switch field and when appropriate create and submit
      * a new TimerEvent to the local TimerQueue so the pending context switch will get set to

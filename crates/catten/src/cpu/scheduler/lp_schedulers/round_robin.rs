@@ -7,15 +7,14 @@
 //! replaced by a longer fallback timer; an admission IPI or deferred wake is
 //! still the normal fast wake path.
 //!
-//! How often an idle LP wakes to check for admitted work (ms). The
-//! scheduler-IPI SGI is the fast wake path; this timer is the fallback so an
-//! idle LP cannot sleep past an admission whose SGI was not delivered.
-//!
 //! A [`ThreadHandle`] pairs a [`ThreadId`] with a [`ThreadGeneration`].
 //! `next()` validates the generation against the master table before
 //! dispatching, preventing stale-handle-after-slot-reuse.
 
-/// See the module docs: the idle-wake fallback interval.
+/// This is the idle-wake fallback interval, which determines how often
+/// an idle LP wakes to check for admitted work (ms). The scheduler-IPI
+/// SGI is otherwise the fast wake path and this timer is the fallback
+/// so an idle LP cannot sleep past an admission whose SGI was not delivered.
 const IDLE_WAKE_MILLIS: u64 = 50;
 
 use alloc::{
@@ -198,9 +197,9 @@ impl LpScheduler for RoundRobin {
         // point so that `cond_yield_lp` can save its execution context. It must
         // NOT be re-queued or marked Ready — it is Blocked and will be
         // re-admitted only when its waker fires. The idle thread is likewise
-        // never re-queued: it is the fallback, not a normal run-queue member.
+        // never re-queued: it is the fallback and not a normal run-queue member.
         //
-        // Re-queue the outgoing thread only while it is still `Running`: that
+        // Re-queue the outgoing thread only while it is still `Running`, which
         // is the ordinary preemption case. If its state is already `Ready`, a
         // waker re-admitted it concurrently (for example a sleep timer or CQ
         // wake firing in the window between `block_thread` and this context
@@ -310,7 +309,8 @@ impl LpScheduler for RoundRobin {
         let thread = match tt_guard.get_mut(tid) {
             Ok(t) => t,
             // The thread was removed (e.g. exited via THREAD_EXIT) before a
-            // late-arriving observer notification could re-admit it. Harmless.
+            // late-arriving observer notification could re-admit it.
+            // This is harmless.
             Err(_) => return Err(Error::InvalidThread),
         };
         if expected_generation.is_some_and(|generation| generation != thread.generation) {
