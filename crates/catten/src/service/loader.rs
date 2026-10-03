@@ -188,7 +188,7 @@ pub fn validate_user_elf(image: &[u8]) -> bool {
         else {
             return false;
         };
-        if map_start < PAGE_SIZE || map_end > (1usize << 48) {
+        if !charlotte_launch::user_address::valid_range(map_start, map_end - map_start) {
             return false;
         }
         let reserved = [
@@ -364,12 +364,12 @@ pub fn try_create_user_address_space_handle()
 /// binding is enforced by the artifact store/deployment boundary; this final
 /// loader gate independently protects every mapping path against unsigned or
 /// tampered bytes.
-fn verify_image_signature(image: &[u8]) -> Result<(), ()> {
+fn verify_image_signature(image: &[u8], key: &[u8; 32]) -> Result<(), ()> {
     use charlotte_launch::signature_note::{
         VerifyOutcome,
         verify_elf,
     };
-    match verify_elf(image, &charlotte_launch::CLUSTER_PUBLIC_KEY) {
+    match verify_elf(image, key) {
         VerifyOutcome::Valid => Ok(()),
         VerifyOutcome::Invalid | VerifyOutcome::Unsigned | VerifyOutcome::ArtifactMismatch => {
             Err(())
@@ -380,8 +380,13 @@ fn verify_image_signature(image: &[u8]) -> Result<(), ()> {
 /// Map all `PT_LOAD` segments of `image` into `asid` and return the entry
 /// virtual address.
 pub fn load_user_elf(asid: AddressSpaceId, image: &[u8]) -> usize {
+    load_user_elf_with_key(asid, image, &charlotte_launch::CLUSTER_PUBLIC_KEY)
+}
+
+fn load_user_elf_with_key(asid: AddressSpaceId, image: &[u8], key: &[u8; 32]) -> usize {
+    assert!(validate_user_elf(image), "[loader] invalid ELF virtual layout");
     let (entry, phoff, phentsize, phnum) = parse_elf_header(image);
-    verify_image_signature(image).unwrap_or_else(|_| {
+    verify_image_signature(image, key).unwrap_or_else(|_| {
         panic!("[loader] refusing to load an ELF that is not validly signed by the cluster")
     });
     let mut load_segments = 0usize;
@@ -460,7 +465,17 @@ pub fn load_domain(image: &[u8]) -> LoadedDomain {
 /// Load a domain while reporting finite hardware-ASID exhaustion to callers
 /// which accept runtime service-creation requests.
 pub fn try_load_domain(image: &[u8]) -> Result<LoadedDomain, AddressSpaceRegistrationError> {
-    verify_image_signature(image)
+    try_load_domain_with_key(image, &charlotte_launch::CLUSTER_PUBLIC_KEY)
+}
+
+pub fn try_load_domain_with_key(
+    image: &[u8],
+    key: &[u8; 32],
+) -> Result<LoadedDomain, AddressSpaceRegistrationError> {
+    if !validate_user_elf(image) {
+        return Err(AddressSpaceRegistrationError::SignatureVerificationFailed);
+    }
+    verify_image_signature(image, key)
         .map_err(|_| AddressSpaceRegistrationError::SignatureVerificationFailed)?;
     let metadata = charlotte_launch::signature_note::artifact_metadata(image)
         .ok_or(AddressSpaceRegistrationError::SignatureVerificationFailed)?;
@@ -474,7 +489,7 @@ pub fn try_load_domain(image: &[u8]) -> Result<LoadedDomain, AddressSpaceRegistr
     let principal = charlotte_launch::artifact_principal_id(metadata.name());
     crate::memory::register_domain_authority(address_space, principal, roles);
     let asid = address_space.id();
-    let entry_vaddr = load_user_elf(asid, image);
+    let entry_vaddr = load_user_elf_with_key(asid, image, key);
 
     // Size the heap claim from the principal's previous peak without reducing
     // the historical default. Demand commitment already saves physical frames;

@@ -605,7 +605,7 @@ DEPLOYMENT_DESCRIPTOR=""
 DEPLOYMENT_RELEASE=""
 CLUSTER_SIGN_BIN="${ROOT_DIR}/target/debug/cluster-sign"
 if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ] || [ "$SHUTDOWN_INGRESS_TEST" = "1" ]; then
-    (cd /tmp && cargo build --quiet --manifest-path "${ROOT_DIR}/tools/cluster-sign/Cargo.toml")
+    (cd /tmp && cargo build --locked --quiet --manifest-path "${ROOT_DIR}/tools/cluster-sign/Cargo.toml")
 fi
 if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
     echo ">>> Preparing signed central-store deployment fixture..."
@@ -769,7 +769,7 @@ else
         unset CATTEN_CLUSTER_TCP_PORT
         unset CATTEN_CLUSTER_SERVICE_NAME
     fi
-    cargo build --package catten --target "$TARGET_SPEC" \
+    cargo build --locked --package catten --target "$TARGET_SPEC" \
         --no-default-features --features "$FEATURES" $RELEASE_FLAG
 fi
 
@@ -1055,10 +1055,16 @@ if [ -n "$TIMEOUT" ]; then
             && grep -Fq "httpd is listening" "$LOG"; then
             HTTP_PROBED=1
             echo ">>> Probing guest node and cluster keyholes through port ${HTTP_HOST_PORT} ..."
+            HTTP_LIVENESS_OK=0
+            if python3 "${ROOT_DIR}/scripts/tests/test-http-keyhole-liveness.py" \
+                --port "$HTTP_HOST_PORT" --ready-log "$LOG" --wait-seconds 1; then
+                HTTP_LIVENESS_OK=1
+            fi
             for _ in 1 2 3 4 5 6 7 8; do
                 HTTP_BODY="$(curl -fsS --max-time 5 "http://127.0.0.1:${HTTP_HOST_PORT}/metrics" 2>&1 || true)"
                 HTTP_CLUSTER_BODY="$(curl -fsS --max-time 5 "http://127.0.0.1:${HTTP_HOST_PORT}/cluster/metrics" 2>&1 || true)"
-                if printf '%s' "$HTTP_BODY" | grep -Fq '"http":{"requests":' \
+                if [ "$HTTP_LIVENESS_OK" = "1" ] \
+                    && printf '%s' "$HTTP_BODY" | grep -Fq '"http":{"requests":' \
                     && printf '%s' "$HTTP_CLUSTER_BODY" | python3 -c \
                         'import json,sys; d=json.load(sys.stdin); assert d["schema"] == "charlotte.cluster.v1" and d["fresh_committed"] and d["raft"]["served_by"]'; then
                     HTTP_PROBE_OK=1

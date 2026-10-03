@@ -1356,6 +1356,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 socket::OP_FRAME => {
+                    if !catten_syscall::is_frame_router(msg.sender, msg.sender_generation) {
+                        if msg.memory != 0 {
+                            memory_close(msg.memory);
+                        }
+                        ipc_reply(msg.reply, socket::ERR_BAD_OPCODE);
+                        continue;
+                    }
                     let frame_len = msg.arg0 as usize;
                     if msg.memory == 0 || !(14..=FRAME_MAX).contains(&frame_len) {
                         if msg.memory != 0 {

@@ -11,6 +11,7 @@ use charlotte_launch::sha256::{
     Sha256,
     digest,
 };
+use zeroize::Zeroizing;
 
 /// SHA-256 of an empty payload, used by GET, HEAD, and DELETE requests.
 pub const EMPTY_PAYLOAD_SHA256: &str =
@@ -140,14 +141,14 @@ pub fn sign(request: &Request<'_>, credentials: Credentials<'_>) -> Result<Signa
     let canonical_hash = hex_lower(&digest(canonical_request.as_bytes()));
     let string_to_sign = format!("AWS4-HMAC-SHA256\n{}\n{}\n{}", amz_date, scope, canonical_hash);
 
-    let mut first_key = Vec::with_capacity(4 + credentials.secret_key.len());
+    let mut first_key = Zeroizing::new(Vec::with_capacity(4 + credentials.secret_key.len()));
     first_key.extend_from_slice(b"AWS4");
     first_key.extend_from_slice(credentials.secret_key);
-    let date_key = hmac_sha256(&first_key, date.as_bytes());
-    let region_key = hmac_sha256(&date_key, request.region.as_bytes());
-    let service_key = hmac_sha256(&region_key, request.service.as_bytes());
-    let signing_key = hmac_sha256(&service_key, b"aws4_request");
-    let signature = hex_lower(&hmac_sha256(&signing_key, string_to_sign.as_bytes()));
+    let date_key = Zeroizing::new(hmac_sha256(&first_key, date.as_bytes()));
+    let region_key = Zeroizing::new(hmac_sha256(&*date_key, request.region.as_bytes()));
+    let service_key = Zeroizing::new(hmac_sha256(&*region_key, request.service.as_bytes()));
+    let signing_key = Zeroizing::new(hmac_sha256(&*service_key, b"aws4_request"));
+    let signature = hex_lower(&hmac_sha256(&*signing_key, string_to_sign.as_bytes()));
     let authorization = format!(
         "AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
         credentials.access_key, scope, signed_headers, signature
@@ -254,25 +255,25 @@ pub fn hex_lower(bytes: &[u8]) -> String {
 }
 
 pub fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
-    let mut block = [0u8; 64];
+    let mut block = Zeroizing::new([0u8; 64]);
     if key.len() > block.len() {
         block[..32].copy_from_slice(&digest(key));
     } else {
         block[..key.len()].copy_from_slice(key);
     }
-    let mut inner_pad = [0x36u8; 64];
-    let mut outer_pad = [0x5cu8; 64];
+    let mut inner_pad = Zeroizing::new([0x36u8; 64]);
+    let mut outer_pad = Zeroizing::new([0x5cu8; 64]);
     for index in 0..64 {
         inner_pad[index] ^= block[index];
         outer_pad[index] ^= block[index];
     }
     let mut inner = Sha256::new();
-    inner.update(&inner_pad);
+    inner.update(&*inner_pad);
     inner.update(message);
-    let inner_digest = inner.finalize();
+    let inner_digest = Zeroizing::new(inner.finalize());
     let mut outer = Sha256::new();
-    outer.update(&outer_pad);
-    outer.update(&inner_digest);
+    outer.update(&*outer_pad);
+    outer.update(&*inner_digest);
     outer.finalize()
 }
 

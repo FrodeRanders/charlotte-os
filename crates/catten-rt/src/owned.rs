@@ -772,11 +772,13 @@ mod tests {
         DmaDomain,
         Endpoint,
         IncomingMessage,
+        IpcError,
         MemoryError,
         MmioRegion,
         NodeShutdownRequestError,
         OwnedMemory,
         ReadOperation,
+        ReplyToken,
         kernel,
         launch_operational_connector,
         request_node_shutdown,
@@ -1241,6 +1243,21 @@ mod tests {
                 kernel::Event::IpcClose(40),
             ]
         );
+    }
+
+    #[test]
+    fn raw_reply_boundary_has_one_owner_on_drop_success_and_failure() {
+        let _guard = setup();
+        assert_eq!(
+            unsafe { ReplyToken::from_raw(0) }.expect_err("null token must fail"),
+            IpcError::CreationFailed,
+        );
+        // The mock raw receive ABI transfers these distinct tokens once.
+        drop(unsafe { ReplyToken::from_raw(43) }.expect("reply adoption"));
+        unsafe { ReplyToken::from_raw(44) }.expect("reply adoption").reply(0).expect("reply");
+        kernel::update(|state| state.ipc_reply_status = catten_syscall::ipc_status::QUEUE_FULL);
+        assert!(unsafe { ReplyToken::from_raw(45) }.expect("reply adoption").reply(0).is_err());
+        assert_eq!(kernel::events(), [kernel::Event::IpcClose(43), kernel::Event::IpcClose(45)]);
     }
 
     #[test]

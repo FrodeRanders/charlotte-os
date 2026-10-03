@@ -68,7 +68,7 @@ EOF
     # The tool builds cleanly only when cargo's config discovery starts
     # outside the repo (the root config pins build-std for the kernel
     # toolchain); run it from /tmp with an explicit manifest path.
-    (cd /tmp && cargo run --quiet --manifest-path "$ROOT/tools/cluster-sign/Cargo.toml" \
+    (cd /tmp && cargo run --locked --quiet --manifest-path "$ROOT/tools/cluster-sign/Cargo.toml" \
         -- elf-sign "$elf" "$name" "$PRIVATE_KEY" "$class" "$version" "$rollback" \
         "$flags" "$provenance" >/dev/null)
     echo ">>> Blessed $(basename "$elf") as $name ($class, release $version, flags $flags)."

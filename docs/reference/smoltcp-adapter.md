@@ -33,6 +33,15 @@ queue; `receive()` then hands those bytes to smoltcp. Transmit is
 multi-consumer-safe on the driver (per-descriptor `tx_in_use`), so the
 adapter uses `net::OP_SEND` directly.
 
+Raw ingress is not part of ordinary socket-client authority. `tcpip` accepts
+`OP_FRAME` only when its kernel-authenticated sender ASID and generation match
+the exact live frouter domain designated by the kernel network launcher.
+`IsFrameRouter` (syscall 84) queries this designation; names, artifact-principal
+claims, and caller-supplied MAC addresses cannot establish it. A router
+replacement must be explicitly designated again. This restriction does not
+authenticate remote Ethernet peers or define per-application VIP/port binding
+policy; those are separate controls.
+
 ## The adapter (`CharlotteEthDevice`)
 
 ```rust

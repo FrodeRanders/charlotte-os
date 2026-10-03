@@ -596,6 +596,9 @@ pub fn mmio_map(
     if !base.is_aligned_to(PAGE_SIZE) {
         return Err(DeviceError::NotPageAligned);
     }
+    if !charlotte_launch::user_address::valid_pages(base.into(), 1) {
+        return Err(DeviceError::MapFailed);
+    }
     // Serialize the capability check, page-table update, and mapping record
     // against teardown and ASID reuse.
     let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
@@ -676,6 +679,9 @@ fn map_mmio_at(
     cap: DeviceCap,
     mapping: MmioMapping,
 ) -> Result<(), DeviceError> {
+    if !charlotte_launch::user_address::valid_pages(mapping.base.into(), mapping.pages) {
+        return Err(DeviceError::InvalidRange);
+    }
     for index in 0..mapping.pages {
         let vaddr = mapping.base + (index * PAGE_SIZE);
         let frame = PAddr::from((mapping.phys_base + index * PAGE_SIZE) as u64);

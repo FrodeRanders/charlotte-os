@@ -574,6 +574,9 @@ pub fn map(
     if !base.is_aligned_to(PAGE_SIZE) {
         return Err(MemoryObjectError::NotPageAligned);
     }
+    if !charlotte_launch::user_address::valid_pages(base.into(), 1) {
+        return Err(MemoryObjectError::MapFailed);
+    }
 
     // Serialize against address-space teardown/reuse for the complete map.
     let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
@@ -616,6 +619,9 @@ fn map_locked(
             .objects
             .get_mut(&cap_entry.object)
             .ok_or(MemoryObjectError::UnknownCapability)?;
+        if !charlotte_launch::user_address::valid_pages(base.into(), object.frames.len()) {
+            return Err(MemoryObjectError::MapFailed);
+        }
         if object.destroy_when_unpinned {
             return Err(MemoryObjectError::LendingActive);
         }

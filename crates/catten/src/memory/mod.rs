@@ -57,6 +57,8 @@ pub struct DomainAuthority {
     pub address_space: AddressSpaceHandle,
     pub principal: u64,
     pub roles: u32,
+    /// Exact deployment policy admitted for this occupancy, never caller-set.
+    pub launch_descriptor_digest: Option<[u8; 32]>,
 }
 
 static DOMAIN_AUTHORITIES: LazyLock<
@@ -123,6 +125,7 @@ pub(crate) fn register_domain_authority(
             address_space,
             principal,
             roles,
+            launch_descriptor_digest: None,
         },
     );
     assert!(previous.is_none(), "domain authority installed twice for one ASID");
@@ -135,6 +138,28 @@ pub fn domain_authority(asid: AddressSpaceId) -> Option<DomainAuthority> {
         authorities.get(&asid).copied()?
     };
     address_space_handle_is_current(authority.address_space).then_some(authority)
+}
+
+pub(crate) fn install_launch_descriptor(address_space: AddressSpaceHandle, bytes: &[u8]) {
+    assert!(address_space_handle_is_current(address_space));
+    let mut authorities = DOMAIN_AUTHORITIES.lock();
+    let authority = authorities.get_mut(&address_space.id()).expect("launch authority missing");
+    assert_eq!(authority.address_space, address_space);
+    assert!(authority.launch_descriptor_digest.is_none());
+    authority.launch_descriptor_digest = Some(charlotte_launch::sha256::digest(bytes));
+}
+
+/// Compare immutable admitted policy against one exact live occupancy. The
+/// syscall additionally restricts use of this attestation to the controller.
+pub(crate) fn launch_descriptor_matches(
+    asid: AddressSpaceId,
+    generation: u64,
+    digest: &[u8; 32],
+) -> bool {
+    domain_authority(asid).is_some_and(|authority| {
+        authority.address_space.generation() as u64 == generation
+            && authority.launch_descriptor_digest.as_ref() == Some(digest)
+    })
 }
 
 /*The kernel address space is always ASID 0 and it is handled differently from userspace address

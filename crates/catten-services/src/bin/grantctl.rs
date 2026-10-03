@@ -1,9 +1,10 @@
 //! Trusted capability-grant controller.
 //!
 //! An application receives only a connection to this endpoint plus its
-//! immutable signed deployment descriptor. The controller verifies that the
-//! descriptor names the kernel-authenticated caller principal and permits the
-//! requested service, then asks the private name service to mint a
+//! immutable signed deployment descriptor. The controller asks the kernel to
+//! attest that this exact descriptor was admitted for the caller's occupancy,
+//! checks that it permits the requested service, then asks the private name
+//! service to mint a
 //! re-delegable connection. The reply attenuates it back to application
 //! SEND/CALL rights; name-service authority and connector secrets never cross
 //! this boundary.
@@ -12,15 +13,15 @@
 
 extern crate alloc;
 
-use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
 
 use catten_rt::{
     Context,
     owned::{
         Endpoint,
         IncomingMessage,
-        IpcError,
         OwnedMemory,
+        PendingCall,
     },
 };
 use catten_services::{
@@ -35,12 +36,6 @@ use charlotte_authorization::{
 
 catten_rt::entry!(main);
 
-#[derive(Clone, Copy)]
-struct AcceptedRevision {
-    sequence: u64,
-    digest: [u8; 32],
-}
-
 fn reply_error(message: &mut IncomingMessage, error: i64) {
     if let Some(reply) = message.reply.take() {
         let _ = reply.reply(error);
@@ -50,7 +45,6 @@ fn reply_error(message: &mut IncomingMessage, error: i64) {
 fn authorized_request<'a>(
     message: &IncomingMessage,
     bytes: &'a [u8],
-    revisions: &mut BTreeMap<u64, AcceptedRevision>,
     publish: bool,
 ) -> Option<grant::AcquireRequest<'a>> {
     let request = grant::decode_request(bytes)?;
@@ -61,11 +55,14 @@ fn authorized_request<'a>(
     } else if request.rights & !charlotte_launch::deployment::CLIENT_RIGHTS != 0 {
         return None;
     }
-    if charlotte_launch::deployment::verify(
-        request.descriptor,
-        &charlotte_launch::CLUSTER_PUBLIC_KEY,
-    ) != charlotte_launch::deployment::VerifyOutcome::Valid
-    {
+    // Signature verification used the configured deployment key at launch.
+    // A valid signature alone is insufficient: bind this exact policy to the
+    // actual image/occupancy, including after controller restart or ASID reuse.
+    if !catten_syscall::launch_descriptor_matches(
+        message.sender,
+        message.sender_generation,
+        &charlotte_launch::sha256::digest(request.descriptor),
+    ) {
         return None;
     }
     let descriptor = charlotte_launch::deployment::decode(request.descriptor)?;
@@ -79,22 +76,6 @@ fn authorized_request<'a>(
     if !allowed {
         return None;
     }
-    let digest = charlotte_launch::sha256::digest(request.descriptor);
-    match revisions.get(&message.sender_principal) {
-        Some(previous) if descriptor.sequence < previous.sequence => return None,
-        Some(previous) if descriptor.sequence == previous.sequence && digest != previous.digest => {
-            return None;
-        }
-        Some(_) => {}
-        None => {}
-    }
-    revisions.insert(
-        message.sender_principal,
-        AcceptedRevision {
-            sequence: descriptor.sequence,
-            digest,
-        },
-    );
     Some(request)
 }
 
@@ -128,47 +109,39 @@ fn publication_memory(request: grant::AcquireRequest<'_>) -> Result<(OwnedMemory
     Ok((memory, len))
 }
 
-fn handle(
-    mut message: IncomingMessage,
+fn submit(
+    message: &mut IncomingMessage,
     name_service: catten_rt::owned::ConnectionRef<'_>,
-    revisions: &mut BTreeMap<u64, AcceptedRevision>,
-) {
+) -> Result<(PendingCall<'static>, bool, IpcRights), i64> {
     let publish = message.opcode == grant::OP_PUBLISH;
     if (message.opcode != grant::OP_ACQUIRE && !publish)
         || message.reply.is_none()
         || (publish != message.connection.is_some())
     {
-        reply_error(&mut message, grant::ERR_INVALID);
-        return;
+        return Err(grant::ERR_INVALID);
     }
     let Some(memory) = message.memory.take() else {
-        reply_error(&mut message, grant::ERR_INVALID);
-        return;
+        return Err(grant::ERR_INVALID);
     };
     let Ok(len) = usize::try_from(message.arg0) else {
-        reply_error(&mut message, grant::ERR_INVALID);
-        return;
+        return Err(grant::ERR_INVALID);
     };
     let Ok(mapping) = memory.map_read_only() else {
-        reply_error(&mut message, grant::ERR_INVALID);
-        return;
+        return Err(grant::ERR_INVALID);
     };
     let Some(bytes) = mapping.as_slice().get(..len) else {
-        reply_error(&mut message, grant::ERR_INVALID);
-        return;
+        return Err(grant::ERR_INVALID);
     };
-    let Some(request) = authorized_request(&message, bytes, revisions, publish) else {
-        reply_error(&mut message, grant::ERR_UNAUTHORIZED);
-        return;
+    let Some(request) = authorized_request(message, bytes, publish) else {
+        return Err(grant::ERR_UNAUTHORIZED);
     };
+    let rights = IpcRights::from_bits(u32::from(request.rights));
     if publish {
-        let Some(endpoint_connection) = message.connection.take() else {
-            reply_error(&mut message, grant::ERR_INVALID);
-            return;
+        let Some(endpoint_connection) = message.connection.as_ref() else {
+            return Err(grant::ERR_INVALID);
         };
         let Ok((authorization, authorization_len)) = publication_memory(request) else {
-            reply_error(&mut message, grant::ERR_INVALID);
-            return;
+            return Err(grant::ERR_INVALID);
         };
         let pending = match name_service.call_delegated_connection_copy(
             ns::OP_REGISTER_AUTHORIZED,
@@ -178,63 +151,66 @@ fn handle(
             &authorization,
         ) {
             Ok(pending) => pending,
-            Err(_) => {
-                reply_error(&mut message, grant::ERR_UNAVAILABLE);
-                return;
-            }
+            Err(_) => return Err(grant::ERR_UNAVAILABLE),
         };
-        let generation = match pending.wait() {
-            Ok(result)
-                if result.result >= 1 && result.connection.is_none() && result.memory.is_none() =>
-            {
-                result.result
-            }
-            Ok(_) | Err(_) => {
-                reply_error(&mut message, grant::ERR_UNAVAILABLE);
-                return;
-            }
-        };
-        if let Some(reply) = message.reply.take() {
-            let _ = reply.reply(generation);
-        }
-        return;
+        return Ok((pending, true, rights));
     }
 
-    let Ok((authorization, authorization_len)) = authorization_memory(&message, request) else {
-        reply_error(&mut message, grant::ERR_INVALID);
-        return;
+    let Ok((authorization, authorization_len)) = authorization_memory(message, request) else {
+        return Err(grant::ERR_INVALID);
     };
     let pending = match name_service.call_move(
-        ns::OP_LOOKUP_FOR_GRANT,
+        ns::OP_TRY_LOOKUP_FOR_GRANT,
         authorization_len as u64,
         authorization,
     ) {
         Ok(pending) => pending,
-        Err((_authorization, _error)) => {
-            reply_error(&mut message, grant::ERR_UNAVAILABLE);
-            return;
+        Err((_authorization, _error)) => return Err(grant::ERR_UNAVAILABLE),
+    };
+    Ok((pending, false, rights))
+}
+
+/// Dropping one operation cancels its lookup and releases all local resources.
+struct PendingGrant {
+    message: IncomingMessage,
+    call: PendingCall<'static>,
+    publish: bool,
+    rights: IpcRights,
+    deadline: catten_services::deadline::Deadline,
+}
+
+impl PendingGrant {
+    fn poll(&mut self) -> bool {
+        if self.deadline.expired() {
+            reply_error(&mut self.message, grant::ERR_UNAVAILABLE);
+            return true;
         }
-    };
-    let result = match pending.wait() {
-        Ok(result) if result.result >= 1 => result,
-        Ok(_) | Err(IpcError::CreationFailed | IpcError::Status(_)) => {
-            reply_error(&mut message, grant::ERR_UNAVAILABLE);
-            return;
+        match self.call.poll() {
+            Ok(None) => false,
+            Ok(Some(result)) if result.result >= 1 && result.memory.is_none() => {
+                if self.publish && result.connection.is_none() {
+                    if let Some(reply) = self.message.reply.take() {
+                        let _ = reply.reply(result.result);
+                    }
+                } else if !self.publish && result.connection.is_some() {
+                    if let Some(reply) = self.message.reply.take() {
+                        let _ = reply.reply_connection_ref(
+                            result.connection.as_ref().unwrap().as_ref(),
+                            self.rights,
+                            result.result,
+                        );
+                    }
+                } else {
+                    reply_error(&mut self.message, grant::ERR_UNAVAILABLE);
+                }
+                true
+            }
+            _ => {
+                reply_error(&mut self.message, grant::ERR_UNAVAILABLE);
+                true
+            }
         }
-        Err(_) => {
-            reply_error(&mut message, grant::ERR_UNAVAILABLE);
-            return;
-        }
-    };
-    let Some(connection) = result.connection else {
-        reply_error(&mut message, grant::ERR_UNAVAILABLE);
-        return;
-    };
-    let Some(reply) = message.reply.take() else {
-        return;
-    };
-    let rights = IpcRights::from_bits(u32::from(request.rights));
-    let _ = reply.reply_connection_ref(connection.as_ref(), rights, result.result);
+    }
 }
 
 fn main(ctx: Context) -> ! {
@@ -243,11 +219,44 @@ fn main(ctx: Context) -> ! {
     let endpoint =
         unsafe { Endpoint::from_raw(endpoint_cap) }.unwrap_or_else(|_| catten_rt::domain_abort());
     let name_service = ctx.name_service_connection().unwrap_or_else(|| catten_rt::domain_abort());
-    let mut revisions = BTreeMap::new();
+    let mut pending: Vec<PendingGrant> = Vec::new();
     loop {
-        match endpoint.receive_authenticated() {
-            Ok(message) => handle(message, name_service, &mut revisions),
-            Err(_) => catten_rt::domain_abort(),
+        if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            drop(pending);
+            drop(endpoint);
+            request.complete();
         }
+        pending.retain_mut(|operation| !operation.poll());
+        // Bound intake per cycle as well as outstanding work, so a busy client
+        // cannot prevent polling existing operations and lifecycle requests.
+        for _ in 0..16 {
+            let mut message = match endpoint.try_receive_authenticated() {
+                Ok(Some(message)) => message,
+                Ok(None) => break,
+                Err(_) => catten_rt::domain_abort(),
+            };
+            let owner_pending = pending
+                .iter()
+                .filter(|operation| {
+                    operation.message.sender == message.sender
+                        && operation.message.sender_generation == message.sender_generation
+                })
+                .count();
+            if pending.len() >= 32 || owner_pending >= 4 {
+                reply_error(&mut message, grant::ERR_UNAVAILABLE);
+                continue;
+            }
+            match submit(&mut message, name_service) {
+                Ok((call, publish, rights)) => pending.push(PendingGrant {
+                    message,
+                    call,
+                    publish,
+                    rights,
+                    deadline: catten_services::deadline::Deadline::after(5_000),
+                }),
+                Err(error) => reply_error(&mut message, error),
+            }
+        }
+        catten_services::sleep_ms(5);
     }
 }

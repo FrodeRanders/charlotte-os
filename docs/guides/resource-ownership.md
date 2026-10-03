@@ -119,6 +119,24 @@ self-referential TLS connection and record buffers. Do not reproduce its raw
 buffer-pointer lifetime pattern in individual services or add plaintext retry
 after a failed handshake.
 
+The adapter's record-buffer owner wipes both buffers after the connection is
+dropped, including on handshake failure. S3 SigV4 also uses zeroizing owners
+for its prefixed secret, derived keys, HMAC pads, and inner digest. This limits
+retained copies; it is not a guarantee that every compiler or cryptographic
+library intermediate is erased.
+
+Use `catten_services::deadline::Deadline` for an operation's total monotonic
+budget. Repeated short receives/polls must not restart that budget. Keep the
+deadline with the owning operation, continue serving unrelated requests while
+it is pending, and drop the whole operation on expiry. The grant controller is
+an example of this bounded concurrent-admission pattern.
+
+Both legacy and capability-based userspace LP mailboxes are **domain-local**:
+threads in one protected domain can exchange words across LPs, but cannot
+address or drain another domain's queues. Use explicitly delegated IPC for
+cross-domain communication. Domain teardown discards queued words before its
+ASID can be reused.
+
 Deployment agents use `launch_scoped_artifact_named`, which consumes both the
 ELF and signed descriptor memory and returns `DeployedArtifact`. Keep that
 owner in the reconciliation record until `poll_retire` returns `Ok(true)`.
@@ -158,6 +176,9 @@ let memory = unsafe { OwnedMemory::from_raw(raw_memory) }?;
 ```
 
 Every `from_raw` needs an ownership comment. Do not adopt borrowed grants.
+Legacy receive-ABI adapters may adopt a uniquely transferred reply authority
+with `ReplyToken::from_raw`; prefer `IncomingMessage` for ordinary service
+code, and never adopt its already-owned reply field again.
 Launch-owned connections should use `Context::bootstrap_connection()`, which
 returns `ConnectionRef`. Immutable profile objects should use
 `Context::profile_memory()` and `LaunchMemoryRef::map_read_only()`; do not adopt

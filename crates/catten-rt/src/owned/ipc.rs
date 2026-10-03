@@ -913,6 +913,22 @@ pub struct ReplyToken {
 }
 
 impl ReplyToken {
+    /// Adopt reply authority transferred by a raw receive ABI boundary.
+    /// Prefer receiving an [`IncomingMessage`] for ordinary service code.
+    ///
+    /// # Safety
+    /// `cap` must be a live, uniquely owned reply token received by this
+    /// domain. It must not already have an owner, be adopted twice, or be used
+    /// through the raw API after adoption.
+    pub const unsafe fn from_raw(cap: u64) -> Result<Self, IpcError> {
+        if cap == 0 {
+            return Err(IpcError::CreationFailed);
+        }
+        Ok(Self {
+            cap: Some(cap),
+        })
+    }
+
     fn from_kernel(cap: u64) -> Option<Self> {
         if cap == 0 {
             None

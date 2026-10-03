@@ -367,6 +367,7 @@ name = "charlotte-s3"
 version = "0.1.0"
 dependencies = [
  "charlotte-launch",
+ "zeroize",
 ]
 
 [[package]]

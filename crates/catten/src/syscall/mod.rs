@@ -232,6 +232,8 @@ pub mod call_no {
     /// Node-local resource pressure: free frames in x0, usable frames in x1,
     /// and lifetime CPU load in permille in x2. No capability and no allocation.
     pub const NODE_PRESSURE: u16 = SyscallNumber::NodePressure as u16;
+    pub const LAUNCH_DESCRIPTOR_MATCHES: u16 = SyscallNumber::LaunchDescriptorMatches as u16;
+    pub const IS_FRAME_ROUTER: u16 = SyscallNumber::IsFrameRouter as u16;
     /// Resize an owned endpoint's admission bound. x1=endpoint cap,
     /// x2=new capacity; returns the effective capacity in x0 or zero.
     pub const IPC_ENDPOINT_RESIZE: u16 = SyscallNumber::IpcEndpointResize as u16;
@@ -369,10 +371,27 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::RandomU64 => sys_random_u64(frame),
         SyscallNumber::MonotonicClock => sys_monotonic_clock(frame),
         SyscallNumber::NodePressure => sys_node_pressure(frame),
+        SyscallNumber::LaunchDescriptorMatches => sys_launch_descriptor_matches(frame),
+        SyscallNumber::IsFrameRouter => {
+            frame.regs[0] = u64::from(crate::service::supervisor::is_frame_router(
+                frame.regs[1] as usize,
+                frame.regs[2],
+            ));
+        }
     }
 }
 
 // ---- individual syscall implementations ------------------------------------
+
+fn sys_launch_descriptor_matches(frame: &mut TrapFrame) {
+    let mut digest = [0; 32];
+    for (chunk, word) in digest.as_chunks_mut::<8>().0.iter_mut().zip(&frame.regs[3..7]) {
+        chunk.copy_from_slice(&word.to_le_bytes());
+    }
+    let matches = crate::service::supervisor::is_grant_controller(caller_asid(frame))
+        && crate::memory::launch_descriptor_matches(frame.regs[1] as usize, frame.regs[2], &digest);
+    frame.regs[0] = u64::from(matches);
+}
 
 fn push_u64(bytes: &mut alloc::vec::Vec<u8>, value: u64) {
     bytes.extend_from_slice(&value.to_le_bytes());
@@ -953,14 +972,35 @@ fn sys_observe_thread_exit(frame: &mut TrapFrame) {
 
 use spin::LazyLock;
 
-/// A kernel-global mailbox set for EL0-to-EL0 inter-LP messaging. One bounded
-/// MPSC queue per LP; senders target a specific LP, receivers drain their own.
+/// Each domain lifetime has its own bounded inter-LP mailbox set. Both legacy
+/// and capability APIs use this namespace; neither can address another domain.
 use crate::cpu::multiprocessor::{
     get_lp_count,
     shard_mailbox::ShardMailboxSet,
     spin::rwlock::RwLock,
 };
-static USER_MAILBOX: LazyLock<ShardMailboxSet<u64>> = LazyLock::new(|| ShardMailboxSet::new(256));
+static USER_MAILBOX: LazyLock<RwLock<BTreeMap<AddressSpaceId, ShardMailboxSet<u64>>>> =
+    LazyLock::new(|| RwLock::new(BTreeMap::new()));
+
+fn user_mailbox_send(asid: AddressSpaceId, target: LpId, message: u64) -> Result<(), u64> {
+    if target >= get_lp_count() {
+        return Err(message);
+    }
+    // Established domains use a shared namespace borrow; sending to their
+    // lock-free queues must not require a global exclusive map lock.
+    if let Some(mailbox) = USER_MAILBOX.read().get(&asid) {
+        return mailbox.try_send_to(target, message);
+    }
+    USER_MAILBOX
+        .write()
+        .entry(asid)
+        .or_insert_with(|| ShardMailboxSet::new(256))
+        .try_send_to(target, message)
+}
+
+fn user_mailbox_receive(asid: AddressSpaceId) -> Option<u64> {
+    USER_MAILBOX.read().get(&asid)?.try_recv_for_current_lp()
+}
 
 type MailboxCap = u64;
 
@@ -1015,6 +1055,8 @@ static USER_MAILBOX_CAPS: LazyLock<RwLock<BTreeMap<AddressSpaceId, AsMailboxCaps
     LazyLock::new(|| RwLock::new(BTreeMap::new()));
 
 pub fn close_mailbox_address_space(asid: AddressSpaceId) {
+    // Teardown is serialized against ASID reuse by ADDRESS_SPACE_LIFECYCLE.
+    USER_MAILBOX.write().remove(&asid);
     if let Some(caps) = USER_MAILBOX_CAPS.write().remove(&asid) {
         for cap in caps.endpoints.keys() {
             assert!(
@@ -1037,18 +1079,18 @@ fn sys_get_tid(frame: &mut TrapFrame) {
 }
 
 fn sys_mailbox_send(frame: &mut TrapFrame) {
-    let _asid = caller_asid(frame);
+    let asid = caller_asid(frame);
     let target_lp = frame.regs[1] as u32;
     let message = frame.regs[2];
-    frame.regs[0] = match USER_MAILBOX.try_send_to(target_lp, message) {
+    frame.regs[0] = match user_mailbox_send(asid, target_lp, message) {
         Ok(()) => 0,
         Err(_) => 1, // invalid LP or queue full
     };
 }
 
 fn sys_mailbox_recv(frame: &mut TrapFrame) {
-    let _asid = caller_asid(frame);
-    match USER_MAILBOX.try_recv_for_current_lp() {
+    let asid = caller_asid(frame);
+    match user_mailbox_receive(asid) {
         Some(msg) => {
             frame.regs[0] = msg;
             frame.regs[1] = 0; // got a message
@@ -1099,7 +1141,7 @@ fn sys_mailbox_send_cap(frame: &mut TrapFrame) {
     frame.regs[0] = match mailbox_endpoint(asid, cap) {
         Some(MailboxEndpoint::Sender {
             target_lp,
-        }) => match USER_MAILBOX.try_send_to(target_lp, message) {
+        }) => match user_mailbox_send(asid, target_lp, message) {
             Ok(()) => 0,
             Err(_) => 1,
         },
@@ -1113,7 +1155,7 @@ fn sys_mailbox_recv_cap(frame: &mut TrapFrame) {
     match mailbox_endpoint(asid, cap) {
         Some(MailboxEndpoint::Receiver {
             lp,
-        }) if lp == get_lp_id() => match USER_MAILBOX.try_recv_for_current_lp() {
+        }) if lp == get_lp_id() => match user_mailbox_receive(asid) {
             Some(msg) => {
                 frame.regs[0] = msg;
                 frame.regs[1] = 0;
@@ -1220,6 +1262,10 @@ fn sys_memory_alloc(frame: &mut TrapFrame) {
 }
 
 fn sys_memory_map(frame: &mut TrapFrame) {
+    if !charlotte_launch::user_address::valid_pages(frame.regs[2] as usize, 1) {
+        frame.regs[0] = memory_status(object::MemoryObjectError::MapFailed);
+        return;
+    }
     let asid = caller_asid(frame);
     let cap = frame.regs[1];
     let base = VAddr::from(frame.regs[2] as usize);
@@ -1855,6 +1901,10 @@ fn device_status(error: crate::device::DeviceError) -> u64 {
 }
 
 fn sys_device_mmio_map(frame: &mut TrapFrame) {
+    if !charlotte_launch::user_address::valid_pages(frame.regs[2] as usize, 1) {
+        frame.regs[0] = device_status(crate::device::DeviceError::InvalidRange);
+        return;
+    }
     let asid = caller_asid(frame);
     let cap = frame.regs[1];
     let base = VAddr::from(frame.regs[2] as usize);

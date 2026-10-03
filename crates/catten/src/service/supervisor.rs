@@ -532,6 +532,30 @@ pub fn capability_grant_controller() -> CapabilityGrantControllerHandle {
         .expect("[supervisor] capability grant controller has not been started")
 }
 
+pub(crate) fn is_grant_controller(asid: AddressSpaceId) -> bool {
+    let controller = *CAPABILITY_GRANT_CONTROLLER.lock();
+    controller.is_some_and(|controller| {
+        controller.domain.asid == asid
+            && crate::memory::address_space_handle_is_current(controller.domain.address_space)
+    })
+}
+
+static FRAME_ROUTER: spin::Mutex<Option<AddressSpaceHandle>> = spin::Mutex::new(None);
+
+pub(crate) fn register_frame_router(identity: AddressSpaceHandle) {
+    assert!(crate::memory::address_space_handle_is_current(identity));
+    *FRAME_ROUTER.lock() = Some(identity);
+}
+
+pub(crate) fn is_frame_router(asid: AddressSpaceId, generation: u64) -> bool {
+    let identity = *FRAME_ROUTER.lock();
+    identity.is_some_and(|identity| {
+        identity.id() == asid
+            && identity.generation() as u64 == generation
+            && crate::memory::address_space_handle_is_current(identity)
+    })
+}
+
 /// Spawn the thread that registers the well-known local node ready marker once the
 /// boot storm has settled.
 ///
@@ -799,7 +823,9 @@ pub fn try_spawn_with_deployment_descriptor(
         u32::try_from(descriptor_bytes.len()).map_err(|_| ProfileLaunchError::ProfileTooLarge)?;
     let profile_metadata = charlotte_launch::ProfileCapabilityMetadata::new(descriptor_len)
         .ok_or(ProfileLaunchError::EmptyProfile)?;
-    let loaded = loader::try_load_domain(image).map_err(ProfileLaunchError::Load)?;
+    let loaded =
+        loader::try_load_domain_with_key(image, artifact_key).map_err(ProfileLaunchError::Load)?;
+    crate::memory::install_launch_descriptor(loaded.address_space, descriptor_bytes);
     let mut transaction = ProfileLaunchTransaction::new(loaded);
     let controller = capability_grant_controller();
     let connection = match ipc::connection_delegate(

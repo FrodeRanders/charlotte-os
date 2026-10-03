@@ -112,9 +112,39 @@ pub struct EntropyUnavailable;
 #[must_use = "dropping the stream closes its TLS session and owned socket"]
 pub struct OwnedTlsStream<'connection> {
     connection: Option<CharlotteTls<'connection>>,
-    read_buffer: *mut [u8; TLS_RECORD_BUFFER_LEN],
-    write_buffer: *mut [u8; TLS_RECORD_BUFFER_LEN],
+    _buffers: TlsRecordBuffers,
     receive_chunk_len: usize,
+}
+
+/// Stable allocations for embedded-tls's borrowed record buffers. Only this
+/// adapter uses raw pointers: the library cannot own its borrowed buffers.
+/// The connection must always be dropped before this owner.
+struct TlsRecordBuffers {
+    read: *mut [u8; TLS_RECORD_BUFFER_LEN],
+    write: *mut [u8; TLS_RECORD_BUFFER_LEN],
+}
+
+impl TlsRecordBuffers {
+    fn new() -> Self {
+        Self {
+            read: Box::into_raw(Box::new([0; TLS_RECORD_BUFFER_LEN])),
+            write: Box::into_raw(Box::new([0; TLS_RECORD_BUFFER_LEN])),
+        }
+    }
+}
+
+impl Drop for TlsRecordBuffers {
+    fn drop(&mut self) {
+        // SAFETY: the adapter drops the connection first, ending both
+        // exclusive borrows. Each allocation is adopted exactly once here.
+        unsafe {
+            use zeroize::Zeroize;
+            let mut read = Box::from_raw(self.read);
+            let mut write = Box::from_raw(self.write);
+            read.as_mut().zeroize();
+            write.as_mut().zeroize();
+        }
+    }
 }
 
 impl<'connection> OwnedTlsStream<'connection> {
@@ -146,12 +176,11 @@ impl<'connection> OwnedTlsStream<'connection> {
         }
 
         TLS_UNIX_SECONDS.store(config.unix_seconds, Ordering::Relaxed);
-        let read_buffer = Box::into_raw(Box::new([0; TLS_RECORD_BUFFER_LEN]));
-        let write_buffer = Box::into_raw(Box::new([0; TLS_RECORD_BUFFER_LEN]));
+        let buffers = TlsRecordBuffers::new();
         // SAFETY: these allocations remain exclusively owned by the wrapper,
         // are not moved, and are reclaimed only after `connection` is dropped.
-        let read_ref: &'connection mut [u8] = unsafe { &mut *read_buffer };
-        let write_ref: &'connection mut [u8] = unsafe { &mut *write_buffer };
+        let read_ref: &'connection mut [u8] = unsafe { &mut *buffers.read };
+        let write_ref: &'connection mut [u8] = unsafe { &mut *buffers.write };
         let io = SocketIo {
             socket,
             pending: Vec::new(),
@@ -171,17 +200,12 @@ impl<'connection> OwnedTlsStream<'connection> {
         if let Err(error) = connection.open(TlsContext::new(&tls_config, provider)) {
             let code = tls_error_code(&error);
             drop(connection);
-            // SAFETY: the connection and all buffer borrows were dropped.
-            unsafe {
-                drop(Box::from_raw(read_buffer));
-                drop(Box::from_raw(write_buffer));
-            }
+            // `buffers` is then dropped and wiped on this error path too.
             return Err(OpenError::Handshake(code));
         }
         Ok(Self {
             connection: Some(connection),
-            read_buffer,
-            write_buffer,
+            _buffers: buffers,
             receive_chunk_len: config.socket_bounds.receive_chunk_len,
         })
     }
@@ -227,12 +251,7 @@ impl<'connection> OwnedTlsStream<'connection> {
 impl Drop for OwnedTlsStream<'_> {
     fn drop(&mut self) {
         drop(self.connection.take());
-        // SAFETY: `connection` was dropped first, ending both exclusive
-        // borrows. Each pointer came from Box::into_raw exactly once.
-        unsafe {
-            drop(Box::from_raw(self.read_buffer));
-            drop(Box::from_raw(self.write_buffer));
-        }
+        // The record-buffer owner is dropped and wiped after this method.
     }
 }
 

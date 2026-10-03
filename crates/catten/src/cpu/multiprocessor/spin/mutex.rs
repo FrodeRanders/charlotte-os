@@ -62,7 +62,7 @@ unsafe impl RawMutex for MutexCore {
                 self.saved_interrupt_flag.store(int_state, Ordering::Release);
                 return;
             }
-            
+
             // A lock owner may be waiting for this LP to acknowledge a TLB
             // shootdown. Keep maskable interrupts live while contending.
             if int_state {

@@ -207,6 +207,11 @@ pub fn test_syscall_dispatch() {
         assert_eq!(f.regs[0], 0, "MAILBOX_SEND_CAP should send via a sender capability");
     }
     {
+        let mut other = synthetic_trap_frame_in(asid + 1, 0, 0, 0, 0);
+        syscall::syscall_dispatch(&mut other, call_no::MAILBOX_RECV);
+        assert_eq!(other.regs[1], 1, "another domain must not drain the same LP mailbox");
+    }
+    {
         let mut f = synthetic_trap_frame_in(asid, 0, recv_cap, 0, 0);
         syscall::syscall_dispatch(&mut f, call_no::MAILBOX_RECV_CAP);
         assert_eq!(f.regs[1], 0, "MAILBOX_RECV_CAP should report a message");
@@ -228,6 +233,15 @@ pub fn test_syscall_dispatch() {
         assert_eq!(f.regs[0], 2, "closed sender caps must be invalid");
     }
     syscall::close_mailbox_address_space(asid);
+    {
+        let mut send = synthetic_trap_frame_in(asid, 0, 0, 0x7777, 0);
+        syscall::syscall_dispatch(&mut send, call_no::MAILBOX_SEND);
+        assert_eq!(send.regs[0], 0);
+        syscall::close_mailbox_address_space(asid);
+        let mut receive = synthetic_trap_frame_in(asid, 0, 0, 0, 0);
+        syscall::syscall_dispatch(&mut receive, call_no::MAILBOX_RECV);
+        assert_eq!(receive.regs[1], 1, "teardown must discard legacy words before ASID reuse");
+    }
 
     // Endpoint IPC scalar call path.
     let endpoint = {
@@ -417,6 +431,12 @@ pub fn test_syscall_dispatch() {
         assert_ne!(f.regs[0], 0, "MEMORY_ALLOC should return memory cap");
         f.regs[0]
     };
+    for invalid in [0, 1u64 << 47, 1u64 << 48, 0xffff_8000_0000_0000, u64::MAX - 4095] {
+        let mut f = synthetic_trap_frame_in(memory_owner, 0, memory_cap, invalid, 1);
+        syscall::syscall_dispatch(&mut f, call_no::MEMORY_MAP);
+        assert_ne!(f.regs[0], 0, "invalid raw user address must be rejected before normalization");
+        assert!(!object::info(memory_owner, memory_cap).unwrap().mapped);
+    }
     {
         let mut f = synthetic_trap_frame_in(memory_owner, 0, memory_cap, 0x40000, 1);
         syscall::syscall_dispatch(&mut f, call_no::MEMORY_MAP);
@@ -756,7 +776,34 @@ pub fn test_syscall_dispatch() {
         ));
     }
 
+    let policy_digest = charlotte_launch::sha256::digest(b"admitted deployment policy");
+    let owner_identity = crate::memory::current_address_space_handle(memory_owner).unwrap();
+    let generation = owner_identity.generation() as u64;
+    crate::memory::register_domain_authority(owner_identity, 1, 0);
+    assert!(!crate::memory::launch_descriptor_matches(memory_owner, generation, &policy_digest));
+    crate::memory::install_launch_descriptor(owner_identity, b"admitted deployment policy");
+    assert!(crate::memory::launch_descriptor_matches(memory_owner, generation, &policy_digest));
+    assert!(!crate::memory::launch_descriptor_matches(
+        memory_owner,
+        generation + 1,
+        &policy_digest
+    ));
+    assert!(!crate::memory::launch_descriptor_matches(
+        memory_owner,
+        generation,
+        &charlotte_launch::sha256::digest(b"another signed policy for the same logical artifact"),
+    ));
+    let mut query = synthetic_trap_frame_in(memory_owner, 0, memory_owner as u64, generation, 0);
+    for (word, chunk) in query.regs[3..7].iter_mut().zip(policy_digest.as_chunks::<8>().0) {
+        *word = u64::from_le_bytes(*chunk);
+    }
+    syscall::syscall_dispatch(&mut query, call_no::LAUNCH_DESCRIPTOR_MATCHES);
+    assert_eq!(query.regs[0], 0, "an ordinary domain cannot act as the grant controller");
+    let mut router = synthetic_trap_frame_in(memory_owner, 0, memory_owner as u64, generation, 0);
+    syscall::syscall_dispatch(&mut router, call_no::IS_FRAME_ROUTER);
+    assert_eq!(router.regs[0], 0, "an ordinary domain cannot act as the frame router");
     close_test_address_space(memory_owner).expect("syscall memory owner AS close failed");
+    assert!(!crate::memory::launch_descriptor_matches(memory_owner, generation, &policy_digest));
     close_test_address_space(memory_server).expect("syscall memory server AS close failed");
 
     completion::close_address_space(asid);

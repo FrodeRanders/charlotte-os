@@ -19,6 +19,7 @@ pub use charlotte_protocol_s3 as s3;
 /// UTC time-service protocol shared with applications.
 pub use charlotte_protocol_time as time;
 
+pub mod deadline;
 /// Owned application-side wrapper for the capability-grant controller.
 pub mod grant_client;
 /// Owned application-side wrappers for the Kafka service protocol.
@@ -268,6 +269,9 @@ pub mod ns {
     /// Best-effort memory-carried lookup. This is the long-name equivalent
     /// of [`OP_TRY_LOOKUP`] and never parks the caller.
     pub const OP_TRY_LOOKUP_NAMED: u32 = 16;
+    /// Immediate equivalent of [`OP_LOOKUP_FOR_GRANT`], with identical
+    /// authorization but no retained waitlist entry when the name is absent.
+    pub const OP_TRY_LOOKUP_FOR_GRANT: u32 = 17;
 
     pub const STATUS_OFFSET_MAGIC: u32 = 0;
     pub const STATUS_OFFSET_REGISTERED: u32 = 1;

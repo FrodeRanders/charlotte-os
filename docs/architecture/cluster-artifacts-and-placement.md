@@ -174,9 +174,11 @@ connection to the node's `grantctl` endpoint. It does not give the application
 a name-service connection.
 
 For each acquisition, the application uses the owned
-`catten_services::grant_client` helper. `grantctl` verifies the descriptor,
-binds its artifact name to the kernel-authenticated caller principal, rejects
-stale or conflicting descriptor revisions, and checks the exact named grant.
+`catten_services::grant_client` helper. `grantctl` obtains kernel attestation
+that the exact descriptor digest belongs to this caller's live generation,
+binds its artifact name to the kernel-authenticated caller principal, and
+checks the exact named grant. A separately signed descriptor for the same
+logical artifact does not confer authority on an older running version.
 It then uses its private name-service connection to obtain re-delegable
 authority and replies with only the requested `SEND`/`CALL` rights. A service
 may instead use an exact `publish` grant to register its endpoint through the
@@ -202,7 +204,10 @@ boundaries:
    syscall.
 5. The kernel consumes and snapshots both memory objects, repeats descriptor,
    name/signature, digest, and ELF validation, and only then maps the exact ELF
-   in a new address space with `grantctl` as its sole bootstrap service.
+   in a new address space with `grantctl` as its sole bootstrap service. It
+   stores the admitted descriptor digest in the domain's generation-fenced
+   authority record before starting it; the final ELF loader uses the supplied
+   artifact trust key, not a different development default.
 
 The agent is a desired-state reconciler rather than an artifact-specific
 launcher. It enumerates all signed deployment names, launches assignments for

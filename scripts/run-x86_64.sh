@@ -412,7 +412,7 @@ DEPLOYMENT_DESCRIPTOR=""
 DEPLOYMENT_RELEASE=""
 CLUSTER_SIGN_BIN="${ROOT_DIR}/target/debug/cluster-sign"
 if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
-    (cd /tmp && cargo build --quiet --manifest-path "${ROOT_DIR}/tools/cluster-sign/Cargo.toml")
+    (cd /tmp && cargo build --locked --quiet --manifest-path "${ROOT_DIR}/tools/cluster-sign/Cargo.toml")
     echo ">>> Preparing signed central-store deployment fixture..."
     DEPLOYMENT_TEST_DIR="${ROOT_DIR}/target/deployment-ingress-test"
     mkdir -p "$DEPLOYMENT_TEST_DIR"
@@ -450,7 +450,7 @@ fi
 
 if [ "$EL0_SMOKE" = "1" ]; then
     echo ">>> Building and signing the x86_64 smoke service ELF..."
-    cargo build --manifest-path crates/catten-services/Cargo.toml \
+    cargo build --locked --manifest-path crates/catten-services/Cargo.toml \
         --target crates/catten-services/x86_64-unknown-none.json \
         --target-dir crates/catten-services/target \
         --release -Z build-std=core,alloc --bin smoke
@@ -469,7 +469,7 @@ if [ "${CATTEN_SKIP_KERNEL_BUILD:-0}" = "1" ]; then
     fi
     echo ">>> Reusing previously built Catten kernel."
 else
-    cargo build --package catten --target "$TARGET_SPEC" \
+    cargo build --locked --package catten --target "$TARGET_SPEC" \
         --no-default-features --features "$FEATURES" $RELEASE_FLAG
 fi
 

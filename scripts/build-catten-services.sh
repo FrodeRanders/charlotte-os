@@ -37,7 +37,7 @@ if [ "$CLEAN" = "1" ]; then
     echo ">>> Forcing clean rebuild of all EL0 services..."
 fi
 
-cargo build --manifest-path "$MANIFEST" --target "$TARGET" \
+cargo build --locked --manifest-path "$MANIFEST" --target "$TARGET" \
     --target-dir crates/catten-services/target \
     --release -Z build-std=core,alloc
 
@@ -71,7 +71,7 @@ elif [ "$MODE" = "check" ]; then
     done
     for elf in "$BUNDLE"/*.elf; do
         [ -f "$elf" ] || continue
-        if ! (cd /tmp && cargo run --quiet --manifest-path "$ROOT/tools/cluster-sign/Cargo.toml" \
+        if ! (cd /tmp && cargo run --locked --quiet --manifest-path "$ROOT/tools/cluster-sign/Cargo.toml" \
             -- elf-verify "$elf" "$(basename "$elf" .elf)" \
             "3ddc95c26bd5f4022d95a4c6c8d074f577f11af7873e527b018b21be2c035463" \
             >/dev/null 2>&1); then

@@ -41,7 +41,7 @@ for service in "${SERVICES[@]}"; do
 done
 
 echo ">>> Building x86_64 EL0 services..."
-cargo build --manifest-path "$MANIFEST" --target "$TARGET" \
+cargo build --locked --manifest-path "$MANIFEST" --target "$TARGET" \
     --target-dir crates/catten-services/target \
     --release -Z build-std=core,alloc "${build_bins[@]}"
 

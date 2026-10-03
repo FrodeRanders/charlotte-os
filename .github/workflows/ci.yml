@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [dev, main, async-syscall-abi, shard-local-kernel, cluster-deploy-demo]
@@ -16,10 +19,12 @@ jobs:
     name: Rust formatting
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Install pinned Rust nightly
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: nightly-2026-07-27
           components: rustfmt
@@ -36,10 +41,12 @@ jobs:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Install pinned Rust nightly
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: nightly-2026-07-27
           targets: aarch64-unknown-none,x86_64-unknown-none
@@ -54,24 +61,24 @@ jobs:
           scripts/build-catten-services.sh --embed
           scripts/build-catten-user.sh --embed
           export CATTEN_AARCH64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/aarch64-unknown-none"
-          cargo clippy --workspace \
+          cargo clippy --locked --workspace \
             --exclude catten-services --exclude catten-user --exclude cluster-sign \
             --target target_specs/aarch64-unknown-none-catten.json \
             -- -D warnings
           scripts/build-catten-services-x86_64.sh
           export CATTEN_X86_64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/x86_64-unknown-none"
-          cargo clippy --workspace \
+          cargo clippy --locked --workspace \
             --exclude catten-services --exclude catten-user --exclude cluster-sign \
             --target target_specs/x86_64-unknown-none-catten.json \
             --no-default-features --features acpi \
             -- -D warnings
-          cargo clippy \
+          cargo clippy --locked \
             --manifest-path crates/catten-services/Cargo.toml \
             --target crates/catten-services/aarch64-unknown-none.json \
             --release -Z build-std=core,alloc \
             -- -D warnings
           cd /tmp
-          cargo clippy \
+          cargo clippy --locked \
             --manifest-path "$GITHUB_WORKSPACE/tools/cluster-sign/Cargo.toml" \
             -- -D warnings
 
@@ -79,10 +86,12 @@ jobs:
     name: Host-test libraries
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Install pinned Rust nightly
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: nightly-2026-07-27
 
@@ -101,10 +110,12 @@ jobs:
     env:
       TLA_TOOLS_SHA256: 936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Install Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: "17"
@@ -123,10 +134,12 @@ jobs:
     name: Build warning-clean EL0 services
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Install pinned Rust nightly
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: nightly-2026-07-27
           targets: aarch64-unknown-none
@@ -151,10 +164,12 @@ jobs:
           - aarch64-unknown-none-catten
           - x86_64-unknown-none-catten
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Install pinned Rust nightly
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: nightly-2026-07-27
           targets: ${{ matrix.target == 'aarch64-unknown-none-catten' && 'aarch64-unknown-none' || 'x86_64-unknown-none' }}
@@ -173,7 +188,7 @@ jobs:
             scripts/build-catten-services-x86_64.sh
             export CATTEN_X86_64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/x86_64-unknown-none"
           fi
-          cargo build --package catten \
+          cargo build --locked --package catten \
             --target "target_specs/${{ matrix.target }}.json" \
             --no-default-features --features acpi
 
@@ -195,10 +210,12 @@ jobs:
             rust_target: x86_64-unknown-none
             boot: scripts/run-x86_64.sh debug --smp 4 --timeout 480
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Install pinned Rust nightly
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # master
         with:
           toolchain: nightly-2026-07-27
           targets: ${{ matrix.rust_target }}

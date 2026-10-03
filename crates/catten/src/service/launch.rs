@@ -474,6 +474,7 @@ pub fn launch_network_stack_with_services(
             &frouter_manifest
         },
     );
+    crate::service::supervisor::register_frame_router(frouter.address_space);
     Some(NetworkStack {
         driver,
         frouter,

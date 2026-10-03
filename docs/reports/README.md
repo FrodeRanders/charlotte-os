@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [2026-10-03 security audit](audits/2026-10-03-security-audit.md)
+- [2026-10-03 security remediation and remaining work](audits/2026-10-03-security-remediation.md)
 - [2026-08 code/documentation cross-check](audits/2026-08-code-documentation-cross-check.md)
 - [2026-08 distributed-systems audit](audits/2026-08-distributed-systems.md)
 - [2026-07 functionality and logic audit](audits/2026-07-functionality-and-logic.md)

@@ -1042,7 +1042,7 @@ fn main(ctx: Context) -> ! {
                     ipc_reply(message.reply, ns::ERR_INVALID);
                 }
             }
-            ns::OP_LOOKUP_FOR_GRANT => {
+            ns::OP_LOOKUP_FOR_GRANT | ns::OP_TRY_LOOKUP_FOR_GRANT => {
                 let request = read_authorization_request(&message);
                 if message.connection != 0 {
                     ipc_close(message.connection);
@@ -1082,6 +1082,15 @@ fn main(ctx: Context) -> ! {
                                     requested,
                                     message.reply,
                                 );
+                            }
+                            (Some(_), Some(_)) if message.opcode == ns::OP_TRY_LOOKUP_FOR_GRANT => {
+                                // Ownership transfers exactly once from the
+                                // authenticated receive ABI for this reply.
+                                if let Ok(reply) =
+                                    unsafe { catten_rt::owned::ReplyToken::from_raw(message.reply) }
+                                {
+                                    let _ = reply.reply(ns::ERR_NOT_FOUND);
+                                }
                             }
                             (Some(target), Some(target_principal)) => {
                                 if waitlist.waiter_count() >= catten_services::broker::MAX_WAITERS {

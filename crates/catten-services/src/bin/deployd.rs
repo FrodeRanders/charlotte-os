@@ -199,9 +199,16 @@ fn receive_request(
     socket: &socket::OwnedSocket<'_>,
 ) -> Result<Result<Request, ShutdownRequest>, ()> {
     let mut request = Vec::new();
+    let deadline = catten_services::deadline::Deadline::after(30_000);
+    let header_deadline = catten_services::deadline::Deadline::after(5_000);
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
             return Ok(Err(request));
+        }
+        if deadline.expired()
+            || (!request.windows(4).any(|bytes| bytes == b"\r\n\r\n") && header_deadline.expired())
+        {
+            return Err(());
         }
         let chunk = match socket.receive_timeout(1, RECEIVE_RETRY_MS) {
             Ok(Some(chunk)) => chunk,

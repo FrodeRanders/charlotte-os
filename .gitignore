@@ -1,5 +1,7 @@
 target/
-Cargo.lock
+# Track the shared workspace lock; ignore obsolete per-package lockfiles.
+**/Cargo.lock
+!/Cargo.lock
 os-images/
 .continue/mcpServers/new-mcp-server.yaml
 .codex

@@ -43,6 +43,20 @@ pub fn test_memory_objects() {
         "one allocation must not exceed the per-request resource bound"
     );
 
+    let invalid_range = object::allocate(owner, 2).expect("range-test allocation failed");
+    assert_eq!(
+        object::map(
+            owner,
+            invalid_range,
+            VAddr::from(charlotte_launch::user_address::USER_END - 4096),
+            true
+        ),
+        Err(MemoryObjectError::MapFailed),
+        "the full mapping must fit the user address window"
+    );
+    assert!(!object::info(owner, invalid_range).unwrap().mapped);
+    object::close_cap(owner, invalid_range).unwrap();
+
     // Kernel-assigned scratch virtual addresses are a reusable resource, not
     // a lifetime allocation counter. Exercise adjacent-range coalescing and
     // rollback after a reservation whose mapping is rejected.

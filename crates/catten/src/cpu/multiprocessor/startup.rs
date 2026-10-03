@@ -96,7 +96,7 @@ pub unsafe fn assign_id() {
         (lp_id as usize) < MAX_TRACKED_LPS,
         "logical processor id {lp_id} exceeds the per-LP table capacity ({MAX_TRACKED_LPS})"
     );
-    
+
     store_lp_id(lp_id);
     #[cfg(target_arch = "aarch64")]
     LP_MPIDRS

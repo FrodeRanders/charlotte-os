@@ -154,6 +154,8 @@ define_syscall_numbers!(
     (IpcEndpointResize, 80),
     (IpcEndpointStatus, 81),
     (NodePressure, 82),
+    (LaunchDescriptorMatches, 83),
+    (IsFrameRouter, 84),
 );
 
 /// Supervisor-assigned roles carried in the kernel-authenticated IPC sender
@@ -427,6 +429,7 @@ unsafe fn svc3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             78 => asm!("svc #78", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             80 => asm!("svc #80", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             82 => asm!("svc #82", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            84 => asm!("svc #84", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             _ => panic!("syscall {:?} has no svc3 emitter", imm),
         }
     }
@@ -485,6 +488,7 @@ unsafe fn svc6(
     unsafe {
         match imm as u16 {
             40 => asm!("svc #40", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, in("x5") arg5, in("x6") arg6, options(nostack, nomem, preserves_flags)),
+            83 => asm!("svc #83", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, in("x5") arg5, in("x6") arg6, options(nostack, nomem, preserves_flags)),
             _ => panic!("syscall {:?} has no svc6 emitter", imm),
         }
     }
@@ -1469,7 +1473,30 @@ pub fn get_domain_identity() -> DomainIdentityInfo {
     }
 }
 
-/// Send a 64-bit message to the target LP's global mailbox.
+/// Attest the exact descriptor installed by the launcher for a live occupancy.
+/// Only the designated grant controller can obtain a positive response.
+pub fn launch_descriptor_matches(asid: u64, generation: u64, digest: &[u8; 32]) -> bool {
+    let words: [u64; 4] =
+        core::array::from_fn(|i| u64::from_le_bytes(core::array::from_fn(|j| digest[i * 8 + j])));
+    unsafe {
+        svc6(
+            SyscallNumber::LaunchDescriptorMatches,
+            asid,
+            generation,
+            words[0],
+            words[1],
+            words[2],
+            words[3],
+        ) == 1
+    }
+}
+
+/// Check a kernel-authenticated sender against the designated live router.
+pub fn is_frame_router(asid: u64, generation: u64) -> bool {
+    unsafe { svc3(SyscallNumber::IsFrameRouter, asid, generation, 0) == 1 }
+}
+
+/// Send a 64-bit message to the target LP's domain-local mailbox.
 /// Returns 0 on success, 1 on queue-full.
 ///
 /// # Safety
@@ -1479,7 +1506,7 @@ pub unsafe fn mailbox_send_raw(target_lp: u32, message: u64) -> u64 {
     unsafe { svc3(SyscallNumber::MailboxSend, target_lp as u64, message, 0) }
 }
 
-/// Receive a message from the calling LP's global mailbox.
+/// Receive a message from the calling domain's mailbox on the current LP.
 /// Returns `(msg, 0)` on success, `(0, 1)` when empty.
 #[inline(always)]
 pub fn mailbox_recv_raw() -> (u64, u64) {

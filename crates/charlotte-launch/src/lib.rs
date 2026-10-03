@@ -73,6 +73,7 @@ pub mod release;
 pub mod shutdown;
 pub mod signature_note;
 pub mod trust;
+pub mod user_address;
 
 /// FNV-1a 64, the cluster's identity hash (node keys, artifact ids).
 pub fn fnv1a(bytes: &[u8]) -> u64 {

@@ -1369,6 +1369,27 @@ fn build_json(
     s
 }
 
+/// Failure drops the entire partially constructed listener. Runtime capacity
+/// pressure or a peer racing setup must not terminate the serving domain.
+fn new_listener<'connection>(
+    tcp: ConnectionRef<'connection>,
+) -> Result<socket::OwnedSocket<'connection>, ()> {
+    let socket = socket::OwnedSocket::open(tcp, socket::DOMAIN_TCP).map_err(|_| ())?;
+    let port = OwnedMemory::allocate(1).map_err(|_| ())?;
+    let mut mapping = port.map_writable().map_err(|_| ())?;
+    mapping.as_mut_slice()[..2].copy_from_slice(&HTTP_PORT.to_le_bytes());
+    let port = mapping.unmap().map_err(|_| ())?;
+    let listen = tcp
+        .call_move(socket::OP_LISTEN, socket.id(), port)
+        .map_err(|_| ())?
+        .wait()
+        .map_err(|_| ())?;
+    if listen.result != 0 {
+        return Err(());
+    }
+    Ok(socket)
+}
+
 fn serve(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(status::STAGE, 1);
     let ns_conn = ctx.bootstrap_connection().unwrap_or_else(|| fail(0xe001));
@@ -1419,28 +1440,19 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         heap_allocations: 0,
         cpu_busy_ticks: 0,
     };
-    loop {
+    'connections: loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
             return request;
         }
         // Fresh socket + listener per connection (smoltcp's listening socket
         // becomes the established connection, then returns to Closed).
-        let socket = socket::OwnedSocket::open(services.tcp_conn.as_ref(), socket::DOMAIN_TCP)
-            .unwrap_or_else(|_| fail(0xe005));
-        let port = OwnedMemory::allocate(1).unwrap_or_else(|_| fail(0xe007));
-        let mut mapping = port.map_writable().unwrap_or_else(|_| fail(0xe007));
-        mapping.as_mut_slice()[..2].copy_from_slice(&HTTP_PORT.to_le_bytes());
-        let port = mapping.unmap().unwrap_or_else(|_| fail(0xe007));
-        let listen = services
-            .tcp_conn
-            .as_ref()
-            .call_move(socket::OP_LISTEN, socket.id(), port)
-            .unwrap_or_else(|_| fail(0xe008))
-            .wait()
-            .unwrap_or_else(|_| fail(0xe008));
-        if listen.result != 0 {
-            fail(0xe009);
-        }
+        let socket = match new_listener(services.tcp_conn.as_ref()) {
+            Ok(socket) => socket,
+            Err(()) => {
+                sleep_ms(ACCEPT_POLL_MS);
+                continue;
+            }
+        };
 
         // Poll for a connection indefinitely: this is a long-lived keyhole
         // server, so an idle listener must stay alive rather than abort.
@@ -1448,36 +1460,42 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             if let Some(request) = ctx.lifecycle().shutdown_requested() {
                 return request;
             }
-            let result = socket
-                .call(socket::OP_ACCEPT, socket.id())
-                .unwrap_or_else(|_| fail(0xe00a))
-                .wait()
-                .unwrap_or_else(|_| fail(0xe00a))
-                .result;
+            let result =
+                match socket.call(socket::OP_ACCEPT, socket.id()).and_then(|call| call.wait()) {
+                    Ok(result) => result.result,
+                    Err(_) => continue 'connections,
+                };
             if result == 0 {
                 break;
             }
             if result != socket::ERR_WOULD_BLOCK {
-                fail(0xe00b);
+                continue 'connections;
             }
             sleep_ms(ACCEPT_POLL_MS);
         }
 
         // Read whatever request arrived (the response is hardcoded state, so
         // even a partial request is fine).
+        let deadline = catten_services::deadline::Deadline::after(5_000);
         let chunk = loop {
             if let Some(request) = ctx.lifecycle().shutdown_requested() {
                 return request;
             }
+            if deadline.expired() {
+                continue 'connections;
+            }
             match socket.receive_timeout(1, ACCEPT_POLL_MS) {
                 Ok(Some(chunk)) => break chunk,
-                Ok(None) => fail(0xe00e),
+                Ok(None) => continue 'connections,
                 Err(socket::SocketError::RetryExhausted) => continue,
-                Err(_) => fail(0xe00d),
+                Err(_) => continue 'connections,
             }
         };
         let (memory, len) = chunk.into_parts();
-        let mapping = memory.map_read_only().unwrap_or_else(|_| fail(0xe00f));
+        let mapping = match memory.map_read_only() {
+            Ok(mapping) => mapping,
+            Err(_) => continue 'connections,
+        };
         let req_len = len.min(512);
         let mut req = [0u8; 512];
         req[..req_len].copy_from_slice(&mapping.as_slice()[..req_len]);
@@ -1540,8 +1558,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             "\r\nConnection: close\r\n\r\n"
         ));
         response.push_str(&body);
-        if socket.send_all(response.as_bytes(), 1200, ACCEPT_POLL_MS).is_err() {
-            fail(0xe010);
+        if socket.send_all(response.as_bytes(), 100, ACCEPT_POLL_MS).is_err() {
+            continue 'connections;
         }
         counters.bytes_sent = counters.bytes_sent.wrapping_add(response.len() as u64);
 

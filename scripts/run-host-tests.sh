@@ -28,10 +28,10 @@ for manifest in "${manifests[@]}"; do
     # A package may legitimately disable test harnesses for its freestanding
     # binary targets while retaining host unit tests in its library. Cargo
     # applies `test = false` per target, so let it select the enabled targets.
-    RUSTC="$host_rustc" RUSTDOC="$host_rustdoc" "$host_cargo" test \
+    RUSTC="$host_rustc" RUSTDOC="$host_rustdoc" "$host_cargo" test --locked \
         --manifest-path "$repo_root/$manifest"
 done
 
-RUSTC="$host_rustc" RUSTDOC="$host_rustdoc" "$host_cargo" run --quiet \
+RUSTC="$host_rustc" RUSTDOC="$host_rustdoc" "$host_cargo" run --locked --quiet \
     --manifest-path "$repo_root/tools/cluster-sign/Cargo.toml" \
     -- selftest

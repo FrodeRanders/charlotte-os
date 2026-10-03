@@ -22,6 +22,8 @@ The runner currently covers:
 | `charlotte-protocol-net` | NIC status decoding |
 | `catten-graft` | Raft election, membership, joining, snapshots, persistence projections, and wire format |
 | `charlotte-smoltcp` | receive-queue bounds and clock progression |
+| `charlotte-launch` | checked user-address mapping ranges, alias/kernel/null rejection and overflow boundaries |
+| `catten-services` | shared authorization/client logic, resource adapters and total monotonic deadlines |
 | `cluster-sign` | digest, signed metadata, and placement-policy self-tests |
 
 The script invokes Cargo from a temporary directory. This is necessary because
@@ -30,9 +32,12 @@ the repository's `.cargo/config.toml` asks Cargo to rebuild `core`, `alloc`, and
 started from the repository tree, Cargo discovers that target configuration
 and may link a second copy of `core`. The wrapper keeps the pinned toolchain and
 absolute manifests while preventing the bare-metal configuration from leaking
-into host tests. It discovers crates containing `#[test]` and fails if such a
-crate disables its harness, so a new suite cannot silently fall outside the
-inventory. CI calls the same wrapper.
+into host tests. It discovers crates containing `#[test]`; library targets
+containing such tests must enable their host harness. A `test = false` library
+can otherwise cause Cargo to skip those unit tests while still successfully
+running documentation tests. Check the test names/counts when adding a suite.
+Freestanding binary targets keep their harness disabled. CI calls the same
+wrapper.
 
 ## Target-only tests
 
@@ -49,6 +54,21 @@ is compiled. `--net-test`, `--dhcp-test`, `--disco-test`, and related options
 register additional target verifiers; `--no-network` is the explicit runtime
 opt-out. Tests should never be the mechanism that enables a production
 capability.
+
+The HTTP verifier also runs EOF and idle-client availability probes before the
+node/cluster JSON checks. Use an isolated instance and unused forwarded ports:
+
+```sh
+CATTEN_HTTP_HOST_PORT=18080 CATTEN_DEPLOY_HOST_PORT=17444 \
+  scripts/run-aarch64.sh --http-test --instance security-http --fresh-storage --timeout 75
+```
+
+`scripts/tests/test-http-keyhole-liveness.py` checks EOF and abortive peer-close
+recovery, and that an idle client is timed out while subsequent metrics
+requests are attempted. Transport retries are bounded and spaced to span that
+idle budget. The
+five-second request deadline bounds this serial listener's per-client delay;
+it does not establish resilience against a sustained connection flood.
 
 ![Ordinary boot and optional test validators](../manual-v2/figures/boot-and-testing.svg)
 

@@ -6,3 +6,4 @@ description = "no_std S3 data-plane protocol core for CharlotteOS"
 
 [dependencies]
 charlotte-launch = { path = "../charlotte-launch" }
+zeroize = { version = "1.9", default-features = false, features = ["alloc"] }

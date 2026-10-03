@@ -392,6 +392,11 @@ impl AddressSpaceInterface for AddressSpace {
         &mut self,
         mapping: MemoryMapping,
     ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error> {
+        if mapping.page_type.is_user_accessible()
+            && !charlotte_launch::user_address::valid_pages(mapping.vaddr.into(), 1)
+        {
+            return Err(super::Error::PermissionDenied);
+        }
         let mut walker = walker::Walker::new(self, mapping.vaddr);
         walker.map_page(
             mapping.paddr,
@@ -406,6 +411,11 @@ impl AddressSpaceInterface for AddressSpace {
         &mut self,
         mapping: MemoryMapping,
     ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error> {
+        if mapping.page_type.is_user_accessible()
+            && !charlotte_launch::user_address::valid_pages(mapping.vaddr.into(), 1)
+        {
+            return Err(super::Error::PermissionDenied);
+        }
         let mut walker = walker::Walker::new(self, mapping.vaddr);
         walker.map_existing_page(
             mapping.paddr,
