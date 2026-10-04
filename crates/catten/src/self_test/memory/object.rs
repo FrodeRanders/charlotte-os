@@ -31,6 +31,8 @@ fn create_memory_object_test_address_space(label: &str) -> usize {
 
 pub fn test_memory_objects() {
     logln!("Testing first-class memory objects...");
+    test_aggregate_budgets();
+    test_node_progress_pool();
 
     let owner = create_memory_object_test_address_space("owner");
     let target = create_memory_object_test_address_space("target");
@@ -366,4 +368,281 @@ pub fn test_memory_objects() {
     close_test_address_space(owner).expect("memory object: failed to close owner AS");
 
     logln!("First-class memory object tests passed.");
+}
+
+/// Kernel-boundary tests deliberately retain raw memory handles to exercise
+/// failed move/close and transactional restoration beneath the runtime API.
+fn test_aggregate_budgets() {
+    use budget::Amount;
+
+    use crate::memory::{
+        budget,
+        current_address_space_handle,
+    };
+    let owner = create_memory_object_test_address_space("budget sponsor");
+    let target = create_memory_object_test_address_space("budget receiver");
+    let handle = current_address_space_handle(owner).unwrap();
+    let receiver = current_address_space_handle(target).unwrap();
+    budget::set_limit(
+        handle,
+        Amount {
+            pages: 4,
+            objects: 2,
+        },
+    )
+    .unwrap();
+    budget::set_limit(
+        receiver,
+        Amount {
+            pages: 0,
+            objects: 0,
+        },
+    )
+    .unwrap();
+    let first = object::allocate(owner, 2).unwrap();
+    let second = object::allocate(owner, 2).unwrap();
+    let full = Amount {
+        pages: 4,
+        objects: 2,
+    };
+    assert_eq!(budget::used(handle), full);
+    assert_eq!(object::allocate(owner, 1), Err(MemoryObjectError::ResourceLimit));
+    assert_eq!(object::copy_to(owner, first, target), Err(MemoryObjectError::ResourceLimit));
+    assert_eq!(budget::used(handle), full);
+    object::write_bytes(owner, first, &[0x5a]).expect("failed copy must release its pin");
+    assert_eq!(
+        budget::set_limit(
+            handle,
+            Amount {
+                pages: 3,
+                objects: 2
+            }
+        ),
+        Err(budget::Error::Limit)
+    );
+
+    object::map_any(owner, first, true).unwrap();
+    assert_eq!(object::close_cap(owner, first), Err(MemoryObjectError::AlreadyMapped));
+    assert_eq!(budget::used(handle), full);
+    object::unmap(owner, first).unwrap();
+    let moved = object::move_to(owner, first, target).unwrap();
+    assert_eq!(budget::used(handle), full, "moving cannot erase sponsorship");
+    assert_eq!(budget::used(receiver), Amount::default());
+    object::rollback_move_to(target, moved, owner, first).unwrap();
+    assert_eq!(budget::used(handle), full, "rollback cannot double-charge");
+    object::close_cap(owner, first).unwrap();
+    let small = object::allocate(owner, 1).unwrap();
+    assert_eq!(
+        budget::used(handle),
+        Amount {
+            pages: 3,
+            objects: 2
+        }
+    );
+    assert_eq!(
+        object::allocate(owner, 1),
+        Err(MemoryObjectError::ResourceLimit),
+        "object count binds before pages"
+    );
+    object::close_cap(owner, small).unwrap();
+
+    let borrowed = object::lend_read(owner, second, target).unwrap();
+    assert_eq!(
+        budget::used(handle),
+        Amount {
+            pages: 2,
+            objects: 1
+        }
+    );
+    assert_eq!(object::close_cap(owner, second), Err(MemoryObjectError::LendingActive));
+    object::revoke_lend(owner, second, target, borrowed).unwrap();
+    let copied = object::copy_to(owner, second, target).unwrap();
+    assert_eq!(budget::used(handle), full, "copies are charged to the caller");
+    assert_eq!(budget::used(receiver), Amount::default());
+    object::close_cap(owner, second).unwrap();
+    object::close_cap(target, copied).unwrap();
+    assert_eq!(budget::used(handle), Amount::default());
+
+    let surviving = object::allocate(owner, 1).unwrap();
+    let surviving = object::move_read_only_to(owner, surviving, target).unwrap();
+    close_test_address_space(owner).unwrap();
+    assert_eq!(
+        budget::used(handle),
+        Amount {
+            pages: 1,
+            objects: 1
+        },
+        "receiver-held frames survive sponsor retirement"
+    );
+    assert_eq!(budget::set_limit(handle, full), Err(budget::Error::StaleDomain));
+    let replacement = create_memory_object_test_address_space("replacement sponsor");
+    let replacement_handle = current_address_space_handle(replacement).unwrap();
+    assert_eq!(budget::used(replacement_handle), Amount::default());
+    let replacement_cap = object::allocate(replacement, 1).unwrap();
+    object::close_cap(target, surviving).unwrap();
+    assert_eq!(budget::used(handle), Amount::default());
+    assert_eq!(
+        budget::used(replacement_handle),
+        Amount {
+            pages: 1,
+            objects: 1
+        },
+        "late release cannot debit a successor"
+    );
+    object::close_cap(replacement, replacement_cap).unwrap();
+    close_test_address_space(replacement).unwrap();
+
+    // Pause retirement at its admission fence, before IPC drain. A failed
+    // later vector entry must leave earlier transfers available for rollback.
+    let source = create_memory_object_test_address_space("retirement rollback source");
+    let source_handle = current_address_space_handle(source).unwrap();
+    let first = object::allocate(source, 1).unwrap();
+    let second = object::allocate(source, 1).unwrap();
+    let moved = object::move_to(source, first, target).unwrap();
+    budget::retire(receiver);
+    assert_eq!(
+        object::move_to(source, second, target),
+        Err(MemoryObjectError::AddressSpaceMissing)
+    );
+    assert_eq!(
+        object::copy_to(source, second, target),
+        Err(MemoryObjectError::AddressSpaceMissing)
+    );
+    assert_eq!(
+        object::lend_read(source, second, target),
+        Err(MemoryObjectError::AddressSpaceMissing)
+    );
+    assert_eq!(object::allocate(target, 1), Err(MemoryObjectError::AddressSpaceMissing));
+    object::write_bytes(source, second, &[0x5a])
+        .expect("retiring-target copy must release its source pin");
+    object::rollback_move_to(target, moved, source, first).unwrap();
+    assert_eq!(
+        budget::used(source_handle),
+        Amount {
+            pages: 2,
+            objects: 2
+        }
+    );
+    object::close_cap(source, first).unwrap();
+    object::close_cap(source, second).unwrap();
+    close_test_address_space(source).unwrap();
+    close_test_address_space(target).unwrap();
+
+    let pinned = create_memory_object_test_address_space("pinned sponsor");
+    let pinned_handle = current_address_space_handle(pinned).unwrap();
+    let pinned_cap = object::allocate(pinned, 1).unwrap();
+    let copy_pin = object::pin_for_copy(pinned, pinned_cap).unwrap();
+    #[cfg(target_arch = "aarch64")]
+    let dma_pin = object::pin_for_dma(pinned, pinned_cap, true, false, false).unwrap();
+    close_test_address_space(pinned).unwrap();
+    assert_eq!(
+        budget::used(pinned_handle),
+        Amount {
+            pages: 1,
+            objects: 1
+        }
+    );
+    let replacement = create_memory_object_test_address_space("pinned replacement");
+    let replacement_handle = current_address_space_handle(replacement).unwrap();
+    let replacement_cap = object::allocate(replacement, 1).unwrap();
+    #[cfg(target_arch = "aarch64")]
+    {
+        object::unpin_dma(dma_pin);
+        assert_eq!(
+            budget::used(pinned_handle),
+            Amount {
+                pages: 1,
+                objects: 1
+            }
+        );
+    }
+    object::unpin_copy(copy_pin);
+    assert_eq!(budget::used(pinned_handle), Amount::default());
+    assert_eq!(
+        budget::used(replacement_handle),
+        Amount {
+            pages: 1,
+            objects: 1
+        }
+    );
+    object::close_cap(replacement, replacement_cap).unwrap();
+    close_test_address_space(replacement).unwrap();
+    logln!(
+        "[memory budget] limits, failed copy, move/rollback, lend, retirement and late-unpin \
+         accounting passed"
+    );
+}
+
+fn test_node_progress_pool() {
+    use alloc::vec::Vec;
+
+    use budget::Amount;
+
+    use crate::memory::{
+        budget,
+        current_address_space_handle,
+    };
+    let before = budget::node_snapshot();
+    // Exercise admission without consuming real RAM. These owning reservations
+    // model allocated objects and are never exposed to an application.
+    let mut remaining = before.1.limit().pages - before.1.used().pages;
+    let mut owners = Vec::new();
+    let mut charges = Vec::new();
+    while remaining != 0 {
+        let owner = create_memory_object_test_address_space("pool admission");
+        owners.push(owner);
+        let pages = remaining.min(budget::MAX_DOMAIN_OBJECT_PAGES);
+        charges.push(
+            budget::reserve(
+                owner,
+                Amount {
+                    pages,
+                    objects: 1,
+                },
+            )
+            .unwrap(),
+        );
+        remaining -= pages;
+    }
+    let extra = create_memory_object_test_address_space("pool ordinary denial");
+    assert!(matches!(
+        budget::reserve(
+            extra,
+            Amount {
+                pages: 1,
+                objects: 1
+            }
+        ),
+        Err(budget::Error::Limit)
+    ));
+    let extra_handle = current_address_space_handle(extra).unwrap();
+    assert_eq!(
+        budget::used(extra_handle),
+        Amount::default(),
+        "failed global admission rolls back the local charge"
+    );
+    budget::mark_platform(extra_handle);
+    let platform = budget::reserve(
+        extra,
+        Amount {
+            pages: 1,
+            objects: 1,
+        },
+    )
+    .unwrap();
+    drop(platform);
+    drop(charges);
+    for owner in owners {
+        close_test_address_space(owner).unwrap();
+    }
+    close_test_address_space(extra).unwrap();
+    assert_eq!(
+        budget::node_snapshot(),
+        before,
+        "node charges reconcile after reservation cancellation"
+    );
+    logln!(
+        "[memory budget] ordinary pool exhaustion preserved platform admission and reconciled all \
+         reservations"
+    );
 }

@@ -120,11 +120,13 @@ pub static DEAD_THREADS: LazyLock<RwLock<BTreeMap<LpId, Vec<Thread>>>> =
 /// remove and insert operations and incorrectly conclude that its domain has
 /// exited.
 static RETIREMENTS_IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
+static RETIREMENT_EPOCH: AtomicU64 = AtomicU64::new(0);
 
 pub struct RetirementGuard;
 
 impl Drop for RetirementGuard {
     fn drop(&mut self) {
+        RETIREMENT_EPOCH.fetch_add(1, Ordering::SeqCst);
         let previous = RETIREMENTS_IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
         debug_assert!(previous > 0, "thread retirement counter underflow");
     }
@@ -132,11 +134,16 @@ impl Drop for RetirementGuard {
 
 pub fn begin_retirement() -> RetirementGuard {
     RETIREMENTS_IN_FLIGHT.fetch_add(1, Ordering::SeqCst);
+    RETIREMENT_EPOCH.fetch_add(1, Ordering::SeqCst);
     RetirementGuard
 }
 
 pub fn retirement_in_flight() -> bool {
     RETIREMENTS_IN_FLIGHT.load(Ordering::SeqCst) != 0
+}
+
+pub fn retirement_epoch() -> u64 {
+    RETIREMENT_EPOCH.load(Ordering::SeqCst)
 }
 
 /// Stage a thread that has stopped being scheduled on `lp` for reaping by that
@@ -202,10 +209,15 @@ pub fn reap_dead_threads() {
     // Move this LP's dead threads out under the lock, then drop them after
     // releasing it so their `Drop` (which frees stacks via the frame allocator)
     // does not run while holding the DEAD_THREADS lock.
-    let dead: Vec<Thread> = {
+    let (dead, _retirement): (Vec<Thread>, RetirementGuard) = {
         let mut guard = DEAD_THREADS.write();
         match guard.get_mut(&lp) {
-            Some(threads) if !threads.is_empty() => core::mem::take(threads),
+            Some(threads) if !threads.is_empty() => {
+                // The reaper's local vector is another publication gap.
+                // Keep it covered through deferred reinsert and final Drop.
+                let retirement = begin_retirement();
+                (core::mem::take(threads), retirement)
+            }
             _ => return,
         }
     };

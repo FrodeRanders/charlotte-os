@@ -1,6 +1,7 @@
 //! # Memory Management Subsystem
 
 pub mod allocators;
+pub mod budget;
 pub mod linear;
 pub mod object;
 pub mod physical;
@@ -373,12 +374,18 @@ fn close_user_address_space_locked(
         Err(_) => return Err(AddressSpaceCloseError::AddressSpaceMissing),
     }
 
+    // Refuse new memory-object sponsorship before draining subsystem payloads.
+    budget::retire(handle);
+
     // DMA mappings must be revoked before memory-object teardown releases
     // their pinned frames.
     crate::device::close_address_space(asid);
+    // Quiesce IPC transactions before destroying their memory attachments.
+    // A retiring destination can reject a later vector entry; earlier moves
+    // must still be present so rollback can restore their original handles.
+    crate::ipc::close_address_space(asid);
     object::close_address_space(asid);
     object::close_scratch_address_space(asid);
-    crate::ipc::close_address_space(asid);
     crate::completion::close_address_space(asid);
     crate::syscall::close_mailbox_address_space(asid);
     crate::capability::close_address_space(asid);
@@ -417,7 +424,9 @@ fn close_user_address_space_locked(
     ADDRESS_SPACE_TABLE
         .lock()
         .remove_element(asid)
-        .map_err(|_| AddressSpaceCloseError::AddressSpaceMissing)
+        .map_err(|_| AddressSpaceCloseError::AddressSpaceMissing)?;
+    budget::forget(handle);
+    Ok(())
 }
 /// The starting virtual address of the higher half direct mapping region created by the bootloader.
 /// This should be remapped by the VMM during BSP init to be placed at the address specified by the

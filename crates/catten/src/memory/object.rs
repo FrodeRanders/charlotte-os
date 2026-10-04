@@ -34,8 +34,8 @@ const PAGE_SIZE: usize = 4096;
 /// Upper bound on a single memory-object allocation, in pages (64 MiB). A
 /// single `memory_alloc` cannot request an unbounded number of frames: this
 /// caps the allocation loop and the amount of physical memory zeroed in one
-/// syscall. Per-domain *total* quotas remain future work (see the manual's
-/// known limitations); this bound only limits a single allocation.
+/// syscall. Aggregate sponsorship limits are enforced by [`super::budget`]
+/// in addition to this per-request bound.
 pub const MAX_MEMORY_OBJECT_PAGES: usize = 16_384;
 
 pub type MemoryObjectCap = u64;
@@ -58,6 +58,7 @@ pub enum MemoryObjectError {
     OutOfScratch,
     LendingActive,
     NotLent,
+    ResourceLimit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,12 +87,107 @@ pub struct MemoryObjectInfo {
 struct MemoryObject {
     owner: AddressSpaceId,
     frames: Vec<PAddr>,
+    charge: super::budget::Charge,
     mappings: BTreeMap<AddressSpaceId, MemoryMappingState>,
     lend_state: LendState,
     dma_pins: usize,
     exclusive_dma_pins: usize,
     copy_pins: usize,
     destroy_when_unpinned: bool,
+}
+
+/// Staged or retired backing frames retain their charge until physical
+/// release. Failure-path Drop rolls back partial allocation outside locks.
+struct ChargedFrames {
+    frames: Vec<PAddr>,
+    charge: Option<super::budget::Charge>,
+}
+
+impl Drop for ChargedFrames {
+    fn drop(&mut self) {
+        self.free();
+    }
+}
+
+impl ChargedFrames {
+    fn free(&mut self) -> bool {
+        if self.frames.is_empty() {
+            return false;
+        }
+        let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+        let mut failed = false;
+        for frame in self.frames.drain(..) {
+            failed |= allocator.deallocate_frame(frame).is_err();
+        }
+        drop(allocator);
+        if failed {
+            // Fail closed: a failed physical release must not create fresh
+            // quota headroom. Retain the bounded ledger charge as quarantine.
+            core::mem::forget(self.charge.take());
+            crate::early_logln!("WARNING: failed to free memory-object frames; charge quarantined");
+        }
+        // The charge field drops after this body and the allocator lock.
+        failed
+    }
+
+    fn release(mut self) -> Result<(), MemoryObjectError> {
+        if self.free() {
+            Err(MemoryObjectError::FrameFreeFailed)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn into_parts(mut self) -> (Vec<PAddr>, super::budget::Charge) {
+        let frames = core::mem::take(&mut self.frames);
+        (frames, self.charge.take().expect("staged charge missing"))
+    }
+}
+
+fn allocate_frames(
+    owner: AddressSpaceId,
+    pages: usize,
+) -> Result<ChargedFrames, MemoryObjectError> {
+    let charge = super::budget::reserve(
+        owner,
+        super::budget::Amount {
+            pages: pages as u64,
+            objects: 1,
+        },
+    )
+    .map_err(|error| match error {
+        super::budget::Error::StaleDomain => MemoryObjectError::AddressSpaceMissing,
+        super::budget::Error::Limit => MemoryObjectError::ResourceLimit,
+    })?;
+    let mut staged = ChargedFrames {
+        frames: Vec::new(),
+        charge: Some(charge),
+    };
+    staged.frames.try_reserve_exact(pages).map_err(|_| MemoryObjectError::FrameAllocFailed)?;
+    let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+    if !charlotte_lifecycle::resources::frames_available(
+        allocator.free_frames() as u64,
+        allocator.usable_bytes() / PAGE_SIZE as u64,
+        pages as u64,
+    ) {
+        return Err(MemoryObjectError::ResourceLimit);
+    }
+    for _ in 0..pages {
+        staged
+            .frames
+            .push(allocator.allocate_frame().map_err(|_| MemoryObjectError::FrameAllocFailed)?);
+    }
+    drop(allocator);
+    Ok(staged)
+}
+
+struct ScopedCopyPin(Option<CopyPin>);
+impl Drop for ScopedCopyPin {
+    fn drop(&mut self) {
+        if let Some(pin) = self.0.take() {
+            unpin_copy(pin);
+        }
+    }
 }
 
 pub(crate) struct CopyPin {
@@ -127,6 +223,9 @@ struct MemoryMappingState {
 #[derive(Debug)]
 enum LendState {
     None,
+    /// A revocation has fenced all new access while mappings are removed
+    /// without holding the registry across the shootdown.
+    Revoking,
     Read {
         borrowers: BTreeMap<AddressSpaceId, MemoryObjectCap>,
     },
@@ -148,6 +247,7 @@ impl LendState {
     fn references_cap(&self, asid: AddressSpaceId, cap: MemoryObjectCap) -> bool {
         match self {
             LendState::None => false,
+            LendState::Revoking => true,
             LendState::Read {
                 borrowers,
             } => borrowers.get(&asid).is_some_and(|lent| *lent == cap),
@@ -229,28 +329,12 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
     }
     validate_address_space(owner)?;
 
-    let mut frames = Vec::with_capacity(pages);
-    {
-        let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-        for _ in 0..pages {
-            match allocator.allocate_frame() {
-                Ok(frame) => frames.push(frame),
-                Err(_) => {
-                    for frame in frames.drain(..) {
-                        allocator
-                            .deallocate_frame(frame)
-                            .map_err(|_| MemoryObjectError::FrameFreeFailed)?;
-                    }
-                    return Err(MemoryObjectError::FrameAllocFailed);
-                }
-            }
-        }
-    }
+    let staged = allocate_frames(owner, pages)?;
 
     // The frames are exclusively owned and not yet published, so zeroing them
     // does not require the IRQ-masking allocator lock held across the (up to
     // 64 MiB) memset.
-    for frame in &frames {
+    for frame in &staged.frames {
         let ptr: *mut u8 = (*frame).into();
         unsafe {
             core::ptr::write_bytes(ptr, 0, PAGE_SIZE);
@@ -258,6 +342,10 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
     }
 
     let mut registry = MEMORY_OBJECTS.lock();
+    if !staged.charge.as_ref().unwrap().active() {
+        return Err(MemoryObjectError::AddressSpaceMissing);
+    }
+    let (frames, charge) = staged.into_parts();
     let object_id = registry.next_object;
     registry.next_object = registry.next_object.checked_add(1).expect("memory object id overflow");
     registry.objects.insert(
@@ -265,6 +353,7 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
         MemoryObject {
             owner,
             frames,
+            charge,
             mappings: BTreeMap::new(),
             lend_state: LendState::None,
             dma_pins: 0,
@@ -373,7 +462,7 @@ pub(crate) fn write_bytes(
     }
     let object =
         registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-    if object.copy_pins != 0 {
+    if object.copy_pins != 0 || matches!(object.lend_state, LendState::Revoking) {
         return Err(MemoryObjectError::LendingActive);
     }
     if bytes.is_empty() || bytes.len() > object.frames.len().saturating_mul(PAGE_SIZE) {
@@ -701,6 +790,12 @@ fn map_locked(
 
 pub fn unmap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), MemoryObjectError> {
     let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+    unmap_serialized(asid, cap)
+}
+
+/// Caller holds lifecycle or IPC serialization. Retirement drains IPC before
+/// memory cleanup, so its mapped-loan revocations must not re-enter lifecycle.
+fn unmap_serialized(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), MemoryObjectError> {
     let (base, pages, scratch, result) = {
         let mut registry = MEMORY_OBJECTS.lock();
         let cap_entry = registry.lookup(asid, cap)?;
@@ -744,8 +839,12 @@ pub fn move_to(
     cap: MemoryObjectCap,
     target: AddressSpaceId,
 ) -> Result<MemoryObjectCap, MemoryObjectError> {
-    validate_address_space(target)?;
+    let target_handle = super::current_address_space_handle(target)
+        .ok_or(MemoryObjectError::AddressSpaceMissing)?;
     let mut registry = MEMORY_OBJECTS.lock();
+    if !super::budget::accepting(target_handle) {
+        return Err(MemoryObjectError::AddressSpaceMissing);
+    }
     let cap_entry = registry.lookup(owner, cap)?;
     if !cap_entry.rights.contains(MemoryObjectRights::TRANSFER) {
         return Err(MemoryObjectError::MissingRight);
@@ -791,8 +890,12 @@ pub fn move_read_only_to(
     cap: MemoryObjectCap,
     target: AddressSpaceId,
 ) -> Result<MemoryObjectCap, MemoryObjectError> {
-    validate_address_space(target)?;
+    let target_handle = super::current_address_space_handle(target)
+        .ok_or(MemoryObjectError::AddressSpaceMissing)?;
     let mut registry = MEMORY_OBJECTS.lock();
+    if !super::budget::accepting(target_handle) {
+        return Err(MemoryObjectError::AddressSpaceMissing);
+    }
     let cap_entry = registry.lookup(owner, cap)?;
     if !cap_entry.rights.contains(MemoryObjectRights::TRANSFER)
         || !cap_entry.rights.contains(MemoryObjectRights::MAP_READ)
@@ -894,16 +997,23 @@ pub(crate) fn pin_for_copy(
     if object.owner != owner {
         return Err(MemoryObjectError::WrongOwner);
     }
-    if matches!(object.lend_state, LendState::Write { .. }) || object.dma_pins != 0 {
+    if matches!(object.lend_state, LendState::Write { .. } | LendState::Revoking)
+        || object.dma_pins != 0
+    {
         return Err(MemoryObjectError::LendingActive);
     }
     if object.mappings.values().any(|mapping| mapping.writable) {
         return Err(MemoryObjectError::AlreadyMapped);
     }
+    let mut frames = Vec::new();
+    frames
+        .try_reserve_exact(object.frames.len())
+        .map_err(|_| MemoryObjectError::FrameAllocFailed)?;
+    frames.extend_from_slice(&object.frames);
     object.copy_pins = object.copy_pins.checked_add(1).ok_or(MemoryObjectError::InvalidLength)?;
     Ok(CopyPin {
         object: cap_entry.object,
-        frames: object.frames.clone(),
+        frames,
     })
 }
 
@@ -915,42 +1025,17 @@ pub fn copy_to(
     if owner == target {
         return Err(MemoryObjectError::WrongOwner);
     }
-    validate_address_space(target)?;
-
-    let copy_pin = pin_for_copy(owner, cap)?;
-
-    // Allocate every target frame under the allocator lock only; no copying is
-    // performed while a lock is held.
-    let mut copied_frames = Vec::with_capacity(copy_pin.frames.len());
-    let alloc_error = {
-        let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-        let mut error = None;
-        for _ in &copy_pin.frames {
-            match allocator.allocate_frame() {
-                Ok(frame) => copied_frames.push(frame),
-                Err(_) => {
-                    for frame in copied_frames.drain(..) {
-                        if allocator.deallocate_frame(frame).is_err() {
-                            error = Some(MemoryObjectError::FrameFreeFailed);
-                        }
-                    }
-                    if error.is_none() {
-                        error = Some(MemoryObjectError::FrameAllocFailed);
-                    }
-                    break;
-                }
-            }
-        }
-        error
-    };
-    if let Some(error) = alloc_error {
-        unpin_copy(copy_pin);
-        return Err(error);
-    }
+    let target_handle = super::current_address_space_handle(target)
+        .ok_or(MemoryObjectError::AddressSpaceMissing)?;
+    let mut copy_pin = ScopedCopyPin(Some(pin_for_copy(owner, cap)?));
+    let source = copy_pin.0.as_ref().unwrap();
+    // The copying caller sponsors the additional physical pages, even though
+    // ownership is delivered to the receiver. The pin is an owning guard.
+    let staged = allocate_frames(owner, source.frames.len())?;
 
     // Copy source -> target with no lock held; the source frames remain valid
     // because of the copy_pins reference above.
-    for (source, target_frame) in copy_pin.frames.iter().zip(copied_frames.iter()) {
+    for (source, target_frame) in source.frames.iter().zip(staged.frames.iter()) {
         let source_ptr: *const u8 = (*source).into();
         let target_ptr: *mut u8 = (*target_frame).into();
         unsafe {
@@ -959,7 +1044,12 @@ pub fn copy_to(
     }
 
     let mut registry = MEMORY_OBJECTS.lock();
-    let source_frames_to_free = release_copy_pin_locked(&mut registry, copy_pin.object);
+    if !super::budget::accepting(target_handle) || !staged.charge.as_ref().unwrap().active() {
+        return Err(MemoryObjectError::AddressSpaceMissing);
+    }
+    let pin = copy_pin.0.take().unwrap();
+    let source_frames_to_free = release_copy_pin_locked(&mut registry, pin.object);
+    let (copied_frames, charge) = staged.into_parts();
     let object_id = registry.next_object;
     registry.next_object = registry.next_object.checked_add(1).expect("memory object id overflow");
     registry.objects.insert(
@@ -967,6 +1057,7 @@ pub fn copy_to(
         MemoryObject {
             owner: target,
             frames: copied_frames,
+            charge,
             mappings: BTreeMap::new(),
             lend_state: LendState::None,
             dma_pins: 0,
@@ -983,7 +1074,7 @@ pub fn copy_to(
         },
     );
     drop(registry);
-    drop(copy_pin);
+    drop(pin);
     deallocate_frames(source_frames_to_free);
     Ok(target_cap)
 }
@@ -996,8 +1087,12 @@ pub fn lend_read(
     if owner == borrower {
         return Err(MemoryObjectError::WrongOwner);
     }
-    validate_address_space(borrower)?;
+    let borrower_handle = super::current_address_space_handle(borrower)
+        .ok_or(MemoryObjectError::AddressSpaceMissing)?;
     let mut registry = MEMORY_OBJECTS.lock();
+    if !super::budget::accepting(borrower_handle) {
+        return Err(MemoryObjectError::AddressSpaceMissing);
+    }
     let cap_entry = registry.lookup(owner, cap)?;
     if !cap_entry.rights.contains(MemoryObjectRights::MAP_READ) {
         return Err(MemoryObjectError::MissingRight);
@@ -1009,7 +1104,9 @@ pub fn lend_read(
         if object.owner != owner {
             return Err(MemoryObjectError::WrongOwner);
         }
-        if matches!(object.lend_state, LendState::Write { .. }) || object.dma_pins != 0 {
+        if matches!(object.lend_state, LendState::Write { .. } | LendState::Revoking)
+            || object.dma_pins != 0
+        {
             return Err(MemoryObjectError::LendingActive);
         }
         if let LendState::Read {
@@ -1046,7 +1143,8 @@ pub fn lend_read(
         } => {
             borrowers.insert(borrower, borrower_cap);
         }
-        LendState::Write {
+        LendState::Revoking
+        | LendState::Write {
             ..
         } => return Err(MemoryObjectError::LendingActive),
     }
@@ -1061,8 +1159,12 @@ pub fn lend_write(
     if owner == borrower {
         return Err(MemoryObjectError::WrongOwner);
     }
-    validate_address_space(borrower)?;
+    let borrower_handle = super::current_address_space_handle(borrower)
+        .ok_or(MemoryObjectError::AddressSpaceMissing)?;
     let mut registry = MEMORY_OBJECTS.lock();
+    if !super::budget::accepting(borrower_handle) {
+        return Err(MemoryObjectError::AddressSpaceMissing);
+    }
     let cap_entry = registry.lookup(owner, cap)?;
     if !cap_entry.rights.contains(MemoryObjectRights::MAP_WRITE) {
         return Err(MemoryObjectError::MissingRight);
@@ -1108,6 +1210,28 @@ pub fn revoke_lend(
     borrower: AddressSpaceId,
     borrower_cap: MemoryObjectCap,
 ) -> Result<(), MemoryObjectError> {
+    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+    revoke_lend_serialized(owner, cap, borrower, borrower_cap)
+}
+
+/// IPC adapter boundary: every caller must retain the global IPC write guard
+/// through this operation. Do not acquire lifecycle under that guard:
+/// address-space retirement holds lifecycle and waits for IPC to drain.
+pub(crate) fn revoke_lend_under_ipc(
+    owner: AddressSpaceId,
+    cap: MemoryObjectCap,
+    borrower: AddressSpaceId,
+    borrower_cap: MemoryObjectCap,
+) -> Result<(), MemoryObjectError> {
+    revoke_lend_serialized(owner, cap, borrower, borrower_cap)
+}
+
+fn revoke_lend_serialized(
+    owner: AddressSpaceId,
+    cap: MemoryObjectCap,
+    borrower: AddressSpaceId,
+    borrower_cap: MemoryObjectCap,
+) -> Result<(), MemoryObjectError> {
     let mut registry = MEMORY_OBJECTS.lock();
     let cap_entry = registry.lookup(owner, cap)?;
     let object =
@@ -1116,18 +1240,15 @@ pub fn revoke_lend(
         return Err(MemoryObjectError::WrongOwner);
     }
 
-    let final_read_lend = match &mut object.lend_state {
+    match &object.lend_state {
         LendState::None => return Err(MemoryObjectError::NotLent),
+        LendState::Revoking => return Err(MemoryObjectError::LendingActive),
         LendState::Read {
             borrowers,
-        } => {
-            match borrowers.get(&borrower) {
-                Some(cap) if *cap == borrower_cap => {}
-                _ => return Err(MemoryObjectError::UnknownCapability),
-            }
-            borrowers.remove(&borrower);
-            borrowers.is_empty()
-        }
+        } => match borrowers.get(&borrower) {
+            Some(cap) if *cap == borrower_cap => {}
+            _ => return Err(MemoryObjectError::UnknownCapability),
+        },
         LendState::Write {
             borrower: lent_to,
             cap: lent_cap,
@@ -1135,21 +1256,43 @@ pub fn revoke_lend(
             if *lent_to != borrower || *lent_cap != borrower_cap {
                 return Err(MemoryObjectError::UnknownCapability);
             }
-            true
         }
-    };
+    }
 
-    if object.mappings.contains_key(&borrower) {
+    let mapped = object.mappings.contains_key(&borrower);
+    let mut prior = core::mem::replace(&mut object.lend_state, LendState::Revoking);
+    if mapped {
         drop(registry);
-        unmap(borrower, borrower_cap)?;
+        let result = unmap_serialized(borrower, borrower_cap);
         registry = MEMORY_OBJECTS.lock();
+        if let Err(error) = result {
+            registry
+                .objects
+                .get_mut(&cap_entry.object)
+                .expect("serialized revoke object disappeared")
+                .lend_state = prior;
+            return Err(error);
+        }
     }
 
     let object =
         registry.objects.get_mut(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-    if final_read_lend {
-        object.lend_state = LendState::None;
-    }
+    object.lend_state = match &mut prior {
+        LendState::Read {
+            borrowers,
+        } => {
+            borrowers.remove(&borrower);
+            if borrowers.is_empty() {
+                LendState::None
+            } else {
+                prior
+            }
+        }
+        LendState::Write {
+            ..
+        } => LendState::None,
+        LendState::None | LendState::Revoking => unreachable!(),
+    };
     registry
         .caps
         .get_mut(&borrower)
@@ -1193,25 +1336,22 @@ pub fn close_cap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Memor
         }
     };
 
-    let mut free_failed = false;
-    if should_destroy {
+    let backing = if should_destroy {
         let object = registry
             .objects
             .remove(&cap_entry.object)
             .ok_or(MemoryObjectError::UnknownCapability)?;
-        let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-        for frame in object.frames {
-            if allocator.deallocate_frame(frame).is_err() {
-                free_failed = true;
-            }
-        }
-    }
+        Some(ChargedFrames {
+            frames: object.frames,
+            charge: Some(object.charge),
+        })
+    } else {
+        None
+    };
     let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Memory);
     assert!(revoked, "memory payload capability was absent from unified table");
-    if free_failed {
-        return Err(MemoryObjectError::FrameFreeFailed);
-    }
-    Ok(())
+    drop(registry);
+    backing.map_or(Ok(()), ChargedFrames::release)
 }
 
 pub fn close_address_space(asid: AddressSpaceId) {
@@ -1265,7 +1405,10 @@ pub fn close_address_space(asid: AddressSpaceId) {
                     ));
                 }
                 remove_caps_for_object(&mut registry, object_id);
-                frames_to_free.extend(object.frames);
+                frames_to_free.push(ChargedFrames {
+                    frames: object.frames,
+                    charge: Some(object.charge),
+                });
             }
         }
 
@@ -1276,7 +1419,7 @@ pub fn close_address_space(asid: AddressSpaceId) {
                 invalidations.push((asid, mapping.base, pages, mapping.scratch, unmapped));
             }
             match &mut object.lend_state {
-                LendState::None => {}
+                LendState::None | LendState::Revoking => {}
                 LendState::Read {
                     borrowers,
                 } => {
@@ -1319,12 +1462,8 @@ pub fn close_address_space(asid: AddressSpaceId) {
         }
     }
 
-    if !frames_to_free.is_empty() {
-        let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-        for frame in frames_to_free {
-            let _ = allocator.deallocate_frame(frame);
-        }
-    }
+    // Charges stay live through all shootdowns and final physical release.
+    drop(frames_to_free);
 }
 
 fn check_map_lend_state(
@@ -1399,7 +1538,7 @@ fn remove_caps_for_object(registry: &mut MemoryObjectRegistry, object_id: Memory
 fn take_deferred_frames_if_unpinned(
     registry: &mut MemoryObjectRegistry,
     object_id: MemoryObjectId,
-) -> Option<Vec<PAddr>> {
+) -> Option<ChargedFrames> {
     let should_destroy = registry.objects.get(&object_id).is_some_and(|object| {
         object.destroy_when_unpinned && object.dma_pins == 0 && object.copy_pins == 0
     });
@@ -1407,13 +1546,16 @@ fn take_deferred_frames_if_unpinned(
         return None;
     }
     remove_caps_for_object(registry, object_id);
-    registry.objects.remove(&object_id).map(|object| object.frames)
+    registry.objects.remove(&object_id).map(|object| ChargedFrames {
+        frames: object.frames,
+        charge: Some(object.charge),
+    })
 }
 
 fn release_copy_pin_locked(
     registry: &mut MemoryObjectRegistry,
     object_id: MemoryObjectId,
-) -> Option<Vec<PAddr>> {
+) -> Option<ChargedFrames> {
     let object = registry
         .objects
         .get_mut(&object_id)
@@ -1423,21 +1565,8 @@ fn release_copy_pin_locked(
     take_deferred_frames_if_unpinned(registry, object_id)
 }
 
-fn deallocate_frames(frames: Option<Vec<PAddr>>) {
-    let Some(frames) = frames else {
-        return;
-    };
-    let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-    let mut failed = false;
-    for frame in frames {
-        if allocator.deallocate_frame(frame).is_err() {
-            failed = true;
-        }
-    }
-    drop(allocator);
-    if failed {
-        crate::early_logln!("WARNING: failed to free one or more deferred memory-object frames");
-    }
+fn deallocate_frames(frames: Option<ChargedFrames>) {
+    drop(frames);
 }
 
 pub(crate) fn unpin_copy(pin: CopyPin) {
@@ -1511,7 +1640,7 @@ pub(crate) fn pin_for_dma(
     }
     let object =
         registry.objects.get_mut(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-    if object.destroy_when_unpinned {
+    if object.destroy_when_unpinned || matches!(object.lend_state, LendState::Revoking) {
         return Err(MemoryObjectError::LendingActive);
     }
     if object.exclusive_dma_pins != 0

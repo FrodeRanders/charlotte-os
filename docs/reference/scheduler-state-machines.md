@@ -42,6 +42,7 @@ Any live state ── abort_thread_generation(tid, generation)
 | T6 | `add_thread()` for an already-`Running` or already-`Ready` thread is a benign no-op (aggregated wakes before the thread parks). |
 | T7 | When the wake source does not exist before `block_thread()` (for example `sleep()`), publishing `Blocked` and installing that wake source form one local non-preemptible transaction. |
 | T8 | Delayed cancellation and cleanup carry `(tid, generation)`; a stale request cannot retire a newer thread that reused the numeric TID. |
+| T9 | Domain quiescence requires an unchanged retirement epoch across the live/staged table snapshots and no retirement in flight. The reaper retains its retirement guard while threads are held in its local vector, through deferred reinsertion and final resource release. |
 
 ### Lock order for transitions
 
@@ -62,6 +63,16 @@ thread handle. `remove_thread(tid, expected_generation)` validates the queued
 handle before removal, and `abort_thread_generation` repeats the validation in
 the master table. This closes the slot-reuse race in which deferred verifier
 cleanup could otherwise abort an unrelated thread before its body ran.
+
+An absent master-table entry alone does not establish domain quiescence. A
+thread may be moving into `DEAD_THREADS`, or the reaper may temporarily hold it
+outside both tables. Retirement guards cover both intervals; an epoch advances
+at guard entry and exit so a complete transition between snapshot reads is
+also detectable. The supervisor checks that epoch before and after reading
+both tables and rejects any changed or in-flight snapshot. Because this marker
+is node-wide, unrelated retirement can temporarily delay an already-exited
+domain's teardown. Teardown allows a bounded five-second settling period
+rather than freeing resources on an uncertain snapshot.
 
 ---
 

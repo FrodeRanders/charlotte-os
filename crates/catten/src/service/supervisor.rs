@@ -347,6 +347,13 @@ pub(crate) fn start_domain_with_limits(
     loaded: loader::LoadedDomain,
     limits: ServiceLimits,
 ) -> ServiceDomain {
+    // Only the supervisor's ambient platform launch path receives progress
+    // reserve. Scoped applications already have an immutable descriptor.
+    if crate::memory::domain_authority(loaded.asid)
+        .is_some_and(|authority| authority.launch_descriptor_digest.is_none())
+    {
+        crate::memory::budget::mark_platform(loaded.address_space);
+    }
     assert!(
         limits.user_stack_size != 0 && limits.user_stack_size.is_multiple_of(loader::PAGE_SIZE),
         "[supervisor] user stack limit must be a non-zero whole number of pages"
@@ -1077,6 +1084,7 @@ pub fn spawn_polling_driver_with_name_service(
 /// Returns true once the domain's initial thread has exited and been reaped
 /// from the master thread table.
 pub fn domain_exited(domain: &ServiceDomain) -> bool {
+    let epoch_before = crate::cpu::scheduler::threads::retirement_epoch();
     // A service may create additional threads after its initial entry thread.
     // Removing only that initial TID is not sufficient evidence that the
     // address space is quiescent: tearing it down while another domain thread
@@ -1091,11 +1099,18 @@ pub fn domain_exited(domain: &ServiceDomain) -> bool {
     if crate::cpu::scheduler::threads::retirement_in_flight() {
         return false;
     }
-    !crate::cpu::scheduler::threads::DEAD_THREADS
+    let staged = crate::cpu::scheduler::threads::DEAD_THREADS
         .read()
         .values()
         .flatten()
-        .any(|thread| thread.asid == domain.asid)
+        .any(|thread| thread.asid == domain.asid);
+    charlotte_lifecycle::retirement_snapshot_is_quiescent(
+        epoch_before,
+        crate::cpu::scheduler::threads::retirement_epoch(),
+        crate::cpu::scheduler::threads::retirement_in_flight(),
+        false,
+        staged,
+    )
 }
 
 /// Wait until the domain's threads have all exited.
@@ -1141,10 +1156,18 @@ pub fn wait_domain_exit(domain: &ServiceDomain, timeout_millis: u64) {
 /// Closing the domain's endpoints is what makes stale client connections
 /// fail deterministically with `EndpointClosed` after a restart.
 pub fn teardown_domain(domain: ServiceDomain) {
-    assert!(
-        domain_exited(&domain),
-        "[supervisor] refusing to tear down a domain whose thread still runs"
-    );
+    // domain_exited includes a conservative node-wide retirement marker.
+    // Unrelated thread retirement can begin after wait_domain_exit returned,
+    // making a second point-in-time assertion spuriously fail. Settle again
+    // under a bounded budget; never free an address space while it is busy.
+    let deadline = monotonic_millis().saturating_add(5_000);
+    while !domain_exited(&domain) {
+        assert!(
+            monotonic_millis() < deadline,
+            "[supervisor] refusing to tear down a domain whose threads did not quiesce"
+        );
+        crate::cpu::scheduler::sleep_millis(1);
+    }
     close_user_address_space_handle(domain.address_space)
         .expect("[supervisor] address-space close failed");
     let mut manager = LIVE_UPGRADE_MANAGER_ASID.lock();

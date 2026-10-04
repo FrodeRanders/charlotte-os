@@ -8,6 +8,13 @@ The raw functions in `catten-syscall` describe the register ABI. They are not
 the normal service-development API. Use `catten_rt::owned` in services and
 applications.
 
+Memory-object backing also consumes a kernel-enforced
+[sponsorship budget](../reference/memory-object-budgets.md). Moving ownership
+does not erase the creating generation's charge; the charge is returned when
+the receiver finally releases the frames. Allocation can therefore fail even
+with heap space available. Bound batches, handle allocation failure and release
+each operation's transient owners promptly.
+
 ![Kernel and userspace ownership boundary](../manual-v2/figures/kernel-userspace-boundary.svg)
 
 ## Resource types

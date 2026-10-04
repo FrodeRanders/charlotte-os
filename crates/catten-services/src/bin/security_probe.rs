@@ -285,6 +285,37 @@ fn main(ctx: Context) -> ! {
     );
     drop(silent_connection);
     checks |= 512;
+
+    // Many small, individually legal allocations must hit an aggregate cap
+    // before exhausting node RAM. Retain every owner until rejection, then
+    // release the whole batch and prove ordinary grant work recovers.
+    let mut allocations = Vec::new();
+    for _ in 0..2_048 {
+        match OwnedMemory::allocate(1) {
+            Ok(memory) => allocations.push(memory),
+            Err(catten_rt::owned::MemoryError::AllocationFailed) => break,
+            Err(_) => check(false, 17),
+        }
+    }
+    check((16..=1_024).contains(&allocations.len()) && OwnedMemory::allocate(1).is_err(), 18);
+    check(
+        wait(connection.call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort()), &endpoint)
+            .result
+            == PONG,
+        19,
+    );
+    drop(allocations);
+    let after_pressure =
+        grant_client::acquire(controller, &descriptor, AVAILABLE, deployment::CLIENT_RIGHTS)
+            .unwrap_or_else(|_| catten_rt::domain_abort());
+    check(
+        wait(after_pressure.call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort()), &endpoint)
+            .result
+            == PONG,
+        20,
+    );
+    drop(after_pressure);
+    checks |= 1_024;
     config::write::<u32>(status::CHECKS, checks);
     config::write::<u32>(status::STAGE, status::PASSED);
     catten_rt::logln!("[security-probe] passed checks={:#x}", checks);

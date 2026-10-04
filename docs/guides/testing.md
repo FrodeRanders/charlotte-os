@@ -79,10 +79,17 @@ cancelled requests must not prevent acquisition of the available endpoint;
 a separately hosted silent endpoint tests the publication helper's deadline.
 
 The primary probe performs 384 cancelled requests in each of two launches. A
-concurrent probe submits at least 512 more. All ten result bits (`0x3ff`) must
+concurrent probe submits at least 512 more. All eleven result bits (`0x7ff`) must
 pass, publication generations must advance, and the retired descriptor must no
 longer attest. The ordinary boot suite, network verifier and security verifier
 register 19 tests in this configuration.
+
+The eleventh bit exercises aggregate memory-object admission: the primary
+holds many one-page allocations until allocation is refused, completes scalar
+IPC while its allocation budget is full, drops the owning batch, and acquires
+and calls its service again. Synchronous memory-object tests separately check
+page and object-count ceilings, transfer/rollback sponsorship, late unpin after
+retirement, and the platform progress pool.
 
 This does not force ASID reuse, restart the grant controller, inject allocation
 failures or prove many-client fairness. It does not exercise the complete S3/Raft

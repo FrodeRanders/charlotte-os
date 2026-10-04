@@ -100,6 +100,8 @@ silent endpoint exercises the publication helper's timeout. Two successive
 primary launches check recovery, advancing publication generations, and fencing
 of the retired launch policy. Ordinary tcpip calls remain available while raw
 frame injection and ungranted SEND are rejected.
+The probe also fills its memory-object allocation budget, checks scalar IPC
+while allocation is denied, and checks grant recovery after releasing the batch.
 
 This bounded two-application test is not a starvation proof. Forced ASID reuse,
 controller replacement, allocation-failure injection and aggregate resource

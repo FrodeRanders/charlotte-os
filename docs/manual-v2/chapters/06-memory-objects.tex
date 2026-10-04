@@ -41,6 +41,36 @@ explicit ownership and capability semantics. The kernel manages:
 Userspace never exchanges raw pointers across protection domains. Instead, IPC
 messages attach \textbf{memory-object capabilities} with declared transfer modes.
 
+\section{Aggregate admission and sponsorship}
+
+The kernel reserves backing pages and one object-accounting unit before each
+allocation. One generation may sponsor at most 64 MiB and 1,024 backing objects,
+with the page ceiling reduced on smaller nodes. The node's memory-object pool
+is at most one quarter of usable RAM and 8,192 objects. Ordinary domains may
+consume three quarters of that pool; the remainder is available to
+supervisor-designated platform domains. Allocation must also leave one eighth
+of usable physical frames free. Platform domains still obey per-domain and
+node-wide limits.
+
+\textbf{Sponsorship is distinct from ownership.} A move transfers the authority
+to use or destroy an object, while its charge stays with the creating
+generation until the physical frames are released. A copy reserves new backing
+storage against the copying caller, even when another domain receives it.
+Borrowing and pinning retain the existing charge. This prevents a sender from
+shedding its budget merely by filling a privileged receiver's queue.
+
+Charges survive sponsor retirement, mapping shootdown and delayed DMA or copy
+completion. A reused ASID receives a separate budget; late releases apply only
+to the retired generation. Staged-allocation owners roll back failed admission
+and allocation. A failed physical release quarantines its charge rather than
+creating fresh headroom.
+
+These are initial kernel admission policies, independent of telemetry filtering
+and placement feedback. Signed deployment fields and a userspace policy API for
+these limits remain future work. Heap, loader, page-table, IPC-capability and
+completion metadata need additional aggregate budgets; memory-object admission
+alone does not establish complete resource isolation.
+
 \section{Four transfer modes}
 
 CharlotteOS defines four transfer modes, enforced by the MMU:

@@ -8,6 +8,9 @@ should be updated with the implementation when those contracts change.
 - [Locking](locking.md) — the synchronization primitives (spin mutex/rwlock,
   external spin, talc, lock-free containers), interrupt-masking discipline,
   and cross-subsystem lock-ordering rules.
+- [Memory-object budgets](memory-object-budgets.md) — hard admission,
+  generation-scoped sponsorship, transfer and late-release accounting, and
+  node/platform progress reserves.
 - [Raft conformance](raft-conformance.md) — required parity between
   `catten-graft`, the other Graft implementations, and the TLA+ projections.
 - [Observability](observability.md) — capability-preserving runtime statistics,

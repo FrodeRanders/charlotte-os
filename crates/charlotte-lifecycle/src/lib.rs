@@ -1,6 +1,22 @@
 //! Pure, host-testable lifecycle decisions used at kernel/userspace boundaries.
 #![no_std]
 
+pub mod resources;
+
+/// A two-table quiescence snapshot is valid only if no retirement publication
+/// changed across it. An in-flight flag alone misses a complete remove/reinsert
+/// interval between reads. Callers sample the epoch before both tables and
+/// again after them, and also check the final in-flight state.
+pub const fn retirement_snapshot_is_quiescent(
+    epoch_before: u64,
+    epoch_after: u64,
+    in_flight: bool,
+    live_threads: bool,
+    staged_threads: bool,
+) -> bool {
+    epoch_before == epoch_after && !in_flight && !live_threads && !staged_threads
+}
+
 /// Stable identity for an occupant of a recyclable numeric thread slot.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ThreadIdentity {
@@ -160,6 +176,16 @@ mod tests {
         classify_timed_wait,
         damp_stack_growth,
     };
+
+    #[test]
+    fn quiescence_rejects_table_gaps_and_transient_retirement() {
+        use super::retirement_snapshot_is_quiescent as quiescent;
+        assert!(quiescent(8, 8, false, false, false));
+        assert!(!quiescent(8, 10, false, false, false));
+        assert!(!quiescent(8, 8, true, false, false));
+        assert!(!quiescent(8, 8, false, true, false));
+        assert!(!quiescent(8, 8, false, false, true));
+    }
 
     #[test]
     fn adaptive_heap_bytes_sizes_from_peak_or_default() {

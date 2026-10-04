@@ -23,12 +23,21 @@ and structures sized by constants.
 | Domain heap | Virtual window with a load-time capacity adapted from the principal's previous peak, backed on first touch; live allocation and peak are sensed through the standard status-page record | `crates/catten-rt/src/lib.rs`, `crates/catten/src/memory/mod.rs`, `crates/catten/src/service/loader.rs` |
 | User stack | Signed per deployment, 1–64 pages (4 KiB–256 KiB), inherited by every thread; kernel-launched services without a descriptor adapt to the principal's previous high-water (Phase 3); both architectures commit one page and grow on fault up to that budget (Phase 4) | `crates/catten/src/memory/mod.rs`, `crates/charlotte-launch/src/deployment.rs`, `crates/charlotte-lifecycle/src/lib.rs`, `crates/catten/src/cpu/isa/*/lp/thread_context*` |
 | User threads | Signed maximum, 1–64 per domain | `crates/catten/src/cpu/scheduler/system_scheduler/mod.rs` |
+| Memory-object backing | Generation-scoped page/object sponsorship, node pool derived from usable RAM, and platform/physical progress reserves | `crates/catten/src/memory/budget.rs`, `crates/charlotte-lifecycle/src/resources.rs` |
 | CQ rings, endpoint queues | Mostly static entry counts; endpoint capacity is caller-chosen at create | `crates/catten/src/completion/cq.rs`, `crates/catten/src/ipc/mod.rs` |
 | Service buffers | Compile-time constants (network, relmsg, Raft, storage) | `crates/catten-services`, `charlotte-protocol-*` |
 
-A 1 TiB node would still run with an 8 MiB kernel heap and 4 MiB per-domain
-heaps. Frames are reachable through services, but the metadata structures do
-not scale with the machine.
+Frame availability alone does not size every metadata structure. The kernel
+heap has a RAM-derived growth reserve and domain heaps adapt between
+generations, while several queue and service-buffer capacities still need
+explicit policy.
+
+Memory-object hard admission is separate from these adaptive controllers.
+It bounds backing pages and object counts across repeated allocations, with
+charges retained through transfer and retirement. See
+[memory-object budgets](../reference/memory-object-budgets.md) for the current
+limits, sponsorship rules and remaining aggregate-accounting work. Telemetry
+can inform policy without replacing these immediate admission checks.
 
 Existing runtime adaptation is real but localized:
 

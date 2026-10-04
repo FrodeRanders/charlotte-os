@@ -1865,7 +1865,7 @@ fn cancel_queued_message_with_token(
 fn revoke_memory_borrow(
     borrow: MemoryBorrow,
 ) -> Result<(), crate::memory::object::MemoryObjectError> {
-    crate::memory::object::revoke_lend(
+    crate::memory::object::revoke_lend_under_ipc(
         borrow.owner,
         borrow.owner_cap,
         borrow.borrower,
@@ -2172,7 +2172,9 @@ fn rollback_vector_transfers(
             AppliedVectorTransfer::Lend {
                 source_cap,
                 target_cap,
-            } => crate::memory::object::revoke_lend(sender, source_cap, target, target_cap),
+            } => {
+                crate::memory::object::revoke_lend_under_ipc(sender, source_cap, target, target_cap)
+            }
         };
         assert!(result.is_ok(), "vector IPC rollback must be infallible");
     }

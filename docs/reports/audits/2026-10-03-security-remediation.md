@@ -21,7 +21,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-04 | Mitigated | Builds and boot logs identify development trust; production and unknown modes fail closed in scripted and direct kernel builds. Protected bootstrap roots, fixture-free production provisioning and recipient-key custody remain unimplemented. |
 | SEC-05 | Implemented | tcpip rejects raw frame ingress unless the authenticated sender is the exact live, kernel-designated frouter. Separate socket/VIP binding policy remains future hardening. |
 | SEC-06 | Mitigated | HTTP EOF, peer-raced accept and transport failures close one connection, not the server; listener-setup resource failures retry with backoff. httpd has a five-second request wait and bounded send retries; deployd has five-second header and thirty-second total receive budgets. Serial admission remains vulnerable to sustained connection floods. |
-| SEC-07 | Open | Aggregate memory, capability, endpoint, completion and queued-work accounting needs a common kernel admission/budget mechanism. Per-object bounds and these service limits do not replace it. |
+| SEC-07 | Partially implemented | Memory-object backing pages and counts now have generation-scoped sponsorship budgets, RAM-derived node admission and platform/physical progress reserves. Charges survive transfer, retirement and delayed unpin. Aggregate limits for loader/heap/page-table memory, capabilities, endpoints, completions, timers and queued work remain open. |
 | SEC-08 | Open | Authenticate enrolled nodes and control/data peer traffic, add replay protection, and bound discovery state. A trusted L2 segment remains an explicit deployment prerequisite. |
 | SEC-09 | Open | Distinguish authenticated security time from observational SNTP/holdover; enforce freshness and uncertainty at security-policy gates. |
 | SEC-10 | Open | Authenticated encrypted access to node and cluster management, browser-client provisioning, and access policy remain necessary. |
@@ -198,9 +198,11 @@ implementation proof is claimed.
    only then enable production images without fixture fallback. Migrate sibling
    broker/Durga templates to the new signing file-path interface. Keep developer
    fixtures visibly identified and separate from real credentials.
-3. Introduce aggregate kernel resource reservations/accounting with rollback
-   and release on all cancellation/transfer/teardown paths. Reserve essential
-   service capacity and test exhaustion without kernel panic or starvation.
+3. Extend memory-object sponsorship admission to aggregate capability,
+   endpoint/queue, completion/timer and loader/heap/page-table budgets. Add
+   typed launch-policy limits and observable counters. Preserve rollback and
+   delayed-release accounting, and test essential-service progress under
+   sustained hostile pressure, not only bounded fixture exhaustion.
 4. Separate security-time provenance from ordinary clock synchronization, then
    authenticate management and enrolled node traffic with bounded replay state.
 5. Attenuate local storage authority and make HTTP admission concurrent and
@@ -361,3 +363,109 @@ Independent roots are exercised from direct scoped launch through application
 IPC, not through the complete S3 retrieval/Raft release path. Production root
 provisioning, authenticated security time, peer and management authentication,
 and the remaining open audit findings are still outstanding.
+
+## Follow-up: aggregate memory-object admission — 2026-10-04
+
+The scoped-launch verifier was committed as `657414ec`. This continuation
+partially addresses SEC-07 at the memory-object allocation boundary, using
+checked, host-testable admission counters and linear kernel charge owners.
+
+Repeated allocations now consume a sponsoring generation's page and backing
+object-count budget. Defaults are 64 MiB (clamped on smaller nodes) and 1,024
+objects. The node pool is one quarter of usable RAM and 8,192 objects;
+ordinary domains can consume at most three quarters of either limit. Only the
+kernel and supervisor-designated platform launches can use the remaining
+share. Every actual backing allocation also preserves one eighth of usable
+frames, checked under the physical allocator lock.
+
+Moves and loans retain the existing sponsor charge. Copying reserves a new
+charge against the caller, not the receiver. This prevents an application
+from laundering allocation costs into a privileged service by transferring
+buffers. A retired generation retains charges for receiver-held and pinned
+objects until final physical release. ASID reuse creates a separate account;
+late releases cannot debit a successor. Retirement blocks new reservations
+before payload teardown, and transfers reject a retiring or replaced
+destination. Failed physical frees quarantine the charge instead of returning
+possibly fictitious capacity.
+
+Staged frame allocations and source copy pins have owning guards. Fallible
+vector reservation happens before allocating backing frames. Failed quota,
+frame or staging allocation returns the reservation and pin through Drop;
+successful objects retain their charges through mapping shootdown and physical
+release. This is not a complete conversion of kernel bookkeeping to fallible
+allocation: registry maps and other subsystems still need review.
+
+Review also changed retirement to drain IPC before releasing its memory
+attachments, keeping partial vector transfers available for rollback. The
+first integration run with that ordering stalled in the existing mapped-loan
+server-death test: revocation called the public unmap path and recursively
+requested the lifecycle lock held by retirement. IPC revocation now uses a
+separately documented IPC-serialized path without that lock acquisition.
+A transient revoking state prevents new mappings, pins and writes while the
+registry is released for unmap/shootdown; failed unmap restores the previous
+loan state. Direct kernel revocation retains lifecycle serialization.
+The stalled capture is preserved in
+`/private/tmp/charlotte-memory-budget-ipc-retirement-lock-regression.log`.
+
+A later capture passed the mapped-loan test but hit the supervisor's one-shot
+quiescence assertion after its earlier exit wait. The node-wide retirement
+marker can change between those checks, and review found that the reaper's
+local vector was not covered by that marker. The reaper now retains a guard
+through deferred reinsertion and final resource release. A retirement epoch
+also rejects a complete transition between live/staged table snapshots.
+Teardown waits up to five seconds for a stable snapshot; it does not release a
+busy domain. The failed assertion capture remains in
+`/private/tmp/charlotte-memory-budget-teardown-settle-regression.log`.
+
+Validation:
+
+- The host runner passed, including four new checked-budget/physical-reserve
+  tests for atomic rejection, overflow, release underflow, limit changes and
+  reserved-pool boundaries, plus a quiescence snapshot test covering changed
+  epochs and in-flight, live or staged threads.
+- Synchronous target tests passed for separate page/count ceilings, failed
+  copy unpinning, failed close, move rollback, copy/lend sponsorship,
+  receiver-held memory after sponsor exit, and late DMA/copy unpinning while a
+  replacement generation is live. A deterministic retirement-fence test
+  rejects new allocation, move, copy and lend into a retiring generation while
+  preserving rollback of an earlier move and reconciling its counters.
+- A reservation-only kernel test fills the ordinary page pool, rejects further
+  ordinary admission without a leaked local charge, admits platform work,
+  drops all reservations and checks exact reconciliation. It deliberately
+  does not consume the equivalent physical RAM.
+- The four-LP AArch64/TCG guest passed **19 tests, 0 failed, 0 pending**. Both
+  scoped EL0 launches passed the expanded `0x7ff` result mask: small allocations
+  are eventually refused, scalar IPC succeeds while the allocation budget is
+  full, and ordinary grant acquisition recovers after the batch is dropped.
+  Concurrent cancellation traffic completed 4,508 requests in the final
+  capture with the revocation and retirement-snapshot corrections.
+  A fresh repeat with the same implementation also passed all 19 tests and
+  both `0x7ff` probes, with 4,484 concurrent cancellation requests.
+- Signed service bundles built for AArch64 and x86-64. Service Clippy passed
+  on both architectures, as did AArch64 security-feature and ordinary x86-64
+  kernel Clippy with `-D warnings`. No x86-64 guest run or PDF rebuild was
+  performed in this continuation.
+
+That capture's kernel SHA-256 was
+`3c9d09b8cf286be4e039af191c0179cb9672965d50e6f46f50b50783d4479b8b`.
+The repeat's kernel SHA-256 was
+`6fff1338b0a563cc07991a95ff65069deb336f019e1c62dea354a6634bf0c3f8`;
+the runner generates independent signing fixtures for each run.
+Temporary logs are `/private/tmp/charlotte-memory-budget-run.log`,
+`/private/tmp/charlotte-security-memory-20261004-serial.log`, and
+`/private/tmp/charlotte-memory-budget-host-tests.log`. Repeat logs are
+`/private/tmp/charlotte-memory-budget-repeat-run.log` and
+`/private/tmp/charlotte-security-memory-repeat-20261004-serial.log`. Only the
+dedicated security-memory guest/storage instances were used; existing soak
+workloads and their storage were not modified.
+
+The [budget reference](../../reference/memory-object-budgets.md) specifies the
+ownership/sponsorship distinction, errors, current policy and remaining work.
+The allocation ABI still reports zero rather than a specific quota reason;
+status-bearing memory operations define `RESOURCE_LIMIT` (16). There is no
+external budget telemetry record, descriptor field or userspace policy setter
+yet. The reserved share is a pool, not a guaranteed entitlement for each
+essential service. IPC capabilities, queues, endpoints, completions, timers,
+loader/heap/page-table frames and comprehensive kernel metadata remain outside
+these counters. SEC-07 is not closed and hostile multi-tenant operation is not
+claimed safe.

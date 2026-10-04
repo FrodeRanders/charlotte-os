@@ -339,6 +339,8 @@ pub mod memory_status {
     pub const MISSING_RIGHT: MemoryStatusCode = 12;
     pub const LENDING_ACTIVE: MemoryStatusCode = 13;
     pub const NOT_LENT: MemoryStatusCode = 14;
+    pub const OUT_OF_SCRATCH: MemoryStatusCode = 15;
+    pub const RESOURCE_LIMIT: MemoryStatusCode = 16;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
