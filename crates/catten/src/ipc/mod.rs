@@ -1316,15 +1316,19 @@ struct EndpointObservable {
 struct EndpointCloseCompletionObserver {
     asid: AddressSpaceId,
     cap: crate::completion::CompletionCap,
+    completion: Weak<crate::completion::Completion>,
 }
 
 impl Observer for EndpointCloseCompletionObserver {
     fn notify(self: Arc<Self>) {
-        let _ = crate::completion::complete(
-            self.asid,
-            self.cap,
-            crate::completion::OpResult::Ok(REPLY_ENDPOINT_CLOSED),
-        );
+        if let Some(completion) = self.completion.upgrade() {
+            let _ = crate::completion::complete_registered(
+                self.asid,
+                self.cap,
+                completion,
+                crate::completion::OpResult::Ok(REPLY_ENDPOINT_CLOSED),
+            );
+        }
     }
 }
 
@@ -1347,12 +1351,13 @@ pub fn watch_connection_closed(
     };
     let cap = crate::completion::submit(asid, crate::completion::OpCode::Nop, None)
         .map_err(|_| IpcError::QueueFull)?;
+    let completion =
+        crate::completion::completion_of(asid, cap).map_err(|_| IpcError::UnknownCapability)?;
     let observer: Arc<dyn Observer> = Arc::new(EndpointCloseCompletionObserver {
         asid,
         cap,
+        completion: Arc::downgrade(&completion),
     });
-    let completion =
-        crate::completion::completion_of(asid, cap).map_err(|_| IpcError::UnknownCapability)?;
     completion.set_event_observer(observer.clone());
 
     let already_closed = {

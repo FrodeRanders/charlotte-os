@@ -79,7 +79,7 @@ cancelled requests must not prevent acquisition of the available endpoint;
 a separately hosted silent endpoint tests the publication helper's deadline.
 
 The primary probe performs 384 cancelled requests in each of two launches. A
-concurrent probe submits at least 512 more. All eleven result bits (`0x7ff`) must
+concurrent probe submits at least 512 more. All twelve result bits (`0xfff`) must
 pass, publication generations must advance, and the retired descriptor must no
 longer attest. The ordinary boot suite, network verifier and security verifier
 register 19 tests in this configuration.
@@ -90,6 +90,12 @@ IPC while its allocation budget is full, drops the owning batch, and acquires
 and calls its service again. Synchronous memory-object tests separately check
 page and object-count ceilings, transfer/rollback sponsorship, late unpin after
 retirement, and the platform progress pool.
+
+The twelfth bit fills completion-timer capacity with owned hour-long timers,
+drops the batch within five seconds, churns 64 additional hour-long timers and
+waits for a short timer after recovery. Synchronous timer-admission tests also
+exercise platform reserve, deferred event reclamation and exact numeric
+namespace reuse. See [completion-timer budgets](../reference/completion-timer-budgets.md).
 
 This does not force ASID reuse, restart the grant controller, inject allocation
 failures or prove many-client fairness. It does not exercise the complete S3/Raft

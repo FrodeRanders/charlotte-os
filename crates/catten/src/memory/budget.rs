@@ -109,6 +109,23 @@ pub(crate) fn accepting(handle: AddressSpaceHandle) -> bool {
             .is_none_or(|account| !account.retired)
 }
 
+/// Kernel policy shared with other resource families; no caller-supplied
+/// name, role or manifest field can claim access to the progress reserve.
+pub(crate) fn platform_identity(owner: AddressSpaceId) -> Option<AddressSpaceHandle> {
+    let table = super::ADDRESS_SPACE_TABLE.lock();
+    let generation = table.generation(owner).ok()?;
+    let platform = owner == KERNEL_ASID
+        || LEDGER
+            .lock()
+            .domains
+            .get(&(owner, generation))
+            .is_some_and(|account| account.platform && !account.retired);
+    platform.then_some(AddressSpaceHandle {
+        id: owner,
+        generation,
+    })
+}
+
 impl Drop for Charge {
     fn drop(&mut self) {
         let mut ledger = LEDGER.lock();

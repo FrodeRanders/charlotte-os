@@ -13,6 +13,40 @@ pub enum Error {
     Underflow,
 }
 
+/// One-dimensional admission for records/events rather than backing pages.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CountBudget {
+    limit: usize,
+    used: usize,
+}
+
+impl CountBudget {
+    pub const fn new(limit: usize) -> Self {
+        Self {
+            limit,
+            used: 0,
+        }
+    }
+
+    pub const fn used(&self) -> usize {
+        self.used
+    }
+
+    pub fn reserve(&mut self) -> Result<(), Error> {
+        let next = self.used.checked_add(1).ok_or(Error::Limit)?;
+        if next > self.limit {
+            return Err(Error::Limit);
+        }
+        self.used = next;
+        Ok(())
+    }
+
+    pub fn release(&mut self) -> Result<(), Error> {
+        self.used = self.used.checked_sub(1).ok_or(Error::Underflow)?;
+        Ok(())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Budget {
     limit: Amount,
@@ -88,6 +122,30 @@ pub const fn frames_available(free: u64, usable: u64, request: u64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn event_count_rejection_and_release_are_atomic() {
+        let mut budget = CountBudget::new(2);
+        budget.reserve().unwrap();
+        budget.reserve().unwrap();
+        let full = budget;
+        assert_eq!(budget.reserve(), Err(Error::Limit));
+        assert_eq!(budget, full);
+        budget.release().unwrap();
+        budget.reserve().unwrap();
+        budget.release().unwrap();
+        budget.release().unwrap();
+        let empty = budget;
+        assert_eq!(budget.release(), Err(Error::Underflow));
+        assert_eq!(budget, empty);
+        assert_eq!(budget.used(), 0);
+        let mut overflowing = CountBudget {
+            limit: usize::MAX,
+            used: usize::MAX,
+        };
+        assert_eq!(overflowing.reserve(), Err(Error::Limit));
+        assert_eq!(overflowing.used(), usize::MAX);
+    }
 
     #[test]
     fn rejection_is_atomic_for_each_dimension_and_overflow() {

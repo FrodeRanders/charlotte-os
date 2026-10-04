@@ -6,12 +6,13 @@
 //! that tick, `process_events` drains all expired events, and the comparator
 //! is re-armed with the next deadline.
 //!
-//! `add_event` only re-arms the comparator when the new event lands at
-//! index 0 (earliest deadline).  If a stale far-future event occupies the
-//! front, a later-arriving near-term event is queued behind it and may not
-//! fire until the front event expires.  The idle loop calls `process_events`
+//! Queue mutation reconciles the comparator with the earliest deadline.
+//! Cancelled completion timers retain their admission charge until the owning
+//! queue removes them. The idle loop calls `process_events`
 //! before `wfi` to reconcile the software queue with the hardware comparator
 //! and prevent missed deadlines after timer transitions.
+
+pub(crate) mod budget;
 
 use alloc::{
     collections::vec_deque::VecDeque,
@@ -140,10 +141,11 @@ pub(crate) fn cancel_event(handle: TimerEventCancelHandle) -> bool {
 
     let interrupts_were_enabled = crate::cpu::isa::lp::ops::get_int_state();
     mask_interrupts!();
-    let removed = TIMER_QUEUES
-        .try_get_mut()
-        .expect("local timer queue is already borrowed")
-        .remove_cancellable_event(handle.id);
+    // A completion may release its cancellation owner from a timer callback.
+    // That callback already holds this LP's queue borrow: flag cancellation
+    // and let the outer queue operation reclaim the event instead of re-entering.
+    let removed =
+        TIMER_QUEUES.try_get_mut().is_ok_and(|mut queue| queue.remove_cancellable_event(handle.id));
     if interrupts_were_enabled {
         unmask_interrupts!();
     }
@@ -184,6 +186,8 @@ pub struct TimerEvent {
     key: Option<TimerEventKey>,
     cancellation: Option<TimerEventCancellation>,
     observers: ConcurrentQueue<Weak<dyn Observer>>,
+    // Released only when the actual queue node/event is destroyed.
+    _charge: Option<budget::Charge>,
 }
 
 #[derive(Debug)]
@@ -220,7 +224,17 @@ impl TimerEvent {
                 cancelled,
             }),
             observers: ConcurrentQueue::unbounded(),
+            _charge: None,
         };
+        (event, handle)
+    }
+
+    pub(crate) fn charged(
+        duration: ExtDuration,
+        charge: budget::Charge,
+    ) -> (Self, TimerEventCancelHandle) {
+        let (mut event, handle) = Self::cancellable(duration);
+        event._charge = Some(charge);
         (event, handle)
     }
 
@@ -252,6 +266,7 @@ impl From<Timestamp> for TimerEvent {
             key: None,
             cancellation: None,
             observers: ConcurrentQueue::unbounded(),
+            _charge: None,
         }
     }
 }
@@ -263,12 +278,16 @@ impl From<ExtDuration> for TimerEvent {
             key: None,
             cancellation: None,
             observers: ConcurrentQueue::unbounded(),
+            _charge: None,
         }
     }
 }
 
 fn deadline_after(duration: ExtDuration) -> Timestamp {
-    LpTimer::now() + (duration.as_picos() / LpTimer::get_ts_cycle_period().as_picos()) as Timestamp
+    charlotte_lifecycle::saturating_timer_deadline(
+        LpTimer::now(),
+        duration.as_picos() / LpTimer::get_ts_cycle_period().as_picos(),
+    )
 }
 
 impl Observable for TimerEvent {
@@ -366,6 +385,12 @@ impl TimerQueue {
 
     pub fn add_event(&mut self, event: TimerEvent) {
         self.purge_cancelled();
+        // Teardown/cancellation may win between record publication and
+        // enqueue. Do not publish an already-cancelled queue node.
+        if event.cancellation.as_ref().is_some_and(|state| state.cancelled.load(Ordering::Acquire))
+        {
+            return;
+        }
         let is_anonymous = event.key.is_none();
         let mut insertion_idx: Option<usize> = None;
         for (i, event_node) in self.events.iter().enumerate() {

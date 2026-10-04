@@ -11,6 +11,7 @@ use catten_rt::{
     config,
     owned::{
         CallResult,
+        Completion,
         ConnectionRef,
         Endpoint,
         OwnedMemory,
@@ -316,6 +317,25 @@ fn main(ctx: Context) -> ! {
     );
     drop(after_pressure);
     checks |= 1_024;
+
+    let mut timers = Vec::new();
+    for _ in 0..2_048 {
+        match Completion::timer(3_600_000) {
+            Ok(timer) => timers.push(timer),
+            Err(catten_rt::owned::CompletionError::SubmissionFailed) => break,
+            Err(_) => check(false, 21),
+        }
+    }
+    check((4..=1_024).contains(&timers.len()) && Completion::timer(1).is_err(), 22);
+    let cleanup_budget = Deadline::after(5_000);
+    drop(timers);
+    // Dropping an hour-long timer must cancel it, not wait for its deadline.
+    check(!cleanup_budget.expired(), 23);
+    for _ in 0..64 {
+        drop(Completion::timer(3_600_000).unwrap_or_else(|_| catten_rt::domain_abort()));
+    }
+    check(Completion::timer(1).and_then(Completion::wait).is_ok(), 24);
+    checks |= 2_048;
     config::write::<u32>(status::CHECKS, checks);
     config::write::<u32>(status::STAGE, status::PASSED);
     catten_rt::logln!("[security-probe] passed checks={:#x}", checks);

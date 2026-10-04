@@ -116,10 +116,22 @@ services delegate whatever the protocol authorizes.
         endpoint relationships. Existing tests cover stale connections and
         pending-call reconciliation.
 
-    \item Capability tables are bounded: a process cannot create
-        unlimited capabilities to exhaust kernel memory. Submission backpressure
-        (\texttt{WouldBlock}) applies when a table is full, forcing the
-        application to drain completions before submitting more work.
+    \item Completion submissions share a bounded per-domain operation budget;
+        a full budget returns \texttt{WouldBlock}. Completion timers also have
+        separate event limits: at most the domain's completion capacity,
+        clamped to 1,024, and 8,192 events across the node. Ordinary domains may
+        use 6,144 of those events, leaving a share for kernel-designated
+        platform work. A cancelled event stays charged until its LP removes
+        the queue node. These limits do not yet cover the complete capability
+        namespace or every kind of kernel allocation.
 \end{enumerate}
+
+Timer cancellation produces a terminal cancelled result without waiting for
+the original deadline. The completion record owns cancellation, while the
+event owns its admission charge. Teardown can therefore release the record
+without falsely reclaiming a still-queued event's capacity. Timer callbacks
+verify the exact original completion object under the registry lock before
+publishing a result; a delayed callback cannot complete a replacement merely
+because it reused the same ASID and numeric handle.
 
 \endinput

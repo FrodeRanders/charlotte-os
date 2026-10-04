@@ -11,6 +11,9 @@ should be updated with the implementation when those contracts change.
 - [Memory-object budgets](memory-object-budgets.md) — hard admission,
   generation-scoped sponsorship, transfer and late-release accounting, and
   node/platform progress reserves.
+- [Completion-timer budgets](completion-timer-budgets.md) — domain/node event
+  admission, reserved platform progress, cancellation ownership and deferred
+  queue reclamation.
 - [Raft conformance](raft-conformance.md) — required parity between
   `catten-graft`, the other Graft implementations, and the TLA+ projections.
 - [Observability](observability.md) — capability-preserving runtime statistics,

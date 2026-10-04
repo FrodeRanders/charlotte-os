@@ -265,8 +265,11 @@ repository history remain authoritative.
         setup.
     \item \textbf{Resource accounting:} memory-object backing pages and counts
         have generation-scoped sponsorship budgets, node-wide admission and
-        platform progress reserves. Aggregate limits for capabilities,
-        endpoints, completions and other kernel metadata remain incomplete.
+        platform progress reserves. Completion-backed timer events have
+        separate domain/node admission and retain their charge through
+        deferred cancellation. Aggregate limits for the full capability
+        namespace, endpoints, general completions, other timer paths and
+        kernel metadata remain incomplete.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are

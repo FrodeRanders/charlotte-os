@@ -88,8 +88,10 @@ recovery after the owning allocation batch is dropped.
 
 This limits memory-object backing storage, not all domain resources. It does
 not budget loader/heap/stack/page-table frames, borrowed capabilities,
-connections, endpoints, queue reservations, completions, timers or all kernel
-heap metadata. Those allocation paths still need aggregate admission and
+connections, endpoints, queue reservations, general completion records or all
+kernel heap metadata. [Completion-backed timers](completion-timer-budgets.md)
+have separate event-admission limits; other timer paths remain unbudgeted.
+Those allocation paths still need aggregate admission and
 fallible bookkeeping. The reserved share is a pool, not guaranteed capacity
 for each essential service; a compromised platform service can consume it.
 There is no budget telemetry record in the external observability ABI yet.

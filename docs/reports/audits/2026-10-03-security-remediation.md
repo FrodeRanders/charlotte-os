@@ -21,7 +21,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-04 | Mitigated | Builds and boot logs identify development trust; production and unknown modes fail closed in scripted and direct kernel builds. Protected bootstrap roots, fixture-free production provisioning and recipient-key custody remain unimplemented. |
 | SEC-05 | Implemented | tcpip rejects raw frame ingress unless the authenticated sender is the exact live, kernel-designated frouter. Separate socket/VIP binding policy remains future hardening. |
 | SEC-06 | Mitigated | HTTP EOF, peer-raced accept and transport failures close one connection, not the server; listener-setup resource failures retry with backoff. httpd has a five-second request wait and bounded send retries; deployd has five-second header and thirty-second total receive budgets. Serial admission remains vulnerable to sustained connection floods. |
-| SEC-07 | Partially implemented | Memory-object backing pages and counts now have generation-scoped sponsorship budgets, RAM-derived node admission and platform/physical progress reserves. Charges survive transfer, retirement and delayed unpin. Aggregate limits for loader/heap/page-table memory, capabilities, endpoints, completions, timers and queued work remain open. |
+| SEC-07 | Partially implemented | Memory-object backing pages and counts have generation-scoped sponsorship budgets, RAM-derived node admission and platform/physical progress reserves. Completion-backed timer events have domain/node admission, reserved platform progress and charges retained through deferred cancellation. Aggregate limits for loader/heap/page-table memory, the complete capability namespace, endpoints/queues, general completion records, other timer paths and kernel metadata remain open. |
 | SEC-08 | Open | Authenticate enrolled nodes and control/data peer traffic, add replay protection, and bound discovery state. A trusted L2 segment remains an explicit deployment prerequisite. |
 | SEC-09 | Open | Distinguish authenticated security time from observational SNTP/holdover; enforce freshness and uncertainty at security-policy gates. |
 | SEC-10 | Open | Authenticated encrypted access to node and cluster management, browser-client provisioning, and access policy remain necessary. |
@@ -198,8 +198,8 @@ implementation proof is claimed.
    only then enable production images without fixture fallback. Migrate sibling
    broker/Durga templates to the new signing file-path interface. Keep developer
    fixtures visibly identified and separate from real credentials.
-3. Extend memory-object sponsorship admission to aggregate capability,
-   endpoint/queue, completion/timer and loader/heap/page-table budgets. Add
+3. Extend admission to the remaining capability, endpoint/queue, general
+   completion, other timer and loader/heap/page-table budgets. Add
    typed launch-policy limits and observable counters. Preserve rollback and
    delayed-release accounting, and test essential-service progress under
    sustained hostile pressure, not only bounded fixture exhaustion.
@@ -469,3 +469,94 @@ essential service. IPC capabilities, queues, endpoints, completions, timers,
 loader/heap/page-table frames and comprehensive kernel metadata remain outside
 these counters. SEC-07 is not closed and hostile multi-tenant operation is not
 claimed safe.
+
+## Follow-up: completion-timer admission and cancellation — 2026-10-04
+
+The memory-object and retirement corrections were committed as `84b464e2`.
+This continuation addresses another SEC-07 lifetime gap: a completed, closed or
+replaced operation record previously could leave an anonymous far-future timer
+event queued until its deadline. Recycling completion slots was not a bound
+on those retained queue nodes.
+
+Both capability-backed and detached completion timers now reserve event
+admission before publication. A domain's event ceiling is its completion
+capacity, clamped to 1,024; the service loader currently uses capacity 16. The
+node ceiling is 8,192 events, with ordinary domains limited to 6,144. The
+remaining share is available only to kernel/supervisor-designated platform
+domains. A captured platform designation must match the completion
+namespace's generation-qualified identity, preventing inherited reserve access
+after ASID reuse.
+
+Each queued event owns its reservation. Cancellation removes it eagerly on the
+local LP when possible; a busy or remote queue retains the flagged event and
+charge until reconciliation. Domain budget owners are reference-counted by
+old events rather than indexed only by recyclable ASIDs. Local and node
+counter rollback is checked, and final event destruction returns the charge.
+
+Operation records own cancellation registrations. Timer cancellation produces
+a terminal cancelled result immediately, enabling an owned hour-long timer to
+be dropped without waiting an hour. Read/write cancellation retains its
+existing deferred buffer-ownership contract. A detached cancelled result that
+cannot enter a full CQ retains its existing submission slot until delivery.
+The observer and cancellation owner are installed before enqueue; teardown
+winning that interval causes the cancelled event to be discarded.
+
+Timer, thread-exit and endpoint-close observers capture a weak reference to
+their original completion object. Transition and CQ publication require the
+exact captured object still to be registered under the registry lock, so a
+callback cannot complete a replacement with the same ASID and numeric cap.
+Relative deadline conversion also saturates rather than truncating a large
+tick count or overflowing addition.
+
+Review of that boundary found that x86-64's APIC initial count cannot represent
+very distant logical deadlines in one arm. Its absolute-deadline path now
+uses bounded, nonzero hardware checkpoints and leaves the logical deadline in
+the queue for rechecking on each IRQ. This avoids the queue's prior
+out-of-range panic without notifying observers before their logical deadline.
+The representable-count decision has host tests; x86-64 runtime validation
+remains outstanding.
+
+Validation:
+
+- The host runner passed, including three new boundary tests for checked
+  event-count admission, saturating deadlines and nonzero representable
+  hardware checkpoints. `charlotte-lifecycle` now runs 14 tests.
+- Synchronous guest tests passed for per-namespace rejection, ordinary node
+  pool saturation with reserved platform admission, exact charge reconciliation,
+  64 hour-long cancellation/close cycles, mixed capability/detached admission,
+  maximum-timeout rollback, retained charges during busy-queue cancellation,
+  recovery after purge, and exact numeric namespace replacement with a captured
+  old completion. Deferred reclamation is simulated with a busy local queue;
+  no actual remote-LP cancellation stress is claimed.
+- The final four-LP AArch64/TCG security run passed **19 tests, 0 failed,
+  0 pending**. Both scoped launches passed the expanded `0xfff` mask, including
+  real EL0 timer saturation, bounded owning-batch drop, 64 additional
+  cancellation cycles and short-timer recovery. Concurrent cancellation traffic
+  retired after 4,508 requests. Earlier integration runs also passed; the
+  maximum-timeout capture before the x86-specific checkpoint adjustment had
+  4,456 requests and the same 19-test result.
+- Both signed service bundles built. Kernel and service Clippy passed for
+  AArch64 and x86-64 with `-D warnings`; formatting and diff checks passed.
+  No x86-64 guest/hardware run, sustained hostile-pressure soak, PDF rebuild or
+  full node-wide completion-metadata accounting is claimed.
+
+The final capture's kernel SHA-256 was
+`f5ff10b2782c47ad34db7d91444ef378532e47355fb8aa18a0015cd13c59ed8e`.
+Temporary evidence is in `/private/tmp/charlotte-security-timers-verified-run.log`,
+`/private/tmp/charlotte-security-timers-verified-20261004-serial.log`,
+`/private/tmp/charlotte-security-timers-bounds-run.log`,
+`/private/tmp/charlotte-security-timers-host-tests.log`, and the
+`/private/tmp/charlotte-security-timers-*-clippy.log`/`*-services.log` files.
+Only dedicated isolated guest/storage instances were used; existing soak
+workloads and their storage were not modified.
+
+The [timer reference](../../reference/completion-timer-budgets.md) states the
+policy, ABI and verification scope. The manual's overly broad assertion that
+all capability tables were bounded has been corrected: these controls cover
+completion submissions and completion timer events, not the complete
+capability namespace. General completion records still lack node-wide
+admission; sleeps, wait watchdogs, observer lists, kernel workers, CQ backing
+storage, and comprehensive metadata budgets/fallible allocation remain open.
+The platform share is a pool, not a per-service progress entitlement. SEC-07
+remains partially implemented, and the audit's operational restrictions still
+apply.

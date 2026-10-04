@@ -182,7 +182,123 @@ pub fn test_completion_caps() {
     );
     completion::close_address_space(cq_asid);
 
+    test_completion_timer_admission();
+
     logln!("Completion-capability subsystem tests passed.");
+}
+
+/// Kernel-boundary tests intentionally retain raw capabilities to verify the
+/// admission and cancellation ABI, independently of userspace owner wrappers.
+fn test_completion_timer_admission() {
+    use crate::timers::budget::{
+        self,
+        DomainBudget,
+    };
+    let before = budget::node_used();
+    let old = DomainBudget::new(2);
+    let a = budget::reserve(&old, false).unwrap();
+    let b = budget::reserve(&old, false).unwrap();
+    assert!(budget::reserve(&old, false).is_err());
+    let replacement = DomainBudget::new(2);
+    drop(a);
+    assert_eq!(old.used(), 1);
+    assert_eq!(replacement.used(), 0, "late release must not credit a successor");
+    drop(b);
+    assert_eq!(budget::node_used(), before);
+
+    // Reservation-only saturation does not enqueue thousands of timers or
+    // consume the equivalent event storage. Every failed reservation rolls
+    // back its local and node counters, leaving platform progress possible.
+    let mut charges = alloc::vec::Vec::new();
+    for _ in 0..budget::MAX_ORDINARY_TIMERS / budget::MAX_DOMAIN_TIMERS {
+        let domain = DomainBudget::new(budget::MAX_DOMAIN_TIMERS);
+        while let Ok(charge) = budget::reserve(&domain, false) {
+            charges.push(charge);
+        }
+    }
+    assert_eq!(budget::node_used().1, budget::MAX_ORDINARY_TIMERS);
+    let extra = DomainBudget::new(1);
+    assert!(budget::reserve(&extra, false).is_err());
+    assert_eq!(extra.used(), 0);
+    let progress = budget::reserve(&extra, true).expect("platform timer reserve");
+    drop(progress);
+    drop(charges);
+    assert_eq!(budget::node_used(), before);
+
+    let asid = 0xc0ae_b001;
+    completion::open_address_space_with_cq(asid, 2, 2);
+    for _ in 0..64 {
+        let cap = completion::submit_timer(asid, 3_600_000).unwrap();
+        assert_eq!(completion::timer_events_used(asid), 1);
+        assert_eq!(completion::cancel(asid, cap).unwrap(), CancelState::CancelRequested);
+        assert_eq!(completion::timer_events_used(asid), 0, "local cancellation reclaims the event");
+        assert_eq!(completion::poll(asid, cap).unwrap().unwrap().result, OpResult::Cancelled);
+        assert_eq!(completion::cancel(asid, cap).unwrap(), CancelState::AlreadyComplete);
+        completion::close(asid, cap).unwrap();
+    }
+    let cap = completion::submit_timer(asid, 3_600_000).unwrap();
+    let detached = completion::submit_detached_timer(asid, 0, 3_600_000, 0x77).unwrap();
+    let full = budget::node_used();
+    assert_eq!(completion::submit_timer(asid, 1), Err(SubmitError::WouldBlock));
+    assert_eq!(completion::submit_detached_timer(asid, 0, 1, 0), Err(SubmitError::WouldBlock));
+    assert_eq!(budget::node_used(), full);
+    completion::cancel(asid, cap).unwrap();
+    completion::close(asid, cap).unwrap();
+    assert_eq!(completion::cancel_detached(asid, detached).unwrap(), CancelState::CancelRequested);
+    assert_eq!(completion::timer_events_used(asid), 0);
+    // A full ring keeps the cancelled detached result/submission slot live.
+    let ring = unsafe { completion::cq_ring_of(asid, 0) }.unwrap();
+    while unsafe { &mut *ring }.read().is_some() {}
+    let recovered = completion::submit_timer(asid, u64::MAX).unwrap();
+    completion::abort_submission(asid, recovered).unwrap();
+    assert_eq!(completion::timer_events_used(asid), 0, "submission rollback cancels its event");
+
+    completion::close_address_space(asid);
+    crate::capability::close_address_space(asid);
+    completion::open_address_space(asid, 1);
+    let deferred = completion::submit_timer(asid, 3_600_000).unwrap();
+    {
+        // The per-LP guard masks IRQs. This reproduces cancellation from a
+        // timer callback: flag the node without freeing its admission charge.
+        let queue = crate::timers::TIMER_QUEUES.try_get_mut().unwrap();
+        completion::cancel(asid, deferred).unwrap();
+        completion::close(asid, deferred).unwrap();
+        assert_eq!(completion::timer_events_used(asid), 1);
+        assert_eq!(completion::submit_timer(asid, 1), Err(SubmitError::WouldBlock));
+        drop(queue);
+    }
+    crate::timers::process_local_events();
+    assert_eq!(completion::timer_events_used(asid), 0);
+    let recovered = completion::submit_timer(asid, 3_600_000).unwrap();
+    completion::cancel(asid, recovered).unwrap();
+    completion::close(asid, recovered).unwrap();
+
+    // Simulate a callback already captured when the namespace is replaced.
+    // Deliberately recycle both the ASID and numeric capability value.
+    completion::close_address_space(asid);
+    crate::capability::close_address_space(asid);
+    completion::open_address_space_with_cq(asid, 2, 2);
+    let old_cap = completion::submit_timer(asid, 3_600_000).unwrap();
+    let captured = completion::completion_of(asid, old_cap).unwrap();
+    completion::close_address_space(asid);
+    crate::capability::close_address_space(asid);
+    completion::open_address_space_with_cq(asid, 2, 2);
+    let new_cap = completion::submit_timer(asid, 3_600_000).unwrap();
+    assert_eq!(new_cap, old_cap, "test must exercise exact numeric namespace reuse");
+    assert_eq!(
+        completion::complete_registered(asid, new_cap, captured.clone(), OpResult::Ok(0)),
+        Err(completion::CapError::UnknownCap)
+    );
+    assert_eq!(completion::state_of(asid, new_cap).unwrap(), OpStateKind::InFlight);
+    drop(captured);
+    assert_eq!(completion::timer_events_used(asid), 1);
+    completion::close_address_space(asid);
+    crate::capability::close_address_space(asid);
+    assert_eq!(budget::node_used(), before);
+    logln!(
+        "[completion timers] quota, reserved progress, cancellation churn, rollback and namespace \
+         replacement passed"
+    );
 }
 
 /// Exercises the capability-free (detached) submission path: operations

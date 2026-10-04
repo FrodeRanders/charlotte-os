@@ -210,6 +210,7 @@ struct CompletionInner {
     exit_observer: Option<Arc<CompletionExitObserver>>,
     /// Keeps the timer observer (if any) alive until the completion is reclaimed.
     timer_observer: Option<Arc<CompletionTimerObserver>>,
+    timer_cancel: Option<TimerCancellation>,
     /// Keeps a subsystem-defined event observer alive. IPC uses this for
     /// connection endpoint-close watches without coupling completion storage
     /// to the concrete IPC observer type.
@@ -226,11 +227,14 @@ struct CompletionExitObserver {
     cap: CompletionCap,
     /// The result to post when the thread exits.
     result: OpResult,
+    completion: Weak<Completion>,
 }
 
 impl Observer for CompletionExitObserver {
     fn notify(self: Arc<Self>) {
-        let _ = complete(self.asid, self.cap, self.result.clone());
+        if let Some(completion) = self.completion.upgrade() {
+            let _ = complete_registered(self.asid, self.cap, completion, self.result.clone());
+        }
     }
 }
 
@@ -242,11 +246,27 @@ struct CompletionTimerObserver {
     asid: AddressSpaceId,
     cap: CompletionCap,
     result: OpResult,
+    completion: Weak<Completion>,
 }
 
 impl Observer for CompletionTimerObserver {
     fn notify(self: Arc<Self>) {
-        let _ = complete(self.asid, self.cap, self.result.clone());
+        if let Some(completion) = self.completion.upgrade() {
+            let _ = complete_registered(self.asid, self.cap, completion, self.result.clone());
+        }
+    }
+}
+
+/// A kernel-boundary owner for a completion's anonymous timer. Releasing a
+/// record cancels its event, but the event retains its admission charge until
+/// its owning LP actually removes the queue node.
+struct TimerCancellation(Option<crate::timers::TimerEventCancelHandle>);
+
+impl Drop for TimerCancellation {
+    fn drop(&mut self) {
+        if let Some(handle) = self.0.take() {
+            let _ = crate::timers::cancel_event(handle);
+        }
     }
 }
 
@@ -271,6 +291,7 @@ impl Completion {
                 state: OpState::InFlight,
                 exit_observer: None,
                 timer_observer: None,
+                timer_cancel: None,
                 event_observer: None,
             }),
             observers: ConcurrentQueue::unbounded(),
@@ -285,8 +306,14 @@ impl Completion {
         self.inner.lock().exit_observer = Some(observer);
     }
 
-    fn set_timer_observer(&self, observer: Arc<CompletionTimerObserver>) {
-        self.inner.lock().timer_observer = Some(observer);
+    fn set_timer_observer(
+        &self,
+        observer: Arc<CompletionTimerObserver>,
+        cancel: crate::timers::TimerEventCancelHandle,
+    ) {
+        let mut inner = self.inner.lock();
+        inner.timer_observer = Some(observer);
+        inner.timer_cancel = Some(TimerCancellation(Some(cancel)));
     }
 
     pub(crate) fn set_event_observer(&self, observer: Arc<dyn Observer>) {
@@ -407,7 +434,8 @@ struct DetachedOp {
     /// record, so the terminal states of [`OpState`] have no analogue here.
     cancel_pending: bool,
     /// Keeps a timer observer alive until it fires and removes this operation.
-    timer_observer: Option<Arc<DetachedTimerObserver>>,
+    _timer_observer: Option<Arc<DetachedTimerObserver>>,
+    timer_cancel: Option<TimerCancellation>,
 }
 
 struct DetachedTimerObserver {
@@ -536,6 +564,10 @@ struct AsCompletions {
     detached: BTreeMap<OperationId, DetachedOp>,
     /// The address space's completion queues, keyed by [`CqId`].
     cqs: BTreeMap<CqId, CqState>,
+    /// Separate lifetime budget: a cancelled timer on another LP stays charged
+    /// even after its completion slot has been reclaimed.
+    timer_budget: Arc<crate::timers::budget::DomainBudget>,
+    address_space: Option<crate::memory::AddressSpaceHandle>,
 }
 
 // SAFETY: `CqState::ring` has two backing modes. Heap-backed queues retain their
@@ -560,13 +592,15 @@ unsafe impl Sync for AsCompletions {}
 static COMPLETIONS: LazyLock<RwLock<BTreeMap<AddressSpaceId, AsCompletions>>> =
     LazyLock::new(|| RwLock::new(BTreeMap::new()));
 
-fn empty_as(capacity: usize) -> AsCompletions {
+fn empty_as(asid: AddressSpaceId, capacity: usize) -> AsCompletions {
     AsCompletions {
         table: BTreeMap::new(),
         capacity,
         live: 0,
         detached: BTreeMap::new(),
         cqs: BTreeMap::new(),
+        timer_budget: crate::timers::budget::DomainBudget::new(capacity),
+        address_space: crate::memory::current_address_space_handle(asid),
     }
 }
 
@@ -584,7 +618,7 @@ fn replace_address_space(asid: AddressSpaceId, replacement: AsCompletions) {
 /// Opens a bounded capability table for an address space. `capacity` bounds the
 /// number of concurrently in-flight capabilities (submission backpressure).
 pub fn open_address_space(asid: AddressSpaceId, capacity: usize) {
-    replace_address_space(asid, empty_as(capacity));
+    replace_address_space(asid, empty_as(asid, capacity));
 }
 
 /// Like [`open_address_space`] but also allocates and attaches the default
@@ -596,7 +630,7 @@ pub fn open_address_space_with_cq(
     cap_table_capacity: usize,
     cq_entries: u32,
 ) {
-    replace_address_space(asid, empty_as(cap_table_capacity));
+    replace_address_space(asid, empty_as(asid, cap_table_capacity));
     open_cq(asid, DEFAULT_CQ, cq_entries);
 }
 
@@ -609,7 +643,7 @@ pub fn open_address_space_with_cq_phys(
     ring_frame: crate::memory::physical::PAddr,
     cq_entries: u32,
 ) {
-    replace_address_space(asid, empty_as(cap_table_capacity));
+    replace_address_space(asid, empty_as(asid, cap_table_capacity));
     open_cq_phys(asid, DEFAULT_CQ, ring_frame, cq_entries);
 }
 
@@ -751,18 +785,37 @@ pub(crate) fn abort_submission(asid: AddressSpaceId, cap: CompletionCap) -> Resu
 /// when the deadline expires, so a user-space service waiting on `cq_wait` is
 /// released exactly at the deadline.
 pub fn submit_timer(asid: AddressSpaceId, timeout_ms: u64) -> Result<CompletionCap, SubmitError> {
-    let cap = submit(asid, OpCode::Timer, None)?;
-    let observer = Arc::new(CompletionTimerObserver {
-        asid,
-        cap,
-        result: OpResult::Ok(0),
-    });
-    let timer_event = TimerEvent::from(ExtDuration::from_millis(timeout_ms as u128));
-    timer_event.register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
+    let platform_identity = crate::memory::budget::platform_identity(asid);
+    let (cap, timer_event) = {
+        let mut registry = COMPLETIONS.write();
+        let entries = registry.get_mut(&asid).ok_or(SubmitError::UnknownAddressSpace)?;
+        flush_cq_backlog(entries, DEFAULT_CQ);
+        if entries.live >= entries.capacity {
+            return Err(SubmitError::WouldBlock);
+        }
+        // Tie policy captured before the registry lock to this exact namespace;
+        // teardown/reuse must not lend a predecessor's reserved-pool access.
+        let platform = asid == crate::memory::KERNEL_ASID
+            || (platform_identity.is_some() && platform_identity == entries.address_space);
+        let charge = crate::timers::budget::reserve(&entries.timer_budget, platform)
+            .map_err(|_| SubmitError::WouldBlock)?;
+        let (timer_event, cancel) =
+            TimerEvent::charged(ExtDuration::from_millis(timeout_ms as u128), charge);
+        let cap = crate::capability::allocate(asid, crate::capability::ObjectKind::Completion);
+        let completion = Completion::new(None);
+        let observer = Arc::new(CompletionTimerObserver {
+            asid,
+            cap,
+            result: OpResult::Ok(0),
+            completion: Arc::downgrade(&completion),
+        });
+        timer_event.register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
+        completion.set_timer_observer(observer, cancel);
+        entries.table.insert(cap, completion);
+        entries.live += 1;
+        (cap, timer_event)
+    };
     crate::timers::enqueue_event(timer_event);
-    if let Ok(completion) = completion_of(asid, cap) {
-        completion.set_timer_observer(observer);
-    }
     Ok(cap)
 }
 
@@ -783,6 +836,7 @@ pub fn submit_worker(
     result: OpResult,
 ) -> Result<CompletionCap, SubmitError> {
     let cap = submit(asid, OpCode::Nop, None)?;
+    let completion = completion_of(asid, cap).map_err(|_| SubmitError::UnknownAddressSpace)?;
     // Spawn the worker that performs the operation.
     let tid = crate::cpu::scheduler::spawn_thread(crate::memory::KERNEL_ASID, worker_entry);
     // Register an exit-observer that completes the capability when the worker
@@ -791,14 +845,13 @@ pub fn submit_worker(
         asid,
         cap,
         result,
+        completion: Arc::downgrade(&completion),
     });
     let _ = crate::cpu::scheduler::observe_thread_exit(
         tid,
         Arc::downgrade(&observer) as Weak<dyn Observer>,
     );
-    if let Ok(completion) = completion_of(asid, cap) {
-        completion.set_exit_observer(observer);
-    }
+    completion.set_exit_observer(observer);
     Ok(cap)
 }
 
@@ -817,10 +870,12 @@ pub(crate) fn observe_thread_exit_with_generation(
     expected_generation: Option<crate::cpu::scheduler::threads::ThreadGeneration>,
 ) -> Result<CompletionCap, SubmitError> {
     let cap = submit(asid, OpCode::Nop, None)?;
+    let completion = completion_of(asid, cap).map_err(|_| SubmitError::UnknownAddressSpace)?;
     let observer = Arc::new(CompletionExitObserver {
         asid,
         cap,
         result: OpResult::Ok(0),
+        completion: Arc::downgrade(&completion),
     });
     let registration = match expected_generation {
         Some(generation) => crate::cpu::scheduler::observe_thread_exit_with_generation(
@@ -835,15 +890,13 @@ pub(crate) fn observe_thread_exit_with_generation(
     };
     match registration {
         Ok(()) => {
-            if let Ok(completion) = completion_of(asid, cap) {
-                completion.set_exit_observer(observer);
-            }
+            completion.set_exit_observer(observer);
             Ok(cap)
         }
         Err(_) => {
             // The thread is gone; its exit already happened. Complete now so
             // the joiner observes a terminal state immediately.
-            let _ = complete(asid, cap, OpResult::Ok(0));
+            let _ = complete_registered(asid, cap, completion, OpResult::Ok(0));
             Ok(cap)
         }
     }
@@ -863,7 +916,18 @@ pub fn complete(
     result: OpResult,
 ) -> Result<(), CapError> {
     let completion = completion_of(asid, cap)?;
+    complete_registered(asid, cap, completion, result)
+}
 
+/// Complete only the exact object captured by an asynchronous producer.
+/// Unlike resolving a numeric handle again, this cannot affect a replacement
+/// address-space namespace. Callers retain/upgrade the originally observed Arc.
+pub(crate) fn complete_registered(
+    asid: AddressSpaceId,
+    cap: CompletionCap,
+    completion: Arc<Completion>,
+    result: OpResult,
+) -> Result<(), CapError> {
     // Transition and publish under one registry hold so a concurrent poll or
     // close cannot remove the capability between the terminal transition and
     // the CQ insertion and leave a terminal operation untracked. The ring
@@ -872,6 +936,15 @@ pub fn complete(
     // the entry. Capability-backed completions go to the default queue.
     {
         let mut registry = COMPLETIONS.write();
+        // A callback captured before teardown must never complete a new
+        // namespace occupant that happens to reuse its ASID/cap values.
+        if !registry
+            .get(&asid)
+            .and_then(|entries| entries.table.get(&cap))
+            .is_some_and(|registered| Arc::ptr_eq(registered, &completion))
+        {
+            return Err(CapError::UnknownCap);
+        }
         let Some(effective) = completion.complete(result) else {
             // Already terminal: idempotent no-op, no duplicate CQ entry.
             return Ok(());
@@ -974,7 +1047,8 @@ pub fn submit_detached(
             user_data,
             cq,
             cancel_pending: false,
-            timer_observer: None,
+            _timer_observer: None,
+            timer_cancel: None,
         },
     );
     as_completions.live += 1;
@@ -988,20 +1062,43 @@ pub fn submit_detached_timer(
     timeout_ms: u64,
     user_data: u64,
 ) -> Result<OperationId, SubmitError> {
-    let operation = submit_detached(asid, cq, OpCode::Timer, user_data)?;
-    let observer = Arc::new(DetachedTimerObserver {
-        asid,
-        operation,
-    });
-    let timer_event = TimerEvent::from(ExtDuration::from_millis(timeout_ms as u128));
-    timer_event.register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
+    let platform_identity = crate::memory::budget::platform_identity(asid);
+    let (operation, timer_event) = {
+        let mut registry = COMPLETIONS.write();
+        let entries = registry.get_mut(&asid).ok_or(SubmitError::UnknownAddressSpace)?;
+        flush_cq_backlog(entries, cq);
+        if !entries.cqs.contains_key(&cq) {
+            return Err(SubmitError::NoCompletionQueue);
+        }
+        if entries.live >= entries.capacity {
+            return Err(SubmitError::WouldBlock);
+        }
+        let platform = asid == crate::memory::KERNEL_ASID
+            || (platform_identity.is_some() && platform_identity == entries.address_space);
+        let charge = crate::timers::budget::reserve(&entries.timer_budget, platform)
+            .map_err(|_| SubmitError::WouldBlock)?;
+        let (timer_event, cancel) =
+            TimerEvent::charged(ExtDuration::from_millis(timeout_ms as u128), charge);
+        let operation = alloc_operation_id();
+        let observer = Arc::new(DetachedTimerObserver {
+            asid,
+            operation,
+        });
+        timer_event.register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
+        entries.detached.insert(
+            operation,
+            DetachedOp {
+                user_data,
+                cq,
+                cancel_pending: false,
+                _timer_observer: Some(observer),
+                timer_cancel: Some(TimerCancellation(Some(cancel))),
+            },
+        );
+        entries.live += 1;
+        (operation, timer_event)
+    };
     crate::timers::enqueue_event(timer_event);
-
-    let mut registry = COMPLETIONS.write();
-    let as_completions = registry.get_mut(&asid).ok_or(SubmitError::UnknownAddressSpace)?;
-    let detached =
-        as_completions.detached.get_mut(&operation).ok_or(SubmitError::UnknownAddressSpace)?;
-    detached.timer_observer = Some(observer);
     Ok(operation)
 }
 
@@ -1066,6 +1163,14 @@ pub fn cancel_detached(
     let as_completions = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
     let detached = as_completions.detached.get_mut(&operation).ok_or(CapError::UnknownCap)?;
     detached.cancel_pending = true;
+    let timer = detached.timer_cancel.take();
+    drop(registry);
+    if timer.is_some() {
+        drop(timer);
+        // Only timer work is synchronously stoppable. Other operations retain
+        // their buffers/submission slots until their real producer completes.
+        let _ = complete_detached(asid, operation, OpResult::Cancelled);
+    }
     Ok(CancelState::CancelRequested)
 }
 
@@ -1243,7 +1348,19 @@ pub fn wait_timeout(
 /// transferred buffer is retained until the terminal completion hands it back.
 pub fn cancel(asid: AddressSpaceId, cap: CompletionCap) -> Result<CancelState, CapError> {
     let completion = completion_of(asid, cap)?;
-    Ok(completion.cancel())
+    let state = completion.cancel();
+    if state == CancelState::CancelRequested {
+        let timer = completion.inner.lock().timer_cancel.take();
+        if timer.is_some() {
+            drop(timer);
+            let _ = complete_registered(asid, cap, completion, OpResult::Cancelled);
+        }
+    }
+    Ok(state)
+}
+
+pub(crate) fn timer_events_used(asid: AddressSpaceId) -> usize {
+    COMPLETIONS.read().get(&asid).map_or(0, |entries| entries.timer_budget.used())
 }
 
 /// Revokes a completed or already-drained capability. Fails with

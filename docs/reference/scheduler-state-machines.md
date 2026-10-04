@@ -171,6 +171,15 @@ prompt timeout so the IRQ can drain the due head.
 | TM3 | Insertion, removal, and comparator programming cannot be re-entered by the local timer IRQ. |
 | TM4 | An IRQ processes every event due at the sampled `now`, then arms only the new head. |
 | TM5 | `SchedulerQuantum` is a keyed singleton; anonymous logical timers remain independent. |
+| TM6 | Completion timer admission is released only when the actual queued event is destroyed. Cancellation and record teardown cannot return capacity for a still-queued node. |
+
+Completion timers install their observer and cancellation owner before enqueue.
+Cancelling one produces a terminal cancelled result immediately; unlike a read
+or write, it has no outstanding buffer producer to await. A busy or remote LP
+queue retains the flagged node until reconciliation, with its admission charge
+still live. Timer callbacks verify the original completion object before
+publishing, preventing stale notifications after namespace reuse. See
+[completion-timer budgets](completion-timer-budgets.md) for limits and tests.
 
 ---
 

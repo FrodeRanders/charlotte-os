@@ -3,6 +3,28 @@
 
 pub mod resources;
 
+/// Convert a relative tick count without truncation or deadline wrap. An
+/// unrepresentable timeout remains far-future rather than becoming immediate.
+pub const fn saturating_timer_deadline(now: u64, ticks: u128) -> u64 {
+    if ticks > u64::MAX as u128 {
+        u64::MAX
+    } else {
+        now.saturating_add(ticks as u64)
+    }
+}
+
+/// A narrow hardware timer can wake at a checkpoint before a far-future
+/// logical deadline. The queue must recheck that deadline before notifying.
+pub const fn timer_checkpoint_count(ticks: u128) -> u32 {
+    if ticks == 0 {
+        1
+    } else if ticks > u32::MAX as u128 {
+        u32::MAX
+    } else {
+        ticks as u32
+    }
+}
+
 /// A two-table quiescence snapshot is valid only if no retirement publication
 /// changed across it. An in-flight flag alone misses a complete remove/reinsert
 /// interval between reads. Callers sample the epoch before both tables and
@@ -185,6 +207,25 @@ mod tests {
         assert!(!quiescent(8, 8, true, false, false));
         assert!(!quiescent(8, 8, false, true, false));
         assert!(!quiescent(8, 8, false, false, true));
+    }
+
+    #[test]
+    fn timer_deadline_does_not_truncate_or_wrap() {
+        assert_eq!(super::saturating_timer_deadline(10, 5), 15);
+        assert_eq!(super::saturating_timer_deadline(10, 0), 10);
+        assert_eq!(super::saturating_timer_deadline(u64::MAX - 2, 3), u64::MAX);
+        assert_eq!(super::saturating_timer_deadline(10, u64::MAX as u128 + 1), u64::MAX);
+        assert_eq!(super::saturating_timer_deadline(10, u128::MAX), u64::MAX);
+    }
+
+    #[test]
+    fn hardware_timer_checkpoint_stays_representable_and_nonzero() {
+        assert_eq!(super::timer_checkpoint_count(0), 1);
+        assert_eq!(super::timer_checkpoint_count(1), 1);
+        assert_eq!(super::timer_checkpoint_count(5), 5);
+        assert_eq!(super::timer_checkpoint_count(u32::MAX as u128), u32::MAX);
+        assert_eq!(super::timer_checkpoint_count(u32::MAX as u128 + 1), u32::MAX);
+        assert_eq!(super::timer_checkpoint_count(u128::MAX), u32::MAX);
     }
 
     #[test]
