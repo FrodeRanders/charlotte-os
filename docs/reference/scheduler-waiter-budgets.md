@@ -175,8 +175,9 @@ wait watchdogs) install exactly one callback. Its weak reference now lives in
 an embedded single slot, not an unbounded queue. A second internal registration
 is a kernel programming error, not silently rejected wake delivery. The slot
 does not allocate observer-list backing or consume waiter-entry admission.
-It is not a general multi-callback registration API; thread-exit and raw
-completion callback sources retain their separate legacy behavior.
+It is not a general multi-callback registration API. Thread-exit subscriptions
+have [separate owned event-watch admission](close-watch-budgets.md); raw
+completion callbacks retain their legacy behavior.
 
 Sleep preserves its void ABI and at-least-duration contract. If scheduler
 registration fails, it discards the unqueued event, restores the entry IRQ state
@@ -197,8 +198,9 @@ General timer/control-block accounting remains incomplete.
 Only the migrated **scheduler waiter** categories use this admission. The
 default trait implementation deliberately returns a marked legacy token and
 retains the old registration behavior for not-yet-converted sources.
-Raw kernel completion callbacks and thread-exit
-observers are not covered. Silent bounded insertion on
+Raw kernel completion callbacks are not covered. Thread-exit subscriptions
+use separate event-watch admission, not scheduler-waiter sponsorship.
+Silent bounded insertion on
 those old paths would lose wake sources and is not an acceptable conversion.
 
 Synchronous tests cover source/domain/ordinary/node rejection and rollback,

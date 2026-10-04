@@ -72,6 +72,11 @@ that endpoint and its watches. Bound watch batches and handle submission
 failure; registration has independent [admission limits](../reference/close-watch-budgets.md).
 This does not make every completion's Drop nonblocking: a buffer-bearing
 operation must still wait until its producer can no longer touch borrowed data.
+External thread-exit watches also cancel their subscription locally without
+terminating the watched thread. Worker-backed completions retain their exit
+registration until the producer really exits. Keep those two roles distinct:
+cancelling an observation is not evidence that work has finished. A failed
+join registration is backpressure, not a successful join.
 
 For timed completion waits, `CompletionError::Status(WAIT_ADMISSION_FAILED)`
 means the operation is still live and its owner is retained. Retry or poll, or

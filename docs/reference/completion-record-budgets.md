@@ -90,12 +90,12 @@ queues and kernel-owned ring/backlog backing. Registry nodes, worker stacks, obs
 and weak-only Arc/control-block allocations are not separately charged here.
 In particular, a weak reference can retain allocation storage after the strong
 object's fields and charge have dropped. Observer cancellation/reclamation and
-fallible metadata allocation still require hardening. Endpoint-close registrations
-now have their own owning list and admission. Completion/CQ/IPC scheduler
+fallible metadata allocation still require hardening. Endpoint-close and
+thread-exit registrations now share [owning lists and event-watch admission](close-watch-budgets.md).
+Completion/CQ/IPC scheduler
 waiters also have [separate owning admission](scheduler-waiter-budgets.md);
-blocking-lock and timer waiters share it too. Raw completion/thread-exit callbacks,
-general
-weak-only backing remain open.
+blocking-lock and timer waiters share it too. Raw completion callbacks and
+general weak-only backing remain open.
 [Sleep/watchdog event admission](scheduler-timer-budgets.md) is separate and
 shares the completion-timer node pool.
 Per-principal totals

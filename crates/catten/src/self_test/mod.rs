@@ -286,6 +286,7 @@ pub fn run_synchronous_self_tests() {
     crate::timers::event_tests::test_admission();
     completion::test_completion_caps();
     completion::test_detached_operations();
+    crate::completion::exit_tests::test_admission();
     ipc::test_endpoint_ipc();
     ipc::test_endpoint_resize();
     ipc::test_endpoint_admission();

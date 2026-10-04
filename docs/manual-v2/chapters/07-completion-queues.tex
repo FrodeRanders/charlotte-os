@@ -268,7 +268,7 @@ paths designate platform domains before preparation; scoped and syscall
 preparation use ordinary admission. General page allocation, observer storage
 and kernel metadata still require further admission and fallible cleanup.
 
-\section{Owning endpoint-close registrations}
+\section{Owning endpoint-close and thread-exit registrations}
 
 An endpoint-close watch owns a one-shot callback and a removable registration.
 Dropping its completion cancels locally without closing the source endpoint or
@@ -288,6 +288,24 @@ independent list lock. A detached entry retains its charge even if its token
 is cancelled before notification. Late callbacks cannot change a cancelled
 terminal result or complete a replacement with the same numeric capability.
 List destruction is iterative to bound kernel-stack use.
+
+External thread-exit watches share the namespace and node registration pools
+with endpoint-close watches. Each target thread accepts at most 128 entries.
+Cancelling such a watch removes only the subscription; the target remains
+alive. Lookup, generation checking and insertion are serialized with thread
+retirement. An absent or stale target completes immediately, while admission
+failure rolls back the unpublished completion and reports failure rather than
+pretending that the thread exited. Reaping invokes callbacks outside observer
+and master-table locks, before releasing the thread's stack.
+
+Worker-backed completions bind their callback and registration to the fresh
+thread before publication and execution. Cancellation remains pending until
+that worker actually exits; this preserves producer lifetime instead of treating
+work as a removable observation. Terminal completion and namespace teardown
+release the registration. Installing a late observer is fenced against exact
+completion-object replacement, including when a kernel owner retains the old
+object. Kernel thread construction and general control-block allocation still
+need broader admission and fallible cleanup.
 
 \section{Owned completion and CQ waiters}
 
@@ -351,8 +369,8 @@ event has one inline queue slot per LP, outside anonymous admission. Rejection
 therefore cannot consume scheduler preemption storage. Charges remain until the
 actual event is removed, including an aborted sleeper awaiting its deadline.
 
-Legacy thread-exit and raw completion callback registrations
-still require migration. General weak-only/control-block backing and kernel
+Legacy raw completion callback registrations still require migration.
+General weak-only/control-block backing and kernel
 heap accounting remain incomplete. CQ replacement still requires a quiescent
 consumer; discarding registrations is not live reactor migration. Silently
 rejecting an old void registration would lose a blocked thread's wake source.

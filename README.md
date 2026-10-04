@@ -75,8 +75,10 @@ The main additions and extensions currently maintained here are:
   [CQ admission](docs/reference/completion-queue-budgets.md) bounds registered
   queues and kernel-owned ring/backlog storage, with fallible preparation and
   rollback of partially loaded domains.
-  [Endpoint-close watches](docs/reference/close-watch-budgets.md) have bounded,
-  owning registrations: dropping a watch cancels it without closing its endpoint.
+  [Endpoint-close and thread-exit watches](docs/reference/close-watch-budgets.md)
+  have bounded, owning registrations: dropping an external watch cancels its
+  subscription without terminating the target. Worker exit registration
+  precedes execution and preserves deferred producer cancellation.
   [Completion/CQ/IPC, blocking-lock and timer waiters](docs/reference/scheduler-waiter-budgets.md) admit
   bounded, generation-sponsored registrations before parking and unlink them
   when a competing wake wins.

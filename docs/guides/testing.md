@@ -140,6 +140,17 @@ detached notification storage, callback reentrancy, a late callback after
 cancellation, retirement and reuse. See
 [close-watch budgets](../reference/close-watch-budgets.md).
 
+Thread-exit fixtures keep that mask unchanged. Synchronous kernel tests fill a
+128-entry target, check transactional rejection, run 512 cancel/rearm cycles,
+observe normal/stale-generation exit, reenter registries during callbacks, and
+exercise retained tokens, shared-account exhaustion and cancellation before
+owner installation. Actual address-space/capability reuse checks late-install
+rejection, and failed worker setup must not execute or notify. The scheduled
+CQ verifier cancels/rearms 128 watches against a live target, joins its eventual
+exit, runs 32 immediate-return workers and verifies deferred cancellation of a
+held worker. These are kernel fixtures, not additional real-EL0 quota probes or
+physical allocator-failure injection.
+
 Completion/CQ waiter tests keep the fifteen-bit scoped mask unchanged. Kernel
 tests cover source/domain/node admission and rollback, detached entries,
 promotion and ASID reuse; the scheduled CQ verifier checks Running/Ready/new

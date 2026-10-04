@@ -29,6 +29,7 @@
 pub(crate) mod budget;
 pub mod cq;
 pub(crate) mod cq_budget;
+pub(crate) mod exit_tests;
 pub(crate) mod watch_budget;
 
 use alloc::{
@@ -206,11 +207,9 @@ struct CompletionInner {
     /// The operation's lifecycle state; all transitions are made under the
     /// mutex through the methods below (see [`OpState`]).
     state: OpState,
-    /// Keeps the exit-observer (if any) alive for as long as the capability
-    /// exists. `observe_thread_exit` stores only a `Weak`, so the strong `Arc`
-    /// must live somewhere; it lives here, so the observer can still fire when
-    /// the worker thread exits.
-    exit_observer: Option<Arc<CompletionExitObserver>>,
+    /// Worker cancellation remains deferred until its producer exits. Unlike
+    /// an external join, cancelling it must not revoke the terminal event.
+    worker_observation: Option<EventObservation>,
     /// Keeps the timer observer (if any) alive until the completion is reclaimed.
     timer_observer: Option<Arc<CompletionTimerObserver>>,
     timer_cancel: Option<TimerCancellation>,
@@ -311,7 +310,7 @@ impl Completion {
             inner: Mutex::new(CompletionInner {
                 buffer,
                 state: OpState::InFlight,
-                exit_observer: None,
+                worker_observation: None,
                 timer_observer: None,
                 timer_cancel: None,
                 event_observation: None,
@@ -327,8 +326,11 @@ impl Completion {
         self.operation
     }
 
-    fn set_exit_observer(&self, observer: Arc<CompletionExitObserver>) {
-        self.inner.lock().exit_observer = Some(observer);
+    fn set_worker_observation(&self, observation: EventObservation) {
+        let mut inner = self.inner.lock();
+        if matches!(inner.state, OpState::InFlight | OpState::CancelPending) {
+            inner.worker_observation = Some(observation);
+        }
     }
 
     fn set_timer_observer(
@@ -364,8 +366,11 @@ impl Completion {
     }
 
     fn release_event_observation(&self) {
-        let observation = self.inner.lock().event_observation.take();
-        drop(observation);
+        let observations = {
+            let mut inner = self.inner.lock();
+            (inner.event_observation.take(), inner.worker_observation.take())
+        };
+        drop(observations);
     }
 
     fn state_kind(&self) -> OpStateKind {
@@ -405,8 +410,9 @@ impl Completion {
         };
         inner.state = OpState::Completed(effective.clone());
         let event = inner.event_observation.take();
+        let worker = inner.worker_observation.take();
         drop(inner);
-        drop(event);
+        drop((event, worker));
         Some(effective)
     }
 
@@ -992,7 +998,7 @@ pub fn submit(
 fn submit_captured(
     asid: AddressSpaceId,
     buffer: Option<Vec<u8>>,
-    close_watch: bool,
+    event_watch: bool,
 ) -> Result<(CompletionCap, Arc<Completion>, Option<watch_budget::Charge>), SubmitError> {
     let platform_identity = crate::memory::budget::platform_identity(asid);
     let mut registry = COMPLETIONS.write();
@@ -1002,7 +1008,7 @@ fn submit_captured(
         return Err(SubmitError::WouldBlock);
     }
     let record_charge = reserve_record(asid, as_completions, platform_identity)?;
-    let watch_charge = if close_watch {
+    let watch_charge = if event_watch {
         let platform = asid == crate::memory::KERNEL_ASID
             || platform_identity.is_some_and(|handle| Some(handle) == as_completions.address_space);
         Some(
@@ -1019,7 +1025,7 @@ fn submit_captured(
     Ok((cap, completion, watch_charge))
 }
 
-/// Own an unpublished close-watch submission and its entry reservation.
+/// Own an unpublished event-watch submission and its entry reservation.
 /// Rollback rechecks object identity, so teardown/reuse cannot revoke a new cap.
 pub(crate) struct EventSubmission {
     asid: AddressSpaceId,
@@ -1051,6 +1057,47 @@ impl EventSubmission {
 
     pub(crate) fn take_charge(&mut self) -> watch_budget::Charge {
         self.charge.take().expect("event submission charge transferred twice")
+    }
+
+    pub(crate) fn install_watch_observation(
+        &self,
+        observer: Arc<dyn Observer>,
+        registration: crate::klib::observer::registration::Registration<watch_budget::Charge>,
+    ) -> Result<bool, SubmitError> {
+        self.install_observation(observer, registration, false)
+    }
+
+    fn install_worker_observation(
+        &self,
+        observer: Arc<dyn Observer>,
+        registration: crate::klib::observer::registration::Registration<watch_budget::Charge>,
+    ) -> Result<(), SubmitError> {
+        self.install_observation(observer, registration, true).map(|_| ())
+    }
+
+    /// Fence installation against namespace teardown/replacement, including
+    /// when a kernel waiter retains the unpublished old completion object.
+    fn install_observation(
+        &self,
+        observer: Arc<dyn Observer>,
+        registration: crate::klib::observer::registration::Registration<watch_budget::Charge>,
+        worker: bool,
+    ) -> Result<bool, SubmitError> {
+        let registry = COMPLETIONS.read();
+        if !registry.get(&self.asid).is_some_and(|entries| {
+            entries.table.get(&self.cap).is_some_and(|live| Arc::ptr_eq(live, &self.completion))
+        }) {
+            return Err(SubmitError::UnknownAddressSpace);
+        }
+        if worker {
+            self.completion.set_worker_observation(EventObservation {
+                _observer: observer,
+                _registration: registration,
+            });
+            Ok(false)
+        } else {
+            Ok(self.completion.set_event_observation(observer, registration))
+        }
     }
 
     pub(crate) fn commit(mut self) -> CompletionCap {
@@ -1164,24 +1211,22 @@ pub fn submit_worker(
     worker_entry: extern "C" fn(),
     result: OpResult,
 ) -> Result<CompletionCap, SubmitError> {
-    let cap = submit(asid, OpCode::Nop, None)?;
-    let completion = completion_of(asid, cap).map_err(|_| SubmitError::UnknownAddressSpace)?;
-    // Spawn the worker that performs the operation.
-    let tid = crate::cpu::scheduler::spawn_thread(crate::memory::KERNEL_ASID, worker_entry);
-    // Register an exit-observer that completes the capability when the worker
-    // exits, and keep the observer alive by storing it in the completion.
-    let observer = Arc::new(CompletionExitObserver {
+    let mut submission = EventSubmission::new(asid)?;
+    let completion = submission.completion().clone();
+    let observer: Arc<dyn Observer> = Arc::try_new(CompletionExitObserver {
         asid,
-        cap,
+        cap: submission.cap(),
         result,
         completion: Arc::downgrade(&completion),
-    });
-    let _ = crate::cpu::scheduler::observe_thread_exit(
-        tid,
-        Arc::downgrade(&observer) as Weak<dyn Observer>,
-    );
-    completion.set_exit_observer(observer);
-    Ok(cap)
+    })
+    .map_err(|_| SubmitError::WouldBlock)?;
+    crate::cpu::scheduler::spawn_worker_after_observe(
+        worker_entry,
+        Arc::downgrade(&observer),
+        submission.take_charge(),
+        |registration| submission.install_worker_observation(observer, registration),
+    )?;
+    Ok(submission.commit())
 }
 
 /// Register a completion capability that fires when the EL0 thread `tid`
@@ -1198,37 +1243,43 @@ pub(crate) fn observe_thread_exit_with_generation(
     tid: crate::cpu::scheduler::threads::ThreadId,
     expected_generation: Option<crate::cpu::scheduler::threads::ThreadGeneration>,
 ) -> Result<CompletionCap, SubmitError> {
-    let cap = submit(asid, OpCode::Nop, None)?;
-    let completion = completion_of(asid, cap).map_err(|_| SubmitError::UnknownAddressSpace)?;
-    let observer = Arc::new(CompletionExitObserver {
+    let mut submission = EventSubmission::new(asid)?;
+    let cap = submission.cap();
+    let completion = submission.completion().clone();
+    let observer: Arc<dyn Observer> = Arc::try_new(CompletionExitObserver {
         asid,
         cap,
         result: OpResult::Ok(0),
         completion: Arc::downgrade(&completion),
-    });
+    })
+    .map_err(|_| SubmitError::WouldBlock)?;
     let registration = match expected_generation {
         Some(generation) => crate::cpu::scheduler::observe_thread_exit_with_generation(
             tid,
             generation,
-            Arc::downgrade(&observer) as Weak<dyn Observer>,
+            Arc::downgrade(&observer),
+            submission.take_charge(),
         ),
         None => crate::cpu::scheduler::observe_thread_exit(
             tid,
-            Arc::downgrade(&observer) as Weak<dyn Observer>,
+            Arc::downgrade(&observer),
+            submission.take_charge(),
         ),
     };
     match registration {
-        Ok(()) => {
-            completion.set_exit_observer(observer);
-            Ok(cap)
+        Ok(registration) => {
+            if submission.install_watch_observation(observer, registration)? {
+                let _ = complete_registered(asid, cap, completion, OpResult::Cancelled);
+            }
         }
-        Err(_) => {
+        Err(crate::cpu::scheduler::system_scheduler::Error::InvalidThread) => {
             // The thread is gone; its exit already happened. Complete now so
             // the joiner observes a terminal state immediately.
             let _ = complete_registered(asid, cap, completion, OpResult::Ok(0));
-            Ok(cap)
         }
+        Err(_) => return Err(SubmitError::WouldBlock),
     }
+    Ok(submission.commit())
 }
 
 /// Kernel-side completion hook: the worker/driver executing `cap`'s operation

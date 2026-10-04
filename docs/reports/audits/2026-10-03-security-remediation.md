@@ -21,7 +21,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-04 | Mitigated | Builds and boot logs identify development trust; production and unknown modes fail closed in scripted and direct kernel builds. Protected bootstrap roots, fixture-free production provisioning and recipient-key custody remain unimplemented. |
 | SEC-05 | Implemented | tcpip rejects raw frame ingress unless the authenticated sender is the exact live, kernel-designated frouter. Separate socket/VIP binding policy remains future hardening. |
 | SEC-06 | Mitigated | HTTP EOF, peer-raced accept and transport failures close one connection, not the server; listener-setup resource failures retry with backoff. httpd has a five-second request wait and bounded send retries; deployd has five-second header and thirty-second total receive budgets. Serial admission remains vulnerable to sustained connection floods. |
-| SEC-07 | Partially implemented | Memory-object backing pages/counts, anonymous timer events (completion plus sleep/watchdog), endpoint records/queue backing, retained completion objects/detached results, CQ registrations/kernel backing, endpoint-close registrations, completion/CQ/IPC/lock/timer scheduler waiters and connection/pending-call/reply-token record counts have generation-scoped domain/node admission and platform reserves. Timer families have separate domain accounts and one shared node pool. Charges survive transfers, deferred cancellation, delegation, retained references or detached notifications as appropriate. Waiter admission precedes parking; owning cancellation handles competing wakes and reaping. Watchdog callback/cancellation/node preparation precedes Blocked; queue insertion allocates nothing and the quantum has independent inline storage. Timed completion admission failure retains its owner; untimed completion/IPC waits preserve borrowed-buffer safety. Sleep rejection waits runnable to the requested deadline; internal timer callbacks have one embedded slot. Timed park/watchdog setup is non-preemptible. IPC call/reply preparation precedes attachment transfer, and retirement fences receive/connection publication before teardown. Aggregate limits for loader/heap/page tables (including physical CQ mappings), the complete capability namespace, legacy-observer metadata, general weak-only/control-block storage and comprehensive kernel metadata remain open. |
+| SEC-07 | Partially implemented | Memory-object backing pages/counts, anonymous timer events (completion plus sleep/watchdog), endpoint records/queue backing, retained completion objects/detached results, CQ registrations/kernel backing, endpoint-close/thread-exit registrations, completion/CQ/IPC/lock/timer scheduler waiters and connection/pending-call/reply-token record counts have generation-scoped domain/node admission and platform reserves. Endpoint/thread watches share one account and node pool; worker exit registration precedes execution and retains deferred producer cancellation. Late watch installation is fenced against namespace replacement. Timer families have separate domain accounts and one shared node pool. Charges survive transfers, deferred cancellation, delegation, retained references or detached notifications as appropriate. Waiter admission precedes parking; owning cancellation handles competing wakes and reaping. Watchdog callback/cancellation/node preparation precedes Blocked; queue insertion allocates nothing and the quantum has independent inline storage. Timed completion admission failure retains its owner; untimed completion/IPC waits preserve borrowed-buffer safety. Sleep rejection waits runnable to the requested deadline; internal timer callbacks have one embedded slot. Timed park/watchdog setup is non-preemptible. IPC call/reply preparation precedes attachment transfer, and retirement fences receive/connection publication before teardown. Aggregate limits for loader/heap/page tables (including physical CQ mappings), the complete capability namespace, legacy-observer metadata, general weak-only/control-block storage and comprehensive kernel metadata remain open. |
 | SEC-08 | Open | Authenticate enrolled nodes and control/data peer traffic, add replay protection, and bound discovery state. A trusted L2 segment remains an explicit deployment prerequisite. |
 | SEC-09 | Open | Distinguish authenticated security time from observational SNTP/holdover; enforce freshness and uncertainty at security-policy gates. |
 | SEC-10 | Open | Authenticated encrypted access to node and cluster management, browser-client provisioning, and access policy remain necessary. |
@@ -1348,4 +1348,90 @@ Evidence is in `/private/tmp/charlotte-security-timer-events-repeat-run.log`,
 `/private/tmp/charlotte-security-timer-events-*-kernel-clippy.log` files.
 No physical-allocator exhaustion, exhaustive cross-LP teardown/IRQ exploration,
 x86-64 guest, hostile-pressure soak or PDF rebuild was performed. Dedicated
+storage and forwarded ports were used; existing soak guests/stores were untouched.
+
+## 2026-10-04 continuation — owned thread-exit subscriptions
+
+The preceding scheduler-event/prepared-node changes are committed as `d3ee64b5`.
+This continuation replaces the target thread's unbounded weak-callback vector
+with fallible one-shot registrations. Each thread links at most 128 entries.
+The submitting generation sponsors its entry in the **existing** endpoint-watch
+account: configured completion capacity clamped to 1,024, sharing the same
+8,192-node / 6,144-ordinary pool. These are not independent allowances per event
+type, and source owners do not lend callers platform privileges.
+
+External exit watches own callback and cancellation token in their completion.
+Cancellation unlinks and finishes locally without killing or joining the target.
+Lookup, generation checking and insertion remain serialized with retirement;
+absent/stale targets complete immediately, whereas allocation/admission failure
+returns submission backpressure and rolls back the staged completion. Reaping
+detaches notifications before callback invocation, outside source/list/master
+table guards and before stack deallocation. Charges follow detached entries,
+not retained empty tokens; teardown/destruction remain iterative.
+
+Review also found that a worker could execute and exit before its completion's
+weak callback was registered, and that the old path ignored registration errors.
+Worker setup now binds the callback and its owning token to the fresh thread
+before publication/admission, with no recycled-TID lookup. A worker completion
+retains its subscription after cancellation until actual producer exit; it is
+not treated as a locally removable join. Terminal completion or namespace
+teardown releases both kinds of subscription. The latter revokes notification
+ownership, rather than proving that a running worker stopped.
+
+Installation now fences exact completion identity under the namespace guard.
+This also covers endpoint-close watches: teardown/replacement before a late
+installation cannot leave a registration on an obsolete completion retained by
+another kernel owner. Cancellation or completion before owner installation is
+handled without retaining a late token on a terminal record.
+
+The [event-watch reference](../../reference/close-watch-budgets.md), ownership
+guide, runtime API comments, scheduler-waiter reference and LaTeX completion
+chapter document these contracts. The public syscall ABI is unchanged. Lazy
+thread-list/control-block allocation can persist after the last entry is
+removed; entry-count admission does not charge that empty metadata. Kernel
+stack/thread-table construction, general weak-only Arc storage, raw completion
+callback lists, capability namespaces and loader/page-table/heap accounting
+remain unfinished. SEC-07 stays partial and deployment restrictions apply.
+
+Validation:
+
+- The host runner passed. Bundled AArch64 services built through the guest
+  runner; strict AArch64 and x86-64 kernel Clippy passed with `-D warnings`.
+  Service implementation is unchanged; the runtime change is documentation.
+- Synchronous fixtures link 128 real target entries and verify source rejection
+  rolls back its staged record/charge, then run 512 cancellation/rearm cycles.
+  They cover normal/stale-generation exit, callback reentry into scheduler and
+  completion registries, retained tokens/completions, shared-account exhaustion,
+  cancellation before owner installation, worker deferred cancellation and
+  exact numeric ASID/capability reuse during rejected late installation.
+  Failed worker setup must neither run its entry point nor invoke its callback.
+- Scheduled kernel tests cancel/rearm 128 watches on a still-live target,
+  observe its eventual exit, run 32 immediate-return workers and cancel a held
+  worker before permitting it to finish. Its completion stays pending and
+  charged until actual exit. These forced conditions do not add an EL0 probe
+  bit or simulate physical allocator exhaustion. Shared node/ordinary saturation
+  remains covered by the preceding event-watch counter fixtures.
+- The first guest fixture incorrectly assumed that reopening a synthetic
+  completion namespace reset its capability numbering and panicked on that
+  assertion. It was replaced with actual address-space retirement/reuse. This
+  failed fixture run is excluded from successful validation.
+- The corrected guest passed **19 tests, 0 failed, 0 pending**. The final version,
+  with worker setup rollback checks, passed a second isolated four-LP AArch64/TCG
+  run with the same result. Both scoped launches retained `0x7fff`; the final
+  run retired concurrent cancellation traffic after 4,524 requests.
+- Workspace formatting and diff checks passed. Markdown and LaTeX source were
+  updated; the PDF was not rebuilt.
+
+The final guest kernel SHA-256 is
+`8113f7b0e0f94202462af68113e33dd07d563e5666ae5b739aa32a71ec05aad7`.
+Evidence is in `/private/tmp/charlotte-security-exit-watch-repeat-run.log`,
+`/private/tmp/charlotte-security-exit-watch-repeat-20261004-serial.log`,
+`/private/tmp/charlotte-security-exit-watch-fixed-run.log`,
+`/private/tmp/charlotte-security-exit-watch-fixed-20261004-serial.log`,
+`/private/tmp/charlotte-security-exit-watch-run.log` and
+`/private/tmp/charlotte-security-exit-watch-20261004-serial.log` (failed fixture),
+`/private/tmp/charlotte-security-exit-watch-host-tests.log`, and the
+`/private/tmp/charlotte-security-exit-watch-*-kernel-clippy.log` files.
+No exhaustive cross-LP teardown/IRQ exploration, hostile-pressure soak,
+physical allocator-OOM injection or x86-64 guest run was performed. Dedicated
 storage and forwarded ports were used; existing soak guests/stores were untouched.

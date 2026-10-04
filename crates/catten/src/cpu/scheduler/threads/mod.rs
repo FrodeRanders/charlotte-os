@@ -22,6 +22,7 @@
 //! Exited threads are staged per-LP in [`DEAD_THREADS`] and reaped after
 //! the context switch away from them.
 
+pub(crate) mod exit_source;
 pub mod waker;
 
 use alloc::{
@@ -51,18 +52,12 @@ use crate::{
             LpId,
             thread_context::ThreadContext,
         },
-        multiprocessor::spin::{
-            mutex::Mutex,
-            rwlock::RwLock,
-        },
+        multiprocessor::spin::rwlock::RwLock,
         scheduler::threads::waker::Waker,
     },
     klib::{
         collections::id_table::IdTable,
-        observer::{
-            Observable,
-            Observer,
-        },
+        observer::Observer,
         statistics::{
             RunningStatistics,
             StatisticsSnapshot,
@@ -388,7 +383,7 @@ pub struct Thread {
     /// correlation with the deferred-reaping and stack-deallocation paths.
     retired_tid: Option<ThreadId>,
     reap_lp: Option<LpId>,
-    exit_observers: Mutex<Vec<Weak<dyn Observer>>>,
+    exit_observers: exit_source::ExitSource,
 }
 
 pub const THREAD_CTX_OFFSET: usize = offset_of!(Thread, context);
@@ -432,7 +427,7 @@ impl Thread {
             abort_owner_lp: AtomicUsize::new(usize::MAX),
             retired_tid: None,
             reap_lp: None,
-            exit_observers: Mutex::new(Vec::new()),
+            exit_observers: exit_source::ExitSource::new(),
         }
     }
 
@@ -581,16 +576,18 @@ pub(crate) fn system_statistics() -> Vec<ThreadStatisticsSnapshot> {
         .collect()
 }
 
-/// The `Observable` trait is implemented for `Thread` to notify observers when a thread exits and
-/// is dropped. This can be used to implement thread joining like functionality but also crucially
-/// for monitoring when work started from a system call, nearly all of which are asynchronous in
-/// Catten, finishes executing so userspace can be notified if requested. In any case the
-/// completion capability returned from the system call would be registered as an observer of the
-/// thread that is executing the work whose completion it represents so that userspace software can
-/// monitor it in real time using the same mechanism the kernel would use.
-impl Observable for Thread {
-    fn register_observer(&self, observer: Weak<dyn Observer>) {
-        self.exit_observers.lock().push(observer);
+impl Thread {
+    pub(crate) fn try_observe_exit(
+        &self,
+        observer: Weak<dyn Observer>,
+        charge: crate::completion::watch_budget::Charge,
+    ) -> Result<exit_source::ExitRegistration, crate::klib::observer::registration::RegistrationError>
+    {
+        self.exit_observers.register(observer, charge)
+    }
+
+    pub(crate) fn exit_watch_count(&self) -> usize {
+        self.exit_observers.registered()
     }
 }
 
@@ -603,11 +600,7 @@ impl Drop for Thread {
             let (reserved, used) = self.context.user_stack_usage();
             crate::memory::usage::note_thread_released(self.asid, reserved, used);
         }
-        for observer in self.exit_observers.lock().iter() {
-            if let Some(observer) = observer.upgrade() {
-                observer.notify();
-            }
-        }
+        self.exit_observers.notify_exit();
         // `context` is the first field and is dropped immediately after this
         // method returns. This record therefore identifies the kernel-stack
         // deallocation that follows in `ThreadContext::drop`; the stack-arena

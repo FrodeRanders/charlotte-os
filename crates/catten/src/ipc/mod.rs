@@ -1571,7 +1571,10 @@ pub fn watch_connection_closed(
         }
     };
     if let Some(registration) = registration {
-        if completion.set_event_observation(observer, registration) {
+        if submission
+            .install_watch_observation(observer, registration)
+            .map_err(|_| IpcError::UnknownCapability)?
+        {
             let _ = crate::completion::complete_registered(
                 asid,
                 cap,

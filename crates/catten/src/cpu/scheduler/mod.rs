@@ -481,11 +481,14 @@ pub fn block_until(
 ///
 /// Without the write lock, a thread could be taken and dropped between the
 /// lookup and the registration, orphaning the observer forever.
-pub fn observe_thread_exit(
+/// The returned token owns cancellation. InvalidThread means absent/stale;
+/// WaitRegistrationFailed is admission/allocation failure, never proof of exit.
+pub(crate) fn observe_thread_exit(
     thread_id: ThreadId,
     observer: Weak<dyn Observer>,
-) -> Result<(), system_scheduler::Error> {
-    observe_thread_exit_matching(thread_id, None, observer)
+    charge: crate::completion::watch_budget::Charge,
+) -> Result<threads::exit_source::ExitRegistration, system_scheduler::Error> {
+    observe_thread_exit_matching(thread_id, None, observer, charge)
 }
 
 /// Generation-bound variant of [`observe_thread_exit`].
@@ -497,21 +500,23 @@ pub fn observe_thread_exit(
 /// wrong thread's drop).
 ///
 /// Callers that captured a thread at spawn time — e.g. a `ServiceDomain` handle —
-/// must pass its `generation` so a recycled slot is detected and reported as `Err`,
+/// must pass its `generation` so a recycled slot is reported as `InvalidThread`,
 /// letting the caller complete immediately instead of joining a stranger.
-pub fn observe_thread_exit_with_generation(
+pub(crate) fn observe_thread_exit_with_generation(
     thread_id: ThreadId,
     expected_generation: ThreadGeneration,
     observer: Weak<dyn Observer>,
-) -> Result<(), system_scheduler::Error> {
-    observe_thread_exit_matching(thread_id, Some(expected_generation), observer)
+    charge: crate::completion::watch_budget::Charge,
+) -> Result<threads::exit_source::ExitRegistration, system_scheduler::Error> {
+    observe_thread_exit_matching(thread_id, Some(expected_generation), observer, charge)
 }
 
 fn observe_thread_exit_matching(
     thread_id: ThreadId,
     expected_generation: Option<ThreadGeneration>,
     observer: Weak<dyn Observer>,
-) -> Result<(), system_scheduler::Error> {
+    charge: crate::completion::watch_budget::Charge,
+) -> Result<threads::exit_source::ExitRegistration, system_scheduler::Error> {
     let table = MASTER_THREAD_TABLE.write();
     if let Ok(thread) = table.get(thread_id) {
         let generation_matches = expected_generation.is_none_or(|expected| {
@@ -522,9 +527,9 @@ fn observe_thread_exit_matching(
                 == charlotte_lifecycle::JoinDisposition::ObserveCurrent
         });
         if generation_matches {
-            thread.register_observer(observer);
-            drop(table);
-            Ok(())
+            thread
+                .try_observe_exit(observer, charge)
+                .map_err(|_| system_scheduler::Error::WaitRegistrationFailed)
         } else {
             drop(table);
             Err(system_scheduler::Error::InvalidThread)
@@ -533,4 +538,27 @@ fn observe_thread_exit_matching(
         drop(table);
         Err(system_scheduler::Error::InvalidThread)
     }
+}
+
+/// Bind a worker's exit before publishing or admitting it. No numeric TID
+/// lookup or post-spawn registration can race the worker's first instruction.
+/// Kernel stack/thread-table construction retains the ordinary spawn API's
+/// allocator contract; callback/list/entry admission is fallible beforehand.
+pub(crate) fn spawn_worker_after_observe(
+    entry_point: extern "C" fn(),
+    observer: Weak<dyn Observer>,
+    charge: crate::completion::watch_budget::Charge,
+    install: impl FnOnce(
+        threads::exit_source::ExitRegistration,
+    ) -> Result<(), crate::completion::SubmitError>,
+) -> Result<ThreadId, crate::completion::SubmitError> {
+    let thread = Thread::new(crate::memory::KERNEL_ASID, entry_point);
+    let registration = thread
+        .try_observe_exit(observer, charge)
+        .map_err(|_| crate::completion::SubmitError::WouldBlock)?;
+    install(registration)?;
+    // Kernel publication is not subject to user-domain retirement/thread limits.
+    let tid = publish_thread(thread).expect("kernel worker publication failed");
+    SYSTEM_SCHEDULER.read().submit_new_thread(tid).expect("kernel worker admission failed");
+    Ok(tid)
 }
