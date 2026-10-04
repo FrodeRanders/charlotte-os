@@ -79,7 +79,7 @@ cancelled requests must not prevent acquisition of the available endpoint;
 a separately hosted silent endpoint tests the publication helper's deadline.
 
 The primary probe performs 384 cancelled requests in each of two launches. A
-concurrent probe submits at least 512 more. All thirteen result bits (`0x1fff`) must
+concurrent probe submits at least 512 more. All fourteen result bits (`0x3fff`) must
 pass, publication generations must advance, and the retired descriptor must no
 longer attest. The ordinary boot suite, network verifier and security verifier
 register 19 tests in this configuration.
@@ -102,6 +102,15 @@ while it is full, drops the owning batch and performs 128 create/drop cycles.
 Synchronous tests check queue backing limits and resize rollback, platform
 reserve, retained delegated records, unobserved-return cleanup, and forced
 ASID reuse. See [endpoint budgets](../reference/endpoint-budgets.md).
+
+The fourteenth bit fills shared completion-record capacity with owned
+endpoint-close watches. Timer submission must fail while the record budget is
+full, scalar IPC must still work, and closing the watched endpoint must allow
+all watches to complete and a short timer to run. Synchronous tests cover
+retained strong references and detached results, ordinary/total record pools,
+platform progress, CQ replacement, retirement and a stale captured close after
+exact numeric ASID/capability reuse. See
+[completion-record budgets](../reference/completion-record-budgets.md).
 
 The scoped application verifier does not force ASID reuse, restart the grant
 controller, inject allocation failures or prove many-client fairness. It does

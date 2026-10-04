@@ -21,7 +21,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-04 | Mitigated | Builds and boot logs identify development trust; production and unknown modes fail closed in scripted and direct kernel builds. Protected bootstrap roots, fixture-free production provisioning and recipient-key custody remain unimplemented. |
 | SEC-05 | Implemented | tcpip rejects raw frame ingress unless the authenticated sender is the exact live, kernel-designated frouter. Separate socket/VIP binding policy remains future hardening. |
 | SEC-06 | Mitigated | HTTP EOF, peer-raced accept and transport failures close one connection, not the server; listener-setup resource failures retry with backoff. httpd has a five-second request wait and bounded send retries; deployd has five-second header and thirty-second total receive budgets. Serial admission remains vulnerable to sustained connection floods. |
-| SEC-07 | Partially implemented | Memory-object backing pages and counts have generation-scoped sponsorship budgets, RAM-derived node admission and platform/physical progress reserves. Completion-backed timer events and endpoint records/queue backing have domain/node admission, platform reserves and charges retained through deferred cancellation or delegation. Aggregate limits for loader/heap/page-table memory, the complete capability namespace, connection/call/observer metadata, general completion records, other timer paths and kernel metadata remain open. |
+| SEC-07 | Partially implemented | Memory-object backing pages/counts, completion timer events, endpoint records/queue backing, and retained completion objects/detached results have generation-scoped domain/node admission and platform reserves. Charges survive transfers, deferred cancellation, delegation or retained strong references as appropriate. Aggregate limits for loader/heap/page tables, the complete capability namespace, connection/call/observer metadata, CQ/weak-only storage, other timer paths and comprehensive kernel metadata remain open. |
 | SEC-08 | Open | Authenticate enrolled nodes and control/data peer traffic, add replay protection, and bound discovery state. A trusted L2 segment remains an explicit deployment prerequisite. |
 | SEC-09 | Open | Distinguish authenticated security time from observational SNTP/holdover; enforce freshness and uncertainty at security-policy gates. |
 | SEC-10 | Open | Authenticated encrypted access to node and cluster management, browser-client provisioning, and access policy remain necessary. |
@@ -198,8 +198,8 @@ implementation proof is claimed.
    only then enable production images without fixture fallback. Migrate sibling
    broker/Durga templates to the new signing file-path interface. Keep developer
    fixtures visibly identified and separate from real credentials.
-3. Extend admission to the remaining capability, connection/call/observer, general
-   completion, other timer and loader/heap/page-table budgets. Add
+3. Extend admission to the remaining capability, connection/call/observer,
+   CQ/weak-only storage, other timer and loader/heap/page-table budgets. Add
    typed launch-policy limits and observable counters. Preserve rollback and
    delayed-release accounting, and test essential-service progress under
    sustained hostile pressure, not only bounded fixture exhaustion.
@@ -623,3 +623,74 @@ completion records, all other timers or loader/page-table/heap accounting.
 Registry/capability metadata allocation remains infallible, and there are no
 typed deployment overrides or userspace admission counters yet. SEC-07 remains
 partially implemented; the audit's operational restrictions still apply.
+
+## Follow-up: retained completion records — 2026-10-04
+
+Endpoint/queue admission was committed as `1532ae47`. This continuation adds
+a separate record budget to all four completion submission paths: ordinary
+capability-backed operations, timers, detached operations and detached timers.
+Thread-exit and endpoint-close watches inherit ordinary submission admission.
+A namespace can retain at most its configured completion capacity, clamped
+to 1,024 records. Node admission is 8,192 records, with an ordinary-domain
+pool of 6,144. Generation-qualified kernel designation controls the platform
+reserve; the service loader still configures 16 submission slots.
+
+A completion object's charge survives capability close while a waiter or
+captured callback holds a strong reference. A detached operation transfers
+its charge into the CQ backlog when its result cannot enter the ring. Delivery
+or discard returns both its record admission and submission slot. Namespace
+replacement and retirement retain the old budget owner while old objects
+survive. Retirement now fences all four submission paths, and failed later
+timer-event admission rolls back the staged record charge.
+
+Review found a related CQ replacement defect: discarded detached backlog
+entries did not return their submission slots. Both heap- and physical-CQ
+installation paths now use one replacement helper that reconciles these
+slots. Replacement remains kernel-controlled teardown, not result migration.
+Completion close also rechecks the exact captured object under the registry
+lock before revoking a handle, preventing stale close from deleting a
+replacement with the same numeric ASID/capability.
+
+Validation:
+
+- The full host runner passed; existing checked-counter rejection, overflow,
+  release and reuse coverage supports this budget's shared arithmetic.
+- Synchronous guest tests passed for retained strong objects, record recovery,
+  submission rollback, non-timer cancellation, mixed record types, retained
+  detached results and delivery, missing CQ rejection, CQ replacement and
+  teardown, timer-event admission rollback, ordinary and total pool rejection,
+  actual reserved-pool submission after kernel platform designation, retirement
+  rejection across all four paths, and forced ASID/capability reuse with a
+  captured old close. Pool saturation uses reservations, not allocation of the
+  maximum corresponding record footprint.
+- Two isolated four-LP AArch64/TCG security runs passed **19 tests, 0 failed,
+  0 pending**. Both scoped launches passed all fourteen bits (`0x3fff`), now
+  including non-timer close-watch exhaustion, refused timer submission while
+  full, successful scalar IPC, endpoint-triggered completion of every watch
+  and short-timer recovery. Concurrent cancellation traffic retired after
+  4,520 requests in the first run and 4,516 in the final run.
+- Both signed service bundles built. AArch64 and x86-64 kernel and service
+  Clippy passed with `-D warnings`, along with formatting and diff checks.
+  No x86-64 guest execution, allocator-failure injection, sustained hostile
+  pressure test or PDF rebuild is claimed.
+
+The final capture's kernel SHA-256 was
+`cdf9124544617344685f79841ecec3d72aba022ec16c36907268e01f10cd4ebb`.
+Temporary evidence is in `/private/tmp/charlotte-security-records-final-run.log`,
+`/private/tmp/charlotte-security-records-final-20261004-serial.log`,
+`/private/tmp/charlotte-security-records-host-tests.log`, and the
+`/private/tmp/charlotte-security-records-*-clippy.log`/`*-services.log` files.
+An unused test import was removed after the captures to pass both architectures'
+strict lint checks; this did not change the test logic. Dedicated storage and
+ports were used; existing soak guests and stores were not modified.
+
+The [record reference](../../reference/completion-record-budgets.md) distinguishes
+submission slots, strong object lifetimes, detached-result retention and CQ
+backing. These counts do not charge weak-only Arc/control-block storage: weak
+references can retain allocation memory after strong-object fields and the
+record charge drop. Observer lists/cancellation, CQ backing, workers, registry
+nodes and fallible metadata allocation therefore remain important SEC-07 gaps,
+alongside the complete capability namespace and loader/heap/page-table budgets.
+Typed deployment overrides, per-principal cross-domain totals and observable
+admission counters remain future work. SEC-07 stays partially implemented and
+the audit's operational restrictions still apply.

@@ -26,6 +26,7 @@
 //! The submission-side capability table and buffer-ownership contract are real;
 //! [`complete`] is the kernel-side hook a worker's exit-observer would call.
 
+pub(crate) mod budget;
 pub mod cq;
 
 use alloc::{
@@ -280,10 +281,12 @@ pub struct Completion {
     operation: OperationId,
     inner: Mutex<CompletionInner>,
     observers: ConcurrentQueue<Weak<dyn Observer>>,
+    // Last: release admission after retained state and observers are dropped.
+    _record_charge: budget::Charge,
 }
 
 impl Completion {
-    fn new(buffer: Option<Vec<u8>>) -> Arc<Self> {
+    fn new(buffer: Option<Vec<u8>>, record_charge: budget::Charge) -> Arc<Self> {
         Arc::new(Self {
             operation: alloc_operation_id(),
             inner: Mutex::new(CompletionInner {
@@ -295,6 +298,7 @@ impl Completion {
                 event_observer: None,
             }),
             observers: ConcurrentQueue::unbounded(),
+            _record_charge: record_charge,
         })
     }
 
@@ -423,8 +427,8 @@ pub const DEFAULT_CQ: CqId = 0;
 
 /// A capability-free operation (architecture doc §8.4): tracked only by its
 /// [`OperationId`], delivered exclusively through the CQ ring, and reclaimed
-/// on completion. There is no post-terminal record — a detached operation
-/// that has completed no longer exists in the kernel.
+/// on completion. The operation ID then stops being addressable, but an
+/// undelivered CQ result retains record admission until publication/discard.
 struct DetachedOp {
     /// Submitter-chosen correlation token, posted as the CQ entry's cookie.
     user_data: u64,
@@ -436,6 +440,7 @@ struct DetachedOp {
     /// Keeps a timer observer alive until it fires and removes this operation.
     _timer_observer: Option<Arc<DetachedTimerObserver>>,
     timer_cancel: Option<TimerCancellation>,
+    record_charge: budget::Charge,
 }
 
 struct DetachedTimerObserver {
@@ -443,13 +448,15 @@ struct DetachedTimerObserver {
     operation: OperationId,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 enum BacklogOwner {
     Capability,
-    Detached,
+    Detached {
+        _charge: budget::Charge,
+    },
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 struct BacklogEntry {
     operation: OperationId,
     cookie: u64,
@@ -567,6 +574,7 @@ struct AsCompletions {
     /// Separate lifetime budget: a cancelled timer on another LP stays charged
     /// even after its completion slot has been reclaimed.
     timer_budget: Arc<crate::timers::budget::DomainBudget>,
+    record_budget: Arc<budget::DomainBudget>,
     address_space: Option<crate::memory::AddressSpaceHandle>,
 }
 
@@ -600,8 +608,26 @@ fn empty_as(asid: AddressSpaceId, capacity: usize) -> AsCompletions {
         detached: BTreeMap::new(),
         cqs: BTreeMap::new(),
         timer_budget: crate::timers::budget::DomainBudget::new(capacity),
+        record_budget: budget::DomainBudget::new(capacity),
         address_space: crate::memory::current_address_space_handle(asid),
     }
+}
+
+/// Budget guards never enter another subsystem. A captured designation must
+/// match this namespace, and retirement fences admission under the registry.
+fn reserve_record(
+    asid: AddressSpaceId,
+    entries: &AsCompletions,
+    platform_identity: Option<crate::memory::AddressSpaceHandle>,
+) -> Result<budget::Charge, SubmitError> {
+    if entries.address_space.is_some_and(|handle| !crate::memory::budget::accepting(handle)) {
+        return Err(SubmitError::UnknownAddressSpace);
+    }
+    // Synthetic namespaces exist at the kernel test/adapter boundary only.
+    // Syscalls supply the authenticated caller, never an EL0-selected ASID.
+    let platform = asid == crate::memory::KERNEL_ASID
+        || platform_identity.is_some_and(|handle| Some(handle) == entries.address_space);
+    budget::reserve(&entries.record_budget, platform).map_err(|_| SubmitError::WouldBlock)
 }
 
 fn replace_address_space(asid: AddressSpaceId, replacement: AsCompletions) {
@@ -656,7 +682,8 @@ pub fn open_cq(asid: AddressSpaceId, cq: CqId, cq_entries: u32) {
     let mut registry = COMPLETIONS.write();
     if let Some(as_completions) = registry.get_mut(&asid) {
         let retained_limit = as_completions.capacity;
-        as_completions.cqs.insert(
+        replace_cq(
+            as_completions,
             cq,
             CqState {
                 ring: ring_ptr,
@@ -687,7 +714,8 @@ pub fn open_cq_phys(
     let mut registry = COMPLETIONS.write();
     if let Some(as_completions) = registry.get_mut(&asid) {
         let retained_limit = as_completions.capacity;
-        as_completions.cqs.insert(
+        replace_cq(
+            as_completions,
             cq,
             CqState {
                 ring: ring_ptr,
@@ -701,6 +729,23 @@ pub fn open_cq_phys(
                 _buf: None,
             },
         );
+    }
+}
+
+/// Kernel-controlled queue replacement discards old undelivered results.
+/// Retained detached results must return their submission slots as well as
+/// their owning record charges; capability results still live in the table.
+fn replace_cq(entries: &mut AsCompletions, cq: CqId, replacement: CqState) {
+    if let Some(previous) = entries.cqs.insert(cq, replacement) {
+        let discarded = previous
+            .backlog
+            .iter()
+            .filter(|entry| matches!(&entry.owner, BacklogOwner::Detached { .. }))
+            .count();
+        entries.live = entries
+            .live
+            .checked_sub(discarded)
+            .expect("discarded detached records must count as live");
     }
 }
 
@@ -752,14 +797,16 @@ pub fn submit(
     _op: OpCode,
     buffer: Option<Vec<u8>>,
 ) -> Result<CompletionCap, SubmitError> {
+    let platform_identity = crate::memory::budget::platform_identity(asid);
     let mut registry = COMPLETIONS.write();
     let as_completions = registry.get_mut(&asid).ok_or(SubmitError::UnknownAddressSpace)?;
     flush_cq_backlog(as_completions, DEFAULT_CQ);
     if as_completions.live >= as_completions.capacity {
         return Err(SubmitError::WouldBlock);
     }
+    let record_charge = reserve_record(asid, as_completions, platform_identity)?;
     let cap = crate::capability::allocate(asid, crate::capability::ObjectKind::Completion);
-    as_completions.table.insert(cap, Completion::new(buffer));
+    as_completions.table.insert(cap, Completion::new(buffer, record_charge));
     as_completions.live += 1;
     Ok(cap)
 }
@@ -793,6 +840,7 @@ pub fn submit_timer(asid: AddressSpaceId, timeout_ms: u64) -> Result<CompletionC
         if entries.live >= entries.capacity {
             return Err(SubmitError::WouldBlock);
         }
+        let record_charge = reserve_record(asid, entries, platform_identity)?;
         // Tie policy captured before the registry lock to this exact namespace;
         // teardown/reuse must not lend a predecessor's reserved-pool access.
         let platform = asid == crate::memory::KERNEL_ASID
@@ -802,7 +850,7 @@ pub fn submit_timer(asid: AddressSpaceId, timeout_ms: u64) -> Result<CompletionC
         let (timer_event, cancel) =
             TimerEvent::charged(ExtDuration::from_millis(timeout_ms as u128), charge);
         let cap = crate::capability::allocate(asid, crate::capability::ObjectKind::Completion);
-        let completion = Completion::new(None);
+        let completion = Completion::new(None, record_charge);
         let observer = Arc::new(CompletionTimerObserver {
             asid,
             cap,
@@ -1031,6 +1079,7 @@ pub fn submit_detached(
     _op: OpCode,
     user_data: u64,
 ) -> Result<OperationId, SubmitError> {
+    let platform_identity = crate::memory::budget::platform_identity(asid);
     let mut registry = COMPLETIONS.write();
     let as_completions = registry.get_mut(&asid).ok_or(SubmitError::UnknownAddressSpace)?;
     flush_cq_backlog(as_completions, cq);
@@ -1040,6 +1089,7 @@ pub fn submit_detached(
     if as_completions.live >= as_completions.capacity {
         return Err(SubmitError::WouldBlock);
     }
+    let record_charge = reserve_record(asid, as_completions, platform_identity)?;
     let operation = alloc_operation_id();
     as_completions.detached.insert(
         operation,
@@ -1049,6 +1099,7 @@ pub fn submit_detached(
             cancel_pending: false,
             _timer_observer: None,
             timer_cancel: None,
+            record_charge,
         },
     );
     as_completions.live += 1;
@@ -1073,6 +1124,7 @@ pub fn submit_detached_timer(
         if entries.live >= entries.capacity {
             return Err(SubmitError::WouldBlock);
         }
+        let record_charge = reserve_record(asid, entries, platform_identity)?;
         let platform = asid == crate::memory::KERNEL_ASID
             || (platform_identity.is_some() && platform_identity == entries.address_space);
         let charge = crate::timers::budget::reserve(&entries.timer_budget, platform)
@@ -1093,6 +1145,7 @@ pub fn submit_detached_timer(
                 cancel_pending: false,
                 _timer_observer: Some(observer),
                 timer_cancel: Some(TimerCancellation(Some(cancel))),
+                record_charge,
             },
         );
         entries.live += 1;
@@ -1129,7 +1182,9 @@ pub fn complete_detached(
                 operation,
                 detached.user_data,
                 &effective,
-                BacklogOwner::Detached,
+                BacklogOwner::Detached {
+                    _charge: detached.record_charge,
+                },
             );
             cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
             crate::debug_trace::trace(
@@ -1202,7 +1257,7 @@ fn flush_backlog(cq_state: &mut CqState) -> FlushOutcome {
             break;
         }
         outcome.total += 1;
-        if entry.owner == BacklogOwner::Detached {
+        if matches!(&entry.owner, BacklogOwner::Detached { .. }) {
             outcome.detached += 1;
         }
     }
@@ -1363,20 +1418,40 @@ pub(crate) fn timer_events_used(asid: AddressSpaceId) -> usize {
     COMPLETIONS.read().get(&asid).map_or(0, |entries| entries.timer_budget.used())
 }
 
+pub(crate) fn record_admission(asid: AddressSpaceId) -> Option<Arc<budget::DomainBudget>> {
+    COMPLETIONS.read().get(&asid).map(|entries| entries.record_budget.clone())
+}
+
 /// Revokes a completed or already-drained capability. Fails with
 /// [`CapError::NotComplete`] if the operation is still in flight (neither
 /// completed nor drained).
 pub fn close(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
     let completion = completion_of(asid, cap)?;
+    close_registered(asid, cap, completion)
+}
+
+/// Close only the captured object, not a replacement that reused its handle.
+pub(crate) fn close_registered(
+    asid: AddressSpaceId,
+    cap: CompletionCap,
+    completion: Arc<Completion>,
+) -> Result<(), CapError> {
     if !completion.is_reclaimable() {
         return Err(CapError::NotComplete);
     }
     let operation = completion.operation_id();
     let mut registry = COMPLETIONS.write();
     let as_completions = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
+    if !as_completions
+        .table
+        .get(&cap)
+        .is_some_and(|registered| Arc::ptr_eq(registered, &completion))
+    {
+        return Err(CapError::UnknownCap);
+    }
     if let Some(cq_state) = as_completions.cqs.get_mut(&DEFAULT_CQ) {
         cq_state.backlog.retain(|entry| {
-            entry.owner != BacklogOwner::Capability
+            !matches!(&entry.owner, BacklogOwner::Capability)
                 || entry.operation != operation
                 || entry.cookie != cap
         });

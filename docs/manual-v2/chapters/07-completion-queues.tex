@@ -224,6 +224,26 @@ This avoids capability-table pressure for high-rate operations (timer events,
 network packet completions) while preserving the capability model for operations
 that need first-class authority.
 
+\section{Completion-record admission}
+
+Capability-backed and detached operations share a namespace's configured
+submission-slot limit. A separate record budget counts retained state: at most
+the smaller of that capacity and 1,024 records per namespace, and 8,192 per
+node. Ordinary domains share 6,144 records; kernel-designated platform domains
+may use the remaining pool. The service loader currently configures 16 slots.
+
+A completion retains its charge while a kernel waiter or callback holds a
+strong reference, even after capability closure or domain teardown. A detached
+operation moves its charge into the CQ backlog until its result reaches the
+ring or is discarded during teardown. A fresh generation receives a fresh
+budget owner; old releases cannot credit a replacement. Closing a captured
+object also verifies its identity under the registry lock before revocation.
+
+These counts do not account for CQ backing, observer lists, weak-only Arc
+allocations or the entire kernel heap. Their admission and reclamation remain
+separate hardening work. Timer events have their own charges because deferred
+cancellation can outlive the operation record.
+
 \section{Cancellation and buffer ownership}
 
 When a userspace task drops a completion handle or explicitly cancels an

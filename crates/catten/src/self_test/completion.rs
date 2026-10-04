@@ -183,6 +183,7 @@ pub fn test_completion_caps() {
     completion::close_address_space(cq_asid);
 
     test_completion_timer_admission();
+    test_completion_record_admission();
 
     logln!("Completion-capability subsystem tests passed.");
 }
@@ -263,8 +264,14 @@ fn test_completion_timer_admission() {
         let queue = crate::timers::TIMER_QUEUES.try_get_mut().unwrap();
         completion::cancel(asid, deferred).unwrap();
         completion::close(asid, deferred).unwrap();
+        assert_eq!(completion::record_admission(asid).unwrap().used(), 0);
         assert_eq!(completion::timer_events_used(asid), 1);
         assert_eq!(completion::submit_timer(asid, 1), Err(SubmitError::WouldBlock));
+        assert_eq!(
+            completion::record_admission(asid).unwrap().used(),
+            0,
+            "timer-event rejection must roll back its staged record charge"
+        );
         drop(queue);
     }
     crate::timers::process_local_events();
@@ -301,9 +308,191 @@ fn test_completion_timer_admission() {
     );
 }
 
-/// Exercises the capability-free (detached) submission path: operations
-/// identified only by [`OperationId`], correlated by user data, and delivered
-/// exclusively through the CQ ring (architecture doc §8.4).
+/// Direct kernel ABI boundary; raw handles and retained Arcs exercise actual
+/// record lifetimes independently of the userspace capability owner.
+fn test_completion_record_admission() {
+    use completion::budget::{
+        self,
+        DomainBudget,
+    };
+    let before = budget::node_used();
+    let create = || {
+        let user_as = {
+            let _kernel = crate::memory::KERNEL_AS.lock();
+            crate::cpu::isa::memory::paging::AddressSpace::new_user()
+        };
+        crate::memory::ADDRESS_SPACE_TABLE.lock().add_element(user_as)
+    };
+    let asid = 0xc0ae_b002;
+    completion::open_address_space(asid, 1);
+    let cap = completion::submit(asid, OpCode::Nop, None).unwrap();
+    let account = completion::record_admission(asid).unwrap();
+    let retained = completion::completion_of(asid, cap).unwrap();
+    completion::complete(asid, cap, OpResult::Ok(0)).unwrap();
+    completion::close(asid, cap).unwrap();
+    assert_eq!(account.used(), 1, "a retained object outlives its closed cap");
+    assert_eq!(completion::submit(asid, OpCode::Nop, None), Err(SubmitError::WouldBlock));
+    assert_eq!(completion::submit_timer(asid, 1), Err(SubmitError::WouldBlock));
+    assert_eq!(completion::timer_events_used(asid), 0);
+    drop(retained);
+    assert_eq!(account.used(), 0);
+    let cap = completion::submit(asid, OpCode::Nop, None).unwrap();
+    completion::abort_submission(asid, cap).unwrap();
+    assert_eq!(account.used(), 0);
+    completion::close_address_space(asid);
+    crate::capability::close_address_space(asid);
+
+    completion::open_address_space_with_cq(asid, 2, 2);
+    let account = completion::record_admission(asid).unwrap();
+    let a = completion::submit_detached(asid, 0, OpCode::Nop, 11).unwrap();
+    let b = completion::submit_detached(asid, 0, OpCode::Nop, 12).unwrap();
+    assert_eq!(account.used(), 2);
+    completion::complete_detached(asid, a, OpResult::Ok(0)).unwrap();
+    assert_eq!(account.used(), 1);
+    completion::cancel_detached(asid, b).unwrap();
+    assert_eq!(account.used(), 1, "non-timer cancellation still awaits its producer");
+    completion::complete_detached(asid, b, OpResult::Ok(0)).unwrap();
+    assert_eq!(account.used(), 1, "an undelivered detached result retains its charge");
+    let cap = completion::submit(asid, OpCode::Nop, None).unwrap();
+    assert_eq!(account.used(), 2);
+    assert_eq!(completion::submit_detached(asid, 0, OpCode::Nop, 13), Err(SubmitError::WouldBlock));
+    assert_eq!(completion::submit_detached_timer(asid, 0, 1, 13), Err(SubmitError::WouldBlock));
+    assert_eq!(
+        completion::submit_detached(asid, 7, OpCode::Nop, 13),
+        Err(SubmitError::NoCompletionQueue)
+    );
+    assert_eq!(account.used(), 2);
+    completion::complete(asid, cap, OpResult::Ok(0)).unwrap();
+    completion::close(asid, cap).unwrap();
+    assert_eq!(account.used(), 1);
+    let ring = unsafe { completion::cq_ring_of(asid, 0) }.unwrap();
+    assert_eq!(unsafe { &mut *ring }.read().unwrap().cookie, 11);
+    assert_eq!(completion::cq_pending(asid, 0), 1);
+    assert_eq!(account.used(), 0, "ring delivery frees the retained record");
+    assert_eq!(unsafe { &mut *ring }.read().unwrap().cookie, 12);
+    let a = completion::submit_detached(asid, 0, OpCode::Nop, 14).unwrap();
+    let b = completion::submit_detached(asid, 0, OpCode::Nop, 15).unwrap();
+    completion::complete_detached(asid, a, OpResult::Ok(0)).unwrap();
+    completion::complete_detached(asid, b, OpResult::Ok(0)).unwrap();
+    completion::close_address_space(asid);
+    assert_eq!(account.used(), 0, "namespace teardown frees an undelivered result");
+    crate::capability::close_address_space(asid);
+    assert_eq!(budget::node_used(), before);
+
+    completion::open_address_space_with_cq(asid, 1, 2);
+    let account = completion::record_admission(asid).unwrap();
+    for cookie in [16, 17] {
+        let op = completion::submit_detached(asid, 0, OpCode::Nop, cookie).unwrap();
+        completion::complete_detached(asid, op, OpResult::Ok(0)).unwrap();
+    }
+    assert_eq!(account.used(), 1);
+    completion::open_cq(asid, 0, 2);
+    assert_eq!(account.used(), 0);
+    let cap = completion::submit(asid, OpCode::Nop, None)
+        .expect("replacing a CQ must return discarded detached submission slots");
+    completion::abort_submission(asid, cap).unwrap();
+    completion::close_address_space(asid);
+    crate::capability::close_address_space(asid);
+
+    // Independently saturate ordinary and total node pools by reservation.
+    let mut charges = alloc::vec::Vec::new();
+    let mut remaining = budget::MAX_ORDINARY_RECORDS - before.1;
+    while remaining != 0 {
+        let count = remaining.min(budget::MAX_DOMAIN_RECORDS);
+        let domain = DomainBudget::new(count);
+        for _ in 0..count {
+            charges.push(budget::reserve(&domain, false).unwrap());
+        }
+        remaining -= count;
+    }
+    let blocked = DomainBudget::new(1);
+    let full = budget::node_used();
+    assert!(budget::reserve(&blocked, false).is_err());
+    assert_eq!(blocked.used(), 0);
+    assert_eq!(budget::node_used(), full);
+    drop(budget::reserve(&blocked, true).expect("platform record reserve"));
+    let probe = create();
+    completion::open_address_space_with_cq(probe, 2, 2);
+    let probe_account = completion::record_admission(probe).unwrap();
+    assert_eq!(completion::submit(probe, OpCode::Nop, None), Err(SubmitError::WouldBlock));
+    assert_eq!(completion::submit_timer(probe, 1), Err(SubmitError::WouldBlock));
+    assert_eq!(completion::submit_detached(probe, 0, OpCode::Nop, 0), Err(SubmitError::WouldBlock));
+    assert_eq!(completion::submit_detached_timer(probe, 0, 1, 0), Err(SubmitError::WouldBlock));
+    assert_eq!(probe_account.used(), 0);
+    assert_eq!(completion::timer_events_used(probe), 0);
+    assert_eq!(budget::node_used(), full);
+    crate::memory::budget::mark_platform(
+        crate::memory::current_address_space_handle(probe).unwrap(),
+    );
+    let progress = completion::submit(probe, OpCode::Nop, None)
+        .expect("kernel-designated platform domain must use reserved records");
+    completion::abort_submission(probe, progress).unwrap();
+    crate::self_test::close_test_address_space(probe).unwrap();
+    assert_eq!(budget::node_used(), full);
+    remaining = budget::MAX_NODE_RECORDS - full.0;
+    while remaining != 0 {
+        let count = remaining.min(budget::MAX_DOMAIN_RECORDS);
+        let domain = DomainBudget::new(count);
+        for _ in 0..count {
+            charges.push(budget::reserve(&domain, true).unwrap());
+        }
+        remaining -= count;
+    }
+    let full = budget::node_used();
+    assert!(budget::reserve(&blocked, true).is_err());
+    assert_eq!(blocked.used(), 0);
+    assert_eq!(budget::node_used(), full);
+    drop(charges);
+    assert_eq!(budget::node_used(), before);
+
+    let owner = create();
+    let identity = crate::memory::current_address_space_handle(owner).unwrap();
+    completion::open_address_space_with_cq(owner, 2, 2);
+    let account = completion::record_admission(owner).unwrap();
+    let cap = completion::submit(owner, OpCode::Nop, None).unwrap();
+    let captured = completion::completion_of(owner, cap).unwrap();
+    let old_cap = cap;
+    completion::complete(owner, cap, OpResult::Ok(0)).unwrap();
+    crate::memory::budget::retire(identity);
+    assert_eq!(completion::submit(owner, OpCode::Nop, None), Err(SubmitError::UnknownAddressSpace));
+    assert_eq!(completion::submit_timer(owner, 1), Err(SubmitError::UnknownAddressSpace));
+    assert_eq!(
+        completion::submit_detached(owner, 0, OpCode::Nop, 0),
+        Err(SubmitError::UnknownAddressSpace)
+    );
+    assert_eq!(
+        completion::submit_detached_timer(owner, 0, 1, 0),
+        Err(SubmitError::UnknownAddressSpace)
+    );
+    assert_eq!(account.used(), 1);
+    crate::self_test::close_test_address_space(owner).unwrap();
+    assert_eq!(account.used(), 1);
+    let replacement = create();
+    assert_eq!(replacement, owner);
+    assert_ne!(crate::memory::current_address_space_handle(replacement).unwrap(), identity);
+    completion::open_address_space(replacement, 1);
+    let cap = completion::submit(replacement, OpCode::Nop, None).unwrap();
+    let fresh = completion::record_admission(replacement).unwrap();
+    assert_eq!(cap, old_cap, "fixture must reuse the exact numeric capability");
+    assert_eq!(
+        completion::close_registered(replacement, cap, captured.clone()),
+        Err(completion::CapError::UnknownCap)
+    );
+    assert_eq!(completion::state_of(replacement, cap).unwrap(), OpStateKind::InFlight);
+    drop(captured);
+    assert_eq!(account.used(), 0);
+    assert_eq!(fresh.used(), 1, "old-generation release cannot credit replacement");
+    completion::abort_submission(replacement, cap).unwrap();
+    crate::self_test::close_test_address_space(replacement).unwrap();
+    assert_eq!(budget::node_used(), before);
+    logln!(
+        "[completion records] quotas, retained objects/results, rollback, retirement and ASID \
+         reuse passed"
+    );
+}
+
+/// Exercises the capability-free submission path: operations identified by
+/// OperationId, correlated by user data and delivered through their CQ ring.
 pub fn test_detached_operations() {
     logln!("Testing capability-free (detached) completion path...");
 

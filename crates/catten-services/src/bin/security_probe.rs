@@ -12,6 +12,7 @@ use catten_rt::{
     owned::{
         CallResult,
         Completion,
+        Connection,
         ConnectionRef,
         Endpoint,
         OwnedMemory,
@@ -36,6 +37,20 @@ const MISSING: &[u8] = b"security.missing";
 const SILENT: &[u8] = b"security.silent";
 const PING: u32 = 0x5ec;
 const PONG: i64 = 0x5eccafe;
+
+/// Closing the endpoint must precede dropping pending watches, whose Drop
+/// waits for a terminal result. One owner enforces that order on every path.
+struct CloseWatches {
+    endpoint: Option<Endpoint>,
+    connection: Connection,
+    completions: Vec<Completion>,
+}
+
+impl Drop for CloseWatches {
+    fn drop(&mut self) {
+        drop(self.endpoint.take());
+    }
+}
 
 fn check(condition: bool, failure: u32) {
     if !condition {
@@ -355,6 +370,40 @@ fn main(ctx: Context) -> ! {
         drop(Endpoint::create(0x5ef, 1, 1).unwrap_or_else(|_| catten_rt::domain_abort()));
     }
     checks |= 4_096;
+    let watched = Endpoint::create(0x5f0, 1, 1).unwrap_or_else(|_| catten_rt::domain_abort());
+    let watched_connection =
+        watched.connect(IpcRights::CALL).unwrap_or_else(|_| catten_rt::domain_abort());
+    let mut watches = CloseWatches {
+        endpoint: Some(watched),
+        connection: watched_connection,
+        completions: Vec::new(),
+    };
+    for _ in 0..2_048 {
+        match watches.connection.watch_closed() {
+            Ok(completion) => watches.completions.push(completion),
+            Err(catten_rt::owned::CompletionError::SubmissionFailed) => break,
+            Err(_) => check(false, 27),
+        }
+    }
+    check(
+        (4..=1_024).contains(&watches.completions.len())
+            && watches.connection.watch_closed().is_err()
+            && Completion::timer(1).is_err(),
+        28,
+    );
+    check(
+        wait(connection.call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort()), &endpoint)
+            .result
+            == PONG,
+        29,
+    );
+    drop(watches.endpoint.take());
+    for completion in watches.completions.drain(..) {
+        check(completion.wait() == Ok(catten_syscall::IPC_REPLY_ENDPOINT_CLOSED), 30);
+    }
+    drop(watches);
+    check(Completion::timer(1).and_then(Completion::wait).is_ok(), 31);
+    checks |= 8_192;
     config::write::<u32>(status::CHECKS, checks);
     config::write::<u32>(status::STAGE, status::PASSED);
     catten_rt::logln!("[security-probe] passed checks={:#x}", checks);

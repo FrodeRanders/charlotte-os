@@ -14,6 +14,9 @@ should be updated with the implementation when those contracts change.
 - [Completion-timer budgets](completion-timer-budgets.md) — domain/node event
   admission, reserved platform progress, cancellation ownership and deferred
   queue reclamation.
+- [Completion-record budgets](completion-record-budgets.md) — retained-object
+  and detached-result admission, node/platform pools, generation fencing and
+  CQ replacement cleanup.
 - [Endpoint budgets](endpoint-budgets.md) — endpoint and queue backing
   admission, transactional growth, retained delegation and generation-safe
   cleanup.

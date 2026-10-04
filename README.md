@@ -70,6 +70,8 @@ The main additions and extensions currently maintained here are:
   [endpoint/queue](docs/reference/endpoint-budgets.md) admission retain charges
   through transfers and delayed cleanup; comprehensive kernel-resource
   containment remains work in progress.
+  [Completion-record budgets](docs/reference/completion-record-budgets.md)
+  also cover retained strong references and undelivered detached results.
 - **Protected userspace device I/O:** reference UART, NVMe, AHCI, virtio-blk,
   virtio-net, E1000E, and VirtIO RNG drivers receive only delegated MMIO,
   interrupt, and DMA authority. Arm SMMUv3, Intel VT-d, and AMD-Vi isolate

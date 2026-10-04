@@ -81,7 +81,9 @@ Host tests check multidimensional overflow/underflow and atomic rejection.
 
 These controls do not bound the complete capability namespace, connections,
 pending calls, reply tokens, observer lists, attachment vectors, all completion
-records, loader/page tables or the entire kernel heap. Allocation of registry
+metadata, loader/page tables or the entire kernel heap. Separate
+[record budgets](completion-record-budgets.md) cover retained completion objects
+and detached results. Allocation of registry
 and capability metadata is still infallible. No allocator-failure injection,
 sustained hostile-pressure soak or per-principal aggregate across multiple
 domains is claimed. SEC-07 remains partially implemented; deployment still

@@ -270,8 +270,10 @@ repository history remain authoritative.
         deferred cancellation. Endpoint records and preallocated queue backing
         have domain/node admission with staged-growth rollback and original
         generation charges retained through delegation. Aggregate limits for the full capability
-        namespace, connection/call/observer metadata, general completions, other timer paths and
+        namespace, connection/call/observer metadata, CQ and weak-only backing, other timer paths and
         kernel metadata remain incomplete.
+        Completion records now have separate domain/node admission, retained
+        through strong references and undelivered detached results.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are
