@@ -18,6 +18,8 @@ should be updated with the implementation when those contracts change.
   kernel backing bytes, fallible replacement and loader rollback.
 - [Endpoint-close watch budgets](close-watch-budgets.md) — bounded one-shot
   registrations, local cancellation and transactional submission.
+- [Scheduler waiter budgets](scheduler-waiter-budgets.md) — owned completion/CQ
+  registrations, admission before parking and cleanup after competing wakes.
 - [Completion-record budgets](completion-record-budgets.md) — retained-object
   and detached-result admission, node/platform pools, generation fencing and
   CQ replacement cleanup.

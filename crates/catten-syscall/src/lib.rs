@@ -282,6 +282,9 @@ pub mod completion_status {
     pub const READY: CompletionStatusCode = 0;
     pub const PENDING_OR_TIMEOUT: CompletionStatusCode = 1;
     pub const INVALID_CAPABILITY: CompletionStatusCode = 2;
+    /// No waiter was admitted. The operation and capability remain live;
+    /// retry, poll, or cancel and wait for terminal completion before closing.
+    pub const WAIT_ADMISSION_FAILED: CompletionStatusCode = 3;
 }
 
 // ---- endpoint IPC constants -----------------------------------------------
@@ -1519,7 +1522,9 @@ pub fn mailbox_recv_raw() -> (u64, u64) {
 /// Block on a capability with a timeout in milliseconds.
 /// Returns `(`[`completion_status::READY`]`, result_code)` on completion,
 /// `(`[`completion_status::PENDING_OR_TIMEOUT`]`, 0)` on timeout, and
-/// `(`[`completion_status::INVALID_CAPABILITY`]`, 0)` for an invalid cap.
+/// `(`[`completion_status::INVALID_CAPABILITY`]`, 0)` for an invalid cap, or
+/// `(`[`completion_status::WAIT_ADMISSION_FAILED`]`, 0)` if waiter admission
+/// fails. Timeout and admission failure do not consume the capability.
 #[inline(always)]
 pub fn wait_timeout(cap: u64, timeout_ms: u64) -> (u64, u64) {
     unsafe { svc3_x1(SyscallNumber::CompletionWaitTimeout, cap, timeout_ms, 0) }
@@ -1527,6 +1532,7 @@ pub fn wait_timeout(cap: u64, timeout_ms: u64) -> (u64, u64) {
 
 /// Block until CQ `cq` of the caller has at least `min_complete` pending
 /// entries or an explicit wake is posted to it.  Returns the pending count.
+/// If waiter admission fails, returns without parking; recheck the work condition.
 #[inline(always)]
 pub fn cq_wait(min_complete: u64, cq: u32) -> u64 {
     unsafe { svc3(SyscallNumber::CqWait, min_complete, cq as u64, 0) }
@@ -1542,7 +1548,8 @@ pub fn cq_wake(cq: u32) -> u64 {
 
 /// Block until CQ `cq` of the caller has at least `min_complete` entries, an
 /// explicit wake is posted to it, or `timeout_ms` elapses. Returns
-/// `(pending, timed_out)` where `timed_out` is 1 if the deadline fired first.
+/// `(pending, timed_out)` where `timed_out` is 1 if no work was observed,
+/// including deadline expiry or failed waiter admission.
 #[inline(always)]
 pub fn cq_wait_timeout(min_complete: u64, timeout_ms: u64, cq: u32) -> (u64, u64) {
     unsafe { svc3_x1(SyscallNumber::CqWaitTimeout, min_complete, timeout_ms, cq as u64) }

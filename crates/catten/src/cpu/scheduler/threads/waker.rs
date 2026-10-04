@@ -40,12 +40,25 @@ macro_rules! sched_trace {
     };
 }
 
-#[derive(Debug, PartialEq, PartialOrd, Eq, Ord)]
-pub struct Waker(ThreadId, ThreadGeneration);
+#[derive(Debug)]
+pub struct Waker(
+    ThreadId,
+    ThreadGeneration,
+    crate::cpu::multiprocessor::spin::mutex::Mutex<Option<crate::klib::observer::WaitRegistration>>,
+);
 
 impl Waker {
     pub fn new(tid: ThreadId, generation: ThreadGeneration) -> Self {
-        Self(tid, generation)
+        Self(tid, generation, crate::cpu::multiprocessor::spin::mutex::Mutex::new(None))
+    }
+
+    pub(crate) fn set_registration(&self, registration: crate::klib::observer::WaitRegistration) {
+        *self.2.lock() = Some(registration);
+    }
+
+    pub(crate) fn cancel_registration(&self) {
+        let registration = self.2.lock().take();
+        drop(registration);
     }
 }
 

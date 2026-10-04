@@ -43,6 +43,8 @@ Any live state ── abort_thread_generation(tid, generation)
 | T7 | When the wake source does not exist before `block_thread()` (for example `sleep()`), publishing `Blocked` and installing that wake source form one local non-preemptible transaction. |
 | T8 | Delayed cancellation and cleanup carry `(tid, generation)`; a stale request cannot retire a newer thread that reused the numeric TID. |
 | T9 | Domain quiescence requires an unchanged retirement epoch across the live/staged table snapshots and no retirement in flight. The reaper retains its retirement guard while threads are held in its local vector, through deferred reinsertion and final resource release. |
+| T10 | Fallible waiter admission precedes queue removal and `Blocked` publication. Failure leaves state, queue membership and constraints unchanged; an immediate-ready outcome does not park. |
+| T11 | Ready admission cancels an owned completion/CQ registration even if another strong Waker survives. Reaping a Blocked thread cancels it as well; detached batches retain their own admission until released. |
 
 ### Lock order for transitions
 

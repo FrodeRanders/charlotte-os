@@ -941,6 +941,48 @@ mod tests {
     }
 
     #[test]
+    fn completion_wait_admission_failure_preserves_owner_for_retry() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.wait_timeout = VecDeque::from([
+                (catten_syscall::completion_status::WAIT_ADMISSION_FAILED, 0),
+                (catten_syscall::completion_status::READY, 42),
+            ]);
+        });
+        let mut completion = Completion::submit(OpCode::Nop).expect("submission");
+        assert_eq!(
+            completion.wait_timeout(1),
+            Err(super::CompletionError::Status(
+                catten_syscall::completion_status::WAIT_ADMISSION_FAILED
+            ))
+        );
+        assert!(kernel::events().is_empty());
+        assert_eq!(completion.wait_timeout(1), Ok(Some(42)));
+        drop(completion);
+        assert_eq!(kernel::events(), [kernel::Event::CompletionClose(20)]);
+    }
+
+    #[test]
+    fn completion_wait_admission_failure_preserves_drop_cleanup() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.wait_timeout =
+                VecDeque::from([(catten_syscall::completion_status::WAIT_ADMISSION_FAILED, 0)]);
+        });
+        let mut completion = Completion::submit(OpCode::Nop).expect("submission");
+        assert!(completion.wait_timeout(1).is_err());
+        drop(completion);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::CompletionCancel(20),
+                kernel::Event::CompletionWait(20),
+                kernel::Event::CompletionClose(20),
+            ]
+        );
+    }
+
+    #[test]
     fn failed_move_returns_memory_to_the_caller() {
         let _guard = setup();
         kernel::update(|state| state.ipc_send_move = catten_syscall::ipc_status::QUEUE_FULL);

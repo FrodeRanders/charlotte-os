@@ -77,6 +77,9 @@ The main additions and extensions currently maintained here are:
   rollback of partially loaded domains.
   [Endpoint-close watches](docs/reference/close-watch-budgets.md) have bounded,
   owning registrations: dropping a watch cancels it without closing its endpoint.
+  [Completion/CQ waiters](docs/reference/scheduler-waiter-budgets.md) admit
+  bounded, generation-sponsored registrations before parking and unlink them
+  when a competing wake wins.
 - **Protected userspace device I/O:** reference UART, NVMe, AHCI, virtio-blk,
   virtio-net, E1000E, and VirtIO RNG drivers receive only delegated MMIO,
   interrupt, and DMA authority. Arm SMMUv3, Intel VT-d, and AMD-Vi isolate

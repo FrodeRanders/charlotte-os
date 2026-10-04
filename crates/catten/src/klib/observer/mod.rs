@@ -1,6 +1,7 @@
 //! Observer pattern implementation for event notification
 
 pub(crate) mod registration;
+pub(crate) mod waiter_budget;
 
 use alloc::sync::{
     Arc,
@@ -9,6 +10,80 @@ use alloc::sync::{
 
 pub trait Observable {
     fn register_observer(&self, observer: Weak<dyn Observer>);
+
+    /// Never invoke callbacks inline: the scheduler holds its thread table.
+    /// Converted sources return an owning, fallible registration. Legacy
+    /// sources retain their old unbounded storage and return a marked token.
+    fn try_register_waiter(
+        &self,
+        observer: Weak<dyn Observer>,
+        _sponsor: &WaitSponsor,
+    ) -> Result<WaitRegistration, registration::RegistrationError> {
+        self.register_observer(observer);
+        Ok(WaitRegistration::legacy())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WaitSponsor(Arc<waiter_budget::DomainBudget>);
+impl WaitSponsor {
+    pub(crate) fn new(platform: bool) -> Self {
+        Self(waiter_budget::DomainBudget::new(platform))
+    }
+
+    pub(crate) fn retire(&self) {
+        self.0.retire();
+    }
+
+    pub(crate) fn mark_platform(&self) {
+        self.0.mark_platform();
+    }
+
+    pub(crate) fn used(&self) -> usize {
+        self.0.used()
+    }
+
+    pub(crate) fn register(
+        &self,
+        list: &Arc<registration::ObserverList<waiter_budget::Charge>>,
+        observer: Weak<dyn Observer>,
+    ) -> Result<WaitRegistration, registration::RegistrationError> {
+        let charge = waiter_budget::reserve(&self.0)?;
+        Ok(WaitRegistration {
+            owned: Some(list.register(observer, charge)?),
+            ready: false,
+        })
+    }
+}
+
+#[must_use = "retain an owning waiter registration until wake or cancellation"]
+#[derive(Debug)]
+pub struct WaitRegistration {
+    owned: Option<registration::Registration<waiter_budget::Charge>>,
+    ready: bool,
+}
+impl WaitRegistration {
+    pub(crate) const fn legacy() -> Self {
+        Self {
+            owned: None,
+            ready: false,
+        }
+    }
+
+    pub(crate) const fn ready() -> Self {
+        Self {
+            owned: None,
+            ready: true,
+        }
+    }
+
+    pub(crate) fn is_ready(&self) -> bool {
+        self.ready
+    }
+
+    pub(crate) fn is_owned(&self) -> bool {
+        self.owned.is_some()
+    }
 }
 
 /// An `Observer` is an object that can be notified of events by an `Observable`.

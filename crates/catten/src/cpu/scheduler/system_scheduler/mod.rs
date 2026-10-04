@@ -136,6 +136,7 @@ pub enum Error {
     AlreadyBlocked,
     DomainThreadLimitExceeded,
     ThreadTerminated,
+    WaitRegistrationFailed,
 }
 
 /// The system-wide thread scheduler
@@ -508,14 +509,10 @@ impl SystemScheduler {
                 // until its waker fires and re-admits it.
             }
             ThreadState::Ready(lp_id) => {
-                // Queued but not running: pull it out of the run queue.
                 let guard = lp_guard.as_mut().ok_or(Error::InvalidThread)?;
                 if guard.get_lp_id() != lp_id {
                     return Err(Error::InvalidThread);
                 }
-                guard
-                    .remove_thread(tid, Some(thread.generation))
-                    .expect("Error removing thread from LP scheduler while blocking");
             }
             ThreadState::NeedsLpAssignment => {}
             ThreadState::Blocked(_) => {
@@ -523,9 +520,27 @@ impl SystemScheduler {
             }
         }
         let generation = thread.generation;
-        let waker = Arc::new(waker::Waker::new(tid, generation));
-        event
-            .register_observer(Arc::downgrade(&waker) as Weak<dyn crate::klib::observer::Observer>);
+        let waker = Arc::try_new(waker::Waker::new(tid, generation))
+            .map_err(|_| Error::WaitRegistrationFailed)?;
+        let registration = event
+            .try_register_waiter(
+                Arc::downgrade(&waker) as Weak<dyn crate::klib::observer::Observer>,
+                &thread.wait_sponsor,
+            )
+            .map_err(|_| Error::WaitRegistrationFailed)?;
+        if registration.is_ready() {
+            return Ok(generation);
+        }
+        waker.set_registration(registration);
+        // Admission precedes removing a queued thread or publishing Blocked.
+        // A rejected registration leaves state, queue and constraints intact.
+        if let ThreadState::Ready(_) = thread.state {
+            lp_guard
+                .as_mut()
+                .unwrap()
+                .remove_thread(tid, Some(generation))
+                .map_err(|_| Error::InvalidThread)?;
+        }
         thread.add_migration_constraint(constraint);
         thread.state = ThreadState::Blocked(waker);
         Ok(generation)

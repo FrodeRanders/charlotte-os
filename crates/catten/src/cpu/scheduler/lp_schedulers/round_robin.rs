@@ -353,7 +353,8 @@ impl LpScheduler for RoundRobin {
                 Ok(())
             }
             ThreadState::NeedsLpAssignment | ThreadState::Blocked(_) => {
-                if matches!(thread.state, ThreadState::Blocked(_)) {
+                if let ThreadState::Blocked(waker) = &thread.state {
+                    waker.cancel_registration();
                     thread.clear_blocking_migration_constraints();
                 }
                 thread.state = ThreadState::Ready(self.lp_id);

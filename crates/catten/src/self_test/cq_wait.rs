@@ -48,6 +48,173 @@ static ROUND4_RELEASED: AtomicU32 = AtomicU32::new(0);
 /// The CQ-bound endpoint (owner side) and the sender's connection cap.
 static ENDPOINT_CAP: AtomicU64 = AtomicU64::new(0);
 static SENDER_CONN: AtomicU64 = AtomicU64::new(0);
+static ADMISSION_WORKER_RAN: AtomicU32 = AtomicU32::new(0);
+
+extern "C" fn admission_worker() {
+    ADMISSION_WORKER_RAN.store(1, Ordering::Release);
+}
+
+fn test_scheduler_waiter_admission() {
+    use alloc::sync::{
+        Arc,
+        Weak,
+    };
+
+    use crate::{
+        cpu::{
+            isa::lp::ops::get_lp_id,
+            scheduler::{
+                spawn_thread_on_lp,
+                system_scheduler::{
+                    Error,
+                    SYSTEM_SCHEDULER,
+                    get_thread_id,
+                    publish_thread,
+                },
+                threads::{
+                    MASTER_THREAD_TABLE,
+                    MigrationConstraint,
+                    Thread,
+                    ThreadState,
+                },
+            },
+        },
+        klib::observer::{
+            Observable,
+            Observer,
+            WaitRegistration,
+            WaitSponsor,
+            registration::{
+                ObserverList,
+                RegistrationError,
+            },
+            waiter_budget,
+        },
+    };
+    struct Reject;
+    impl Observable for Reject {
+        fn register_observer(&self, _: Weak<dyn Observer>) {
+            panic!("scheduler must use the fallible waiter path");
+        }
+
+        fn try_register_waiter(
+            &self,
+            _: Weak<dyn Observer>,
+            _: &WaitSponsor,
+        ) -> Result<WaitRegistration, RegistrationError> {
+            Err(RegistrationError::ResourceLimit)
+        }
+    }
+    struct Source(Arc<ObserverList<waiter_budget::Charge>>);
+    impl Observable for Source {
+        fn register_observer(&self, _: Weak<dyn Observer>) {
+            panic!("scheduler must use owning waiter registration");
+        }
+
+        fn try_register_waiter(
+            &self,
+            observer: Weak<dyn Observer>,
+            sponsor: &WaitSponsor,
+        ) -> Result<WaitRegistration, RegistrationError> {
+            sponsor.register(&self.0, observer)
+        }
+    }
+    let current = get_thread_id().unwrap();
+    let constraints = MASTER_THREAD_TABLE.read().get(current).unwrap().migration_constraints;
+    assert!(matches!(
+        SYSTEM_SCHEDULER.read().block_thread(current, &Reject),
+        Err(Error::WaitRegistrationFailed)
+    ));
+    {
+        let table = MASTER_THREAD_TABLE.read();
+        let thread = table.get(current).unwrap();
+        assert!(matches!(thread.state, ThreadState::Running(_)));
+        assert_eq!(thread.migration_constraints, constraints);
+    }
+
+    // This IRQ-safe guard prevents local dispatch while examining a Ready
+    // worker. It is pinned to this LP and never certified for migration.
+    let barrier = crate::cpu::multiprocessor::spin::mutex::Mutex::new(());
+    let guard = barrier.lock();
+    let worker = spawn_thread_on_lp(KERNEL_ASID, admission_worker, get_lp_id());
+    assert!(matches!(
+        SYSTEM_SCHEDULER.read().block_thread(worker, &Reject),
+        Err(Error::WaitRegistrationFailed)
+    ));
+    let (generation, constraints) = {
+        let table = MASTER_THREAD_TABLE.read();
+        let thread = table.get(worker).unwrap();
+        assert!(matches!(thread.state, ThreadState::Ready(lp) if lp == get_lp_id()));
+        assert_eq!(
+            thread.migration_constraints, 0,
+            "rejected Ready registration must not add constraints"
+        );
+        (thread.generation, thread.migration_constraints)
+    };
+    let source = Source(ObserverList::try_new(waiter_budget::SOURCE_LIMIT).unwrap());
+    SYSTEM_SCHEDULER
+        .read()
+        .block_thread_with_constraint(worker, &source, MigrationConstraint::GeneralWait)
+        .unwrap();
+    let retained_waker = {
+        let table = MASTER_THREAD_TABLE.read();
+        let ThreadState::Blocked(waker) = &table.get(worker).unwrap().state else {
+            panic!("admitted worker must be Blocked");
+        };
+        waker.clone()
+    };
+    assert_eq!(source.0.registered(), 1);
+    SYSTEM_SCHEDULER.read().submit_woken_thread(worker, generation).unwrap();
+    assert_eq!(source.0.registered(), 0, "Ready cancels even a retained Waker's registration");
+    assert_eq!(MASTER_THREAD_TABLE.read().get(worker).unwrap().migration_constraints, constraints);
+    drop(retained_waker);
+    drop(guard);
+    spin_until(&ADMISSION_WORKER_RAN, "worker left runnable after admission checks");
+
+    // A never-dispatched Blocked thread releases admission on reaping even
+    // when its Waker survives. It is never submitted to a runnable queue.
+    let staged = publish_thread(Thread::new(KERNEL_ASID, admission_worker)).unwrap();
+    assert!(matches!(
+        SYSTEM_SCHEDULER.read().block_thread(staged, &Reject),
+        Err(Error::WaitRegistrationFailed)
+    ));
+    assert!(matches!(
+        MASTER_THREAD_TABLE.read().get(staged).unwrap().state,
+        ThreadState::NeedsLpAssignment
+    ));
+    let generation = SYSTEM_SCHEDULER
+        .read()
+        .block_thread_with_constraint_generation(staged, &source, MigrationConstraint::GeneralWait)
+        .unwrap();
+    let retained_waker = {
+        let table = MASTER_THREAD_TABLE.read();
+        let ThreadState::Blocked(waker) = &table.get(staged).unwrap().state else {
+            panic!("staged worker must be Blocked");
+        };
+        waker.clone()
+    };
+    SYSTEM_SCHEDULER.read().abort_thread_generation(staged, generation).unwrap();
+    let deadline = crate::self_test::results::Deadline::after_millis(5_000);
+    while source.0.registered() != 0 {
+        deadline.assert_pending("aborted waiter registration released by reaper");
+        crate::cpu::scheduler::yield_lp();
+    }
+    drop(retained_waker);
+
+    let cap = completion::submit(CQW_ASID, OpCode::Nop, None).unwrap();
+    for _ in 0..64 {
+        assert!(!completion::wait_timeout(CQW_ASID, cap, 1).unwrap());
+        assert_eq!(completion::waiter_count(CQW_ASID, cap), 0);
+        assert!(!completion::wait_on_cq_timeout(CQW_ASID, 2, 1, 1));
+        assert_eq!(completion::cq_waiter_count(CQW_ASID, 2), 0);
+    }
+    completion::complete(CQW_ASID, cap, OpResult::Ok(0)).unwrap();
+    completion::close(CQW_ASID, cap).unwrap();
+    logln!(
+        "[waiters] SUCCESS: Running/Ready rejection is non-mutating; retained-Waker cancellation; \
+         64 completion/CQ timeout cleanups"
+    );
+}
 
 fn spin_until(flag: &AtomicU32, what: &str) {
     let deadline = crate::self_test::results::Deadline::after_millis(10_000);
@@ -138,6 +305,8 @@ extern "C" fn cq_driver() {
         .expect("[cq wait] endpoint readiness send failed");
     spin_until(&ROUND4_RELEASED, "endpoint readiness release");
 
+    test_scheduler_waiter_admission();
+
     logln!(
         "[cq wait] SUCCESS: blocking CQ wait released by completion, by explicit wake, by a \
          per-queue wake on a second shard queue, and by CQ-bound endpoint readiness."
@@ -149,6 +318,7 @@ pub fn test_cq_wait_wake() {
     logln!("Testing blocking CQ wait (completion, wake, and endpoint readiness releases)...");
     completion::open_address_space_with_cq(CQW_ASID, 8, 8).expect("CQ setup failed");
     completion::open_cq(CQW_ASID, 1, 8).expect("CQ setup failed");
+    completion::open_cq(CQW_ASID, 2, 8).expect("CQ setup failed");
 
     // A CQ-bound endpoint: readiness is delivered as a coalesced wake on
     // queue 0 (unified shard wait).

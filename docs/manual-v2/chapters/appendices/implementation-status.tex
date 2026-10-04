@@ -278,8 +278,13 @@ repository history remain authoritative.
         fallible staging and loader rollback. Physical ring pages remain owned
         by mappings and outside the CQ heap-byte counter.
         Endpoint-close watches have bounded one-shot entries, locally cancellable
-        owning tokens and transactional submission rollback. Other scheduler
-        observer registrations still require fallible admission and cancellation.
+        owning tokens and transactional submission rollback. Completion/CQ
+        scheduler waiters have bounded generation-sponsored entries, admission
+        before parking and owning cancellation on competing wake or reaping.
+        Timed admission failures retain the completion owner; untimed waits
+        preserve terminal-state and borrowed-buffer safety through cooperative
+        retry. Legacy lock/readiness/call/timer observers and watchdog storage
+        still require migration and admission.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are

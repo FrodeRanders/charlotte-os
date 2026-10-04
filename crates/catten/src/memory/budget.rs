@@ -31,6 +31,7 @@ struct DomainAccount {
     platform: bool,
     retired: bool,
     closed: bool,
+    waiters: crate::klib::observer::WaitSponsor,
 }
 
 struct Ledger {
@@ -72,6 +73,7 @@ impl Ledger {
             platform: identity.0 == KERNEL_ASID,
             retired: false,
             closed: false,
+            waiters: crate::klib::observer::WaitSponsor::new(identity.0 == KERNEL_ASID),
         })
     }
 }
@@ -181,6 +183,7 @@ pub(crate) fn mark_platform(handle: AddressSpaceHandle) {
     let mut ledger = LEDGER.lock();
     let account = ledger.account((handle.id(), handle.generation()));
     assert!(!account.retired);
+    account.waiters.mark_platform();
     if !account.platform {
         account.platform = true;
         let used = account.budget.used();
@@ -191,7 +194,17 @@ pub(crate) fn mark_platform(handle: AddressSpaceHandle) {
 pub(crate) fn retire(handle: AddressSpaceHandle) {
     let mut ledger = LEDGER.lock();
     let identity = (handle.id(), handle.generation());
-    ledger.account(identity).retired = true;
+    let account = ledger.account(identity);
+    account.retired = true;
+    account.waiters.retire();
+}
+
+/// Capture a generation-owned sponsor at thread construction, not while
+/// parking under the master table. Reservation needs only counter locks.
+pub(crate) fn waiter_sponsor(asid: AddressSpaceId) -> crate::klib::observer::WaitSponsor {
+    let table = super::ADDRESS_SPACE_TABLE.lock();
+    let generation = table.generation(asid).expect("waiter sponsor requires live ASID");
+    LEDGER.lock().account((asid, generation)).waiters.clone()
 }
 
 pub(crate) fn forget(handle: AddressSpaceHandle) {

@@ -73,6 +73,12 @@ failure; registration has independent [admission limits](../reference/close-watc
 This does not make every completion's Drop nonblocking: a buffer-bearing
 operation must still wait until its producer can no longer touch borrowed data.
 
+For timed completion waits, `CompletionError::Status(WAIT_ADMISSION_FAILED)`
+means the operation is still live and its owner is retained. Retry or poll, or
+let Drop cancel and wait; do not release borrowed operation buffers on this
+error. Untimed completion waiting preserves terminal-state semantics even when
+waiter admission is exhausted. See [scheduler waiter budgets](../reference/scheduler-waiter-budgets.md).
+
 For a borrow, pass `&memory` or `&mut memory` to `call_borrow_read` or
 `call_borrow_write`. `PendingCall<'memory>` retains that borrow until the reply
 is observed or the call is dropped, preventing concurrent CPU access.

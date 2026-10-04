@@ -126,9 +126,16 @@ endpoint remains live, then churns 128 more watches within five seconds. A new
 watch must still be pending until the endpoint closes; a short timer checks
 recovery. Synchronous registration tests cover entry limits, rollback,
 detached notification storage, callback reentrancy, a late callback after
-cancellation, retirement and reuse. Other scheduler observer paths are not
-covered by this owning-registration change. See
+cancellation, retirement and reuse. See
 [close-watch budgets](../reference/close-watch-budgets.md).
+
+Completion/CQ waiter tests keep the fifteen-bit scoped mask unchanged. Kernel
+tests cover source/domain/node admission and rollback, detached entries,
+promotion and ASID reuse; the scheduled CQ verifier checks Running/Ready/new
+rejection, wake/reap cleanup despite a retained Waker and 64 completion/CQ timeout cycles.
+Host owner tests check retry and Drop after timed admission failure. Legacy
+observer paths and allocator-failure injection remain outside this coverage.
+See [scheduler waiter budgets](../reference/scheduler-waiter-budgets.md).
 
 The scoped application verifier does not force ASID reuse, restart the grant
 controller, inject allocation failures or prove many-client fairness. It does

@@ -288,13 +288,25 @@ pub struct Completion {
     operation: OperationId,
     inner: Mutex<CompletionInner>,
     observers: ConcurrentQueue<Weak<dyn Observer>>,
+    waiters: Arc<
+        crate::klib::observer::registration::ObserverList<
+            crate::klib::observer::waiter_budget::Charge,
+        >,
+    >,
     // Last: release admission after retained state and observers are dropped.
     _record_charge: budget::Charge,
 }
 
 impl Completion {
-    fn new(buffer: Option<Vec<u8>>, record_charge: budget::Charge) -> Arc<Self> {
-        Arc::new(Self {
+    fn new(
+        buffer: Option<Vec<u8>>,
+        record_charge: budget::Charge,
+    ) -> Result<Arc<Self>, SubmitError> {
+        let waiters = crate::klib::observer::registration::ObserverList::try_new(
+            crate::klib::observer::waiter_budget::SOURCE_LIMIT,
+        )
+        .map_err(|_| SubmitError::WouldBlock)?;
+        Arc::try_new(Self {
             operation: alloc_operation_id(),
             inner: Mutex::new(CompletionInner {
                 buffer,
@@ -305,8 +317,10 @@ impl Completion {
                 event_observation: None,
             }),
             observers: ConcurrentQueue::unbounded(),
+            waiters,
             _record_charge: record_charge,
         })
+        .map_err(|_| SubmitError::WouldBlock)
     }
 
     fn operation_id(&self) -> OperationId {
@@ -397,6 +411,7 @@ impl Completion {
     }
 
     fn signal(&self) {
+        self.waiters.close().notify();
         while let Ok(observer) = self.observers.pop() {
             if let Some(observer) = observer.upgrade() {
                 observer.notify();
@@ -443,9 +458,30 @@ impl Completion {
 
 impl Observable for Completion {
     fn register_observer(&self, observer: Weak<dyn Observer>) {
-        // Legacy unbounded waiter path. Bounded rejection requires scheduler
-        // rollback: silently losing registration can strand a parked thread.
+        // Legacy raw kernel callback path, still outside waiter admission.
+        // Scheduler waiters use the fallible owning override below.
         let _ = self.observers.push(observer);
+    }
+
+    fn try_register_waiter(
+        &self,
+        observer: Weak<dyn Observer>,
+        sponsor: &crate::klib::observer::WaitSponsor,
+    ) -> Result<
+        crate::klib::observer::WaitRegistration,
+        crate::klib::observer::registration::RegistrationError,
+    > {
+        if self.is_terminal() {
+            return Ok(crate::klib::observer::WaitRegistration::ready());
+        }
+        match sponsor.register(&self.waiters, observer) {
+            Err(crate::klib::observer::registration::RegistrationError::Closed)
+                if self.is_terminal() =>
+            {
+                Ok(crate::klib::observer::WaitRegistration::ready())
+            }
+            result => result,
+        }
     }
 }
 
@@ -534,7 +570,11 @@ struct CqState {
     /// cursor per waiter rather than this queue-wide cursor.
     last_seen_generation: u64,
     /// Threads blocked waiting for this queue to become readable.
-    observers: ConcurrentQueue<Weak<dyn Observer>>,
+    waiters: Arc<
+        crate::klib::observer::registration::ObserverList<
+            crate::klib::observer::waiter_budget::Charge,
+        >,
+    >,
     #[allow(dead_code)]
     _buf: Option<alloc::vec::Vec<u64>>,
     // Last: free heap backing before returning admission.
@@ -595,6 +635,12 @@ impl CqState {
         true
     }
 }
+
+impl Drop for CqState {
+    fn drop(&mut self) {
+        drop(self.waiters.close());
+    }
+}
 struct AsCompletions {
     table: BTreeMap<CompletionCap, Arc<Completion>>,
     /// Shared upper bound for capability records, in-flight detached
@@ -621,6 +667,7 @@ impl Drop for AsCompletions {
         // completion object. Only independent list locks are entered here.
         for completion in self.table.values() {
             completion.release_event_observation();
+            drop(completion.waiters.close());
         }
     }
 }
@@ -793,7 +840,10 @@ fn stage_cq(
         retained_limit: entries.capacity,
         work_generation: 0,
         last_seen_generation: 0,
-        observers: ConcurrentQueue::unbounded(),
+        waiters: crate::klib::observer::registration::ObserverList::try_new(
+            crate::klib::observer::waiter_budget::SOURCE_LIMIT,
+        )
+        .map_err(|_| CqOpenError::AllocationFailed)?,
         _buf: None,
         _storage_charge: charge,
     };
@@ -962,8 +1012,8 @@ fn submit_captured(
     } else {
         None
     };
+    let completion = Completion::new(buffer, record_charge)?;
     let cap = crate::capability::allocate(asid, crate::capability::ObjectKind::Completion);
-    let completion = Completion::new(buffer, record_charge);
     as_completions.table.insert(cap, completion.clone());
     as_completions.live += 1;
     Ok((cap, completion, watch_charge))
@@ -1077,8 +1127,8 @@ pub fn submit_timer(asid: AddressSpaceId, timeout_ms: u64) -> Result<CompletionC
             .map_err(|_| SubmitError::WouldBlock)?;
         let (timer_event, cancel) =
             TimerEvent::charged(ExtDuration::from_millis(timeout_ms as u128), charge);
+        let completion = Completion::new(None, record_charge)?;
         let cap = crate::capability::allocate(asid, crate::capability::ObjectKind::Completion);
-        let completion = Completion::new(None, record_charge);
         let observer = Arc::new(CompletionTimerObserver {
             asid,
             cap,
@@ -1504,51 +1554,20 @@ fn flush_cq_backlog(as_completions: &mut AsCompletions, cq: CqId) -> FlushOutcom
 }
 
 fn signal_cq(asid: AddressSpaceId, cq: CqId) {
-    let observers = {
+    let (count, waiters) = {
         let registry = COMPLETIONS.read();
         let Some(cq_state) = registry.get(&asid).and_then(|c| c.cqs.get(&cq)) else {
             return;
         };
-        let mut observers = Vec::new();
-        while let Ok(observer) = cq_state.observers.pop() {
-            observers.push(observer);
-        }
-        observers
+        (cq_state.waiters.registered(), cq_state.waiters.drain())
     };
+    waiters.notify();
     crate::debug_trace::trace(
         crate::debug_trace::TAG_SIGNAL_CQ,
         asid as u64,
         cq as u64,
-        observers.len() as u64,
+        count as u64,
     );
-    for observer in observers {
-        if let Some(observer) = observer.upgrade() {
-            observer.notify();
-        }
-    }
-}
-
-/// Remove registrations whose owning blocked-thread state has already gone
-/// away (most commonly because a CQ timeout won). A timeout and a CQ wake race
-/// through different observables; without this reconciliation, every timeout
-/// leaves one dead `Weak<Waker>` in the long-lived CQ and its unbounded queue
-/// grows forever.
-fn prune_stale_cq_observers(asid: AddressSpaceId, cq: CqId) {
-    // Take the registry write lock so CqObservable::register_observer (which
-    // takes a read lock) cannot add an observer while the queue is rebuilt.
-    let mut registry = COMPLETIONS.write();
-    let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) else {
-        return;
-    };
-    let mut live = Vec::new();
-    while let Ok(observer) = cq_state.observers.pop() {
-        if observer.strong_count() != 0 {
-            live.push(observer);
-        }
-    }
-    for observer in live {
-        let _ = cq_state.observers.push(observer);
-    }
 }
 
 struct CqObservable {
@@ -1557,11 +1576,27 @@ struct CqObservable {
 }
 
 impl Observable for CqObservable {
-    fn register_observer(&self, observer: Weak<dyn Observer>) {
+    fn register_observer(&self, _observer: Weak<dyn Observer>) {
+        unreachable!("private CQ observable requires fallible waiter registration");
+    }
+
+    fn try_register_waiter(
+        &self,
+        observer: Weak<dyn Observer>,
+        sponsor: &crate::klib::observer::WaitSponsor,
+    ) -> Result<
+        crate::klib::observer::WaitRegistration,
+        crate::klib::observer::registration::RegistrationError,
+    > {
         let registry = COMPLETIONS.read();
-        if let Some(cq_state) = registry.get(&self.asid).and_then(|c| c.cqs.get(&self.cq)) {
-            let _ = cq_state.observers.push(observer);
+        let state = registry
+            .get(&self.asid)
+            .and_then(|entries| entries.cqs.get(&self.cq))
+            .ok_or(crate::klib::observer::registration::RegistrationError::Closed)?;
+        if state.work_generation != state.last_seen_generation {
+            return Ok(crate::klib::observer::WaitRegistration::ready());
         }
+        sponsor.register(&state.waiters, observer)
     }
 }
 
@@ -1588,27 +1623,35 @@ pub fn wait(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
     let tid =
         SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid().ok_or(CapError::UnknownCap)?;
 
-    let generation = SYSTEM_SCHEDULER
-        .read()
-        .block_thread_with_constraint_generation(
+    while !completion.is_terminal() {
+        let registration = SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
             tid,
             completion.as_ref() as &dyn Observable,
             crate::cpu::scheduler::threads::MigrationConstraint::GeneralWait,
-        )
-        .map_err(|_| CapError::UnknownCap)?;
-
-    // Lost-wake guard: if the operation completed after our fast-path check but
-    // before (or during) registration, make the thread runnable again.
-    if completion.is_terminal() {
-        let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
+        );
+        match registration {
+            Ok(generation) => {
+                // Close the lost-wake window after successful registration.
+                if completion.is_terminal() {
+                    let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
+                }
+            }
+            Err(crate::cpu::scheduler::system_scheduler::Error::WaitRegistrationFailed) => {
+                // The void, untimed ABI must preserve terminal-wait semantics:
+                // a ReadOperation may release its borrowed buffer on return.
+                // Stay runnable and retry cooperatively under admission pressure.
+            }
+            Err(_) => return Err(CapError::UnknownCap),
+        }
+        yield_lp();
+        // A competing wake is not proof that the producer has terminated.
     }
-
-    yield_lp();
     Ok(())
 }
 
 /// Blocks the calling thread until `cap` reaches a terminal completion or
-/// `timeout_ms` elapses. Returns `true` if terminal, `false` on timeout.
+/// `timeout_ms` elapses. Returns `true` if terminal, `false` on timeout or
+/// failed waiter admission. The capability remains live in the latter cases.
 /// Event-driven like [`wait`], with a timer watchdog so a caller waiting on
 /// an event that never fires fails loudly instead of hanging silently.
 pub fn wait_timeout(
@@ -1647,6 +1690,18 @@ pub fn cancel(asid: AddressSpaceId, cap: CompletionCap) -> Result<CancelState, C
 
 pub(crate) fn timer_events_used(asid: AddressSpaceId) -> usize {
     COMPLETIONS.read().get(&asid).map_or(0, |entries| entries.timer_budget.used())
+}
+
+pub(crate) fn waiter_count(asid: AddressSpaceId, cap: CompletionCap) -> usize {
+    completion_of(asid, cap).map_or(0, |completion| completion.waiters.registered())
+}
+
+pub(crate) fn cq_waiter_count(asid: AddressSpaceId, cq: CqId) -> usize {
+    COMPLETIONS
+        .read()
+        .get(&asid)
+        .and_then(|entries| entries.cqs.get(&cq))
+        .map_or(0, |state| state.waiters.registered())
 }
 
 pub(crate) fn record_admission(asid: AddressSpaceId) -> Option<Arc<budget::DomainBudget>> {
@@ -1905,7 +1960,7 @@ pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, _min_complete: u32) {
 
 /// Like [`wait_on_cq`] but also returns when `timeout_ms` elapses. Returns
 /// whether the work-generation condition was met (`true`) or the deadline
-/// fired first (`false`).
+/// fired first or waiter admission failed (`false`).
 pub fn wait_on_cq_timeout(
     asid: AddressSpaceId,
     cq: CqId,
@@ -1988,10 +2043,8 @@ pub fn wait_on_cq_timeout(
     // timer queue later. Cancellation is harmless if the timer already fired.
     let _ = crate::timers::cancel_event(timeout_handle);
 
-    // If the timer won, block_thread's CQ registration was not consumed by a
-    // CQ signal. Its strong Waker was dropped when the thread became Ready;
-    // remove that stale weak registration before the next timed wait.
-    prune_stale_cq_observers(asid, cq);
+    // Ready admission has already dropped the owning CQ registration, even
+    // when the watchdog wins or another strong Waker reference is retained.
 
     let mut registry = COMPLETIONS.write();
     if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq))

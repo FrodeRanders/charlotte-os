@@ -13,7 +13,7 @@ use super::Observer;
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RegistrationError {
+pub enum RegistrationError {
     Closed,
     ResourceLimit,
     AllocationFailed,
@@ -122,6 +122,13 @@ impl<C> ObserverList<C> {
         NotificationBatch(state.head.take())
     }
 
+    /// Reusable event sources detach their current batch without closing.
+    pub(crate) fn drain(&self) -> NotificationBatch<C> {
+        let mut state = self.state.lock();
+        state.count = 0;
+        NotificationBatch(state.head.take())
+    }
+
     pub(crate) fn registered(&self) -> usize {
         self.state.lock().count
     }
@@ -135,6 +142,7 @@ impl<C> Drop for ObserverList<C> {
 }
 
 #[must_use]
+#[derive(Debug)]
 pub(crate) struct Registration<C> {
     list: Arc<ObserverList<C>>,
     id: u64,

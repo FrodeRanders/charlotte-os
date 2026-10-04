@@ -109,6 +109,11 @@ impl Completion {
                 Ok(Some(result as i64))
             }
             catten_syscall::completion_status::PENDING_OR_TIMEOUT => Ok(None),
+            catten_syscall::completion_status::WAIT_ADMISSION_FAILED => {
+                // Admission failed, not the operation. Keep ownership for a
+                // retry or for Drop's cancel/terminal-wait/close sequence.
+                Err(CompletionError::Status(status))
+            }
             other => {
                 let cap = self.cap.take().expect("completion capability already consumed");
                 kernel::close(cap);

@@ -89,11 +89,12 @@ its normal result. A short timer verifies recovery. The security mask is now
 `0x7fff`. No allocator-failure injection or exhaustive cross-LP interleaving
 test is claimed.
 
-Completion waiters, CQ waiters, endpoint-readiness and pending-call waiters,
-thread-exit observers, watchdogs and other observer paths still use the old
-registration API. Its void return cannot safely be replaced with silent bounded
-rejection: the scheduler may already have parked a thread whose only wake source
-would be lost. Their adoption needs fallible registration integrated with
-scheduler rollback, owned cancellation and separate storage admission. General
+Completion/CQ scheduler waiters now use
+[fallible owned registration](scheduler-waiter-budgets.md) with admission before
+parking. Endpoint-readiness and pending-call waiters, thread-exit observers,
+watchdogs and other observer paths still use the old registration API. Its void
+return cannot safely be replaced with silent bounded rejection: that would lose
+a parked thread's wake source. Their adoption needs integrated admission, owned
+cancellation and separate storage accounting. General
 weak-only Arc/control-block storage and comprehensive kernel heap admission also
 remain open. SEC-07 is still partially implemented.

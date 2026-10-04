@@ -360,9 +360,9 @@ pub fn sleep_millis(milliseconds: u64) {
 /// so a missed observable notification cannot hang the system silently — the
 /// caller re-checks `condition` and fails loudly.
 ///
-/// Returns `false` if the timeout expired before `condition` held. The
-/// caller is responsible for pruning stale observers on long-lived
-/// observables after repeated timeouts.
+/// Returns `false` if the condition is still false at timeout or waiter
+/// admission failure. Owned sources cancel the competing registration when
+/// the thread becomes Ready. Legacy sources still need stale-observer cleanup.
 pub fn block_until(
     observable: &dyn Observable,
     timeout_ms: u64,

@@ -189,6 +189,7 @@ pub mod scratch;
 pub mod shard;
 pub mod statistics;
 pub mod syscall;
+pub mod waiters;
 
 use crate::logln;
 
@@ -279,6 +280,7 @@ pub fn run_synchronous_self_tests() {
     memory::vmem::test_vmem();
     memory::allocator::test_allocator();
     memory::object::test_memory_objects();
+    waiters::test_waiter_admission();
     completion::test_completion_caps();
     completion::test_detached_operations();
     ipc::test_endpoint_ipc();

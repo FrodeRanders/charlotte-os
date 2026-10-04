@@ -358,6 +358,7 @@ pub struct Thread {
     pub asid: AddressSpaceId,
     /// Distinguishes successive occupants of a reusable [`ThreadId`] slot.
     pub generation: ThreadGeneration,
+    pub(crate) wait_sponsor: crate::klib::observer::WaitSponsor,
     pub state: ThreadState,
     /// The LP this thread prefers to run on, assigned at spawn time.
     /// Re-admission via `submit_woken_thread` and initial `submit_new_thread`
@@ -416,6 +417,7 @@ impl Thread {
             context: Box::new(context),
             asid,
             generation,
+            wait_sponsor: crate::memory::budget::waiter_sponsor(asid),
             state: ThreadState::NeedsLpAssignment,
             affinity_lp: None,
             pinned_lp: None,
@@ -592,6 +594,9 @@ impl Observable for Thread {
 
 impl Drop for Thread {
     fn drop(&mut self) {
+        if let ThreadState::Blocked(waker) = &self.state {
+            waker.cancel_registration();
+        }
         if self.asid != KERNEL_ASID {
             let (reserved, used) = self.context.user_stack_usage();
             crate::memory::usage::note_thread_released(self.asid, reserved, used);

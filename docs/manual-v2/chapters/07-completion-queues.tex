@@ -289,9 +289,36 @@ is cancelled before notification. Late callbacks cannot change a cancelled
 terminal result or complete a replacement with the same numeric capability.
 List destruction is iterative to bound kernel-stack use.
 
-Scheduler waiters and other observer paths still need a fallible registration
-contract that can undo parking if admission fails. Silently rejecting a bounded
-queue insertion would lose a blocked thread's only wake source.
+\section{Owned completion and CQ waiters}
+
+Completion and CQ scheduler waiters use fallible registration before a thread
+is removed from its Ready queue or published as Blocked. Rejection preserves
+its state, queue membership and migration constraints; an already-ready source
+does not park it. Each source admits 64 registrations, each waiting domain
+generation 1,024, and the node 8,192 with an ordinary share of 6,144. The waiting
+domain sponsors the entry independently of the source's owner. These are kernel
+policy limits, separate from records, close watches, timers and CQ backing.
+
+The Waker owns the registration. Ready admission cancels it even if a competing
+watchdog wins and another strong Waker survives; reaping a Blocked thread also
+cancels it. Detached notification storage remains charged until actually freed.
+Token destruction enters only the independent list lock. Notifications run
+after source locks are released, and CQ notification lists can be drained and
+rearmed without growing an unbounded observer queue. Retirement closes the
+generation's sponsor, while late cleanup cannot credit a replacement ASID.
+
+A timed completion wait reports \texttt{WAIT\_ADMISSION\_FAILED} when parking
+is rejected, retaining the operation and its Rust owner for retry or safe Drop.
+The untimed completion-wait ABI instead yields cooperatively and retries until
+terminal completion, preserving borrowed-buffer safety. This overload fallback
+does not guarantee efficient idle waiting or producer progress. CQ waits retain
+their existing return shape and can return without parking when admission fails.
+
+Legacy timer, lock, readiness, pending-call and raw kernel callback registrations
+still require migration. General weak-only backing, watchdog storage and kernel
+heap accounting remain incomplete. CQ replacement still requires a quiescent
+consumer; discarding registrations is not live reactor migration. Silently
+rejecting an old void registration would lose a blocked thread's wake source.
 
 \section{Cancellation and buffer ownership}
 

@@ -1785,14 +1785,18 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
     };
 
     // Block on the completion.
-    let generation = SYSTEM_SCHEDULER
-        .read()
-        .block_thread_with_constraint_generation(
-            tid,
-            completion.as_ref(),
-            crate::cpu::scheduler::threads::MigrationConstraint::GeneralWait,
-        )
-        .expect("COMPLETION_WAIT_TIMEOUT: failed to block thread");
+    let generation = match SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
+        tid,
+        completion.as_ref(),
+        crate::cpu::scheduler::threads::MigrationConstraint::GeneralWait,
+    ) {
+        Ok(generation) => generation,
+        Err(_) => {
+            frame.regs[0] = catten_syscall::completion_status::WAIT_ADMISSION_FAILED;
+            frame.regs[1] = 0;
+            return;
+        }
+    };
 
     // Arm a timer that also wakes this thread (timeout path).
     let timeout_obs = Arc::new(TimeoutWake {

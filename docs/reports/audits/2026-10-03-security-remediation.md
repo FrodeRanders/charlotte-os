@@ -21,7 +21,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-04 | Mitigated | Builds and boot logs identify development trust; production and unknown modes fail closed in scripted and direct kernel builds. Protected bootstrap roots, fixture-free production provisioning and recipient-key custody remain unimplemented. |
 | SEC-05 | Implemented | tcpip rejects raw frame ingress unless the authenticated sender is the exact live, kernel-designated frouter. Separate socket/VIP binding policy remains future hardening. |
 | SEC-06 | Mitigated | HTTP EOF, peer-raced accept and transport failures close one connection, not the server; listener-setup resource failures retry with backoff. httpd has a five-second request wait and bounded send retries; deployd has five-second header and thirty-second total receive budgets. Serial admission remains vulnerable to sustained connection floods. |
-| SEC-07 | Partially implemented | Memory-object backing pages/counts, completion timer events, endpoint records/queue backing, retained completion objects/detached results, CQ registrations/kernel backing, and endpoint-close registrations have generation-scoped domain/node admission and platform reserves. Charges survive transfers, deferred cancellation, delegation, retained references or detached notifications as appropriate. CQ preparation and close-watch registration are fallible with owning rollback. Close watches cancel locally and unlink on namespace teardown even if their completion is retained. Aggregate limits for loader/heap/page tables (including physical CQ mappings), the complete capability namespace, connection/call/other-observer metadata, general weak-only storage, other timer paths and comprehensive kernel metadata remain open. |
+| SEC-07 | Partially implemented | Memory-object backing pages/counts, completion timer events, endpoint records/queue backing, retained completion objects/detached results, CQ registrations/kernel backing, endpoint-close registrations and completion/CQ scheduler waiters have generation-scoped domain/node admission and platform reserves. Charges survive transfers, deferred cancellation, delegation, retained references or detached notifications as appropriate. Waiter admission precedes parking; owning cancellation handles competing wakes and reaping. Timed admission failure retains the completion owner; untimed completion waiting preserves borrowed-buffer safety. Aggregate limits for loader/heap/page tables (including physical CQ mappings), the complete capability namespace, connection/call/legacy-observer metadata, general weak-only storage, other timer paths and comprehensive kernel metadata remain open. |
 | SEC-08 | Open | Authenticate enrolled nodes and control/data peer traffic, add replay protection, and bound discovery state. A trusted L2 segment remains an explicit deployment prerequisite. |
 | SEC-09 | Open | Distinguish authenticated security time from observational SNTP/holdover; enforce freshness and uncertainty at security-policy gates. |
 | SEC-10 | Open | Authenticated encrypted access to node and cluster management, browser-client provisioning, and access policy remain necessary. |
@@ -843,3 +843,73 @@ Temporary evidence is in `/private/tmp/charlotte-security-watches-storage-run.lo
 Dedicated storage and ports were used; existing soak guests/stores were not
 modified. Reservation-only pool saturation does not allocate the equivalent
 maximum registration footprint.
+
+## 2026-10-04 continuation — owned completion/CQ scheduler waiters
+
+The preceding close-watch pass is committed as `1b1dd862`. This continuation
+migrates completion/CQ scheduler waiters onto the independent owning list and
+supersedes their remaining-work entry above; it does not migrate every observer.
+
+Each source admits 64 live entries. The waiting domain generation admits 1,024,
+node admission is 8,192 and the ordinary share is 6,144. Thread construction
+captures the original sponsor; retirement rejects new reservations, and
+retained entries cannot credit a replacement with the same numeric ASID.
+Promotion changes future charges, not the classification of existing ones.
+Entry/Waker/completion allocation is fallible on the migrated path; complete
+allocator and capability-table admission is still absent.
+
+The scheduler registers before removing a Ready thread or publishing Blocked.
+Admission failure therefore preserves queue membership, thread state and
+migration constraints. An already-ready source returns without parking and
+without inline callbacks under the master table. The Waker owns the token;
+Ready admission explicitly cancels it even if another strong Waker survives.
+Aborted Blocked threads cancel on actual reaping. Detached batches retain
+charges until freed, and source callbacks run outside source/list locks. CQ
+notifications drain a reusable list without vector allocation or stale-observer
+pruning. Source replacement/destruction still requires quiescent consumers.
+
+Timed completion syscalls no longer panic on park rejection. They return the
+new `WAIT_ADMISSION_FAILED` status, and the runtime retains ownership for retry
+or cancel/terminal-wait/close on Drop. Untimed completion waiting instead retries
+cooperatively until the producer is terminal, including after unrelated wakes;
+returning early would let a `ReadOperation` release borrowed storage unsafely.
+This fallback protects lifetime, not throughput or progress under overload.
+CQ waits keep their old ABI shape and can return without parking on rejection.
+
+The [waiter reference](../../reference/scheduler-waiter-budgets.md), ownership
+guide, scheduler invariants, locking table, README and LaTeX sources document
+these contracts. Legacy timers, locks, pending-call/endpoint-readiness sources,
+raw completion callbacks, thread-exit observers and watchdog storage remain
+outside these budgets. Their admission/cancellation, general weak-only backing,
+registry and capability metadata, and loader/page-table/heap accounting are
+still open. SEC-07 remains partial.
+
+Validation:
+
+- The full host runner passed, including two new owner tests for timed wait
+  rejection followed by retry or Drop.
+- Synchronous guest tests passed for source/domain/ordinary/node rejection and
+  rollback, owned unlink, detached retention/discard, rearming, callback
+  reentrancy, future-charge promotion, retirement and exact ASID reuse.
+  Node/ordinary pool saturation is counter-only, not maximum-footprint allocation.
+- Two completed isolated four-LP AArch64/TCG security runs passed **19 tests,
+  0 failed, 0 pending** and both scoped launches' fifteen-bit mask (`0x7fff`).
+  The final run also checks never-dispatched Blocked-thread reaping with a
+  retained Waker, as well as non-mutating Running/Ready/new rejection, owning
+  wake cancellation and 64 completion/CQ timeout cleanup cycles. The existing
+  CQ completion, explicit wake, second-queue wake and endpoint-readiness tests
+  still pass. Concurrent cancellation traffic retired after 4,492 requests.
+- Both service bundles built; AArch64/x86-64 kernel and service Clippy passed
+  with `-D warnings`. Formatting and diff checks passed. There was no x86-64
+  guest execution, allocator-failure injection, forced real-EL0 timed-wait
+  rejection, exhaustive cross-LP exploration, hostile-pressure soak or PDF rebuild.
+
+The final guest capture's kernel SHA-256 is
+`1750625ee069912969581ba92144e96467e78c119a81cc419345b2e73d6b1631`.
+Evidence is in `/private/tmp/charlotte-security-waiters-reap-final-run.log`,
+`/private/tmp/charlotte-security-waiters-reap-final-20261004-serial.log`,
+`/private/tmp/charlotte-security-waiters-host-tests.log`, and the
+`/private/tmp/charlotte-security-waiters-*-clippy.log`/`*-services.log` files.
+Dedicated storage and forwarded ports were used; existing soak guests/stores
+were not modified. One attempted follow-up stopped at compilation on a test
+helper import before booting, then was corrected and rerun successfully.
