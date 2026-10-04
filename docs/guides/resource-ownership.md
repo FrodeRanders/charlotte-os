@@ -186,6 +186,13 @@ address or drain another domain's queues. Use explicitly delegated IPC for
 cross-domain communication. Domain teardown discards queued words before its
 ASID can be reused.
 
+Mailbox handle opens can fail at the per-domain or node record ceiling; handle
+that backpressure without losing existing resources. Closing releases record
+capacity. Receiver open reuses the same per-LP capability, so do not adopt
+repeated results as separate owning capabilities. See
+[mailbox capability budgets](../reference/mailbox-capability-budgets.md) for
+limits and the distinction between handles and queue backing.
+
 Deployment agents use `launch_scoped_artifact_named`, which consumes both the
 ELF and signed descriptor memory and returns `DeployedArtifact`. Keep that
 owner in the reconciliation record until `poll_retire` returns `Ok(true)`.

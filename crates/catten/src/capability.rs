@@ -53,14 +53,47 @@ static CAPABILITIES: LazyLock<Mutex<BTreeMap<AddressSpaceId, AddressSpaceCapabil
 
 /// Mint a fresh object capability in `owner`'s namespace.
 pub fn allocate(owner: AddressSpaceId, kind: ObjectKind) -> ObjectCapability {
+    try_allocate(owner, kind).expect("capability id overflow")
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AllocationError {
+    IdentityExhausted,
+}
+
+/// Fallible identity minting for callers with an admission/rollback boundary.
+/// This checks serial exhaustion, not aggregate capability or heap admission;
+/// existing infallible families still need transactional migration.
+pub(crate) fn try_allocate(
+    owner: AddressSpaceId,
+    kind: ObjectKind,
+) -> Result<ObjectCapability, AllocationError> {
     let mut tables = CAPABILITIES.lock();
     let table = tables.entry(owner).or_insert_with(AddressSpaceCapabilities::new);
-    let serial = table.next_serial;
-    table.next_serial = serial.checked_add(1).expect("capability id overflow");
+    let (serial, next) = charlotte_lifecycle::claim_generation(table.next_serial)
+        .ok_or(AllocationError::IdentityExhausted)?;
+    table.next_serial = next;
     let cap = serial;
     let previous = table.objects.insert(cap, kind);
     debug_assert!(previous.is_none());
-    cap
+    Ok(cap)
+}
+
+pub(crate) fn test_identity_exhaustion() {
+    const OWNER: AddressSpaceId = 0x5e31;
+    let cap = try_allocate(OWNER, ObjectKind::Mailbox).unwrap();
+    CAPABILITIES.lock().get_mut(&OWNER).unwrap().next_serial = u64::MAX;
+    assert_eq!(try_allocate(OWNER, ObjectKind::Mailbox), Err(AllocationError::IdentityExhausted));
+    assert!(contains(OWNER, cap, ObjectKind::Mailbox));
+    assert_eq!(CAPABILITIES.lock().get(&OWNER).unwrap().objects.len(), 1);
+    assert!(remove(OWNER, cap, ObjectKind::Mailbox));
+    close_address_space(OWNER);
+}
+
+/// Kernel-fixture injection into an otherwise isolated capability namespace.
+/// The fixture must retire this namespace afterwards; identity is never reset.
+pub(crate) fn exhaust_identity_for_test(owner: AddressSpaceId) {
+    CAPABILITIES.lock().get_mut(&owner).unwrap().next_serial = u64::MAX;
 }
 
 /// Check both ownership and object kind.

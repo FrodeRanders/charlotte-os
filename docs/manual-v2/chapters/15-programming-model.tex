@@ -87,6 +87,17 @@ let sender: ShardSender<Command> = mailbox.sender();
 sender.try_send(Command::Process { data })?;
 \end{lstlisting}
 
+The userspace word-mailbox syscall path is domain-local and has a separate
+sender/receiver capability-record budget: 512 records per domain, 8,192 per
+node and 6,144 for ordinary domains. The remaining node records form a shared
+reserve for kernel-designated platform domains. An over-limit open returns
+zero; closing handles restores capacity. Receiver lookup returns the existing
+per-LP capability without another charge or independent ownership. These
+record counts do not account for the separate 256-word-per-LP queue backing.
+Opens are serialized with domain retirement and checked against the exact
+generation, so a delayed open cannot publish into a reused ASID. Aggregate
+capability-namespace and heap admission remain further work.
+
 \subsection{IPI closures}
 
 \texttt{try\_run\_on\_lp(target\_lp, || \{ ... \})}. Boxes arbitrary work and

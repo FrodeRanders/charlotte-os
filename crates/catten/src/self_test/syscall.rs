@@ -178,6 +178,7 @@ pub fn test_syscall_dispatch() {
     }
 
     // Mailbox endpoint capabilities.
+    syscall::mailbox_tests::test_admission();
     let sender_cap = {
         let mut f = synthetic_trap_frame_in(asid, 0, 0, 0, 0);
         syscall::syscall_dispatch(&mut f, call_no::MAILBOX_OPEN_SEND);

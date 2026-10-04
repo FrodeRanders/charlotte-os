@@ -36,6 +36,9 @@ SEC-07 also includes fixed per-route IRQ readiness storage: repeated or retired
 deliveries cannot exhaust a shared wake queue, and deferred route validation/CQ
 publication is lifecycle-fenced. This does not close aggregate kernel metadata
 accounting or establish interrupt-controller/scheduler progress guarantees.
+Mailbox handle records now also have generation-scoped admission, owning
+refund and a trusted platform reserve; this is not aggregate namespace or
+mailbox queue-backing admission.
 
 ## Enforced contracts
 
@@ -1618,3 +1621,91 @@ Dedicated storage and forwarded ports were used; existing soak guests/stores
 were untouched. SEC-07 remains partial: capability namespace/loader/heap/page
 tables, arbitrary callback captures and broader kernel metadata still need
 admission/accounting work; the other open audit findings remain open.
+
+## 2026-10-04 continuation — bounded mailbox capability records
+
+The IRQ readiness changes are committed as `b56c94e4`. Review of aggregate
+capability admission found that destination reservation and rollback escrow
+are needed before adding a shared ceiling across IPC attachment moves and
+other families. This continuation addresses the still-unbounded mailbox
+handle family and documents the remaining aggregate design, rather than
+claiming the complete capability namespace is now budgeted.
+
+Mailbox sender/receiver entries own a record charge: **512 per domain
+namespace, 8,192 per node, 6,144 ordinary**. The remaining 2,048 form one shared
+platform reserve. Policy is captured against the exact kernel-designated
+address-space generation, not a name, role or caller field. Each record keeps
+its captured classification; later platform designation affects future opens.
+Node counters are statically initialized behind the IRQ-safe mutex, avoiding
+a new first-use `LazyLock` spin dependency in the syscall path.
+
+Admission precedes identity minting and payload publication. The new
+`capability::try_allocate` returns serial exhaustion without mutating existing
+authority; a failed mailbox mint drops its staged charge. Other capability
+families retain the legacy infallible wrapper. Open failure remains the ABI's
+zero-capability result. Full-width sender LP validation now rejects high bits
+before narrowing. Existing per-LP receiver lookup consumes no new slot and
+returns the same capability, not independent ownership. Closing an entry
+revokes its authority before dropping the owning record charge.
+
+Mailbox open holds `ADDRESS_SPACE_LIFECYCLE → USER_MAILBOX_CAPS` through
+validation and publication, serializing it with production retirement and
+reuse. A retirement snapshot alone would leave a publication window. These
+rare metadata opens are now serialized across domains; ordinary send/receive
+does not acquire this lifecycle guard. Teardown retires the namespace's budget
+before releasing entries, and retained reservations credit only their
+original account. A captured predecessor cannot recreate a retired namespace
+or mint into a replacement using the same numeric ASID.
+
+The [mailbox capability reference](../../reference/mailbox-capability-budgets.md),
+ownership/testing guides, locking reference and LaTeX programming-model chapter
+document the limits and receiver-ownership rule. The reference also specifies
+the next aggregate contracts: pre-transfer destination reservation, preserved
+source escrow for rollback, atomic vector admission and captured namespace
+identity in staged owners. The TLA+ conformance table distinguishes successful
+serial minting from these unmodeled record/admission lifetimes; no new formal
+model was checked.
+
+Validation:
+
+- Host regression tests passed. No host crate or userspace service/runtime
+  implementation changed in this continuation; these new fixtures are kernel
+  tests, not a new real-EL0 mailbox quota probe. The scoped mask stays `0x7fff`.
+- The actual syscall dispatcher is used to fill 512 mixed sender/receiver
+  handles, reject an additional sender, reuse a receiver at capacity, close
+  and refill a slot, then run 1,024 open/close cycles. Rejection consumes no
+  serial. High-bit-invalid sender LPs are tested both with spare capacity and
+  at the ceiling.
+- Serial-exhaustion injection preserves an existing handle, rejects another
+  open and refunds staged admission. A retained reservation spans exact
+  numeric namespace/capability reuse; its destruction changes only the old
+  account. Counter fixtures exercise ordinary/node ceilings, reserved platform
+  progress, failed ordinary-reservation rollback and recovery, using isolated
+  production counter code, not thousands of registry allocations.
+- Real address-space handles test rejection after retirement, after mailbox
+  registry removal and after numeric ASID reuse. A stale captured open leaves
+  the replacement's record/authority unchanged.
+- Strict AArch64 and x86-64 kernel Clippy passed with `-D warnings`, including
+  the final statically initialized counter and spare-capacity LP fixture.
+  Both guest runners rebuilt bundled AArch64 services through the normal runner.
+- One preliminary isolated four-LP AArch64/TCG guest passed **19/19**. The
+  final implementation passed another: **19 tests, 0 failed, 0 pending**,
+  including both scoped launches with `0x7fff`; concurrent cancellation traffic
+  retired after 4,492 requests. No failed guest occurred in this continuation.
+- Workspace formatting and diff checks passed. The PDF was not rebuilt.
+
+The final guest kernel SHA-256 is
+`2272510b864ea3aa65c7d813f6ac1a5ad22b61ad088a69c122156a127957d24b`.
+Evidence is in `/private/tmp/charlotte-security-mailbox-caps-host-tests.log`,
+`/private/tmp/charlotte-security-mailbox-caps-run.log`,
+`/private/tmp/charlotte-security-mailbox-caps-20261004-serial.log`,
+`/private/tmp/charlotte-security-mailbox-caps-final-run.log`,
+`/private/tmp/charlotte-security-mailbox-caps-final-20261004-serial.log` and
+`/private/tmp/charlotte-security-mailbox-caps-*-kernel-clippy.log`.
+Dedicated storage and forwarded ports were used; existing soak guests/stores
+were untouched. No x86-64 guest, physical allocator failure injection,
+many-client quota fairness test or exhaustive concurrent-retirement exploration
+was performed. SEC-07 remains partial: these record counts do not charge the
+legacy/capability mailbox queue backing, empty namespace/control-block memory,
+BTreeMap allocator bytes, aggregate capabilities, loader/page-table/heap
+backing or arbitrary callback captures. The other open findings remain open.

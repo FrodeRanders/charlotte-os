@@ -176,6 +176,16 @@ remain part of the device/UART tests.
 These are not exhaustive controller MMIO or cross-LP mask/rearm checks. See
 [interrupt wake storage](../reference/interrupt-wake-storage.md).
 
+Mailbox kernel fixtures exercise the actual syscall dispatch path with 512
+mixed sender/receiver handles, over-limit rejection, receiver reuse at capacity,
+slot recovery and 1,024 open/close cycles. Serial-exhaustion injection checks
+staged refund without damaging existing authority. Real domain handles test
+retirement and late publication after ASID reuse; a retained charge cannot
+credit the replacement. Isolated production counters check ordinary/node
+ceilings and the platform reserve. No extra real-EL0 quota probe was added;
+the scoped mask remains `0x7fff`. See
+[mailbox capability budgets](../reference/mailbox-capability-budgets.md).
+
 Completion/CQ waiter tests keep the fifteen-bit scoped mask unchanged. Kernel
 tests cover source/domain/node admission and rollback, detached entries,
 promotion and ASID reuse; the scheduled CQ verifier checks Running/Ready/new

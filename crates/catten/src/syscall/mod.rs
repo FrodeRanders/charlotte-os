@@ -20,6 +20,9 @@
 
 use alloc::collections::BTreeMap;
 
+mod mailbox_budget;
+pub(crate) mod mailbox_tests;
+
 pub use catten_syscall::SyscallNumber;
 
 use crate::{
@@ -1015,38 +1018,70 @@ enum MailboxEndpoint {
 }
 
 struct AsMailboxCaps {
-    endpoints: BTreeMap<MailboxCap, MailboxEndpoint>,
+    address_space: Option<crate::memory::AddressSpaceHandle>,
+    endpoints: BTreeMap<MailboxCap, AdmittedMailboxEndpoint>,
+    budget: alloc::sync::Arc<mailbox_budget::DomainBudget>,
+}
+
+struct AdmittedMailboxEndpoint {
+    endpoint: MailboxEndpoint,
+    _charge: mailbox_budget::Charge,
 }
 
 impl AsMailboxCaps {
-    fn new() -> Self {
-        Self {
+    fn try_new(
+        address_space: Option<crate::memory::AddressSpaceHandle>,
+    ) -> Result<Self, mailbox_budget::Error> {
+        Ok(Self {
+            address_space,
             endpoints: BTreeMap::new(),
-        }
+            budget: mailbox_budget::DomainBudget::try_new()?,
+        })
     }
 
-    fn insert(&mut self, owner: AddressSpaceId, endpoint: MailboxEndpoint) -> MailboxCap {
-        let cap = crate::capability::allocate(owner, crate::capability::ObjectKind::Mailbox);
-        self.endpoints.insert(cap, endpoint);
-        cap
+    fn insert(
+        &mut self,
+        owner: AddressSpaceId,
+        endpoint: MailboxEndpoint,
+        platform: bool,
+    ) -> Result<MailboxCap, mailbox_budget::Error> {
+        // Admission and serial minting precede payload publication. No remote
+        // resource/attachment has moved; staged failure drops the charge.
+        let charge = mailbox_budget::reserve(&self.budget, platform)?;
+        let cap = crate::capability::try_allocate(owner, crate::capability::ObjectKind::Mailbox)
+            .map_err(|_| mailbox_budget::Error::IdentityExhausted)?;
+        self.endpoints.insert(
+            cap,
+            AdmittedMailboxEndpoint {
+                endpoint,
+                _charge: charge,
+            },
+        );
+        Ok(cap)
     }
 
-    fn receiver_for_or_insert(&mut self, owner: AddressSpaceId, lp: LpId) -> MailboxCap {
+    fn receiver_for_or_insert(
+        &mut self,
+        owner: AddressSpaceId,
+        lp: LpId,
+        platform: bool,
+    ) -> Result<MailboxCap, mailbox_budget::Error> {
         if let Some((cap, _)) = self.endpoints.iter().find(|(_, endpoint)| {
             matches!(
-                endpoint,
+                endpoint.endpoint,
                 MailboxEndpoint::Receiver {
                     lp: endpoint_lp,
-                } if *endpoint_lp == lp
+                } if endpoint_lp == lp
             )
         }) {
-            return *cap;
+            return Ok(*cap);
         }
         self.insert(
             owner,
             MailboxEndpoint::Receiver {
                 lp,
             },
+            platform,
         )
     }
 }
@@ -1058,6 +1093,7 @@ pub fn close_mailbox_address_space(asid: AddressSpaceId) {
     // Teardown is serialized against ASID reuse by ADDRESS_SPACE_LIFECYCLE.
     USER_MAILBOX.write().remove(&asid);
     if let Some(caps) = USER_MAILBOX_CAPS.write().remove(&asid) {
+        caps.budget.retire();
         for cap in caps.endpoints.keys() {
             assert!(
                 crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Mailbox),
@@ -1104,34 +1140,85 @@ fn sys_mailbox_recv(frame: &mut TrapFrame) {
 
 fn sys_mailbox_open_send(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
-    let target_lp = frame.regs[1] as LpId;
+    let Ok(target_lp) = LpId::try_from(frame.regs[1]) else {
+        frame.regs[0] = 0;
+        return;
+    };
     if target_lp >= get_lp_count() {
         frame.regs[0] = 0;
         return;
     }
-    let mut tables = USER_MAILBOX_CAPS.write();
-    let caps = tables.entry(asid).or_insert_with(AsMailboxCaps::new);
-    frame.regs[0] = caps.insert(
-        asid,
-        MailboxEndpoint::Sender {
-            target_lp,
-        },
-    );
+    frame.regs[0] =
+        open_mailbox_endpoint(asid, Some(target_lp), capture_mailbox_identity(asid)).unwrap_or(0);
 }
 
 fn sys_mailbox_open_recv(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
-    let lp = get_lp_id();
+    frame.regs[0] = open_mailbox_endpoint(asid, None, capture_mailbox_identity(asid)).unwrap_or(0);
+}
+
+#[derive(Clone, Copy)]
+struct MailboxIdentity {
+    address_space: Option<crate::memory::AddressSpaceHandle>,
+    platform: Option<crate::memory::AddressSpaceHandle>,
+}
+
+fn capture_mailbox_identity(asid: AddressSpaceId) -> MailboxIdentity {
+    MailboxIdentity {
+        address_space: crate::memory::current_address_space_handle(asid),
+        platform: crate::memory::budget::platform_identity(asid),
+    }
+}
+
+fn open_mailbox_endpoint(
+    asid: AddressSpaceId,
+    target: Option<LpId>,
+    captured: MailboxIdentity,
+) -> Result<MailboxCap, mailbox_budget::Error> {
+    // Opens are rare metadata operations. Serialize the whole publication
+    // against production retirement/reuse, not just an accepting() snapshot.
+    // The ordinary send/receive paths do not take this lifecycle guard.
+    let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
     let mut tables = USER_MAILBOX_CAPS.write();
-    let caps = tables.entry(asid).or_insert_with(AsMailboxCaps::new);
-    frame.regs[0] = caps.receiver_for_or_insert(asid, lp);
+    // A late open cannot recreate a retiring namespace or publish into a
+    // replacement that reuses the numeric ASID. None is only for the existing
+    // kernel-API pseudo-domain fixtures; a live user domain has a handle.
+    if captured.address_space != crate::memory::current_address_space_handle(asid)
+        || captured.address_space.is_some_and(|handle| !crate::memory::budget::accepting(handle))
+    {
+        return Err(mailbox_budget::Error::Retired);
+    }
+    let caps = match tables.entry(asid) {
+        alloc::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
+        alloc::collections::btree_map::Entry::Vacant(entry) => {
+            entry.insert(AsMailboxCaps::try_new(captured.address_space)?)
+        }
+    };
+    if caps.address_space != captured.address_space {
+        return Err(mailbox_budget::Error::Retired);
+    }
+    let platform = asid == crate::memory::KERNEL_ASID
+        || (captured.platform.is_some() && captured.platform == caps.address_space);
+    match target {
+        Some(target_lp) => caps.insert(
+            asid,
+            MailboxEndpoint::Sender {
+                target_lp,
+            },
+            platform,
+        ),
+        None => caps.receiver_for_or_insert(asid, get_lp_id(), platform),
+    }
 }
 
 fn mailbox_endpoint(asid: AddressSpaceId, cap: MailboxCap) -> Option<MailboxEndpoint> {
     if !crate::capability::contains(asid, cap, crate::capability::ObjectKind::Mailbox) {
         return None;
     }
-    USER_MAILBOX_CAPS.read().get(&asid).and_then(|caps| caps.endpoints.get(&cap).copied())
+    USER_MAILBOX_CAPS
+        .read()
+        .get(&asid)
+        .and_then(|caps| caps.endpoints.get(&cap).map(|entry| entry.endpoint))
 }
 
 fn sys_mailbox_send_cap(frame: &mut TrapFrame) {
@@ -1177,11 +1264,12 @@ fn sys_mailbox_close(frame: &mut TrapFrame) {
     let cap = frame.regs[1] as MailboxCap;
     let mut tables = USER_MAILBOX_CAPS.write();
     frame.regs[0] = match tables.get_mut(&asid).and_then(|caps| caps.endpoints.remove(&cap)) {
-        Some(_) => {
+        Some(entry) => {
             assert!(
                 crate::capability::remove(asid, cap, crate::capability::ObjectKind::Mailbox),
                 "mailbox payload capability was absent from unified table"
             );
+            drop(entry);
             0
         }
         None => 1,

@@ -444,7 +444,7 @@ echoed session and pending sequence before consuming the pending call.
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
-| `Allocate` | `capability::allocate` | Direct for fresh per-AS serial allocation and authoritative kind insertion. |
+| `Allocate` | `capability::{allocate, try_allocate}` | Direct for successful fresh per-AS serial allocation and authoritative kind insertion. Mailbox opens use fallible serial minting; other families retain the infallible wrapper. Mailbox record quotas, retirement guards and retained charges are outside this model. |
 | `Remove` | typed-registry removal followed by `capability::remove` | Direct for owner-and-kind checked removal. Concrete callers assert that the unified entry exists, including optimized builds, so payload and authority tables cannot silently diverge. |
 | `DelegateCopy` | subsystem delegation followed by `allocate` in the target AS | Abstract: payload-table insertion is omitted; the target handle is fresh. |
 | `BeginMove` / `CommitMove` | subsystem move transaction and target capability allocation | Abstract split around payload transfer so intermediate revocation is checkable. |

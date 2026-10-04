@@ -38,6 +38,13 @@ are released before callbacks run. Individual close and address-space teardown
 retire interrupt routes under `DEVICES` before another grant can reuse them.
 See [interrupt wake storage](interrupt-wake-storage.md).
 
+Mailbox capability open uses `ADDRESS_SPACE_LIFECYCLE → USER_MAILBOX_CAPS`
+before domain/node record counters or unified identity minting. This closes the
+retirement/publication window. Its send/receive paths do not acquire the
+lifecycle guard. Teardown already owns that guard before draining mailbox
+payloads; counter Drop never reenters the registry or lifecycle. See
+[mailbox capability budgets](mailbox-capability-budgets.md).
+
 ---
 
 ## 2. Interrupt-masking spin locks
