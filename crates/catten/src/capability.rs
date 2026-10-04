@@ -336,9 +336,24 @@ pub(crate) fn begin_move(
     kind: ObjectKind,
 ) -> Result<MoveEscrow, AllocationError> {
     let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+    let identity = crate::memory::current_address_space_handle(owner);
+    begin_move_captured(owner, cap, kind, identity)
+}
+
+/// Caller owns the payload registry and captures generation before entering
+/// it. Do not acquire lifecycle under that registry.
+pub(crate) fn begin_move_captured(
+    owner: AddressSpaceId,
+    cap: ObjectCapability,
+    kind: ObjectKind,
+    mut identity: Option<crate::memory::AddressSpaceHandle>,
+) -> Result<MoveEscrow, AllocationError> {
+    if owner == crate::memory::KERNEL_ASID {
+        identity = None;
+    }
     let mut tables = CAPABILITIES.lock();
     let table = tables.get_mut(&owner).ok_or(AllocationError::UnknownCapability)?;
-    if !table.budget.accepting() {
+    if table.address_space != identity || !table.budget.accepting() {
         return Err(AllocationError::Retired);
     }
     let entry = table.objects.get_mut(&cap).ok_or(AllocationError::UnknownCapability)?;
@@ -356,10 +371,23 @@ pub(crate) fn begin_move(
 }
 
 impl MoveEscrow {
-    pub(crate) fn restore(mut self) -> Result<ObjectCapability, AllocationError> {
+    pub(crate) fn restore(self) -> Result<ObjectCapability, AllocationError> {
+        self.restore_inner(false)
+    }
+
+    /// Cancel back to existing payload authority for teardown too. No fresh
+    /// charge or replacement namespace may be used. Retirement may still need
+    /// this original handle to drain the payload; it does not admit new work.
+    pub(crate) fn rollback(self) -> Result<ObjectCapability, AllocationError> {
+        self.restore_inner(true)
+    }
+
+    fn restore_inner(mut self, allow_retired: bool) -> Result<ObjectCapability, AllocationError> {
         let mut tables = CAPABILITIES.lock();
         let table = tables.get_mut(&self.owner).ok_or(AllocationError::Retired)?;
-        if !Arc::ptr_eq(&table.budget, &self.namespace) || !table.budget.accepting() {
+        if !Arc::ptr_eq(&table.budget, &self.namespace)
+            || (!allow_retired && !table.budget.accepting())
+        {
             return Err(AllocationError::Retired);
         }
         let entry = table.objects.get_mut(&self.cap).ok_or(AllocationError::UnknownCapability)?;
@@ -378,6 +406,52 @@ impl Drop for MoveEscrow {
             discard_captured(self.owner, self.cap, &self.namespace, EntryState::Escrow);
         }
     }
+}
+
+/// Validate all sources/destinations before changing any authority. Caller
+/// holds its payload registry through this atomic publication and infallible
+/// payload updates. The reference vector is prepared before taking this lock.
+pub(crate) fn publish_moves(
+    moves: &mut [(&mut Reservation, &mut MoveEscrow)],
+) -> Result<(), AllocationError> {
+    let mut tables = CAPABILITIES.lock();
+    for (destination, source) in moves.iter() {
+        for (owner, cap, kind, namespace, state) in [
+            (
+                destination.owner,
+                destination.cap,
+                destination.kind,
+                &destination.namespace,
+                EntryState::Staged,
+            ),
+            (source.owner, source.cap, source.kind, &source.namespace, EntryState::Escrow),
+        ] {
+            let table = tables.get(&owner).ok_or(AllocationError::Retired)?;
+            if !Arc::ptr_eq(&table.budget, namespace) || !table.budget.accepting() {
+                return Err(AllocationError::Retired);
+            }
+            if !table
+                .objects
+                .get(&cap)
+                .is_some_and(|entry| entry.kind == kind && entry.state == state)
+            {
+                return Err(AllocationError::UnknownCapability);
+            }
+        }
+    }
+    for (destination, source) in moves.iter_mut() {
+        tables
+            .get_mut(&destination.owner)
+            .unwrap()
+            .objects
+            .get_mut(&destination.cap)
+            .unwrap()
+            .state = EntryState::Live;
+        tables.get_mut(&source.owner).unwrap().objects.remove(&source.cap);
+        destination.active = false;
+        source.active = false;
+    }
+    Ok(())
 }
 
 pub(crate) fn test_identity_exhaustion() {
@@ -424,36 +498,25 @@ pub fn remove(owner: AddressSpaceId, cap: ObjectCapability, kind: ObjectKind) ->
     true
 }
 
-/// Restore the same authority during an internal transaction rollback.
-///
-/// This is deliberately crate-private: public delegation always mints a fresh
-/// handle, while rollback must make the pre-transaction handle valid again.
-pub(crate) fn restore_unmigrated(
+/// Trusted payload teardown can also revoke an escrowed source. Its retained
+/// backing pin outlives the entry, and late cancellation cannot revive it.
+pub(crate) fn remove_for_teardown(
     owner: AddressSpaceId,
     cap: ObjectCapability,
     kind: ObjectKind,
 ) -> bool {
     let mut tables = CAPABILITIES.lock();
-    let table = namespace(&mut tables, owner, None).expect("rollback namespace allocation failed");
-    if table.objects.contains_key(&cap) {
+    let Some(table) = tables.get_mut(&owner) else {
+        return false;
+    };
+    if !table
+        .objects
+        .get(&cap)
+        .is_some_and(|entry| entry.kind == kind && entry.state != EntryState::Staged)
+    {
         return false;
     }
-    // Legacy attachment rollback has not adopted MoveEscrow yet. Account it,
-    // but do not add a rejection after its source ownership was already moved.
-    let charge = budget::reserve(
-        &table.budget,
-        owner == crate::memory::KERNEL_ASID || table.platform,
-        false,
-    )
-    .expect("legacy rollback capability accounting failed");
-    table.objects.insert(
-        cap,
-        Entry {
-            kind,
-            state: EntryState::Live,
-            _charge: charge,
-        },
-    );
+    table.objects.remove(&cap);
     true
 }
 

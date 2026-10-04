@@ -32,6 +32,7 @@ fn create_memory_object_test_address_space(label: &str) -> usize {
 pub fn test_memory_objects() {
     logln!("Testing first-class memory objects...");
     test_aggregate_budgets();
+    test_capability_admission_and_moves();
     test_node_progress_pool();
 
     let owner = create_memory_object_test_address_space("owner");
@@ -425,10 +426,10 @@ fn test_aggregate_budgets() {
     assert_eq!(object::close_cap(owner, first), Err(MemoryObjectError::AlreadyMapped));
     assert_eq!(budget::used(handle), full);
     object::unmap(owner, first).unwrap();
-    let moved = object::move_to(owner, first, target).unwrap();
+    let moved = object::prepare_move(owner, first, target).unwrap();
     assert_eq!(budget::used(handle), full, "moving cannot erase sponsorship");
     assert_eq!(budget::used(receiver), Amount::default());
-    object::rollback_move_to(target, moved, owner, first).unwrap();
+    drop(moved);
     assert_eq!(budget::used(handle), full, "rollback cannot double-charge");
     object::close_cap(owner, first).unwrap();
     let small = object::allocate(owner, 1).unwrap();
@@ -498,7 +499,7 @@ fn test_aggregate_budgets() {
     let source_handle = current_address_space_handle(source).unwrap();
     let first = object::allocate(source, 1).unwrap();
     let second = object::allocate(source, 1).unwrap();
-    let moved = object::move_to(source, first, target).unwrap();
+    let moved = object::prepare_move(source, first, target).unwrap();
     budget::retire(receiver);
     assert_eq!(
         object::move_to(source, second, target),
@@ -515,7 +516,7 @@ fn test_aggregate_budgets() {
     assert_eq!(object::allocate(target, 1), Err(MemoryObjectError::AddressSpaceMissing));
     object::write_bytes(source, second, &[0x5a])
         .expect("retiring-target copy must release its source pin");
-    object::rollback_move_to(target, moved, source, first).unwrap();
+    drop(moved);
     assert_eq!(
         budget::used(source_handle),
         Amount {
@@ -571,6 +572,210 @@ fn test_aggregate_budgets() {
         "[memory budget] limits, failed copy, move/rollback, lend, retirement and late-unpin \
          accounting passed"
     );
+}
+
+fn test_capability_admission_and_moves() {
+    use crate::{
+        capability::admission_tests::{
+            TEST_NAMESPACE_LIMIT as DOMAIN_LIMIT,
+            test_fill_remaining_namespace,
+            test_namespace_used,
+        },
+        memory::{
+            budget,
+            current_address_space_handle,
+        },
+    };
+
+    let source = create_memory_object_test_address_space("capability pressure source");
+    let target = create_memory_object_test_address_space("capability pressure target");
+    let source_handle = current_address_space_handle(source).unwrap();
+    let first = object::allocate(source, 1).unwrap();
+    let second = object::allocate(source, 1).unwrap();
+    let backing = budget::used(source_handle);
+    test_fill_remaining_namespace(source);
+    assert_eq!(test_namespace_used(source), DOMAIN_LIMIT);
+    let prepared = object::prepare_move(source, first, target).unwrap();
+    let destination = prepared.target_cap();
+    assert_eq!(object::info(source, first), Err(MemoryObjectError::UnknownCapability));
+    assert_eq!(object::close_cap(source, first), Err(MemoryObjectError::UnknownCapability));
+    assert_eq!(object::info(target, destination), Err(MemoryObjectError::UnknownCapability));
+    test_fill_remaining_namespace(target);
+    assert_eq!(test_namespace_used(target), DOMAIN_LIMIT);
+    assert!(matches!(
+        object::prepare_move(source, second, target),
+        Err(MemoryObjectError::ResourceLimit)
+    ));
+    object::write_bytes(source, second, &[0x5a]).unwrap();
+    drop(prepared);
+    assert!(object::info(source, first).is_ok());
+    assert_eq!(test_namespace_used(source), DOMAIN_LIMIT, "rollback needs no fresh slot");
+    assert_eq!(test_namespace_used(target), DOMAIN_LIMIT - 1);
+    assert_eq!(budget::used(source_handle), backing);
+    let committed = object::prepare_move(source, first, target).unwrap().commit().unwrap();
+    assert_eq!(object::info(target, committed).unwrap().owner, target);
+    assert_eq!(test_namespace_used(source), DOMAIN_LIMIT - 1);
+    assert_eq!(test_namespace_used(target), DOMAIN_LIMIT);
+    assert_eq!(budget::used(source_handle), backing, "moving preserves sponsorship");
+    object::close_cap(target, committed).unwrap();
+    test_fill_remaining_namespace(target);
+    let remaining = budget::used(source_handle);
+    assert_eq!(object::copy_to(source, second, target), Err(MemoryObjectError::ResourceLimit));
+    assert_eq!(object::lend_read(source, second, target), Err(MemoryObjectError::ResourceLimit));
+    assert_eq!(object::lend_write(source, second, target), Err(MemoryObjectError::ResourceLimit));
+    assert!(!object::info(source, second).unwrap().lent);
+    object::write_bytes(source, second, &[0xa5]).unwrap();
+    assert_eq!(budget::used(source_handle), remaining, "rejected copy refunds its backing");
+    test_fill_remaining_namespace(source);
+    assert_eq!(object::allocate(source, 1), Err(MemoryObjectError::ResourceLimit));
+    assert_eq!(budget::used(source_handle), remaining, "admission precedes frame allocation");
+    close_test_address_space(source).unwrap();
+    close_test_address_space(target).unwrap();
+
+    test_move_batch_retirement();
+    test_prepared_move_source_reuse();
+    test_prepared_move_target_reuse();
+    logln!(
+        "[memory admission] quota, atomic move batches, cancellation, retirement and ASID reuse \
+         passed"
+    );
+}
+
+fn test_move_batch_retirement() {
+    use alloc::vec;
+
+    use crate::{
+        capability,
+        memory::{
+            budget,
+            current_address_space_handle,
+        },
+    };
+
+    let source = create_memory_object_test_address_space("move batch source");
+    let target = create_memory_object_test_address_space("move batch target");
+    let first = object::allocate(source, 1).unwrap();
+    let second = object::allocate(source, 1).unwrap();
+    let mut moves = vec![
+        object::prepare_move(source, first, target).unwrap(),
+        object::prepare_move(source, second, target).unwrap(),
+    ];
+    let targets = [moves[0].target_cap(), moves[1].target_cap()];
+    object::commit_moves(&mut moves).unwrap();
+    drop(moves);
+    for cap in targets {
+        assert_eq!(object::info(target, cap).unwrap().owner, target);
+        object::write_bytes(target, cap, &[0x5a]).unwrap();
+        object::close_cap(target, cap).unwrap();
+    }
+    let first = object::allocate(source, 1).unwrap();
+    let second = object::allocate(source, 1).unwrap();
+    let mut moves = vec![
+        object::prepare_move(source, first, target).unwrap(),
+        object::prepare_move(source, second, target).unwrap(),
+    ];
+    let targets = [moves[0].target_cap(), moves[1].target_cap()];
+    capability::retire_address_space(target);
+    assert_eq!(object::commit_moves(&mut moves), Err(MemoryObjectError::AddressSpaceMissing));
+    for cap in targets {
+        assert_eq!(object::info(target, cap), Err(MemoryObjectError::UnknownCapability));
+    }
+    drop(moves);
+    assert_eq!(capability::admission_tests::test_namespace_used(target), 0);
+    object::write_bytes(source, first, &[0xa5]).unwrap();
+    object::write_bytes(source, second, &[0xa5]).unwrap();
+    close_test_address_space(target).unwrap();
+
+    let target = create_memory_object_test_address_space("retired source rollback target");
+    let prepared = object::prepare_move(source, first, target).unwrap();
+    let source_handle = current_address_space_handle(source).unwrap();
+    capability::retire_address_space(source);
+    budget::retire(source_handle);
+    assert_eq!(prepared.commit(), Err(MemoryObjectError::AddressSpaceMissing));
+    assert_eq!(
+        capability::admission_tests::test_namespace_used(source),
+        2,
+        "original slots survive cancellation"
+    );
+    object::close_cap(source, first).unwrap();
+    object::close_cap(source, second).unwrap();
+    assert_eq!(budget::used(source_handle), budget::Amount::default());
+    close_test_address_space(source).unwrap();
+    close_test_address_space(target).unwrap();
+}
+
+fn test_prepared_move_source_reuse() {
+    use crate::{
+        capability,
+        memory::{
+            budget,
+            current_address_space_handle,
+        },
+    };
+
+    let source = create_memory_object_test_address_space("prepared move retiring source");
+    let target = create_memory_object_test_address_space("prepared move surviving target");
+    let handle = current_address_space_handle(source).unwrap();
+    let cap = object::allocate(source, 1).unwrap();
+    let prepared = object::prepare_move(source, cap, target).unwrap();
+    close_test_address_space(source).unwrap();
+    assert_eq!(
+        budget::used(handle),
+        budget::Amount {
+            pages: 1,
+            objects: 1
+        }
+    );
+    let replacement = create_memory_object_test_address_space("prepared move replacement source");
+    assert_eq!(replacement, source, "fixture must exercise exact ASID reuse");
+    let replacement_handle = current_address_space_handle(replacement).unwrap();
+    assert_ne!(replacement_handle, handle);
+    let replacement_cap = object::allocate(replacement, 1).unwrap();
+    assert_eq!(replacement_cap, cap, "fixture must exercise numeric handle reuse");
+    assert_eq!(prepared.commit(), Err(MemoryObjectError::AddressSpaceMissing));
+    assert_eq!(
+        budget::used(handle),
+        budget::Amount::default(),
+        "late cancellation frees old frames"
+    );
+    assert_eq!(
+        budget::used(replacement_handle),
+        budget::Amount {
+            pages: 1,
+            objects: 1
+        }
+    );
+    assert_eq!(capability::admission_tests::test_namespace_used(replacement), 1);
+    assert_eq!(capability::admission_tests::test_namespace_used(target), 0);
+    object::write_bytes(replacement, replacement_cap, &[0x5a]).unwrap();
+    close_test_address_space(replacement).unwrap();
+    close_test_address_space(target).unwrap();
+}
+
+fn test_prepared_move_target_reuse() {
+    use crate::{
+        capability,
+        memory::current_address_space_handle,
+    };
+
+    let source = create_memory_object_test_address_space("prepared move stable source");
+    let target = create_memory_object_test_address_space("prepared move retiring target");
+    let handle = current_address_space_handle(target).unwrap();
+    let cap = object::allocate(source, 1).unwrap();
+    let prepared = object::prepare_move(source, cap, target).unwrap();
+    let destination = prepared.target_cap();
+    close_test_address_space(target).unwrap();
+    let replacement = create_memory_object_test_address_space("prepared move replacement target");
+    assert_eq!(replacement, target, "fixture must exercise exact ASID reuse");
+    assert_ne!(current_address_space_handle(replacement).unwrap(), handle);
+    let replacement_cap = object::allocate(replacement, 1).unwrap();
+    assert_eq!(replacement_cap, destination);
+    assert_eq!(prepared.commit(), Err(MemoryObjectError::AddressSpaceMissing));
+    assert_eq!(capability::admission_tests::test_namespace_used(replacement), 1);
+    object::write_bytes(source, cap, &[0x5a]).unwrap();
+    object::write_bytes(replacement, replacement_cap, &[0xa5]).unwrap();
+    close_test_address_space(replacement).unwrap();
+    close_test_address_space(source).unwrap();
 }
 
 fn test_node_progress_pool() {

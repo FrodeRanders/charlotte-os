@@ -277,11 +277,8 @@ impl AddressSpaceCaps {
         }
     }
 
-    fn insert(&mut self, owner: AddressSpaceId, cap: MemoryCap) -> MemoryObjectCap {
-        let id =
-            crate::capability::allocate_unmigrated(owner, crate::capability::ObjectKind::Memory);
-        self.caps.insert(id, cap);
-        id
+    fn insert(&mut self, id: MemoryObjectCap, cap: MemoryCap) {
+        assert!(self.caps.insert(id, cap).is_none(), "memory payload identity reused");
     }
 }
 
@@ -329,6 +326,9 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
         return Err(MemoryObjectError::InvalidLength);
     }
     validate_address_space(owner)?;
+    let identity =
+        super::current_address_space_handle(owner).ok_or(MemoryObjectError::AddressSpaceMissing)?;
+    let reservation = admit_capability(owner, identity)?;
 
     let staged = allocate_frames(owner, pages)?;
 
@@ -346,6 +346,7 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
     if !staged.charge.as_ref().unwrap().active() {
         return Err(MemoryObjectError::AddressSpaceMissing);
     }
+    let cap = reservation.publish().map_err(capability_error)?;
     let (frames, charge) = staged.into_parts();
     let object_id = registry.next_object;
     registry.next_object = registry.next_object.checked_add(1).expect("memory object id overflow");
@@ -363,8 +364,8 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
             destroy_when_unpinned: false,
         },
     );
-    let cap = registry.caps_for_mut(owner).insert(
-        owner,
+    registry.caps_for_mut(owner).insert(
+        cap,
         MemoryCap {
             object: object_id,
             rights: MemoryObjectRights::ALL,
@@ -835,152 +836,216 @@ fn unmap_serialized(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Me
     result
 }
 
+/// Own a prepared memory move. Both identities and backing retention precede
+/// ownership mutation. Drop cancels back to the exact source; commit publishes
+/// only after validating the whole move batch.
+#[must_use]
+pub(crate) struct PreparedMove {
+    owner: AddressSpaceId,
+    source_handle: super::AddressSpaceHandle,
+    source_cap: MemoryObjectCap,
+    target: AddressSpaceId,
+    target_handle: super::AddressSpaceHandle,
+    entry: MemoryCap,
+    rights: MemoryObjectRights,
+    destination: crate::capability::Reservation,
+    source: Option<crate::capability::MoveEscrow>,
+    _pin: ScopedCopyPin,
+    committed: bool,
+}
+
+impl PreparedMove {
+    pub(crate) fn target_cap(&self) -> MemoryObjectCap {
+        self.destination.identity()
+    }
+
+    pub(crate) fn commit(mut self) -> Result<MemoryObjectCap, MemoryObjectError> {
+        commit_moves(core::slice::from_mut(&mut self))?;
+        Ok(self.target_cap())
+    }
+}
+
+impl Drop for PreparedMove {
+    fn drop(&mut self) {
+        if !self.committed
+            && let Some(source) = self.source.take()
+        {
+            // A removed source has already had its payload authority drained.
+            // Exact namespace identity prevents revival in a successor.
+            // A still-present retiring namespace needs its original handle for
+            // cleanup; this rollback never allocates or admits new authority.
+            let _ = source.rollback();
+        }
+        // Field Drop cancels destination admission and then releases the pin.
+        // A source retired during preparation keeps its frames until this point.
+    }
+}
+
+pub(crate) fn prepare_move(
+    owner: AddressSpaceId,
+    cap: MemoryObjectCap,
+    target: AddressSpaceId,
+) -> Result<PreparedMove, MemoryObjectError> {
+    prepare_move_with_rights(owner, cap, target, false)
+}
+
+fn prepare_move_with_rights(
+    owner: AddressSpaceId,
+    cap: MemoryObjectCap,
+    target: AddressSpaceId,
+    read_only: bool,
+) -> Result<PreparedMove, MemoryObjectError> {
+    let source_handle =
+        super::current_address_space_handle(owner).ok_or(MemoryObjectError::AddressSpaceMissing)?;
+    let target_handle = super::current_address_space_handle(target)
+        .ok_or(MemoryObjectError::AddressSpaceMissing)?;
+    let mut registry = MEMORY_OBJECTS.lock();
+    if !super::budget::accepting(source_handle) || !super::budget::accepting(target_handle) {
+        return Err(MemoryObjectError::AddressSpaceMissing);
+    }
+    let entry = registry.lookup(owner, cap)?;
+    if !entry.rights.contains(MemoryObjectRights::TRANSFER)
+        || (read_only && !entry.rights.contains(MemoryObjectRights::MAP_READ))
+    {
+        return Err(MemoryObjectError::MissingRight);
+    }
+    let object = registry.objects.get(&entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
+    if object.owner != owner {
+        return Err(MemoryObjectError::WrongOwner);
+    }
+    if object.lend_state.is_active() || object.dma_pins != 0 || object.copy_pins != 0 {
+        return Err(MemoryObjectError::LendingActive);
+    }
+    if !object.mappings.is_empty() {
+        return Err(MemoryObjectError::AlreadyMapped);
+    }
+    let destination = admit_capability(target, target_handle)?;
+    let source = crate::capability::begin_move_captured(
+        owner,
+        cap,
+        crate::capability::ObjectKind::Memory,
+        Some(source_handle),
+    )
+    .map_err(capability_error)?;
+    // The source capability is now hidden and there are no aliases, mappings
+    // or other pins. Reuse the backing-retention pin, not a fictitious DMA pin.
+    // Every tracked writer is blocked until commit/cancellation releases it.
+    registry.objects.get_mut(&entry.object).unwrap().copy_pins = 1;
+    Ok(PreparedMove {
+        owner,
+        source_handle,
+        source_cap: cap,
+        target,
+        target_handle,
+        entry,
+        rights: if read_only {
+            MemoryObjectRights::MAP_READ
+        } else {
+            entry.rights
+        },
+        destination,
+        source: Some(source),
+        _pin: ScopedCopyPin(Some(CopyPin {
+            object: entry.object,
+            frames: Vec::new(),
+        })),
+        committed: false,
+    })
+}
+
+/// Publish every prepared move or none. Sources remain owned until all
+/// destinations and source lifetimes validate under the shared registry.
+/// Caller must finish this before exposing target identities to applications.
+pub(crate) fn commit_moves(moves: &mut [PreparedMove]) -> Result<(), MemoryObjectError> {
+    let mut authorities = Vec::new();
+    authorities.try_reserve_exact(moves.len()).map_err(|_| MemoryObjectError::ResourceLimit)?;
+    let mut registry = MEMORY_OBJECTS.lock();
+    for transfer in moves.iter() {
+        if !super::budget::accepting(transfer.source_handle)
+            || !super::budget::accepting(transfer.target_handle)
+        {
+            return Err(MemoryObjectError::AddressSpaceMissing);
+        }
+        let stored = registry
+            .caps
+            .get(&transfer.owner)
+            .and_then(|caps| caps.caps.get(&transfer.source_cap))
+            .ok_or(MemoryObjectError::AddressSpaceMissing)?;
+        let object = registry
+            .objects
+            .get(&transfer.entry.object)
+            .ok_or(MemoryObjectError::AddressSpaceMissing)?;
+        if transfer.committed
+            || stored.object != transfer.entry.object
+            || object.owner != transfer.owner
+            || object.destroy_when_unpinned
+            || object.copy_pins != 1
+            || object.dma_pins != 0
+            || object.lend_state.is_active()
+            || !object.mappings.is_empty()
+        {
+            return Err(MemoryObjectError::AddressSpaceMissing);
+        }
+    }
+    for transfer in moves.iter_mut() {
+        authorities.push((&mut transfer.destination, transfer.source.as_mut().unwrap()));
+    }
+    crate::capability::publish_moves(&mut authorities).map_err(capability_error)?;
+    drop(authorities);
+    // No fallible work remains after atomic authority publication. Registry
+    // ownership keeps the verified payloads stable through these updates.
+    for transfer in moves.iter_mut() {
+        registry.caps.get_mut(&transfer.owner).unwrap().caps.remove(&transfer.source_cap);
+        registry.objects.get_mut(&transfer.entry.object).unwrap().owner = transfer.target;
+        registry.caps_for_mut(transfer.target).insert(
+            transfer.target_cap(),
+            MemoryCap {
+                object: transfer.entry.object,
+                rights: transfer.rights,
+            },
+        );
+        transfer.committed = true;
+    }
+    Ok(())
+}
+
 pub fn move_to(
     owner: AddressSpaceId,
     cap: MemoryObjectCap,
     target: AddressSpaceId,
 ) -> Result<MemoryObjectCap, MemoryObjectError> {
-    let target_handle = super::current_address_space_handle(target)
-        .ok_or(MemoryObjectError::AddressSpaceMissing)?;
-    let mut registry = MEMORY_OBJECTS.lock();
-    if !super::budget::accepting(target_handle) {
-        return Err(MemoryObjectError::AddressSpaceMissing);
-    }
-    let cap_entry = registry.lookup(owner, cap)?;
-    if !cap_entry.rights.contains(MemoryObjectRights::TRANSFER) {
-        return Err(MemoryObjectError::MissingRight);
-    }
-
-    {
-        let object =
-            registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-        if object.owner != owner {
-            return Err(MemoryObjectError::WrongOwner);
-        }
-        if object.lend_state.is_active() || object.dma_pins != 0 || object.copy_pins != 0 {
-            return Err(MemoryObjectError::LendingActive);
-        }
-        if !object.mappings.is_empty() {
-            return Err(MemoryObjectError::AlreadyMapped);
-        }
-    }
-
-    registry.caps_for_mut(owner).caps.remove(&cap).ok_or(MemoryObjectError::UnknownCapability)?;
-    registry
-        .objects
-        .get_mut(&cap_entry.object)
-        .ok_or(MemoryObjectError::UnknownCapability)?
-        .owner = target;
-    let target_cap = registry.caps_for_mut(target).insert(
-        target,
-        MemoryCap {
-            object: cap_entry.object,
-            rights: cap_entry.rights,
-        },
-    );
-    let revoked = crate::capability::remove(owner, cap, crate::capability::ObjectKind::Memory);
-    assert!(revoked, "memory source capability was absent from unified table");
-    Ok(target_cap)
+    prepare_move(owner, cap, target)?.commit()
 }
 
-/// Transfer ownership while attenuating the destination capability to
-/// read-only mapping. Used for immutable launch objects: the destination can
-/// map and close the object, but cannot mutate or transfer it further.
+/// Transfer an immutable launch object, attenuating its destination rights.
 pub fn move_read_only_to(
     owner: AddressSpaceId,
     cap: MemoryObjectCap,
     target: AddressSpaceId,
 ) -> Result<MemoryObjectCap, MemoryObjectError> {
-    let target_handle = super::current_address_space_handle(target)
-        .ok_or(MemoryObjectError::AddressSpaceMissing)?;
-    let mut registry = MEMORY_OBJECTS.lock();
-    if !super::budget::accepting(target_handle) {
-        return Err(MemoryObjectError::AddressSpaceMissing);
-    }
-    let cap_entry = registry.lookup(owner, cap)?;
-    if !cap_entry.rights.contains(MemoryObjectRights::TRANSFER)
-        || !cap_entry.rights.contains(MemoryObjectRights::MAP_READ)
-    {
-        return Err(MemoryObjectError::MissingRight);
-    }
-    {
-        let object =
-            registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-        if object.owner != owner {
-            return Err(MemoryObjectError::WrongOwner);
-        }
-        if object.lend_state.is_active() || object.dma_pins != 0 || object.copy_pins != 0 {
-            return Err(MemoryObjectError::LendingActive);
-        }
-        if !object.mappings.is_empty() {
-            return Err(MemoryObjectError::AlreadyMapped);
-        }
-    }
-    registry.caps_for_mut(owner).caps.remove(&cap).ok_or(MemoryObjectError::UnknownCapability)?;
-    registry
-        .objects
-        .get_mut(&cap_entry.object)
-        .ok_or(MemoryObjectError::UnknownCapability)?
-        .owner = target;
-    let target_cap = registry.caps_for_mut(target).insert(
-        target,
-        MemoryCap {
-            object: cap_entry.object,
-            rights: MemoryObjectRights::MAP_READ,
-        },
-    );
-    let revoked = crate::capability::remove(owner, cap, crate::capability::ObjectKind::Memory);
-    assert!(revoked, "memory source capability was absent from unified table");
-    Ok(target_cap)
+    prepare_move_with_rights(owner, cap, target, true)?.commit()
 }
 
-/// Undo a successful [`move_to`] while preserving the owner's original
-/// capability number. This is restricted to kernel-internal transaction
-/// rollback; callers must supply the exact target capability returned by the
-/// move and the now-vacant original capability slot.
-pub(crate) fn rollback_move_to(
-    target: AddressSpaceId,
-    target_cap: MemoryObjectCap,
-    owner: AddressSpaceId,
-    original_cap: MemoryObjectCap,
-) -> Result<(), MemoryObjectError> {
-    let mut registry = MEMORY_OBJECTS.lock();
-    let cap_entry = registry.lookup(target, target_cap)?;
-    let object =
-        registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-    if object.owner != target
-        || object.lend_state.is_active()
-        || object.dma_pins != 0
-        || object.copy_pins != 0
-        || !object.mappings.is_empty()
-    {
-        return Err(MemoryObjectError::WrongOwner);
+fn capability_error(error: crate::capability::AllocationError) -> MemoryObjectError {
+    match error {
+        crate::capability::AllocationError::Retired => MemoryObjectError::AddressSpaceMissing,
+        crate::capability::AllocationError::UnknownCapability => {
+            MemoryObjectError::UnknownCapability
+        }
+        _ => MemoryObjectError::ResourceLimit,
     }
-    if registry.caps.get(&owner).is_some_and(|caps| caps.caps.contains_key(&original_cap)) {
-        return Err(MemoryObjectError::LendingActive);
-    }
+}
 
-    registry
-        .caps
-        .get_mut(&target)
-        .and_then(|caps| caps.caps.remove(&target_cap))
-        .ok_or(MemoryObjectError::UnknownCapability)?;
-    let revoked =
-        crate::capability::remove(target, target_cap, crate::capability::ObjectKind::Memory);
-    assert!(revoked, "rollback target capability was absent from unified table");
-    registry
-        .objects
-        .get_mut(&cap_entry.object)
-        .ok_or(MemoryObjectError::UnknownCapability)?
-        .owner = owner;
-    registry.caps_for_mut(owner).caps.insert(original_cap, cap_entry);
-    let restored = crate::capability::restore_unmigrated(
+fn admit_capability(
+    owner: AddressSpaceId,
+    identity: super::AddressSpaceHandle,
+) -> Result<crate::capability::Reservation, MemoryObjectError> {
+    crate::capability::reserve_captured(
         owner,
-        original_cap,
         crate::capability::ObjectKind::Memory,
-    );
-    assert!(restored, "rollback source capability slot was not vacant");
-    Ok(())
+        Some(identity),
+    )
+    .map_err(capability_error)
 }
 
 /// Hold a shared-read pin on a memory object while its frames are copied.
@@ -1032,6 +1097,7 @@ pub fn copy_to(
     let target_handle = super::current_address_space_handle(target)
         .ok_or(MemoryObjectError::AddressSpaceMissing)?;
     let mut copy_pin = ScopedCopyPin(Some(pin_for_copy(owner, cap)?));
+    let reservation = admit_capability(target, target_handle)?;
     let source = copy_pin.0.as_ref().unwrap();
     // The copying caller sponsors the additional physical pages, even though
     // ownership is delivered to the receiver. The pin is an owning guard.
@@ -1051,6 +1117,7 @@ pub fn copy_to(
     if !super::budget::accepting(target_handle) || !staged.charge.as_ref().unwrap().active() {
         return Err(MemoryObjectError::AddressSpaceMissing);
     }
+    let target_cap = reservation.publish().map_err(capability_error)?;
     let pin = copy_pin.0.take().unwrap();
     let source_frames_to_free = release_copy_pin_locked(&mut registry, pin.object);
     let (copied_frames, charge) = staged.into_parts();
@@ -1070,8 +1137,8 @@ pub fn copy_to(
             destroy_when_unpinned: false,
         },
     );
-    let target_cap = registry.caps_for_mut(target).insert(
-        target,
+    registry.caps_for_mut(target).insert(
+        target_cap,
         MemoryCap {
             object: object_id,
             rights: MemoryObjectRights::ALL,
@@ -1125,8 +1192,10 @@ pub fn lend_read(
         }
     }
 
-    let borrower_cap = registry.caps_for_mut(borrower).insert(
-        borrower,
+    let borrower_cap =
+        admit_capability(borrower, borrower_handle)?.publish().map_err(capability_error)?;
+    registry.caps_for_mut(borrower).insert(
+        borrower_cap,
         MemoryCap {
             object: cap_entry.object,
             rights: MemoryObjectRights::MAP_READ,
@@ -1188,8 +1257,10 @@ pub fn lend_write(
         }
     }
 
-    let borrower_cap = registry.caps_for_mut(borrower).insert(
-        borrower,
+    let borrower_cap =
+        admit_capability(borrower, borrower_handle)?.publish().map_err(capability_error)?;
+    registry.caps_for_mut(borrower).insert(
+        borrower_cap,
         MemoryCap {
             object: cap_entry.object,
             rights: MemoryObjectRights(
@@ -1312,6 +1383,9 @@ fn revoke_lend_serialized(
 
 pub fn close_cap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), MemoryObjectError> {
     let mut registry = MEMORY_OBJECTS.lock();
+    if !crate::capability::contains(asid, cap, crate::capability::ObjectKind::Memory) {
+        return Err(MemoryObjectError::UnknownCapability);
+    }
     let cap_entry = registry
         .caps
         .get_mut(&asid)
@@ -1447,7 +1521,11 @@ pub fn close_address_space(asid: AddressSpaceId) {
         if let Some(caps) = registry.caps.remove(&asid) {
             for cap in caps.caps.keys() {
                 assert!(
-                    crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Memory,),
+                    crate::capability::remove_for_teardown(
+                        asid,
+                        *cap,
+                        crate::capability::ObjectKind::Memory,
+                    ),
                     "memory payload capability was absent from unified table"
                 );
             }
@@ -1529,7 +1607,11 @@ fn remove_caps_for_object(registry: &mut MemoryObjectRegistry, object_id: Memory
         for cap_id in caps_to_remove {
             caps.caps.remove(&cap_id);
             assert!(
-                crate::capability::remove(*asid, cap_id, crate::capability::ObjectKind::Memory,),
+                crate::capability::remove_for_teardown(
+                    *asid,
+                    cap_id,
+                    crate::capability::ObjectKind::Memory,
+                ),
                 "memory payload capability was absent from unified table"
             );
         }

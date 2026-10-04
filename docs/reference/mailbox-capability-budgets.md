@@ -80,20 +80,20 @@ probe or exhaustive concurrent-retirement exploration.
 
 Mailbox opens also enforce the [shared capability budget](capability-admission.md):
 4,096 records per namespace, 65,536 node-wide and 49,152 ordinary records.
-Completion submissions use the same bounded path. All other families contribute
+Completion submissions and memory destinations use the same bounded path.
+Other families contribute
 to those counters, but their unconverted allocation paths can still exceed the
 shared policy. These limits therefore do not establish full aggregate protection.
 
 Staged capability owners now capture exact namespace identity, and source
-escrow can preserve a rollback slot at capacity. Production memory/IPC transfers
-have not yet adopted these owners. Completing the cutover needs these contracts:
+escrow preserves a rollback slot at capacity. Production memory moves, including
+IPC move vectors, now use an owning prepared transaction and atomic move-batch
+publication. Completing the cutover still needs these contracts:
 
-- Reserve destination identities/counts before mutating endpoint, completion,
-  device or memory-object payload state.
-- Keep the source reservation in escrow across an IPC attachment move until
-  commit. Rollback must restore its original authority even if another thread
-  fills the source namespace in the meantime.
-- Reserve a vector atomically before moving its first attachment. Receive-side
+- Reserve destination identities/counts before mutating endpoint, connection,
+  call, device or system-observer payload state.
+- Keep copied/loaned vector aliases hidden until complete IPC publication.
+  Move destinations already remain staged until batch commit. Receive-side
   reply capability admission must preserve the queued message on rejection.
 - Retain an exact namespace identity in staged owners. Their Drop must not
   revoke a replacement's reused numeric handle.

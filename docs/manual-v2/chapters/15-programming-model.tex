@@ -98,7 +98,8 @@ Opens are serialized with domain retirement and checked against the exact
 generation, so a delayed open cannot publish into a reused ASID.
 
 The unified capability namespace accounts for every object kind. Mailbox
-opens and capability-backed completion submissions also enforce shared limits:
+opens, capability-backed completion submissions and memory-object destinations
+also enforce shared limits:
 4,096 records per namespace, 65,536 per node, and 49,152 ordinary records.
 Staged identities and source slots held for rollback count toward these limits;
 staging does not grant public authority. Owning admission tokens capture the
@@ -108,10 +109,14 @@ retires admission before releasing subsystem payloads.
 
 Other allocation paths still require conversion to staged admission. They
 contribute to the counters but can exceed the shared limits, so aggregate
-protection is incomplete. The source-escrow primitive has capacity-independent
-rollback, but production memory and IPC transactions have not yet adopted it.
-That conversion will replace scalar rollback rather than retain it for
-compatibility. Allocator bytes, empty namespace metadata, page tables and heap
+protection is incomplete. Memory moves use an owning prepared transaction that
+holds destination admission, source escrow and a backing-retention pin. Source
+authority is hidden during preparation; cancellation restores its original
+slot without fresh quota. Move batches validate all lifetimes before publishing
+any destination, including IPC vectors. Late cancellation cannot alter reused
+ASIDs or successor handles. Scalar move rollback has been removed. Copied and
+loaned vector aliases still publish individually during preparation and need
+their own hidden staging. Allocator bytes, empty namespace metadata, page tables and heap
 backing remain separate accounting requirements. The implementation contract
 and migration scope are recorded in
 \texttt{docs/reference/capability-admission.md}.

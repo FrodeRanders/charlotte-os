@@ -118,6 +118,28 @@ impl Drop for ProfileLaunchTransaction {
     }
 }
 
+struct PreparingUpgrade {
+    loaded: Option<loader::LoadedDomain>,
+    moves: Vec<crate::memory::object::PreparedMove>,
+}
+
+impl PreparingUpgrade {
+    fn finish(mut self) -> loader::LoadedDomain {
+        self.moves.clear();
+        self.loaded.take().expect("upgrade preparation already consumed")
+    }
+}
+
+impl Drop for PreparingUpgrade {
+    fn drop(&mut self) {
+        // Restore prepared sources before releasing their destination domain.
+        self.moves.clear();
+        if let Some(loaded) = self.loaded.take() {
+            let _ = close_user_address_space_handle(loaded.address_space);
+        }
+    }
+}
+
 /// A running EL0 service protection domain.
 #[derive(Copy, Clone)]
 pub struct ServiceDomain {
@@ -1182,6 +1204,15 @@ pub fn teardown_domain(domain: ServiceDomain) {
     }
 }
 
+#[derive(Debug)]
+pub enum UpgradeSpawnError {
+    HandoffTooLarge,
+    Allocation,
+    Load(loader::DomainLoadError),
+    Ipc(crate::ipc::IpcError),
+    Memory(crate::memory::object::MemoryObjectError),
+}
+
 /// Load and start a replacement service domain, handing it the old
 /// instance's state and endpoint (§live-service-upgrade design).
 ///
@@ -1192,86 +1223,76 @@ pub fn teardown_domain(domain: ServiceDomain) {
 /// before the old domain is torn down, and writes both the state caps and
 /// the old endpoint cap to the config page so the replacement service can
 /// inspect them.
-pub fn spawn_upgrade(
+pub fn try_spawn_upgrade(
     image: &[u8],
     name_service: &NameServiceHandle,
     rights: ConnectionRights,
     old_asid: AddressSpaceId,
     grant: UpgradeGrant,
-) -> ServiceDomain {
+) -> Result<ServiceDomain, UpgradeSpawnError> {
     let handoff_caps = grant.state_caps.len() + usize::from(grant.endpoint_cap != 0);
-    assert!(
-        handoff_caps < charlotte_launch::CAPABILITY_VECTOR_CAPACITY,
-        "[supervisor] upgrade handoff exceeds launch capability vector"
-    );
-    let loaded = loader::load_domain(image);
+    if handoff_caps >= charlotte_launch::CAPABILITY_VECTOR_CAPACITY {
+        return Err(UpgradeSpawnError::HandoffTooLarge);
+    }
+    let mut preparation = PreparingUpgrade {
+        loaded: Some(loader::try_load_domain(image).map_err(UpgradeSpawnError::Load)?),
+        moves: Vec::new(),
+    };
+    let loaded = preparation.loaded.as_ref().unwrap();
     let connection = ipc::connection_delegate(
         name_service.domain.asid,
         name_service.endpoint_cap,
         loaded.asid,
         rights,
     )
-    .expect("[supervisor] upgrade bootstrap connection delegation failed");
+    .map_err(UpgradeSpawnError::Ipc)?;
     bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
     bootstrap::write_manifest(loaded.config_frame, &[]);
 
-    // Move state caps from KERNEL_ASID to the new domain.
-    let mut moved_state = Vec::with_capacity(grant.state_caps.len());
+    // One owner cancels all prepared state and the not-yet-running domain.
+    preparation
+        .moves
+        .try_reserve_exact(grant.state_caps.len())
+        .map_err(|_| UpgradeSpawnError::Allocation)?;
     for &source_cap in &grant.state_caps {
-        match crate::memory::object::move_to(crate::memory::KERNEL_ASID, source_cap, loaded.asid) {
-            Ok(target_cap) => moved_state.push((source_cap, target_cap)),
-            Err(error) => {
-                for &(original_cap, target_cap) in moved_state.iter().rev() {
-                    crate::memory::object::rollback_move_to(
-                        loaded.asid,
-                        target_cap,
-                        crate::memory::KERNEL_ASID,
-                        original_cap,
-                    )
-                    .expect("[supervisor] upgrade state rollback failed");
-                }
-                close_user_address_space_handle(loaded.address_space)
-                    .expect("[supervisor] failed upgrade-domain cleanup");
-                panic!("[supervisor] upgrade state move failed: {error:?}");
-            }
-        }
+        preparation.moves.push(
+            crate::memory::object::prepare_move(
+                crate::memory::KERNEL_ASID,
+                source_cap,
+                preparation.loaded.as_ref().unwrap().asid,
+            )
+            .map_err(UpgradeSpawnError::Memory)?,
+        );
     }
-    // Delegate a connection from the old endpoint to the new domain while
-    // the old domain is still alive.
+    // Delegate before committing any state; a failure drops preparation and
+    // restores all source handles without reconstructing scalar ownership.
     let delegated_ep = if grant.endpoint_cap != 0 {
         Some(
             ipc::connection_delegate(
                 old_asid,
                 grant.endpoint_cap,
-                loaded.asid,
+                preparation.loaded.as_ref().unwrap().asid,
                 ConnectionRights::SEND | ConnectionRights::CALL,
             )
-            .unwrap_or_else(|error| {
-                for &(original_cap, target_cap) in moved_state.iter().rev() {
-                    crate::memory::object::rollback_move_to(
-                        loaded.asid,
-                        target_cap,
-                        crate::memory::KERNEL_ASID,
-                        original_cap,
-                    )
-                    .expect("[supervisor] upgrade state rollback failed");
-                }
-                close_user_address_space_handle(loaded.address_space)
-                    .expect("[supervisor] failed upgrade-domain cleanup");
-                panic!("[supervisor] upgrade endpoint delegation failed: {error:?}");
-            }),
+            .map_err(UpgradeSpawnError::Ipc)?,
         )
     } else {
         None
     };
-    let target_state_caps =
-        moved_state.iter().map(|(_, target_cap)| *target_cap).collect::<Vec<_>>();
+    let mut target_state_caps = Vec::new();
+    target_state_caps
+        .try_reserve_exact(preparation.moves.len())
+        .map_err(|_| UpgradeSpawnError::Allocation)?;
+    target_state_caps.extend(preparation.moves.iter().map(|transfer| transfer.target_cap()));
+    crate::memory::object::commit_moves(&mut preparation.moves)
+        .map_err(UpgradeSpawnError::Memory)?;
+    let loaded = preparation.finish();
     bootstrap::write_handoff_states(
         loaded.config_frame,
         &target_state_caps,
         delegated_ep.unwrap_or(0),
     );
-    start_domain(loaded)
+    Ok(start_domain(loaded))
 }
 
 /// Return the embedded ELF image for a given upgrade selector.

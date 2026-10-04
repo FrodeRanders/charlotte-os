@@ -1672,21 +1672,25 @@ fn complete_reply(
     } else {
         None
     };
-    let returned_memory_cap = if let Some(memory_cap) = returned_memory {
+    let returned_move = if let Some(memory_cap) = returned_memory {
         Some(
-            crate::memory::object::move_to(server, memory_cap, caller)
+            crate::memory::object::prepare_move(server, memory_cap, caller)
                 .map_err(|_| IpcError::MemoryTransferFailed)?,
         )
     } else {
         None
     };
     if borrow.is_some_and(|borrow| revoke_memory_borrow(borrow).is_err()) {
-        if let (Some(source_cap), Some(target_cap)) = (returned_memory, returned_memory_cap) {
-            crate::memory::object::rollback_move_to(caller, target_cap, server, source_cap)
-                .expect("reply rollback must restore the exact server memory capability");
-        }
         return Err(IpcError::MemoryTransferFailed);
     }
+    // A successfully revoked loan stays revoked if the caller retires before
+    // move publication. Preserve retry/cancellation semantics: never retain a
+    // stale loan record that would attempt to revoke it twice.
+    ipc.reply_tokens.get_mut(&token_id).unwrap().borrow = None;
+    let returned_memory_cap = returned_move
+        .map(|transfer| transfer.commit())
+        .transpose()
+        .map_err(|_| IpcError::MemoryTransferFailed)?;
     let returned_cap = returned_connection.map(|(endpoint, endpoint_rights)| {
         ipc.as_caps(caller).insert_connection(
             caller,
@@ -2199,17 +2203,13 @@ pub fn vector_send(
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
 
     let mut memory_caps = Vec::new();
-    let mut applied = read_vector_page(sender, cap_vector, server, false, &mut memory_caps)?;
-
+    let applied = read_vector_page(sender, cap_vector, server, false, &mut memory_caps)?;
+    applied.commit()?;
+    // Queue availability was validated under this same IPC write guard; none
+    // of attachment preparation/publication changes the endpoint or its queue.
     let delivery =
-        match enqueue_message(&mut ipc, endpoint_id, sender, opcode, arg0, None, memory_caps, None)
-        {
-            Ok(delivery) => delivery,
-            Err(error) => {
-                rollback_vector_transfers(sender, server, &mut applied);
-                return Err(error);
-            }
-        };
+        enqueue_message(&mut ipc, endpoint_id, sender, opcode, arg0, None, memory_caps, None)
+            .expect("reserved vector-send endpoint changed under IPC ownership");
     drop(ipc);
     deliver(delivery);
 
@@ -2239,7 +2239,8 @@ pub fn vector_call(
     let (pending, reply_charge) = ipc.stage_call(caller)?;
 
     let mut memory_caps = Vec::new();
-    let mut applied = read_vector_page(caller, cap_vector, server, true, &mut memory_caps)?;
+    let applied = read_vector_page(caller, cap_vector, server, true, &mut memory_caps)?;
+    applied.commit()?;
 
     let call = ipc.alloc_call();
     ipc.pending_calls.insert(call, pending);
@@ -2261,7 +2262,7 @@ pub fn vector_call(
             _charge: reply_charge,
         },
     );
-    let delivery = match enqueue_message(
+    let delivery = enqueue_message(
         &mut ipc,
         endpoint_id,
         caller,
@@ -2270,23 +2271,8 @@ pub fn vector_call(
         Some(token),
         memory_caps,
         None,
-    ) {
-        Ok(delivery) => delivery,
-        Err(error) => {
-            assert!(
-                ipc.as_caps(caller).caps.remove(&call_cap).is_some(),
-                "call payload capability disappeared during enqueue rollback"
-            );
-            assert!(
-                crate::capability::remove(caller, call_cap, crate::capability::ObjectKind::Ipc),
-                "IPC payload capability was absent from unified table"
-            );
-            ipc.pending_calls.remove(&call);
-            ipc.reply_tokens.remove(&token);
-            rollback_vector_transfers(caller, server, &mut applied);
-            return Err(error);
-        }
-    };
+    )
+    .expect("reserved vector-call endpoint changed under IPC ownership");
     drop(ipc);
     deliver(delivery);
 
@@ -2300,7 +2286,7 @@ fn read_vector_page(
     target: AddressSpaceId,
     is_call: bool,
     out: &mut Vec<MemoryObjectCap>,
-) -> Result<Vec<AppliedVectorTransfer>, IpcError> {
+) -> Result<VectorTransfers, IpcError> {
     let vector_bytes = crate::memory::object::snapshot_bytes(
         sender,
         cap_vector_page,
@@ -2330,23 +2316,29 @@ fn read_vector_page(
         entries.push(entry);
     }
 
-    let mut applied = Vec::with_capacity(count);
+    let mut applied = VectorTransfers {
+        sender,
+        target,
+        moves: Vec::new(),
+        applied: Vec::new(),
+        committed: false,
+    };
+    applied.moves.try_reserve_exact(count).map_err(|_| IpcError::ResourceLimit)?;
+    applied.applied.try_reserve_exact(count).map_err(|_| IpcError::ResourceLimit)?;
     for entry in entries {
         let cap: MemoryObjectCap = entry.cap as MemoryObjectCap;
+        if entry.mode == 1 {
+            let transfer = crate::memory::object::prepare_move(sender, cap, target)
+                .map_err(|_| IpcError::MemoryTransferFailed)?;
+            out.push(transfer.target_cap());
+            applied.moves.push(transfer);
+            continue;
+        }
         let transfer = match entry.mode {
             0 => crate::memory::object::copy_to(sender, cap, target).map(|target_cap| {
                 (
                     target_cap,
                     AppliedVectorTransfer::Copy {
-                        target_cap,
-                    },
-                )
-            }),
-            1 => crate::memory::object::move_to(sender, cap, target).map(|target_cap| {
-                (
-                    target_cap,
-                    AppliedVectorTransfer::Move {
-                        source_cap: cap,
                         target_cap,
                     },
                 )
@@ -2374,10 +2366,9 @@ fn read_vector_page(
         match transfer {
             Ok((server_cap, action)) => {
                 out.push(server_cap);
-                applied.push(action);
+                applied.applied.push(action);
             }
             Err(_) => {
-                rollback_vector_transfers(sender, target, &mut applied);
                 out.clear();
                 return Err(IpcError::MemoryTransferFailed);
             }
@@ -2390,37 +2381,54 @@ enum AppliedVectorTransfer {
     Copy {
         target_cap: MemoryObjectCap,
     },
-    Move {
-        source_cap: MemoryObjectCap,
-        target_cap: MemoryObjectCap,
-    },
     Lend {
         source_cap: MemoryObjectCap,
         target_cap: MemoryObjectCap,
     },
 }
 
-fn rollback_vector_transfers(
+/// All transient attachment owners live together until successful publication.
+/// This private scope is created/dropped while its IPC write guard is owned;
+/// teardown cannot recycle a namespace during alias rollback.
+struct VectorTransfers {
     sender: AddressSpaceId,
     target: AddressSpaceId,
-    applied: &mut Vec<AppliedVectorTransfer>,
-) {
-    while let Some(action) = applied.pop() {
-        let result = match action {
-            AppliedVectorTransfer::Copy {
-                target_cap,
-            } => crate::memory::object::close_cap(target, target_cap),
-            AppliedVectorTransfer::Move {
-                source_cap,
-                target_cap,
-            } => crate::memory::object::rollback_move_to(target, target_cap, sender, source_cap),
-            AppliedVectorTransfer::Lend {
-                source_cap,
-                target_cap,
-            } => {
-                crate::memory::object::revoke_lend_under_ipc(sender, source_cap, target, target_cap)
-            }
-        };
-        assert!(result.is_ok(), "vector IPC rollback must be infallible");
+    moves: Vec<crate::memory::object::PreparedMove>,
+    applied: Vec<AppliedVectorTransfer>,
+    committed: bool,
+}
+
+impl VectorTransfers {
+    fn commit(mut self) -> Result<(), IpcError> {
+        crate::memory::object::commit_moves(&mut self.moves)
+            .map_err(|_| IpcError::MemoryTransferFailed)?;
+        self.committed = true;
+        Ok(())
+    }
+}
+
+impl Drop for VectorTransfers {
+    fn drop(&mut self) {
+        if self.committed {
+            return;
+        }
+        while let Some(action) = self.applied.pop() {
+            let result = match action {
+                AppliedVectorTransfer::Copy {
+                    target_cap,
+                } => crate::memory::object::close_cap(self.target, target_cap),
+                AppliedVectorTransfer::Lend {
+                    source_cap,
+                    target_cap,
+                } => crate::memory::object::revoke_lend_under_ipc(
+                    self.sender,
+                    source_cap,
+                    self.target,
+                    target_cap,
+                ),
+            };
+            assert!(result.is_ok(), "vector IPC rollback must be infallible");
+        }
+        // PreparedMove field Drop restores exact source authority and backing.
     }
 }

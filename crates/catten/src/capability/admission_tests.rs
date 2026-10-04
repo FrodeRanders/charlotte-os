@@ -8,6 +8,7 @@ use super::*;
 use crate::logln;
 
 const OWNER: AddressSpaceId = 0x5e40;
+pub(crate) const TEST_NAMESPACE_LIMIT: usize = budget::DOMAIN_LIMIT;
 
 fn account(owner: AddressSpaceId) -> Arc<budget::DomainBudget> {
     CAPABILITIES.lock().get(&owner).unwrap().budget.clone()
@@ -167,6 +168,36 @@ pub(crate) fn test_fill_namespace(owner: AddressSpaceId) {
     for _ in 0..budget::DOMAIN_LIMIT {
         try_allocate(owner, ObjectKind::Memory).unwrap();
     }
+}
+
+/// Real-domain kernel fixture: fill only spare namespace slots, without
+/// manufacturing payload objects or rewriting node-wide limits.
+pub(crate) fn test_fill_remaining_namespace(owner: AddressSpaceId) {
+    loop {
+        match try_allocate(owner, ObjectKind::SystemObserver) {
+            Ok(_) => {}
+            Err(AllocationError::ResourceLimit) => break,
+            Err(error) => panic!("namespace pressure fixture failed: {error:?}"),
+        }
+    }
+}
+
+pub(crate) fn test_namespace_used(owner: AddressSpaceId) -> usize {
+    account(owner).used()
+}
+
+/// Only use in a fixture namespace filled with dummy observer records above.
+pub(crate) fn test_free_fixture_slot(owner: AddressSpaceId) {
+    let cap = CAPABILITIES
+        .lock()
+        .get(&owner)
+        .unwrap()
+        .objects
+        .iter()
+        .find(|(_, entry)| entry.kind == ObjectKind::SystemObserver)
+        .map(|(&cap, _)| cap)
+        .expect("fixture has no dummy record");
+    assert!(remove(owner, cap, ObjectKind::SystemObserver));
 }
 
 fn test_completion_admission() {

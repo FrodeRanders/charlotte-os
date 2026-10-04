@@ -1,174 +1,87 @@
-# Live Service Upgrade — Design
+# Live service upgrade
 
-## Can CharlotteOS replace a running service without losing state?
+CharlotteOS has a tested reference implementation of restart-with-state.
+The old service hands off one memory object; the replacement restores it,
+creates a fresh endpoint and registers a new name-service generation. Clients
+holding old connections re-look up and retry. This does not promise uninterrupted
+in-flight requests or arbitrary-service upgrade compatibility.
 
-**Yes.** The primitives needed already exist. What's missing is the
-supervisor-orchestrated protocol.
+## Running reference path
 
-### The four primitives (all implemented)
+1. The service manager asks the old instance to hand off its state.
+2. The old service drains its work and returns an unmapped state memory object.
+3. The manager obtains a signed replacement ELF from the local object store, or
+   selects the embedded recovery image.
+4. The privileged `SpawnUpgrade` syscall validates the manager's connection
+   authority, snapshots and verifies the executable, loads the replacement,
+   transfers the single state object and supplies its bootstrap capabilities.
+5. The replacement reads the state, creates an endpoint and registers the same
+   logical name. The name service publishes the new connection/generation.
+6. Clients retry failed requests against the replacement.
 
-1. **Memory-object ownership transfer** — `memory::object::move_to` moves a
-   page-backed memory object from one address space to another. The sender
-   loses access; the receiver gains it. This is the vehicle for service state.
+The existing service-manager/echo self-test exercises this path. State transfer
+uses the same memory-object ownership primitives as ordinary IPC, with the
+original sponsor retaining the physical-backing charge until final reclamation.
+See [resource ownership](../guides/resource-ownership.md) and
+[memory-object budgets](../reference/memory-object-budgets.md).
 
-2. **Generation tracking** — the userspace name service records an instance
-   generation that increments on restart. A client calling through a stale
-   connection gets `EndpointClosed`; re-looking up the name returns the new
-   generation and a fresh connection.
+The executable snapshot is verified as a CLS2 Ed25519-signed artifact before
+mapping. The object checksum detects corruption; it is not executable authority.
 
-3. **EndpointClose / Cancelled** — when a service domain exits, the kernel
-   closes its endpoint. Queued requests complete as `EndpointClosed`;
-   delivered calls held by an exited server complete as `Cancelled`. Clients
-   see a deterministic failure, not a hang.
+## Multi-state kernel prototype
 
-4. **Bootstrap capability delivery** — the supervisor writes one initial
-   capability to the config page before a domain starts. Currently this is
-   either an endpoint (for the name service) or a connection to the name
-   service (for everyone else). A live-upgrade handoff adds one more slot:
-   the old service's state (as memory objects) plus the old service's
-   endpoint capability.
-
-### The handoff protocol
-
-```
-     Old Service         Supervisor         New Service
-          |                    |                   |
-     OP_HANDOFF               |                   |
-          |-------------------->                   |
-          |   drain in-flight, |                   |
-          |   serialize state  |                   |
-          |   → move_to        |                   |
-          |<-------------------|                   |
-          |  reply: "ready"    |                   |
-          |                    |  spawn_upgrade()  |
-          |  (exit)            |------------------>|
-          |                    |  bootstrap:       |
-          |                    |    ns_connection  |
-          |                    |    state_memory   |
-          |                    |    endpoint_cap   |
-          |                    |                   |
-          |                    |         new service reads state,
-          |                    |         takes over endpoint,
-          |                    |         registers (new generation)
-          |                    |                   |
-                    clients see EndpointClosed
-                    → re-lookup → fresh connection
-                    → resume from where they left off
-```
-
-### What the supervisor needs to add
+The supervisor also contains a separate, currently uncalled helper:
 
 ```rust
-// supervisor.rs — new entry point
-pub struct UpgradeGrant {
-    /// Memory objects the old service moved to the supervisor (its state).
-    pub state_caps: Vec<MemoryObjectCap>,
-    /// The old service's endpoint capability (so the new service can take it over).
-    pub endpoint_cap: CapabilityId,
-}
-
-pub fn spawn_upgrade(
+pub fn try_spawn_upgrade(
     image: &[u8],
     name_service: &NameServiceHandle,
-    old_domain: ServiceDomain,
+    rights: ConnectionRights,
+    old_asid: AddressSpaceId,
     grant: UpgradeGrant,
-) -> ServiceDomain {
-    // 1. Load the new service ELF
-    // 2. Move the state memory objects to the new domain
-    // 3. Delegate the old endpoint cap to the new domain
-    // 4. Write bootstrap: ns_connection + state_caps + endpoint_cap
-    // 5. Start the new domain
-    // 6. Tear down the old domain (reclaims everything else)
-}
+) -> Result<ServiceDomain, UpgradeSpawnError>;
 ```
 
-### What the service must implement
+`UpgradeGrant` describes state capabilities already held by the kernel
+supervisor and an optional old endpoint from which to delegate a connection.
+This helper is not the implementation invoked by the userspace upgrade syscall.
 
-The service must respond to an `OP_HANDOFF` request from the supervisor:
+Its preparation owner holds the loaded, not-yet-running replacement and every
+`PreparedMove`. Destination identities are reserved before source authority is
+hidden; the state payload remains source-owned until commit. Connection
+delegation completes before atomic move-batch publication. Failure drops the
+preparation owner, restores original source handles without fresh quota, and
+closes the staged replacement domain. Late cancellation is fenced by exact
+namespace identity, including ASID/handle reuse. The legacy scalar reverse-move
+cleanup API has been removed.
 
-```rust
-// In the service's message loop:
-OP_HANDOFF => {
-    // 1. Stop accepting new work (drain the queue first)
-    // 2. Serialize all mutable state into memory objects
-    // 3. Move those memory objects to the supervisor
-    //    (the supervisor supplied its own address-space id in the handoff call)
-    // 4. Reply "ready" → then exit
-}
-```
+Kernel memory and IPC fixtures test the shared prepared-move mechanism's quota,
+cancellation, retirement and batch-publication behavior. They do not establish
+end-to-end coverage of this unused multi-state helper. See
+[capability admission](../reference/capability-admission.md).
 
-The new service receives the state via an extended bootstrap contract:
+## Service responsibilities
 
-```rust
-fn main(ctx: Context) -> ! {
-    let manifest = ctx.manifest();
-    let ns_connection = ctx.bootstrap_cap();
-    let state_count = ctx.handoff_count();
-    let state_base = ctx.handoff_state_cap();
-    let endpoint_cap = ctx.handoff_endpoint_cap();
+Each service needs its own handoff protocol: stop accepting work, drain or
+terminate in-flight operations, serialize state, and acknowledge handoff.
+The replacement must validate and restore that state before advertising
+readiness. Queued requests complete as `EndpointClosed` when their endpoint
+exits; delivered calls whose server exits without replying complete as
+`Cancelled`. Applications still need retry policy, including a decision about
+operations whose side effects may already have happened.
 
-    // Deserialize state from the memory objects, register the old endpoint
-    // under the same name (the name service bumps the generation), and
-    // start serving — clients re-connect transparently.
-}
-```
+## Remaining work
 
-### What clients see
+- Connect the multi-state preparation helper to an authorized userspace
+  orchestration API, with end-to-end failure tests.
+- Define manager-owned old-domain teardown, handoff deadlines and recovery if
+  the replacement cannot become ready.
+- Define state schemas and compatibility policy for each real service.
+- Provide explicit rollback/recovery policy; signed release metadata alone
+  does not implement that policy.
+- Extend crash-based recovery tests to interrupted handoff and replacement
+  failure.
 
-A client holding a stale connection from the previous generation:
-
-```rust
-// Before upgrade:
-let conn = ns.lookup("payroll")?;  // generation 3
-payroll.call(OP_CALCULATE, employee_id);  // → in-flight
-
-// During upgrade: the call completes as EndpointClosed or Cancelled.
-// The client retries:
-loop {
-    let conn = ns.lookup("payroll")?;
-    if conn.generation >= 4 { break; }  // new instance
-    conn.close();
-}
-
-// After upgrade:
-payroll.call(OP_CALCULATE, employee_id);  // → reaches the new instance
-// The new instance has the old state, so it can resume.
-```
-
-### What is genuinely zero-downtime and what is restart-with-state
-
-This design is **restart-with-state**, not truly zero-downtime: in-flight
-requests to the old instance fail during the handoff window, and clients
-must retry. True zero-downtime would require:
-
-- Queue migration: the old service's endpoint queue would need to be
-  transferred to the new service atomically, so no request is ever
-  rejected. This is a future kernel feature — see "Distributed capability
-  revocation" in the architecture doc's deferred decisions.
-
-- Or, a *sidecar* model: the new service starts alongside the old one,
-  both sharing the same endpoint, and the old service just stops accepting
-  new work. The kernel doesn't currently support multiple owners for one
-  endpoint.
-
-### Relationship to the existing criterion-9 test
-
-The `test_el0_uart` already exercises a crash-based restart (the
-`OP_CRASH` fault-injection path). A live upgrade is the **graceful**
-version: instead of crashing, the old service cooperatively hands off
-its state. The restart, teardown, and re-registration are identical;
-only the state transfer is new.
-
-### Conclusion
-
-The building blocks are in place. A live-upgrade slice would add:
-
-1. `OP_HANDOFF` to the service protocol (supervisor calls the old service)
-2. `UpgradeGrant` + `spawn_upgrade` in the supervisor
-3. An extended bootstrap contract (state caps + old endpoint cap)
-4. A reference handoff in `el0_service` (echo service → hand off state →
-   new echo service reads it)
-5. Boot-validated
-
-This is ~150 lines of net-new code, testable in the same QEMU harness
-that validates criterion 9.
+True zero-downtime would additionally require queue migration or a supported
+overlap protocol. The current endpoint model has one owner; this reference
+upgrade does not transfer a live endpoint queue.

@@ -57,6 +57,17 @@ Entry-charge Drop enters only capability counters; reservation/escrow Drop
 enters `CAPABILITIES` and must run outside that registry's own guard. See
 [shared capability admission](capability-admission.md) for enforcement scope.
 
+Memory-object admission captures source/target handles before taking
+`MEMORY_OBJECTS`, then uses `reserve_captured`/`begin_move_captured`:
+`MEMORY_OBJECTS → CAPABILITIES → capability domain → node`. Batch commit holds
+the memory registry while validating and atomically publishing all move
+authorities; payload updates follow under the same guard. Neither admission nor
+publication acquires lifecycle under a subsystem. `PreparedMove` Drop cancels
+captured authority before releasing its backing-retention pin, which reenters
+`MEMORY_OBJECTS`; the owner must therefore drop outside that registry guard.
+IPC vector owners drop under IPC serialization, using the existing
+lifecycle-free loan revocation helper for non-move aliases.
+
 ---
 
 ## 2. Interrupt-masking spin locks

@@ -260,9 +260,14 @@ after allocation. Capability records carry a typed
 Kernel payload ownership and namespace authority need coordinated transactions.
 `capability::Reservation` holds a hidden identity/count before publication; its
 Drop releases only that exact namespace's entry. Mailbox opens and completion
-submissions use bounded shared admission. A `MoveEscrow` can retain the source
-slot for rollback without re-admission at a full namespace, but production
-memory/IPC moves still need an owning payload transaction before adopting it.
+submissions and memory-object destinations use bounded shared admission.
+`memory::object::PreparedMove` owns destination reservation, source escrow and
+a backing-retention pin. Its Drop restores original source authority without
+re-admission, cancels the destination and releases the pin; `commit_moves`
+publishes the complete move batch or none. Use this owner for multi-step kernel
+transfers, not a moved scalar plus a reverse-move cleanup ladder. The payload
+stays source-owned until commit, and generation checks fence late cancellation
+from reused ASIDs. Drop must run outside the memory registry guard.
 See [shared capability admission](../reference/capability-admission.md) for
 state transitions, locking, limits and the remaining migration.
 

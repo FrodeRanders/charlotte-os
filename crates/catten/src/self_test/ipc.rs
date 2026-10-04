@@ -1636,5 +1636,87 @@ pub fn test_vector_ipc_transaction_rollback() {
     close_test_address_space(client).expect("vector client AS close failed");
     close_test_address_space(server).expect("vector server AS close failed");
     close_test_address_space(result_owner).expect("vector result owner AS close failed");
+    test_memory_attachment_admission();
     logln!("Vector IPC transaction rollback test passed.");
+}
+
+fn test_memory_attachment_admission() {
+    use crate::capability::admission_tests::{
+        TEST_NAMESPACE_LIMIT,
+        test_fill_remaining_namespace,
+        test_free_fixture_slot,
+        test_namespace_used,
+    };
+
+    let server = create_ipc_memory_test_address_space("vector quota server");
+    let client = create_ipc_memory_test_address_space("vector quota client");
+    let endpoint = ipc::endpoint_create(server, 0x5645_4354, 1, 4).unwrap();
+    let connection = ipc::connection_delegate(
+        server,
+        endpoint,
+        client,
+        ConnectionRights::SEND | ConnectionRights::CALL,
+    )
+    .unwrap();
+    let first = object::allocate(client, 1).unwrap();
+    let second = object::allocate(client, 1).unwrap();
+    let vector = object::allocate(client, 1).unwrap();
+    // Encode two move entries using the public wire layout, without a mapping.
+    let mut descriptor = alloc::vec::Vec::new();
+    descriptor.extend_from_slice(&2u16.to_le_bytes());
+    for cap in [first, second] {
+        descriptor.extend_from_slice(&cap.to_le_bytes());
+        descriptor.extend_from_slice(&1u32.to_le_bytes());
+        descriptor.extend_from_slice(&0u32.to_le_bytes());
+    }
+    object::write_bytes(client, vector, &descriptor).unwrap();
+    test_fill_remaining_namespace(client);
+    test_fill_remaining_namespace(server);
+    test_free_fixture_slot(server);
+    assert_eq!(
+        ipc::vector_send(client, connection, 1, 0, vector),
+        Err(IpcError::MemoryTransferFailed)
+    );
+    assert_eq!(test_namespace_used(client), TEST_NAMESPACE_LIMIT);
+    assert_eq!(test_namespace_used(server), TEST_NAMESPACE_LIMIT - 1);
+    assert_eq!(ipc::receive(server, endpoint), Err(IpcError::NoMessage));
+    object::write_bytes(client, first, &[0x5a]).unwrap();
+    object::write_bytes(client, second, &[0xa5]).unwrap();
+    assert!(object::info(client, vector).is_ok());
+    close_test_address_space(client).unwrap();
+    close_test_address_space(server).unwrap();
+
+    let server = create_ipc_memory_test_address_space("reply quota server");
+    let client = create_ipc_memory_test_address_space("reply quota client");
+    let endpoint = ipc::endpoint_create(server, 0x5250_4c59, 1, 4).unwrap();
+    let connection =
+        ipc::connection_delegate(server, endpoint, client, ConnectionRights::CALL).unwrap();
+    let loan = object::allocate(client, 1).unwrap();
+    let call = ipc::scalar_call_with_memory_borrow_read(client, connection, 1, 0, loan).unwrap();
+    let message = ipc::receive(server, endpoint).unwrap();
+    let reply = message.reply.unwrap();
+    let borrowed = message.memory.unwrap();
+    let returned = object::allocate(server, 1).unwrap();
+    test_fill_remaining_namespace(client);
+    assert_eq!(
+        ipc::reply_with_memory_move(server, reply, returned, 42),
+        Err(IpcError::MemoryTransferFailed)
+    );
+    assert_eq!(ipc::poll_reply(client, call).unwrap(), None);
+    assert!(object::info(client, loan).unwrap().lent, "quota rejection must not revoke the loan");
+    assert!(object::info(server, borrowed).is_ok());
+    object::write_bytes(server, returned, &[0x5a]).unwrap();
+    test_free_fixture_slot(client);
+    ipc::reply_with_memory_move(server, reply, returned, 42).unwrap();
+    let value = ipc::poll_reply(client, call).unwrap().unwrap();
+    assert_eq!(value.result, 42);
+    assert!(object::info(client, value.memory.unwrap()).is_ok());
+    assert!(!object::info(client, loan).unwrap().lent);
+    assert_eq!(object::info(server, returned), Err(object::MemoryObjectError::UnknownCapability));
+    close_test_address_space(client).unwrap();
+    close_test_address_space(server).unwrap();
+    logln!(
+        "[ipc memory admission] failed second vector move restored full source; rejected reply \
+         preserved loan and retried"
+    );
 }

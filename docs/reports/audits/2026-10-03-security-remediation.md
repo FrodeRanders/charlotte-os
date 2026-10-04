@@ -41,9 +41,11 @@ refund and a trusted platform reserve; this is not aggregate namespace or
 mailbox queue-backing admission.
 
 Shared namespace accounting now includes all capability kinds and enforces
-staged admission for mailbox and completion publication. Exact namespace tokens
-fence cancellation/publication; source escrow retains rollback capacity but
-has not yet been integrated into memory/IPC payload transactions. Other families
+staged admission for mailbox, completion and memory publication. Exact namespace
+tokens fence cancellation/publication; owning prepared memory moves integrate
+source escrow and backing retention, including atomic IPC move-batch commit.
+Scalar reverse-move cleanup is removed. Copies/loans enforce destination quota
+but still need hidden staging in mixed-mode vectors. Other families
 can still exceed shared policy through explicitly named unconverted paths.
 Thus the complete capability-namespace admission requirement remains open;
 this is not a backward-compatibility promise for those paths.
@@ -1816,3 +1818,85 @@ only `verified-run` has a passing authoritative verdict. Existing soak guests
 and storage were untouched. No x86-64 guest, physical allocation-failure
 injection, many-client quota fairness or exhaustive retirement interleaving
 test was performed. SEC-07 and the other open findings remain open.
+
+## Continuation: bounded memory authority and owning move preparation — 2026-10-05
+
+Shared accounting and the mailbox/completion cutover were committed as
+`0d65610b`. This continuation converts every memory-object destination to
+bounded shared admission: allocation, copy, move, read-only move and read/write
+loan. Admission precedes frame allocation or source authority mutation. A copy
+rejection drops its source pin and staged backing; rejected loans leave their
+source access/lend state unchanged.
+
+`PreparedMove` owns the reserved destination, the source's charged escrow slot
+and a backing-retention pin. Preparation hides source authority but leaves the
+payload source-owned. Cancellation restores the original handle without fresh
+quota and releases destination admission and the pin. `commit_moves` validates
+the entire batch under the memory registry, then publishes all authorities
+atomically under the capability registry before infallible payload updates.
+Source/target namespace identity is captured before taking the memory registry;
+no lifecycle acquisition is added under memory or IPC serialization.
+
+Retirement can precede payload drain. Cancellation may restore an existing
+source slot in that same retiring namespace for cleanup, but cannot admit new
+authority or revive a removed/replaced namespace. Source teardown removes the
+escrowed payload authority while the owning pin retains its frames; late Drop
+releases the old sponsorship charge without debiting a successor generation.
+The scalar `rollback_move_to` and `restore_unmigrated` APIs and their cleanup
+ladders are removed rather than kept as compatibility paths.
+
+IPC move vectors use prepared owners and commit their move batch before enqueue
+under the same IPC queue reservation. Reply memory is prepared before loan
+revocation. Quota rejection preserves both loan and reply token; a successful
+revocation followed by late publication rejection clears the token's loan
+record, so retry/cancellation does not try to revoke it twice. The multi-state
+kernel upgrade prototype now returns errors and owns its loaded replacement
+plus prepared moves, closing the staged domain on failure. That prototype has
+no caller; the actual userspace upgrade syscall remains single-state. Markdown
+and LaTeX upgrade descriptions now distinguish the two paths.
+
+Validation:
+
+- Host regression/signing tests passed. The new tests are kernel fixtures,
+  not host-library tests or a new real-EL0 quota mask.
+- Strict AArch64/security and x86-64 kernel Clippy passed with `-D warnings`;
+  workspace formatting and diff checks passed.
+- Real-domain fixtures filled spare namespace slots, checked memory admission
+  rejection and refunds, cancellation with a full source namespace, a successful
+  two-object move batch, and all-or-none rejection after target retirement.
+  Paused source retirement restored original slots for cleanup. Source and
+  target teardown/reuse explicitly reused both ASID and numeric capability,
+  preserving successor authority/budgets and retaining old frames only until
+  cancellation.
+- Actual kernel IPC calls rejected the second vector move with one destination
+  slot remaining, restored both source handles at the source ceiling, refunded
+  staging and queued no message. A memory reply rejected at the caller ceiling
+  preserved its loan and token, then succeeded when one slot was freed. Existing
+  vector/reply and ordinary EL0 integration regressions also passed.
+- The final isolated four-LP AArch64/TCG guest passed **19 tests, 0 failed,
+  0 pending**, including both scoped launches with unchanged `0x7fff` checks.
+  Concurrent cancellation retired after 4,416 requests. The runner rebuilt
+  bundled services and used dedicated storage/ports; existing soak guests and
+  storage were untouched.
+
+The final passing kernel SHA-256 is
+`17e3583fb0ec63ecae968029d6669b2dd374a8d347aeeaab46b37555f0a34048`.
+Evidence: `/private/tmp/charlotte-security-memory-moves-host-tests.log`,
+`/private/tmp/charlotte-security-memory-moves-*-clippy.log`,
+`/private/tmp/charlotte-security-memory-moves-final-run.log` and
+`/private/tmp/charlotte-memory-moves-final-20261005-serial.log`.
+Initial compilation found incorrect fixture imports/private-constant access;
+those were corrected before the passing guests. An earlier passing guest
+preceded the final IPC pressure regressions and is not the final verdict.
+
+Remaining scope: IPC/device/system-observer capability minting still uses the
+counted but unbounded allocator. Copy/loan vector aliases still become live
+before complete preparation; a receiver can guess such handles and change
+their state, so their existing rollback infallibility assumption needs removal
+alongside hidden alias staging. This continuation closes the move path, not
+that mixed-mode publication gap. Complete aggregate admission, BTreeMap and
+physical-allocation failure handling, loader/page-table/heap budgets and the
+other open findings remain. No exhaustive concurrent-retirement exploration,
+end-to-end multi-state upgrade test, x86-64 guest or new formal proof was run.
+The TLA+ conformance notes were updated; models and the PDF were not rebuilt.
+SEC-07 remains partial.

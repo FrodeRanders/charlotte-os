@@ -60,7 +60,7 @@ Embedded service images are bootstrap and recovery inputs. They are not the
 only executable source. The service manager first tries the object store and
 reads the well-known executable object for the target service. The returned
 multi-page memory-object capability and exact byte length are passed to
-\texttt{spawn\_upgrade}. If storage is absent or the object is not installed,
+the \texttt{SpawnUpgrade} syscall. If storage is absent or the object is not installed,
 the manager selects the embedded recovery image.
 
 The kernel snapshots the capability-backed bytes into kernel-owned memory before
@@ -83,28 +83,34 @@ boot remain future policy work.
 \begin{lstlisting}[style=rustCode]
 pub struct UpgradeGrant {
     pub state_caps: Vec<MemoryObjectCap>,
+    pub endpoint_cap: CapabilityId,
 }
 
-pub fn spawn_upgrade(
+pub fn try_spawn_upgrade(
     image: &[u8],
     name_service: &NameServiceHandle,
-    old_domain: ServiceDomain,
+    rights: ConnectionRights,
+    old_asid: AddressSpaceId,
     grant: UpgradeGrant,
-) -> ServiceDomain;
+) -> Result<ServiceDomain, UpgradeSpawnError>;
 \end{lstlisting}
 
-\texttt{spawn\_upgrade} is a privileged kernel operation invoked by the
-userspace service manager. It validates that the manager holds a callable
+The running reference path uses the privileged \texttt{SpawnUpgrade} syscall
+from the userspace service manager. It validates that the manager holds a callable
 connection to the target, loads the new service ELF, moves the state memory
 object to the new domain, writes the bootstrap config page, and starts the new
 domain. The replacement registers a fresh endpoint and the name service
 atomically publishes the new connection and generation before retiring the
 old connection or releasing deferred lookups. The reference path supports both a
 persistent signed echo image and its embedded fallback, plus one state object.
-The kernel handoff helper can transfer multiple state objects and rolls a
-partial transfer back if a later move or endpoint delegation fails. The current
-reference manager still exercises one object. Rollback policy and manager-owned
-teardown remain future work.
+The separate \texttt{try\_spawn\_upgrade} helper shown above is a kernel
+prototype, not the syscall implementation. It owns the loaded replacement and
+all prepared state moves, delegates connections before committing the batch,
+and cancels preparation on failure. Cancellation restores original source
+handles without fresh quota and closes the not-yet-running replacement. This
+helper has no current caller; the running reference manager and syscall still
+transfer one state object. Multi-state syscall integration, rollback policy and
+manager-owned teardown remain future work.
 
 \section{What the service must implement}
 
@@ -198,8 +204,10 @@ instance exits, rather than starting the new instance from scratch.
     \item Failure recovery has an ownership model: if the new service
         fails to start, a future supervisor could restart the old service or a
         fallback.
-        The state memory objects are owned by the supervisor during the
-        transition, so they are not lost.
+        Before transfer, the manager retains the state capability; after
+        transfer, it belongs to the replacement. Recovering state after that
+        replacement fails requires an explicit policy, not just capability
+        cleanup.
 
     \item The building blocks are covered by self-tests: memory-object
         transfer, generation tracking, deterministic teardown, and bootstrap

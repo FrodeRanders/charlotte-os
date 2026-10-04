@@ -200,6 +200,16 @@ quota probe or atomic IPC-vector admission test is implied; the scoped mask
 remains `0x7fff`. See
 [shared capability admission](../reference/capability-admission.md).
 
+Memory-object fixtures also fill spare shared-namespace slots in real domains.
+They check allocation/copy/read-loan/write-loan rejection, source access and
+backing refunds, prepared-move cancellation at the source ceiling, successful
+two-object commit and all-or-none rejection after destination retirement.
+Paused source retirement checks rollback to original slots for cleanup. Source
+and destination teardown/reuse fixtures assert exact numeric ASID/capability
+reuse, old-frame retention until cancellation, and unchanged successor budgets
+and authority. Existing IPC vector/reply tests exercise the integrated move
+owners; copied/loaned vector aliases are not yet atomically staged.
+
 Real-domain fixtures use `register_user_address_space`, not direct insertion
 into `ADDRESS_SPACE_TABLE`. This initializes the same generation, limits,
 accounting and capability namespace as production domain creation. Adversarial
