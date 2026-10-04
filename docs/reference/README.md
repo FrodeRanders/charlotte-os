@@ -18,7 +18,7 @@ should be updated with the implementation when those contracts change.
   kernel backing bytes, fallible replacement and loader rollback.
 - [Endpoint-close watch budgets](close-watch-budgets.md) — bounded one-shot
   registrations, local cancellation and transactional submission.
-- [Scheduler waiter budgets](scheduler-waiter-budgets.md) — owned completion/CQ/IPC
+- [Scheduler waiter budgets](scheduler-waiter-budgets.md) — owned completion/CQ/IPC/lock
   registrations, admission before parking and cleanup after competing wakes.
 - [IPC record budgets](ipc-record-budgets.md) — grantor/caller sponsorship,
   connection/call/reply admission, pre-transfer rejection and retirement fencing.

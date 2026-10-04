@@ -325,7 +325,19 @@ owning cancellation, as described in \autoref{chap:endpoints}. Untimed IPC waits
 also retry under pressure rather than returning while a server still holds a
 live loan. IPC source callbacks run after its registry is released.
 
-Legacy timer, lock and raw kernel callback registrations
+Kernel scheduler-blocking mutex and read/write-lock waiters also share these
+budgets. Each mutex source and each reader/writer source links at most 64 entries.
+Uncontended acquisition allocates nothing; first contention prepares the list
+fallibly. Rejected admission leaves the thread runnable to yield and retry.
+Local interrupt masking spans park and the lost-wake recheck, then ends before
+yield; an unlock preceding list insertion must not strand a preempted caller.
+Unlock releases ownership and detaches all candidates before callbacks; the
+final reader releases an RwLock's writer waiters. Notifications do not reserve
+ownership, and broadcast does not guarantee fairness or writer priority.
+The blocking family currently has kernel test users, not production callers;
+existing registry/allocator spin locks are unchanged.
+
+Legacy timer and raw kernel callback registrations
 still require migration. General weak-only backing, watchdog storage and kernel
 heap accounting remain incomplete. CQ replacement still requires a quiescent
 consumer; discarding registrations is not live reactor migration. Silently

@@ -307,6 +307,7 @@ extern "C" fn cq_driver() {
 
     test_scheduler_waiter_admission();
     ipc::waiter_tests::test_scheduled_cleanup();
+    crate::cpu::scheduler::sync::tests::test_scheduled_cleanup();
 
     logln!(
         "[cq wait] SUCCESS: blocking CQ wait released by completion, by explicit wake, by a \

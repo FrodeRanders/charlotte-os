@@ -157,6 +157,15 @@ by withholding the helper's message/reply until an admission retry is recorded.
 The reply helper checks that its loan is still available before replying and
 the caller checks it is revoked on return. These are kernel-only fixtures.
 
+Blocking-lock fixtures likewise keep the scoped mask unchanged. Synchronous
+tests check mutex/reader/writer ceilings, cancel/rearm, detached charges,
+source destruction, retirement, reentrant callbacks, expired writers and
+final-reader notification. Scheduled tests force each lock fallback counter
+before allowing remote contention to park, then verify acquisition/release and
+64 timed cleanup cycles. Holders poll while a peer runs; they never explicitly
+park/yield with a data guard. These tests do not establish fairness, owner-death
+recovery, production use or allocation-failure coverage.
+
 The scoped application verifier does not force ASID reuse, restart the grant
 controller, inject allocation failures or prove many-client fairness. It does
 not exercise the complete S3/Raft release pipeline with independent roots, or

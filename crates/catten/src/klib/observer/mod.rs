@@ -2,6 +2,7 @@
 
 pub(crate) mod registration;
 pub(crate) mod waiter_budget;
+pub(crate) mod waiter_source;
 
 use alloc::sync::{
     Arc,

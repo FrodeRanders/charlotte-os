@@ -21,7 +21,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-04 | Mitigated | Builds and boot logs identify development trust; production and unknown modes fail closed in scripted and direct kernel builds. Protected bootstrap roots, fixture-free production provisioning and recipient-key custody remain unimplemented. |
 | SEC-05 | Implemented | tcpip rejects raw frame ingress unless the authenticated sender is the exact live, kernel-designated frouter. Separate socket/VIP binding policy remains future hardening. |
 | SEC-06 | Mitigated | HTTP EOF, peer-raced accept and transport failures close one connection, not the server; listener-setup resource failures retry with backoff. httpd has a five-second request wait and bounded send retries; deployd has five-second header and thirty-second total receive budgets. Serial admission remains vulnerable to sustained connection floods. |
-| SEC-07 | Partially implemented | Memory-object backing pages/counts, completion timer events, endpoint records/queue backing, retained completion objects/detached results, CQ registrations/kernel backing, endpoint-close registrations, completion/CQ/IPC scheduler waiters and connection/pending-call/reply-token record counts have generation-scoped domain/node admission and platform reserves. Charges survive transfers, deferred cancellation, delegation, retained references or detached notifications as appropriate. Waiter admission precedes parking; owning cancellation handles competing wakes and reaping. Timed completion admission failure retains its owner; untimed completion/IPC waits preserve borrowed-buffer safety. Timed park/watchdog setup is non-preemptible. IPC call/reply preparation precedes attachment transfer, and retirement fences receive/connection publication before teardown. Aggregate limits for loader/heap/page tables (including physical CQ mappings), the complete capability namespace, legacy-observer metadata, general weak-only storage, other timer paths and comprehensive kernel metadata remain open. |
+| SEC-07 | Partially implemented | Memory-object backing pages/counts, completion timer events, endpoint records/queue backing, retained completion objects/detached results, CQ registrations/kernel backing, endpoint-close registrations, completion/CQ/IPC/lock scheduler waiters and connection/pending-call/reply-token record counts have generation-scoped domain/node admission and platform reserves. Charges survive transfers, deferred cancellation, delegation, retained references or detached notifications as appropriate. Waiter admission precedes parking; owning cancellation handles competing wakes and reaping. Timed completion admission failure retains its owner; untimed completion/IPC waits preserve borrowed-buffer safety. Timed park/watchdog setup is non-preemptible. IPC call/reply preparation precedes attachment transfer, and retirement fences receive/connection publication before teardown. Aggregate limits for loader/heap/page tables (including physical CQ mappings), the complete capability namespace, legacy-observer metadata, general weak-only storage, other timer paths and comprehensive kernel metadata remain open. |
 | SEC-08 | Open | Authenticate enrolled nodes and control/data peer traffic, add replay protection, and bound discovery state. A trusted L2 segment remains an explicit deployment prerequisite. |
 | SEC-09 | Open | Distinguish authenticated security time from observational SNTP/holdover; enforce freshness and uncertainty at security-policy gates. |
 | SEC-10 | Open | Authenticated encrypted access to node and cluster management, browser-client provisioning, and access policy remain necessary. |
@@ -1091,3 +1091,81 @@ x86-64 guest execution, hostile-pressure soak or PDF rebuild was performed.
 Dedicated storage and forwarded ports were used; existing soak guests/stores
 were not modified. These count limits do not guarantee many-client fairness,
 per-service progress, or complete kernel metadata containment.
+
+## 2026-10-04 continuation — owned kernel blocking-lock waiters
+
+The preceding IPC record-admission changes are committed as `9319e28e`.
+Kernel scheduler-blocking mutex and read/write locks now use owning waiter
+registrations instead of unbounded weak-observer queues. Each mutex has one
+64-entry linked source; RwLock reader and writer sources each have 64. Entries
+share the existing generation-scoped 1,024-domain / 8,192-node waiter pools and
+6,144-entry ordinary share with completion, CQ and IPC waiters. This does not
+add another independent allowance or let a caller claim platform reserves.
+
+The const-initializable source allocates its list fallibly on first contention.
+Uncontended acquisition allocates nothing. Entry admission follows after the
+initialization guard is released, and source destruction discards entries even
+when tokens retain the list. Detached notification batches retain their charges
+until released. The source's list control block remains until destruction and
+is not charged to the entry count; general weak-only/control-block metadata
+containment is still incomplete.
+
+Admission rejection leaves the thread runnable to yield and retry acquisition;
+it cannot return as if it owned the data lock. No source, initialization or
+scheduler guard crosses yield. Unlock releases ownership and detaches candidate
+batches before callbacks. RwLock detaches both classes before notifying either,
+and only the final shared owner triggers notification. An expired writer cannot
+suppress waiting readers. These bounded broadcasts are wake hints, not reserved
+handoffs: CAS still selects ownership. FIFO order, writer priority, starvation
+freedom, priority inheritance and owner-death recovery are not provided.
+
+Review found a preemption window between publishing Blocked and rechecking the
+raw lock state. If unlock preceded insertion, a quantum could switch out the
+waiter before that recheck with no later unlock to wake it. All three acquisition
+paths now hold the existing non-Send local interrupt-mask owner across parking
+and recheck, restoring the entry IRQ state before yield. This was identified
+from source inspection, not an observed guest stall or an exhaustive scheduling
+proof. Rejection also releases the scheduler read guard before yielding.
+
+The blocking family has kernel fixture users but no production callers.
+Registry/allocator interrupt-masking spin locks are unchanged; no lock-throughput
+improvement is claimed. The README, waiter/locking references, testing guide and
+LaTeX sources document this distinction. SEC-07 remains partial: legacy timer,
+thread-exit and raw callback observers, watchdog storage, general registry and
+weak-only metadata, and comprehensive loader/page-table/heap accounting remain
+open. The audit's deployment restrictions continue to apply.
+
+Validation:
+
+- The full host test runner passed. Both service bundles built; AArch64/x86-64
+  kernel and service Clippy passed with `-D warnings`.
+- Synchronous fixtures passed source ceilings and rejection rollback, a free
+  mutex's ready fast path, 512 cancel/rearm cycles, callback reentrancy, expired
+  writer plus live reader notification, final-reader release, detached-batch
+  accounting, retired sponsorship and source destruction with retained tokens.
+- Scheduled fixtures passed 64 timed source-wait cleanup cycles, non-mutating
+  admission rejection, forced mutex/reader/writer retry counters, remote-LP
+  contention and final-reader wake. Data holders never explicitly yield or park
+  with their guard. Timed tests exercise the shared condition-wait helper, not
+  a newly introduced timed-lock API. No userspace ABI or probe-mask bit changed.
+- The final park/recheck-guard version passed two isolated four-LP AArch64/TCG
+  runs: **19 tests, 0 failed, 0 pending**, including both scoped launches'
+  fifteen-bit mask (`0x7fff`). The final run retired concurrent cancellation
+  traffic after 4,508 requests.
+  Two earlier pre-guard runs also passed 19/19; they do not validate the final
+  preemption fix.
+- Workspace formatting and diff checks passed.
+
+The final post-guard guest kernel SHA-256 is
+`15edc69dc87a09544280757e9153eb316c486b33874cf498f07f72784162793a`.
+Evidence is in `/private/tmp/charlotte-security-lock-waiters-final-run.log`,
+`/private/tmp/charlotte-security-lock-waiters-final-20261004-serial.log`,
+`/private/tmp/charlotte-security-lock-waiters-guard-run.log`,
+`/private/tmp/charlotte-security-lock-waiters-guard-20261004-serial.log`,
+`/private/tmp/charlotte-security-lock-waiters-host-tests.log`, and the
+`/private/tmp/charlotte-security-lock-waiters-*-clippy.log`/`*-services.log` files.
+No allocator-failure injection, forced quantum at the identified window,
+exhaustive cross-LP interleaving, x86-64 guest, hostile-pressure soak or PDF rebuild
+was performed. Dedicated storage and ports were used; existing soak guests and
+stores were not modified. Entry bounds do not establish fairness, per-service
+progress or complete kernel metadata containment.

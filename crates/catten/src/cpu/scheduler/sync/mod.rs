@@ -8,3 +8,10 @@
 
 pub mod mutex;
 pub mod rwlock;
+pub(crate) mod tests;
+
+/// Debugger-visible runnable retries after lock-wait admission rejection.
+/// Mutex, shared RwLock, exclusive RwLock. These counters do not drive policy.
+#[unsafe(no_mangle)]
+pub static LOCK_WAIT_ADMISSION_RETRIES: [core::sync::atomic::AtomicU64; 3] =
+    [const { core::sync::atomic::AtomicU64::new(0) }; 3];

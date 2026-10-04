@@ -6,7 +6,7 @@ lifetime: the thread's parked registration, not the operation it waits for.
 
 The scheduler uses fallible `Observable::try_register_waiter` admission before
 publishing `Blocked` or removing a Ready thread from its run queue. Completion,
-CQ, endpoint-readiness and pending-call sources return an owning registration;
+CQ, endpoint-readiness, pending-call and blocking-lock sources return an owning registration;
 rejection leaves the thread's state, queue membership and migration constraints
 unchanged. Already-terminal completions, unconsumed CQ work, readable/closed
 endpoints and replied calls return an immediate-ready marker without parking.
@@ -15,7 +15,7 @@ the master thread table.
 
 | Live registration limit | Current policy |
 | --- | ---: |
-| Linked entries per completion, CQ, readiness or pending-call source | 64 |
+| Linked entries per completion, CQ, IPC or blocking-lock wait source | 64 |
 | Per waiting domain generation | 1,024 |
 | Per node | 8,192 |
 | Ordinary-domain share | 6,144 |
@@ -24,7 +24,9 @@ These limits are separate from completion records, endpoint-close watches,
 timer events and CQ backing. The waiting thread's domain sponsors the entry,
 not the source's owner. Kernel and supervisor-designated platform domains may
 use the remaining node pool; no per-service progress entitlement is implied.
-The domain/node pools are shared across these four migrated waiter categories.
+The domain/node pools are shared across all migrated waiter categories.
+RwLock reader and writer sources each have a separate 64-entry linked ceiling;
+a mutex has one source. Their combined entries still share the same domain/node pools.
 The constants are kernel policy, not deployment descriptor overrides.
 The source ceiling bounds its currently linked list. A reusable source can
 rearm while an older notification batch remains detached; those detached
@@ -120,11 +122,49 @@ allocation are now fallible. Separate IPC record admission bounds call, reply
 and connection counts; list control blocks and other general metadata still
 need comprehensive admission and fallible allocation.
 
+## Kernel blocking locks
+
+`cpu/scheduler/sync/{mutex,rwlock}` now use owning waiter registrations rather
+than unbounded queues of weak observers. These are the kernel's scheduler-blocking
+locks, not the interrupt-masking spin locks used by registries and allocators.
+There are currently no production callers of the blocking family; the new
+kernel fixtures exercise it directly. This is infrastructure hardening, not a
+change to service IPC or a production lock-performance result.
+
+A const-initializable `WaiterSource` prepares its list fallibly on first
+contention. Uncontended data-lock acquisition allocates nothing. Initialization
+uses a short independent spin guard; admission/entry allocation follows after
+that guard is released. The list control block remains with the lock source
+until destruction, outside the entry count. Source destruction closes/discards
+entries even if registration tokens retain the list. A free mutex can report
+ready without retaining a registration; normal acquisition always retries CAS.
+
+Exhausted admission leaves the caller runnable. `lock()` yields cooperatively,
+retries the CAS and attempts owning registration again. It does not claim to
+have acquired the lock or park without a wake. The existing post-registration
+state checks cover unlock-before-registration races. Source/initialization and
+scheduler guards are gone before `yield_lp()`. A local interrupt-mask owner
+spans park and that recheck: otherwise a quantum could switch out a Blocked
+caller before it observes an unlock that preceded insertion, with no later
+notification to resume it. The mask restores entry IRQ state on rejection
+and is dropped before yielding. The debugger-only
+`LOCK_WAIT_ADMISSION_RETRIES` counters distinguish mutex, shared RwLock and
+exclusive RwLock fallback; they neither grant authority nor drive policy.
+
+Unlock releases data ownership and detaches all linked candidates before any
+callback. RwLock detaches both writer and reader batches before notifying either;
+shared unlock notifies only when the final reader leaves. Notifications are
+hints, not reserved ownership handoffs. A cancelled or expired writer therefore
+cannot suppress waiting readers. CAS chooses the next owner; there is no FIFO,
+writer-priority, starvation-freedom, priority-inheritance or owner-death recovery
+guarantee. Broadcasts can wake up to 64 mutex candidates or 128 RwLock candidates,
+and are not a throughput optimization. Detached entries retain budget charges.
+
 ## Migration scope and verification
 
-Only the four migrated **scheduler waiter** categories use this admission. The
+Only the migrated **scheduler waiter** categories use this admission. The
 default trait implementation deliberately returns a marked legacy token and
-retains the old registration behavior for timer, lock and other not-yet-converted
+retains the old registration behavior for timer and other not-yet-converted
 sources. Raw kernel completion callbacks, thread-exit
 observers and watchdog storage are not covered. Silent bounded insertion on
 those old paths would lose wake sources and is not an acceptable conversion.
@@ -144,5 +184,13 @@ ASID accounting. Scheduled tests check 64 reply/readiness timeout cycles,
 non-mutating full-source rejection, and forced untimed receive/reply recovery
 while a real read loan remains live until reply. These are kernel fixtures, not
 forced-quota real-EL0 ABI tests.
+Lock fixtures cover source ceilings/rollback, ready acquisition, 512 cancel/rearm
+cycles, detached retention, source destruction with retained tokens, retirement,
+callback reentrancy, expired writers and final-reader notification. Scheduled
+tests add 64 timed cleanup cycles and non-mutating rejection, force all three
+lock-acquisition fallback counters before remote workers park, and verify
+mutex/read/write data access after release on another LP. The holders only poll
+while owning data guards; they never explicitly park/yield with those guards.
+These are not lock userspace-ABI tests or an exhaustive fairness/race proof.
 Allocator-failure injection, exhaustive cross-LP race exploration and sustained
 hostile-pressure containment remain unverified. SEC-07 remains partial.

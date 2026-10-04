@@ -91,7 +91,8 @@ test is claimed.
 
 Completion/CQ and endpoint-readiness/pending-call scheduler waiters now use
 [fallible owned registration](scheduler-waiter-budgets.md) with admission before
-parking. Thread-exit observers, watchdogs, lock/timer and other observer paths
+parking. Blocking-lock waiters now share that admission too. Thread-exit
+observers, watchdogs, timer and other observer paths
 still use the old registration API. Its void
 return cannot safely be replaced with silent bounded rejection: that would lose
 a parked thread's wake source. Their adoption needs integrated admission, owned
