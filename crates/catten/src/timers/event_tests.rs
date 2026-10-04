@@ -43,7 +43,6 @@ use crate::{
     klib::{
         observer::{
             CallOnNotify,
-            Observable,
             Observer,
             waiter_source::WaiterSource,
         },

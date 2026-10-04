@@ -68,10 +68,6 @@ impl Default for WaiterSource {
 }
 
 impl Observable for WaiterSource {
-    fn register_observer(&self, _observer: Weak<dyn Observer>) {
-        unreachable!("lock source requires owning waiter admission");
-    }
-
     fn try_register_waiter(
         &self,
         observer: Weak<dyn Observer>,

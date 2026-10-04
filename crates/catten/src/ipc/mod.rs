@@ -1589,10 +1589,6 @@ pub fn watch_connection_closed(
 }
 
 impl Observable for EndpointObservable {
-    fn register_observer(&self, _observer: Weak<dyn Observer>) {
-        unreachable!("private endpoint observable requires owning waiter registration");
-    }
-
     fn try_register_waiter(
         &self,
         observer: Weak<dyn Observer>,
@@ -1849,10 +1845,6 @@ struct PendingCallObservable {
 }
 
 impl Observable for PendingCallObservable {
-    fn register_observer(&self, _observer: Weak<dyn Observer>) {
-        unreachable!("private pending-call observable requires owning waiter registration");
-    }
-
     fn try_register_waiter(
         &self,
         observer: Weak<dyn Observer>,

@@ -366,17 +366,32 @@ static STEADY_STATE: LazyLock<crate::cpu::multiprocessor::spin::mutex::Mutex<Opt
     LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
 
 /// Observers parked on publication of [`STEADY_STATE`].
-static STEADY_STATE_OBSERVERS: LazyLock<
-    crate::cpu::multiprocessor::spin::mutex::Mutex<
-        Vec<alloc::sync::Weak<dyn crate::klib::observer::Observer>>,
-    >,
-> = LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(Vec::new()));
+static STEADY_STATE_OBSERVERS: crate::klib::observer::waiter_source::WaiterSource =
+    crate::klib::observer::waiter_source::WaiterSource::new();
 
 struct SteadyStatePublication;
 
 impl crate::klib::observer::Observable for SteadyStatePublication {
-    fn register_observer(&self, observer: alloc::sync::Weak<dyn crate::klib::observer::Observer>) {
-        STEADY_STATE_OBSERVERS.lock().push(observer);
+    fn try_register_waiter(
+        &self,
+        observer: alloc::sync::Weak<dyn crate::klib::observer::Observer>,
+        sponsor: &crate::klib::observer::WaitSponsor,
+    ) -> Result<
+        crate::klib::observer::WaitRegistration,
+        crate::klib::observer::registration::RegistrationError,
+    > {
+        STEADY_STATE_OBSERVERS.register(observer, sponsor)
+    }
+}
+
+pub(crate) fn test_publication_waiter_admission() {
+    crate::self_test::waiters::test_status_source(&SteadyStatePublication, &STEADY_STATE_OBSERVERS);
+}
+
+pub(crate) fn test_publication_waiter_cleanup(sponsor: &crate::klib::observer::WaitSponsor) {
+    for _ in 0..64 {
+        assert!(!crate::cpu::scheduler::block_until(&SteadyStatePublication, 1, || false));
+        assert_eq!(sponsor.used(), 0);
     }
 }
 
@@ -1070,11 +1085,7 @@ pub extern "C" fn launch_steady_state() {
         appliance,
         deployment,
     });
-    for observer in STEADY_STATE_OBSERVERS.lock().drain(..) {
-        if let Some(observer) = observer.upgrade() {
-            observer.notify();
-        }
-    }
+    STEADY_STATE_OBSERVERS.drain().notify();
     logln!("[launch] steady-state service set published.");
 }
 

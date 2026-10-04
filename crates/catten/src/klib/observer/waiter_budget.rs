@@ -1,4 +1,4 @@
-//! Generation-owned admission for migrated scheduler waiter entries. Legacy
+//! Generation-owned admission for scheduler waiter entries. Kernel callback
 //! observer implementations remain explicitly outside this budget.
 
 use alloc::sync::Arc;

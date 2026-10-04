@@ -239,9 +239,9 @@ ring or is discarded during teardown. A fresh generation receives a fresh
 budget owner; old releases cannot credit a replacement. Closing a captured
 object also verifies its identity under the registry lock before revocation.
 
-These counts do not account for observer lists, weak-only Arc
-allocations or the entire kernel heap. Their admission and reclamation remain
-separate hardening work. Timer events have their own charges because deferred
+Observer entries have separate admission, but general weak-only Arc/control-block
+allocations and the entire kernel heap still require broader accounting.
+Timer events have their own charges because deferred
 cancellation can outlive the operation record.
 
 \section{Completion-queue admission}
@@ -307,6 +307,24 @@ completion-object replacement, including when a kernel owner retains the old
 object. Kernel thread construction and general control-block allocation still
 need broader admission and fallible cleanup.
 
+\subsection{Kernel completion callbacks}
+
+Non-scheduler completion callbacks return an owning registration token and share
+the event-watch account, with at most 128 entries per completion. Cancelling the
+token removes only the subscription: it neither terminates the producer nor
+releases the operation's buffer. Asynchronous callers holding an existing
+completion reference use exact-object registration to reject a replacement with
+the same numeric address-space and capability identifiers.
+
+Terminal checking and insertion share the operation's state lock. A callback
+registered after completion or result consumption is invoked immediately,
+outside registry/source guards and without retaining an entry. Otherwise,
+notification follows CQ publication. Entries remain charged while detached and
+are released before their callbacks run. Teardown and unpublished-record rollback
+discard entries even when an old completion or token remains retained.
+Lists allocate fallibly on first subscription. Empty control blocks and arbitrary
+callback capture sizes remain outside these entry counters.
+
 \section{Owned completion and CQ waiters}
 
 Completion and CQ scheduler waiters use fallible registration before a thread
@@ -369,8 +387,11 @@ event has one inline queue slot per LP, outside anonymous admission. Rejection
 therefore cannot consume scheduler preemption storage. Charges remain until the
 actual event is removed, including an aborted sleeper awaiting its deadline.
 
-Legacy raw completion callback registrations still require migration.
-General weak-only/control-block backing and kernel
+Every scheduler Observable source now requires fallible owning registration;
+there is no weak-only default. Steady-state publication and self-test results
+use the same bounded waiter source, with notification outside source guards and
+no stale-entry pruning after timeout. Non-scheduler completion callbacks have
+separate event-watch sponsorship. General weak-only/control-block backing and kernel
 heap accounting remain incomplete. CQ replacement still requires a quiescent
 consumer; discarding registrations is not live reactor migration. Silently
 rejecting an old void registration would lose a blocked thread's wake source.

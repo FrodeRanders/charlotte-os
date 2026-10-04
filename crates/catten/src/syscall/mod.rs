@@ -1725,10 +1725,7 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
             system_scheduler::SYSTEM_SCHEDULER,
             yield_lp,
         },
-        klib::{
-            observer::Observable as _,
-            time::duration::ExtDuration,
-        },
+        klib::time::duration::ExtDuration,
     };
 
     let asid = caller_asid(frame);

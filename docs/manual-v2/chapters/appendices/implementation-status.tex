@@ -300,8 +300,13 @@ repository history remain authoritative.
         generation-owned domain admission and share the completion-timer node
         pool. Fallible queue-node preparation precedes parking; insertion
         allocates nothing and the quantum has an inline slot independent of
-        anonymous admission. Thread-exit/raw completion observers and general
-        control-block storage still require migration and admission.
+        anonymous admission. Thread-exit subscriptions and kernel completion
+        callbacks share owning event-watch admission; worker registration
+        precedes execution. Callback registration checks exact operation
+        identity. All scheduler Observable sources require fallible owning
+        registration, including boot publication/results; no weak-only trait
+        fallback remains. General control-block storage and broader kernel
+        heap/capability/page-table accounting remain unfinished.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are

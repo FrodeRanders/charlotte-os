@@ -176,8 +176,8 @@ an embedded single slot, not an unbounded queue. A second internal registration
 is a kernel programming error, not silently rejected wake delivery. The slot
 does not allocate observer-list backing or consume waiter-entry admission.
 It is not a general multi-callback registration API. Thread-exit subscriptions
-have [separate owned event-watch admission](close-watch-budgets.md); raw
-completion callbacks retain their legacy behavior.
+and [kernel completion callbacks](completion-callback-budgets.md) have
+separate owned event-watch admission.
 
 Sleep preserves its void ABI and at-least-duration contract. If scheduler
 registration fails, it discards the unqueued event, restores the entry IRQ state
@@ -195,13 +195,19 @@ General timer/control-block accounting remains incomplete.
 
 ## Migration scope and verification
 
-Only the migrated **scheduler waiter** categories use this admission. The
-default trait implementation deliberately returns a marked legacy token and
-retains the old registration behavior for not-yet-converted sources.
-Raw kernel completion callbacks are not covered. Thread-exit subscriptions
-use separate event-watch admission, not scheduler-waiter sponsorship.
-Silent bounded insertion on
-those old paths would lose wake sources and is not an acceptable conversion.
+Every current scheduler `Observable` source uses this admission. The trait now
+requires `try_register_waiter`; there is no weak-only default or legacy token.
+Steady-state publication and self-test result waiters use `WaiterSource`, whose
+notifications detach before callbacks. Timeout cancellation replaces the result
+queue's old weak-reference pruning. Non-scheduler completion callbacks and
+thread-exit subscriptions share event-watch admission, not waiter sponsorship.
+The timer's embedded internal callback slot remains a separate mechanism.
+
+Both actual status sources have 64-entry rejection/recovery, 512 cancel/rearm
+and detached/reentrant notification tests. Scheduled tests run 64 timeout cycles
+on each source, temporarily substituting only the executing kernel test thread's
+sponsor and restoring it on return. Zero sponsor usage measures that thread's
+cleanup without requiring other verifiers to stop waiting on shared sources.
 
 Synchronous tests cover source/domain/ordinary/node rejection and rollback,
 local cancellation, detached batch retention/discard, callback reentrancy,

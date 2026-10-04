@@ -66,15 +66,25 @@ impl<C> ObserverList<C> {
         observer: Weak<dyn Observer>,
         charge: C,
     ) -> Result<Registration<C>, RegistrationError> {
+        self.register_with(observer, charge, |node| {
+            Box::try_new(node).map_err(|_| RegistrationError::AllocationFailed)
+        })
+    }
+
+    fn register_with(
+        self: &Arc<Self>,
+        observer: Weak<dyn Observer>,
+        charge: C,
+        allocate: impl FnOnce(EntryNode<C>) -> Result<Box<EntryNode<C>>, RegistrationError>,
+    ) -> Result<Registration<C>, RegistrationError> {
         // Allocate before taking the list lock. Rejection drops the staged
         // entry/charge after the guard; no uncharged spare capacity remains.
         let mut entry = Entry {
-            node: Box::try_new(EntryNode {
+            node: allocate(EntryNode {
                 id: 0,
                 observer,
                 next: None,
-            })
-            .map_err(|_| RegistrationError::AllocationFailed)?,
+            })?,
             _charge: charge,
         };
         let mut state = self.state.lock();
@@ -132,6 +142,38 @@ impl<C> ObserverList<C> {
     pub(crate) fn registered(&self) -> usize {
         self.state.lock().count
     }
+}
+
+/// Kernel fixture: inject entry allocation failure after admission. The
+/// production path still uses Box::try_new; no physical allocator is exhausted.
+pub(crate) fn test_entry_allocation_rollback() {
+    use crate::{
+        completion::watch_budget as budget,
+        klib::observer::CallOnNotify,
+    };
+    let account = budget::DomainBudget::new(1);
+    let list = ObserverList::try_new(1).unwrap();
+    let callback: Arc<dyn Observer> = CallOnNotify::new(|| panic!("failed entry notified"));
+    assert_eq!(
+        list.register_with(
+            Arc::downgrade(&callback),
+            budget::reserve(&account, false).unwrap(),
+            |_| Err(RegistrationError::AllocationFailed),
+        )
+        .unwrap_err(),
+        RegistrationError::AllocationFailed
+    );
+    assert_eq!(list.registered(), 0);
+    assert_eq!(account.used(), 0);
+    assert_eq!(Arc::weak_count(&callback), 0);
+    let token = list
+        .register(Arc::downgrade(&callback), budget::reserve(&account, false).unwrap())
+        .unwrap();
+    assert_eq!(account.used(), 1);
+    assert_eq!(Arc::weak_count(&callback), 1);
+    drop(token);
+    assert_eq!(account.used(), 0);
+    assert_eq!(Arc::weak_count(&callback), 0);
 }
 
 impl<C> Drop for ObserverList<C> {

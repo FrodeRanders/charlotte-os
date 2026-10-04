@@ -17,11 +17,12 @@ an exit and returns submission failure.
 | --- | ---: |
 | Per endpoint, across callers | 128 |
 | Per target thread, across callers | 128 |
+| Per completion, non-scheduler kernel callbacks | 128 |
 | Per submitting completion namespace | Configured completion capacity, clamped to 1,024 |
 | Per node | 8,192 |
 | Ordinary-domain share | 6,144 |
 
-Endpoint-close and thread-exit entries share the namespace and node pools;
+Endpoint-close, thread-exit and kernel completion-callback entries share the namespace and node pools;
 they are not additional allowances per event type. These are independent of
 completion-record and submission-slot admission.
 The submitting generation sponsors each entry; the watched endpoint's owner
@@ -144,12 +145,11 @@ run 32 immediate-return workers and cancel a held worker before release. These
 new forced conditions are kernel fixtures; no new real-EL0 probe bit or physical
 allocator-OOM injection is claimed.
 
-Non-scheduler timer callbacks use a single embedded slot. Raw completion
-callbacks and other legacy observer paths
-still use the old registration API. Its void
-return cannot safely be replaced with silent bounded rejection: that would lose
-a parked thread's wake source. Their adoption needs integrated admission, owned
-cancellation and separate storage accounting. Sleep/watchdog events now have
+Non-scheduler timer callbacks use a single embedded slot. Kernel completion
+callbacks now use [owned, fallible registration](completion-callback-budgets.md)
+with shared event-watch admission, exact-object checking and immediate late
+notification outside locks. All scheduler `Observable` sources require owning
+registration; no weak-only default remains. Sleep/watchdog events now have
 [separate admission](scheduler-timer-budgets.md). General
 weak-only Arc/control-block storage and comprehensive kernel heap admission also
 remain open. SEC-07 is still partially implemented.

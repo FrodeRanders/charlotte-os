@@ -49,6 +49,18 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
 
 ## Architectural boundaries
 
+- Kernel scheduler `Observable` sources must implement fallible owned waiter
+  registration; there is no weak-only default. Do not invoke callbacks inline
+  while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`
+  and invoke detached notifications after subsystem guards are released.
+- Non-scheduler completion callbacks use `completion::observe` and retain its
+  `CompletionObservation` owner. Dropping that owner cancels only the
+  subscription, not the operation or its producer. Keep arbitrary callback work
+  short and capture exact operation identity rather than re-resolving reusable
+  ASID/capability numbers; asynchronous callers with an existing captured object
+  use `observe_registered`. The timer's single internal slot is not a general
+  callback-registration API.
+
 - `catten-syscall` mirrors the register ABI and intentionally exposes integers.
 - `catten-rt::owned` is the safe application layer and owns kernel resources.
 - Protocol crates define wire formats and opcodes; they do not own live

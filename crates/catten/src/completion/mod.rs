@@ -27,6 +27,7 @@
 //! [`complete`] is the kernel-side hook a worker's exit-observer would call.
 
 pub(crate) mod budget;
+pub(crate) mod callback_tests;
 pub mod cq;
 pub(crate) mod cq_budget;
 pub(crate) mod exit_tests;
@@ -44,7 +45,6 @@ use alloc::{
     vec::Vec,
 };
 
-use concurrent_queue::ConcurrentQueue;
 use spin::LazyLock;
 
 use crate::{
@@ -217,6 +217,9 @@ struct CompletionInner {
     /// connection endpoint-close watches without coupling completion storage
     /// to the concrete IPC observer type.
     event_observation: Option<EventObservation>,
+    /// Non-scheduler callbacks use a separate lazy one-shot list. Its entries
+    /// share event-watch admission, not scheduler-waiter sponsorship.
+    callbacks: Option<Arc<crate::klib::observer::registration::ObserverList<watch_budget::Charge>>>,
 }
 
 struct EventObservation {
@@ -286,7 +289,6 @@ pub struct Completion {
     /// Stable, never-reused identity of this operation (see [`OperationId`]).
     operation: OperationId,
     inner: Mutex<CompletionInner>,
-    observers: ConcurrentQueue<Weak<dyn Observer>>,
     waiters: Arc<
         crate::klib::observer::registration::ObserverList<
             crate::klib::observer::waiter_budget::Charge,
@@ -314,8 +316,8 @@ impl Completion {
                 timer_observer: None,
                 timer_cancel: None,
                 event_observation: None,
+                callbacks: None,
             }),
-            observers: ConcurrentQueue::unbounded(),
             waiters,
             _record_charge: record_charge,
         })
@@ -418,11 +420,17 @@ impl Completion {
 
     fn signal(&self) {
         self.waiters.close().notify();
-        while let Ok(observer) = self.observers.pop() {
-            if let Some(observer) = observer.upgrade() {
-                observer.notify();
-            }
-        }
+        self.detach_callbacks().notify();
+    }
+
+    fn detach_callbacks(
+        &self,
+    ) -> crate::klib::observer::registration::NotificationBatch<watch_budget::Charge> {
+        let callbacks = self.inner.lock().callbacks.take();
+        callbacks
+            .map_or_else(crate::klib::observer::registration::NotificationBatch::empty, |list| {
+                list.close()
+            })
     }
 
     /// Drains the terminal result and returns the buffer to the caller,
@@ -463,12 +471,6 @@ impl Completion {
 }
 
 impl Observable for Completion {
-    fn register_observer(&self, observer: Weak<dyn Observer>) {
-        // Legacy raw kernel callback path, still outside waiter admission.
-        // Scheduler waiters use the fallible owning override below.
-        let _ = self.observers.push(observer);
-    }
-
     fn try_register_waiter(
         &self,
         observer: Weak<dyn Observer>,
@@ -488,6 +490,15 @@ impl Observable for Completion {
             }
             result => result,
         }
+    }
+}
+
+impl Drop for Completion {
+    fn drop(&mut self) {
+        // Retained tokens must not keep source entries after the operation is
+        // destroyed. Destruction discards callbacks, never invents completion.
+        drop(self.waiters.close());
+        drop(self.detach_callbacks());
     }
 }
 
@@ -674,6 +685,7 @@ impl Drop for AsCompletions {
         for completion in self.table.values() {
             completion.release_event_observation();
             drop(completion.waiters.close());
+            drop(completion.detach_callbacks());
         }
     }
 }
@@ -1133,6 +1145,7 @@ impl Drop for EventSubmission {
         }
         drop(registry);
         self.completion.release_event_observation();
+        drop(self.completion.detach_callbacks());
     }
 }
 
@@ -1142,13 +1155,16 @@ impl Drop for EventSubmission {
 pub(crate) fn abort_submission(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
     let mut registry = COMPLETIONS.write();
     let as_completions = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
-    as_completions.table.remove(&cap).ok_or(CapError::UnknownCap)?;
+    let completion = as_completions.table.remove(&cap).ok_or(CapError::UnknownCap)?;
     as_completions.live =
         as_completions.live.checked_sub(1).expect("aborted completion must count as live");
     assert!(
         crate::capability::remove(asid, cap, crate::capability::ObjectKind::Completion),
         "aborted completion capability was absent from unified table"
     );
+    drop(registry);
+    completion.release_event_observation();
+    drop(completion.detach_callbacks());
     Ok(())
 }
 
@@ -1633,10 +1649,6 @@ struct CqObservable {
 }
 
 impl Observable for CqObservable {
-    fn register_observer(&self, _observer: Weak<dyn Observer>) {
-        unreachable!("private CQ observable requires fallible waiter registration");
-    }
-
     fn try_register_waiter(
         &self,
         observer: Weak<dyn Observer>,
@@ -1814,17 +1826,105 @@ pub(crate) fn close_registered(
     Ok(())
 }
 
-/// Registers an observer to be notified when `cap` completes — the same
-/// mechanism [`wait`] uses internally, exposed so userspace (or a self-test) can
-/// monitor a capability in real time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObserveError {
+    UnknownAddressSpace,
+    UnknownCap,
+    ResourceLimit,
+}
+
+/// Kernel callback owner, independent of the watched operation's lifetime.
+/// Dropping it cancels only the subscription, never the operation. A callback
+/// already captured for notification may race cancellation. No syscall exposes
+/// callback objects; application completions continue to use the owned runtime.
+#[must_use = "retain the callback owner until notification or cancellation"]
+pub struct CompletionObservation {
+    _registration: Option<crate::klib::observer::registration::Registration<watch_budget::Charge>>,
+    _observer: Arc<dyn Observer>,
+}
+
+impl core::fmt::Debug for CompletionObservation {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("CompletionObservation")
+            .field("has_token", &self._registration.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
+/// Register a kernel callback against this namespace's exact completion.
+/// Registration is fallible and cancellation is owned. An already-terminal
+/// completion invokes the callback immediately, outside every registry/source
+/// guard; callback invocation is not a scheduler parking primitive.
 pub fn observe(
     asid: AddressSpaceId,
     cap: CompletionCap,
-    observer: Weak<dyn Observer>,
-) -> Result<(), CapError> {
-    let completion = completion_of(asid, cap)?;
-    completion.register_observer(observer);
-    Ok(())
+    observer: Arc<dyn Observer>,
+) -> Result<CompletionObservation, ObserveError> {
+    let completion = {
+        let registry = COMPLETIONS.read();
+        let entries = registry.get(&asid).ok_or(ObserveError::UnknownAddressSpace)?;
+        entries.table.get(&cap).ok_or(ObserveError::UnknownCap)?.clone()
+    };
+    observe_registered(asid, cap, &completion, observer)
+}
+
+/// Asynchronous kernel callers carrying a previously captured operation must
+/// use this exact-object variant rather than resolving reusable numeric IDs.
+pub(crate) fn observe_registered(
+    asid: AddressSpaceId,
+    cap: CompletionCap,
+    captured: &Arc<Completion>,
+    observer: Arc<dyn Observer>,
+) -> Result<CompletionObservation, ObserveError> {
+    let platform_identity = crate::memory::budget::platform_identity(asid);
+    let registration = {
+        let registry = COMPLETIONS.read();
+        let entries = registry.get(&asid).ok_or(ObserveError::UnknownAddressSpace)?;
+        if entries.address_space.is_some_and(|handle| !crate::memory::budget::accepting(handle)) {
+            return Err(ObserveError::UnknownAddressSpace);
+        }
+        let completion = entries.table.get(&cap).ok_or(ObserveError::UnknownCap)?;
+        if !Arc::ptr_eq(completion, captured) {
+            return Err(ObserveError::UnknownCap);
+        }
+        // Serialize the terminal check with the operation transition. Insertion
+        // either precedes terminal publication or becomes an immediate callback;
+        // it cannot append to an already-drained source and lose notification.
+        let mut inner = completion.inner.lock();
+        if matches!(inner.state, OpState::Completed(_) | OpState::Observed) {
+            None
+        } else {
+            let platform = asid == crate::memory::KERNEL_ASID
+                || platform_identity.is_some_and(|handle| Some(handle) == entries.address_space);
+            let charge = watch_budget::reserve(&entries.watch_budget, platform)
+                .map_err(|_| ObserveError::ResourceLimit)?;
+            if inner.callbacks.is_none() {
+                inner.callbacks = Some(
+                    crate::klib::observer::registration::ObserverList::try_new(
+                        watch_budget::MAX_COMPLETION_CALLBACKS,
+                    )
+                    .map_err(|_| ObserveError::ResourceLimit)?,
+                );
+            }
+            Some(
+                inner
+                    .callbacks
+                    .as_ref()
+                    .unwrap()
+                    .register(Arc::downgrade(&observer), charge)
+                    .map_err(|_| ObserveError::ResourceLimit)?,
+            )
+        }
+    };
+    let ready = registration.is_none();
+    let observation = CompletionObservation {
+        _registration: registration,
+        _observer: observer,
+    };
+    if ready {
+        observation._observer.clone().notify();
+    }
+    Ok(observation)
 }
 
 /// Test/inspection helper: whether the kernel still owns a buffer for `cap`

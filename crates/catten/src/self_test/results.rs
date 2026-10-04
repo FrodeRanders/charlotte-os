@@ -27,18 +27,12 @@
 //! by the panic handler) so a crashing verifier atomically fails its own bit
 //! instead of hanging the boot.
 
-use alloc::{
-    sync::Weak,
-    vec::Vec,
-};
+use alloc::sync::Weak;
 use core::sync::atomic::{
     AtomicBool,
     AtomicU64,
     Ordering,
 };
-
-use concurrent_queue::ConcurrentQueue;
-use spin::LazyLock;
 
 use crate::{
     cpu::scheduler::{
@@ -49,6 +43,10 @@ use crate::{
     klib::observer::{
         Observable,
         Observer,
+        WaitRegistration,
+        WaitSponsor,
+        registration::RegistrationError,
+        waiter_source::WaiterSource,
     },
     logln,
     memory::KERNEL_ASID,
@@ -199,38 +197,34 @@ static VERIFIER_GENERATIONS: [AtomicU64; TestId::ALL.len()] =
 /// notify them so a verifier waiting for a specific test resolves as soon as
 /// the outcome is published — the event-driven counterpart to busy-polling
 /// [`has_passed`] with `yield_lp`.
-static RESULTS_OBSERVERS: LazyLock<ConcurrentQueue<Weak<dyn Observer>>> =
-    LazyLock::new(ConcurrentQueue::unbounded);
+static RESULTS_OBSERVERS: WaiterSource = WaiterSource::new();
 
 struct ResultsObservable;
 
 impl Observable for ResultsObservable {
-    fn register_observer(&self, observer: Weak<dyn Observer>) {
-        let _ = RESULTS_OBSERVERS.push(observer);
+    fn try_register_waiter(
+        &self,
+        observer: Weak<dyn Observer>,
+        sponsor: &WaitSponsor,
+    ) -> Result<WaitRegistration, RegistrationError> {
+        RESULTS_OBSERVERS.register(observer, sponsor)
     }
 }
 
 /// Wake every parked verifier. Runs after a bitmap transition so waiters see
 /// the new state when they resume.
 fn notify_results_observers() {
-    while let Ok(observer) = RESULTS_OBSERVERS.pop() {
-        if let Some(observer) = observer.upgrade() {
-            observer.notify();
-        }
-    }
+    RESULTS_OBSERVERS.drain().notify();
 }
 
-/// Drop dead registrations left behind by timed-out waits, keeping the
-/// long-lived wait queue bounded.
-fn prune_results_observers() {
-    let mut live = Vec::new();
-    while let Ok(observer) = RESULTS_OBSERVERS.pop() {
-        if observer.strong_count() != 0 {
-            live.push(observer);
-        }
-    }
-    for observer in live {
-        let _ = RESULTS_OBSERVERS.push(observer);
+pub(crate) fn test_waiter_admission() {
+    crate::self_test::waiters::test_status_source(&ResultsObservable, &RESULTS_OBSERVERS);
+}
+
+pub(crate) fn test_waiter_cleanup(sponsor: &WaitSponsor) {
+    for _ in 0..64 {
+        assert!(!crate::cpu::scheduler::block_until(&ResultsObservable, 1, || false));
+        assert_eq!(sponsor.used(), 0);
     }
 }
 
@@ -241,11 +235,9 @@ fn prune_results_observers() {
 /// LP idles (and the timer/device wake paths stay live) instead of the
 /// verifier busy-spinning with `yield_lp`.
 pub fn wait_until_resolved(id: TestId, timeout_ms: u64) -> bool {
-    let resolved = crate::cpu::scheduler::block_until(&ResultsObservable, timeout_ms, || {
+    crate::cpu::scheduler::block_until(&ResultsObservable, timeout_ms, || {
         has_passed(id) || has_failed(id)
-    });
-    prune_results_observers();
-    resolved
+    })
 }
 
 const fn bit(id: TestId) -> u64 {
@@ -486,6 +478,5 @@ extern "C" fn coordinator() {
             let failed = FAILED.load(Ordering::Acquire);
             failed != 0 || passed == EXPECTED.load(Ordering::Acquire)
         });
-        prune_results_observers();
     }
 }

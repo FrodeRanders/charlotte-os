@@ -48,10 +48,7 @@ use crate::{
         },
     },
     klib::{
-        observer::{
-            Observable,
-            Observer,
-        },
+        observer::Observer,
         time::duration::ExtDuration,
     },
     logln,

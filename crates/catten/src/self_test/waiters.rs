@@ -11,6 +11,7 @@ use core::sync::atomic::{
 
 use crate::klib::observer::{
     CallOnNotify,
+    Observable,
     Observer,
     WaitSponsor,
     registration::{
@@ -21,7 +22,86 @@ use crate::klib::observer::{
         self,
         DomainBudget,
     },
+    waiter_source::WaiterSource,
 };
+
+/// Exercise the actual boot-status source before any verifier can park on it.
+pub(crate) fn test_status_source(observable: &dyn Observable, source: &'static WaiterSource) {
+    assert_eq!(source.registered(), 0);
+    let sponsor = WaitSponsor::new(false);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let count = calls.clone();
+    let callback: Arc<dyn Observer> = CallOnNotify::new(move || {
+        assert_eq!(source.registered(), 0);
+        count.fetch_add(1, Ordering::Relaxed);
+    });
+    let mut registrations = Vec::new();
+    for _ in 0..waiter_budget::SOURCE_LIMIT {
+        let token = observable.try_register_waiter(Arc::downgrade(&callback), &sponsor).unwrap();
+        assert!(token.is_owned());
+        registrations.push(token);
+    }
+    assert_eq!(source.registered(), 64);
+    assert!(matches!(
+        observable.try_register_waiter(Arc::downgrade(&callback), &sponsor),
+        Err(RegistrationError::ResourceLimit)
+    ));
+    assert_eq!(sponsor.used(), 64);
+    drop(registrations);
+    assert_eq!(source.registered(), 0);
+    for _ in 0..512 {
+        drop(observable.try_register_waiter(Arc::downgrade(&callback), &sponsor).unwrap());
+    }
+    assert_eq!(sponsor.used(), 0);
+    assert_eq!(calls.load(Ordering::Relaxed), 0);
+    let token = observable.try_register_waiter(Arc::downgrade(&callback), &sponsor).unwrap();
+    let batch = source.drain();
+    drop(token);
+    assert_eq!(sponsor.used(), 1, "detached status entry retains admission");
+    batch.notify();
+    assert_eq!(sponsor.used(), 0);
+    assert_eq!(calls.load(Ordering::Relaxed), 1);
+}
+
+/// Kernel fixture only. Give the executing thread a private waiter account so
+/// status-source cleanup can be measured without counting other boot verifiers.
+pub(crate) fn with_isolated_sponsor(test: impl FnOnce(&WaitSponsor)) {
+    use crate::cpu::scheduler::{
+        system_scheduler::get_thread_id,
+        threads::{
+            MASTER_THREAD_TABLE,
+            ThreadGeneration,
+            ThreadId,
+        },
+    };
+    struct Restore {
+        tid: ThreadId,
+        generation: ThreadGeneration,
+        previous: Option<WaitSponsor>,
+    }
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            let mut table = MASTER_THREAD_TABLE.write();
+            let thread = table.get_mut(self.tid).unwrap();
+            assert_eq!(thread.generation, self.generation);
+            thread.wait_sponsor = self.previous.take().unwrap();
+        }
+    }
+    let sponsor = WaitSponsor::new(false);
+    let tid = get_thread_id().unwrap();
+    let restore = {
+        let mut table = MASTER_THREAD_TABLE.write();
+        let thread = table.get_mut(tid).unwrap();
+        Restore {
+            tid,
+            generation: thread.generation,
+            previous: Some(core::mem::replace(&mut thread.wait_sponsor, sponsor.clone())),
+        }
+    };
+    test(&sponsor);
+    assert_eq!(sponsor.used(), 0);
+    drop(restore);
+}
 
 pub fn test_waiter_admission() {
     let baseline = waiter_budget::node_used();

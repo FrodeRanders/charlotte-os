@@ -93,10 +93,6 @@ fn test_scheduler_waiter_admission() {
     };
     struct Reject;
     impl Observable for Reject {
-        fn register_observer(&self, _: Weak<dyn Observer>) {
-            panic!("scheduler must use the fallible waiter path");
-        }
-
         fn try_register_waiter(
             &self,
             _: Weak<dyn Observer>,
@@ -107,10 +103,6 @@ fn test_scheduler_waiter_admission() {
     }
     struct Source(Arc<ObserverList<waiter_budget::Charge>>);
     impl Observable for Source {
-        fn register_observer(&self, _: Weak<dyn Observer>) {
-            panic!("scheduler must use owning waiter registration");
-        }
-
         fn try_register_waiter(
             &self,
             observer: Weak<dyn Observer>,
@@ -311,6 +303,7 @@ extern "C" fn cq_driver() {
     crate::timers::waiter_tests::test_scheduled_cleanup();
     crate::timers::event_tests::test_scheduled_cleanup();
     completion::exit_tests::test_scheduled_cleanup();
+    completion::callback_tests::test_scheduled_cleanup();
 
     logln!(
         "[cq wait] SUCCESS: blocking CQ wait released by completion, by explicit wake, by a \

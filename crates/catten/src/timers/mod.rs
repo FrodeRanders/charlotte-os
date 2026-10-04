@@ -364,14 +364,17 @@ fn deadline_after(duration: ExtDuration) -> Timestamp {
     )
 }
 
-impl Observable for TimerEvent {
+impl TimerEvent {
+    /// One trusted internal callback, separate from scheduler waiter admission.
     #[inline]
-    fn register_observer(&self, observer: Weak<dyn Observer>) {
+    pub(crate) fn register_observer(&self, observer: Weak<dyn Observer>) {
         let mut slot = self.callback.lock();
         assert!(slot.is_none(), "timer event already has its internal callback");
         *slot = Some(observer);
     }
+}
 
+impl Observable for TimerEvent {
     fn try_register_waiter(
         &self,
         observer: Weak<dyn Observer>,

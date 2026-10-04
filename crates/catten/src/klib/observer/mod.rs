@@ -10,19 +10,14 @@ use alloc::sync::{
 };
 
 pub trait Observable {
-    fn register_observer(&self, observer: Weak<dyn Observer>);
-
     /// Never invoke callbacks inline: the scheduler holds its thread table.
-    /// Converted sources return an owning, fallible registration. Legacy
-    /// sources retain their old unbounded storage and return a marked token.
+    /// Every source must provide fallible owning registration. There is no
+    /// weak-only fallback that can orphan parked threads or retain stale wakes.
     fn try_register_waiter(
         &self,
         observer: Weak<dyn Observer>,
-        _sponsor: &WaitSponsor,
-    ) -> Result<WaitRegistration, registration::RegistrationError> {
-        self.register_observer(observer);
-        Ok(WaitRegistration::legacy())
-    }
+        sponsor: &WaitSponsor,
+    ) -> Result<WaitRegistration, registration::RegistrationError>;
 }
 
 #[derive(Debug, Clone)]
@@ -64,13 +59,6 @@ pub struct WaitRegistration {
     ready: bool,
 }
 impl WaitRegistration {
-    pub(crate) const fn legacy() -> Self {
-        Self {
-            owned: None,
-            ready: false,
-        }
-    }
-
     pub(crate) const fn ready() -> Self {
         Self {
             owned: None,

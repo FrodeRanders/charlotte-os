@@ -151,12 +151,24 @@ exit, runs 32 immediate-return workers and verifies deferred cancellation of a
 held worker. These are kernel fixtures, not additional real-EL0 quota probes or
 physical allocator-failure injection.
 
+Kernel completion-callback fixtures check 128-entry source saturation, full-batch
+notification with retained owners, 512 cancel/rearm cycles, shared-watch rejection,
+reentrant/late delivery, buffer preservation, producer cancellation, rollback
+with retained objects and exact namespace reuse. Injected entry-allocation failure
+checks charge/weak-reference rollback and recovery; it does not exhaust the
+allocator or inject every allocation failure. Both actual boot-status sources
+also check 64-entry limits, rearming and detached notification before schedulers
+start. The scheduled verifier checks 64 publication and 64 result timeout cycles
+with an isolated waiter sponsor, then races registration against 32 immediate
+workers. The scoped mask remains unchanged. See
+[kernel callback budgets](../reference/completion-callback-budgets.md).
+
 Completion/CQ waiter tests keep the fifteen-bit scoped mask unchanged. Kernel
 tests cover source/domain/node admission and rollback, detached entries,
 promotion and ASID reuse; the scheduled CQ verifier checks Running/Ready/new
 rejection, wake/reap cleanup despite a retained Waker and 64 completion/CQ timeout cycles.
-Host owner tests check retry and Drop after timed admission failure. Legacy
-observer paths and allocator-failure injection remain outside this coverage.
+Host owner tests check retry and Drop after timed admission failure. Comprehensive
+allocator-failure and arbitrary callback-capture accounting remain outside this coverage.
 See [scheduler waiter budgets](../reference/scheduler-waiter-budgets.md).
 
 IPC waiter tests also leave the scoped mask unchanged. They cover source

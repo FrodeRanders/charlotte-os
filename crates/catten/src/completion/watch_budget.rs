@@ -1,5 +1,5 @@
-//! Endpoint-close and thread-exit entries retain admission until unlinked or
-//! detached notification storage is actually released.
+//! Endpoint/thread lifecycle and kernel completion-callback entries retain admission until unlinked
+//! or detached notification storage is actually released.
 
 use alloc::sync::Arc;
 
@@ -13,6 +13,7 @@ pub(crate) const MAX_NODE_WATCHES: usize = 8_192;
 pub(crate) const MAX_ORDINARY_WATCHES: usize = 6_144;
 pub(crate) const MAX_ENDPOINT_WATCHES: usize = 128;
 pub(crate) const MAX_THREAD_WATCHES: usize = 128;
+pub(crate) const MAX_COMPLETION_CALLBACKS: usize = 128;
 
 struct NodeBudget {
     total: CountBudget,

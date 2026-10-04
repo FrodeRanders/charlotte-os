@@ -4,13 +4,13 @@
 //! ABI (`docs/architecture/async-syscall-abi.md`). They validate the submission-side
 //! semantics that exist today — the capability table, the buffer-ownership /
 //! deferred-reclaim contract, the observer-signal path that [`wait`] relies on,
-//! and submission backpressure — without needing the (not-yet-existing) EL0
-//! syscall entry or a running scheduler.
+//! and submission backpressure — without requiring a running scheduler.
+//! The separate scoped probe exercises the implemented EL0 syscall entry.
 //!
 //! [`wait`](crate::completion::wait) itself is not exercised here because it
 //! blocks the calling thread, which requires the scheduler to be yielding;
 //! self-tests run before the BSP yields. The signal path `wait` depends on is
-//! validated directly via [`observe`](crate::completion::observe).
+//! validated through the owning callback fixtures and scheduled CQ tests.
 
 use crate::{
     completion::{

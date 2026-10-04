@@ -94,8 +94,9 @@ fallible metadata allocation still require hardening. Endpoint-close and
 thread-exit registrations now share [owning lists and event-watch admission](close-watch-budgets.md).
 Completion/CQ/IPC scheduler
 waiters also have [separate owning admission](scheduler-waiter-budgets.md);
-blocking-lock and timer waiters share it too. Raw completion callbacks and
-general weak-only backing remain open.
+blocking-lock, timer and boot-status waiters share it too. Kernel completion
+callbacks now have [owned event-watch admission](completion-callback-budgets.md).
+General weak-only/control-block backing remains open.
 [Sleep/watchdog event admission](scheduler-timer-budgets.md) is separate and
 shares the completion-timer node pool.
 Per-principal totals

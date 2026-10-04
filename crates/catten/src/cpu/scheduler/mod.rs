@@ -387,7 +387,7 @@ pub fn sleep_millis(milliseconds: u64) {
 ///
 /// Returns `false` if the condition is still false at timeout or waiter
 /// admission failure. Owned sources cancel the competing registration when
-/// the thread becomes Ready. Legacy sources still need stale-observer cleanup.
+/// the thread becomes Ready. Every scheduler source uses owning registration.
 /// `condition` must be a short, non-parking check: the lost-wake recheck runs
 /// under a local interrupt mask, which is released before yielding.
 pub fn block_until(

@@ -79,6 +79,10 @@ The main additions and extensions currently maintained here are:
   have bounded, owning registrations: dropping an external watch cancels its
   subscription without terminating the target. Worker exit registration
   precedes execution and preserves deferred producer cancellation.
+  [Kernel completion callbacks](docs/reference/completion-callback-budgets.md)
+  also return owning registrations; exact-object checks reject namespace reuse.
+  Scheduler sources must provide fallible waiter registration, including boot
+  publication and self-test results, with no weak-only trait fallback.
   [Completion/CQ/IPC, blocking-lock and timer waiters](docs/reference/scheduler-waiter-budgets.md) admit
   bounded, generation-sponsored registrations before parking and unlink them
   when a competing wake wins.

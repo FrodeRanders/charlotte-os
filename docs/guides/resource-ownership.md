@@ -78,6 +78,15 @@ registration until the producer really exits. Keep those two roles distinct:
 cancelling an observation is not evidence that work has finished. A failed
 join registration is backpressure, not a successful join.
 
+Kernel adapters registering completion callbacks must retain the
+`CompletionObservation` returned by `completion::observe`. Asynchronous callers
+with an existing captured completion use `observe_registered` to reject numeric
+namespace reuse. That owner cancels only the callback; it never releases an
+operation buffer or proves producer exit. Scheduler sources instead implement
+mandatory, fallible `Observable::try_register_waiter` and never notify inline
+under the scheduler thread table. See
+[kernel callback ownership](../reference/completion-callback-budgets.md).
+
 For timed completion waits, `CompletionError::Status(WAIT_ADMISSION_FAILED)`
 means the operation is still live and its owner is retained. Retry or poll, or
 let Drop cancel and wait; do not release borrowed operation buffers on this
