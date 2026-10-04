@@ -20,6 +20,8 @@ should be updated with the implementation when those contracts change.
   registrations, local cancellation and transactional submission.
 - [Scheduler waiter budgets](scheduler-waiter-budgets.md) — owned completion/CQ/IPC
   registrations, admission before parking and cleanup after competing wakes.
+- [IPC record budgets](ipc-record-budgets.md) — grantor/caller sponsorship,
+  connection/call/reply admission, pre-transfer rejection and retirement fencing.
 - [Completion-record budgets](completion-record-budgets.md) — retained-object
   and detached-result admission, node/platform pools, generation fencing and
   CQ replacement cleanup.

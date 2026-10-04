@@ -80,6 +80,9 @@ The main additions and extensions currently maintained here are:
   [Completion/CQ/IPC waiters](docs/reference/scheduler-waiter-budgets.md) admit
   bounded, generation-sponsored registrations before parking and unlink them
   when a competing wake wins.
+  [IPC record admission](docs/reference/ipc-record-budgets.md) bounds delegated
+  connections, retained calls and outstanding replies, with pre-transfer
+  reservation and generation-safe cleanup.
 - **Protected userspace device I/O:** reference UART, NVMe, AHCI, virtio-blk,
   virtio-net, E1000E, and VirtIO RNG drivers receive only delegated MMIO,
   interrupt, and DMA authority. Arm SMMUv3, Intel VT-d, and AMD-Vi isolate

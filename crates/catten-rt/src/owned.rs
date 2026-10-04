@@ -1334,6 +1334,22 @@ mod tests {
     }
 
     #[test]
+    fn record_limited_reply_cancels_token_but_preserves_grant_source() {
+        let _guard = setup();
+        kernel::update(|state| state.ipc_reply_status = catten_syscall::ipc_status::RESOURCE_LIMIT);
+        // Mock raw ABI transfers these two distinct capabilities exactly once.
+        let reply = unsafe { ReplyToken::from_raw(43) }.expect("reply adoption");
+        let connection = unsafe { Connection::from_raw(42) }.expect("connection adoption");
+        assert_eq!(
+            reply.reply_connection_ref(connection.as_ref(), IpcRights::CALL, 7),
+            Err(IpcError::Status(catten_syscall::ipc_status::RESOURCE_LIMIT)),
+        );
+        assert_eq!(kernel::events(), [kernel::Event::IpcClose(43)]);
+        drop(connection);
+        assert_eq!(kernel::events(), [kernel::Event::IpcClose(43), kernel::Event::IpcClose(42)]);
+    }
+
+    #[test]
     fn failed_vector_call_rolls_descriptor_back_and_returns_moves() {
         let _guard = setup();
         let mut descriptor_page = [0_u8; 4096];

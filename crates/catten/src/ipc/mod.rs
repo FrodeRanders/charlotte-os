@@ -44,6 +44,8 @@ use crate::{
 };
 
 pub(crate) mod budget;
+pub(crate) mod record_budget;
+pub(crate) mod record_tests;
 pub(crate) mod waiter_tests;
 
 type WaiterList = Arc<ObserverList<waiter_budget::Charge>>;
@@ -182,10 +184,19 @@ enum Capability {
 }
 
 #[derive(Debug)]
+struct AdmittedCapability {
+    payload: Capability,
+    // Lookup copies only payload authority. The unique stored entry retains
+    // sponsorship until removal, including internal cancellation paths.
+    _connection_charge: Option<record_budget::Charge>,
+}
+
+#[derive(Debug)]
 struct AsIpcCaps {
-    caps: BTreeMap<CapabilityId, Capability>,
+    caps: BTreeMap<CapabilityId, AdmittedCapability>,
     address_space: Option<crate::memory::AddressSpaceHandle>,
     endpoint_budget: Arc<budget::DomainBudget>,
+    record_budget: Arc<record_budget::DomainBudget>,
 }
 
 impl AsIpcCaps {
@@ -194,12 +205,50 @@ impl AsIpcCaps {
             caps: BTreeMap::new(),
             address_space: crate::memory::current_address_space_handle(asid),
             endpoint_budget: budget::DomainBudget::new(),
+            record_budget: record_budget::DomainBudget::new(),
         }
     }
 
     fn insert(&mut self, owner: AddressSpaceId, cap: Capability) -> CapabilityId {
+        self.insert_payload(owner, cap, None)
+    }
+
+    fn insert_connection(
+        &mut self,
+        owner: AddressSpaceId,
+        endpoint: EndpointId,
+        rights: ConnectionRights,
+        charge: record_budget::Charge,
+    ) -> CapabilityId {
+        self.insert_payload(
+            owner,
+            Capability::Connection {
+                endpoint,
+                rights,
+            },
+            Some(charge),
+        )
+    }
+
+    fn insert_payload(
+        &mut self,
+        owner: AddressSpaceId,
+        cap: Capability,
+        charge: Option<record_budget::Charge>,
+    ) -> CapabilityId {
+        assert_eq!(
+            matches!(cap, Capability::Connection { .. }),
+            charge.is_some(),
+            "connection needs exactly one record charge"
+        );
         let id = crate::capability::allocate(owner, crate::capability::ObjectKind::Ipc);
-        self.caps.insert(id, cap);
+        self.caps.insert(
+            id,
+            AdmittedCapability {
+                payload: cap,
+                _connection_charge: charge,
+            },
+        );
         id
     }
 }
@@ -260,6 +309,7 @@ struct ReplyToken {
     call: PendingCallId,
     consumed: bool,
     borrow: Option<MemoryBorrow>,
+    _charge: record_budget::Charge,
 }
 
 #[derive(Debug)]
@@ -272,17 +322,20 @@ struct PendingCall {
     /// caller, and closing the pending-call cap no longer revokes them
     /// (state `ResultObserved` in the operation state machine).
     observed: bool,
+    // Last: retained waiter/result metadata is dropped before admission returns.
+    _charge: record_budget::Charge,
 }
 
 impl PendingCall {
     /// Prepare before attachment transfer or publishing any call capability.
-    fn try_new(caller: AddressSpaceId) -> Result<Self, IpcError> {
+    fn try_new(caller: AddressSpaceId, charge: record_budget::Charge) -> Result<Self, IpcError> {
         Ok(Self {
             caller,
             result: None,
             observers: ObserverList::try_new(waiter_budget::SOURCE_LIMIT)
                 .map_err(|_| IpcError::ResourceLimit)?,
             observed: false,
+            _charge: charge,
         })
     }
 }
@@ -348,6 +401,45 @@ impl IpcRegistry {
         self.caps.entry(asid).or_insert_with(|| AsIpcCaps::new(asid))
     }
 
+    /// Prevent capability publication into a namespace being drained, including
+    /// its short IPC-only retirement interval before the registry is removed.
+    fn accepting_namespace(&mut self, sponsor: AddressSpaceId) -> Result<bool, IpcError> {
+        let identity = crate::memory::current_address_space_handle(sponsor);
+        let platform_identity = crate::memory::budget::platform_identity(sponsor);
+        if identity.is_some_and(|handle| !crate::memory::budget::accepting(handle)) {
+            return Err(IpcError::PermissionDenied);
+        }
+        let namespace = self.as_caps(sponsor);
+        if namespace.address_space != identity || !namespace.record_budget.accepting() {
+            return Err(IpcError::PermissionDenied);
+        }
+        // Synthetic namespaces are confined to kernel fixtures/adapters.
+        // Names and userspace-supplied roles cannot obtain the platform reserve.
+        Ok(sponsor == crate::memory::KERNEL_ASID
+            || platform_identity.is_some_and(|handle| Some(handle) == namespace.address_space))
+    }
+
+    fn reserve_records(
+        &mut self,
+        sponsor: AddressSpaceId,
+        amount: [u64; 3],
+    ) -> Result<record_budget::Charge, IpcError> {
+        let platform = self.accepting_namespace(sponsor)?;
+        let namespace = self.as_caps(sponsor);
+        record_budget::reserve(&namespace.record_budget, platform, amount)
+            .map_err(|_| IpcError::ResourceLimit)
+    }
+
+    /// Both records and the waiter source are prepared before attachments move.
+    fn stage_call(
+        &mut self,
+        caller: AddressSpaceId,
+    ) -> Result<(PendingCall, record_budget::Charge), IpcError> {
+        let mut charge = self.reserve_records(caller, [0, 1, 1])?;
+        let reply_charge = charge.split([0, 0, 1]);
+        Ok((PendingCall::try_new(caller, charge)?, reply_charge))
+    }
+
     fn cap(&self, asid: AddressSpaceId, cap: CapabilityId) -> Result<Capability, IpcError> {
         if !crate::capability::contains(asid, cap, crate::capability::ObjectKind::Ipc) {
             return Err(IpcError::UnknownCapability);
@@ -355,7 +447,7 @@ impl IpcRegistry {
         self.caps
             .get(&asid)
             .and_then(|caps| caps.caps.get(&cap))
-            .copied()
+            .map(|entry| entry.payload)
             .ok_or(IpcError::UnknownCapability)
     }
 
@@ -364,13 +456,15 @@ impl IpcRegistry {
         asid: AddressSpaceId,
         cap: CapabilityId,
     ) -> Result<Capability, IpcError> {
-        let removed = self
+        let entry = self
             .caps
             .get_mut(&asid)
             .and_then(|caps| caps.caps.remove(&cap))
             .ok_or(IpcError::UnknownCapability)?;
         let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Ipc);
         assert!(revoked, "IPC payload capability was absent from unified table");
+        let removed = entry.payload;
+        drop(entry);
         // Internal cancellation also revokes connections. It must reclaim a
         // closed endpoint just as public capability closure does.
         if let Capability::Connection {
@@ -387,8 +481,11 @@ impl IpcRegistry {
 
     fn remove_matching_caps(&mut self, asid: AddressSpaceId, target: Capability) {
         if let Some(caps) = self.caps.get(&asid) {
-            let removed: Vec<_> =
-                caps.caps.iter().filter_map(|(id, cap)| (*cap == target).then_some(*id)).collect();
+            let removed: Vec<_> = caps
+                .caps
+                .iter()
+                .filter_map(|(id, cap)| (cap.payload == target).then_some(*id))
+                .collect();
             for id in removed {
                 self.remove_cap(asid, id).expect("matching IPC capability disappeared");
             }
@@ -586,13 +683,9 @@ pub fn connection_delegate(
 ) -> Result<CapabilityId, IpcError> {
     let mut ipc = IPC.write();
     let (endpoint, granted) = mintable_endpoint(&ipc, owner, endpoint_cap, rights)?;
-    Ok(ipc.as_caps(target).insert(
-        target,
-        Capability::Connection {
-            endpoint,
-            rights: granted,
-        },
-    ))
+    ipc.accepting_namespace(target)?;
+    let charge = ipc.reserve_records(owner, [1, 0, 0])?;
+    Ok(ipc.as_caps(target).insert_connection(target, endpoint, granted, charge))
 }
 
 /// Resolve the owner of the endpoint named by a connection capability.
@@ -777,7 +870,7 @@ pub fn scalar_call(
         endpoint.owner
     };
 
-    let pending = PendingCall::try_new(caller)?;
+    let (pending, reply_charge) = ipc.stage_call(caller)?;
     let call = ipc.alloc_call();
     ipc.pending_calls.insert(call, pending);
     let call_cap = ipc.as_caps(caller).insert(
@@ -795,6 +888,7 @@ pub fn scalar_call(
             call,
             consumed: false,
             borrow: None,
+            _charge: reply_charge,
         },
     );
     let delivery = enqueue_scalar(&mut ipc, endpoint_id, caller, opcode, arg0, Some(token))?;
@@ -885,7 +979,9 @@ fn scalar_call_with_connection_impl(
     };
 
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let pending = PendingCall::try_new(caller)?;
+    let (pending, reply_charge) = ipc.stage_call(caller)?;
+    let connection_charge = ipc.reserve_records(caller, [1, 0, 0])?;
+    ipc.accepting_namespace(server)?;
     let server_memory_cap = if let Some(memory_cap) = copied_memory {
         Some(
             crate::memory::object::copy_to(caller, memory_cap, server)
@@ -894,12 +990,11 @@ fn scalar_call_with_connection_impl(
     } else {
         None
     };
-    let attached_cap = ipc.as_caps(server).insert(
+    let attached_cap = ipc.as_caps(server).insert_connection(
         server,
-        Capability::Connection {
-            endpoint: delegated_endpoint,
-            rights: granted,
-        },
+        delegated_endpoint,
+        granted,
+        connection_charge,
     );
 
     let call = ipc.alloc_call();
@@ -919,6 +1014,7 @@ fn scalar_call_with_connection_impl(
             call,
             consumed: false,
             borrow: None,
+            _charge: reply_charge,
         },
     );
     let server_memory_vec: Vec<MemoryObjectCap> = server_memory_cap.into_iter().collect();
@@ -957,7 +1053,7 @@ pub fn scalar_call_with_memory_move(
     }
 
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let pending = PendingCall::try_new(caller)?;
+    let (pending, reply_charge) = ipc.stage_call(caller)?;
     let server_memory_cap = crate::memory::object::move_to(caller, memory_cap, server)
         .map_err(|_| IpcError::MemoryTransferFailed)?;
 
@@ -978,6 +1074,7 @@ pub fn scalar_call_with_memory_move(
             call,
             consumed: false,
             borrow: None,
+            _charge: reply_charge,
         },
     );
     let delivery = enqueue_scalar_with_memory(
@@ -1014,7 +1111,7 @@ pub fn scalar_call_with_memory_copy(
     }
 
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let pending = PendingCall::try_new(caller)?;
+    let (pending, reply_charge) = ipc.stage_call(caller)?;
     let server_memory_cap = crate::memory::object::copy_to(caller, memory_cap, server)
         .map_err(|_| IpcError::MemoryTransferFailed)?;
 
@@ -1035,6 +1132,7 @@ pub fn scalar_call_with_memory_copy(
             call,
             consumed: false,
             borrow: None,
+            _charge: reply_charge,
         },
     );
     let delivery = enqueue_scalar_with_memory(
@@ -1092,7 +1190,7 @@ fn scalar_call_with_memory_borrow(
     }
 
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let pending = PendingCall::try_new(caller)?;
+    let (pending, reply_charge) = ipc.stage_call(caller)?;
     let server_memory_cap = if writable {
         crate::memory::object::lend_write(caller, memory_cap, server)
     } else {
@@ -1122,6 +1220,7 @@ fn scalar_call_with_memory_borrow(
                 borrower: server,
                 borrower_cap: server_memory_cap,
             }),
+            _charge: reply_charge,
         },
     );
     let delivery = enqueue_scalar_with_memory(
@@ -1256,6 +1355,7 @@ pub fn receive(
 ) -> Result<ScalarMessage, IpcError> {
     let mut ipc = IPC.write();
     let endpoint_id = receive_endpoint_id(&ipc, receiver, endpoint_cap)?;
+    ipc.accepting_namespace(receiver)?;
 
     let (message, interface, version) = {
         let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
@@ -1565,6 +1665,14 @@ fn complete_reply(
     let borrow = token.borrow;
     let call_id = token.call;
     let caller = ipc.pending_calls.get(&call_id).ok_or(IpcError::UnknownCapability)?.caller;
+    // A reply is solicited by this caller. Charge returned authority to that
+    // requester, so repeated lookups cannot spend the serving grantor's budget.
+    // Reject before consuming the reply token, revoking a loan, or moving memory.
+    let connection_charge = if returned_connection.is_some() {
+        Some(ipc.reserve_records(caller, [1, 0, 0])?)
+    } else {
+        None
+    };
     let returned_memory_cap = if let Some(memory_cap) = returned_memory {
         Some(
             crate::memory::object::move_to(server, memory_cap, caller)
@@ -1581,12 +1689,11 @@ fn complete_reply(
         return Err(IpcError::MemoryTransferFailed);
     }
     let returned_cap = returned_connection.map(|(endpoint, endpoint_rights)| {
-        ipc.as_caps(caller).insert(
+        ipc.as_caps(caller).insert_connection(
             caller,
-            Capability::Connection {
-                endpoint,
-                rights: endpoint_rights,
-            },
+            endpoint,
+            endpoint_rights,
+            connection_charge.unwrap(),
         )
     });
     ipc.reply_tokens.remove(&token_id);
@@ -1762,7 +1869,7 @@ impl Observable for PendingCallObservable {
 /// queued messages and reply tokens are drained before an endpoint is retired.
 fn endpoint_referenced(ipc: &IpcRegistry, endpoint: EndpointId) -> bool {
     ipc.caps.values().any(|as_caps| {
-        as_caps.caps.values().any(|cap| match cap {
+        as_caps.caps.values().any(|cap| match &cap.payload {
             Capability::Endpoint {
                 endpoint: id,
                 ..
@@ -1899,6 +2006,9 @@ fn signal_observers(observers: WaitNotifications) {
 pub fn close_address_space(asid: AddressSpaceId) {
     let caps = {
         let ipc = IPC.read();
+        if let Some(namespace) = ipc.caps.get(&asid) {
+            namespace.record_budget.retire();
+        }
         ipc.caps
             .get(&asid)
             .map(|caps| caps.caps.keys().copied().collect::<Vec<_>>())
@@ -1994,21 +2104,9 @@ fn cancel_queued_message_with_token(
                         let _ = crate::memory::object::close_cap(server, *memory_cap);
                     }
                 }
-                if let Some(connection_cap) = message.connection
-                    && let Some(caps) = ipc.caps.get_mut(&server)
-                {
-                    assert!(
-                        caps.caps.remove(&connection_cap).is_some(),
-                        "queued connection payload capability disappeared during cancellation"
-                    );
-                    assert!(
-                        crate::capability::remove(
-                            server,
-                            connection_cap,
-                            crate::capability::ObjectKind::Ipc,
-                        ),
-                        "IPC payload capability was absent from unified table"
-                    );
+                if let Some(connection_cap) = message.connection {
+                    ipc.remove_cap(server, connection_cap)
+                        .expect("queued connection disappeared during cancellation");
                 }
             }
             return;
@@ -2039,6 +2137,7 @@ pub fn receive_vec(
 ) -> Result<ScalarMessage, IpcError> {
     let mut ipc = IPC.write();
     let endpoint_id = receive_endpoint_id(&ipc, receiver, endpoint_cap)?;
+    ipc.accepting_namespace(receiver)?;
 
     let (message, interface, version) = {
         let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
@@ -2142,7 +2241,7 @@ pub fn vector_call(
         return Err(IpcError::PermissionDenied);
     }
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let pending = PendingCall::try_new(caller)?;
+    let (pending, reply_charge) = ipc.stage_call(caller)?;
 
     let mut memory_caps = Vec::new();
     let mut applied = read_vector_page(caller, cap_vector, server, true, &mut memory_caps)?;
@@ -2164,6 +2263,7 @@ pub fn vector_call(
             call,
             consumed: false,
             borrow: None,
+            _charge: reply_charge,
         },
     );
     let delivery = match enqueue_message(

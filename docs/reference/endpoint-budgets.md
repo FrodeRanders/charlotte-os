@@ -79,9 +79,10 @@ The scoped EL0 probe fills its endpoint budget, performs scalar IPC while it
 is full, drops the owning batch and completes 128 create/drop cycles.
 Host tests check multidimensional overflow/underflow and atomic rejection.
 
-These controls do not bound the complete capability namespace, connections,
-pending-call records, reply tokens, general observer storage, attachment vectors, all completion
-metadata, loader/page tables or the entire kernel heap. Separate
+These controls do not bound the complete capability namespace, general observer
+storage, attachment vectors, all completion metadata, loader/page tables or the
+entire kernel heap. Separate [IPC record budgets](ipc-record-budgets.md) cover
+connections, retained pending calls and outstanding reply tokens. Separate
 [record budgets](completion-record-budgets.md) cover retained completion objects
 and detached results. Allocation of registry
 and capability metadata is still infallible. No allocator-failure injection,
@@ -92,4 +93,5 @@ requires the [security audit's restrictions](../reports/audits/2026-10-03-securi
 Endpoint-readiness and pending-call **waiter entries** now have separate
 [shared scheduler admission](scheduler-waiter-budgets.md) and owning cancellation.
 Their source-list allocation is fallible before attachment transfer; that does
-not yet bound pending-call/reply-token/connection record counts or all metadata.
+not by itself admit records or all metadata. Call submission now reserves its
+separate pending-call/reply-token records before preparing that list.

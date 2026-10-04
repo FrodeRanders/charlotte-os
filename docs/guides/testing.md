@@ -103,6 +103,17 @@ Synchronous tests check queue backing limits and resize rollback, platform
 reserve, retained delegated records, unobserved-return cleanup, and forced
 ASID reuse. See [endpoint budgets](../reference/endpoint-budgets.md).
 
+The same thirteenth bit now fills connection admission and submits 512
+outstanding calls to a larger queue, using owning batches. Dropping the calls
+must permit a successful request; dropping the connections must permit another
+128 mint/drop cycles. Kernel fixtures separately exercise retained completed
+calls, all attachment variants' pre-transfer rejection, failed-attachment
+rollback, live loans after rejected replies, observed/unobserved returns,
+queued delegation cancellation, retirement publication fencing and ASID reuse.
+Ordinary/total node saturation uses counters, not full registry allocation.
+A host owner test checks token cancellation without closing its grant source
+on a resource-limited reply. See [IPC record budgets](../reference/ipc-record-budgets.md).
+
 The fourteenth bit fills shared completion-record capacity with owned
 endpoint-close watches. Timer submission must fail while the record budget is
 full, scalar IPC must still work, and closing the watched endpoint must allow

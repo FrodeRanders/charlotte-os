@@ -21,7 +21,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-04 | Mitigated | Builds and boot logs identify development trust; production and unknown modes fail closed in scripted and direct kernel builds. Protected bootstrap roots, fixture-free production provisioning and recipient-key custody remain unimplemented. |
 | SEC-05 | Implemented | tcpip rejects raw frame ingress unless the authenticated sender is the exact live, kernel-designated frouter. Separate socket/VIP binding policy remains future hardening. |
 | SEC-06 | Mitigated | HTTP EOF, peer-raced accept and transport failures close one connection, not the server; listener-setup resource failures retry with backoff. httpd has a five-second request wait and bounded send retries; deployd has five-second header and thirty-second total receive budgets. Serial admission remains vulnerable to sustained connection floods. |
-| SEC-07 | Partially implemented | Memory-object backing pages/counts, completion timer events, endpoint records/queue backing, retained completion objects/detached results, CQ registrations/kernel backing, endpoint-close registrations and completion/CQ/IPC scheduler waiters have generation-scoped domain/node admission and platform reserves. Charges survive transfers, deferred cancellation, delegation, retained references or detached notifications as appropriate. Waiter admission precedes parking; owning cancellation handles competing wakes and reaping. Timed completion admission failure retains its owner; untimed completion/IPC waits preserve borrowed-buffer safety. Timed park/watchdog setup is non-preemptible, and IPC waiter-list preparation precedes attachment transfer. Aggregate limits for loader/heap/page tables (including physical CQ mappings), the complete capability namespace, connection/pending-call/reply-token records, legacy-observer metadata, general weak-only storage, other timer paths and comprehensive kernel metadata remain open. |
+| SEC-07 | Partially implemented | Memory-object backing pages/counts, completion timer events, endpoint records/queue backing, retained completion objects/detached results, CQ registrations/kernel backing, endpoint-close registrations, completion/CQ/IPC scheduler waiters and connection/pending-call/reply-token record counts have generation-scoped domain/node admission and platform reserves. Charges survive transfers, deferred cancellation, delegation, retained references or detached notifications as appropriate. Waiter admission precedes parking; owning cancellation handles competing wakes and reaping. Timed completion admission failure retains its owner; untimed completion/IPC waits preserve borrowed-buffer safety. Timed park/watchdog setup is non-preemptible. IPC call/reply preparation precedes attachment transfer, and retirement fences receive/connection publication before teardown. Aggregate limits for loader/heap/page tables (including physical CQ mappings), the complete capability namespace, legacy-observer metadata, general weak-only storage, other timer paths and comprehensive kernel metadata remain open. |
 | SEC-08 | Open | Authenticate enrolled nodes and control/data peer traffic, add replay protection, and bound discovery state. A trusted L2 segment remains an explicit deployment prerequisite. |
 | SEC-09 | Open | Distinguish authenticated security time from observational SNTP/holdover; enforce freshness and uncertainty at security-policy gates. |
 | SEC-10 | Open | Authenticated encrypted access to node and cluster management, browser-client provisioning, and access policy remain necessary. |
@@ -1006,3 +1006,88 @@ Evidence is in `/private/tmp/charlotte-security-ipc-waiters-repeat2-run.log`,
 `/private/tmp/charlotte-security-ipc-waiters-atomic-20261004-debug-snapshot-lldb.log`,
 `/private/tmp/charlotte-security-ipc-waiters-host-tests.log`, and the
 `/private/tmp/charlotte-security-ipc-waiters-*-clippy.log`/`*-services.log` files.
+
+## 2026-10-04 continuation — IPC connection/call/reply record admission
+
+The preceding IPC waiter and timed-wait changes are committed as `9741700c`.
+This continuation separately admits connection capabilities, retained pending
+calls and outstanding reply tokens. Each dimension has a 512-record sponsoring
+namespace ceiling, an 8,192-record node ceiling and a 6,144-record ordinary
+share. Kernel-designated platform generations can use the shared reserve;
+names, supplied roles and descriptor fields cannot obtain it.
+
+Grantors sponsor direct connections and re-delegations. Callers sponsor pending
+calls and the server's outstanding reply token together, and pay for connections
+returned in their solicited replies. Repeated lookups therefore cannot consume
+the serving grantor's connection allowance; unsolicited grants cannot spend
+their recipient's allowance.
+Connections from several grantors can accumulate at one recipient: the domain
+limit is sponsorship, not a per-recipient capability-table ceiling. None of this
+changes who may use or close a capability. Completed/observed call records stay
+charged until closed; reply-token charges return on reply or cancellation.
+Connection charges are owned inside their stored capability record, not in a
+parallel bookkeeping table, so internal removals release them too.
+
+Every call path atomically reserves its two records and prepares its fallible
+waiter list before transferring attachments. Connection-bearing calls reserve
+their connection before copying memory. Connection-bearing replies reserve
+before consuming the token, moving memory or revoking a loan. Staged owners
+release reservations on error. Kernel quota rejection leaves the token/loan
+live; current consuming Rust `ReplyToken::reply_connection*` methods instead
+close/cancel the token on error, retaining the borrowed grant source. The new
+reference and ownership guide document that distinction rather than promise a
+retryable token that the current API does not return.
+
+Review also found a teardown-publication gap: a receive or delegated/returned
+connection could create a capability after teardown collected its drain list.
+IPC now marks its record account retiring before that snapshot. Receive and
+connection-publication paths reject retiring or generation-mismatched namespaces
+under IPC, before dequeue or transfer. Captured charges keep their old account
+alive after namespace removal. A late remote connection close cannot credit a
+replacement with the same ASID.
+
+The [record reference](../../reference/ipc-record-budgets.md), endpoint/waiter
+references, locking rules, ownership/testing guides, README and LaTeX sources
+document sponsorship, lifetime and error semantics. Registry/capability insertion,
+namespace-account allocation, general weak-only retention, remaining legacy
+observers/watchdogs, attachment bytes and comprehensive loader/page-table/heap
+accounting remain incomplete. There are no signed record-limit overrides or
+per-principal aggregates across domains. SEC-07 remains partial and the audit's
+deployment restrictions still apply.
+
+Validation:
+
+- The full host runner passed, including the new owned reply test for
+  `RESOURCE_LIMIT` cancelling its token without closing its borrowed grant source.
+- Synchronous kernel tests passed for actual 512-connection, retained completed-call
+  and outstanding-call ceilings; reuse after closure; every call attachment
+  variant's rejection before transfer; independent call/reply dimension rejection;
+  staged attachment-failure rollback; rejected connection reply with a live loan;
+  successful reply revocation; observed/unobserved result cleanup; queued
+  connection cancellation; retirement before scalar/vector dequeue or delegated
+  publication; and original-generation accounting after forced ASID reuse.
+  Ordinary and total node saturation tests are counter-only, not maximum-footprint
+  registry allocation.
+- The final requester-funded implementation passed two isolated four-LP
+  AArch64/TCG runs: **19 tests, 0 failed, 0 pending**, with both scoped launches'
+  fifteen-bit mask (`0x7fff`). The EL0 probe now fills connection admission and
+  submits 512 outstanding calls to a larger queue using owned batches, then
+  verifies cancellation and recovery. The final run retired concurrent
+  cancellation traffic after 4,528 requests. Three earlier runs also passed
+  19/19 while the retirement fence, stored-entry ownership and sponsorship
+  policy were being refined; they are not substitutes for the final-policy runs.
+- Both service bundles built. AArch64/x86-64 kernel and service Clippy passed
+  with `-D warnings`; workspace formatting and diff checks passed.
+
+The final guest kernel SHA-256 is
+`c79ee2a69aa189e5b3a743de2b169cad641961d499ba6f69d1e2fcf7e241fc92`.
+Evidence is in `/private/tmp/charlotte-security-ipc-records-final-run.log`,
+`/private/tmp/charlotte-security-ipc-records-final-20261004-serial.log`,
+`/private/tmp/charlotte-security-ipc-records-requester-run.log`,
+`/private/tmp/charlotte-security-ipc-records-host-tests.log`, and the
+`/private/tmp/charlotte-security-ipc-records-*-clippy.log`/`*-services.log` files.
+No allocator-failure injection, exhaustive cross-LP teardown race exploration,
+x86-64 guest execution, hostile-pressure soak or PDF rebuild was performed.
+Dedicated storage and forwarded ports were used; existing soak guests/stores
+were not modified. These count limits do not guarantee many-client fairness,
+per-service progress, or complete kernel metadata containment.

@@ -38,8 +38,38 @@ retains the backing and its charge until it is freed.
 Owner closure drains the queue and frees its backing. Delegated connections
 can retain the closed endpoint record; its original generation pays for that
 record until the last reference disappears. Late cleanup after ASID reuse
-credits only the old generation. Connection, reply-token, pending-call and
-observer metadata still need separate aggregate admission.
+credits only the old generation.
+
+\subsection{Connection, call and reply record admission}
+
+Each sponsoring namespace generation can retain 512 connection capabilities,
+512 pending calls and 512 outstanding reply tokens. Each dimension has a node
+ceiling of 8,192 and an ordinary-domain share of 6,144. These initial kernel
+policies are separate from endpoint queue capacity and waiter limits.
+
+The grantor sponsors direct grants and re-delegations. The requesting caller
+sponsors both its pending call and the server's reply token, and pays for a
+connection returned in that solicited reply. Repeated lookups therefore cannot
+consume the serving grantor's connection allowance. A recipient can hold
+connections sponsored by several namespaces; 512 is not its total
+capability-table limit. Sponsorship does not change capability authority.
+Completed and observed calls remain charged until closed, while reply-token
+charges return on reply or cancellation.
+
+Calls reserve both records atomically before preparing their waiter list or
+transferring attachments. Connection-bearing calls and replies admit their
+connection before copying memory, consuming the token or revoking a loan.
+Kernel rejection leaves the inputs intact. The consuming Rust
+\texttt{ReplyToken::reply\_connection*} methods close/cancel their token on an
+error and preserve the borrowed grant source; they do not return a retryable
+token.
+
+Teardown fences admission before taking its capability snapshot. Receive and
+connection-publication paths reject a retiring namespace, preventing late
+capabilities from escaping that snapshot. Charges retain the original
+generation after delegation or ASID reuse. Registry and capability insertion,
+list control blocks, other capability kinds and comprehensive kernel heap
+accounting remain incomplete.
 
 \subsection{Receive and reply waiter admission}
 
@@ -67,8 +97,9 @@ or admission rejection; neither event by itself ends a loan.
 Readiness lists and pending-call lists are prepared fallibly before source
 publication. Call preparation precedes memory transfer, lending and delegated
 connection attachments, so failure at this stage leaves those inputs untouched.
-Connection, reply-token and pending-call records, list control blocks and other
-kernel metadata still need comprehensive admission.
+Connection, reply-token and pending-call counts use the separate record budgets
+above. List control blocks and other kernel metadata still need comprehensive
+admission and fallible allocation.
 
 \section{Message classes}
 

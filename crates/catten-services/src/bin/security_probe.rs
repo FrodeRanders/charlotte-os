@@ -368,6 +368,47 @@ fn main(ctx: Context) -> ! {
     for _ in 0..128 {
         drop(Endpoint::create(0x5ef, 1, 1).unwrap_or_else(|_| catten_rt::domain_abort()));
     }
+    // Owning batches exercise record admission through the real EL0 ABI.
+    // Keep the queue larger than the call-record limit so queue fullness does
+    // not masquerade as record rejection. Drop cancels every outstanding call.
+    let record_endpoint =
+        Endpoint::create(0x5f2, 1, 1_024).unwrap_or_else(|_| catten_rt::domain_abort());
+    let mut connections = Vec::new();
+    for _ in 0..1_024 {
+        match record_endpoint.connect(IpcRights::CALL) {
+            Ok(connection) => connections.push(connection),
+            Err(_) => break,
+        }
+    }
+    check(
+        (4..=512).contains(&connections.len()) && record_endpoint.connect(IpcRights::CALL).is_err(),
+        39,
+    );
+    let mut calls = Vec::new();
+    for _ in 0..1_024 {
+        match connections[0].call(PING, 0) {
+            Ok(call) => calls.push(call),
+            Err(_) => break,
+        }
+    }
+    check(calls.len() == 512 && connections[0].call(PING, 0).is_err(), 40);
+    drop(calls);
+    check(
+        wait(
+            connections[0].call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort()),
+            &record_endpoint,
+        )
+        .result
+            == PONG,
+        41,
+    );
+    drop(connections);
+    for _ in 0..128 {
+        drop(
+            record_endpoint.connect(IpcRights::CALL).unwrap_or_else(|_| catten_rt::domain_abort()),
+        );
+    }
+    drop(record_endpoint);
     checks |= 4_096;
     let watched = Endpoint::create(0x5f0, 1, 1).unwrap_or_else(|_| catten_rt::domain_abort());
     let watched_connection =

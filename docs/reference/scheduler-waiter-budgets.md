@@ -1,5 +1,9 @@
 # Owned scheduler waiter budgets
 
+Connection, retained-call and reply-token counts have separate
+[IPC record admission](ipc-record-budgets.md). Waiter entries count a different
+lifetime: the thread's parked registration, not the operation it waits for.
+
 The scheduler uses fallible `Observable::try_register_waiter` admission before
 publishing `Blocked` or removing a Ready thread from its run queue. Completion,
 CQ, endpoint-readiness and pending-call sources return an owning registration;
@@ -112,8 +116,9 @@ endpoint. All six call submission variants prepare their pending-call list
 before moving, copying, lending or vector-transferring memory and before minting
 delegated connection attachments. List allocation failure returns before these
 effects. This is not a claim that capability/registry insertion and every later
-allocation are now fallible. Pending-call/reply-token/connection records, list
-control blocks and other general metadata still need comprehensive admission.
+allocation are now fallible. Separate IPC record admission bounds call, reply
+and connection counts; list control blocks and other general metadata still
+need comprehensive admission and fallible allocation.
 
 ## Migration scope and verification
 

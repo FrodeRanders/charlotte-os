@@ -270,7 +270,7 @@ repository history remain authoritative.
         deferred cancellation. Endpoint records and preallocated queue backing
         have domain/node admission with staged-growth rollback and original
         generation charges retained through delegation. Aggregate limits for the full capability
-        namespace, connection/call/observer metadata, weak-only backing, other timer paths and
+        namespace, general observer metadata, weak-only backing, other timer paths and
         kernel metadata remain incomplete.
         Completion records now have separate domain/node admission, retained
         through strong references and undelivered detached results.
@@ -282,6 +282,11 @@ repository history remain authoritative.
         and endpoint-readiness/pending-call scheduler waiters have bounded
         generation-sponsored entries, admission before parking and owning
         cancellation on competing wake or reaping.
+        Connection, retained-call and outstanding-reply records have separate
+        domain/node count admission. Grantors sponsor direct connections;
+        callers sponsor call/reply pairs and solicited returned connections.
+        Reservation precedes attachment transfer,
+        and retirement fences receive and connection publication before teardown.
         Timed admission failures retain the completion owner; untimed waits
         preserve terminal-state and borrowed-buffer safety through cooperative
         retry. Untimed IPC admission retries preserve pending loans; source

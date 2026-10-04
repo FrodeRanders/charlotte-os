@@ -86,6 +86,13 @@ Keep using `Endpoint`, `PendingCall` and `ReplyToken`; this kernel change adds n
 manual unregister or cleanup step for applications. A wait timeout is not a
 successful reply or permission to reuse a still-lent buffer.
 
+IPC connection/call/reply records also have [admission limits](../reference/ipc-record-budgets.md).
+Bound concurrent request batches and handle submission failure. Pre-transfer
+record rejection leaves moved memory with its owner; no manual rollback ladder
+is needed. Consuming `ReplyToken::reply_connection*` methods cancel their token
+on an error, including `RESOURCE_LIMIT`, while preserving the borrowed grant
+source. They do not return a token for retry.
+
 For a borrow, pass `&memory` or `&mut memory` to `call_borrow_read` or
 `call_borrow_write`. `PendingCall<'memory>` retains that borrow until the reply
 is observed or the call is dropped, preventing concurrent CPU access.
