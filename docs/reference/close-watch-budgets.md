@@ -91,11 +91,13 @@ test is claimed.
 
 Completion/CQ and endpoint-readiness/pending-call scheduler waiters now use
 [fallible owned registration](scheduler-waiter-budgets.md) with admission before
-parking. Blocking-lock waiters now share that admission too. Thread-exit
-observers, watchdogs, timer and other observer paths
+parking. Blocking-lock and timer waiters now share that admission too.
+Non-scheduler timer callbacks use a single embedded slot. Thread-exit
+observers, raw completion callbacks and other legacy observer paths
 still use the old registration API. Its void
 return cannot safely be replaced with silent bounded rejection: that would lose
 a parked thread's wake source. Their adoption needs integrated admission, owned
-cancellation and separate storage accounting. General
+cancellation and separate storage accounting. Watchdog/timer queue-event storage,
+general
 weak-only Arc/control-block storage and comprehensive kernel heap admission also
 remain open. SEC-07 is still partially implemented.

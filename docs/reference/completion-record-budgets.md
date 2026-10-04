@@ -93,7 +93,8 @@ object's fields and charge have dropped. Observer cancellation/reclamation and
 fallible metadata allocation still require hardening. Endpoint-close registrations
 now have their own owning list and admission. Completion/CQ/IPC scheduler
 waiters also have [separate owning admission](scheduler-waiter-budgets.md);
-blocking-lock waiters share it too. Legacy timer/raw-callback paths and general
+blocking-lock and timer waiters share it too. Raw completion/thread-exit callbacks,
+timer-queue/watchdog event storage and general
 weak-only backing remain open.
 Per-principal totals
 across domains, typed deployment limits and userspace counters remain future

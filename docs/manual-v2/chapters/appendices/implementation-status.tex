@@ -294,8 +294,10 @@ repository history remain authoritative.
         now share owning admission, runnable retry on rejection and broadcast
         notification after release. They have test users but no production
         callers; fairness and owner-death recovery are not provided.
-        Legacy timer observers
-        and watchdog storage still require migration and admission.
+        Scheduler timer observers share owning admission; internal timer
+        callbacks occupy one embedded slot. Sleep falls back to runnable
+        deadline waiting on rejection. Thread-exit/raw completion observers
+        and sleep/watchdog event storage still require migration and admission.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are

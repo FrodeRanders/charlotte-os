@@ -1,6 +1,7 @@
-//! Const-initializable owning waiter source for kernel blocking locks. The
-//! list is allocated fallibly on first contention; uncontended locks allocate
-//! nothing. Tokens enter only the independent list lock on cancellation.
+//! Const-initializable owning waiter source for kernel blocking locks and
+//! timer events. The list is allocated fallibly on first registration;
+//! uncontended locks allocate nothing. Tokens enter only the independent list
+//! lock on cancellation.
 
 use alloc::sync::{
     Arc,

@@ -282,6 +282,7 @@ pub fn run_synchronous_self_tests() {
     memory::object::test_memory_objects();
     waiters::test_waiter_admission();
     crate::cpu::scheduler::sync::tests::test_admission();
+    crate::timers::waiter_tests::test_admission();
     completion::test_completion_caps();
     completion::test_detached_operations();
     ipc::test_endpoint_ipc();

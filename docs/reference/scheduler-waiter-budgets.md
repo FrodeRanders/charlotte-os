@@ -6,7 +6,7 @@ lifetime: the thread's parked registration, not the operation it waits for.
 
 The scheduler uses fallible `Observable::try_register_waiter` admission before
 publishing `Blocked` or removing a Ready thread from its run queue. Completion,
-CQ, endpoint-readiness, pending-call and blocking-lock sources return an owning registration;
+CQ, endpoint-readiness, pending-call, blocking-lock and timer sources return an owning registration;
 rejection leaves the thread's state, queue membership and migration constraints
 unchanged. Already-terminal completions, unconsumed CQ work, readable/closed
 endpoints and replied calls return an immediate-ready marker without parking.
@@ -15,7 +15,7 @@ the master thread table.
 
 | Live registration limit | Current policy |
 | --- | ---: |
-| Linked entries per completion, CQ, IPC or blocking-lock wait source | 64 |
+| Linked entries per completion, CQ, IPC, blocking-lock or timer wait source | 64 |
 | Per waiting domain generation | 1,024 |
 | Per node | 8,192 |
 | Ordinary-domain share | 6,144 |
@@ -160,12 +160,45 @@ writer-priority, starvation-freedom, priority-inheritance or owner-death recover
 guarantee. Broadcasts can wake up to 64 mutex candidates or 128 RwLock candidates,
 and are not a throughput optimization. Detached entries retain budget charges.
 
+## Timer observers and sleep
+
+`TimerEvent` scheduler registrations use the same owning source and shared
+entry budgets. Wake, competing watchdog admission to Ready, thread reaping and
+event destruction cancel/release them. A cancelled event suppresses callbacks;
+its entries remain charged until cancellation or actual event destruction.
+Notification detaches the waiter batch and the internal callback before invoking
+either, with no source guard held. Timer-queue processing still owns its LP-local
+queue borrow during callbacks: callbacks must not re-enter that queue.
+
+All current non-scheduler timer producers (quantum, completion timers and timed
+wait watchdogs) install exactly one callback. Its weak reference now lives in
+an embedded single slot, not an unbounded queue. A second internal registration
+is a kernel programming error, not silently rejected wake delivery. The slot
+does not allocate observer-list backing or consume waiter-entry admission.
+It is not a general multi-callback registration API; thread-exit and raw
+completion callback sources retain their separate legacy behavior.
+
+Sleep preserves its void ABI and at-least-duration contract. If scheduler
+registration fails, it discards the unqueued event, restores the entry IRQ state
+and cooperatively yields until a counter deadline while remaining runnable.
+`SLEEP_WAIT_ADMISSION_FALLBACKS` is diagnostic only. Successful parking still
+rebases the interval after admission and queues the timer before restoring IRQs.
+This fallback avoids a kernel panic or false early success; it is not efficient
+idle waiting or an overload progress guarantee.
+
+The entry limits do **not** bound the number or bytes of queued sleeps/watchdogs,
+make queue growth fallible, or remove all event/control-block allocations.
+Completion-backed events retain their separate timer-event charge. Aborted
+sleeps may leave an empty source/control block in the queue until its deadline;
+they no longer retain a linked weak waiter. Watchdog event admission and
+comprehensive timer metadata accounting remain open.
+
 ## Migration scope and verification
 
 Only the migrated **scheduler waiter** categories use this admission. The
 default trait implementation deliberately returns a marked legacy token and
-retains the old registration behavior for timer and other not-yet-converted
-sources. Raw kernel completion callbacks, thread-exit
+retains the old registration behavior for not-yet-converted sources.
+Raw kernel completion callbacks, thread-exit
 observers and watchdog storage are not covered. Silent bounded insertion on
 those old paths would lose wake sources and is not an acceptable conversion.
 
@@ -192,5 +225,12 @@ lock-acquisition fallback counters before remote workers park, and verify
 mutex/read/write data access after release on another LP. The holders only poll
 while owning data guards; they never explicitly park/yield with those guards.
 These are not lock userspace-ABI tests or an exhaustive fairness/race proof.
+Timer fixtures cover source limits/rollback, 512 cancel/rearm cycles, callback
+reentrancy, expired internal callbacks, cancelled-event suppression, event
+destruction with retained tokens and retired sponsorship. Scheduled tests run
+64 normal sleeps, 64 competing-watchdog cleanup cycles, non-mutating rejection
+and a forced full-source runnable sleep fallback with an elapsed-duration check.
+The pressure fixture supplies a pre-filled timer source to the normal sleep
+implementation; it does not saturate a real EL0 domain or fault-inject allocation.
 Allocator-failure injection, exhaustive cross-LP race exploration and sustained
 hostile-pressure containment remain unverified. SEC-07 remains partial.

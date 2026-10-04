@@ -166,6 +166,14 @@ before allowing remote contention to park, then verify acquisition/release and
 park/yield with a data guard. These tests do not establish fairness, owner-death
 recovery, production use or allocation-failure coverage.
 
+Timer waiter fixtures leave the scoped mask unchanged too. They cover source
+limits/rollback, 512 cancel/rearm cycles, callback reentrancy, expired callbacks,
+cancelled-event suppression, event destruction with retained tokens and retired
+sponsorship. Scheduled tests run 64 normal sleeps and 64 competing-watchdog
+cleanup cycles. A pre-filled timer source forces the normal sleep path into its
+runnable fallback and checks elapsed time; rejection leaves state/constraints
+unchanged. This is not a forced-quota EL0 syscall or timer-queue capacity test.
+
 The scoped application verifier does not force ASID reuse, restart the grant
 controller, inject allocation failures or prove many-client fairness. It does
 not exercise the complete S3/Raft release pipeline with independent roots, or

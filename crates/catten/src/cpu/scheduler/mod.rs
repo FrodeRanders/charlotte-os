@@ -20,22 +20,16 @@ use core::{
 };
 
 use crate::{
-    cpu::{
-        isa::lp::ops::{
-            mask_interrupts,
-            unmask_interrupts,
+    cpu::scheduler::{
+        system_scheduler::{
+            SYSTEM_SCHEDULER,
+            publish_thread,
         },
-        scheduler::{
-            system_scheduler::{
-                SYSTEM_SCHEDULER,
-                publish_thread,
-            },
-            threads::{
-                MASTER_THREAD_TABLE,
-                Thread,
-                ThreadGeneration,
-                ThreadId,
-            },
+        threads::{
+            MASTER_THREAD_TABLE,
+            Thread,
+            ThreadGeneration,
+            ThreadId,
         },
     },
     klib::{
@@ -58,6 +52,10 @@ pub mod threads;
 const SCHED_TRACE: bool = false;
 const REBALANCE_SAMPLE_MILLIS: u64 = 10;
 static LAST_REBALANCE_SAMPLE_MILLIS: AtomicU64 = AtomicU64::new(0);
+
+/// Diagnostic only: sleeps that remained runnable after waiter rejection.
+#[unsafe(no_mangle)]
+pub static SLEEP_WAIT_ADMISSION_FALLBACKS: AtomicU64 = AtomicU64::new(0);
 
 /// Current monotonic time in milliseconds since the architecture counter's
 /// epoch. Observe that this is not wall-clock time and is meant to handle
@@ -302,9 +300,16 @@ pub fn current_thread_identity_nonblocking() -> Option<(ThreadId, threads::Threa
     local.try_lock()?.get_current_handle()
 }
 
-/// Blocks the current thread for at least the specified duration.
+/// Wait for at least the specified duration. Normally parks the thread; if
+/// waiter admission fails, cooperatively waits while runnable without queuing
+/// an event. This void ABI cannot report pressure as a successful early sleep.
 pub fn sleep(duration: ExtDuration) {
-    let mut timer_event = TimerEvent::from(duration);
+    sleep_with_event(duration, TimerEvent::from(duration));
+}
+
+/// Shared acquisition path; kernel fixtures can supply a full source to force
+/// rejection without saturating the node's live scheduler sponsor.
+pub(crate) fn sleep_with_event(duration: ExtDuration, mut timer_event: TimerEvent) {
     // Bind `tid` first so the read guard + LP scheduler lock in the scrutinee
     // are released before `block_thread` (which takes SYSTEM_SCHEDULER.write());
     // holding the read guard across the write would deadlock the RwLock.
@@ -316,24 +321,32 @@ pub fn sleep(duration: ExtDuration) {
         // with no event capable of waking it. Once the event is in the local
         // queue it is safe to restore IRQs before yielding: if it fires first,
         // the scheduler's wake-before-save handling re-admits this thread.
-        let interrupts_were_enabled = crate::cpu::isa::lp::ops::get_int_state();
-        mask_interrupts!();
-        SYSTEM_SCHEDULER
+        let setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
+        let admitted = SYSTEM_SCHEDULER
             .read()
             .block_thread_with_constraint(
                 tid,
                 &timer_event,
                 threads::MigrationConstraint::TimerWait,
             )
-            .expect("Error putting thread to sleep");
+            .is_ok();
         // Start the requested interval only after the blocked state and waker
         // are installed. In particular, a 1 ms boot-time sleep must not arrive
         // already expired after contending on the global scheduler locks.
         timer_event.reset_after(duration);
-        crate::timers::enqueue_event(timer_event);
-        if interrupts_were_enabled {
-            unmask_interrupts!();
+        if !admitted {
+            let deadline = timer_event.get_deadline();
+            // No Blocked state, retained source or queued timer on rejection.
+            drop(timer_event);
+            drop(setup);
+            SLEEP_WAIT_ADMISSION_FALLBACKS.fetch_add(1, Ordering::Relaxed);
+            while monotonic_ticks() < deadline {
+                yield_lp();
+            }
+            return;
         }
+        crate::timers::enqueue_event(timer_event);
+        drop(setup);
         // Yield so the sleep takes effect: `block_thread` marks the thread
         // Blocked and registers its waker on the timer event; this yield saves
         // the thread's context and switches away. When the timer expires it

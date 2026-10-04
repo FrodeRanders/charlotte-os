@@ -337,7 +337,13 @@ ownership, and broadcast does not guarantee fairness or writer priority.
 The blocking family currently has kernel test users, not production callers;
 existing registry/allocator spin locks are unchanged.
 
-Legacy timer and raw kernel callback registrations
+Scheduler timer observers also use owning admission. Non-scheduler producers
+install one callback in an embedded slot rather than an unbounded weak queue.
+Rejected sleep admission leaves the caller runnable to yield until its counter
+deadline, preserving the requested interval without queuing an event. This does
+not bound sleep/watchdog queue storage or make its growth fallible.
+
+Legacy thread-exit and raw completion callback registrations
 still require migration. General weak-only backing, watchdog storage and kernel
 heap accounting remain incomplete. CQ replacement still requires a quiescent
 consumer; discarding registrations is not live reactor migration. Silently

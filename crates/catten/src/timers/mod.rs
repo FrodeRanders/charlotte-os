@@ -13,6 +13,7 @@
 //! and prevent missed deadlines after timer transitions.
 
 pub(crate) mod budget;
+pub(crate) mod waiter_tests;
 
 use alloc::{
     collections::vec_deque::VecDeque,
@@ -27,7 +28,6 @@ use core::sync::atomic::{
     Ordering,
 };
 
-use concurrent_queue::ConcurrentQueue;
 use spin::LazyLock;
 
 use crate::{
@@ -43,12 +43,19 @@ use crate::{
             },
             timers::LpTimer,
         },
-        multiprocessor::spin::per_lp::PerLp,
+        multiprocessor::spin::{
+            mutex::Mutex,
+            per_lp::PerLp,
+        },
     },
     klib::{
         observer::{
             Observable,
             Observer,
+            WaitRegistration,
+            WaitSponsor,
+            registration::RegistrationError,
+            waiter_source::WaiterSource,
         },
         time::duration::ExtDuration,
     },
@@ -185,7 +192,10 @@ pub struct TimerEvent {
     deadline: Timestamp,
     key: Option<TimerEventKey>,
     cancellation: Option<TimerEventCancellation>,
-    observers: ConcurrentQueue<Weak<dyn Observer>>,
+    // Internal timer producers each install exactly one callback. Embed that
+    // slot instead of allocating an unbounded weak-observer queue.
+    callback: Mutex<Option<Weak<dyn Observer>>>,
+    waiters: WaiterSource,
     // Released only when the actual queue node/event is destroyed.
     _charge: Option<budget::Charge>,
 }
@@ -223,7 +233,8 @@ impl TimerEvent {
                 id,
                 cancelled,
             }),
-            observers: ConcurrentQueue::unbounded(),
+            callback: Mutex::new(None),
+            waiters: WaiterSource::new(),
             _charge: None,
         };
         (event, handle)
@@ -251,11 +262,14 @@ impl TimerEvent {
         if self.cancellation.as_ref().is_some_and(|state| state.cancelled.load(Ordering::Acquire)) {
             return;
         }
-        while let Ok(observer) = self.observers.pop() {
-            if let Some(observer) = observer.upgrade() {
-                observer.notify();
-            }
+        // Detach both forms before callbacks; never enter the scheduler under
+        // either source guard. Owning entries release their charge before wake.
+        let callback = self.callback.lock().take();
+        let waiters = self.waiters.drain();
+        if let Some(observer) = callback.and_then(|observer| observer.upgrade()) {
+            observer.notify();
         }
+        waiters.notify();
     }
 }
 
@@ -265,7 +279,8 @@ impl From<Timestamp> for TimerEvent {
             deadline,
             key: None,
             cancellation: None,
-            observers: ConcurrentQueue::unbounded(),
+            callback: Mutex::new(None),
+            waiters: WaiterSource::new(),
             _charge: None,
         }
     }
@@ -277,7 +292,8 @@ impl From<ExtDuration> for TimerEvent {
             deadline: deadline_after(duration),
             key: None,
             cancellation: None,
-            observers: ConcurrentQueue::unbounded(),
+            callback: Mutex::new(None),
+            waiters: WaiterSource::new(),
             _charge: None,
         }
     }
@@ -293,7 +309,17 @@ fn deadline_after(duration: ExtDuration) -> Timestamp {
 impl Observable for TimerEvent {
     #[inline]
     fn register_observer(&self, observer: Weak<dyn Observer>) {
-        self.observers.push(observer).expect("Failed to register observer");
+        let mut slot = self.callback.lock();
+        assert!(slot.is_none(), "timer event already has its internal callback");
+        *slot = Some(observer);
+    }
+
+    fn try_register_waiter(
+        &self,
+        observer: Weak<dyn Observer>,
+        sponsor: &WaitSponsor,
+    ) -> Result<WaitRegistration, RegistrationError> {
+        self.waiters.register(observer, sponsor)
     }
 }
 

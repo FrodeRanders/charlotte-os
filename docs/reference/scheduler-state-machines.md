@@ -175,6 +175,13 @@ prompt timeout so the IRQ can drain the due head.
 | TM4 | An IRQ processes every event due at the sampled `now`, then arms only the new head. |
 | TM5 | `SchedulerQuantum` is a keyed singleton; anonymous logical timers remain independent. |
 | TM6 | Completion timer admission is released only when the actual queued event is destroyed. Cancellation and record teardown cannot return capacity for a still-queued node. |
+| TM7 | Scheduler timer observers use owning waiter admission before parking; each event has only one embedded non-scheduler callback slot. Notification detaches both before callbacks, without releasing the LP queue borrow. |
+
+Sleep admission failure leaves the caller runnable and discards its unqueued
+event. It yields until the rebased counter deadline rather than panicking or
+returning before the requested interval. Entry IRQ state is restored before
+yield. This bounds scheduler observer retention, not sleep/watchdog event storage;
+see [scheduler waiter budgets](scheduler-waiter-budgets.md).
 
 Completion timers install their observer and cancellation owner before enqueue.
 Cancelling one produces a terminal cancelled result immediately; unlike a read
