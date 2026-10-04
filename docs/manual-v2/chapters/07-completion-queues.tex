@@ -340,11 +340,19 @@ existing registry/allocator spin locks are unchanged.
 Scheduler timer observers also use owning admission. Non-scheduler producers
 install one callback in an embedded slot rather than an unbounded weak queue.
 Rejected sleep admission leaves the caller runnable to yield until its counter
-deadline, preserving the requested interval without queuing an event. This does
-not bound sleep/watchdog queue storage or make its growth fallible.
+deadline, preserving the requested interval without queuing an event.
+Sleep/watchdog events have separate generation-owned admission: 1,024 per
+generation, sharing the 8,192-event node pool and its 6,144 ordinary share with
+completion timers. These are independent domain accounts, not one combined
+domain allowance. Cancellation state, watchdog callback and fixed-size queue
+node preparation precede parking. Queue insertion allocates nothing; anonymous
+nodes form a sorted owning list with iterative reclamation. The quantum/idle-wake
+event has one inline queue slot per LP, outside anonymous admission. Rejection
+therefore cannot consume scheduler preemption storage. Charges remain until the
+actual event is removed, including an aborted sleeper awaiting its deadline.
 
 Legacy thread-exit and raw completion callback registrations
-still require migration. General weak-only backing, watchdog storage and kernel
+still require migration. General weak-only/control-block backing and kernel
 heap accounting remain incomplete. CQ replacement still requires a quiescent
 consumer; discarding registrations is not live reactor migration. Silently
 rejecting an old void registration would lose a blocked thread's wake source.

@@ -270,7 +270,7 @@ repository history remain authoritative.
         deferred cancellation. Endpoint records and preallocated queue backing
         have domain/node admission with staged-growth rollback and original
         generation charges retained through delegation. Aggregate limits for the full capability
-        namespace, general observer metadata, weak-only backing, other timer paths and
+        namespace, general observer metadata, weak-only backing and
         kernel metadata remain incomplete.
         Completion records now have separate domain/node admission, retained
         through strong references and undelivered detached results.
@@ -296,8 +296,12 @@ repository history remain authoritative.
         callers; fairness and owner-death recovery are not provided.
         Scheduler timer observers share owning admission; internal timer
         callbacks occupy one embedded slot. Sleep falls back to runnable
-        deadline waiting on rejection. Thread-exit/raw completion observers
-        and sleep/watchdog event storage still require migration and admission.
+        deadline waiting on rejection. Sleep/watchdog events now have separate
+        generation-owned domain admission and share the completion-timer node
+        pool. Fallible queue-node preparation precedes parking; insertion
+        allocates nothing and the quantum has an inline slot independent of
+        anonymous admission. Thread-exit/raw completion observers and general
+        control-block storage still require migration and admission.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are

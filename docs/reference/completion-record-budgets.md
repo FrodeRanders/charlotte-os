@@ -94,8 +94,10 @@ fallible metadata allocation still require hardening. Endpoint-close registratio
 now have their own owning list and admission. Completion/CQ/IPC scheduler
 waiters also have [separate owning admission](scheduler-waiter-budgets.md);
 blocking-lock and timer waiters share it too. Raw completion/thread-exit callbacks,
-timer-queue/watchdog event storage and general
+general
 weak-only backing remain open.
+[Sleep/watchdog event admission](scheduler-timer-budgets.md) is separate and
+shares the completion-timer node pool.
 Per-principal totals
 across domains, typed deployment limits and userspace counters remain future
 work. SEC-07 is partial; no hostile-workload containment guarantee is made.

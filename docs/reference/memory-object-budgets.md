@@ -90,9 +90,12 @@ This limits memory-object backing storage, not all domain resources. It does
 not budget loader/heap/stack/page-table frames, borrowed capabilities,
 connections, endpoints, queue reservations, general completion records or all
 kernel heap metadata. [Completion-backed timers](completion-timer-budgets.md)
-have separate event-admission limits; other timer paths remain unbudgeted.
-Those allocation paths still need aggregate admission and
-fallible bookkeeping. The reserved share is a pool, not guaranteed capacity
+have separate event-admission limits; [scheduler sleeps/watchdogs](scheduler-timer-budgets.md)
+now share their node pool with separate generation-owned domain accounts.
+Other resource families have their own admission rather than being charged to
+the memory-object allowance. Comprehensive loader/heap/stack/page-table and
+general metadata accounting still need aggregate admission and fallible
+bookkeeping. The reserved share is a pool, not guaranteed capacity
 for each essential service; a compromised platform service can consume it.
 There is no budget telemetry record in the external observability ABI yet.
 These limits partially remediate SEC-07; they do not close the audit.

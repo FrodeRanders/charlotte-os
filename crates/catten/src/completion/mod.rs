@@ -1126,7 +1126,10 @@ pub fn submit_timer(asid: AddressSpaceId, timeout_ms: u64) -> Result<CompletionC
         let charge = crate::timers::budget::reserve(&entries.timer_budget, platform)
             .map_err(|_| SubmitError::WouldBlock)?;
         let (timer_event, cancel) =
-            TimerEvent::charged(ExtDuration::from_millis(timeout_ms as u128), charge);
+            TimerEvent::charged(ExtDuration::from_millis(timeout_ms as u128), charge)
+                .map_err(|_| SubmitError::WouldBlock)?;
+        let timer_event =
+            crate::timers::PreparedEvent::new(timer_event).map_err(|_| SubmitError::WouldBlock)?;
         let completion = Completion::new(None, record_charge)?;
         let cap = crate::capability::allocate(asid, crate::capability::ObjectKind::Completion);
         let observer = Arc::new(CompletionTimerObserver {
@@ -1135,13 +1138,13 @@ pub fn submit_timer(asid: AddressSpaceId, timeout_ms: u64) -> Result<CompletionC
             result: OpResult::Ok(0),
             completion: Arc::downgrade(&completion),
         });
-        timer_event.register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
+        timer_event.event().register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
         completion.set_timer_observer(observer, cancel);
         entries.table.insert(cap, completion);
         entries.live += 1;
         (cap, timer_event)
     };
-    crate::timers::enqueue_event(timer_event);
+    timer_event.enqueue();
     Ok(cap)
 }
 
@@ -1408,13 +1411,16 @@ pub fn submit_detached_timer(
         let charge = crate::timers::budget::reserve(&entries.timer_budget, platform)
             .map_err(|_| SubmitError::WouldBlock)?;
         let (timer_event, cancel) =
-            TimerEvent::charged(ExtDuration::from_millis(timeout_ms as u128), charge);
+            TimerEvent::charged(ExtDuration::from_millis(timeout_ms as u128), charge)
+                .map_err(|_| SubmitError::WouldBlock)?;
+        let timer_event =
+            crate::timers::PreparedEvent::new(timer_event).map_err(|_| SubmitError::WouldBlock)?;
         let operation = alloc_operation_id();
         let observer = Arc::new(DetachedTimerObserver {
             asid,
             operation,
         });
-        timer_event.register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
+        timer_event.event().register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
         entries.detached.insert(
             operation,
             DetachedOp {
@@ -1429,7 +1435,7 @@ pub fn submit_detached_timer(
         entries.live += 1;
         (operation, timer_event)
     };
-    crate::timers::enqueue_event(timer_event);
+    timer_event.enqueue();
     Ok(operation)
 }
 
@@ -1967,10 +1973,7 @@ pub fn wait_on_cq_timeout(
     _min_complete: u32,
     timeout_ms: u64,
 ) -> bool {
-    use crate::{
-        klib::time::duration::ExtDuration,
-        timers::TimerEvent,
-    };
+    use crate::klib::time::duration::ExtDuration;
 
     struct CqTimeoutWake {
         tid: crate::cpu::scheduler::threads::ThreadId,
@@ -2008,6 +2011,21 @@ pub fn wait_on_cq_timeout(
     };
     // Publishing Blocked and installing its watchdog must be non-preemptible.
     let setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
+    let Some((expected_generation, sponsor)) = crate::timers::thread_timer_context(tid) else {
+        return false;
+    };
+    let Ok(timeout_obs) = Arc::try_new(CqTimeoutWake {
+        tid,
+        generation: expected_generation,
+    }) else {
+        return false;
+    };
+    let Ok((timer_event, timeout_handle)) =
+        crate::timers::prepare_watchdog(ExtDuration::from_millis(timeout_ms as u128), &sponsor)
+    else {
+        return false;
+    };
+    timer_event.event().register_observer(Arc::downgrade(&timeout_obs) as Weak<dyn Observer>);
     let generation = match SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
         tid,
         &observable,
@@ -2017,17 +2035,8 @@ pub fn wait_on_cq_timeout(
         Err(_) => return false,
     };
 
-    let timeout_obs = Arc::new(CqTimeoutWake {
-        tid,
-        generation,
-    });
-    let (timer_event, timeout_handle) =
-        TimerEvent::cancellable(ExtDuration::from_millis(timeout_ms as u128));
-    crate::klib::observer::Observable::register_observer(
-        &timer_event,
-        Arc::downgrade(&timeout_obs) as Weak<dyn Observer>,
-    );
-    crate::timers::enqueue_event(timer_event);
+    debug_assert_eq!(generation, expected_generation);
+    timer_event.enqueue();
 
     {
         let registry = COMPLETIONS.read();

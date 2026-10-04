@@ -309,7 +309,7 @@ pub fn sleep(duration: ExtDuration) {
 
 /// Shared acquisition path; kernel fixtures can supply a full source to force
 /// rejection without saturating the node's live scheduler sponsor.
-pub(crate) fn sleep_with_event(duration: ExtDuration, mut timer_event: TimerEvent) {
+pub(crate) fn sleep_with_event(duration: ExtDuration, timer_event: TimerEvent) {
     // Bind `tid` first so the read guard + LP scheduler lock in the scrutinee
     // are released before `block_thread` (which takes SYSTEM_SCHEDULER.write());
     // holding the read guard across the write would deadlock the RwLock.
@@ -322,35 +322,47 @@ pub(crate) fn sleep_with_event(duration: ExtDuration, mut timer_event: TimerEven
         // queue it is safe to restore IRQs before yielding: if it fires first,
         // the scheduler's wake-before-save handling re-admits this thread.
         let setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
+        let prepared = crate::timers::thread_timer_context(tid)
+            .ok_or(())
+            .and_then(|(_, sponsor)| timer_event.prepare_sleep(&sponsor));
+        let Ok(mut prepared) = prepared else {
+            drop(setup);
+            sleep_runnable(duration);
+            return;
+        };
         let admitted = SYSTEM_SCHEDULER
             .read()
             .block_thread_with_constraint(
                 tid,
-                &timer_event,
+                prepared.event(),
                 threads::MigrationConstraint::TimerWait,
             )
             .is_ok();
         // Start the requested interval only after the blocked state and waker
         // are installed. In particular, a 1 ms boot-time sleep must not arrive
         // already expired after contending on the global scheduler locks.
-        timer_event.reset_after(duration);
+        prepared.event_mut().reset_after(duration);
         if !admitted {
-            let deadline = timer_event.get_deadline();
             // No Blocked state, retained source or queued timer on rejection.
-            drop(timer_event);
+            drop(prepared);
             drop(setup);
-            SLEEP_WAIT_ADMISSION_FALLBACKS.fetch_add(1, Ordering::Relaxed);
-            while monotonic_ticks() < deadline {
-                yield_lp();
-            }
+            sleep_runnable(duration);
             return;
         }
-        crate::timers::enqueue_event(timer_event);
+        prepared.enqueue();
         drop(setup);
         // Yield so the sleep takes effect: `block_thread` marks the thread
         // Blocked and registers its waker on the timer event; this yield saves
         // the thread's context and switches away. When the timer expires it
         // fires the waker, re-admitting the thread, which resumes here.
+        yield_lp();
+    }
+}
+
+fn sleep_runnable(duration: ExtDuration) {
+    let deadline = TimerEvent::from(duration).get_deadline();
+    SLEEP_WAIT_ADMISSION_FALLBACKS.fetch_add(1, Ordering::Relaxed);
+    while monotonic_ticks() < deadline {
         yield_lp();
     }
 }
@@ -409,6 +421,24 @@ pub fn block_until(
         // Do not let a quantum switch out a newly Blocked thread before its
         // watchdog is queued. Early rejection restores IRQ state through Drop.
         let setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
+        let Some((expected_generation, sponsor)) = crate::timers::thread_timer_context(tid) else {
+            return condition();
+        };
+        let Ok(timeout_obs) = alloc::sync::Arc::try_new(BlockTimeoutWake {
+            tid,
+            generation: expected_generation,
+        }) else {
+            return condition();
+        };
+        let remaining = deadline.saturating_sub(now).max(1);
+        let Ok((timer_event, timeout_handle)) =
+            crate::timers::prepare_watchdog(ExtDuration::from_millis(remaining as u128), &sponsor)
+        else {
+            return condition();
+        };
+        timer_event
+            .event()
+            .register_observer(alloc::sync::Arc::downgrade(&timeout_obs) as Weak<dyn Observer>);
         let generation = match SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
             tid,
             observable,
@@ -422,16 +452,8 @@ pub fn block_until(
         // even if the observable never fires. A notification is only a hint:
         // shared observables may wake for an unrelated state transition, so
         // the outer loop re-checks and parks again with the remaining budget.
-        let timeout_obs = alloc::sync::Arc::new(BlockTimeoutWake {
-            tid,
-            generation,
-        });
-        let remaining = deadline.saturating_sub(now).max(1);
-        let (timer_event, timeout_handle) =
-            TimerEvent::cancellable(ExtDuration::from_millis(remaining as u128));
-        timer_event
-            .register_observer(alloc::sync::Arc::downgrade(&timeout_obs) as Weak<dyn Observer>);
-        crate::timers::enqueue_event(timer_event);
+        debug_assert_eq!(generation, expected_generation);
+        timer_event.enqueue();
 
         // Lost-wake guard: if the condition became true while the waker was
         // being registered, re-admit the thread before it yields.

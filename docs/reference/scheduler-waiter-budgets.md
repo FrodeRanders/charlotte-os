@@ -186,20 +186,19 @@ rebases the interval after admission and queues the timer before restoring IRQs.
 This fallback avoids a kernel panic or false early success; it is not efficient
 idle waiting or an overload progress guarantee.
 
-The entry limits do **not** bound the number or bytes of queued sleeps/watchdogs,
-make queue growth fallible, or remove all event/control-block allocations.
-Completion-backed events retain their separate timer-event charge. Aborted
-sleeps may leave an empty source/control block in the queue until its deadline;
-they no longer retain a linked weak waiter. Watchdog event admission and
-comprehensive timer metadata accounting remain open.
+These entry limits are separate from [sleep/watchdog event admission](scheduler-timer-budgets.md).
+That admission shares the completion-timer node pool and prepares fixed-size
+queue nodes before parking. Aborted sleeps may retain their charged event and
+empty source/control block until the deadline, without a linked weak waiter.
+General timer/control-block accounting remains incomplete.
 
 ## Migration scope and verification
 
 Only the migrated **scheduler waiter** categories use this admission. The
 default trait implementation deliberately returns a marked legacy token and
 retains the old registration behavior for not-yet-converted sources.
-Raw kernel completion callbacks, thread-exit
-observers and watchdog storage are not covered. Silent bounded insertion on
+Raw kernel completion callbacks and thread-exit
+observers are not covered. Silent bounded insertion on
 those old paths would lose wake sources and is not an acceptable conversion.
 
 Synchronous tests cover source/domain/ordinary/node rejection and rollback,

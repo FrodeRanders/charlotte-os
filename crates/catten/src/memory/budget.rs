@@ -32,6 +32,7 @@ struct DomainAccount {
     retired: bool,
     closed: bool,
     waiters: crate::klib::observer::WaitSponsor,
+    timers: crate::timers::budget::SchedulerSponsor,
 }
 
 struct Ledger {
@@ -68,12 +69,13 @@ impl Ledger {
 
     fn account(&mut self, identity: Identity) -> &mut DomainAccount {
         let limit = self.default_limit();
-        self.domains.entry(identity).or_insert(DomainAccount {
+        self.domains.entry(identity).or_insert_with(|| DomainAccount {
             budget: Budget::new(limit),
             platform: identity.0 == KERNEL_ASID,
             retired: false,
             closed: false,
             waiters: crate::klib::observer::WaitSponsor::new(identity.0 == KERNEL_ASID),
+            timers: crate::timers::budget::SchedulerSponsor::new(identity.0 == KERNEL_ASID),
         })
     }
 }
@@ -184,6 +186,7 @@ pub(crate) fn mark_platform(handle: AddressSpaceHandle) {
     let account = ledger.account((handle.id(), handle.generation()));
     assert!(!account.retired);
     account.waiters.mark_platform();
+    account.timers.mark_platform();
     if !account.platform {
         account.platform = true;
         let used = account.budget.used();
@@ -197,6 +200,7 @@ pub(crate) fn retire(handle: AddressSpaceHandle) {
     let account = ledger.account(identity);
     account.retired = true;
     account.waiters.retire();
+    account.timers.retire();
 }
 
 /// Capture a generation-owned sponsor at thread construction, not while
@@ -205,6 +209,12 @@ pub(crate) fn waiter_sponsor(asid: AddressSpaceId) -> crate::klib::observer::Wai
     let table = super::ADDRESS_SPACE_TABLE.lock();
     let generation = table.generation(asid).expect("waiter sponsor requires live ASID");
     LEDGER.lock().account((asid, generation)).waiters.clone()
+}
+
+pub(crate) fn timer_sponsor(asid: AddressSpaceId) -> crate::timers::budget::SchedulerSponsor {
+    let table = super::ADDRESS_SPACE_TABLE.lock();
+    let generation = table.generation(asid).expect("timer sponsor requires live ASID");
+    LEDGER.lock().account((asid, generation)).timers.clone()
 }
 
 pub(crate) fn forget(handle: AddressSpaceHandle) {

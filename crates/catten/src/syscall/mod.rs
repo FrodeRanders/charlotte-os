@@ -1729,7 +1729,6 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
             observer::Observable as _,
             time::duration::ExtDuration,
         },
-        timers::TimerEvent,
     };
 
     let asid = caller_asid(frame);
@@ -1786,6 +1785,27 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
 
     // Block on the completion.
     let setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
+    let prepared = (|| {
+        let (expected_generation, sponsor) = crate::timers::thread_timer_context(tid).ok_or(())?;
+        let timeout_obs = Arc::try_new(TimeoutWake {
+            tid,
+            generation: expected_generation,
+        })
+        .map_err(|_| ())?;
+        let (timer_event, timeout_handle) = crate::timers::prepare_watchdog(
+            ExtDuration::from_millis(timeout_ms as u128),
+            &sponsor,
+        )?;
+        timer_event.event().register_observer(
+            Arc::downgrade(&timeout_obs) as Weak<dyn crate::klib::observer::Observer>
+        );
+        Ok::<_, ()>((expected_generation, timeout_obs, timer_event, timeout_handle))
+    })();
+    let Ok((expected_generation, _timeout_obs, timer_event, timeout_handle)) = prepared else {
+        frame.regs[0] = catten_syscall::completion_status::WAIT_ADMISSION_FAILED;
+        frame.regs[1] = 0;
+        return;
+    };
     let generation = match SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
         tid,
         completion.as_ref(),
@@ -1800,18 +1820,10 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
     };
 
     // Arm a timer that also wakes this thread (timeout path).
-    let timeout_obs = Arc::new(TimeoutWake {
-        tid,
-        generation,
-    });
-    let (timer_event, timeout_handle) =
-        TimerEvent::cancellable(ExtDuration::from_millis(timeout_ms as u128));
-    timer_event.register_observer(
-        Arc::downgrade(&timeout_obs) as Weak<dyn crate::klib::observer::Observer>
-    );
+    debug_assert_eq!(generation, expected_generation);
     // SAFETY: TIMER_QUEUES is initialised by bsp_init before self-tests or
     // any threads run.
-    crate::timers::enqueue_event(timer_event);
+    timer_event.enqueue();
 
     // Close the same lost-wake window as completion::wait(): the operation
     // may have completed after the fast-path poll but before its observer was

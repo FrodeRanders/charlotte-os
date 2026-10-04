@@ -97,7 +97,7 @@ observers, raw completion callbacks and other legacy observer paths
 still use the old registration API. Its void
 return cannot safely be replaced with silent bounded rejection: that would lose
 a parked thread's wake source. Their adoption needs integrated admission, owned
-cancellation and separate storage accounting. Watchdog/timer queue-event storage,
-general
+cancellation and separate storage accounting. Sleep/watchdog events now have
+[separate admission](scheduler-timer-budgets.md). General
 weak-only Arc/control-block storage and comprehensive kernel heap admission also
 remain open. SEC-07 is still partially implemented.

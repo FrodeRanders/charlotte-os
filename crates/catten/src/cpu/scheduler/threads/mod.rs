@@ -359,6 +359,7 @@ pub struct Thread {
     /// Distinguishes successive occupants of a reusable [`ThreadId`] slot.
     pub generation: ThreadGeneration,
     pub(crate) wait_sponsor: crate::klib::observer::WaitSponsor,
+    pub(crate) timer_sponsor: crate::timers::budget::SchedulerSponsor,
     pub state: ThreadState,
     /// The LP this thread prefers to run on, assigned at spawn time.
     /// Re-admission via `submit_woken_thread` and initial `submit_new_thread`
@@ -418,6 +419,7 @@ impl Thread {
             asid,
             generation,
             wait_sponsor: crate::memory::budget::waiter_sponsor(asid),
+            timer_sponsor: crate::memory::budget::timer_sponsor(asid),
             state: ThreadState::NeedsLpAssignment,
             affinity_lp: None,
             pinned_lp: None,

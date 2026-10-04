@@ -9,7 +9,7 @@ exists.
 | --- | --- |
 | Operation submission slots in a domain | Its configured completion capacity; capability and detached operations share it. |
 | Completion timer events in a domain | The smaller of completion capacity and 1,024 events. The service loader currently uses capacity 16. |
-| Completion timer events on a node | 8,192 events, including cancelled events awaiting physical queue removal. |
+| Anonymous timer events on a node | 8,192 events shared with sleeps/watchdogs, including cancelled events awaiting physical queue removal. |
 | Ordinary-domain share of node events | 6,144 events; kernel/supervisor-designated platform domains may use the remaining 2,048. |
 
 Platform access comes from kernel launch policy. The generation-qualified
@@ -25,6 +25,9 @@ the capability or detached record. Rejection returns `SubmitError::WouldBlock`
 without leaking an operation slot or reservation. The existing syscall ABI
 returns its submission-failure sentinel; `catten_rt::owned::Completion::timer`
 reports `CompletionError::SubmissionFailed` rather than a distinct quota reason.
+Cancellation state and its fixed-size queue node are prepared fallibly before
+record publication. Insertion allocates nothing. The queue's inline quantum
+slot is outside anonymous admission; see [scheduler timer budgets](scheduler-timer-budgets.md).
 
 Relative timeout conversion saturates at the largest representable deadline.
 Oversized tick counts are not truncated and addition cannot wrap into an
@@ -77,11 +80,13 @@ deadline boundaries run in host tests.
 The x86-64 hardware-checkpoint boundary has host tests and build/lint coverage;
 it still needs a guest/hardware run.
 
-These budgets cover capability and detached completion timers, not all timers
-or all completion resources. Separate [record admission](completion-record-budgets.md)
-bounds retained completion objects and detached results. Scheduler sleeps, wait
-watchdogs, observer lists, kernel workers, weak-only storage
-and other kernel metadata still need aggregate admission and fallible allocation review.
+Completion-domain limits cover capability and detached timers; sleeps/watchdogs
+have separate generation-owned domain accounts and share this node pool.
+Separate [record admission](completion-record-budgets.md) bounds retained
+completion objects and detached results. Scheduler observer entries also have
+separate owning admission. Kernel workers, general callback/control-block and
+weak-only storage and other kernel metadata still need aggregate admission and
+fallible allocation review.
 Separate [CQ admission](completion-queue-budgets.md) bounds queue counts and
 kernel-owned backing, but not physical ring mappings.
 Cross-LP cancellation is bounded by the retained charge, but the regression

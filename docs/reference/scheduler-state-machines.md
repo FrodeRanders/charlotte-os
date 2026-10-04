@@ -142,11 +142,16 @@ rather than freeing resources on an uncertain snapshot.
 **Source:** `crates/catten/src/timers/mod.rs`
 
 Each LP has one hardware comparator but may have many future logical events.
-The logical events stay in deadline order and the hardware always represents
-the head:
+Anonymous events occupy a sorted owning list; the quantum occupies one inline
+slot. Ordered iteration and the hardware comparator select the earliest of both:
 
 ```
-enqueue E:
+prepare anonymous E:
+  reserve generation/node event admission
+  fallibly allocate its fixed-size queue node
+  reject before parking or completion publication on failure
+
+enqueue prepared E:
   mask local IRQs
   insert E in absolute-deadline order
   arm hardware from queue.front()
@@ -161,9 +166,9 @@ timer IRQ / idle reconciliation:
 ```
 
 Ordinary sleep/completion events are anonymous. The round-robin quantum uses
-the key `SchedulerQuantum`, allowing at most one such event per LP. The armed
-event remains at the queue head rather than being moved to a separate slot, so
-the queue remains authoritative. Normally the comparator receives the head's
+the key `SchedulerQuantum`, allowing at most one such event per LP. Its inline
+slot belongs to the queue itself; there is no separately maintained armed bit.
+It requires no anonymous-node allocation or admission. Normally the comparator receives the head's
 absolute deadline; if that deadline has already passed, it receives a minimal
 prompt timeout so the IRQ can drain the due head.
 
@@ -180,8 +185,11 @@ prompt timeout so the IRQ can drain the due head.
 Sleep admission failure leaves the caller runnable and discards its unqueued
 event. It yields until the rebased counter deadline rather than panicking or
 returning before the requested interval. Entry IRQ state is restored before
-yield. This bounds scheduler observer retention, not sleep/watchdog event storage;
-see [scheduler waiter budgets](scheduler-waiter-budgets.md).
+yield. Scheduler observer and event storage have separate admission;
+see [waiter budgets](scheduler-waiter-budgets.md) and
+[scheduler timer-event budgets](scheduler-timer-budgets.md). Watchdog callback,
+cancellation state and node preparation precede parking; rejection does not
+publish Blocked.
 
 Completion timers install their observer and cancellation owner before enqueue.
 Cancelling one produces a terminal cancelled result immediately; unlike a read

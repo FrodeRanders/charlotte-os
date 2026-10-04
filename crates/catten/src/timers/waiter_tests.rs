@@ -82,10 +82,11 @@ pub(crate) fn test_admission() {
     assert_eq!(hits.load(Ordering::Relaxed), 66);
     drop(token);
 
-    let (cancelled, handle) = TimerEvent::cancellable(ExtDuration::from_millis(60_000));
+    let (cancelled, handle) =
+        TimerEvent::try_cancellable(ExtDuration::from_millis(60_000)).unwrap();
     cancelled.register_observer(Arc::downgrade(&observer));
     let token = cancelled.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap();
-    handle.cancelled.store(true, Ordering::Release);
+    handle.state.cancelled.store(true, Ordering::Release);
     cancelled.signal();
     assert_eq!(hits.load(Ordering::Relaxed), 66);
     assert_eq!(sponsor.used(), 1); // Suppression alone does not free queue storage.

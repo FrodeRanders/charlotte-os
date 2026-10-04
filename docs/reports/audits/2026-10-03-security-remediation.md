@@ -21,7 +21,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-04 | Mitigated | Builds and boot logs identify development trust; production and unknown modes fail closed in scripted and direct kernel builds. Protected bootstrap roots, fixture-free production provisioning and recipient-key custody remain unimplemented. |
 | SEC-05 | Implemented | tcpip rejects raw frame ingress unless the authenticated sender is the exact live, kernel-designated frouter. Separate socket/VIP binding policy remains future hardening. |
 | SEC-06 | Mitigated | HTTP EOF, peer-raced accept and transport failures close one connection, not the server; listener-setup resource failures retry with backoff. httpd has a five-second request wait and bounded send retries; deployd has five-second header and thirty-second total receive budgets. Serial admission remains vulnerable to sustained connection floods. |
-| SEC-07 | Partially implemented | Memory-object backing pages/counts, completion timer events, endpoint records/queue backing, retained completion objects/detached results, CQ registrations/kernel backing, endpoint-close registrations, completion/CQ/IPC/lock/timer scheduler waiters and connection/pending-call/reply-token record counts have generation-scoped domain/node admission and platform reserves. Charges survive transfers, deferred cancellation, delegation, retained references or detached notifications as appropriate. Waiter admission precedes parking; owning cancellation handles competing wakes and reaping. Timed completion admission failure retains its owner; untimed completion/IPC waits preserve borrowed-buffer safety. Sleep rejection waits runnable to the requested deadline; internal timer callbacks have one embedded slot. Timed park/watchdog setup is non-preemptible. IPC call/reply preparation precedes attachment transfer, and retirement fences receive/connection publication before teardown. Aggregate limits for loader/heap/page tables (including physical CQ mappings), the complete capability namespace, legacy-observer metadata, general weak-only storage, sleep/watchdog event storage and comprehensive kernel metadata remain open. |
+| SEC-07 | Partially implemented | Memory-object backing pages/counts, anonymous timer events (completion plus sleep/watchdog), endpoint records/queue backing, retained completion objects/detached results, CQ registrations/kernel backing, endpoint-close registrations, completion/CQ/IPC/lock/timer scheduler waiters and connection/pending-call/reply-token record counts have generation-scoped domain/node admission and platform reserves. Timer families have separate domain accounts and one shared node pool. Charges survive transfers, deferred cancellation, delegation, retained references or detached notifications as appropriate. Waiter admission precedes parking; owning cancellation handles competing wakes and reaping. Watchdog callback/cancellation/node preparation precedes Blocked; queue insertion allocates nothing and the quantum has independent inline storage. Timed completion admission failure retains its owner; untimed completion/IPC waits preserve borrowed-buffer safety. Sleep rejection waits runnable to the requested deadline; internal timer callbacks have one embedded slot. Timed park/watchdog setup is non-preemptible. IPC call/reply preparation precedes attachment transfer, and retirement fences receive/connection publication before teardown. Aggregate limits for loader/heap/page tables (including physical CQ mappings), the complete capability namespace, legacy-observer metadata, general weak-only/control-block storage and comprehensive kernel metadata remain open. |
 | SEC-08 | Open | Authenticate enrolled nodes and control/data peer traffic, add replay protection, and bound discovery state. A trusted L2 segment remains an explicit deployment prerequisite. |
 | SEC-09 | Open | Distinguish authenticated security time from observational SNTP/holdover; enforce freshness and uncertainty at security-policy gates. |
 | SEC-10 | Open | Authenticated encrypted access to node and cluster management, browser-client provisioning, and access policy remain necessary. |
@@ -1246,3 +1246,106 @@ Evidence is in `/private/tmp/charlotte-security-timer-waiters-run.log`,
 No allocator-failure injection, maximum-footprint queue test, exhaustive cross-LP
 interleaving, x86-64 guest, hostile-pressure soak or PDF rebuild was performed.
 Dedicated storage and ports were used; existing soak guests/stores were untouched.
+
+## 2026-10-04 continuation — sleep/watchdog events and prepared timer nodes
+
+The preceding timer-observer changes are committed as `9f6ed6d8`.
+All anonymous timer producers now prepare an admitted owning queue node:
+capability/detached completion timers, scheduler sleeps and all three timed-wait
+watchdog paths. Sleep/watchdog sponsorship has a 1,024-event per-generation
+ceiling. It shares the existing 8,192-node / 6,144-ordinary event pool with
+completion-backed timers, whose namespace limit remains the smaller of its
+completion capacity and 1,024. These are independent domain accounts, not a
+combined per-domain allowance or a fresh independent node pool.
+
+Thread construction captures its scheduler timer sponsor from the generation
+ledger. Reservation takes only domain then node counters; no memory/ASID table
+lookup occurs during those counter operations. Retirement rejects new events;
+promotion affects future charges only. Old events retain their original account
+through teardown/reuse. Review also removed eager construction of unused budget
+accounts on every existing ledger lookup by making account initialization lazy.
+Initial sponsor/control-block allocation itself is still infallible.
+
+Anonymous queue storage is now a sorted owning linked list, not a growing
+`VecDeque`. Fixed-size nodes and cancellation state are allocated fallibly before
+parking or record publication. Timed waits also allocate their callback owner
+before parking. Insertion transfers the prepared node without allocating or
+holding registry guards. Cancellation/removal and list destruction are iterative;
+no high-water queue backing persists after node removal. The node/event retains
+its charge while prepared, queued and notifying callbacks. Queue insertion,
+purge scans and diagnostics remain linear in the number of events.
+
+Each LP's scheduler quantum/idle wake occupies one embedded queue slot outside
+anonymous admission. Its deadline participates in earliest-event selection,
+without an external armed flag or a separately charged heap node. Anonymous
+pressure cannot consume this scheduler storage. A cancelled prepared event is
+discarded at enqueue. Shared cancellation state records the actual publishing
+LP, so relocation between preparation and enqueue cannot leave the handle's
+queue owner stale. Remote/busy cancellation still flags rather than waiting on
+or recursively entering a queue; the charge remains until physical removal.
+
+Failed event/callback/node preparation occurs before Blocked. Sleep waits
+cooperatively while runnable to a rebased deadline. Generic timed waits return
+their condition and timed CQ waits return `false`. Timed completion syscalls
+return existing `WAIT_ADMISSION_FAILED` (3), leaving the capability/operation
+live. Completion timer submissions return existing `SubmitError::WouldBlock`
+before record publication when cancellation/node staging fails. Local IRQ masks
+still span park, enqueue and lost-wake recheck, and end before yield.
+
+The [event reference](../../reference/scheduler-timer-budgets.md), waiter and
+completion-timer references, locking/state-machine descriptions,
+testing guide, README and LaTeX sources document the independent lifetimes.
+This is fixed event-count containment, not comprehensive heap-byte admission.
+General sponsor/control-block/weak-only metadata, completion and thread-exit
+callback lists, capability namespaces and loader/page-table/heap accounting
+remain incomplete. Aborted sleepers can retain charged nodes until their
+original deadline; the node ceiling bounds that retention but does not ensure
+service progress. SEC-07 remains partial and deployment restrictions still apply.
+
+Validation:
+
+- The host runner passed. AArch64 services built through each guest runner;
+  strict AArch64 and x86-64 kernel Clippy passed with `-D warnings`. Service
+  source is unchanged; its dual-architecture build/lint evidence remains from
+  the preceding passes.
+- Synchronous fixtures allocate 1,024 real nodes and check ordering, capacity
+  reuse, iterative filtering/destruction and the independent inline quantum.
+  Ordinary/node saturation with shared completion reservations is counter-only
+  at the full 8,192-event node ceiling. Promotion, retirement and exact numeric
+  ASID reuse preserve original-account charges. A deterministic node-allocation
+  failure checks rollback; it does not exhaust the physical allocator.
+- Scheduled fixtures temporarily substitute only the executing kernel thread's
+  sponsor to force event rejection. Generic/CQ waits reject before parking.
+  A synthetic timed-completion syscall returns status 3 with a still-pending
+  capability; the fixture explicitly cancels it before closing. Running state
+  and constraints remain unchanged. Runnable sleep preserves its interval.
+  Busy-local cancellation retains its charge until purge; cancellation before
+  enqueue discards its prepared charge; simulated relocation updates the shared
+  owner LP. Sixty-four normal sleeps plus 64 watchdog waits reconcile charges.
+  These are kernel/synthetic-ABI fixtures, not real-EL0 domain saturation or
+  actual remote-LP purge tests.
+- The first run passed 19/19 before the synthetic-ABI fixture was added. That
+  added fixture initially panicked by trying to close a pending capability
+  without cancelling it (`CapError::NotComplete`). The fixture was corrected;
+  the failing run is not counted as successful validation. The corrected run
+  passed 19/19 before the final lazy-initialization/pre-enqueue checks.
+- The final bounded implementation passed two isolated four-LP AArch64/TCG runs:
+  **19 tests, 0 failed, 0 pending**, including both scoped launches' fifteen-bit
+  mask (`0x7fff`). The final run retired concurrent cancellation traffic after
+  4,508 requests.
+- Workspace formatting and diff checks passed.
+
+The final-policy guest kernel SHA-256 is
+`139e77cf7a99038134f2ba09d683b355798ebbc4108d8614abf33a0ea4774135`.
+Evidence is in `/private/tmp/charlotte-security-timer-events-repeat-run.log`,
+`/private/tmp/charlotte-security-timer-events-repeat-20261004-serial.log`,
+`/private/tmp/charlotte-security-timer-events-bounded-run.log`,
+`/private/tmp/charlotte-security-timer-events-bounded-20261004-serial.log`,
+`/private/tmp/charlotte-security-timer-events-run.log`,
+`/private/tmp/charlotte-security-timer-events-final-20261004-serial.log`
+(failed fixture), `/private/tmp/charlotte-security-timer-events-fixed-run.log`,
+`/private/tmp/charlotte-security-timer-events-host-tests.log`, and the
+`/private/tmp/charlotte-security-timer-events-*-kernel-clippy.log` files.
+No physical-allocator exhaustion, exhaustive cross-LP teardown/IRQ exploration,
+x86-64 guest, hostile-pressure soak or PDF rebuild was performed. Dedicated
+storage and forwarded ports were used; existing soak guests/stores were untouched.

@@ -80,6 +80,9 @@ The main additions and extensions currently maintained here are:
   [Completion/CQ/IPC, blocking-lock and timer waiters](docs/reference/scheduler-waiter-budgets.md) admit
   bounded, generation-sponsored registrations before parking and unlink them
   when a competing wake wins.
+  [Sleep/watchdog event admission](docs/reference/scheduler-timer-budgets.md)
+  shares the completion-timer node pool and prepares queue nodes before parking;
+  scheduler quantum storage remains independent of application timer pressure.
   [IPC record admission](docs/reference/ipc-record-budgets.md) bounds delegated
   connections, retained calls and outstanding replies, with pre-transfer
   reservation and generation-safe cleanup.

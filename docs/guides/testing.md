@@ -174,6 +174,18 @@ cleanup cycles. A pre-filled timer source forces the normal sleep path into its
 runnable fallback and checks elapsed time; rejection leaves state/constraints
 unchanged. This is not a forced-quota EL0 syscall or timer-queue capacity test.
 
+Scheduler timer-event fixtures separately allocate 1,024 sorted nodes, test
+reuse and iterative removal, and keep the quantum inline while anonymous
+admission is full. Shared node/ordinary saturation is counter-only. They cover
+platform promotion, retirement, exact ASID reuse and an injected node-allocation
+failure. Scheduled tests substitute only their current kernel thread's sponsor
+to force event rejection before parking, check generic/CQ waits and synthetic
+timed-completion status 3 with the pending capability retained, then cancel and
+close it. Sleep/watchdog cycles reconcile event charges; busy-local cancellation
+retains its charge until purge. A cancellation-owner fixture simulates relocation
+before publication, not actual remote-LP reclamation. See
+[scheduler timer-event budgets](../reference/scheduler-timer-budgets.md).
+
 The scoped application verifier does not force ASID reuse, restart the grant
 controller, inject allocation failures or prove many-client fairness. It does
 not exercise the complete S3/Raft release pipeline with independent roots, or

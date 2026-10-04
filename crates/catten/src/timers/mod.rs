@@ -1,22 +1,24 @@
 //! Per-LP sorted timer queue, backed by the ARM Generic Timer.
 //!
-//! Each LP has a [`TimerQueue`] — a sorted list of [`TimerEvent`]s ordered
-//! by deadline.  When an event reaches the front of the queue the hardware
-//! comparator is programmed with its deadline; the PPI interrupt fires at
+//! Each LP has a [`TimerQueue`] — a sorted owning list of anonymous events and
+//! one inline scheduler quantum. Their earliest deadline programs the hardware
+//! comparator; the PPI interrupt fires at
 //! that tick, `process_events` drains all expired events, and the comparator
 //! is re-armed with the next deadline.
 //!
 //! Queue mutation reconciles the comparator with the earliest deadline.
-//! Cancelled completion timers retain their admission charge until the owning
+//! Cancelled anonymous timers retain their admission charge until the owning
 //! queue removes them. The idle loop calls `process_events`
 //! before `wfi` to reconcile the software queue with the hardware comparator
 //! and prevent missed deadlines after timer transitions.
 
 pub(crate) mod budget;
+pub(crate) mod event_tests;
+mod queue;
 pub(crate) mod waiter_tests;
 
 use alloc::{
-    collections::vec_deque::VecDeque,
+    boxed::Box,
     sync::{
         Arc,
         Weak,
@@ -24,6 +26,7 @@ use alloc::{
 };
 use core::sync::atomic::{
     AtomicBool,
+    AtomicU32,
     AtomicU64,
     Ordering,
 };
@@ -111,26 +114,70 @@ static NEXT_TIMER_EVENT_ID: AtomicU64 = AtomicU64::new(1);
 /// resumes the waiter on a different LP; the owner removes the event eagerly
 /// whenever cancellation happens on its original LP.
 pub(crate) struct TimerEventCancelHandle {
-    owner_lp: crate::cpu::isa::lp::LpId,
-    id: u64,
-    cancelled: Arc<AtomicBool>,
+    state: Arc<TimerEventCancellation>,
 }
 
 pub type Timestamp = <LpTimer as LpTimerIfce>::Timestamp;
 
-/// Insert an event into the current LP's queue without allowing the timer IRQ
-/// to re-enter while the per-LP mutable guard and hardware timer lock are held.
-/// Very short and already-due deadlines can fire as soon as `add_event`
-/// programs the comparator, so masking is part of the queue mutation contract.
-pub fn enqueue_event(event: TimerEvent) {
-    let interrupts_were_enabled = crate::cpu::isa::lp::ops::get_int_state();
-    mask_interrupts!();
-    {
-        TIMER_QUEUES.try_get_mut().expect("local timer queue is already borrowed").add_event(event);
+/// Owning, fallibly prepared anonymous queue node. Preparation allocates but
+/// holds no queue guard or interrupt mask; callers mask park + publication.
+/// Enqueue additionally masks its local comparator transaction and updates
+/// shared cancellation ownership to the actual publishing LP.
+pub(crate) struct PreparedEvent {
+    node: Box<queue::Node>,
+}
+
+impl PreparedEvent {
+    pub(crate) fn new(event: TimerEvent) -> Result<Self, ()> {
+        Self::new_with(event, |node| Box::try_new(node).map_err(|_| ()))
     }
-    if interrupts_were_enabled {
-        unmask_interrupts!();
+
+    fn new_with(
+        event: TimerEvent,
+        allocate: impl FnOnce(queue::Node) -> Result<Box<queue::Node>, ()>,
+    ) -> Result<Self, ()> {
+        assert!(event.key.is_none() && event._charge.is_some());
+        let node = allocate(queue::Node::new(event))?;
+        Ok(Self {
+            node,
+        })
     }
+
+    pub(crate) fn event(&self) -> &TimerEvent {
+        &self.node.event
+    }
+
+    pub(crate) fn event_mut(&mut self) -> &mut TimerEvent {
+        &mut self.node.event
+    }
+
+    pub(crate) fn enqueue(self) {
+        let _setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
+        if let Some(state) = &self.node.event.cancellation {
+            state.owner_lp.store(crate::cpu::isa::lp::ops::get_lp_id(), Ordering::Release);
+        }
+        // No allocation or admission remains after the caller publishes Blocked
+        // or a completion record. The mask restores IRQs after the queue guard.
+        TIMER_QUEUES
+            .try_get_mut()
+            .expect("local timer queue is already borrowed")
+            .add_prepared(self.node);
+    }
+}
+
+pub(crate) fn thread_timer_context(
+    tid: crate::cpu::scheduler::threads::ThreadId,
+) -> Option<(crate::cpu::scheduler::threads::ThreadGeneration, budget::SchedulerSponsor)> {
+    let table = crate::cpu::scheduler::threads::MASTER_THREAD_TABLE.read();
+    table.get(tid).ok().map(|thread| (thread.generation, thread.timer_sponsor.clone()))
+}
+
+pub(crate) fn prepare_watchdog(
+    duration: ExtDuration,
+    sponsor: &budget::SchedulerSponsor,
+) -> Result<(PreparedEvent, TimerEventCancelHandle), ()> {
+    let (event, handle) = TimerEvent::charged(duration, sponsor.reserve()?)?;
+    Ok((PreparedEvent::new(event)?, handle))
 }
 
 /// Cancel a previously enqueued cancellable event.
@@ -141,8 +188,8 @@ pub fn enqueue_event(event: TimerEvent) {
 /// flag still suppresses notification and the owner purges it on its next
 /// queue operation.
 pub(crate) fn cancel_event(handle: TimerEventCancelHandle) -> bool {
-    handle.cancelled.store(true, Ordering::Release);
-    if crate::cpu::isa::lp::ops::get_lp_id() != handle.owner_lp {
+    handle.state.cancelled.store(true, Ordering::Release);
+    if crate::cpu::isa::lp::ops::get_lp_id() != handle.state.owner_lp.load(Ordering::Acquire) {
         return false;
     }
 
@@ -151,8 +198,9 @@ pub(crate) fn cancel_event(handle: TimerEventCancelHandle) -> bool {
     // A completion may release its cancellation owner from a timer callback.
     // That callback already holds this LP's queue borrow: flag cancellation
     // and let the outer queue operation reclaim the event instead of re-entering.
-    let removed =
-        TIMER_QUEUES.try_get_mut().is_ok_and(|mut queue| queue.remove_cancellable_event(handle.id));
+    let removed = TIMER_QUEUES
+        .try_get_mut()
+        .is_ok_and(|mut queue| queue.remove_cancellable_event(handle.state.id));
     if interrupts_were_enabled {
         unmask_interrupts!();
     }
@@ -191,7 +239,7 @@ pub(crate) enum TimerEventKey {
 pub struct TimerEvent {
     deadline: Timestamp,
     key: Option<TimerEventKey>,
-    cancellation: Option<TimerEventCancellation>,
+    cancellation: Option<Arc<TimerEventCancellation>>,
     // Internal timer producers each install exactly one callback. Embed that
     // slot instead of allocating an unbounded weak-observer queue.
     callback: Mutex<Option<Weak<dyn Observer>>>,
@@ -203,10 +251,20 @@ pub struct TimerEvent {
 #[derive(Debug)]
 struct TimerEventCancellation {
     id: u64,
-    cancelled: Arc<AtomicBool>,
+    owner_lp: AtomicU32,
+    cancelled: AtomicBool,
 }
 
 impl TimerEvent {
+    pub(crate) fn prepare_sleep(
+        mut self,
+        sponsor: &budget::SchedulerSponsor,
+    ) -> Result<PreparedEvent, ()> {
+        assert!(self._charge.is_none() && self.key.is_none());
+        self._charge = Some(sponsor.reserve()?);
+        PreparedEvent::new(self)
+    }
+
     #[inline(always)]
     pub fn get_deadline(&self) -> Timestamp {
         self.deadline
@@ -218,35 +276,35 @@ impl TimerEvent {
         event
     }
 
-    pub(crate) fn cancellable(duration: ExtDuration) -> (Self, TimerEventCancelHandle) {
+    fn try_cancellable(duration: ExtDuration) -> Result<(Self, TimerEventCancelHandle), ()> {
         let id = NEXT_TIMER_EVENT_ID.fetch_add(1, Ordering::Relaxed);
-        let cancelled = Arc::new(AtomicBool::new(false));
-        let handle = TimerEventCancelHandle {
-            owner_lp: crate::cpu::isa::lp::ops::get_lp_id(),
+        let state = Arc::try_new(TimerEventCancellation {
             id,
-            cancelled: cancelled.clone(),
+            owner_lp: AtomicU32::new(crate::cpu::isa::lp::ops::get_lp_id()),
+            cancelled: AtomicBool::new(false),
+        })
+        .map_err(|_| ())?;
+        let handle = TimerEventCancelHandle {
+            state: state.clone(),
         };
         let event = Self {
             deadline: deadline_after(duration),
             key: None,
-            cancellation: Some(TimerEventCancellation {
-                id,
-                cancelled,
-            }),
+            cancellation: Some(state),
             callback: Mutex::new(None),
             waiters: WaiterSource::new(),
             _charge: None,
         };
-        (event, handle)
+        Ok((event, handle))
     }
 
     pub(crate) fn charged(
         duration: ExtDuration,
         charge: budget::Charge,
-    ) -> (Self, TimerEventCancelHandle) {
-        let (mut event, handle) = Self::cancellable(duration);
+    ) -> Result<(Self, TimerEventCancelHandle), ()> {
+        let (mut event, handle) = Self::try_cancellable(duration)?;
         event._charge = Some(charge);
-        (event, handle)
+        Ok((event, handle))
     }
 
     /// Rebase a relative event after its observer and blocked state have been
@@ -325,7 +383,7 @@ impl Observable for TimerEvent {
 
 #[derive(Debug, Default)]
 pub struct TimerQueue {
-    events: VecDeque<TimerEvent>,
+    events: queue::Events,
 }
 
 impl TimerQueue {
@@ -409,7 +467,23 @@ impl TimerQueue {
         removed
     }
 
-    pub fn add_event(&mut self, event: TimerEvent) {
+    fn add_prepared(&mut self, node: Box<queue::Node>) {
+        self.purge_cancelled();
+        if node
+            .event
+            .cancellation
+            .as_ref()
+            .is_some_and(|state| state.cancelled.load(Ordering::Acquire))
+        {
+            self.rearm_front();
+            self.record_state();
+            return;
+        }
+        self.events.insert_prepared(node);
+        self.after_insert(true, None);
+    }
+
+    fn add_event(&mut self, event: TimerEvent) {
         self.purge_cancelled();
         // Teardown/cancellation may win between record publication and
         // enqueue. Do not publish an already-cancelled queue node.
@@ -417,21 +491,12 @@ impl TimerQueue {
         {
             return;
         }
-        let is_anonymous = event.key.is_none();
-        let mut insertion_idx: Option<usize> = None;
-        for (i, event_node) in self.events.iter().enumerate() {
-            if event.deadline < event_node.get_deadline() {
-                insertion_idx = Some(i);
-                break;
-            }
-        }
-        if insertion_idx.is_none() {
-            // If we get here then the event we are adding has a deadline that is after all of the
-            // other events in the queue so we can just add it to the back of the queue.
-            insertion_idx = Some(self.events.len());
-        }
-        let i = insertion_idx.unwrap();
-        self.events.insert(i, event);
+        let key = event.key.expect("anonymous timer insertion requires a prepared node");
+        self.events.insert_quantum(event);
+        self.after_insert(false, Some(key));
+    }
+
+    fn after_insert(&self, is_anonymous: bool, key: Option<TimerEventKey>) {
         let diag = &TIMER_DIAGNOSTICS[crate::cpu::isa::lp::ops::get_lp_id() as usize];
         if is_anonymous {
             diag.anonymous_added.fetch_add(1, Ordering::Relaxed);
@@ -445,7 +510,7 @@ impl TimerQueue {
                 .all(|(left, right)| left.deadline <= right.deadline),
             "timer queue lost deadline ordering"
         );
-        if let Some(key) = self.events[i].key {
+        if let Some(key) = key {
             debug_assert_eq!(
                 self.events.iter().filter(|queued| queued.key == Some(key)).count(),
                 1,
