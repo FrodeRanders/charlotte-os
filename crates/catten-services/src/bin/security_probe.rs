@@ -336,6 +336,25 @@ fn main(ctx: Context) -> ! {
     }
     check(Completion::timer(1).and_then(Completion::wait).is_ok(), 24);
     checks |= 2_048;
+    let mut endpoints = Vec::new();
+    for _ in 0..128 {
+        match Endpoint::create(0x5ef, 1, 1) {
+            Ok(endpoint) => endpoints.push(endpoint),
+            Err(_) => break,
+        }
+    }
+    check((4..64).contains(&endpoints.len()) && Endpoint::create(0x5ef, 1, 1).is_err(), 25);
+    check(
+        wait(connection.call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort()), &endpoint)
+            .result
+            == PONG,
+        26,
+    );
+    drop(endpoints);
+    for _ in 0..128 {
+        drop(Endpoint::create(0x5ef, 1, 1).unwrap_or_else(|_| catten_rt::domain_abort()));
+    }
+    checks |= 4_096;
     config::write::<u32>(status::CHECKS, checks);
     config::write::<u32>(status::STAGE, status::PASSED);
     catten_rt::logln!("[security-probe] passed checks={:#x}", checks);

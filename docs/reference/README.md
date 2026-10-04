@@ -14,6 +14,9 @@ should be updated with the implementation when those contracts change.
 - [Completion-timer budgets](completion-timer-budgets.md) — domain/node event
   admission, reserved platform progress, cancellation ownership and deferred
   queue reclamation.
+- [Endpoint budgets](endpoint-budgets.md) — endpoint and queue backing
+  admission, transactional growth, retained delegation and generation-safe
+  cleanup.
 - [Raft conformance](raft-conformance.md) — required parity between
   `catten-graft`, the other Graft implementations, and the TLA+ projections.
 - [Observability](observability.md) — capability-preserving runtime statistics,

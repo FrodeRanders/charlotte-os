@@ -21,7 +21,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-04 | Mitigated | Builds and boot logs identify development trust; production and unknown modes fail closed in scripted and direct kernel builds. Protected bootstrap roots, fixture-free production provisioning and recipient-key custody remain unimplemented. |
 | SEC-05 | Implemented | tcpip rejects raw frame ingress unless the authenticated sender is the exact live, kernel-designated frouter. Separate socket/VIP binding policy remains future hardening. |
 | SEC-06 | Mitigated | HTTP EOF, peer-raced accept and transport failures close one connection, not the server; listener-setup resource failures retry with backoff. httpd has a five-second request wait and bounded send retries; deployd has five-second header and thirty-second total receive budgets. Serial admission remains vulnerable to sustained connection floods. |
-| SEC-07 | Partially implemented | Memory-object backing pages and counts have generation-scoped sponsorship budgets, RAM-derived node admission and platform/physical progress reserves. Completion-backed timer events have domain/node admission, reserved platform progress and charges retained through deferred cancellation. Aggregate limits for loader/heap/page-table memory, the complete capability namespace, endpoints/queues, general completion records, other timer paths and kernel metadata remain open. |
+| SEC-07 | Partially implemented | Memory-object backing pages and counts have generation-scoped sponsorship budgets, RAM-derived node admission and platform/physical progress reserves. Completion-backed timer events and endpoint records/queue backing have domain/node admission, platform reserves and charges retained through deferred cancellation or delegation. Aggregate limits for loader/heap/page-table memory, the complete capability namespace, connection/call/observer metadata, general completion records, other timer paths and kernel metadata remain open. |
 | SEC-08 | Open | Authenticate enrolled nodes and control/data peer traffic, add replay protection, and bound discovery state. A trusted L2 segment remains an explicit deployment prerequisite. |
 | SEC-09 | Open | Distinguish authenticated security time from observational SNTP/holdover; enforce freshness and uncertainty at security-policy gates. |
 | SEC-10 | Open | Authenticated encrypted access to node and cluster management, browser-client provisioning, and access policy remain necessary. |
@@ -198,7 +198,7 @@ implementation proof is claimed.
    only then enable production images without fixture fallback. Migrate sibling
    broker/Durga templates to the new signing file-path interface. Keep developer
    fixtures visibly identified and separate from real credentials.
-3. Extend admission to the remaining capability, endpoint/queue, general
+3. Extend admission to the remaining capability, connection/call/observer, general
    completion, other timer and loader/heap/page-table budgets. Add
    typed launch-policy limits and observable counters. Preserve rollback and
    delayed-release accounting, and test essential-service progress under
@@ -560,3 +560,66 @@ storage, and comprehensive metadata budgets/fallible allocation remain open.
 The platform share is a pool, not a per-service progress entitlement. SEC-07
 remains partially implemented, and the audit's operational restrictions still
 apply.
+
+## Follow-up: endpoint records and queue backing — 2026-10-04
+
+Completion-timer hardening was committed as `e96252e2`. This continuation
+extends SEC-07 admission to endpoint records and their actual queue backing.
+A generation's ceilings are 64 records and 8,192 slots; the node ceilings are
+1,024 records and 32,768 slots. Ordinary domains share at most 768 records
+and 24,576 slots. The remaining pool is available to kernel-designated
+platform domains, checked against the namespace's exact generation.
+
+Creation reserves a record and rounded backing before fallible queue
+allocation and publication. Growth stages a second charged queue while the
+old queue remains charged; failure preserves policy and messages. Shrinking
+changes admission only and does not return the retained backing charge.
+Checked multidimensional counters roll back failed reservations atomically.
+
+Closure drains messages and releases backing. A closed record retained by a
+delegated connection stays charged to its original namespace. Internal
+revocation of the last connection, including an unobserved returned result,
+now reclaims that record too; previously this path could strand it until
+namespace teardown. A retained budget owner survives retirement, so late
+release cannot credit a replacement using the same numeric ASID. Creation and
+growth reject retirement before publication or allocation.
+
+Validation:
+
+- The host runner passed, including atomic multidimensional rejection,
+  overflow, underflow and reuse. `charlotte-lifecycle` now runs 15 tests.
+- Synchronous guest tests passed for record and queue ceilings, metadata-charge
+  rollback when queue admission fails, failed growth preserving queued data,
+  successful growth and retained charges after shrink, delegated closed
+  records, internal unobserved-result cleanup, retirement rejection, forced
+  ASID reuse and exact counter reconciliation. Reservation-only tests filled
+  each ordinary and total node dimension independently and checked platform
+  reserve and rollback; they did not allocate the full node-sized queues.
+- Two isolated four-LP AArch64/TCG security runs passed **19 tests, 0 failed,
+  0 pending**. Both scoped launches in each run passed all thirteen bits
+  (`0x1fff`), including owned endpoint exhaustion, scalar IPC while full,
+  batch-drop recovery and 128 additional create/drop cycles. The final run
+  retired concurrent cancellation traffic after 4,472 requests; the first
+  run had 3,780 requests.
+- Signed AArch64 and x86-64 service bundles built. Both architectures' kernel
+  and service Clippy passed with `-D warnings`; formatting and diff checks
+  passed. No x86-64 guest execution, allocator-failure injection, sustained
+  hostile-pressure soak or PDF rebuild is claimed.
+
+The final capture's kernel SHA-256 was
+`ab647c8656192a09e590e51cac6e2a54d840366ffe1bbb2582c7c4b766b60b32`.
+Temporary evidence is in `/private/tmp/charlotte-security-endpoints-final-run.log`,
+`/private/tmp/charlotte-security-endpoints-final-20261004-serial.log`,
+`/private/tmp/charlotte-security-endpoints-host-tests.log`, and the
+`/private/tmp/charlotte-security-endpoints-*-clippy.log`/`*-services.log` files.
+These runs used dedicated storage and unused forwarded ports; existing soak
+workloads and stores were not modified.
+
+The [endpoint reference](../../reference/endpoint-budgets.md) documents policy,
+ownership, resize peaks and the current zero-on-failure syscall limitation.
+These bounds do not cover the complete capability namespace, connections,
+pending calls, reply tokens, attachment vectors, observer lists, general
+completion records, all other timers or loader/page-table/heap accounting.
+Registry/capability metadata allocation remains infallible, and there are no
+typed deployment overrides or userspace admission counters yet. SEC-07 remains
+partially implemented; the audit's operational restrictions still apply.

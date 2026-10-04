@@ -761,6 +761,143 @@ pub fn test_endpoint_resize() {
     ipc::close_cap(server, endpoint).expect("resize endpoint close failed");
 }
 
+/// Kernel ABI boundary: scalar handles below are intentionally used to inspect
+/// admission and cancellation without adopting them as userspace owners.
+/// Runs before AP schedulers, so exact global counter comparisons are stable.
+pub fn test_endpoint_admission() {
+    use alloc::vec::Vec;
+
+    use ipc::budget::{
+        self,
+        DomainBudget,
+    };
+
+    logln!("Testing aggregate endpoint admission...");
+    let before = budget::node_used();
+    let server = 0x5500;
+    let client = 0x5600;
+    let mut endpoints = Vec::new();
+    for _ in 0..budget::DOMAIN_LIMIT[0] {
+        endpoints.push(ipc::endpoint_create(server, 1, 1, 1).unwrap());
+    }
+    let account = ipc::endpoint_admission(server).unwrap();
+    assert_eq!(account.used(), [64, 256]);
+    assert_eq!(ipc::endpoint_create(server, 1, 1, 1), Err(IpcError::ResourceLimit));
+    assert_eq!(account.used(), [64, 256]);
+    for endpoint in endpoints {
+        ipc::close_cap(server, endpoint).unwrap();
+    }
+    assert_eq!(account.used(), [0, 0]);
+
+    let endpoint = ipc::endpoint_create(server, 1, 1, 32).unwrap();
+    let connection =
+        ipc::connection_delegate(server, endpoint, client, ConnectionRights::SEND).unwrap();
+    ipc::scalar_send(client, connection, 17, 99).unwrap();
+    let other = ipc::endpoint_create(server, 1, 1, 4096).unwrap();
+    let status = ipc::endpoint_status(server, endpoint).unwrap();
+    let used = account.used();
+    assert_eq!(ipc::endpoint_resize(server, endpoint, 4096), Err(IpcError::ResourceLimit));
+    assert_eq!(account.used(), used);
+    assert_eq!(ipc::endpoint_status(server, endpoint), Ok(status));
+    ipc::close_cap(server, other).unwrap();
+    assert_eq!(ipc::endpoint_resize(server, endpoint, 4096), Ok(4096));
+    assert_eq!(account.used(), [1, 4096]);
+    assert_eq!(ipc::endpoint_resize(server, endpoint, 1), Ok(1));
+    assert_eq!(account.used(), [1, 4096]);
+    let message = ipc::receive(server, endpoint).unwrap();
+    assert_eq!((message.opcode, message.arg0), (17, 99));
+    let other = ipc::endpoint_create(server, 1, 1, 4096).unwrap();
+    assert_eq!(ipc::endpoint_create(server, 1, 1, 1), Err(IpcError::ResourceLimit));
+    assert_eq!(account.used(), [2, 8192]);
+    ipc::close_cap(server, endpoint).unwrap();
+    assert_eq!(account.used(), [2, 4096], "delegated closed metadata stays charged");
+    ipc::close_cap(client, connection).unwrap();
+    assert_eq!(account.used(), [1, 4096]);
+    ipc::close_cap(server, other).unwrap();
+    assert_eq!(account.used(), [0, 0]);
+
+    // An unobserved returned connection is revoked by pending-call Drop.
+    // This internal remove path must also free the last closed endpoint.
+    let target = ipc::endpoint_create(server, 1, 1, 1).unwrap();
+    let service = ipc::endpoint_create(server, 1, 1, 1).unwrap();
+    let connection =
+        ipc::connection_delegate(server, service, client, ConnectionRights::CALL).unwrap();
+    let call = ipc::scalar_call(client, connection, 1, 0).unwrap();
+    let reply = ipc::receive(server, service).unwrap().reply.unwrap();
+    ipc::reply_with_connection(server, reply, target, ConnectionRights::SEND, 0).unwrap();
+    ipc::close_cap(server, target).unwrap();
+    assert_eq!(account.used(), [2, 4]);
+    ipc::close_cap(client, call).unwrap();
+    assert_eq!(account.used(), [1, 4]);
+    ipc::close_cap(client, connection).unwrap();
+    ipc::close_cap(server, service).unwrap();
+    ipc::close_address_space(client);
+    ipc::close_address_space(server);
+    assert_eq!(account.used(), [0, 0]);
+    assert_eq!(budget::node_used(), before);
+
+    // Saturate each ordinary dimension independently without allocating the
+    // corresponding heap storage; test exact rollback and platform reserve.
+    for dimension in 0..2 {
+        let baseline = budget::node_used();
+        let mut charges = Vec::new();
+        let mut remaining = budget::ORDINARY_LIMIT[dimension] - baseline.1[dimension];
+        while remaining != 0 {
+            let mut amount = [0, 0];
+            amount[dimension] = remaining.min(budget::DOMAIN_LIMIT[dimension]);
+            let domain = DomainBudget::new();
+            charges.push(budget::reserve(&domain, false, amount).unwrap());
+            remaining -= amount[dimension];
+        }
+        let mut amount = [0, 0];
+        amount[dimension] = 1;
+        let blocked = DomainBudget::new();
+        let full = budget::node_used();
+        assert!(budget::reserve(&blocked, false, amount).is_err());
+        assert_eq!(blocked.used(), [0, 0]);
+        assert_eq!(budget::node_used(), full);
+        let privileged = budget::reserve(&blocked, true, amount).unwrap();
+        drop(privileged);
+        // Also reach the total bound, and verify rollback for platform users.
+        remaining = budget::NODE_LIMIT[dimension] - full.0[dimension];
+        while remaining != 0 {
+            let mut amount = [0, 0];
+            amount[dimension] = remaining.min(budget::DOMAIN_LIMIT[dimension]);
+            charges.push(budget::reserve(&DomainBudget::new(), true, amount).unwrap());
+            remaining -= amount[dimension];
+        }
+        assert!(budget::reserve(&blocked, true, amount).is_err());
+        assert_eq!(blocked.used(), [0, 0]);
+        drop(charges);
+        assert_eq!(budget::node_used(), baseline);
+    }
+
+    let owner = create_ipc_memory_test_address_space("endpoint sponsor");
+    let identity = crate::memory::current_address_space_handle(owner).unwrap();
+    let endpoint = ipc::endpoint_create(owner, 1, 1, 1).unwrap();
+    let account = ipc::endpoint_admission(owner).unwrap();
+    let connection =
+        ipc::connection_delegate(owner, endpoint, client, ConnectionRights::SEND).unwrap();
+    crate::memory::budget::retire(identity);
+    assert_eq!(ipc::endpoint_create(owner, 1, 1, 1), Err(IpcError::PermissionDenied));
+    assert_eq!(ipc::endpoint_resize(owner, endpoint, 8), Err(IpcError::PermissionDenied));
+    close_test_address_space(owner).unwrap();
+    assert_eq!(account.used(), [1, 0]);
+    let replacement = create_ipc_memory_test_address_space("endpoint replacement");
+    assert_eq!(replacement, owner, "fixture must exercise ASID reuse");
+    assert_ne!(crate::memory::current_address_space_handle(replacement).unwrap(), identity);
+    let fresh_endpoint = ipc::endpoint_create(replacement, 1, 1, 1).unwrap();
+    let fresh = ipc::endpoint_admission(replacement).unwrap();
+    ipc::close_cap(client, connection).unwrap();
+    assert_eq!(account.used(), [0, 0]);
+    assert_eq!(fresh.used(), [1, 4]);
+    ipc::close_cap(replacement, fresh_endpoint).unwrap();
+    close_test_address_space(replacement).unwrap();
+    ipc::close_address_space(client);
+    assert_eq!(budget::node_used(), before);
+    logln!("Aggregate endpoint admission passed.");
+}
+
 pub fn test_endpoint_ipc_connection_attach() {
     logln!("Testing endpoint IPC connection attachment and re-delegation...");
 

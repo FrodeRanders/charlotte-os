@@ -267,8 +267,10 @@ repository history remain authoritative.
         have generation-scoped sponsorship budgets, node-wide admission and
         platform progress reserves. Completion-backed timer events have
         separate domain/node admission and retain their charge through
-        deferred cancellation. Aggregate limits for the full capability
-        namespace, endpoints, general completions, other timer paths and
+        deferred cancellation. Endpoint records and preallocated queue backing
+        have domain/node admission with staged-growth rollback and original
+        generation charges retained through delegation. Aggregate limits for the full capability
+        namespace, connection/call/observer metadata, general completions, other timer paths and
         kernel metadata remain incomplete.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the

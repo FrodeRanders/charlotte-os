@@ -20,6 +20,27 @@ Client receives conn:       name_service.lookup("ns") -> ConnectionCap
 Ordinary clients do not mint arbitrary connections. The name service or a policy
 service normally delegates them after an access check.
 
+\subsection{Endpoint storage admission}
+
+Endpoint records and queue backing have generation-scoped sponsorship. The
+current kernel admits at most 64 endpoint records and 8,192 queue slots per
+domain, and 1,024 records and 32,768 slots per node. Ordinary domains share
+768 records and 24,576 slots; the remainder is available to kernel-designated
+platform domains. These are initial kernel policies, independent of socket
+capacity, rather than deployment-descriptor settings.
+
+A single queue admits at most 4,096 messages. Its backing is preallocated
+fallibly after reserving slots, rounded to a power of two with a minimum of
+four. Growth stages a second charged queue before moving messages, so failed
+growth preserves the existing queue. Shrinking reduces message admission but
+retains the backing and its charge until it is freed.
+
+Owner closure drains the queue and frees its backing. Delegated connections
+can retain the closed endpoint record; its original generation pays for that
+record until the last reference disappears. Late cleanup after ASID reuse
+credits only the old generation. Connection, reply-token, pending-call and
+observer metadata still need separate aggregate admission.
+
 \section{Message classes}
 
 The ABI distinguishes two message classes:

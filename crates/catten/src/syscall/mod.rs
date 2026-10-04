@@ -1199,6 +1199,7 @@ fn ipc_status(error: ipc::IpcError) -> u64 {
         ipc::IpcError::EndpointClosed => 7,
         ipc::IpcError::ReplyAlreadyUsed => 8,
         ipc::IpcError::MemoryTransferFailed => 9,
+        ipc::IpcError::ResourceLimit => 10,
     }
 }
 

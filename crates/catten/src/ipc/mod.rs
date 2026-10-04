@@ -6,10 +6,7 @@
 //! mailbox smoke ABI.
 
 use alloc::{
-    collections::{
-        BTreeMap,
-        VecDeque,
-    },
+    collections::BTreeMap,
     sync::{
         Arc,
         Weak,
@@ -32,6 +29,8 @@ use crate::{
         object::MemoryObjectCap,
     },
 };
+
+pub(crate) mod budget;
 
 pub type CapabilityId = u64;
 type EndpointId = u64;
@@ -57,6 +56,7 @@ pub enum IpcError {
     ReplyAlreadyUsed,
     Pending,
     MemoryTransferFailed,
+    ResourceLimit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -162,12 +162,16 @@ enum Capability {
 #[derive(Debug)]
 struct AsIpcCaps {
     caps: BTreeMap<CapabilityId, Capability>,
+    address_space: Option<crate::memory::AddressSpaceHandle>,
+    endpoint_budget: Arc<budget::DomainBudget>,
 }
 
 impl AsIpcCaps {
-    fn new() -> Self {
+    fn new(asid: AddressSpaceId) -> Self {
         Self {
             caps: BTreeMap::new(),
+            address_space: crate::memory::current_address_space_handle(asid),
+            endpoint_budget: budget::DomainBudget::new(),
         }
     }
 
@@ -209,7 +213,7 @@ struct Endpoint {
     capacity: usize,
     /// Deepest the queue has been, for capacity policy.
     high_water: usize,
-    queue: VecDeque<QueuedMessage>,
+    queue: budget::AdmittedQueue<QueuedMessage>,
     /// Threads waiting for the endpoint to become readable. These observers
     /// fire on message arrival and endpoint closure.
     readiness_observers: ConcurrentQueue<Weak<dyn Observer>>,
@@ -224,6 +228,8 @@ struct Endpoint {
     /// transition and on closure, so a shard can block on one CQ wait for
     /// both kernel completions and endpoint work (§7, Phase 7).
     notify_cq: Option<crate::completion::CqId>,
+    // Last field: retained subobjects drop before metadata admission returns.
+    metadata_charge: budget::Charge,
 }
 
 #[derive(Debug)]
@@ -289,7 +295,7 @@ impl IpcRegistry {
     }
 
     fn as_caps(&mut self, asid: AddressSpaceId) -> &mut AsIpcCaps {
-        self.caps.entry(asid).or_insert_with(AsIpcCaps::new)
+        self.caps.entry(asid).or_insert_with(|| AsIpcCaps::new(asid))
     }
 
     fn cap(&self, asid: AddressSpaceId, cap: CapabilityId) -> Result<Capability, IpcError> {
@@ -315,25 +321,37 @@ impl IpcRegistry {
             .ok_or(IpcError::UnknownCapability)?;
         let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Ipc);
         assert!(revoked, "IPC payload capability was absent from unified table");
+        // Internal cancellation also revokes connections. It must reclaim a
+        // closed endpoint just as public capability closure does.
+        if let Capability::Connection {
+            endpoint,
+            ..
+        } = removed
+            && self.endpoints.get(&endpoint).is_some_and(|record| record.closed)
+            && !endpoint_referenced(self, endpoint)
+        {
+            self.endpoints.remove(&endpoint);
+        }
         Ok(removed)
     }
 
     fn remove_matching_caps(&mut self, asid: AddressSpaceId, target: Capability) {
-        if let Some(caps) = self.caps.get_mut(&asid) {
+        if let Some(caps) = self.caps.get(&asid) {
             let removed: Vec<_> =
                 caps.caps.iter().filter_map(|(id, cap)| (*cap == target).then_some(*id)).collect();
             for id in removed {
-                caps.caps.remove(&id);
-                assert!(
-                    crate::capability::remove(asid, id, crate::capability::ObjectKind::Ipc),
-                    "IPC payload capability was absent from unified table"
-                );
+                self.remove_cap(asid, id).expect("matching IPC capability disappeared");
             }
         }
     }
 }
 
 static IPC: LazyLock<RwLock<IpcRegistry>> = LazyLock::new(|| RwLock::new(IpcRegistry::new()));
+
+/// Kernel diagnostics retain the original namespace even after ASID reuse.
+pub(crate) fn endpoint_admission(owner: AddressSpaceId) -> Option<Arc<budget::DomainBudget>> {
+    IPC.read().caps.get(&owner).map(|caps| caps.endpoint_budget.clone())
+}
 
 pub fn endpoint_create(
     owner: AddressSpaceId,
@@ -345,8 +363,24 @@ pub fn endpoint_create(
         return Err(IpcError::QueueFull);
     }
     let capacity = capacity.min(MAX_ENDPOINT_CAPACITY);
-
+    let identity = crate::memory::current_address_space_handle(owner);
+    let platform_identity = crate::memory::budget::platform_identity(owner);
     let mut ipc = IPC.write();
+    if identity.is_some_and(|handle| !crate::memory::budget::accepting(handle)) {
+        return Err(IpcError::PermissionDenied);
+    }
+    let namespace = ipc.as_caps(owner);
+    if namespace.address_space != identity {
+        return Err(IpcError::PermissionDenied);
+    }
+    // Synthetic namespaces exist only at the kernel test/adapter boundary;
+    // syscalls always supply the authenticated live caller ASID.
+    let platform = owner == crate::memory::KERNEL_ASID
+        || platform_identity.is_some_and(|handle| Some(handle) == namespace.address_space);
+    let metadata_charge = budget::reserve(&namespace.endpoint_budget, platform, [1, 0])
+        .map_err(|_| IpcError::ResourceLimit)?;
+    let queue = budget::AdmittedQueue::new(&namespace.endpoint_budget, platform, capacity)
+        .map_err(|_| IpcError::ResourceLimit)?;
     let endpoint = ipc.alloc_endpoint();
     ipc.endpoints.insert(
         endpoint,
@@ -356,7 +390,8 @@ pub fn endpoint_create(
             version,
             capacity,
             high_water: 0,
-            queue: VecDeque::new(),
+            queue,
+            metadata_charge,
             readiness_observers: ConcurrentQueue::unbounded(),
             close_observers: ConcurrentQueue::unbounded(),
             closed: false,
@@ -423,7 +458,13 @@ pub fn endpoint_resize(
         return Err(IpcError::QueueFull);
     }
     let capacity = new_capacity.min(MAX_ENDPOINT_CAPACITY);
+    let identity = crate::memory::current_address_space_handle(owner);
     let mut ipc = IPC.write();
+    if identity.is_some_and(|handle| !crate::memory::budget::accepting(handle))
+        || ipc.caps.get(&owner).is_some_and(|caps| caps.address_space != identity)
+    {
+        return Err(IpcError::PermissionDenied);
+    }
     let endpoint_id = match ipc.cap(owner, endpoint_cap)? {
         Capability::Endpoint {
             endpoint,
@@ -434,6 +475,21 @@ pub fn endpoint_resize(
     let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
     if endpoint.owner != owner {
         return Err(IpcError::PermissionDenied);
+    }
+    if endpoint.closed {
+        return Err(IpcError::EndpointClosed);
+    }
+    if capacity > endpoint.queue.capacity() {
+        // Charge both backing allocations during growth. A failed admission
+        // or allocation leaves the policy and queued messages unchanged.
+        let mut grown = budget::AdmittedQueue::new(
+            endpoint.metadata_charge.domain(),
+            endpoint.metadata_charge.platform(),
+            capacity,
+        )
+        .map_err(|_| IpcError::ResourceLimit)?;
+        grown.extend(endpoint.queue.drain(..));
+        endpoint.queue = grown;
     }
     endpoint.capacity = capacity;
     Ok(capacity)
@@ -1650,9 +1706,9 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
             endpoint,
             ..
         } => {
-            let queued = if let Some(endpoint) = ipc.endpoints.get_mut(&endpoint) {
+            let mut queued = if let Some(endpoint) = ipc.endpoints.get_mut(&endpoint) {
                 if endpoint.owner != asid {
-                    Vec::new()
+                    budget::AdmittedQueue::default()
                 } else {
                     endpoint.closed = true;
                     observers.extend(drain_observers(&endpoint.readiness_observers));
@@ -1660,12 +1716,12 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
                     // A CQ-bound endpoint reports its closure as a readiness
                     // wake so a reactor blocked on one CQ wait observes it.
                     cq_wake = endpoint.notify_cq.map(|cq| (endpoint.owner, cq));
-                    endpoint.queue.drain(..).collect()
+                    core::mem::take(&mut endpoint.queue)
                 }
             } else {
-                Vec::new()
+                budget::AdmittedQueue::default()
             };
-            for message in queued {
+            for message in queued.drain(..) {
                 if let Some(token) = message.reply {
                     consume_reply_token(&mut ipc, token, REPLY_ENDPOINT_CLOSED, &mut observers);
                 }

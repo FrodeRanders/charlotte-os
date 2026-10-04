@@ -301,6 +301,7 @@ pub mod ipc_status {
     pub const ENDPOINT_CLOSED: IpcStatusCode = 7;
     pub const REPLY_ALREADY_USED: IpcStatusCode = 8;
     pub const MEMORY_TRANSFER_FAILED: IpcStatusCode = 9;
+    pub const RESOURCE_LIMIT: IpcStatusCode = 10;
 }
 
 pub const IPC_REPLY_CANCELLED: i64 = -3;

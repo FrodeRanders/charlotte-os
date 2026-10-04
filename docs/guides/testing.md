@@ -79,7 +79,7 @@ cancelled requests must not prevent acquisition of the available endpoint;
 a separately hosted silent endpoint tests the publication helper's deadline.
 
 The primary probe performs 384 cancelled requests in each of two launches. A
-concurrent probe submits at least 512 more. All twelve result bits (`0xfff`) must
+concurrent probe submits at least 512 more. All thirteen result bits (`0x1fff`) must
 pass, publication generations must advance, and the retired descriptor must no
 longer attest. The ordinary boot suite, network verifier and security verifier
 register 19 tests in this configuration.
@@ -97,9 +97,16 @@ waits for a short timer after recovery. Synchronous timer-admission tests also
 exercise platform reserve, deferred event reclamation and exact numeric
 namespace reuse. See [completion-timer budgets](../reference/completion-timer-budgets.md).
 
-This does not force ASID reuse, restart the grant controller, inject allocation
-failures or prove many-client fairness. It does not exercise the complete S3/Raft
-release pipeline with independent roots, or establish production key custody.
+The thirteenth bit fills the application's endpoint budget, checks scalar IPC
+while it is full, drops the owning batch and performs 128 create/drop cycles.
+Synchronous tests check queue backing limits and resize rollback, platform
+reserve, retained delegated records, unobserved-return cleanup, and forced
+ASID reuse. See [endpoint budgets](../reference/endpoint-budgets.md).
+
+The scoped application verifier does not force ASID reuse, restart the grant
+controller, inject allocation failures or prove many-client fairness. It does
+not exercise the complete S3/Raft release pipeline with independent roots, or
+establish production key custody.
 
 The HTTP verifier also runs EOF and idle-client availability probes before the
 node/cluster JSON checks. Use an isolated instance and unused forwarded ports:

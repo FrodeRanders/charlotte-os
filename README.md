@@ -65,6 +65,11 @@ The main additions and extensions currently maintained here are:
   mirror linear kernel ownership: moved capabilities transfer exactly once,
   memory borrows outlive pending calls, and `Drop` or explicit consuming
   teardown closes compound operations across ordinary error paths.
+  [Memory-object](docs/reference/memory-object-budgets.md),
+  [completion-timer](docs/reference/completion-timer-budgets.md), and
+  [endpoint/queue](docs/reference/endpoint-budgets.md) admission retain charges
+  through transfers and delayed cleanup; comprehensive kernel-resource
+  containment remains work in progress.
 - **Protected userspace device I/O:** reference UART, NVMe, AHCI, virtio-blk,
   virtio-net, E1000E, and VirtIO RNG drivers receive only delegated MMIO,
   interrupt, and DMA authority. Arm SMMUv3, Intel VT-d, and AMD-Vi isolate

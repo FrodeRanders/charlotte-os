@@ -13,6 +13,47 @@ pub enum Error {
     Underflow,
 }
 
+/// Atomic admission across independently measured resource dimensions.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct VectorBudget<const N: usize> {
+    limit: [u64; N],
+    used: [u64; N],
+}
+
+impl<const N: usize> VectorBudget<N> {
+    pub const fn new(limit: [u64; N]) -> Self {
+        Self {
+            limit,
+            used: [0; N],
+        }
+    }
+
+    pub const fn used(&self) -> [u64; N] {
+        self.used
+    }
+
+    pub fn reserve(&mut self, amount: [u64; N]) -> Result<(), Error> {
+        let mut next = self.used;
+        for ((used, increment), limit) in next.iter_mut().zip(amount).zip(self.limit) {
+            *used = used.checked_add(increment).ok_or(Error::Limit)?;
+            if *used > limit {
+                return Err(Error::Limit);
+            }
+        }
+        self.used = next;
+        Ok(())
+    }
+
+    pub fn release(&mut self, amount: [u64; N]) -> Result<(), Error> {
+        let mut next = self.used;
+        for (used, decrement) in next.iter_mut().zip(amount) {
+            *used = used.checked_sub(decrement).ok_or(Error::Underflow)?;
+        }
+        self.used = next;
+        Ok(())
+    }
+}
+
 /// One-dimensional admission for records/events rather than backing pages.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CountBudget {
@@ -122,6 +163,23 @@ pub const fn frames_available(free: u64, usable: u64, request: u64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vector_reservations_and_releases_are_atomic() {
+        let mut budget = VectorBudget::new([2, 8, u64::MAX]);
+        budget.reserve([1, 4, 1]).unwrap();
+        let before = budget;
+        for amount in [[2, 0, 0], [0, 5, 0], [0, 0, u64::MAX]] {
+            assert_eq!(budget.reserve(amount), Err(Error::Limit));
+            assert_eq!(budget, before);
+        }
+        assert_eq!(budget.release([1, 0, 2]), Err(Error::Underflow));
+        assert_eq!(budget, before);
+        budget.release([1, 4, 1]).unwrap();
+        budget.reserve([2, 8, u64::MAX]).unwrap();
+        budget.release([2, 8, u64::MAX]).unwrap();
+        assert_eq!(budget.used(), [0; 3]);
+    }
 
     #[test]
     fn event_count_rejection_and_release_are_atomic() {
