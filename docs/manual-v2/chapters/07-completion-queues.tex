@@ -294,7 +294,7 @@ List destruction is iterative to bound kernel-stack use.
 Completion and CQ scheduler waiters use fallible registration before a thread
 is removed from its Ready queue or published as Blocked. Rejection preserves
 its state, queue membership and migration constraints; an already-ready source
-does not park it. Each source admits 64 registrations, each waiting domain
+does not park it. Each source links at most 64 registrations, each waiting domain
 generation 1,024, and the node 8,192 with an ordinary share of 6,144. The waiting
 domain sponsors the entry independently of the source's owner. These are kernel
 policy limits, separate from records, close watches, timers and CQ backing.
@@ -314,7 +314,18 @@ terminal completion, preserving borrowed-buffer safety. This overload fallback
 does not guarantee efficient idle waiting or producer progress. CQ waits retain
 their existing return shape and can return without parking when admission fails.
 
-Legacy timer, lock, readiness, pending-call and raw kernel callback registrations
+Timed waits mask local interrupts across Blocked publication, watchdog enqueue
+and the condition recheck. Without that interval, a quantum interrupt could
+switch out the waiter before its deadline wake exists. An owning local mask
+restores the entry interrupt state on rejection and is dropped before yielding;
+it holds no lock across a context switch. Watchdog storage still needs admission.
+
+Endpoint-readiness and pending-call waiters share these admission pools and
+owning cancellation, as described in \autoref{chap:endpoints}. Untimed IPC waits
+also retry under pressure rather than returning while a server still holds a
+live loan. IPC source callbacks run after its registry is released.
+
+Legacy timer, lock and raw kernel callback registrations
 still require migration. General weak-only backing, watchdog storage and kernel
 heap accounting remain incomplete. CQ replacement still requires a quiescent
 consumer; discarding registrations is not live reactor migration. Silently

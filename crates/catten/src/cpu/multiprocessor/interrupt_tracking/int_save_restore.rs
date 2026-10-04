@@ -21,6 +21,34 @@ use crate::{
 
 pub static INT_STATE: LazyLock<IntState> = LazyLock::new(IntState::new);
 
+/// Short local non-preemptible setup interval, without owning a lock. Never
+/// retain across yield/context switch or move to another LP. Nested masks
+/// restore only the interrupt state each one captured on entry.
+#[must_use = "retain the mask through setup, then drop it before yielding"]
+pub(crate) struct LocalInterruptMask {
+    restore: bool,
+    _local: core::marker::PhantomData<*mut ()>,
+}
+
+impl LocalInterruptMask {
+    pub(crate) fn new() -> Self {
+        let restore = get_int_state();
+        mask_interrupts!();
+        Self {
+            restore,
+            _local: core::marker::PhantomData,
+        }
+    }
+}
+
+impl Drop for LocalInterruptMask {
+    fn drop(&mut self) {
+        if self.restore {
+            unmask_interrupts!();
+        }
+    }
+}
+
 pub struct IntState {
     raw_locks: Vec<AtomicBool>,
     save_counts: Vec<SyncUnsafeCell<usize>>,

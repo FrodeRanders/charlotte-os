@@ -226,8 +226,10 @@ transfer's \texttt{finish} method has synchronously removed the IOMMU mapping.
         unsafe code, page-table maintenance, or DMA.
 
     \item Borrows have defined lifetimes: a borrow is always tied to an
-        IPC call. When the call completes (reply, cancellation, timeout, or
-        server death), the borrow ends. There is no ``I forgot to return it.''
+        IPC call. When the call completes (reply, cancellation, or server
+        death), the borrow ends. A wait timeout alone does not cancel the call
+        or end its loan; explicit cancellation is needed before reusing the
+        borrowed storage. There is no ``I forgot to return it.''
 
     \item DMA ownership is tracked on the reference platforms: AArch64
         SMMUv3 and x86-64 VT-d/AMD-Vi pin mapped memory and restrict each

@@ -79,6 +79,13 @@ let Drop cancel and wait; do not release borrowed operation buffers on this
 error. Untimed completion waiting preserves terminal-state semantics even when
 waiter admission is exhausted. See [scheduler waiter budgets](../reference/scheduler-waiter-budgets.md).
 
+Endpoint receive and pending-call reply waits share these generation-sponsored
+waiter budgets. Untimed IPC waits retry cooperatively under admission pressure,
+retaining pending-call borrows until reply or cancellation revokes server access.
+Keep using `Endpoint`, `PendingCall` and `ReplyToken`; this kernel change adds no
+manual unregister or cleanup step for applications. A wait timeout is not a
+successful reply or permission to reuse a still-lent buffer.
+
 For a borrow, pass `&memory` or `&mut memory` to `call_borrow_read` or
 `call_borrow_write`. `PendingCall<'memory>` retains that borrow until the reply
 is observed or the call is dropped, preventing concurrent CPU access.

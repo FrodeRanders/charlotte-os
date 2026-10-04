@@ -21,7 +21,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-04 | Mitigated | Builds and boot logs identify development trust; production and unknown modes fail closed in scripted and direct kernel builds. Protected bootstrap roots, fixture-free production provisioning and recipient-key custody remain unimplemented. |
 | SEC-05 | Implemented | tcpip rejects raw frame ingress unless the authenticated sender is the exact live, kernel-designated frouter. Separate socket/VIP binding policy remains future hardening. |
 | SEC-06 | Mitigated | HTTP EOF, peer-raced accept and transport failures close one connection, not the server; listener-setup resource failures retry with backoff. httpd has a five-second request wait and bounded send retries; deployd has five-second header and thirty-second total receive budgets. Serial admission remains vulnerable to sustained connection floods. |
-| SEC-07 | Partially implemented | Memory-object backing pages/counts, completion timer events, endpoint records/queue backing, retained completion objects/detached results, CQ registrations/kernel backing, endpoint-close registrations and completion/CQ scheduler waiters have generation-scoped domain/node admission and platform reserves. Charges survive transfers, deferred cancellation, delegation, retained references or detached notifications as appropriate. Waiter admission precedes parking; owning cancellation handles competing wakes and reaping. Timed admission failure retains the completion owner; untimed completion waiting preserves borrowed-buffer safety. Aggregate limits for loader/heap/page tables (including physical CQ mappings), the complete capability namespace, connection/call/legacy-observer metadata, general weak-only storage, other timer paths and comprehensive kernel metadata remain open. |
+| SEC-07 | Partially implemented | Memory-object backing pages/counts, completion timer events, endpoint records/queue backing, retained completion objects/detached results, CQ registrations/kernel backing, endpoint-close registrations and completion/CQ/IPC scheduler waiters have generation-scoped domain/node admission and platform reserves. Charges survive transfers, deferred cancellation, delegation, retained references or detached notifications as appropriate. Waiter admission precedes parking; owning cancellation handles competing wakes and reaping. Timed completion admission failure retains its owner; untimed completion/IPC waits preserve borrowed-buffer safety. Timed park/watchdog setup is non-preemptible, and IPC waiter-list preparation precedes attachment transfer. Aggregate limits for loader/heap/page tables (including physical CQ mappings), the complete capability namespace, connection/pending-call/reply-token records, legacy-observer metadata, general weak-only storage, other timer paths and comprehensive kernel metadata remain open. |
 | SEC-08 | Open | Authenticate enrolled nodes and control/data peer traffic, add replay protection, and bound discovery state. A trusted L2 segment remains an explicit deployment prerequisite. |
 | SEC-09 | Open | Distinguish authenticated security time from observational SNTP/holdover; enforce freshness and uncertainty at security-policy gates. |
 | SEC-10 | Open | Authenticated encrypted access to node and cluster management, browser-client provisioning, and access policy remain necessary. |
@@ -913,3 +913,96 @@ Evidence is in `/private/tmp/charlotte-security-waiters-reap-final-run.log`,
 Dedicated storage and forwarded ports were used; existing soak guests/stores
 were not modified. One attempted follow-up stopped at compilation on a test
 helper import before booting, then was corrected and rerun successfully.
+
+## 2026-10-04 continuation — owning IPC receive/reply waiters
+
+The preceding completion/CQ waiter changes are committed as `cf0e98a5`.
+Endpoint-readiness and pending-call scheduler waiters now use the same owning
+registration contract and share its waiting-generation/node pools. Each source
+links at most 64 entries. Detached batches still occupy the domain/node pools,
+not the reusable source's linked count. Readiness drains/rearms on messages and
+closes on endpoint death; a pending call closes its list on reply or cancellation. Source-ready
+checks and insertion share IPC's registry lock. Missing sources reject rather
+than silently losing a wake.
+
+Notifications detach under IPC and run after its registry is released. Endpoint
+closure combines receiver and queued-call batches by splicing owning entries,
+without allocating a callback vector. Detached storage retains its charge until
+actually released. Source destruction discards residual entries locally even
+if a kernel token retains the source list. Ready admission and reaping use the
+already implemented Waker cancellation, including when a watchdog wins.
+
+Endpoint creation prepares the readiness list fallibly before publication.
+All six call-submission variants stage their pending-call list before memory
+move/copy/lend/vector transfer or delegated connection attachments. Failure at
+this new stage therefore leaves those inputs untouched. Later registry and
+capability insertion and other allocation paths remain incompletely fallible.
+Untimed receive/reply waits retry cooperatively on admission rejection instead
+of parking without a wake or treating a live call as completed. A real loan
+remains delegated until reply or explicit cancellation revokes it. Kernel timed
+reply waiting can return false without consuming the call. No IPC syscall status
+or userspace ownership API was added. Two debugger-visible counters record
+receive/reply admission retries without granting authority or driving policy.
+
+Repetition caught an additional timed-wait setup defect: one run remained
+pending on CQ wait after the other 18 tests passed. Source inspection found a
+quantum-preemption window between publishing Blocked and queuing its watchdog.
+The shared condition-wait helper, timed CQ wait and timed completion syscall
+now use a non-Send local interrupt-mask owner across park/watchdog enqueue/
+recheck. Rejection restores the entry IRQ state automatically, and the mask is
+dropped before yielding. The condition must be a short non-parking check. This
+closes the identified window; the stalled run had no live debugger capture, so
+it is not a complete causal trace or exhaustive scheduling proof.
+
+The waiter reference, locking/state-machine rules, ownership/testing guides,
+README, endpoint/record references and LaTeX sources were updated. The manual's
+memory-loan description now makes clear that a wait timeout alone does not end
+the call or revoke the loan. Connection, pending-call and reply-token records,
+source-list control blocks, general registry/weak-only metadata, legacy lock/
+timer/raw callback registrations, watchdog storage and loader/page-table/heap
+admission remain open. SEC-07 stays partial; no hostile-production containment
+or per-service progress guarantee is claimed.
+
+Validation:
+
+- The full host test runner passed. Both service bundles built, and AArch64/
+  x86-64 kernel and service Clippy passed with `-D warnings`.
+- Synchronous guest tests passed for both source ceilings and rollback,
+  512 receiver register/drop/rearm cycles, message/reply/closed-source fast
+  paths, callback reentrancy, reply-token Drop, pending-call close with loan
+  revocation, receiver plus multiple queued-call notification batches, retired
+  sponsorship and replacement-ASID accounting.
+- Scheduled tests check 64 reply/readiness timeout cleanup cycles, full-source
+  rejection with unchanged Running state/constraints, nested IRQ restoration
+  and rejection-path restoration, and forced untimed receive/reply recovery.
+  Helpers wait for an admission-retry counter before producing. The reply
+  helper sees a real delegated read loan before reply; the caller verifies it
+  is revoked when the untimed wait returns. These are kernel fixtures, not
+  forced-quota real-EL0 syscall tests. The ordinary real-EL0 IPC memory/receive
+  tests and both scoped security launches still pass.
+- The first attempt failed in a new test fixture because a synthetic IPC
+  namespace was used as a loan recipient without an address space. That
+  fixture was corrected to use real sender/receiver address spaces. A later
+  repetition exposed the timed-wait setup gap described above. Those failed
+  attempts are not counted as successful validation.
+- Three subsequent isolated four-LP AArch64/TCG runs passed **19 tests,
+  0 failed, 0 pending**, including both scoped launches' fifteen-bit mask
+  (`0x7fff`). The final run retired concurrent cancellation traffic after
+  4,492 requests. The first post-fix run also captured a steady-state debugger
+  snapshot with all four LPs in their idle loops and interrupts unmasked;
+  that snapshot does not establish the cause of the earlier stall.
+- Workspace formatting and diff checks passed.
+
+No allocator-failure injection, exhaustive cross-LP interleaving, x86-64 guest,
+hostile-pressure soak or PDF rebuild was performed. Dedicated storage and ports
+were used; existing soak guests/stores were not modified.
+
+The final guest capture's kernel SHA-256 is
+`a18d20679e8ac309c9b6189c1a289829b3847ccda19e6455c481285800db6596`.
+Evidence is in `/private/tmp/charlotte-security-ipc-waiters-repeat2-run.log`,
+`/private/tmp/charlotte-security-ipc-waiters-repeat2-20261004-serial.log`,
+`/private/tmp/charlotte-security-ipc-waiters-atomic-run.log`,
+`/private/tmp/charlotte-security-ipc-waiters-repeat1-run.log`,
+`/private/tmp/charlotte-security-ipc-waiters-atomic-20261004-debug-snapshot-lldb.log`,
+`/private/tmp/charlotte-security-ipc-waiters-host-tests.log`, and the
+`/private/tmp/charlotte-security-ipc-waiters-*-clippy.log`/`*-services.log` files.

@@ -91,7 +91,9 @@ and weak-only Arc/control-block allocations are not separately charged here.
 In particular, a weak reference can retain allocation storage after the strong
 object's fields and charge have dropped. Observer cancellation/reclamation and
 fallible metadata allocation still require hardening. Endpoint-close registrations
-now have their own owning list and admission; other observer paths remain open.
+now have their own owning list and admission. Completion/CQ/IPC scheduler
+waiters also have [separate owning admission](scheduler-waiter-budgets.md);
+legacy timer/lock/raw-callback paths and general weak-only backing remain open.
 Per-principal totals
 across domains, typed deployment limits and userspace counters remain future
 work. SEC-07 is partial; no hostile-workload containment guarantee is made.

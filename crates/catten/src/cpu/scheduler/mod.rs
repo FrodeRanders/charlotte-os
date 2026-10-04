@@ -363,6 +363,8 @@ pub fn sleep_millis(milliseconds: u64) {
 /// Returns `false` if the condition is still false at timeout or waiter
 /// admission failure. Owned sources cancel the competing registration when
 /// the thread becomes Ready. Legacy sources still need stale-observer cleanup.
+/// `condition` must be a short, non-parking check: the lost-wake recheck runs
+/// under a local interrupt mask, which is released before yielding.
 pub fn block_until(
     observable: &dyn Observable,
     timeout_ms: u64,
@@ -391,6 +393,9 @@ pub fn block_until(
         let Some(tid) = tid else {
             return condition();
         };
+        // Do not let a quantum switch out a newly Blocked thread before its
+        // watchdog is queued. Early rejection restores IRQ state through Drop.
+        let setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
         let generation = match SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
             tid,
             observable,
@@ -420,6 +425,7 @@ pub fn block_until(
         if condition() {
             let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
         }
+        drop(setup);
         yield_lp();
 
         // Observable notification may have won. Do not retain the unused

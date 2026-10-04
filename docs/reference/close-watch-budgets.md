@@ -89,10 +89,10 @@ its normal result. A short timer verifies recovery. The security mask is now
 `0x7fff`. No allocator-failure injection or exhaustive cross-LP interleaving
 test is claimed.
 
-Completion/CQ scheduler waiters now use
+Completion/CQ and endpoint-readiness/pending-call scheduler waiters now use
 [fallible owned registration](scheduler-waiter-budgets.md) with admission before
-parking. Endpoint-readiness and pending-call waiters, thread-exit observers,
-watchdogs and other observer paths still use the old registration API. Its void
+parking. Thread-exit observers, watchdogs, lock/timer and other observer paths
+still use the old registration API. Its void
 return cannot safely be replaced with silent bounded rejection: that would lose
 a parked thread's wake source. Their adoption needs integrated admission, owned
 cancellation and separate storage accounting. General

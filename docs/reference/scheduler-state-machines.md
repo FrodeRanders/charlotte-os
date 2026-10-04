@@ -41,10 +41,11 @@ Any live state ── abort_thread_generation(tid, generation)
 | T5 | Queued handles and asynchronous Wakers carry a `generation`; dispatch and wake admission reject stale generations after slot reuse. |
 | T6 | `add_thread()` for an already-`Running` or already-`Ready` thread is a benign no-op (aggregated wakes before the thread parks). |
 | T7 | When the wake source does not exist before `block_thread()` (for example `sleep()`), publishing `Blocked` and installing that wake source form one local non-preemptible transaction. |
+| T7a | Timed waits mask local IRQs through `Blocked` publication, watchdog enqueue and the condition recheck. The local mask restores the entry state on rejection and is dropped before yielding; an external observable may never notify. |
 | T8 | Delayed cancellation and cleanup carry `(tid, generation)`; a stale request cannot retire a newer thread that reused the numeric TID. |
 | T9 | Domain quiescence requires an unchanged retirement epoch across the live/staged table snapshots and no retirement in flight. The reaper retains its retirement guard while threads are held in its local vector, through deferred reinsertion and final resource release. |
 | T10 | Fallible waiter admission precedes queue removal and `Blocked` publication. Failure leaves state, queue membership and constraints unchanged; an immediate-ready outcome does not park. |
-| T11 | Ready admission cancels an owned completion/CQ registration even if another strong Waker survives. Reaping a Blocked thread cancels it as well; detached batches retain their own admission until released. |
+| T11 | Ready admission cancels an owned completion/CQ/IPC registration even if another strong Waker survives. Reaping a Blocked thread cancels it as well; detached batches retain their own admission until released. |
 
 ### Lock order for transitions
 

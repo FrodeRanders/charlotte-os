@@ -1785,6 +1785,7 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
     };
 
     // Block on the completion.
+    let setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
     let generation = match SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
         tid,
         completion.as_ref(),
@@ -1821,6 +1822,7 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
         let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
     }
 
+    drop(setup);
     yield_lp();
 
     // Completion may have won before the deadline. Cancel the watchdog so it

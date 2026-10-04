@@ -2006,6 +2006,8 @@ pub fn wait_on_cq_timeout(
         asid,
         cq,
     };
+    // Publishing Blocked and installing its watchdog must be non-preemptible.
+    let setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
     let generation = match SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
         tid,
         &observable,
@@ -2036,6 +2038,7 @@ pub fn wait_on_cq_timeout(
         }
     }
 
+    drop(setup);
     yield_lp();
 
     // A CQ notification may win before the deadline. Remove its now-useless

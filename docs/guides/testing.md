@@ -137,6 +137,15 @@ Host owner tests check retry and Drop after timed admission failure. Legacy
 observer paths and allocator-failure injection remain outside this coverage.
 See [scheduler waiter budgets](../reference/scheduler-waiter-budgets.md).
 
+IPC waiter tests also leave the scoped mask unchanged. They cover source
+ceilings, 512 cancel/rearm cycles, reentrant notification after message/reply/
+source closure, reply-token cancellation, revocation of a live loan and retired
+sponsorship. The scheduled verifier checks 64 reply/readiness timeout cycles,
+non-mutating full-source rejection, and forces untimed receive/reply recovery
+by withholding the helper's message/reply until an admission retry is recorded.
+The reply helper checks that its loan is still available before replying and
+the caller checks it is revoked on return. These are kernel-only fixtures.
+
 The scoped application verifier does not force ASID reuse, restart the grant
 controller, inject allocation failures or prove many-client fairness. It does
 not exercise the complete S3/Raft release pipeline with independent roots, or

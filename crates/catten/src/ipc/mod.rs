@@ -13,9 +13,14 @@ use alloc::{
     },
     vec::Vec,
 };
-use core::ops::BitOr;
+use core::{
+    ops::BitOr,
+    sync::atomic::{
+        AtomicU64,
+        Ordering,
+    },
+};
 
-use concurrent_queue::ConcurrentQueue;
 use spin::LazyLock;
 
 use crate::{
@@ -23,7 +28,14 @@ use crate::{
     klib::observer::{
         Observable,
         Observer,
-        registration::ObserverList,
+        WaitRegistration,
+        WaitSponsor,
+        registration::{
+            NotificationBatch,
+            ObserverList,
+            RegistrationError,
+        },
+        waiter_budget,
     },
     memory::{
         AddressSpaceId,
@@ -32,6 +44,15 @@ use crate::{
 };
 
 pub(crate) mod budget;
+pub(crate) mod waiter_tests;
+
+type WaiterList = Arc<ObserverList<waiter_budget::Charge>>;
+type WaitNotifications = NotificationBatch<waiter_budget::Charge>;
+
+/// Debugger-visible cooperative admission retries: readable wait, reply wait.
+/// Diagnostic counters only; they grant no authority and do not drive policy.
+#[unsafe(no_mangle)]
+pub static IPC_WAIT_ADMISSION_RETRIES: [AtomicU64; 2] = [const { AtomicU64::new(0) }; 2];
 
 pub type CapabilityId = u64;
 type EndpointId = u64;
@@ -217,7 +238,7 @@ struct Endpoint {
     queue: budget::AdmittedQueue<QueuedMessage>,
     /// Threads waiting for the endpoint to become readable. These observers
     /// fire on message arrival and endpoint closure.
-    readiness_observers: ConcurrentQueue<Weak<dyn Observer>>,
+    readiness_observers: WaiterList,
     /// Lifecycle observers installed through `watch_connection_closed`.
     /// Unlike readiness observers, ordinary message delivery must not wake
     /// these: they fire exclusively when the endpoint closes.
@@ -245,12 +266,40 @@ struct ReplyToken {
 struct PendingCall {
     caller: AddressSpaceId,
     result: Option<ReplyValue>,
-    observers: ConcurrentQueue<Weak<dyn Observer>>,
+    observers: WaiterList,
     /// Set once the caller has seen the result through `poll_reply`. From
     /// that point the returned connection/memory capabilities belong to the
     /// caller, and closing the pending-call cap no longer revokes them
     /// (state `ResultObserved` in the operation state machine).
     observed: bool,
+}
+
+impl PendingCall {
+    /// Prepare before attachment transfer or publishing any call capability.
+    fn try_new(caller: AddressSpaceId) -> Result<Self, IpcError> {
+        Ok(Self {
+            caller,
+            result: None,
+            observers: ObserverList::try_new(waiter_budget::SOURCE_LIMIT)
+                .map_err(|_| IpcError::ResourceLimit)?,
+            observed: false,
+        })
+    }
+}
+
+impl Drop for PendingCall {
+    fn drop(&mut self) {
+        // A retained token must not retain an entry after source destruction.
+        // Normal close detaches and notifies outside IPC before this runs.
+        drop(self.observers.close());
+    }
+}
+
+impl Drop for Endpoint {
+    fn drop(&mut self) {
+        drop(self.readiness_observers.close());
+        drop(self.close_observers.close());
+    }
 }
 
 #[derive(Debug)]
@@ -385,6 +434,8 @@ pub fn endpoint_create(
     let close_observers =
         ObserverList::try_new(crate::completion::watch_budget::MAX_ENDPOINT_WATCHES)
             .map_err(|_| IpcError::ResourceLimit)?;
+    let readiness_observers =
+        ObserverList::try_new(waiter_budget::SOURCE_LIMIT).map_err(|_| IpcError::ResourceLimit)?;
     let endpoint = ipc.alloc_endpoint();
     ipc.endpoints.insert(
         endpoint,
@@ -396,7 +447,7 @@ pub fn endpoint_create(
             high_water: 0,
             queue,
             metadata_charge,
-            readiness_observers: ConcurrentQueue::unbounded(),
+            readiness_observers,
             close_observers,
             closed: false,
             notify_cq: None,
@@ -726,16 +777,9 @@ pub fn scalar_call(
         endpoint.owner
     };
 
+    let pending = PendingCall::try_new(caller)?;
     let call = ipc.alloc_call();
-    ipc.pending_calls.insert(
-        call,
-        PendingCall {
-            caller,
-            result: None,
-            observers: ConcurrentQueue::unbounded(),
-            observed: false,
-        },
-    );
+    ipc.pending_calls.insert(call, pending);
     let call_cap = ipc.as_caps(caller).insert(
         caller,
         Capability::PendingCall {
@@ -841,6 +885,7 @@ fn scalar_call_with_connection_impl(
     };
 
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
+    let pending = PendingCall::try_new(caller)?;
     let server_memory_cap = if let Some(memory_cap) = copied_memory {
         Some(
             crate::memory::object::copy_to(caller, memory_cap, server)
@@ -858,15 +903,7 @@ fn scalar_call_with_connection_impl(
     );
 
     let call = ipc.alloc_call();
-    ipc.pending_calls.insert(
-        call,
-        PendingCall {
-            caller,
-            result: None,
-            observers: ConcurrentQueue::unbounded(),
-            observed: false,
-        },
-    );
+    ipc.pending_calls.insert(call, pending);
     let call_cap = ipc.as_caps(caller).insert(
         caller,
         Capability::PendingCall {
@@ -920,19 +957,12 @@ pub fn scalar_call_with_memory_move(
     }
 
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
+    let pending = PendingCall::try_new(caller)?;
     let server_memory_cap = crate::memory::object::move_to(caller, memory_cap, server)
         .map_err(|_| IpcError::MemoryTransferFailed)?;
 
     let call = ipc.alloc_call();
-    ipc.pending_calls.insert(
-        call,
-        PendingCall {
-            caller,
-            result: None,
-            observers: ConcurrentQueue::unbounded(),
-            observed: false,
-        },
-    );
+    ipc.pending_calls.insert(call, pending);
     let call_cap = ipc.as_caps(caller).insert(
         caller,
         Capability::PendingCall {
@@ -984,19 +1014,12 @@ pub fn scalar_call_with_memory_copy(
     }
 
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
+    let pending = PendingCall::try_new(caller)?;
     let server_memory_cap = crate::memory::object::copy_to(caller, memory_cap, server)
         .map_err(|_| IpcError::MemoryTransferFailed)?;
 
     let call = ipc.alloc_call();
-    ipc.pending_calls.insert(
-        call,
-        PendingCall {
-            caller,
-            result: None,
-            observers: ConcurrentQueue::unbounded(),
-            observed: false,
-        },
-    );
+    ipc.pending_calls.insert(call, pending);
     let call_cap = ipc.as_caps(caller).insert(
         caller,
         Capability::PendingCall {
@@ -1069,6 +1092,7 @@ fn scalar_call_with_memory_borrow(
     }
 
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
+    let pending = PendingCall::try_new(caller)?;
     let server_memory_cap = if writable {
         crate::memory::object::lend_write(caller, memory_cap, server)
     } else {
@@ -1077,15 +1101,7 @@ fn scalar_call_with_memory_borrow(
     .map_err(|_| IpcError::MemoryTransferFailed)?;
 
     let call = ipc.alloc_call();
-    ipc.pending_calls.insert(
-        call,
-        PendingCall {
-            caller,
-            result: None,
-            observers: ConcurrentQueue::unbounded(),
-            observed: false,
-        },
-    );
+    ipc.pending_calls.insert(call, pending);
     let call_cap = ipc.as_caps(caller).insert(
         caller,
         Capability::PendingCall {
@@ -1126,7 +1142,7 @@ fn scalar_call_with_memory_borrow(
 /// blocked endpoint receivers, plus (for CQ-bound endpoints) a coalesced
 /// readiness wake on the owner's completion queue.
 struct Delivery {
-    observers: Vec<Weak<dyn Observer>>,
+    observers: WaitNotifications,
     cq_wake: Option<(AddressSpaceId, crate::completion::CqId)>,
 }
 
@@ -1134,7 +1150,7 @@ fn deliver(delivery: Delivery) {
     if let Some((asid, cq)) = delivery.cq_wake {
         crate::completion::wake(asid, cq);
     }
-    signal_observers(delivery.observers);
+    delivery.observers.notify();
 }
 
 fn enqueue_scalar(
@@ -1215,7 +1231,7 @@ fn enqueue_message(
         None
     };
     Ok(Delivery {
-        observers: drain_observers(&endpoint.readiness_observers),
+        observers: endpoint.readiness_observers.drain(),
         cq_wake,
     })
 }
@@ -1309,14 +1325,28 @@ pub fn wait_readable(receiver: AddressSpaceId, endpoint_cap: CapabilityId) -> Re
     let observable = EndpointObservable {
         endpoint: endpoint_id,
     };
-    let generation = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
-        .read()
-        .block_thread_with_constraint_generation(
-            tid,
-            &observable,
-            crate::cpu::scheduler::threads::MigrationConstraint::EndpointWait,
-        )
-        .map_err(|_| IpcError::NoMessage)?;
+    let generation = loop {
+        if endpoint_is_readable_or_closed(endpoint_id)? {
+            return Ok(());
+        }
+        let registration = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+            .read()
+            .block_thread_with_constraint_generation(
+                tid,
+                &observable,
+                crate::cpu::scheduler::threads::MigrationConstraint::EndpointWait,
+            );
+        match registration {
+            Ok(generation) => break generation,
+            Err(crate::cpu::scheduler::system_scheduler::Error::WaitRegistrationFailed) => {
+                // Preserve the untimed receive contract under pressure without
+                // parking after a rejected registration or killing the service.
+                IPC_WAIT_ADMISSION_RETRIES[0].fetch_add(1, Ordering::Relaxed);
+                crate::cpu::scheduler::yield_lp();
+            }
+            Err(_) => return Err(IpcError::NoMessage),
+        }
+    };
 
     // Lost-wake guard: if a sender enqueued after the fast-path check but
     // before observer registration completed, re-admit the thread immediately.
@@ -1456,11 +1486,21 @@ pub fn watch_connection_closed(
 }
 
 impl Observable for EndpointObservable {
-    fn register_observer(&self, observer: Weak<dyn Observer>) {
+    fn register_observer(&self, _observer: Weak<dyn Observer>) {
+        unreachable!("private endpoint observable requires owning waiter registration");
+    }
+
+    fn try_register_waiter(
+        &self,
+        observer: Weak<dyn Observer>,
+        sponsor: &WaitSponsor,
+    ) -> Result<WaitRegistration, RegistrationError> {
         let ipc = IPC.read();
-        if let Some(endpoint) = ipc.endpoints.get(&self.endpoint) {
-            let _ = endpoint.readiness_observers.push(observer);
+        let endpoint = ipc.endpoints.get(&self.endpoint).ok_or(RegistrationError::Closed)?;
+        if endpoint.closed || !endpoint.queue.is_empty() {
+            return Ok(WaitRegistration::ready());
         }
+        sponsor.register(&endpoint.readiness_observers, observer)
     }
 }
 
@@ -1508,7 +1548,7 @@ fn complete_reply(
     result: i64,
     returned_connection: Option<(EndpointId, ConnectionRights)>,
     returned_memory: Option<MemoryObjectCap>,
-) -> Result<Vec<Weak<dyn Observer>>, IpcError> {
+) -> Result<WaitNotifications, IpcError> {
     let token_id = match ipc.cap(server, reply_cap)? {
         Capability::ReplyToken {
             token,
@@ -1556,7 +1596,7 @@ fn complete_reply(
         cap: returned_cap,
         memory: returned_memory_cap,
     });
-    let observers = drain_observers(&call.observers);
+    let observers = call.observers.close();
     let _ = ipc.remove_cap(server, reply_cap);
     Ok(observers)
 }
@@ -1604,14 +1644,25 @@ pub fn wait_reply(caller: AddressSpaceId, call_cap: CapabilityId) -> Result<(), 
             .lock()
             .get_tid()
             .ok_or(IpcError::NoMessage)?;
-        let generation = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+        let registration = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
             .read()
             .block_thread_with_constraint_generation(
                 tid,
                 &observable,
                 crate::cpu::scheduler::threads::MigrationConstraint::GeneralWait,
-            )
-            .map_err(|_| IpcError::NoMessage)?;
+            );
+        let generation = match registration {
+            Ok(generation) => generation,
+            Err(crate::cpu::scheduler::system_scheduler::Error::WaitRegistrationFailed) => {
+                // A borrowed PendingCall must retain its borrow until reply
+                // or cancellation revokes the server's access. Do not let
+                // admission pressure masquerade as a terminal wait result.
+                IPC_WAIT_ADMISSION_RETRIES[1].fetch_add(1, Ordering::Relaxed);
+                crate::cpu::scheduler::yield_lp();
+                continue;
+            }
+            Err(_) => return Err(IpcError::NoMessage),
+        };
 
         // Close the check/register race. Notifications are hints rather than
         // proof that this particular pending call completed, so after every
@@ -1639,8 +1690,8 @@ pub fn wait_reply(caller: AddressSpaceId, call_cap: CapabilityId) -> Result<(), 
 
 /// Block the calling thread until the pending call's reply arrives or
 /// `timeout_ms` elapses. Returns `true` if the reply is ready, `false` on
-/// timeout. Like [`wait_reply`], this parks the thread on the pending-call
-/// observable (event-driven) with a timer watchdog, so a caller that must
+/// timeout or failed waiter admission. Like [`wait_reply`], this parks the thread on the
+/// pending-call observable (event-driven) with a timer watchdog, so a caller that must
 /// fail loudly on a hang can assert on the result instead of busy-polling
 /// with `yield_lp`.
 pub fn wait_reply_timeout(
@@ -1688,11 +1739,21 @@ struct PendingCallObservable {
 }
 
 impl Observable for PendingCallObservable {
-    fn register_observer(&self, observer: Weak<dyn Observer>) {
+    fn register_observer(&self, _observer: Weak<dyn Observer>) {
+        unreachable!("private pending-call observable requires owning waiter registration");
+    }
+
+    fn try_register_waiter(
+        &self,
+        observer: Weak<dyn Observer>,
+        sponsor: &WaitSponsor,
+    ) -> Result<WaitRegistration, RegistrationError> {
         let ipc = IPC.read();
-        if let Some(call) = ipc.pending_calls.get(&self.call) {
-            let _ = call.observers.push(observer);
+        let call = ipc.pending_calls.get(&self.call).ok_or(RegistrationError::Closed)?;
+        if call.result.is_some() {
+            return Ok(WaitRegistration::ready());
         }
+        sponsor.register(&call.observers, observer)
     }
 }
 
@@ -1722,7 +1783,7 @@ fn endpoint_referenced(ipc: &IpcRegistry, endpoint: EndpointId) -> bool {
 
 pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError> {
     let mut ipc = IPC.write();
-    let mut observers = Vec::new();
+    let mut observers = WaitNotifications::empty();
     let mut cq_wake = None;
     let mut close_watches = None;
     match ipc.remove_cap(asid, cap)? {
@@ -1735,7 +1796,7 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
                     budget::AdmittedQueue::default()
                 } else {
                     endpoint.closed = true;
-                    observers.extend(drain_observers(&endpoint.readiness_observers));
+                    observers.append(endpoint.readiness_observers.close());
                     close_watches = Some(endpoint.close_observers.close());
                     // A CQ-bound endpoint reports its closure as a readiness
                     // wake so a reactor blocked on one CQ wait observes it.
@@ -1767,7 +1828,7 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
         } => {
             if let Some(pending) = ipc.pending_calls.remove(&call) {
                 // A thread parked in wait_reply holds its only waker here.
-                observers.extend(drain_observers(&pending.observers));
+                observers.append(pending.observers.close());
                 if let Some(reply) = pending.result {
                     // Revoke undelivered results only. Once the caller has
                     // observed the reply, the returned capabilities are its
@@ -1831,20 +1892,8 @@ pub(crate) fn connection_close_watch_count(
         .registered())
 }
 
-fn drain_observers(queue: &ConcurrentQueue<Weak<dyn Observer>>) -> Vec<Weak<dyn Observer>> {
-    let mut observers = Vec::new();
-    while let Ok(observer) = queue.pop() {
-        observers.push(observer);
-    }
-    observers
-}
-
-fn signal_observers(observers: Vec<Weak<dyn Observer>>) {
-    for observer in observers {
-        if let Some(observer) = observer.upgrade() {
-            observer.notify();
-        }
-    }
+fn signal_observers(observers: WaitNotifications) {
+    observers.notify();
 }
 
 pub fn close_address_space(asid: AddressSpaceId) {
@@ -1884,7 +1933,7 @@ fn consume_reply_token(
     ipc: &mut IpcRegistry,
     token: ReplyTokenId,
     result: i64,
-    observers: &mut Vec<Weak<dyn Observer>>,
+    observers: &mut WaitNotifications,
 ) {
     if let Some(token) = ipc.reply_tokens.remove(&token) {
         if let Some(borrow) = token.borrow {
@@ -1896,7 +1945,7 @@ fn consume_reply_token(
                 cap: None,
                 memory: None,
             });
-            observers.extend(drain_observers(&call.observers));
+            observers.append(call.observers.close());
         }
     }
 }
@@ -2093,20 +2142,13 @@ pub fn vector_call(
         return Err(IpcError::PermissionDenied);
     }
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
+    let pending = PendingCall::try_new(caller)?;
 
     let mut memory_caps = Vec::new();
     let mut applied = read_vector_page(caller, cap_vector, server, true, &mut memory_caps)?;
 
     let call = ipc.alloc_call();
-    ipc.pending_calls.insert(
-        call,
-        PendingCall {
-            caller,
-            result: None,
-            observers: ConcurrentQueue::unbounded(),
-            observed: false,
-        },
-    );
+    ipc.pending_calls.insert(call, pending);
     let call_cap = ipc.as_caps(caller).insert(
         caller,
         Capability::PendingCall {

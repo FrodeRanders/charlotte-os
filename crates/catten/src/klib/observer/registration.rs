@@ -157,6 +157,24 @@ impl<C> Drop for Registration<C> {
 pub(crate) struct NotificationBatch<C>(Option<Entry<C>>);
 
 impl<C> NotificationBatch<C> {
+    pub(crate) const fn empty() -> Self {
+        Self(None)
+    }
+
+    /// Combine detached batches without allocation. Traversal is bounded by
+    /// the appended source batch; notification order is not an IPC contract.
+    pub(crate) fn append(&mut self, mut other: Self) {
+        let Some(mut head) = other.0.take() else {
+            return;
+        };
+        let mut tail = &mut head;
+        while tail.node.next.is_some() {
+            tail = tail.node.next.as_mut().unwrap();
+        }
+        tail.node.next = self.0.take();
+        self.0 = Some(head);
+    }
+
     pub(crate) fn notify(mut self) {
         while let Some(mut entry) = self.0.take() {
             self.0 = entry.node.next.take();

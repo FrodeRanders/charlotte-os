@@ -41,6 +41,35 @@ record until the last reference disappears. Late cleanup after ASID reuse
 credits only the old generation. Connection, reply-token, pending-call and
 observer metadata still need separate aggregate admission.
 
+\subsection{Receive and reply waiter admission}
+
+Threads waiting for endpoint readiness or a pending-call reply use removable,
+generation-sponsored registrations. Each source links at most 64 entries. They share
+the completion/CQ waiter pools: 1,024 entries per waiting domain, 8,192 per node
+and an ordinary share of 6,144. Sponsorship follows the waiting thread, not the
+endpoint owner. Admission precedes scheduler parking; message or reply state
+that is already ready returns without retaining an entry.
+
+Ready admission or thread reaping cancels the owning registration. IPC detaches
+message, reply and source-closure notifications under its registry lock and
+invokes them only after releasing that lock. Endpoint closure can combine
+receiver and queued-call batches without allocating a callback vector. Entries
+remain charged until their detached storage is actually freed.
+Detached batches no longer occupy the source's linked count; they still occupy
+the shared domain/node pools while a reusable readiness list is rearmed.
+
+Untimed receive and reply waits retry cooperatively when admission is full. A
+reply wait preserves the pending call and its memory loan until reply or explicit
+cancellation revokes receiver access. The existing Rust owners need no manual
+unregister step. Kernel timed reply waits can return without a reply on deadline
+or admission rejection; neither event by itself ends a loan.
+
+Readiness lists and pending-call lists are prepared fallibly before source
+publication. Call preparation precedes memory transfer, lending and delegated
+connection attachments, so failure at this stage leaves those inputs untouched.
+Connection, reply-token and pending-call records, list control blocks and other
+kernel metadata still need comprehensive admission.
+
 \section{Message classes}
 
 The ABI distinguishes two message classes:

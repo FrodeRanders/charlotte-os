@@ -80,7 +80,7 @@ is full, drops the owning batch and completes 128 create/drop cycles.
 Host tests check multidimensional overflow/underflow and atomic rejection.
 
 These controls do not bound the complete capability namespace, connections,
-pending calls, reply tokens, observer lists, attachment vectors, all completion
+pending-call records, reply tokens, general observer storage, attachment vectors, all completion
 metadata, loader/page tables or the entire kernel heap. Separate
 [record budgets](completion-record-budgets.md) cover retained completion objects
 and detached results. Allocation of registry
@@ -88,3 +88,8 @@ and capability metadata is still infallible. No allocator-failure injection,
 sustained hostile-pressure soak or per-principal aggregate across multiple
 domains is claimed. SEC-07 remains partially implemented; deployment still
 requires the [security audit's restrictions](../reports/audits/2026-10-03-security-remediation.md).
+
+Endpoint-readiness and pending-call **waiter entries** now have separate
+[shared scheduler admission](scheduler-waiter-budgets.md) and owning cancellation.
+Their source-list allocation is fallible before attachment transfer; that does
+not yet bound pending-call/reply-token/connection record counts or all metadata.
