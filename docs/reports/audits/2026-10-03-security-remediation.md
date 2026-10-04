@@ -32,6 +32,11 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-15 | Mitigated | SigV4 prefixed secret, derived keys, HMAC block/pads and inner digest use zeroizing owners. TLS record buffers are wiped after dropping their borrower, including handshake failure. This is not a complete audit of crypto-library state or compiler-created secret copies. |
 | SEC-16 | Implemented | grantctl polls bounded concurrent operations with per-sender/generation limits and total deadlines. Non-parking authorized lookup avoids a shared name-service waitlist leak. Acquisition retries and publication waits have total deadlines. A two-application cancellation stress and silent-endpoint publication timeout pass in the guest; many-client fairness and controller-replacement testing remain. |
 
+SEC-07 also includes fixed per-route IRQ readiness storage: repeated or retired
+deliveries cannot exhaust a shared wake queue, and deferred route validation/CQ
+publication is lifecycle-fenced. This does not close aggregate kernel metadata
+accounting or establish interrupt-controller/scheduler progress guarantees.
+
 ## Enforced contracts
 
 ### User virtual addresses
@@ -1529,3 +1534,87 @@ Evidence is in `/private/tmp/charlotte-security-callback-verified-run.log`,
 No physical allocator exhaustion, exhaustive IRQ/teardown exploration,
 x86-64 guest or hostile-pressure soak was performed. Dedicated storage and
 forwarded ports were used; existing soak guests/stores were untouched.
+
+## 2026-10-04 continuation — per-route IRQ readiness and exact CQ wake preparation
+
+The owning callback/waiter changes are committed as `5e7b0a10`. Reviewing
+remaining kernel work queues found that the deferred-work manager still has an
+uninhabited task enum and no submit/worker callers; its unbounded placeholder
+is not an active remotely driven queue. It was not presented as a new fixed
+security defect. Any future usable task path still needs bounded admission.
+
+The active device IRQ handoff did have a defect: every delivery pushed into a
+shared bounded FIFO, with ignored push failure and a comment asserting that a
+full queue already contained an equivalent wake. Repeated deliveries or stale
+generations can occupy that capacity without preserving another route's wake.
+The replacement gives every routing slot one static 64-bit coalescing mailbox:
+288 on AArch64, 476 on x86-64. It allocates nothing at runtime and has no shared
+capacity admission/drop path. One bounded sweep prevents a producer from
+indefinitely refilling the current drain pass. This introduces a fixed scan
+cost; no throughput improvement was measured or claimed.
+
+Claims retain the generation watermark. Bind/retirement advances it so a late
+old publisher cannot overwrite new pending readiness or resurrect a retired
+generation. Binding preserves a retirement identity and fails with device
+status 16 before 63-bit exhaustion; retirement cannot wrap into a live identity.
+Individual close already held the device guard through unroute; whole-domain
+teardown now does so too, before another grant can reclaim the source.
+
+The old drain also checked generation separately from destination lookup and
+CQ publication, leaving a route-replacement window. It now validates and calls
+`completion::prepare_wake` under the device-management guard. Preparation bumps
+work generation and detaches the exact queue's waiters under one completion
+registry guard; notification runs only after all subsystem guards are released.
+Ordinary explicit CQ wakes use that same preparation path, avoiding a second
+numeric lookup after publication. Captured original waiters can still notify
+after retirement, as detached notification already permits; replacement
+waiters/work generation are not selected by that captured batch.
+
+The [IRQ wake reference](../../reference/interrupt-wake-storage.md), architecture,
+locking/scheduler references, testing guide and LaTeX driver chapter describe
+these guarantees. Incorrect current documentation claiming full-queue drops
+were safe was removed. The existing single-route TLA+ conformance entry is now
+explicit about its abstraction: it does not prove the mailbox algorithm,
+capacity, exhaustion or controller MMIO. No new formal model was checked.
+
+Validation:
+
+- Host tests passed, including six new tests of the **production mailbox
+  primitive**: independent-slot flooding, retirement/rebind and delayed old
+  publication, publication after claim, generation exhaustion, concurrent stale
+  publishers and competing consumers. These are not exhaustive weak-memory
+  interleaving exploration.
+- Strict AArch64 and x86-64 kernel Clippy passed with `-D warnings`, both before
+  and after adding the final IRQ callback fixture. The guest runners built the
+  bundled AArch64 services; service/runtime implementations are unchanged.
+- The kernel device fixture floods real delivery beyond twice the previous
+  queue capacity, retires/rebinds the source, checks stale-readiness rejection
+  and a fresh wake/ack. Other LPs may drain during this integration fixture;
+  independent-slot coalescing is checked deterministically by the host test.
+- A prepared-CQ fixture detaches a wake, retires/reopens the exact numeric
+  namespace, registers a replacement waiter and verifies that the captured
+  batch changes neither its work generation nor its notification count. The
+  final IRQ fixture invokes a callback through actual deferred dispatch that
+  reenters device/completion registries. It waits for a potentially competing
+  LP's in-flight claim rather than assuming its local drain wins.
+- Two preliminary isolated four-LP AArch64/TCG security guests passed **19/19**.
+  The final implementation, including the reentrant IRQ callback fixture,
+  passed a further guest: **19 tests, 0 failed, 0 pending**, with both scoped
+  launches retaining `0x7fff`. Concurrent cancellation traffic retired after
+  4,420 requests. No failed guest run occurred in this continuation.
+- Workspace formatting and diff checks passed. The PDF was not rebuilt.
+
+The final guest kernel SHA-256 is
+`38a155332b759ad64aa102f4ede14ff8ba087b990d5275ecb38a3f13baa8e688`.
+Evidence is in `/private/tmp/charlotte-security-irq-mailbox-host-tests.log`,
+`/private/tmp/charlotte-security-irq-mailbox-run.log`,
+`/private/tmp/charlotte-security-irq-mailbox-repeat-run.log`,
+`/private/tmp/charlotte-security-irq-mailbox-final-run.log`,
+the corresponding `charlotte-security-irq-mailbox-*-20261004-serial.log` files,
+and `/private/tmp/charlotte-security-irq-mailbox-*-kernel-clippy.log`.
+No physical allocator exhaustion, x86-64 guest, hardware IRQ stress,
+exhaustive cross-LP masking/rearming or hostile-pressure soak was performed.
+Dedicated storage and forwarded ports were used; existing soak guests/stores
+were untouched. SEC-07 remains partial: capability namespace/loader/heap/page
+tables, arbitrary callback captures and broader kernel metadata still need
+admission/accounting work; the other open audit findings remain open.

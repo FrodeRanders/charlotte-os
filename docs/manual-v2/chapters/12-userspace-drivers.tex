@@ -75,17 +75,25 @@ When the interrupt fires:
     \item It masks the source at the interrupt controller (GICv3 on AArch64,
         x2APIC on x86-64).
     \item It atomically bumps a coalescing counter.
-    \item It pushes a wake onto a deferred queue. The actual
-        \texttt{completion::wake} (which takes locks) is performed from
-        thread context by \texttt{yield\_lp} and the LP idle loop.
+    \item It marks the route's statically initialized readiness mailbox.
+        Repeated deliveries coalesce without consuming another route's slot.
+        Thread context in \texttt{yield\_lp} and the LP idle loop performs
+        the deferred CQ publication.
     \item The driver's shard wakes.
     \item The driver reads the device's status register (direct EL0 MMIO) to
         determine the interrupt cause.
     \item The driver processes the interrupt and unmasks the source.
 \end{enumerate}
 
-The interrupt path performs an atomic counter update and deferred-wake enqueue;
-thread context performs the remaining work.
+The interrupt path uses atomics and controller MMIO, without allocation or
+registry locks. Each route's mailbox retains a generation watermark after
+readiness is claimed, preventing a delayed old publisher from replacing a
+new lifetime's wake. Thread context validates the route and publishes CQ work
+under the device-management guard, detaches the exact queue's waiters and
+releases all subsystem guards before notification. Route teardown precedes
+release of source ownership. Exhausted binding identities fail closed rather
+than wrapping. These are storage and deferred-publication guarantees, not a
+proof of every cross-LP controller mask/rearm interleaving.
 
 \section{The reference UART driver}
 

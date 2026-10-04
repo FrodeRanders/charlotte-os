@@ -1,6 +1,7 @@
-//! Pure, host-testable lifecycle decisions used at kernel/userspace boundaries.
+//! Host-testable lifecycle decisions and primitives used at kernel/userspace boundaries.
 #![no_std]
 
+pub mod irq;
 pub mod resources;
 
 /// Convert a relative tick count without truncation or deadline wrap. An

@@ -189,7 +189,6 @@ pub extern "C" fn bsp_main() -> ! {
     // preemptible runtime context while execution is still BSP-only. Their
     // `spin::LazyLock` once state must never become another spin dependency on
     // a preempted initializer.
-    crate::device::prepare_interrupt_ingress();
     spin::LazyLock::force(&crate::cpu::multiprocessor::ipi::IPI_CMD_QUEUES);
     spin::LazyLock::force(&crate::deferred_work_manager::DWM);
     logln!("System initialized.");

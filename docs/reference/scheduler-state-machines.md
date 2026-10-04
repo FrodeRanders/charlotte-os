@@ -356,24 +356,29 @@ work changes the generation.
 
 **Source:** `crates/catten/src/device/mod.rs`
 
-Two-phase, crossing IRQ context → thread context without locks.
+Two-phase, crossing IRQ context → thread context through atomic mailboxes.
+Only the IRQ phase is lock-free.
 
 ```
 PHASE A (IRQ context, LOCK-FREE):
   irq_dispatcher(intid)
     → deliver_interrupt(intid)
-      → ROUTE_TABLE[intid].load()       [atomic]
+      → capture ROUTE_GENERATION + ROUTE_TABLE[slot] [atomics]
       → arch_disable_irq(intid)         [MMIO]
       → IRQ_PENDING[intid]++            [atomic]
-      → DEFERRED_WAKES.push(asid, cq)   [lock-free queue]
+      → DEFERRED_WAKES[slot].publish(generation) [atomic coalescing]
 
 PHASE B (thread context):
   yield_lp() / lp_idle_loop()
     → drain_deferred_wakes()
-      → DEFERRED_WAKES.pop() → (asid, cq)
-      → completion::wake(asid, cq)
+      → one bounded sweep of routing slots
+      → DEFERRED_WAKES[slot].claim() → captured generation
+      → validate generation/destination [DEVICES guard]
+      → completion::prepare_wake(asid, cq)
         → CqState.work_generation++     [COMPLETIONS.write()]
-        → signal_cq()                   [COMPLETIONS.read()]
+        → detach exact CQ waiter batch
+      → release registry/device guards
+      → detached batch.notify()
           → Waker::notify()
             → submit_woken_thread()
               → Thread: Blocked → Ready
@@ -384,8 +389,13 @@ PHASE B (thread context):
 | # | Invariant |
 |---|-----------|
 | D1 | `deliver_interrupt` holds **zero** kernel locks (only atomics + MMIO). |
-| D2 | `DEFERRED_WAKES` is bounded at 256. Full ⇒ equivalent wake already pending, drop is safe. |
-| D3 | `interrupt_ack()` re-arms the GIC source AND clears `IRQ_PENDING`. |
+| D2 | Each of 288 AArch64 / 476 x86-64 routing slots has one static 64-bit mailbox. Repeated readiness coalesces per slot; there is no shared queue admission/drop. |
+| D3 | `interrupt_ack()` clears `IRQ_PENDING` and re-arms the architecture interrupt source under the device-management guard. |
+| D4 | Claim retains the mailbox's watermark. A delayed older publication cannot replace newer readiness or revive a retired lifetime. |
+| D5 | Route validation and exact CQ preparation share the management guard; callbacks run only after all guards are released. |
+
+See [interrupt wake storage](interrupt-wake-storage.md) for identity exhaustion,
+scan costs and the cross-LP controller-MMIO validation boundary.
 
 ---
 

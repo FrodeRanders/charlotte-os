@@ -1285,11 +1285,17 @@ The kernel interrupt path should:
 5.  return from the exception.
 
 Repeated interrupts should coalesce where the device model permits it.
-The deferred wake record carries the interrupt route generation, not merely
-the route's numeric `(ASID, CQ)` destination. Unbinding or rebinding advances
-that generation, so an interrupt queued immediately before driver teardown is
-dropped rather than delivered to a replacement that reuses the same ASID and
-queue number.
+Each routing slot has one statically initialized, generation-tagged readiness
+mailbox. Repeated delivery coalesces within that slot; one busy source cannot
+consume another source's wake storage. The mailbox retains a generation
+watermark after a claim, so delayed old deliveries cannot replace fresh
+readiness after teardown and rebinding.
+
+Thread context validates the route and publishes CQ work while holding the
+device-management guard, then notifies detached waiters after releasing all
+subsystem guards. It never resolves a reusable numeric destination again after
+detachment. See [interrupt wake storage](../reference/interrupt-wake-storage.md)
+for bounds, generation exhaustion and the hardware-race validation boundary.
 
 ## 10.3 DMA isolation
 

@@ -1587,6 +1587,7 @@ pub mod device_status {
     pub const DMA_UNAVAILABLE: DeviceStatusCode = 13;
     pub const DMA_INVALID: DeviceStatusCode = 14;
     pub const UNMAP_FAILED: DeviceStatusCode = 15;
+    pub const ROUTE_GENERATION_EXHAUSTED: DeviceStatusCode = 16;
 }
 
 /// Map an MMIO region capability into the caller's address space at

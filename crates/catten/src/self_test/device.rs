@@ -93,6 +93,7 @@ pub fn test_device_capabilities() {
         };
 
         logln!("Testing device capabilities (MMIO regions and interrupt objects)...");
+        crate::completion::test_prepared_wake_identity();
 
         completion_open();
 
@@ -254,7 +255,11 @@ fn test_stale_interrupt_wake(old: u64) -> u64 {
     let test_interrupt = test_interrupt();
     crate::device::interrupt_bind_cq(DEV_ASID, old, 0)
         .expect("[device] stale-wake initial bind failed");
-    assert!(crate::device::deliver_interrupt(test_interrupt));
+    // Much more than the previous shared queue capacity. Each source now has
+    // one mailbox regardless of how many deliveries precede a drain.
+    for _ in 0..crate::device::TOTAL_ROUTE_SLOTS * 2 {
+        assert!(crate::device::deliver_interrupt(test_interrupt));
+    }
     crate::device::close_cap(DEV_ASID, old).expect("[device] stale-wake initial close failed");
 
     let replacement = crate::device::grant_interrupt(DEV_ASID, test_interrupt)
@@ -272,9 +277,15 @@ fn test_stale_interrupt_wake(old: u64) -> u64 {
         replacement_generation,
         "wake from retired interrupt route reached its replacement"
     );
+    crate::completion::test_irq_wake_reentrancy(DEV_ASID, test_interrupt);
+    assert!(
+        crate::completion::cq_work_generation(DEV_ASID, 0) > replacement_generation,
+        "fresh interrupt wake was lost after retiring flooded route"
+    );
+    assert_eq!(crate::device::interrupt_ack(DEV_ASID, replacement).unwrap(), 1);
     crate::device::close_cap(DEV_ASID, replacement)
         .expect("[device] stale-wake replacement close failed");
-    logln!("[device] stale deferred interrupt wake rejected after route reuse");
+    logln!("[device] flooded stale IRQ wakes retired; fresh rebound wake delivered");
     crate::device::grant_interrupt(DEV_ASID, test_interrupt)
         .expect("[device] stale-wake final interrupt grant failed")
 }

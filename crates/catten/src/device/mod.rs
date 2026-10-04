@@ -45,7 +45,6 @@ use core::sync::atomic::{
     Ordering,
 };
 
-use concurrent_queue::ConcurrentQueue;
 #[cfg(target_arch = "x86_64")]
 use iommu as dma;
 #[cfg(target_arch = "aarch64")]
@@ -118,6 +117,8 @@ pub enum DeviceError {
     InvalidAddressSpace,
     /// The requested MMIO range overflows the physical address representation.
     InvalidRange,
+    /// No fresh route lifetime can be minted without reusing an identity.
+    RouteGenerationExhausted,
     DmaUnavailable,
     DmaInvalid,
 }
@@ -196,7 +197,7 @@ static DEVICES: LazyLock<Mutex<BTreeMap<AddressSpaceId, AsDeviceCaps>>> =
 //   address space id is never 0, so a present route is always nonzero). Written by bind/close in
 //   thread context, read atomically by `deliver_interrupt`.
 // - `IRQ_PENDING`/`IRQ_COUNT` are the per-INTID coalescing counters.
-// - `DEFERRED_WAKES` carries the packed `(asid, cq)` of each delivery out of interrupt context;
+// - `DEFERRED_WAKES` has one coalescing generation mailbox per routing slot;
 //   [`drain_deferred_wakes`] performs the actual `completion::wake` (which takes locks and may wake
 //   threads) from thread context — the idle loop and cooperative yield both drain it.
 
@@ -258,26 +259,11 @@ static IRQ_PENDING: [AtomicU32; TOTAL_ROUTE_SLOTS] =
     [const { AtomicU32::new(0) }; TOTAL_ROUTE_SLOTS];
 static IRQ_COUNT: [AtomicU64; TOTAL_ROUTE_SLOTS] = [const { AtomicU64::new(0) }; TOTAL_ROUTE_SLOTS];
 
-/// Deferred `(asid, cq)` wakes queued by interrupt context, delivered by
-/// [`drain_deferred_wakes`] from thread context. Wakes coalesce (§9.4), so
-/// the bound capacity only needs to cover the number of distinct driver
-/// queues with generous headroom.
-#[derive(Clone, Copy)]
-struct DeferredWake {
-    intid: u32,
-    route_generation: u64,
-}
-
-static DEFERRED_WAKES: LazyLock<ConcurrentQueue<DeferredWake>> =
-    LazyLock::new(|| ConcurrentQueue::bounded(TOTAL_ROUTE_SLOTS));
-
-/// Force construction of interrupt-ingress state before scheduler preemption
-/// or device IRQ delivery is enabled. `spin::LazyLock` itself uses spinning;
-/// first use from a preempted/IRQ context would otherwise have the same owner
-/// progress hazard as a plain runtime spin lock.
-pub fn prepare_interrupt_ingress() {
-    LazyLock::force(&DEFERRED_WAKES);
-}
+/// Each routable interrupt owns exactly one statically initialized mailbox.
+/// Flooding one source cannot fill shared capacity and drop another source's
+/// only wake. Claims retain a generation watermark against delayed publishers.
+static DEFERRED_WAKES: [charlotte_lifecycle::irq::DeferredIrqWake; TOTAL_ROUTE_SLOTS] =
+    [const { charlotte_lifecycle::irq::DeferredIrqWake::new() }; TOTAL_ROUTE_SLOTS];
 
 fn pack_route(asid: AddressSpaceId, cq: CqId) -> u64 {
     debug_assert!(asid != 0 && u32::try_from(asid).is_ok(), "driver asid must pack into 32 bits");
@@ -765,6 +751,11 @@ pub fn interrupt_bind_cq(
         return Err(DeviceError::AlreadyBound);
     }
     let intid = irq.intid;
+    let slot = route_slot(intid).expect("[dev] bound interrupt has no routing slot");
+    let generation = charlotte_lifecycle::irq::next_binding_generation(
+        ROUTE_GENERATION[slot].load(Ordering::Acquire),
+    )
+    .ok_or(DeviceError::RouteGenerationExhausted)?;
     irq.cq = Some(cq);
     irq.target_lp = target_lp;
 
@@ -772,9 +763,9 @@ pub fn interrupt_bind_cq(
     // delivery that races the enable observes a consistent route. Keep the
     // capability-table lock through the architecture operation so a concurrent
     // close cannot remove the capability and leave an orphaned route.
-    let slot = route_slot(intid).expect("[dev] bound interrupt has no routing slot");
     IRQ_PENDING[slot].store(0, Ordering::Release);
-    ROUTE_GENERATION[slot].fetch_add(1, Ordering::AcqRel);
+    DEFERRED_WAKES[slot].advance(generation);
+    ROUTE_GENERATION[slot].store(generation, Ordering::Release);
     ROUTE_TABLE[slot].store(pack_route(asid, cq), Ordering::Release);
     arch_enable_irq(intid, target_lp);
     Ok(())
@@ -820,7 +811,11 @@ fn unroute_interrupt(intid: u32) {
         // Invalidate queued wakes before clearing the route. A delivery racing
         // these stores may enqueue either generation, but neither can match a
         // subsequently rebound route.
-        ROUTE_GENERATION[slot].fetch_add(1, Ordering::AcqRel);
+        let generation = charlotte_lifecycle::irq::retired_generation(
+            ROUTE_GENERATION[slot].load(Ordering::Acquire),
+        );
+        DEFERRED_WAKES[slot].advance(generation);
+        ROUTE_GENERATION[slot].store(generation, Ordering::Release);
         ROUTE_TABLE[slot].store(0, Ordering::Release);
     }
     arch_disable_irq(intid);
@@ -904,7 +899,16 @@ pub fn close_address_space(asid: AddressSpaceId) {
     let objects = {
         let mut devices = DEVICES.lock();
         match devices.remove(&asid) {
-            Some(caps) => caps.caps,
+            Some(caps) => {
+                // Removal must retire every route before another grant can
+                // publish the same source. Match close_cap's lock ordering.
+                for object in caps.caps.values() {
+                    if let DeviceObject::Interrupt(irq) = object {
+                        unroute_interrupt(irq.intid);
+                    }
+                }
+                caps.caps
+            }
             None => return,
         }
     };
@@ -923,7 +927,7 @@ pub fn close_address_space(asid: AddressSpaceId) {
                     }
                 }
             }
-            DeviceObject::Interrupt(irq) => unroute_interrupt(irq.intid),
+            DeviceObject::Interrupt(_) => {}
             DeviceObject::DmaDomain {
                 id,
             } => {
@@ -980,12 +984,9 @@ pub fn deliver_interrupt(intid: u32) -> bool {
         cq
     );
 
-    // Hand the coalesced readiness wake to thread context. A full queue means
-    // an equivalent wake is already pending delivery, so dropping is safe.
-    let _ = DEFERRED_WAKES.push(DeferredWake {
-        intid,
-        route_generation,
-    });
+    // No allocation, queue admission or borrowed destination in IRQ context.
+    // A delayed old publisher cannot overwrite a later lifetime's watermark.
+    DEFERRED_WAKES[slot].publish(route_generation);
     true
 }
 
@@ -996,21 +997,30 @@ pub fn deliver_interrupt(intid: u32) -> bool {
 /// nothing else to run.
 pub fn drain_deferred_wakes() -> usize {
     let mut drained = 0u32;
-    while let Ok(wake) = DEFERRED_WAKES.pop() {
-        let Some(index) = route_slot(wake.intid) else {
+    // One bounded sweep: producers cannot prolong this pass indefinitely.
+    for (index, mailbox) in DEFERRED_WAKES.iter().enumerate() {
+        let Some(generation) = mailbox.claim() else {
             continue;
         };
-        if ROUTE_GENERATION[index].load(Ordering::Acquire) != wake.route_generation {
-            continue;
+        let notification = {
+            // Fence route validation and exact CQ publication against bind,
+            // close and address-space teardown. Never invoke callbacks here.
+            let _devices = DEVICES.lock();
+            if ROUTE_GENERATION[index].load(Ordering::Acquire) != generation {
+                continue;
+            }
+            let packed = ROUTE_TABLE[index].load(Ordering::Acquire);
+            if packed == 0 {
+                continue;
+            }
+            let (asid, cq) = unpack_route(packed);
+            sched_trace!("[sched] drain-wake AS={} CQ={}", asid, cq);
+            crate::completion::prepare_wake(asid, cq)
+        };
+        if let Some(notification) = notification {
+            notification.notify();
+            drained += 1;
         }
-        let packed = ROUTE_TABLE[index].load(Ordering::Acquire);
-        if packed == 0 {
-            continue;
-        }
-        let (asid, cq) = unpack_route(packed);
-        sched_trace!("[sched] drain-wake AS={} CQ={}", asid, cq);
-        crate::completion::wake(asid, cq);
-        drained += 1;
     }
     if drained > 0 && SCHED_TRACE {
         logln!("[sched] drained {} deferred wake(s)", drained);

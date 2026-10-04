@@ -31,6 +31,13 @@ after releasing ownership; RwLock broadcasts only when its final reader leaves
 or its writer releases. This is not FIFO handoff or a fairness guarantee, and
 does not replace the interrupt-masking family in existing production paths.
 
+Device IRQ readiness uses statically initialized per-route atomic mailboxes.
+Thread-context drain takes `DEVICES → COMPLETIONS → waiter list` to validate
+the route and detach the exact queue's notification batch. All these guards
+are released before callbacks run. Individual close and address-space teardown
+retire interrupt routes under `DEVICES` before another grant can reuse them.
+See [interrupt wake storage](interrupt-wake-storage.md).
+
 ---
 
 ## 2. Interrupt-masking spin locks
@@ -123,12 +130,14 @@ context (stack spawn/teardown), never from IRQ context, so it needs no mask.
 - **`PerLp<T>`** (`spin/per_lp.rs`) — a `Box<[RwLock<T>]>`, i.e. sharded
   interrupt-masking spin rwlocks; cross-LP access via `unsafe get_nonlocal*`.
   Use when an ISR or another LP may need to touch the slot.
-- **`ConcurrentQueue`** — the only mechanism for crossing IRQ context into
-  thread context without locks: `DEFERRED_WAKES` and observer waitlists.
-  `deliver_interrupt` takes no locks (see `scheduler-state-machines.md` §8,
-  LO5).
+- **`ConcurrentQueue`** — used by per-LP IPI command ingress, among other
+  bounded handoffs. It is not the sole IRQ-to-thread mechanism. Device readiness
+  uses independent atomic mailboxes, while owning observer lists have their own
+  interrupt-masking guards and detached notification batches.
 - **`Atomic*`** — `on_cpu` byte-sized ownership handshake, generation
-  counters, and `IRQ_PENDING` counts.
+  counters, `IRQ_PENDING` counts and generation-tagged `DEFERRED_WAKES`
+  mailboxes. `deliver_interrupt` takes no locks (see
+  `scheduler-state-machines.md` §8, LO5).
 
 ---
 

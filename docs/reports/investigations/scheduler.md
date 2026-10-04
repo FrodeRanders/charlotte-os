@@ -465,11 +465,14 @@ boot tests before scheduler concurrency, but future lazily initialized runtime
 state should either be eagerly forced before enabling preemption or use an
 explicit interrupt-safe initialization mechanism.
 
-The interrupt-ingress lazy state is now explicitly prepared by the BSP before
+The interrupt-ingress lazy state was explicitly prepared by the BSP before
 secondary LP startup: the deferred device-wake queue, per-LP IPI command
-queues, and deferred-work manager are all forced while execution is
-single-threaded and non-preemptible. This prevents their first `LazyLock`
-initialization from occurring in an IRQ or ordinary preemptible runtime path.
+queues, and deferred-work manager were forced while execution was
+single-threaded and non-preemptible. The 2026-10-04 security continuation
+replaced the device queue with statically initialized per-route atomic
+mailboxes; it no longer needs a `LazyLock` initializer. The remaining queues
+are still eagerly forced, preventing first initialization in an IRQ or
+ordinary preemptible runtime path.
 Architecture-local GIC and timer structures are initialized later by each LP
 with interrupts masked, which already guarantees initializer progress.
 

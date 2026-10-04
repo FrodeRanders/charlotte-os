@@ -1976,19 +1976,152 @@ pub fn cq_work_generation(asid: AddressSpaceId, cq: CqId) -> u64 {
 /// entry was posted.  Used by userspace reactors (peer shard interrupts a
 /// blocking CQ wait) and by the IPC layer (endpoint-bound CQ wake).
 pub fn wake(asid: AddressSpaceId, cq: CqId) {
-    {
-        let mut registry = COMPLETIONS.write();
-        if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {
-            cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
-            crate::debug_trace::trace(
-                crate::debug_trace::TAG_WAKE,
-                asid as u64,
-                cq_state.work_generation,
-                cq as u64,
-            );
-        }
+    if let Some(notification) = prepare_wake(asid, cq) {
+        notification.notify();
     }
-    signal_cq(asid, cq);
+}
+
+/// Publish work and detach the exact queue's current waiters under one registry
+/// guard, without invoking them. Callers fencing another lifecycle may prepare
+/// under its guard, but must release every subsystem guard before notifying.
+/// No numeric destination is resolved again after detachment.
+pub(crate) fn prepare_wake(
+    asid: AddressSpaceId,
+    cq: CqId,
+) -> Option<
+    crate::klib::observer::registration::NotificationBatch<
+        crate::klib::observer::waiter_budget::Charge,
+    >,
+> {
+    let mut registry = COMPLETIONS.write();
+    let state = registry.get_mut(&asid)?.cqs.get_mut(&cq)?;
+    state.work_generation = state.work_generation.wrapping_add(1);
+    crate::debug_trace::trace(
+        crate::debug_trace::TAG_WAKE,
+        asid as u64,
+        state.work_generation,
+        cq as u64,
+    );
+    let count = state.waiters.registered();
+    let notification = state.waiters.drain();
+    crate::debug_trace::trace(
+        crate::debug_trace::TAG_SIGNAL_CQ,
+        asid as u64,
+        cq as u64,
+        count as u64,
+    );
+    Some(notification)
+}
+
+/// Kernel fixture: a detached wake batch belongs to the captured CQ, not a
+/// later namespace occupying the same numeric ASID/CQ. Reentrant callbacks
+/// also exercise the rule that no registry/device guard survives notification.
+pub(crate) fn test_prepared_wake_identity() {
+    use core::sync::atomic::{
+        AtomicUsize,
+        Ordering,
+    };
+
+    use crate::klib::observer::{
+        CallOnNotify,
+        WaitSponsor,
+    };
+
+    const CLIENT: usize = 0x5e10;
+    let sponsor = WaitSponsor::new(false);
+    let old_calls = Arc::new(AtomicUsize::new(0));
+    let old_counter = old_calls.clone();
+    let old: Arc<dyn Observer> = CallOnNotify::new(move || {
+        old_counter.fetch_add(1, Ordering::SeqCst);
+        assert_eq!(cq_work_generation(CLIENT, 0), 0);
+        assert_eq!(
+            crate::device::grant_interrupt(0, 42),
+            Err(crate::device::DeviceError::InvalidAddressSpace)
+        );
+    });
+    open_address_space_with_cq(CLIENT, 8, 8).unwrap();
+    let old_registration = CqObservable {
+        asid: CLIENT,
+        cq: 0,
+    }
+    .try_register_waiter(Arc::downgrade(&old), &sponsor)
+    .unwrap();
+    let batch = prepare_wake(CLIENT, 0).unwrap();
+    assert_eq!(cq_work_generation(CLIENT, 0), 1);
+    assert_eq!(sponsor.used(), 1);
+    close_address_space(CLIENT);
+    open_address_space_with_cq(CLIENT, 8, 8).unwrap();
+    let new_calls = Arc::new(AtomicUsize::new(0));
+    let new_counter = new_calls.clone();
+    let new: Arc<dyn Observer> = CallOnNotify::new(move || {
+        new_counter.fetch_add(1, Ordering::SeqCst);
+    });
+    let new_registration = CqObservable {
+        asid: CLIENT,
+        cq: 0,
+    }
+    .try_register_waiter(Arc::downgrade(&new), &sponsor)
+    .unwrap();
+    batch.notify();
+    assert_eq!(old_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(new_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(cq_work_generation(CLIENT, 0), 0);
+    wake(CLIENT, 0);
+    assert_eq!(new_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(sponsor.used(), 0);
+    drop((old_registration, new_registration));
+    close_address_space(CLIENT);
+    assert!(prepare_wake(CLIENT, 0).is_none());
+    crate::logln!("[device] prepared CQ wake fenced against exact numeric namespace reuse");
+}
+
+/// Exercise actual deferred IRQ dispatch with a callback that reenters both
+/// registries. This fixture owns its registration and waits for an LP that may
+/// already have claimed the global mailbox, rather than assuming local drain
+/// is always the winning consumer.
+pub(crate) fn test_irq_wake_reentrancy(asid: AddressSpaceId, intid: u32) {
+    use core::sync::atomic::{
+        AtomicUsize,
+        Ordering,
+    };
+
+    use crate::klib::observer::{
+        CallOnNotify,
+        WaitSponsor,
+    };
+
+    let sponsor = WaitSponsor::new(false);
+    let baseline = cq_work_generation(asid, 0);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counter = calls.clone();
+    let callback: Arc<dyn Observer> = CallOnNotify::new(move || {
+        assert!(cq_work_generation(asid, 0) > baseline);
+        assert_eq!(
+            crate::device::grant_interrupt(0, intid),
+            Err(crate::device::DeviceError::InvalidAddressSpace)
+        );
+        counter.fetch_add(1, Ordering::SeqCst);
+    });
+    let registration = {
+        let registry = COMPLETIONS.read();
+        let state = registry.get(&asid).unwrap().cqs.get(&0).unwrap();
+        // Fixture an already waiting reader independently of the queue's
+        // last_seen cursor; this pseudo domain has no scheduled reactor.
+        sponsor.register(&state.waiters, Arc::downgrade(&callback)).unwrap()
+    };
+    assert!(crate::device::deliver_interrupt(intid));
+    let deadline = crate::self_test::results::Deadline::after_millis(5_000);
+    while calls.load(Ordering::SeqCst) == 0 {
+        crate::device::drain_deferred_wakes();
+        deadline.assert_pending("reentrant deferred IRQ notification");
+        core::hint::spin_loop();
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert_eq!(sponsor.used(), 0);
+    drop(registration);
+    crate::logln!(
+        "[device] deferred IRQ notification reentered device/CQ registries outside guards"
+    );
 }
 
 /// Blocks the calling thread until queue `cq` of `asid` receives new work

@@ -1914,6 +1914,7 @@ fn device_status(error: crate::device::DeviceError) -> u64 {
         DeviceError::DmaUnavailable => 13,
         DeviceError::DmaInvalid => 14,
         DeviceError::UnmapFailed => 15,
+        DeviceError::RouteGenerationExhausted => 16,
     }
 }
 

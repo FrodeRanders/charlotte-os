@@ -163,6 +163,19 @@ with an isolated waiter sponsor, then races registration against 32 immediate
 workers. The scoped mask remains unchanged. See
 [kernel callback budgets](../reference/completion-callback-budgets.md).
 
+Deferred IRQ host tests cover per-route coalescing under a flood, retirement
+watermarks, fresh publication after claim, binding identity exhaustion,
+concurrent stale publishers and competing claimers. The device kernel fixture
+delivers more than twice the former shared queue capacity before route reuse,
+checks that retired readiness cannot reach the replacement and verifies a
+fresh wake/ack. Another fixture detaches a CQ wake, reuses its exact numeric
+ASID/CQ and checks that notification cannot select replacement waiters or
+change replacement work generation. Both this callback and an actual deferred
+IRQ callback reenter completion/device registries. Live driver IRQ rounds
+remain part of the device/UART tests.
+These are not exhaustive controller MMIO or cross-LP mask/rearm checks. See
+[interrupt wake storage](../reference/interrupt-wake-storage.md).
+
 Completion/CQ waiter tests keep the fifteen-bit scoped mask unchanged. Kernel
 tests cover source/domain/node admission and rollback, detached entries,
 promotion and ASID reuse; the scheduled CQ verifier checks Running/Ready/new
