@@ -268,6 +268,31 @@ paths designate platform domains before preparation; scoped and syscall
 preparation use ordinary admission. General page allocation, observer storage
 and kernel metadata still require further admission and fallible cleanup.
 
+\section{Owning endpoint-close registrations}
+
+An endpoint-close watch owns a one-shot callback and a removable registration.
+Dropping its completion cancels locally without closing the source endpoint or
+waiting for endpoint death. Message arrival remains a readiness event and does
+not complete a lifecycle watch.
+
+Each endpoint accepts at most 128 close registrations across callers. The
+submitting completion namespace may retain its configured capacity, clamped to
+1,024 entries; node admission is 8,192 with an ordinary share of 6,144. Entries
+are individually allocated fallibly, with no retained vector capacity, and
+keep their original generation's charge until actually released. Registration
+failure rolls back the unpublished completion through one owning guard.
+
+Endpoint close detaches notifications without allocation. Callbacks run after
+the IPC and list locks are released; token destruction enters only the
+independent list lock. A detached entry retains its charge even if its token
+is cancelled before notification. Late callbacks cannot change a cancelled
+terminal result or complete a replacement with the same numeric capability.
+List destruction is iterative to bound kernel-stack use.
+
+Scheduler waiters and other observer paths still need a fallible registration
+contract that can undo parking if admission fails. Silently rejecting a bounded
+queue insertion would lose a blocked thread's only wake source.
+
 \section{Cancellation and buffer ownership}
 
 When a userspace task drops a completion handle or explicitly cancels an

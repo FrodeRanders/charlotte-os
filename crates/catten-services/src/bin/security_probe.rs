@@ -38,8 +38,7 @@ const SILENT: &[u8] = b"security.silent";
 const PING: u32 = 0x5ec;
 const PONG: i64 = 0x5eccafe;
 
-/// Closing the endpoint must precede dropping pending watches, whose Drop
-/// waits for a terminal result. One owner enforces that order on every path.
+/// One owner for the watched endpoint, its connection and completion batch.
 struct CloseWatches {
     endpoint: Option<Endpoint>,
     connection: Connection,
@@ -404,6 +403,34 @@ fn main(ctx: Context) -> ! {
     drop(watches);
     check(Completion::timer(1).and_then(Completion::wait).is_ok(), 31);
     checks |= 8_192;
+    let cancel_endpoint =
+        Endpoint::create(0x5f1, 1, 1).unwrap_or_else(|_| catten_rt::domain_abort());
+    let cancel_connection =
+        cancel_endpoint.connect(IpcRights::CALL).unwrap_or_else(|_| catten_rt::domain_abort());
+    let mut cancel_watches = Vec::new();
+    for _ in 0..2_048 {
+        match cancel_connection.watch_closed() {
+            Ok(watch) => cancel_watches.push(watch),
+            Err(catten_rt::owned::CompletionError::SubmissionFailed) => break,
+            Err(_) => check(false, 32),
+        }
+    }
+    check((4..=128).contains(&cancel_watches.len()), 33);
+    let cleanup_budget = Deadline::after(5_000);
+    drop(cancel_watches); // Endpoint remains live: Drop must cancel, not await its death.
+    check(!cleanup_budget.expired(), 34);
+    for _ in 0..128 {
+        drop(cancel_connection.watch_closed().unwrap_or_else(|_| catten_rt::domain_abort()));
+    }
+    check(!cleanup_budget.expired(), 35);
+    let mut surviving =
+        cancel_connection.watch_closed().unwrap_or_else(|_| catten_rt::domain_abort());
+    check(surviving.poll() == Ok(None), 36);
+    drop(cancel_endpoint);
+    check(surviving.wait() == Ok(catten_syscall::IPC_REPLY_ENDPOINT_CLOSED), 37);
+    drop(cancel_connection);
+    check(Completion::timer(1).and_then(Completion::wait).is_ok(), 38);
+    checks |= 16_384;
     config::write::<u32>(status::CHECKS, checks);
     config::write::<u32>(status::STAGE, status::PASSED);
     catten_rt::logln!("[security-probe] passed checks={:#x}", checks);

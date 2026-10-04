@@ -4,6 +4,7 @@
 #![feature(iter_advance_by)]
 #![feature(likely_unlikely)]
 #![feature(step_trait)]
+#![feature(allocator_api)]
 #![cfg_attr(target_arch = "x86_64", feature(abi_custom))]
 #![allow(named_asm_labels)]
 

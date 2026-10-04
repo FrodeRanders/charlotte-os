@@ -65,6 +65,14 @@ let result = reply.wait()?;
 There is no `memory_close` branch. A mapping owns its memory object, and the
 compiler prevents moving the memory until `unmap` consumes the mapping.
 
+`Connection::watch_closed()` also returns an owned `Completion`. Dropping a
+close watch cancels its local registration without closing the endpoint or
+waiting for endpoint death. No special destruction order is required between
+that endpoint and its watches. Bound watch batches and handle submission
+failure; registration has independent [admission limits](../reference/close-watch-budgets.md).
+This does not make every completion's Drop nonblocking: a buffer-bearing
+operation must still wait until its producer can no longer touch borrowed data.
+
 For a borrow, pass `&memory` or `&mut memory` to `call_borrow_read` or
 `call_borrow_write`. `PendingCall<'memory>` retains that borrow until the reply
 is observed or the call is dropped, preventing concurrent CPU access.

@@ -16,6 +16,8 @@ should be updated with the implementation when those contracts change.
   queue reclamation.
 - [Completion-queue budgets](completion-queue-budgets.md) — queue counts,
   kernel backing bytes, fallible replacement and loader rollback.
+- [Endpoint-close watch budgets](close-watch-budgets.md) — bounded one-shot
+  registrations, local cancellation and transactional submission.
 - [Completion-record budgets](completion-record-budgets.md) — retained-object
   and detached-result admission, node/platform pools, generation fencing and
   CQ replacement cleanup.

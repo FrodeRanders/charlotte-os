@@ -277,6 +277,9 @@ repository history remain authoritative.
         CQ registration and kernel-owned backing have count/byte admission,
         fallible staging and loader rollback. Physical ring pages remain owned
         by mappings and outside the CQ heap-byte counter.
+        Endpoint-close watches have bounded one-shot entries, locally cancellable
+        owning tokens and transactional submission rollback. Other scheduler
+        observer registrations still require fallible admission and cancellation.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are

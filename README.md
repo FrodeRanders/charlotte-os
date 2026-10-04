@@ -75,6 +75,8 @@ The main additions and extensions currently maintained here are:
   [CQ admission](docs/reference/completion-queue-budgets.md) bounds registered
   queues and kernel-owned ring/backlog storage, with fallible preparation and
   rollback of partially loaded domains.
+  [Endpoint-close watches](docs/reference/close-watch-budgets.md) have bounded,
+  owning registrations: dropping a watch cancels it without closing its endpoint.
 - **Protected userspace device I/O:** reference UART, NVMe, AHCI, virtio-blk,
   virtio-net, E1000E, and VirtIO RNG drivers receive only delegated MMIO,
   interrupt, and DMA authority. Arm SMMUv3, Intel VT-d, and AMD-Vi isolate

@@ -898,6 +898,287 @@ pub fn test_endpoint_admission() {
     logln!("Aggregate endpoint admission passed.");
 }
 
+pub fn test_close_watch_admission() {
+    use alloc::{
+        sync::{
+            Arc,
+            Weak,
+        },
+        vec::Vec,
+    };
+    use core::sync::atomic::{
+        AtomicUsize,
+        Ordering,
+    };
+
+    use crate::{
+        completion::{
+            self,
+            CancelState,
+            OpResult,
+            watch_budget as budget,
+        },
+        klib::observer::{
+            CallOnNotify,
+            Observer,
+            registration::{
+                ObserverList,
+                RegistrationError,
+            },
+        },
+    };
+
+    logln!("Testing cancellable endpoint-close registrations...");
+    let before = budget::node_used();
+    let server = 0x5b00;
+    let client = 0x5c00;
+    let endpoint = ipc::endpoint_create(server, 1, 1, 1).unwrap();
+    let connection =
+        ipc::connection_delegate(server, endpoint, client, ConnectionRights::CALL).unwrap();
+    completion::open_address_space(client, budget::MAX_ENDPOINT_WATCHES + 1);
+    let account = completion::watch_admission(client).unwrap();
+    let records = completion::record_admission(client).unwrap();
+    let mut watches = Vec::new();
+    for _ in 0..budget::MAX_ENDPOINT_WATCHES {
+        watches.push(ipc::watch_connection_closed(client, connection).unwrap());
+    }
+    assert_eq!(account.used(), budget::MAX_ENDPOINT_WATCHES);
+    assert_eq!(
+        ipc::connection_close_watch_count(client, connection),
+        Ok(budget::MAX_ENDPOINT_WATCHES)
+    );
+    assert_eq!(ipc::watch_connection_closed(client, connection), Err(IpcError::ResourceLimit));
+    assert_eq!(account.used(), budget::MAX_ENDPOINT_WATCHES);
+    assert_eq!(
+        records.used(),
+        budget::MAX_ENDPOINT_WATCHES,
+        "failed registration must abort its staged completion"
+    );
+    for watch in watches {
+        assert_eq!(completion::cancel(client, watch), Ok(CancelState::CancelRequested));
+        assert_eq!(completion::poll(client, watch).unwrap().unwrap().result, OpResult::Cancelled);
+        completion::close(client, watch).unwrap();
+    }
+    assert_eq!(account.used(), 0);
+    assert_eq!(records.used(), 0);
+    assert_eq!(ipc::connection_close_watch_count(client, connection), Ok(0));
+    for _ in 0..512 {
+        let watch = ipc::watch_connection_closed(client, connection).unwrap();
+        completion::cancel(client, watch).unwrap();
+        completion::close(client, watch).unwrap();
+        assert_eq!(ipc::connection_close_watch_count(client, connection), Ok(0));
+    }
+    // Cancellation never closes the source endpoint; live message IPC works.
+    ipc::scalar_send(client, connection, 1, 77).unwrap_err(); // CALL-only connection
+    let call = ipc::scalar_call(client, connection, 1, 77).unwrap();
+    let message = ipc::receive(server, endpoint).unwrap();
+    ipc::reply(server, message.reply.unwrap(), 88).unwrap();
+    assert_eq!(ipc::poll_reply(client, call).unwrap().unwrap().result, 88);
+    ipc::close_cap(client, call).unwrap();
+    let watch = ipc::watch_connection_closed(client, connection).unwrap();
+    ipc::close_cap(server, endpoint).unwrap();
+    assert_eq!(
+        completion::poll(client, watch).unwrap().unwrap().result,
+        OpResult::Ok(ipc::REPLY_ENDPOINT_CLOSED)
+    );
+    assert_eq!(account.used(), 0, "notification must release its registration before cap close");
+    completion::close(client, watch).unwrap();
+    let late = ipc::watch_connection_closed(client, connection).unwrap();
+    assert!(completion::poll(client, late).unwrap().is_some());
+    assert_eq!(account.used(), 0);
+    completion::close(client, late).unwrap();
+    ipc::close_address_space(client);
+    ipc::close_address_space(server);
+    completion::close_address_space(client);
+    assert_eq!(budget::node_used(), before);
+
+    // A notification already detached from its source may race cancellation.
+    // Keep the callback alive deliberately: even a late callback must not
+    // replace Cancelled with success, or publish another terminal result.
+    completion::open_address_space(client, 2);
+    let mut staged = completion::EventSubmission::new(client).unwrap();
+    let cap = staged.cap();
+    let captured = staged.completion().clone();
+    let weak_completion = Arc::downgrade(&captured);
+    let late_observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+        if let Some(completion) = weak_completion.upgrade() {
+            completion::complete_registered(client, cap, completion, OpResult::Ok(99)).unwrap();
+        }
+    });
+    let list = ObserverList::try_new(1).unwrap();
+    let token = list.register(Arc::downgrade(&late_observer), staged.take_charge()).unwrap();
+    assert!(!captured.set_event_observation(late_observer.clone(), token));
+    assert_eq!(staged.commit(), cap);
+    let account = completion::watch_admission(client).unwrap();
+    let batch = list.close();
+    completion::cancel(client, cap).unwrap();
+    assert_eq!(account.used(), 1, "detached entry remains charged after cancellation");
+    batch.notify();
+    assert_eq!(account.used(), 0);
+    assert_eq!(completion::poll(client, cap).unwrap().unwrap().result, OpResult::Cancelled);
+    assert!(completion::poll(client, cap).unwrap().is_none());
+    assert_eq!(completion::cancel(client, cap), Ok(CancelState::AlreadyComplete));
+    completion::close(client, cap).unwrap();
+    drop(late_observer);
+    drop(captured);
+    completion::close_address_space(client);
+    assert_eq!(budget::node_used(), before);
+
+    // The detached batch keeps its charges and weak references until it is
+    // destroyed. Registration-token Drop alone cannot credit detached storage.
+    let list = ObserverList::try_new(2).unwrap();
+    let account = budget::DomainBudget::new(2);
+    let first = budget::reserve(&account, false).unwrap();
+    let second = budget::reserve(&account, false).unwrap();
+    let full = budget::node_used();
+    assert!(budget::reserve(&account, false).is_err());
+    assert_eq!(account.used(), 2);
+    assert_eq!(budget::node_used(), full);
+    drop((first, second));
+    assert_eq!(budget::node_used(), before);
+    let hits = Arc::new(AtomicUsize::new(0));
+    let holder = Arc::new(crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
+    let callback_holder = holder.clone();
+    let callback_hits = hits.clone();
+    let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+        // Reentrant cancellation proves callbacks are outside the list lock.
+        drop(callback_holder.lock().take());
+        callback_hits.fetch_add(1, Ordering::Relaxed);
+    });
+    *holder.lock() = Some(
+        list.register(Arc::downgrade(&observer), budget::reserve(&account, false).unwrap())
+            .unwrap(),
+    );
+    let batch = list.close();
+    assert_eq!(list.registered(), 0);
+    assert_eq!(account.used(), 1);
+    assert!(matches!(
+        list.register(Weak::<CallOnNotify<fn()>>::new(), budget::reserve(&account, false).unwrap()),
+        Err(RegistrationError::Closed)
+    ));
+    assert_eq!(account.used(), 1);
+    batch.notify();
+    assert_eq!(hits.load(Ordering::Relaxed), 1);
+    assert_eq!(account.used(), 0);
+    let list = ObserverList::try_new(1).unwrap();
+    let token = list
+        .register(Arc::downgrade(&observer), budget::reserve(&account, false).unwrap())
+        .unwrap();
+    let batch = list.close();
+    drop(token);
+    assert_eq!(account.used(), 1);
+    drop(batch);
+    assert_eq!(account.used(), 0);
+    assert_eq!(hits.load(Ordering::Relaxed), 1, "discarded batch must not notify");
+    drop(list);
+    assert_eq!(budget::node_used(), before);
+
+    // A persistent remote endpoint must not accumulate entries across client
+    // retirement, even when numeric ASIDs are reused.
+    let endpoint = ipc::endpoint_create(server, 1, 1, 1).unwrap();
+    for _ in 0..8 {
+        let handle = crate::service::loader::create_user_address_space_handle();
+        completion::open_address_space(handle.id(), 4);
+        let conn = ipc::connection_delegate(server, endpoint, handle.id(), ConnectionRights::CALL)
+            .unwrap();
+        let account = completion::watch_admission(handle.id()).unwrap();
+        let watch = ipc::watch_connection_closed(handle.id(), conn).unwrap();
+        let retained = completion::completion_of(handle.id(), watch).unwrap();
+        assert_eq!(account.used(), 1);
+        crate::memory::close_user_address_space_handle(handle).unwrap();
+        assert_eq!(account.used(), 0);
+        drop(retained);
+        let inspect =
+            ipc::connection_delegate(server, endpoint, client, ConnectionRights::CALL).unwrap();
+        assert_eq!(ipc::connection_close_watch_count(client, inspect), Ok(0));
+        ipc::close_cap(client, inspect).unwrap();
+    }
+    ipc::close_cap(server, endpoint).unwrap();
+    ipc::close_address_space(server);
+    ipc::close_address_space(client);
+    assert_eq!(budget::node_used(), before);
+
+    // Unpublished owner rollback must not revoke an exact numeric replacement.
+    let handle = crate::service::loader::create_user_address_space_handle();
+    completion::open_address_space(handle.id(), 4);
+    let old_account = completion::watch_admission(handle.id()).unwrap();
+    let staged = completion::EventSubmission::new(handle.id()).unwrap();
+    let old_cap = staged.cap();
+    crate::memory::budget::retire(handle);
+    assert!(completion::EventSubmission::new(handle.id()).is_err());
+    crate::memory::close_user_address_space_handle(handle).unwrap();
+    assert_eq!(old_account.used(), 1);
+    let replacement = crate::service::loader::create_user_address_space_handle();
+    assert_eq!(replacement.id(), handle.id());
+    completion::open_address_space(replacement.id(), 4);
+    let fresh = completion::EventSubmission::new(replacement.id()).unwrap();
+    assert_eq!(fresh.cap(), old_cap);
+    drop(staged);
+    assert_eq!(old_account.used(), 0);
+    assert_eq!(
+        completion::state_of(replacement.id(), fresh.cap()),
+        Ok(completion::OpStateKind::InFlight)
+    );
+    drop(fresh);
+    assert_eq!(completion::watch_admission(replacement.id()).unwrap().used(), 0);
+    crate::memory::close_user_address_space_handle(replacement).unwrap();
+    assert_eq!(budget::node_used(), before);
+
+    // Reservation-only node saturation preserves platform headroom and
+    // rolls back both local watch admission and staged completion records.
+    let mut charges = Vec::new();
+    let mut remaining = budget::MAX_ORDINARY_WATCHES - before.1;
+    while remaining != 0 {
+        let account = budget::DomainBudget::new(budget::MAX_DOMAIN_WATCHES);
+        let count = remaining.min(budget::MAX_DOMAIN_WATCHES);
+        for _ in 0..count {
+            charges.push(budget::reserve(&account, false).unwrap());
+        }
+        remaining -= count;
+    }
+    let handle = crate::service::loader::create_user_address_space_handle();
+    completion::open_address_space(handle.id(), 4);
+    let endpoint = ipc::endpoint_create(server, 1, 1, 1).unwrap();
+    let conn =
+        ipc::connection_delegate(server, endpoint, handle.id(), ConnectionRights::CALL).unwrap();
+    let full = budget::node_used();
+    assert_eq!(ipc::watch_connection_closed(handle.id(), conn), Err(IpcError::QueueFull));
+    assert_eq!(completion::record_admission(handle.id()).unwrap().used(), 0);
+    assert_eq!(completion::watch_admission(handle.id()).unwrap().used(), 0);
+    assert_eq!(budget::node_used(), full);
+    crate::memory::budget::mark_platform(handle);
+    let watch = ipc::watch_connection_closed(handle.id(), conn).unwrap();
+    assert_eq!(budget::node_used(), (full.0 + 1, full.1));
+    completion::cancel(handle.id(), watch).unwrap();
+    completion::close(handle.id(), watch).unwrap();
+    assert_eq!(budget::node_used(), full);
+    crate::memory::close_user_address_space_handle(handle).unwrap();
+    ipc::close_cap(server, endpoint).unwrap();
+    ipc::close_address_space(server);
+    let blocked = budget::DomainBudget::new(1);
+    assert!(budget::reserve(&blocked, false).is_err());
+    assert_eq!(blocked.used(), 0);
+    let mut remaining = budget::MAX_NODE_WATCHES - full.0;
+    while remaining != 0 {
+        let account = budget::DomainBudget::new(budget::MAX_DOMAIN_WATCHES);
+        let count = remaining.min(budget::MAX_DOMAIN_WATCHES);
+        for _ in 0..count {
+            charges.push(budget::reserve(&account, true).unwrap());
+        }
+        remaining -= count;
+    }
+    let full = budget::node_used();
+    assert!(budget::reserve(&blocked, true).is_err());
+    assert_eq!(blocked.used(), 0);
+    assert_eq!(budget::node_used(), full);
+    drop(charges);
+    assert_eq!(budget::node_used(), before);
+    logln!(
+        "[close watches] cancellation, entry bounds, notification, rollback and generation reuse \
+         passed"
+    );
+}
+
 pub fn test_endpoint_ipc_connection_attach() {
     logln!("Testing endpoint IPC connection attachment and re-delegation...");
 

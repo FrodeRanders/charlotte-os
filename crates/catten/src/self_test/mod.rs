@@ -284,6 +284,7 @@ pub fn run_synchronous_self_tests() {
     ipc::test_endpoint_ipc();
     ipc::test_endpoint_resize();
     ipc::test_endpoint_admission();
+    ipc::test_close_watch_admission();
     ipc::test_endpoint_ipc_connection_attach();
     ipc::test_endpoint_ipc_connection_copy();
     ipc::test_vector_ipc_transaction_rollback();

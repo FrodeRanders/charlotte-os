@@ -1,5 +1,7 @@
 //! Observer pattern implementation for event notification
 
+pub(crate) mod registration;
+
 use alloc::sync::{
     Arc,
     Weak,

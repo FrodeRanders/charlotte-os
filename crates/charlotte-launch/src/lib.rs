@@ -932,7 +932,7 @@ pub mod security_probe_status {
     pub const STARTED: u32 = 1;
     pub const PASSED: u32 = 2;
     pub const FAILED: u32 = 3;
-    pub const EXPECTED_CHECKS: u32 = 0x3fff;
+    pub const EXPECTED_CHECKS: u32 = 0x7fff;
     pub const MODE_KEY: u64 = super::manifest_key(b"sectmode");
     pub const ALTERNATE_KEY: u64 = super::manifest_key(b"sectalt");
     pub const DEPLOYMENT_KEY: u64 = super::manifest_key(b"sectkey");

@@ -21,7 +21,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-04 | Mitigated | Builds and boot logs identify development trust; production and unknown modes fail closed in scripted and direct kernel builds. Protected bootstrap roots, fixture-free production provisioning and recipient-key custody remain unimplemented. |
 | SEC-05 | Implemented | tcpip rejects raw frame ingress unless the authenticated sender is the exact live, kernel-designated frouter. Separate socket/VIP binding policy remains future hardening. |
 | SEC-06 | Mitigated | HTTP EOF, peer-raced accept and transport failures close one connection, not the server; listener-setup resource failures retry with backoff. httpd has a five-second request wait and bounded send retries; deployd has five-second header and thirty-second total receive budgets. Serial admission remains vulnerable to sustained connection floods. |
-| SEC-07 | Partially implemented | Memory-object backing pages/counts, completion timer events, endpoint records/queue backing, retained completion objects/detached results, and CQ registrations/kernel backing have generation-scoped domain/node admission and platform reserves. Charges survive transfers, deferred cancellation, delegation or retained strong references as appropriate. CQ preparation is fallible and the loader rolls back partial preparation. Aggregate limits for loader/heap/page tables (including physical CQ mappings), the complete capability namespace, connection/call/observer metadata, weak-only storage, other timer paths and comprehensive kernel metadata remain open. |
+| SEC-07 | Partially implemented | Memory-object backing pages/counts, completion timer events, endpoint records/queue backing, retained completion objects/detached results, CQ registrations/kernel backing, and endpoint-close registrations have generation-scoped domain/node admission and platform reserves. Charges survive transfers, deferred cancellation, delegation, retained references or detached notifications as appropriate. CQ preparation and close-watch registration are fallible with owning rollback. Close watches cancel locally and unlink on namespace teardown even if their completion is retained. Aggregate limits for loader/heap/page tables (including physical CQ mappings), the complete capability namespace, connection/call/other-observer metadata, general weak-only storage, other timer paths and comprehensive kernel metadata remain open. |
 | SEC-08 | Open | Authenticate enrolled nodes and control/data peer traffic, add replay protection, and bound discovery state. A trusted L2 segment remains an explicit deployment prerequisite. |
 | SEC-09 | Open | Distinguish authenticated security time from observational SNTP/holdover; enforce freshness and uncertainty at security-policy gates. |
 | SEC-10 | Open | Authenticated encrypted access to node and cluster management, browser-client provisioning, and access policy remain necessary. |
@@ -762,3 +762,84 @@ Weak-only Arc allocations, registry/capability metadata, other timers,
 worker stacks and general loader/page-table/heap admission remain open, as do
 typed deployment overrides, cross-domain principal totals and application
 budget counters. SEC-07 remains partial and the deployment restrictions remain.
+
+## Follow-up: owning endpoint-close registrations — 2026-10-04
+
+CQ admission and loader rollback were committed as `5206d8a1`. This continuation
+replaces the unbounded lifecycle-watch queue on each endpoint with an owning,
+fallible one-shot registration list. It does not change readiness notifications
+or the scheduler's existing waiter registration contract.
+
+Each endpoint accepts 128 watches across callers. The submitting completion
+namespace is charged up to its configured capacity, clamped to 1,024 entries;
+node admission is 8,192 with an ordinary share of 6,144. The submitting
+generation's designation determines reserve access, not the source endpoint's
+owner. An individually allocated entry owns its charge; no spare vector backing
+remains after unlink. The charge is outside the Box, so entry storage and its
+weak reference are released before admission returns. List, callback and entry
+allocation are fallible through the kernel's newly enabled nightly allocator
+API. Complete submission/capability allocation remains infallible elsewhere.
+
+One owner stages the captured completion and registration charge. Failed
+connection revalidation, missing endpoint, list rejection or allocation failure
+rolls back its unpublished capability with an exact-object identity check.
+Cancellation removes the registration and posts a terminal cancelled result
+without awaiting source endpoint death. Completion and namespace teardown also
+unlink it, including when another kernel owner retains the completion object.
+The retained object's separate record charge remains until its strong references
+are released. Already-closed endpoint watches finish without retaining an entry.
+
+Token Drop enters only the independent list lock, never IPC or completion
+registries. IPC detaches the notification batch without allocation and invokes
+callbacks after releasing its registry. Detached entries remain charged until
+the batch releases them, even when their tokens are cancelled first. A late
+captured callback cannot replace a cancelled terminal result or complete a
+different object with reused numeric identifiers. Entry removal is bounded by
+128; list/batch destruction is iterative to avoid recursive kernel-stack use.
+
+The [registration reference](../../reference/close-watch-budgets.md) and
+[ownership guide](../../guides/resource-ownership.md) explain the developer
+contract: ordinary owned watch Drop no longer needs to close the endpoint first.
+The scoped probe adds a fifteenth result bit (`0x7fff`), testing a dropped watch
+batch and 128 additional watch/drop cycles on a live endpoint, followed by a
+normal endpoint-close result and short-timer recovery.
+
+Other observer paths remain open. Completion/CQ waiters, pending-call and
+endpoint-readiness waiters, thread-exit observers and watchdogs need registration
+failure integrated with scheduler rollback; merely bounding their existing
+queues and ignoring failed insertion can strand a parked thread. Their
+cancellation, general weak-only Arc/control-block storage, registry metadata,
+complete capability admission, other timers and loader/page-table/heap budgets
+are still incomplete. No hostile-production containment, per-service progress
+guarantee or per-caller endpoint fairness claim is made; SEC-07 remains partial.
+
+Validation:
+
+- The full host test runner passed, including the existing checked-counter
+  overflow/rejection/release coverage used by registration admission.
+- Synchronous guest tests passed for endpoint/domain/ordinary/node ceilings,
+  rollback of a rejected staged completion, 512 cancel/rearm cycles with the
+  source still live, subsequent ordinary IPC, normal and already-closed
+  notification, detached-entry retention and discard, callback reentrancy,
+  a deliberately retained late callback after cancellation, retired admission,
+  repeated client teardown while retaining the old completion object, and
+  exact ASID/capability reuse with a stale unpublished owner.
+- Three isolated four-LP AArch64/TCG security runs passed **19 tests, 0 failed,
+  0 pending**, including all fifteen bits (`0x7fff`) in both scoped launches.
+  The final run included the retained-object teardown and late-callback tests
+  plus the entry layout that frees backing before returning admission.
+  Concurrent cancellation traffic retired after 4,512 requests in that run.
+- Both signed service bundles built, and AArch64/x86-64 kernel and service
+  Clippy passed with `-D warnings`. Formatting and diff checks passed.
+  No x86-64 guest execution, allocator-failure injection, exhaustive cross-LP
+  race exploration, sustained hostile-pressure soak or PDF rebuild is claimed.
+
+The final capture's kernel SHA-256 was
+`2160e7ace57bdbeac1ab8514d5a839898ea0c493a2b33169ddf7af702413d942`.
+Temporary evidence is in `/private/tmp/charlotte-security-watches-storage-run.log`,
+`/private/tmp/charlotte-security-watches-storage-20261004-serial.log`,
+`/private/tmp/charlotte-security-watches-host-tests.log`, and the
+`/private/tmp/charlotte-security-watches-*-clippy.log`/`*-services.log` files.
+Dedicated storage and ports were used; existing soak guests/stores were not
+modified. Reservation-only pool saturation does not allocate the equivalent
+maximum registration footprint.

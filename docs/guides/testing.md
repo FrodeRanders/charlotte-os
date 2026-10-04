@@ -79,7 +79,7 @@ cancelled requests must not prevent acquisition of the available endpoint;
 a separately hosted silent endpoint tests the publication helper's deadline.
 
 The primary probe performs 384 cancelled requests in each of two launches. A
-concurrent probe submits at least 512 more. All fourteen result bits (`0x3fff`) must
+concurrent probe submits at least 512 more. All fifteen result bits (`0x7fff`) must
 pass, publication generations must advance, and the retired descriptor must no
 longer attest. The ordinary boot suite, network verifier and security verifier
 register 19 tests in this configuration.
@@ -118,8 +118,17 @@ reject physical-ring aliases without resetting the ring, and exercise retirement
 and generation reuse. A signed domain load fails partway through installing its
 five CQs, returns the staged charges and frees its ASID; trusted platform
 preparation then succeeds using the reserve. These are synchronous tests, not
-another EL0 probe bit: the scoped security mask remains `0x3fff`. See
+another EL0 probe bit. See
 [completion-queue budgets](../reference/completion-queue-budgets.md).
+
+The fifteenth bit drops a full batch of owned endpoint-close watches while its
+endpoint remains live, then churns 128 more watches within five seconds. A new
+watch must still be pending until the endpoint closes; a short timer checks
+recovery. Synchronous registration tests cover entry limits, rollback,
+detached notification storage, callback reentrancy, a late callback after
+cancellation, retirement and reuse. Other scheduler observer paths are not
+covered by this owning-registration change. See
+[close-watch budgets](../reference/close-watch-budgets.md).
 
 The scoped application verifier does not force ASID reuse, restart the grant
 controller, inject allocation failures or prove many-client fairness. It does

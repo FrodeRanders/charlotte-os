@@ -884,6 +884,9 @@ impl Connection {
         Ok(PendingCall::from_valid_cap(call))
     }
 
+    /// Observe endpoint death. Dropping the completion cancels its registration
+    /// without closing this connection or waiting for the endpoint to die.
+    /// Bounded registration/submission capacity can reject a new watch.
     pub fn watch_closed(&self) -> Result<Completion, CompletionError> {
         Completion::from_kernel(kernel::ipc_connection_watch_closed(self.raw_handle()))
     }

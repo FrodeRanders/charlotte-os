@@ -62,6 +62,8 @@ impl ThreadHandle {
 /// Dropping a pending completion requests cancellation, waits for the terminal
 /// state, and only then closes the capability. This is the appropriate wrapper
 /// for timers, connection-close watches, and other buffer-free operations.
+/// Timer and endpoint-close cancellation can finish locally; other producers
+/// may still need to acknowledge cancellation before Drop can finish.
 #[must_use = "dropping a completion cancels and closes it"]
 #[derive(Debug)]
 pub struct Completion {

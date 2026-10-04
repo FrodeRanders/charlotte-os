@@ -81,7 +81,8 @@ of the maximum corresponding backing footprint. Host tests exercise checked
 rounding. No allocator-failure injection or exhaustive physical-frame leak
 measurement is claimed.
 
-Observer queues, weak-only Arc/control-block storage, registry/capability
+Other than separately bounded [endpoint-close watches](close-watch-budgets.md),
+observer queues, weak-only Arc/control-block storage, registry/capability
 metadata, worker stacks, other timers, loader/page tables and general kernel
 heap allocation still need bounds and fallible lifetimes. Per-principal totals
 across domains, typed deployment limits and userspace budget counters also

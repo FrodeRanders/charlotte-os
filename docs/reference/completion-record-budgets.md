@@ -34,7 +34,8 @@ destroys that retained record and returns both resources. The fixed-size ring
 entry remains in independently allocated CQ backing.
 
 Cancelling non-timer work still waits for its producer to post a terminal
-result. Timer cancellation can terminate the record immediately, but a cancelled
+result, except [endpoint-close watches](close-watch-budgets.md), whose owning
+registration can be cancelled locally. Timer cancellation can terminate the record immediately, but a cancelled
 event on a busy or remote LP retains its separate
 [timer-event charge](completion-timer-budgets.md) until queue reclamation.
 
@@ -78,8 +79,9 @@ equivalent maximum record footprint.
 The scoped EL0 probe fills its record capacity with owned endpoint-close
 watches, checks that timer submission is also refused while scalar IPC still
 works, closes the watched endpoint, consumes every completion and waits for a
-short timer after recovery. Its compound owner closes the endpoint before
-dropping watches, avoiding a destructor wait on an event it still owns.
+short timer after recovery. A further probe drops an entire watch batch while
+its endpoint remains live, validating local cancellation rather than requiring
+endpoint death for destructor progress.
 The shared checked counter has host overflow/rejection/release tests.
 
 These are retained-state counts, not byte accounting for the entire kernel
@@ -88,6 +90,8 @@ queues and kernel-owned ring/backlog backing. Registry nodes, worker stacks, obs
 and weak-only Arc/control-block allocations are not separately charged here.
 In particular, a weak reference can retain allocation storage after the strong
 object's fields and charge have dropped. Observer cancellation/reclamation and
-fallible metadata allocation still require hardening. Per-principal totals
+fallible metadata allocation still require hardening. Endpoint-close registrations
+now have their own owning list and admission; other observer paths remain open.
+Per-principal totals
 across domains, typed deployment limits and userspace counters remain future
 work. SEC-07 is partial; no hostile-workload containment guarantee is made.

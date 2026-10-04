@@ -29,6 +29,7 @@
 pub(crate) mod budget;
 pub mod cq;
 pub(crate) mod cq_budget;
+pub(crate) mod watch_budget;
 
 use alloc::{
     collections::{
@@ -216,7 +217,12 @@ struct CompletionInner {
     /// Keeps a subsystem-defined event observer alive. IPC uses this for
     /// connection endpoint-close watches without coupling completion storage
     /// to the concrete IPC observer type.
-    event_observer: Option<Arc<dyn Observer>>,
+    event_observation: Option<EventObservation>,
+}
+
+struct EventObservation {
+    _observer: Arc<dyn Observer>,
+    _registration: crate::klib::observer::registration::Registration<watch_budget::Charge>,
 }
 
 /// An [`Observer`] that completes a capability when the worker thread it is
@@ -296,7 +302,7 @@ impl Completion {
                 exit_observer: None,
                 timer_observer: None,
                 timer_cancel: None,
-                event_observer: None,
+                event_observation: None,
             }),
             observers: ConcurrentQueue::unbounded(),
             _record_charge: record_charge,
@@ -321,8 +327,31 @@ impl Completion {
         inner.timer_cancel = Some(TimerCancellation(Some(cancel)));
     }
 
-    pub(crate) fn set_event_observer(&self, observer: Arc<dyn Observer>) {
-        self.inner.lock().event_observer = Some(observer);
+    /// Returns whether cancellation won before this owner could be installed.
+    /// A terminal completion must not retain a late registration.
+    pub(crate) fn set_event_observation(
+        &self,
+        observer: Arc<dyn Observer>,
+        registration: crate::klib::observer::registration::Registration<watch_budget::Charge>,
+    ) -> bool {
+        let observation = EventObservation {
+            _observer: observer,
+            _registration: registration,
+        };
+        let mut inner = self.inner.lock();
+        match inner.state {
+            OpState::InFlight => {
+                inner.event_observation = Some(observation);
+                false
+            }
+            OpState::CancelPending => true,
+            OpState::Completed(_) | OpState::Observed => false,
+        }
+    }
+
+    fn release_event_observation(&self) {
+        let observation = self.inner.lock().event_observation.take();
+        drop(observation);
     }
 
     fn state_kind(&self) -> OpStateKind {
@@ -361,6 +390,9 @@ impl Completion {
             OpState::Completed(_) | OpState::Observed => return None,
         };
         inner.state = OpState::Completed(effective.clone());
+        let event = inner.event_observation.take();
+        drop(inner);
+        drop(event);
         Some(effective)
     }
 
@@ -411,8 +443,8 @@ impl Completion {
 
 impl Observable for Completion {
     fn register_observer(&self, observer: Weak<dyn Observer>) {
-        // A closed/overflowing observer queue is not fatal: a missed
-        // registration only means a caller must fall back to polling.
+        // Legacy unbounded waiter path. Bounded rejection requires scheduler
+        // rollback: silently losing registration can strand a parked thread.
         let _ = self.observers.push(observer);
     }
 }
@@ -579,7 +611,18 @@ struct AsCompletions {
     timer_budget: Arc<crate::timers::budget::DomainBudget>,
     record_budget: Arc<budget::DomainBudget>,
     cq_budget: Arc<cq_budget::DomainBudget>,
+    watch_budget: Arc<watch_budget::DomainBudget>,
     address_space: Option<crate::memory::AddressSpaceHandle>,
+}
+
+impl Drop for AsCompletions {
+    fn drop(&mut self) {
+        // Public watches are revoked even if a kernel waiter retains their
+        // completion object. Only independent list locks are entered here.
+        for completion in self.table.values() {
+            completion.release_event_observation();
+        }
+    }
 }
 
 // SAFETY: `CqState::ring` has two backing modes. Heap-backed queues retain their
@@ -615,6 +658,7 @@ fn empty_as(asid: AddressSpaceId, capacity: usize) -> AsCompletions {
         timer_budget: crate::timers::budget::DomainBudget::new(capacity),
         record_budget: budget::DomainBudget::new(capacity),
         cq_budget: cq_budget::DomainBudget::new(),
+        watch_budget: watch_budget::DomainBudget::new(capacity),
         address_space: crate::memory::current_address_space_handle(asid),
     }
 }
@@ -892,6 +936,14 @@ pub fn submit(
     _op: OpCode,
     buffer: Option<Vec<u8>>,
 ) -> Result<CompletionCap, SubmitError> {
+    submit_captured(asid, buffer, false).map(|(cap, _, _)| cap)
+}
+
+fn submit_captured(
+    asid: AddressSpaceId,
+    buffer: Option<Vec<u8>>,
+    close_watch: bool,
+) -> Result<(CompletionCap, Arc<Completion>, Option<watch_budget::Charge>), SubmitError> {
     let platform_identity = crate::memory::budget::platform_identity(asid);
     let mut registry = COMPLETIONS.write();
     let as_completions = registry.get_mut(&asid).ok_or(SubmitError::UnknownAddressSpace)?;
@@ -900,10 +952,91 @@ pub fn submit(
         return Err(SubmitError::WouldBlock);
     }
     let record_charge = reserve_record(asid, as_completions, platform_identity)?;
+    let watch_charge = if close_watch {
+        let platform = asid == crate::memory::KERNEL_ASID
+            || platform_identity.is_some_and(|handle| Some(handle) == as_completions.address_space);
+        Some(
+            watch_budget::reserve(&as_completions.watch_budget, platform)
+                .map_err(|_| SubmitError::WouldBlock)?,
+        )
+    } else {
+        None
+    };
     let cap = crate::capability::allocate(asid, crate::capability::ObjectKind::Completion);
-    as_completions.table.insert(cap, Completion::new(buffer, record_charge));
+    let completion = Completion::new(buffer, record_charge);
+    as_completions.table.insert(cap, completion.clone());
     as_completions.live += 1;
-    Ok(cap)
+    Ok((cap, completion, watch_charge))
+}
+
+/// Own an unpublished close-watch submission and its entry reservation.
+/// Rollback rechecks object identity, so teardown/reuse cannot revoke a new cap.
+pub(crate) struct EventSubmission {
+    asid: AddressSpaceId,
+    cap: CompletionCap,
+    completion: Arc<Completion>,
+    charge: Option<watch_budget::Charge>,
+    committed: bool,
+}
+
+impl EventSubmission {
+    pub(crate) fn new(asid: AddressSpaceId) -> Result<Self, SubmitError> {
+        let (cap, completion, charge) = submit_captured(asid, None, true)?;
+        Ok(Self {
+            asid,
+            cap,
+            completion,
+            charge,
+            committed: false,
+        })
+    }
+
+    pub(crate) fn cap(&self) -> CompletionCap {
+        self.cap
+    }
+
+    pub(crate) fn completion(&self) -> &Arc<Completion> {
+        &self.completion
+    }
+
+    pub(crate) fn take_charge(&mut self) -> watch_budget::Charge {
+        self.charge.take().expect("event submission charge transferred twice")
+    }
+
+    pub(crate) fn commit(mut self) -> CompletionCap {
+        self.committed = true;
+        self.cap
+    }
+}
+
+impl Drop for EventSubmission {
+    fn drop(&mut self) {
+        if self.committed {
+            return;
+        }
+        let mut registry = COMPLETIONS.write();
+        if let Some(entries) = registry.get_mut(&self.asid)
+            && entries.table.get(&self.cap).is_some_and(|live| Arc::ptr_eq(live, &self.completion))
+        {
+            if let Some(cq) = entries.cqs.get_mut(&DEFAULT_CQ) {
+                let operation = self.completion.operation_id();
+                cq.backlog.retain(|entry| {
+                    !matches!(&entry.owner, BacklogOwner::Capability)
+                        || entry.operation != operation
+                        || entry.cookie != self.cap
+                });
+            }
+            entries.table.remove(&self.cap);
+            entries.live = entries.live.checked_sub(1).expect("staged event slot missing");
+            assert!(crate::capability::remove(
+                self.asid,
+                self.cap,
+                crate::capability::ObjectKind::Completion
+            ));
+        }
+        drop(registry);
+        self.completion.release_event_observation();
+    }
 }
 
 /// Roll back a capability-backed submission before it becomes externally
@@ -1500,9 +1633,12 @@ pub fn cancel(asid: AddressSpaceId, cap: CompletionCap) -> Result<CancelState, C
     let completion = completion_of(asid, cap)?;
     let state = completion.cancel();
     if state == CancelState::CancelRequested {
-        let timer = completion.inner.lock().timer_cancel.take();
-        if timer.is_some() {
-            drop(timer);
+        let (timer, event) = {
+            let mut inner = completion.inner.lock();
+            (inner.timer_cancel.take(), inner.event_observation.take())
+        };
+        if timer.is_some() || event.is_some() {
+            drop((timer, event));
             let _ = complete_registered(asid, cap, completion, OpResult::Cancelled);
         }
     }
@@ -1519,6 +1655,10 @@ pub(crate) fn record_admission(asid: AddressSpaceId) -> Option<Arc<budget::Domai
 
 pub(crate) fn cq_admission(asid: AddressSpaceId) -> Option<Arc<cq_budget::DomainBudget>> {
     COMPLETIONS.read().get(&asid).map(|entries| entries.cq_budget.clone())
+}
+
+pub(crate) fn watch_admission(asid: AddressSpaceId) -> Option<Arc<watch_budget::DomainBudget>> {
+    COMPLETIONS.read().get(&asid).map(|entries| entries.watch_budget.clone())
 }
 
 /// Revokes a completed or already-drained capability. Fails with

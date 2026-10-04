@@ -23,6 +23,7 @@ use crate::{
     klib::observer::{
         Observable,
         Observer,
+        registration::ObserverList,
     },
     memory::{
         AddressSpaceId,
@@ -220,7 +221,7 @@ struct Endpoint {
     /// Lifecycle observers installed through `watch_connection_closed`.
     /// Unlike readiness observers, ordinary message delivery must not wake
     /// these: they fire exclusively when the endpoint closes.
-    close_observers: ConcurrentQueue<Weak<dyn Observer>>,
+    close_observers: Arc<ObserverList<crate::completion::watch_budget::Charge>>,
     closed: bool,
     /// When bound, endpoint readiness is delivered to this completion queue
     /// of the owner as a coalesced wake (architecture doc §16.3: readiness is
@@ -381,6 +382,9 @@ pub fn endpoint_create(
         .map_err(|_| IpcError::ResourceLimit)?;
     let queue = budget::AdmittedQueue::new(&namespace.endpoint_budget, platform, capacity)
         .map_err(|_| IpcError::ResourceLimit)?;
+    let close_observers =
+        ObserverList::try_new(crate::completion::watch_budget::MAX_ENDPOINT_WATCHES)
+            .map_err(|_| IpcError::ResourceLimit)?;
     let endpoint = ipc.alloc_endpoint();
     ipc.endpoints.insert(
         endpoint,
@@ -393,7 +397,7 @@ pub fn endpoint_create(
             queue,
             metadata_charge,
             readiness_observers: ConcurrentQueue::unbounded(),
-            close_observers: ConcurrentQueue::unbounded(),
+            close_observers,
             closed: false,
             notify_cq: None,
         },
@@ -1405,31 +1409,50 @@ pub fn watch_connection_closed(
             _ => return Err(IpcError::WrongType),
         }
     };
-    let cap = crate::completion::submit(asid, crate::completion::OpCode::Nop, None)
-        .map_err(|_| IpcError::QueueFull)?;
-    let completion =
-        crate::completion::completion_of(asid, cap).map_err(|_| IpcError::UnknownCapability)?;
-    let observer: Arc<dyn Observer> = Arc::new(EndpointCloseCompletionObserver {
+    let mut submission =
+        crate::completion::EventSubmission::new(asid).map_err(|_| IpcError::QueueFull)?;
+    let cap = submission.cap();
+    let completion = submission.completion().clone();
+    let observer: Arc<dyn Observer> = Arc::try_new(EndpointCloseCompletionObserver {
         asid,
         cap,
         completion: Arc::downgrade(&completion),
-    });
-    completion.set_event_observer(observer.clone());
+    })
+    .map_err(|_| IpcError::ResourceLimit)?;
 
-    let already_closed = {
+    let registration = {
         let ipc = IPC.read();
+        // Revalidate after staging; a revoked/reused connection must not
+        // authorize registration against the previously resolved endpoint.
+        if !matches!(ipc.cap(asid, connection_cap)?, Capability::Connection { endpoint, .. } if endpoint == endpoint_id)
+        {
+            return Err(IpcError::UnknownCapability);
+        }
         let endpoint = ipc.endpoints.get(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
         if endpoint.closed {
-            true
+            None
         } else {
-            let _ = endpoint.close_observers.push(Arc::downgrade(&observer));
-            false
+            Some(
+                endpoint
+                    .close_observers
+                    .register(Arc::downgrade(&observer), submission.take_charge())
+                    .map_err(|_| IpcError::ResourceLimit)?,
+            )
         }
     };
-    if already_closed {
+    if let Some(registration) = registration {
+        if completion.set_event_observation(observer, registration) {
+            let _ = crate::completion::complete_registered(
+                asid,
+                cap,
+                completion,
+                crate::completion::OpResult::Cancelled,
+            );
+        }
+    } else {
         observer.notify();
     }
-    Ok(cap)
+    Ok(submission.commit())
 }
 
 impl Observable for EndpointObservable {
@@ -1701,6 +1724,7 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
     let mut ipc = IPC.write();
     let mut observers = Vec::new();
     let mut cq_wake = None;
+    let mut close_watches = None;
     match ipc.remove_cap(asid, cap)? {
         Capability::Endpoint {
             endpoint,
@@ -1712,7 +1736,7 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
                 } else {
                     endpoint.closed = true;
                     observers.extend(drain_observers(&endpoint.readiness_observers));
-                    observers.extend(drain_observers(&endpoint.close_observers));
+                    close_watches = Some(endpoint.close_observers.close());
                     // A CQ-bound endpoint reports its closure as a readiness
                     // wake so a reactor blocked on one CQ wait observes it.
                     cq_wake = endpoint.notify_cq.map(|cq| (endpoint.owner, cq));
@@ -1777,11 +1801,34 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
         }
     }
     drop(ipc);
+    if let Some(watches) = close_watches {
+        watches.notify();
+    }
     if let Some((owner, cq)) = cq_wake {
         crate::completion::wake(owner, cq);
     }
     signal_observers(observers);
     Ok(())
+}
+
+pub(crate) fn connection_close_watch_count(
+    asid: AddressSpaceId,
+    cap: CapabilityId,
+) -> Result<usize, IpcError> {
+    let ipc = IPC.read();
+    let endpoint = match ipc.cap(asid, cap)? {
+        Capability::Connection {
+            endpoint,
+            ..
+        } => endpoint,
+        _ => return Err(IpcError::WrongType),
+    };
+    Ok(ipc
+        .endpoints
+        .get(&endpoint)
+        .ok_or(IpcError::UnknownCapability)?
+        .close_observers
+        .registered())
 }
 
 fn drain_observers(queue: &ConcurrentQueue<Weak<dyn Observer>>) -> Vec<Weak<dyn Observer>> {
