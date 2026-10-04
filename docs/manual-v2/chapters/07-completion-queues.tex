@@ -239,10 +239,34 @@ ring or is discarded during teardown. A fresh generation receives a fresh
 budget owner; old releases cannot credit a replacement. Closing a captured
 object also verifies its identity under the registry lock before revocation.
 
-These counts do not account for CQ backing, observer lists, weak-only Arc
+These counts do not account for observer lists, weak-only Arc
 allocations or the entire kernel heap. Their admission and reclamation remain
 separate hardening work. Timer events have their own charges because deferred
 cancellation can outlive the operation record.
+
+\section{Completion-queue admission}
+
+Queue preparation reserves a registration count and kernel-owned backing
+bytes. Each namespace may register 32 queues with at most 256\,KiB of backing;
+node limits are 2,048 queues and 4\,MiB. Ordinary domains share 1,536 queues
+and 3\,MiB, leaving a reserve for kernel-designated platform domains.
+Backlogs are preallocated from the namespace's submission capacity, clamped
+to 1,024 and rounded with checked arithmetic. Heap rings use aligned
+4\,KiB backing. Physical rings remain owned by their address-space mappings;
+their pages are outside this heap-byte budget.
+
+Preparation is fallible and precedes publication. Replacement must admit
+both old and staged backing; failure preserves the original queue and its
+pending results. Physical-ring initialization follows admission and allocation,
+and a frame already registered to another queue is rejected. Reusing the same
+queue's frame requires a quiescent consumer. Successful replacement discards
+undelivered results rather than migrating them.
+
+An owning loader guard tears down the partially mapped domain if a CQ cannot
+be prepared, including any queues already installed. Trusted ambient supervisor
+paths designate platform domains before preparation; scoped and syscall
+preparation use ordinary admission. General page allocation, observer storage
+and kernel metadata still require further admission and fallible cleanup.
 
 \section{Cancellation and buffer ownership}
 

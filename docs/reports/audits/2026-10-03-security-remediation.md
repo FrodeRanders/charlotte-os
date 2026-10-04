@@ -21,7 +21,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-04 | Mitigated | Builds and boot logs identify development trust; production and unknown modes fail closed in scripted and direct kernel builds. Protected bootstrap roots, fixture-free production provisioning and recipient-key custody remain unimplemented. |
 | SEC-05 | Implemented | tcpip rejects raw frame ingress unless the authenticated sender is the exact live, kernel-designated frouter. Separate socket/VIP binding policy remains future hardening. |
 | SEC-06 | Mitigated | HTTP EOF, peer-raced accept and transport failures close one connection, not the server; listener-setup resource failures retry with backoff. httpd has a five-second request wait and bounded send retries; deployd has five-second header and thirty-second total receive budgets. Serial admission remains vulnerable to sustained connection floods. |
-| SEC-07 | Partially implemented | Memory-object backing pages/counts, completion timer events, endpoint records/queue backing, and retained completion objects/detached results have generation-scoped domain/node admission and platform reserves. Charges survive transfers, deferred cancellation, delegation or retained strong references as appropriate. Aggregate limits for loader/heap/page tables, the complete capability namespace, connection/call/observer metadata, CQ/weak-only storage, other timer paths and comprehensive kernel metadata remain open. |
+| SEC-07 | Partially implemented | Memory-object backing pages/counts, completion timer events, endpoint records/queue backing, retained completion objects/detached results, and CQ registrations/kernel backing have generation-scoped domain/node admission and platform reserves. Charges survive transfers, deferred cancellation, delegation or retained strong references as appropriate. CQ preparation is fallible and the loader rolls back partial preparation. Aggregate limits for loader/heap/page tables (including physical CQ mappings), the complete capability namespace, connection/call/observer metadata, weak-only storage, other timer paths and comprehensive kernel metadata remain open. |
 | SEC-08 | Open | Authenticate enrolled nodes and control/data peer traffic, add replay protection, and bound discovery state. A trusted L2 segment remains an explicit deployment prerequisite. |
 | SEC-09 | Open | Distinguish authenticated security time from observational SNTP/holdover; enforce freshness and uncertainty at security-policy gates. |
 | SEC-10 | Open | Authenticated encrypted access to node and cluster management, browser-client provisioning, and access policy remain necessary. |
@@ -694,3 +694,71 @@ alongside the complete capability namespace and loader/heap/page-table budgets.
 Typed deployment overrides, per-principal cross-domain totals and observable
 admission counters remain future work. SEC-07 stays partially implemented and
 the audit's operational restrictions still apply.
+
+## Follow-up: completion-queue admission and loader rollback — 2026-10-04
+
+Retained completion-record admission was committed as `8aa63b8b`. This
+continuation bounds registered CQs and their kernel-owned backing independently:
+32 queues/256 KiB per namespace, 2,048 queues/4 MiB per node, and an ordinary
+share of 1,536 queues/3 MiB. The remaining pool is available to
+generation-qualified, kernel-designated platform domains. Backlog allocation
+uses checked rounding from a submission capacity clamped to 1,024. Heap rings
+now have explicitly aligned `u64` backing rather than relying on the incidental
+alignment of `Vec<u8>` allocations.
+
+CQ setup reserves admission and allocates fallibly before publication. Failed
+replacement leaves the original queue, capability table and pending data intact;
+successful replacement must fit peak old-plus-new backing and retains the
+existing discard semantics. Physical-frame alias rejection prevents one queue
+from resetting another's ring. Physical-ring initialization follows all
+fallible admission/allocation checks. Physical pages themselves remain owned
+by address-space mappings, not charged as CQ heap bytes; old mapped frames can
+outlive a replaced registration.
+
+The loader now returns typed CQ preparation errors and owns partial preparation
+in one rollback guard. If a later shard CQ fails, it closes installed queues and
+tears down the mapped domain. Trusted ambient supervisor loaders designate
+platform domains before CQ admission, allowing preparation to use the reserve.
+Scoped and syscall preparation remains ordinary; artifact names, roles and
+manifest fields do not choose reserve access. The mandatory boot wrapper still
+panics on failure, and general ELF/runtime-page allocations remain infallible.
+
+Validation:
+
+- The full host runner passed, including new zero/small/power-of-two/overflow
+  tests for checked backlog sizing.
+- Synchronous guest tests passed for namespace count and backing-byte limits,
+  ordinary and total node exhaustion in each dimension, rollback and recovery,
+  invalid capacity, failed queue/namespace replacement preserving data and
+  capabilities, aligned backing, physical-frame failures without writes, frame
+  alias rejection and same-queue reuse, retirement and numeric ASID reuse.
+  A real signed bootstrap image failed after partially installing its five
+  CQs with only two ordinary registration slots available. CQ charges returned,
+  its ASID was reusable, and trusted platform preparation then succeeded.
+  Node saturation uses reservations, not the corresponding maximum allocation.
+- The isolated four-LP AArch64/TCG security run passed **19 tests, 0 failed,
+  0 pending**. Both scoped launches passed the unchanged fourteen-bit mask
+  `0x3fff`; concurrent cancellation traffic retired after 4,500 requests.
+- Both signed service bundles built; AArch64 and x86-64 kernel/service Clippy
+  passed with `-D warnings`. Formatting and diff checks passed. No x86-64
+  guest execution, allocator-failure injection, exhaustive frame-leak test,
+  sustained hostile-pressure soak or PDF rebuild is claimed.
+
+The capture's kernel SHA-256 was
+`8947d1fb74d82b9955fdf923036827089a729134367f1494232d247cd66cfffb`.
+Temporary evidence is in `/private/tmp/charlotte-security-cq-run.log`,
+`/private/tmp/charlotte-security-cq-20261004-serial.log`,
+`/private/tmp/charlotte-security-cq-host-tests.log` and the
+`/private/tmp/charlotte-security-cq-*-clippy.log`/`*-services.log` files.
+Dedicated storage and ports were used; existing soak guests/stores were not
+modified.
+
+The [CQ reference](../../reference/completion-queue-budgets.md) describes
+ownership, replacement peaks, loader rollback and excluded mapped pages.
+Observer registrations need cancellable owning handles and bounded storage;
+their teardown must avoid entering IPC from a completion destructor under the
+completion registry, because IPC already calls into completion handling.
+Weak-only Arc allocations, registry/capability metadata, other timers,
+worker stacks and general loader/page-table/heap admission remain open, as do
+typed deployment overrides, cross-domain principal totals and application
+budget counters. SEC-07 remains partial and the deployment restrictions remain.

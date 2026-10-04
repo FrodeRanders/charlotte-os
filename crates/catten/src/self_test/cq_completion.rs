@@ -18,7 +18,7 @@ pub fn test_cq_ring_in_completion() {
 
     let asid = 0xc0ffee;
     // Open an AS with a capability table (capacity 16) and a CQ ring (32 slots).
-    completion::open_address_space_with_cq(asid, 16, 32);
+    completion::open_address_space_with_cq(asid, 16, 32).expect("CQ setup failed");
 
     // --- submit + complete writes a ring entry --------------------------------
     let cap = completion::submit(asid, OpCode::Read, Some(alloc::vec![0u8; 4])).unwrap();

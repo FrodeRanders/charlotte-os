@@ -107,7 +107,7 @@ pub fn test_completion_caps() {
 
     // --- CQ overflow is retained in a kernel backlog, not lost --------------
     let cq_asid = 0xc0ff_ee01;
-    completion::open_address_space_with_cq(cq_asid, 4, 2);
+    completion::open_address_space_with_cq(cq_asid, 4, 2).expect("CQ setup failed");
     let cap_a = completion::submit(cq_asid, OpCode::Nop, None).unwrap();
     let cap_b = completion::submit(cq_asid, OpCode::Nop, None).unwrap();
 
@@ -184,6 +184,7 @@ pub fn test_completion_caps() {
 
     test_completion_timer_admission();
     test_completion_record_admission();
+    test_completion_queue_admission();
 
     logln!("Completion-capability subsystem tests passed.");
 }
@@ -227,7 +228,7 @@ fn test_completion_timer_admission() {
     assert_eq!(budget::node_used(), before);
 
     let asid = 0xc0ae_b001;
-    completion::open_address_space_with_cq(asid, 2, 2);
+    completion::open_address_space_with_cq(asid, 2, 2).expect("CQ setup failed");
     for _ in 0..64 {
         let cap = completion::submit_timer(asid, 3_600_000).unwrap();
         assert_eq!(completion::timer_events_used(asid), 1);
@@ -284,12 +285,12 @@ fn test_completion_timer_admission() {
     // Deliberately recycle both the ASID and numeric capability value.
     completion::close_address_space(asid);
     crate::capability::close_address_space(asid);
-    completion::open_address_space_with_cq(asid, 2, 2);
+    completion::open_address_space_with_cq(asid, 2, 2).expect("CQ setup failed");
     let old_cap = completion::submit_timer(asid, 3_600_000).unwrap();
     let captured = completion::completion_of(asid, old_cap).unwrap();
     completion::close_address_space(asid);
     crate::capability::close_address_space(asid);
-    completion::open_address_space_with_cq(asid, 2, 2);
+    completion::open_address_space_with_cq(asid, 2, 2).expect("CQ setup failed");
     let new_cap = completion::submit_timer(asid, 3_600_000).unwrap();
     assert_eq!(new_cap, old_cap, "test must exercise exact numeric namespace reuse");
     assert_eq!(
@@ -342,7 +343,7 @@ fn test_completion_record_admission() {
     completion::close_address_space(asid);
     crate::capability::close_address_space(asid);
 
-    completion::open_address_space_with_cq(asid, 2, 2);
+    completion::open_address_space_with_cq(asid, 2, 2).expect("CQ setup failed");
     let account = completion::record_admission(asid).unwrap();
     let a = completion::submit_detached(asid, 0, OpCode::Nop, 11).unwrap();
     let b = completion::submit_detached(asid, 0, OpCode::Nop, 12).unwrap();
@@ -379,14 +380,14 @@ fn test_completion_record_admission() {
     crate::capability::close_address_space(asid);
     assert_eq!(budget::node_used(), before);
 
-    completion::open_address_space_with_cq(asid, 1, 2);
+    completion::open_address_space_with_cq(asid, 1, 2).expect("CQ setup failed");
     let account = completion::record_admission(asid).unwrap();
     for cookie in [16, 17] {
         let op = completion::submit_detached(asid, 0, OpCode::Nop, cookie).unwrap();
         completion::complete_detached(asid, op, OpResult::Ok(0)).unwrap();
     }
     assert_eq!(account.used(), 1);
-    completion::open_cq(asid, 0, 2);
+    completion::open_cq(asid, 0, 2).expect("CQ setup failed");
     assert_eq!(account.used(), 0);
     let cap = completion::submit(asid, OpCode::Nop, None)
         .expect("replacing a CQ must return discarded detached submission slots");
@@ -412,7 +413,7 @@ fn test_completion_record_admission() {
     assert_eq!(budget::node_used(), full);
     drop(budget::reserve(&blocked, true).expect("platform record reserve"));
     let probe = create();
-    completion::open_address_space_with_cq(probe, 2, 2);
+    completion::open_address_space_with_cq(probe, 2, 2).expect("CQ setup failed");
     let probe_account = completion::record_admission(probe).unwrap();
     assert_eq!(completion::submit(probe, OpCode::Nop, None), Err(SubmitError::WouldBlock));
     assert_eq!(completion::submit_timer(probe, 1), Err(SubmitError::WouldBlock));
@@ -447,7 +448,7 @@ fn test_completion_record_admission() {
 
     let owner = create();
     let identity = crate::memory::current_address_space_handle(owner).unwrap();
-    completion::open_address_space_with_cq(owner, 2, 2);
+    completion::open_address_space_with_cq(owner, 2, 2).expect("CQ setup failed");
     let account = completion::record_admission(owner).unwrap();
     let cap = completion::submit(owner, OpCode::Nop, None).unwrap();
     let captured = completion::completion_of(owner, cap).unwrap();
@@ -491,6 +492,197 @@ fn test_completion_record_admission() {
     );
 }
 
+/// Runs before other LPs begin scheduling, so synthetic namespaces and raw
+/// ring inspection below have no concurrent producer or consumer.
+fn test_completion_queue_admission() {
+    use completion::{
+        CqOpenError,
+        cq::CqRingError,
+        cq_budget as budget,
+    };
+
+    use crate::cpu::isa::interface::memory::address::PhysicalAddress;
+
+    let before = budget::node_used();
+    let asid = 0xc0ff_ee30;
+    assert_eq!(completion::open_cq(asid, 0, 2), Err(CqOpenError::UnknownAddressSpace));
+    assert_eq!(budget::node_used(), before);
+    completion::open_address_space_with_cq(asid, 2, 2).unwrap();
+    let account = completion::cq_admission(asid).unwrap();
+    let cap = completion::submit(asid, OpCode::Nop, None).unwrap();
+    completion::complete(asid, cap, OpResult::Ok(73)).unwrap();
+    let ring = unsafe { completion::cq_ring_of(asid, 0) }.unwrap();
+    assert_eq!((ring as usize) % core::mem::align_of::<completion::cq::CompletionQueueRing>(), 0);
+    let charged = account.used();
+    let admitted = budget::node_used();
+    assert_eq!(
+        completion::open_address_space_with_cq(asid, usize::MAX, 1),
+        Err(CqOpenError::Ring(CqRingError::CapacityTooSmall))
+    );
+    assert_eq!(completion::state_of(asid, cap).unwrap(), OpStateKind::Completed);
+    assert_eq!(unsafe { completion::cq_ring_of(asid, 0) }.unwrap(), ring);
+    assert_eq!(unsafe { &*ring }.pending(), 1);
+    assert_eq!(account.used(), charged);
+    assert_eq!(budget::node_used(), admitted);
+    for id in 1..budget::DOMAIN_LIMIT[0] as u32 {
+        completion::open_cq(asid, id, 2).unwrap();
+    }
+    assert_eq!(account.used()[0], budget::DOMAIN_LIMIT[0]);
+    let full = budget::node_used();
+    assert_eq!(completion::open_cq(asid, 32, 2), Err(CqOpenError::ResourceLimit));
+    assert_eq!(completion::open_cq(asid, 0, 2), Err(CqOpenError::ResourceLimit));
+    assert_eq!(budget::node_used(), full);
+    assert_eq!(unsafe { &mut *ring }.read().unwrap().result, 73);
+    completion::close_address_space(asid);
+    assert_eq!(account.used(), [0, 0]);
+    assert_eq!(budget::node_used(), before);
+
+    // A huge requested submission capacity is clamped before backlog sizing.
+    completion::open_address_space_with_cq(asid, usize::MAX, u32::MAX).unwrap();
+    let account = completion::cq_admission(asid).unwrap();
+    let first = account.used();
+    assert!(first[1] <= budget::DOMAIN_LIMIT[1]);
+    let mut id = 1;
+    while completion::open_cq(asid, id, 2).is_ok() {
+        id += 1;
+    }
+    assert!(id > 1 && u64::from(id) < budget::DOMAIN_LIMIT[0]);
+    assert_eq!(account.used(), [u64::from(id), u64::from(id) * first[1]]);
+    let full = budget::node_used();
+    assert_eq!(completion::open_cq(asid, id, 2), Err(CqOpenError::ResourceLimit));
+    assert_eq!(budget::node_used(), full);
+    completion::close_address_space(asid);
+    assert_eq!(account.used(), [0, 0]);
+    assert_eq!(budget::node_used(), before);
+
+    // Physical ring setup must not write before admission. The test itself
+    // owns this frame until all referencing queues have been removed.
+    let frame = crate::memory::PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().unwrap();
+    let page = unsafe { frame.into_hhdm_mut::<u8>() };
+    unsafe { core::ptr::write_bytes(page, 0xa5, 4096) };
+    completion::open_address_space(asid, 2);
+    let account = completion::cq_admission(asid).unwrap();
+    assert_eq!(
+        completion::open_cq_phys(asid, 0, frame, 1),
+        Err(CqOpenError::Ring(CqRingError::CapacityTooSmall))
+    );
+    assert_eq!(
+        completion::open_cq_phys(asid, 0, frame + 1usize, 2),
+        Err(CqOpenError::Ring(CqRingError::FrameMisaligned))
+    );
+    assert_eq!(account.used(), [0, 0]);
+    assert!(unsafe { core::slice::from_raw_parts(page, 4096) }.iter().all(|byte| *byte == 0xa5));
+    let exhausted = budget::reserve(&account, false, budget::DOMAIN_LIMIT).unwrap();
+    assert_eq!(completion::open_cq_phys(asid, 0, frame, 2), Err(CqOpenError::ResourceLimit));
+    assert!(unsafe { core::slice::from_raw_parts(page, 4096) }.iter().all(|byte| *byte == 0xa5));
+    drop(exhausted);
+    completion::open_cq_phys(asid, 0, frame, 2).unwrap();
+    assert_eq!(account.used(), [1, charged[1] - 4096]);
+    let cap = completion::submit(asid, OpCode::Nop, None).unwrap();
+    completion::complete(asid, cap, OpResult::Ok(91)).unwrap();
+    let ring = unsafe { completion::cq_ring_of(asid, 0) }.unwrap();
+    let alias = asid + 1;
+    completion::open_address_space(alias, 2);
+    let admitted = budget::node_used();
+    assert_eq!(completion::open_cq_phys(asid, 1, frame, 2), Err(CqOpenError::RingInUse));
+    assert_eq!(completion::open_cq_phys(alias, 0, frame, 2), Err(CqOpenError::RingInUse));
+    assert_eq!(budget::node_used(), admitted);
+    assert_eq!(unsafe { &mut *ring }.read().unwrap().result, 91);
+    completion::open_cq_phys(asid, 0, frame, 2).unwrap();
+    assert_eq!(account.used(), [1, charged[1] - 4096]);
+    completion::close_address_space(asid);
+    completion::close_address_space(alias);
+    crate::memory::PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame).unwrap();
+    assert_eq!(budget::node_used(), before);
+
+    // Exhaust each vector dimension independently, checking ordinary reserve,
+    // platform headroom, total exhaustion, and transactional local rollback.
+    for dimension in 0..2 {
+        let mut charges = alloc::vec::Vec::new();
+        let mut remaining = budget::ORDINARY_LIMIT[dimension] - before.1[dimension];
+        // Leave two count slots to force failure after partially installing
+        // the five queues of a real signed domain below.
+        if dimension == 0 {
+            remaining -= 2;
+        }
+        while remaining != 0 {
+            let amount = remaining.min(budget::DOMAIN_LIMIT[dimension]);
+            let mut vector = [0, 0];
+            vector[dimension] = amount;
+            charges.push(budget::reserve(&budget::DomainBudget::new(), false, vector).unwrap());
+            remaining -= amount;
+        }
+        if dimension == 0 {
+            let handle = crate::service::loader::create_user_address_space_handle();
+            crate::memory::close_user_address_space_handle(handle).unwrap();
+            let full = budget::node_used();
+            let image = crate::service::store::service_elf(b"ns").unwrap();
+            assert!(matches!(
+                crate::service::loader::try_load_domain(image),
+                Err(crate::service::loader::DomainLoadError::CompletionQueue(
+                    CqOpenError::ResourceLimit
+                ))
+            ));
+            assert_eq!(budget::node_used(), full, "partial loader preparation must roll back CQs");
+            let replacement = crate::service::loader::create_user_address_space_handle();
+            assert_eq!(replacement.id(), handle.id(), "failed loader must free its ASID");
+            crate::memory::close_user_address_space_handle(replacement).unwrap();
+            let loaded = crate::service::loader::try_load_platform_domain(image).unwrap();
+            assert_eq!(budget::node_used().0[0], full.0[0] + 5);
+            assert_eq!(budget::node_used().1, full.1);
+            crate::memory::close_user_address_space_handle(loaded.address_space).unwrap();
+            assert_eq!(budget::node_used(), full);
+            charges.push(budget::reserve(&budget::DomainBudget::new(), false, [2, 0]).unwrap());
+        }
+        let rejected = budget::DomainBudget::new();
+        let mut one = [0, 0];
+        one[dimension] = 1;
+        let full = budget::node_used();
+        assert!(budget::reserve(&rejected, false, one).is_err());
+        assert_eq!(rejected.used(), [0, 0]);
+        assert_eq!(budget::node_used(), full);
+        let mut remaining = budget::NODE_LIMIT[dimension] - full.0[dimension];
+        while remaining != 0 {
+            let amount = remaining.min(budget::DOMAIN_LIMIT[dimension]);
+            let mut vector = [0, 0];
+            vector[dimension] = amount;
+            charges.push(budget::reserve(&budget::DomainBudget::new(), true, vector).unwrap());
+            remaining -= amount;
+        }
+        let full = budget::node_used();
+        assert!(budget::reserve(&rejected, true, one).is_err());
+        assert_eq!(rejected.used(), [0, 0]);
+        assert_eq!(budget::node_used(), full);
+        drop(charges);
+        assert_eq!(budget::node_used(), before);
+    }
+
+    let handle = crate::service::loader::create_user_address_space_handle();
+    completion::open_address_space_with_cq(handle.id(), 2, 2).unwrap();
+    let account = completion::cq_admission(handle.id()).unwrap();
+    let charged = account.used();
+    crate::memory::budget::retire(handle);
+    assert_eq!(completion::open_cq(handle.id(), 1, 2), Err(CqOpenError::RetiringAddressSpace));
+    assert_eq!(
+        completion::open_address_space_with_cq(handle.id(), 2, 2),
+        Err(CqOpenError::RetiringAddressSpace)
+    );
+    assert_eq!(account.used(), charged);
+    crate::memory::close_user_address_space_handle(handle).unwrap();
+    assert_eq!(account.used(), [0, 0]);
+    let replacement = crate::service::loader::create_user_address_space_handle();
+    assert_eq!(replacement.id(), handle.id());
+    completion::open_address_space_with_cq(replacement.id(), 2, 2).unwrap();
+    assert_eq!(account.used(), [0, 0]);
+    assert_eq!(completion::cq_admission(replacement.id()).unwrap().used(), charged);
+    crate::memory::close_user_address_space_handle(replacement).unwrap();
+    assert_eq!(budget::node_used(), before);
+    logln!(
+        "[completion queues] count/bytes, aliasing, replacement, loader rollback and retirement \
+         passed"
+    );
+}
+
 /// Exercises the capability-free submission path: operations identified by
 /// OperationId, correlated by user data and delivered through their CQ ring.
 pub fn test_detached_operations() {
@@ -507,7 +699,7 @@ pub fn test_detached_operations() {
     completion::close_address_space(no_cq_asid);
 
     let asid = 0xde7a_c401;
-    completion::open_address_space_with_cq(asid, 3, 8);
+    completion::open_address_space_with_cq(asid, 3, 8).expect("CQ setup failed");
     let ring_ptr = unsafe { completion::cq_ring_of(asid, 0) }.expect("CQ ring must exist");
 
     // Happy path: user_data comes back as the CQ cookie, no capability slot
@@ -569,7 +761,7 @@ pub fn test_detached_operations() {
     completion::complete_detached(asid, _d3, OpResult::Ok(0)).unwrap();
     while unsafe { &mut *ring_ptr }.read().is_some() {}
 
-    completion::open_cq(asid, 1, 8);
+    completion::open_cq(asid, 1, 8).expect("CQ setup failed");
     let ring1 = unsafe { completion::cq_ring_of(asid, 1) }.expect("CQ 1 ring must exist");
     let routed = completion::submit_detached(asid, 1, OpCode::Nop, 0xbbbb_0001).unwrap();
     completion::complete_detached(asid, routed, OpResult::Ok(41)).unwrap();
@@ -600,7 +792,7 @@ pub fn test_detached_operations() {
     // against submission capacity until userspace drains space and a kernel
     // entry point flushes it. This bounds retained CQ records by that capacity.
     let bounded_asid = 0xde7a_c402;
-    completion::open_address_space_with_cq(bounded_asid, 2, 2);
+    completion::open_address_space_with_cq(bounded_asid, 2, 2).expect("CQ setup failed");
     let bounded_ring =
         unsafe { completion::cq_ring_of(bounded_asid, 0) }.expect("bounded CQ ring must exist");
     let first = completion::submit_detached(bounded_asid, 0, OpCode::Nop, 0xb001).unwrap();

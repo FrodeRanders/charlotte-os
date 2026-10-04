@@ -403,7 +403,8 @@ pub fn test_el0_sitas() {
                 .expect("[sitas] failed to map heap page");
         }
 
-        completion::open_address_space_with_cq_phys(asid, 16, cq_frame, 32);
+        completion::open_address_space_with_cq_phys(asid, 16, cq_frame, 32)
+            .expect("CQ setup failed");
 
         // `basic_kv` receives an empty launch Context; crt0 therefore enters main
         // without consuming a launch input stream. ASID stays kernel-private.

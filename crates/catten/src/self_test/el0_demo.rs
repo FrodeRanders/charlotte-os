@@ -253,7 +253,8 @@ pub fn test_el0_cross_lp_async() {
         // Attach a completion table + CQ ring on the same physical frame that is
         // mapped into the user AS, so the kernel's `complete()` posts entries the
         // EL0 coordinator can drain directly.
-        completion::open_address_space_with_cq_phys(asid, 16, cq_frame, 32);
+        completion::open_address_space_with_cq_phys(asid, 16, cq_frame, 32)
+            .expect("CQ setup failed");
 
         // --- spawn the EL0 coordinator; it spawns the worker on LP1 itself ---
         let entry: extern "C" fn() =

@@ -7,7 +7,7 @@ lifetimes.
 
 | Limit | Current kernel policy |
 | --- | --- |
-| Submission slots per namespace | Its configured completion capacity |
+| Submission slots per namespace | Its configured completion capacity, clamped to 1,024 |
 | Retained records per namespace | The smaller of that capacity and 1,024 |
 | Retained records per node | 8,192 |
 | Ordinary-domain share | 6,144; the remaining pool is available to kernel-designated platform domains |
@@ -83,7 +83,8 @@ dropping watches, avoiding a destructor wait on an event it still owns.
 The shared checked counter has host overflow/rejection/release tests.
 
 These are retained-state counts, not byte accounting for the entire kernel
-heap. CQ ring/backlog backing, registry nodes, worker stacks, observer lists,
+heap. Separate [CQ admission](completion-queue-budgets.md) bounds registered
+queues and kernel-owned ring/backlog backing. Registry nodes, worker stacks, observer lists,
 and weak-only Arc/control-block allocations are not separately charged here.
 In particular, a weak reference can retain allocation storage after the strong
 object's fields and charge have dropped. Observer cancellation/reclamation and

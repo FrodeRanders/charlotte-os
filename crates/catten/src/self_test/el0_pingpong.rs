@@ -227,7 +227,8 @@ pub fn test_el0_ping_pong() {
             PP_RESULT_FRAME = Some(result_frame);
         }
 
-        completion::open_address_space_with_cq_phys(asid, 16, cq_frame, 32);
+        completion::open_address_space_with_cq_phys(asid, 16, cq_frame, 32)
+            .expect("CQ setup failed");
 
         // --- spawn Ping (LP0) and Pong (LP1) ---
         let ping_entry: extern "C" fn() =

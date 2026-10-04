@@ -93,6 +93,27 @@ pub struct LoadedDomain {
     pub status_frame: PAddr,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DomainLoadError {
+    AddressSpace(AddressSpaceRegistrationError),
+    SignatureVerificationFailed,
+    CompletionQueue(crate::completion::CqOpenError),
+}
+
+/// Until commit there are no runnable threads. Teardown owns all mapped
+/// frames and any CQs already installed when a later preparation step fails.
+struct PreparingDomain(Option<AddressSpaceHandle>);
+
+impl Drop for PreparingDomain {
+    fn drop(&mut self) {
+        if let Some(handle) = self.0.take()
+            && let Err(error) = crate::memory::close_user_address_space_handle(handle)
+        {
+            crate::logln!("[loader] preparation rollback failed for {:?}: {:?}", handle, error);
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 struct ElfLoadSegment {
     offset: usize,
@@ -452,34 +473,49 @@ pub fn map_user_data_page(asid: AddressSpaceId, vaddr: usize) -> PAddr {
 /// use the completion syscalls and the unified `CQ_WAIT` shard wait
 /// (endpoint readiness binding, timed waits, detached operations). The
 /// domain is not started.
+/// This mandatory ambient-service path designates platform admission before
+/// preparation. Runtime/scoped callers should use the fallible ordinary APIs.
 pub fn load_domain(image: &[u8]) -> LoadedDomain {
-    match try_load_domain(image) {
-        Ok(loaded) => loaded,
-        Err(AddressSpaceRegistrationError::SignatureVerificationFailed) => {
-            panic!("[loader] refusing to load an ELF that is not validly signed by the cluster")
-        }
-        Err(_) => panic!("[loader] hardware address-space identifiers exhausted"),
-    }
+    try_load_platform_domain(image)
+        .unwrap_or_else(|error| panic!("[loader] domain load failed: {error:?}"))
 }
 
-/// Load a domain while reporting finite hardware-ASID exhaustion to callers
-/// which accept runtime service-creation requests.
-pub fn try_load_domain(image: &[u8]) -> Result<LoadedDomain, AddressSpaceRegistrationError> {
+/// Load an ordinary domain while reporting signature, hardware-ASID and CQ
+/// preparation failures to runtime service-creation callers.
+pub fn try_load_domain(image: &[u8]) -> Result<LoadedDomain, DomainLoadError> {
     try_load_domain_with_key(image, &charlotte_launch::CLUSTER_PUBLIC_KEY)
+}
+
+/// Trusted ambient supervisor path only. Scoped/syscall launches retain
+/// ordinary admission; neither artifact roles nor manifest fields choose it.
+pub(crate) fn try_load_platform_domain(image: &[u8]) -> Result<LoadedDomain, DomainLoadError> {
+    try_load_domain_with_policy(image, &charlotte_launch::CLUSTER_PUBLIC_KEY, true)
 }
 
 pub fn try_load_domain_with_key(
     image: &[u8],
     key: &[u8; 32],
-) -> Result<LoadedDomain, AddressSpaceRegistrationError> {
+) -> Result<LoadedDomain, DomainLoadError> {
+    try_load_domain_with_policy(image, key, false)
+}
+
+fn try_load_domain_with_policy(
+    image: &[u8],
+    key: &[u8; 32],
+    platform: bool,
+) -> Result<LoadedDomain, DomainLoadError> {
     if !validate_user_elf(image) {
-        return Err(AddressSpaceRegistrationError::SignatureVerificationFailed);
+        return Err(DomainLoadError::SignatureVerificationFailed);
     }
-    verify_image_signature(image, key)
-        .map_err(|_| AddressSpaceRegistrationError::SignatureVerificationFailed)?;
+    verify_image_signature(image, key).map_err(|_| DomainLoadError::SignatureVerificationFailed)?;
     let metadata = charlotte_launch::signature_note::artifact_metadata(image)
-        .ok_or(AddressSpaceRegistrationError::SignatureVerificationFailed)?;
-    let address_space = try_create_user_address_space_handle()?;
+        .ok_or(DomainLoadError::SignatureVerificationFailed)?;
+    let address_space =
+        try_create_user_address_space_handle().map_err(DomainLoadError::AddressSpace)?;
+    let mut preparation = PreparingDomain(Some(address_space));
+    if platform {
+        crate::memory::budget::mark_platform(address_space);
+    }
     let roles = if metadata.class == charlotte_launch::signature_note::ArtifactClass::Administration
     {
         catten_syscall::domain_roles::POLICY_ADMIN | catten_syscall::domain_roles::SERVICE_MANAGER
@@ -527,7 +563,8 @@ pub fn try_load_domain_with_key(
         COMPLETION_CAPACITY,
         cq_frame,
         CQ_ENTRIES,
-    );
+    )
+    .map_err(DomainLoadError::CompletionQueue)?;
 
     // Per-shard rings: one mapped page + kernel-side queue per shard (queue
     // id `i + 1`, id 0 remaining the process-wide default). Shards of a
@@ -535,7 +572,8 @@ pub fn try_load_domain_with_key(
     // never releases another.
     for i in 0..SHARD_CQ_COUNT {
         let frame = map_user_data_page(asid, SHARD_CQ_VADDR_BASE + i * PAGE_SIZE);
-        crate::completion::open_cq_phys(asid, (i as u32) + 1, frame, CQ_ENTRIES);
+        crate::completion::open_cq_phys(asid, (i as u32) + 1, frame, CQ_ENTRIES)
+            .map_err(DomainLoadError::CompletionQueue)?;
     }
 
     // Publish the layout so user-space runtimes can find their shard's ring.
@@ -545,6 +583,7 @@ pub fn try_load_domain_with_key(
         SHARD_CQ_COUNT,
     );
 
+    preparation.0 = None;
     Ok(LoadedDomain {
         asid,
         address_space,

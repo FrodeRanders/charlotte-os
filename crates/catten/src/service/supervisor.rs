@@ -48,7 +48,7 @@ const _: () = assert!(charlotte_launch::USER_STACK_PAGE_SIZE == loader::PAGE_SIZ
 pub enum ProfileLaunchError {
     EmptyProfile,
     ProfileTooLarge,
-    Load(crate::memory::AddressSpaceRegistrationError),
+    Load(loader::DomainLoadError),
     BootstrapConnection(ipc::IpcError),
     ProfileAllocation(crate::memory::object::MemoryObjectError),
     ProfileTransfer(crate::memory::object::MemoryObjectError),
@@ -762,7 +762,7 @@ pub fn try_spawn_with_read_only_profile_and_limits(
         u32::try_from(profile.len()).map_err(|_| ProfileLaunchError::ProfileTooLarge)?;
     let metadata = charlotte_launch::ProfileCapabilityMetadata::new(profile_len)
         .ok_or(ProfileLaunchError::EmptyProfile)?;
-    let loaded = loader::try_load_domain(image).map_err(ProfileLaunchError::Load)?;
+    let loaded = loader::try_load_platform_domain(image).map_err(ProfileLaunchError::Load)?;
     let mut transaction = ProfileLaunchTransaction::new(loaded);
 
     let connection = match ipc::connection_delegate(

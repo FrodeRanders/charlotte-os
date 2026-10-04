@@ -13,6 +13,25 @@ pub enum Error {
     Underflow,
 }
 
+/// Preallocated nonzero queue backing, including VecDeque's small-capacity
+/// floor. Empty queues allocate no backing. Arithmetic failure is admission
+/// failure, never a wrapped allocation size.
+pub const fn queue_backing_slots(capacity: usize) -> Option<usize> {
+    if capacity == 0 {
+        return Some(0);
+    }
+    match capacity.checked_next_power_of_two() {
+        Some(slots) => Some(
+            if slots < 4 {
+                4
+            } else {
+                slots
+            },
+        ),
+        None => None,
+    }
+}
+
 /// Atomic admission across independently measured resource dimensions.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct VectorBudget<const N: usize> {
@@ -163,6 +182,16 @@ pub const fn frames_available(free: u64, usable: u64, request: u64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn queue_backing_rounding_is_checked() {
+        assert_eq!(queue_backing_slots(0), Some(0));
+        assert_eq!(queue_backing_slots(1), Some(4));
+        assert_eq!(queue_backing_slots(4), Some(4));
+        assert_eq!(queue_backing_slots(5), Some(8));
+        assert_eq!(queue_backing_slots(1024), Some(1024));
+        assert_eq!(queue_backing_slots(usize::MAX), None);
+    }
 
     #[test]
     fn vector_reservations_and_releases_are_atomic() {

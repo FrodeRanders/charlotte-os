@@ -283,7 +283,7 @@ fn test_stale_interrupt_wake(old: u64) -> u64 {
 fn completion_open() {
     // A completion-queue address space so interrupt readiness has somewhere
     // to be delivered (queue 0).
-    crate::completion::open_address_space_with_cq(DEV_ASID, 8, 8);
+    crate::completion::open_address_space_with_cq(DEV_ASID, 8, 8).expect("CQ setup failed");
 }
 
 /// A DMA map pins the object before acquiring the IOMMU registry. Even when the

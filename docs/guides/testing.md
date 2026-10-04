@@ -112,6 +112,15 @@ platform progress, CQ replacement, retirement and a stale captured close after
 exact numeric ASID/capability reuse. See
 [completion-record budgets](../reference/completion-record-budgets.md).
 
+Kernel-only CQ admission tests additionally exhaust queue counts and kernel
+backing bytes, check failed replacement preserves pending data and capabilities,
+reject physical-ring aliases without resetting the ring, and exercise retirement
+and generation reuse. A signed domain load fails partway through installing its
+five CQs, returns the staged charges and frees its ASID; trusted platform
+preparation then succeeds using the reserve. These are synchronous tests, not
+another EL0 probe bit: the scoped security mask remains `0x3fff`. See
+[completion-queue budgets](../reference/completion-queue-budgets.md).
+
 The scoped application verifier does not force ASID reuse, restart the grant
 controller, inject allocation failures or prove many-client fairness. It does
 not exercise the complete S3/Raft release pipeline with independent roots, or

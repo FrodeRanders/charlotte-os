@@ -230,7 +230,8 @@ fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr, result_vaddr: VAddr
 
     // Initialize the CQ ring on this physical frame, then register the AS
     // with the completion subsystem so `complete()` writes to the ring.
-    crate::completion::open_address_space_with_cq_phys(asid, 16, cq_frame, 32);
+    crate::completion::open_address_space_with_cq_phys(asid, 16, cq_frame, 32)
+        .expect("CQ setup failed");
     logln!("CQ ring attached to completion AS asid={}", asid);
 
     asid

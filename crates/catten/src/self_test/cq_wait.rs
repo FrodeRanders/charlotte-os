@@ -147,8 +147,8 @@ extern "C" fn cq_driver() {
 
 pub fn test_cq_wait_wake() {
     logln!("Testing blocking CQ wait (completion, wake, and endpoint readiness releases)...");
-    completion::open_address_space_with_cq(CQW_ASID, 8, 8);
-    completion::open_cq(CQW_ASID, 1, 8);
+    completion::open_address_space_with_cq(CQW_ASID, 8, 8).expect("CQ setup failed");
+    completion::open_cq(CQW_ASID, 1, 8).expect("CQ setup failed");
 
     // A CQ-bound endpoint: readiness is delivered as a coalesced wake on
     // queue 0 (unified shard wait).

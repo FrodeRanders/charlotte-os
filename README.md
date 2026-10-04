@@ -72,6 +72,9 @@ The main additions and extensions currently maintained here are:
   containment remains work in progress.
   [Completion-record budgets](docs/reference/completion-record-budgets.md)
   also cover retained strong references and undelivered detached results.
+  [CQ admission](docs/reference/completion-queue-budgets.md) bounds registered
+  queues and kernel-owned ring/backlog storage, with fallible preparation and
+  rollback of partially loaded domains.
 - **Protected userspace device I/O:** reference UART, NVMe, AHCI, virtio-blk,
   virtio-net, E1000E, and VirtIO RNG drivers receive only delegated MMIO,
   interrupt, and DMA authority. Arm SMMUv3, Intel VT-d, and AMD-Vi isolate

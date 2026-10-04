@@ -80,8 +80,10 @@ it still needs a guest/hardware run.
 These budgets cover capability and detached completion timers, not all timers
 or all completion resources. Separate [record admission](completion-record-budgets.md)
 bounds retained completion objects and detached results. Scheduler sleeps, wait
-watchdogs, observer lists, kernel workers, CQ allocations, weak-only storage
+watchdogs, observer lists, kernel workers, weak-only storage
 and other kernel metadata still need aggregate admission and fallible allocation review.
+Separate [CQ admission](completion-queue-budgets.md) bounds queue counts and
+kernel-owned backing, but not physical ring mappings.
 Cross-LP cancellation is bounded by the retained charge, but the regression
 simulates deferred reclamation through a busy local queue rather than forcing
 an actual remote-LP purge. This is a partial SEC-07 remediation, not a complete

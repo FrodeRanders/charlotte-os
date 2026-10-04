@@ -71,6 +71,8 @@ pub struct CompletionQueueRing {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CqRingError {
     CapacityTooSmall,
+    AllocationFailed,
+    FrameMisaligned,
 }
 
 impl CompletionQueueRing {
@@ -86,12 +88,18 @@ impl CompletionQueueRing {
         }
     }
 
-    pub fn new_page(num_entries: u32) -> Result<(alloc::vec::Vec<u8>, *mut Self), CqRingError> {
+    /// u64 backing preserves the alignment required by the header and entries.
+    pub fn new_page(num_entries: u32) -> Result<(alloc::vec::Vec<u64>, *mut Self), CqRingError> {
         if num_entries < 2 {
             return Err(CqRingError::CapacityTooSmall);
         }
         let cap = Self::capacity_for(num_entries);
-        let mut buf = alloc::vec![0u8; 4096];
+        let mut buf = alloc::vec::Vec::new();
+        buf.try_reserve_exact(512).map_err(|_| CqRingError::AllocationFailed)?;
+        if buf.capacity() > 512 {
+            return Err(CqRingError::AllocationFailed);
+        }
+        buf.resize(512, 0u64);
         let ptr = buf.as_mut_ptr() as *mut Self;
         unsafe {
             (*ptr).head = 0;
@@ -109,6 +117,9 @@ impl CompletionQueueRing {
     pub unsafe fn init_at_phys(frame: PAddr, num_entries: u32) -> Result<*mut Self, CqRingError> {
         if num_entries < 2 {
             return Err(CqRingError::CapacityTooSmall);
+        }
+        if !crate::cpu::isa::interface::memory::address::Address::is_aligned_to(&frame, 4096) {
+            return Err(CqRingError::FrameMisaligned);
         }
         let cap = Self::capacity_for(num_entries);
         let ptr: *mut Self = frame.into();

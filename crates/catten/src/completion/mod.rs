@@ -28,6 +28,7 @@
 
 pub(crate) mod budget;
 pub mod cq;
+pub(crate) mod cq_budget;
 
 use alloc::{
     collections::{
@@ -503,7 +504,9 @@ struct CqState {
     /// Threads blocked waiting for this queue to become readable.
     observers: ConcurrentQueue<Weak<dyn Observer>>,
     #[allow(dead_code)]
-    _buf: Option<alloc::vec::Vec<u8>>,
+    _buf: Option<alloc::vec::Vec<u64>>,
+    // Last: free heap backing before returning admission.
+    _storage_charge: cq_budget::Charge,
 }
 
 impl CqState {
@@ -575,11 +578,12 @@ struct AsCompletions {
     /// even after its completion slot has been reclaimed.
     timer_budget: Arc<crate::timers::budget::DomainBudget>,
     record_budget: Arc<budget::DomainBudget>,
+    cq_budget: Arc<cq_budget::DomainBudget>,
     address_space: Option<crate::memory::AddressSpaceHandle>,
 }
 
 // SAFETY: `CqState::ring` has two backing modes. Heap-backed queues retain their
-// allocation in `_buf: Some(Vec<u8>)`. Physical queues use `_buf: None`; their
+// aligned allocation in `_buf: Some(Vec<u64>)`. Physical queues use `_buf: None`; their
 // frame is owned by the user address-space mapping, and address-space teardown
 // calls `completion::close_address_space` before removing that mapping/table.
 // Consequently either backing allocation outlives its registry entry.
@@ -601,6 +605,7 @@ static COMPLETIONS: LazyLock<RwLock<BTreeMap<AddressSpaceId, AsCompletions>>> =
     LazyLock::new(|| RwLock::new(BTreeMap::new()));
 
 fn empty_as(asid: AddressSpaceId, capacity: usize) -> AsCompletions {
+    let capacity = capacity.min(budget::MAX_DOMAIN_RECORDS);
     AsCompletions {
         table: BTreeMap::new(),
         capacity,
@@ -609,6 +614,7 @@ fn empty_as(asid: AddressSpaceId, capacity: usize) -> AsCompletions {
         cqs: BTreeMap::new(),
         timer_budget: crate::timers::budget::DomainBudget::new(capacity),
         record_budget: budget::DomainBudget::new(capacity),
+        cq_budget: cq_budget::DomainBudget::new(),
         address_space: crate::memory::current_address_space_handle(asid),
     }
 }
@@ -655,9 +661,8 @@ pub fn open_address_space_with_cq(
     asid: AddressSpaceId,
     cap_table_capacity: usize,
     cq_entries: u32,
-) {
-    replace_address_space(asid, empty_as(asid, cap_table_capacity));
-    open_cq(asid, DEFAULT_CQ, cq_entries);
+) -> Result<(), CqOpenError> {
+    open_namespace_with_cq(asid, cap_table_capacity, cq_entries, None)
 }
 
 /// Like [`open_address_space_with_cq`] but initialises the default ring on a
@@ -668,36 +673,132 @@ pub fn open_address_space_with_cq_phys(
     cap_table_capacity: usize,
     ring_frame: crate::memory::physical::PAddr,
     cq_entries: u32,
-) {
-    replace_address_space(asid, empty_as(asid, cap_table_capacity));
-    open_cq_phys(asid, DEFAULT_CQ, ring_frame, cq_entries);
+) -> Result<(), CqOpenError> {
+    open_namespace_with_cq(asid, cap_table_capacity, cq_entries, Some(ring_frame))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CqOpenError {
+    UnknownAddressSpace,
+    RetiringAddressSpace,
+    ResourceLimit,
+    AllocationFailed,
+    RingInUse,
+    Ring(cq::CqRingError),
+}
+
+fn check_ring_alias(
+    registry: &BTreeMap<AddressSpaceId, AsCompletions>,
+    asid: AddressSpaceId,
+    cq: CqId,
+    frame: Option<crate::memory::physical::PAddr>,
+) -> Result<(), CqOpenError> {
+    if let Some(frame) = frame {
+        let ptr: *mut cq::CompletionQueueRing = frame.into();
+        if registry.iter().any(|(owner, namespace)| {
+            namespace
+                .cqs
+                .iter()
+                .any(|(id, state)| state.ring == ptr && (*owner != asid || *id != cq))
+        }) {
+            return Err(CqOpenError::RingInUse);
+        }
+    }
+    Ok(())
+}
+
+/// Stage admitted backing before initializing a physical ring or publication.
+/// A kernel caller of the physical variant must keep its mapped frame live
+/// and quiesce any consumer before replacing that ring.
+fn stage_cq(
+    asid: AddressSpaceId,
+    entries: &AsCompletions,
+    cq_entries: u32,
+    platform_identity: Option<crate::memory::AddressSpaceHandle>,
+    frame: Option<crate::memory::physical::PAddr>,
+) -> Result<CqState, CqOpenError> {
+    if cq_entries < 2 {
+        return Err(CqOpenError::Ring(cq::CqRingError::CapacityTooSmall));
+    }
+    if entries.address_space.is_some_and(|handle| !crate::memory::budget::accepting(handle)) {
+        return Err(CqOpenError::RetiringAddressSpace);
+    }
+    let slots = charlotte_lifecycle::resources::queue_backing_slots(entries.capacity)
+        .ok_or(CqOpenError::ResourceLimit)?;
+    let bytes = slots
+        .checked_mul(core::mem::size_of::<BacklogEntry>())
+        .and_then(|bytes| {
+            bytes.checked_add(
+                if frame.is_none() {
+                    4096
+                } else {
+                    0
+                },
+            )
+        })
+        .ok_or(CqOpenError::ResourceLimit)?;
+    let platform = asid == crate::memory::KERNEL_ASID
+        || platform_identity.is_some_and(|handle| Some(handle) == entries.address_space);
+    let charge = cq_budget::reserve(&entries.cq_budget, platform, [1, bytes as u64])
+        .map_err(|_| CqOpenError::ResourceLimit)?;
+    let mut state = CqState {
+        ring: core::ptr::null_mut(),
+        ring_head: 0,
+        ring_capacity: cq::CompletionQueueRing::capacity_for(cq_entries),
+        backlog: VecDeque::new(),
+        retained_limit: entries.capacity,
+        work_generation: 0,
+        last_seen_generation: 0,
+        observers: ConcurrentQueue::unbounded(),
+        _buf: None,
+        _storage_charge: charge,
+    };
+    state.backlog.try_reserve_exact(slots).map_err(|_| CqOpenError::AllocationFailed)?;
+    if state.backlog.capacity() > slots {
+        return Err(CqOpenError::AllocationFailed);
+    }
+    if let Some(frame) = frame {
+        // Kernel mapping boundary: the caller owns the writable physical frame;
+        // alias/admission checks precede all writes to it under the registry.
+        state.ring = unsafe { cq::CompletionQueueRing::init_at_phys(frame, cq_entries) }
+            .map_err(CqOpenError::Ring)?;
+    } else {
+        let (buf, ptr) =
+            cq::CompletionQueueRing::new_page(cq_entries).map_err(CqOpenError::Ring)?;
+        state._buf = Some(buf);
+        state.ring = ptr;
+    }
+    Ok(state)
+}
+
+fn open_namespace_with_cq(
+    asid: AddressSpaceId,
+    capacity: usize,
+    cq_entries: u32,
+    frame: Option<crate::memory::physical::PAddr>,
+) -> Result<(), CqOpenError> {
+    let mut entries = empty_as(asid, capacity);
+    let platform = crate::memory::budget::platform_identity(asid);
+    let mut registry = COMPLETIONS.write();
+    check_ring_alias(&registry, asid, DEFAULT_CQ, frame)?;
+    let state = stage_cq(asid, &entries, cq_entries, platform, frame)?;
+    entries.cqs.insert(DEFAULT_CQ, state);
+    if let Some(previous) = registry.insert(asid, entries) {
+        for cap in previous.table.keys() {
+            assert!(
+                crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Completion),
+                "replaced completion capability was absent from unified table"
+            );
+        }
+    }
+    Ok(())
 }
 
 /// Attaches an additional heap-backed completion queue to an address space —
 /// one per shard in the per-shard-CQ model (§8.1). Replaces any existing
 /// queue with the same id.
-pub fn open_cq(asid: AddressSpaceId, cq: CqId, cq_entries: u32) {
-    let (buf, ring_ptr) = crate::completion::cq::CompletionQueueRing::new_page(cq_entries)
-        .expect("completion queue capacity must be at least two");
-    let mut registry = COMPLETIONS.write();
-    if let Some(as_completions) = registry.get_mut(&asid) {
-        let retained_limit = as_completions.capacity;
-        replace_cq(
-            as_completions,
-            cq,
-            CqState {
-                ring: ring_ptr,
-                ring_head: 0,
-                ring_capacity: crate::completion::cq::CompletionQueueRing::capacity_for(cq_entries),
-                backlog: VecDeque::with_capacity(retained_limit),
-                retained_limit,
-                work_generation: 0,
-                last_seen_generation: 0,
-                observers: ConcurrentQueue::unbounded(),
-                _buf: Some(buf),
-            },
-        );
-    }
+pub fn open_cq(asid: AddressSpaceId, cq: CqId, cq_entries: u32) -> Result<(), CqOpenError> {
+    attach_cq(asid, cq, cq_entries, None)
 }
 
 /// Attaches an additional completion queue whose ring lives on a
@@ -707,29 +808,23 @@ pub fn open_cq_phys(
     cq: CqId,
     ring_frame: crate::memory::physical::PAddr,
     cq_entries: u32,
-) {
-    let ring_ptr =
-        unsafe { crate::completion::cq::CompletionQueueRing::init_at_phys(ring_frame, cq_entries) }
-            .expect("completion queue capacity must be at least two");
+) -> Result<(), CqOpenError> {
+    attach_cq(asid, cq, cq_entries, Some(ring_frame))
+}
+
+fn attach_cq(
+    asid: AddressSpaceId,
+    cq: CqId,
+    cq_entries: u32,
+    frame: Option<crate::memory::physical::PAddr>,
+) -> Result<(), CqOpenError> {
+    let platform = crate::memory::budget::platform_identity(asid);
     let mut registry = COMPLETIONS.write();
-    if let Some(as_completions) = registry.get_mut(&asid) {
-        let retained_limit = as_completions.capacity;
-        replace_cq(
-            as_completions,
-            cq,
-            CqState {
-                ring: ring_ptr,
-                ring_head: 0,
-                ring_capacity: crate::completion::cq::CompletionQueueRing::capacity_for(cq_entries),
-                backlog: VecDeque::with_capacity(retained_limit),
-                retained_limit,
-                work_generation: 0,
-                last_seen_generation: 0,
-                observers: ConcurrentQueue::unbounded(),
-                _buf: None,
-            },
-        );
-    }
+    check_ring_alias(&registry, asid, cq, frame)?;
+    let entries = registry.get_mut(&asid).ok_or(CqOpenError::UnknownAddressSpace)?;
+    let state = stage_cq(asid, entries, cq_entries, platform, frame)?;
+    replace_cq(entries, cq, state);
+    Ok(())
 }
 
 /// Kernel-controlled queue replacement discards old undelivered results.
@@ -1420,6 +1515,10 @@ pub(crate) fn timer_events_used(asid: AddressSpaceId) -> usize {
 
 pub(crate) fn record_admission(asid: AddressSpaceId) -> Option<Arc<budget::DomainBudget>> {
     COMPLETIONS.read().get(&asid).map(|entries| entries.record_budget.clone())
+}
+
+pub(crate) fn cq_admission(asid: AddressSpaceId) -> Option<Arc<cq_budget::DomainBudget>> {
+    COMPLETIONS.read().get(&asid).map(|entries| entries.cq_budget.clone())
 }
 
 /// Revokes a completed or already-drained capability. Fails with
