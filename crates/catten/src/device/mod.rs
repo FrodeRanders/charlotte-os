@@ -178,7 +178,8 @@ impl AsDeviceCaps {
     }
 
     fn insert(&mut self, owner: AddressSpaceId, object: DeviceObject) -> DeviceCap {
-        let id = crate::capability::allocate(owner, crate::capability::ObjectKind::Device);
+        let id =
+            crate::capability::allocate_unmigrated(owner, crate::capability::ObjectKind::Device);
         self.caps.insert(id, object);
         id
     }

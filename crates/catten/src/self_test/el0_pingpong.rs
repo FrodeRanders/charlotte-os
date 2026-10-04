@@ -213,7 +213,7 @@ pub fn test_el0_ping_pong() {
             let _kas = KERNEL_AS.lock();
             AddressSpace::new_user()
         };
-        let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
+        let asid = crate::memory::register_user_address_space(user_as).unwrap().id();
         logln!("[PP] user AS asid={}", asid);
 
         pp_map_code_page(asid, VAddr::from(PING_VADDR), ping_code());

@@ -368,8 +368,7 @@ pub fn create_user_address_space() -> AddressSpaceId {
 
 /// Create a fresh user address space and retain its reuse-safe identity.
 pub fn create_user_address_space_handle() -> AddressSpaceHandle {
-    try_create_user_address_space_handle()
-        .expect("[loader] hardware address-space identifiers exhausted")
+    try_create_user_address_space_handle().expect("[loader] address-space creation failed")
 }
 
 /// Try to create a fresh user address space without turning finite hardware

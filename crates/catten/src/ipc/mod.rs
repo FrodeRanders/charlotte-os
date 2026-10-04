@@ -241,7 +241,7 @@ impl AsIpcCaps {
             charge.is_some(),
             "connection needs exactly one record charge"
         );
-        let id = crate::capability::allocate(owner, crate::capability::ObjectKind::Ipc);
+        let id = crate::capability::allocate_unmigrated(owner, crate::capability::ObjectKind::Ipc);
         self.caps.insert(
             id,
             AdmittedCapability {

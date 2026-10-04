@@ -255,6 +255,22 @@ new pre-start resource to this transaction instead of appending an `expect`
 after allocation. Capability records carry a typed
 `ProfileCapabilityMetadata` length, never an ad hoc meaning in generic flags.
 
+## Kernel capability staging
+
+Kernel payload ownership and namespace authority need coordinated transactions.
+`capability::Reservation` holds a hidden identity/count before publication; its
+Drop releases only that exact namespace's entry. Mailbox opens and completion
+submissions use bounded shared admission. A `MoveEscrow` can retain the source
+slot for rollback without re-admission at a full namespace, but production
+memory/IPC moves still need an owning payload transaction before adopting it.
+See [shared capability admission](../reference/capability-admission.md) for
+state transitions, locking, limits and the remaining migration.
+
+No backward-compatibility requirement justifies retaining an unsafe allocator.
+The explicitly named unconverted helpers are temporary cutover markers, not an
+API for new code. They must be removed as their actual payload/rollback work is
+replaced. Userspace continues to use `catten_rt::owned`, not these kernel tokens.
+
 ## Review checklist
 
 - Does every allocated, returned, or received capability immediately acquire

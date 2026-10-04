@@ -322,7 +322,7 @@ fn test_completion_record_admission() {
             let _kernel = crate::memory::KERNEL_AS.lock();
             crate::cpu::isa::memory::paging::AddressSpace::new_user()
         };
-        crate::memory::ADDRESS_SPACE_TABLE.lock().add_element(user_as)
+        crate::memory::register_user_address_space(user_as).unwrap().id()
     };
     let asid = 0xc0ae_b002;
     completion::open_address_space(asid, 1);

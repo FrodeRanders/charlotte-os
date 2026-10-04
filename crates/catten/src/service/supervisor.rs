@@ -911,8 +911,10 @@ pub fn start_observability_service(name_service: &NameServiceHandle) -> ServiceD
         ConnectionRights::CALL,
     )
     .expect("[supervisor] observer name-service delegation failed");
-    let observer_cap =
-        crate::capability::allocate(loaded.asid, crate::capability::ObjectKind::SystemObserver);
+    let observer_cap = crate::capability::allocate_unmigrated(
+        loaded.asid,
+        crate::capability::ObjectKind::SystemObserver,
+    );
     bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
     bootstrap::write_system_observer_cap(loaded.config_frame, observer_cap);
     bootstrap::write_manifest(loaded.config_frame, &[]);

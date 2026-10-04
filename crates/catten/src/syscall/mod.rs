@@ -1044,12 +1044,26 @@ impl AsMailboxCaps {
         owner: AddressSpaceId,
         endpoint: MailboxEndpoint,
         platform: bool,
+        lifecycle: &crate::capability::LifecycleGuard<'_>,
     ) -> Result<MailboxCap, mailbox_budget::Error> {
         // Admission and serial minting precede payload publication. No remote
         // resource/attachment has moved; staged failure drops the charge.
         let charge = mailbox_budget::reserve(&self.budget, platform)?;
-        let cap = crate::capability::try_allocate(owner, crate::capability::ObjectKind::Mailbox)
-            .map_err(|_| mailbox_budget::Error::IdentityExhausted)?;
+        let cap = crate::capability::try_allocate_in_lifecycle(
+            owner,
+            crate::capability::ObjectKind::Mailbox,
+            lifecycle,
+        )
+        .map_err(|error| match error {
+            crate::capability::AllocationError::IdentityExhausted => {
+                mailbox_budget::Error::IdentityExhausted
+            }
+            crate::capability::AllocationError::Retired => mailbox_budget::Error::Retired,
+            crate::capability::AllocationError::AllocationFailed => {
+                mailbox_budget::Error::AllocationFailed
+            }
+            _ => mailbox_budget::Error::ResourceLimit,
+        })?;
         self.endpoints.insert(
             cap,
             AdmittedMailboxEndpoint {
@@ -1065,6 +1079,7 @@ impl AsMailboxCaps {
         owner: AddressSpaceId,
         lp: LpId,
         platform: bool,
+        lifecycle: &crate::capability::LifecycleGuard<'_>,
     ) -> Result<MailboxCap, mailbox_budget::Error> {
         if let Some((cap, _)) = self.endpoints.iter().find(|(_, endpoint)| {
             matches!(
@@ -1082,6 +1097,7 @@ impl AsMailboxCaps {
                 lp,
             },
             platform,
+            lifecycle,
         )
     }
 }
@@ -1206,8 +1222,9 @@ fn open_mailbox_endpoint(
                 target_lp,
             },
             platform,
+            &_lifecycle,
         ),
-        None => caps.receiver_for_or_insert(asid, get_lp_id(), platform),
+        None => caps.receiver_for_or_insert(asid, get_lp_id(), platform, &_lifecycle),
     }
 }
 

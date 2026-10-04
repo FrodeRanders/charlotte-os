@@ -49,6 +49,18 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
 
 ## Architectural boundaries
 
+- Internal APIs and wire formats have no backward-compatibility requirement.
+  Remove compatibility-only branches when a coherent replacement is ready;
+  do not preserve an unsafe allocation path for older callers.
+- New kernel capability publication uses `capability::Reservation`: reserve
+  before payload/ownership mutation and publish under the subsystem's
+  serialization. Retain the captured namespace identity, not just its ASID.
+  `reserve_captured` requires that registry's captured generation and guard;
+  do not acquire lifecycle under a subsystem guard. A source move needs an
+  owning payload transaction as well as capability escrow. Do not add callers
+  of `allocate_unmigrated` or `restore_unmigrated`; these explicitly identify
+  unfinished migrations, not supported compatibility APIs. See
+  `docs/reference/capability-admission.md` for the current enforcement scope.
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`

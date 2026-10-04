@@ -186,6 +186,25 @@ ceilings and the platform reserve. No extra real-EL0 quota probe was added;
 the scoped mask remains `0x7fff`. See
 [mailbox capability budgets](../reference/mailbox-capability-budgets.md).
 
+Shared capability-admission fixtures fill 4,096 actual entries across all six
+object kinds. They cover hidden staging, cancellation, quota rejection without
+serial consumption, source escrow/rollback at full capacity, committed source
+revocation and exact-number namespace replacement. Real domain registration,
+retirement and ASID reuse test stale-token publication and captured-generation
+rejection. Mailbox dispatch and completion/timer submissions reject aggregate
+pressure below their family ceilings, refund staged family charges and recover
+when a slot is freed. An isolated counter test checks shared node/ordinary
+limits without filling the live pool. The explicitly unfinished allocation
+bypass is tested as counted, not silently claimed to be bounded. No extra EL0
+quota probe or atomic IPC-vector admission test is implied; the scoped mask
+remains `0x7fff`. See
+[shared capability admission](../reference/capability-admission.md).
+
+Real-domain fixtures use `register_user_address_space`, not direct insertion
+into `ADDRESS_SPACE_TABLE`. This initializes the same generation, limits,
+accounting and capability namespace as production domain creation. Adversarial
+IPC scenarios using pseudo-domain IDs allocate no unused real address spaces.
+
 Completion/CQ waiter tests keep the fifteen-bit scoped mask unchanged. Kernel
 tests cover source/domain/node admission and rollback, detached entries,
 promotion and ASID reuse; the scheduled CQ verifier checks Running/Ready/new

@@ -43,6 +43,7 @@ fn account(asid: AddressSpaceId) -> alloc::sync::Arc<mailbox_budget::DomainBudge
 }
 
 pub(crate) fn test_admission() {
+    crate::capability::admission_tests::test_admission();
     crate::capability::test_identity_exhaustion();
     mailbox_budget::test_node_admission();
     let recv = receiver(CLIENT);
@@ -110,7 +111,24 @@ pub(crate) fn test_admission() {
     close_mailbox_address_space(CLIENT);
     crate::capability::close_address_space(CLIENT);
     test_generation_fence();
+    test_shared_admission();
     logln!("[mailbox] record quota, churn, rollback, retirement and generation fencing passed");
+}
+
+fn test_shared_admission() {
+    const OWNER: AddressSpaceId = 0x5e41;
+    crate::capability::admission_tests::test_fill_namespace(OWNER);
+    assert_eq!(sender(OWNER), 0, "aggregate count must reject below the mailbox family limit");
+    let local = account(OWNER);
+    assert_eq!(local.used(), 0, "aggregate rejection must refund mailbox admission");
+    assert!(crate::capability::remove(OWNER, 1, crate::capability::ObjectKind::Memory));
+    let cap = sender(OWNER);
+    assert_ne!(cap, 0);
+    assert_eq!(local.used(), 1);
+    close(OWNER, cap);
+    assert_eq!(local.used(), 0);
+    close_mailbox_address_space(OWNER);
+    crate::capability::close_address_space(OWNER);
 }
 
 fn test_generation_fence() {

@@ -45,6 +45,18 @@ lifecycle guard. Teardown already owns that guard before draining mailbox
 payloads; counter Drop never reenters the registry or lifecycle. See
 [mailbox capability budgets](mailbox-capability-budgets.md).
 
+User address-space registration stages capability-budget metadata under
+lifecycle before taking the address-space table, then publishes its exact
+namespace. Shared admission under the completion registry uses that registry's
+captured generation: `COMPLETIONS → CAPABILITIES → capability domain → node`.
+It never enters lifecycle or the address-space table under `CAPABILITIES`.
+Mailbox's already-owned lifecycle guard is borrowed through its shared-admission
+helper, not recursively acquired. Platform designation releases the memory
+ledger and address-space guard before updating the matching namespace.
+Entry-charge Drop enters only capability counters; reservation/escrow Drop
+enters `CAPABILITIES` and must run outside that registry's own guard. See
+[shared capability admission](capability-admission.md) for enforcement scope.
+
 ---
 
 ## 2. Interrupt-masking spin locks

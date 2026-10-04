@@ -4,7 +4,7 @@ This records implementation passes following the
 [security audit](2026-10-03-security-audit.md) of revision
 `42183c57ce4c0b32a6010246f6eee1b6262ebb4e`. It is not a declaration that the
 audit is closed or that CharlotteOS is ready for hostile production workloads.
-Implementation and validation span 2026-10-03–04 local time.
+Implementation and validation span 2026-10-03–05 local time.
 
 ## Finding ledger
 
@@ -39,6 +39,14 @@ accounting or establish interrupt-controller/scheduler progress guarantees.
 Mailbox handle records now also have generation-scoped admission, owning
 refund and a trusted platform reserve; this is not aggregate namespace or
 mailbox queue-backing admission.
+
+Shared namespace accounting now includes all capability kinds and enforces
+staged admission for mailbox and completion publication. Exact namespace tokens
+fence cancellation/publication; source escrow retains rollback capacity but
+has not yet been integrated into memory/IPC payload transactions. Other families
+can still exceed shared policy through explicitly named unconverted paths.
+Thus the complete capability-namespace admission requirement remains open;
+this is not a backward-compatibility promise for those paths.
 
 ## Enforced contracts
 
@@ -1709,3 +1717,102 @@ was performed. SEC-07 remains partial: these record counts do not charge the
 legacy/capability mailbox queue backing, empty namespace/control-block memory,
 BTreeMap allocator bytes, aggregate capabilities, loader/page-table/heap
 backing or arbitrary callback captures. The other open findings remain open.
+
+## Continuation: shared capability accounting and staged admission — 2026-10-04–05
+
+The preceding mailbox-record continuation was committed as `6d458d7`. This
+continuation introduces one capability domain/node account shared across all
+six object kinds. Its defaults are 4,096 records per namespace, 65,536 per node
+and 49,152 ordinary records. Staged, live and source-escrow entries retain one
+owning charge each. Mailbox opens and capability-backed completion submissions
+(ordinary, timer, event-watch and worker preparation) now reject shared pressure
+as well as family pressure. A mailbox reports zero; completion reports existing
+`WouldBlock` backpressure. Detached operations have no capability entry and
+continue to use their existing retained-record budget.
+
+User domain registration prepares its budget control block before allocating
+an ASID and publishes the exact generation-bearing namespace. Teardown retires
+shared admission before draining any family. Platform designation updates the
+matching namespace after releasing the memory ledger and address-space table;
+outstanding record charges retain their original class. Shared allocation does
+not take the address-space table while owning `CAPABILITIES`. Completion uses
+its registry's captured generation under that registry's guard. Mailbox borrows
+its already-owned lifecycle guard instead of reacquiring it.
+
+`Reservation` keeps unpublished authority hidden and cancels it on Drop.
+`MoveEscrow` hides the source but preserves its quota slot for capacity-independent
+restoration or committed revocation. Both capture the exact budget object and
+check it before modifying an entry; old tokens cannot remove or revive a
+replacement with the same ASID/capability number. Their entry charge is released
+at namespace teardown even if a token retains the old control block. Cancelled
+staged serials remain consumed; rejected admission consumes no serial.
+
+There is no backward-compatibility requirement. The old generic
+`capability::allocate` and scalar `restore` API names were removed. The remaining
+payload paths use explicitly named `allocate_unmigrated`/`restore_unmigrated`
+helpers, which account records but bypass shared policy. This is a temporary
+transaction-cutover boundary, not an API retained for old callers. It avoids
+inserting a newly fallible quota check after those paths already mutate
+ownership. New contributors must not add callers. IPC, memory, device and
+observer payload paths still require conversion and removal of both helpers.
+In particular, production memory/IPC moves do not yet use the new source-escrow
+primitive, and it refuses restoration after retirement. Owning payload rollback
+must explicitly resolve that case before migration. Neither an atomic vector
+reservation API nor pre-dequeue reply-cap admission has been implemented here.
+
+The reference, contributor instructions, ownership/testing and locking guides,
+mailbox reference, TLA+ conformance table and LaTeX programming-model chapter
+state this partial enforcement. Count admission does not charge BTreeMap bytes,
+empty namespace/control blocks, loader/heap/page-table backing or arbitrary
+captures. `Arc` preparation is fallible; BTreeMap allocation still is not.
+Unconverted paths can exceed the policy and consume platform headroom, so this
+does not close SEC-07 or establish allocator exhaustion safety. No new formal
+model was checked, and the PDF was not rebuilt.
+
+Validation corrections discovered during guest runs:
+
+- The first run rejected a platform progress fixture that had inserted its
+  address space directly into the global table. All real-domain self-tests now
+  use production `register_user_address_space`, including namespace, limits and
+  accounting setup. Three unused copies of the current kernel address space in
+  the pseudo-domain adversarial test were removed, rather than preserved as
+  legacy test scaffolding.
+- A second run reached the new shared-admission fixtures and rejected their
+  attempt to close a still-in-flight completion. The fixture now explicitly
+  completes the operation before closing it. Both failed runs produced a kernel
+  assertion and no authoritative passing verdict; they are not counted as
+  successful validation.
+
+Final validation:
+
+- Host regression/signing tests passed. No host-library or userspace service
+  implementation changed in this continuation; the new admission tests run
+  inside the kernel, not as host tests or new EL0 quota probes.
+- Kernel fixtures filled 4,096 actual mixed-kind namespace entries, rejected
+  further reservation, restored escrow at the ceiling, committed revocation,
+  cancelled a full staged batch and checked exact-state numeric replacements.
+  Explicit unconverted over-limit allocations remained counted. Isolated
+  production node counters tested limits/headroom without filling the live pool.
+- Actual mailbox dispatch, completion and timer submission paths rejected
+  shared pressure with room in family pools, refunded family staging, consumed
+  no serial on rejection and recovered after slot release. Rejected timer
+  staging left zero timer events. Real-domain teardown/reuse rejected old tokens
+  and captured predecessor generations without changing the successor.
+- Final strict AArch64/security and x86-64 kernel Clippy passed with
+  `-D warnings`; workspace formatting and diff checks passed.
+- The corrected isolated four-LP AArch64/TCG guest passed **19 tests, 0 failed,
+  0 pending**, including both scoped launches with unchanged `0x7fff` checks;
+  cancellation stress retired after 4,396 requests. The runner rebuilt bundled
+  services through the normal build path and used dedicated storage/ports.
+
+The passing kernel SHA-256 is
+`bf88ec40dce102fda62b9e9ddc476ee8b31aa79a73cf77e9c7bfb6986391ac96`.
+Evidence is in `/private/tmp/charlotte-security-capability-admission-host-tests.log`,
+`/private/tmp/charlotte-security-capability-admission-*-clippy.log`,
+`/private/tmp/charlotte-security-capability-admission-verified-run.log` and
+`/private/tmp/charlotte-capability-admission-verified-20261005-serial.log`.
+The two failed captures are retained in the initial and `final-run` log files;
+only `verified-run` has a passing authoritative verdict. Existing soak guests
+and storage were untouched. No x86-64 guest, physical allocation-failure
+injection, many-client quota fairness or exhaustive retirement interleaving
+test was performed. SEC-07 and the other open findings remain open.

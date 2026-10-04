@@ -199,6 +199,7 @@ pub enum AddressSpaceCloseError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddressSpaceRegistrationError {
     HardwareAsidExhausted,
+    CapabilityNamespaceAllocationFailed,
     /// The image failed cluster signature verification (unsigned or
     /// invalidly signed); loading it is refused.
     SignatureVerificationFailed,
@@ -230,6 +231,8 @@ pub fn register_user_address_space(
     mut address_space: AddressSpace,
 ) -> Result<AddressSpaceHandle, AddressSpaceRegistrationError> {
     let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+    let namespace = crate::capability::prepare_namespace()
+        .map_err(|_| AddressSpaceRegistrationError::CapabilityNamespaceAllocationFailed)?;
     prepare_user_address_space(&mut address_space)?;
     let mut table = ADDRESS_SPACE_TABLE.lock();
     let id = table.add_element(address_space);
@@ -239,6 +242,7 @@ pub fn register_user_address_space(
         id,
         generation,
     };
+    namespace.publish(handle);
     let previous = DOMAIN_LIMITS.lock().insert(id, (handle, DomainLimits::default()));
     debug_assert!(previous.is_none(), "domain limits survived ASID teardown");
     usage::register_domain(handle);
@@ -375,6 +379,7 @@ fn close_user_address_space_locked(
     }
 
     // Refuse new memory-object sponsorship before draining subsystem payloads.
+    crate::capability::retire_address_space(asid);
     budget::retire(handle);
 
     // DMA mappings must be revoked before memory-object teardown releases

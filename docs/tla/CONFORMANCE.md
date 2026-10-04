@@ -444,11 +444,11 @@ echoed session and pending sequence before consuming the pending call.
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
-| `Allocate` | `capability::{allocate, try_allocate}` | Direct for successful fresh per-AS serial allocation and authoritative kind insertion. Mailbox opens use fallible serial minting; other families retain the infallible wrapper. Mailbox record quotas, retirement guards and retained charges are outside this model. |
+| `Allocate` | `capability::{allocate_unmigrated, try_allocate}`, `Reservation::publish` | Direct only for successful fresh per-AS serial allocation and authoritative kind insertion. Mailbox and completion publication use bounded staged admission. Shared accounting also counts unconverted families, but their explicit bypass remains. Quotas, staging/escrow lifetimes, exact captured namespace identity and retained charges are outside this model. |
 | `Remove` | typed-registry removal followed by `capability::remove` | Direct for owner-and-kind checked removal. Concrete callers assert that the unified entry exists, including optimized builds, so payload and authority tables cannot silently diverge. |
-| `DelegateCopy` | subsystem delegation followed by `allocate` in the target AS | Abstract: payload-table insertion is omitted; the target handle is fresh. |
+| `DelegateCopy` | subsystem delegation followed by `allocate_unmigrated` in the target AS | Abstract: payload-table insertion is omitted; the target handle is fresh. This production delegation path has not adopted bounded shared admission. |
 | `BeginMove` / `CommitMove` | subsystem move transaction and target capability allocation | Abstract split around payload transfer so intermediate revocation is checkable. |
-| `RollbackMove` | `memory::object::rollback_move_to`, `capability::restore` | Direct for reverse-order transaction rollback and crate-private restoration of the exact pre-transaction handle. The live-upgrade supervisor uses the target handles returned by `move_to`, rolls partial multi-object handoff back in reverse order, and aborts replacement launch on endpoint-delegation failure. |
+| `RollbackMove` | `memory::object::rollback_move_to`, `capability::restore_unmigrated` | Direct for current reverse-order transaction rollback and crate-private restoration of the exact pre-transaction handle. The live-upgrade supervisor uses the target handles returned by `move_to`, rolls partial multi-object handoff back in reverse order, and aborts replacement launch on endpoint-delegation failure. The new owning `MoveEscrow` primitive is kernel-tested but not integrated into this production payload path or modeled here. |
 | `CloseAddressSpace` | `capability::close_address_space` | Direct for dropping the complete authority namespace after payload teardown. |
 
 ## Authorization policy and capability issuance

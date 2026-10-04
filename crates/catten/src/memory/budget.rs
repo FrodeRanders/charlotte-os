@@ -192,6 +192,12 @@ pub(crate) fn mark_platform(handle: AddressSpaceHandle) {
         let used = account.budget.used();
         ledger.ordinary.release(used).expect("platform promotion budget underflow");
     }
+    // Never enter the shared capability registry while holding the memory
+    // ledger or address-space table; legacy allocation enters it under other
+    // subsystem guards. The captured handle rejects a replacement generation.
+    drop(ledger);
+    drop(table);
+    crate::capability::mark_platform(handle);
 }
 
 pub(crate) fn retire(handle: AddressSpaceHandle) {

@@ -5,14 +5,12 @@
 //! (no EL0 domains) and cover the IPC error paths not exercised by the
 //! positive happy-path tests.
 use crate::{
-    cpu::isa::interface::memory::AddressSpaceInterface,
     ipc::{
         self,
         ConnectionRights,
         IpcError,
     },
     logln,
-    memory,
 };
 
 const ASV_A: usize = 0x0ad1;
@@ -20,11 +18,8 @@ const ASV_B: usize = 0x0ad2;
 const ASV_C: usize = 0x0ad3;
 
 pub fn test_adversarial_ipc() {
-    // Address spaces for isolation testing
-    memory::ADDRESS_SPACE_TABLE.lock().add_element(memory::AddressSpace::get_current());
-    memory::ADDRESS_SPACE_TABLE.lock().add_element(memory::AddressSpace::get_current());
-    memory::ADDRESS_SPACE_TABLE.lock().add_element(memory::AddressSpace::get_current());
-
+    // These scenarios use the isolated pseudo namespaces below; no scheduled
+    // domain exists, so do not allocate unused copies of the kernel AS here.
     logln!("Testing adversarial IPC scenarios...");
 
     test_double_close();

@@ -79,7 +79,7 @@ fn create_syscall_test_address_space(label: &str) -> crate::memory::AddressSpace
         let _kas = KERNEL_AS.lock();
         AddressSpace::new_user()
     };
-    let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
+    let asid = crate::memory::register_user_address_space(user_as).unwrap().id();
     logln!("[syscall memory] {} AS asid={}", label, asid);
     asid
 }
@@ -749,7 +749,7 @@ pub fn test_syscall_dispatch() {
             "an ungranted observer capability must not widen the snapshot"
         );
 
-        let observer_cap = crate::capability::allocate(
+        let observer_cap = crate::capability::allocate_unmigrated(
             memory_owner,
             crate::capability::ObjectKind::SystemObserver,
         );

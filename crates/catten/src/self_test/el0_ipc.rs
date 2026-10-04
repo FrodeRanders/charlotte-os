@@ -372,7 +372,7 @@ fn create_user_address_space(label: &str) -> usize {
         let _kas = KERNEL_AS.lock();
         AddressSpace::new_user()
     };
-    let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
+    let asid = crate::memory::register_user_address_space(user_as).unwrap().id();
     logln!("[EL0 IPC] {} AS asid={}", label, asid);
     asid
 }
@@ -386,7 +386,7 @@ pub fn test_el0_endpoint_ipc() {
             let _kas = KERNEL_AS.lock();
             AddressSpace::new_user()
         };
-        let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
+        let asid = crate::memory::register_user_address_space(user_as).unwrap().id();
         logln!("[EL0 IPC] user AS asid={}", asid);
 
         map_code_page(asid, VAddr::from(IPC_CODE_VADDR), ipc_stub_code());
@@ -423,7 +423,7 @@ pub fn test_el0_endpoint_ipc_blocking_receive() {
             let _kas = KERNEL_AS.lock();
             AddressSpace::new_user()
         };
-        let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
+        let asid = crate::memory::register_user_address_space(user_as).unwrap().id();
         logln!("[EL0 IPC block] user AS asid={}", asid);
 
         map_code_page(asid, VAddr::from(IPC_BLOCK_SERVER_VADDR), ipc_block_server_code());

@@ -53,7 +53,7 @@ fn create_ipc_memory_test_address_space(label: &str) -> AddressSpaceId {
         let _kas = KERNEL_AS.lock();
         AddressSpace::new_user()
     };
-    let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
+    let asid = crate::memory::register_user_address_space(user_as).unwrap().id();
     logln!("[ipc memory] {} AS asid={}", label, asid);
     asid
 }

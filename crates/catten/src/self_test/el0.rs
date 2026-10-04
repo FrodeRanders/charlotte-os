@@ -140,8 +140,8 @@ fn prepare_user_address_space(vaddr: VAddr, cq_vaddr: VAddr, result_vaddr: VAddr
         AddressSpace::new_user()
     };
 
-    // Register in the global table so create_user_thread_context finds it.
-    let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
+    // Use normal domain registration, including generation and admission.
+    let asid = crate::memory::register_user_address_space(user_as).unwrap().id();
     logln!("User AS registered in global table with asid={}", asid);
 
     // --- map user code page ---------------------------------------------------

@@ -95,8 +95,26 @@ zero; closing handles restores capacity. Receiver lookup returns the existing
 per-LP capability without another charge or independent ownership. These
 record counts do not account for the separate 256-word-per-LP queue backing.
 Opens are serialized with domain retirement and checked against the exact
-generation, so a delayed open cannot publish into a reused ASID. Aggregate
-capability-namespace and heap admission remain further work.
+generation, so a delayed open cannot publish into a reused ASID.
+
+The unified capability namespace accounts for every object kind. Mailbox
+opens and capability-backed completion submissions also enforce shared limits:
+4,096 records per namespace, 65,536 per node, and 49,152 ordinary records.
+Staged identities and source slots held for rollback count toward these limits;
+staging does not grant public authority. Owning admission tokens capture the
+exact namespace, so cancellation cannot revoke a replacement's reused handle.
+Domain registration prepares the generation-bearing namespace, and teardown
+retires admission before releasing subsystem payloads.
+
+Other allocation paths still require conversion to staged admission. They
+contribute to the counters but can exceed the shared limits, so aggregate
+protection is incomplete. The source-escrow primitive has capacity-independent
+rollback, but production memory and IPC transactions have not yet adopted it.
+That conversion will replace scalar rollback rather than retain it for
+compatibility. Allocator bytes, empty namespace metadata, page tables and heap
+backing remain separate accounting requirements. The implementation contract
+and migration scope are recorded in
+\texttt{docs/reference/capability-admission.md}.
 
 \subsection{IPI closures}
 

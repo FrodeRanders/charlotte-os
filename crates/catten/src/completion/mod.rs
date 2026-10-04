@@ -1030,8 +1030,14 @@ fn submit_captured(
     } else {
         None
     };
+    let reservation = crate::capability::reserve_captured(
+        asid,
+        crate::capability::ObjectKind::Completion,
+        as_completions.address_space,
+    )
+    .map_err(|_| SubmitError::WouldBlock)?;
     let completion = Completion::new(buffer, record_charge)?;
-    let cap = crate::capability::allocate(asid, crate::capability::ObjectKind::Completion);
+    let cap = reservation.publish().map_err(|_| SubmitError::WouldBlock)?;
     as_completions.table.insert(cap, completion.clone());
     as_completions.live += 1;
     Ok((cap, completion, watch_charge))
@@ -1193,8 +1199,14 @@ pub fn submit_timer(asid: AddressSpaceId, timeout_ms: u64) -> Result<CompletionC
                 .map_err(|_| SubmitError::WouldBlock)?;
         let timer_event =
             crate::timers::PreparedEvent::new(timer_event).map_err(|_| SubmitError::WouldBlock)?;
+        let reservation = crate::capability::reserve_captured(
+            asid,
+            crate::capability::ObjectKind::Completion,
+            entries.address_space,
+        )
+        .map_err(|_| SubmitError::WouldBlock)?;
         let completion = Completion::new(None, record_charge)?;
-        let cap = crate::capability::allocate(asid, crate::capability::ObjectKind::Completion);
+        let cap = reservation.identity();
         let observer = Arc::new(CompletionTimerObserver {
             asid,
             cap,
@@ -1203,6 +1215,7 @@ pub fn submit_timer(asid: AddressSpaceId, timeout_ms: u64) -> Result<CompletionC
         });
         timer_event.event().register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
         completion.set_timer_observer(observer, cancel);
+        let cap = reservation.publish().map_err(|_| SubmitError::WouldBlock)?;
         entries.table.insert(cap, completion);
         entries.live += 1;
         (cap, timer_event)

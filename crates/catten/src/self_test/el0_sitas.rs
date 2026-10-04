@@ -307,7 +307,7 @@ pub fn test_el0_sitas() {
             let _kas = KERNEL_AS.lock();
             AddressSpace::new_user()
         };
-        let asid = ADDRESS_SPACE_TABLE.lock().add_element(user_as);
+        let asid = crate::memory::register_user_address_space(user_as).unwrap().id();
         SITAS_ASID.store(asid, Ordering::Release);
 
         let entry_vaddr = load_user_elf(

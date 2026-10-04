@@ -278,7 +278,8 @@ impl AddressSpaceCaps {
     }
 
     fn insert(&mut self, owner: AddressSpaceId, cap: MemoryCap) -> MemoryObjectCap {
-        let id = crate::capability::allocate(owner, crate::capability::ObjectKind::Memory);
+        let id =
+            crate::capability::allocate_unmigrated(owner, crate::capability::ObjectKind::Memory);
         self.caps.insert(id, cap);
         id
     }
@@ -973,8 +974,11 @@ pub(crate) fn rollback_move_to(
         .ok_or(MemoryObjectError::UnknownCapability)?
         .owner = owner;
     registry.caps_for_mut(owner).caps.insert(original_cap, cap_entry);
-    let restored =
-        crate::capability::restore(owner, original_cap, crate::capability::ObjectKind::Memory);
+    let restored = crate::capability::restore_unmigrated(
+        owner,
+        original_cap,
+        crate::capability::ObjectKind::Memory,
+    );
     assert!(restored, "rollback source capability slot was not vacant");
     Ok(())
 }
