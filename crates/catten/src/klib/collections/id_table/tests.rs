@@ -10,6 +10,110 @@ impl Drop for Tracked {
 }
 
 #[test]
+fn live_leases_block_all_extraction_until_the_last_completion() {
+    let drops = Arc::new(AtomicUsize::new(0));
+    let mut table = IdTable::new();
+    let id = table.add_element(Tracked(drops.clone()));
+    let generation = table.generation(id).unwrap();
+    let capacity = table.slots.capacity();
+    let first = table.lease(id, generation).unwrap();
+    let second = table.lease(id, generation).unwrap();
+    assert_eq!(table.slots.capacity(), capacity);
+    assert_eq!(
+        table.prepare_retirement_with(id, |_, _| panic!("leased preflight allocated")),
+        Err(Error::Leased)
+    );
+    assert!(matches!(table.take_element(id), Err(Error::Leased)));
+    assert!(matches!(table.retire_element(id), Err(Error::Leased)));
+    assert_eq!(table.generation(id), Ok(generation));
+    assert_eq!(drops.load(Ordering::Relaxed), 0);
+    table.finish_lease(first).unwrap();
+    assert_eq!(table.prepare_retirement(id), Err(Error::Leased));
+    table.finish_lease(second).unwrap();
+    let retired = table.retire_element(id).unwrap();
+    table.finish_retirement(retired.release_value()).unwrap();
+    assert_eq!(drops.load(Ordering::Relaxed), 1);
+    assert_eq!(table.add_element(Tracked(drops.clone())), id);
+    assert_ne!(table.generation(id).unwrap(), generation);
+    assert!(matches!(table.lease(id, generation), Err(Error::WrongLease)));
+}
+
+#[test]
+fn wrong_table_or_generation_completion_does_not_release_another_lease() {
+    let mut first = IdTable::new();
+    let mut second = IdTable::new();
+    let a = first.add_element(1);
+    let b = second.add_element(2);
+    let lease = first.lease(a, first.generation(a).unwrap()).unwrap();
+    let valid = second.lease(b, second.generation(b).unwrap()).unwrap();
+    assert_eq!(second.finish_lease(lease), Err(Error::WrongLease));
+    assert_eq!(first.slots[a].leases, 1);
+    assert_eq!(second.slots[b].leases, 1);
+    let mut corrupt = second.lease(b, second.generation(b).unwrap()).unwrap();
+    // Kernel-boundary corruption, not a production token constructor.
+    corrupt.generation += 1;
+    assert_eq!(second.finish_lease(corrupt), Err(Error::WrongLease));
+    assert_eq!(second.slots[b].leases, 2);
+    second.finish_lease(valid).unwrap();
+    assert_eq!(second.slots[b].leases, 1);
+    assert_eq!(second.prepare_retirement(b), Err(Error::Leased));
+}
+
+#[test]
+fn abandoned_lease_and_table_destruction_retain_the_leased_payload() {
+    let retained_drops = Arc::new(AtomicUsize::new(0));
+    let normal_drops = Arc::new(AtomicUsize::new(0));
+    let mut table = IdTable::new();
+    let id = table.add_element(Tracked(retained_drops.clone()));
+    table.add_element(Tracked(normal_drops.clone()));
+    drop(table.lease(id, table.generation(id).unwrap()).unwrap());
+    assert_eq!(table.slots[id].leases, 1);
+    assert_eq!(table.prepare_retirement(id), Err(Error::Leased));
+    assert_eq!(retained_drops.load(Ordering::Relaxed), 0);
+    drop(table);
+    assert_eq!(retained_drops.load(Ordering::Relaxed), 0);
+    assert_eq!(normal_drops.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn lease_overflow_and_completion_underflow_fail_without_mutation() {
+    let mut table = IdTable::new();
+    let id = table.add_element(1);
+    let generation = table.generation(id).unwrap();
+    // Private counter corruption fixture; no unbounded token minting loop.
+    table.slots[id].leases = usize::MAX;
+    assert!(matches!(table.lease(id, generation), Err(Error::LeaseLimit)));
+    assert_eq!(table.slots[id].leases, usize::MAX);
+    let mut empty = IdTable::new();
+    let id = empty.add_element(2);
+    let forged = SlotLease {
+        table: empty.identity,
+        id,
+        generation: empty.generation(id).unwrap(),
+    };
+    assert_eq!(empty.finish_lease(forged), Err(Error::WrongLease));
+    assert_eq!(empty.slots[id].leases, 0);
+    assert!(matches!(empty.lease(usize::MAX, 1), Err(Error::IdNotActive)));
+}
+
+#[test]
+fn lease_identity_survives_table_vector_growth() {
+    let mut table = IdTable::new();
+    let id = table.add_element(1);
+    let generation = table.generation(id).unwrap();
+    let lease = table.lease(id, generation).unwrap();
+    for value in 2..2048 {
+        table.add_element(value);
+    }
+    assert_eq!(table.generation(id), Ok(generation));
+    assert_eq!(table.prepare_retirement(id), Err(Error::Leased));
+    table.finish_lease(lease).unwrap();
+    assert_eq!(table.take_element(id), Ok(1));
+    assert_eq!(table.add_element(3), id);
+    assert_ne!(table.generation(id).unwrap(), generation);
+}
+
+#[test]
 fn detachment_hides_but_does_not_recycle_or_destroy() {
     let drops = Arc::new(AtomicUsize::new(0));
     let mut table = IdTable::new();

@@ -3093,3 +3093,67 @@ general kernel metadata remain infallible; SEC-07 remains partial, as does
 SEC-18 for live mapping/IPC/MMIO locking, recoverable shootdown and full hardware
 quiescence. Contributor instructions, reference/testing Markdown, manual source
 and TLA+ conformance were updated; models and PDF were not rebuilt.
+
+## Continuation: explicit live-generation lease foundation — 2026-10-05
+
+The scratch admission/completion batch was committed as `821d0f2b`. This
+continuation establishes the missing live-root retention primitive before
+attempting to unlock mapping/IPC completion paths. It does **not** migrate
+production invalidations or discharge SEC-18.
+
+The generic slot table now tracks an inline live-lease count. `SlotLease` is a
+linear table-identity/slot/generation token with no pointer into moving vectors
+and no per-lease allocation. Overflow rejects acquisition. Retirement preflight
+and ordinary extraction reject outstanding leases before allocation or mutation;
+completion verifies identity/generation and nonzero count before decrementing.
+Wrong completion cannot release another lease. Generic table destruction retains
+leased payloads; abandonment does not invoke their destructors or recycle slots.
+
+`AddressSpaceOperation` admits an exact non-kernel live handle under lifecycle
+then table serialization. Release takes only the table and performs no
+invalidation, allocation or root destruction. User-root close reports
+`OperationsInFlight` before subsystem mutation. The owning root, hardware tag,
+backing accounts and namespace remain present. Busy close does not fence further
+operations or retire admission. An abandoned owner retains the live count/root
+indefinitely; this differs from a detached `RetiredAddressSpace` quarantine.
+There is no forced decrement or test-only recovery path.
+
+Validation:
+
+- Five added direct host slot tests bring that suite to **12/12**: overlapping
+  leases, preflight/extraction rejection before allocation, last-completion
+  retirement/reuse, wrong table/generation, overflow/underflow, abandonment/table
+  destruction and vector growth to 2,047 entries. Full host suites pass; log
+  `/private/tmp/charlotte-security-live-lease-host-tests.log`.
+- Guest fixtures retain a real root, charged heap and mapped object. Busy close
+  preserves frames, charges, mapped authority, ARM tag and new heap/object
+  admission. Completion under lifecycle proves it does not re-enter that guard;
+  normal retirement follows the last release. Detached and reused handles reject
+  acquisition. The success case cleans up without retention. Abandonment retains
+  **one additional live root, five physical frames, one heap-page charge,
+  software slot and ARM tag**. The namespace stays present and close stays busy.
+  Earlier two detached-root quarantine probes remain separate.
+- Four-LP TCG AArch64 security guest, fresh dedicated `live-lease-20261005`
+  storage, HTTP 18098/deployment 17462: **19/19**, zero failed/pending, both
+  scoped probes `0x7fff`; cancellation traffic retired after 4,484 requests.
+  Kernel SHA-256:
+  `bb6b104508b99293c61927f017c55789f8f9e5fd0fec8797de7b01ced86de4dc`.
+  Run `/private/tmp/charlotte-security-live-lease-run.log`;
+  serial `/private/tmp/charlotte-live-lease-20261005-serial.log`. Existing soak
+  storage/instances were not modified.
+- Strict locked Clippy passes for AArch64 `acpi,security_test` and x86-64
+  `acpi`; formatting and diff checks pass. No x86 guest was run.
+
+These are serialized state/interleaving fixtures, not concurrent close stress or
+hardware-quiescence proof. Leases protect checked extraction/retirement, not
+arbitrary trusted mutation through mutable table access; callers must not
+replace/drop a leased root. Production mapping/IPC/MMIO still retain their outer
+masking guards and do not yet acquire these leases. Before migration, compose
+backing, exact scratch reservation and loan/connection authority with the lease,
+capture prepared translation identity, and integrate closing-admission fencing
+plus bounded/deferred busy-close handling. The existing supervisor currently
+assumes no outstanding leases at close; normal overlap must not become a kernel
+panic. This foundation provides neither that controller policy nor an operation
+metadata budget. SEC-07 and SEC-18 remain partial. Contributor instructions,
+reference/testing Markdown, manual source and TLA+ conformance were updated;
+models and PDF were not rebuilt.

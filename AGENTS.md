@@ -131,6 +131,14 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   root/accounts/slot; only explicit release completes its lease. This does not
   replace thread quiescence or solve earlier mapping/IPC/device locking. See
   `docs/reference/address-space-retirement.md`.
+  `AddressSpaceOperation` retains an exact live generation through explicit
+  completion; abandonment retains its count/root. Busy close must reject
+  before subsystem mutation. Acquire lifecycle before table/subsystem guards,
+  never under IPC/device serialization; release takes only the table. Do not
+  replace/drop a leased root through mutable table access. Production split-phase
+  use also needs backing/scratch/authority owners and closing-admission/busy-close
+  handling; do not remove masking guards merely because this foundation exists.
+  See `docs/reference/live-address-space-operations.md`.
   Owning-root physical teardown uses `FrameRelease`: disarm the root and make
   heap/image accounts nonrefundable before release starts. Only a fully
   successful private-tree/data walk permits account refund. Rejected release

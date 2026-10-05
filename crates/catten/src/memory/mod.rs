@@ -6,6 +6,7 @@ pub(crate) mod backing_release_tests;
 pub mod budget;
 pub mod linear;
 pub mod object;
+pub(crate) mod operation;
 pub mod physical;
 pub(crate) mod preparation;
 pub(crate) mod retirement;
@@ -205,6 +206,7 @@ pub enum AddressSpaceCloseError {
     StaleHandle,
     RetirementMetadataAllocationFailed,
     QuiescenceFailed,
+    OperationsInFlight,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -489,8 +491,12 @@ fn close_user_address_space_with_preflight(
         Err(_) => return Err(AddressSpaceCloseError::AddressSpaceMissing),
     }
 
-    prepare(&mut ADDRESS_SPACE_TABLE.lock(), asid)
-        .map_err(|_| AddressSpaceCloseError::RetirementMetadataAllocationFailed)?;
+    prepare(&mut ADDRESS_SPACE_TABLE.lock(), asid).map_err(|error| match error {
+        crate::klib::collections::id_table::Error::Leased => {
+            AddressSpaceCloseError::OperationsInFlight
+        }
+        _ => AddressSpaceCloseError::RetirementMetadataAllocationFailed,
+    })?;
 
     // Fence demand-heap admission under the same guard as mapping. Keep its
     // charges until AddressSpace::drop has actually returned the frames.

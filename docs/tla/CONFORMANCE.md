@@ -247,6 +247,16 @@ storage is preflighted before logical cleanup. The model's atomic close does not
 prove those phases, and earlier IPC/MMIO/mapping lock-held invalidations remain
 SEC-18 work. No new TLC result is claimed for this implementation change.
 
+Concrete live operation leases now retain a table/slot/generation through
+explicit completion. Root close rejects their nonzero count before namespace or
+backing retirement; abandonment retains a live root. Host and guest fixtures
+check identity, counter limits, vector growth, busy-close non-mutation and
+retention. The atomic model has no lease counts, busy-close result or abandoned
+live state; `CaptureHandle` alone does not model this retention. Production
+mapping/IPC/MMIO paths still hold their existing guards. This foundation does
+not prove closing-admission fencing, deferred close or x86 rendezvous progress;
+no model source or TLC result changed.
+
 The August `memory_map_any` work did not change memory ownership in
 `CharlotteIPC`; it changed address-space placement. Its safety-relevant part
 is the generation-keyed scratch cursor and lifecycle serialization represented

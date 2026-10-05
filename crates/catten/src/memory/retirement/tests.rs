@@ -11,6 +11,10 @@ use crate::{
             self,
             Kind,
         },
+        operation::{
+            AddressSpaceOperation,
+            OperationError,
+        },
     },
     service::loader,
 };
@@ -35,6 +39,8 @@ fn assert_detached(handle: AddressSpaceHandle) {
 }
 
 pub(crate) fn run() {
+    test_live_operations();
+    test_abandoned_operation();
     test_preflight_failure();
     test_successful_retirement();
     test_quarantine(false);
@@ -42,7 +48,92 @@ pub(crate) fn run() {
     crate::logln!(
         "[root retirement] preflight rollback, post-guard invalidation, retained backing/charges, \
          leased slot and hardware tag, exact reuse, failed barrier and Drop quarantine passed \
-         (two retained roots)"
+         (two retired roots and one retained live root)"
+    );
+}
+
+fn test_live_operations() {
+    let before = backing_budget::test_used_pages(Kind::Heap);
+    let owner = loader::create_user_address_space_handle();
+    assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
+    let object = memory::object::allocate(owner.id(), 1).unwrap();
+    memory::object::map_any(owner.id(), object, true).unwrap();
+    let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let first = AddressSpaceOperation::acquire(owner).unwrap();
+    let second = AddressSpaceOperation::acquire(owner).unwrap();
+    assert_eq!(first.handle(), owner);
+    assert_eq!(second.handle(), owner);
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+    #[cfg(target_arch = "aarch64")]
+    let tag = ADDRESS_SPACE_TABLE.lock().get(owner.id()).unwrap().hw_asid();
+    assert_eq!(
+        memory::close_user_address_space_handle(owner),
+        Err(AddressSpaceCloseError::OperationsInFlight)
+    );
+    assert_eq!(memory::current_address_space_handle(owner.id()), Some(owner));
+    assert!(memory::budget::accepting(owner));
+    assert!(memory::object::info(owner.id(), object).unwrap().mapped);
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+    assert_eq!(backing_budget::test_used_pages(Kind::Heap), before + 1);
+    #[cfg(target_arch = "aarch64")]
+    assert_eq!(ADDRESS_SPACE_TABLE.lock().get(owner.id()).unwrap().hw_asid(), tag);
+    // Busy close has not retired heap/capability/backing admission.
+    assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR + 4096));
+    let fresh = memory::object::allocate(owner.id(), 1).unwrap();
+    memory::object::close_cap(owner.id(), fresh).unwrap();
+    let intervening = loader::create_user_address_space_handle();
+    assert_ne!(intervening.id(), owner.id());
+    first.release().unwrap();
+    assert_eq!(
+        memory::close_user_address_space_handle(owner),
+        Err(AddressSpaceCloseError::OperationsInFlight)
+    );
+    // Completion itself does not acquire lifecycle or initiate invalidation.
+    {
+        let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+        second.release().unwrap();
+    }
+    let retired = stage(owner);
+    assert!(matches!(
+        AddressSpaceOperation::acquire(owner),
+        Err(OperationError::AddressSpaceMissing)
+    ));
+    retired.release().unwrap();
+    assert_eq!(backing_budget::test_used_pages(Kind::Heap), before);
+    let replacement = loader::create_user_address_space_handle();
+    assert_eq!(replacement.id(), owner.id());
+    assert!(matches!(AddressSpaceOperation::acquire(owner), Err(OperationError::StaleHandle)));
+    assert!(matches!(
+        AddressSpaceOperation::acquire(
+            memory::current_address_space_handle(memory::KERNEL_ASID).unwrap()
+        ),
+        Err(OperationError::KernelAddressSpace)
+    ));
+    memory::close_user_address_space_handle(replacement).unwrap();
+    memory::close_user_address_space_handle(intervening).unwrap();
+}
+
+fn test_abandoned_operation() {
+    let before = backing_budget::test_used_pages(Kind::Heap);
+    let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let owner = loader::create_user_address_space_handle();
+    assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
+    let retained = free - PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    drop(AddressSpaceOperation::acquire(owner).unwrap());
+    assert_eq!(
+        memory::close_user_address_space_handle(owner),
+        Err(AddressSpaceCloseError::OperationsInFlight)
+    );
+    assert_eq!(memory::current_address_space_handle(owner.id()), Some(owner));
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - retained);
+    assert_eq!(backing_budget::test_used_pages(Kind::Heap), before + 1);
+    let other = loader::create_user_address_space_handle();
+    assert_ne!(other.id(), owner.id());
+    memory::close_user_address_space_handle(other).unwrap();
+    crate::logln!(
+        "[live operations] explicit completion, busy-close rollback, stale/detached rejection and \
+         abandonment passed; retained_frames={} heap_pages=1",
+        retained
     );
 }
 

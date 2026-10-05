@@ -104,6 +104,11 @@ slot-leasing owner that finishes after lifecycle/table guards are released.
 That separate close boundary does not lease an arbitrary live mapping's ASID;
 the mapping operations described here still retain their outer serialization.
 
+A [live-generation lease foundation](live-address-space-operations.md) now
+retains roots through explicit completion and rejects busy close before mutation.
+Mapping/IPC/MMIO are not migrated yet. Backing pins, scratch/authority owners and
+closing-admission/busy-close handling must be composed before releasing guards.
+
 ## Verification
 
 Single-mutator boot fixtures inject the final copy/DMA unpin between detach and

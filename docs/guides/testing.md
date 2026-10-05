@@ -593,12 +593,21 @@ without leased-slot/tag reuse, exact physical release and stale-handle rejection
 Failed barrier and abandonment permanently retain two private roots, each with
 one charged heap page and its private translation frames. Their frame counts
 are logged. These are additional to earlier quarantine probes, not recovered
-through test-only cleanup. Seven standalone host tests exercise the kernel's
+through test-only cleanup. Twelve standalone host tests exercise the kernel's
 generic slot owner, including table/generation identity, destructor ownership,
 interleaved completion, preflight rejection and fail-closed completion metadata.
 `scripts/run-host-tests.sh` runs them even though the kernel disables Cargo's
 test harness. See [final root retirement](../reference/address-space-retirement.md).
 These fixtures do not prove x86 recipient progress or complete lock-safe teardown.
+
+Live-operation fixtures check overlapping leases, busy-close non-mutation,
+retained mappings/tag/charges, continued admission, explicit release and
+stale/detached acquisition rejection. Five new host tests check live counts,
+identity, counter limits, vector growth and abandonment/table destruction.
+Abandonment retains one additional live root with a charged heap page and private
+table frames. Its namespace remains present and close stays busy. No production
+masking guard was removed. See
+[live address-space operations](../reference/live-address-space-operations.md).
 
 ## Owning-root physical-release tests
 

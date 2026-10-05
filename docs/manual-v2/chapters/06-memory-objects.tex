@@ -128,6 +128,15 @@ retains the hierarchy and its charges. This corrects the final root boundary,
 while earlier mapping, loan and device invalidations still need lock-safe
 retirement phases. Domain supervision must establish thread quiescence first.
 
+A separate live-operation lease retains an exact software generation before
+detachment. Its linear table/slot/generation token survives moving metadata.
+Root close rejects outstanding leases before subsystem retirement; only explicit
+completion of the last lease permits normal close. Abandonment retains the live
+root, tag and charges. Boot fixtures exercise this foundation, but production
+mapping and IPC still retain their masking guards. Split-phase integration also
+needs scratch/loan authority owners, closing-admission fencing and busy-close
+handling.
+
 Physical teardown makes heap and image charges nonrefundable before releasing
 any owned frame. Both architecture destructors attempt the bounded private-tree
 and data-frame cleanup; only complete success permits account refund. If one
