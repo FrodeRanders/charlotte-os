@@ -1,6 +1,6 @@
 //! Loan authority, mapped backing and namespace retention through revocation.
-//! Direct callers and plain replies lease both roots. Returned-authority replies
-//! and cancellation retain IPC serialization until their ownership is composed.
+//! Direct callers, borrowed-memory replies and explicit call/reply cancellation
+//! lease both roots. Endpoint/domain bulk cleanup retains IPC serialization.
 
 use super::*;
 

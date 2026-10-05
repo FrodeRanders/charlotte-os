@@ -572,7 +572,7 @@ frame batches. It exercises ordinary unmap, mapped-loan revoke and owner cleanup
 asserts registry/table guards are available at detach callbacks, rejects an
 oversized prefix before table work, and injects the last copy unpin before the
 first batch. Exact frame/charge counts return after completion, with no additional
-quarantine. Whole-domain cleanup and cancellation retain their outer
+quarantine. Whole-domain and bulk IPC cleanup retain their outer
 serialization; standalone unmap and direct loan revocation now retain live
 operation leases.
 
@@ -613,7 +613,7 @@ roots (including their table backing), IPC records and the reply claim. These
 probes add **two data pages and two object charges** to the eleven-page,
 nine-object memory-retirement fixture. No cleanup bypass is provided.
 Deterministic interleavings do not establish multi-LP progress, recoverable
-shootdown, or cancellation lock separation.
+shootdown, or bulk IPC cleanup lock separation.
 
 Returned-connection fixtures additionally close the exact minting source while
 the reply claim is live, for both endpoint and attenuated delegated-connection
@@ -648,6 +648,34 @@ check late Drop cannot clear a successor's fence. Paused fixtures use
 `try_close_cap` for same-thread busy probes; actual waiting-close fixtures use
 the production loop with a deterministic completion callback. These are not
 concurrent multi-LP progress or x86 shootdown tests.
+
+Explicit cancellation fixtures cover queued and delivered mixed read/write
+loans, competing call/reply close, reply rejection, a claimed queue front's
+`Pending` receive, and endpoint-close waiting outside IPC. Queued move/copy
+attachments are reclaimed; delivered ownership survives call cancellation.
+Claim-aware readiness registers a real endpoint waiter rather than reporting a
+held front as ready. Cancellation exposes a following scalar message and invokes
+the detached waiter callback with lifecycle/IPC/table guards available. Failed
+queued cleanup remains unreceivable and not readable. The CQ wake uses the same
+completion path, but this fixture does not independently stress CQ edges.
+Cleanup callbacks assert IPC/lifecycle/table guard availability, and staged
+root close remains pending until the cancellation releases its leases. Second-
+loan and second-root admission rejection preserve the capability and restore
+unstarted receipts. A three-loan partial failure records prior success, retains
+the failed loan and refuses terminal publication; bulk reply-token cleanup
+also cannot falsely report that failed loan as terminal. An abandoned queued
+cancellation retains its claim, queue and both live roots. These two fault
+probes add **two data pages and two object charges**, making the combined
+memory-retirement/IPC fixtures retain **fifteen data pages and thirteen object
+charges**, plus the separately described private tables/root/heap/kernel probes.
+There is no recovery bypass. The host runtime tests check failed explicit close
+returns a borrow-owning `PendingCall`, successful retry consumes it once, and
+Drop/error-wait rejection reaches the fake fatal-domain boundary instead of
+silently ending the borrow. The fake boundary unwinds only for observation;
+another host probe verifies a `Pending` receive adopts no attachment owners.
+production domain abort is non-returning. Concurrent multi-LP scheduling,
+actual fatal-domain cleanup, x86 rendezvous and bulk lock separation are not
+established by these deterministic probes.
 
 ## Final address-space retirement tests
 

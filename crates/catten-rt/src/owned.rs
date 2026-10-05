@@ -260,6 +260,10 @@ mod kernel {
         catten_syscall::ipc_close(cap)
     }
 
+    pub fn abort_failed_ipc_close() -> ! {
+        catten_syscall::domain_abort()
+    }
+
     pub fn spawn_artifact_scoped(
         artifact: u64,
         artifact_len: usize,
@@ -332,6 +336,7 @@ mod kernel {
         CompletionWait(u64),
         CompletionClose(u64),
         IpcClose(u64),
+        AbortFailedIpcClose,
         RetireArtifact(u64),
         RetireArtifactForNodeShutdown(u64, u64),
         ForceRetireArtifact(u64),
@@ -365,6 +370,7 @@ mod kernel {
         pub ipc_vector_call: u64,
         pub ipc_reply: VecDeque<(u64, u64, u64, u64)>,
         pub ipc_reply_status: u64,
+        pub ipc_close: VecDeque<u64>,
         pub connection_watch: u64,
         pub scoped_spawn: u64,
         pub retire_result: u64,
@@ -401,6 +407,7 @@ mod kernel {
                 ipc_vector_call: 30,
                 ipc_reply: VecDeque::new(),
                 ipc_reply_status: catten_syscall::ipc_status::OK,
+                ipc_close: VecDeque::new(),
                 connection_watch: 20,
                 scoped_spawn: 2,
                 retire_result: 0,
@@ -701,8 +708,17 @@ mod kernel {
     }
 
     pub fn ipc_close(cap: u64) -> u64 {
-        with_state(|state| state.events.push(Event::IpcClose(cap)));
-        catten_syscall::ipc_status::OK
+        with_state(|state| {
+            state.events.push(Event::IpcClose(cap));
+            state.ipc_close.pop_front().unwrap_or(catten_syscall::ipc_status::OK)
+        })
+    }
+
+    pub fn abort_failed_ipc_close() -> ! {
+        with_state(|state| state.events.push(Event::AbortFailedIpcClose));
+        // Only the fake host boundary unwinds. Production domain_abort never
+        // returns to application code or drops a live Rust borrow normally.
+        panic!("test domain abort after rejected IPC close")
     }
 
     pub fn spawn_artifact_scoped(
@@ -1062,6 +1078,93 @@ mod tests {
         assert_eq!(artifact.poll_retire(), Ok(true));
         drop(artifact);
         assert_eq!(kernel::events(), [kernel::Event::RetireArtifact(0x8000_5678)]);
+    }
+
+    #[test]
+    fn pending_call_close_rejection_returns_owner_and_retains_borrow() {
+        let _guard = setup();
+        let connection = unsafe { Connection::from_raw(11) }.unwrap();
+        let memory = unsafe { OwnedMemory::from_raw(12) }.unwrap();
+        let call = connection.call_borrow_read(1, 0, &memory).unwrap();
+        kernel::update(|state| {
+            state.ipc_close.push_back(catten_syscall::ipc_status::RESOURCE_LIMIT)
+        });
+        let (call, error) = call.close().unwrap_err();
+        assert_eq!(error, IpcError::Status(catten_syscall::ipc_status::RESOURCE_LIMIT));
+        assert_eq!(kernel::events(), [kernel::Event::IpcClose(30)]);
+        call.close().unwrap();
+        assert_eq!(kernel::events(), [kernel::Event::IpcClose(30), kernel::Event::IpcClose(30)]);
+        drop(memory);
+        drop(connection);
+    }
+
+    #[test]
+    fn pending_receive_front_has_no_application_attachment_owners() {
+        let _guard = setup();
+        let endpoint = unsafe { Endpoint::from_raw(40) }.unwrap();
+        kernel::update(|state| {
+            state.ipc_receive.push_back(catten_syscall::IpcMessage {
+                status: catten_syscall::ipc_status::PENDING,
+                opcode: 0,
+                arg0: 0,
+                reply: 0,
+                sender: 0,
+                sender_generation: 0,
+                sender_principal: 0,
+                sender_roles: 0,
+                interface: 0,
+                version: 0,
+                memory: 0,
+                connection: 0,
+            })
+        });
+        assert!(endpoint.try_receive().unwrap().is_none());
+        assert!(kernel::events().is_empty());
+        drop(endpoint);
+    }
+
+    #[test]
+    fn pending_call_drop_aborts_instead_of_releasing_uncertain_borrow() {
+        let _guard = setup();
+        let connection = unsafe { Connection::from_raw(11) }.unwrap();
+        let memory = unsafe { OwnedMemory::from_raw(12) }.unwrap();
+        let call = connection.call_borrow_read(1, 0, &memory).unwrap();
+        kernel::update(|state| {
+            state.ipc_close.push_back(catten_syscall::ipc_status::MEMORY_TRANSFER_FAILED)
+        });
+        // The fake boundary unwinds only to inspect events; production abort
+        // cannot return/unwind into application code with a released borrow.
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(call))).is_err());
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::IpcClose(30), kernel::Event::AbortFailedIpcClose]
+        );
+        drop(memory);
+        drop(connection);
+    }
+
+    #[test]
+    fn pending_call_error_wait_cannot_ignore_rejected_close() {
+        let _guard = setup();
+        let connection = unsafe { Connection::from_raw(11) }.unwrap();
+        let memory = unsafe { OwnedMemory::from_raw(12) }.unwrap();
+        let call = connection.call_borrow_read(1, 0, &memory).unwrap();
+        kernel::update(|state| {
+            state.ipc_reply.push_back((
+                catten_syscall::ipc_status::MEMORY_TRANSFER_FAILED,
+                0,
+                0,
+                0,
+            ));
+            state.ipc_close.push_back(catten_syscall::ipc_status::MEMORY_TRANSFER_FAILED);
+        });
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| call.wait())).is_err());
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::IpcClose(30), kernel::Event::AbortFailedIpcClose]
+        );
+        drop(memory);
+        drop(connection);
     }
 
     #[test]

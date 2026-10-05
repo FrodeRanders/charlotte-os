@@ -36,7 +36,8 @@ including pending calls, delegated call attachments and returned connections;
 see [shared admission](capability-admission.md).
 
 The caller retains its pending-call charge after completion or result observation,
-until that record is closed. The reply-token charge returns on reply or cancellation.
+until that record is closed. The reply-token charge returns on completed reply
+or cancellation, not on an uncertain cleanup error or abandoned completion claim.
 Connection charges remain until actual capability removal, including queued
 delegation cancellation and unobserved returned-result cleanup. An observed
 returned connection is independent of its former pending call.
@@ -67,6 +68,17 @@ rollback. The current consuming `ReplyToken::reply_connection*` runtime
 methods instead close/cancel the token on any failed syscall; they do not return
 a retryable token. The borrowed grant source survives this error. Applications
 should handle the returned error rather than construct raw-handle retry logic.
+
+Explicit call/reply cancellation with live loans retains its records and both
+root leases in `PreparedCancellation` while revocation runs outside IPC. Failed
+cleanup leaves the capability live and publishes no terminal result. Use
+`PendingCall::close` to retain the Rust owner/borrow on an error. Its Drop and
+consuming-wait fallback abort the domain if close rejects; ignoring that failure
+could end a borrow while server mappings still exist. Queued ownership and its
+charges remain in the admitted queue while a cancellation claim is live. Receive
+returns Pending and endpoint close waits outside IPC. Bulk endpoint/domain
+cleanup still uses its separate serialized adapter; it cannot admit new live
+leases underneath lifecycle. See [mapping retirement](memory-object-retirement.md).
 
 Namespace teardown fences record admission before collecting capabilities to
 drain. Receive and connection-publication paths reject a retiring recipient,

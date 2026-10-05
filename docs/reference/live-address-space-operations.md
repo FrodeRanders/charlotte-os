@@ -88,18 +88,26 @@ qualified source's escrow/backing pin and hidden destination reservation in the
 same operation. Memory close waits outside the registry for the transfer owner;
 rollback restores source authority and releases its pin atomically. No-loan
 replies need no detached interval and remain atomic under IPC.
+Explicit pending-call/reply cancellation also composes both roots and every
+loan receipt in `PreparedCancellation`. Its `completing` claim prevents reply,
+receive and conflicting close from consuming queued or delivered ownership.
+Physical cleanup runs outside IPC; each success is recorded before final cap
+removal and notification. Failure returns leases, but retains the cap and
+uncertain loan pin/fence without publishing a terminal result. Abandonment
+retains roots, claim and queued ownership. Bulk endpoint/domain cleanup remains
+serialized and does not acquire fresh operation leases from beneath lifecycle.
+Claimed/failed queue fronts are not readable; removal re-signals endpoint/CQ
+readiness after IPC unlock, and failed tokens cannot resume delivery or reply.
 Whole-domain device cleanup still holds lifecycle across invalidation. Before
 extending split-phase operation leases, implement:
 
-1. Extend IPC composition to cancellation's own revocation. Compose IPC leases
-   with backing, exact scratch
-   reservation and loan/connection
-   authority in one operation owner. IPC must acquire lifecycle before IPC
-   serialization, never from within an IPC guard. Reply/cancellation ownership
-   must survive an IPC unlock together with the loan transaction. All existing
-   borrowed-memory reply variants implement that ownership; cancellation still
-   retains its masking guard. Move
-   whole-domain device cleanup invalidation out of lifecycle under an owned claim.
+1. Extend composed completion ownership to bulk endpoint/domain IPC cleanup and
+   whole-domain device cleanup. Replies and explicit call/reply cancellation
+   retain roots, loan receipts, scratch and authority while releasing IPC; bulk
+   paths still retain outer serialization. They need multi-call/namespace
+   ownership and admission suitable for an already-closing root, not a new live
+   lease acquired from beneath lifecycle/IPC. Do not reuse explicit close's
+   leasing path while holding those guards.
 2. Translation identity capture after lazy root/tag preparation; then release
    preparation guards before rendezvous. Syscall entry's interrupt state and
    unrelated outer guards still matter for recipient progress.

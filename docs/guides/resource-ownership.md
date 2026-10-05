@@ -100,6 +100,17 @@ Keep using `Endpoint`, `PendingCall` and `ReplyToken`; this kernel change adds n
 manual unregister or cleanup step for applications. A wait timeout is not a
 successful reply or permission to reuse a still-lent buffer.
 
+Use `PendingCall::close(self)` for explicit cancellation. Success means loan
+cleanup completed. An error returns `(PendingCall<'memory>, IpcError)`, preserving
+the original Rust borrow so the caller can retain the operation while handling
+backpressure. Do not reconstruct its scalar capability or reuse the borrowed
+memory after a rejected close. Drop and consuming reply waits cannot return an
+owner: if synchronous close is rejected, they abort the domain instead of
+silently ending a borrow with potentially reachable server mappings. This is a
+fail-closed fallback, not a recovery mechanism or forced kernel reclamation.
+An abandoned kernel cancellation claim may still wait indefinitely and retain
+its roots. Endpoint/domain bulk cleanup has a separate, still-serialized boundary.
+
 IPC connection/call/reply records also have [admission limits](../reference/ipc-record-budgets.md).
 Bound concurrent request batches and handle submission failure. Pre-transfer
 record rejection leaves moved memory with its owner; no manual rollback ladder
@@ -109,7 +120,8 @@ source. They do not return a token for retry.
 
 For a borrow, pass `&memory` or `&mut memory` to `call_borrow_read` or
 `call_borrow_write`. `PendingCall<'memory>` retains that borrow until the reply
-is observed or the call is dropped, preventing concurrent CPU access.
+is observed or cancellation completes, preventing concurrent CPU access. A
+failed explicit close returns the owner with that borrow still attached.
 
 ## Server example
 

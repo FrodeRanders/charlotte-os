@@ -23,9 +23,9 @@ This is a reviewable correspondence map, not a refinement proof.
 | `Receive` | `ipc::receive`, `PreparedReceive` | Direct for successful authorization, FIFO dequeue, kernel-captured sender identity and receiver-visible reply authority. Shared admission precedes dequeue/result writing; result-write failure drops speculative authority. The model omits pressure, staging, result bytes and retirement. Vector attachments are refined separately below. |
 | `Reply` | `ipc::reply`, `PreparedReply` with loans; `complete_reply` without loans | Abstract for successful token consumption, loan revocation, result publication and observer wake; detached claims, partial failure and namespace leases are omitted. |
 | `ReplyReturnMemory` | `ipc::reply_with_memory_move`, `PreparedReply` with loans; `complete_reply` without loans, `PreparedTransfer` | Abstract: source escrow/pin/close fencing, returned connection composition and concrete rollback ordering are omitted. |
-| `CancelPendingCall` | `ipc::close_cap` for `PendingCall`, `cancel_queued_call` | Abstract: closing the cap removes the pending record in Rust; the model retains a completed record for invariant inspection. |
+| `CancelPendingCall` | explicit `ipc::close_cap`/`PreparedCancellation`; `cancel_queued_call` for serialized root cleanup | Abstract: successful explicit cancellation removes the pending record only after every loan completes; the model retains a completed record for invariant inspection. Claims, queued ownership retention, live-root leases, partial failure and failed-close capability retention are omitted. |
 | `EndpointClose` | `ipc::close_cap` for `Endpoint`, queued-message cleanup | Abstract bulk transition over queued calls, capabilities and borrows. |
-| `DomainTeardown` | `ipc::close_address_space`, repeated `close_cap`, `memory::object::close_address_space` | Abstract bulk transition. Concrete teardown is distributed across registries and calls. |
+| `DomainTeardown` | `ipc::close_address_space`, repeated non-leasing `close_cap_serialized`, `memory::object::close_address_space` | Abstract bulk transition. Concrete root cleanup has drained live operation leases and retains lifecycle/IPC through its bulk loan cleanup; it must not acquire new leases under those guards. |
 | `ObserveResult` | `ipc::poll_reply` | Direct for the unobserved-to-observed result transition. |
 
 ### IPC concrete-to-abstract state
@@ -280,7 +280,21 @@ one registry hold. Joint memory/connection publication precedes result
 visibility; operation Drop may restore an unstarted output move but retains
 uncertain input loans and reply/root claims. The internal combined-output fixture
 does not add a combined wire API. The model omits source-close fencing and
-atomic escrow/pin completion. Cancellation still retains IPC serialization.
+atomic escrow/pin completion. Explicit call/reply cancellation now owns both
+live roots, all loan receipts and an exclusive `completing` claim. Queue messages
+stay in place while cleanup runs outside IPC; receive rejects Pending and
+endpoint/call/reply close waits outside IPC. Ordinary cleanup failure retains
+authority and uncertain backing without terminal publication; abandonment retains
+claim, queue and roots. The runtime's explicit close returns its borrow-owning
+call on rejection; failed Drop/error-wait close takes the non-returning domain
+abort path. Bulk reply-token cleanup no longer reports uncertain revocation as
+terminal, but bulk endpoint/domain paths remain serialized. The model omits
+these claims, failure/abort states and partial completion; deterministic host/guest
+tests are not a refinement proof or concurrent scheduling result.
+Endpoint readiness now excludes claimed/failed queue fronts; queued cancellation
+re-signals readiness/CQ after removal. The model's atomic cancellation omits
+that temporary unavailable state and wake restoration. Failed cancellation
+tokens cannot resume delivery or reply.
 An owned staged-close request now fences new leases and returns its owner while old leases drain;
 timeout/abandonment retains the closing state even after the last completion.
 Host and guest fixtures check these serialized states. The model also omits

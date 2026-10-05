@@ -149,8 +149,22 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   registry hold; never touch a successor's reused ASID/capability. Abandonment
   restores unstarted returned-memory escrow but retains the reply/connection
   source claim, roots and uncertain loan backing; do not force-clear them.
-  Cancellation's own cleanup retains IPC serialization and
-  must not acquire lifecycle beneath that guard. Whole-domain device cleanup still
+  Explicit pending-call/reply close uses `PreparedCancellation`: admit both roots
+  before IPC, prepare every loan, then claim the token with `completing`.
+  Queued messages remain in place; receive returns Pending and endpoint close
+  waits outside IPC while their cancellation claim is live. Revoke outside IPC
+  and record each success before consuming capabilities or notifying waiters.
+  Endpoint readiness must exclude claimed/failed queue fronts; after queued
+  removal re-signal endpoint waiters/CQ outside IPC so later work is not stranded.
+  Failed cleanup must leave the call/reply cap live and publish no terminal
+  result; fence the failed token from delivery/reply and restore only unstarted
+  receipts. Abandonment retains queue/claim/roots
+  and loan pins. `PendingCall::close` returns its owner on error; its Drop/wait
+  fallback aborts the domain on rejected close rather than ending an unsafe Rust
+  borrow. Bulk endpoint/domain cleanup still retains serialization; root cleanup
+  uses its non-leasing adapter after leases drain, never lifecycle beneath IPC.
+  Bulk reply-token cleanup must not report failed loan revocation as terminal.
+  Whole-domain device cleanup still
   retains lifecycle through invalidation. Backing pins do not lease an ASID; see
   `docs/reference/memory-object-retirement.md`.
   Final user-root close detaches into `RetiredAddressSpace`/`RetiredEntry`,

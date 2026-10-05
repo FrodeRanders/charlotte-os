@@ -1753,7 +1753,10 @@ pub fn ipc_reply_wait_with_memory(call: u64) -> (u64, u64, u64, u64) {
     unsafe { svc3_x3(SyscallNumber::IpcReplyWait, call, 0, 0) }
 }
 
-/// Close an endpoint IPC capability. Returns status code.
+/// Close an IPC capability. Pending-call/reply close revokes every live loan
+/// before consuming authority. A failed explicit loan cleanup leaves the cap
+/// live and returns an error; callers must not release a borrowed buffer on it.
+/// Endpoint/domain bulk cleanup retains its separate serialized teardown path.
 #[inline(always)]
 pub fn ipc_close(cap: u64) -> u64 {
     unsafe { svc3(SyscallNumber::IpcClose, cap, 0, 0) }

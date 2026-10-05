@@ -1,7 +1,7 @@
 //! Own a borrowed-memory reply across the IPC-unlocked invalidation interval.
 //! Returned connections keep their minting source claimed through publication.
 //! Returned memory owns source escrow/backing through joint publication.
-//! Cancellation still retains its serialized adapter.
+//! Explicit cancellation has a separate owner; bulk cleanup remains serialized.
 
 use super::*;
 use crate::memory::{
@@ -160,7 +160,7 @@ impl PreparedReply {
                 }
             }
             // No fallible work remains before publishing this ownership claim.
-            ipc.reply_tokens.get_mut(&token).unwrap().replying = true;
+            ipc.reply_tokens.get_mut(&token).unwrap().completing = true;
             ipc.reply_tokens.get_mut(&token).unwrap().connection_source =
                 operation.connection.as_ref().map(|connection| connection.source);
             Ok(())
@@ -215,7 +215,7 @@ impl PreparedReply {
             }
             let mut ipc = IPC.write();
             let token = ipc.reply_tokens.get_mut(&self.token).expect("claimed reply missing");
-            assert!(token.replying);
+            assert!(token.completing);
             assert_eq!(token.borrows.pop(), Some(borrow));
         }
         let mut ipc = IPC.write();
@@ -246,7 +246,7 @@ impl PreparedReply {
         let returned_cap =
             self.connection.take().map(|connection| connection.grant.install(&mut ipc));
         let token = ipc.reply_tokens.remove(&self.token).expect("claimed reply missing");
-        assert!(token.replying && token.borrows.is_empty());
+        assert!(token.completing && token.borrows.is_empty());
         assert_eq!(token.call, self.call);
         assert_eq!(ipc.caps[&self.server].address_space, self.identities[1].1);
         let call = ipc.pending_calls.get_mut(&self.call).expect("claimed call missing");
@@ -285,9 +285,9 @@ impl PreparedReply {
         drop(self.memory.take());
         drop(self.connection.take());
         let token = ipc.reply_tokens.get_mut(&self.token).expect("claimed reply missing");
-        assert!(token.replying);
+        assert!(token.completing);
         token.connection_source = None;
-        token.replying = false;
+        token.completing = false;
     }
 }
 
@@ -332,8 +332,11 @@ fn validate(
     if token.server != server {
         return Err(IpcError::PermissionDenied);
     }
-    if token.replying {
+    if token.completing {
         return Err(IpcError::ReplyAlreadyUsed);
+    }
+    if token.cleanup_failed {
+        return Err(IpcError::MemoryTransferFailed);
     }
     let call = ipc.pending_calls.get(&token.call).ok_or(IpcError::UnknownCapability)?;
     if call.result.is_some() {

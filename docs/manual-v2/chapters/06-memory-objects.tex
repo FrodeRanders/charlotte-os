@@ -152,9 +152,10 @@ Later completion cannot reopen admission. The fence applies to operation leases,
 not all existing resource paths, and the waiting budget does not bound hardware
 rendezvous. All existing borrowed-memory reply variants retain both namespace
 leases and a reply claim across IPC-unlocked invalidation. Returned authority
-remains hidden until publication. Cancellation's own loan cleanup still requires
-composed attachment ownership
-before releasing their global serialization. Whole-domain device cleanup also
+remains hidden until publication. Explicit call/reply cancellation also owns both
+roots through unlocked loan cleanup. Bulk endpoint/domain IPC cleanup still
+requires multi-call ownership before releasing its global serialization.
+Whole-domain device cleanup also
 retains lifecycle serialization.
 Deployment and node-shutdown
 supervisors retain a teardown owner across polls and refuse
@@ -299,8 +300,27 @@ nonwaiting busy check instead of parking beneath IPC. After input-loan cleanup,
 the output move and any returned connection publish jointly before result
 visibility. Ordinary failure restores the unstarted output move; abandonment
 can also restore that output, but retains uncertain input-loan backing and the
-reply/root claims. No-loan replies remain atomic under IPC. Cancellation's own
-revocation still retains IPC serialization and needs its own completion owner.
+reply/root claims. No-loan replies remain atomic under IPC.
+
+Explicit close of a pending call or delivered reply composes both namespace
+leases, every loan receipt and an exclusive completion claim in a cancellation
+owner. A queued message stays in place while its loans are detached and
+invalidated outside IPC: receive reports Pending, and endpoint close waits
+outside the lock. Success records all revocations before consuming authority
+or notifying the caller. Failed cleanup leaves the capability live and reports
+no terminal result; untouched preparations roll back, while uncertain backing
+stays fenced. Abandonment retains the queue, claim and both roots.
+Endpoint readiness excludes claimed or failed queue fronts. Removing queued
+work re-signals receivers and their bound completion queue after unlocking,
+so later work can proceed. A failed request remains fenced from delivery/reply.
+
+The runtime's explicit \texttt{PendingCall::close} returns its owner on error,
+preserving the Rust borrow. Drop and consuming waits cannot return an owner;
+if close fails, they abort the domain instead of ending a potentially unsafe
+borrow. This is fail-closed termination, not forced resource reclamation.
+Bulk endpoint/domain cleanup remains serialized. Its reply-token cleanup must
+retain failed loans without reporting them as completed; full bulk ownership
+and failure recovery remain work in progress.
 
 \section{Why hardware enforcement matters}
 

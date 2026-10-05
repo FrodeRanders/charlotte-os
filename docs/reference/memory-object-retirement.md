@@ -45,9 +45,9 @@ All batches are attempted, retaining the first error. Any failure leaves the pin
 undischarged, even when some leaves have been removed. Domain cleanup moves
 records before detachment; ordinary unmap removes its record only after the full
 detach succeeds. Invalidations and scratch/authority completion retain their
-existing ordering. Whole-domain cleanup and cancellation still retain their
+existing ordering. Whole-domain cleanup and bulk IPC cancellation retain their
 outer lifecycle/IPC guards. Public mapping operations, all existing
-borrowed-memory replies and direct loan revocation
+borrowed-memory replies, explicit call/reply cancellation and direct loan revocation
 now own live-generation leases across these phases, as described below.
 
 Scratch now records live extents with fallible admission before publication;
@@ -90,8 +90,8 @@ detach/invalidation checks succeed.
 The backing receipts themselves do not own an address-space generation lease.
 Their caller must retain one or retain lifecycle/IPC serialization across the
 complete operation. Numeric ASIDs and scratch identities must not be reused
-between detach and finish. Whole-domain cleanup and
-cancellation still depend on those outer guards.
+between detach and finish. Whole-domain cleanup and bulk IPC cancellation still
+depend on those outer guards.
 
 Consequently SEC-18 remains partial: several user/device/domain paths still
 perform x86 rendezvous under an outer interrupt-masking lifecycle/IPC guard.
@@ -116,8 +116,9 @@ through invalidation; concurrent device close rejects while that claim is held.
 Explicit device close also leases its root and detaches its device object before
 releasing lifecycle for invalidation. Whole-domain device cleanup still holds
 lifecycle. All existing borrowed-memory reply variants now compose a reply claim
-and both namespace leases before releasing IPC. Cancellation's own revocation
-still needs that composition. The staged fence does
+and both namespace leases before releasing IPC. Explicit pending-call/reply
+close now composes the same ownership in a separate cancellation owner; bulk
+endpoint/domain cleanup still needs that composition. The staged fence does
 not cover non-lease paths or revoke their authority while older operations drain.
 
 ## Owned loan revocation
@@ -204,8 +205,51 @@ Operation abandonment can also safely restore that unmapped, unstarted output
 move; it cannot restore uncertain input loans or clear reply/connection-source
 claims. No-loan replies still use atomic IPC serialization without detachment.
 
-Cancellation's own loan cleanup still uses the IPC-serialized adapter and needs
-a composed completion owner before unlocking.
+## Owned explicit cancellation
+
+Closing a pending call or delivered reply with live loans uses
+`ipc::cancellation::PreparedCancellation`. It captures both exact namespaces,
+admits their leases before IPC, revalidates the call/token/capability identities
+and prepares a bounded loan-receipt vector before publishing an exclusive
+`completing` claim. No capability or pending record is consumed at preparation.
+Second-namespace or loan preparation failure restores only unstarted receipts
+and returns admitted leases without publishing a claim.
+
+Queued cancellation keeps the original message and attachments in their admitted
+queue until cleanup finishes. Receive returns `Pending` for a claimed front
+message; closing its endpoint waits cooperatively outside IPC. Delivered reply
+or call close likewise waits, and competing replies reject the claim. Both roots
+remain leased while detachment, invalidation and scratch completion run outside
+IPC. Each completed loan is removed from the token before continuing.
+Blocking receive readiness excludes claimed or failed queue fronts. Queued
+removal drains endpoint waiters and re-signals its bound CQ after IPC/lease
+completion, so work behind a formerly held front is not stranded. The runtime's
+nonblocking receive treats `Pending` as no currently available message.
+
+Success removes the token and visible reply authority. Caller close removes its
+pending record and queued ownership; queued copies/moves are released, while
+already delivered ownership remains with the server. Reply-cap close publishes
+`REPLY_CANCELLED` only after all loans complete. Notification occurs after IPC
+unlock and lease completion. No new destination authority or teardown snapshot
+is allocated at this point.
+
+A cleanup error retains the failed pin/fence, restores untouched receipts,
+returns root leases and leaves the call/reply capability live. It publishes no
+terminal result and fences that failed token from delivery or reply; neither
+partial-loan completion nor a released root lease makes the request usable again.
+It cannot authorize borrowed-memory reuse. Abandonment retains
+the claim, both roots, queued records and loan pins indefinitely; there is no
+force-clear, timeout reclamation or recovery API. `PendingCall::close` returns
+its Rust owner on rejection; its Drop/consuming-wait fallback aborts the domain
+if close cannot confirm safety rather than ending the borrow normally.
+
+Bulk endpoint/domain cleanup still uses the IPC-serialized adapter and needs a
+multi-call completion owner before unlocking. Its reply-token cleanup now records
+successful loans and retains a failed token without reporting terminal completion.
+Whole-root cleanup uses a non-leasing adapter after existing leases drain, never
+acquiring lifecycle beneath IPC. Bulk pending-call teardown and comprehensive
+failure recovery/quiescence remain separate work.
+
 Coherent DMA and executing CPUs
 retain their existing quiescence obligations; a revocation transaction does not
 itself stop an already authorized DMA transfer.

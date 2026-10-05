@@ -44,6 +44,7 @@ use crate::{
 };
 
 pub(crate) mod budget;
+pub(crate) mod cancellation;
 pub(crate) mod record_budget;
 pub(crate) mod record_tests;
 pub(crate) mod reply;
@@ -284,7 +285,10 @@ struct Endpoint {
 struct ReplyToken {
     server: AddressSpaceId,
     call: PendingCallId,
-    replying: bool,
+    /// Exclusive reply/cancellation owner; Drop cannot force-clear this claim.
+    completing: bool,
+    /// Cancellation reached uncertain physical cleanup; never deliver/reply it.
+    cleanup_failed: bool,
     /// Borrowed minting authority protected by the in-flight reply claim.
     connection_source: Option<CapabilityId>,
     borrows: Vec<MemoryBorrow>,
@@ -470,7 +474,8 @@ impl PreparedCall {
             ReplyToken {
                 server,
                 call,
-                replying: false,
+                completing: false,
+                cleanup_failed: false,
                 connection_source: None,
                 borrows: self.borrows,
                 _charge: self.reply_charge,
@@ -1403,8 +1408,11 @@ impl<'a> PreparedReceive<'a> {
             .reply;
         let reply = if let Some(token) = token {
             let reply = ipc.reply_tokens.get(&token).ok_or(IpcError::UnknownCapability)?;
-            if reply.server != receiver || reply.replying {
+            if reply.server != receiver {
                 return Err(IpcError::PermissionDenied);
+            }
+            if reply.completing || reply.cleanup_failed {
+                return Err(IpcError::Pending);
             }
             let reservation = ipc.reserve_cap(receiver)?;
             let cap = reservation.publish().map_err(cap_admission_error)?;
@@ -1558,7 +1566,18 @@ fn receive_endpoint_id(
 fn endpoint_is_readable_or_closed(endpoint_id: EndpointId) -> Result<bool, IpcError> {
     let ipc = IPC.read();
     let endpoint = ipc.endpoints.get(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
-    Ok(endpoint.closed || !endpoint.queue.is_empty())
+    Ok(endpoint_available(&ipc, endpoint))
+}
+
+fn endpoint_available(ipc: &IpcRegistry, endpoint: &Endpoint) -> bool {
+    endpoint.closed
+        || endpoint.queue.front().is_some_and(|message| {
+            message.reply.is_none_or(|token| {
+                ipc.reply_tokens
+                    .get(&token)
+                    .is_some_and(|token| !token.completing && !token.cleanup_failed)
+            })
+        })
 }
 
 struct EndpointObservable {
@@ -1658,7 +1677,7 @@ impl Observable for EndpointObservable {
     ) -> Result<WaitRegistration, RegistrationError> {
         let ipc = IPC.read();
         let endpoint = ipc.endpoints.get(&self.endpoint).ok_or(RegistrationError::Closed)?;
-        if endpoint.closed || !endpoint.queue.is_empty() {
+        if endpoint_available(&ipc, endpoint) {
             return Ok(WaitRegistration::ready());
         }
         sponsor.register(&endpoint.readiness_observers, observer)
@@ -1753,8 +1772,11 @@ fn complete_reply(
     if token.server != server {
         return Err(IpcError::PermissionDenied);
     }
-    if token.replying {
+    if token.completing {
         return Err(IpcError::ReplyAlreadyUsed);
+    }
+    if token.cleanup_failed {
+        return Err(IpcError::MemoryTransferFailed);
     }
     let call_id = token.call;
     let caller = ipc.pending_calls.get(&call_id).ok_or(IpcError::UnknownCapability)?.caller;
@@ -1985,6 +2007,21 @@ pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError
 fn close_cap_with_wait(
     asid: AddressSpaceId,
     cap: CapabilityId,
+    wait: impl FnMut(),
+) -> Result<(), IpcError> {
+    close_cap_in_mode(asid, cap, true, wait)
+}
+
+/// Root cleanup retains lifecycle and has already drained operation leases.
+/// It must never acquire another lifecycle lease underneath that guard.
+fn close_cap_serialized(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError> {
+    close_cap_in_mode(asid, cap, false, crate::cpu::scheduler::yield_lp)
+}
+
+fn close_cap_in_mode(
+    asid: AddressSpaceId,
+    cap: CapabilityId,
+    detached: bool,
     mut wait: impl FnMut(),
 ) -> Result<(), IpcError> {
     // Keep the caller's borrow alive until a claimed reply has finished its
@@ -1995,20 +2032,43 @@ fn close_cap_with_wait(
         let busy = match ipc.cap(asid, cap)? {
             Capability::PendingCall {
                 call,
-            } => ipc.reply_tokens.values().any(|token| token.call == call && token.replying),
+            } => ipc.reply_tokens.values().any(|token| token.call == call && token.completing),
             Capability::ReplyToken {
                 token,
-            } => ipc.reply_tokens.get(&token).is_some_and(|token| token.replying),
+            } => ipc.reply_tokens.get(&token).is_some_and(|token| token.completing),
             Capability::Endpoint {
+                endpoint,
                 ..
+            } => {
+                ipc.reply_tokens.values().any(|token| {
+                    token.completing && token.server == asid && token.connection_source == Some(cap)
+                }) || ipc.endpoints.get(&endpoint).is_some_and(|endpoint| {
+                    endpoint.queue.iter().any(|message| {
+                        message.reply.is_some_and(|token| {
+                            ipc.reply_tokens.get(&token).is_some_and(|token| token.completing)
+                        })
+                    })
+                })
             }
-            | Capability::Connection {
+            Capability::Connection {
                 ..
             } => ipc.reply_tokens.values().any(|token| {
-                token.replying && token.server == asid && token.connection_source == Some(cap)
+                token.completing && token.server == asid && token.connection_source == Some(cap)
             }),
         };
         if !busy {
+            if detached && cancellation::has_loans(&ipc, asid, cap)? {
+                drop(ipc);
+                // Revalidate identity and claim after admitting both roots.
+                // Another close/reply can win this preparation interval.
+                match cancellation::close(asid, cap) {
+                    Err(IpcError::Pending) => {
+                        wait();
+                        continue;
+                    }
+                    result => return result,
+                }
+            }
             break ipc;
         }
         drop(ipc);
@@ -2073,7 +2133,7 @@ fn close_cap_with_wait(
                         }
                     }
                 } else {
-                    cancel_queued_call(&mut ipc, call);
+                    cancel_queued_call(&mut ipc, call, &mut observers, &mut cq_wake);
                 }
             }
         }
@@ -2134,10 +2194,10 @@ pub fn close_address_space(asid: AddressSpaceId) {
         // logical cleanup. Detect an integration bypass before retiring budgets
         // or reaching a claimed-cap wait underneath lifecycle serialization.
         assert!(
-            !ipc.reply_tokens.values().any(|token| token.replying
+            !ipc.reply_tokens.values().any(|token| token.completing
                 && (token.server == asid
                     || ipc.pending_calls.get(&token.call).is_some_and(|call| call.caller == asid))),
-            "IPC namespace cleanup before reply leases drained"
+            "IPC namespace cleanup before completion leases drained"
         );
         if let Some(namespace) = ipc.caps.get(&asid) {
             namespace.record_budget.retire();
@@ -2148,7 +2208,7 @@ pub fn close_address_space(asid: AddressSpaceId) {
             .unwrap_or_default()
     };
     for cap in caps {
-        let _ = close_cap(asid, cap);
+        let _ = close_cap_serialized(asid, cap);
     }
     if let Some(caps) = IPC.write().caps.remove(&asid) {
         for cap in caps.caps.keys() {
@@ -2178,11 +2238,28 @@ fn consume_reply_token(
     result: i64,
     observers: &mut WaitNotifications,
 ) {
-    if let Some(token) = ipc.reply_tokens.remove(&token) {
-        assert!(!token.replying, "consuming a claimed reply");
-        for borrow in token.borrows.into_iter().rev() {
-            let _ = revoke_memory_borrow(borrow);
+    // Bulk endpoint/root cleanup still retains serialization. It must not
+    // publish a terminal cancellation on an uncertain loan: a caller could
+    // otherwise release its Rust borrow while a foreign CPU mapping survives.
+    // Record each completed loan and retain the failed token/backing fence.
+    while let Some(borrow) = ipc.reply_tokens.get(&token).and_then(|token| {
+        assert!(!token.completing, "consuming a claimed completion");
+        token.borrows.last().copied()
+    }) {
+        if revoke_memory_borrow(borrow).is_err() {
+            crate::logln!(
+                "[IPC] bulk cancellation retained token {} after uncertain loan cleanup",
+                token
+            );
+            return;
         }
+        assert_eq!(ipc.reply_tokens.get_mut(&token).unwrap().borrows.pop(), Some(borrow));
+    }
+    if let Some(token) = ipc.reply_tokens.remove(&token) {
+        assert!(
+            !token.completing && token.borrows.is_empty(),
+            "consuming an unfinished completion"
+        );
         if let Some(call) = ipc.pending_calls.get_mut(&token.call) {
             call.result = Some(ReplyValue {
                 result,
@@ -2194,7 +2271,12 @@ fn consume_reply_token(
     }
 }
 
-fn cancel_queued_call(ipc: &mut IpcRegistry, call: PendingCallId) {
+fn cancel_queued_call(
+    ipc: &mut IpcRegistry,
+    call: PendingCallId,
+    observers: &mut WaitNotifications,
+    cq_wake: &mut Option<(AddressSpaceId, crate::completion::CqId)>,
+) {
     let tokens = ipc
         .reply_tokens
         .iter()
@@ -2208,8 +2290,8 @@ fn cancel_queued_call(ipc: &mut IpcRegistry, call: PendingCallId) {
         .collect::<Vec<_>>();
     for (token, server) in tokens {
         let retired = ipc.reply_tokens.remove(&token).unwrap();
-        assert!(!retired.replying, "cancelling a claimed reply");
-        cancel_queued_message_with_token(ipc, server, token, &retired.borrows);
+        assert!(!retired.completing, "cancelling a claimed reply");
+        cancel_queued_message_with_token(ipc, server, token, &retired.borrows, observers, cq_wake);
         ipc.remove_matching_caps(
             server,
             Capability::ReplyToken {
@@ -2224,6 +2306,8 @@ fn cancel_queued_message_with_token(
     server: AddressSpaceId,
     token: ReplyTokenId,
     borrows: &[MemoryBorrow],
+    observers: &mut WaitNotifications,
+    cq_wake: &mut Option<(AddressSpaceId, crate::completion::CqId)>,
 ) {
     for &borrow in borrows.iter().rev() {
         let _ = revoke_memory_borrow(borrow);
@@ -2234,6 +2318,8 @@ fn cancel_queued_message_with_token(
         }
         if let Some(index) = endpoint.queue.iter().position(|message| message.reply == Some(token))
         {
+            observers.append(endpoint.readiness_observers.drain());
+            *cq_wake = endpoint.notify_cq.map(|cq| (endpoint.owner, cq));
             if let Some(message) = endpoint.queue.remove(index) {
                 for memory_cap in &message.memory {
                     // Revoked loans are already gone; copies/moves are still

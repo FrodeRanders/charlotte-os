@@ -1035,7 +1035,11 @@ pub struct IncomingMessage {
 
 impl IncomingMessage {
     fn from_kernel(message: catten_syscall::IpcMessage) -> Result<Option<Self>, ReceiveError> {
-        if message.status == catten_syscall::ipc_status::NO_MESSAGE {
+        if message.status == catten_syscall::ipc_status::NO_MESSAGE
+            || message.status == catten_syscall::ipc_status::PENDING
+        {
+            // A queued cancellation owns the front; it is not yet receivable.
+            // Its completion re-signals endpoint/CQ readiness for later work.
             return Ok(None);
         }
         if message.status == catten_syscall::ipc_status::ENDPOINT_CLOSED {
@@ -1126,6 +1130,18 @@ impl PendingCall<'_> {
         self.cap.expect("pending-call capability already consumed")
     }
 
+    /// Cancel/close this call only after all borrowed memory is safe to reuse.
+    /// On rejection the returned owner still retains its original Rust borrow.
+    /// Dropping it cannot silently release that borrow after failed cleanup.
+    pub fn close(mut self) -> Result<(), (Self, IpcError)> {
+        let status = kernel::ipc_close(self.raw_handle());
+        if status != catten_syscall::ipc_status::OK {
+            return Err((self, IpcError::Status(status)));
+        }
+        self.cap.take();
+        Ok(())
+    }
+
     fn finish(
         &mut self,
         status: u64,
@@ -1137,7 +1153,7 @@ impl PendingCall<'_> {
             return Ok(None);
         }
         let cap = self.cap.take().expect("pending-call capability already consumed");
-        let _ = kernel::ipc_close(cap);
+        close_pending_call_or_abort(cap);
         if status != catten_syscall::ipc_status::OK {
             return Err(IpcError::Status(status));
         }
@@ -1170,8 +1186,17 @@ impl PendingCall<'_> {
 impl Drop for PendingCall<'_> {
     fn drop(&mut self) {
         if let Some(cap) = self.cap.take() {
-            let _ = kernel::ipc_close(cap);
+            close_pending_call_or_abort(cap);
         }
+    }
+}
+
+fn close_pending_call_or_abort(cap: u64) {
+    if kernel::ipc_close(cap) != catten_syscall::ipc_status::OK {
+        // Returning (or unwinding) would end the Rust borrow while foreign CPU
+        // mappings may still be reachable. A timeout is not a cleanup receipt.
+        // Terminate the domain; do not clear a kernel claim or force-free backing.
+        kernel::abort_failed_ipc_close();
     }
 }
 
