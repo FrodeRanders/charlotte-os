@@ -18,6 +18,12 @@ use core::sync::atomic::{
 };
 
 pub(crate) mod observer_tests;
+pub(crate) mod retirement;
+pub use retirement::DomainTeardownError;
+pub(crate) use retirement::{
+    DeploymentTeardown,
+    DomainTeardown,
+};
 
 use crate::{
     cpu::scheduler::{
@@ -322,7 +328,6 @@ pub(crate) fn configured_admission_trust() -> Option<charlotte_launch::trust::Ad
 /// A domain owned by the deployment agent on this node. The stable principal
 /// is derived from the signed artifact name; it fences retirement from ASID
 /// reuse and permits several independently deployed applications to coexist.
-#[derive(Copy, Clone)]
 pub(crate) struct DeployedDomain {
     pub principal: u64,
     pub domain: ServiceDomain,
@@ -330,6 +335,8 @@ pub(crate) struct DeployedDomain {
     pub retirement_deadline_ms: Option<u64>,
     pub retirement_reason: u32,
     pub force_requested: bool,
+    pub teardown: DeploymentTeardown,
+    pub retirement_acknowledged: bool,
 }
 
 /// Domains currently owned by the deployment agent on this node.
@@ -1277,21 +1284,17 @@ pub fn wait_domain_exit(domain: &ServiceDomain, timeout_millis: u64) {
 ///
 /// Closing the domain's endpoints is what makes stale client connections
 /// fail deterministically with `EndpointClosed` after a restart.
-pub fn teardown_domain(domain: ServiceDomain) {
-    // domain_exited includes a conservative node-wide retirement marker.
-    // Unrelated thread retirement can begin after wait_domain_exit returned,
-    // making a second point-in-time assertion spuriously fail. Settle again
-    // under a bounded budget; never free an address space while it is busy.
-    let deadline = monotonic_millis().saturating_add(5_000);
-    while !domain_exited(&domain) {
-        assert!(
-            monotonic_millis() < deadline,
-            "[supervisor] refusing to tear down a domain whose threads did not quiesce"
-        );
+pub fn teardown_domain(domain: ServiceDomain) -> Result<(), DomainTeardownError> {
+    // Synchronous fixture/helper path only. Production controllers retain the
+    // nonblocking owner and poll outside their registry/coordinator guards.
+    let mut retirement = DomainTeardown::new(domain);
+    while !retirement.poll()? {
         crate::cpu::scheduler::sleep_millis(1);
     }
-    close_user_address_space_handle(domain.address_space)
-        .expect("[supervisor] address-space close failed");
+    Ok(())
+}
+
+fn forget_retired_service_roles(domain: ServiceDomain) {
     let mut manager = LIVE_UPGRADE_MANAGER_ASID.lock();
     if *manager == Some(domain.address_space) {
         *manager = None;

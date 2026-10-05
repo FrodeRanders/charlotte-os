@@ -75,7 +75,7 @@ mod inner {
             let _ = scheduler.abort_thread_generation(domain.tid, domain.generation);
         }
         supervisor::wait_domain_exit(&domain, 30_000);
-        supervisor::teardown_domain(domain);
+        supervisor::teardown_domain(domain).expect("[raft] fixture reclamation");
     }
 
     fn wait_for_single_leader(domain: &ServiceDomain, label: &str) -> u32 {

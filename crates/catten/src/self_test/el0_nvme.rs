@@ -486,7 +486,7 @@ extern "C" fn verify_el0_nvme() {
     // that the scheduler has reaped its initial thread. Wait for that separate
     // lifecycle event before releasing the address space.
     supervisor::wait_domain_exit(&object_client, 30_000);
-    supervisor::teardown_domain(object_client);
+    supervisor::teardown_domain(object_client).expect("[nvme] object-client reclamation");
     // The persistent upgrade phase reloads the echo service ELF through the
     // service manager; the persistent Raft recovery phase uses the raft image.
     crate::self_test::el0_service::verify_persistent_upgrade(&ns);

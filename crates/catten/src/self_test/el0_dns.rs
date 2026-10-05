@@ -783,7 +783,7 @@ mod inner {
                 .abort_thread_generation(echo.tid, echo.generation)
                 .expect("[dns] hosted echo abort");
             crate::service::supervisor::wait_domain_exit(&echo, 30_000);
-            crate::service::supervisor::teardown_domain(echo);
+            crate::service::supervisor::teardown_domain(echo).expect("[dns] echo reclamation");
             logln!("[dns] generation {echo_generation} endpoint closed; awaiting tombstone.");
         }
 

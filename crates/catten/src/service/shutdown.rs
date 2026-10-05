@@ -27,17 +27,30 @@ use crate::{
         },
         supervisor::{
             self,
+            DomainTeardown,
+            DomainTeardownError,
             ServiceDomain,
         },
     },
 };
 
 const MAX_PHASE_GRACE_MS: u64 = 60_000;
+pub(crate) mod tests;
 
 static NODE_SHUTDOWN_COORDINATOR: spin::LazyLock<
-    crate::cpu::multiprocessor::spin::mutex::Mutex<Option<NodeShutdownCoordinator>>,
-> = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(None));
+    crate::cpu::multiprocessor::spin::mutex::Mutex<CoordinatorSlot>,
+> = spin::LazyLock::new(|| {
+    crate::cpu::multiprocessor::spin::mutex::Mutex::new(CoordinatorSlot {
+        coordinator: None,
+        polling: false,
+    })
+});
 static NODE_SHUTDOWN_DEADLINE_MS: AtomicU64 = AtomicU64::new(0);
+
+struct CoordinatorSlot {
+    coordinator: Option<NodeShutdownCoordinator>,
+    polling: bool,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BeginNodeShutdownError {
@@ -87,6 +100,7 @@ pub(crate) struct DeviceShutdownDomain {
     kind: DeviceShutdownKind,
     domain: ServiceDomain,
     request_published: bool,
+    teardown: Option<DomainTeardown>,
 }
 
 impl DeviceShutdownDomain {
@@ -95,12 +109,14 @@ impl DeviceShutdownDomain {
             kind,
             domain,
             request_published: false,
+            teardown: None,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NodeShutdownProgress {
+    Polling,
     Draining {
         phase: ShutdownPhase,
         remaining_domains: usize,
@@ -109,6 +125,11 @@ pub enum NodeShutdownProgress {
         device_domains: usize,
     },
     DeviceDomainsTransferred,
+    ReclamationFailed {
+        phase: ShutdownPhase,
+        error: DomainTeardownError,
+        remaining_domains: usize,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -123,12 +144,18 @@ pub enum DeviceShutdownProgress {
     UnverifiedExit {
         kind: DeviceShutdownKind,
     },
+    ReclamationFailed {
+        kind: DeviceShutdownKind,
+        error: DomainTeardownError,
+    },
 }
 
 struct DomainRetirement {
     domain: ServiceDomain,
     request_published: bool,
     force_requested: bool,
+    teardown: Option<DomainTeardown>,
+    lifecycle_status: Option<u32>,
 }
 
 pub(crate) struct ShutdownPhaseSpec {
@@ -145,6 +172,8 @@ impl ShutdownPhaseSpec {
                 domain,
                 request_published: false,
                 force_requested: false,
+                teardown: None,
+                lifecycle_status: None,
             }],
             deadline_ms: None,
         }
@@ -257,10 +286,30 @@ impl NodeShutdownCoordinator {
             let mut index = 0;
             while index < current.domains.len() {
                 let retirement = &mut current.domains[index];
-                if supervisor::domain_exited(&retirement.domain) {
+                if retirement.teardown.is_some() || supervisor::domain_exited(&retirement.domain) {
+                    if retirement.teardown.is_none() {
+                        retirement.lifecycle_status =
+                            Some(bootstrap::lifecycle_status(retirement.domain.status_frame));
+                        retirement.teardown = Some(DomainTeardown::new(retirement.domain));
+                    }
+                    match retirement.teardown.as_mut().unwrap().poll() {
+                        Ok(false) => {
+                            index += 1;
+                            continue;
+                        }
+                        Err(error) => {
+                            return NodeShutdownProgress::ReclamationFailed {
+                                phase: current.phase,
+                                error,
+                                remaining_domains: current.domains.len(),
+                            };
+                        }
+                        Ok(true) => {}
+                    }
                     let retirement = current.domains.swap_remove(index);
-                    let lifecycle_status =
-                        bootstrap::lifecycle_status(retirement.domain.status_frame);
+                    // The status page is gone after successful close. Cache its
+                    // final value once, before staged reclamation begins.
+                    let lifecycle_status = retirement.lifecycle_status.unwrap();
                     let outcome = &mut self.phase_outcomes[current.phase as usize];
                     if retirement.force_requested {
                         outcome.forced += 1;
@@ -278,7 +327,6 @@ impl NodeShutdownCoordinator {
                         outcome.forced,
                         lifecycle_status
                     );
-                    supervisor::teardown_domain(retirement.domain);
                     continue;
                 }
                 if !retirement.request_published {
@@ -353,16 +401,31 @@ impl DeviceShutdownCoordinator {
         let mut index = 0;
         while index < self.domains.len() {
             let device = &mut self.domains[index];
-            if supervisor::domain_exited(&device.domain) {
-                if bootstrap::lifecycle_status(device.domain.status_frame)
-                    != charlotte_launch::lifecycle::STATUS_DEVICE_QUIESCED
-                {
-                    return DeviceShutdownProgress::UnverifiedExit {
-                        kind: device.kind,
-                    };
+            if device.teardown.is_some() || supervisor::domain_exited(&device.domain) {
+                if device.teardown.is_none() {
+                    if bootstrap::lifecycle_status(device.domain.status_frame)
+                        != charlotte_launch::lifecycle::STATUS_DEVICE_QUIESCED
+                    {
+                        return DeviceShutdownProgress::UnverifiedExit {
+                            kind: device.kind,
+                        };
+                    }
+                    device.teardown = Some(DomainTeardown::new(device.domain));
                 }
-                let device = self.domains.swap_remove(index);
-                supervisor::teardown_domain(device.domain);
+                match device.teardown.as_mut().unwrap().poll() {
+                    Ok(false) => {
+                        index += 1;
+                        continue;
+                    }
+                    Err(error) => {
+                        return DeviceShutdownProgress::ReclamationFailed {
+                            kind: device.kind,
+                            error,
+                        };
+                    }
+                    Ok(true) => {}
+                }
+                self.domains.swap_remove(index);
                 continue;
             }
             if !device.request_published {
@@ -407,7 +470,10 @@ impl Drop for NodeShutdownCoordinator {
     fn drop(&mut self) {
         for phase in &mut self.phases {
             for retirement in &mut phase.domains {
-                if !retirement.force_requested && !supervisor::domain_exited(&retirement.domain) {
+                if retirement.teardown.is_none()
+                    && !retirement.force_requested
+                    && !supervisor::domain_exited(&retirement.domain)
+                {
                     bootstrap::write_lifecycle_request(
                         retirement.domain.config_frame,
                         charlotte_launch::lifecycle::STATE_FORCE_TERMINATING,
@@ -445,12 +511,12 @@ pub fn begin_node_shutdown(
         return Err(BeginNodeShutdownError::InvalidPhaseGrace);
     }
     let mut coordinator = NODE_SHUTDOWN_COORDINATOR.lock();
-    if coordinator.is_some() {
+    if coordinator.polling || coordinator.coordinator.is_some() {
         return Err(BeginNodeShutdownError::AlreadyInProgress);
     }
     let state = launch::take_steady_state_for_shutdown()
         .ok_or(BeginNodeShutdownError::SteadyStateUnavailable)?;
-    *coordinator =
+    coordinator.coordinator =
         Some(NodeShutdownCoordinator::from_steady_state(state, node_deadline_ms, phase_grace_ms));
     Ok(())
 }
@@ -479,7 +545,8 @@ extern "C" fn node_shutdown_worker() {
         match poll_node_shutdown() {
             Some(NodeShutdownProgress::Draining {
                 ..
-            }) => {
+            })
+            | Some(NodeShutdownProgress::Polling) => {
                 crate::cpu::scheduler::yield_lp();
             }
             Some(NodeShutdownProgress::AwaitingDeviceQuiescence {
@@ -488,6 +555,22 @@ extern "C" fn node_shutdown_worker() {
             Some(NodeShutdownProgress::DeviceDomainsTransferred) | None => {
                 crate::logln!("[shutdown] coordinator ownership was lost before device drain");
                 return;
+            }
+            Some(NodeShutdownProgress::ReclamationFailed {
+                phase,
+                error,
+                remaining_domains,
+            }) => {
+                crate::logln!(
+                    "[shutdown] refusing power-off: {:?} reclamation failed {:?}; {} domain(s) \
+                     retained",
+                    phase,
+                    error,
+                    remaining_domains
+                );
+                loop {
+                    crate::cpu::scheduler::yield_lp();
+                }
             }
         }
     }
@@ -521,6 +604,19 @@ extern "C" fn node_shutdown_worker() {
                     crate::cpu::scheduler::yield_lp();
                 }
             }
+            DeviceShutdownProgress::ReclamationFailed {
+                kind,
+                error,
+            } => {
+                crate::logln!(
+                    "[shutdown] refusing power-off: {:?} reclamation failed {:?}",
+                    kind,
+                    error
+                );
+                loop {
+                    crate::cpu::scheduler::yield_lp();
+                }
+            }
         }
     }
 
@@ -536,13 +632,39 @@ extern "C" fn node_shutdown_worker() {
 }
 
 pub fn poll_node_shutdown() -> Option<NodeShutdownProgress> {
-    NODE_SHUTDOWN_COORDINATOR.lock().as_mut().map(NodeShutdownCoordinator::poll)
+    poll_shutdown_slot_with(&NODE_SHUTDOWN_COORDINATOR, NodeShutdownCoordinator::poll)
+}
+
+fn poll_shutdown_slot_with(
+    registry: &crate::cpu::multiprocessor::spin::mutex::Mutex<CoordinatorSlot>,
+    poll: impl FnOnce(&mut NodeShutdownCoordinator) -> NodeShutdownProgress,
+) -> Option<NodeShutdownProgress> {
+    let mut coordinator = {
+        let mut slot = registry.lock();
+        if slot.polling {
+            return Some(NodeShutdownProgress::Polling);
+        }
+        let coordinator = slot.coordinator.take()?;
+        slot.polling = true;
+        coordinator
+    };
+    // Take the whole owner, not a borrow behind a masking guard. The Polling
+    // claim keeps another caller from starting/polling/transferring it.
+    let progress = poll(&mut coordinator);
+    let mut slot = registry.lock();
+    slot.coordinator = Some(coordinator);
+    slot.polling = false;
+    Some(progress)
 }
 
 /// Inspect how a production shutdown phase retired without taking ownership
 /// away from the global coordinator.
 pub fn node_shutdown_phase_outcome(phase: ShutdownPhase) -> Option<ShutdownPhaseOutcome> {
-    NODE_SHUTDOWN_COORDINATOR.lock().as_ref().map(|coordinator| coordinator.phase_outcome(phase))
+    NODE_SHUTDOWN_COORDINATOR
+        .lock()
+        .coordinator
+        .as_ref()
+        .map(|coordinator| coordinator.phase_outcome(phase))
 }
 
 /// Transfer the hardware-root domains to the device shutdown layer only once
@@ -550,6 +672,7 @@ pub fn node_shutdown_phase_outcome(phase: ShutdownPhase) -> Option<ShutdownPhase
 pub fn begin_device_shutdown(deadline_ms: u64) -> Option<DeviceShutdownCoordinator> {
     let domains = NODE_SHUTDOWN_COORDINATOR
         .lock()
+        .coordinator
         .as_mut()
         .and_then(NodeShutdownCoordinator::take_device_domains)?;
     Some(DeviceShutdownCoordinator::new(deadline_ms, domains))

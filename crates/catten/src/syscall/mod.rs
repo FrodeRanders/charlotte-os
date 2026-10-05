@@ -2300,6 +2300,8 @@ fn sys_spawn_artifact(frame: &mut TrapFrame) {
             retirement_deadline_ms: None,
             retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
             force_requested: false,
+            teardown: crate::service::supervisor::DeploymentTeardown::NotStarted,
+            retirement_acknowledged: false,
         },
     );
     frame.regs[0] = domain.asid as u64;
@@ -2401,6 +2403,8 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
             retirement_deadline_ms: None,
             retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
             force_requested: false,
+            teardown: crate::service::supervisor::DeploymentTeardown::NotStarted,
+            retirement_acknowledged: false,
         },
     );
     frame.regs[0] = domain.asid as u64;
@@ -2553,6 +2557,8 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
             retirement_deadline_ms: None,
             retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
             force_requested: false,
+            teardown: crate::service::supervisor::DeploymentTeardown::NotStarted,
+            retirement_acknowledged: false,
         },
     );
     frame.regs[0] = domain.asid as u64;
@@ -2655,12 +2661,32 @@ pub(crate) fn retire_deployed_artifact(
     requested_reason: u32,
     enclosing_deadline_ms: u64,
 ) -> u64 {
+    retire_deployed_artifact_with_registry(
+        &crate::service::supervisor::DEPLOYED_DOMAINS,
+        principal,
+        force,
+        requested_reason,
+        enclosing_deadline_ms,
+    )
+}
+
+// Kernel-only fixture boundary: isolated bookkeeping uses the same ownership
+// state machine without leaving a synthetic deployment in the live registry.
+pub(crate) fn retire_deployed_artifact_with_registry(
+    registry: &crate::cpu::multiprocessor::spin::mutex::Mutex<
+        alloc::vec::Vec<crate::service::supervisor::DeployedDomain>,
+    >,
+    principal: u64,
+    force: bool,
+    requested_reason: u32,
+    enclosing_deadline_ms: u64,
+) -> u64 {
     assert!(
         requested_reason == charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED
             || requested_reason == charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
         "invalid internal deployment-retirement reason"
     );
-    let mut deployed = crate::service::supervisor::DEPLOYED_DOMAINS.lock();
+    let mut deployed = registry.lock();
     let position = if principal == 0 && deployed.len() == 1 {
         Some(0)
     } else {
@@ -2670,7 +2696,21 @@ pub(crate) fn retire_deployed_artifact(
         return 0;
     };
     let domain = deployed[position].domain;
-    if !crate::service::supervisor::domain_exited(&domain) {
+    use crate::service::supervisor::{
+        DeploymentTeardown,
+        DomainTeardown,
+    };
+    match deployed[position].teardown {
+        DeploymentTeardown::Polling => return 1,
+        DeploymentTeardown::Failed(error) => {
+            let _ = error; // Cached terminal result; no repeated teardown/status reads.
+            return u64::MAX;
+        }
+        _ => {}
+    }
+    if matches!(deployed[position].teardown, DeploymentTeardown::NotStarted)
+        && !crate::service::supervisor::domain_exited(&domain)
+    {
         let now = crate::cpu::scheduler::monotonic_millis();
         let entry = &mut deployed[position];
         if entry.retirement_deadline_ms.is_none() {
@@ -2726,10 +2766,48 @@ pub(crate) fn retire_deployed_artifact(
         }
         return 1;
     }
+    let mut teardown =
+        match core::mem::replace(&mut deployed[position].teardown, DeploymentTeardown::Polling) {
+            DeploymentTeardown::NotStarted => {
+                let entry = &mut deployed[position];
+                entry.retirement_acknowledged = entry.retirement_deadline_ms.is_some()
+                    && crate::service::bootstrap::lifecycle_status(domain.status_frame)
+                        == charlotte_launch::lifecycle::STATUS_READY;
+                DomainTeardown::new(domain)
+            }
+            DeploymentTeardown::Pending(owner) => owner,
+            _ => unreachable!("deployment close already claimed or failed"),
+        };
+    // Keep the bounded registry entry admitted and marked Polling, but never
+    // retain its masking guard across root cleanup or invalidation. A competing
+    // retire call returns pending, rather than stealing the owner/slot.
+    drop(deployed);
+    let result = teardown.poll();
+    let mut deployed = registry.lock();
+    let position = deployed
+        .iter()
+        .position(|entry| entry.domain.address_space == domain.address_space)
+        .expect("claimed deployment retirement entry lost");
+    match result {
+        Ok(false) => {
+            deployed[position].teardown = DeploymentTeardown::Pending(teardown);
+            return 1;
+        }
+        Err(error) => {
+            crate::logln!(
+                "[supervisor] retaining failed deployment reclamation asid={} generation={} \
+                 error={:?}",
+                domain.address_space.id(),
+                domain.address_space.generation(),
+                error
+            );
+            deployed[position].teardown = DeploymentTeardown::Failed(error);
+            return u64::MAX;
+        }
+        Ok(true) => {}
+    }
     let retired = deployed.swap_remove(position);
-    let acknowledged = retired.retirement_deadline_ms.is_some()
-        && crate::service::bootstrap::lifecycle_status(retired.domain.status_frame)
-            == charlotte_launch::lifecycle::STATUS_READY;
+    let acknowledged = retired.retirement_acknowledged;
     if retired.retirement_reason == charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN {
         if retired.force_requested {
             crate::service::supervisor::NODE_SHUTDOWN_FORCED_RETIREMENTS
@@ -2745,8 +2823,5 @@ pub(crate) fn retire_deployed_artifact(
         crate::service::supervisor::DEPLOYMENT_ACKNOWLEDGED_RETIREMENTS
             .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
     }
-    let domain = retired.domain;
-    drop(deployed);
-    crate::service::supervisor::teardown_domain(domain);
     0
 }

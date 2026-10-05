@@ -63,9 +63,8 @@ owner's guards alone does not prove recipient progress.
 ## Integration still required
 
 Boot fixtures exercise real address-space leases. **Production mapping, IPC and
-MMIO paths have not been migrated**, and their masking guards remain. The
-supervisor currently assumes no outstanding leases at close. Before activating
-split-phase operations, implement:
+MMIO paths have not been migrated**, and their masking guards remain. Before
+activating split-phase operations, implement:
 
 1. Lease admission before subsystem serialization, with backing, exact scratch
    reservation and loan/connection authority retained in one operation owner.
@@ -75,10 +74,13 @@ split-phase operations, implement:
 3. Invalidation, scratch and authority completion before consuming the lease.
    Failure/abandonment must retain every uncertain resource, without rendezvous
    in Drop under unknown caller locks.
-4. Integrate the staged lease fence and pending owner with supervisor/controller
-   policy outside lifecycle/IPC. Do not turn normal overlap into a kernel panic
-   or confuse it with permanent abandoned retention. No production supervisor
-   caller uses staged close yet.
+4. Compose production mapping/IPC/MMIO operations with backing, scratch and
+   authority owners before releasing their current guards.
+5. Extend supervisor lifecycle policy as needed. Deployment retirement and
+   node/device shutdown now retain a `DomainTeardown` owner and poll outside
+   registry/coordinator guards. The supervisor bounds thread/lease drain to five
+   seconds; terminal reclamation error retains the deployment entry or prevents
+   node poweroff. This provides no recovery path for abandoned close.
 
 SEC-18 remains partial, including recoverable shootdown and hardware quiescence.
 This is not a new wire API, scheduler reference, capability right, metadata

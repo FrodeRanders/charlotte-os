@@ -67,16 +67,33 @@ On the first `DeployedArtifact::poll_retire()` call, the kernel:
 1. publishes `DrainRequested`, the reason, and an absolute monotonic deadline
    into the read-only lifecycle record;
 2. leaves the domain runnable while the agent continues polling;
-3. reclaims the address space immediately if every domain thread exits; or
+3. stages address-space close once every domain thread is reaped, fencing new
+   kernel address-space operation leases; or
 4. publishes `ForceTerminating` and aborts all remaining threads on the first
    retirement poll at or after the deadline.
 
-The agent retains the `DeployedArtifact` owner until reclamation completes.
-Dropping an unfinished owner sends an immediate best-effort force request; it
-does not claim that asynchronous reaping has completed. Ordinary
+The agent retains the `DeployedArtifact` owner until reclamation completes. The
+kernel also retains its `DomainTeardown` owner in the deployment registry while
+close is pending. Existing operation leases can finish; subsequent retirement
+polls advance cleanup after they drain. The supervisor allows five seconds for
+thread reaping and lease drain after teardown starts. If this bound expires or a
+close precondition fails, the registry caches a terminal failure, retains the
+deployment entry and backing, and reports failure instead of success. The node
+shutdown coordinator likewise refuses poweroff after reclamation error. A
+lease-drain timeout leaves the close fence in force; later lease completion does
+not reopen admission.
+
+Dropping an unfinished `DeployedArtifact` owner sends a best-effort force
+request; it does not claim that asynchronous reaping completed. Ordinary
 reconciliation must retain the owner and keep polling until the kernel reports
-completion, both to provide the cooperative window and to observe final
+completion, both to provide the cooperative window and observe final
 reclamation.
+
+The staged fence applies to operation leases. Production mapping, IPC and MMIO
+paths still use their current serialization and have not yet carried leases,
+backing, scratch and authority owners across invalidation. Thread quiescence is
+established before staged close begins. The five-second drain bound does not
+include final hardware rendezvous, which can still stall.
 
 ## Node-drain propagation
 

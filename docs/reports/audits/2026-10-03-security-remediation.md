@@ -3158,6 +3158,47 @@ metadata budget. SEC-07 and SEC-18 remain partial. Contributor instructions,
 reference/testing Markdown, manual source and TLA+ conformance were updated;
 models and PDF were not rebuilt.
 
+## Continuation: supervisor-owned address-space close — 2026-10-05
+
+The owned staged-close primitive was committed as `7c8e007d`. This continuation
+wires it into deployment retirement and whole-node/device shutdown.
+
+`DomainTeardown` owns the exact `ServiceDomain` and staged close across
+nonblocking polls. It first waits for the existing thread-reaping predicate,
+then begins close and retains `ClosingAddressSpace` when operation leases remain.
+Its poll holds no deployment-registry or shutdown-coordinator guard during
+address-space cleanup or final invalidation. Deployment registry entries move
+through `NotStarted`, `Polling`, `Pending` and terminal `Failed` states. Competing
+retirement calls see pending and cannot take or duplicate the close owner.
+Shutdown phase/device coordinators likewise keep the owner until completion.
+Acknowledgement and forced-retirement counters and phase progression occur only
+after successful reclamation. A terminal error prevents later phases and
+poweroff. A five-second supervisor bound covers thread and lease drain after the
+teardown owner is created; it does not cover logical cleanup or hardware
+rendezvous. Failed or abandoned staged close retains its fence and root.
+
+The deployment syscall returns `0` for complete, `1` for pending and `u64::MAX`
+for terminal reclamation failure. `DeployedArtifact::poll_retire` preserves
+these as `Ok(true)`, `Ok(false)` or `Err(RetirementDenied)`. Its owner stays live
+on error, so best-effort force-on-Drop does not claim kernel reclamation. Node
+shutdown remains in a safe non-poweroff state after a terminal reclamation
+error.
+
+Kernel fixtures now cover successful multi-poll close and exact generation
+reuse, timeout with retained deployment registration and accounting, cached
+terminal errors, prevention of false acknowledgement counts, shutdown phase
+gating, device-domain retention and release of the global coordinator guard
+before polling. These fixtures were added but not run in this continuation.
+Strict AArch64 `acpi,security_test` and x86-64 `acpi` Clippy and
+`cargo fmt --all -- --check` pass. No guest run or new TLC result is claimed.
+
+Production mapping, IPC and MMIO paths still do not acquire operation leases or
+combine them with backing, scratch and loan/connection authority owners. The
+close fence only blocks lease admission and does not fence those legacy paths.
+The supervisor terminal-retention policy has no recovery/retry controller for a
+permanently failed close. SEC-18 remains partial; x86 guest progress and full
+hardware quiescence remain unverified.
+
 ## Continuation: owned staged-close lease fence — 2026-10-05
 
 The live-generation lease foundation was committed as `acf94445`. This

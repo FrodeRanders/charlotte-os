@@ -329,7 +329,7 @@ extern "C" fn verify_el0_uart() {
     // Tear down promptly: `domain_exited` is true only once the thread has
     // been reaped (and thus switched away from), and reusable thread ids make
     // any delay here race-prone under this test's heavy thread churn.
-    supervisor::teardown_domain(driver1);
+    supervisor::teardown_domain(driver1).expect("[uart] fixture reclamation");
 
     // Device reset: teardown must have reclaimed the interrupt route (and the
     // MMIO mapping with the address space).

@@ -47,7 +47,7 @@ impl ProbeDomain {
             monotonic_millis().saturating_add(5_000),
         );
         supervisor::wait_domain_exit(self.get(), 5_000);
-        supervisor::teardown_domain(self.0.take().unwrap());
+        supervisor::teardown_domain(self.0.take().unwrap()).expect("security probe reclamation");
     }
 }
 impl Drop for ProbeDomain {
@@ -57,7 +57,12 @@ impl Drop for ProbeDomain {
                 return;
             }
             if supervisor::domain_exited(&domain) {
-                supervisor::teardown_domain(domain);
+                // Failure-path Drop must not poll/wait under unknown guards.
+                // A current, exited fixture root is retained for inspection.
+                crate::logln!(
+                    "[security] retaining exited probe on exceptional Drop asid={}",
+                    domain.asid
+                );
             } else {
                 crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
                     .read()

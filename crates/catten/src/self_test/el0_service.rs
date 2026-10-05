@@ -291,7 +291,7 @@ extern "C" fn verify_el0_service() {
     logln!("[service] echo generation 1 exited");
     // `wait_domain_exit` observes removal from the master thread table, which
     // occurs only after the thread has switched away and is safe to tear down.
-    supervisor::teardown_domain(echo1);
+    supervisor::teardown_domain(echo1).expect("[service] echo reclamation");
     logln!("[service] echo generation 1 shut down and torn down");
 
     assert_eq!(
@@ -389,7 +389,7 @@ extern "C" fn verify_el0_service() {
 
     let e2 = state.echo.take().unwrap();
     supervisor::wait_domain_exit(&e2, 10_000);
-    supervisor::teardown_domain(e2);
+    supervisor::teardown_domain(e2).expect("[service] replacement reclamation");
     logln!("[service] EL0 manager spawned generation-3 echo (asid={})", replacement_asid);
 
     let l3 = lookup_until_generation(kclient2_asid, ns2, NAME_ECHO, 3, "gen-3 lookup");

@@ -94,6 +94,8 @@ pub fn test_el0_shutdown() {
             retirement_deadline_ms: None,
             retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
             force_requested: false,
+            teardown: supervisor::DeploymentTeardown::NotStarted,
+            retirement_acknowledged: false,
         },
         supervisor::DeployedDomain {
             principal: STUBBORN_PRINCIPAL,
@@ -102,6 +104,8 @@ pub fn test_el0_shutdown() {
             retirement_deadline_ms: None,
             retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
             force_requested: false,
+            teardown: supervisor::DeploymentTeardown::NotStarted,
+            retirement_acknowledged: false,
         },
     ]);
     *TEST_STATE.lock() = Some(TestState {
@@ -178,11 +182,34 @@ extern "C" fn verify_el0_shutdown() {
         "enclosing node deadline did not cap the child's signed grace"
     );
     supervisor::wait_domain_exit(&cooperative, 10_000);
+    let cooperative_lease =
+        crate::memory::operation::AddressSpaceOperation::acquire(cooperative.address_space)
+            .unwrap();
     assert_eq!(
         bootstrap::lifecycle_status(cooperative.status_frame),
         charlotte_launch::lifecycle::STATUS_READY,
         "cooperative probe exited without acknowledging cleanup"
     );
+    assert_eq!(
+        crate::syscall::retire_deployed_artifact(
+            COOPERATIVE_PRINCIPAL,
+            false,
+            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+            node_deadline
+        ),
+        1,
+        "exited deployment was falsely reclaimed with a live operation"
+    );
+    assert!(matches!(
+        crate::memory::operation::AddressSpaceOperation::acquire(cooperative.address_space),
+        Err(crate::memory::operation::OperationError::Closing)
+    ));
+    assert_eq!(
+        supervisor::NODE_SHUTDOWN_ACKNOWLEDGED_RETIREMENTS
+            .load(core::sync::atomic::Ordering::Relaxed),
+        acknowledged_before
+    );
+    cooperative_lease.release().unwrap();
     assert_eq!(
         crate::syscall::retire_deployed_artifact(
             COOPERATIVE_PRINCIPAL,
@@ -287,6 +314,18 @@ extern "C" fn verify_el0_shutdown() {
     );
 
     supervisor::wait_domain_exit(&phased[0], 10_000);
+    let phase_lease =
+        crate::memory::operation::AddressSpaceOperation::acquire(phased[0].address_space).unwrap();
+    assert_eq!(
+        coordinator.poll(),
+        NodeShutdownProgress::Draining {
+            phase: ShutdownPhase::HttpIngress,
+            remaining_domains: 1,
+        }
+    );
+    assert_eq!(coordinator.phase_outcome(ShutdownPhase::HttpIngress).acknowledged, 0);
+    assert_eq!(lifecycle_request(&phased[1]).0, charlotte_launch::lifecycle::STATE_RUNNING);
+    phase_lease.release().unwrap();
     assert_eq!(
         coordinator.poll(),
         NodeShutdownProgress::Draining {
@@ -349,6 +388,15 @@ extern "C" fn verify_el0_shutdown() {
         charlotte_launch::lifecycle::STATUS_DEVICE_QUIESCED,
         "device probe used the ordinary service acknowledgement"
     );
+    let device_lease =
+        crate::memory::operation::AddressSpaceOperation::acquire(device.address_space).unwrap();
+    assert_eq!(
+        devices.poll(),
+        DeviceShutdownProgress::Quiescing {
+            remaining_domains: 1
+        }
+    );
+    device_lease.release().unwrap();
     assert_eq!(devices.poll(), DeviceShutdownProgress::Complete);
     logln!("[shutdown] device domain required quiescence acknowledgement before reclamation");
 
@@ -374,6 +422,11 @@ extern "C" fn verify_el0_shutdown() {
             NodeShutdownProgress::DeviceDomainsTransferred => {
                 panic!("device ownership transferred before the test acquired it")
             }
+            NodeShutdownProgress::Polling => sleep_millis(1),
+            NodeShutdownProgress::ReclamationFailed {
+                error,
+                ..
+            } => panic!("production node reclamation failed: {:?}", error),
         }
     };
     for phase in [
