@@ -41,16 +41,17 @@ refund and a trusted platform reserve; this is not aggregate namespace or
 mailbox queue-backing admission.
 
 Shared namespace accounting now includes all capability kinds and enforces
-staged admission for mailbox, completion and memory publication, IPC endpoint
-creation/direct connection grants and receive-side reply authority. Exact namespace
-tokens fence cancellation/publication; owning prepared memory transfers integrate
+staged admission for mailbox, completion, memory and every IPC capability
+publication. Exact namespace tokens fence cancellation/publication; owning
+prepared memory transfers integrate
 source escrow/backing retention or private-copy backing, with atomic mixed-mode
 IPC memory publication. Scalar reverse-move and receiver-alias rollback are
 removed. Reply tokens track every vector loan, and kernel buffer/DMA operations
 enforce loan permissions. `PreparedReceive` preserves queue/result bytes on shared
 rejection and returns speculative reply authority on result-write failure.
-Call-side IPC, returned connections and other families
-can still exceed shared policy through explicitly named unconverted paths.
+IPC call/grant/returned authority composes with memory in one publication;
+device/system-observer allocation can still exceed shared policy through
+explicitly named unconverted paths.
 Thus the complete capability-namespace admission requirement remains open;
 this is not a backward-compatibility promise for those paths.
 
@@ -2066,3 +2067,88 @@ budgets, physical allocation failures and other open findings remain. These
 fixtures are not a new real-EL0 quota probe, exhaustive retirement/unmap race
 proof or production pressure soak. No x86-64 guest or new formal proof ran;
 TLA+ conformance and LaTeX sources were updated without rebuilding models/PDF.
+
+## Continuation: joint IPC and memory authority — 2026-10-05
+
+The preceding receive/direct-grant batch is committed as `cd022f8`. This
+continuation completes shared admission for **every IPC capability publication**:
+pending calls, call-side delegated connections and returned connections now use
+captured-generation reservations as well. The IPC `insert`/`insert_connection`
+unbounded helpers are removed; only already-admitted payload insertion remains.
+Device and system-observer publication still use the explicit counted bypass.
+
+Early reservation alone was insufficient: committing memory and then publishing
+a call or connection could fail on concurrent retirement, leaving live transferred
+memory without a queued call. `commit_transfers_with_authority` includes fresh
+IPC reservations alongside memory/source escrow in the same capability batch.
+It validates every entry before any becomes live and holds the affected payload
+registries through publication and the remaining updates. Pure scalar calls and
+connection replies skip the memory registry rather than introducing unnecessary
+serialization with memory work.
+
+`PreparedCall` owns pending-call/reply charges, waiter metadata, shared call
+authority, an optional `PreparedConnection`, memory transfers, outgoing memory
+IDs and complete loan tracking. Every scalar/vector call path uses this owner.
+Failed preparation/publication returns all private resources and charges;
+source move/loan slots restore without fresh admission. Successful publication
+releases memory retention pins before installing IPC payloads/enqueuing, still
+under the IPC guard, with no fallible fresh authority admission afterward.
+Public connection+copy calls and full memory-vector calls remain separate ABIs;
+private kernel fixtures compose a connection with all four memory modes.
+
+Connection-bearing replies reserve shared and family authority before loan
+revocation, so quota rejection preserves the token and loans. Returned memory
+and connection authority then publish together. Individual committed-loan
+unmap/revocation is still fallible: a failure after an earlier successful
+revocation, including retirement or publication-scratch allocation failure,
+can leave a subset of loans ended while the reply remains pending. Successful
+revocations are removed from the token immediately, and no fresh returned
+authority escapes failed batch validation. This does not implement atomic
+reverse TLB-shootdown/loan rollback or complete allocator-failure handling.
+
+Validation:
+
+- Host regression/signing tests passed, including the boot-result parser tests.
+  Strict AArch64/security and x86-64 Clippy passed with `-D warnings`; workspace
+  formatting and diff checks passed.
+- Real-domain fixtures reject every scalar/vector variant at the caller ceiling
+  before attachment mutation. Receiver pressure after staged call metadata
+  returns shared/family admission without changing source access, descriptor
+  ownership or backing charges. A connection+copy with one receiver slot cannot
+  publish the connection alone; two permit enqueue, while receive needs its own
+  reply slot. Existing vector rollback tests now reserve the pending-call slot
+  first, filling the source namespace during attachment preparation, and verify
+  that failure returns it too.
+- Paused copy-only and four-mode calls with a staged connection reject both
+  caller and receiver retirement before publication. Every target IPC/memory
+  handle stays non-authoritative, source slots recover, private copied backing
+  releases and all charges return. Copy-only caller retirement specifically
+  exercises additional IPC authority, because copies have no source escrow.
+- Invalid copied buffers and pre-existing source mappings rejecting move/write
+  loans refund call/grant reservations. A retained prepared call survives sponsor
+  teardown with private backing and old record charges, then fails/drops after
+  exact ASID/pending-capability reuse; successor authority, records and backing
+  remain unchanged and its pending call completes normally. Returned-connection
+  pressure preserves a live loan; freeing a slot permits reply, revocation and
+  observation. Observed returned authority survives pending-call close and
+  works independently before explicit close.
+- The initial guest passed 19/19. After adding the mapping/reuse assertions and
+  scalar-only lock fast path, the final isolated four-LP AArch64/TCG guest passed
+  **19 tests, 0 failed, 0 pending**, with both scoped launches at unchanged
+  `0x7fff`. Concurrent cancellation traffic retired after 4,464 requests.
+  Bundled services were rebuilt through the normal runner. Dedicated storage
+  and ports kept existing soak guests and storage untouched.
+
+Final kernel SHA-256:
+`9af3f879b75362512bd97e0135326dc92eaf9adc6a8fdf02b4623b60922f953a`.
+Evidence: `/private/tmp/charlotte-security-ipc-composition-host-tests.log`,
+`/private/tmp/charlotte-security-ipc-composition-*-clippy.log`,
+`/private/tmp/charlotte-security-ipc-composition-final-run.log` and
+`/private/tmp/charlotte-ipc-composition-final-20261005-serial.log`.
+
+SEC-07 remains partial. Device/system-observer shared publication, broader
+allocator/loader/page-table/heap budgets, comprehensive metadata accounting and
+other open findings remain. These are deterministic kernel fixtures, not a new
+EL0 quota probe, exhaustive retirement/unmap proof or production pressure soak.
+No x86-64 guest or new formal proof ran. Markdown, LaTeX sources and TLA+
+conformance were updated; models and PDF were not rebuilt.

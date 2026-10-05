@@ -899,6 +899,10 @@ impl PreparedPayload {
 }
 
 impl PreparedTransfer {
+    pub(crate) fn target(&self) -> AddressSpaceId {
+        self.target
+    }
+
     pub(crate) fn target_cap(&self) -> MemoryObjectCap {
         self.destination.identity()
     }
@@ -1079,12 +1083,34 @@ fn validate_source_transfer(
 pub(crate) fn commit_transfers(
     transfers: &mut [PreparedTransfer],
 ) -> Result<(), MemoryObjectError> {
+    commit_transfers_with_authority(transfers, &mut [])
+}
+
+/// Compose memory publication with already-reserved authority from another
+/// subsystem. Its caller must retain that payload registry until all additional
+/// payloads are installed. No extra authority is published on validation failure.
+pub(crate) fn commit_transfers_with_authority(
+    transfers: &mut [PreparedTransfer],
+    additional: &mut [&mut crate::capability::Reservation],
+) -> Result<(), MemoryObjectError> {
     use crate::capability::{
         Publication,
         SourceDisposition,
     };
     let mut authorities = Vec::new();
-    authorities.try_reserve_exact(transfers.len()).map_err(|_| MemoryObjectError::ResourceLimit)?;
+    let count =
+        transfers.len().checked_add(additional.len()).ok_or(MemoryObjectError::ResourceLimit)?;
+    authorities.try_reserve_exact(count).map_err(|_| MemoryObjectError::ResourceLimit)?;
+    for destination in additional.iter_mut() {
+        authorities.push(Publication {
+            destination,
+            source: None,
+        });
+    }
+    // Scalar-only calls/replies need no memory-registry serialization.
+    if transfers.is_empty() {
+        return crate::capability::publish_batch(&mut authorities).map_err(capability_error);
+    }
     let mut registry = MEMORY_OBJECTS.lock();
     for transfer in transfers.iter() {
         if transfer.committed || !super::budget::accepting(transfer.target_handle) {

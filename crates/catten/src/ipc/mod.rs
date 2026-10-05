@@ -209,42 +209,6 @@ impl AsIpcCaps {
         }
     }
 
-    fn insert(&mut self, owner: AddressSpaceId, cap: Capability) -> CapabilityId {
-        self.insert_payload(owner, cap, None)
-    }
-
-    fn insert_connection(
-        &mut self,
-        owner: AddressSpaceId,
-        endpoint: EndpointId,
-        rights: ConnectionRights,
-        charge: record_budget::Charge,
-    ) -> CapabilityId {
-        self.insert_payload(
-            owner,
-            Capability::Connection {
-                endpoint,
-                rights,
-            },
-            Some(charge),
-        )
-    }
-
-    fn insert_payload(
-        &mut self,
-        owner: AddressSpaceId,
-        cap: Capability,
-        charge: Option<record_budget::Charge>,
-    ) -> CapabilityId {
-        assert_eq!(
-            matches!(cap, Capability::Connection { .. }),
-            charge.is_some(),
-            "connection needs exactly one record charge"
-        );
-        let id = crate::capability::allocate_unmigrated(owner, crate::capability::ObjectKind::Ipc);
-        self.insert_admitted(id, cap, charge)
-    }
-
     /// The caller has published this identity under IPC serialization. No
     /// fallible admission may remain after mutating its associated payload.
     fn insert_admitted(
@@ -367,6 +331,162 @@ impl Drop for Endpoint {
     }
 }
 
+/// Own fresh connection authority and its sponsor before any attachment commits.
+struct PreparedConnection {
+    target: AddressSpaceId,
+    endpoint: EndpointId,
+    rights: ConnectionRights,
+    authority: crate::capability::Reservation,
+    charge: record_budget::Charge,
+}
+
+impl PreparedConnection {
+    fn new(
+        ipc: &mut IpcRegistry,
+        sponsor: AddressSpaceId,
+        target: AddressSpaceId,
+        endpoint: EndpointId,
+        rights: ConnectionRights,
+    ) -> Result<Self, IpcError> {
+        let charge = ipc.reserve_records(sponsor, [1, 0, 0])?;
+        let authority = ipc.reserve_cap(target)?;
+        Ok(Self {
+            target,
+            endpoint,
+            rights,
+            authority,
+            charge,
+        })
+    }
+
+    /// Only after joint authority publication under IPC serialization.
+    fn install(self, ipc: &mut IpcRegistry) -> CapabilityId {
+        ipc.as_caps(self.target).insert_admitted(
+            self.authority.identity(),
+            Capability::Connection {
+                endpoint: self.endpoint,
+                rights: self.rights,
+            },
+            Some(self.charge),
+        )
+    }
+}
+
+/// One owner for unpublished call authority, metadata and all attachments.
+/// Field destruction cancels exact reservations and restores prepared sources;
+/// it never operates on live receiver-controlled aliases.
+struct PreparedCall {
+    authority: crate::capability::Reservation,
+    pending: PendingCall,
+    reply_charge: record_budget::Charge,
+    connection: Option<PreparedConnection>,
+    transfers: Vec<crate::memory::object::PreparedTransfer>,
+    memory: Vec<MemoryObjectCap>,
+    borrows: Vec<MemoryBorrow>,
+}
+
+impl PreparedCall {
+    fn attach(
+        &mut self,
+        transfer: crate::memory::object::PreparedTransfer,
+    ) -> Result<(), IpcError> {
+        self.transfers.try_reserve_exact(1).map_err(|_| IpcError::ResourceLimit)?;
+        self.memory.try_reserve_exact(1).map_err(|_| IpcError::ResourceLimit)?;
+        if let Some((owner, owner_cap)) = transfer.loan_origin() {
+            self.borrows.try_reserve_exact(1).map_err(|_| IpcError::ResourceLimit)?;
+            self.borrows.push(MemoryBorrow {
+                owner,
+                owner_cap,
+                borrower: transfer.target(),
+                borrower_cap: transfer.target_cap(),
+            });
+        }
+        self.memory.push(transfer.target_cap());
+        self.transfers.push(transfer);
+        Ok(())
+    }
+
+    fn attach_vector(
+        &mut self,
+        transfers: Vec<crate::memory::object::PreparedTransfer>,
+        memory: Vec<MemoryObjectCap>,
+    ) -> Result<(), IpcError> {
+        self.borrows.try_reserve_exact(transfers.len()).map_err(|_| IpcError::ResourceLimit)?;
+        for transfer in &transfers {
+            if let Some((owner, owner_cap)) = transfer.loan_origin() {
+                self.borrows.push(MemoryBorrow {
+                    owner,
+                    owner_cap,
+                    borrower: transfer.target(),
+                    borrower_cap: transfer.target_cap(),
+                });
+            }
+        }
+        self.transfers = transfers;
+        self.memory = memory;
+        Ok(())
+    }
+
+    fn commit(
+        mut self,
+        ipc: &mut IpcRegistry,
+        endpoint: EndpointId,
+        opcode: u32,
+        arg0: u64,
+    ) -> Result<(CapabilityId, Delivery), IpcError> {
+        let server = reserve_endpoint_queue(ipc, endpoint)?;
+        let call_cap = self.authority.identity();
+        if let Some(connection) = &mut self.connection {
+            crate::memory::object::commit_transfers_with_authority(
+                &mut self.transfers,
+                &mut [&mut self.authority, &mut connection.authority],
+            )
+        } else {
+            crate::memory::object::commit_transfers_with_authority(
+                &mut self.transfers,
+                &mut [&mut self.authority],
+            )
+        }
+        .map_err(|_| IpcError::MemoryTransferFailed)?;
+        // Pins must end before the newly published objects become writable.
+        self.transfers.clear();
+        let caller = self.pending.caller;
+        let attached = self.connection.take().map(|connection| connection.install(ipc));
+        let call = ipc.alloc_call();
+        ipc.pending_calls.insert(call, self.pending);
+        ipc.as_caps(caller).insert_admitted(
+            call_cap,
+            Capability::PendingCall {
+                call,
+            },
+            None,
+        );
+        let token = ipc.alloc_reply();
+        ipc.reply_tokens.insert(
+            token,
+            ReplyToken {
+                server,
+                call,
+                consumed: false,
+                borrows: self.borrows,
+                _charge: self.reply_charge,
+            },
+        );
+        let delivery = enqueue_message(
+            ipc,
+            endpoint,
+            caller,
+            opcode,
+            arg0,
+            Some(token),
+            self.memory,
+            attached,
+        )
+        .expect("prepared call retains endpoint queue ownership");
+        Ok((call_cap, delivery))
+    }
+}
+
 #[derive(Debug)]
 struct IpcRegistry {
     next_endpoint: EndpointId,
@@ -455,14 +575,20 @@ impl IpcRegistry {
         .map_err(cap_admission_error)
     }
 
-    /// Both records and the waiter source are prepared before attachments move.
-    fn stage_call(
-        &mut self,
-        caller: AddressSpaceId,
-    ) -> Result<(PendingCall, record_budget::Charge), IpcError> {
+    /// All call authority and fallible metadata precede attachment preparation.
+    fn stage_call(&mut self, caller: AddressSpaceId) -> Result<PreparedCall, IpcError> {
         let mut charge = self.reserve_records(caller, [0, 1, 1])?;
         let reply_charge = charge.split([0, 0, 1]);
-        Ok((PendingCall::try_new(caller, charge)?, reply_charge))
+        let authority = self.reserve_cap(caller)?;
+        Ok(PreparedCall {
+            authority,
+            pending: PendingCall::try_new(caller, charge)?,
+            reply_charge,
+            connection: None,
+            transfers: Vec::new(),
+            memory: Vec::new(),
+            borrows: Vec::new(),
+        })
     }
 
     fn cap(&self, asid: AddressSpaceId, cap: CapabilityId) -> Result<Capability, IpcError> {
@@ -904,39 +1030,9 @@ pub fn scalar_call(
         return Err(IpcError::PermissionDenied);
     }
 
-    let server = {
-        let endpoint = ipc.endpoints.get(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
-        if endpoint.closed {
-            return Err(IpcError::EndpointClosed);
-        }
-        if endpoint.queue.len() >= endpoint.capacity {
-            return Err(IpcError::QueueFull);
-        }
-        endpoint.owner
-    };
-
-    let (pending, reply_charge) = ipc.stage_call(caller)?;
-    let call = ipc.alloc_call();
-    ipc.pending_calls.insert(call, pending);
-    let call_cap = ipc.as_caps(caller).insert(
-        caller,
-        Capability::PendingCall {
-            call,
-        },
-    );
-
-    let token = ipc.alloc_reply();
-    ipc.reply_tokens.insert(
-        token,
-        ReplyToken {
-            server,
-            call,
-            consumed: false,
-            borrows: Vec::new(),
-            _charge: reply_charge,
-        },
-    );
-    let delivery = enqueue_scalar(&mut ipc, endpoint_id, caller, opcode, arg0, Some(token))?;
+    reserve_endpoint_queue(&ipc, endpoint_id)?;
+    let prepared = ipc.stage_call(caller)?;
+    let (call_cap, delivery) = prepared.commit(&mut ipc, endpoint_id, opcode, arg0)?;
     drop(ipc);
     deliver(delivery);
     Ok(call_cap)
@@ -1024,55 +1120,16 @@ fn scalar_call_with_connection_impl(
     };
 
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let (pending, reply_charge) = ipc.stage_call(caller)?;
-    let connection_charge = ipc.reserve_records(caller, [1, 0, 0])?;
-    ipc.accepting_namespace(server)?;
-    let server_memory_cap = if let Some(memory_cap) = copied_memory {
-        Some(
-            crate::memory::object::copy_to(caller, memory_cap, server)
+    let mut prepared = ipc.stage_call(caller)?;
+    prepared.connection =
+        Some(PreparedConnection::new(&mut ipc, caller, server, delegated_endpoint, granted)?);
+    if let Some(memory_cap) = copied_memory {
+        prepared.attach(
+            crate::memory::object::prepare_copy(caller, memory_cap, server)
                 .map_err(|_| IpcError::MemoryTransferFailed)?,
-        )
-    } else {
-        None
-    };
-    let attached_cap = ipc.as_caps(server).insert_connection(
-        server,
-        delegated_endpoint,
-        granted,
-        connection_charge,
-    );
-
-    let call = ipc.alloc_call();
-    ipc.pending_calls.insert(call, pending);
-    let call_cap = ipc.as_caps(caller).insert(
-        caller,
-        Capability::PendingCall {
-            call,
-        },
-    );
-
-    let token = ipc.alloc_reply();
-    ipc.reply_tokens.insert(
-        token,
-        ReplyToken {
-            server,
-            call,
-            consumed: false,
-            borrows: Vec::new(),
-            _charge: reply_charge,
-        },
-    );
-    let server_memory_vec: Vec<MemoryObjectCap> = server_memory_cap.into_iter().collect();
-    let delivery = enqueue_message(
-        &mut ipc,
-        endpoint_id,
-        caller,
-        opcode,
-        arg0,
-        Some(token),
-        server_memory_vec,
-        Some(attached_cap),
-    )?;
+        )?;
+    }
+    let (call_cap, delivery) = prepared.commit(&mut ipc, endpoint_id, opcode, arg0)?;
     drop(ipc);
     deliver(delivery);
     Ok(call_cap)
@@ -1098,39 +1155,12 @@ pub fn scalar_call_with_memory_move(
     }
 
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let (pending, reply_charge) = ipc.stage_call(caller)?;
-    let server_memory_cap = crate::memory::object::move_to(caller, memory_cap, server)
-        .map_err(|_| IpcError::MemoryTransferFailed)?;
-
-    let call = ipc.alloc_call();
-    ipc.pending_calls.insert(call, pending);
-    let call_cap = ipc.as_caps(caller).insert(
-        caller,
-        Capability::PendingCall {
-            call,
-        },
-    );
-
-    let token = ipc.alloc_reply();
-    ipc.reply_tokens.insert(
-        token,
-        ReplyToken {
-            server,
-            call,
-            consumed: false,
-            borrows: Vec::new(),
-            _charge: reply_charge,
-        },
-    );
-    let delivery = enqueue_scalar_with_memory(
-        &mut ipc,
-        endpoint_id,
-        caller,
-        opcode,
-        arg0,
-        Some(token),
-        Some(server_memory_cap),
+    let mut prepared = ipc.stage_call(caller)?;
+    prepared.attach(
+        crate::memory::object::prepare_move(caller, memory_cap, server)
+            .map_err(|_| IpcError::MemoryTransferFailed)?,
     )?;
+    let (call_cap, delivery) = prepared.commit(&mut ipc, endpoint_id, opcode, arg0)?;
     drop(ipc);
     deliver(delivery);
     Ok(call_cap)
@@ -1156,39 +1186,12 @@ pub fn scalar_call_with_memory_copy(
     }
 
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let (pending, reply_charge) = ipc.stage_call(caller)?;
-    let server_memory_cap = crate::memory::object::copy_to(caller, memory_cap, server)
-        .map_err(|_| IpcError::MemoryTransferFailed)?;
-
-    let call = ipc.alloc_call();
-    ipc.pending_calls.insert(call, pending);
-    let call_cap = ipc.as_caps(caller).insert(
-        caller,
-        Capability::PendingCall {
-            call,
-        },
-    );
-
-    let token = ipc.alloc_reply();
-    ipc.reply_tokens.insert(
-        token,
-        ReplyToken {
-            server,
-            call,
-            consumed: false,
-            borrows: Vec::new(),
-            _charge: reply_charge,
-        },
-    );
-    let delivery = enqueue_scalar_with_memory(
-        &mut ipc,
-        endpoint_id,
-        caller,
-        opcode,
-        arg0,
-        Some(token),
-        Some(server_memory_cap),
+    let mut prepared = ipc.stage_call(caller)?;
+    prepared.attach(
+        crate::memory::object::prepare_copy(caller, memory_cap, server)
+            .map_err(|_| IpcError::MemoryTransferFailed)?,
     )?;
+    let (call_cap, delivery) = prepared.commit(&mut ipc, endpoint_id, opcode, arg0)?;
     drop(ipc);
     deliver(delivery);
     Ok(call_cap)
@@ -1235,51 +1238,12 @@ fn scalar_call_with_memory_borrow(
     }
 
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let (pending, reply_charge) = ipc.stage_call(caller)?;
-    let mut borrows = Vec::new();
-    borrows.try_reserve_exact(1).map_err(|_| IpcError::ResourceLimit)?;
-    let server_memory_cap = if writable {
-        crate::memory::object::lend_write(caller, memory_cap, server)
-    } else {
-        crate::memory::object::lend_read(caller, memory_cap, server)
-    }
-    .map_err(|_| IpcError::MemoryTransferFailed)?;
-    borrows.push(MemoryBorrow {
-        owner: caller,
-        owner_cap: memory_cap,
-        borrower: server,
-        borrower_cap: server_memory_cap,
-    });
-
-    let call = ipc.alloc_call();
-    ipc.pending_calls.insert(call, pending);
-    let call_cap = ipc.as_caps(caller).insert(
-        caller,
-        Capability::PendingCall {
-            call,
-        },
-    );
-
-    let token = ipc.alloc_reply();
-    ipc.reply_tokens.insert(
-        token,
-        ReplyToken {
-            server,
-            call,
-            consumed: false,
-            borrows,
-            _charge: reply_charge,
-        },
-    );
-    let delivery = enqueue_scalar_with_memory(
-        &mut ipc,
-        endpoint_id,
-        caller,
-        opcode,
-        arg0,
-        Some(token),
-        Some(server_memory_cap),
+    let mut prepared = ipc.stage_call(caller)?;
+    prepared.attach(
+        crate::memory::object::prepare_loan(caller, memory_cap, server, writable)
+            .map_err(|_| IpcError::MemoryTransferFailed)?,
     )?;
+    let (call_cap, delivery) = prepared.commit(&mut ipc, endpoint_id, opcode, arg0)?;
     drop(ipc);
     deliver(delivery);
     Ok(call_cap)
@@ -1760,12 +1724,10 @@ fn complete_reply(
     // A reply is solicited by this caller. Charge returned authority to that
     // requester, so repeated lookups cannot spend the serving grantor's budget.
     // Reject before consuming the reply token, revoking a loan, or moving memory.
-    let connection_charge = if returned_connection.is_some() {
-        Some(ipc.reserve_records(caller, [1, 0, 0])?)
-    } else {
-        None
-    };
-    let returned_move = if let Some(memory_cap) = returned_memory {
+    let mut connection = returned_connection
+        .map(|(endpoint, rights)| PreparedConnection::new(ipc, caller, caller, endpoint, rights))
+        .transpose()?;
+    let mut returned_move = if let Some(memory_cap) = returned_memory {
         Some(
             crate::memory::object::prepare_move(server, memory_cap, caller)
                 .map_err(|_| IpcError::MemoryTransferFailed)?,
@@ -1779,18 +1741,18 @@ fn complete_reply(
         revoke_memory_borrow(borrow).map_err(|_| IpcError::MemoryTransferFailed)?;
         ipc.reply_tokens.get_mut(&token_id).unwrap().borrows.pop();
     }
-    let returned_memory_cap = returned_move
-        .map(|transfer| transfer.commit())
-        .transpose()
-        .map_err(|_| IpcError::MemoryTransferFailed)?;
-    let returned_cap = returned_connection.map(|(endpoint, endpoint_rights)| {
-        ipc.as_caps(caller).insert_connection(
-            caller,
-            endpoint,
-            endpoint_rights,
-            connection_charge.unwrap(),
+    let returned_memory_cap = returned_move.as_ref().map(|transfer| transfer.target_cap());
+    if let Some(connection) = &mut connection {
+        crate::memory::object::commit_transfers_with_authority(
+            returned_move.as_mut_slice(),
+            &mut [&mut connection.authority],
         )
-    });
+    } else {
+        crate::memory::object::commit_transfers(returned_move.as_mut_slice())
+    }
+    .map_err(|_| IpcError::MemoryTransferFailed)?;
+    drop(returned_move);
+    let returned_cap = connection.map(|connection| connection.install(ipc));
     ipc.reply_tokens.remove(&token_id);
     let call = ipc.pending_calls.get_mut(&call_id).ok_or(IpcError::UnknownCapability)?;
     call.result = Some(ReplyValue {
@@ -2294,57 +2256,12 @@ pub fn vector_call(
         return Err(IpcError::PermissionDenied);
     }
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let (pending, reply_charge) = ipc.stage_call(caller)?;
+    let mut prepared = ipc.stage_call(caller)?;
 
     let mut memory_caps = Vec::new();
-    let mut transfers = read_vector_page(caller, cap_vector, server, true, &mut memory_caps)?;
-    let mut borrows = Vec::new();
-    borrows.try_reserve_exact(transfers.len()).map_err(|_| IpcError::ResourceLimit)?;
-    for transfer in &transfers {
-        if let Some((owner, owner_cap)) = transfer.loan_origin() {
-            borrows.push(MemoryBorrow {
-                owner,
-                owner_cap,
-                borrower: server,
-                borrower_cap: transfer.target_cap(),
-            });
-        }
-    }
-    crate::memory::object::commit_transfers(&mut transfers)
-        .map_err(|_| IpcError::MemoryTransferFailed)?;
-    drop(transfers);
-
-    let call = ipc.alloc_call();
-    ipc.pending_calls.insert(call, pending);
-    let call_cap = ipc.as_caps(caller).insert(
-        caller,
-        Capability::PendingCall {
-            call,
-        },
-    );
-
-    let token = ipc.alloc_reply();
-    ipc.reply_tokens.insert(
-        token,
-        ReplyToken {
-            server,
-            call,
-            consumed: false,
-            borrows,
-            _charge: reply_charge,
-        },
-    );
-    let delivery = enqueue_message(
-        &mut ipc,
-        endpoint_id,
-        caller,
-        opcode,
-        arg0,
-        Some(token),
-        memory_caps,
-        None,
-    )
-    .expect("reserved vector-call endpoint changed under IPC ownership");
+    let transfers = read_vector_page(caller, cap_vector, server, true, &mut memory_caps)?;
+    prepared.attach_vector(transfers, memory_caps)?;
+    let (call_cap, delivery) = prepared.commit(&mut ipc, endpoint_id, opcode, arg0)?;
     drop(ipc);
     deliver(delivery);
 

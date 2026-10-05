@@ -66,6 +66,16 @@ or invoking cancellation callbacks. Publication precedes result writing/dequeue,
 so there is no fallible admission after either mutation. Lifecycle is never
 acquired under IPC.
 
+`PreparedCall` and returned connections compose their reserved IPC identities
+with memory using `commit_transfers_with_authority`: `IPC → MEMORY_OBJECTS →
+CAPABILITIES → capability domain → node`. Both payload guards serialize joint
+publication and subsequent infallible registry insertion/enqueue. Attachment
+owners release their pins outside `MEMORY_OBJECTS`, still under IPC. Scalar-only
+transactions skip `MEMORY_OBJECTS` and publish under IPC → CAPABILITIES.
+Shared/family quota admission precedes reply loan revocation; later unmap or
+retirement failure can leave individually revoked loans, but no fresh returned
+authority is published on batch validation failure.
+
 Memory-object admission captures source/target handles before taking
 `MEMORY_OBJECTS`, then uses `reserve_captured`/`escrow_captured`:
 `MEMORY_OBJECTS → CAPABILITIES → capability domain → node`. Batch commit holds

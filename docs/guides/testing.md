@@ -208,6 +208,19 @@ without consuming queued work. A paused reservation checks rejection after
 retirement before publication. This is kernel registry/ABI testing, not a new
 EL0 quota probe or exhaustive concurrent retirement exploration.
 
+Call-side fixtures reject all scalar/vector variants at the caller ceiling,
+reject receiver attachment admission after staged call metadata, and test a
+connection+copy with one versus two receiver slots. Paused copy-only/four-mode
+calls test caller/receiver retirement before joint publication; every staged
+IPC/memory handle remains inaccessible and original sources/charges recover.
+Invalid copied buffers and mapped-source move/write-loan rejection refund
+metadata. A prepared call survives sponsor teardown and exact ASID/handle reuse;
+late failure returns old charges without changing a successor's pending call.
+Returned-connection pressure preserves its solicited reply/loan for retry, and
+observed returned authority survives pending-call close. These are kernel
+fixtures, not new real-EL0 quota probes, allocator-failure injection or an
+exhaustive concurrent proof.
+
 Memory-object fixtures also fill spare shared-namespace slots in real domains.
 They check allocation/copy/read-loan/write-loan rejection, source access and
 backing refunds, prepared-move cancellation at the source ceiling, successful

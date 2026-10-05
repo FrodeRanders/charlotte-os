@@ -260,8 +260,8 @@ after allocation. Capability records carry a typed
 Kernel payload ownership and namespace authority need coordinated transactions.
 `capability::Reservation` holds a hidden identity/count before publication; its
 Drop releases only that exact namespace's entry. Mailbox opens, completion
-submissions, memory-object destinations, IPC endpoints/direct grants and
-receive-side reply capabilities use bounded shared admission.
+submissions, memory-object destinations and every IPC capability publication
+use bounded shared admission.
 `memory::object::PreparedTransfer` owns destination reservation and private
 copy backing or source escrow/backing pins for moves and loans. Its Drop
 restores original source authority without re-admission, cancels the destination
@@ -276,8 +276,14 @@ pins. IPC reply tokens track every vector loan, not just scalar attachments.
 Kernel `PreparedReceive` retains exclusive IPC access and owns speculative reply
 authority until result writing/dequeue commits. Result-write failure drops only
 that authority, preserving queued work and its loans. Shared quota rejection
-does not write result bytes or dequeue. Call-side/returned IPC authority remains
-the next composition step; it must be staged together with attachment owners.
+does not write result bytes or dequeue. `PreparedCall` owns call/reply metadata,
+shared authority, a possible `PreparedConnection`, memory attachments and loan
+pairs. `commit_transfers_with_authority` publishes memory and fresh IPC authority
+together while their payload registries remain serialized. No fallible IPC
+admission follows memory ownership commit. Connection-bearing replies also
+reserve shared authority before loan revocation and compose returned authority
+with memory publication; partial loan-revocation failure remains a separate
+fallible teardown issue. Scalar-only transactions need no memory-registry lock.
 See [shared capability admission](../reference/capability-admission.md) for
 state transitions, locking, limits and the remaining migration.
 

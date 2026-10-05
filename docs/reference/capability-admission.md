@@ -4,11 +4,10 @@ The kernel's unified namespace now accounts for every capability kind:
 IPC, memory, completion, device, mailbox and system-observer authority.
 Mailbox opens and capability-backed completion submissions (including timers,
 event watches and workers), and all memory-object destinations enforce shared
-admission in addition to their existing family limits. IPC endpoint creation,
-direct connection mint/delegation and receive-side reply capabilities also
-enforce this policy. Call-side pending/delegated IPC authority, returned reply
-connections, device and system-observer allocation are counted but **not yet
-limited by this policy**. SEC-07 remains partially implemented.
+admission in addition to their existing family limits. Every IPC capability
+publication enforces this policy, including call-side pending/delegated authority
+and returned connections. Device and system-observer allocation are counted
+but **not yet limited by this policy**. SEC-07 remains partially implemented.
 
 | Shared admission scope | Record limit |
 | --- | ---: |
@@ -61,13 +60,21 @@ The scalar rollback APIs and the vector alias-cleanup assertion have been
 removed.
 
 `commit_transfers` validates every source and destination before publishing any of
-the mixed-mode batch. It holds the memory registry across atomic capability
+the mixed-mode batch. `commit_transfers_with_authority` also includes fresh
+reservations from IPC in that same publication. It holds the memory registry across atomic capability
 publication and the remaining payload updates. Moves revoke their source slot;
 loans restore it while installing borrower state; copies install their private
 backing. Drop the committed owners before allowing writable access, because
 their retention pins are still active until Drop. IPC vectors use this owner for
 all four modes; reply memory is prepared before loan revocation and committed
-afterward. The
+afterward. `PreparedCall` owns pending-call/reply metadata, its call reservation,
+optional `PreparedConnection`, memory transfers and every loan pair. Publication
+validates all IPC and memory identities before making any live, then installs
+IPC payloads/enqueues with no remaining fallible admission under the IPC guard.
+A scalar-only transaction needs no memory-registry lock. A failed call restores
+original source authority and refunds private backing/family/shared reservations
+without creating a pending call, queued message or live delegated connection.
+The
 multi-state kernel upgrade helper also owns a prepared batch, but the actual
 userspace upgrade syscall still accepts one state object.
 
@@ -104,6 +111,16 @@ queued attachment authority is not newly hidden by this receive transaction.
 An owned receiver should release resources or apply backpressure on resource
 errors rather than spin on a queue whose reply cannot yet be admitted.
 
+A connection-bearing reply reserves shared and family authority before revoking
+any loan. Quota rejection leaves the token and all loans live. Publication then
+composes its returned connection and optional memory after successful revocations.
+Completed unobserved calls own returned authority until cancellation; observed
+authority remains with the caller. Individual loan revocations are still
+fallible, so unmap, retirement or publication-scratch allocation failure after
+a successful revocation may leave a subset revoked; it
+does not publish fresh returned authority. This is not atomic TLB-shootdown or
+loan-revocation rollback.
+
 User domain creation stages a fallibly allocated budget control block before
 allocating its ASID, then publishes an empty namespace with the real generation.
 Teardown retires capability admission before draining subsystem payloads and
@@ -139,10 +156,8 @@ promise and must disappear as those payload transactions are replaced.
 
 The next migration needs to:
 
-- Stage call-side IPC, returned connection, device and system-observer identities before their
+- Stage device and system-observer identities before their
   payloads change; return normal resource errors on rejected admission.
-- Stage the IPC call/reply/connection authority as well as its memory batch;
-  fresh call-side and returned-connection identities still use the unconverted allocator.
 - Remove the unconverted allocation helper after every caller has migrated.
 
 These count limits do not charge allocator bytes, empty namespace/control
@@ -162,6 +177,20 @@ result pages return speculative reply slots without consuming queued work.
 A paused shared reservation rejects retirement before publication; queued work
 and result bytes stay intact. These are deterministic kernel fixtures, not an
 exhaustive concurrent proof or a new EL0 quota probe.
+
+Call fixtures reject every scalar/vector variant at the caller ceiling, and
+reject delegated connections or memory at the receiver ceiling without leaking
+staged call metadata. A connection+copy with one receiver slot cannot publish
+the connection alone; two slots allow enqueue, with a third needed for receive
+reply authority. Paused copy-only and four-mode calls reject caller/receiver
+retirement without publishing either IPC or memory authority. Original source
+caps/backing/charges recover. Mapped-source and invalid-copy rejection return
+call/grant reservations. A stale prepared call survives sponsor teardown,
+then fails/drops after exact ASID/capability reuse without changing successor
+authority, backing or records. Returned-connection quota rejection preserves a
+live loan; successful retry revokes it and leaves observed authority independent
+of the pending call. These are deterministic kernel fixtures, not allocator
+failure injection, exhaustive scheduling exploration or a new EL0 quota probe.
 
 Kernel fixtures fill 4,096 actual records across all six kinds, test hidden
 staging/cancellation, source rollback at capacity, committed revocation and

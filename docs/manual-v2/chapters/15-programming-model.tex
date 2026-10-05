@@ -99,7 +99,7 @@ generation, so a delayed open cannot publish into a reused ASID.
 
 The unified capability namespace accounts for every object kind. Mailbox
 opens, capability-backed completion submissions, memory-object destinations,
-IPC endpoint creation, direct connection grants and receive-side reply authority
+and every IPC capability publication
 also enforce shared limits:
 4,096 records per namespace, 65,536 per node, and 49,152 ordinary records.
 Staged identities and source slots held for rollback count toward these limits;
@@ -113,8 +113,13 @@ result page. A shared-limit rejection preserves queued work, result bytes and
 active loans. An owning receive transaction removes speculative reply authority
 if result writing fails; successful writing and dequeue require no further
 admission. One-way messages need no reply slot and can drain a full namespace.
-Call-side IPC authority and returned connections still need to be composed with
-their attachment transactions.
+Call-side IPC uses one owning transaction for metadata, fresh authority, memory
+attachments and loan tracking. Memory and pending/delegated IPC authority
+publish together before enqueue; no fallible IPC admission follows a memory
+ownership change. Connection-bearing replies reserve shared authority before
+loan revocation and compose their returned authority with memory publication.
+Individual loan revocation remains fallible; this publication contract does
+not provide atomic rollback of unmap or TLB-shootdown work.
 
 Other allocation paths still require conversion to staged admission. They
 contribute to the counters but can exceed the shared limits, so aggregate

@@ -31,9 +31,9 @@ rather than the target service's. A reply token is admitted at call submission,
 before queuing. Receive needs no new *family* token record, but does reserve a
 shared capability slot in the receiver namespace. Quota rejection keeps the
 message queued, its loan active and vector result bytes unchanged; cancelling
-the caller remains possible. Direct endpoint/connection publication also uses
-the shared budget. Call-side and returned-connection publication still need
-that migration; see [shared admission](capability-admission.md).
+the caller remains possible. All IPC publication uses the shared budget,
+including pending calls, delegated call attachments and returned connections;
+see [shared admission](capability-admission.md).
 
 The caller retains its pending-call charge after completion or result observation,
 until that record is closed. The reply-token charge returns on reply or cancellation.
@@ -50,13 +50,20 @@ Result encoding uses bounded stack storage, not a fresh heap allocation.
 
 Every call path reserves both record dimensions atomically and then prepares
 its fallible waiter list before moving, copying, lending or vector-transferring
-attachments. A connection-bearing call also admits its delegated connection
-before copying memory. Staged Rust owners return all reservations on rejection
-or attachment failure; record admission does not consume the attachment.
+attachments. `PreparedCall` additionally owns the shared pending-call slot,
+prepared memory batch, complete loan vector and optional `PreparedConnection`.
+A connection-bearing call admits its receiver connection before copying memory.
+`commit_transfers_with_authority` publishes all IPC/memory destinations or none,
+followed by payload installation/enqueue under IPC serialization. Drop returns
+reservations on rejection or attachment failure and restores source slots
+without new quota. Scalar-only publication takes no memory-registry lock.
+No IPC path retains the unbounded allocation helper.
 
 A connection-bearing reply reserves its connection before consuming the token,
 moving memory or revoking a loan. Kernel admission rejection leaves the token
-and loan live. The current consuming `ReplyToken::reply_connection*` runtime
+and loan live. Shared publication includes returned memory/connection authority;
+individual loan revocation remains fallible, without atomic reverse-shootdown
+rollback. The current consuming `ReplyToken::reply_connection*` runtime
 methods instead close/cancel the token on any failed syscall; they do not return
 a retryable token. The borrowed grant source survives this error. Applications
 should handle the returned error rather than construct raw-handle retry logic.

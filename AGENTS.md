@@ -62,6 +62,10 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   callers of `allocate_unmigrated`; it identifies unfinished migrations, not
   a supported compatibility API. The scalar restoration API is removed. See
   `docs/reference/capability-admission.md` for the current enforcement scope.
+  IPC calls use `PreparedCall`/`PreparedConnection` to own metadata and fresh
+  authority alongside their attachments. Compose reservations through
+  `commit_transfers_with_authority` while retaining every affected payload
+  registry; do not publish memory and then attempt fallible IPC admission.
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`

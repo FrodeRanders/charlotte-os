@@ -139,6 +139,9 @@ pub(super) fn test_mixed_vectors() {
         let before = budget::used(round.handle);
         let target_records = admission_tests::test_namespace_used(round.server);
         admission_tests::test_fill_remaining_namespace(round.client);
+        // The staged pending-call slot itself fills the last source slot while
+        // attachments prepare; failure must return that slot as well.
+        admission_tests::test_free_fixture_slot(round.client);
         assert_eq!(
             ipc::vector_call(round.client, round.connection, 1, 0, descriptor),
             Err(IpcError::MemoryTransferFailed)
@@ -148,7 +151,7 @@ pub(super) fn test_mixed_vectors() {
         assert_eq!(admission_tests::test_namespace_used(round.server), target_records);
         assert_eq!(
             admission_tests::test_namespace_used(round.client),
-            admission_tests::TEST_NAMESPACE_LIMIT
+            admission_tests::TEST_NAMESPACE_LIMIT - 1
         );
         for cap in round.sources {
             assert!(!object::info(round.client, cap).unwrap().lent);
