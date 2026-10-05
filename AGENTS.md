@@ -124,10 +124,15 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   `AddressSpaceOperation` from before registry access through scratch completion
   and TLB invalidation. Complete it explicitly on ordinary success/error; panic
   or abandonment retains the root. MMIO also claims its capability in-flight
-  until invalidation; close returns busy without consuming it. IPC loan
-  revocation still runs under IPC serialization and must not acquire lifecycle
-  beneath that guard. MMIO capability close/address-space cleanup still uses
-  lifecycle through its invalidation. These pins do not lease an ASID; see
+  until invalidation; close returns busy without consuming it. Explicit device
+  close leases its live root and detaches authority before releasing lifecycle
+  for invalidation. Direct loan revocation owns both namespace leases, the
+  existing borrower state and a backing pin through detach, invalidation, scratch
+  release and authority removal. Failed or abandoned revocation retains its
+  Revoking fence and pin; never restore usable loan authority after uncertain
+  cleanup. IPC uses the same loan transaction under IPC serialization and must
+  not acquire lifecycle beneath that guard. Whole-domain device cleanup still
+  retains lifecycle through invalidation. Backing pins do not lease an ASID; see
   `docs/reference/memory-object-retirement.md`.
   Final user-root close detaches into `RetiredAddressSpace`/`RetiredEntry`,
   leasing the software slot through post-guard invalidation and destruction.

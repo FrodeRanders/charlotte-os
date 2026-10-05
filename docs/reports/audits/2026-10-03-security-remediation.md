@@ -32,7 +32,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-15 | Mitigated | SigV4 prefixed secret, derived keys, HMAC block/pads and inner digest use zeroizing owners. TLS record buffers are wiped after dropping their borrower, including handshake failure. This is not a complete audit of crypto-library state or compiler-created secret copies. |
 | SEC-16 | Implemented | grantctl polls bounded concurrent operations with per-sender/generation limits and total deadlines. Non-parking authorized lookup avoids a shared name-service waitlist leak. Acquisition retries and publication waits have total deadlines. A two-application cancellation stress and silent-endpoint publication timeout pass in the guest; many-client fairness and controller-replacement testing remain. |
 | SEC-17 | Implemented for dynamic table unmap | Both walkers retain empty intermediate tables linked and owned for reuse until quiescent address-space teardown, removing premature table recycling. Tables/data are initialized before publication; x86 entries publish complete permissions/cache selection together. Private sparse-alias/reuse/teardown fixtures pass on AArch64. Concurrent walk-race reproduction, live compaction, full table admission and x86 guest execution remain outside this validation. Broader physical-release/shootdown gaps are SEC-18. |
-| SEC-18 | Partially implemented | Kernel-range retirement detaches before post-guard invalidation/release; Drop quarantines. Memory-object retirement pins protect backing/charges through invalidation and fence borrower authority, including last external unpin and failed rollback/detach; prefix/identity checks preserve foreign leaves. Final root retirement now leases the software slot through post-lifecycle/table-guard invalidation/destruction, retaining the owned ARM tag and backing accounts. x86 failed delivery cannot credit the barrier. Earlier live mapping/IPC/MMIO lock-held invalidations, unresponsive recipients, recoverable epoch-fenced failure and complete quiescence remain open. AArch64/host fixtures pass; x86 guest and real delivery-failure execution remain pending. |
+| SEC-18 | Partially implemented | Kernel-range retirement detaches before post-guard invalidation/release; Drop quarantines. Memory-object pins retain backing/charges and fence authority through invalidation; prefix/identity checks preserve foreign leaves. Final root retirement owns the software slot, ARM tag and accounts through post-guard teardown. Public memory-object/MMIO mappings, explicit device close and direct loan revocation now lease live roots; loan transactions retain their fence/pin on failed cleanup. x86 failed delivery cannot credit the barrier. IPC reply/cancellation, whole-domain device cleanup, unresponsive recipients, recoverable epoch-fenced failure and complete quiescence remain open. AArch64/host fixtures pass; x86 guest and real delivery-failure execution remain pending. |
 
 SEC-07 also includes fixed per-route IRQ readiness storage: repeated or retired
 deliveries cannot exhaust a shared wake queue, and deferred route validation/CQ
@@ -3341,3 +3341,50 @@ The device self-test now closes an actively mapped MMIO region directly and
 checks the in-flight rejection separately. A fresh AArch64 security guest passed
 all 19 self-tests (0 failed, 0 pending), and strict AArch64 Clippy plus
 formatting/diff checks pass. x86 guest validation remains outstanding.
+
+## Continuation: owned loan revocation and both-root leases — 2026-10-05
+
+The MMIO/device close changes are committed through `7d6d2028`. Loan revocation
+now has an owning transaction for its existing borrower list, mapped range and
+backing pin. Preparation validates both capabilities before publishing
+`Revoking`; successful completion detaches leaves, invalidates, releases exact
+scratch, removes the borrower capability and restores any other read borrowers.
+No fallible admission follows successful scratch release. Failed or abandoned
+cleanup retains the transaction's pin and revocation fence instead of restoring
+usable loan state after uncertain unmapping.
+
+Direct `revoke_lend` composes that transaction with live operation leases for
+both owner and borrower. It acquires them before registry work and retains them
+through scratch and authority completion. A failed second admission or failed
+loan preparation explicitly releases any acquired leases. Ordinary completion
+failure releases both root leases while backing/fence quarantine persists;
+abandonment of the complete operation retains the roots as well. IPC uses the
+same loan transaction under its existing write serialization, without acquiring
+lifecycle beneath IPC. Releasing that lock still requires an owner for the
+reply/cancellation state and exact leases admitted before entering IPC.
+
+Validation:
+
+- Fresh AArch64 `--security-test --fresh-storage`, instance
+  `loan-revocation-20261005`: **19/19**, zero failed/pending. The new boot fixtures
+  assert lifecycle/registry/table guard availability during detach/invalidation,
+  close rejection for both roots, completion while staged borrower close waits,
+  preserved read borrowers, scratch reuse only after the barrier, and rollback
+  of preparation/admission errors. Existing IPC reply/cancellation tests pass.
+- Rejected detach, invalidation, scratch completion and transaction Drop retain
+  **four additional data pages and four object charges** after both domains
+  close. The complete memory-object failure fixture now retains eleven pages
+  and nine object charges. There is no recovery bypass.
+- Kernel SHA-256:
+  `ce0a429650f9f5ed1f494a7e31470ff6f77c8f95ed8b58c9e7388291a40ce562`.
+  Run `/private/tmp/charlotte-security-loan-revocation-run.log`;
+  serial `/private/tmp/charlotte-loan-revocation-20261005-serial.log`.
+- Strict locked AArch64 `acpi,security_test` and x86-64 `acpi` Clippy,
+  `cargo fmt --all -- --check`, and diff checks pass.
+
+SEC-18 remains partial. Whole-domain device cleanup and IPC still hold their
+outer serialization during invalidation; syscall interrupt state, recoverable
+shootdown and CPU/device quiescence also remain. The fixtures model serialized
+interleavings, not concurrent map/reply/cancel/close stress or x86 IPI progress.
+Contributor instructions, references, testing guide, manual source and formal
+conformance were updated. No model/TLC result or rebuilt PDF is claimed.

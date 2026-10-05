@@ -45,8 +45,9 @@ All batches are attempted, retaining the first error. Any failure leaves the pin
 undischarged, even when some leaves have been removed. Domain cleanup moves
 records before detachment; ordinary unmap removes its record only after the full
 detach succeeds. Invalidations and scratch/authority completion retain their
-existing ordering. This separation does **not** release the outer lifecycle/IPC
-guard and is not a solution to x86 interrupt-masked rendezvous.
+existing ordering. Whole-domain cleanup and IPC revocation still retain their
+outer lifecycle/IPC guards. Public mapping operations and direct loan revocation
+now own live-generation leases across these phases, as described below.
 
 Scratch now records live extents with fallible admission before publication;
 release removes an exact existing reservation without allocation. Bulk finish
@@ -85,11 +86,11 @@ detach/invalidation checks succeed.
 
 ## Remaining boundary
 
-These internal operations still require lifecycle or IPC serialization across
-the complete operation. The receipts retain backing, **not an address-space
-generation lease**. Numeric ASIDs and scratch identities must not be reused
-between detach and finish. Dropping lifecycle merely to run the shootdown would
-break that condition.
+The backing receipts themselves do not own an address-space generation lease.
+Their caller must retain one or retain lifecycle/IPC serialization across the
+complete operation. Numeric ASIDs and scratch identities must not be reused
+between detach and finish. Whole-domain cleanup and IPC reply/cancellation still
+depend on those outer guards.
 
 Consequently SEC-18 remains partial: several user/device/domain paths still
 perform x86 rendezvous under an outer interrupt-masking lifecycle/IPC guard.
@@ -102,7 +103,7 @@ and complete teardown quiescence remain open. See
 The [final address-space root](address-space-retirement.md) now has a detached
 slot-leasing owner that finishes after lifecycle/table guards are released.
 That separate close boundary does not lease an arbitrary live mapping's ASID;
-the mapping operations described here still retain their outer serialization.
+live operations must establish their own retention before releasing serialization.
 
 A [live-generation lease foundation](live-address-space-operations.md) now
 retains roots through explicit completion and rejects busy close before mutation.
@@ -111,11 +112,38 @@ changes and TLB invalidation, and release it on ordinary error as well as
 success. Their mapping pins still independently retain backing. MMIO
 map/map-any/unmap also holds a generation lease and a capability in-flight claim
 through invalidation; concurrent device close rejects while that claim is held.
-IPC loan revocation continues to rely on IPC serialization. MMIO close and
-whole-domain device cleanup still hold lifecycle across invalidation. Compose
-IPC attachment, backing/scratch and authority owners with leases before
-releasing those guards. The staged fence does not cover non-lease paths or
-revoke their authority while older operations drain.
+Explicit device close also leases its root and detaches its device object before
+releasing lifecycle for invalidation. Whole-domain device cleanup still holds
+lifecycle. Compose IPC attachment, backing/scratch and reply/cancellation owners
+with leases before releasing IPC serialization. The staged fence does not cover
+non-lease paths or revoke their authority while older operations drain.
+
+## Owned loan revocation
+
+Direct `revoke_lend` now owns both live namespace leases and a `LoanRevocation`
+transaction. Preparation validates the owner and exact borrower capability, then
+moves the existing borrower list into the transaction, publishes `Revoking` and
+takes a backing pin under the memory registry. Detachment and invalidation run
+after releasing lifecycle, registry and table guards. The borrower mapping and
+capability remain recorded until successful invalidation and scratch release.
+Completion removes that borrow and restores the other read borrowers using
+their existing metadata, then releases the pin and root leases. No fallible
+admission or allocation follows successful scratch release.
+
+Failed detachment, invalidation, scratch release or transaction abandonment keeps
+the backing pin and `Revoking` fence. The borrower capability cannot be closed or
+used to regain access, and the original backing charge stays consumed after
+namespace teardown. Failure also fences any other loans of that object. There
+is no retry that restores authority from an uncertain state. Ordinary errors
+complete the root leases; abandoning the complete leased operation retains its
+roots too. Preparation errors publish no object fence and explicitly return all
+already acquired leases.
+
+The IPC adapter uses this same transaction while holding IPC serialization.
+Moving its invalidation outside IPC still needs an owner for reply/cancellation
+state and leases acquired before that guard. Coherent DMA and executing CPUs
+retain their existing quiescence obligations; a revocation transaction does not
+itself stop an already authorized DMA transfer.
 
 ## Verification
 
@@ -140,7 +168,14 @@ release, last-copy/DMA-unpin retention, successful-range reuse and failed-range
 non-reuse. Its rejected completion retains one extra page/charge even after
 all involved domains close.
 
-Failure probes intentionally quarantine **seven 4 KiB data pages and five object
+Loan fixtures check both-root close rejection, failed preparation without leaked
+leases, completion while a staged borrower close waits, preserved read borrowers,
+last-copy-unpin retention and scratch reuse after the barrier. Fault adapters
+reject detachment, invalidation and scratch completion, and abandon a transaction.
+Each retains one backing page and its charge after both domains close. These
+four probes verify guard availability but do not stress concurrent hardware.
+
+Failure probes intentionally quarantine **eleven 4 KiB data pages and nine object
 charges** for the test guest's lifetime. They never re-adopt the backing. This is
 in addition to the kernel-range fixture's one quarantined page. These fixtures
 model the dangerous interleaving, not a concurrent hardware-walk stress test.

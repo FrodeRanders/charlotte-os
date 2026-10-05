@@ -88,8 +88,11 @@ mutation. Explicit completion releases only the original table/generation's
 count. Abandonment retains a live root, not a detached one. An owned staged close
 can instead fence new lease admission and return its request owner while old
 leases drain. Timeout or abandonment retains that closing root and fence; it
-does not authorize destructive cleanup. Production mapping and supervisor
-busy-close policy still need migration. See
+does not authorize destructive cleanup. Public memory-object/MMIO mapping,
+explicit device close and direct loan revocation now acquire live leases, and
+the supervisor retains a staged teardown owner across pending polls. IPC
+reply/cancellation and whole-domain device cleanup still need their own
+completion owners before releasing outer serialization. See
 [live address-space operations](live-address-space-operations.md).
 
 Failed final invalidation or abandonment retains the whole hierarchy, physical

@@ -1,6 +1,6 @@
 //! Single-mutator boot fixtures at the raw kernel ownership boundary. Fault
 //! adapters exercise the same detach/finish helpers as runtime teardown.
-//! Quarantine probes intentionally reserve seven data pages for the guest's
+//! Quarantine probes intentionally reserve eleven data pages for the guest's
 //! lifetime; there is no test-only re-adoption/release escape hatch.
 
 use super::*;
@@ -41,6 +41,7 @@ fn invalidate(asid: usize, base: VAddr, pages: usize) -> bool {
 }
 
 pub(crate) fn run(mut create: impl FnMut(&str) -> usize) {
+    revocation::tests::run(&mut create);
     test_batched_detach(&mut create);
     test_scratch_completion_failure(&mut create);
     test_last_unpin(&mut create);
@@ -51,7 +52,7 @@ pub(crate) fn run(mut create: impl FnMut(&str) -> usize) {
     crate::logln!(
         "[object retirement] bounded lock-separated batches, last-unpin fence, borrower \
          authority, scratch rejection, partial detach, failed barrier, Drop quarantine and \
-         foreign-leaf preservation passed (seven reserved data pages)"
+         foreign-leaf preservation passed (eleven reserved data pages including loan revocation)"
     );
 }
 

@@ -39,6 +39,7 @@ const PAGE_SIZE: usize = 4096;
 const RETIREMENT_FRAME_BATCH: usize = 16;
 
 pub(crate) mod retirement_tests;
+mod revocation;
 mod scratch;
 use scratch::ScratchWindow;
 
@@ -226,7 +227,7 @@ impl DmaPin {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct MemoryMappingState {
     base: VAddr,
     /// Only this prefix was published. A failed map must not claim the
@@ -1444,8 +1445,7 @@ pub fn revoke_lend(
     borrower: AddressSpaceId,
     borrower_cap: MemoryObjectCap,
 ) -> Result<(), MemoryObjectError> {
-    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
-    revoke_lend_serialized(owner, cap, borrower, borrower_cap)
+    revocation::revoke(owner, cap, borrower, borrower_cap)
 }
 
 /// IPC adapter boundary: every caller must retain the global IPC write guard
@@ -1457,91 +1457,7 @@ pub(crate) fn revoke_lend_under_ipc(
     borrower: AddressSpaceId,
     borrower_cap: MemoryObjectCap,
 ) -> Result<(), MemoryObjectError> {
-    revoke_lend_serialized(owner, cap, borrower, borrower_cap)
-}
-
-fn revoke_lend_serialized(
-    owner: AddressSpaceId,
-    cap: MemoryObjectCap,
-    borrower: AddressSpaceId,
-    borrower_cap: MemoryObjectCap,
-) -> Result<(), MemoryObjectError> {
-    let mut registry = MEMORY_OBJECTS.lock();
-    let cap_entry = registry.lookup(owner, cap)?;
-    let object =
-        registry.objects.get_mut(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-    if object.owner != owner {
-        return Err(MemoryObjectError::WrongOwner);
-    }
-
-    if object.destroy_when_unpinned || object.retirement_pins != 0 {
-        return Err(MemoryObjectError::LendingActive);
-    }
-
-    match &object.lend_state {
-        LendState::None => return Err(MemoryObjectError::NotLent),
-        LendState::Revoking => return Err(MemoryObjectError::LendingActive),
-        LendState::Read {
-            borrowers,
-        } => match borrowers.get(&borrower) {
-            Some(cap) if *cap == borrower_cap => {}
-            _ => return Err(MemoryObjectError::UnknownCapability),
-        },
-        LendState::Write {
-            borrower: lent_to,
-            cap: lent_cap,
-        } => {
-            if *lent_to != borrower || *lent_cap != borrower_cap {
-                return Err(MemoryObjectError::UnknownCapability);
-            }
-        }
-    }
-
-    let mapped = object.mappings.contains_key(&borrower);
-    let mut prior = core::mem::replace(&mut object.lend_state, LendState::Revoking);
-    if mapped {
-        drop(registry);
-        let result = unmap_serialized(borrower, borrower_cap);
-        registry = MEMORY_OBJECTS.lock();
-        if let Err(error) = result {
-            registry
-                .objects
-                .get_mut(&cap_entry.object)
-                .expect("serialized revoke object disappeared")
-                .lend_state = prior;
-            return Err(error);
-        }
-    }
-
-    let object =
-        registry.objects.get_mut(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-    object.lend_state = match &mut prior {
-        LendState::Read {
-            borrowers,
-        } => {
-            borrowers.remove(&borrower);
-            if borrowers.is_empty() {
-                LendState::None
-            } else {
-                prior
-            }
-        }
-        LendState::Write {
-            ..
-        } => LendState::None,
-        LendState::None | LendState::Revoking => unreachable!(),
-    };
-    registry
-        .caps
-        .get_mut(&borrower)
-        .ok_or(MemoryObjectError::UnknownCapability)?
-        .caps
-        .remove(&borrower_cap)
-        .ok_or(MemoryObjectError::UnknownCapability)?;
-    let revoked =
-        crate::capability::remove(borrower, borrower_cap, crate::capability::ObjectKind::Memory);
-    assert!(revoked, "borrower capability was absent from unified table");
-    Ok(())
+    revocation::revoke_serialized(owner, cap, borrower, borrower_cap)
 }
 
 pub fn close_cap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), MemoryObjectError> {
@@ -1642,7 +1558,8 @@ impl MappingRetirementPin {
     /// The pin keeps the immutable frame list and its charge alive, including
     /// across the last DMA/copy unpin. Copy only borrowed physical identities;
     /// neither these batches nor the page-table walker own the data frames.
-    /// Caller retains lifecycle/IPC serialization for the target generation.
+    /// Caller retains a live-operation lease or lifecycle/IPC serialization
+    /// for the target generation.
     fn unmap_with(
         &self,
         asid: AddressSpaceId,

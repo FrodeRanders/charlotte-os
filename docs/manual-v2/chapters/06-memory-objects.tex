@@ -132,20 +132,28 @@ A separate live-operation lease retains an exact software generation before
 detachment. Its linear table/slot/generation token survives moving metadata.
 Root close rejects outstanding leases before subsystem retirement; only explicit
 completion of the last lease permits normal close. Abandonment retains the live
-root, tag and charges. Boot fixtures exercise this foundation, but production
-Public memory-object and MMIO map, map-any and unmap calls now retain an operation
+root, tag and charges. Public memory-object and MMIO map, map-any and unmap calls retain an operation
 lease through page-table changes and TLB invalidation. MMIO also holds a
-capability claim so close cannot consume it midway through mapping. IPC loan
-revocation still uses IPC serialization; MMIO close still invalidates under
-lifecycle serialization. An owned staged-close request fences new operation
+capability claim so close cannot consume it midway through mapping. Explicit
+device close detaches its authority under lifecycle/device serialization and
+retains a root lease while invalidating after releasing those guards. Direct
+loan revocation retains leases for both owner and borrower. Its transaction owns
+the existing borrower state and a backing pin until leaf removal, invalidation,
+scratch completion and borrower-capability removal succeed. A failed or
+abandoned transaction retains its backing charge and revocation fence.
+Successful revocation preserves the object's other read borrowers.
+
+An owned staged-close request fences new operation
 leases while older leases drain. Pending poll returns
 the request owner without subsystem retirement; once ready, cleanup proceeds
 through the detached-root boundary. Dropping the request or exhausting its
 lease-drain waiting budget retains the closing root, tag, slot and charges.
 Later completion cannot reopen admission. The fence applies to operation leases,
 not all existing resource paths, and the waiting budget does not bound hardware
-rendezvous. Split-phase integration still needs scratch/loan authority owners
-and operation leases in IPC and MMIO teardown paths. Deployment and node-shutdown
+rendezvous. IPC reply/cancellation still retains its global serialization across
+loan invalidation; releasing it requires leases composed with reply and attachment
+ownership. Whole-domain device cleanup also retains lifecycle serialization.
+Deployment and node-shutdown
 supervisors retain a teardown owner across polls and refuse
 to report reclamation after a terminal error. They do not reclaim a root whose
 close failed or whose leases did not drain.

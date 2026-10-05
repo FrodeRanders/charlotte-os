@@ -572,7 +572,9 @@ frame batches. It exercises ordinary unmap, mapped-loan revoke and owner cleanup
 asserts registry/table guards are available at detach callbacks, rejects an
 oversized prefix before table work, and injects the last copy unpin before the
 first batch. Exact frame/charge counts return after completion, with no additional
-quarantine. The outer lifecycle/IPC serialization is intentionally retained.
+quarantine. Whole-domain cleanup and IPC revocation retain their outer
+serialization; standalone unmap and direct loan revocation now retain live
+operation leases.
 
 The scratch-completion fixture rejects one of two borrower range completions
 after all invalidations. It verifies last-copy/DMA-unpin retention, safe reuse
@@ -583,6 +585,18 @@ scratch allocator, including exact release rejection, metadata-preflight failure
 and a 6,000-operation first-fit bitmap-oracle trace. Release does not allocate.
 See [scratch admission](../reference/scratch-admission.md) for the remaining
 registry-admission and generation-lease boundaries.
+
+Direct loan-revocation fixtures retain both roots while checking rejection of
+immediate close and completion of an admitted operation while staged borrower
+close waits. They assert lifecycle/registry/table guards are available during
+detach and invalidation, preserve other read borrowers, check exact scratch
+reuse after the barrier, and release all root leases after failed preparation.
+Rejected detachment, invalidation, scratch release and transaction Drop add
+**four permanently retained data pages and four object charges**. All involved
+roots close normally after these failure probes; backing remains quarantined.
+The complete memory-object fixture therefore retains eleven pages and nine
+object charges. These are deterministic interleavings, not a concurrent stress
+test or hardware-quiescence proof.
 
 ## Final address-space retirement tests
 

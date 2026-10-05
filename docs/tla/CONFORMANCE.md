@@ -188,7 +188,7 @@ the never-issued property is preserved. The safe model exercises
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
 | Address-space `Allocate` / `CaptureHandle` | `register_user_address_space`, `AddressSpaceHandle` | Direct for recyclable numeric ASID plus monotonic software generation. The scratch-window allocator is keyed by ASID with a stored generation field, so a recycled ASID receives fresh allocation state. Unmapped ranges are recycled only after page-table removal and TLB invalidation. |
-| Address-space `CloseExact` | `close_user_address_space_handle`; generation checks, lifecycle serialization, `RetiredAddressSpace` and `RetiredEntry` | Direct for rejecting stale handles. Logical subsystem cleanup remains lifecycle-serialized; a detached root leases its slot through post-guard invalidation/destruction before reuse. The atomic model omits this intermediate invisible-but-leased state, completion metadata, failed invalidation and quarantine. Live map/unmap still retain lifecycle across their own finish. |
+| Address-space `CloseExact` | `close_user_address_space_handle`; generation checks, lifecycle serialization, `RetiredAddressSpace` and `RetiredEntry` | Direct for rejecting stale handles. Logical subsystem cleanup remains lifecycle-serialized; a detached root leases its slot through post-guard invalidation/destruction before reuse. The atomic model omits this intermediate invisible-but-leased state, completion metadata, failed invalidation and quarantine. Public live map/unmap, explicit device close and direct loan revocation now retain operation leases through their own finish. |
 | Hardware-ASID `Allocate` / `Retire` / `Invalidate` | AArch64 hardware-ASID allocator and TLB invalidation | Abstract: page-table contents are omitted; tag reuse is allowed only after invalidation removes stale translations. |
 | Interrupt-route `Bind` / `QueueWake` / `Unbind` / `DrainSafe` | device interrupt binding, route generation, deferred wake drain | Abstract generation-fencing check for one route. The implementation now has independent atomic mailboxes with retained watermarks and a guarded CQ preparation step; mailbox capacity, atomic claim/publication, binding exhaustion and controller MMIO are not modeled here. |
 
@@ -253,13 +253,22 @@ backing retirement; abandonment retains a live root. Host and guest fixtures
 check identity, counter limits, vector growth, busy-close non-mutation and
 retention. The atomic model has no lease counts, busy-close result or abandoned
 live state; `CaptureHandle` alone does not model this retention. Production
-mapping/IPC/MMIO paths still hold their existing guards. An owned staged-close
+mapping and MMIO paths use these leases through invalidation; explicit device
+close releases lifecycle after detaching its device object. Direct loan
+revocation composes both roots with a transaction owning the existing borrower
+state and backing pin. Its failed/abandoned completion leaves `Revoking` and the
+pin retained; ordinary failure explicitly completes root leases. New boot
+fixtures check guard availability, both-root close rejection, staged close,
+preparation rollback, remaining-reader preservation and four quarantines. The
+atomic loan actions omit those phases, pin/fence state and retained charges.
+IPC reply/cancellation still retains IPC serialization. An owned staged-close
 request now fences new leases and returns its owner while old leases drain;
 timeout/abandonment retains the closing state even after the last completion.
 Host and guest fixtures check these serialized states. The model also omits
 closing admission, linear close authority, pending polls, capacity refresh and
 timeout retention; its atomic close does not prove this protocol. Production
-controller integration and x86 rendezvous progress remain open. No model source
+controller now retains and polls a staged teardown owner; x86 rendezvous
+progress remains open. No model source
 or TLC result changed.
 
 The August `memory_map_any` work did not change memory ownership in

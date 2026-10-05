@@ -67,22 +67,30 @@ lease before registry access and retain it through scratch release and TLB
 invalidation. They release it explicitly after the operation returns, including
 ordinary failure; panic or abandonment retains the root. MMIO additionally
 claims its device capability until invalidation finishes, so concurrent
-`device_close` rejects without consuming it. IPC loan-revocation paths still
-rely on IPC serialization. MMIO capability close and address-space cleanup
-still hold lifecycle across invalidation. Before extending split-phase operation
-leases, implement:
+`device_close` rejects without consuming it. Explicit device close also leases
+the live root, detaches the device object under lifecycle/device serialization,
+and releases lifecycle before MMIO invalidation. Direct loan revocation owns
+leases for both owner and borrower alongside its revocation transaction. The
+transaction fences backing and loan authority through detach, invalidation,
+scratch completion and removal of the borrower capability. Ordinary failure
+releases root leases but retains the transaction's backing pin and revocation
+fence; abandonment of the whole operation also retains both root leases.
+IPC loan revocation uses the same transaction under IPC serialization.
+Whole-domain device cleanup still holds lifecycle across invalidation. Before
+extending split-phase operation leases, implement:
 
 1. Compose IPC leases with backing, exact scratch reservation and loan/connection
    authority in one operation owner. IPC must acquire lifecycle before IPC
-   serialization, never from within an IPC guard. Move MMIO close and
-   address-space cleanup invalidation out of lifecycle under an owned claim.
+   serialization, never from within an IPC guard. Reply/cancellation ownership
+   must survive an IPC unlock together with the loan transaction. Move
+   whole-domain device cleanup invalidation out of lifecycle under an owned claim.
 2. Translation identity capture after lazy root/tag preparation; then release
    preparation guards before rendezvous. Syscall entry's interrupt state and
    unrelated outer guards still matter for recipient progress.
 3. Invalidation, scratch and authority completion before consuming the lease.
    Failure/abandonment must retain every uncertain resource, without rendezvous
    in Drop under unknown caller locks.
-2. Extend supervisor lifecycle policy as needed. Deployment retirement and
+4. Extend supervisor lifecycle policy as needed. Deployment retirement and
    node/device shutdown now retain a `DomainTeardown` owner and poll outside
    registry/coordinator guards. The supervisor bounds thread/lease drain to five
    seconds; terminal reclamation error retains the deployment entry or prevents
