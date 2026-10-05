@@ -206,6 +206,29 @@ impl MmioOperation {
     }
 }
 
+/// Exercise the exclusion state held across public MMIO mapping syscalls.
+/// Kept crate-private for the boot self-test; applications cannot manufacture
+/// this transient claim directly.
+pub(crate) fn self_test_mmio_close_in_flight(asid: AddressSpaceId, cap: DeviceCap) {
+    let handle = crate::memory::current_address_space_handle(asid)
+        .expect("[device] MMIO close test address space missing");
+    let address_space = AddressSpaceOperation::acquire(handle)
+        .expect("[device] MMIO close test address-space lease failed");
+    MmioOperation::validate(asid, cap, false)
+        .expect("[device] MMIO close test capability validation failed");
+    let operation =
+        MmioOperation::begin(asid, cap).expect("[device] MMIO close test operation claim failed");
+
+    assert_eq!(
+        close_cap(asid, cap),
+        Err(DeviceError::OperationInFlight),
+        "[device] close must preserve an MMIO capability while an operation owns it"
+    );
+
+    operation.finish().expect("[device] MMIO close test operation release failed");
+    address_space.release().expect("[device] MMIO close test address-space lease release failed");
+}
+
 #[derive(Debug, Clone, Copy)]
 struct MmioMapping {
     base: VAddr,

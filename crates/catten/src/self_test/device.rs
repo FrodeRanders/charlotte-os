@@ -348,6 +348,7 @@ fn test_mmio_map_unmap() {
     let phys_base = <PAddr as Into<u64>>::into(frame) as usize;
 
     let cap = device::grant_mmio(asid, phys_base, 1).expect("[device] grant_mmio (real AS) failed");
+    device::self_test_mmio_close_in_flight(asid, cap);
     let base = VAddr::from(0x0000_0000_0004_0000usize);
     device::mmio_map(asid, cap, base, true).expect("[device] mmio_map into real AS failed");
     assert_eq!(

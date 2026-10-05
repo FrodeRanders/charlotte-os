@@ -3310,14 +3310,17 @@ address-space identity before checking the device capability changed established
 error precedence for retired fixture namespaces. A follow-up exposed the same
 issue for a valid but unmapped MMIO capability. The adapter now probes the
 capability/type/mapping state first, then acquires the exact address-space lease,
-and repeats the checks atomically when claiming the operation. The corrected
+and repeats the checks atomically when claiming the operation. A focused boot
+self-test now holds both owners and asserts that `device_close` reports
+`OperationInFlight` without consuming the capability, then explicitly releases
+the operation and address-space leases. After two sandboxed attempts failed
+before boot because QEMU could not bind host-forward ports, the elevated
 `--security-test --fresh-storage` AArch64 run completed with 19 passed, 0 failed,
-0 pending.
+0 pending, including the new assertion.
 
 `device_close` and whole-address-space device cleanup still perform MMIO
 invalidation under lifecycle serialization. IRQ/DMA/device teardown, IPC loan
 revocation and attachment operations have not been converted to lease-composed
 owners. SEC-18 remains partial; this change only removes the global lifecycle
-guard from public MMIO mapping syscalls. The guest covers ordinary map/unmap and
-close behavior, but does not force `device_close` to race an in-flight operation;
-that specific interleaving remains untested.
+guard from public MMIO mapping syscalls. The deterministic in-flight exclusion
+is now covered, but there is not yet a true concurrent map-vs-close stress test.
