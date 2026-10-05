@@ -144,11 +144,18 @@ allocation, prepares ownership tracking fallibly, and refunds an unpublished
 frame on mapping failure. Repeated touches do not allocate replacement backing;
 retirement denies new commitment without refunding live pages.
 The virtual heap claim remains independent of physical commitment.
-Allocator bytes, empty namespace metadata, loader/runtime pages, stacks and
+ELF and runtime-page backing use an independent image account: 64 MiB per
+domain and a quarter-RAM node pool with shared platform headroom. Allocation
+and mapping errors unwind the unstarted preparation, returning frames and CQs.
+Layout validation uses fixed storage for at most 64 program headers, reserves
+the full adaptive heap window, and plans image plus runtime pages before
+namespace creation. These backing limits exclude translation-table frames.
+Allocator bytes, empty namespace metadata, stacks and
 page tables remain separate accounting requirements. The implementation contract
 and migration scope are recorded in
 \texttt{docs/reference/capability-admission.md} and
-\texttt{docs/reference/heap-admission.md}.
+\texttt{docs/reference/heap-admission.md} and
+\texttt{docs/reference/loader-admission.md}.
 
 \subsection{IPI closures}
 

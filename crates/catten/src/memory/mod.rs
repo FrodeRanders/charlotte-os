@@ -1,8 +1,8 @@
 //! # Memory Management Subsystem
 
 pub mod allocators;
+pub(crate) mod backing_budget;
 pub mod budget;
-pub(crate) mod heap_budget;
 pub mod linear;
 pub mod object;
 pub mod physical;
@@ -296,13 +296,44 @@ pub(crate) fn commit_user_heap_page(asid: AddressSpaceId, fault_addr: usize) -> 
 
 /// One owning preparation for the provisional frame. Its reservation is
 /// separate and drops after this owner on a failed mapping.
-struct PreparingHeapFrame(Option<PAddr>);
+pub(crate) struct PreparingUserFrame(Option<PAddr>);
 
-impl Drop for PreparingHeapFrame {
+impl Drop for PreparingUserFrame {
     fn drop(&mut self) {
         if let Some(frame) = self.0.take() {
             let _ = PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame);
         }
+    }
+}
+
+impl PreparingUserFrame {
+    pub(crate) fn allocate_zeroed() -> Option<Self> {
+        let page_size = crate::cpu::isa::memory::paging::PAGE_SIZE;
+        let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+        if !charlotte_lifecycle::resources::frames_available(
+            allocator.free_frames() as u64,
+            allocator.usable_bytes() / page_size as u64,
+            1,
+        ) {
+            return None;
+        }
+        let frame = allocator.allocate_frame().ok()?;
+        drop(allocator);
+        let page_ptr: *mut u8 = frame.into();
+        unsafe {
+            core::ptr::write_bytes(page_ptr, 0, page_size);
+        }
+        Some(Self(Some(frame)))
+    }
+
+    pub(crate) fn frame(&self) -> PAddr {
+        self.0.unwrap()
+    }
+
+    /// Caller has prepared one tracking slot before allocating the frame.
+    pub(crate) fn install(mut self, address_space: &mut AddressSpace) {
+        address_space.register_user_frame(self.frame());
+        self.0 = None;
     }
 }
 
@@ -351,25 +382,10 @@ pub(crate) fn commit_user_heap_page_with_mapper(
     if address_space.prepare_user_frame().is_err() {
         return false;
     }
-    let frame = {
-        let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-        if !charlotte_lifecycle::resources::frames_available(
-            allocator.free_frames() as u64,
-            allocator.usable_bytes() / page_size as u64,
-            1,
-        ) {
-            return false;
-        }
-        match allocator.allocate_frame() {
-            Ok(frame) => frame,
-            Err(_) => return false,
-        }
+    let Some(preparation) = PreparingUserFrame::allocate_zeroed() else {
+        return false;
     };
-    let mut preparation = PreparingHeapFrame(Some(frame));
-    let page_ptr: *mut u8 = frame.into();
-    unsafe {
-        core::ptr::write_bytes(page_ptr, 0, page_size);
-    }
+    let frame = preparation.frame();
     if !map(
         address_space,
         linear::MemoryMapping {
@@ -380,8 +396,7 @@ pub(crate) fn commit_user_heap_page_with_mapper(
     ) {
         return false;
     }
-    address_space.register_user_frame(frame);
-    preparation.0 = None;
+    preparation.install(address_space);
     address_space.heap_account.commit(charge);
     usage::note_owned_frame(asid);
     drop(table);
@@ -437,6 +452,7 @@ fn close_user_address_space_locked(
     // Fence demand-heap admission under the same guard as mapping. Keep its
     // charges until AddressSpace::drop has actually returned the frames.
     ADDRESS_SPACE_TABLE.lock().get_mut(asid).unwrap().heap_account.retire();
+    ADDRESS_SPACE_TABLE.lock().get_mut(asid).unwrap().image_account.retire();
     // Refuse new memory-object sponsorship before draining subsystem payloads.
     crate::capability::retire_address_space(asid);
     budget::retire(handle);

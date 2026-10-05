@@ -46,7 +46,8 @@ impl Ledger {
         // Memory objects can consume at most a quarter of usable RAM. Keep
         // one quarter of that pool for kernel/platform progress. This does
         // not reserve loader/page-table/IPC/completion memory. Demand heaps
-        // have their own separate quarter-RAM pool in heap_budget.
+        // have their own separate quarter-RAM pool in backing_budget. Image
+        // and runtime pages have a third independent quarter-RAM pool there.
         let pages = (PHYSICAL_FRAME_ALLOCATOR.lock().usable_bytes() / 4096 / 4).max(1);
         Self {
             total: Budget::new(Amount {
@@ -203,6 +204,7 @@ pub(crate) fn mark_platform(handle: AddressSpaceHandle) {
     let mut table = super::ADDRESS_SPACE_TABLE.lock();
     assert_eq!(table.generation(handle.id()).ok(), Some(handle.generation()));
     table.get_mut(handle.id()).unwrap().heap_account.mark_platform();
+    table.get_mut(handle.id()).unwrap().image_account.mark_platform();
     let mut ledger = LEDGER.lock();
     let account = ledger.account((handle.id(), handle.generation()));
     assert!(!account.retired);

@@ -3,8 +3,8 @@
 //! Generalized from the `el0_sitas` smoke-test loader so every spawned
 //! service domain shares one loading path: `PT_LOAD` segments are mapped at
 //! their linked virtual addresses with page permissions derived from ELF
-//! flags, and the canonical `catten-rt` runtime pages (config, input, heap)
-//! are mapped and zeroed.
+//! flags, and fixed `catten-rt` runtime pages are mapped and zeroed. The heap
+//! is committed on demand through an independent backing account.
 
 pub use charlotte_launch::{
     CONFIG_VADDR,
@@ -25,7 +25,7 @@ use crate::{
         AddressSpaceHandle,
         AddressSpaceId,
         AddressSpaceRegistrationError,
-        PHYSICAL_FRAME_ALLOCATOR,
+        PreparingUserFrame,
         linear::{
             MemoryMapping,
             PageType,
@@ -35,9 +35,6 @@ use crate::{
         usage,
     },
 };
-/// Number of pages backing the heap declared by the launch ABI.
-pub const HEAP_PAGES: usize = charlotte_launch::HEAP_SIZE / PAGE_SIZE;
-
 /// Completion capability-table capacity granted to a service domain.
 pub const COMPLETION_CAPACITY: usize = 16;
 
@@ -54,6 +51,9 @@ pub const SHARD_CQ_VADDR_BASE: usize = 0x0000_0000_0080_0000;
 pub const SHARD_CQ_COUNT: usize = 4;
 
 pub const PAGE_SIZE: usize = 4096;
+const MAX_ELF_PROGRAM_HEADERS: usize = 64;
+
+pub(crate) mod admission_tests;
 
 const ELF_MAGIC: &[u8; 4] = b"\x7fELF";
 const ELFCLASS64: u8 = 2;
@@ -98,6 +98,11 @@ pub enum DomainLoadError {
     AddressSpace(AddressSpaceRegistrationError),
     SignatureVerificationFailed,
     CompletionQueue(crate::completion::CqOpenError),
+    StaleAddressSpace,
+    BackingAdmission,
+    FrameTrackingAllocation,
+    FrameAllocation,
+    PageMapping,
 }
 
 /// Until commit there are no runnable threads. Teardown owns all mapped
@@ -152,7 +157,7 @@ fn align_up(value: usize, align: usize) -> usize {
     (value + align - 1) & !(align - 1)
 }
 
-/// Validate an untrusted AArch64 service ELF without allocating or mapping.
+/// Validate an untrusted native service ELF without allocating or mapping.
 ///
 /// The loader's internal assertions remain useful invariants for embedded
 /// images; persistent images must pass this non-panicking gate first.
@@ -172,13 +177,14 @@ pub fn validate_user_elf(image: &[u8]) -> bool {
     let phnum = read_u16_le(image, 56) as usize;
     if phentsize != 56
         || phnum == 0
+        || phnum > MAX_ELF_PROGRAM_HEADERS
         || phoff.checked_add(phentsize.saturating_mul(phnum)).is_none_or(|end| end > image.len())
     {
         return false;
     }
     let mut loads = 0usize;
     let mut entry_is_executable = false;
-    let mut mapped_ranges = alloc::vec::Vec::<(usize, usize)>::new();
+    let mut mapped_ranges = [(0usize, 0usize); MAX_ELF_PROGRAM_HEADERS];
     for index in 0..phnum {
         let offset = phoff + index * phentsize;
         if read_u32_le(image, offset) != PT_LOAD {
@@ -200,7 +206,6 @@ pub fn validate_user_elf(image: &[u8]) -> bool {
         if memsz == 0 {
             continue;
         }
-        loads += 1;
         let map_start = align_down(vaddr, PAGE_SIZE);
         let Some(map_end) = vaddr
             .checked_add(memsz)
@@ -216,18 +221,19 @@ pub fn validate_user_elf(image: &[u8]) -> bool {
             (CONFIG_VADDR, CONFIG_VADDR + PAGE_SIZE),
             (CQ_VADDR, CQ_VADDR + PAGE_SIZE),
             (INPUT_VADDR, INPUT_VADDR + PAGE_SIZE),
-            (HEAP_VADDR, HEAP_VADDR + HEAP_PAGES * PAGE_SIZE),
+            (HEAP_VADDR, HEAP_VADDR + charlotte_launch::HEAP_VA_LIMIT),
             (STATUS_VADDR, STATUS_VADDR + PAGE_SIZE),
             (SHARD_CQ_VADDR_BASE, SHARD_CQ_VADDR_BASE + SHARD_CQ_COUNT * PAGE_SIZE),
         ];
         if reserved
             .iter()
-            .chain(mapped_ranges.iter())
+            .chain(mapped_ranges[..loads].iter())
             .any(|&(start, end)| map_start < end && start < map_end)
         {
             return false;
         }
-        mapped_ranges.push((map_start, map_end));
+        mapped_ranges[loads] = (map_start, map_end);
+        loads += 1;
         if flags & PF_X != 0 && entry >= vaddr && entry < vaddr.saturating_add(memsz) {
             entry_is_executable = true;
         }
@@ -245,6 +251,23 @@ fn segment_page_type(flags: u32) -> PageType {
         (false, false) => PageType::UserRoData,
         (true, true) => panic!("[loader] ELF LOAD segment requests writable executable memory"),
     }
+}
+
+/// Requires a validated header/layout. Checked aggregate admission rejects a
+/// huge sparse/BSS image before any namespace or physical backing is created.
+fn image_backing_pages(image: &[u8]) -> u64 {
+    let (_, phoff, phentsize, phnum) = parse_elf_header(image);
+    let mut pages = (4 + SHARD_CQ_COUNT) as u64;
+    for index in 0..phnum {
+        if let Some(segment) = parse_load_segment(image, phoff + index * phentsize)
+            && segment.memsz != 0
+        {
+            let start = align_down(segment.vaddr, PAGE_SIZE);
+            let end = align_up(segment.vaddr + segment.memsz, PAGE_SIZE);
+            pages = pages.saturating_add(((end - start) / PAGE_SIZE) as u64);
+        }
+    }
+    pages
 }
 
 fn parse_elf_header(image: &[u8]) -> (usize, usize, usize, usize) {
@@ -300,9 +323,13 @@ fn parse_load_segment(image: &[u8], offset: usize) -> Option<ElfLoadSegment> {
     })
 }
 
-fn map_elf_load_segment(asid: AddressSpaceId, image: &[u8], segment: ElfLoadSegment) {
+fn map_elf_load_segment(
+    handle: AddressSpaceHandle,
+    image: &[u8],
+    segment: ElfLoadSegment,
+) -> Result<(), DomainLoadError> {
     if segment.memsz == 0 {
-        return;
+        return Ok(());
     }
 
     let page_type = segment_page_type(segment.flags);
@@ -313,52 +340,19 @@ fn map_elf_load_segment(asid: AddressSpaceId, image: &[u8], segment: ElfLoadSegm
     let map_end = align_up(mem_end, PAGE_SIZE);
 
     for page_base in (map_start..map_end).step_by(PAGE_SIZE) {
-        let vaddr = VAddr::from(page_base);
-        {
-            let mut table = ADDRESS_SPACE_TABLE.lock();
-            let as_ = table.get_mut(asid).expect("[loader] AS not found");
-            assert!(
-                !as_.is_mapped(vaddr).expect("[loader] failed to query mapped page"),
-                "[loader] ELF LOAD segments overlap within one page; relink with page-separated \
-                 segments"
-            );
-        }
-
-        let frame = PHYSICAL_FRAME_ALLOCATOR
-            .lock()
-            .allocate_frame()
-            .expect("[loader] failed to allocate ELF LOAD frame");
-        let mut table = ADDRESS_SPACE_TABLE.lock();
-        let address_space = table.get_mut(asid).expect("[loader] AS not found");
-        address_space.register_user_frame(frame);
-        address_space
-            .map_page(MemoryMapping {
-                vaddr,
-                paddr: frame,
-                page_type,
-            })
-            .expect("[loader] failed to map ELF LOAD page");
-        usage::note_owned_frame(asid);
-
-        let hhdm: *mut u8 = frame.into();
-        unsafe {
-            core::ptr::write_bytes(hhdm, 0, PAGE_SIZE);
-        }
         let copy_start = core::cmp::max(page_base, seg_start);
         let copy_end = core::cmp::min(page_base + PAGE_SIZE, file_end);
-        if copy_start < copy_end {
-            let src_offset = segment.offset + (copy_start - segment.vaddr);
-            let dst_offset = copy_start - page_base;
-            let len = copy_end - copy_start;
-            unsafe {
-                core::ptr::copy_nonoverlapping(
-                    image.as_ptr().add(src_offset),
-                    hhdm.add(dst_offset),
-                    len,
-                );
+        map_image_page(handle, page_base, page_type, |page| {
+            if copy_start < copy_end {
+                let src_offset = segment.offset + (copy_start - segment.vaddr);
+                let dst_offset = copy_start - page_base;
+                let len = copy_end - copy_start;
+                page[dst_offset..dst_offset + len]
+                    .copy_from_slice(&image[src_offset..src_offset + len]);
             }
-        }
+        })?;
     }
+    Ok(())
 }
 
 /// Create a fresh user address space.
@@ -397,24 +391,22 @@ fn verify_image_signature(image: &[u8], key: &[u8; 32]) -> Result<(), ()> {
     }
 }
 
-/// Map all `PT_LOAD` segments of `image` into `asid` and return the entry
-/// virtual address.
-pub fn load_user_elf(asid: AddressSpaceId, image: &[u8]) -> usize {
-    load_user_elf_with_key(asid, image, &charlotte_launch::CLUSTER_PUBLIC_KEY)
-}
-
-fn load_user_elf_with_key(asid: AddressSpaceId, image: &[u8], key: &[u8; 32]) -> usize {
-    assert!(validate_user_elf(image), "[loader] invalid ELF virtual layout");
+fn load_user_elf_with_key(
+    handle: AddressSpaceHandle,
+    image: &[u8],
+    key: &[u8; 32],
+) -> Result<usize, DomainLoadError> {
+    if !validate_user_elf(image) {
+        return Err(DomainLoadError::SignatureVerificationFailed);
+    }
     let (entry, phoff, phentsize, phnum) = parse_elf_header(image);
-    verify_image_signature(image, key).unwrap_or_else(|_| {
-        panic!("[loader] refusing to load an ELF that is not validly signed by the cluster")
-    });
+    verify_image_signature(image, key).map_err(|_| DomainLoadError::SignatureVerificationFailed)?;
     let mut load_segments = 0usize;
 
     for i in 0..phnum {
         let ph_offset = phoff + i * phentsize;
         if let Some(segment) = parse_load_segment(image, ph_offset) {
-            map_elf_load_segment(asid, image, segment);
+            map_elf_load_segment(handle, image, segment)?;
             load_segments += 1;
         }
     }
@@ -433,41 +425,79 @@ fn load_user_elf_with_key(asid: AddressSpaceId, image: &[u8], key: &[u8; 32]) ->
         );
     }
 
-    entry
+    Ok(entry)
 }
 
-/// Map one zeroed user page at `vaddr` and return its backing frame.
-fn map_user_page(asid: AddressSpaceId, vaddr: usize, page_type: PageType) -> PAddr {
-    let frame = PHYSICAL_FRAME_ALLOCATOR
-        .lock()
-        .allocate_frame()
-        .expect("[loader] failed to allocate user data frame");
+/// Own unpublished backing and admission until both mapping and frame tracking
+/// are installed. Runtime and ELF pages use the same bounded account.
+fn map_image_page(
+    handle: AddressSpaceHandle,
+    vaddr: usize,
+    page_type: PageType,
+    fill: impl FnOnce(&mut [u8]),
+) -> Result<PAddr, DomainLoadError> {
+    map_image_page_with_mapper(handle, vaddr, page_type, fill, |address_space, mapping| {
+        // The owner has already zeroed/filled the frame; map_page would erase
+        // those bytes. Existing-page mapping preserves this prepared content.
+        address_space.map_existing_page(mapping).is_ok()
+    })
+}
+
+// Kernel-only failure adapter. A rejecting mapper must not publish the leaf.
+fn map_image_page_with_mapper(
+    handle: AddressSpaceHandle,
+    vaddr: usize,
+    page_type: PageType,
+    fill: impl FnOnce(&mut [u8]),
+    map: impl FnOnce(&mut AddressSpace, MemoryMapping) -> bool,
+) -> Result<PAddr, DomainLoadError> {
+    if handle.id() == crate::memory::KERNEL_ASID
+        || !vaddr.is_multiple_of(PAGE_SIZE)
+        || !charlotte_launch::user_address::valid_pages(vaddr, 1)
+        || !page_type.is_user_accessible()
+    {
+        return Err(DomainLoadError::PageMapping);
+    }
     let mut table = ADDRESS_SPACE_TABLE.lock();
-    let address_space = table.get_mut(asid).expect("[loader] AS not found");
-    address_space.register_user_frame(frame);
-    address_space
-        .map_page(MemoryMapping {
+    if table.generation(handle.id()).ok() != Some(handle.generation()) {
+        return Err(DomainLoadError::StaleAddressSpace);
+    }
+    let address_space = table.get_mut(handle.id()).unwrap();
+    if !address_space.image_account.accepting() {
+        return Err(DomainLoadError::StaleAddressSpace);
+    }
+    if address_space.is_mapped(VAddr::from(vaddr)).map_err(|_| DomainLoadError::PageMapping)? {
+        return Err(DomainLoadError::PageMapping);
+    }
+    let charge =
+        address_space.image_account.reserve().map_err(|_| DomainLoadError::BackingAdmission)?;
+    address_space.prepare_user_frame().map_err(|_| DomainLoadError::FrameTrackingAllocation)?;
+    let preparation =
+        PreparingUserFrame::allocate_zeroed().ok_or(DomainLoadError::FrameAllocation)?;
+    let frame = preparation.frame();
+    let hhdm: *mut u8 = frame.into();
+    // ABI boundary: this exclusive fresh, zeroed frame has no published user
+    // mapping. The fill callback borrows exactly one page before publication.
+    fill(unsafe { core::slice::from_raw_parts_mut(hhdm, PAGE_SIZE) });
+    if !map(
+        address_space,
+        MemoryMapping {
             vaddr: VAddr::from(vaddr),
             paddr: frame,
             page_type,
-        })
-        .expect("[loader] failed to map user data page");
-    usage::note_owned_frame(asid);
-    drop(table);
-    let hhdm: *mut u8 = frame.into();
-    unsafe {
-        core::ptr::write_bytes(hhdm, 0, PAGE_SIZE);
+        },
+    ) {
+        return Err(DomainLoadError::PageMapping);
     }
-    frame
-}
-
-/// Map one zeroed mutable `UserData` page at `vaddr`.
-pub fn map_user_data_page(asid: AddressSpaceId, vaddr: usize) -> PAddr {
-    map_user_page(asid, vaddr, PageType::UserData)
+    preparation.install(address_space);
+    address_space.image_account.commit(charge);
+    usage::note_owned_frame(handle.id());
+    Ok(frame)
 }
 
 /// Create an address space, load `image`, and map the standard `catten-rt`
-/// runtime pages (config, CQ ring, input, heap). The default completion
+/// runtime pages (config, status, CQ rings, input), claiming an unbacked heap
+/// window for demand commitment. The default completion
 /// queue is opened kernel-side on the mapped ring frame, so the domain can
 /// use the completion syscalls and the unified `CQ_WAIT` shard wait
 /// (endpoint readiness binding, timed waits, detached operations). The
@@ -479,8 +509,8 @@ pub fn load_domain(image: &[u8]) -> LoadedDomain {
         .unwrap_or_else(|error| panic!("[loader] domain load failed: {error:?}"))
 }
 
-/// Load an ordinary domain while reporting signature, hardware-ASID and CQ
-/// preparation failures to runtime service-creation callers.
+/// Load an ordinary domain while reporting signature, backing, mapping,
+/// hardware-ASID and CQ preparation failures to runtime creation callers.
 pub fn try_load_domain(image: &[u8]) -> Result<LoadedDomain, DomainLoadError> {
     try_load_domain_with_key(image, &charlotte_launch::CLUSTER_PUBLIC_KEY)
 }
@@ -503,18 +533,33 @@ fn try_load_domain_with_policy(
     key: &[u8; 32],
     platform: bool,
 ) -> Result<LoadedDomain, DomainLoadError> {
+    try_load_domain_with_preparation(image, key, platform, |_| Ok(()))
+}
+
+// Kernel-only preparation adapter used by quota/rollback fixtures. Production
+// preparation has no extra callback and applies the fixed trusted policy.
+fn try_load_domain_with_preparation(
+    image: &[u8],
+    key: &[u8; 32],
+    platform: bool,
+    prepare: impl FnOnce(AddressSpaceHandle) -> Result<(), DomainLoadError>,
+) -> Result<LoadedDomain, DomainLoadError> {
     if !validate_user_elf(image) {
         return Err(DomainLoadError::SignatureVerificationFailed);
     }
     verify_image_signature(image, key).map_err(|_| DomainLoadError::SignatureVerificationFailed)?;
     let metadata = charlotte_launch::signature_note::artifact_metadata(image)
         .ok_or(DomainLoadError::SignatureVerificationFailed)?;
+    if image_backing_pages(image) > crate::memory::backing_budget::IMAGE_DOMAIN_PAGES {
+        return Err(DomainLoadError::BackingAdmission);
+    }
     let address_space =
         try_create_user_address_space_handle().map_err(DomainLoadError::AddressSpace)?;
     let mut preparation = PreparingDomain(Some(address_space));
     if platform {
         crate::memory::budget::mark_platform(address_space);
     }
+    prepare(address_space)?;
     let roles = if metadata.class == charlotte_launch::signature_note::ArtifactClass::Administration
     {
         catten_syscall::domain_roles::POLICY_ADMIN | catten_syscall::domain_roles::SERVICE_MANAGER
@@ -524,7 +569,7 @@ fn try_load_domain_with_policy(
     let principal = charlotte_launch::artifact_principal_id(metadata.name());
     crate::memory::register_domain_authority(address_space, principal, roles);
     let asid = address_space.id();
-    let entry_vaddr = load_user_elf_with_key(asid, image, key);
+    let entry_vaddr = load_user_elf_with_key(address_space, image, key)?;
 
     // Size the heap claim from the principal's previous peak without reducing
     // the historical default. Demand commitment already saves physical frames;
@@ -547,13 +592,13 @@ fn try_load_domain_with_policy(
     // EL0 may inspect launch data but cannot mutate it. The supervisor still
     // populates the physical frame through the kernel's direct mapping before
     // and, where necessary, immediately after the initial thread is started.
-    let config_frame = map_user_page(asid, CONFIG_VADDR, PageType::UserRoData);
+    let config_frame = map_image_page(address_space, CONFIG_VADDR, PageType::UserRoData, |_| {})?;
     crate::service::bootstrap::write_launch_header(config_frame, heap_bytes);
     usage::register_heap_capacity(asid, heap_bytes);
-    let status_frame = map_user_data_page(asid, STATUS_VADDR);
+    let status_frame = map_image_page(address_space, STATUS_VADDR, PageType::UserData, |_| {})?;
     usage::register_status_frame(asid, status_frame);
-    let cq_frame = map_user_data_page(asid, CQ_VADDR);
-    let _input_frame = map_user_data_page(asid, INPUT_VADDR);
+    let cq_frame = map_image_page(address_space, CQ_VADDR, PageType::UserData, |_| {})?;
+    let _input_frame = map_image_page(address_space, INPUT_VADDR, PageType::UserData, |_| {})?;
     // The heap's virtual range is reserved by the layout check but is not
     // backed with frames here: the first touch of each heap page faults and
     // commits a frame on demand, so physical use tracks allocation demand.
@@ -570,7 +615,12 @@ fn try_load_domain_with_policy(
     // multi-shard service wait on their own ring, so a wake targeted at one
     // never releases another.
     for i in 0..SHARD_CQ_COUNT {
-        let frame = map_user_data_page(asid, SHARD_CQ_VADDR_BASE + i * PAGE_SIZE);
+        let frame = map_image_page(
+            address_space,
+            SHARD_CQ_VADDR_BASE + i * PAGE_SIZE,
+            PageType::UserData,
+            |_| {},
+        )?;
         crate::completion::open_cq_phys(asid, (i as u32) + 1, frame, CQ_ENTRIES)
             .map_err(DomainLoadError::CompletionQueue)?;
     }

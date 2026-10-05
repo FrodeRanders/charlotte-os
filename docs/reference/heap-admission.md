@@ -15,9 +15,9 @@ per-service guarantee. Only trusted kernel launch policy promotes an account;
 application names, roles and manifests cannot request the reserve. Promotion
 reclassifies the account's existing heap pages as well as future pages. There
 is no userspace setter or signed deployment override for these physical limits.
-The memory-object pool is separate; heap and memory-object backing together
-are capped at half of usable RAM on normal machines. Neither pool accounts for
-all physical consumers.
+The memory-object and [image/runtime](loader-admission.md) pools are separate.
+All three pools together are capped at three quarters of usable RAM on normal
+machines. They do not account for all physical consumers.
 
 ## Ownership and failure
 
@@ -28,7 +28,7 @@ reservation, fallible frame-tracking preparation, frame allocation, mapping and
 charge commit. Two first touches cannot install replacement frames or double
 charge an already mapped page. A stale handle cannot charge a reused ASID.
 
-A provisional `PageCharge` owns node admission. `PreparingHeapFrame` owns the
+A provisional `PageCharge` owns node admission. `PreparingUserFrame` owns the
 unpublished physical frame. Early return frees the frame before refunding
 admission. The owned-frame vector reserves its tracking slot before frame
 allocation; successful insertion therefore allocates nothing. The mapping's
@@ -36,8 +36,9 @@ page-table allocations remain a separate, uncharged concern.
 
 Under the frame-allocator guard, heap backing also preserves the existing
 one-eighth physical free-frame floor. That check concerns the requested heap
-frame, not every page-table allocation needed to map it. Loader, stack,
-page-table and kernel allocations can still consume that floor.
+frame, not every page-table allocation needed to map it. Image/runtime backing
+uses the same floor check; stack, page-table and kernel allocations can still
+consume the floor.
 
 Retirement fences new heap commitment under the mapping guard, without
 refunding live pages. `AddressSpace::drop` returns its owned frames before its
@@ -64,5 +65,5 @@ the real architecture mapper.
 These are deterministic kernel fixtures plus ordinary service heap faults in
 the AArch64 security guest. They are not a new real-EL0 quota probe, a node-wide
 pressure soak, forced allocator exhaustion or exhaustive teardown-race proof.
-Loader/runtime pages, user/kernel stacks, page-table backing, kernel heap and
-general metadata remain separate SEC-07 work.
+Image/runtime backing has its own admission. User/kernel stacks, page-table
+backing, kernel heap and general metadata remain separate SEC-07 work.

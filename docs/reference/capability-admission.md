@@ -173,9 +173,9 @@ have been removed. Domain/node counters enforce their actual limits directly;
 there is no boolean that exempts an allocation from policy or retirement.
 
 These count limits do not charge allocator bytes, empty namespace/control
-blocks, page tables, loader/runtime/stack backing, kernel heap or arbitrary
-callback captures. Demand-backed user heaps now have separate
-[physical admission](heap-admission.md).
+blocks, page tables, stack backing, kernel heap or arbitrary callback captures.
+Demand-backed user heaps and ELF/runtime pages now have separate
+[heap](heap-admission.md) and [image](loader-admission.md) physical admission.
 `Arc` control-block preparation is fallible, but BTreeMap allocation remains
 infallible. Count admission is not physical out-of-memory handling.
 

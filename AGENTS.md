@@ -73,6 +73,11 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   Retain the exact generation and table guard across admission/mapping, prepare
   frame tracking fallibly, and retain charges until physical teardown. Never
   refund live heap backing at logical retirement or by reusable ASID lookup.
+- ELF/runtime frames use the independent `image_account` in `backing_budget`.
+  Bound layout validation and aggregate image planning before namespace
+  creation; use `PreparingUserFrame` and fallible mapping rather than scalar
+  loader helpers or panic-on-failure backing allocation. Charges survive until
+  physical teardown, including partial launch preparation failures.
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`

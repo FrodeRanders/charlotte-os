@@ -210,7 +210,8 @@ pub struct AddressSpace {
     /// (ELF segments, runtime pages, heap). Page-table frames are recovered by
     /// walking the TTBR0 hierarchy at teardown.
     owned_frames: Vec<PAddr>,
-    pub(crate) heap_account: crate::memory::heap_budget::Account,
+    pub(crate) heap_account: crate::memory::backing_budget::Account,
+    pub(crate) image_account: crate::memory::backing_budget::Account,
 }
 
 impl AddressSpace {
@@ -226,7 +227,12 @@ impl AddressSpace {
             owns_hw_asid: false,
             owns_root: true,
             owned_frames: Vec::new(),
-            heap_account: crate::memory::heap_budget::Account::new(),
+            heap_account: crate::memory::backing_budget::Account::new(
+                crate::memory::backing_budget::Kind::Heap,
+            ),
+            image_account: crate::memory::backing_budget::Account::new(
+                crate::memory::backing_budget::Kind::Image,
+            ),
         }
     }
 
@@ -338,7 +344,12 @@ impl AddressSpaceInterface for AddressSpace {
             owns_hw_asid: false,
             owns_root: false,
             owned_frames: Vec::new(),
-            heap_account: crate::memory::heap_budget::Account::new(),
+            heap_account: crate::memory::backing_budget::Account::new(
+                crate::memory::backing_budget::Kind::Heap,
+            ),
+            image_account: crate::memory::backing_budget::Account::new(
+                crate::memory::backing_budget::Kind::Image,
+            ),
         }
     }
 

@@ -496,6 +496,16 @@ before publication and verifies that the real frame and reservation are freed.
 These are synchronous kernel tests, not a new scoped EL0 quota bit or forced
 physical exhaustion. See [heap admission](../reference/heap-admission.md).
 
+## Loader backing tests
+
+Loader admission fixtures check quota/duplicate mapping, zeroed and filled
+backing, mapping rejection rollback, retirement and exact ASID reuse. A signed
+name-service image fails after partial mapping at an injected one-page ceiling;
+normal retry reuses the freed ASID and releases all image/runtime backing and
+CQs on teardown. Layout fixtures check bounded headers, adaptive-heap exclusion
+and oversized BSS planning. This does not inject physical exhaustion or add a
+scoped EL0 quota bit. See [loader admission](../reference/loader-admission.md).
+
 ## Rule for new service logic
 
 Keep the thin syscall loop and process entry point in an EL0 binary. Put policy

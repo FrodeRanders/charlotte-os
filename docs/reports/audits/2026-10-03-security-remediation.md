@@ -21,7 +21,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-04 | Mitigated | Builds and boot logs identify development trust; production and unknown modes fail closed in scripted and direct kernel builds. Protected bootstrap roots, fixture-free production provisioning and recipient-key custody remain unimplemented. |
 | SEC-05 | Implemented | tcpip rejects raw frame ingress unless the authenticated sender is the exact live, kernel-designated frouter. Separate socket/VIP binding policy remains future hardening. |
 | SEC-06 | Mitigated | HTTP EOF, peer-raced accept and transport failures close one connection, not the server; listener-setup resource failures retry with backoff. httpd has a five-second request wait and bounded send retries; deployd has five-second header and thirty-second total receive budgets. Serial admission remains vulnerable to sustained connection floods. |
-| SEC-07 | Partially implemented | Memory-object backing/counts, demand-backed user heaps, anonymous timer events, endpoint records/queue backing, retained completion objects/detached results, CQ registrations/kernel backing, lifecycle/kernel callback registrations, scheduler waiters and IPC connection/call/reply records have lifetime-owned domain/node admission with platform reserves. All six capability kinds enforce shared count/retirement admission without a bypass. Charges survive retained resources, transfers, deferred cancellation and retirement as appropriate. Admission precedes parking/publication/hardware creation; IPC and memory authority publishes jointly. Owning observer startup and heap-frame preparation roll back failures. Existing untimed waits preserve borrowed-buffer safety, and timer preparation precedes Blocked. Loader/runtime pages, stacks, page tables (including physical CQ mappings), kernel heap, arbitrary callback captures, weak-only/control-block storage and comprehensive metadata/physical-failure accounting remain open. |
+| SEC-07 | Partially implemented | Memory-object backing/counts, demand-backed user heaps, ELF/runtime backing (including loader-mapped physical CQ pages), anonymous timer events, endpoint records/queue backing, retained completion objects/detached results, CQ registrations/kernel backing, lifecycle/kernel callback registrations, scheduler waiters and IPC connection/call/reply records have lifetime-owned domain/node admission with platform reserves. All six capability kinds enforce shared count/retirement admission without a bypass. Charges survive retained resources, transfers, deferred cancellation and retirement as appropriate. Admission precedes parking/publication/hardware creation; IPC and memory authority publishes jointly. Owning observer startup and heap/image-frame preparation roll back failures; ELF validation/planning has bounded storage. Existing untimed waits preserve borrowed-buffer safety, and timer preparation precedes Blocked. Stacks, page tables, kernel heap, arbitrary callback captures, weak-only/control-block storage and comprehensive metadata/physical-failure accounting remain open. |
 | SEC-08 | Open | Authenticate enrolled nodes and control/data peer traffic, add replay protection, and bound discovery state. A trusted L2 segment remains an explicit deployment prerequisite. |
 | SEC-09 | Open | Distinguish authenticated security time from observational SNTP/holdover; enforce freshness and uncertainty at security-policy gates. |
 | SEC-10 | Open | Authenticated encrypted access to node and cluster management, browser-client provisioning, and access policy remain necessary. |
@@ -61,7 +61,12 @@ trusted platform launches share the rest. Page commitment validates the exact
 generation under the mapping guard, reserves before allocation and owns
 unpublished frames through rollback. Logical retirement retains charges until
 physical teardown. See [heap admission](../../reference/heap-admission.md).
-This does not budget loader/runtime pages, stacks, page tables or the kernel heap.
+ELF/runtime pages now have an independent image account, a 64 MiB domain
+ceiling and a quarter-RAM node pool with platform headroom. Bounded layout
+validation and image planning precede namespace creation; owned frame mapping
+and unstarted-domain rollback report backing failures. See
+[loader admission](../../reference/loader-admission.md). Stacks, page tables and
+the kernel heap remain unbudgeted by these accounts.
 
 ## Enforced contracts
 
@@ -229,7 +234,7 @@ implementation proof is claimed.
    only then enable production images without fixture fallback. Migrate sibling
    broker/Durga templates to the new signing file-path interface. Keep developer
    fixtures visibly identified and separate from real credentials.
-3. Extend admission to loader/runtime pages, stacks, page tables, kernel heap,
+3. Extend admission to stacks, page tables and kernel heap,
    uncharged callback captures and general weak-only/control-block storage. Add
    typed launch-policy limits and observable counters. Preserve rollback and
    delayed-release accounting, and test essential-service progress under
@@ -2296,3 +2301,76 @@ heap, comprehensive metadata/callback captures and allocator-failure paths.
 This adds no recoverable allocation-failure ABI or general OOM safety guarantee.
 The audit's deployment restrictions and other open findings remain unchanged.
 Markdown and LaTeX source were updated; the PDF and models were not rebuilt.
+
+## Continuation: bounded ELF/runtime backing and fallible mapping — 2026-10-05
+
+Demand-heap admission was committed as `e426f51e`. This batch adds an
+independent image/runtime pool while retaining the heap pool's policy and
+lifetime semantics. The shared implementation is renamed `backing_budget`;
+each account and staged charge identifies its family, so heap and image
+reservations cannot commit into the other class. Both embedded accounts retire
+under the mapping table guard and release charges after physical teardown.
+
+Image admission is **16,384 pages/64 MiB per domain**, **one quarter of usable
+RAM per node**, with an ordinary share of **three quarters of that pool**.
+Every rounded nonempty ELF LOAD range counts, including BSS, as do all eight
+fixed runtime pages (config, status, input, default CQ and four shard rings).
+The physical free-frame floor applies to these backing allocations as well as
+heap/object backing; it does not charge or constrain every translation table.
+
+The ELF layout validator now uses fixed storage and a maximum of 64 program
+headers. It excludes the entire adaptive heap window, including space beyond
+the default heap capacity. Aggregate page planning rejects oversized signed
+images before namespace creation. Layout and budget gates are not substitutes
+for signature verification. Unused public scalar-ASID ELF/page mapping helpers
+are removed; production loading uses exact address-space handles.
+
+`PreparingUserFrame` owns a fresh zeroed frame shared by heap and loader
+preparation. Image pages retain their table guard through quota reservation,
+fallible frame tracking, bounded initialization, mapping and charge commit.
+Filled ELF pages use `map_existing_page`, not the frame-zeroing `map_page`.
+Backing failures return explicit `DomainLoadError` variants; `PreparingDomain`
+closes a partially prepared unstarted namespace, backing and CQs. The mandatory
+boot wrapper may still panic after a fallible launch failure and cleanup.
+
+Validation:
+
+- Real kernel fixtures check filled/zeroed read-only backing, duplicate mapping,
+  quota rejection without physical consumption, mapping failure refund,
+  retired admission with retained charges, exact ASID reuse and teardown refund.
+  An injected one-page ceiling makes a real signed name-service load fail
+  after partial mapping. Normal retry reuses its freed ASID, installs the
+  expected image/runtime pages and returns all backing/CQs on close. Existing
+  partial-CQ exhaustion/platform-reserve fixtures also pass.
+- Layout fixtures check a complete 65-header table is rejected, the adaptive
+  heap extension is protected, and oversized BSS is included in planning.
+  Isolated counter code covers total/ordinary saturation without filling live
+  node pools. Both real backing families check staged cancellation, account
+  promotion, quota and retirement.
+- The first guest capture **failed** at the filled-page assertion: generic
+  `map_page` zeroed the prepared contents. This was a regression in the new
+  uncommitted code, not an earlier production defect. The populated-frame
+  mapper correction is included in the passing final capture.
+- Final four-LP AArch64 security run passed **19/19**, both real scoped probes
+  at `0x7fff`, and cancellation stress retired after **4,376** requests. Heap,
+  loader, observer, device and CQ admission fixtures passed; no new scoped
+  quota bit was added. Host tests and strict Clippy on AArch64
+  `acpi,security_test` and x86-64 `acpi` passed. Formatting/diff checks passed.
+
+Final guest kernel SHA-256:
+`9caa3304ee8edc8ce557a727d9a4046f025b2fe94285000d8682e3c022b016ff`.
+Run: `/private/tmp/charlotte-security-loader-admission-final-run.log`.
+Serial: `/private/tmp/charlotte-loader-admission-final-20261005-serial.log`.
+Host: `/private/tmp/charlotte-security-loader-admission-host-tests.log`.
+The failed preliminary run remains `charlotte-security-loader-admission-run.log`.
+Dedicated fresh instance storage/ports left existing soak storage and guests
+untouched.
+
+SEC-07 remains partial for stack, translation-table, kernel-heap, empty
+namespace/control-block and comprehensive metadata/callback-capture admission.
+Initial x86-64 root allocation, general allocator failure recovery and page-table
+quota ownership remain open. No x86-64 guest, physical exhaustion injection,
+node-wide pressure soak or exhaustive teardown-race proof ran. Specialized
+architecture/self-test mappers are not migrated production entry points.
+Markdown, LaTeX source and TLA+ conformance were updated; no model or PDF rebuild
+ran. The deployment restrictions and other open audit findings are unchanged.
