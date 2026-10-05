@@ -1045,7 +1045,28 @@ fn unroute_interrupt(intid: u32) {
 /// Close a device capability, releasing its resources: an MMIO region is
 /// unmapped, an interrupt source is masked and its route removed.
 pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError> {
-    let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+    // Retain the exact root while closing may invalidate user mappings. Missing
+    // handles are only used by kernel fixtures; syscall callers always name a
+    // live address space.
+    let address_space = crate::memory::current_address_space_handle(asid)
+        .map(|handle| AddressSpaceOperation::acquire(handle).map_err(operation_error))
+        .transpose()?;
+    let result = close_cap_inner(asid, cap);
+    if let Some(address_space) = address_space {
+        address_space.release().map_err(operation_error)?;
+    }
+    result
+}
+
+fn operation_error(error: OperationError) -> DeviceError {
+    match error {
+        OperationError::Closing => DeviceError::AddressSpaceClosing,
+        _ => DeviceError::NamespaceRetired,
+    }
+}
+
+fn close_cap_inner(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError> {
+    let lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
     let mut close_error = None;
     let object = {
         let mut devices = DEVICES.lock();
@@ -1067,6 +1088,9 @@ pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError
         }
         object
     };
+    // The detached object is exclusively owned here. An address-space close
+    // can begin after this point but must wait for the lease in close_cap.
+    drop(lifecycle);
     match object {
         DeviceObject::Mmio(region) => {
             if let Some(base) = region.mapped {

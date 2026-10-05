@@ -368,6 +368,7 @@ fn test_mmio_map_unmap() {
         "[device] unmapped MMIO scratch address must be reusable"
     );
     device::mmio_unmap(asid, cap).expect("[device] reused scratch MMIO unmap failed");
+    device::mmio_map(asid, cap, base, true).expect("[device] MMIO remap before close failed");
     device::close_cap(asid, cap).expect("[device] close_cap (real AS) failed");
 
     // Return the stand-in frame and tear down the throwaway address space.

@@ -3318,9 +3318,26 @@ before boot because QEMU could not bind host-forward ports, the elevated
 `--security-test --fresh-storage` AArch64 run completed with 19 passed, 0 failed,
 0 pending, including the new assertion.
 
-`device_close` and whole-address-space device cleanup still perform MMIO
-invalidation under lifecycle serialization. IRQ/DMA/device teardown, IPC loan
-revocation and attachment operations have not been converted to lease-composed
-owners. SEC-18 remains partial; this change only removes the global lifecycle
-guard from public MMIO mapping syscalls. The deterministic in-flight exclusion
-is now covered, but there is not yet a true concurrent map-vs-close stress test.
+Whole-address-space device cleanup still performs MMIO invalidation under
+lifecycle serialization. IRQ/DMA teardown, IPC loan revocation and attachment
+operations have not been converted to lease-composed owners. SEC-18 remains
+partial; public MMIO map/unmap and explicit close now keep invalidation outside
+the global lifecycle guard. The deterministic in-flight exclusion is covered,
+but there is not yet a true concurrent map-vs-close stress test.
+
+## Continuation: lease explicit device close — 2026-10-05
+
+Explicit `device_close` now acquires an exact-generation
+`AddressSpaceOperation` before taking lifecycle/device locks. It detaches the
+capability and its device object while serialized, then releases lifecycle
+before MMIO unmap, TLB invalidation and scratch completion. The lease keeps the
+translation root alive throughout; concurrent address-space retirement closes
+admission and waits for the close lease to finish. Ordinary close errors still
+explicitly release the lease, while an abandoned operation retains the root.
+IRQ route removal remains inside device-registry serialization. DMA teardown
+uses the same close lease and is still a synchronous backend operation.
+
+The device self-test now closes an actively mapped MMIO region directly and
+checks the in-flight rejection separately. A fresh AArch64 security guest passed
+all 19 self-tests (0 failed, 0 pending), and strict AArch64 Clippy plus
+formatting/diff checks pass. x86 guest validation remains outstanding.
