@@ -749,10 +749,10 @@ pub fn test_syscall_dispatch() {
             "an ungranted observer capability must not widen the snapshot"
         );
 
-        let observer_cap = crate::capability::allocate_unmigrated(
-            memory_owner,
-            crate::capability::ObjectKind::SystemObserver,
-        );
+        let observer_cap = crate::service::supervisor::grant_system_observer(
+            crate::memory::current_address_space_handle(memory_owner).unwrap(),
+        )
+        .unwrap();
         let mut system = synthetic_trap_frame_in(memory_owner, 0, observer_cap, 0, 0);
         syscall::syscall_dispatch(&mut system, call_no::THREAD_STATISTICS);
         assert_ne!(system.regs[0], 0, "delegated observer should receive a snapshot");

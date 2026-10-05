@@ -12,6 +12,12 @@ const CAPABILITY_GRANT_INTERFACE: u64 = u64::from_le_bytes(*b"GRANT\0\0\0");
 const CAPABILITY_GRANT_VERSION: u32 = 1;
 
 use alloc::vec::Vec;
+use core::sync::atomic::{
+    AtomicBool,
+    Ordering,
+};
+
+pub(crate) mod observer_tests;
 
 use crate::{
     cpu::scheduler::{
@@ -58,16 +64,15 @@ pub enum ProfileLaunchError {
     DescriptorArtifactMismatch,
 }
 
-/// Own every resource acquired while preparing a profile-backed domain.
-/// Nothing starts until the bootstrap connection and immutable profile have
-/// both reached the new address space. Explicit failure paths call `abort`;
-/// `Drop` is the best-effort fallback for a future early return.
-struct ProfileLaunchTransaction {
+/// Own an unstarted domain and any kernel-side bootstrap profile. Namespace
+/// teardown reclaims already-delegated authority on a preparation failure.
+/// Profile paths explicitly abort; Drop also covers observer startup failures.
+struct DomainLaunchTransaction {
     loaded: Option<loader::LoadedDomain>,
     kernel_profile: Option<crate::memory::object::MemoryObjectCap>,
 }
 
-impl ProfileLaunchTransaction {
+impl DomainLaunchTransaction {
     fn new(loaded: loader::LoadedDomain) -> Self {
         Self {
             loaded: Some(loaded),
@@ -112,7 +117,7 @@ impl ProfileLaunchTransaction {
     }
 }
 
-impl Drop for ProfileLaunchTransaction {
+impl Drop for DomainLaunchTransaction {
     fn drop(&mut self) {
         self.rollback_best_effort();
     }
@@ -785,7 +790,7 @@ pub fn try_spawn_with_read_only_profile_and_limits(
     let metadata = charlotte_launch::ProfileCapabilityMetadata::new(profile_len)
         .ok_or(ProfileLaunchError::EmptyProfile)?;
     let loaded = loader::try_load_platform_domain(image).map_err(ProfileLaunchError::Load)?;
-    let mut transaction = ProfileLaunchTransaction::new(loaded);
+    let mut transaction = DomainLaunchTransaction::new(loaded);
 
     let connection = match ipc::connection_delegate(
         name_service.domain.asid,
@@ -884,7 +889,7 @@ fn try_spawn_deployment_with_manifest(
     let loaded =
         loader::try_load_domain_with_key(image, artifact_key).map_err(ProfileLaunchError::Load)?;
     crate::memory::install_launch_descriptor(loaded.address_space, descriptor_bytes);
-    let mut transaction = ProfileLaunchTransaction::new(loaded);
+    let mut transaction = DomainLaunchTransaction::new(loaded);
     let controller = capability_grant_controller();
     let connection = match ipc::connection_delegate(
         controller.domain.asid,
@@ -920,29 +925,122 @@ fn try_spawn_deployment_with_manifest(
 /// Start the node observability service and delegate the unique
 /// system-observer capability to it.
 pub fn start_observability_service(name_service: &NameServiceHandle) -> ServiceDomain {
-    let mut observer = SYSTEM_OBSERVER_ASID.lock();
-    assert!(observer.is_none(), "[supervisor] system observer already started");
+    try_start_observability_service(name_service)
+        .expect("[supervisor] system observer launch failed")
+}
 
-    let loaded = loader::load_domain(
-        crate::service::store::service_elf(b"observe").expect("[supervisor] observe service elf"),
-    );
-    let connection = ipc::connection_delegate(
-        name_service.domain.asid,
-        name_service.endpoint_cap,
-        loaded.asid,
-        ConnectionRights::CALL,
-    )
-    .expect("[supervisor] observer name-service delegation failed");
-    let observer_cap = crate::capability::allocate_unmigrated(
-        loaded.asid,
+#[derive(Debug)]
+pub enum ObserverLaunchError {
+    AlreadyStarted,
+    ImageUnavailable,
+    Load(loader::DomainLoadError),
+    BootstrapConnection(ipc::IpcError),
+    Admission,
+}
+
+static OBSERVER_LAUNCH_CLAIMED: AtomicBool = AtomicBool::new(false);
+
+/// Serialize startup without holding a registry lock through loader/lifecycle
+/// calls. Failure releases this claim after the unstarted domain owner drops.
+struct ObserverLaunchClaim<'a> {
+    flag: &'a AtomicBool,
+    active: bool,
+}
+
+impl<'a> ObserverLaunchClaim<'a> {
+    fn acquire(flag: &'a AtomicBool) -> Result<Self, ObserverLaunchError> {
+        flag.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| ObserverLaunchError::AlreadyStarted)?;
+        Ok(Self {
+            flag,
+            active: true,
+        })
+    }
+
+    fn finish(mut self, handle: AddressSpaceHandle) {
+        *SYSTEM_OBSERVER_ASID.lock() = Some(handle);
+        self.active = false;
+    }
+}
+
+impl Drop for ObserverLaunchClaim<'_> {
+    fn drop(&mut self) {
+        if self.active {
+            self.flag.store(false, Ordering::Release);
+        }
+    }
+}
+
+/// Grant against the exact unstarted domain, never a replacement's reused ASID.
+pub(crate) fn grant_system_observer(
+    handle: AddressSpaceHandle,
+) -> Result<u64, crate::capability::AllocationError> {
+    let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+    if crate::memory::current_address_space_handle(handle.id()) != Some(handle)
+        || !crate::memory::budget::accepting(handle)
+    {
+        return Err(crate::capability::AllocationError::Retired);
+    }
+    crate::capability::reserve_captured(
+        handle.id(),
         crate::capability::ObjectKind::SystemObserver,
-    );
-    bootstrap::write_bootstrap_cap(loaded.config_frame, connection);
-    bootstrap::write_system_observer_cap(loaded.config_frame, observer_cap);
-    bootstrap::write_manifest(loaded.config_frame, &[]);
-    let domain = start_domain(loaded);
-    *observer = Some(domain.address_space);
-    domain
+        Some(handle),
+    )?
+    .publish()
+}
+
+pub fn try_start_observability_service(
+    name_service: &NameServiceHandle,
+) -> Result<ServiceDomain, ObserverLaunchError> {
+    let claim = ObserverLaunchClaim::acquire(&OBSERVER_LAUNCH_CLAIMED)?;
+    let image = crate::service::store::service_elf(b"observe")
+        .ok_or(ObserverLaunchError::ImageUnavailable)?;
+    let loaded = loader::try_load_domain(image).map_err(ObserverLaunchError::Load)?;
+    let prepared =
+        PreparingObserver::new(loaded, name_service.domain.asid, name_service.endpoint_cap)?;
+    let domain = prepared.start();
+    claim.finish(domain.address_space);
+    Ok(domain)
+}
+
+/// Scalar bootstrap IDs are borrowed from the owned unstarted namespace;
+/// domain teardown releases both grants if any later preparation step fails.
+struct PreparingObserver {
+    domain: DomainLaunchTransaction,
+    connection: u64,
+    observer: u64,
+}
+
+impl PreparingObserver {
+    fn new(
+        loaded: loader::LoadedDomain,
+        grantor: AddressSpaceId,
+        endpoint: u64,
+    ) -> Result<Self, ObserverLaunchError> {
+        let transaction = DomainLaunchTransaction::new(loaded);
+
+        let connection = ipc::connection_delegate(
+            grantor,
+            endpoint,
+            transaction.loaded().asid,
+            ConnectionRights::CALL,
+        )
+        .map_err(ObserverLaunchError::BootstrapConnection)?;
+        let observer_cap = grant_system_observer(transaction.loaded().address_space)
+            .map_err(|_| ObserverLaunchError::Admission)?;
+        Ok(Self {
+            domain: transaction,
+            connection,
+            observer: observer_cap,
+        })
+    }
+
+    fn start(self) -> ServiceDomain {
+        bootstrap::write_bootstrap_cap(self.domain.loaded().config_frame, self.connection);
+        bootstrap::write_system_observer_cap(self.domain.loaded().config_frame, self.observer);
+        bootstrap::write_manifest(self.domain.loaded().config_frame, &[]);
+        start_domain(self.domain.finish())
+    }
 }
 
 /// Spawn a service with a bootstrap name-service connection and one

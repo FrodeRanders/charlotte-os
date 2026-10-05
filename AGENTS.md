@@ -58,14 +58,17 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   `reserve_captured` requires that registry's captured generation and guard;
   do not acquire lifecycle under a subsystem guard. A source move or loan needs an
   owning payload transaction as well as capability escrow; use `PreparedTransfer`
-  and `commit_transfers` rather than reconstructing scalar cleanup. Do not add
-  callers of `allocate_unmigrated`; it identifies unfinished migrations, not
-  a supported compatibility API. The scalar restoration API is removed. See
+  and `commit_transfers` rather than reconstructing scalar cleanup. There is
+  no unbounded allocator or retirement bypass for any of the six kinds.
+  The scalar restoration API is removed. See
   `docs/reference/capability-admission.md` for the current enforcement scope.
   IPC calls use `PreparedCall`/`PreparedConnection` to own metadata and fresh
   authority alongside their attachments. Compose reservations through
   `commit_transfers_with_authority` while retaining every affected payload
   registry; do not publish memory and then attempt fallible IPC admission.
+  Device grants take lifecycle before device/backend registries, reserve before
+  hardware creation and retain a `PreparedDmaDomain` until publication. Failed
+  hardware rollback must quarantine reachable backing, never recycle it.
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`

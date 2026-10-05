@@ -21,7 +21,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-04 | Mitigated | Builds and boot logs identify development trust; production and unknown modes fail closed in scripted and direct kernel builds. Protected bootstrap roots, fixture-free production provisioning and recipient-key custody remain unimplemented. |
 | SEC-05 | Implemented | tcpip rejects raw frame ingress unless the authenticated sender is the exact live, kernel-designated frouter. Separate socket/VIP binding policy remains future hardening. |
 | SEC-06 | Mitigated | HTTP EOF, peer-raced accept and transport failures close one connection, not the server; listener-setup resource failures retry with backoff. httpd has a five-second request wait and bounded send retries; deployd has five-second header and thirty-second total receive budgets. Serial admission remains vulnerable to sustained connection floods. |
-| SEC-07 | Partially implemented | Memory-object backing pages/counts, anonymous timer events (completion plus sleep/watchdog), endpoint records/queue backing, retained completion objects/detached results, CQ registrations/kernel backing, endpoint-close/thread-exit/kernel-callback registrations, completion/CQ/IPC/lock/timer/boot-status scheduler waiters and connection/pending-call/reply-token record counts have generation-scoped domain/node admission and platform reserves. Lifecycle watches and kernel callbacks share one account and node pool; worker exit registration precedes execution and retains deferred producer cancellation. Callback registration checks exact operation identity; late watches are fenced against namespace replacement. Every scheduler Observable requires owning registration, without a weak-only fallback. Timer families have separate domain accounts and one shared node pool. Charges survive transfers, deferred cancellation, delegation, retained references or detached notifications as appropriate. Waiter admission precedes parking; owning cancellation handles competing wakes and reaping. Watchdog callback/cancellation/node preparation precedes Blocked; queue insertion allocates nothing and the quantum has independent inline storage. Timed completion admission failure retains its owner; untimed completion/IPC waits preserve borrowed-buffer safety. Sleep rejection waits runnable to the requested deadline; internal timer callbacks have one embedded slot. Timed park/watchdog setup is non-preemptible. IPC call/reply preparation precedes attachment transfer, and retirement fences receive/connection publication before teardown. Aggregate limits for loader/heap/page tables (including physical CQ mappings), the complete capability namespace, arbitrary callback captures, general weak-only/control-block storage and comprehensive kernel metadata remain open. |
+| SEC-07 | Partially implemented | Memory-object backing pages/counts, anonymous timer events (completion plus sleep/watchdog), endpoint records/queue backing, retained completion objects/detached results, CQ registrations/kernel backing, endpoint-close/thread-exit/kernel-callback registrations, completion/CQ/IPC/lock/timer/boot-status scheduler waiters and connection/pending-call/reply-token record counts have generation-scoped domain/node admission and platform reserves. Lifecycle watches and kernel callbacks share one account and node pool; worker exit registration precedes execution and retains deferred producer cancellation. Callback registration checks exact operation identity; late watches are fenced against namespace replacement. Every scheduler Observable requires owning registration, without a weak-only fallback. Timer families have separate domain accounts and one shared node pool. Charges survive transfers, deferred cancellation, delegation, retained references or detached notifications as appropriate. Waiter admission precedes parking; owning cancellation handles competing wakes and reaping. Watchdog callback/cancellation/node preparation precedes Blocked; queue insertion allocates nothing and the quantum has independent inline storage. Timed completion admission failure retains its owner; untimed completion/IPC waits preserve borrowed-buffer safety. Sleep rejection waits runnable to the requested deadline; internal timer callbacks have one embedded slot. Timed park/watchdog setup is non-preemptible. All six capability kinds enforce shared count/retirement admission without a bypass. Joint IPC/memory publication precedes enqueue; device admission precedes hardware creation, and observer launch preparation is owned. Aggregate byte limits for loader/heap/page tables (including physical CQ mappings), arbitrary callback captures, general weak-only/control-block storage and comprehensive kernel metadata remain open. |
 | SEC-08 | Open | Authenticate enrolled nodes and control/data peer traffic, add replay protection, and bound discovery state. A trusted L2 segment remains an explicit deployment prerequisite. |
 | SEC-09 | Open | Distinguish authenticated security time from observational SNTP/holdover; enforce freshness and uncertainty at security-policy gates. |
 | SEC-10 | Open | Authenticated encrypted access to node and cluster management, browser-client provisioning, and access policy remain necessary. |
@@ -50,10 +50,10 @@ removed. Reply tokens track every vector loan, and kernel buffer/DMA operations
 enforce loan permissions. `PreparedReceive` preserves queue/result bytes on shared
 rejection and returns speculative reply authority on result-write failure.
 IPC call/grant/returned authority composes with memory in one publication;
-device/system-observer allocation can still exceed shared policy through
-explicitly named unconverted paths.
-Thus the complete capability-namespace admission requirement remains open;
-this is not a backward-compatibility promise for those paths.
+Device/system-observer grants complete the shared record-admission cutover;
+there is no remaining unbounded allocator or budget/retirement bypass. This
+completes capability count admission, not comprehensive aggregate byte or
+physical-allocation protection.
 
 ## Enforced contracts
 
@@ -2151,4 +2151,81 @@ allocator/loader/page-table/heap budgets, comprehensive metadata accounting and
 other open findings remain. These are deterministic kernel fixtures, not a new
 EL0 quota probe, exhaustive retirement/unmap proof or production pressure soak.
 No x86-64 guest or new formal proof ran. Markdown, LaTeX sources and TLA+
+conformance were updated; models and PDF were not rebuilt.
+
+## Continuation: complete capability-record cutover — 2026-10-05
+
+The preceding joint IPC/memory batch is committed as `10827284`. This
+continuation converts MMIO, interrupt, DMA-domain and system-observer grants,
+then removes `allocate_unmigrated` entirely. Shared domain/node counters now
+use their real limits directly, without an exemption flag or retirement bypass.
+Every one of the six capability kinds is admitted against 4,096 namespace,
+65,536 node and 49,152 ordinary-node records. Staged/escrow entries count too;
+platform headroom is shared and is not a guaranteed per-service allowance.
+
+Device grants acquire lifecycle before device/backend registries and borrow
+that guard for reservation, serializing publication with normal teardown.
+MMIO/interrupt publication retains the device registry, including IRQ uniqueness
+checks. DMA reservation precedes backend lookup/creation; hardware creation
+runs without the device registry. `PreparedDmaDomain` owns created hardware
+until authority/payload installation. Failure destroys it after the device
+guard releases. A destroy failure preserves backend-owned, potentially reachable
+resources as quarantine; it never returns such frames to allocation. This does
+not charge IOMMU table bytes or recover quarantined hardware automatically.
+New kernel device errors map to shared status constants: resource limit 17 and
+retired namespace 18. Grants remain kernel-only.
+
+System-observer grants verify an exact address-space handle under lifecycle.
+`try_start_observability_service` uses an owning `PreparingObserver` and a
+cancellable atomic startup claim. `DomainLaunchTransaction` replaces the
+profile-only owner name and reclaims the unstarted namespace/delegated grants
+on failure; profile launches retain their explicit abort path. No observer
+registry guard spans loading or lifecycle teardown. The boot-critical wrapper
+still treats observer launch failure as fatal after cleanup; this is not a
+new restart policy. Drop teardown remains best-effort on its fallible failure
+paths, not a claim that every physical failure is recoverable.
+
+Validation:
+
+- Host/signing and boot-result tests passed. Strict AArch64/security and x86-64
+  Clippy passed with `-D warnings`; workspace formatting and diff checks passed.
+- Real-domain fixtures fill the shared ceiling and reject MMIO/IRQ/DMA grants.
+  Over-limit DMA never reaches backend creation; free-slot recovery exercises
+  actual MMIO map/unmap/close and IRQ grant/close. Fake DMA backends exercise
+  creation-failure refund, forced retirement between creation/publication and
+  exactly-once destroy, including a simulated destroy error. They verify the
+  adapter/owner ordering, **not** real IOMMU quarantine or ACK-timeout behavior.
+  A retained staged device grant fails after exact ASID/handle reuse without
+  changing the successor's usable MMIO or counts.
+- Observer fixtures check quota recovery, retirement and stale-handle rejection.
+  Startup claim cancellation and duplicate exclusion use an isolated atomic,
+  leaving the real observer intact. Pre-bootstrap rejection at either connection
+  or observer admission reclaims the unstarted fixture namespace and delegated
+  record charges. Normal guest boot exercises successful observer launch and
+  telemetry authorization through the bounded grant helper.
+- The first guest failed a fixture assumption that the observer was not already
+  launched when syscall admission tests run. The fixture was corrected to keep
+  the live registration unchanged; no production state was reset for the test.
+  A preliminary compile also corrected the dummy physical-address constructor
+  from `usize` to its supported `u64`. These are not passing evidence runs.
+- The corrected isolated four-LP AArch64/TCG guest passed **19 tests, 0 failed,
+  0 pending**, including both scoped launches with unchanged `0x7fff` checks.
+  Concurrent cancellation traffic retired after 4,384 requests. Bundled services
+  were rebuilt through the normal runner. Dedicated storage and ports preserved
+  existing soak guests/storage.
+
+Verified kernel SHA-256:
+`cf2bbb5f6a5c3e224749745fe5523c3c4a27bbfb5334bcf1c388b24bb1933635`.
+Evidence: `/private/tmp/charlotte-security-capability-cutover-host-tests.log`,
+`/private/tmp/charlotte-security-capability-cutover-*-clippy.log`,
+`/private/tmp/charlotte-security-capability-cutover-final-run.log` and
+`/private/tmp/charlotte-capability-cutover-final-20261005-serial.log`.
+The failed fixture capture is retained as `capability-cutover`/`cutover-run`.
+
+The shared capability-record admission subtask is implemented. SEC-07 as a whole
+remains partial: loader/page-table/heap bytes, empty namespace/control blocks,
+arbitrary callback captures, comprehensive metadata and physical failure paths
+remain. Other open findings are unchanged. These fixtures are not a new real
+EL0 quota probe, exhaustive concurrent/hardware-failure proof or pressure soak.
+No x86-64 guest or new formal proof ran. Markdown, LaTeX source and TLA+
 conformance were updated; models and PDF were not rebuilt.

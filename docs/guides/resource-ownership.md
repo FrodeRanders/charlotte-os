@@ -247,7 +247,7 @@ cannot use `MmioRegion`, `Interrupt`, `DmaTransfer`, or another owned type. A
 raw handle must never be managed simultaneously by an owned wrapper.
 
 The kernel-side profile launch path follows the same aggregation rule through
-`ProfileLaunchTransaction`. It owns the not-yet-running `LoadedDomain` and any
+`DomainLaunchTransaction`. It owns the not-yet-running `LoadedDomain` and any
 profile memory still held by `KERNEL_ASID`. Its explicit abort path closes the
 source object and target address space, which also reclaims connections or
 objects already delegated there; `Drop` repeats that cleanup best-effort. Add a
@@ -260,8 +260,9 @@ after allocation. Capability records carry a typed
 Kernel payload ownership and namespace authority need coordinated transactions.
 `capability::Reservation` holds a hidden identity/count before publication; its
 Drop releases only that exact namespace's entry. Mailbox opens, completion
-submissions, memory-object destinations and every IPC capability publication
-use bounded shared admission.
+submissions, memory-object destinations, every IPC capability publication and
+device/system-observer grants use bounded shared admission. All six kinds are
+converted; there is no unbounded allocation/retirement bypass.
 `memory::object::PreparedTransfer` owns destination reservation and private
 copy backing or source escrow/backing pins for moves and loans. Its Drop
 restores original source authority without re-admission, cancels the destination
@@ -285,12 +286,15 @@ reserve shared authority before loan revocation and compose returned authority
 with memory publication; partial loan-revocation failure remains a separate
 fallible teardown issue. Scalar-only transactions need no memory-registry lock.
 See [shared capability admission](../reference/capability-admission.md) for
-state transitions, locking, limits and the remaining migration.
+state transitions, locking, limits and broader accounting requirements.
 
 No backward-compatibility requirement justifies retaining an unsafe allocator.
-The explicitly named unconverted helpers are temporary cutover markers, not an
-API for new code. They must be removed as their actual payload/rollback work is
-replaced. Userspace continues to use `catten_rt::owned`, not these kernel tokens.
+The temporary allocation bridge is removed. Device grants reserve before
+hardware creation and own unpublished DMA domains through `PreparedDmaDomain`.
+Failed hardware rollback quarantines backing rather than returning potentially
+DMA-reachable pages. Observer startup uses a cancellable claim and one owning
+unstarted domain, so rejected grants reclaim delegated bootstrap authority.
+Userspace continues to use `catten_rt::owned`, not these kernel tokens.
 
 ## Review checklist
 

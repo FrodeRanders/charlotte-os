@@ -38,6 +38,8 @@ pub mod smmu;
 #[cfg(target_arch = "x86_64")]
 pub mod vt_d;
 
+pub(crate) mod admission_tests;
+
 use alloc::collections::BTreeMap;
 use core::sync::atomic::{
     AtomicU32,
@@ -121,6 +123,10 @@ pub enum DeviceError {
     RouteGenerationExhausted,
     DmaUnavailable,
     DmaInvalid,
+    /// Shared capability admission or identity space is exhausted.
+    ResourceLimit,
+    /// The namespace is retiring and cannot receive new device authority.
+    NamespaceRetired,
 }
 
 /// A device register window granted to a driver domain.
@@ -177,11 +183,38 @@ impl AsDeviceCaps {
         }
     }
 
-    fn insert(&mut self, owner: AddressSpaceId, object: DeviceObject) -> DeviceCap {
-        let id =
-            crate::capability::allocate_unmigrated(owner, crate::capability::ObjectKind::Device);
+    fn insert_admitted(&mut self, id: DeviceCap, object: DeviceObject) -> DeviceCap {
         self.caps.insert(id, object);
         id
+    }
+}
+
+fn admission_error(error: crate::capability::AllocationError) -> DeviceError {
+    match error {
+        crate::capability::AllocationError::Retired => DeviceError::NamespaceRetired,
+        _ => DeviceError::ResourceLimit,
+    }
+}
+
+/// Own backend-created hardware until its capability and payload are installed.
+/// Failed destroy retains backend frames/pins as a quarantined domain: never
+/// recycle memory still potentially reachable by DMA.
+struct PreparedDmaDomain {
+    id: Option<u64>,
+    destroy: fn(u64) -> Result<(), dma::Error>,
+}
+
+impl Drop for PreparedDmaDomain {
+    fn drop(&mut self) {
+        if let Some(id) = self.id.take()
+            && let Err(error) = (self.destroy)(id)
+        {
+            logln!(
+                "[dma] quarantining unpublished domain {} after rollback failure: {:?}",
+                id,
+                error
+            );
+        }
     }
 }
 
@@ -430,10 +463,18 @@ pub fn grant_mmio(
     }
     let byte_len = pages.checked_mul(PAGE_SIZE).ok_or(DeviceError::InvalidRange)?;
     phys_base.checked_add(byte_len).ok_or(DeviceError::InvalidRange)?;
-    let mut devices = DEVICES.lock();
-    let caps = devices.entry(owner).or_insert_with(AsDeviceCaps::new);
-    Ok(caps.insert(
+    let lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+    let reservation = crate::capability::reserve_in_lifecycle(
         owner,
+        crate::capability::ObjectKind::Device,
+        &lifecycle,
+    )
+    .map_err(admission_error)?;
+    let mut devices = DEVICES.lock();
+    let cap = reservation.publish().map_err(admission_error)?;
+    let caps = devices.entry(owner).or_insert_with(AsDeviceCaps::new);
+    Ok(caps.insert_admitted(
+        cap,
         DeviceObject::Mmio(MmioRegion {
             phys_base,
             pages,
@@ -446,7 +487,6 @@ pub fn grant_mmio(
 /// Grant an interrupt source to `owner`. The driver binds it to a completion
 /// queue with [`interrupt_bind_cq`], which arms and routes the interrupt.
 pub fn grant_interrupt(owner: AddressSpaceId, intid: u32) -> Result<DeviceCap, DeviceError> {
-    let mut devices = DEVICES.lock();
     if owner == 0 || u32::try_from(owner).is_err() {
         return Err(DeviceError::InvalidAddressSpace);
     }
@@ -457,6 +497,8 @@ pub fn grant_interrupt(owner: AddressSpaceId, intid: u32) -> Result<DeviceCap, D
     if route_slot(intid).is_none() {
         return Err(DeviceError::InvalidInterrupt);
     }
+    let lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+    let mut devices = DEVICES.lock();
     if devices.values().any(|caps| {
         caps.caps
             .values()
@@ -464,9 +506,16 @@ pub fn grant_interrupt(owner: AddressSpaceId, intid: u32) -> Result<DeviceCap, D
     }) {
         return Err(DeviceError::InterruptInUse);
     }
-    let caps = devices.entry(owner).or_insert_with(AsDeviceCaps::new);
-    Ok(caps.insert(
+    let reservation = crate::capability::reserve_in_lifecycle(
         owner,
+        crate::capability::ObjectKind::Device,
+        &lifecycle,
+    )
+    .map_err(admission_error)?;
+    let cap = reservation.publish().map_err(admission_error)?;
+    let caps = devices.entry(owner).or_insert_with(AsDeviceCaps::new);
+    Ok(caps.insert_admitted(
+        cap,
         DeviceObject::Interrupt(InterruptObject {
             intid,
             cq: None,
@@ -480,16 +529,48 @@ pub fn grant_dma_domain(
     requester_id: u32,
     msi_address: Option<u64>,
 ) -> Result<DeviceCap, DeviceError> {
-    let sid = dma::stream_id(requester_id).map_err(|_| DeviceError::DmaUnavailable)?;
-    let id = dma::create_domain(sid, msi_address).map_err(|_| DeviceError::DmaUnavailable)?;
-    let mut devices = DEVICES.lock();
-    let caps = devices.entry(owner).or_insert_with(AsDeviceCaps::new);
-    Ok(caps.insert(
+    grant_dma_domain_with_backend(
         owner,
+        || {
+            let sid = dma::stream_id(requester_id).map_err(|_| DeviceError::DmaUnavailable)?;
+            dma::create_domain(sid, msi_address).map_err(|_| DeviceError::DmaUnavailable)
+        },
+        dma::destroy_domain,
+    )
+}
+
+/// Backend adapter boundary; fixture backends exercise rollback without
+/// touching a live device. Production uses only the platform DMA dispatcher.
+fn grant_dma_domain_with_backend(
+    owner: AddressSpaceId,
+    create: impl FnOnce() -> Result<u64, DeviceError>,
+    destroy: fn(u64) -> Result<(), dma::Error>,
+) -> Result<DeviceCap, DeviceError> {
+    // Lifecycle is acquired before any device/backend registry. It prevents
+    // normal retirement between hardware creation and capability publication.
+    let lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+    let reservation = crate::capability::reserve_in_lifecycle(
+        owner,
+        crate::capability::ObjectKind::Device,
+        &lifecycle,
+    )
+    .map_err(admission_error)?;
+    let id = create()?;
+    let mut prepared = PreparedDmaDomain {
+        id: Some(id),
+        destroy,
+    };
+    let mut devices = DEVICES.lock();
+    let cap = reservation.publish().map_err(admission_error)?;
+    let caps = devices.entry(owner).or_insert_with(AsDeviceCaps::new);
+    let cap = caps.insert_admitted(
+        cap,
         DeviceObject::DmaDomain {
             id,
         },
-    ))
+    );
+    prepared.id = None;
+    Ok(cap)
 }
 
 /// Resolve a PCI requester id to the DMA stream id used by the platform's

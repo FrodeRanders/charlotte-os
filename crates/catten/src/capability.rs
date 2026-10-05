@@ -79,27 +79,6 @@ impl AddressSpaceCapabilities {
 static CAPABILITIES: LazyLock<Mutex<BTreeMap<AddressSpaceId, AddressSpaceCapabilities>>> =
     LazyLock::new(|| Mutex::new(BTreeMap::new()));
 
-/// Count an unmigrated subsystem allocation without policy admission.
-/// Temporary migration boundary, NOT a compatibility contract. New allocation
-/// paths must use staged admission instead; this function will be removed as
-/// payload transactions are converted, not preserved for old callers.
-pub(crate) fn allocate_unmigrated(owner: AddressSpaceId, kind: ObjectKind) -> ObjectCapability {
-    // Explicit migration bridge: account every legacy handle but do not add a
-    // late policy rejection after its subsystem has already mutated payloads.
-    // These families must migrate to reserve/publish before removing the bypass.
-    let mut tables = CAPABILITIES.lock();
-    let table =
-        namespace(&mut tables, owner, None).expect("capability namespace allocation failed");
-    insert_entry(
-        table,
-        kind,
-        owner == crate::memory::KERNEL_ASID || table.platform,
-        false,
-        EntryState::Live,
-    )
-    .expect("legacy capability allocation failed")
-}
-
 /// Prepare namespace metadata before allocating an ASID. Its publication is
 /// infallible except for the kernel allocator used by BTreeMap itself. Empty
 /// namespace metadata is not a charged capability record.
@@ -169,10 +148,9 @@ fn insert_entry(
     table: &mut AddressSpaceCapabilities,
     kind: ObjectKind,
     platform: bool,
-    bounded: bool,
     state: EntryState,
 ) -> Result<ObjectCapability, AllocationError> {
-    let charge = budget::reserve(&table.budget, platform, bounded)?;
+    let charge = budget::reserve(&table.budget, platform)?;
     let (serial, next) = charlotte_lifecycle::claim_generation(table.next_serial)
         .ok_or(AllocationError::IdentityExhausted)?;
     table.next_serial = next;
@@ -217,7 +195,7 @@ pub(crate) fn try_allocate_in_lifecycle(
     reserve_in_lifecycle(owner, kind, lifecycle)?.publish()
 }
 
-fn reserve_in_lifecycle(
+pub(crate) fn reserve_in_lifecycle(
     owner: AddressSpaceId,
     kind: ObjectKind,
     _lifecycle: &LifecycleGuard<'_>,
@@ -261,7 +239,6 @@ pub(crate) fn reserve_captured(
         table,
         kind,
         owner == crate::memory::KERNEL_ASID || table.platform,
-        true,
         EntryState::Staged,
     )?;
     Ok(Reservation {

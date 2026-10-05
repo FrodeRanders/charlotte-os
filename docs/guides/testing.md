@@ -194,11 +194,23 @@ retirement and ASID reuse test stale-token publication and captured-generation
 rejection. Mailbox dispatch and completion/timer submissions reject aggregate
 pressure below their family ceilings, refund staged family charges and recover
 when a slot is freed. An isolated counter test checks shared node/ordinary
-limits without filling the live pool. The explicitly unfinished allocation
-bypass is tested as counted, not silently claimed to be bounded. No extra EL0
+limits without filling the live pool. Every capability kind now has bounded
+allocation; the temporary bypass and its permissive fixture are removed. No extra EL0
 quota probe or atomic IPC-vector admission test is implied; the scoped mask
 remains `0x7fff`. See
 [shared capability admission](../reference/capability-admission.md).
+
+Device fixtures reject MMIO/IRQ/DMA grants at the shared ceiling, recover real
+MMIO mapping and IRQ grants after freeing a slot, and fence exact ASID/handle
+reuse. Fake DMA backends verify admission before creation, creation-failure
+refund, retirement before publication and exactly-once destroy, including a
+simulated destroy failure. These do not test real IOMMU ACK-timeout/quarantine.
+Observer fixtures check quota recovery, stale generations and cancelled startup
+claims using isolated atomics, without resetting the already-live observer.
+Pre-bootstrap connection and observer rejection reclaim the entire unstarted
+fixture namespace and delegated metadata. Real boot still exercises successful
+observer launch and telemetry access. These are kernel fixtures, not new real
+EL0 quota probes or production hardware pressure tests.
 
 Real-domain IPC shared-admission fixtures check endpoint/direct-grant rejection
 and family refunds, receiver reply admission under namespace pressure, unchanged

@@ -2020,6 +2020,8 @@ fn device_status(error: crate::device::DeviceError) -> u64 {
         DeviceError::DmaInvalid => 14,
         DeviceError::UnmapFailed => 15,
         DeviceError::RouteGenerationExhausted => 16,
+        DeviceError::ResourceLimit => 17,
+        DeviceError::NamespaceRetired => 18,
     }
 }
 

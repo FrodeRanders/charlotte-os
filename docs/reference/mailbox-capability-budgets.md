@@ -76,34 +76,32 @@ production counter code, not thousands of live allocations or mutation of the
 shared node pool. This is kernel dispatch testing, not a new real-EL0 quota
 probe or exhaustive concurrent-retirement exploration.
 
-## Shared namespace admission and remaining migration
+## Shared namespace admission
 
 Mailbox opens also enforce the [shared capability budget](capability-admission.md):
 4,096 records per namespace, 65,536 node-wide and 49,152 ordinary records.
 Completion submissions and memory destinations use the same bounded path.
 Every IPC capability publication does too;
 receive rejection preserves queued work and vector result bytes.
-Other families contribute
-to those counters, but their unconverted allocation paths can still exceed the
-shared policy. These limits therefore do not establish full aggregate protection.
+Device/system-observer grants are also converted. All six kinds enforce the
+shared policy; count limits do not establish full aggregate byte protection.
 
 Staged capability owners now capture exact namespace identity, and source
 escrow preserves a rollback slot at capacity. Production memory moves, including
 all four IPC vector modes, now use owning prepared transactions and atomic
 mixed-mode publication. Copies stay private and loans have no live borrower
-state during preparation. Completing the cutover still needs these contracts:
+state during preparation. The completed cutover preserves these contracts:
 
 - Reserve destination identities/counts before mutating device or
-  system-observer payload state. IPC now composes its call/grant/returned
+  system-observer payload state. IPC composes its call/grant/returned
   identities with memory attachments in the same atomic publication.
 - Retain an exact namespace identity in staged owners. Their Drop must not
   revoke a replacement's reused numeric handle.
 - Retire admission before payload teardown, and use the same trusted
   generation-aware platform classification for one aggregate node pool.
 
-The old generic allocator API is not retained for compatibility. Explicitly
-named unconverted helpers identify remaining transaction migrations and are
-scheduled for removal, not for indefinite support.
+The old generic allocator API and temporary unconverted helper are removed,
+with no compatibility alias or budget/retirement bypass.
 
 Loader/page-table/heap accounting, queue backing and broader kernel metadata
 remain separate requirements. SEC-07 remains partial.

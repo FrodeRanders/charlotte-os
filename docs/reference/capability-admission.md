@@ -6,8 +6,9 @@ Mailbox opens and capability-backed completion submissions (including timers,
 event watches and workers), and all memory-object destinations enforce shared
 admission in addition to their existing family limits. Every IPC capability
 publication enforces this policy, including call-side pending/delegated authority
-and returned connections. Device and system-observer allocation are counted
-but **not yet limited by this policy**. SEC-07 remains partially implemented.
+and returned connections. MMIO, interrupt, DMA-domain and system-observer grants
+also enforce it. All six kinds are bounded; the unconverted allocator and its
+budget bypass have been removed. SEC-07 remains partial for broader accounting.
 
 | Shared admission scope | Record limit |
 | --- | ---: |
@@ -15,13 +16,13 @@ but **not yet limited by this policy**. SEC-07 remains partially implemented.
 | Node total | 65,536 |
 | Ordinary records on the node | 49,152 |
 
-The remaining 16,384 records are shared platform headroom for converted
-allocation paths, not a per-service allowance. Kernel platform launch policy
+The remaining 16,384 records are shared platform headroom, not a per-service
+allowance. Kernel platform launch policy
 sets the namespace's class against an exact address-space handle. A later
 promotion affects future records; existing charges retain their original
 class. Applications cannot select the class or override these limits.
-Unconverted paths can exceed the limits and therefore can still exhaust this
-headroom. These are not complete aggregate kernel-memory protections.
+All allocation paths check the same limits, including kernel/platform grants.
+These are not complete aggregate kernel-memory protections.
 
 ## Record ownership and publication
 
@@ -94,6 +95,25 @@ is distinct from private preparation cancellation, which needs no unmap.
 
 ## Lifecycle and locks
 
+Device grants own lifecycle before taking a device/backend registry and borrow
+that guard for shared reservation. MMIO/interrupt payload publication is under
+`DEVICES`; an IRQ grant remains serialized with the existing uniqueness check.
+DMA admission precedes stream lookup/hardware domain creation. Creation runs
+without `DEVICES`, but with lifecycle, so normal retirement cannot interleave.
+`PreparedDmaDomain` owns created hardware until capability/payload installation.
+Failure destroys it outside `DEVICES`; backend destroy failure quarantines
+reachable backing/stream state rather than freeing it. Count admission neither
+accounts nor eliminates retained/quarantined IOMMU resources. Device grant errors
+are `ResourceLimit` or `NamespaceRetired` (status constants 17/18).
+
+The observer grant verifies its exact `AddressSpaceHandle` under lifecycle before
+reserving/publishing. `try_start_observability_service` owns a cancellable atomic
+startup claim and `PreparingObserver`/`DomainLaunchTransaction`; failed grants
+close the unstarted domain and delegated bootstrap authority best-effort. No
+observer registry guard spans loader/lifecycle work. The boot-critical wrapper
+still treats launch failure as fatal after cleanup; this adds no automatic
+restart policy or allocator-failure recovery guarantee.
+
 IPC `reserve_cap` uses the generation retained by its registry. Endpoint
 creation and direct mint/delegation prepare family-owned resources before
 publishing the shared identity; rejection refunds those charges. A recipient
@@ -145,20 +165,12 @@ capability registry and therefore must not run while that registry is already
 owned. Do not acquire lifecycle while holding a subsystem registry. See
 [lock ordering](locking.md).
 
-## Cutover, not compatibility
+## Completed allocation cutover
 
 There is no requirement to retain old internal APIs or wire formats. The old
-generic allocator/restorer names have been removed. Remaining allocation calls
-use the deliberately explicit `allocate_unmigrated` name. Its temporary bypass
-prevents a newly fallible quota check from occurring *after*
-an unconverted operation has already moved ownership. It is not a compatibility
-promise and must disappear as those payload transactions are replaced.
-
-The next migration needs to:
-
-- Stage device and system-observer identities before their
-  payloads change; return normal resource errors on rejected admission.
-- Remove the unconverted allocation helper after every caller has migrated.
+generic allocator/restorer names and the temporary `allocate_unmigrated` bridge
+have been removed. Domain/node counters enforce their actual limits directly;
+there is no boolean that exempts an allocation from policy or retirement.
 
 These count limits do not charge allocator bytes, empty namespace/control
 blocks, page tables, loader/heap backing or arbitrary callback captures.
@@ -166,6 +178,18 @@ blocks, page tables, loader/heap backing or arbitrary callback captures.
 infallible. Count admission is not physical out-of-memory handling.
 
 ## Verification
+
+Device fixtures fill a real namespace, reject MMIO/IRQ/DMA grants and check that
+over-quota DMA requests never call the backend. Freeing a slot permits real
+MMIO mapping/close and IRQ grant/close. Fake DMA backends check creation failure,
+retirement before publication and exactly-once destroy, including a simulated
+destroy error; they do not validate hardware quarantine or ACK-timeout behavior.
+Staged device authority fails after exact ASID/capability reuse without affecting
+the successor's usable MMIO. Observer fixtures check quota recovery and exact
+generation rejection. An isolated startup claim checks cancellation/duplicate
+exclusion without resetting the real observer. Pre-bootstrap failures at both
+connection and observer admission reclaim an unstarted fixture namespace and
+its delegated records, leaving live observer registration unchanged.
 
 Real-domain IPC fixtures fill receiver namespaces while keeping family budgets
 below their ceilings. Endpoint/direct-grant rejection refunds family metadata;
@@ -223,7 +247,7 @@ access checks enforce committed loan permissions, not only mapping rights.
 Actual mailbox syscalls and completion/timer submissions are rejected by the
 shared ceiling with room in their family budgets; failed staging refunds those
 family charges. Isolated production counter code tests node/ordinary ceilings,
-platform headroom and the explicitly unfinished bypass. It does not fill the
+platform headroom and rejection/refund at the enforced ceilings. It does not fill the
 live node pool. These are kernel fixtures, not a new EL0 quota probe or an
 exhaustive concurrent-retirement proof. The existing TLA+ serial-authority
 model does not model these admission lifetimes.

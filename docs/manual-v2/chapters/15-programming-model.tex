@@ -97,10 +97,9 @@ record counts do not account for the separate 256-word-per-LP queue backing.
 Opens are serialized with domain retirement and checked against the exact
 generation, so a delayed open cannot publish into a reused ASID.
 
-The unified capability namespace accounts for every object kind. Mailbox
-opens, capability-backed completion submissions, memory-object destinations,
-and every IPC capability publication
-also enforce shared limits:
+The unified capability namespace accounts for every object kind. Mailbox,
+completion, memory, IPC, device and system-observer publication all enforce
+shared limits:
 4,096 records per namespace, 65,536 per node, and 49,152 ordinary records.
 Staged identities and source slots held for rollback count toward these limits;
 staging does not grant public authority. Owning admission tokens capture the
@@ -121,9 +120,14 @@ loan revocation and compose their returned authority with memory publication.
 Individual loan revocation remains fallible; this publication contract does
 not provide atomic rollback of unmap or TLB-shootdown work.
 
-Other allocation paths still require conversion to staged admission. They
-contribute to the counters but can exceed the shared limits, so aggregate
-protection is incomplete. All memory transfer modes use an owning prepared
+The unbounded allocation bridge and policy bypass have been removed. Device
+grants serialize with domain teardown and reserve authority before DMA-domain
+creation. An owner destroys unpublished hardware on failure; unsuccessful
+hardware rollback quarantines reachable backing instead of freeing it.
+Observer startup owns an unstarted domain and a cancellable startup claim,
+reclaiming delegated authority if preparation fails. These record limits do
+not provide complete aggregate byte protection.
+All memory transfer modes use an owning prepared
 transaction. Copies hold private charged pages; moves and loans hold source
 escrow and backing-retention pins. Destinations remain hidden until the whole
 mixed-mode batch commits. Loan preparation creates no borrower state, and

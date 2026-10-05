@@ -57,6 +57,14 @@ Entry-charge Drop enters only capability counters; reservation/escrow Drop
 enters `CAPABILITIES` and must run outside that registry's own guard. See
 [shared capability admission](capability-admission.md) for enforcement scope.
 
+Device grant/close ordering is `ADDRESS_SPACE_LIFECYCLE → DEVICES → CAPABILITIES
+→ capability domain → node`. Grant borrows lifecycle for reservation, never
+reacquires it under `DEVICES`. DMA creation retains lifecycle but runs without
+the device registry; its rollback owner is declared before the device guard,
+so backend destruction runs after that guard releases. Observer grants check
+their exact handle under lifecycle. Observer startup uses a cancellable atomic
+claim, not a registry guard held through loader/domain teardown.
+
 IPC endpoint/direct-grant/receiver-reply admission uses the generation captured
 in `AsIpcCaps`: `IPC → CAPABILITIES → capability domain → node`. Family charges
 and result writes run outside capability/counter guards. `PreparedReceive`

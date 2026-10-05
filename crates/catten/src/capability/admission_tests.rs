@@ -82,17 +82,13 @@ pub(crate) fn test_admission() {
     drop(batch);
     assert_eq!(local.used(), 0);
 
-    // Explicit legacy migration bridge: counted, not yet policy-limited.
-    for _ in 0..=budget::DOMAIN_LIMIT {
-        allocate_unmigrated(OWNER, ObjectKind::Memory);
-    }
-    assert_eq!(local.used(), budget::DOMAIN_LIMIT + 1);
-    assert!(matches!(reserve(OWNER, ObjectKind::Mailbox), Err(AllocationError::ResourceLimit)));
     close_address_space(OWNER);
     assert_eq!(local.used(), 0);
     test_replacement_tokens();
     test_real_retirement();
     test_completion_admission();
+    crate::device::admission_tests::test_admission();
+    crate::service::supervisor::observer_tests::test_admission();
     logln!(
         "[capability] shared counts, staged admission, move escrow and generation fencing passed"
     );

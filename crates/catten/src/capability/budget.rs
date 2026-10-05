@@ -1,5 +1,5 @@
-//! Shared capability-record accounting. Legacy paths are counted but bypass
-//! policy admission during migration; bounded callers reserve before mutation.
+//! Shared capability-record admission. Every kind reserves before mutation;
+//! there is no unbounded allocation or retirement bypass.
 
 use alloc::sync::Arc;
 
@@ -23,7 +23,7 @@ pub(crate) struct DomainBudget(Mutex<Account>);
 impl DomainBudget {
     pub(crate) fn try_new() -> Result<Arc<Self>, super::AllocationError> {
         Arc::try_new(Self(Mutex::new(Account {
-            used: CountBudget::new(usize::MAX),
+            used: CountBudget::new(DOMAIN_LIMIT),
             retired: false,
         })))
         .map_err(|_| super::AllocationError::AllocationFailed)
@@ -50,18 +50,12 @@ struct NodeBudget {
 impl NodeBudget {
     const fn new() -> Self {
         Self {
-            total: CountBudget::new(usize::MAX),
-            ordinary: CountBudget::new(usize::MAX),
+            total: CountBudget::new(NODE_LIMIT),
+            ordinary: CountBudget::new(ORDINARY_LIMIT),
         }
     }
 
-    fn reserve(&mut self, platform: bool, bounded: bool) -> Result<(), super::AllocationError> {
-        if bounded
-            && (self.total.used() >= NODE_LIMIT
-                || (!platform && self.ordinary.used() >= ORDINARY_LIMIT))
-        {
-            return Err(super::AllocationError::ResourceLimit);
-        }
+    fn reserve(&mut self, platform: bool) -> Result<(), super::AllocationError> {
         self.total.reserve().map_err(|_| super::AllocationError::ResourceLimit)?;
         if !platform && self.ordinary.reserve().is_err() {
             self.total.release().unwrap();
@@ -90,17 +84,13 @@ pub(crate) struct Charge {
 pub(crate) fn reserve(
     domain: &Arc<DomainBudget>,
     platform: bool,
-    bounded: bool,
 ) -> Result<Charge, super::AllocationError> {
     let mut local = domain.0.lock();
-    if bounded && local.retired {
+    if local.retired {
         return Err(super::AllocationError::Retired);
     }
-    if bounded && local.used.used() >= DOMAIN_LIMIT {
-        return Err(super::AllocationError::ResourceLimit);
-    }
     local.used.reserve().map_err(|_| super::AllocationError::ResourceLimit)?;
-    if let Err(error) = NODE.lock().reserve(platform, bounded) {
+    if let Err(error) = NODE.lock().reserve(platform) {
         local.used.release().unwrap();
         return Err(error);
     }
@@ -127,21 +117,17 @@ pub(crate) fn test_node_admission() {
     use super::AllocationError;
     let mut node = NodeBudget::new();
     for _ in 0..ORDINARY_LIMIT {
-        node.reserve(false, true).unwrap();
+        node.reserve(false).unwrap();
     }
-    assert_eq!(node.reserve(false, true), Err(AllocationError::ResourceLimit));
+    assert_eq!(node.reserve(false), Err(AllocationError::ResourceLimit));
     for _ in ORDINARY_LIMIT..NODE_LIMIT {
-        node.reserve(true, true).unwrap();
+        node.reserve(true).unwrap();
     }
-    assert_eq!(node.reserve(true, true), Err(AllocationError::ResourceLimit));
-    // Explicit legacy bypass is counted. It must not silently admit another
-    // bounded request or turn policy saturation into a legacy-path panic.
-    node.reserve(false, false).unwrap();
-    assert_eq!(node.total.used(), NODE_LIMIT + 1);
-    assert_eq!(node.reserve(true, true), Err(AllocationError::ResourceLimit));
+    assert_eq!(node.reserve(true), Err(AllocationError::ResourceLimit));
+    assert_eq!(node.reserve(false), Err(AllocationError::ResourceLimit));
+    assert_eq!(node.total.used(), NODE_LIMIT);
     node.release(false);
-    node.release(false);
-    node.reserve(false, true).unwrap();
+    node.reserve(false).unwrap();
     for _ in ORDINARY_LIMIT..NODE_LIMIT {
         node.release(true);
     }
