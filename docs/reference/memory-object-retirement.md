@@ -45,8 +45,9 @@ All batches are attempted, retaining the first error. Any failure leaves the pin
 undischarged, even when some leaves have been removed. Domain cleanup moves
 records before detachment; ordinary unmap removes its record only after the full
 detach succeeds. Invalidations and scratch/authority completion retain their
-existing ordering. Whole-domain cleanup and IPC revocation still retain their
-outer lifecycle/IPC guards. Public mapping operations and direct loan revocation
+existing ordering. Whole-domain cleanup, returned-authority replies and
+cancellation still retain their outer lifecycle/IPC guards. Public mapping
+operations, plain borrowed-memory replies and direct loan revocation
 now own live-generation leases across these phases, as described below.
 
 Scratch now records live extents with fallible admission before publication;
@@ -89,8 +90,8 @@ detach/invalidation checks succeed.
 The backing receipts themselves do not own an address-space generation lease.
 Their caller must retain one or retain lifecycle/IPC serialization across the
 complete operation. Numeric ASIDs and scratch identities must not be reused
-between detach and finish. Whole-domain cleanup and IPC reply/cancellation still
-depend on those outer guards.
+between detach and finish. Whole-domain cleanup, returned-authority replies and
+cancellation still depend on those outer guards.
 
 Consequently SEC-18 remains partial: several user/device/domain paths still
 perform x86 rendezvous under an outer interrupt-masking lifecycle/IPC guard.
@@ -114,9 +115,10 @@ map/map-any/unmap also holds a generation lease and a capability in-flight claim
 through invalidation; concurrent device close rejects while that claim is held.
 Explicit device close also leases its root and detaches its device object before
 releasing lifecycle for invalidation. Whole-domain device cleanup still holds
-lifecycle. Compose IPC attachment, backing/scratch and reply/cancellation owners
-with leases before releasing IPC serialization. The staged fence does not cover
-non-lease paths or revoke their authority while older operations drain.
+lifecycle. Plain borrowed-memory replies now compose a reply claim and both
+namespace leases before releasing IPC. Returned-authority replies and
+cancellation's own revocation still need that composition. The staged fence does
+not cover non-lease paths or revoke their authority while older operations drain.
 
 ## Owned loan revocation
 
@@ -139,9 +141,28 @@ complete the root leases; abandoning the complete leased operation retains its
 roots too. Preparation errors publish no object fence and explicitly return all
 already acquired leases.
 
-The IPC adapter uses this same transaction while holding IPC serialization.
-Moving its invalidation outside IPC still needs an owner for reply/cancellation
-state and leases acquired before that guard. Coherent DMA and executing CPUs
+Plain replies use `ipc::reply::PreparedReply` to retain both exact namespaces,
+every prepared loan and an exclusive claim on the reply record. Namespace
+admission precedes IPC; identities and capability authority are revalidated
+under IPC before preparing loans. A bounded fallible vector is reserved before
+publishing any loan fence. Failed preparation explicitly restores only receipts
+that have not started physical cleanup, then completes acquired leases.
+
+Once claimed, loan detachment, invalidation and scratch release run outside IPC.
+Each successful loan is removed from the reply record before processing the
+next. Competing replies reject the claim. Close of the pending call or reply
+capability waits cooperatively outside IPC without first consuming authority,
+keeping borrowed memory live until cleanup finishes. Success publishes the
+result and removes reply authority before returning the leases. A later cleanup
+failure restores unstarted receipts, clears the reply claim and completes leases,
+but leaves the failed loan fenced and pinned. Dropping the whole operation
+retains both root leases and the reply claim; close cannot force reclamation.
+There is no recovery API for an abandoned claim.
+
+Replies returning connection/memory capabilities and cancellation's own loan
+cleanup still use the IPC-serialized adapter. Source connection authority and
+returned-capability publication need their own composed owners before those
+paths can unlock. Coherent DMA and executing CPUs
 retain their existing quiescence obligations; a revocation transaction does not
 itself stop an already authorized DMA transfer.
 

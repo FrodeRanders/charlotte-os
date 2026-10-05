@@ -46,6 +46,7 @@ use crate::{
 pub(crate) mod budget;
 pub(crate) mod record_budget;
 pub(crate) mod record_tests;
+pub(crate) mod reply;
 pub(crate) mod waiter_tests;
 
 type WaiterList = Arc<ObserverList<waiter_budget::Charge>>;
@@ -283,7 +284,7 @@ struct Endpoint {
 struct ReplyToken {
     server: AddressSpaceId,
     call: PendingCallId,
-    consumed: bool,
+    replying: bool,
     borrows: Vec<MemoryBorrow>,
     _charge: record_budget::Charge,
 }
@@ -467,7 +468,7 @@ impl PreparedCall {
             ReplyToken {
                 server,
                 call,
-                consumed: false,
+                replying: false,
                 borrows: self.borrows,
                 _charge: self.reply_charge,
             },
@@ -1399,7 +1400,7 @@ impl<'a> PreparedReceive<'a> {
             .reply;
         let reply = if let Some(token) = token {
             let reply = ipc.reply_tokens.get(&token).ok_or(IpcError::UnknownCapability)?;
-            if reply.server != receiver || reply.consumed {
+            if reply.server != receiver || reply.replying {
                 return Err(IpcError::PermissionDenied);
             }
             let reservation = ipc.reserve_cap(receiver)?;
@@ -1663,6 +1664,16 @@ impl Observable for EndpointObservable {
 
 pub fn reply(server: AddressSpaceId, reply_cap: CapabilityId, result: i64) -> Result<(), IpcError> {
     let mut ipc = IPC.write();
+    let token = match ipc.cap(server, reply_cap)? {
+        Capability::ReplyToken {
+            token,
+        } => token,
+        _ => return Err(IpcError::WrongType),
+    };
+    if !ipc.reply_tokens.get(&token).ok_or(IpcError::UnknownCapability)?.borrows.is_empty() {
+        drop(ipc);
+        return reply::complete(server, reply_cap, result);
+    }
     let observers = complete_reply(&mut ipc, server, reply_cap, result, None, None)?;
     drop(ipc);
     signal_observers(observers);
@@ -1716,7 +1727,7 @@ fn complete_reply(
     if token.server != server {
         return Err(IpcError::PermissionDenied);
     }
-    if token.consumed {
+    if token.replying {
         return Err(IpcError::ReplyAlreadyUsed);
     }
     let call_id = token.call;
@@ -1942,7 +1953,34 @@ fn endpoint_referenced(ipc: &IpcRegistry, endpoint: EndpointId) -> bool {
 }
 
 pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError> {
-    let mut ipc = IPC.write();
+    close_cap_with_wait(asid, cap, crate::cpu::scheduler::yield_lp)
+}
+
+fn close_cap_with_wait(
+    asid: AddressSpaceId,
+    cap: CapabilityId,
+    mut wait: impl FnMut(),
+) -> Result<(), IpcError> {
+    // Keep the caller's borrow alive until a claimed reply has finished its
+    // detached cleanup. Never wait with IPC serialization held. Domain cleanup
+    // reaches here only after the reply's exact-generation root leases drain.
+    let mut ipc = loop {
+        let ipc = IPC.write();
+        let busy = match ipc.cap(asid, cap)? {
+            Capability::PendingCall {
+                call,
+            } => ipc.reply_tokens.values().any(|token| token.call == call && token.replying),
+            Capability::ReplyToken {
+                token,
+            } => ipc.reply_tokens.get(&token).is_some_and(|token| token.replying),
+            _ => false,
+        };
+        if !busy {
+            break ipc;
+        }
+        drop(ipc);
+        wait();
+    };
     let mut observers = WaitNotifications::empty();
     let mut cq_wake = None;
     let mut close_watches = None;
@@ -2059,6 +2097,15 @@ fn signal_observers(observers: WaitNotifications) {
 pub fn close_address_space(asid: AddressSpaceId) {
     let caps = {
         let ipc = IPC.read();
+        // Production root retirement has drained operation leases before this
+        // logical cleanup. Detect an integration bypass before retiring budgets
+        // or reaching a claimed-cap wait underneath lifecycle serialization.
+        assert!(
+            !ipc.reply_tokens.values().any(|token| token.replying
+                && (token.server == asid
+                    || ipc.pending_calls.get(&token.call).is_some_and(|call| call.caller == asid))),
+            "IPC namespace cleanup before reply leases drained"
+        );
         if let Some(namespace) = ipc.caps.get(&asid) {
             namespace.record_budget.retire();
         }
@@ -2099,6 +2146,7 @@ fn consume_reply_token(
     observers: &mut WaitNotifications,
 ) {
     if let Some(token) = ipc.reply_tokens.remove(&token) {
+        assert!(!token.replying, "consuming a claimed reply");
         for borrow in token.borrows.into_iter().rev() {
             let _ = revoke_memory_borrow(borrow);
         }
@@ -2127,6 +2175,7 @@ fn cancel_queued_call(ipc: &mut IpcRegistry, call: PendingCallId) {
         .collect::<Vec<_>>();
     for (token, server) in tokens {
         let retired = ipc.reply_tokens.remove(&token).unwrap();
+        assert!(!retired.replying, "cancelling a claimed reply");
         cancel_queued_message_with_token(ipc, server, token, &retired.borrows);
         ipc.remove_matching_caps(
             server,

@@ -572,7 +572,7 @@ frame batches. It exercises ordinary unmap, mapped-loan revoke and owner cleanup
 asserts registry/table guards are available at detach callbacks, rejects an
 oversized prefix before table work, and injects the last copy unpin before the
 first batch. Exact frame/charge counts return after completion, with no additional
-quarantine. Whole-domain cleanup and IPC revocation retain their outer
+quarantine. Whole-domain cleanup, returned-authority replies and cancellation retain their outer
 serialization; standalone unmap and direct loan revocation now retain live
 operation leases.
 
@@ -597,6 +597,23 @@ roots close normally after these failure probes; backing remains quarantined.
 The complete memory-object fixture therefore retains eleven pages and nine
 object charges. These are deterministic interleavings, not a concurrent stress
 test or hardware-quiescence proof.
+
+IPC reply-ownership fixtures exercise two mapped loans, competing replies and
+close of either the pending call or reply capability. An injected cooperative
+wait completes the claimed reply while checking that IPC/lifecycle/table guards
+are available; production uses the same wait loop with scheduler yield. The
+loan callback checks those guards at detach, invalidation and scratch release.
+Second-loan preparation rejection restores the first unstarted receipt. Second-
+namespace lease rejection returns the first lease. Staged caller close waits
+for successful reply completion. A three-loan fixture succeeds on the last loan,
+injects failure on the middle one and restores the untouched first receipt.
+It returns no result and retains one failed data page/object after namespace
+teardown. Operation abandonment retains a second data page/object, both live
+roots (including their table backing), IPC records and the reply claim. These
+probes add **two data pages and two object charges** to the eleven-page,
+nine-object memory-retirement fixture. No cleanup bypass is provided.
+Deterministic interleavings do not establish multi-LP progress, recoverable
+shootdown, or returned-authority/cancellation lock separation.
 
 ## Final address-space retirement tests
 

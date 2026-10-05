@@ -75,14 +75,23 @@ transaction fences backing and loan authority through detach, invalidation,
 scratch completion and removal of the borrower capability. Ordinary failure
 releases root leases but retains the transaction's backing pin and revocation
 fence; abandonment of the whole operation also retains both root leases.
-IPC loan revocation uses the same transaction under IPC serialization.
+Plain borrowed-memory IPC replies compose both leases and loan receipts in
+`PreparedReply`. A claim prevents concurrent reply/close from consuming records
+while revocation runs outside IPC. Close waits without holding IPC; abandonment
+retains claim, roots and backing. Ordinary cleanup failure completes root leases
+but keeps uncertain loan backing fenced. No-loan scalar replies need no detached
+interval and remain atomic under IPC.
 Whole-domain device cleanup still holds lifecycle across invalidation. Before
 extending split-phase operation leases, implement:
 
-1. Compose IPC leases with backing, exact scratch reservation and loan/connection
+1. Extend IPC composition to returned memory/connection authority and
+   cancellation's own revocation. Compose IPC leases with backing, exact scratch
+   reservation and loan/connection
    authority in one operation owner. IPC must acquire lifecycle before IPC
    serialization, never from within an IPC guard. Reply/cancellation ownership
-   must survive an IPC unlock together with the loan transaction. Move
+   must survive an IPC unlock together with the loan transaction. Plain replies
+   implement that ownership; returned-authority replies/cancellation still retain
+   their masking guard. Move
    whole-domain device cleanup invalidation out of lifecycle under an owned claim.
 2. Translation identity capture after lazy root/tag preparation; then release
    preparation guards before rendezvous. Syscall entry's interrupt state and

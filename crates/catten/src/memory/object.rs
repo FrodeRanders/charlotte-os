@@ -40,6 +40,7 @@ const RETIREMENT_FRAME_BATCH: usize = 16;
 
 pub(crate) mod retirement_tests;
 mod revocation;
+pub(crate) use revocation::LoanRevocation;
 mod scratch;
 use scratch::ScratchWindow;
 

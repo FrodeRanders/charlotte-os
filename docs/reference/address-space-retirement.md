@@ -90,9 +90,11 @@ can instead fence new lease admission and return its request owner while old
 leases drain. Timeout or abandonment retains that closing root and fence; it
 does not authorize destructive cleanup. Public memory-object/MMIO mapping,
 explicit device close and direct loan revocation now acquire live leases, and
-the supervisor retains a staged teardown owner across pending polls. IPC
-reply/cancellation and whole-domain device cleanup still need their own
-completion owners before releasing outer serialization. See
+the supervisor retains a staged teardown owner across pending polls. Plain
+borrowed-memory IPC replies also own both roots and a reply claim through
+post-IPC invalidation; abandonment prevents root close. Returned-authority IPC
+replies, cancellation's own revocation and whole-domain device cleanup still need
+their own completion owners before releasing outer serialization. See
 [live address-space operations](live-address-space-operations.md).
 
 Failed final invalidation or abandonment retains the whole hierarchy, physical
@@ -106,11 +108,12 @@ Missing acknowledgements still stall.
 
 This corrects the **final root** boundary: its own lifecycle/table guards no
 longer surround the last rendezvous or `AddressSpace::drop`. Earlier
-memory-object, IPC-loan and MMIO/device cleanup still retain lifecycle/IPC
-serialization across some x86 invalidations. Live-domain mapping operations need
-their own exact-generation leases, scratch and authority fences before those
-guards can be released. The final-root lease does not provide such a lease for
-an arbitrary still-live mapping operation.
+whole-domain memory/device cleanup, returned-authority IPC replies and
+cancellation retain lifecycle/IPC serialization across some x86 invalidations.
+Public live mapping, direct loan revocation and plain borrowed-memory replies
+now supply their own leases and completion owners. Remaining paths need the
+same composition before guards can be released. The final-root lease does not
+provide such a lease for an arbitrary still-live mapping operation.
 
 Thus complete x86 teardown progress, recoverable shootdown failure and full
 hardware-walk quiescence remain open. See

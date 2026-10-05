@@ -150,9 +150,11 @@ through the detached-root boundary. Dropping the request or exhausting its
 lease-drain waiting budget retains the closing root, tag, slot and charges.
 Later completion cannot reopen admission. The fence applies to operation leases,
 not all existing resource paths, and the waiting budget does not bound hardware
-rendezvous. IPC reply/cancellation still retains its global serialization across
-loan invalidation; releasing it requires leases composed with reply and attachment
-ownership. Whole-domain device cleanup also retains lifecycle serialization.
+rendezvous. Plain borrowed-memory replies retain both namespace leases and a
+reply claim across IPC-unlocked invalidation. Returned-authority replies and
+cancellation's own loan cleanup still require composed reply/attachment ownership
+before releasing their global serialization. Whole-domain device cleanup also
+retains lifecycle serialization.
 Deployment and node-shutdown
 supervisors retain a teardown owner across polls and refuse
 to report reclamation after a terminal error. They do not reclaim a root whose
@@ -266,6 +268,18 @@ is restored.
         cannot access the pages while they are lent out. Unsafe
         Rust can violate this; the MMU will fault.
 \end{itemize}
+
+Plain replies retain both namespace generations, the loan revocation receipts
+and an exclusive reply claim in one kernel operation owner. Loan detachment,
+TLB invalidation and scratch release then run without the global IPC lock.
+A concurrent close of the pending-call or reply capability waits outside that
+lock until cleanup finishes; it cannot release the caller's borrow early.
+Successful loans are recorded individually, so a later failure keeps only the
+remaining loans for cancellation. Only unstarted preparation may restore loan
+state: uncertain cleanup retains its backing pin and revocation fence. An
+abandoned reply retains its claim and both roots, with no forced reclamation.
+Replies returning capabilities and cancellation's own revocation still retain
+IPC serialization; their completion ownership remains work in progress.
 
 \section{Why hardware enforcement matters}
 

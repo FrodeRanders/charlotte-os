@@ -1,6 +1,6 @@
 //! Loan authority, mapped backing and namespace retention through revocation.
-//! Direct callers lease both roots. The IPC adapter still retains its write
-//! guard; it must compose reply/cancellation ownership before unlocking IPC.
+//! Direct callers and plain replies lease both roots. Returned-authority replies
+//! and cancellation retain IPC serialization until their ownership is composed.
 
 use super::*;
 
@@ -73,7 +73,7 @@ fn operation_error(error: OperationError) -> MemoryObjectError {
 /// Revoking. Drop leaves that state and its pin in the registry. It never
 /// restores authority, releases scratch or invalidates under unknown guards.
 #[must_use]
-struct LoanRevocation {
+pub(crate) struct LoanRevocation {
     owner: AddressSpaceId,
     owner_cap: MemoryObjectCap,
     borrower: AddressSpaceId,
@@ -86,8 +86,9 @@ struct LoanRevocation {
 
 impl LoanRevocation {
     /// Caller holds leases for both namespaces or the complete IPC write
-    /// serialization. No table guard or lifecycle acquisition occurs here.
-    fn prepare(
+    /// serialization (the kernel namespace is permanent). No table guard or
+    /// lifecycle acquisition occurs here.
+    pub(crate) fn prepare(
         owner: AddressSpaceId,
         cap: MemoryObjectCap,
         borrower: AddressSpaceId,
@@ -132,14 +133,40 @@ impl LoanRevocation {
         })
     }
 
-    fn finish(self) -> Result<(), MemoryObjectError> {
+    /// Roll back admission only: this receipt has not started detachment.
+    /// `finish` consumes it, so uncertain cleanup cannot use this restoration.
+    pub(crate) fn cancel_prepared(mut self) {
+        let mut registry = MEMORY_OBJECTS.lock();
+        let object = registry.objects.get_mut(&self.pin.object).expect("prepared loan missing");
+        assert!(matches!(object.lend_state, LendState::Revoking));
+        assert_eq!(object.mappings.get(&self.borrower).copied(), self.mapping);
+        object.lend_state = core::mem::replace(&mut self.prior, LendState::None);
+        drop(registry);
+        self.pin.release(None);
+    }
+
+    pub(crate) fn finish(self) -> Result<(), MemoryObjectError> {
+        self.finish_observed(|| {})
+    }
+
+    /// Boot fixtures inspect each unlocked physical-cleanup boundary; the
+    /// ordinary path supplies no callback work.
+    pub(crate) fn finish_observed(self, checkpoint: impl FnMut()) -> Result<(), MemoryObjectError> {
+        let checkpoint = core::cell::RefCell::new(checkpoint);
         self.finish_with(
-            unmap_pages,
+            |asid, base, frames| {
+                checkpoint.borrow_mut()();
+                unmap_pages(asid, base, frames)
+            },
             |asid, base, pages| {
+                checkpoint.borrow_mut()();
                 crate::cpu::isa::memory::tlb::inval_range_user(asid, base, pages);
                 true
             },
-            release_scratch,
+            |asid, base, pages| {
+                checkpoint.borrow_mut()();
+                release_scratch(asid, base, pages)
+            },
         )
     }
 

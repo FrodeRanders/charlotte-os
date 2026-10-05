@@ -32,7 +32,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-15 | Mitigated | SigV4 prefixed secret, derived keys, HMAC block/pads and inner digest use zeroizing owners. TLS record buffers are wiped after dropping their borrower, including handshake failure. This is not a complete audit of crypto-library state or compiler-created secret copies. |
 | SEC-16 | Implemented | grantctl polls bounded concurrent operations with per-sender/generation limits and total deadlines. Non-parking authorized lookup avoids a shared name-service waitlist leak. Acquisition retries and publication waits have total deadlines. A two-application cancellation stress and silent-endpoint publication timeout pass in the guest; many-client fairness and controller-replacement testing remain. |
 | SEC-17 | Implemented for dynamic table unmap | Both walkers retain empty intermediate tables linked and owned for reuse until quiescent address-space teardown, removing premature table recycling. Tables/data are initialized before publication; x86 entries publish complete permissions/cache selection together. Private sparse-alias/reuse/teardown fixtures pass on AArch64. Concurrent walk-race reproduction, live compaction, full table admission and x86 guest execution remain outside this validation. Broader physical-release/shootdown gaps are SEC-18. |
-| SEC-18 | Partially implemented | Kernel-range retirement detaches before post-guard invalidation/release; Drop quarantines. Memory-object pins retain backing/charges and fence authority through invalidation; prefix/identity checks preserve foreign leaves. Final root retirement owns the software slot, ARM tag and accounts through post-guard teardown. Public memory-object/MMIO mappings, explicit device close and direct loan revocation now lease live roots; loan transactions retain their fence/pin on failed cleanup. x86 failed delivery cannot credit the barrier. IPC reply/cancellation, whole-domain device cleanup, unresponsive recipients, recoverable epoch-fenced failure and complete quiescence remain open. AArch64/host fixtures pass; x86 guest and real delivery-failure execution remain pending. |
+| SEC-18 | Partially implemented | Kernel-range retirement detaches before post-guard invalidation/release; Drop quarantines. Memory-object pins retain backing/charges and fence authority through invalidation; prefix/identity checks preserve foreign leaves. Final root retirement owns the software slot, ARM tag and accounts through post-guard teardown. Public memory-object/MMIO mappings, explicit device close, direct loan revocation and plain borrowed-memory replies lease live roots. Plain replies claim their IPC records across unlocked revocation; concurrent close waits outside IPC. Failed loan cleanup retains fence/pin; abandoned replies retain claim/roots. x86 failed delivery cannot credit the barrier. Returned-authority replies, cancellation's own cleanup, whole-domain device cleanup, unresponsive recipients, recoverable epoch-fenced failure and complete quiescence remain open. AArch64/host fixtures pass; x86 guest and real delivery-failure execution remain pending. |
 
 SEC-07 also includes fixed per-route IRQ readiness storage: repeated or retired
 deliveries cannot exhaust a shared wake queue, and deferred route validation/CQ
@@ -3388,3 +3388,69 @@ shootdown and CPU/device quiescence also remain. The fixtures model serialized
 interleavings, not concurrent map/reply/cancel/close stress or x86 IPI progress.
 Contributor instructions, references, testing guide, manual source and formal
 conformance were updated. No model/TLC result or rebuilt PDF is claimed.
+
+## Continuation: owned IPC plain reply across unlocked revocation — 2026-10-05
+
+The preceding loan transaction is committed as `f5fdcdbc`. Plain replies that
+return no new authority now compose that transaction with both exact live root
+leases and a reply-record claim in `PreparedReply`. Admission captures registry
+namespace handles, acquires leases before IPC, then revalidates capability,
+token/call identity and namespace generation under IPC. A bounded fallible
+vector is reserved before preparing any loan. Preparation rejection restores
+only unstarted receipts and explicitly releases acquired leases. No fallible
+work remains before the claim is published. No-loan scalar replies have no
+detached interval and retain their atomic serialized path.
+
+The operation releases IPC before detachment, invalidation and scratch
+completion. It records each successful revocation before processing the next,
+and publishes the result/removes reply authority under IPC only after all loans
+finish. Both namespace leases complete before observer notifications. Competing
+replies reject the claim. Close of pending-call or reply authority checks the
+claim before consuming capabilities, releases IPC and yields, then retries;
+this preserves synchronous close's borrowed-memory lifetime through the claimed
+operation. Root retirement has already drained leases before logical IPC
+cleanup; an assertion detects a bypass before budget/capability mutation.
+
+Ordinary cleanup failure clears the claim and returns leases, restoring only
+the untouched preparation receipts. Failed cleanup remains pinned and fenced;
+already completed loans stay removed. Operation abandonment retains the claim,
+both roots, outstanding loan fences and backing. There is no force-clear,
+timeout reclamation or recovery API for that state.
+
+Validation covers deterministic pre-AP interleavings of mapped vector loans:
+competing reply rejection, close waiting outside IPC, guard availability at
+detach/invalidation/scratch boundaries, first-loan rollback when second-loan
+preparation rejects, first-root lease release when second-root admission rejects,
+completion while staged caller close waits, and partial multi-loan success
+followed by injected failure. A failed receipt retains one page/object after
+normal namespace teardown; an abandoned operation retains another page/object
+and both live roots with their table backing and IPC records. Combined with the
+eleven-page/nine-object memory-retirement probes, this adds two pages/two objects
+for thirteen data pages and eleven object charges. Unrelated heap/root/kernel
+quarantine fixtures are additional. No test-only recovery bypass is used.
+
+Final validation:
+
+- Fresh AArch64 `--security-test --fresh-storage`, instance
+  `ipc-reply-final-20261005`: **19/19**, zero failed/pending. The reply-ownership
+  boot marker passed at 0.550 seconds; scoped probe checks were `0x7fff` and
+  the existing concurrent cancellation workload retired after 4,468 requests.
+  That workload is not proof of concurrent execution of the new claim/close race.
+- Kernel SHA-256:
+  `ba5c791d2be7f7619b5b34bd308e5911be5ecae803da503a0cf975bb5ed22f94`.
+  Run `/private/tmp/charlotte-security-ipc-reply-final-run.log`;
+  serial `/private/tmp/charlotte-ipc-reply-final-20261005-serial.log`.
+- Strict locked AArch64 `acpi,security_test` and x86-64 `acpi` Clippy,
+  `cargo fmt --all -- --check`, and `git diff --check` pass. Bundled AArch64
+  services were rebuilt by `scripts/build-catten-services.sh` through the runner.
+  x86 guest execution remains pending.
+
+Scope remains partial: replies returning memory/connection capabilities and
+cancellation's own revocation still hold IPC during invalidation. Returned
+connection source authority, reply-result publication and cancellation cleanup
+need their own composed owners. Legacy cancellation's best-effort handling of
+revocation errors is not corrected here. The deterministic wait adapter runs
+the production close loop but does not prove real concurrent multi-LP
+map/reply/cancel/close progress, x86 rendezvous or CPU/device quiescence. Formal
+conformance and manual source are updated; no new model/TLC result or rebuilt
+PDF is claimed.
