@@ -97,10 +97,21 @@ pub fn send_sync_shootdown() {
     mask_interrupts!();
     let self_id = get_lp_id();
     SYNC_IPI_BARRIER.store((lp_count - 1) as u64, Ordering::SeqCst);
-    for lp in 0..lp_count {
-        if lp != self_id && LocalIntCtlr::send_unicast_ipi(lp, SYNC_IPI_VECTOR).is_err() {
-            SYNC_IPI_BARRIER.fetch_sub(1, Ordering::SeqCst);
-            crate::early_logln!("WARNING: failed to send TLB-shootdown IPI to LP{}", lp);
+    if let Err(lp) = send_to_remote_lps(lp_count, self_id, |lp| {
+        LocalIntCtlr::send_unicast_ipi(lp, SYNC_IPI_VECTOR).is_ok()
+    }) {
+        // Never turn failed delivery into an acknowledgement. Keep ownership
+        // and the barrier latched: no caller may return and reuse backing.
+        // This is fail-stop, not recovery; a later acknowledged/epoch-fenced
+        // retry protocol must precede any recoverable shootdown API.
+        crate::early_logln!(
+            "FATAL: TLB-shootdown delivery failed to LP{}; backing reuse blocked",
+            lp
+        );
+        loop {
+            unsafe {
+                core::arch::asm!("cli", "hlt", options(nomem, nostack));
+            }
         }
     }
     crate::cpu::isa::x86_64::memory::tlb::flush_current_non_global();
@@ -111,4 +122,36 @@ pub fn send_sync_shootdown() {
     if interrupts_were_enabled {
         unmask_interrupts!();
     }
+}
+
+fn send_to_remote_lps(
+    lp_count: u32,
+    self_id: u32,
+    mut send: impl FnMut(u32) -> bool,
+) -> Result<(), u32> {
+    for lp in 0..lp_count {
+        if lp != self_id && !send(lp) {
+            return Err(lp);
+        }
+    }
+    Ok(())
+}
+
+/// Single-LP boot fixture: fake delivery never invokes hardware handlers.
+pub(crate) fn test_failed_delivery() {
+    assert!(!SYNC_SHOOTDOWN_READY.load(Ordering::Acquire));
+    SYNC_IPI_BARRIER.store(3, Ordering::SeqCst);
+    let mut seen = 0;
+    assert_eq!(
+        send_to_remote_lps(4, 0, |lp| {
+            seen += 1;
+            lp != 2
+        }),
+        Err(2)
+    );
+    assert_eq!(seen, 2);
+    assert_eq!(SYNC_IPI_BARRIER.load(Ordering::SeqCst), 3);
+    SYNC_IPI_BARRIER.store(0, Ordering::SeqCst);
+    assert_eq!(send_to_remote_lps(4, 2, |lp| lp != 2), Ok(()));
+    crate::logln!("[ipi] delivery failure does not acknowledge invalidation; self excluded");
 }

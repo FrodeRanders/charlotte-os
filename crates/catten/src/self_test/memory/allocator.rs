@@ -17,6 +17,7 @@ use crate::{
 };
 
 pub fn test_allocator() {
+    crate::memory::allocators::memory::retirement_tests::test_kernel_retirement();
     logln!("Starting the kernel allocator self-test...");
     let reserve = HEAP_GROWTH_RESERVE_BYTES.load(Ordering::Relaxed);
     assert!(

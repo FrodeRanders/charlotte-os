@@ -82,7 +82,9 @@ Before enforcing complete page-table quotas:
    frames before clearing parents/invalidation. New tables/data are initialized
    before publication; x86 entries are assembled before one publishing store.
    See [the lifetime contract](../../reference/page-table-lifetime.md).
-2. Close the separate data-retirement/shootdown gaps (SEC-18), then enforce
+2. Kernel ranges now use [owning retirement](../../reference/kernel-frame-retirement.md),
+   and x86 failed IPI delivery fails closed rather than crediting a recipient.
+   Close the remaining user/domain locking gaps (SEC-18), then enforce
    reliable quiescence at every physical release. Future live compaction must
    own detached tables until invalidation and walk quiescence are established.
    Never hold a registry required by an IPI recipient across a synchronous

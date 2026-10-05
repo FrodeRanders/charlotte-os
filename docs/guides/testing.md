@@ -524,6 +524,22 @@ its backing, guarding against exclusive-end overflow in range invalidation.
 This checks physical ownership/reuse, not a concurrent hardware-walk race or
 failed cross-LP shootdown. AArch64 guest execution does not execute x86 code.
 
+## Kernel data-retirement tests
+
+Boot fixtures warm a retained kernel table subtree, then compare actual data
+counts across detach, injected failed invalidation, successful retry and repeated
+release. Partial allocation/map failures and a real foreign `AlreadyMapped`
+leaf exercise rollback ownership. Bounds reject before mutation. The Drop
+fallback fixture intentionally quarantines one 4 KiB page; this is a specified
+test reservation, not a successfully released frame. See
+[kernel data retirement](../reference/kernel-frame-retirement.md).
+
+The x86-only fake IPI sender checks that failed delivery never decrements the
+acknowledgement barrier. This compiles on x86 but requires its guest to execute;
+it does not trigger a real delivery failure or the fatal halt path. Live
+cross-LP virtual reuse, unresponsive recipients and lifecycle-lock retirement
+remain separate validation work.
+
 ## Rule for new service logic
 
 Keep the thin syscall loop and process entry point in an EL0 binary. Put policy

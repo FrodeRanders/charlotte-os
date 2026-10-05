@@ -192,6 +192,12 @@ the never-issued property is preserved. The safe model exercises
 | Hardware-ASID `Allocate` / `Retire` / `Invalidate` | AArch64 hardware-ASID allocator and TLB invalidation | Abstract: page-table contents are omitted; tag reuse is allowed only after invalidation removes stale translations. |
 | Interrupt-route `Bind` / `QueueWake` / `Unbind` / `DrainSafe` | device interrupt binding, route generation, deferred wake drain | Abstract generation-fencing check for one route. The implementation now has independent atomic mailboxes with retained watermarks and a guarded CQ preparation step; mailbox capacity, atomic claim/publication, binding exhaustion and controller MMIO are not modeled here. |
 
+This lifetime model abstracts hardware walk/TLB quiescence. Concrete kernel
+ranges now retain removed data in `RetiredKernelRange` through post-guard
+invalidation; Drop quarantines and x86 delivery failure is fail-stop. The model
+does not prove that protocol, recipient progress, or the still-open x86
+user/device/domain masking-guard retirement paths (SEC-18).
+
 The August `memory_map_any` work did not change memory ownership in
 `CharlotteIPC`; it changed address-space placement. Its safety-relevant part
 is the generation-keyed scratch cursor and lifecycle serialization represented

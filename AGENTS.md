@@ -88,6 +88,12 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   and complete entry permissions before publishing a valid table/leaf link.
   Returning a leaf frame does not authorize reuse before cross-LP invalidation.
   See `docs/reference/page-table-lifetime.md` for the current policy and gaps.
+- Kernel-range rollback/teardown uses `RetiredKernelRange`, supplied outside
+  arena/page-table guards. Detach first, release guards, then explicitly release
+  backing after invalidation. Its Drop quarantines; it must never rendezvous or
+  free unconfirmed backing under an unknown lock. Early-boot metadata is inline
+  and bounded. Never turn failed IPI delivery into an acknowledgement. See
+  `docs/reference/kernel-frame-retirement.md` for scope and remaining x86 work.
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`

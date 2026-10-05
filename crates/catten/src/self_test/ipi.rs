@@ -21,6 +21,8 @@ use crate::{
 };
 
 pub fn test_ipi_bounded_queue() {
+    #[cfg(target_arch = "x86_64")]
+    crate::cpu::isa::interrupts::fixed::ipis::test_failed_delivery();
     logln!("Testing bounded IPI queue and typed-message dispatch...");
 
     // We test on the calling LP (LP 0, the BSP). The API works regardless of

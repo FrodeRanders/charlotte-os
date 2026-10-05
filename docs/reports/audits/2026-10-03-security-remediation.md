@@ -32,7 +32,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-15 | Mitigated | SigV4 prefixed secret, derived keys, HMAC block/pads and inner digest use zeroizing owners. TLS record buffers are wiped after dropping their borrower, including handshake failure. This is not a complete audit of crypto-library state or compiler-created secret copies. |
 | SEC-16 | Implemented | grantctl polls bounded concurrent operations with per-sender/generation limits and total deadlines. Non-parking authorized lookup avoids a shared name-service waitlist leak. Acquisition retries and publication waits have total deadlines. A two-application cancellation stress and silent-endpoint publication timeout pass in the guest; many-client fairness and controller-replacement testing remain. |
 | SEC-17 | Implemented for dynamic table unmap | Both walkers retain empty intermediate tables linked and owned for reuse until quiescent address-space teardown, removing premature table recycling. Tables/data are initialized before publication; x86 entries publish complete permissions/cache selection together. Private sparse-alias/reuse/teardown fixtures pass on AArch64. Concurrent walk-race reproduction, live compaction, full table admission and x86 guest execution remain outside this validation. Broader physical-release/shootdown gaps are SEC-18. |
-| SEC-18 | Open; added by source review 2026-10-05 | Kernel-range cleanup releases data before removing mappings/invalidation. Some x86 shootdown callers retain interrupt-masking lifecycle/other guards, and failed IPI delivery is treated as acknowledgement. Introduce owning retirement through a lock-safe, fail-closed quiescence boundary before frame reuse or refunds. Source-review concerns, not demonstrated races or exploits. |
+| SEC-18 | Partially implemented | Owning kernel-range retirement detaches before post-arena/table-guard invalidation and physical release, including partial preparation rollback; Drop quarantines. x86 failed IPI delivery no longer decrements the barrier and stops the initiator with ownership latched. User/device/domain lifecycle masking-guard paths, unresponsive recipients, recoverable epoch-fenced failure handling and complete teardown quiescence remain open. The kernel fixtures execute on AArch64; x86 guest and real delivery-failure execution remain pending. |
 
 SEC-07 also includes fixed per-route IRQ readiness storage: repeated or retired
 deliveries cannot exhaust a shared wake queue, and deferred route validation/CQ
@@ -77,7 +77,8 @@ check; AArch64 retains lazy roots. Full table-frame quotas remain open. The
 records the SEC-17 correction: empty intermediate tables now remain linked and
 owned for reuse until quiescent teardown. Full admission must charge that
 retained high-water footprint. Separate data-release and x86 shootdown gaps
-(SEC-18) still require a lock-safe, fail-closed physical-retirement boundary.
+(SEC-18) are partially corrected by owning kernel-range retirement and fail-stop
+IPI delivery. Remaining user/domain locking paths need their own phased boundary.
 See [page-table lifetime](../../reference/page-table-lifetime.md).
 
 ## Enforced contracts
@@ -246,7 +247,7 @@ implementation proof is claimed.
    only then enable production images without fixture fallback. Migrate sibling
    broker/Durga templates to the new signing file-path interface. Keep developer
    fixtures visibly identified and separate from real credentials.
-3. Correct data-frame retirement and reliable quiescence (SEC-18), then extend
+3. Complete user/device/domain retirement and reliable quiescence (SEC-18), then extend
    admission to stacks, retained page-table frames and kernel heap,
    uncharged callback captures and general weak-only/control-block storage. Add
    typed launch-policy limits and observable counters. Preserve rollback and
@@ -2518,3 +2519,74 @@ SEC-07 remains partial for tables, stacks, kernel heap and comprehensive
 metadata. The new lifetime reference, contributor guidance, Markdown and LaTeX
 sources document the implemented policy and remaining gaps. No models or PDF
 were rebuilt.
+
+## Continuation: owning kernel data retirement — 2026-10-05
+
+The table-lifetime batch was committed as `72b31d53`. This pass addresses part
+of SEC-18 without declaring complete physical-retirement safety.
+
+The kernel-range free-before-unmap helper is removed. `RetiredKernelRange`
+retains removed physical backing through post-guard invalidation and release.
+Kernel-stack allocation/teardown creates the receipt outside arena serialization,
+detaches while serialized, then releases arena and page-table guards before
+completing it. Boot heap preparation uses the same rollback boundary.
+
+Provisional frames have an owning preparation wrapper. Allocation or mapping
+failure after an installed prefix retires only that prefix; a real
+`AlreadyMapped` failure cannot remove a foreign leaf. An incomplete detachment
+or failed invalidation retains ownership. Explicit release supports retry;
+successful releases cannot be repeated. Drop quarantines unfinished backing
+and increments an internal raw diagnostic counter, rather than attempting
+blocking invalidation under an unknown lock or publishing speculative headroom.
+
+Receipt metadata is allocation-free with 256 frame slots per operation, checked
+before mutation. This accommodates the present maximum boot heap preparation
+(132 large frames) and sixteen-page kernel stacks. It is a preparation-record
+bound, not a domain/node byte budget. Larger future operations need planned
+chunked ownership or an explicitly revised bound. The kernel-only mutable
+release owner avoids heap-backed error storage before heap initialization;
+application resource owners keep their existing consuming API.
+
+x86 synchronous IPI delivery failure no longer decrements the acknowledgement
+barrier. It logs a fatal diagnostic and halts the initiator with rendezvous
+ownership/barrier latched, so no caller can return and recycle unconfirmed
+backing. Other LPs are not automatically stopped. Missing acknowledgements still
+stall, and this is fail-stop rather than a recoverable timeout/retry protocol.
+
+Validation:
+
+- Allocation/map rejection after an installed prefix, real foreign-leaf
+  preservation, detach-before-free counts, failed invalidation with retained
+  backing, successful retry, repeated release and pre-mutation range/metadata
+  bounds all pass in synchronous kernel fixtures.
+- The Drop fixture intentionally quarantines **one 4 KiB page**. Its free-frame
+  count stays unchanged and `QUARANTINED_KERNEL_PAGES` increases by one. No
+  fixture bypass re-adopts that quarantined frame. This is a permanent test-
+  guest reservation, not a released resource or a new unbounded metadata queue.
+- Final AArch64 security guest under four-LP TCG, fresh
+  `kernel-retirement-20261005-final` instance, HTTP 18090/deployment 17454:
+  **19/19**, no failed/pending tests. Both scoped probes report `0x7fff`, and
+  cancellation traffic retires after 4,440 requests.
+- Guest kernel SHA-256:
+  `f14bbc8452fee89bc0fdf6292a844495e7d631ae8a68550f3697bec23117f223`.
+  Run `/private/tmp/charlotte-security-kernel-retirement-final-run.log`;
+  serial `/private/tmp/charlotte-kernel-retirement-20261005-final-serial.log`.
+  The preceding retirement regression also passed 19/19, before adding the
+  deliberate Drop quarantine probe. Existing soak instances/storage were not
+  modified.
+- Strict locked Clippy passes for AArch64 `acpi,security_test` and x86-64 `acpi`.
+  Host tests pass; log
+  `/private/tmp/charlotte-security-kernel-retirement-host-tests.log`.
+  Formatting and diff checks pass. x86-only fake-sender code checks unchanged
+  acknowledgement counts on failure and exclusion of self, but was compiled
+  rather than executed on this AArch64 machine.
+
+SEC-18 remains partial: user-memory, device and domain lifecycle paths still
+need exact-generation owning retirement phases that release masking guards
+before x86 rendezvous without losing loans/pins or allowing stale restoration.
+Real delivery failure, unresponsive recipients, concurrent virtual reuse,
+recoverable epoch-fenced failure, comprehensive pressure/OOM and complete
+teardown quiescence are not proven here. SEC-07 still includes stack, table,
+kernel-heap and general metadata admission. Contributor instructions, reference
+and guide Markdown, the LaTeX source and TLA+ conformance describe the changed
+boundary; models and the PDF were not rebuilt.

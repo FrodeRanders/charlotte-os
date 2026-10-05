@@ -58,12 +58,11 @@ unmap invalidates locally and requires a completed cross-LP operation before
 physical reuse. Such a rendezvous must not hold interrupt-masking locks that
 can prevent a recipient from servicing its IPI.
 
-The review found separate remaining release gaps, tracked as SEC-18:
-kernel-range cleanup currently frees data before unmapping; several x86
-invalidation callers retain lifecycle/other masking guards; and the synchronous
-IPI sender treats delivery failure as an acknowledgement. These require owning
-data retirement and a fail-closed, lock-safe invalidation boundary. Complete
-cross-LP teardown safety has not been established by this change.
+SEC-18 now has an owning [kernel data-retirement boundary](kernel-frame-retirement.md):
+range cleanup detaches before post-guard invalidation/release, and x86 failed IPI
+delivery cannot count as acknowledgement. Several x86 user/device/lifecycle
+invalidation callers still retain other masking guards. Their retirement phases
+and complete cross-LP teardown safety remain open.
 
 ## Verification
 

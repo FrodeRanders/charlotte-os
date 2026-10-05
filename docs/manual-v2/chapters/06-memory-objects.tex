@@ -86,8 +86,13 @@ their own admission limits. Shared physical data still requires independent
 user translation trees in each domain. Kernel trees are shared and must be
 accounted for once. Automatic promotion of an empty subtree to a large-page
 leaf is not implemented. Returning an unmapped data frame likewise does not
-authorize reuse before translation invalidation has completed; kernel data
-retirement and lock-safe x86 shootdown remain hardening work.
+authorize reuse before translation invalidation has completed. Kernel-range
+cleanup now retains removed data in an owning retirement receipt, releases its
+arena/page-table guards, then invalidates before recycling. Failed preparation
+retains its installed prefix through the same boundary. Forgotten or incomplete
+cleanup quarantines backing. On x86, failed IPI delivery stops the initiator
+rather than counting as acknowledgement. User/domain lifecycle locking and
+recoverable shootdown failure remain hardening work.
 
 \section{Four transfer modes}
 

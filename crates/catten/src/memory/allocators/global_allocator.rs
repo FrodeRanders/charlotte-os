@@ -26,6 +26,7 @@ use crate::{
         PHYSICAL_FRAME_ALLOCATOR,
         allocators::memory::{
             PageSize,
+            RetiredKernelRange,
             try_allocate_and_map_range,
         },
         linear::address_map::{
@@ -82,12 +83,17 @@ pub fn init_primary_allocator() {
         (INITIAL_HEAP_SIZE + growth_reserve) / mebibytes(1)
     );
     let base = LA_MAP.get_region(KernelAllocatorArena).base;
-    try_allocate_and_map_range(
+    let mut retirement = RetiredKernelRange::new();
+    let result = try_allocate_and_map_range(
         base,
         PageSize::Large,
         (INITIAL_HEAP_SIZE + growth_reserve) / PageSize::Large.num_bytes(),
-    )
-    .expect("Failed to allocate and map the kernel heap and its growth reserve");
+        &mut retirement,
+    );
+    // Early boot has no admitted secondary schedulers or allocator dependency.
+    // A failed prefix remains owned until table guards have been released.
+    retirement.release().expect("Failed to retire partial kernel heap backing");
+    result.expect("Failed to allocate and map the kernel heap and its growth reserve");
     unsafe {
         let mut pa_lock = PRIMARY_ALLOCATOR.lock();
         let returned_ptr = pa_lock

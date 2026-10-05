@@ -34,7 +34,10 @@ use crate::{
     memory::{
         AddressSpaceInterface,
         KERNEL_AS,
-        allocators::memory::PageSize,
+        allocators::memory::{
+            PageSize,
+            RetiredKernelRange,
+        },
         linear::{
             VAddr,
             address_map::LA_MAP,
@@ -142,15 +145,21 @@ impl From<memory::Error> for Error {
 /// guard page below and one above, which are recorded in
 /// [`KERNEL_GUARD_PAGE_SET`] so the stack can later be validated and freed.
 pub fn allocate_stack(n_pages: usize) -> Result<VAddr, Error> {
+    let mut retirement = RetiredKernelRange::new();
     // Serialize the whole region-search-then-map sequence against other LPs.
-    let result = with_arena(1, n_pages as u64, || allocate_stack_locked(n_pages));
+    let result = with_arena(1, n_pages as u64, || allocate_stack_locked(n_pages, &mut retirement));
+    // Failed preparation must not free its prefix under the arena/table locks.
+    retirement.release()?;
     if let Ok(base) = result {
         crate::cpu::isa::memory::tlb::inval_range_kernel(base, n_pages);
     }
     result
 }
 
-fn allocate_stack_locked(n_pages: usize) -> Result<VAddr, Error> {
+fn allocate_stack_locked(
+    n_pages: usize,
+    retirement: &mut RetiredKernelRange,
+) -> Result<VAddr, Error> {
     const NUM_GUARD_PAGES: usize = 2;
     let page = PageSize::Standard.num_bytes();
     // find a suitable range in the kernel stack arena
@@ -164,7 +173,12 @@ fn allocate_stack_locked(n_pages: usize) -> Result<VAddr, Error> {
     let lower_guard = stack_region_base;
     let stack_buf_base = stack_region_base + page * (NUM_GUARD_PAGES / 2);
     let upper_guard = stack_buf_base + page * n_pages;
-    memory::try_allocate_and_map_range(stack_buf_base, memory::PageSize::Standard, n_pages)?;
+    memory::try_allocate_and_map_range(
+        stack_buf_base,
+        memory::PageSize::Standard,
+        n_pages,
+        retirement,
+    )?;
     // Record the guard pages (reference-counted; a guard may be shared with an
     // adjacent stack).
     let mut guards = KERNEL_GUARD_PAGES.write();
@@ -176,16 +190,22 @@ fn allocate_stack_locked(n_pages: usize) -> Result<VAddr, Error> {
 /// Deallocate a kernel stack previously allocated by [`allocate_stack`]. The
 /// argument is the base address returned by `allocate_stack`.
 pub fn deallocate_stack(stack_buf_base: VAddr, n_pages: usize) -> Result<(), Error> {
+    let mut retirement = RetiredKernelRange::new();
     // Serialize teardown against concurrent alloc/free on other LPs.
-    let result =
-        with_arena(2, stack_buf_base.into(), || deallocate_stack_locked(stack_buf_base, n_pages));
-    if result.is_ok() {
-        crate::cpu::isa::memory::tlb::inval_range_kernel(stack_buf_base, n_pages);
-    }
+    let result = with_arena(2, stack_buf_base.into(), || {
+        deallocate_stack_locked(stack_buf_base, n_pages, &mut retirement)
+    });
+    // All backing stays marked in-use until this post-guard invalidation.
+    // A partial unmap or failed release quarantines via the owning receipt.
+    retirement.release()?;
     result
 }
 
-fn deallocate_stack_locked(stack_buf_base: VAddr, n_pages: usize) -> Result<(), Error> {
+fn deallocate_stack_locked(
+    stack_buf_base: VAddr,
+    n_pages: usize,
+    retirement: &mut RetiredKernelRange,
+) -> Result<(), Error> {
     let page = PageSize::Standard.num_bytes();
     let lower_guard = stack_buf_base - page;
     let upper_guard = stack_buf_base + page * n_pages;
@@ -195,7 +215,7 @@ fn deallocate_stack_locked(stack_buf_base: VAddr, n_pages: usize) -> Result<(), 
             return Err(Error::InvalidStack);
         }
     }
-    memory::unmap_and_deallocate_range(stack_buf_base, PageSize::Standard, n_pages);
+    memory::retire_kernel_range(stack_buf_base, PageSize::Standard, n_pages, retirement)?;
     // Drop a reference on each guard page; remove it only when no adjacent stack
     // still relies on it.
     let mut guards = KERNEL_GUARD_PAGES.write();
