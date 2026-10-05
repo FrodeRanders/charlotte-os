@@ -109,6 +109,15 @@ use successive batches without allocating a teardown snapshot. These owners
 still depend on lifecycle or IPC serialization for the
 address-space identity; they do not yet resolve the x86 lock-held rendezvous gap.
 
+Scratch reservation metadata is prepared fallibly before publishing a virtual
+range. A sorted list records live extents; gaps are implicit, so release removes
+one exact reservation without allocating a free-list node. Partial, combined or
+duplicate releases are rejected. Bulk mapping retirement retains its backing
+pin and loan restrictions if any scratch completion fails, even after successful
+translation invalidation. Completed ranges may be reused; rejected ranges remain
+reserved. This strengthens completion without introducing a live-generation
+lease or a comprehensive kernel-metadata budget.
+
 Final user-root destruction now follows a separate two-phase boundary. Logical
 cleanup detaches the private hierarchy into an owner that leases its software
 slot. After lifecycle and table guards are released, that owner invalidates

@@ -115,6 +115,11 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   guard; do not restore a borrowed-guard API that lets temporary guards survive
   through chained detachment calls. Use the pin's fixed-size frame
   batches; do not allocate teardown snapshots or nest registry/table guards.
+  Scratch admission prepares live-extent metadata fallibly before publication.
+  Release one exact live reservation without allocation; a failed scratch
+  completion must not discharge the mapping pin or clear loan restrictions.
+  Range checks do not replace generation/reservation ownership. See
+  `docs/reference/scratch-admission.md`.
   These pins do not replace lifecycle/IPC serialization or lease an ASID; do
   not drop those guards across numeric-ASID finish without a generation fence.
   See `docs/reference/memory-object-retirement.md`.

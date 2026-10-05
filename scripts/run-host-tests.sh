@@ -24,6 +24,13 @@ mkdir -p "$repo_root/target/host-self-tests"
     -o "$repo_root/target/host-self-tests/id-table-tests"
 "$repo_root/target/host-self-tests/id-table-tests"
 
+# Scratch metadata admission/release is architecture independent. Exercise the
+# production allocator directly, including its local metadata-failure adapter.
+"$host_rustc" --edition=2024 --test \
+    "$repo_root/crates/catten/src/memory/object/scratch.rs" \
+    -o "$repo_root/target/host-self-tests/scratch-window-tests"
+"$repo_root/target/host-self-tests/scratch-window-tests"
+
 manifests=()
 for manifest_path in "$repo_root"/crates/*/Cargo.toml; do
     crate_dir="${manifest_path%/Cargo.toml}"

@@ -561,8 +561,8 @@ inject the final copy/DMA unpin between detach and invalidation, check frame and
 charge retention, borrower authority fencing, and scratch reuse after every
 mapping barrier. Real collision leaves exercise clean and failed rollback,
 installed-prefix retention and physical-identity checks. Partial detach, a
-failed barrier and abandoned receipts deliberately retain **six data pages and
-four object charges** for the guest lifetime, in addition to the kernel-range
+failed barrier, rejected scratch completion and abandoned receipts deliberately
+retain **seven data pages and five object charges** for the guest lifetime, in addition to the kernel-range
 fixture's one page. No test-only recovery bypass frees them. See
 [memory-object retirement](../reference/memory-object-retirement.md). These are
 interleaving fixtures, not concurrent hardware stress or x86 progress proofs.
@@ -573,6 +573,16 @@ asserts registry/table guards are available at detach callbacks, rejects an
 oversized prefix before table work, and injects the last copy unpin before the
 first batch. Exact frame/charge counts return after completion, with no additional
 quarantine. The outer lifecycle/IPC serialization is intentionally retained.
+
+The scratch-completion fixture rejects one of two borrower range completions
+after all invalidations. It verifies last-copy/DMA-unpin retention, safe reuse
+of the completed range, non-reuse of the rejected range, loan fencing and charge
+retention after all three domains close. It accounts for one of the seven
+quarantined pages above. Six standalone host tests exercise the production
+scratch allocator, including exact release rejection, metadata-preflight failure
+and a 6,000-operation first-fit bitmap-oracle trace. Release does not allocate.
+See [scratch admission](../reference/scratch-admission.md) for the remaining
+registry-admission and generation-lease boundaries.
 
 ## Final address-space retirement tests
 

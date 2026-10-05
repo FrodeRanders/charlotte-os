@@ -3026,3 +3026,70 @@ authority ownership before outer guards can be released. SEC-07 table quotas,
 stacks, kernel heap and general metadata remain open. Contributor instructions,
 reference/testing Markdown, manual source and TLA+ conformance were updated;
 models and PDF were not rebuilt.
+
+## Continuation: admitted scratch metadata and failed-completion quarantine — 2026-10-05
+
+The registry/table separation batch was committed as `404b88b5`. The next
+inspection found a concrete completion gap: bulk memory-object retirement
+discarded scratch-release errors before discharging its backing pin and clearing
+loan restrictions. Ordinary unmap already retained its pin on that error. The
+scratch allocator also inserted free-tree nodes during release and relied on a
+debug-only duplicate-entry assertion, rather than validating one exact live
+reservation in optimized builds.
+
+Scratch windows now record sorted live extents with implicit gaps. First-fit
+admission validates nonzero page-aligned size, bounds and checked arithmetic,
+then reserves vector capacity fallibly before publishing an extent. Metadata
+failure returns the existing `ResourceLimit`; invalid/exhausted space returns
+`OutOfScratch`. The old bump/free-tree implementation is removed. Release
+removes one exact live entry without allocation; partial, combined, unknown and
+duplicate releases reject without logical mutation. Vector capacity follows its
+high-water mark until window destruction, and first-fit/entry shifting are
+linear. This is not an aggregate metadata budget or a throughput improvement.
+
+Bulk finish now waits for all invalidations, attempts the surviving domains'
+scratch completions, and retains its backing pin, original charge and loan
+restrictions if any completion rejects. Individually completed quiescent ranges
+may be reused; rejected ranges remain reserved. Failed-map rollback likewise
+retains its pin when scratch completion fails. MMIO explicit close reports
+`UnmapFailed` rather than discarding a scratch error; the capability remains
+consumed and the range is not restored or recycled through an unsafe retry.
+
+Validation:
+
+- The host runner executes six tests against the production scratch allocator:
+  first-fit/gap reuse, unchanged release capacity, exact-release rejection,
+  local metadata-preflight failure, invalid/exhausted/overflow requests,
+  independent windows and a 6,000-operation bitmap-oracle trace. Full host
+  suites, including seven slot-owner tests, pass; log
+  `/private/tmp/charlotte-security-scratch-completion-host-tests.log`.
+- A two-borrower boot fixture injects final copy/DMA unpins during invalidation
+  and rejects one scratch completion before mutating the real allocator. It
+  checks that all barriers precede completion, both release attempts occur,
+  completed-range reuse, rejected-range non-reuse, retained loan records and
+  exact original charge after all three domains close. This deliberately
+  retains **one additional data page and one object charge**; memory-object
+  fixtures now retain seven data pages/five object charges in total. No
+  test-only reclamation bypass is introduced.
+- Four-LP TCG AArch64 security guest, fresh dedicated
+  `scratch-completion-20261005` storage, HTTP 18097/deployment 17461:
+  **19/19**, zero failed/pending, both scoped probes `0x7fff`; cancellation
+  traffic retired after 4,436 requests. Kernel SHA-256:
+  `2d0d5fe781ee0018a4899c9fd6fe3cd177c12124256b029b5ab94900262862f7`.
+  Run `/private/tmp/charlotte-security-scratch-completion-run.log`;
+  serial `/private/tmp/charlotte-scratch-completion-20261005-serial.log`.
+  Existing soak storage/instances were not modified.
+- Strict locked Clippy passes for AArch64 `acpi,security_test` and x86-64
+  `acpi`; formatting and diff checks pass. x86 guest execution remains pending.
+  MMIO success/teardown regressions execute in the AArch64 guest, but an actual
+  MMIO scratch-error path was not injected.
+
+Exact-range matching is not an allocation nonce or an address-space lease: a
+stale internal scalar pair could match a subsequent reservation at the same
+address. Current callers retain lifecycle/IPC serialization and owning mapping
+records. Releasing those guards still requires captured generation and
+reservation/authority owners. The outer per-AS scratch-registry insertion and
+general kernel metadata remain infallible; SEC-07 remains partial, as does
+SEC-18 for live mapping/IPC/MMIO locking, recoverable shootdown and full hardware
+quiescence. Contributor instructions, reference/testing Markdown, manual source
+and TLA+ conformance were updated; models and PDF were not rebuilt.

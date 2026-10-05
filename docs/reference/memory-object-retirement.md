@@ -48,9 +48,12 @@ detach succeeds. Invalidations and scratch/authority completion retain their
 existing ordering. This separation does **not** release the outer lifecycle/IPC
 guard and is not a solution to x86 interrupt-masked rendezvous.
 
-This removes temporary teardown vectors, not all infallible metadata allocation:
-scratch free-extent insertion can still allocate. Comprehensive metadata
-admission and allocation-failure handling remain part of SEC-07.
+Scratch now records live extents with fallible admission before publication;
+release removes an exact existing reservation without allocation. Bulk finish
+retains its pin and loan restrictions on any scratch-completion error, rather
+than ignoring that result. The outer window-registry insertion and general
+metadata admission remain SEC-07 work. See
+[scratch admission](scratch-admission.md) for policy, costs and verification.
 
 The pin also protects ordinary unmap and failed-map rollback: a concurrent
 capability close cannot recycle backing just because its mapping record has
@@ -119,7 +122,12 @@ verifies exact data-frame and charge release after invalidation. It adds no
 permanently retained frames. These guard checks are serialized fixtures, not a
 concurrent lock-order stress test.
 
-Failure probes intentionally quarantine **six 4 KiB data pages and four object
+The scratch-completion probe checks two borrower mappings, all barriers before
+release, last-copy/DMA-unpin retention, successful-range reuse and failed-range
+non-reuse. Its rejected completion retains one extra page/charge even after
+all involved domains close.
+
+Failure probes intentionally quarantine **seven 4 KiB data pages and five object
 charges** for the test guest's lifetime. They never re-adopt the backing. This is
 in addition to the kernel-range fixture's one quarantined page. These fixtures
 model the dangerous interleaving, not a concurrent hardware-walk stress test.

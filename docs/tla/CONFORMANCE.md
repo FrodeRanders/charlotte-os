@@ -210,6 +210,15 @@ batch bounds or their serialized guard-availability fixtures. They do not
 discharge the remaining lifecycle/IPC
 masking-guard or hardware-quiescence obligations.
 
+Scratch admission now prepares a sorted live-extent vector fallibly before
+reservation publication; release removes one exact entry without allocation.
+Bulk retirement retains its backing pin and loan restrictions on any scratch
+completion error. Six direct host allocator tests and a two-borrower guest
+failure adapter cover these concrete paths. Atomic lifetime actions omit
+virtual extents, metadata allocation, partial completion and quarantine counts;
+this change is not an additional model proof or TLC run. Scalar extent matching
+also does not supply an allocation nonce or a live-generation lease.
+
 Concrete root/intermediate allocation now uses `PreparingTable` through
 publication. Private/lower-half allocation preserves the physical progress
 floor, while shared higher-half kernel tables may consume it. Local per-walker

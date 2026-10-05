@@ -35,6 +35,8 @@ const PAGE_SIZE: usize = 4096;
 const RETIREMENT_FRAME_BATCH: usize = 16;
 
 pub(crate) mod retirement_tests;
+mod scratch;
+use scratch::ScratchWindow;
 
 /// Upper bound on a single memory-object allocation, in pages (64 MiB). A
 /// single `memory_alloc` cannot request an unbounded number of frames: this
@@ -525,72 +527,6 @@ const SCRATCH_WINDOW_BASE: u64 = 0x0000_0000_4000_0000;
 const SCRATCH_WINDOW_PAGES: usize = (512 * 1024 * 1024) / PAGE_SIZE;
 const SCRATCH_WINDOW_SIZE: usize = SCRATCH_WINDOW_PAGES * PAGE_SIZE;
 
-/// Scratch allocation belongs to an address-space *lifetime*, not merely its
-/// recyclable numeric ASID. A new generation starts again at the window base;
-/// stale entries are harmless and are replaced on first use by the new owner.
-#[derive(Debug)]
-struct ScratchWindow {
-    generation: usize,
-    /// First byte never allocated from the window's high end.
-    next: usize,
-    /// Coalesced free extents, keyed by byte offset from the window base.
-    free: BTreeMap<usize, usize>,
-}
-
-impl ScratchWindow {
-    fn new(generation: usize) -> Self {
-        Self {
-            generation,
-            next: 0,
-            free: BTreeMap::new(),
-        }
-    }
-
-    fn reserve(&mut self, bytes: usize) -> Result<usize, MemoryObjectError> {
-        if let Some((offset, extent)) = self
-            .free
-            .iter()
-            .find_map(|(offset, extent)| (*extent >= bytes).then_some((*offset, *extent)))
-        {
-            self.free.remove(&offset);
-            if extent > bytes {
-                self.free.insert(offset + bytes, extent - bytes);
-            }
-            return Ok(offset);
-        }
-
-        let offset = self.next;
-        let end = offset.checked_add(bytes).ok_or(MemoryObjectError::OutOfScratch)?;
-        if end > SCRATCH_WINDOW_SIZE {
-            return Err(MemoryObjectError::OutOfScratch);
-        }
-        self.next = end;
-        Ok(offset)
-    }
-
-    fn release(&mut self, mut offset: usize, mut bytes: usize) {
-        if let Some((previous_offset, previous_bytes)) =
-            self.free.range(..offset).next_back().map(|(offset, bytes)| (*offset, *bytes))
-            && previous_offset + previous_bytes == offset
-        {
-            self.free.remove(&previous_offset);
-            offset = previous_offset;
-            bytes += previous_bytes;
-        }
-
-        while let Some(next_bytes) = self.free.remove(&(offset + bytes)) {
-            bytes += next_bytes;
-        }
-
-        if offset + bytes == self.next {
-            self.next = offset;
-        } else {
-            let replaced = self.free.insert(offset, bytes);
-            debug_assert!(replaced.is_none(), "scratch extent released twice");
-        }
-    }
-}
-
 static SCRATCH_WINDOWS: crate::memory::LazyLock<
     crate::memory::Mutex<BTreeMap<AddressSpaceId, ScratchWindow>>,
 > = crate::memory::LazyLock::new(|| crate::memory::Mutex::new(BTreeMap::new()));
@@ -604,15 +540,22 @@ pub(crate) fn reserve_scratch(
     pages: usize,
 ) -> Result<VAddr, MemoryObjectError> {
     let bytes = pages.checked_mul(PAGE_SIZE).ok_or(MemoryObjectError::OutOfScratch)?;
+    if bytes == 0 {
+        return Err(MemoryObjectError::OutOfScratch);
+    }
     let generation = crate::memory::current_address_space_handle(asid)
         .ok_or(MemoryObjectError::AddressSpaceMissing)?
         .generation();
     let mut windows = SCRATCH_WINDOWS.lock();
-    let window = windows.entry(asid).or_insert_with(|| ScratchWindow::new(generation));
+    let window =
+        windows.entry(asid).or_insert_with(|| ScratchWindow::new(generation, SCRATCH_WINDOW_SIZE));
     if window.generation != generation {
-        *window = ScratchWindow::new(generation);
+        *window = ScratchWindow::new(generation, SCRATCH_WINDOW_SIZE);
     }
-    let slot = window.reserve(bytes)?;
+    let slot = window.reserve(bytes).map_err(|error| match error {
+        scratch::Error::AllocationFailed => MemoryObjectError::ResourceLimit,
+        _ => MemoryObjectError::OutOfScratch,
+    })?;
     Ok(VAddr::from(SCRATCH_WINDOW_BASE + (slot as u64)))
 }
 
@@ -640,8 +583,7 @@ pub(crate) fn release_scratch(
     if window.generation != generation {
         return Err(MemoryObjectError::AddressSpaceMissing);
     }
-    window.release(offset, bytes);
-    Ok(())
+    window.release(offset, bytes).map_err(|_| MemoryObjectError::OutOfScratch)
 }
 
 /// Forget all scratch allocation state when this exact address-space lifetime
@@ -673,14 +615,21 @@ pub fn map_any(
     let mut pin = None;
     let result = map_locked(asid, cap, base, writable, true, &mut pin);
     crate::cpu::isa::memory::tlb::inval_range_user(asid, base, pages);
+    let mut scratch_released = true;
     if let Err(error) = result {
         // If rollback itself failed, retaining the virtual range is safer than
         // aliasing a page-table entry that may still exist.
         if error != MemoryObjectError::UnmapFailed {
-            let _ = release_scratch(asid, base, pages);
+            scratch_released = release_scratch(asid, base, pages).is_ok();
+            if !scratch_released {
+                crate::early_logln!(
+                    "[memory object] map rollback scratch release failed asid={asid}"
+                );
+            }
         }
     }
     if result != Err(MemoryObjectError::UnmapFailed)
+        && scratch_released
         && let Some(pin) = pin
     {
         pin.release(None);
@@ -1784,7 +1733,16 @@ impl RetiredObjectMappings {
     fn finish_with(
         self,
         closing_asid: AddressSpaceId,
+        invalidate: impl FnMut(AddressSpaceId, VAddr, usize) -> bool,
+    ) {
+        self.finish_with_scratch(closing_asid, invalidate, release_scratch);
+    }
+
+    fn finish_with_scratch(
+        self,
+        closing_asid: AddressSpaceId,
         mut invalidate: impl FnMut(AddressSpaceId, VAddr, usize) -> bool,
+        mut release: impl FnMut(AddressSpaceId, VAddr, usize) -> Result<(), MemoryObjectError>,
     ) {
         let mut quiescent = true;
         self.mappings.for_each(|asid, mapping| {
@@ -1800,11 +1758,20 @@ impl RetiredObjectMappings {
             );
             return; // Pin/charge/backing remain; no scratch or authority reuse.
         }
+        let mut scratch_released = true;
         self.mappings.for_each(|asid, mapping| {
             if asid != closing_asid && mapping.scratch {
-                let _ = release_scratch(asid, mapping.base, self.pages);
+                scratch_released &= release(asid, mapping.base, self.pages).is_ok();
             }
         });
+        if !scratch_released {
+            crate::early_logln!(
+                "[memory object] quarantined object={} pages={} scratch release failed",
+                self.pin.object,
+                self.pages
+            );
+            return; // Retain backing/charge and loan restrictions after failed completion.
+        }
         self.pin.release(Some(closing_asid));
     }
 }

@@ -1,6 +1,6 @@
 //! Single-mutator boot fixtures at the raw kernel ownership boundary. Fault
 //! adapters exercise the same detach/finish helpers as runtime teardown.
-//! Quarantine probes intentionally reserve six data pages for the guest's
+//! Quarantine probes intentionally reserve seven data pages for the guest's
 //! lifetime; there is no test-only re-adoption/release escape hatch.
 
 use super::*;
@@ -42,6 +42,7 @@ fn invalidate(asid: usize, base: VAddr, pages: usize) -> bool {
 
 pub(crate) fn run(mut create: impl FnMut(&str) -> usize) {
     test_batched_detach(&mut create);
+    test_scratch_completion_failure(&mut create);
     test_last_unpin(&mut create);
     test_borrower_fence(&mut create);
     test_failed_detach(&mut create);
@@ -49,9 +50,81 @@ pub(crate) fn run(mut create: impl FnMut(&str) -> usize) {
     test_failed_map_cleanup(&mut create);
     crate::logln!(
         "[object retirement] bounded lock-separated batches, last-unpin fence, borrower \
-         authority, partial detach, failed barrier, Drop quarantine and foreign-leaf preservation \
-         passed (six reserved data pages)"
+         authority, scratch rejection, partial detach, failed barrier, Drop quarantine and \
+         foreign-leaf preservation passed (seven reserved data pages)"
     );
+}
+
+fn test_scratch_completion_failure(create: &mut impl FnMut(&str) -> usize) {
+    let owner = create("retirement scratch failure owner");
+    let first = create("retirement scratch success borrower");
+    let second = create("retirement scratch failure borrower");
+    let handle = current_address_space_handle(owner).unwrap();
+    let cap = allocate(owner, 1).unwrap();
+    let id = object_id(owner, cap);
+    let first_loan = lend_read(owner, cap, first).unwrap();
+    let second_loan = lend_read(owner, cap, second).unwrap();
+    let first_base = map_any(first, first_loan, false).unwrap();
+    let second_base = map_any(second, second_loan, false).unwrap();
+    let mut copy = Some(pin_for_copy(owner, cap).unwrap());
+    let mut dma = Some(pin_for_dma(second, second_loan, true, false, false).unwrap());
+    let before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    {
+        let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+        let receipt = detach(id, owner);
+        let mut releases = 0;
+        let barriers = core::cell::Cell::new(0);
+        receipt.finish_with_scratch(
+            owner,
+            |asid, base, pages| {
+                if let Some(pin) = copy.take() {
+                    unpin_copy(pin);
+                }
+                if let Some(pin) = dma.take() {
+                    unpin_dma(pin);
+                }
+                assert_eq!(budget::used(handle), amount(1));
+                assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before);
+                barriers.set(barriers.get() + 1);
+                invalidate(asid, base, pages)
+            },
+            |asid, base, pages| {
+                assert!(MEMORY_OBJECTS.try_lock().is_some());
+                assert!(SCRATCH_WINDOWS.try_lock().is_some());
+                assert_eq!(barriers.get(), 2, "scratch released before all barriers");
+                assert_eq!(pages, 1);
+                releases += 1;
+                if asid == second {
+                    assert_eq!(base, second_base);
+                    // Reject before mutating the real allocator's reservation.
+                    Err(MemoryObjectError::OutOfScratch)
+                } else {
+                    assert_eq!(asid, first);
+                    assert_eq!(base, first_base);
+                    release_scratch(asid, base, pages)
+                }
+            },
+        );
+        assert_eq!(releases, 2);
+        assert_eq!(MEMORY_OBJECTS.lock().objects[&id].retirement_pins, 1);
+        assert!(MEMORY_OBJECTS.lock().objects[&id].lend_state.references_cap(first, first_loan));
+        assert!(MEMORY_OBJECTS.lock().objects[&id].lend_state.references_cap(second, second_loan));
+        assert_eq!(close_cap(owner, cap), Err(MemoryObjectError::LendingActive));
+        assert_eq!(budget::used(handle), amount(1));
+        assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before);
+        // Completed quiescent ranges can be reused; the rejected range cannot.
+        let reused = reserve_scratch(first, 1).unwrap();
+        assert_eq!(reused, first_base);
+        let retained = reserve_scratch(second, 1).unwrap();
+        assert_ne!(retained, second_base);
+        release_scratch(first, reused, 1).unwrap();
+        assert_eq!(release_scratch(first, reused, 1), Err(MemoryObjectError::OutOfScratch));
+        release_scratch(second, retained, 1).unwrap();
+    }
+    close_test_address_space(first).unwrap();
+    close_test_address_space(second).unwrap();
+    close_test_address_space(owner).unwrap();
+    assert_eq!(budget::used(handle), amount(1), "failed completion retains original charge");
 }
 
 fn test_batched_detach(create: &mut impl FnMut(&str) -> usize) {

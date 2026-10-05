@@ -934,11 +934,12 @@ pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError
                 }
                 crate::cpu::isa::memory::tlb::inval_range_user(asid, base, region.pages);
                 if !failed && region.scratch_mapped {
-                    let _ = crate::memory::object::release_scratch(asid, base, region.pages);
+                    failed |=
+                        crate::memory::object::release_scratch(asid, base, region.pages).is_err();
                 }
                 if failed {
-                    // The capability is still consumed: partial unmapping
-                    // cannot be rolled back into a sound owned MMIO object.
+                    // The capability is still consumed: partial unmapping or
+                    // failed scratch completion cannot restore a sound owner.
                     // Its scratch range remains quarantined for this AS.
                     close_error = Some(DeviceError::UnmapFailed);
                 }
