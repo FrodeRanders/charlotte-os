@@ -42,10 +42,11 @@ mailbox queue-backing admission.
 
 Shared namespace accounting now includes all capability kinds and enforces
 staged admission for mailbox, completion and memory publication. Exact namespace
-tokens fence cancellation/publication; owning prepared memory moves integrate
-source escrow and backing retention, including atomic IPC move-batch commit.
-Scalar reverse-move cleanup is removed. Copies/loans enforce destination quota
-but still need hidden staging in mixed-mode vectors. Other families
+tokens fence cancellation/publication; owning prepared memory transfers integrate
+source escrow/backing retention or private-copy backing, with atomic mixed-mode
+IPC memory publication. Scalar reverse-move and receiver-alias rollback are
+removed. Reply tokens track every vector loan, and kernel buffer/DMA operations
+enforce loan permissions. Other families
 can still exceed shared policy through explicitly named unconverted paths.
 Thus the complete capability-namespace admission requirement remains open;
 this is not a backward-compatibility promise for those paths.
@@ -1900,3 +1901,98 @@ other open findings remain. No exhaustive concurrent-retirement exploration,
 end-to-end multi-state upgrade test, x86-64 guest or new formal proof was run.
 The TLA+ conformance notes were updated; models and the PDF were not rebuilt.
 SEC-07 remains partial.
+
+## Continuation: hidden mixed-mode memory preparation — 2026-10-05
+
+The memory-admission and owning-move batch was committed as `50cf60e7`.
+This continuation extends that owner to every memory transfer mode. The
+kernel API is now `PreparedTransfer`/`commit_transfers`; `SourceEscrow` reflects
+its use for loans as well as moves. No compatibility wrappers remain for the
+old move-only API or vector alias-rollback ladder.
+
+Copies hold private charged frames outside the receiver's payload registry.
+Loans retain source escrow/backing pins but install no borrower state until
+commit. Every destination remains non-authoritative during preparation. A
+receiver guessing a staged handle cannot map, write, close, query physical
+backing or pin it. Cancellation therefore needs no operation on mutable
+receiver state and removes the prior assertion that vector alias rollback must
+be infallible. Mixed batches validate every lifetime before publishing all
+memory authority under one capability-registry hold; payload updates follow
+under the same memory guard.
+
+Allocation/copy backing admission now checks the sponsor generation captured
+before preparation. A delayed reservation cannot accidentally charge an ASID
+successor. Retained copied or pinned backing still debits its original sponsor
+until physical release. Read-loan preparation permits pre-existing read-only
+mappings/borrowers; write loans require exclusive unmapped backing. Existing
+read-only mappings can still read during source-capability escrow.
+
+Inspection also found that `vector_call` previously created read/write loans
+without retaining them in its reply token. Tokens now own a bounded vector of
+all loan pairs, allocated before publication. Reply, queued/delivered caller
+cancellation, reply-token close and queued endpoint close revoke every loan.
+Queued cancellation additionally releases copies/moves; already-delivered
+ownership remains with the receiver. Each successful reply revocation is
+removed immediately, so a later failure does not cause duplicate revocation.
+Committed mapped-loan unmap failure is still a fallible operation; private
+preparation cancellation is not that path.
+
+Kernel `snapshot_bytes`, `write_bytes` and DMA pinning now respect live loan
+permissions, not only capability bits. An owner cannot write through read loans
+or read/write/DMA through another domain's exclusive write loan. The designated
+write borrower retains its granted access. Preparation pins continue to fence
+tracked writes while retaining backing.
+
+Validation also exposed a runner race: its prefix-only completion check stopped
+QEMU in the middle of `SELFTEST COMPLETE`, leaving a truncated result. The
+shared AArch64/x86-64 stop condition now requires a fully terminated record.
+Final validation uses the same parser and requires a successful verdict; the
+poll loop caches completion during long holds. Five host parser tests cover
+every partial prefix, LF/CRLF, a subsequent partial line, complete failed/pending
+verdicts, malformed/truncated results and panic rejection. This is a capture
+correctness repair, not a new kernel containment claim.
+
+Validation:
+
+- Host regression/signing and boot-result tests passed. Strict AArch64/security
+  and x86-64 kernel Clippy passed with `-D warnings`; workspace formatting,
+  shell syntax and diff checks passed.
+- Deterministic real-domain fixtures paused copy/read-loan/write-loan
+  preparation and attempted guessed-handle access. They checked copy snapshot
+  independence/refunds, cancellation at the source ceiling, a source read-only
+  mapping, all-or-none mixed retirement and exact source/destination
+  ASID/numeric-handle reuse without affecting successor budgets or authority.
+  Stale captured backing reservations were rejected.
+- Actual kernel vector calls checked failure after each transfer kind with a
+  full source namespace, denied copy backing after a prepared loan, and
+  four-mode delivery. Mapped read/write loans were revoked on reply, queued and
+  delivered cancellation, reply-token close and queued endpoint close. Queued
+  copied/moved backing was reclaimed; delivered copy/move ownership survived.
+  Owner snapshot/write/DMA paths rejected access forbidden by active loans.
+- The initial guest passed before the final DMA assertions. The next reached
+  the new regression markers but was stopped mid-verdict by the runner race;
+  it is **not** counted as a passing authoritative capture. After repairing
+  the runner, the verified four-LP AArch64/TCG guest passed **19 tests, 0 failed,
+  0 pending**, including both scoped launches with unchanged `0x7fff` checks.
+  Cancellation stress retired after 4,388 requests. Bundled services were
+  rebuilt through the normal runner, using isolated storage/ports. Existing
+  soak guests and storage were untouched.
+
+The verified kernel SHA-256 is
+`5c28e42f33d2893f0c40743dbf300d5f109634d1a16063678bb44153021c5d4d`.
+Evidence: `/private/tmp/charlotte-security-memory-staging-host-tests.log`,
+`/private/tmp/charlotte-security-memory-staging-*-clippy.log`,
+`/private/tmp/charlotte-security-memory-staging-verified-run.log` and
+`/private/tmp/charlotte-memory-staging-verified-20261005-serial.log`.
+The truncated capture is retained as `memory-staging-final`/`final-run` for
+comparison. Preliminary compilation corrected a renamed-helper shadow and the
+captured generation type; these were not passing validation runs.
+
+SEC-07 remains partial: fresh IPC/device/system-observer capability publication
+still uses the counted but unbounded allocator, including receive-side reply
+authority. General allocator bytes, BTreeMap/physical-allocation failure paths,
+loader/page-table/heap budgets and other open audit findings remain. The new
+tests are kernel fixtures, not new real-EL0 quota probes or exhaustive concurrent
+retirement/unmap-failure exploration. No x86-64 guest, end-to-end multi-state
+upgrade test or new formal proof ran. TLA+ conformance and LaTeX sources were
+updated; models and the PDF were not rebuilt.

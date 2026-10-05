@@ -24,6 +24,8 @@
 //! Expected outcome: all assertions pass; the tests log their success and the
 //! boot suite reports them as part of the synchronous phase.
 
+mod vector;
+
 use crate::{
     cpu::isa::{
         interface::memory::{
@@ -1637,6 +1639,7 @@ pub fn test_vector_ipc_transaction_rollback() {
     close_test_address_space(server).expect("vector server AS close failed");
     close_test_address_space(result_owner).expect("vector result owner AS close failed");
     test_memory_attachment_admission();
+    vector::test_mixed_vectors();
     logln!("Vector IPC transaction rollback test passed.");
 }
 

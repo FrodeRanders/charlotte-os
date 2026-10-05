@@ -148,11 +148,30 @@ impl Drop for Charge {
 }
 
 pub fn reserve(owner: AddressSpaceId, amount: Amount) -> Result<Charge, Error> {
+    reserve_inner(owner, None, amount)
+}
+
+/// Retain the sponsor generation captured before a multi-step operation.
+pub(crate) fn reserve_captured(
+    handle: AddressSpaceHandle,
+    amount: Amount,
+) -> Result<Charge, Error> {
+    reserve_inner(handle.id(), Some(handle.generation()), amount)
+}
+
+fn reserve_inner(
+    owner: AddressSpaceId,
+    expected: Option<usize>,
+    amount: Amount,
+) -> Result<Charge, Error> {
     // Hold the table through reservation. Retirement installs a tombstone
     // before payload teardown and removes it only after this slot disappears.
     // No IPC -> lifecycle lock acquisition is introduced here.
     let table = super::ADDRESS_SPACE_TABLE.lock();
     let generation = table.generation(owner).map_err(|_| Error::StaleDomain)?;
+    if expected.is_some_and(|expected| expected != generation) {
+        return Err(Error::StaleDomain);
+    }
     let identity = (owner, generation);
     let mut ledger = LEDGER.lock();
     let account = ledger.account(identity);

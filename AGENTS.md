@@ -56,9 +56,9 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   before payload/ownership mutation and publish under the subsystem's
   serialization. Retain the captured namespace identity, not just its ASID.
   `reserve_captured` requires that registry's captured generation and guard;
-  do not acquire lifecycle under a subsystem guard. A source move needs an
-  owning payload transaction as well as capability escrow; use `PreparedMove`
-  and `commit_moves` rather than reconstructing scalar cleanup. Do not add
+  do not acquire lifecycle under a subsystem guard. A source move or loan needs an
+  owning payload transaction as well as capability escrow; use `PreparedTransfer`
+  and `commit_transfers` rather than reconstructing scalar cleanup. Do not add
   callers of `allocate_unmigrated`; it identifies unfinished migrations, not
   a supported compatibility API. The scalar restoration API is removed. See
   `docs/reference/capability-admission.md` for the current enforcement scope.

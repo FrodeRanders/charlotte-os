@@ -29,7 +29,7 @@ pub(crate) fn test_admission() {
     assert!(contains(OWNER, cap, ObjectKind::Ipc));
     assert!(!remove(OWNER, cap, ObjectKind::Memory));
     assert!(matches!(
-        begin_move(OWNER, cap, ObjectKind::Memory),
+        escrow(OWNER, cap, ObjectKind::Memory),
         Err(AllocationError::UnknownCapability)
     ));
     assert!(remove(OWNER, cap, ObjectKind::Ipc));
@@ -54,14 +54,14 @@ pub(crate) fn test_admission() {
     assert!(total >= local.used() && ordinary >= local.used());
     assert!(matches!(reserve(OWNER, ObjectKind::Memory), Err(AllocationError::ResourceLimit)));
     let (source, kind) = records.pop().unwrap();
-    let escrow = begin_move(OWNER, source, kind).unwrap();
+    let retained = escrow(OWNER, source, kind).unwrap();
     assert_eq!(local.used(), budget::DOMAIN_LIMIT);
     assert!(!contains(OWNER, source, kind));
     assert!(!remove(OWNER, source, kind));
     assert!(matches!(reserve(OWNER, kind), Err(AllocationError::ResourceLimit)));
-    assert_eq!(escrow.restore(), Ok(source));
+    assert_eq!(retained.restore(), Ok(source));
     assert!(contains(OWNER, source, kind));
-    drop(begin_move(OWNER, source, kind).unwrap());
+    drop(escrow(OWNER, source, kind).unwrap());
     assert_eq!(local.used(), budget::DOMAIN_LIMIT - 1);
     let replacement = try_allocate(OWNER, kind).unwrap();
     assert!(replacement > source);
@@ -102,7 +102,7 @@ fn test_replacement_tokens() {
     let old_staged = reserve(OWNER, ObjectKind::Memory).unwrap();
     let staged_id = old_staged.identity();
     let old_live = try_allocate(OWNER, ObjectKind::Ipc).unwrap();
-    let old_escrow = begin_move(OWNER, old_live, ObjectKind::Ipc).unwrap();
+    let old_escrow = escrow(OWNER, old_live, ObjectKind::Ipc).unwrap();
     let old = account(OWNER);
     close_address_space(OWNER);
     assert_eq!(old.used(), 0);
@@ -110,7 +110,7 @@ fn test_replacement_tokens() {
     assert_eq!(new_staged.identity(), staged_id);
     let new_live = try_allocate(OWNER, ObjectKind::Ipc).unwrap();
     assert_eq!(new_live, old_live);
-    let new_escrow = begin_move(OWNER, new_live, ObjectKind::Ipc).unwrap();
+    let new_escrow = escrow(OWNER, new_live, ObjectKind::Ipc).unwrap();
     let new = account(OWNER);
     assert_eq!(old_staged.publish(), Err(AllocationError::Retired));
     assert_eq!(old_escrow.restore(), Err(AllocationError::Retired));
@@ -122,7 +122,7 @@ fn test_replacement_tokens() {
 
     let staged = reserve(OWNER, ObjectKind::Memory).unwrap();
     let live = try_allocate(OWNER, ObjectKind::Ipc).unwrap();
-    let escrow = begin_move(OWNER, live, ObjectKind::Ipc).unwrap();
+    let escrow = escrow(OWNER, live, ObjectKind::Ipc).unwrap();
     let local = account(OWNER);
     retire_address_space(OWNER);
     assert!(matches!(reserve(OWNER, ObjectKind::Memory), Err(AllocationError::Retired)));

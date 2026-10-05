@@ -87,14 +87,15 @@ shared policy. These limits therefore do not establish full aggregate protection
 
 Staged capability owners now capture exact namespace identity, and source
 escrow preserves a rollback slot at capacity. Production memory moves, including
-IPC move vectors, now use an owning prepared transaction and atomic move-batch
-publication. Completing the cutover still needs these contracts:
+all four IPC vector modes, now use owning prepared transactions and atomic
+mixed-mode publication. Copies stay private and loans have no live borrower
+state during preparation. Completing the cutover still needs these contracts:
 
 - Reserve destination identities/counts before mutating endpoint, connection,
   call, device or system-observer payload state.
-- Keep copied/loaned vector aliases hidden until complete IPC publication.
-  Move destinations already remain staged until batch commit. Receive-side
-  reply capability admission must preserve the queued message on rejection.
+- Extend staged authority to the fresh IPC call/reply/connection records as
+  well as memory attachments. Receive-side reply capability admission must
+  preserve the queued message on rejection.
 - Retain an exact namespace identity in staged owners. Their Drop must not
   revoke a replacement's reused numeric handle.
 - Retire admission before payload teardown, and use the same trusted

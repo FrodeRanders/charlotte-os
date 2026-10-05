@@ -58,15 +58,19 @@ enters `CAPABILITIES` and must run outside that registry's own guard. See
 [shared capability admission](capability-admission.md) for enforcement scope.
 
 Memory-object admission captures source/target handles before taking
-`MEMORY_OBJECTS`, then uses `reserve_captured`/`begin_move_captured`:
+`MEMORY_OBJECTS`, then uses `reserve_captured`/`escrow_captured`:
 `MEMORY_OBJECTS → CAPABILITIES → capability domain → node`. Batch commit holds
-the memory registry while validating and atomically publishing all move
+the memory registry while validating and atomically publishing all mixed-mode
 authorities; payload updates follow under the same guard. Neither admission nor
-publication acquires lifecycle under a subsystem. `PreparedMove` Drop cancels
+publication acquires lifecycle under a subsystem. `PreparedTransfer` Drop cancels
 captured authority before releasing its backing-retention pin, which reenters
 `MEMORY_OBJECTS`; the owner must therefore drop outside that registry guard.
-IPC vector owners drop under IPC serialization, using the existing
-lifecycle-free loan revocation helper for non-move aliases.
+IPC vector owners drop under IPC serialization; private loan cancellation
+restores source escrow without live borrower state or an unmap/shootdown.
+Committed reply/cancellation revocation uses the existing lifecycle-free loan
+helper and removes each successful revocation from the reply token immediately.
+Private copy frames use captured-generation backing admission under address-space
+table → memory ledger, preventing a delayed allocation from charging a successor.
 
 ---
 

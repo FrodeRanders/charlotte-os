@@ -47,7 +47,7 @@ supervisor and an optional old endpoint from which to delegate a connection.
 This helper is not the implementation invoked by the userspace upgrade syscall.
 
 Its preparation owner holds the loaded, not-yet-running replacement and every
-`PreparedMove`. Destination identities are reserved before source authority is
+`PreparedTransfer`. Destination identities are reserved before source authority is
 hidden; the state payload remains source-owned until commit. Connection
 delegation completes before atomic move-batch publication. Failure drops the
 preparation owner, restores original source handles without fresh quota, and

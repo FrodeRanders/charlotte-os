@@ -46,6 +46,10 @@ or consume its reserved share. The receiver can allocate its own copy if it
 intentionally wants to sponsor retained data. Such a copy is a separate
 allocation; there is no zero-copy sponsorship reassignment API yet.
 
+Backing reservation for allocation/copy checks the sponsor handle captured
+before preparation, rather than accepting whichever generation now occupies
+its numeric ASID. A stale sponsor cannot charge a successor.
+
 Each charge is a linear kernel owner. Staged frames and copy pins also have
 owners, so early failure rolls back without a manual cleanup ladder. Charges
 survive mapping shootdown and delayed DMA/copy completion. Failed physical
@@ -59,11 +63,17 @@ their last release. Reused ASIDs start with a separate budget; a late release
 cannot debit the replacement generation.
 
 Retirement drains IPC before destroying memory attachments, so an in-flight
-vector transfer can still roll back its earlier entries when a later entry is
-denied. Mapped-loan revocation under the IPC guard does not re-enter the
+vector transfer can cancel private preparation when a later entry is denied.
+The mixed-mode preparation owner keeps copies outside the payload registry and
+loans without live borrower state until the batch commits. Source escrow/pins
+protect moves and loans, and cancellation needs no receiver mapping cleanup.
+Mapped-loan revocation under the IPC guard does not re-enter the
 lifecycle lock. A transient revoking state rejects new mappings and pins while
 the registry is released for unmap/shootdown; failed unmap restores the prior
-loan state. See [lock ordering](locking.md#5-lock-ordering-rules).
+loan state. Reply tokens track all vector loans and discard successful
+revocations immediately. Kernel snapshots, writes and DMA pins enforce active
+loan permissions as well as capability rights. See
+[lock ordering](locking.md#5-lock-ordering-rules).
 
 ## Errors and verification
 
@@ -93,7 +103,8 @@ kernel heap metadata. [Completion-backed timers](completion-timer-budgets.md)
 have separate event-admission limits; [scheduler sleeps/watchdogs](scheduler-timer-budgets.md)
 now share their node pool with separate generation-owned domain accounts.
 Other resource families have their own admission rather than being charged to
-the memory-object allowance. Comprehensive loader/heap/stack/page-table and
+the memory-object allowance. Memory capability aliases, including loans, also
+obey [shared record admission](capability-admission.md). Comprehensive loader/heap/stack/page-table and
 general metadata accounting still need aggregate admission and fallible
 bookkeeping. The reserved share is a pool, not guaranteed capacity
 for each essential service; a compromised platform service can consume it.

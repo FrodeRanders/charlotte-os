@@ -145,10 +145,10 @@ impl ChargedFrames {
 }
 
 fn allocate_frames(
-    owner: AddressSpaceId,
+    owner: super::AddressSpaceHandle,
     pages: usize,
 ) -> Result<ChargedFrames, MemoryObjectError> {
-    let charge = super::budget::reserve(
+    let charge = super::budget::reserve_captured(
         owner,
         super::budget::Amount {
             pages: pages as u64,
@@ -330,7 +330,7 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
         super::current_address_space_handle(owner).ok_or(MemoryObjectError::AddressSpaceMissing)?;
     let reservation = admit_capability(owner, identity)?;
 
-    let staged = allocate_frames(owner, pages)?;
+    let staged = allocate_frames(identity, pages)?;
 
     // The frames are exclusively owned and not yet published, so zeroing them
     // does not require the IRQ-masking allocator lock held across the (up to
@@ -431,6 +431,12 @@ pub(crate) fn snapshot_bytes(
     }
     let object =
         registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
+    if matches!(object.lend_state, LendState::Revoking)
+        || matches!(object.lend_state, LendState::Write { borrower, cap: lent }
+            if borrower != asid || lent != cap)
+    {
+        return Err(MemoryObjectError::LendingActive);
+    }
     if len == 0 || len > object.frames.len().saturating_mul(PAGE_SIZE) {
         return Err(MemoryObjectError::InvalidLength);
     }
@@ -464,7 +470,11 @@ pub(crate) fn write_bytes(
     }
     let object =
         registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-    if object.copy_pins != 0 || matches!(object.lend_state, LendState::Revoking) {
+    if object.copy_pins != 0
+        || matches!(object.lend_state, LendState::Read { .. } | LendState::Revoking)
+        || matches!(object.lend_state, LendState::Write { borrower, cap: lent }
+            if borrower != asid || lent != cap)
+    {
         return Err(MemoryObjectError::LendingActive);
     }
     if bytes.is_empty() || bytes.len() > object.frames.len().saturating_mul(PAGE_SIZE) {
@@ -836,48 +846,92 @@ fn unmap_serialized(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Me
     result
 }
 
-/// Own a prepared memory move. Both identities and backing retention precede
-/// ownership mutation. Drop cancels back to the exact source; commit publishes
-/// only after validating the whole move batch.
+/// Prepared authority never exposes an application-accessible destination.
+/// One owner cancels staging, restores source authority, and releases backing.
 #[must_use]
-pub(crate) struct PreparedMove {
-    owner: AddressSpaceId,
-    source_handle: super::AddressSpaceHandle,
-    source_cap: MemoryObjectCap,
+pub(crate) struct PreparedTransfer {
     target: AddressSpaceId,
     target_handle: super::AddressSpaceHandle,
-    entry: MemoryCap,
-    rights: MemoryObjectRights,
     destination: crate::capability::Reservation,
-    source: Option<crate::capability::MoveEscrow>,
-    _pin: ScopedCopyPin,
+    payload: PreparedPayload,
     committed: bool,
 }
 
-impl PreparedMove {
+struct PreparedSource {
+    owner: AddressSpaceId,
+    handle: super::AddressSpaceHandle,
+    cap: MemoryObjectCap,
+    entry: MemoryCap,
+    escrow: Option<crate::capability::SourceEscrow>,
+    _pin: ScopedCopyPin,
+}
+
+enum PreparedPayload {
+    Move {
+        source: PreparedSource,
+        rights: MemoryObjectRights,
+    },
+    Copy {
+        frames: Option<ChargedFrames>,
+    },
+    Loan {
+        source: PreparedSource,
+        write: bool,
+    },
+}
+
+impl PreparedPayload {
+    fn source_mut(&mut self) -> Option<&mut PreparedSource> {
+        match self {
+            Self::Move {
+                source,
+                ..
+            }
+            | Self::Loan {
+                source,
+                ..
+            } => Some(source),
+            Self::Copy {
+                ..
+            } => None,
+        }
+    }
+}
+
+impl PreparedTransfer {
     pub(crate) fn target_cap(&self) -> MemoryObjectCap {
         self.destination.identity()
     }
 
+    /// IPC adapter captures loan provenance before publishing the batch.
+    pub(crate) fn loan_origin(&self) -> Option<(AddressSpaceId, MemoryObjectCap)> {
+        match &self.payload {
+            PreparedPayload::Loan {
+                source,
+                ..
+            } => Some((source.owner, source.cap)),
+            _ => None,
+        }
+    }
+
     pub(crate) fn commit(mut self) -> Result<MemoryObjectCap, MemoryObjectError> {
-        commit_moves(core::slice::from_mut(&mut self))?;
+        commit_transfers(core::slice::from_mut(&mut self))?;
         Ok(self.target_cap())
     }
 }
 
-impl Drop for PreparedMove {
+impl Drop for PreparedTransfer {
     fn drop(&mut self) {
         if !self.committed
-            && let Some(source) = self.source.take()
+            && let Some(source) = self.payload.source_mut()
+            && let Some(escrow) = source.escrow.take()
         {
-            // A removed source has already had its payload authority drained.
-            // Exact namespace identity prevents revival in a successor.
-            // A still-present retiring namespace needs its original handle for
-            // cleanup; this rollback never allocates or admits new authority.
-            let _ = source.rollback();
+            // Restore only the captured source namespace, including a retiring
+            // namespace awaiting payload drain. Never re-admit a fresh slot.
+            let _ = escrow.rollback();
         }
-        // Field Drop cancels destination admission and then releases the pin.
-        // A source retired during preparation keeps its frames until this point.
+        // Destination reservation drops before payload backing/pins. No live
+        // destination, mapping or borrower state ever needs reversal.
     }
 }
 
@@ -885,8 +939,8 @@ pub(crate) fn prepare_move(
     owner: AddressSpaceId,
     cap: MemoryObjectCap,
     target: AddressSpaceId,
-) -> Result<PreparedMove, MemoryObjectError> {
-    prepare_move_with_rights(owner, cap, target, false)
+) -> Result<PreparedTransfer, MemoryObjectError> {
+    prepare_source_transfer(owner, cap, target, None, false)
 }
 
 fn prepare_move_with_rights(
@@ -894,7 +948,29 @@ fn prepare_move_with_rights(
     cap: MemoryObjectCap,
     target: AddressSpaceId,
     read_only: bool,
-) -> Result<PreparedMove, MemoryObjectError> {
+) -> Result<PreparedTransfer, MemoryObjectError> {
+    prepare_source_transfer(owner, cap, target, None, read_only)
+}
+
+pub(crate) fn prepare_loan(
+    owner: AddressSpaceId,
+    cap: MemoryObjectCap,
+    target: AddressSpaceId,
+    write: bool,
+) -> Result<PreparedTransfer, MemoryObjectError> {
+    if owner == target {
+        return Err(MemoryObjectError::WrongOwner);
+    }
+    prepare_source_transfer(owner, cap, target, Some(write), false)
+}
+
+fn prepare_source_transfer(
+    owner: AddressSpaceId,
+    cap: MemoryObjectCap,
+    target: AddressSpaceId,
+    loan: Option<bool>,
+    read_only: bool,
+) -> Result<PreparedTransfer, MemoryObjectError> {
     let source_handle =
         super::current_address_space_handle(owner).ok_or(MemoryObjectError::AddressSpaceMissing)?;
     let target_handle = super::current_address_space_handle(target)
@@ -904,7 +980,12 @@ fn prepare_move_with_rights(
         return Err(MemoryObjectError::AddressSpaceMissing);
     }
     let entry = registry.lookup(owner, cap)?;
-    if !entry.rights.contains(MemoryObjectRights::TRANSFER)
+    let needed = match loan {
+        Some(true) => MemoryObjectRights::MAP_WRITE,
+        Some(false) => MemoryObjectRights::MAP_READ,
+        None => MemoryObjectRights::TRANSFER,
+    };
+    if !entry.rights.contains(needed)
         || (read_only && !entry.rights.contains(MemoryObjectRights::MAP_READ))
     {
         return Err(MemoryObjectError::MissingRight);
@@ -913,97 +994,240 @@ fn prepare_move_with_rights(
     if object.owner != owner {
         return Err(MemoryObjectError::WrongOwner);
     }
-    if object.lend_state.is_active() || object.dma_pins != 0 || object.copy_pins != 0 {
-        return Err(MemoryObjectError::LendingActive);
-    }
-    if !object.mappings.is_empty() {
-        return Err(MemoryObjectError::AlreadyMapped);
-    }
+    validate_source_transfer(object, target, loan, false)?;
+    let pins = object.copy_pins.checked_add(1).ok_or(MemoryObjectError::ResourceLimit)?;
     let destination = admit_capability(target, target_handle)?;
-    let source = crate::capability::begin_move_captured(
+    let escrow = crate::capability::escrow_captured(
         owner,
         cap,
         crate::capability::ObjectKind::Memory,
         Some(source_handle),
     )
     .map_err(capability_error)?;
-    // The source capability is now hidden and there are no aliases, mappings
-    // or other pins. Reuse the backing-retention pin, not a fictitious DMA pin.
-    // Every tracked writer is blocked until commit/cancellation releases it.
-    registry.objects.get_mut(&entry.object).unwrap().copy_pins = 1;
-    Ok(PreparedMove {
+    // No fallible work follows source escrow. A read-retention pin fences
+    // writes/DMA and keeps backing alive even if source teardown drains it.
+    registry.objects.get_mut(&entry.object).unwrap().copy_pins = pins;
+    let source = PreparedSource {
         owner,
-        source_handle,
-        source_cap: cap,
-        target,
-        target_handle,
+        handle: source_handle,
+        cap,
         entry,
-        rights: if read_only {
-            MemoryObjectRights::MAP_READ
-        } else {
-            entry.rights
-        },
-        destination,
-        source: Some(source),
+        escrow: Some(escrow),
         _pin: ScopedCopyPin(Some(CopyPin {
             object: entry.object,
             frames: Vec::new(),
         })),
+    };
+    let payload = match loan {
+        Some(write) => PreparedPayload::Loan {
+            source,
+            write,
+        },
+        None => PreparedPayload::Move {
+            source,
+            rights: if read_only {
+                MemoryObjectRights::MAP_READ
+            } else {
+                entry.rights
+            },
+        },
+    };
+    Ok(PreparedTransfer {
+        target,
+        target_handle,
+        destination,
+        payload,
         committed: false,
     })
 }
 
-/// Publish every prepared move or none. Sources remain owned until all
-/// destinations and source lifetimes validate under the shared registry.
-/// Caller must finish this before exposing target identities to applications.
-pub(crate) fn commit_moves(moves: &mut [PreparedMove]) -> Result<(), MemoryObjectError> {
-    let mut authorities = Vec::new();
-    authorities.try_reserve_exact(moves.len()).map_err(|_| MemoryObjectError::ResourceLimit)?;
-    let mut registry = MEMORY_OBJECTS.lock();
-    for transfer in moves.iter() {
-        if !super::budget::accepting(transfer.source_handle)
-            || !super::budget::accepting(transfer.target_handle)
+fn validate_source_transfer(
+    object: &MemoryObject,
+    target: AddressSpaceId,
+    loan: Option<bool>,
+    prepared: bool,
+) -> Result<(), MemoryObjectError> {
+    if object.destroy_when_unpinned || object.dma_pins != 0 {
+        return Err(MemoryObjectError::LendingActive);
+    }
+    if loan == Some(false) {
+        if matches!(object.lend_state, LendState::Write { .. } | LendState::Revoking)
+            || matches!(&object.lend_state, LendState::Read { borrowers }
+                if borrowers.contains_key(&target))
         {
+            return Err(MemoryObjectError::LendingActive);
+        }
+        if object.mappings.values().any(|mapping| mapping.writable) {
+            return Err(MemoryObjectError::AlreadyMapped);
+        }
+        if prepared && object.copy_pins == 0 {
+            return Err(MemoryObjectError::LendingActive);
+        }
+    } else {
+        if object.lend_state.is_active() || object.copy_pins != usize::from(prepared) {
+            return Err(MemoryObjectError::LendingActive);
+        }
+        if !object.mappings.is_empty() {
+            return Err(MemoryObjectError::AlreadyMapped);
+        }
+    }
+    Ok(())
+}
+
+/// Every mixed-mode destination publishes or none. Copies retain private
+/// charged frames; loans retain source authority without live borrower state.
+pub(crate) fn commit_transfers(
+    transfers: &mut [PreparedTransfer],
+) -> Result<(), MemoryObjectError> {
+    use crate::capability::{
+        Publication,
+        SourceDisposition,
+    };
+    let mut authorities = Vec::new();
+    authorities.try_reserve_exact(transfers.len()).map_err(|_| MemoryObjectError::ResourceLimit)?;
+    let mut registry = MEMORY_OBJECTS.lock();
+    for transfer in transfers.iter() {
+        if transfer.committed || !super::budget::accepting(transfer.target_handle) {
+            return Err(MemoryObjectError::AddressSpaceMissing);
+        }
+        let (source, loan) = match &transfer.payload {
+            PreparedPayload::Copy {
+                frames,
+            } => {
+                if !frames.as_ref().unwrap().charge.as_ref().unwrap().active() {
+                    return Err(MemoryObjectError::AddressSpaceMissing);
+                }
+                continue;
+            }
+            PreparedPayload::Move {
+                source,
+                ..
+            } => (source, None),
+            PreparedPayload::Loan {
+                source,
+                write,
+            } => (source, Some(*write)),
+        };
+        if !super::budget::accepting(source.handle) {
             return Err(MemoryObjectError::AddressSpaceMissing);
         }
         let stored = registry
             .caps
-            .get(&transfer.owner)
-            .and_then(|caps| caps.caps.get(&transfer.source_cap))
+            .get(&source.owner)
+            .and_then(|caps| caps.caps.get(&source.cap))
             .ok_or(MemoryObjectError::AddressSpaceMissing)?;
         let object = registry
             .objects
-            .get(&transfer.entry.object)
+            .get(&source.entry.object)
             .ok_or(MemoryObjectError::AddressSpaceMissing)?;
-        if transfer.committed
-            || stored.object != transfer.entry.object
-            || object.owner != transfer.owner
-            || object.destroy_when_unpinned
-            || object.copy_pins != 1
-            || object.dma_pins != 0
-            || object.lend_state.is_active()
-            || !object.mappings.is_empty()
+        if stored.object != source.entry.object
+            || stored.rights != source.entry.rights
+            || object.owner != source.owner
         {
             return Err(MemoryObjectError::AddressSpaceMissing);
         }
+        validate_source_transfer(object, transfer.target, loan, true)?;
     }
-    for transfer in moves.iter_mut() {
-        authorities.push((&mut transfer.destination, transfer.source.as_mut().unwrap()));
+    for transfer in transfers.iter_mut() {
+        let source = match &mut transfer.payload {
+            PreparedPayload::Move {
+                source,
+                ..
+            } => Some((source.escrow.as_mut().unwrap(), SourceDisposition::Revoke)),
+            PreparedPayload::Loan {
+                source,
+                ..
+            } => Some((source.escrow.as_mut().unwrap(), SourceDisposition::Restore)),
+            PreparedPayload::Copy {
+                ..
+            } => None,
+        };
+        authorities.push(Publication {
+            destination: &mut transfer.destination,
+            source,
+        });
     }
-    crate::capability::publish_moves(&mut authorities).map_err(capability_error)?;
+    crate::capability::publish_batch(&mut authorities).map_err(capability_error)?;
     drop(authorities);
-    // No fallible work remains after atomic authority publication. Registry
-    // ownership keeps the verified payloads stable through these updates.
-    for transfer in moves.iter_mut() {
-        registry.caps.get_mut(&transfer.owner).unwrap().caps.remove(&transfer.source_cap);
-        registry.objects.get_mut(&transfer.entry.object).unwrap().owner = transfer.target;
-        registry.caps_for_mut(transfer.target).insert(
-            transfer.target_cap(),
-            MemoryCap {
-                object: transfer.entry.object,
-                rights: transfer.rights,
-            },
-        );
+    // The registries serialize all verified payloads. No fallible work follows
+    // authority publication; application memory lookup waits for this guard.
+    for transfer in transfers.iter_mut() {
+        let target_cap = transfer.target_cap();
+        let entry = match &mut transfer.payload {
+            PreparedPayload::Move {
+                source,
+                rights,
+            } => {
+                registry.caps.get_mut(&source.owner).unwrap().caps.remove(&source.cap);
+                registry.objects.get_mut(&source.entry.object).unwrap().owner = transfer.target;
+                MemoryCap {
+                    object: source.entry.object,
+                    rights: *rights,
+                }
+            }
+            PreparedPayload::Copy {
+                frames,
+            } => {
+                let (frames, charge) = frames.take().unwrap().into_parts();
+                let object = registry.next_object;
+                registry.next_object =
+                    registry.next_object.checked_add(1).expect("memory object id overflow");
+                registry.objects.insert(
+                    object,
+                    MemoryObject {
+                        owner: transfer.target,
+                        frames,
+                        charge,
+                        mappings: BTreeMap::new(),
+                        lend_state: LendState::None,
+                        dma_pins: 0,
+                        exclusive_dma_pins: 0,
+                        copy_pins: 0,
+                        destroy_when_unpinned: false,
+                    },
+                );
+                MemoryCap {
+                    object,
+                    rights: MemoryObjectRights::ALL,
+                }
+            }
+            PreparedPayload::Loan {
+                source,
+                write,
+            } => {
+                let object = registry.objects.get_mut(&source.entry.object).unwrap();
+                if *write {
+                    object.lend_state = LendState::Write {
+                        borrower: transfer.target,
+                        cap: target_cap,
+                    };
+                } else {
+                    if object.lend_state.is_none() {
+                        object.lend_state = LendState::Read {
+                            borrowers: BTreeMap::new(),
+                        };
+                    }
+                    let LendState::Read {
+                        borrowers,
+                    } = &mut object.lend_state
+                    else {
+                        unreachable!()
+                    };
+                    borrowers.insert(transfer.target, target_cap);
+                }
+                MemoryCap {
+                    object: source.entry.object,
+                    rights: if *write {
+                        MemoryObjectRights(
+                            MemoryObjectRights::MAP_READ.0 | MemoryObjectRights::MAP_WRITE.0,
+                        )
+                    } else {
+                        MemoryObjectRights::MAP_READ
+                    },
+                }
+            }
+        };
+        registry.caps_for_mut(transfer.target).insert(target_cap, entry);
         transfer.committed = true;
     }
     Ok(())
@@ -1086,25 +1310,27 @@ pub(crate) fn pin_for_copy(
     })
 }
 
-pub fn copy_to(
+pub(crate) fn prepare_copy(
     owner: AddressSpaceId,
     cap: MemoryObjectCap,
     target: AddressSpaceId,
-) -> Result<MemoryObjectCap, MemoryObjectError> {
+) -> Result<PreparedTransfer, MemoryObjectError> {
     if owner == target {
         return Err(MemoryObjectError::WrongOwner);
     }
+    let source_handle =
+        super::current_address_space_handle(owner).ok_or(MemoryObjectError::AddressSpaceMissing)?;
     let target_handle = super::current_address_space_handle(target)
         .ok_or(MemoryObjectError::AddressSpaceMissing)?;
-    let mut copy_pin = ScopedCopyPin(Some(pin_for_copy(owner, cap)?));
-    let reservation = admit_capability(target, target_handle)?;
+    let copy_pin = ScopedCopyPin(Some(pin_for_copy(owner, cap)?));
+    if !super::budget::accepting(source_handle) {
+        return Err(MemoryObjectError::AddressSpaceMissing);
+    }
+    let destination = admit_capability(target, target_handle)?;
     let source = copy_pin.0.as_ref().unwrap();
-    // The copying caller sponsors the additional physical pages, even though
-    // ownership is delivered to the receiver. The pin is an owning guard.
-    let staged = allocate_frames(owner, source.frames.len())?;
-
-    // Copy source -> target with no lock held; the source frames remain valid
-    // because of the copy_pins reference above.
+    // Private backing belongs to this owner, not to a destination registry
+    // entry. Cancellation never consults a receiver-controlled numeric handle.
+    let staged = allocate_frames(source_handle, source.frames.len())?;
     for (source, target_frame) in source.frames.iter().zip(staged.frames.iter()) {
         let source_ptr: *const u8 = (*source).into();
         let target_ptr: *mut u8 = (*target_frame).into();
@@ -1112,42 +1338,23 @@ pub fn copy_to(
             core::ptr::copy_nonoverlapping(source_ptr, target_ptr, PAGE_SIZE);
         }
     }
+    Ok(PreparedTransfer {
+        target,
+        target_handle,
+        destination,
+        payload: PreparedPayload::Copy {
+            frames: Some(staged),
+        },
+        committed: false,
+    })
+}
 
-    let mut registry = MEMORY_OBJECTS.lock();
-    if !super::budget::accepting(target_handle) || !staged.charge.as_ref().unwrap().active() {
-        return Err(MemoryObjectError::AddressSpaceMissing);
-    }
-    let target_cap = reservation.publish().map_err(capability_error)?;
-    let pin = copy_pin.0.take().unwrap();
-    let source_frames_to_free = release_copy_pin_locked(&mut registry, pin.object);
-    let (copied_frames, charge) = staged.into_parts();
-    let object_id = registry.next_object;
-    registry.next_object = registry.next_object.checked_add(1).expect("memory object id overflow");
-    registry.objects.insert(
-        object_id,
-        MemoryObject {
-            owner: target,
-            frames: copied_frames,
-            charge,
-            mappings: BTreeMap::new(),
-            lend_state: LendState::None,
-            dma_pins: 0,
-            exclusive_dma_pins: 0,
-            copy_pins: 0,
-            destroy_when_unpinned: false,
-        },
-    );
-    registry.caps_for_mut(target).insert(
-        target_cap,
-        MemoryCap {
-            object: object_id,
-            rights: MemoryObjectRights::ALL,
-        },
-    );
-    drop(registry);
-    drop(pin);
-    deallocate_frames(source_frames_to_free);
-    Ok(target_cap)
+pub fn copy_to(
+    owner: AddressSpaceId,
+    cap: MemoryObjectCap,
+    target: AddressSpaceId,
+) -> Result<MemoryObjectCap, MemoryObjectError> {
+    prepare_copy(owner, cap, target)?.commit()
 }
 
 pub fn lend_read(
@@ -1155,73 +1362,7 @@ pub fn lend_read(
     cap: MemoryObjectCap,
     borrower: AddressSpaceId,
 ) -> Result<MemoryObjectCap, MemoryObjectError> {
-    if owner == borrower {
-        return Err(MemoryObjectError::WrongOwner);
-    }
-    let borrower_handle = super::current_address_space_handle(borrower)
-        .ok_or(MemoryObjectError::AddressSpaceMissing)?;
-    let mut registry = MEMORY_OBJECTS.lock();
-    if !super::budget::accepting(borrower_handle) {
-        return Err(MemoryObjectError::AddressSpaceMissing);
-    }
-    let cap_entry = registry.lookup(owner, cap)?;
-    if !cap_entry.rights.contains(MemoryObjectRights::MAP_READ) {
-        return Err(MemoryObjectError::MissingRight);
-    }
-
-    {
-        let object =
-            registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-        if object.owner != owner {
-            return Err(MemoryObjectError::WrongOwner);
-        }
-        if matches!(object.lend_state, LendState::Write { .. } | LendState::Revoking)
-            || object.dma_pins != 0
-        {
-            return Err(MemoryObjectError::LendingActive);
-        }
-        if let LendState::Read {
-            borrowers,
-        } = &object.lend_state
-            && borrowers.contains_key(&borrower)
-        {
-            return Err(MemoryObjectError::LendingActive);
-        }
-        if object.mappings.values().any(|mapping| mapping.writable) {
-            return Err(MemoryObjectError::AlreadyMapped);
-        }
-    }
-
-    let borrower_cap =
-        admit_capability(borrower, borrower_handle)?.publish().map_err(capability_error)?;
-    registry.caps_for_mut(borrower).insert(
-        borrower_cap,
-        MemoryCap {
-            object: cap_entry.object,
-            rights: MemoryObjectRights::MAP_READ,
-        },
-    );
-    let object =
-        registry.objects.get_mut(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-    match &mut object.lend_state {
-        LendState::None => {
-            let mut borrowers = BTreeMap::new();
-            borrowers.insert(borrower, borrower_cap);
-            object.lend_state = LendState::Read {
-                borrowers,
-            };
-        }
-        LendState::Read {
-            borrowers,
-        } => {
-            borrowers.insert(borrower, borrower_cap);
-        }
-        LendState::Revoking
-        | LendState::Write {
-            ..
-        } => return Err(MemoryObjectError::LendingActive),
-    }
-    Ok(borrower_cap)
+    prepare_loan(owner, cap, borrower, false)?.commit()
 }
 
 pub fn lend_write(
@@ -1229,54 +1370,7 @@ pub fn lend_write(
     cap: MemoryObjectCap,
     borrower: AddressSpaceId,
 ) -> Result<MemoryObjectCap, MemoryObjectError> {
-    if owner == borrower {
-        return Err(MemoryObjectError::WrongOwner);
-    }
-    let borrower_handle = super::current_address_space_handle(borrower)
-        .ok_or(MemoryObjectError::AddressSpaceMissing)?;
-    let mut registry = MEMORY_OBJECTS.lock();
-    if !super::budget::accepting(borrower_handle) {
-        return Err(MemoryObjectError::AddressSpaceMissing);
-    }
-    let cap_entry = registry.lookup(owner, cap)?;
-    if !cap_entry.rights.contains(MemoryObjectRights::MAP_WRITE) {
-        return Err(MemoryObjectError::MissingRight);
-    }
-
-    {
-        let object =
-            registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-        if object.owner != owner {
-            return Err(MemoryObjectError::WrongOwner);
-        }
-        if object.lend_state.is_active() || object.dma_pins != 0 || object.copy_pins != 0 {
-            return Err(MemoryObjectError::LendingActive);
-        }
-        if !object.mappings.is_empty() {
-            return Err(MemoryObjectError::AlreadyMapped);
-        }
-    }
-
-    let borrower_cap =
-        admit_capability(borrower, borrower_handle)?.publish().map_err(capability_error)?;
-    registry.caps_for_mut(borrower).insert(
-        borrower_cap,
-        MemoryCap {
-            object: cap_entry.object,
-            rights: MemoryObjectRights(
-                MemoryObjectRights::MAP_READ.0 | MemoryObjectRights::MAP_WRITE.0,
-            ),
-        },
-    );
-    registry
-        .objects
-        .get_mut(&cap_entry.object)
-        .ok_or(MemoryObjectError::UnknownCapability)?
-        .lend_state = LendState::Write {
-        borrower,
-        cap: borrower_cap,
-    };
-    Ok(borrower_cap)
+    prepare_loan(owner, cap, borrower, true)?.commit()
 }
 
 pub fn revoke_lend(
@@ -1726,7 +1820,12 @@ pub(crate) fn pin_for_dma(
     }
     let object =
         registry.objects.get_mut(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
-    if object.destroy_when_unpinned || matches!(object.lend_state, LendState::Revoking) {
+    if object.destroy_when_unpinned
+        || matches!(object.lend_state, LendState::Revoking)
+        || device_writes && matches!(object.lend_state, LendState::Read { .. })
+        || matches!(object.lend_state, LendState::Write { borrower, cap: lent }
+            if borrower != asid || lent != cap)
+    {
         return Err(MemoryObjectError::LendingActive);
     }
     if object.exclusive_dma_pins != 0

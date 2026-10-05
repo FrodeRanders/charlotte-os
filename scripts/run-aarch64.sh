@@ -1055,7 +1055,7 @@ if [ -n "$TIMEOUT" ]; then
         if ! kill -0 "$QPID" 2>/dev/null; then
             wait "$QPID" 2>/dev/null || true
             if { [ "$SHUTDOWN_TEST" = "1" ] || [ "$SHUTDOWN_INGRESS_TEST" = "1" ]; } \
-                && grep -Fq "SELFTEST COMPLETE:" "$LOG" \
+                && catten_boot_has_selftest_result "$LOG" \
                 && grep -Fq "[shutdown] POWER-OFF REQUESTED via PSCI" "$LOG"; then
                 SELFTEST_COMPLETE=1
                 POWER_OFF_OBSERVED=1
@@ -1137,7 +1137,7 @@ if [ -n "$TIMEOUT" ]; then
                 echo ">>> Deployment ready; keeping the guest alive for ${APP_HOLD_SECONDS}s for host probes."
             fi
         fi
-        if grep -Fq "SELFTEST COMPLETE:" "$LOG"; then
+        if [ "$SELFTEST_COMPLETE" = "1" ] || catten_boot_has_selftest_result "$LOG"; then
             SELFTEST_COMPLETE=1
             if [ "$SELFTEST_COMPLETE_TICK" -lt 0 ]; then
                 SELFTEST_COMPLETE_TICK=$tick

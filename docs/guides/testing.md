@@ -208,7 +208,27 @@ Paused source retirement checks rollback to original slots for cleanup. Source
 and destination teardown/reuse fixtures assert exact numeric ASID/capability
 reuse, old-frame retention until cancellation, and unchanged successor budgets
 and authority. Existing IPC vector/reply tests exercise the integrated move
-owners; copied/loaned vector aliases are not yet atomically staged.
+owners.
+
+Additional fixtures pause hidden copies and both loan modes, attempting guessed
+handle lookup/map/write/close, physical queries and DMA/copy pinning. They check
+private-copy refunds, snapshot independence, loan cancellation at the source
+ceiling, read-only source mapping, mixed-mode retirement, and exact source/target
+ASID/capability reuse. Real kernel vector calls exercise all four modes, failure
+after each prepared kind, denied private-copy backing after a staged loan,
+mapped vector loans on reply/cancellation, reply-token close and queued endpoint
+close. Queued copies/moves are reclaimed, delivered ownership is retained, and
+both vector loans end. Kernel snapshot/write/DMA checks reject owner access
+forbidden by committed loans. These deterministic kernel fixtures are not a new
+EL0 quota test or exhaustive concurrent-retirement proof.
+
+Boot runners require a complete newline-terminated authoritative result before
+stopping QEMU. The shared parser accepts LF or CRLF, recognizes complete failed
+verdicts as terminal, and requires zero failed/pending counts and bitmaps for
+success. Its host tests reject every partial prefix of a successful record,
+malformed/truncated results and kernel panics, and allow a later partial log
+line after an already complete verdict. The poll loop caches completion, so
+long application holds do not repeatedly launch the parser.
 
 Real-domain fixtures use `register_user_address_space`, not direct insertion
 into `ADDRESS_SPACE_TABLE`. This initializes the same generation, limits,

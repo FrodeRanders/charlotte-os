@@ -259,15 +259,19 @@ after allocation. Capability records carry a typed
 
 Kernel payload ownership and namespace authority need coordinated transactions.
 `capability::Reservation` holds a hidden identity/count before publication; its
-Drop releases only that exact namespace's entry. Mailbox opens and completion
+Drop releases only that exact namespace's entry. Mailbox opens, completion
 submissions and memory-object destinations use bounded shared admission.
-`memory::object::PreparedMove` owns destination reservation, source escrow and
-a backing-retention pin. Its Drop restores original source authority without
-re-admission, cancels the destination and releases the pin; `commit_moves`
-publishes the complete move batch or none. Use this owner for multi-step kernel
-transfers, not a moved scalar plus a reverse-move cleanup ladder. The payload
-stays source-owned until commit, and generation checks fence late cancellation
-from reused ASIDs. Drop must run outside the memory registry guard.
+`memory::object::PreparedTransfer` owns destination reservation and private
+copy backing or source escrow/backing pins for moves and loans. Its Drop
+restores original source authority without re-admission, cancels the destination
+and releases backing; `commit_transfers` publishes the complete mixed-mode batch
+or none. Use this owner for multi-step kernel transfers, not a moved scalar
+plus a reverse-move cleanup ladder. Move/loan payload stays source-owned until
+commit, and generation checks fence late cancellation from reused ASIDs.
+Copied pages stay private until commit, so cancellation
+never closes a live receiver alias. Drop must run outside the memory registry
+guard. Drop committed owners before exposing writable access to release their
+pins. IPC reply tokens track every vector loan, not just scalar attachments.
 See [shared capability admission](../reference/capability-admission.md) for
 state transitions, locking, limits and the remaining migration.
 

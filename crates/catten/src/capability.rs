@@ -322,7 +322,7 @@ impl Drop for Reservation {
 /// same live namespace. Payload rollback is the caller's separate obligation.
 #[must_use]
 #[derive(Debug)]
-pub(crate) struct MoveEscrow {
+pub(crate) struct SourceEscrow {
     owner: AddressSpaceId,
     cap: ObjectCapability,
     kind: ObjectKind,
@@ -330,24 +330,24 @@ pub(crate) struct MoveEscrow {
     active: bool,
 }
 
-pub(crate) fn begin_move(
+pub(crate) fn escrow(
     owner: AddressSpaceId,
     cap: ObjectCapability,
     kind: ObjectKind,
-) -> Result<MoveEscrow, AllocationError> {
+) -> Result<SourceEscrow, AllocationError> {
     let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
     let identity = crate::memory::current_address_space_handle(owner);
-    begin_move_captured(owner, cap, kind, identity)
+    escrow_captured(owner, cap, kind, identity)
 }
 
 /// Caller owns the payload registry and captures generation before entering
 /// it. Do not acquire lifecycle under that registry.
-pub(crate) fn begin_move_captured(
+pub(crate) fn escrow_captured(
     owner: AddressSpaceId,
     cap: ObjectCapability,
     kind: ObjectKind,
     mut identity: Option<crate::memory::AddressSpaceHandle>,
-) -> Result<MoveEscrow, AllocationError> {
+) -> Result<SourceEscrow, AllocationError> {
     if owner == crate::memory::KERNEL_ASID {
         identity = None;
     }
@@ -361,7 +361,7 @@ pub(crate) fn begin_move_captured(
         return Err(AllocationError::UnknownCapability);
     }
     entry.state = EntryState::Escrow;
-    Ok(MoveEscrow {
+    Ok(SourceEscrow {
         owner,
         cap,
         kind,
@@ -370,7 +370,7 @@ pub(crate) fn begin_move_captured(
     })
 }
 
-impl MoveEscrow {
+impl SourceEscrow {
     pub(crate) fn restore(self) -> Result<ObjectCapability, AllocationError> {
         self.restore_inner(false)
     }
@@ -400,7 +400,7 @@ impl MoveEscrow {
     }
 }
 
-impl Drop for MoveEscrow {
+impl Drop for SourceEscrow {
     fn drop(&mut self) {
         if self.active {
             discard_captured(self.owner, self.cap, &self.namespace, EntryState::Escrow);
@@ -408,24 +408,36 @@ impl Drop for MoveEscrow {
     }
 }
 
-/// Validate all sources/destinations before changing any authority. Caller
-/// holds its payload registry through this atomic publication and infallible
-/// payload updates. The reference vector is prepared before taking this lock.
-pub(crate) fn publish_moves(
-    moves: &mut [(&mut Reservation, &mut MoveEscrow)],
-) -> Result<(), AllocationError> {
+/// Whether successful publication transfers or only lends source authority.
+pub(crate) enum SourceDisposition {
+    Revoke,
+    Restore,
+}
+
+pub(crate) struct Publication<'a> {
+    pub destination: &'a mut Reservation,
+    pub source: Option<(&'a mut SourceEscrow, SourceDisposition)>,
+}
+
+/// Validate the entire mixed batch before changing any authority. Caller owns
+/// the payload registry through publication and its remaining payload updates.
+pub(crate) fn publish_batch(batch: &mut [Publication<'_>]) -> Result<(), AllocationError> {
     let mut tables = CAPABILITIES.lock();
-    for (destination, source) in moves.iter() {
-        for (owner, cap, kind, namespace, state) in [
-            (
+    for publication in batch.iter() {
+        let destination = &publication.destination;
+        let mut entries = [
+            Some((
                 destination.owner,
                 destination.cap,
                 destination.kind,
                 &destination.namespace,
                 EntryState::Staged,
-            ),
-            (source.owner, source.cap, source.kind, &source.namespace, EntryState::Escrow),
-        ] {
+            )),
+            publication.source.as_ref().map(|(source, _)| {
+                (source.owner, source.cap, source.kind, &source.namespace, EntryState::Escrow)
+            }),
+        ];
+        for (owner, cap, kind, namespace, state) in entries.iter_mut().filter_map(Option::take) {
             let table = tables.get(&owner).ok_or(AllocationError::Retired)?;
             if !Arc::ptr_eq(&table.budget, namespace) || !table.budget.accepting() {
                 return Err(AllocationError::Retired);
@@ -439,7 +451,8 @@ pub(crate) fn publish_moves(
             }
         }
     }
-    for (destination, source) in moves.iter_mut() {
+    for publication in batch.iter_mut() {
+        let destination = &mut publication.destination;
         tables
             .get_mut(&destination.owner)
             .unwrap()
@@ -447,9 +460,19 @@ pub(crate) fn publish_moves(
             .get_mut(&destination.cap)
             .unwrap()
             .state = EntryState::Live;
-        tables.get_mut(&source.owner).unwrap().objects.remove(&source.cap);
+        if let Some((source, disposition)) = &mut publication.source {
+            let table = tables.get_mut(&source.owner).unwrap();
+            match disposition {
+                SourceDisposition::Revoke => {
+                    table.objects.remove(&source.cap);
+                }
+                SourceDisposition::Restore => {
+                    table.objects.get_mut(&source.cap).unwrap().state = EntryState::Live;
+                }
+            }
+            source.active = false;
+        }
         destination.active = false;
-        source.active = false;
     }
     Ok(())
 }

@@ -681,7 +681,7 @@ if [ -n "$TIMEOUT" ]; then
                 echo ">>> Deployment ready; keeping the guest alive for ${APP_HOLD_SECONDS}s for host probes."
             fi
         fi
-        if grep -Fq "SELFTEST COMPLETE:" "$LOG"; then
+        if [ "$SELFTEST_COMPLETE" = "1" ] || catten_boot_has_selftest_result "$LOG"; then
             SELFTEST_COMPLETE=1
             if [ "$SELFTEST_COMPLETE_TICK" -lt 0 ]; then
                 SELFTEST_COMPLETE_TICK=$tick

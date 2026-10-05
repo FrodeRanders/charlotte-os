@@ -1,3 +1,5 @@
+mod staging;
+
 use crate::{
     cpu::isa::{
         interface::memory::{
@@ -33,6 +35,7 @@ pub fn test_memory_objects() {
     logln!("Testing first-class memory objects...");
     test_aggregate_budgets();
     test_capability_admission_and_moves();
+    staging::test_hidden_transfers();
     test_node_progress_pool();
 
     let owner = create_memory_object_test_address_space("owner");
@@ -661,7 +664,7 @@ fn test_move_batch_retirement() {
         object::prepare_move(source, second, target).unwrap(),
     ];
     let targets = [moves[0].target_cap(), moves[1].target_cap()];
-    object::commit_moves(&mut moves).unwrap();
+    object::commit_transfers(&mut moves).unwrap();
     drop(moves);
     for cap in targets {
         assert_eq!(object::info(target, cap).unwrap().owner, target);
@@ -676,7 +679,7 @@ fn test_move_batch_retirement() {
     ];
     let targets = [moves[0].target_cap(), moves[1].target_cap()];
     capability::retire_address_space(target);
-    assert_eq!(object::commit_moves(&mut moves), Err(MemoryObjectError::AddressSpaceMissing));
+    assert_eq!(object::commit_transfers(&mut moves), Err(MemoryObjectError::AddressSpaceMissing));
     for cap in targets {
         assert_eq!(object::info(target, cap), Err(MemoryObjectError::UnknownCapability));
     }

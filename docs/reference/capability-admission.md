@@ -41,18 +41,31 @@ even when both ASID and capability number are reused. Namespace teardown
 releases entry charges, although retained tokens may keep the old, now empty,
 budget control block alive.
 
-`PreparedMove` combines destination admission, source `MoveEscrow` and a
-backing-retention pin. The payload remains with the source until commit, but
-neither source nor staged destination grants application access. Preparation
-rejects existing mappings, loans and DMA/copy pins. Drop restores the original
-source handle without fresh quota, even at the namespace ceiling, cancels
-destination admission and releases the pin. The scalar `rollback_move_to` and
-`restore_unmigrated` APIs have been removed.
+`PreparedTransfer` owns every memory attachment's preparation:
 
-`commit_moves` validates every source and destination before publishing any of
-the batch. It holds the memory registry across atomic capability publication
-and the remaining payload updates. IPC vectors use this owner for moves; reply
-memory is prepared before loan revocation and committed afterward. The
+- A move retains source payload ownership, source escrow and a backing pin.
+- A copy owns private charged frames; no receiver payload or usable capability exists
+  yet. Its source pin is released after the snapshot finishes.
+- A loan retains source escrow and a backing pin, without creating borrower
+  state. Read-loan preparation permits existing read-only mappings/borrowers;
+  write-loan preparation requires exclusive, unmapped backing.
+
+Every destination remains hidden until commit. Move/loan source capabilities
+are hidden while preparing; a pre-existing read-only mapping can still read.
+Drop restores original source authority without fresh quota, even at the
+namespace ceiling, cancels destination admission and releases private
+frames/pins. It never reverses a receiver-controlled mapping or live loan.
+The scalar rollback APIs and the vector alias-cleanup assertion have been
+removed.
+
+`commit_transfers` validates every source and destination before publishing any of
+the mixed-mode batch. It holds the memory registry across atomic capability
+publication and the remaining payload updates. Moves revoke their source slot;
+loans restore it while installing borrower state; copies install their private
+backing. Drop the committed owners before allowing writable access, because
+their retention pins are still active until Drop. IPC vectors use this owner for
+all four modes; reply memory is prepared before loan revocation and committed
+afterward. The
 multi-state kernel upgrade helper also owns a prepared batch, but the actual
 userspace upgrade syscall still accepts one state object.
 
@@ -61,9 +74,14 @@ may restore its *existing* source authority for teardown; this admits no new
 record. A removed or replaced namespace cannot be restored. If source teardown
 has already removed its payload, the pin retains the frames until cancellation,
 and the original sponsorship charge is released without debiting a successor.
-Copies and loans enforce destination admission but are still published
-individually during IPC vector preparation; atomic staging of those aliases is
-a separate remaining migration.
+Copy backing admission also checks the captured sponsor generation, so delayed
+allocation cannot charge a replacement ASID. Reply tokens retain every scalar
+or vector loan, with bounded tracking storage prepared before publication.
+Reply and cancellation revoke all loans; queued cancellation also closes copied
+and moved attachments. Successful individual revocations are removed from the
+token immediately, so later failure does not cause duplicate revocation.
+Committed mapped-loan revocation can still fail during unmap/shootdown; that
+is distinct from private preparation cancellation, which needs no unmap.
 
 ## Lifecycle and locks
 
@@ -105,9 +123,8 @@ The next migration needs to:
 - Stage endpoint, connection, call, device and system-observer identities before their
   payloads change; return normal resource errors on rejected admission.
 - Preserve a queued receive and result page when reply-cap admission fails.
-- Keep copied/loaned vector aliases hidden until the complete IPC transaction
-  can publish, as move destinations already are. Move batches are atomic;
-  the complete mixed-mode attachment transaction is not yet staged atomically.
+- Stage the IPC call/reply/connection authority as well as its memory batch;
+  these fresh IPC capability identities still use the unconverted allocator.
 - Remove the unconverted allocation helper after every caller has migrated.
 
 These count limits do not charge allocator bytes, empty namespace/control
@@ -133,6 +150,17 @@ Source teardown retains its frames until the move owner drops. Exact ASID and
 numeric-capability reuse checks both late source and late destination failure
 without changing successor records or budgets. These are deterministic
 kernel fixtures, not exhaustive concurrent scheduling or a new EL0 quota test.
+
+Copy/read-loan/write-loan fixtures pause preparation and attempt guessed-handle
+lookup, mapping, writes, close, physical queries and DMA/copy pins. Every
+destination is inaccessible. Mixed retirement rejects all four modes together,
+returns private-copy charges and restores source slots at the ceiling. Exact
+ASID/cap reuse tests copied/loaned source and destination teardown. Real kernel
+vector calls check all-mode preparation failures, rejected copy backing after
+a staged loan, and successful four-mode delivery. Mapped read/write loans are
+revoked on reply, queued/delivered cancellation, reply-token close and queued
+endpoint close; queued copies/moves are also reclaimed. Kernel buffer and DMA
+access checks enforce committed loan permissions, not only mapping rights.
 
 Actual mailbox syscalls and completion/timer submissions are rejected by the
 shared ceiling with room in their family budgets; failed staging refunds those

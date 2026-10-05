@@ -109,14 +109,16 @@ retires admission before releasing subsystem payloads.
 
 Other allocation paths still require conversion to staged admission. They
 contribute to the counters but can exceed the shared limits, so aggregate
-protection is incomplete. Memory moves use an owning prepared transaction that
-holds destination admission, source escrow and a backing-retention pin. Source
-authority is hidden during preparation; cancellation restores its original
-slot without fresh quota. Move batches validate all lifetimes before publishing
-any destination, including IPC vectors. Late cancellation cannot alter reused
-ASIDs or successor handles. Scalar move rollback has been removed. Copied and
-loaned vector aliases still publish individually during preparation and need
-their own hidden staging. Allocator bytes, empty namespace metadata, page tables and heap
+protection is incomplete. All memory transfer modes use an owning prepared
+transaction. Copies hold private charged pages; moves and loans hold source
+escrow and backing-retention pins. Destinations remain hidden until the whole
+mixed-mode batch commits. Loan preparation creates no borrower state, and
+cancellation restores original source slots without fresh quota or receiver
+mapping cleanup. Late cancellation cannot alter reused ASIDs or successor
+handles. Scalar rollback and the vector alias-cleanup assertion have been
+removed. Reply tokens track every vector loan and revoke them on reply or
+cancellation; kernel buffer/DMA access enforces committed loan permissions.
+Allocator bytes, empty namespace metadata, page tables and heap
 backing remain separate accounting requirements. The implementation contract
 and migration scope are recorded in
 \texttt{docs/reference/capability-admission.md}.

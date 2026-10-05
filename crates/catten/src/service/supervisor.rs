@@ -120,7 +120,7 @@ impl Drop for ProfileLaunchTransaction {
 
 struct PreparingUpgrade {
     loaded: Option<loader::LoadedDomain>,
-    moves: Vec<crate::memory::object::PreparedMove>,
+    moves: Vec<crate::memory::object::PreparedTransfer>,
 }
 
 impl PreparingUpgrade {
@@ -1284,7 +1284,7 @@ pub fn try_spawn_upgrade(
         .try_reserve_exact(preparation.moves.len())
         .map_err(|_| UpgradeSpawnError::Allocation)?;
     target_state_caps.extend(preparation.moves.iter().map(|transfer| transfer.target_cap()));
-    crate::memory::object::commit_moves(&mut preparation.moves)
+    crate::memory::object::commit_transfers(&mut preparation.moves)
         .map_err(UpgradeSpawnError::Memory)?;
     let loaded = preparation.finish();
     bootstrap::write_handoff_states(

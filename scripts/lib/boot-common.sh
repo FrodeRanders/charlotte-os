@@ -259,6 +259,37 @@ catten_boot_create_uefi_image() {
     fi
 }
 
+catten_boot_has_selftest_result() {
+    local log="$1"
+    local require_success="${2:-0}"
+    # Cheap polling until the marker appears. UART output is incremental:
+    # seeing its prefix is not permission to stop QEMU mid-result.
+    grep -Fq "SELFTEST COMPLETE:" "$log" || return 1
+    python3 - "$log" "$require_success" <<'PY'
+import re
+import sys
+
+pattern = re.compile(
+    rb"SELFTEST COMPLETE: passed=([0-9]+) failed=([0-9]+) pending=([0-9]+) "
+    rb"passed_bitmap=0x([0-9a-f]+) failed_bitmap=0x([0-9a-f]+) "
+    rb"pending_bitmap=0x([0-9a-f]+)\r?\n$"
+)
+try:
+    with open(sys.argv[1], "rb") as log:
+        for line in log:
+            result = pattern.search(line)
+            if result is None:
+                continue
+            success = all(int(result[group], base) == 0
+                          for group, base in ((2, 10), (3, 10), (5, 16), (6, 16)))
+            if sys.argv[2] != "1" or success:
+                sys.exit(0)
+except OSError:
+    pass
+sys.exit(1)
+PY
+}
+
 catten_boot_validate_selftest_log() {
     local log="$1"
     local kernel="${2:-}"
@@ -275,9 +306,7 @@ catten_boot_validate_selftest_log() {
         fi
         return 1
     fi
-    if ! grep -Eq \
-        'SELFTEST COMPLETE: passed=[0-9]+ failed=0 pending=0 passed_bitmap=0x[0-9a-f]+ failed_bitmap=0x0 pending_bitmap=0x0' \
-        "$log"
+    if ! catten_boot_has_selftest_result "$log" 1
     then
         echo "error: malformed or unsuccessful authoritative self-test result" >&2
         grep -E 'SELFTEST (FAILED|PENDING):' "$log" >&2 || true
