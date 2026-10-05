@@ -69,6 +69,10 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   Device grants take lifecycle before device/backend registries, reserve before
   hardware creation and retain a `PreparedDmaDomain` until publication. Failed
   hardware rollback must quarantine reachable backing, never recycle it.
+- Demand-backed heap frames use the embedded address-space `heap_account`.
+  Retain the exact generation and table guard across admission/mapping, prepare
+  frame tracking fallibly, and retain charges until physical teardown. Never
+  refund live heap backing at logical retirement or by reusable ASID lookup.
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`

@@ -136,10 +136,19 @@ mapping cleanup. Late cancellation cannot alter reused ASIDs or successor
 handles. Scalar rollback and the vector alias-cleanup assertion have been
 removed. Reply tokens track every vector loan and revoke them on reply or
 cancellation; kernel buffer/DMA access enforces committed loan permissions.
-Allocator bytes, empty namespace metadata, page tables and heap
-backing remain separate accounting requirements. The implementation contract
+Demand-backed heap frames also have generation-owned admission: the embedded
+address-space account retains charges until physical teardown. The node heap
+pool is one quarter of usable RAM, with one quarter of that pool reserved for
+kernel-designated platform domains. First touch reserves before frame
+allocation, prepares ownership tracking fallibly, and refunds an unpublished
+frame on mapping failure. Repeated touches do not allocate replacement backing;
+retirement denies new commitment without refunding live pages.
+The virtual heap claim remains independent of physical commitment.
+Allocator bytes, empty namespace metadata, loader/runtime pages, stacks and
+page tables remain separate accounting requirements. The implementation contract
 and migration scope are recorded in
-\texttt{docs/reference/capability-admission.md}.
+\texttt{docs/reference/capability-admission.md} and
+\texttt{docs/reference/heap-admission.md}.
 
 \subsection{IPI closures}
 

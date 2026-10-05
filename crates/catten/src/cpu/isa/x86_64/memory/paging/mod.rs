@@ -77,6 +77,7 @@ pub struct AddressSpace {
     /// Physical frames allocated for this address space's user mappings.
     /// Page-table frames are recovered by the existing lower-half tree walk.
     owned_frames: Vec<PAddr>,
+    pub(crate) heap_account: crate::memory::heap_budget::Account,
 }
 
 impl AddressSpace {
@@ -111,6 +112,7 @@ impl AddressSpace {
             cr3: <PAddr as Into<u64>>::into(new_pml4) & CR3_ADDRESS_MASK,
             owns_root: true,
             owned_frames: Vec::new(),
+            heap_account: crate::memory::heap_budget::Account::new(),
         }
     }
 
@@ -118,6 +120,10 @@ impl AddressSpace {
     /// mappings and must be reclaimed when the address space is torn down.
     pub fn register_user_frame(&mut self, frame: PAddr) {
         self.owned_frames.push(frame);
+    }
+
+    pub(crate) fn prepare_user_frame(&mut self) -> Result<(), alloc::collections::TryReserveError> {
+        self.owned_frames.try_reserve(1)
     }
 
     pub fn get_cr3(&self) -> u64 {
@@ -180,6 +186,7 @@ impl AddressSpaceInterface for AddressSpace {
             cr3,
             owns_root: false,
             owned_frames: Vec::new(),
+            heap_account: crate::memory::heap_budget::Account::new(),
         }
     }
 

@@ -210,6 +210,7 @@ pub struct AddressSpace {
     /// (ELF segments, runtime pages, heap). Page-table frames are recovered by
     /// walking the TTBR0 hierarchy at teardown.
     owned_frames: Vec<PAddr>,
+    pub(crate) heap_account: crate::memory::heap_budget::Account,
 }
 
 impl AddressSpace {
@@ -225,6 +226,7 @@ impl AddressSpace {
             owns_hw_asid: false,
             owns_root: true,
             owned_frames: Vec::new(),
+            heap_account: crate::memory::heap_budget::Account::new(),
         }
     }
 
@@ -232,6 +234,10 @@ impl AddressSpace {
     /// mappings and must be reclaimed when the address space is torn down.
     pub fn register_user_frame(&mut self, frame: PAddr) {
         self.owned_frames.push(frame);
+    }
+
+    pub(crate) fn prepare_user_frame(&mut self) -> Result<(), alloc::collections::TryReserveError> {
+        self.owned_frames.try_reserve(1)
     }
 
     pub fn get_ttbr0(&self) -> u64 {
@@ -332,6 +338,7 @@ impl AddressSpaceInterface for AddressSpace {
             owns_hw_asid: false,
             owns_root: false,
             owned_frames: Vec::new(),
+            heap_account: crate::memory::heap_budget::Account::new(),
         }
     }
 

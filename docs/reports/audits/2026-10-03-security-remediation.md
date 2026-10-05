@@ -21,7 +21,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-04 | Mitigated | Builds and boot logs identify development trust; production and unknown modes fail closed in scripted and direct kernel builds. Protected bootstrap roots, fixture-free production provisioning and recipient-key custody remain unimplemented. |
 | SEC-05 | Implemented | tcpip rejects raw frame ingress unless the authenticated sender is the exact live, kernel-designated frouter. Separate socket/VIP binding policy remains future hardening. |
 | SEC-06 | Mitigated | HTTP EOF, peer-raced accept and transport failures close one connection, not the server; listener-setup resource failures retry with backoff. httpd has a five-second request wait and bounded send retries; deployd has five-second header and thirty-second total receive budgets. Serial admission remains vulnerable to sustained connection floods. |
-| SEC-07 | Partially implemented | Memory-object backing pages/counts, anonymous timer events (completion plus sleep/watchdog), endpoint records/queue backing, retained completion objects/detached results, CQ registrations/kernel backing, endpoint-close/thread-exit/kernel-callback registrations, completion/CQ/IPC/lock/timer/boot-status scheduler waiters and connection/pending-call/reply-token record counts have generation-scoped domain/node admission and platform reserves. Lifecycle watches and kernel callbacks share one account and node pool; worker exit registration precedes execution and retains deferred producer cancellation. Callback registration checks exact operation identity; late watches are fenced against namespace replacement. Every scheduler Observable requires owning registration, without a weak-only fallback. Timer families have separate domain accounts and one shared node pool. Charges survive transfers, deferred cancellation, delegation, retained references or detached notifications as appropriate. Waiter admission precedes parking; owning cancellation handles competing wakes and reaping. Watchdog callback/cancellation/node preparation precedes Blocked; queue insertion allocates nothing and the quantum has independent inline storage. Timed completion admission failure retains its owner; untimed completion/IPC waits preserve borrowed-buffer safety. Sleep rejection waits runnable to the requested deadline; internal timer callbacks have one embedded slot. Timed park/watchdog setup is non-preemptible. All six capability kinds enforce shared count/retirement admission without a bypass. Joint IPC/memory publication precedes enqueue; device admission precedes hardware creation, and observer launch preparation is owned. Aggregate byte limits for loader/heap/page tables (including physical CQ mappings), arbitrary callback captures, general weak-only/control-block storage and comprehensive kernel metadata remain open. |
+| SEC-07 | Partially implemented | Memory-object backing/counts, demand-backed user heaps, anonymous timer events, endpoint records/queue backing, retained completion objects/detached results, CQ registrations/kernel backing, lifecycle/kernel callback registrations, scheduler waiters and IPC connection/call/reply records have lifetime-owned domain/node admission with platform reserves. All six capability kinds enforce shared count/retirement admission without a bypass. Charges survive retained resources, transfers, deferred cancellation and retirement as appropriate. Admission precedes parking/publication/hardware creation; IPC and memory authority publishes jointly. Owning observer startup and heap-frame preparation roll back failures. Existing untimed waits preserve borrowed-buffer safety, and timer preparation precedes Blocked. Loader/runtime pages, stacks, page tables (including physical CQ mappings), kernel heap, arbitrary callback captures, weak-only/control-block storage and comprehensive metadata/physical-failure accounting remain open. |
 | SEC-08 | Open | Authenticate enrolled nodes and control/data peer traffic, add replay protection, and bound discovery state. A trusted L2 segment remains an explicit deployment prerequisite. |
 | SEC-09 | Open | Distinguish authenticated security time from observational SNTP/holdover; enforce freshness and uncertainty at security-policy gates. |
 | SEC-10 | Open | Authenticated encrypted access to node and cluster management, browser-client provisioning, and access policy remain necessary. |
@@ -54,6 +54,14 @@ Device/system-observer grants complete the shared record-admission cutover;
 there is no remaining unbounded allocator or budget/retirement bypass. This
 completes capability count admission, not comprehensive aggregate byte or
 physical-allocation protection.
+
+Demand-backed user heaps now have an embedded address-space account and their
+own quarter-RAM node pool. Ordinary domains can use three quarters of that pool;
+trusted platform launches share the rest. Page commitment validates the exact
+generation under the mapping guard, reserves before allocation and owns
+unpublished frames through rollback. Logical retirement retains charges until
+physical teardown. See [heap admission](../../reference/heap-admission.md).
+This does not budget loader/runtime pages, stacks, page tables or the kernel heap.
 
 ## Enforced contracts
 
@@ -221,8 +229,8 @@ implementation proof is claimed.
    only then enable production images without fixture fallback. Migrate sibling
    broker/Durga templates to the new signing file-path interface. Keep developer
    fixtures visibly identified and separate from real credentials.
-3. Extend admission to the remaining capability, connection/call/observer,
-   CQ/weak-only storage, other timer and loader/heap/page-table budgets. Add
+3. Extend admission to loader/runtime pages, stacks, page tables, kernel heap,
+   uncharged callback captures and general weak-only/control-block storage. Add
    typed launch-policy limits and observable counters. Preserve rollback and
    delayed-release accounting, and test essential-service progress under
    sustained hostile pressure, not only bounded fixture exhaustion.
@@ -2229,3 +2237,62 @@ remain. Other open findings are unchanged. These fixtures are not a new real
 EL0 quota probe, exhaustive concurrent/hardware-failure proof or pressure soak.
 No x86-64 guest or new formal proof ran. Markdown, LaTeX source and TLA+
 conformance were updated; models and PDF were not rebuilt.
+
+## Continuation: demand-backed user heap admission — 2026-10-05
+
+The device/observer capability cutover was committed as `01a81482`. This next
+batch addresses physical demand-heap backing in SEC-07, leaving virtual heap
+capacity and userspace allocator semantics unchanged.
+
+Both architectures embed a heap account in each owning `AddressSpace`. The
+default per-domain physical ceiling is the fixed heap window (1,264 pages),
+with accessible pages also bounded by the domain's virtual heap capacity.
+Node heap backing has a separate quarter-RAM pool; ordinary domains may use
+three quarters of it and trusted platform launches share the remainder.
+Promotion reclassifies existing heap charges. Applications cannot select the
+reserve or override physical limits.
+
+Heap commitment checks the captured generation and holds the address-space
+table through reservation, fallible owned-frame tracking preparation,
+allocation, mapping and commit. Concurrent/repeated first touches do not
+replace mapped frames or charge twice. `PageCharge` refunds staged node
+admission; `PreparingHeapFrame` frees unpublished backing before that refund.
+Allocation also checks the one-eighth free-frame floor under the physical
+allocator guard. That floor is not an entitlement or a bound on subsequent
+page-table allocations. Heap accounts allocate no per-page ledger entries.
+Retirement refuses commitment under the same mapping guard and retains
+charges until address-space Drop returns owned frames. Freed Rust allocations
+inside the arena do not decommit pages or release physical charges.
+
+Validation:
+
+- Isolated production pool code fills ordinary and total limits, verifies
+  platform headroom and rejection/refund/reuse. Real pool/account fixtures
+  verify provisional cancellation, promotion, quota and retirement.
+- Real address-space tests commit zeroed backing, reject a second page at a
+  reduced one-page ceiling without consuming frames, repeat a touch without
+  replacement, reject stale handles after exact ASID reuse, reject retired
+  commitment and return node charges at physical teardown. A kernel-only
+  mapper adapter rejects before leaf publication and returns the allocated
+  frame and reservation. It does not inject physical allocator exhaustion or
+  every architecture mapper failure.
+- Four-LP AArch64 security guest passed **19/19**, including both existing
+  scoped probes at `0x7fff`; cancellation stress retired after **4,200**
+  requests. New heap fixtures passed in the synchronous phase and ordinary
+  services exercised real demand commitment. No new EL0 quota bit was added.
+- Strict Clippy passed for AArch64 `acpi,security_test` and x86-64 `acpi`.
+  The shared host runner, formatting and diff checks passed. No x86-64 guest,
+  full pressure soak or new formal proof ran.
+
+Guest kernel SHA-256:
+`2bb8557918224e7f2904cc46f06b5b9ae87d5e5a17ae2cb3d204a8d928cc7851`.
+Run/host logs: `/private/tmp/charlotte-security-heap-admission-run.log` and
+`/private/tmp/charlotte-security-heap-admission-host-tests.log`.
+Serial: `/private/tmp/charlotte-heap-admission-20261005-serial.log`.
+Dedicated instance storage and ports left existing soak guests/storage untouched.
+
+SEC-07 remains partial for loader/runtime pages, stacks, page tables, kernel
+heap, comprehensive metadata/callback captures and allocator-failure paths.
+This adds no recoverable allocation-failure ABI or general OOM safety guarantee.
+The audit's deployment restrictions and other open findings remain unchanged.
+Markdown and LaTeX source were updated; the PDF and models were not rebuilt.

@@ -486,6 +486,16 @@ that had an actual Rust unit test hidden by `test = false`. Its harness is now
 enabled and included in the shared runner. `charlotte-protocol-disco` already
 had an enabled harness, but was missing from CI; it is now included as well.
 
+## Demand-backed heap tests
+
+Demand-heap admission fixtures check isolated node/ordinary saturation and
+platform headroom, provisional refund and account promotion, real zeroed
+backing, a reduced one-page domain quota, repeated touch, retired commitment,
+exact ASID reuse and post-teardown refunds. A kernel-only mapper adapter rejects
+before publication and verifies that the real frame and reservation are freed.
+These are synchronous kernel tests, not a new scoped EL0 quota bit or forced
+physical exhaustion. See [heap admission](../reference/heap-admission.md).
+
 ## Rule for new service logic
 
 Keep the thin syscall loop and process entry point in an EL0 binary. Put policy

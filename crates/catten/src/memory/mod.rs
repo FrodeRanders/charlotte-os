@@ -2,6 +2,7 @@
 
 pub mod allocators;
 pub mod budget;
+pub(crate) mod heap_budget;
 pub mod linear;
 pub mod object;
 pub mod physical;
@@ -287,6 +288,45 @@ pub fn domain_limits(asid: AddressSpaceId) -> DomainLimits {
 /// returns to retry. Returns `false` outside the window or when a frame cannot
 /// be obtained or mapped, leaving the fatal fault path to retire the domain.
 pub(crate) fn commit_user_heap_page(asid: AddressSpaceId, fault_addr: usize) -> bool {
+    let Some(handle) = current_address_space_handle(asid) else {
+        return false;
+    };
+    commit_user_heap_page_handle(handle, fault_addr)
+}
+
+/// One owning preparation for the provisional frame. Its reservation is
+/// separate and drops after this owner on a failed mapping.
+struct PreparingHeapFrame(Option<PAddr>);
+
+impl Drop for PreparingHeapFrame {
+    fn drop(&mut self) {
+        if let Some(frame) = self.0.take() {
+            let _ = PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame);
+        }
+    }
+}
+
+pub(crate) fn commit_user_heap_page_handle(handle: AddressSpaceHandle, fault_addr: usize) -> bool {
+    commit_user_heap_page_with_mapper(handle, fault_addr, |address_space, mapping| {
+        address_space.map_page(mapping).is_ok()
+    })
+}
+
+// Kernel-only adapter for testing failure before leaf publication without
+// exhausting the physical allocator. Production always uses the real mapper.
+pub(crate) fn commit_user_heap_page_with_mapper(
+    handle: AddressSpaceHandle,
+    fault_addr: usize,
+    map: impl FnOnce(&mut AddressSpace, linear::MemoryMapping) -> bool,
+) -> bool {
+    if handle.id() == KERNEL_ASID {
+        return false;
+    }
+    let mut table = ADDRESS_SPACE_TABLE.lock();
+    if table.generation(handle.id()).ok() != Some(handle.generation()) {
+        return false;
+    }
+    let asid = handle.id();
     let page_size = crate::cpu::isa::memory::paging::PAGE_SIZE;
     let start = charlotte_launch::HEAP_VADDR;
     let capacity = usage::domain_heap_capacity(asid).unwrap_or(charlotte_launch::HEAP_SIZE);
@@ -295,40 +335,56 @@ pub(crate) fn commit_user_heap_page(asid: AddressSpaceId, fault_addr: usize) -> 
         return false;
     }
     let page = fault_addr & !(page_size - 1);
-    let frame = match PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame() {
-        Ok(frame) => frame,
+    let address_space = table.get_mut(asid).unwrap();
+    if !address_space.heap_account.accepting() {
+        return false;
+    }
+    // Concurrent first touches must not allocate a replacement or double-charge.
+    match address_space.is_mapped(VAddr::from(page)) {
+        Ok(true) => return true,
+        Ok(false) => {}
         Err(_) => return false,
+    }
+    let Ok(charge) = address_space.heap_account.reserve() else {
+        return false;
     };
+    if address_space.prepare_user_frame().is_err() {
+        return false;
+    }
+    let frame = {
+        let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+        if !charlotte_lifecycle::resources::frames_available(
+            allocator.free_frames() as u64,
+            allocator.usable_bytes() / page_size as u64,
+            1,
+        ) {
+            return false;
+        }
+        match allocator.allocate_frame() {
+            Ok(frame) => frame,
+            Err(_) => return false,
+        }
+    };
+    let mut preparation = PreparingHeapFrame(Some(frame));
     let page_ptr: *mut u8 = frame.into();
     unsafe {
         core::ptr::write_bytes(page_ptr, 0, page_size);
     }
-    let mapped = {
-        let mut table = ADDRESS_SPACE_TABLE.lock();
-        match table.get_mut(asid) {
-            Ok(address_space) => {
-                if address_space
-                    .map_page(linear::MemoryMapping {
-                        vaddr: VAddr::from(page),
-                        paddr: frame,
-                        page_type: linear::PageType::UserData,
-                    })
-                    .is_ok()
-                {
-                    address_space.register_user_frame(frame);
-                    true
-                } else {
-                    false
-                }
-            }
-            Err(_) => false,
-        }
-    };
-    if !mapped {
-        let _ = PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame);
+    if !map(
+        address_space,
+        linear::MemoryMapping {
+            vaddr: VAddr::from(page),
+            paddr: frame,
+            page_type: linear::PageType::UserData,
+        },
+    ) {
         return false;
     }
+    address_space.register_user_frame(frame);
+    preparation.0 = None;
+    address_space.heap_account.commit(charge);
     usage::note_owned_frame(asid);
+    drop(table);
     crate::cpu::isa::memory::tlb::inval_range_user(asid, VAddr::from(page), 1);
     true
 }
@@ -378,6 +434,9 @@ fn close_user_address_space_locked(
         Err(_) => return Err(AddressSpaceCloseError::AddressSpaceMissing),
     }
 
+    // Fence demand-heap admission under the same guard as mapping. Keep its
+    // charges until AddressSpace::drop has actually returned the frames.
+    ADDRESS_SPACE_TABLE.lock().get_mut(asid).unwrap().heap_account.retire();
     // Refuse new memory-object sponsorship before draining subsystem payloads.
     crate::capability::retire_address_space(asid);
     budget::retire(handle);

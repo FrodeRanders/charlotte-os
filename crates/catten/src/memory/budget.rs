@@ -45,7 +45,8 @@ impl Ledger {
     fn new() -> Self {
         // Memory objects can consume at most a quarter of usable RAM. Keep
         // one quarter of that pool for kernel/platform progress. This does
-        // not yet reserve loader, heap, page-table, IPC or completion memory.
+        // not reserve loader/page-table/IPC/completion memory. Demand heaps
+        // have their own separate quarter-RAM pool in heap_budget.
         let pages = (PHYSICAL_FRAME_ALLOCATOR.lock().usable_bytes() / 4096 / 4).max(1);
         Self {
             total: Budget::new(Amount {
@@ -199,8 +200,9 @@ fn reserve_inner(
 /// use the node's progress pool. Signed scoped applications never take this
 /// path, regardless of their logical name or artifact class.
 pub(crate) fn mark_platform(handle: AddressSpaceHandle) {
-    let table = super::ADDRESS_SPACE_TABLE.lock();
+    let mut table = super::ADDRESS_SPACE_TABLE.lock();
     assert_eq!(table.generation(handle.id()).ok(), Some(handle.generation()));
+    table.get_mut(handle.id()).unwrap().heap_account.mark_platform();
     let mut ledger = LEDGER.lock();
     let account = ledger.account((handle.id(), handle.generation()));
     assert!(!account.retired);
@@ -212,7 +214,7 @@ pub(crate) fn mark_platform(handle: AddressSpaceHandle) {
         ledger.ordinary.release(used).expect("platform promotion budget underflow");
     }
     // Never enter the shared capability registry while holding the memory
-    // ledger or address-space table; legacy allocation enters it under other
+    // ledger or address-space table; publication enters it under other
     // subsystem guards. The captured handle rejects a replacement generation.
     drop(ledger);
     drop(table);

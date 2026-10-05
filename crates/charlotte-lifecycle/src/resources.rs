@@ -165,7 +165,7 @@ impl Budget {
 }
 
 /// Keep one eighth of usable physical frames beyond reach of memory-object
-/// allocations. The allocator must check this while holding its frame lock.
+/// and demand-heap backing allocations. Check this under the frame lock.
 /// This is a progress reserve, not an entitlement for every other subsystem.
 pub const fn frames_available(free: u64, usable: u64, request: u64) -> bool {
     let reserve = if usable / 8 == 0 {

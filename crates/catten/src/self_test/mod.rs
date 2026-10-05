@@ -280,6 +280,7 @@ pub fn run_synchronous_self_tests() {
     memory::vmem::test_vmem();
     memory::allocator::test_allocator();
     memory::object::test_memory_objects();
+    memory::heap::test_heap_admission();
     waiters::test_waiter_admission();
     crate::cpu::scheduler::sync::tests::test_admission();
     crate::timers::waiter_tests::test_admission();
