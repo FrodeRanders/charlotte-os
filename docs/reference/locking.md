@@ -57,6 +57,15 @@ Entry-charge Drop enters only capability counters; reservation/escrow Drop
 enters `CAPABILITIES` and must run outside that registry's own guard. See
 [shared capability admission](capability-admission.md) for enforcement scope.
 
+IPC endpoint/direct-grant/receiver-reply admission uses the generation captured
+in `AsIpcCaps`: `IPC → CAPABILITIES → capability domain → node`. Family charges
+and result writes run outside capability/counter guards. `PreparedReceive`
+exclusively borrows IPC while speculative reply authority is installed; its Drop
+removes only that capability on result-write failure, without consuming a token
+or invoking cancellation callbacks. Publication precedes result writing/dequeue,
+so there is no fallible admission after either mutation. Lifecycle is never
+acquired under IPC.
+
 Memory-object admission captures source/target handles before taking
 `MEMORY_OBJECTS`, then uses `reserve_captured`/`escrow_captured`:
 `MEMORY_OBJECTS → CAPABILITIES → capability domain → node`. Batch commit holds

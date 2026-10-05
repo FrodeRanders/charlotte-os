@@ -28,13 +28,23 @@ and sponsorship does not confer authority to close the recipient's capability.
 Pending calls and their reply tokens are sponsored by the **requesting caller**.
 A client that creates outstanding requests consumes its own record budget,
 rather than the target service's. A reply token is admitted at call submission,
-before queuing: dequeue merely publishes its already-admitted receiver capability.
+before queuing. Receive needs no new *family* token record, but does reserve a
+shared capability slot in the receiver namespace. Quota rejection keeps the
+message queued, its loan active and vector result bytes unchanged; cancelling
+the caller remains possible. Direct endpoint/connection publication also uses
+the shared budget. Call-side and returned-connection publication still need
+that migration; see [shared admission](capability-admission.md).
 
 The caller retains its pending-call charge after completion or result observation,
 until that record is closed. The reply-token charge returns on reply or cancellation.
 Connection charges remain until actual capability removal, including queued
 delegation cancellation and unobserved returned-result cleanup. An observed
 returned connection is independent of its former pending call.
+
+`PreparedReceive` owns speculative receiver reply authority under the IPC guard.
+Result-page failure drops this capability without consuming the internal reply
+token, queue or attachments. Successful receive commits dequeue exactly once.
+Result encoding uses bounded stack storage, not a fresh heap allocation.
 
 ## Preparation and retirement
 
@@ -70,6 +80,11 @@ submission ABIs return zero on failure, so owned clients retain their existing
 creation/submission errors without a quota-specific status. Reply APIs with a
 status result report `ipc_status::RESOURCE_LIMIT` (10). No ABI, launch descriptor
 parameter or application-facing accounting endpoint was added.
+
+Kernel fixtures also check shared-namespace pressure on endpoint creation,
+direct grants and scalar/vector receive; result-write failure refunds; successful
+retry/cancellation; one-way receive at capacity; and retirement between shared
+reservation and publication. These are not new real-EL0 quota probes.
 
 Kernel boot tests exercise actual connection, retained completed-call and
 outstanding-call ceilings; every call variant's pre-transfer rejection; staged

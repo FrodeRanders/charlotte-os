@@ -41,12 +41,15 @@ refund and a trusted platform reserve; this is not aggregate namespace or
 mailbox queue-backing admission.
 
 Shared namespace accounting now includes all capability kinds and enforces
-staged admission for mailbox, completion and memory publication. Exact namespace
+staged admission for mailbox, completion and memory publication, IPC endpoint
+creation/direct connection grants and receive-side reply authority. Exact namespace
 tokens fence cancellation/publication; owning prepared memory transfers integrate
 source escrow/backing retention or private-copy backing, with atomic mixed-mode
 IPC memory publication. Scalar reverse-move and receiver-alias rollback are
 removed. Reply tokens track every vector loan, and kernel buffer/DMA operations
-enforce loan permissions. Other families
+enforce loan permissions. `PreparedReceive` preserves queue/result bytes on shared
+rejection and returns speculative reply authority on result-write failure.
+Call-side IPC, returned connections and other families
 can still exceed shared policy through explicitly named unconverted paths.
 Thus the complete capability-namespace admission requirement remains open;
 this is not a backward-compatibility promise for those paths.
@@ -1996,3 +1999,70 @@ tests are kernel fixtures, not new real-EL0 quota probes or exhaustive concurren
 retirement/unmap-failure exploration. No x86-64 guest, end-to-end multi-state
 upgrade test or new formal proof ran. TLA+ conformance and LaTeX sources were
 updated; models and the PDF were not rebuilt.
+
+## Continuation: shared IPC publication and owning receive — 2026-10-05
+
+The preceding mixed-memory batch is committed as `09a64580`. This continuation
+converts endpoint creation, direct connection mint/delegation and receiver reply
+capabilities to captured-generation shared admission. Their family charges and
+prepared endpoint resources refund on rejection. A delegated connection consumes
+the recipient's shared slot while its grantor retains sponsorship of connection
+metadata; neither can bypass these converted paths' admission ceilings.
+
+Inspection found that scalar receive dequeued before installing reply authority,
+and vector receive wrote its result page and dequeued before that installation.
+Making the old allocation fallible at that point would lose a queued call and
+potentially leave its loan and reply record stranded. `PreparedReceive` now
+reserves/publishes speculative reply authority under exclusive IPC serialization
+before either mutation. It owns that capability until successful dequeue. Drop
+on result-write failure removes only the speculative capability, preserving the
+internal token, caller-sponsored records, attachments and queue for retry or
+cancellation. Quota rejection preserves vector result bytes too. The reply
+capability is live in the unified table during result writing, but another IPC
+caller cannot use it until the registry guard is released; this is serialized
+payload preparation, not a hidden-memory alias transaction. Existing queued
+attachment authority is unchanged. Vector result encoding now uses bounded
+stack storage instead of cloning queued attachments and allocating output bytes.
+
+Kernel syscall receive already maps `ResourceLimit` to status 10 and clears the
+output registers on failure. No ABI change is needed. One-way messages require
+no reply capability and can drain a full namespace. Applications should release
+resources or back off on resource errors rather than busy-retry a nonempty queue
+whose next reply authority cannot be admitted.
+
+Validation:
+
+- Host regression/signing tests passed, including the five boot-result parser
+  tests. Strict AArch64/security and x86-64 Clippy passed with `-D warnings`;
+  workspace formatting and diff checks passed.
+- Real-domain kernel fixtures fill actual shared namespace slots while leaving
+  family budgets below their ceilings. Rejected endpoint/direct grants return
+  family charges; freeing one slot permits recovery. Scalar/vector receive
+  rejection preserves queued work, result sentinels, loan state and caller
+  record charges across repeated attempts. Successful retry delivers once;
+  cancellation at the ceiling reclaims the queued loan. One-way receives still
+  succeed. Invalid/read-loaned result pages refund speculative reply admission
+  without consuming the call. A paused reservation rejects retirement before
+  publication without mutating queue/result bytes.
+- An isolated four-LP AArch64/TCG security guest passed **19 tests, 0 failed,
+  0 pending**. Both real scoped launches passed the unchanged `0x7fff` checks;
+  cancellation traffic retired after 4,480 requests. Bundled services were
+  rebuilt through the normal runner. Existing soak storage/guests were not
+  touched. The first attempt could not bind QEMU's dedicated ports in the
+  sandbox and did not boot; the approved rerun supplied the passing evidence.
+
+The verified kernel SHA-256 is
+`3a961186543644dacd16b7d9b178dc599bf84cbb350193001992d573b50b7f6a`.
+Evidence: `/private/tmp/charlotte-security-ipc-receive-host-tests.log`,
+`/private/tmp/charlotte-security-ipc-receive-*-clippy.log`,
+`/private/tmp/charlotte-security-ipc-receive-run.log` and
+`/private/tmp/charlotte-ipc-receive-admission-20261005-serial.log`.
+
+SEC-07 remains partial. Call-side pending/delegated authority and returned
+connections still use counted unbounded allocation; they must be composed with
+prepared attachment transactions before introducing post-transfer admission
+failure. Device/system-observer publication, broader heap/loader/page-table
+budgets, physical allocation failures and other open findings remain. These
+fixtures are not a new real-EL0 quota probe, exhaustive retirement/unmap race
+proof or production pressure soak. No x86-64 guest or new formal proof ran;
+TLA+ conformance and LaTeX sources were updated without rebuilding models/PDF.

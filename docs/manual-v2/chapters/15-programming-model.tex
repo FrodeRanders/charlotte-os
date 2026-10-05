@@ -98,7 +98,8 @@ Opens are serialized with domain retirement and checked against the exact
 generation, so a delayed open cannot publish into a reused ASID.
 
 The unified capability namespace accounts for every object kind. Mailbox
-opens, capability-backed completion submissions and memory-object destinations
+opens, capability-backed completion submissions, memory-object destinations,
+IPC endpoint creation, direct connection grants and receive-side reply authority
 also enforce shared limits:
 4,096 records per namespace, 65,536 per node, and 49,152 ordinary records.
 Staged identities and source slots held for rollback count toward these limits;
@@ -106,6 +107,14 @@ staging does not grant public authority. Owning admission tokens capture the
 exact namespace, so cancellation cannot revoke a replacement's reused handle.
 Domain registration prepares the generation-bearing namespace, and teardown
 retires admission before releasing subsystem payloads.
+
+Receive reserves reply authority before dequeuing a call or writing its vector
+result page. A shared-limit rejection preserves queued work, result bytes and
+active loans. An owning receive transaction removes speculative reply authority
+if result writing fails; successful writing and dequeue require no further
+admission. One-way messages need no reply slot and can drain a full namespace.
+Call-side IPC authority and returned connections still need to be composed with
+their attachment transactions.
 
 Other allocation paths still require conversion to staged admission. They
 contribute to the counters but can exceed the shared limits, so aggregate

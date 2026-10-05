@@ -81,6 +81,8 @@ probe or exhaustive concurrent-retirement exploration.
 Mailbox opens also enforce the [shared capability budget](capability-admission.md):
 4,096 records per namespace, 65,536 node-wide and 49,152 ordinary records.
 Completion submissions and memory destinations use the same bounded path.
+IPC endpoint creation, direct grants and receive-side reply authority do too;
+receive rejection preserves queued work and vector result bytes.
 Other families contribute
 to those counters, but their unconverted allocation paths can still exceed the
 shared policy. These limits therefore do not establish full aggregate protection.
@@ -91,11 +93,10 @@ all four IPC vector modes, now use owning prepared transactions and atomic
 mixed-mode publication. Copies stay private and loans have no live borrower
 state during preparation. Completing the cutover still needs these contracts:
 
-- Reserve destination identities/counts before mutating endpoint, connection,
-  call, device or system-observer payload state.
-- Extend staged authority to the fresh IPC call/reply/connection records as
-  well as memory attachments. Receive-side reply capability admission must
-  preserve the queued message on rejection.
+- Reserve destination identities/counts before mutating call-side IPC,
+  returned-connection, device or system-observer payload state.
+- Compose staged call/connection authority with memory attachments, without
+  placing a fallible fresh-capability admission after their ownership commits.
 - Retain an exact namespace identity in staged owners. Their Drop must not
   revoke a replacement's reused numeric handle.
 - Retire admission before payload teardown, and use the same trusted

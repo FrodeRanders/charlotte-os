@@ -200,6 +200,14 @@ quota probe or atomic IPC-vector admission test is implied; the scoped mask
 remains `0x7fff`. See
 [shared capability admission](../reference/capability-admission.md).
 
+Real-domain IPC shared-admission fixtures check endpoint/direct-grant rejection
+and family refunds, receiver reply admission under namespace pressure, unchanged
+queue/result bytes and active loans, retry/cancellation and one-way receive at
+the ceiling. Invalid/read-loaned result pages return speculative reply authority
+without consuming queued work. A paused reservation checks rejection after
+retirement before publication. This is kernel registry/ABI testing, not a new
+EL0 quota probe or exhaustive concurrent retirement exploration.
+
 Memory-object fixtures also fill spare shared-namespace slots in real domains.
 They check allocation/copy/read-loan/write-loan rejection, source access and
 backing refunds, prepared-move cancellation at the source ceiling, successful

@@ -6,6 +6,8 @@ use alloc::vec::Vec;
 
 use super::*;
 
+mod shared_admission;
+
 fn account(asid: AddressSpaceId) -> Arc<record_budget::DomainBudget> {
     IPC.read().caps[&asid].record_budget.clone()
 }
@@ -241,6 +243,7 @@ pub(crate) fn test_admission() {
 
     test_retirement();
     test_node_limits();
+    shared_admission::test_admission();
     assert_eq!(record_budget::node_used(), baseline);
     crate::logln!(
         "[ipc records] SUCCESS: connection/call/reply bounds, pre-transfer rejection, rollback, \

@@ -260,7 +260,8 @@ after allocation. Capability records carry a typed
 Kernel payload ownership and namespace authority need coordinated transactions.
 `capability::Reservation` holds a hidden identity/count before publication; its
 Drop releases only that exact namespace's entry. Mailbox opens, completion
-submissions and memory-object destinations use bounded shared admission.
+submissions, memory-object destinations, IPC endpoints/direct grants and
+receive-side reply capabilities use bounded shared admission.
 `memory::object::PreparedTransfer` owns destination reservation and private
 copy backing or source escrow/backing pins for moves and loans. Its Drop
 restores original source authority without re-admission, cancels the destination
@@ -272,6 +273,11 @@ Copied pages stay private until commit, so cancellation
 never closes a live receiver alias. Drop must run outside the memory registry
 guard. Drop committed owners before exposing writable access to release their
 pins. IPC reply tokens track every vector loan, not just scalar attachments.
+Kernel `PreparedReceive` retains exclusive IPC access and owns speculative reply
+authority until result writing/dequeue commits. Result-write failure drops only
+that authority, preserving queued work and its loans. Shared quota rejection
+does not write result bytes or dequeue. Call-side/returned IPC authority remains
+the next composition step; it must be staged together with attachment owners.
 See [shared capability admission](../reference/capability-admission.md) for
 state transitions, locking, limits and the remaining migration.
 

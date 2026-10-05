@@ -4,8 +4,10 @@ The kernel's unified namespace now accounts for every capability kind:
 IPC, memory, completion, device, mailbox and system-observer authority.
 Mailbox opens and capability-backed completion submissions (including timers,
 event watches and workers), and all memory-object destinations enforce shared
-admission in addition to their existing family limits. IPC, device and
-system-observer allocation paths are counted but **not yet
+admission in addition to their existing family limits. IPC endpoint creation,
+direct connection mint/delegation and receive-side reply capabilities also
+enforce this policy. Call-side pending/delegated IPC authority, returned reply
+connections, device and system-observer allocation are counted but **not yet
 limited by this policy**. SEC-07 remains partially implemented.
 
 | Shared admission scope | Record limit |
@@ -85,6 +87,23 @@ is distinct from private preparation cancellation, which needs no unmap.
 
 ## Lifecycle and locks
 
+IPC `reserve_cap` uses the generation retained by its registry. Endpoint
+creation and direct mint/delegation prepare family-owned resources before
+publishing the shared identity; rejection refunds those charges. A recipient
+needs a shared slot even when the grantor sponsors its connection metadata.
+
+`PreparedReceive` reserves and installs speculative reply authority while
+exclusively borrowing IPC, before dequeuing or writing a vector result page.
+That authority cannot be used by another IPC caller until the guard is released.
+Its Drop removes only the speculative capability on result-write failure,
+leaving the internal token, caller-sponsored record, queue and attachments
+untouched. Admission failure leaves both queue and result bytes unchanged.
+Commit finishes result writing and dequeues without another fallible step.
+One-way messages require no reply slot and can drain a full namespace. Existing
+queued attachment authority is not newly hidden by this receive transaction.
+An owned receiver should release resources or apply backpressure on resource
+errors rather than spin on a queue whose reply cannot yet be admitted.
+
 User domain creation stages a fallibly allocated budget control block before
 allocating its ASID, then publishes an empty namespace with the real generation.
 Teardown retires capability admission before draining subsystem payloads and
@@ -120,11 +139,10 @@ promise and must disappear as those payload transactions are replaced.
 
 The next migration needs to:
 
-- Stage endpoint, connection, call, device and system-observer identities before their
+- Stage call-side IPC, returned connection, device and system-observer identities before their
   payloads change; return normal resource errors on rejected admission.
-- Preserve a queued receive and result page when reply-cap admission fails.
 - Stage the IPC call/reply/connection authority as well as its memory batch;
-  these fresh IPC capability identities still use the unconverted allocator.
+  fresh call-side and returned-connection identities still use the unconverted allocator.
 - Remove the unconverted allocation helper after every caller has migrated.
 
 These count limits do not charge allocator bytes, empty namespace/control
@@ -133,6 +151,17 @@ blocks, page tables, loader/heap backing or arbitrary callback captures.
 infallible. Count admission is not physical out-of-memory handling.
 
 ## Verification
+
+Real-domain IPC fixtures fill receiver namespaces while keeping family budgets
+below their ceilings. Endpoint/direct-grant rejection refunds family metadata;
+freeing one slot allows recovery. Scalar/vector receive rejection preserves
+the queued call, loan, result-page sentinel and caller-sponsored records across
+retries. Successful retry delivers once; caller cancellation releases the
+queued loan. One-way receive succeeds at the ceiling. Invalid and read-loaned
+result pages return speculative reply slots without consuming queued work.
+A paused shared reservation rejects retirement before publication; queued work
+and result bytes stay intact. These are deterministic kernel fixtures, not an
+exhaustive concurrent proof or a new EL0 quota probe.
 
 Kernel fixtures fill 4,096 actual records across all six kinds, test hidden
 staging/cancellation, source rollback at capacity, committed revocation and

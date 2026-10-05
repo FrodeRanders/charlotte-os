@@ -242,6 +242,18 @@ impl AsIpcCaps {
             "connection needs exactly one record charge"
         );
         let id = crate::capability::allocate_unmigrated(owner, crate::capability::ObjectKind::Ipc);
+        self.insert_admitted(id, cap, charge)
+    }
+
+    /// The caller has published this identity under IPC serialization. No
+    /// fallible admission may remain after mutating its associated payload.
+    fn insert_admitted(
+        &mut self,
+        id: CapabilityId,
+        cap: Capability,
+        charge: Option<record_budget::Charge>,
+    ) -> CapabilityId {
+        assert_eq!(matches!(cap, Capability::Connection { .. }), charge.is_some());
         self.caps.insert(
             id,
             AdmittedCapability {
@@ -430,6 +442,19 @@ impl IpcRegistry {
             .map_err(|_| IpcError::ResourceLimit)
     }
 
+    fn reserve_cap(
+        &mut self,
+        owner: AddressSpaceId,
+    ) -> Result<crate::capability::Reservation, IpcError> {
+        self.accepting_namespace(owner)?;
+        crate::capability::reserve_captured(
+            owner,
+            crate::capability::ObjectKind::Ipc,
+            self.as_caps(owner).address_space,
+        )
+        .map_err(cap_admission_error)
+    }
+
     /// Both records and the waiter source are prepared before attachments move.
     fn stage_call(
         &mut self,
@@ -495,6 +520,13 @@ impl IpcRegistry {
 
 static IPC: LazyLock<RwLock<IpcRegistry>> = LazyLock::new(|| RwLock::new(IpcRegistry::new()));
 
+fn cap_admission_error(error: crate::capability::AllocationError) -> IpcError {
+    match error {
+        crate::capability::AllocationError::Retired => IpcError::PermissionDenied,
+        _ => IpcError::ResourceLimit,
+    }
+}
+
 /// Kernel diagnostics retain the original namespace even after ASID reuse.
 pub(crate) fn endpoint_admission(owner: AddressSpaceId) -> Option<Arc<budget::DomainBudget>> {
     IPC.read().caps.get(&owner).map(|caps| caps.endpoint_budget.clone())
@@ -533,6 +565,9 @@ pub fn endpoint_create(
             .map_err(|_| IpcError::ResourceLimit)?;
     let readiness_observers =
         ObserverList::try_new(waiter_budget::SOURCE_LIMIT).map_err(|_| IpcError::ResourceLimit)?;
+    let reservation = ipc.reserve_cap(owner)?;
+    let cap = reservation.publish().map_err(cap_admission_error)?;
+    // Everything after publication is infallible under this IPC write guard.
     let endpoint = ipc.alloc_endpoint();
     ipc.endpoints.insert(
         endpoint,
@@ -550,12 +585,13 @@ pub fn endpoint_create(
             notify_cq: None,
         },
     );
-    Ok(ipc.as_caps(owner).insert(
-        owner,
+    Ok(ipc.as_caps(owner).insert_admitted(
+        cap,
         Capability::Endpoint {
             endpoint,
             rights: ConnectionRights::ALL,
         },
+        None,
     ))
 }
 
@@ -685,7 +721,16 @@ pub fn connection_delegate(
     let (endpoint, granted) = mintable_endpoint(&ipc, owner, endpoint_cap, rights)?;
     ipc.accepting_namespace(target)?;
     let charge = ipc.reserve_records(owner, [1, 0, 0])?;
-    Ok(ipc.as_caps(target).insert_connection(target, endpoint, granted, charge))
+    let reservation = ipc.reserve_cap(target)?;
+    let cap = reservation.publish().map_err(cap_admission_error)?;
+    Ok(ipc.as_caps(target).insert_admitted(
+        cap,
+        Capability::Connection {
+            endpoint,
+            rights: granted,
+        },
+        Some(charge),
+    ))
 }
 
 /// Resolve the owner of the endpoint named by a connection capability.
@@ -1359,55 +1404,101 @@ pub fn receive(
     let mut ipc = IPC.write();
     let endpoint_id = receive_endpoint_id(&ipc, receiver, endpoint_cap)?;
     ipc.accepting_namespace(receiver)?;
-
-    let (message, interface, version) = {
-        let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
-        if endpoint.closed {
-            return Err(IpcError::EndpointClosed);
-        }
-        (
-            endpoint.queue.pop_front().ok_or(IpcError::NoMessage)?,
-            endpoint.interface,
-            endpoint.version,
-        )
-    };
-    let reply = install_reply_cap(&mut ipc, receiver, message.reply)?;
-    // Scalar receive returns at most the first memory cap for backward
-    // compatibility. Vector receive (receive_vec) returns all of them.
-    let first_memory = message.memory.first().copied();
-    Ok(ScalarMessage {
-        sender: message.sender,
-        sender_generation: message.sender_generation,
-        sender_principal: message.sender_principal,
-        sender_roles: message.sender_roles,
-        interface,
-        version,
-        opcode: message.opcode,
-        arg0: message.arg0,
-        reply,
-        memory: first_memory,
-        connection: message.connection,
-    })
+    Ok(PreparedReceive::new(&mut ipc, receiver, endpoint_id)?.commit())
 }
 
-fn install_reply_cap(
-    ipc: &mut IpcRegistry,
+/// Own speculative reply authority until dequeue commits. IPC stays exclusively
+/// borrowed, so guessed handles cannot use that authority before delivery. A
+/// result-page failure drops only this capability, not the queued call/token or
+/// its loans. No reverse cleanup of delivered attachments is necessary.
+#[must_use]
+struct PreparedReceive<'a> {
+    ipc: &'a mut IpcRegistry,
     receiver: AddressSpaceId,
-    token: Option<ReplyTokenId>,
-) -> Result<Option<CapabilityId>, IpcError> {
-    let Some(token) = token else {
-        return Ok(None);
-    };
-    let reply = ipc.reply_tokens.get(&token).ok_or(IpcError::UnknownCapability)?;
-    if reply.server != receiver || reply.consumed {
-        return Err(IpcError::PermissionDenied);
+    endpoint: EndpointId,
+    reply: Option<CapabilityId>,
+}
+
+impl<'a> PreparedReceive<'a> {
+    fn new(
+        ipc: &'a mut IpcRegistry,
+        receiver: AddressSpaceId,
+        endpoint: EndpointId,
+    ) -> Result<Self, IpcError> {
+        let token = ipc
+            .endpoints
+            .get(&endpoint)
+            .ok_or(IpcError::UnknownCapability)?
+            .queue
+            .front()
+            .ok_or(IpcError::NoMessage)?
+            .reply;
+        let reply = if let Some(token) = token {
+            let reply = ipc.reply_tokens.get(&token).ok_or(IpcError::UnknownCapability)?;
+            if reply.server != receiver || reply.consumed {
+                return Err(IpcError::PermissionDenied);
+            }
+            let reservation = ipc.reserve_cap(receiver)?;
+            let cap = reservation.publish().map_err(cap_admission_error)?;
+            Some(ipc.as_caps(receiver).insert_admitted(
+                cap,
+                Capability::ReplyToken {
+                    token,
+                },
+                None,
+            ))
+        } else {
+            None
+        };
+        Ok(Self {
+            ipc,
+            receiver,
+            endpoint,
+            reply,
+        })
     }
-    Ok(Some(ipc.as_caps(receiver).insert(
-        receiver,
-        Capability::ReplyToken {
-            token,
-        },
-    )))
+
+    fn write_result(&self, result_page: MemoryObjectCap) -> Result<(), IpcError> {
+        let queued = self.ipc.endpoints.get(&self.endpoint).unwrap().queue.front().unwrap();
+        let count = queued.memory.len().min(CAP_VECTOR_MAX);
+        // Bounded stack storage: no allocation after reply admission.
+        let mut result = [0u8; 2 + CAP_VECTOR_MAX * core::mem::size_of::<u64>()];
+        result[..2].copy_from_slice(&(count as u16).to_le_bytes());
+        for (index, cap) in queued.memory.iter().take(count).enumerate() {
+            let offset = 2 + index * core::mem::size_of::<u64>();
+            result[offset..offset + 8].copy_from_slice(&cap.to_le_bytes());
+        }
+        crate::memory::object::write_bytes(self.receiver, result_page, &result[..2 + count * 8])
+            .map_err(|_| IpcError::MemoryTransferFailed)
+    }
+
+    fn commit(mut self) -> ScalarMessage {
+        let endpoint = self.ipc.endpoints.get_mut(&self.endpoint).unwrap();
+        let message = endpoint.queue.pop_front().expect("prepared receive retains queue ownership");
+        ScalarMessage {
+            sender: message.sender,
+            sender_generation: message.sender_generation,
+            sender_principal: message.sender_principal,
+            sender_roles: message.sender_roles,
+            interface: endpoint.interface,
+            version: endpoint.version,
+            opcode: message.opcode,
+            arg0: message.arg0,
+            reply: self.reply.take(),
+            // Scalar receive exposes the first attachment; receive_vec also
+            // writes the complete memory-capability vector into its result page.
+            memory: message.memory.first().copied(),
+            connection: message.connection,
+        }
+    }
+}
+
+impl Drop for PreparedReceive<'_> {
+    fn drop(&mut self) {
+        if let Some(cap) = self.reply.take() {
+            self.ipc.remove_cap(self.receiver, cap).expect("prepared reply authority disappeared");
+        }
+    }
 }
 
 pub fn wait_readable(receiver: AddressSpaceId, endpoint_cap: CapabilityId) -> Result<(), IpcError> {
@@ -2137,46 +2228,11 @@ pub fn receive_vec(
     let mut ipc = IPC.write();
     let endpoint_id = receive_endpoint_id(&ipc, receiver, endpoint_cap)?;
     ipc.accepting_namespace(receiver)?;
-
-    let (message, interface, version) = {
-        let endpoint = ipc.endpoints.get_mut(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
-        if endpoint.closed {
-            return Err(IpcError::EndpointClosed);
-        }
-        let queued = endpoint.queue.front().cloned().ok_or(IpcError::NoMessage)?;
-        let count = queued.memory.len().min(CAP_VECTOR_MAX);
-        let mut result = Vec::with_capacity(2 + count * core::mem::size_of::<u64>());
-        result.extend_from_slice(&(count as u16).to_le_bytes());
-        for cap in queued.memory.iter().take(count) {
-            result.extend_from_slice(&cap.to_le_bytes());
-        }
-        // Validate rights and capacity, and finish the copy, before consuming
-        // the message. BorrowWrite is sufficient; a read-only, undersized, or
-        // stale result capability leaves the queue untouched.
-        crate::memory::object::write_bytes(receiver, result_page, &result)
-            .map_err(|_| IpcError::MemoryTransferFailed)?;
-        (
-            endpoint.queue.pop_front().ok_or(IpcError::NoMessage)?,
-            endpoint.interface,
-            endpoint.version,
-        )
-    };
-    let reply = install_reply_cap(&mut ipc, receiver, message.reply)?;
-    let response = ScalarMessage {
-        sender: message.sender,
-        sender_generation: message.sender_generation,
-        sender_principal: message.sender_principal,
-        sender_roles: message.sender_roles,
-        interface,
-        version,
-        opcode: message.opcode,
-        arg0: message.arg0,
-        reply,
-        memory: message.memory.first().copied(),
-        connection: message.connection,
-    };
-
-    Ok(response)
+    let prepared = PreparedReceive::new(&mut ipc, receiver, endpoint_id)?;
+    // Rights/capacity failure returns speculative reply admission and leaves
+    // the queued call and all attachments available for retry/cancellation.
+    prepared.write_result(result_page)?;
+    Ok(prepared.commit())
 }
 
 /// Send a vector of memory objects through a connection. Each entry in
