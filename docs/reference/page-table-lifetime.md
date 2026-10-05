@@ -64,6 +64,11 @@ delivery cannot count as acknowledgement. Several x86 user/device/lifecycle
 invalidation callers still retain other masking guards. Their retirement phases
 and complete cross-LP teardown safety remain open.
 
+Memory-object cleanup also has a [retirement pin](memory-object-retirement.md)
+independent of DMA/copy retention. Final unpin cannot bypass its invalidation
+fence, and failed detach/rollback retains charged backing. That ownership does
+not yet permit releasing lifecycle/IPC serialization across ASID-based finish.
+
 ## Verification
 
 The synchronous boot fixture builds two private, never-installed roots mapping

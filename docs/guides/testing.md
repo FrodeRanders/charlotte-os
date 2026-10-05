@@ -540,6 +540,19 @@ it does not trigger a real delivery failure or the fatal halt path. Live
 cross-LP virtual reuse, unresponsive recipients and lifecycle-lock retirement
 remain separate validation work.
 
+## Memory-object retirement tests
+
+Memory-object retirement fixtures run in the single-mutator boot phase. They
+inject the final copy/DMA unpin between detach and invalidation, check frame and
+charge retention, borrower authority fencing, and scratch reuse after every
+mapping barrier. Real collision leaves exercise clean and failed rollback,
+installed-prefix retention and physical-identity checks. Partial detach, a
+failed barrier and abandoned receipts deliberately retain **six data pages and
+four object charges** for the guest lifetime, in addition to the kernel-range
+fixture's one page. No test-only recovery bypass frees them. See
+[memory-object retirement](../reference/memory-object-retirement.md). These are
+interleaving fixtures, not concurrent hardware stress or x86 progress proofs.
+
 ## Rule for new service logic
 
 Keep the thin syscall loop and process entry point in an EL0 binary. Put policy

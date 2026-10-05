@@ -37,6 +37,7 @@ pub fn test_memory_objects() {
     test_capability_admission_and_moves();
     staging::test_hidden_transfers();
     test_node_progress_pool();
+    object::retirement_tests::run(create_memory_object_test_address_space);
 
     let owner = create_memory_object_test_address_space("owner");
     let target = create_memory_object_test_address_space("target");

@@ -94,6 +94,16 @@ cleanup quarantines backing. On x86, failed IPI delivery stops the initiator
 rather than counting as acknowledgement. User/domain lifecycle locking and
 recoverable shootdown failure remain hardening work.
 
+Memory-object mappings carry a separate retirement pin through invalidation.
+The final DMA or copy unpin cannot release backing during that interval, and
+borrower cleanup retains loan restrictions until the fence completes. Failed
+detach or abandoned cleanup retains both backing and its original sponsorship
+charge. Partial installation records only the published prefix; cleanup checks
+leaf identity and leaves a foreign collision mapping untouched. Domain cleanup
+moves existing mapping records one object at a time, without temporary teardown
+vectors. These owners still depend on lifecycle or IPC serialization for the
+address-space identity; they do not yet resolve the x86 lock-held rendezvous gap.
+
 \section{Four transfer modes}
 
 CharlotteOS defines four transfer modes, enforced by the MMU:

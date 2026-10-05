@@ -1,0 +1,246 @@
+//! Single-mutator boot fixtures at the raw kernel ownership boundary. Fault
+//! adapters exercise the same detach/finish helpers as runtime teardown.
+//! Quarantine probes intentionally reserve six data pages for the guest's
+//! lifetime; there is no test-only re-adoption/release escape hatch.
+
+use super::*;
+use crate::{
+    memory::{
+        budget,
+        current_address_space_handle,
+    },
+    self_test::close_test_address_space,
+};
+
+fn amount(pages: u64) -> budget::Amount {
+    budget::Amount {
+        pages,
+        objects: 1,
+    }
+}
+
+fn object_id(asid: usize, cap: MemoryObjectCap) -> MemoryObjectId {
+    MEMORY_OBJECTS.lock().lookup(asid, cap).unwrap().object
+}
+
+fn detach(id: MemoryObjectId, closing: usize) -> RetiredObjectMappings {
+    RetiredObjectMappings::detach_with(&mut MEMORY_OBJECTS.lock(), id, closing, unmap_pages)
+}
+
+fn invalidate(asid: usize, base: VAddr, pages: usize) -> bool {
+    assert!(MEMORY_OBJECTS.try_lock().is_some(), "registry held during invalidation");
+    crate::cpu::isa::memory::tlb::inval_range_user(asid, base, pages);
+    true
+}
+
+pub(crate) fn run(mut create: impl FnMut(&str) -> usize) {
+    test_last_unpin(&mut create);
+    test_borrower_fence(&mut create);
+    test_failed_detach(&mut create);
+    test_failed_barrier_and_abandonment(&mut create);
+    test_failed_map_cleanup(&mut create);
+    crate::logln!(
+        "[object retirement] last-unpin fence, borrower authority, partial detach, failed \
+         barrier, Drop quarantine and foreign-leaf preservation passed (six reserved data pages)"
+    );
+}
+
+fn test_last_unpin(create: &mut impl FnMut(&str) -> usize) {
+    let owner = create("retirement pinned owner");
+    let borrower = create("retirement pinned borrower");
+    let handle = current_address_space_handle(owner).unwrap();
+    let cap = allocate(owner, 1).unwrap();
+    let id = object_id(owner, cap);
+    map(owner, cap, VAddr::from(0x130000usize), false).unwrap();
+    let loan = lend_read(owner, cap, borrower).unwrap();
+    let base = map_any(borrower, loan, false).unwrap();
+    let mut copy = Some(pin_for_copy(owner, cap).unwrap());
+    let mut dma = Some(pin_for_dma(borrower, loan, true, false, false).unwrap());
+    let before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    {
+        let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+        let receipt = detach(id, owner);
+        assert!(receipt.detached);
+        let mut barriers = 0;
+        receipt.finish_with(owner, |asid, address, pages| {
+            if let Some(pin) = copy.take() {
+                unpin_copy(pin);
+            }
+            if let Some(pin) = dma.take() {
+                unpin_dma(pin);
+            }
+            assert_eq!(budget::used(handle), amount(1));
+            assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before);
+            assert_eq!(write_bytes(owner, cap, &[1]), Err(MemoryObjectError::LendingActive));
+            assert!(matches!(pin_for_copy(owner, cap), Err(MemoryObjectError::LendingActive)));
+            assert!(matches!(
+                pin_for_dma(borrower, loan, true, false, false),
+                Err(MemoryObjectError::LendingActive)
+            ));
+            let temporary = reserve_scratch(borrower, 1).unwrap();
+            assert_ne!(temporary, base, "scratch reused before all barriers");
+            release_scratch(borrower, temporary, 1).unwrap();
+            barriers += 1;
+            invalidate(asid, address, pages)
+        });
+        assert_eq!(barriers, 2);
+    }
+    assert_eq!(budget::used(handle), budget::Amount::default());
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before + 1);
+    let fresh = allocate(borrower, 1).unwrap();
+    assert_eq!(map_any(borrower, fresh, true).unwrap(), base);
+    unmap(borrower, fresh).unwrap();
+    close_cap(borrower, fresh).unwrap();
+    close_test_address_space(owner).unwrap();
+    close_test_address_space(borrower).unwrap();
+}
+
+fn test_borrower_fence(create: &mut impl FnMut(&str) -> usize) {
+    let owner = create("retirement live owner");
+    let borrower = create("retirement write borrower");
+    let cap = allocate(owner, 1).unwrap();
+    let id = object_id(owner, cap);
+    let loan = lend_write(owner, cap, borrower).unwrap();
+    map_any(borrower, loan, true).unwrap();
+    {
+        let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+        let receipt = detach(id, borrower);
+        receipt.finish_with(borrower, |asid, base, pages| {
+            assert_eq!(write_bytes(owner, cap, &[2]), Err(MemoryObjectError::LendingActive));
+            invalidate(asid, base, pages)
+        });
+    }
+    write_bytes(owner, cap, &[3]).unwrap();
+    close_test_address_space(borrower).unwrap();
+    close_cap(owner, cap).unwrap();
+    close_test_address_space(owner).unwrap();
+}
+
+fn test_failed_detach(create: &mut impl FnMut(&str) -> usize) {
+    let owner = create("retirement partial detach");
+    let handle = current_address_space_handle(owner).unwrap();
+    let cap = allocate(owner, 2).unwrap();
+    let id = object_id(owner, cap);
+    let base = map_any(owner, cap, false).unwrap();
+    let copy = pin_for_copy(owner, cap).unwrap();
+    let dma = pin_for_dma(owner, cap, true, false, false).unwrap();
+    let before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    {
+        let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+        let receipt = RetiredObjectMappings::detach_with(
+            &mut MEMORY_OBJECTS.lock(),
+            id,
+            owner,
+            |asid, base, frames| {
+                unmap_pages(asid, base, &frames[..1])?;
+                Err(MemoryObjectError::UnmapFailed)
+            },
+        );
+        assert!(!receipt.detached);
+        unpin_copy(copy);
+        unpin_dma(dma);
+        receipt.finish_with(owner, invalidate);
+        assert_eq!(budget::used(handle), amount(2));
+        assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before);
+        assert_eq!(close_cap(owner, cap), Err(MemoryObjectError::LendingActive));
+        let frame = MEMORY_OBJECTS.lock().objects[&id].frames[1];
+        let mut table = ADDRESS_SPACE_TABLE.lock();
+        let space = table.get_mut(owner).unwrap();
+        assert!(space.translate_address(base).is_err());
+        assert_eq!(space.translate_address(base + PAGE_SIZE).unwrap(), frame);
+    }
+    close_test_address_space(owner).unwrap();
+    assert_eq!(budget::used(handle), amount(2), "retired generation retains quarantine charge");
+}
+
+fn test_failed_barrier_and_abandonment(create: &mut impl FnMut(&str) -> usize) {
+    for fail_barrier in [true, false] {
+        let owner = create("retirement abandoned fence");
+        let handle = current_address_space_handle(owner).unwrap();
+        let cap = allocate(owner, 1).unwrap();
+        let id = object_id(owner, cap);
+        map_any(owner, cap, true).unwrap();
+        let before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+        {
+            let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+            let receipt = detach(id, owner);
+            assert!(receipt.detached);
+            if fail_barrier {
+                receipt.finish_with(owner, |_, _, _| false);
+            } else {
+                drop(receipt);
+            }
+            assert_eq!(MEMORY_OBJECTS.lock().objects[&id].retirement_pins, 1);
+            assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before);
+            assert_eq!(budget::used(handle), amount(1));
+        }
+        close_test_address_space(owner).unwrap();
+        assert_eq!(budget::used(handle), amount(1));
+    }
+}
+
+fn test_failed_map_cleanup(create: &mut impl FnMut(&str) -> usize) {
+    let owner = create("retirement failed map prefix");
+    let handle = current_address_space_handle(owner).unwrap();
+    let cap = allocate(owner, 2).unwrap();
+    let foreign = allocate(owner, 1).unwrap();
+    let id = object_id(owner, cap);
+    let base = VAddr::from(0x140000usize);
+    let foreign_id = object_id(owner, foreign);
+    let foreign_frame = MEMORY_OBJECTS.lock().objects[&foreign_id].frames[0];
+    map(owner, foreign, base + PAGE_SIZE, true).unwrap();
+    {
+        let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+        let mut pin = None;
+        assert_eq!(
+            map_locked(owner, cap, base, true, false, &mut pin),
+            Err(MemoryObjectError::MapFailed)
+        );
+        assert!(!info(owner, cap).unwrap().mapped);
+        assert_eq!(
+            close_cap(owner, cap),
+            Err(MemoryObjectError::LendingActive),
+            "rolled-back prefix still owns backing before invalidation"
+        );
+        crate::cpu::isa::memory::tlb::inval_range_user(owner, base, 2);
+        pin.take().unwrap().release(None);
+        assert_eq!(MEMORY_OBJECTS.lock().objects[&id].retirement_pins, 0);
+        let expected = MEMORY_OBJECTS.lock().objects[&id].frames[1];
+        {
+            let mut table = ADDRESS_SPACE_TABLE.lock();
+            let space = table.get_mut(owner).unwrap();
+            assert_eq!(
+                unmap_owned_leaf(space, base + PAGE_SIZE, expected),
+                Err(MemoryObjectError::UnmapFailed)
+            );
+            assert_eq!(space.translate_address(base + PAGE_SIZE).unwrap(), foreign_frame);
+        }
+        assert_eq!(
+            map_locked_with_cleanup(owner, cap, base, true, false, &mut pin, |_, _, _| false),
+            Err(MemoryObjectError::UnmapFailed)
+        );
+        crate::cpu::isa::memory::tlb::inval_range_user(owner, base, 2);
+        drop(pin); // Failed cleanup does not release its backing pin.
+        assert_eq!(MEMORY_OBJECTS.lock().objects[&id].mappings[&owner].installed_pages, 1);
+        assert!(info(owner, cap).unwrap().mapped);
+        assert_eq!(close_cap(owner, cap), Err(MemoryObjectError::LendingActive));
+        let receipt = detach(id, owner);
+        assert!(receipt.detached);
+        // Retirement must not claim/unmap the collision page.
+        assert_eq!(
+            ADDRESS_SPACE_TABLE
+                .lock()
+                .get_mut(owner)
+                .unwrap()
+                .translate_address(base + PAGE_SIZE)
+                .unwrap(),
+            foreign_frame
+        );
+        receipt.finish_with(owner, invalidate);
+    }
+    unmap(owner, foreign).unwrap();
+    close_cap(owner, foreign).unwrap();
+    assert_eq!(budget::used(handle), amount(2));
+    close_test_address_space(owner).unwrap();
+    assert_eq!(budget::used(handle), amount(2));
+}

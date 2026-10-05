@@ -94,6 +94,13 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   free unconfirmed backing under an unknown lock. Early-boot metadata is inline
   and bounded. Never turn failed IPI delivery into an acknowledgement. See
   `docs/reference/kernel-frame-retirement.md` for scope and remaining x86 work.
+  Memory-object mapping work retains `MappingRetirementPin` through its
+  invalidation; the last DMA/copy unpin must not bypass that ownership. Preserve
+  installed-prefix records on failed rollback and verify leaf identity before
+  detach. Abandoned/failed cleanup retains backing and its original charge.
+  These pins do not replace lifecycle/IPC serialization or lease an ASID; do
+  not drop those guards across numeric-ASID finish without a generation fence.
+  See `docs/reference/memory-object-retirement.md`.
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`

@@ -84,6 +84,11 @@ Before enforcing complete page-table quotas:
    See [the lifetime contract](../../reference/page-table-lifetime.md).
 2. Kernel ranges now use [owning retirement](../../reference/kernel-frame-retirement.md),
    and x86 failed IPI delivery fails closed rather than crediting a recipient.
+   [Memory-object retirement](../../reference/memory-object-retirement.md) now
+   retains backing through the final DMA/copy unpin and mapping invalidation;
+   failed detach/rollback quarantines the original charge. Its installed-prefix
+   and leaf-identity checks preserve foreign mappings. Those receipts still
+   require lifecycle/IPC serialization and do not lease a generation.
    Close the remaining user/domain locking gaps (SEC-18), then enforce
    reliable quiescence at every physical release. Future live compaction must
    own detached tables until invalidation and walk quiescence are established.

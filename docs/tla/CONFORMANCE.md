@@ -198,6 +198,14 @@ invalidation; Drop quarantines and x86 delivery failure is fail-stop. The model
 does not prove that protocol, recipient progress, or the still-open x86
 user/device/domain masking-guard retirement paths (SEC-18).
 
+Memory-object mapping retirement now retains a separate backing pin through
+invalidation and fences borrower authority until completion. Partial detach,
+failed rollback and abandoned receipts retain the creating generation's charge;
+installed-prefix and physical-identity checks protect foreign leaves. These
+concrete pin/quarantine and teardown-vector removal paths are not modeled by
+the atomic lifetime actions. They do not discharge the remaining lifecycle/IPC
+masking-guard or hardware-quiescence obligations.
+
 The August `memory_map_any` work did not change memory ownership in
 `CharlotteIPC`; it changed address-space placement. Its safety-relevant part
 is the generation-keyed scratch cursor and lifecycle serialization represented

@@ -32,7 +32,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-15 | Mitigated | SigV4 prefixed secret, derived keys, HMAC block/pads and inner digest use zeroizing owners. TLS record buffers are wiped after dropping their borrower, including handshake failure. This is not a complete audit of crypto-library state or compiler-created secret copies. |
 | SEC-16 | Implemented | grantctl polls bounded concurrent operations with per-sender/generation limits and total deadlines. Non-parking authorized lookup avoids a shared name-service waitlist leak. Acquisition retries and publication waits have total deadlines. A two-application cancellation stress and silent-endpoint publication timeout pass in the guest; many-client fairness and controller-replacement testing remain. |
 | SEC-17 | Implemented for dynamic table unmap | Both walkers retain empty intermediate tables linked and owned for reuse until quiescent address-space teardown, removing premature table recycling. Tables/data are initialized before publication; x86 entries publish complete permissions/cache selection together. Private sparse-alias/reuse/teardown fixtures pass on AArch64. Concurrent walk-race reproduction, live compaction, full table admission and x86 guest execution remain outside this validation. Broader physical-release/shootdown gaps are SEC-18. |
-| SEC-18 | Partially implemented | Owning kernel-range retirement detaches before post-arena/table-guard invalidation and physical release, including partial preparation rollback; Drop quarantines. x86 failed IPI delivery no longer decrements the barrier and stops the initiator with ownership latched. User/device/domain lifecycle masking-guard paths, unresponsive recipients, recoverable epoch-fenced failure handling and complete teardown quiescence remain open. The kernel fixtures execute on AArch64; x86 guest and real delivery-failure execution remain pending. |
+| SEC-18 | Partially implemented | Kernel-range retirement detaches before post-arena/table-guard invalidation/release; Drop quarantines. Memory-object retirement pins now independently retain backing/charges through invalidation and fence borrower authority, including last DMA/copy unpin and failed rollback/detach. Installed-prefix/leaf-identity checks preserve foreign mappings. x86 failed IPI delivery no longer credits the barrier and stops the initiator. User/device/domain lifecycle/IPC masking-guard paths, unresponsive recipients, recoverable epoch-fenced failure and complete teardown quiescence remain open. AArch64 fixtures pass; x86 guest and real delivery-failure execution remain pending. |
 
 SEC-07 also includes fixed per-route IRQ readiness storage: repeated or retired
 deliveries cannot exhaust a shared wake queue, and deferred route validation/CQ
@@ -80,6 +80,11 @@ retained high-water footprint. Separate data-release and x86 shootdown gaps
 (SEC-18) are partially corrected by owning kernel-range retirement and fail-stop
 IPI delivery. Remaining user/domain locking paths need their own phased boundary.
 See [page-table lifetime](../../reference/page-table-lifetime.md).
+Memory objects now also retain independent mapping-retirement pins, preventing
+last-unpin release before invalidation and quarantining failed detach/rollback.
+This preserves charged backing without yet leasing address-space generations
+across an unlocked finish. See
+[memory-object retirement](../../reference/memory-object-retirement.md).
 
 ## Enforced contracts
 
@@ -2590,3 +2595,68 @@ teardown quiescence are not proven here. SEC-07 still includes stack, table,
 kernel-heap and general metadata admission. Contributor instructions, reference
 and guide Markdown, the LaTeX source and TLA+ conformance describe the changed
 boundary; models and the PDF were not rebuilt.
+
+## Continuation: memory-object mapping-retirement ownership — 2026-10-05
+
+The kernel-retirement batch was committed as `c4e013c6`. Reviewing the remaining
+SEC-18 paths found a prerequisite ownership race: a final copy/DMA unpin could
+destroy deferred backing after registry unlock but before mapping invalidation.
+Bulk cleanup also freed backing after a failed unmap, while failed map rollback
+discarded its mapping record even when installed leaves remained.
+
+`MappingRetirementPin` now retains backing and its original sponsor through map,
+rollback and unmap invalidation. Explicit consuming release follows the barrier;
+Drop leaves the registry pin/charge/backing as quarantine without taking locks.
+New mapping, copy/snapshot, write, DMA and transfer/loan access is fenced while
+retirement is pending. Existing CPU/DMA access still requires its own teardown.
+Borrower cleanup retains loan restrictions until its invalidation completes.
+
+`RetiredObjectMappings` owns removed records plus a separate retention pin.
+Domain cleanup moves one existing mapping tree at a time, using a monotonic
+cursor rather than temporary object-ID, invalidation and backing vectors. Final
+release requires no DMA, copy or retirement pins and no remaining mappings.
+Charges survive the actual physical release and are never restored via a new
+occupant of the same numeric ASID.
+
+Mappings record the installed prefix. Failed rollback retains that record and
+its pin; subsequent cleanup never claims the foreign collision leaf. Detachment
+checks physical identity before removing a leaf. Missing/mismatched leaves,
+partial detach, failed invalidation and abandonment retain charged backing.
+There is no quarantine recovery or external telemetry API yet. The existing
+charged object pool bounds this retention, which can reduce available capacity.
+
+Validation:
+
+- Boot fixtures model the final copy/DMA unpin between detach and invalidation,
+  verifying unchanged free-frame counts and retained exact-generation charges
+  before every barrier, then normal release and scratch reuse afterward.
+- Borrower write authority remains fenced before the barrier and returns after
+  successful cleanup. Real collision leaves cover clean rollback before pin
+  release, failed rollback, prefix retention and physical-identity rejection.
+- Partial detach, failed invalidation, abandoned receipt and failed rollback
+  deliberately quarantine **six data pages and four object charges** for the
+  guest lifetime, in addition to the kernel-range fixture's one page. No test
+  recovery bypass re-adopts them; retired sponsors retain their original charge.
+- Final four-LP TCG AArch64 security guest with fresh dedicated
+  `object-retirement-20261005-final` storage, HTTP 18091/deployment 17455:
+  **19/19**, zero failed/pending, both scoped probes `0x7fff`, cancellation
+  traffic retired after 4,496 requests. Kernel SHA-256:
+  `c4bd3930dbaa6ee30b6aaf21e242747d1bc61922c95eec7262fc01f01f66caaa`.
+  Run `/private/tmp/charlotte-security-object-retirement-final-run.log`;
+  serial `/private/tmp/charlotte-object-retirement-20261005-final-serial.log`.
+  The preceding guest also passed 19/19 before the final clean-rollback check.
+  Existing soak instances/storage were not modified.
+- Strict locked Clippy passes for AArch64 `acpi,security_test` and x86-64 `acpi`.
+  Host suites pass, log
+  `/private/tmp/charlotte-security-object-retirement-host-tests.log`;
+  formatting and diff checks pass.
+
+The fixtures are single-mutator interleaving/failure tests, not concurrent
+hardware-walk or full physical-exhaustion stress. x86 guest execution remains
+pending. Lifecycle/IPC serialization is still retained across ASID-based
+finish; these owners do not lease an address-space generation or make it safe
+to drop that guard. SEC-18 remains partial for lock-safe user/device/domain
+phases, recoverable epoch-fenced shootdown and complete quiescence. SEC-07 still
+includes stacks, tables, kernel heap and general metadata admission. Contributor
+guidance, reference/testing Markdown, manual source and TLA+ conformance were
+updated; models and PDF were not rebuilt.
