@@ -101,7 +101,12 @@ detach or abandoned cleanup retains both backing and its original sponsorship
 charge. Partial installation records only the published prefix; cleanup checks
 leaf identity and leaves a foreign collision mapping untouched. Domain cleanup
 moves existing mapping records one object at a time, without temporary teardown
-vectors. These owners still depend on lifecycle or IPC serialization for the
+vectors. It prepares the records under the object registry, then releases that
+guard before detaching leaves. The retained pin supplies borrowed frame identities
+in fixed stack batches, so ordinary unmap, loan revocation and domain cleanup no
+longer nest the object registry across address-space table walks. Larger objects
+use successive batches without allocating a teardown snapshot. These owners
+still depend on lifecycle or IPC serialization for the
 address-space identity; they do not yet resolve the x86 lock-held rendezvous gap.
 
 Final user-root destruction now follows a separate two-phase boundary. Logical

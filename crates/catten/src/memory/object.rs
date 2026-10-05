@@ -30,6 +30,9 @@ use crate::{
 };
 
 const PAGE_SIZE: usize = 4096;
+// Bounded stack metadata, not an object-size or admission limit. Retirement
+// copies identities under the registry, then walks tables after releasing it.
+const RETIREMENT_FRAME_BATCH: usize = 16;
 
 pub(crate) mod retirement_tests;
 
@@ -793,10 +796,9 @@ fn map_locked_with_cleanup(
                 scratch,
             },
         );
-        // Do not hold the memory-object registry while taking the address-space
-        // table: teardown takes the table then the frame allocator, and
-        // allocation takes the allocator then the registry, so holding the
-        // registry across the table lock closes an AB-BC-CA deadlock cycle.
+        // Registry metadata and translation-table allocation have separate
+        // lock/allocator dependencies. Retain backing with the pin rather than
+        // nesting the registry across the address-space table walk.
         *pin = Some(MappingRetirementPin::acquire(&mut registry, cap_entry.object));
         (cap_entry.object, frames, page_type)
     };
@@ -863,7 +865,7 @@ pub fn unmap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), MemoryObj
 /// Caller holds lifecycle or IPC serialization. Retirement drains IPC before
 /// memory cleanup, so its mapped-loan revocations must not re-enter lifecycle.
 fn unmap_serialized(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), MemoryObjectError> {
-    let (base, pages, scratch, result, pin) = {
+    let (mapping, pages, pin) = {
         let mut registry = MEMORY_OBJECTS.lock();
         let cap_entry = registry.lookup(asid, cap)?;
         let object = registry
@@ -874,36 +876,17 @@ fn unmap_serialized(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Me
             return Err(MemoryObjectError::LendingActive);
         }
         let mapping = *object.mappings.get(&asid).ok_or(MemoryObjectError::NotMapped)?;
-        let base = mapping.base;
         let pages = object.frames.len();
         let pin = MappingRetirementPin::acquire(&mut registry, cap_entry.object);
-        let object = registry.objects.get_mut(&cap_entry.object).unwrap();
-
-        let mut table = ADDRESS_SPACE_TABLE.lock();
-        let result = match table.get_mut(asid) {
-            Ok(address_space) => {
-                let mut result = Ok(());
-                for (index, &frame) in
-                    object.frames.iter().take(mapping.installed_pages).enumerate()
-                {
-                    let vaddr = base + (index * PAGE_SIZE);
-                    if unmap_owned_leaf(address_space, vaddr, frame).is_err() {
-                        result = Err(MemoryObjectError::UnmapFailed);
-                        break;
-                    }
-                }
-                result
-            }
-            Err(_) => Err(MemoryObjectError::AddressSpaceMissing),
-        };
-        if result.is_ok() {
-            object.mappings.remove(&asid);
-        }
-        (base, pages, mapping.scratch, result, pin)
+        (mapping, pages, pin)
     };
-    crate::cpu::isa::memory::tlb::inval_range_user(asid, base, pages);
-    if result.is_ok() && scratch {
-        release_scratch(asid, base, pages)?;
+    let result = pin.unmap_with(asid, mapping.base, mapping.installed_pages, unmap_pages);
+    if result.is_ok() {
+        MEMORY_OBJECTS.lock().objects.get_mut(&pin.object).unwrap().mappings.remove(&asid);
+    }
+    crate::cpu::isa::memory::tlb::inval_range_user(asid, mapping.base, pages);
+    if result.is_ok() && mapping.scratch {
+        release_scratch(asid, mapping.base, pages)?;
     }
     if result.is_ok() {
         pin.release(None);
@@ -1668,6 +1651,43 @@ impl MappingRetirementPin {
         }
     }
 
+    /// The pin keeps the immutable frame list and its charge alive, including
+    /// across the last DMA/copy unpin. Copy only borrowed physical identities;
+    /// neither these batches nor the page-table walker own the data frames.
+    /// Caller retains lifecycle/IPC serialization for the target generation.
+    fn unmap_with(
+        &self,
+        asid: AddressSpaceId,
+        base: VAddr,
+        pages: usize,
+        mut unmap: impl FnMut(AddressSpaceId, VAddr, &[PAddr]) -> Result<(), MemoryObjectError>,
+    ) -> Result<(), MemoryObjectError> {
+        {
+            let registry = MEMORY_OBJECTS.lock();
+            let object = registry.objects.get(&self.object).expect("pinned object missing");
+            if pages > object.frames.len() {
+                return Err(MemoryObjectError::UnmapFailed);
+            }
+        }
+        let mut error = None;
+        for first in (0..pages).step_by(RETIREMENT_FRAME_BATCH) {
+            let count = (pages - first).min(RETIREMENT_FRAME_BATCH);
+            let mut frames = [PAddr::from(0u64); RETIREMENT_FRAME_BATCH];
+            {
+                let registry = MEMORY_OBJECTS.lock();
+                let object = registry.objects.get(&self.object).expect("pinned object missing");
+                frames[..count].copy_from_slice(&object.frames[first..first + count]);
+            }
+            // Never acquire ADDRESS_SPACE_TABLE with MEMORY_OBJECTS held.
+            // Table walks and registry metadata have separate allocator/lock
+            // dependencies; backing retention does not require nesting them.
+            if let Err(detach_error) = unmap(asid, base + (first * PAGE_SIZE), &frames[..count]) {
+                error.get_or_insert(detach_error);
+            }
+        }
+        error.map_or(Ok(()), Err)
+    }
+
     fn release(self, closing_asid: Option<AddressSpaceId>) {
         let backing = {
             let mut registry = MEMORY_OBJECTS.lock();
@@ -1706,13 +1726,16 @@ impl RetiredObjectMappings {
     /// and scratch-window identities must not be recycled in between phases.
     /// This receipt fixes backing ownership, not the remaining x86 problem of
     /// rendezvous while that outer IRQ-masking lifecycle guard is held.
-    fn detach_with(
-        registry: &mut MemoryObjectRegistry,
+    fn prepare(
+        mut registry: lock_api::MutexGuard<
+            '_,
+            crate::cpu::multiprocessor::spin::mutex::MutexCore,
+            MemoryObjectRegistry,
+        >,
         object_id: MemoryObjectId,
         closing_asid: AddressSpaceId,
-        mut unmap: impl FnMut(AddressSpaceId, VAddr, &[PAddr]) -> Result<(), MemoryObjectError>,
     ) -> Self {
-        let pin = MappingRetirementPin::acquire(registry, object_id);
+        let pin = MappingRetirementPin::acquire(&mut registry, object_id);
         let object = registry.objects.get_mut(&object_id).expect("retiring object missing");
         let mappings = if object.owner == closing_asid {
             object.destroy_when_unpinned = true;
@@ -1723,17 +1746,32 @@ impl RetiredObjectMappings {
                 object.mappings.remove(&closing_asid).expect("retiring mapping missing"),
             )
         };
-        let mut receipt = Self {
+        let receipt = Self {
             pin,
             pages: object.frames.len(),
             mappings,
-            detached: true,
+            detached: false,
         };
-        receipt.mappings.for_each(|asid, mapping| {
-            receipt.detached &=
-                unmap(asid, mapping.base, &object.frames[..mapping.installed_pages]).is_ok();
-        });
+        // Consume the guard at this boundary: chained calls must not extend a
+        // borrowed temporary guard through detach_with's table walk.
+        drop(registry);
         receipt
+    }
+
+    /// Called only after the preparation registry guard has been released.
+    /// No fallible metadata allocation or registry/table nesting is needed.
+    fn detach_with(
+        mut self,
+        mut unmap: impl FnMut(AddressSpaceId, VAddr, &[PAddr]) -> Result<(), MemoryObjectError>,
+    ) -> Self {
+        self.detached = true;
+        self.mappings.for_each(|asid, mapping| {
+            self.detached &= self
+                .pin
+                .unmap_with(asid, mapping.base, mapping.installed_pages, &mut unmap)
+                .is_ok();
+        });
+        self
     }
 
     fn finish(self, closing_asid: AddressSpaceId) {
@@ -1803,7 +1841,7 @@ pub fn close_address_space(asid: AddressSpaceId) {
     let mut cursor = 0;
     loop {
         let receipt = {
-            let mut registry = MEMORY_OBJECTS.lock();
+            let registry = MEMORY_OBJECTS.lock();
             let next = registry
                 .objects
                 .range((core::ops::Bound::Excluded(cursor), core::ops::Bound::Unbounded))
@@ -1812,12 +1850,12 @@ pub fn close_address_space(asid: AddressSpaceId) {
                         || object.mappings.contains_key(&asid))
                     .then_some(id)
                 });
-            next.map(|id| RetiredObjectMappings::detach_with(&mut registry, id, asid, unmap_pages))
+            next.map(|id| RetiredObjectMappings::prepare(registry, id, asid))
         };
         match receipt {
             Some(receipt) => {
                 cursor = receipt.pin.object;
-                receipt.finish(asid);
+                receipt.detach_with(unmap_pages).finish(asid);
             }
             None => break,
         }

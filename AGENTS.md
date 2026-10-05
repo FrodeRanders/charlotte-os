@@ -110,6 +110,11 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   invalidation; the last DMA/copy unpin must not bypass that ownership. Preserve
   installed-prefix records on failed rollback and verify leaf identity before
   detach. Abandoned/failed cleanup retains backing and its original charge.
+  Prepare mapping-retirement records under the object registry, then release
+  it before walking address-space tables. Preparation consumes its registry
+  guard; do not restore a borrowed-guard API that lets temporary guards survive
+  through chained detachment calls. Use the pin's fixed-size frame
+  batches; do not allocate teardown snapshots or nest registry/table guards.
   These pins do not replace lifecycle/IPC serialization or lease an ASID; do
   not drop those guards across numeric-ASID finish without a generation fence.
   See `docs/reference/memory-object-retirement.md`.

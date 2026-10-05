@@ -24,7 +24,14 @@ fn object_id(asid: usize, cap: MemoryObjectCap) -> MemoryObjectId {
 }
 
 fn detach(id: MemoryObjectId, closing: usize) -> RetiredObjectMappings {
-    RetiredObjectMappings::detach_with(&mut MEMORY_OBJECTS.lock(), id, closing, unmap_pages)
+    let receipt = RetiredObjectMappings::prepare(MEMORY_OBJECTS.lock(), id, closing);
+    receipt.detach_with(checked_unmap)
+}
+
+fn checked_unmap(asid: usize, base: VAddr, frames: &[PAddr]) -> Result<(), MemoryObjectError> {
+    assert!(MEMORY_OBJECTS.try_lock().is_some(), "registry held during table detach");
+    assert!(ADDRESS_SPACE_TABLE.try_lock().is_some(), "table held before detach");
+    unmap_pages(asid, base, frames)
 }
 
 fn invalidate(asid: usize, base: VAddr, pages: usize) -> bool {
@@ -34,15 +41,80 @@ fn invalidate(asid: usize, base: VAddr, pages: usize) -> bool {
 }
 
 pub(crate) fn run(mut create: impl FnMut(&str) -> usize) {
+    test_batched_detach(&mut create);
     test_last_unpin(&mut create);
     test_borrower_fence(&mut create);
     test_failed_detach(&mut create);
     test_failed_barrier_and_abandonment(&mut create);
     test_failed_map_cleanup(&mut create);
     crate::logln!(
-        "[object retirement] last-unpin fence, borrower authority, partial detach, failed \
-         barrier, Drop quarantine and foreign-leaf preservation passed (six reserved data pages)"
+        "[object retirement] bounded lock-separated batches, last-unpin fence, borrower \
+         authority, partial detach, failed barrier, Drop quarantine and foreign-leaf preservation \
+         passed (six reserved data pages)"
     );
+}
+
+fn test_batched_detach(create: &mut impl FnMut(&str) -> usize) {
+    let owner = create("retirement batched owner");
+    let borrower = create("retirement batched borrower");
+    let pages = RETIREMENT_FRAME_BATCH * 2 + 3;
+    let handle = current_address_space_handle(owner).unwrap();
+    let cap = allocate(owner, pages).unwrap();
+    let id = object_id(owner, cap);
+    // Exercise standalone unmap and mapped-loan revoke using the same batches.
+    map_any(owner, cap, false).unwrap();
+    unmap(owner, cap).unwrap();
+    let loan = lend_read(owner, cap, borrower).unwrap();
+    map_any(borrower, loan, false).unwrap();
+    revoke_lend(owner, cap, borrower, loan).unwrap();
+    assert_eq!(info(borrower, loan), Err(MemoryObjectError::UnknownCapability));
+    let base = map_any(owner, cap, false).unwrap();
+    let mut copy = Some(pin_for_copy(owner, cap).unwrap());
+    let before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    {
+        let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+        let receipt = RetiredObjectMappings::prepare(MEMORY_OBJECTS.lock(), id, owner);
+        assert!(!receipt.detached);
+        assert_eq!(
+            receipt.pin.unmap_with(owner, base, pages + 1, |_, _, _| {
+                panic!("invalid prefix reached the table walker")
+            }),
+            Err(MemoryObjectError::UnmapFailed)
+        );
+        let expected = MEMORY_OBJECTS.lock().objects[&id].frames[0];
+        assert_eq!(
+            ADDRESS_SPACE_TABLE.lock().get_mut(owner).unwrap().translate_address(base).unwrap(),
+            expected
+        );
+        // Preparation fences authority/backing before any leaf is removed.
+        assert_eq!(close_cap(owner, cap), Err(MemoryObjectError::LendingActive));
+        let mut offset = 0;
+        let mut batches = 0;
+        let receipt = receipt.detach_with(|asid, address, frames| {
+            assert_eq!(asid, owner);
+            assert_eq!(address, base + offset * PAGE_SIZE);
+            assert_eq!(frames.len(), (pages - offset).min(RETIREMENT_FRAME_BATCH));
+            // Last unpin between metadata preparation and a table walk must
+            // not release the backing or charge retained by this receipt.
+            if let Some(pin) = copy.take() {
+                unpin_copy(pin);
+            }
+            assert_eq!(budget::used(handle), amount(pages as u64));
+            assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before);
+            checked_unmap(asid, address, frames)?;
+            offset += frames.len();
+            batches += 1;
+            Ok(())
+        });
+        assert!(receipt.detached);
+        assert_eq!(offset, pages);
+        assert_eq!(batches, 3);
+        receipt.finish_with(owner, invalidate);
+    }
+    assert_eq!(budget::used(handle), budget::Amount::default());
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before + pages);
+    close_test_address_space(owner).unwrap();
+    close_test_address_space(borrower).unwrap();
 }
 
 fn test_last_unpin(create: &mut impl FnMut(&str) -> usize) {
@@ -127,12 +199,9 @@ fn test_failed_detach(create: &mut impl FnMut(&str) -> usize) {
     let before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     {
         let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
-        let receipt = RetiredObjectMappings::detach_with(
-            &mut MEMORY_OBJECTS.lock(),
-            id,
-            owner,
+        let receipt = RetiredObjectMappings::prepare(MEMORY_OBJECTS.lock(), id, owner).detach_with(
             |asid, base, frames| {
-                unmap_pages(asid, base, &frames[..1])?;
+                checked_unmap(asid, base, &frames[..1])?;
                 Err(MemoryObjectError::UnmapFailed)
             },
         );

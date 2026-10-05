@@ -567,6 +567,13 @@ fixture's one page. No test-only recovery bypass frees them. See
 [memory-object retirement](../reference/memory-object-retirement.md). These are
 interleaving fixtures, not concurrent hardware stress or x86 progress proofs.
 
+The lock-separated detach fixture maps 35 pages and checks its three 16/16/3
+frame batches. It exercises ordinary unmap, mapped-loan revoke and owner cleanup,
+asserts registry/table guards are available at detach callbacks, rejects an
+oversized prefix before table work, and injects the last copy unpin before the
+first batch. Exact frame/charge counts return after completion, with no additional
+quarantine. The outer lifecycle/IPC serialization is intentionally retained.
+
 ## Final address-space retirement tests
 
 Final-root retirement guest fixtures inject metadata-preflight rejection before

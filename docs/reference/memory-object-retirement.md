@@ -22,6 +22,32 @@ requires owner retirement, no DMA/copy/retirement pins, and no mapped aliases.
 It runs after releasing the object registry, with the sponsorship charge still
 owned through physical release.
 
+## Lock-separated detachment
+
+Retirement preparation moves the mapping records and acquires the backing pin
+under the registry guard. The receipt initially records that physical leaf
+detachment is incomplete. Preparation consumes and drops that guard before
+returning, so a chained detach call cannot accidentally extend a borrowed
+temporary guard's lifetime. After release, the pin copies borrowed
+frame identities into a fixed stack batch of 16 entries. Each batch's table walk
+runs without the registry held. The batch is not a frame owner, a new object-size
+limit, or a teardown heap allocation; larger objects use successive batches.
+
+Ordinary unmap, mapped-loan revocation (including its IPC adapter), and domain
+cleanup share this path. It removes the previous registry-to-address-space-table
+nesting in unmap and bulk cleanup, matching mapping's existing separation. The
+pin keeps the frame list immutable and backing charged across every registry
+unlock, including a concurrent final DMA/copy unpin. Prefix lengths are checked
+against that pinned list before invoking the walker; each leaf still must match
+its expected physical frame.
+
+All batches are attempted, retaining the first error. Any failure leaves the pin
+undischarged, even when some leaves have been removed. Domain cleanup moves
+records before detachment; ordinary unmap removes its record only after the full
+detach succeeds. Invalidations and scratch/authority completion retain their
+existing ordering. This separation does **not** release the outer lifecycle/IPC
+guard and is not a solution to x86 interrupt-masked rendezvous.
+
 This removes temporary teardown vectors, not all infallible metadata allocation:
 scratch free-extent insertion can still allocate. Comprehensive metadata
 admission and allocation-failure handling remain part of SEC-07.
@@ -84,6 +110,14 @@ only after all mapping invalidations. Real collision leaves exercise clean
 rollback, failed rollback, installed-prefix retention and physical-identity
 checks. Fault adapters cover partial detach and failed invalidation; an abandoned
 receipt exercises the non-releasing Drop policy.
+
+A 35-page fixture exercises three batches (16/16/3), ordinary unmap, mapped-loan
+revocation and owner teardown. It checks registry/table guard availability at
+each detach callback, rejects an oversized installed prefix before any callback,
+injects the final copy unpin between preparation and the first table walk, and
+verifies exact data-frame and charge release after invalidation. It adds no
+permanently retained frames. These guard checks are serialized fixtures, not a
+concurrent lock-order stress test.
 
 Failure probes intentionally quarantine **six 4 KiB data pages and four object
 charges** for the test guest's lifetime. They never re-adopt the backing. This is

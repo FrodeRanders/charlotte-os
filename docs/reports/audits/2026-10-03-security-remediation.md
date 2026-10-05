@@ -2964,3 +2964,65 @@ stacks, kernel heap and general metadata. SEC-18 remains partial for live
 mapping/IPC/MMIO masking guards, recoverable shootdown and full quiescence.
 Contributor instructions, reference/testing Markdown, investigation, manual
 source and TLA+ conformance were updated; models and PDF were not rebuilt.
+
+## Continuation: lock-separated memory-object leaf detachment — 2026-10-05
+
+The owned translation-frame preparation batch was committed as `a7473732`.
+Inspection of the remaining mapping boundaries found that ordinary unmap and
+domain cleanup still acquired the address-space table while holding the
+memory-object registry. Mapping already separated those guards. This
+continuation removes the inconsistent nesting without dropping the outer
+lifecycle/IPC serialization or claiming a live-generation lease.
+
+`RetiredObjectMappings::prepare` moves existing mapping records, captures the
+backing pin and records incomplete leaf detachment. It consumes and releases
+the registry guard before returning. Detachment then copies borrowed physical
+identities into fixed 16-entry stack batches under short registry guards; each
+batch walks the table after that guard is released. Ordinary unmap and mapped
+loan revocation, including the IPC adapter, use the same pinned-batch helper.
+There is no teardown snapshot allocation or new object-size limit. The pin
+retains the immutable frame list, backing and original charge across every gap.
+
+Oversized installed prefixes fail before any table callback. Leaf identity
+checks still protect foreign mappings. All batches are attempted and the first
+error is retained; partial failure never discharges the pin. Ordinary unmap
+removes its record only after successful detachment; domain cleanup retains its
+moved records in the receipt. Existing invalidation, scratch and loan ordering
+is preserved. Abandonment remains non-releasing quarantine.
+
+Validation:
+
+- A 35-page fixture exercises 16/16/3 batches, ordinary unmap, mapped-loan
+  revocation and owner cleanup. It checks registry/table guard availability at
+  each detach callback, rejects an oversized prefix without invoking the
+  walker, injects the final copy unpin before the first table walk and checks
+  exact frame/charge release after invalidation. This adds **no retained
+  frames**. Existing partial-detach, failed-barrier, abandonment and foreign-leaf
+  tests retain their previous six data pages/four object charges.
+- The initial guest stalled in a test's chained preparation/detachment call:
+  borrowing a temporary registry guard extended it across the second phase.
+  Run `/private/tmp/charlotte-security-object-batches-run.log` records the
+  missing authoritative result. The corrected API consumes the guard; the
+  same chained fixture now completes, making that lifetime mistake impossible
+  through this preparation boundary.
+- Final four-LP TCG AArch64 security guest, fresh dedicated
+  `object-batches-20261005-guard` storage, HTTP 18096/deployment 17460:
+  **19/19**, zero failed/pending, both scoped probes `0x7fff`; cancellation
+  traffic retired after 4,416 requests. Kernel SHA-256:
+  `8d85aec34cfd84335dd4fbf10ebba8c41a21ea52e9209bd1f31a944c039e9d2b`.
+  Run `/private/tmp/charlotte-security-object-batches-guard-run.log`;
+  serial `/private/tmp/charlotte-object-batches-20261005-guard-serial.log`.
+  Existing soak storage/instances were not modified.
+- Full host suites pass, including seven standalone slot-owner tests; log
+  `/private/tmp/charlotte-security-object-batches-host-tests.log`. Strict locked
+  Clippy passes for AArch64 `acpi,security_test` and x86-64 `acpi`; formatting
+  and diff checks pass. No x86 guest was executed.
+
+The new probes are serialized guard/interleaving fixtures, not concurrent
+lock-order stress or hardware-quiescence proof. SEC-18 remains partial for
+live mapping/IPC/MMIO interrupt-masking guards and recoverable shootdown. The
+next live-operation boundary still needs captured generation, scratch and loan
+authority ownership before outer guards can be released. SEC-07 table quotas,
+stacks, kernel heap and general metadata remain open. Contributor instructions,
+reference/testing Markdown, manual source and TLA+ conformance were updated;
+models and PDF were not rebuilt.

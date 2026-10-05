@@ -203,7 +203,11 @@ invalidation and fences borrower authority until completion. Partial detach,
 failed rollback and abandoned receipts retain the creating generation's charge;
 installed-prefix and physical-identity checks protect foreign leaves. These
 concrete pin/quarantine and teardown-vector removal paths are not modeled by
-the atomic lifetime actions. They do not discharge the remaining lifecycle/IPC
+the atomic lifetime actions. Concrete unmap/loan-revoke/domain cleanup now
+prepare records under the registry and walk tables using fixed pinned-frame
+batches after releasing it. The atomic actions do not model those lock phases,
+batch bounds or their serialized guard-availability fixtures. They do not
+discharge the remaining lifecycle/IPC
 masking-guard or hardware-quiescence obligations.
 
 Concrete root/intermediate allocation now uses `PreparingTable` through
