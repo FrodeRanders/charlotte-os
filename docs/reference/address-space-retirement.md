@@ -90,10 +90,11 @@ can instead fence new lease admission and return its request owner while old
 leases drain. Timeout or abandonment retains that closing root and fence; it
 does not authorize destructive cleanup. Public memory-object/MMIO mapping,
 explicit device close and direct loan revocation now acquire live leases, and
-the supervisor retains a staged teardown owner across pending polls. Plain and
-connection-returning borrowed-memory IPC replies also own both roots and a reply
-claim through post-IPC invalidation; abandonment prevents root close. Returned-memory IPC
-replies, cancellation's own revocation and whole-domain device cleanup still need
+the supervisor retains a staged teardown owner across pending polls. All existing
+borrowed-memory IPC replies also own both roots and a reply claim through
+post-IPC invalidation; abandonment prevents root close. Returned authority
+stays hidden until publication. Cancellation's own revocation and whole-domain
+device cleanup still need
 their own completion owners before releasing outer serialization. See
 [live address-space operations](live-address-space-operations.md).
 
@@ -108,9 +109,9 @@ Missing acknowledgements still stall.
 
 This corrects the **final root** boundary: its own lifecycle/table guards no
 longer surround the last rendezvous or `AddressSpace::drop`. Earlier
-whole-domain memory/device cleanup, returned-memory IPC replies and
+whole-domain memory/device cleanup and
 cancellation retain lifecycle/IPC serialization across some x86 invalidations.
-Public live mapping, direct loan revocation and plain/connection-returning borrowed-memory replies
+Public live mapping, direct loan revocation and all existing borrowed-memory replies
 now supply their own leases and completion owners. Remaining paths need the
 same composition before guards can be released. The final-root lease does not
 provide such a lease for an arbitrary still-live mapping operation.

@@ -1719,6 +1719,16 @@ pub fn reply_with_memory_move(
     result: i64,
 ) -> Result<(), IpcError> {
     let mut ipc = IPC.write();
+    let token = match ipc.cap(server, reply_cap)? {
+        Capability::ReplyToken {
+            token,
+        } => token,
+        _ => return Err(IpcError::WrongType),
+    };
+    if !ipc.reply_tokens.get(&token).ok_or(IpcError::UnknownCapability)?.borrows.is_empty() {
+        drop(ipc);
+        return reply::complete_with_memory(server, reply_cap, memory_cap, result);
+    }
     let observers = complete_reply(&mut ipc, server, reply_cap, result, None, Some(memory_cap))?;
     drop(ipc);
     signal_observers(observers);
@@ -2032,7 +2042,7 @@ fn close_cap_with_wait(
                     consume_reply_token(&mut ipc, token, REPLY_ENDPOINT_CLOSED, &mut observers);
                 }
                 for memory_cap in &message.memory {
-                    let _ = crate::memory::object::close_cap(asid, *memory_cap);
+                    let _ = crate::memory::object::try_close_cap(asid, *memory_cap);
                 }
                 if let Some(connection_cap) = message.connection {
                     let _ = ipc.remove_cap(asid, connection_cap);
@@ -2059,7 +2069,7 @@ fn close_cap_with_wait(
                             let _ = ipc.remove_cap(asid, returned_cap);
                         }
                         if let Some(memory_cap) = reply.memory {
-                            let _ = crate::memory::object::close_cap(asid, memory_cap);
+                            let _ = crate::memory::object::try_close_cap(asid, memory_cap);
                         }
                     }
                 } else {
@@ -2229,7 +2239,7 @@ fn cancel_queued_message_with_token(
                     // Revoked loans are already gone; copies/moves are still
                     // queued and must be released. Failed loan revocation stays
                     // fenced by its lend state, so close cannot free its backing.
-                    let _ = crate::memory::object::close_cap(server, *memory_cap);
+                    let _ = crate::memory::object::try_close_cap(server, *memory_cap);
                 }
                 if let Some(connection_cap) = message.connection {
                     ipc.remove_cap(server, connection_cap)

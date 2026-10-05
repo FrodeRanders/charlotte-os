@@ -56,7 +56,17 @@ Every destination remains hidden until commit. Move/loan source capabilities
 are hidden while preparing; a pre-existing read-only mapping can still read.
 Drop restores original source authority without fresh quota, even at the
 namespace ceiling, cancels destination admission and releases private
-frames/pins. It never reverses a receiver-controlled mapping or live loan.
+frames/pins. Source escrow restoration, pin release and clearing the source's
+transfer fence share one memory-registry hold: close cannot observe restored
+authority with an unfinished transfer pin. Public memory close waits outside
+the registry while that fence is owned; serialized IPC cleanup instead uses a
+nonwaiting busy check without consuming authority. Close rejection leaves the
+payload in place, without remove-and-reinsert allocation. A committed loan keeps
+the transfer fence until its preparation owner drops, preventing a new read
+preparation from stealing the fence during that interval. Teardown may remove
+the source; late Drop uses its immutable object identity and captured escrow
+namespace, never a successor's reused scalar handle. It never reverses a
+receiver-controlled mapping or live loan.
 The scalar rollback APIs and the vector alias-cleanup assertion have been
 removed.
 
@@ -69,7 +79,10 @@ backing. Drop the committed owners before allowing writable access, because
 their retention pins are still active until Drop. IPC vectors use this owner for
 all four modes; reply memory is prepared before loan revocation and committed
 afterward. `PreparedCall` owns pending-call/reply metadata, its call reservation,
-optional `PreparedConnection`, memory transfers and every loan pair. Publication
+optional `PreparedConnection`, memory transfers and every loan pair. Borrowed-memory
+replies use `PreparedReply` to own returned-memory escrow, hidden connection
+authority, loan receipts and both live-root leases through unlocked revocation.
+Publication
 validates all IPC and memory identities before making any live, then installs
 IPC payloads/enqueues with no remaining fallible admission under the IPC guard.
 A scalar-only transaction needs no memory-registry lock. A failed call restores

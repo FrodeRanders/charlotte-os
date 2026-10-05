@@ -150,9 +150,10 @@ through the detached-root boundary. Dropping the request or exhausting its
 lease-drain waiting budget retains the closing root, tag, slot and charges.
 Later completion cannot reopen admission. The fence applies to operation leases,
 not all existing resource paths, and the waiting budget does not bound hardware
-rendezvous. Plain and connection-returning borrowed-memory replies retain both
-namespace leases and a reply claim across IPC-unlocked invalidation. Returned-memory replies and
-cancellation's own loan cleanup still require composed reply/attachment ownership
+rendezvous. All existing borrowed-memory reply variants retain both namespace
+leases and a reply claim across IPC-unlocked invalidation. Returned authority
+remains hidden until publication. Cancellation's own loan cleanup still requires
+composed attachment ownership
 before releasing their global serialization. Whole-domain device cleanup also
 retains lifecycle serialization.
 Deployment and node-shutdown
@@ -269,7 +270,8 @@ is restored.
         Rust can violate this; the MMU will fault.
 \end{itemize}
 
-Plain replies and replies returning a connection retain both namespace generations, the loan revocation receipts
+Borrowed-memory replies, including returned connections or memory, retain both
+namespace generations, the loan revocation receipts
 and an exclusive reply claim in one kernel operation owner. Loan detachment,
 TLB invalidation and scratch release then run without the global IPC lock.
 A concurrent close of the pending-call or reply capability waits outside that
@@ -285,9 +287,20 @@ cannot serve as retained minting sources: an earlier operation can still reclaim
 them. Delivery or observation must precede the reply. An unrelated endpoint-owner
 domain may close, making the service unavailable, while the delegated source
 keeps the closed endpoint record alive. Failure refunds unpublished grants;
-abandonment retains the source claim and both roots. Replies returning memory
-and cancellation's own revocation still retain IPC serialization; their
-completion ownership remains work in progress.
+abandonment retains the source claim and both roots.
+
+Returned memory retains its source escrow, backing pin and hidden destination
+reservation in the same operation owner. The output must be owned and unmapped;
+queued or unobserved-result memory must first be delivered or observed. Memory
+close waits outside the registry for the transfer owner. Rollback restores source
+authority and releases its pin under one registry hold, so close never observes
+restored authority with an unfinished transfer pin. Serialized cleanup uses a
+nonwaiting busy check instead of parking beneath IPC. After input-loan cleanup,
+the output move and any returned connection publish jointly before result
+visibility. Ordinary failure restores the unstarted output move; abandonment
+can also restore that output, but retains uncertain input-loan backing and the
+reply/root claims. No-loan replies remain atomic under IPC. Cancellation's own
+revocation still retains IPC serialization and needs its own completion owner.
 
 \section{Why hardware enforcement matters}
 

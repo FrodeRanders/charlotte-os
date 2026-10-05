@@ -283,6 +283,8 @@ impl LendState {
 struct MemoryCap {
     object: MemoryObjectId,
     rights: MemoryObjectRights,
+    /// Owned by a PreparedTransfer until escrow and its pin finish together.
+    transfer_in_flight: bool,
 }
 
 #[derive(Debug)]
@@ -390,6 +392,7 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
         MemoryCap {
             object: object_id,
             rights: MemoryObjectRights::ALL,
+            transfer_in_flight: false,
         },
     );
     Ok(cap)
@@ -964,16 +967,38 @@ impl PreparedTransfer {
 
 impl Drop for PreparedTransfer {
     fn drop(&mut self) {
-        if !self.committed
-            && let Some(source) = self.payload.source_mut()
-            && let Some(escrow) = source.escrow.take()
-        {
-            // Restore only the captured source namespace, including a retiring
-            // namespace awaiting payload drain. Never re-admit a fresh slot.
-            let _ = escrow.rollback();
+        if let Some(source) = self.payload.source_mut() {
+            let mut registry = MEMORY_OBJECTS.lock();
+            if !self.committed
+                && let Some(escrow) = source.escrow.take()
+            {
+                // Restore only the captured namespace and original source slot.
+                // Keep registry exclusion through pin release: a concurrent
+                // close must not mistake restored-but-still-pinned for terminal.
+                let _ = escrow.rollback();
+            }
+            let frames = source
+                ._pin
+                .0
+                .take()
+                .and_then(|pin| release_copy_pin_locked(&mut registry, pin.object));
+            if let Some(entry) = registry
+                .caps
+                .get_mut(&source.owner)
+                .and_then(|caps| caps.caps.get_mut(&source.cap))
+                // Teardown may already have removed this namespace and a
+                // successor may reuse both scalar IDs. Object identities do
+                // not recycle: never clear a successor's transfer fence.
+                .filter(|entry| entry.object == source.entry.object)
+            {
+                assert!(entry.transfer_in_flight, "prepared source fence missing");
+                entry.transfer_in_flight = false;
+            }
+            drop(registry);
+            deallocate_frames(frames);
         }
-        // Destination reservation drops before payload backing/pins. No live
-        // destination, mapping or borrower state ever needs reversal.
+        // Hidden destination authority and private-copy backing drop normally.
+        // No live destination, mapping or borrower state needs reversal.
     }
 }
 
@@ -1022,6 +1047,9 @@ fn prepare_source_transfer(
         return Err(MemoryObjectError::AddressSpaceMissing);
     }
     let entry = registry.lookup(owner, cap)?;
+    if entry.transfer_in_flight {
+        return Err(MemoryObjectError::LendingActive);
+    }
     let needed = match loan {
         Some(true) => MemoryObjectRights::MAP_WRITE,
         Some(false) => MemoryObjectRights::MAP_READ,
@@ -1049,6 +1077,7 @@ fn prepare_source_transfer(
     // No fallible work follows source escrow. A read-retention pin fences
     // writes/DMA and keeps backing alive even if source teardown drains it.
     registry.objects.get_mut(&entry.object).unwrap().copy_pins = pins;
+    registry.caps.get_mut(&owner).unwrap().caps.get_mut(&cap).unwrap().transfer_in_flight = true;
     let source = PreparedSource {
         owner,
         handle: source_handle,
@@ -1186,6 +1215,7 @@ pub(crate) fn commit_transfers_with_authority(
             .ok_or(MemoryObjectError::AddressSpaceMissing)?;
         if stored.object != source.entry.object
             || stored.rights != source.entry.rights
+            || !stored.transfer_in_flight
             || object.owner != source.owner
         {
             return Err(MemoryObjectError::AddressSpaceMissing);
@@ -1227,6 +1257,7 @@ pub(crate) fn commit_transfers_with_authority(
                 MemoryCap {
                     object: source.entry.object,
                     rights: *rights,
+                    transfer_in_flight: false,
                 }
             }
             PreparedPayload::Copy {
@@ -1254,6 +1285,7 @@ pub(crate) fn commit_transfers_with_authority(
                 MemoryCap {
                     object,
                     rights: MemoryObjectRights::ALL,
+                    transfer_in_flight: false,
                 }
             }
             PreparedPayload::Loan {
@@ -1289,6 +1321,7 @@ pub(crate) fn commit_transfers_with_authority(
                     } else {
                         MemoryObjectRights::MAP_READ
                     },
+                    transfer_in_flight: false,
                 }
             }
         };
@@ -1462,24 +1495,70 @@ pub(crate) fn revoke_lend_under_ipc(
 }
 
 pub fn close_cap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), MemoryObjectError> {
-    let mut registry = MEMORY_OBJECTS.lock();
-    if !crate::capability::contains(asid, cap, crate::capability::ObjectKind::Memory) {
-        return Err(MemoryObjectError::UnknownCapability);
+    close_cap_with_wait(asid, cap, crate::cpu::scheduler::yield_lp)
+}
+
+/// Thread-context close and deterministic boot interleaving adapter. Callers
+/// must not hold IPC/lifecycle/registry guards while a transfer can be live.
+pub(crate) fn close_cap_with_wait(
+    asid: AddressSpaceId,
+    cap: MemoryObjectCap,
+    mut wait: impl FnMut(),
+) -> Result<(), MemoryObjectError> {
+    let registry = loop {
+        let registry = MEMORY_OBJECTS.lock();
+        if !transfer_in_flight(&registry, asid, cap) {
+            break registry;
+        }
+        drop(registry);
+        wait();
+    };
+    finish_close_cap(registry, asid, cap)
+}
+
+/// Serialized IPC/root cleanup must not wait under outer masking guards.
+/// Busy rejection consumes no authority; normal teardown retains pinned backing.
+pub(crate) fn try_close_cap(
+    asid: AddressSpaceId,
+    cap: MemoryObjectCap,
+) -> Result<(), MemoryObjectError> {
+    let registry = MEMORY_OBJECTS.lock();
+    if transfer_in_flight(&registry, asid, cap) {
+        return Err(MemoryObjectError::LendingActive);
     }
-    let cap_entry = registry
+    finish_close_cap(registry, asid, cap)
+}
+
+fn transfer_in_flight(
+    registry: &MemoryObjectRegistry,
+    asid: AddressSpaceId,
+    cap: MemoryObjectCap,
+) -> bool {
+    registry
         .caps
-        .get_mut(&asid)
-        .ok_or(MemoryObjectError::UnknownCapability)?
-        .caps
-        .remove(&cap)
-        .ok_or(MemoryObjectError::UnknownCapability)?;
+        .get(&asid)
+        .and_then(|caps| caps.caps.get(&cap))
+        .is_some_and(|entry| entry.transfer_in_flight)
+}
+
+fn finish_close_cap(
+    mut registry: lock_api::MutexGuard<
+        '_,
+        crate::cpu::multiprocessor::spin::mutex::MutexCore,
+        MemoryObjectRegistry,
+    >,
+    asid: AddressSpaceId,
+    cap: MemoryObjectCap,
+) -> Result<(), MemoryObjectError> {
+    // Reject before mutating payload ownership. Reinserting a rejected cap
+    // could allocate, so there must be no remove-and-restore cleanup ladder.
+    let cap_entry = registry.lookup(asid, cap)?;
 
     let should_destroy = {
         let object =
             registry.objects.get(&cap_entry.object).ok_or(MemoryObjectError::UnknownCapability)?;
         if object.owner != asid {
             if object.lend_state.references_cap(asid, cap) {
-                registry.caps_for_mut(asid).caps.insert(cap, cap_entry);
                 return Err(MemoryObjectError::LendingActive);
             }
             false
@@ -1488,15 +1567,15 @@ pub fn close_cap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Memor
             || object.copy_pins != 0
             || object.retirement_pins != 0
         {
-            registry.caps_for_mut(asid).caps.insert(cap, cap_entry);
             return Err(MemoryObjectError::LendingActive);
         } else if !object.mappings.is_empty() {
-            registry.caps_for_mut(asid).caps.insert(cap, cap_entry);
             return Err(MemoryObjectError::AlreadyMapped);
         } else {
             true
         }
     };
+
+    registry.caps.get_mut(&asid).unwrap().caps.remove(&cap).expect("validated memory cap missing");
 
     let backing = if should_destroy {
         let object = registry

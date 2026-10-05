@@ -75,26 +75,30 @@ transaction fences backing and loan authority through detach, invalidation,
 scratch completion and removal of the borrower capability. Ordinary failure
 releases root leases but retains the transaction's backing pin and revocation
 fence; abandonment of the whole operation also retains both root leases.
-Plain borrowed-memory IPC replies and connection-returning replies compose both leases and loan receipts in
+Borrowed-memory IPC replies, including returned connections or memory, compose
+both leases and loan receipts in
 `PreparedReply`. A claim prevents concurrent reply/close from consuming records
 while revocation runs outside IPC. Close waits without holding IPC; abandonment
 retains claim, roots and backing. Ordinary cleanup failure completes root leases
 but keeps uncertain loan backing fenced. Returned connections also protect their
 delivered/observed minting source with the claim and own caller-sponsored hidden
 grant authority through publication. Source-close waits outside IPC; ordinary
-failure refunds the grant before releasing leases. No-loan scalar replies need no detached
-interval and remain atomic under IPC.
+failure refunds the grant before releasing leases. Returned memory owns a
+qualified source's escrow/backing pin and hidden destination reservation in the
+same operation. Memory close waits outside the registry for the transfer owner;
+rollback restores source authority and releases its pin atomically. No-loan
+replies need no detached interval and remain atomic under IPC.
 Whole-domain device cleanup still holds lifecycle across invalidation. Before
 extending split-phase operation leases, implement:
 
-1. Extend IPC composition to returned memory authority and
-   cancellation's own revocation. Compose IPC leases with backing, exact scratch
+1. Extend IPC composition to cancellation's own revocation. Compose IPC leases
+   with backing, exact scratch
    reservation and loan/connection
    authority in one operation owner. IPC must acquire lifecycle before IPC
    serialization, never from within an IPC guard. Reply/cancellation ownership
-   must survive an IPC unlock together with the loan transaction. Plain and
-   connection-returning replies implement that ownership; returned-memory replies/cancellation still retain
-   their masking guard. Move
+   must survive an IPC unlock together with the loan transaction. All existing
+   borrowed-memory reply variants implement that ownership; cancellation still
+   retains its masking guard. Move
    whole-domain device cleanup invalidation out of lifecycle under an owned claim.
 2. Translation identity capture after lazy root/tag preparation; then release
    preparation guards before rendezvous. Syscall entry's interrupt state and

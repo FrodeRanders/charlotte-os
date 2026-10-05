@@ -1,6 +1,7 @@
 //! Own a borrowed-memory reply across the IPC-unlocked invalidation interval.
 //! Returned connections keep their minting source claimed through publication.
-//! Returned memory and cancellation still retain their serialized adapter.
+//! Returned memory owns source escrow/backing through joint publication.
+//! Cancellation still retains its serialized adapter.
 
 use super::*;
 use crate::memory::{
@@ -27,6 +28,7 @@ struct PreparedReply {
     namespaces: [Option<AddressSpaceOperation>; 2],
     loans: Vec<(MemoryBorrow, LoanRevocation)>,
     connection: Option<ReturnedConnection>,
+    memory: Option<crate::memory::object::PreparedTransfer>,
 }
 
 /// The source is borrowed authority, retained by the published reply claim.
@@ -47,6 +49,23 @@ impl PreparedReply {
         cap: CapabilityId,
         returned: Option<(CapabilityId, ConnectionRights)>,
     ) -> Result<Self, IpcError> {
+        Self::prepare_with_outputs(server, cap, returned, None)
+    }
+
+    fn prepare_with_memory(
+        server: AddressSpaceId,
+        cap: CapabilityId,
+        source: MemoryObjectCap,
+    ) -> Result<Self, IpcError> {
+        Self::prepare_with_outputs(server, cap, None, Some(source))
+    }
+
+    fn prepare_with_outputs(
+        server: AddressSpaceId,
+        cap: CapabilityId,
+        returned: Option<(CapabilityId, ConnectionRights)>,
+        memory: Option<MemoryObjectCap>,
+    ) -> Result<Self, IpcError> {
         let (token, call, identities) = {
             let ipc = IPC.read();
             let (token, call, caller) = validate(&ipc, server, cap)?;
@@ -62,6 +81,7 @@ impl PreparedReply {
             namespaces: [None, None],
             loans: Vec::new(),
             connection: None,
+            memory: None,
         };
         let prepared = (|| {
             // Capture before taking IPC. Acquiring lifecycle beneath IPC would
@@ -104,6 +124,15 @@ impl PreparedReply {
                     )?,
                 });
             }
+            if let Some(source) = memory {
+                if memory_source_reclaimable(&ipc, server, source) {
+                    return Err(IpcError::Pending);
+                }
+                operation.memory = Some(
+                    crate::memory::object::prepare_move(server, source, identities[0].0)
+                        .map_err(|_| IpcError::MemoryTransferFailed)?,
+                );
+            }
             let borrows = &ipc.reply_tokens[&token].borrows;
             if borrows.len() > CAP_VECTOR_MAX {
                 return Err(IpcError::ResourceLimit);
@@ -137,6 +166,7 @@ impl PreparedReply {
             Ok(())
         })();
         if let Err(error) = prepared {
+            drop(operation.memory.take());
             drop(operation.connection.take());
             operation.release_namespaces()?;
             return Err(error);
@@ -159,12 +189,9 @@ impl PreparedReply {
         result: i64,
         finish: impl FnMut(LoanRevocation) -> Result<(), MemoryObjectError>,
     ) -> Result<(), IpcError> {
-        self.finish_with_publication(result, finish, |authority| {
-            crate::capability::publish_batch(&mut [crate::capability::Publication {
-                destination: authority,
-                source: None,
-            }])
-            .map_err(|_| IpcError::MemoryTransferFailed)
+        self.finish_with_publication(result, finish, |memory, authority| {
+            crate::memory::object::commit_transfers_with_authority(memory, authority)
+                .map_err(|_| IpcError::MemoryTransferFailed)
         })
     }
 
@@ -172,7 +199,10 @@ impl PreparedReply {
         mut self,
         result: i64,
         mut finish: impl FnMut(LoanRevocation) -> Result<(), MemoryObjectError>,
-        publish: impl FnOnce(&mut crate::capability::Reservation) -> Result<(), IpcError>,
+        publish: impl FnOnce(
+            &mut [crate::memory::object::PreparedTransfer],
+            &mut [&mut crate::capability::Reservation],
+        ) -> Result<(), IpcError>,
     ) -> Result<(), IpcError> {
         while let Some((borrow, loan)) = self.loans.pop() {
             // No IPC/lifecycle/table/registry guard crosses this callback.
@@ -197,13 +227,22 @@ impl PreparedReply {
                 ipc.cap(self.server, connection.source).is_ok(),
                 "claimed minting source missing"
             );
-            if let Err(error) = publish(&mut connection.grant.authority) {
-                self.abort_prepared(&mut ipc);
-                drop(ipc);
-                self.release_namespaces()?;
-                return Err(error);
-            }
         }
+        let published = if let Some(connection) = self.connection.as_mut() {
+            publish(self.memory.as_mut_slice(), &mut [&mut connection.grant.authority])
+        } else if self.memory.is_some() {
+            publish(self.memory.as_mut_slice(), &mut [])
+        } else {
+            Ok(())
+        };
+        if let Err(error) = published {
+            self.abort_prepared(&mut ipc);
+            drop(ipc);
+            self.release_namespaces()?;
+            return Err(error);
+        }
+        let returned_memory = self.memory.as_ref().map(|transfer| transfer.target_cap());
+        drop(self.memory.take());
         let returned_cap =
             self.connection.take().map(|connection| connection.grant.install(&mut ipc));
         let token = ipc.reply_tokens.remove(&self.token).expect("claimed reply missing");
@@ -216,7 +255,7 @@ impl PreparedReply {
         call.result = Some(ReplyValue {
             result,
             cap: returned_cap,
-            memory: None,
+            memory: returned_memory,
         });
         let observers = call.observers.close();
         ipc.remove_cap(self.server, self.cap).expect("claimed reply cap missing");
@@ -229,6 +268,7 @@ impl PreparedReply {
     fn release_namespaces(self) -> Result<(), IpcError> {
         assert!(self.loans.is_empty(), "releasing roots before prepared loans finish");
         assert!(self.connection.is_none(), "releasing roots before returned authority cleanup");
+        assert!(self.memory.is_none(), "releasing roots before returned memory cleanup");
         let mut error = None;
         for namespace in self.namespaces.into_iter().flatten() {
             if namespace.release().is_err() {
@@ -242,6 +282,7 @@ impl PreparedReply {
     /// refund unpublished destination authority before releasing root leases.
     fn abort_prepared(&mut self, ipc: &mut IpcRegistry) {
         self.cancel_prepared();
+        drop(self.memory.take());
         drop(self.connection.take());
         let token = ipc.reply_tokens.get_mut(&self.token).expect("claimed reply missing");
         assert!(token.replying);
@@ -258,6 +299,21 @@ fn source_reclaimable(ipc: &IpcRegistry, server: AddressSpaceId, source: Capabil
     }) || ipc.endpoints.values().any(|endpoint| {
         endpoint.owner == server
             && endpoint.queue.iter().any(|message| message.connection == Some(source))
+    })
+}
+
+fn memory_source_reclaimable(
+    ipc: &IpcRegistry,
+    server: AddressSpaceId,
+    source: MemoryObjectCap,
+) -> bool {
+    ipc.pending_calls.values().any(|call| {
+        call.caller == server
+            && !call.observed
+            && call.result.is_some_and(|result| result.memory == Some(source))
+    }) || ipc.endpoints.values().any(|endpoint| {
+        endpoint.owner == server
+            && endpoint.queue.iter().any(|message| message.memory.contains(&source))
     })
 }
 
@@ -302,4 +358,13 @@ pub(super) fn complete_with_connection(
     result: i64,
 ) -> Result<(), IpcError> {
     PreparedReply::prepare_with_connection(server, cap, Some((source, rights)))?.finish(result)
+}
+
+pub(super) fn complete_with_memory(
+    server: AddressSpaceId,
+    cap: CapabilityId,
+    source: MemoryObjectCap,
+    result: i64,
+) -> Result<(), IpcError> {
+    PreparedReply::prepare_with_memory(server, cap, source)?.finish(result)
 }

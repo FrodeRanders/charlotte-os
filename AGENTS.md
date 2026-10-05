@@ -130,7 +130,8 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   existing borrower state and a backing pin through detach, invalidation, scratch
   release and authority removal. Failed or abandoned revocation retains its
   Revoking fence and pin; never restore usable loan authority after uncertain
-  cleanup. Plain IPC replies and replies returning a connection compose both root leases, loan receipts and an
+  cleanup. Borrowed-memory IPC replies, including returned connections or memory,
+  compose both root leases, loan receipts and an
   exclusive reply claim in `PreparedReply`. Admit leases before IPC, revalidate
   exact identities and prepare every loan before claiming. Detach/invalidate
   outside IPC; close of either call/reply cap waits outside IPC until completion.
@@ -139,9 +140,16 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   with caller-sponsored destination authority hidden until publication under IPC.
   Only delivered/observed sources qualify: queued or unobserved-result connections
   remain indirectly reclaimable. Source-close waits outside IPC too. Refund
-  unpublished grants before completing leases on ordinary failure. Abandonment
-  retains the claim/roots/source/backing; do not force-clear it. Returned-memory
-  replies and cancellation's own cleanup retain IPC serialization and
+  unpublished grants before completing leases on ordinary failure. Returned
+  memory retains a `PreparedTransfer`: qualify delivery/observation, escrow its
+  exact source, and publish it jointly with any returned connection before
+  result visibility. Memory close waits outside registry/IPC for source escrow
+  and pin completion; serialized cleanup uses `try_close_cap` without waiting.
+  Restore escrow, release its pin and clear its transfer fence under one memory
+  registry hold; never touch a successor's reused ASID/capability. Abandonment
+  restores unstarted returned-memory escrow but retains the reply/connection
+  source claim, roots and uncertain loan backing; do not force-clear them.
+  Cancellation's own cleanup retains IPC serialization and
   must not acquire lifecycle beneath that guard. Whole-domain device cleanup still
   retains lifecycle through invalidation. Backing pins do not lease an ASID; see
   `docs/reference/memory-object-retirement.md`.

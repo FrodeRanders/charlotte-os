@@ -4,6 +4,7 @@
 
 use super::*;
 mod connection_tests;
+mod memory_tests;
 use crate::memory::{
     self,
     ADDRESS_SPACE_LIFECYCLE,
@@ -85,6 +86,7 @@ pub(crate) fn run() {
     preparation_rollback();
     staged_close();
     connection_tests::run();
+    memory_tests::run();
     completion_failure();
     abandonment();
     crate::logln!(
@@ -212,10 +214,12 @@ fn completion_failure() {
     let fixture = Fixture::new(3);
     let source = endpoint_create(fixture.server.id(), 2, 1, 4).unwrap();
     let before = crate::capability::admission_tests::test_namespace_used(fixture.caller.id());
-    let operation = PreparedReply::prepare_with_connection(
+    let memory = object::allocate(fixture.server.id(), 1).unwrap();
+    let operation = PreparedReply::prepare_with_outputs(
         fixture.server.id(),
         fixture.reply,
         Some((source, ConnectionRights::ALL)),
+        Some(memory),
     )
     .unwrap();
     let destination = operation.connection.as_ref().unwrap().grant.authority.identity();
@@ -244,6 +248,7 @@ fn completion_failure() {
         crate::capability::ObjectKind::Ipc
     ));
     close_cap(fixture.server.id(), source).unwrap();
+    object::close_cap(fixture.server.id(), memory).unwrap();
     let ipc = IPC.read();
     let (token, _, _) = validate(&ipc, fixture.server.id(), fixture.reply).unwrap();
     assert_eq!(ipc.reply_tokens[&token].borrows, fixture.borrows[..2]);
@@ -275,11 +280,13 @@ fn abandonment() {
     let fixture = Fixture::new(1);
     let source = endpoint_create(fixture.server.id(), 3, 1, 4).unwrap();
     let before = crate::capability::admission_tests::test_namespace_used(fixture.caller.id());
+    let memory = object::allocate(fixture.server.id(), 1).unwrap();
     drop(
-        PreparedReply::prepare_with_connection(
+        PreparedReply::prepare_with_outputs(
             fixture.server.id(),
             fixture.reply,
             Some((source, ConnectionRights::ALL)),
+            Some(memory),
         )
         .unwrap(),
     );
@@ -296,6 +303,9 @@ fn abandonment() {
     };
     assert_eq!(ipc.reply_tokens[&token].connection_source, Some(source));
     drop(ipc);
+    // Returned memory was never detached or published: preparation Drop safely
+    // restores its original source, even though reply/loan/root claims remain.
+    object::close_cap(fixture.server.id(), memory).unwrap();
     assert_eq!(reply(fixture.server.id(), fixture.reply, 1), Err(IpcError::ReplyAlreadyUsed));
     assert_eq!(
         memory::close_user_address_space_handle(fixture.caller),

@@ -572,7 +572,7 @@ frame batches. It exercises ordinary unmap, mapped-loan revoke and owner cleanup
 asserts registry/table guards are available at detach callbacks, rejects an
 oversized prefix before table work, and injects the last copy unpin before the
 first batch. Exact frame/charge counts return after completion, with no additional
-quarantine. Whole-domain cleanup, returned-memory replies and cancellation retain their outer
+quarantine. Whole-domain cleanup and cancellation retain their outer
 serialization; standalone unmap and direct loan revocation now retain live
 operation leases.
 
@@ -613,7 +613,7 @@ roots (including their table backing), IPC records and the reply claim. These
 probes add **two data pages and two object charges** to the eleven-page,
 nine-object memory-retirement fixture. No cleanup bypass is provided.
 Deterministic interleavings do not establish multi-LP progress, recoverable
-shootdown, or returned-memory/cancellation lock separation.
+shootdown, or cancellation lock separation.
 
 Returned-connection fixtures additionally close the exact minting source while
 the reply claim is live, for both endpoint and attenuated delegated-connection
@@ -630,6 +630,24 @@ partial-cleanup failure and abandonment probes also include returned authority;
 they add no new quarantined data pages or root pairs. Abandonment retains its
 source claim but refunds the unpublished grant. These remain serialized
 interleavings, not concurrent source-close stress or additional model proofs.
+
+Returned-memory fixtures retain output-source escrow and its backing pin through
+unlocked input-loan cleanup. They verify source-close waiting outside the
+registry, hidden destination authority, successful move and observed/unobserved
+result ownership. Injected publication failure restores and closes the source
+without an intermediate still-pinned state. Quota, second-loan preparation and
+borrowed-output rejection preserve source authority; queued/unobserved sources
+qualify only after delivery/observation. Staged close checks joint memory and
+connection publication in the internal owner, without adding a combined wire
+API. The existing partial-cleanup and abandonment probes include both output
+kinds: they refund hidden admission and restore output memory without adding
+quarantined data pages or root pairs. A committed read-loan preparation retains
+its transfer fence until Drop, rejects another preparation, then permits a new
+reader after pin release. Existing exact-ASID/capability-reuse fixtures also
+check late Drop cannot clear a successor's fence. Paused fixtures use
+`try_close_cap` for same-thread busy probes; actual waiting-close fixtures use
+the production loop with a deterministic completion callback. These are not
+concurrent multi-LP progress or x86 shootdown tests.
 
 ## Final address-space retirement tests
 

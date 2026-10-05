@@ -602,7 +602,9 @@ fn test_capability_admission_and_moves() {
     let prepared = object::prepare_move(source, first, target).unwrap();
     let destination = prepared.target_cap();
     assert_eq!(object::info(source, first), Err(MemoryObjectError::UnknownCapability));
-    assert_eq!(object::close_cap(source, first), Err(MemoryObjectError::UnknownCapability));
+    // A real close waits for the transfer; this same-thread pause only probes
+    // the busy fence without blocking its own rollback.
+    assert_eq!(object::try_close_cap(source, first), Err(MemoryObjectError::LendingActive));
     assert_eq!(object::info(target, destination), Err(MemoryObjectError::UnknownCapability));
     test_fill_remaining_namespace(target);
     assert_eq!(test_namespace_used(target), DOMAIN_LIMIT);

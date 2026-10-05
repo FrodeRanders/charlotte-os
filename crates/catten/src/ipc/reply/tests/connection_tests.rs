@@ -211,7 +211,7 @@ fn publication_failure() {
         operation.finish_with_publication(
             1,
             |loan| loan.finish_observed(unlocked),
-            |_| Err(IpcError::MemoryTransferFailed)
+            |_, _| Err(IpcError::MemoryTransferFailed)
         ),
         Err(IpcError::MemoryTransferFailed)
     );

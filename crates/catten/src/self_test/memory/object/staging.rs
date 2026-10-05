@@ -47,7 +47,8 @@ pub(super) fn test_hidden_transfers() {
         }
         let prepared = object::prepare_loan(source, cap, target, write).unwrap();
         assert_hidden(target, prepared.target_cap());
-        assert_eq!(object::close_cap(source, cap), Err(MemoryObjectError::UnknownCapability));
+        // Do not wait for an escrow owner held by this fixture's own thread.
+        assert_eq!(object::try_close_cap(source, cap), Err(MemoryObjectError::LendingActive));
         admission_tests::test_fill_remaining_namespace(source);
         drop(prepared);
         assert_eq!(
