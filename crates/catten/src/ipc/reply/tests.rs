@@ -3,6 +3,7 @@
 //! retain two data pages; abandonment additionally retains both live roots.
 
 use super::*;
+mod connection_tests;
 use crate::memory::{
     self,
     ADDRESS_SPACE_LIFECYCLE,
@@ -83,6 +84,7 @@ pub(crate) fn run() {
     success_and_close_wait();
     preparation_rollback();
     staged_close();
+    connection_tests::run();
     completion_failure();
     abandonment();
     crate::logln!(
@@ -190,7 +192,13 @@ fn preparation_rollback() {
 
 fn staged_close() {
     let fixture = Fixture::new(1);
-    let operation = fixture.prepare();
+    let source = endpoint_create(fixture.server.id(), 8, 1, 4).unwrap();
+    let operation = PreparedReply::prepare_with_connection(
+        fixture.server.id(),
+        fixture.reply,
+        Some((source, ConnectionRights::ALL)),
+    )
+    .unwrap();
     let closing = ClosingAddressSpace::begin(fixture.caller).unwrap();
     let CloseProgress::Pending(closing) = closing.poll().unwrap() else {
         panic!("reply lease did not hold close");
@@ -202,7 +210,15 @@ fn staged_close() {
 
 fn completion_failure() {
     let fixture = Fixture::new(3);
-    let operation = fixture.prepare();
+    let source = endpoint_create(fixture.server.id(), 2, 1, 4).unwrap();
+    let before = crate::capability::admission_tests::test_namespace_used(fixture.caller.id());
+    let operation = PreparedReply::prepare_with_connection(
+        fixture.server.id(),
+        fixture.reply,
+        Some((source, ConnectionRights::ALL)),
+    )
+    .unwrap();
+    let destination = operation.connection.as_ref().unwrap().grant.authority.identity();
     let mut finished = 0;
     assert_eq!(
         operation.finish_with(1, |loan| {
@@ -218,6 +234,16 @@ fn completion_failure() {
         Err(IpcError::MemoryTransferFailed)
     );
     assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));
+    assert_eq!(
+        crate::capability::admission_tests::test_namespace_used(fixture.caller.id()),
+        before
+    );
+    assert!(!crate::capability::contains(
+        fixture.caller.id(),
+        destination,
+        crate::capability::ObjectKind::Ipc
+    ));
+    close_cap(fixture.server.id(), source).unwrap();
     let ipc = IPC.read();
     let (token, _, _) = validate(&ipc, fixture.server.id(), fixture.reply).unwrap();
     assert_eq!(ipc.reply_tokens[&token].borrows, fixture.borrows[..2]);
@@ -247,7 +273,29 @@ fn completion_failure() {
 
 fn abandonment() {
     let fixture = Fixture::new(1);
-    drop(fixture.prepare());
+    let source = endpoint_create(fixture.server.id(), 3, 1, 4).unwrap();
+    let before = crate::capability::admission_tests::test_namespace_used(fixture.caller.id());
+    drop(
+        PreparedReply::prepare_with_connection(
+            fixture.server.id(),
+            fixture.reply,
+            Some((source, ConnectionRights::ALL)),
+        )
+        .unwrap(),
+    );
+    assert_eq!(
+        crate::capability::admission_tests::test_namespace_used(fixture.caller.id()),
+        before
+    );
+    let ipc = IPC.read();
+    let token = match ipc.cap(fixture.server.id(), fixture.reply).unwrap() {
+        Capability::ReplyToken {
+            token,
+        } => token,
+        _ => unreachable!(),
+    };
+    assert_eq!(ipc.reply_tokens[&token].connection_source, Some(source));
+    drop(ipc);
     assert_eq!(reply(fixture.server.id(), fixture.reply, 1), Err(IpcError::ReplyAlreadyUsed));
     assert_eq!(
         memory::close_user_address_space_handle(fixture.caller),

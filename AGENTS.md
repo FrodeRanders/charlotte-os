@@ -130,13 +130,18 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   existing borrower state and a backing pin through detach, invalidation, scratch
   release and authority removal. Failed or abandoned revocation retains its
   Revoking fence and pin; never restore usable loan authority after uncertain
-  cleanup. Plain IPC replies compose both root leases, loan receipts and an
+  cleanup. Plain IPC replies and replies returning a connection compose both root leases, loan receipts and an
   exclusive reply claim in `PreparedReply`. Admit leases before IPC, revalidate
   exact identities and prepare every loan before claiming. Detach/invalidate
   outside IPC; close of either call/reply cap waits outside IPC until completion.
   Roll back only unstarted loan receipts, never uncertain physical cleanup.
-  Abandonment retains the claim/roots/backing; do not force-clear it. Returned-
-  authority replies and cancellation's own cleanup retain IPC serialization and
+  Returned connections retain their exact minting source through the reply claim,
+  with caller-sponsored destination authority hidden until publication under IPC.
+  Only delivered/observed sources qualify: queued or unobserved-result connections
+  remain indirectly reclaimable. Source-close waits outside IPC too. Refund
+  unpublished grants before completing leases on ordinary failure. Abandonment
+  retains the claim/roots/source/backing; do not force-clear it. Returned-memory
+  replies and cancellation's own cleanup retain IPC serialization and
   must not acquire lifecycle beneath that guard. Whole-domain device cleanup still
   retains lifecycle through invalidation. Backing pins do not lease an ASID; see
   `docs/reference/memory-object-retirement.md`.

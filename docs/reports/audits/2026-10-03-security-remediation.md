@@ -32,7 +32,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-15 | Mitigated | SigV4 prefixed secret, derived keys, HMAC block/pads and inner digest use zeroizing owners. TLS record buffers are wiped after dropping their borrower, including handshake failure. This is not a complete audit of crypto-library state or compiler-created secret copies. |
 | SEC-16 | Implemented | grantctl polls bounded concurrent operations with per-sender/generation limits and total deadlines. Non-parking authorized lookup avoids a shared name-service waitlist leak. Acquisition retries and publication waits have total deadlines. A two-application cancellation stress and silent-endpoint publication timeout pass in the guest; many-client fairness and controller-replacement testing remain. |
 | SEC-17 | Implemented for dynamic table unmap | Both walkers retain empty intermediate tables linked and owned for reuse until quiescent address-space teardown, removing premature table recycling. Tables/data are initialized before publication; x86 entries publish complete permissions/cache selection together. Private sparse-alias/reuse/teardown fixtures pass on AArch64. Concurrent walk-race reproduction, live compaction, full table admission and x86 guest execution remain outside this validation. Broader physical-release/shootdown gaps are SEC-18. |
-| SEC-18 | Partially implemented | Kernel-range retirement detaches before post-guard invalidation/release; Drop quarantines. Memory-object pins retain backing/charges and fence authority through invalidation; prefix/identity checks preserve foreign leaves. Final root retirement owns the software slot, ARM tag and accounts through post-guard teardown. Public memory-object/MMIO mappings, explicit device close, direct loan revocation and plain borrowed-memory replies lease live roots. Plain replies claim their IPC records across unlocked revocation; concurrent close waits outside IPC. Failed loan cleanup retains fence/pin; abandoned replies retain claim/roots. x86 failed delivery cannot credit the barrier. Returned-authority replies, cancellation's own cleanup, whole-domain device cleanup, unresponsive recipients, recoverable epoch-fenced failure and complete quiescence remain open. AArch64/host fixtures pass; x86 guest and real delivery-failure execution remain pending. |
+| SEC-18 | Partially implemented | Kernel-range retirement detaches before post-guard invalidation/release; Drop quarantines. Memory-object pins retain backing/charges and fence authority through invalidation; prefix/identity checks preserve foreign leaves. Final root retirement owns the software slot, ARM tag and accounts through post-guard teardown. Public memory-object/MMIO mappings, explicit device close, direct loan revocation and plain/connection-returning borrowed-memory replies lease live roots. Replies claim their IPC records and delivered/observed minting sources across unlocked revocation; call/reply/source close waits outside IPC. Returned grants stay hidden until publication and refund on ordinary failure. Failed loan cleanup retains fence/pin; abandoned replies retain claim/roots/source. x86 failed delivery cannot credit the barrier. Returned-memory replies, cancellation's own cleanup, whole-domain device cleanup, unresponsive recipients, recoverable epoch-fenced failure and complete quiescence remain open. AArch64/host fixtures pass; x86 guest and real delivery-failure execution remain pending. |
 
 SEC-07 also includes fixed per-route IRQ readiness storage: repeated or retired
 deliveries cannot exhaust a shared wake queue, and deferred route validation/CQ
@@ -3454,3 +3454,63 @@ the production close loop but does not prove real concurrent multi-LP
 map/reply/cancel/close progress, x86 rendezvous or CPU/device quiescence. Formal
 conformance and manual source are updated; no new model/TLC result or rebuilt
 PDF is claimed.
+
+## Continuation: returned connection and retained minting authority — 2026-10-05
+
+Plain-reply ownership is committed as `5b332b91`. Connection-returning replies
+with outstanding loans now use that same `PreparedReply` owner. It composes
+both namespace leases and loan receipts with a requester-sponsored
+`PreparedConnection`, whose destination remains hidden until publication.
+Preparation resolves the attenuated grant under IPC, reserves it before loan
+mutation, and records the exact borrowed minting source in the reply claim.
+Explicit source-capability close now waits outside IPC just like call/reply
+close. The existing source payload keeps the endpoint record reachable; the
+source is not escrowed, consumed, or restored through a numeric identity.
+
+Source lifetime review found two indirect reclamation paths: queued connection
+attachments and unobserved returned connections can be removed by closing their
+earlier endpoint/call. The detached reply path therefore rejects these sources
+with `Pending` before grant or loan preparation. Delivery or result observation
+must precede retained minting. Those transitions are monotonic, and subsequent
+delegation mints a fresh identity, so qualified source lifetime reduces to
+explicit capability/namespace close. An unrelated endpoint-owner domain may
+still close: its delegated source retains the now-closed endpoint, without
+resurrecting availability or admitting new traffic to a reused ASID.
+
+After loan cleanup, the owner publishes the destination reservation and installs
+its connection payload under IPC before result visibility. Ordinary preparation,
+cleanup or publication failure refunds hidden grant authority and sponsorship
+before releasing either root lease. Completed loans remain removed; failed
+cleanup stays fenced and pinned. Abandonment refunds the unpublished grant but
+retains reply/source claims, roots and loan backing. Close cannot force-clear
+that state. Observed returned grants remain caller-owned; pending-call close
+reclaims only unobserved grants.
+
+Validation:
+
+- Fresh AArch64 `--security-test --fresh-storage`, instance
+  `ipc-return-final-20261005`: **19/19**, zero failed/pending. New boot fixtures
+  cover endpoint/delegated-source close waiting, third-domain endpoint-owner
+  close during cleanup, delivery/observation qualification, hidden and attenuated
+  grants, observed/unobserved result cleanup, quota rejection, second-loan
+  preparation rollback and injected rejection before publication. Staged caller
+  close, partial loan-cleanup failure and abandonment now also exercise returned
+  authority. The latter reuse existing quarantines: no additional retained data
+  pages/root pairs are introduced; hidden grant charges refund on abandonment.
+- Scoped probe checks were `0x7fff`; the existing cancellation workload retired
+  after 4,392 requests. Deterministic source-close callbacks run the actual close
+  loop, but neither they nor that workload establish concurrent new-path progress.
+- Kernel SHA-256:
+  `5478e97f37d1829cec20e48a0d1c9000bab0fc69cb399b8e15db26b284d68064`.
+  Run `/private/tmp/charlotte-security-ipc-return-final-run.log`;
+  serial `/private/tmp/charlotte-ipc-return-final-20261005-serial.log`.
+- Strict locked AArch64 `acpi,security_test` and x86-64 `acpi` Clippy pass.
+  Bundled AArch64 services were rebuilt through `scripts/build-catten-services.sh`.
+  Formatting and diff checks pass; x86 guest execution remains pending.
+
+SEC-18 remains partial. Returned-memory source escrow/backing and cancellation's
+own revocation still need composed completion ownership before releasing IPC.
+Legacy cancellation's best-effort handling of failed revocation, whole-domain
+device cleanup, syscall interrupt state, recoverable shootdown and full CPU/DMA
+quiescence are unchanged. References, contributor guidance, manual source and
+formal conformance are updated; no new model/TLC result or rebuilt PDF is claimed.

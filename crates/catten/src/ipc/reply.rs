@@ -1,5 +1,6 @@
 //! Own a borrowed-memory reply across the IPC-unlocked invalidation interval.
-//! Returned-authority replies and cancellation retain their serialized adapter.
+//! Returned connections keep their minting source claimed through publication.
+//! Returned memory and cancellation still retain their serialized adapter.
 
 use super::*;
 use crate::memory::{
@@ -25,10 +26,27 @@ struct PreparedReply {
     identities: [(AddressSpaceId, Option<AddressSpaceHandle>); 2],
     namespaces: [Option<AddressSpaceOperation>; 2],
     loans: Vec<(MemoryBorrow, LoanRevocation)>,
+    connection: Option<ReturnedConnection>,
+}
+
+/// The source is borrowed authority, retained by the published reply claim.
+/// Its existing IPC payload keeps the endpoint alive; no scalar adoption/move
+/// or authority restoration is needed. The destination remains unpublished.
+struct ReturnedConnection {
+    source: CapabilityId,
+    grant: PreparedConnection,
 }
 
 impl PreparedReply {
     fn prepare(server: AddressSpaceId, cap: CapabilityId) -> Result<Self, IpcError> {
+        Self::prepare_with_connection(server, cap, None)
+    }
+
+    fn prepare_with_connection(
+        server: AddressSpaceId,
+        cap: CapabilityId,
+        returned: Option<(CapabilityId, ConnectionRights)>,
+    ) -> Result<Self, IpcError> {
         let (token, call, identities) = {
             let ipc = IPC.read();
             let (token, call, caller) = validate(&ipc, server, cap)?;
@@ -43,6 +61,7 @@ impl PreparedReply {
             identities,
             namespaces: [None, None],
             loans: Vec::new(),
+            connection: None,
         };
         let prepared = (|| {
             // Capture before taking IPC. Acquiring lifecycle beneath IPC would
@@ -64,6 +83,26 @@ impl PreparedReply {
                 })
             {
                 return Err(IpcError::UnknownCapability);
+            }
+            if let Some((source, requested)) = returned {
+                let (endpoint, rights) = mintable_endpoint(&ipc, server, source, requested)?;
+                // Undelivered authority can be removed indirectly by queue or
+                // unobserved-result cleanup. Do not pin it using only the
+                // explicit source-cap close claim. Observation/delivery are
+                // monotonic, and connection transfers mint fresh identities.
+                if source_reclaimable(&ipc, server, source) {
+                    return Err(IpcError::Pending);
+                }
+                operation.connection = Some(ReturnedConnection {
+                    source,
+                    grant: PreparedConnection::new(
+                        &mut ipc,
+                        identities[0].0,
+                        identities[0].0,
+                        endpoint,
+                        rights,
+                    )?,
+                });
             }
             let borrows = &ipc.reply_tokens[&token].borrows;
             if borrows.len() > CAP_VECTOR_MAX {
@@ -93,9 +132,12 @@ impl PreparedReply {
             }
             // No fallible work remains before publishing this ownership claim.
             ipc.reply_tokens.get_mut(&token).unwrap().replying = true;
+            ipc.reply_tokens.get_mut(&token).unwrap().connection_source =
+                operation.connection.as_ref().map(|connection| connection.source);
             Ok(())
         })();
         if let Err(error) = prepared {
+            drop(operation.connection.take());
             operation.release_namespaces()?;
             return Err(error);
         }
@@ -113,17 +155,30 @@ impl PreparedReply {
     }
 
     fn finish_with(
+        self,
+        result: i64,
+        finish: impl FnMut(LoanRevocation) -> Result<(), MemoryObjectError>,
+    ) -> Result<(), IpcError> {
+        self.finish_with_publication(result, finish, |authority| {
+            crate::capability::publish_batch(&mut [crate::capability::Publication {
+                destination: authority,
+                source: None,
+            }])
+            .map_err(|_| IpcError::MemoryTransferFailed)
+        })
+    }
+
+    fn finish_with_publication(
         mut self,
         result: i64,
         mut finish: impl FnMut(LoanRevocation) -> Result<(), MemoryObjectError>,
+        publish: impl FnOnce(&mut crate::capability::Reservation) -> Result<(), IpcError>,
     ) -> Result<(), IpcError> {
         while let Some((borrow, loan)) = self.loans.pop() {
             // No IPC/lifecycle/table/registry guard crosses this callback.
             if finish(loan).is_err() {
                 let mut ipc = IPC.write();
-                self.cancel_prepared();
-                ipc.reply_tokens.get_mut(&self.token).expect("claimed reply missing").replying =
-                    false;
+                self.abort_prepared(&mut ipc);
                 drop(ipc);
                 self.release_namespaces()?;
                 return Err(IpcError::MemoryTransferFailed);
@@ -134,6 +189,23 @@ impl PreparedReply {
             assert_eq!(token.borrows.pop(), Some(borrow));
         }
         let mut ipc = IPC.write();
+        if let Some(connection) = self.connection.as_mut() {
+            assert_eq!(ipc.reply_tokens[&self.token].connection_source, Some(connection.source));
+            // Source close cannot consume this borrowed capability until the
+            // claim ends. Publication and payload install share IPC exclusion.
+            assert!(
+                ipc.cap(self.server, connection.source).is_ok(),
+                "claimed minting source missing"
+            );
+            if let Err(error) = publish(&mut connection.grant.authority) {
+                self.abort_prepared(&mut ipc);
+                drop(ipc);
+                self.release_namespaces()?;
+                return Err(error);
+            }
+        }
+        let returned_cap =
+            self.connection.take().map(|connection| connection.grant.install(&mut ipc));
         let token = ipc.reply_tokens.remove(&self.token).expect("claimed reply missing");
         assert!(token.replying && token.borrows.is_empty());
         assert_eq!(token.call, self.call);
@@ -143,7 +215,7 @@ impl PreparedReply {
         assert!(call.result.is_none());
         call.result = Some(ReplyValue {
             result,
-            cap: None,
+            cap: returned_cap,
             memory: None,
         });
         let observers = call.observers.close();
@@ -156,6 +228,7 @@ impl PreparedReply {
 
     fn release_namespaces(self) -> Result<(), IpcError> {
         assert!(self.loans.is_empty(), "releasing roots before prepared loans finish");
+        assert!(self.connection.is_none(), "releasing roots before returned authority cleanup");
         let mut error = None;
         for namespace in self.namespaces.into_iter().flatten() {
             if namespace.release().is_err() {
@@ -164,6 +237,28 @@ impl PreparedReply {
         }
         error.map_or(Ok(()), Err)
     }
+
+    /// Retain failed loan backing, but restore every unstarted receipt and
+    /// refund unpublished destination authority before releasing root leases.
+    fn abort_prepared(&mut self, ipc: &mut IpcRegistry) {
+        self.cancel_prepared();
+        drop(self.connection.take());
+        let token = ipc.reply_tokens.get_mut(&self.token).expect("claimed reply missing");
+        assert!(token.replying);
+        token.connection_source = None;
+        token.replying = false;
+    }
+}
+
+fn source_reclaimable(ipc: &IpcRegistry, server: AddressSpaceId, source: CapabilityId) -> bool {
+    ipc.pending_calls.values().any(|call| {
+        call.caller == server
+            && !call.observed
+            && call.result.is_some_and(|result| result.cap == Some(source))
+    }) || ipc.endpoints.values().any(|endpoint| {
+        endpoint.owner == server
+            && endpoint.queue.iter().any(|message| message.connection == Some(source))
+    })
 }
 
 fn validate(
@@ -197,4 +292,14 @@ pub(super) fn complete(
     result: i64,
 ) -> Result<(), IpcError> {
     PreparedReply::prepare(server, cap)?.finish(result)
+}
+
+pub(super) fn complete_with_connection(
+    server: AddressSpaceId,
+    cap: CapabilityId,
+    source: CapabilityId,
+    rights: ConnectionRights,
+    result: i64,
+) -> Result<(), IpcError> {
+    PreparedReply::prepare_with_connection(server, cap, Some((source, rights)))?.finish(result)
 }

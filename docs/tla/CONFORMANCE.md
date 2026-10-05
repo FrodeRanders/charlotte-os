@@ -54,7 +54,7 @@ invalidate either queued identities or already delivered capabilities.
 | `FailAndRollback` | `PreparedCall`/`PreparedConnection` field Drop; `PreparedTransfer` Drop; prepared reply authority in `complete_reply` | Moves/loans restore exact source slots without re-admission; copies release private backing; fresh call/grant reservations and family charges refund. No receiver alias needs unmap or reverse transfer. Successful reply loan revocations are removed before retry/cancellation; the model omits partial revocation/publication failure and late retirement. |
 | `Deliver` | `receive_vec`, `PreparedReceive` | Abstract successful delivery of the complete vector and reply authority. Shared rejection preserves queue/result bytes; result-write failure releases speculative reply authority without consuming the token/attachments. Encoding, admission failures and retirement are omitted. |
 | `WaitTimeout` | non-terminal `ipc::wait_reply_timeout` result | Direct: timeout reports that no reply was observed; it neither closes the pending call nor ends its memory loan. The function is kernel-internal and has no userspace syscall variant; the EL0 ABI exposes only `IpcReplyPoll` and `IpcReplyWait`. |
-| `Reply` / `ObserveReply` | `PreparedReply` for plain borrowed-memory replies; `complete_reply` for no-loan/returned-authority replies; then reply wait/poll observation | Abstract for releasing the token's whole loan vector followed by observation/close. Concrete plain replies lease both roots and claim the record across IPC-unlocked revocation; close waits outside IPC. The model omits this claim, partial cleanup, lease admission and abandonment; its single loan state does not prove every vector loan's revocation. |
+| `Reply` / `ObserveReply` | `PreparedReply` for plain/connection-returning borrowed-memory replies; `complete_reply` for no-loan/returned-memory replies; then reply wait/poll observation | Abstract for releasing the token's whole loan vector followed by observation/close. Concrete replies lease both roots and claim the record across IPC-unlocked revocation; call/reply/minting-source close waits outside IPC. The model omits this claim, hidden returned grants, source delivery qualification, partial cleanup, lease admission and abandonment; its single loan state does not prove every vector loan's revocation. |
 
 The retained unsafe rollback leaves one target-registry entry and its abstract
 connection attachment after failure. The retained unsafe timeout releases a
@@ -267,7 +267,13 @@ call/reply authority waits outside IPC; preparation rolls back only unstarted
 receipts, ordinary failure retains uncertain backing, and abandonment retains
 claim and live roots. Deterministic guest interleavings check these phases; the
 atomic model does not represent the claim/wait or prove multi-LP progress.
-Returned-authority replies and cancellation still retain IPC serialization.
+Returned connections now retain delivered/observed minting sources under that
+claim, own requester-sponsored hidden grants through publication and refund them
+before lease release on ordinary failure. Source-close waits; unrelated endpoint
+owner-close preserves the closed record via the existing delegated capability.
+Queued/unobserved sources reject before preparation to exclude indirect cleanup.
+Concrete tests cover those interleavings; the model omits their authority and
+source-publication phases. Returned-memory replies and cancellation still retain IPC serialization.
 An owned staged-close request now fences new leases and returns its owner while old leases drain;
 timeout/abandonment retains the closing state even after the last completion.
 Host and guest fixtures check these serialized states. The model also omits

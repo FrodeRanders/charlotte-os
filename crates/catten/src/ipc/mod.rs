@@ -285,6 +285,8 @@ struct ReplyToken {
     server: AddressSpaceId,
     call: PendingCallId,
     replying: bool,
+    /// Borrowed minting authority protected by the in-flight reply claim.
+    connection_source: Option<CapabilityId>,
     borrows: Vec<MemoryBorrow>,
     _charge: record_budget::Charge,
 }
@@ -469,6 +471,7 @@ impl PreparedCall {
                 server,
                 call,
                 replying: false,
+                connection_source: None,
                 borrows: self.borrows,
                 _charge: self.reply_charge,
             },
@@ -1680,6 +1683,9 @@ pub fn reply(server: AddressSpaceId, reply_cap: CapabilityId, result: i64) -> Re
     Ok(())
 }
 
+/// Return attenuated connection authority. If loan cleanup needs an unlocked
+/// interval, a connection source must already be delivered/observed; queued or
+/// unobserved-result authority returns Pending without changing the reply/loans.
 pub fn reply_with_connection(
     server: AddressSpaceId,
     reply_cap: CapabilityId,
@@ -1689,6 +1695,16 @@ pub fn reply_with_connection(
 ) -> Result<(), IpcError> {
     let mut ipc = IPC.write();
     let (endpoint, granted) = mintable_endpoint(&ipc, server, endpoint_cap, rights)?;
+    let token = match ipc.cap(server, reply_cap)? {
+        Capability::ReplyToken {
+            token,
+        } => token,
+        _ => return Err(IpcError::WrongType),
+    };
+    if !ipc.reply_tokens.get(&token).ok_or(IpcError::UnknownCapability)?.borrows.is_empty() {
+        drop(ipc);
+        return reply::complete_with_connection(server, reply_cap, endpoint_cap, rights, result);
+    }
     let observers =
         complete_reply(&mut ipc, server, reply_cap, result, Some((endpoint, granted)), None)?;
     drop(ipc);
@@ -1973,7 +1989,14 @@ fn close_cap_with_wait(
             Capability::ReplyToken {
                 token,
             } => ipc.reply_tokens.get(&token).is_some_and(|token| token.replying),
-            _ => false,
+            Capability::Endpoint {
+                ..
+            }
+            | Capability::Connection {
+                ..
+            } => ipc.reply_tokens.values().any(|token| {
+                token.replying && token.server == asid && token.connection_source == Some(cap)
+            }),
         };
         if !busy {
             break ipc;

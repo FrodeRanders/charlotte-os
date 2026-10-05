@@ -572,7 +572,7 @@ frame batches. It exercises ordinary unmap, mapped-loan revoke and owner cleanup
 asserts registry/table guards are available at detach callbacks, rejects an
 oversized prefix before table work, and injects the last copy unpin before the
 first batch. Exact frame/charge counts return after completion, with no additional
-quarantine. Whole-domain cleanup, returned-authority replies and cancellation retain their outer
+quarantine. Whole-domain cleanup, returned-memory replies and cancellation retain their outer
 serialization; standalone unmap and direct loan revocation now retain live
 operation leases.
 
@@ -613,7 +613,23 @@ roots (including their table backing), IPC records and the reply claim. These
 probes add **two data pages and two object charges** to the eleven-page,
 nine-object memory-retirement fixture. No cleanup bypass is provided.
 Deterministic interleavings do not establish multi-LP progress, recoverable
-shootdown, or returned-authority/cancellation lock separation.
+shootdown, or returned-memory/cancellation lock separation.
+
+Returned-connection fixtures additionally close the exact minting source while
+the reply claim is live, for both endpoint and attenuated delegated-connection
+sources. They verify that the destination remains hidden until publication,
+source-close waits outside IPC, observed results survive pending-call close and
+unobserved results refund caller-sponsored grants. An unrelated endpoint-owner
+domain closes during loan cleanup: its delegated source retains the closed
+endpoint record without restoring service availability. Queued and unobserved-
+result sources reject before loan/grant mutation, then become usable after
+delivery/observation; closing their earlier call cannot reclaim the qualified
+source. Quota rejection, second-loan preparation rejection and injected
+pre-publication failure refund hidden authority/sponsorship. The staged-close,
+partial-cleanup failure and abandonment probes also include returned authority;
+they add no new quarantined data pages or root pairs. Abandonment retains its
+source claim but refunds the unpublished grant. These remain serialized
+interleavings, not concurrent source-close stress or additional model proofs.
 
 ## Final address-space retirement tests
 
