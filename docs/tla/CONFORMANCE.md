@@ -208,8 +208,13 @@ masking-guard or hardware-quiescence obligations.
 
 Final root close now detaches into `RetiredAddressSpace`: software-slot ownership
 and the captured ARM hardware tag survive lifecycle/table guard release. Root
-destruction and account refunds follow invalidation; slot completion follows
-physical destruction. Failure/abandonment retains hierarchy, accounts and slot.
+destruction follows invalidation; slot completion follows physical teardown.
+Failed invalidation/abandonment retains hierarchy, accounts and slot. After
+proven quiescence, owning-root `FrameRelease` attempts each physical release;
+any rejection retains complete heap/image charges even though the slot/tag may
+retire normally. Only fully successful release permits account refund. The
+atomic model omits allocator errors, partial physical release and these retained
+node charges; it does not prove their fail-closed accounting.
 Generic table identity and software generation fence completion tokens, whose
 storage is preflighted before logical cleanup. The model's atomic close does not
 prove those phases, and earlier IPC/MMIO/mapping lock-held invalidations remain

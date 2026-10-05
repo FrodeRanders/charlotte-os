@@ -109,6 +109,12 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   root/accounts/slot; only explicit release completes its lease. This does not
   replace thread quiescence or solve earlier mapping/IPC/device locking. See
   `docs/reference/address-space-retirement.md`.
+  Owning-root physical teardown uses `FrameRelease`: disarm the root and make
+  heap/image accounts nonrefundable before release starts. Only a fully
+  successful private-tree/data walk permits account refund. Rejected release
+  retains the whole charge; never retry partially freed tables or restore a
+  quarantined account through a successor ASID. This does not fix provisional
+  frame-and-charge rollback or add translation-table admission.
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`

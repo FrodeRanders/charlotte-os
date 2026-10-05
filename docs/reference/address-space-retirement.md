@@ -16,7 +16,7 @@ and removes authority/usage records. The address space is detached from the
 table into the owning receipt, without returning its ID to the free-slot list.
 
 The lifecycle and table guards are then gone. The detached owner invalidates
-using its captured translation identity, destroys the complete private tree and
+using its captured translation identity, tears down the private tree and
 backing, forgets the exact object-budget sponsor, and finally completes its
 software-slot lease. The slot becomes available only at that last step. A
 replacement receives a new software generation. Lookups, heap commitment and
@@ -34,11 +34,36 @@ Domain supervision must still establish that the lifetime's threads have
 quiesced **before** calling close. This change does not itself stop threads or
 prove that every possible caller enters without an unrelated masking guard.
 
-This phase refactor retains heap/image accounts through the root destructor.
-The existing architecture destructors still ignore physical frame-deallocation
-errors; preserving charges when such release fails needs a separate correction.
-Normal release is checked by exact frame and charge counts, not by injected
-allocator-release failures.
+## Physical release and charges
+
+Both architecture destructors now use `FrameRelease`. Before invalidation or
+physical teardown can fail, the owning root is disarmed against repeated
+destruction and its heap/image accounts are made nonrefundable. The bounded
+private-table walk and tracked data-frame releases continue after an allocator
+rejection. Only success for **every** release allows the later account-field
+destructors to return their charges. A failure conservatively retains both
+accounts in full, even when other frames were successfully released. There is
+no per-failed-frame allocation, retry queue or automatic charge recovery.
+
+An allocator rejection is logged without further changing its allocation
+bitmap. This does not repair pre-existing corruption or make a frame reported
+as already free allocated again. Fault-injection tests reject before the real
+allocator and verify that those frames remain allocated. Kernel tables and
+foreign leaf backing never enter this owning release path.
+
+This failure differs from failed **invalidation**: once quiescence has been
+established, detached physical backing cannot be reached through the old root.
+Software slots and hardware tags may complete their normal retirement even
+when physical release rejected a frame. Charges remain consumed at the node,
+independent of any successor generation. Failed invalidation instead retains
+the entire root, tag and slot. A premature exit from the physical walk leaves
+accounts nonrefundable; kernel panic/unwind recovery is not tested here.
+
+This correction covers owning-root destruction, not all physical-release
+callers. In particular, provisional `PreparingUserFrame` rollback still ignores
+its deallocator result, and its separate provisional reservation may refund;
+that error path needs an owning frame-and-charge preparation. Translation
+frames themselves still lack admission accounts.
 
 ## Slot ownership and failure
 
@@ -95,6 +120,15 @@ and abandonment probes permanently retain **two private roots**, each with one
 charged heap data page plus its translation frames, software slot and ARM tag.
 Their physical frame counts are logged; no test bypass frees them. They are
 additional to earlier memory-object/kernel-range quarantine probes.
+
+Architecture-shared destructor fault adapters exercise normal release, each of
+four table/root and two heap/image release positions, and rejection of all six.
+They check continued release after an error, no repeated teardown, account
+retention through field destruction, borrowed-root protection and preservation
+of a foreign leaf. The seven failing roots leave **12 physical frames, seven
+heap-page charges and seven image-page charges** permanently retained. Some
+charges intentionally exceed the remaining physical backing. These are
+unpublished roots, not concurrent running-domain teardown tests.
 
 AArch64 executes these probes and the security regression. x86 compilation does
 not execute the rendezvous or establish recipient progress. Real physical OOM,

@@ -590,14 +590,38 @@ impl AddressSpaceInterface for AddressSpace {
 
 impl Drop for AddressSpace {
     fn drop(&mut self) {
+        self.release_owned_with(&mut |frame| {
+            PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame)
+        });
+    }
+}
+
+impl AddressSpace {
+    /// Private destructor adapter. Only unpublished roots or roots proven
+    /// quiescent by final retirement may enter here, never a live table entry.
+    fn release_owned_with(
+        &mut self,
+        deallocate: &mut dyn FnMut(PAddr) -> Result<(), crate::memory::physical::Error>,
+    ) -> usize {
         if !self.owns_root || self.cr3 & CR3_ADDRESS_MASK == 0 {
-            return;
+            return 0;
         }
+        // Never retry a partially released hierarchy after an error or panic.
+        self.owns_root = false;
+        let mut release = crate::memory::backing_budget::FrameRelease::new(
+            &mut self.heap_account,
+            &mut self.image_account,
+            deallocate,
+        );
 
         // Empty intermediate tables remain linked for reuse during the domain
         // lifetime. Reclaim them here only after callers have retired threads
         // and completed cross-LP invalidation for this private hierarchy.
-        unsafe fn free_table(table: *mut PageTable, level: u8) {
+        unsafe fn free_table(
+            table: *mut PageTable,
+            level: u8,
+            release: &mut crate::memory::backing_budget::FrameRelease<'_>,
+        ) {
             for entry in unsafe { &mut *table } {
                 if !entry.is_present() || level > 1 && entry.get_page_size() {
                     continue;
@@ -605,11 +629,8 @@ impl Drop for AddressSpace {
                 if level > 1 {
                     let child_frame = entry.try_get_frame().expect("present page-table entry");
                     let child: *mut PageTable = child_frame.into();
-                    unsafe { free_table(child, level - 1) };
-                    PHYSICAL_FRAME_ALLOCATOR
-                        .lock()
-                        .deallocate_frame(child_frame)
-                        .expect("failed to release user page-table frame");
+                    unsafe { free_table(child, level - 1, release) };
+                    release.release(child_frame);
                 }
                 entry.set_present(false);
             }
@@ -624,22 +645,22 @@ impl Drop for AddressSpace {
             for entry in &mut (&mut *root)[..256] {
                 if entry.is_present() {
                     let child_frame = entry.try_get_frame().expect("present PML4 entry");
-                    free_table(child_frame.into(), 3);
-                    PHYSICAL_FRAME_ALLOCATOR
-                        .lock()
-                        .deallocate_frame(child_frame)
-                        .expect("failed to release user PDPT frame");
+                    free_table(child_frame.into(), 3, &mut release);
+                    release.release(child_frame);
                     entry.set_present(false);
                 }
             }
         }
-        PHYSICAL_FRAME_ALLOCATOR
-            .lock()
-            .deallocate_frame(root_frame)
-            .expect("failed to release user PML4 frame");
+        release.release(root_frame);
         for frame in self.owned_frames.drain(..) {
-            let _ = PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame);
+            release.release(frame);
         }
-        self.owns_root = false;
+        release.finish()
+    }
+
+    pub(crate) fn test_backing_release() {
+        crate::memory::backing_release_tests::run(|space, deallocate| {
+            space.release_owned_with(deallocate)
+        });
     }
 }

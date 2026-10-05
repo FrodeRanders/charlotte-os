@@ -575,12 +575,33 @@ impl AddressSpaceInterface for AddressSpace {
 
 impl Drop for AddressSpace {
     fn drop(&mut self) {
+        self.release_owned_with(&mut |frame| {
+            PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame)
+        });
+    }
+}
+
+impl AddressSpace {
+    /// Private destructor adapter. Only unpublished roots or roots proven
+    /// quiescent by final retirement may enter here, never a live table entry.
+    fn release_owned_with(
+        &mut self,
+        deallocate: &mut dyn FnMut(PAddr) -> Result<(), crate::memory::physical::Error>,
+    ) -> usize {
         // Borrowed snapshots (e.g. `get_current`) name a live address space's
         // tables without owning them; releasing them here would free the
         // hierarchy out from under the running domain.
         if !self.owns_root {
-            return;
+            return 0;
         }
+        // Disarm first: interrupted teardown must never retry partially freed
+        // tables. The account guard similarly defaults to retained charges.
+        self.owns_root = false;
+        let mut release = crate::memory::backing_budget::FrameRelease::new(
+            &mut self.heap_account,
+            &mut self.image_account,
+            deallocate,
+        );
 
         if self.owns_hw_asid && self.hw_asid != 0 {
             // A tag cannot be reused until all cores have discarded entries
@@ -594,7 +615,11 @@ impl Drop for AddressSpace {
         // space owned, including empty intermediate tables retained for reuse
         // by unmap_page. The shared kernel (TTBR1) tree is untouched.
         if self.ttbr0_el1 & TTBR_BADDR_MASK != 0 {
-            unsafe fn free_user_tables(table: *mut PageTable, level: u8) {
+            unsafe fn free_user_tables(
+                table: *mut PageTable,
+                level: u8,
+                release: &mut crate::memory::backing_budget::FrameRelease<'_>,
+            ) {
                 for entry in unsafe { &mut *table } {
                     if !entry.is_valid() {
                         continue;
@@ -603,20 +628,27 @@ impl Drop for AddressSpace {
                     // so descent stops before interpreting leaves as tables.
                     if level < 3 && entry.is_table() {
                         let child = entry.frame();
-                        unsafe { free_user_tables(child.into(), level + 1) };
-                        let _ = PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(child);
+                        unsafe { free_user_tables(child.into(), level + 1, release) };
+                        release.release(child);
                     }
                     entry.clear();
                 }
             }
             let root_frame = PAddr::try_from((self.ttbr0_el1 & TTBR_BADDR_MASK) as usize)
                 .expect("owned TTBR0 base is not a physical frame");
-            unsafe { free_user_tables(root_frame.into(), 0) };
-            let _ = PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(root_frame);
+            unsafe { free_user_tables(root_frame.into(), 0, &mut release) };
+            release.release(root_frame);
         }
         for frame in self.owned_frames.drain(..) {
-            let _ = PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame);
+            release.release(frame);
         }
+        release.finish()
+    }
+
+    pub(crate) fn test_backing_release() {
+        crate::memory::backing_release_tests::run(|space, deallocate| {
+            space.release_owned_with(deallocate)
+        });
     }
 }
 

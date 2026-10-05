@@ -2,6 +2,7 @@
 
 pub mod allocators;
 pub(crate) mod backing_budget;
+pub(crate) mod backing_release_tests;
 pub mod budget;
 pub mod linear;
 pub mod object;

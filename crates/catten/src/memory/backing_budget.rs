@@ -91,6 +91,7 @@ pub(crate) struct Account {
     limit: u64,
     platform: bool,
     retired: bool,
+    quarantined: bool,
 }
 
 impl Account {
@@ -101,6 +102,7 @@ impl Account {
             limit: kind.domain_pages(),
             platform: false,
             retired: false,
+            quarantined: false,
         }
     }
 
@@ -159,10 +161,67 @@ impl Account {
 
 impl Drop for Account {
     fn drop(&mut self) {
-        // AddressSpace::drop frees its frames before Rust drops this field.
-        if self.pages != 0 {
+        // A failed or interrupted owning-root teardown retains its entire
+        // charge, even when some of that root's frames were released.
+        if self.pages != 0 && !self.quarantined {
             self.kind.pool().lock().release(self.pages, self.platform);
         }
+    }
+}
+
+/// Fail-closed physical teardown for one owning address space. Accounts become
+/// nonrefundable *before* the first release (or any teardown panic). Only a
+/// complete successful walk permits their later field destructors to refund.
+/// No recovery API exists for a charge retained by a failed teardown.
+#[must_use]
+pub(crate) struct FrameRelease<'a> {
+    heap: &'a mut Account,
+    image: &'a mut Account,
+    deallocate: &'a mut dyn FnMut(super::PAddr) -> Result<(), super::physical::Error>,
+    failed: usize,
+}
+
+impl<'a> FrameRelease<'a> {
+    pub(crate) fn new(
+        heap: &'a mut Account,
+        image: &'a mut Account,
+        deallocate: &'a mut dyn FnMut(super::PAddr) -> Result<(), super::physical::Error>,
+    ) -> Self {
+        assert!(!heap.quarantined && !image.quarantined);
+        heap.retire();
+        image.retire();
+        heap.quarantined = true;
+        image.quarantined = true;
+        Self {
+            heap,
+            image,
+            deallocate,
+            failed: 0,
+        }
+    }
+
+    pub(crate) fn release(&mut self, frame: super::PAddr) {
+        // The allocator's Err must leave the allocation untouched. Do not
+        // retry a rejected release, re-adopt it, or credit it as reclaimed.
+        if let Err(error) = (self.deallocate)(frame) {
+            self.failed += 1;
+            crate::logln!("[root release] rejected frame={:#x}: {:?}", usize::from(frame), error);
+        }
+    }
+
+    pub(crate) fn finish(self) -> usize {
+        if self.failed == 0 {
+            self.heap.quarantined = false;
+            self.image.quarantined = false;
+        } else {
+            crate::logln!(
+                "[root release] quarantined failures={} heap_pages={} image_pages={}",
+                self.failed,
+                self.heap.pages(),
+                self.image.pages()
+            );
+        }
+        self.failed
     }
 }
 

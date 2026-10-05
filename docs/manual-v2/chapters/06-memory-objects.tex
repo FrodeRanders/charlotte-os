@@ -114,6 +114,16 @@ retains the hierarchy and its charges. This corrects the final root boundary,
 while earlier mapping, loan and device invalidations still need lock-safe
 retirement phases. Domain supervision must establish thread quiescence first.
 
+Physical teardown makes heap and image charges nonrefundable before releasing
+any owned frame. Both architecture destructors attempt the bounded private-tree
+and data-frame cleanup; only complete success permits account refund. If one
+release fails, the whole charge remains consumed, even if other frames were
+returned. There is no automatic retry of a partially destroyed hierarchy.
+After proven translation quiescence, the software slot and hardware tag can be
+reused independently of these retained charges. Failed invalidation instead
+retains the complete root, tag and slot. Provisional allocation rollback and
+translation-frame admission remain separate work.
+
 \section{Four transfer modes}
 
 CharlotteOS defines four transfer modes, enforced by the MMU:

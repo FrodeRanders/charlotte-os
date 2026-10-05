@@ -90,6 +90,11 @@ The [final root boundary](../../reference/address-space-retirement.md) now
 retains a detached hierarchy and software-slot lease through post-guard
 invalidation/destruction. This fixes final root release under lifecycle/table
 guards, without completing earlier IPC/MMIO/live-mapping phase work.
+Owning-root physical teardown now makes heap/image accounts nonrefundable
+before release starts; any allocator rejection retains both complete charges.
+Only an entirely successful walk permits refund. Provisional frame rollback,
+translation-frame admission and recovery from corrupted allocator state remain
+separate work.
 
 ## Enforced contracts
 
@@ -2743,9 +2748,69 @@ OOM and complete quiescence remain unproven. SEC-18 and broader SEC-07 admission
 remain partial. Contributor guidance, reference/testing Markdown, LaTeX source
 and TLA+ conformance were updated; models and PDF were not rebuilt.
 
-The review also records a remaining destructor error path: architecture root
-destructors ignore physical frame-deallocation errors and then drop heap/image
-accounts. This refactor preserves those accounts through the destructor but
-does not yet retain their charges on a failed physical release. That fail-closed
-accounting correction and allocator-release fault injection remain required;
-the exact-count fixtures validate successful release only.
+The review also recorded a remaining destructor error path: AArch64 ignored
+physical frame-deallocation errors; x86 panicked on table-release errors but
+ignored data-frame errors. Account destruction lacked explicit failed-release
+charge retention. The final-root phase refactor preserved those accounts through
+the destructor, but its exact-count fixtures validated successful release only.
+The continuation below addresses this separate error path.
+
+## Continuation: fail-closed owning-root physical release — 2026-10-05
+
+The leased final-root retirement batch was committed as `796ab2a3`. Both
+architecture destructors now use `backing_budget::FrameRelease`. They disarm
+owning-root destruction before starting a potentially partial teardown and
+make the embedded heap/image accounts nonrefundable. The bounded private-tree
+walk and owned data releases continue after an allocator rejection; only
+success for every release permits the later account fields to refund. Any
+rejection retains both complete charges, conservatively including pages already
+released. No per-failure metadata allocation, retry, scalar re-adoption or
+charge-recovery API is introduced.
+
+Rejected release is logged and does not cause another allocator mutation. This
+is accounting containment, not a repair of corrupted allocation state: an
+already-free frame is not made allocated again. Synthetic faults reject before
+the real allocator, so those rejected frames remain allocated. Borrowed roots,
+shared kernel tables and foreign leaf data are excluded from the owning walk.
+The charge guard is armed before possible teardown interruption; panic/unwind
+recovery is not validated.
+
+After proven translation quiescence, slot/tag retirement can finish independently
+of unreleased physical backing and its retained node charges. Failed
+invalidation instead retains the complete hierarchy, tag and software slot.
+These states are documented separately in the reference and manual source.
+
+Validation:
+
+- Architecture-shared, single-mutator boot fixtures exercise complete successful
+  release, each of four private-table/root and two heap/image release positions,
+  and rejection of all six. Counts verify continued cleanup, no repeated
+  destruction, delayed successful refund, whole-charge retention after account
+  destruction, borrowed-root protection and foreign-leaf lifetime. The seven
+  failing cases permanently retain **12 physical frames, seven heap-page charges
+  and seven image-page charges**, additional to earlier quarantine probes.
+  Injected failures are explicitly labeled in the log; no test cleanup bypass
+  returns them.
+- Final four-LP TCG AArch64 security guest, fresh dedicated
+  `root-release-20261005-final` storage, HTTP 18093/deployment 17457:
+  **19/19**, zero failed/pending, both scoped probes `0x7fff`, cancellation
+  traffic retired after 4,428 requests. Kernel SHA-256:
+  `4a04c85eb08501795b968f3bfad5c3294a4aa42ce0ee6274659d7ad6a761de73`.
+  Run `/private/tmp/charlotte-security-root-release-final-run.log`;
+  serial `/private/tmp/charlotte-root-release-20261005-final-serial.log`.
+  The preceding guest also passed 19/19 before injected-failure log labeling.
+  Existing soak storage and instances were not modified.
+- Full host suites pass, including seven slot-retirement tests; log
+  `/private/tmp/charlotte-security-root-release-host-tests.log`. Strict locked
+  Clippy passes for AArch64 `acpi,security_test` and x86-64 `acpi`; formatting and
+  diff checks pass. x86 guest execution remains pending.
+
+This closes owning-root failed-release charge retention, not all physical
+rollback. `PreparingUserFrame::drop` still ignores deallocator failure while its
+separate provisional reservation can refund. That path needs joint owning
+frame-and-charge preparation. Translation frames, stacks, general metadata and
+kernel heap admission remain SEC-07 work. Earlier live-mapping/IPC/MMIO masking
+guards, recoverable shootdown, unresponsive recipients and complete quiescence
+remain SEC-18 work. The audit remains partial. Contributor instructions,
+reference/testing Markdown, investigation, LaTeX source and TLA+ conformance
+were updated; models and PDF were not rebuilt.

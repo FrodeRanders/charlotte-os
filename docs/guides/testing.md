@@ -569,6 +569,20 @@ interleaved completion, preflight rejection and fail-closed completion metadata.
 test harness. See [final root retirement](../reference/address-space-retirement.md).
 These fixtures do not prove x86 recipient progress or complete lock-safe teardown.
 
+## Owning-root physical-release tests
+
+Both architectures share a boot fixture using their private production
+destructor adapter. It rejects each of six releases (four private tables, heap
+and image backing), then all six, before calling the real allocator. Assertions
+check exact frame counts, continued cleanup, no second release, whole-account
+charge retention, borrowed-root protection and a foreign leaf's independent
+owner. Normal cleanup returns every owned frame and both charges. The seven
+failure cases permanently reserve **12 physical frames and seven page charges
+in each heap/image pool**; no recovery bypass frees them. These add to earlier
+quarantine fixtures. See [root release](../reference/address-space-retirement.md#physical-release-and-charges).
+They do not exercise real allocator corruption, panic/unwind recovery,
+provisional frame rollback or x86 hardware progress.
+
 ## Rule for new service logic
 
 Keep the thin syscall loop and process entry point in an EL0 binary. Put policy

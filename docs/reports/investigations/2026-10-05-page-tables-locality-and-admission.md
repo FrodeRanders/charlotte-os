@@ -93,8 +93,10 @@ Before enforcing complete page-table quotas:
    separately leases the software slot while a detached hierarchy completes
    post-guard invalidation/destruction. Earlier live mapping and loan/device
    operations still need their own generation-fenced, lock-safe phases.
-   Root-destructor frame-release errors also need fail-closed heap/image charge
-   retention; current destruction ignores those allocator results.
+   Owning-root destruction now retains whole heap/image charges when any
+   physical release fails; only complete successful release permits refund.
+   Provisional frame rollback still needs joint frame-and-charge ownership on
+   release failure; translation frames remain uncharged.
    Close the remaining user/domain locking gaps (SEC-18), then enforce
    reliable quiescence at every physical release. Future live compaction must
    own detached tables until invalidation and walk quiescence are established.
