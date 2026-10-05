@@ -41,7 +41,8 @@ physical teardown can fail, the owning root is disarmed against repeated
 destruction and its heap/image accounts are made nonrefundable. The bounded
 private-table walk and tracked data-frame releases continue after an allocator
 rejection. Only success for **every** release allows the later account-field
-destructors to return their charges. A failure conservatively retains both
+destructors to return charges for released backing. Earlier provisional
+quarantine remains nonrefundable even after a successful walk. A failure conservatively retains both
 accounts in full, even when other frames were successfully released. There is
 no per-failed-frame allocation, retry queue or automatic charge recovery.
 
@@ -59,11 +60,11 @@ independent of any successor generation. Failed invalidation instead retains
 the entire root, tag and slot. A premature exit from the physical walk leaves
 accounts nonrefundable; kernel panic/unwind recovery is not tested here.
 
-This correction covers owning-root destruction, not all physical-release
-callers. In particular, provisional `PreparingUserFrame` rollback still ignores
-its deallocator result, and its separate provisional reservation may refund;
-that error path needs an owning frame-and-charge preparation. Translation
-frames themselves still lack admission accounts.
+Heap/image provisional rollback now uses
+[joint frame-and-charge preparation](kernel-backing-preparation.md), whose
+retained pages are excluded from successful root refunds. This does not cover
+all physical-release callers. Uncharged translation preparation logs failures;
+translation frames themselves still lack admission accounts.
 
 ## Slot ownership and failure
 

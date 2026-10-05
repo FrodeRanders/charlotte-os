@@ -13,8 +13,9 @@ before allocating a frame, on both AArch64 and x86-64.
 The remaining quarter of the heap pool is shared platform headroom, not a
 per-service guarantee. Only trusted kernel launch policy promotes an account;
 application names, roles and manifests cannot request the reserve. Promotion
-reclassifies the account's existing heap pages as well as future pages. There
-is no userspace setter or signed deployment override for these physical limits.
+reclassifies existing heap pages as well as future pages, but cannot reclassify
+quarantined backing. There is no userspace setter or signed deployment override
+for these physical limits.
 The memory-object and [image/runtime](loader-admission.md) pools are separate.
 All three pools together are capped at three quarters of usable RAM on normal
 machines. They do not account for all physical consumers.
@@ -28,11 +29,15 @@ reservation, fallible frame-tracking preparation, frame allocation, mapping and
 charge commit. Two first touches cannot install replacement frames or double
 charge an already mapped page. A stale handle cannot charge a reused ASID.
 
-A provisional `PageCharge` owns node admission. `PreparingUserFrame` owns the
-unpublished physical frame. Early return frees the frame before refunding
-admission. The owned-frame vector reserves its tracking slot before frame
-allocation; successful insertion therefore allocates nothing. The mapping's
-page-table allocations remain a separate, uncharged concern.
+`PreparingUserBacking` jointly owns the node reservation, unpublished physical
+frame and exclusive address-space borrow. Early return refunds admission only
+after confirmed frame release. Rejected release retains a page against the
+original domain ceiling and node pool; root destruction and ASID reuse cannot
+refund it. An unconfirmed publication retains reachable backing without
+deallocation. Frame tracking is preflighted before allocation; successful
+insertion therefore allocates nothing. See
+[joint preparation](kernel-backing-preparation.md). Page-table allocations
+remain a separate, uncharged concern.
 
 Under the frame-allocator guard, heap backing also preserves the existing
 one-eighth physical free-frame floor. That check concerns the requested heap
@@ -43,7 +48,9 @@ consume the floor.
 Retirement fences new heap commitment under the mapping guard, without
 refunding live pages. `AddressSpace::drop` returns its owned frames before its
 embedded account releases aggregate charges. Charges are not returned when a
-Rust allocation is freed inside the userspace arena: committed heap pages stay
+previous provisional page remains quarantined or any owning-root release fails.
+Freeing a Rust allocation inside the userspace arena does not return charges:
+committed heap pages stay
 backed until domain teardown. Borrowed page-table snapshots own no heap charge.
 This adds no unmap/decommit API.
 
@@ -59,8 +66,10 @@ platform headroom, provisional charge cancellation, account promotion and
 retirement, zeroed real backing, a one-page domain quota, repeated touch,
 exact ASID reuse and charge release after teardown. A kernel-only mapper
 adapter rejects before leaf publication to verify real-frame and charge
-rollback without exhausting the physical allocator. Production always uses
-the real architecture mapper.
+rollback without exhausting the physical allocator. Joint-preparation fixtures
+also check failed release, domain ceilings, mixed teardown, platform pool
+identity, uncertain publication and retained charges across reuse. Production
+always uses the real architecture mapper.
 
 These are deterministic kernel fixtures plus ordinary service heap faults in
 the AArch64 security guest. They are not a new real-EL0 quota probe, a node-wide

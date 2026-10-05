@@ -7,6 +7,7 @@ pub mod budget;
 pub mod linear;
 pub mod object;
 pub mod physical;
+pub(crate) mod preparation;
 pub(crate) mod retirement;
 pub mod usage;
 
@@ -15,6 +16,10 @@ pub use physical::{
     MemoryInterface,
     PAddr,
     PhysicalFrameAllocator,
+};
+pub(crate) use preparation::{
+    BackingPreparationError,
+    PreparingUserBacking,
 };
 pub use spin::{
     LazyLock,
@@ -299,20 +304,33 @@ pub(crate) fn commit_user_heap_page(asid: AddressSpaceId, fault_addr: usize) -> 
     commit_user_heap_page_handle(handle, fault_addr)
 }
 
-/// One owning preparation for the provisional frame. Its reservation is
-/// separate and drops after this owner on a failed mapping.
+/// Uncharged provisional frame for translation-root preparation and foreign
+/// backing fixtures. Heap/image preparation must use PreparingUserBacking.
 pub(crate) struct PreparingUserFrame(Option<PAddr>);
 
 impl Drop for PreparingUserFrame {
     fn drop(&mut self) {
         if let Some(frame) = self.0.take() {
-            let _ = PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame);
+            let released = PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame);
+            if let Err(error) = released {
+                crate::logln!(
+                    "[frame preparation] uncharged release rejected frame={:#x}: {:?}",
+                    usize::from(frame),
+                    error
+                );
+            }
         }
     }
 }
 
 impl PreparingUserFrame {
     pub(crate) fn allocate_zeroed() -> Option<Self> {
+        let preparation = Self::allocate()?;
+        preparation.zero();
+        Some(preparation)
+    }
+
+    fn allocate() -> Option<Self> {
         let page_size = crate::cpu::isa::memory::paging::PAGE_SIZE;
         let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
         if !charlotte_lifecycle::resources::frames_available(
@@ -324,11 +342,14 @@ impl PreparingUserFrame {
         }
         let frame = allocator.allocate_frame().ok()?;
         drop(allocator);
-        let page_ptr: *mut u8 = frame.into();
-        unsafe {
-            core::ptr::write_bytes(page_ptr, 0, page_size);
-        }
         Some(Self(Some(frame)))
+    }
+
+    fn zero(&self) {
+        let page_ptr: *mut u8 = self.frame().into();
+        unsafe {
+            core::ptr::write_bytes(page_ptr, 0, crate::cpu::isa::memory::paging::PAGE_SIZE);
+        }
     }
 
     pub(crate) fn frame(&self) -> PAddr {
@@ -336,9 +357,22 @@ impl PreparingUserFrame {
     }
 
     /// Caller has prepared one tracking slot before allocating the frame.
-    pub(crate) fn install(mut self, address_space: &mut AddressSpace) {
+    fn install(&mut self, address_space: &mut AddressSpace) {
         address_space.register_user_frame(self.frame());
         self.0 = None;
+    }
+
+    fn quarantine(mut self) {
+        self.0 = None;
+    }
+
+    /// Consume before invoking the allocator: rejected or interrupted release
+    /// must not trigger a second deallocation through this owner's Drop.
+    fn release_with(
+        mut self,
+        deallocate: impl FnOnce(PAddr) -> Result<(), physical::Error>,
+    ) -> Result<(), physical::Error> {
+        deallocate(self.0.take().unwrap())
     }
 
     /// Architecture ownership boundary: the returned frame is adopted exactly
@@ -352,7 +386,7 @@ impl PreparingUserFrame {
 
 pub(crate) fn commit_user_heap_page_handle(handle: AddressSpaceHandle, fault_addr: usize) -> bool {
     commit_user_heap_page_with_mapper(handle, fault_addr, |address_space, mapping| {
-        address_space.map_page(mapping).is_ok()
+        address_space.map_existing_page(mapping).is_ok()
     })
 }
 
@@ -389,28 +423,13 @@ pub(crate) fn commit_user_heap_page_with_mapper(
         Ok(false) => {}
         Err(_) => return false,
     }
-    let Ok(charge) = address_space.heap_account.reserve() else {
+    let Ok(preparation) = PreparingUserBacking::new(address_space, backing_budget::Kind::Heap)
+    else {
         return false;
     };
-    if address_space.prepare_user_frame().is_err() {
+    if preparation.map_with(VAddr::from(page), linear::PageType::UserData, map).is_err() {
         return false;
     }
-    let Some(preparation) = PreparingUserFrame::allocate_zeroed() else {
-        return false;
-    };
-    let frame = preparation.frame();
-    if !map(
-        address_space,
-        linear::MemoryMapping {
-            vaddr: VAddr::from(page),
-            paddr: frame,
-            page_type: linear::PageType::UserData,
-        },
-    ) {
-        return false;
-    }
-    preparation.install(address_space);
-    address_space.heap_account.commit(charge);
     usage::note_owned_frame(asid);
     drop(table);
     crate::cpu::isa::memory::tlb::inval_range_user(asid, VAddr::from(page), 1);

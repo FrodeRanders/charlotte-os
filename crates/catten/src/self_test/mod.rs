@@ -283,6 +283,7 @@ pub fn run_synchronous_self_tests() {
     memory::heap::test_heap_admission();
     crate::memory::retirement::tests::run();
     crate::memory::AddressSpace::test_backing_release();
+    crate::memory::preparation::tests::run();
     crate::service::loader::admission_tests::test_admission();
     waiters::test_waiter_admission();
     crate::cpu::scheduler::sync::tests::test_admission();

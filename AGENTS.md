@@ -73,9 +73,15 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   Retain the exact generation and table guard across admission/mapping, prepare
   frame tracking fallibly, and retain charges until physical teardown. Never
   refund live heap backing at logical retirement or by reusable ASID lookup.
+  Use `PreparingUserBacking` for heap/image provisional backing. It owns the
+  frame, reservation and exclusive address-space borrow through fill/mapping
+  or rollback. Do not pair a standalone charge with `PreparingUserFrame` or
+  commit a charge separately in service/loader code. Failed release consumes
+  the original domain ceiling and node pool even after root destruction; an
+  unconfirmed published leaf must retain backing without deallocation.
 - ELF/runtime frames use the independent `image_account` in `backing_budget`.
   Bound layout validation and aggregate image planning before namespace
-  creation; use `PreparingUserFrame` and fallible mapping rather than scalar
+  creation; use `PreparingUserBacking` and fallible mapping rather than scalar
   loader helpers or panic-on-failure backing allocation. Charges survive until
   physical teardown, including partial launch preparation failures.
 - Runtime address-space creation uses `AddressSpace::try_new_user`; trusted
@@ -113,8 +119,10 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   heap/image accounts nonrefundable before release starts. Only a fully
   successful private-tree/data walk permits account refund. Rejected release
   retains the whole charge; never retry partially freed tables or restore a
-  quarantined account through a successor ASID. This does not fix provisional
-  frame-and-charge rollback or add translation-table admission.
+  quarantined account through a successor ASID. Successful root teardown must
+  exclude previously quarantined provisional pages from its refund. Platform
+  promotion cannot reclassify an account with quarantined pages. Translation
+  tables still require separate admission.
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`

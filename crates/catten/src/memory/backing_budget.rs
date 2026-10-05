@@ -92,6 +92,9 @@ pub(crate) struct Account {
     platform: bool,
     retired: bool,
     quarantined: bool,
+    /// Provisional frames whose rejected rollback outlives this root. Included
+    /// in pages so they continue to consume the original domain's ceiling.
+    quarantined_pages: u64,
 }
 
 impl Account {
@@ -103,11 +106,12 @@ impl Account {
             platform: false,
             retired: false,
             quarantined: false,
+            quarantined_pages: 0,
         }
     }
 
     /// Caller retains the address-space table guard through mapping/commit.
-    pub(crate) fn reserve(&self) -> Result<PageCharge, ()> {
+    pub(super) fn reserve(&self) -> Result<PageCharge, ()> {
         if self.retired || self.pages >= self.limit {
             return Err(());
         }
@@ -119,7 +123,13 @@ impl Account {
         })
     }
 
-    pub(crate) fn commit(&mut self, mut charge: PageCharge) {
+    fn commit(&mut self, mut charge: PageCharge) {
+        self.commit_prepared(&mut charge);
+    }
+
+    /// Validate without taking the reservation out of its preparation owner.
+    pub(super) fn commit_prepared(&mut self, charge: &mut PageCharge) {
+        assert!(charge.active);
         assert!(!self.retired && self.pages < self.limit);
         assert_eq!(self.platform, charge.platform);
         assert_eq!(self.kind, charge.kind);
@@ -133,6 +143,7 @@ impl Account {
 
     pub(crate) fn mark_platform(&mut self) {
         assert!(!self.retired);
+        assert_eq!(self.quarantined_pages, 0, "cannot reclassify quarantined backing");
         if !self.platform {
             if self.pages != 0 {
                 self.kind.pool().lock().ordinary.release(amount(self.pages)).unwrap();
@@ -157,14 +168,58 @@ impl Account {
     pub(crate) fn pages(&self) -> u64 {
         self.pages
     }
+
+    /// Arm retention before provisional physical release. Dropping the receipt
+    /// without confirming release leaves the charge in this exact account and
+    /// its captured ordinary/platform node pool, even after root destruction.
+    pub(super) fn retire_provisional(&mut self, mut charge: PageCharge) -> ProvisionalRelease<'_> {
+        assert!(charge.active);
+        assert_eq!(self.kind, charge.kind);
+        assert_eq!(self.platform, charge.platform);
+        self.pages += 1;
+        self.quarantined_pages += 1;
+        charge.active = false;
+        ProvisionalRelease {
+            account: self,
+        }
+    }
+
+    pub(super) fn quarantine_committed_page(&mut self) {
+        assert!(self.quarantined_pages < self.pages);
+        self.quarantined_pages += 1;
+    }
 }
 
 impl Drop for Account {
     fn drop(&mut self) {
         // A failed or interrupted owning-root teardown retains its entire
         // charge, even when some of that root's frames were released.
-        if self.pages != 0 && !self.quarantined {
-            self.kind.pool().lock().release(self.pages, self.platform);
+        let refundable = self
+            .pages
+            .checked_sub(self.quarantined_pages)
+            .expect("backing quarantine exceeds charge");
+        if refundable != 0 && !self.quarantined {
+            self.kind.pool().lock().release(refundable, self.platform);
+        }
+    }
+}
+
+#[must_use]
+pub(crate) struct ProvisionalRelease<'a> {
+    account: &'a mut Account,
+}
+
+impl ProvisionalRelease<'_> {
+    pub(crate) fn finish(self, released: bool) {
+        if released {
+            self.account.kind.pool().lock().release(1, self.account.platform);
+            self.account.pages -= 1;
+            self.account.quarantined_pages -= 1;
+        } else {
+            crate::logln!(
+                "[backing preparation] quarantined kind={:?} pages=1 (domain charge retained)",
+                self.account.kind
+            );
         }
     }
 }
@@ -225,13 +280,20 @@ impl<'a> FrameRelease<'a> {
     }
 }
 
-/// Owns the node reservation until a mapped frame joins its address space.
-/// Allocator, frame-tracking or mapping failure refunds only this reservation.
+/// Internal node reservation. PreparingUserBacking owns it alongside physical
+/// backing and the exact address-space borrow; service callers cannot reserve
+/// or commit this independently. Only no-frame or confirmed release refunds.
 #[must_use]
 pub(crate) struct PageCharge {
     kind: Kind,
     platform: bool,
     active: bool,
+}
+
+impl PageCharge {
+    pub(super) fn is_active(&self) -> bool {
+        self.active
+    }
 }
 
 impl Drop for PageCharge {
@@ -281,4 +343,8 @@ pub(crate) fn test_pool() {
 
 pub(crate) fn test_used_pages(kind: Kind) -> u64 {
     kind.pool().lock().total.used().pages
+}
+
+pub(crate) fn test_ordinary_pages(kind: Kind) -> u64 {
+    kind.pool().lock().ordinary.used().pages
 }

@@ -583,6 +583,21 @@ quarantine fixtures. See [root release](../reference/address-space-retirement.md
 They do not exercise real allocator corruption, panic/unwind recovery,
 provisional frame rollback or x86 hardware progress.
 
+## Joint backing-preparation tests
+
+Serialized boot fixtures check heap/image admission, tracking and allocation
+rejection; unused-owner Drop; map rejection; fill/zero preservation; and
+successful ownership transfer. Failed-release adapters verify domain ceilings,
+ordinary/platform pool identity, mixed live/quarantined root refunds, exact
+generation reuse and non-reuse of retained physical frames. Installed-leaf
+fixtures simulate interruption before and after account commit, refusing any
+deallocation of uncertain publication. Abandoned charge receipts retain counts.
+Twelve physical frames and six page charges in each heap/image pool remain
+permanently retained, additional to earlier probes. See
+[joint backing preparation](../reference/kernel-backing-preparation.md).
+These simulate failure states, not real OOM, allocator corruption, panic
+unwinding or x86 shootdown execution.
+
 ## Rule for new service logic
 
 Keep the thin syscall loop and process entry point in an EL0 binary. Put policy

@@ -121,8 +121,18 @@ release fails, the whole charge remains consumed, even if other frames were
 returned. There is no automatic retry of a partially destroyed hierarchy.
 After proven translation quiescence, the software slot and hardware tag can be
 reused independently of these retained charges. Failed invalidation instead
-retains the complete root, tag and slot. Provisional allocation rollback and
-translation-frame admission remain separate work.
+retains the complete root, tag and slot. Translation-frame admission remains
+separate work.
+
+Heap and image preparation jointly own the provisional frame, its reservation
+and an exclusive borrow of the original address space. The caller retains the
+table guard through initialization, mapping and ownership transfer. Rollback
+refunds only after confirmed physical release. A rejected release continues to
+consume the original domain ceiling and node pool; successful root destruction
+excludes those quarantined pages from its refund. Slot reuse and platform
+promotion cannot recover or reclassify the retained charge. If publication is
+unconfirmed, cleanup retains backing without attempting deallocation. These
+are bounded account counters, not a growing recovery queue.
 
 \section{Four transfer modes}
 

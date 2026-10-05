@@ -31,10 +31,13 @@ bind the exact original image; none of these checks replace authentication.
 An embedded `image_account` belongs to the owning address-space lifetime.
 Each page operation validates its captured generation and retains the table
 guard across admission, fallible frame-tracking preparation, allocation,
-initialization, mapping and commit. `PageCharge` owns node admission;
-`PreparingUserFrame` owns the unpublished zeroed frame. ELF bytes are copied
+initialization, mapping and commit. `PreparingUserBacking` jointly owns the
+reservation, zeroed frame and exclusive address-space borrow. ELF bytes are copied
 through an exclusive bounded page borrow before the mapping is installed.
-Failure frees provisional backing before refunding admission.
+Confirmed rollback frees backing before refunding admission. Failed release
+retains its original domain and node charge, even after root destruction and
+ASID reuse. Unconfirmed publication retains backing without deallocation. See
+[joint preparation](kernel-backing-preparation.md).
 
 The backing allocator also preserves the existing one-eighth free-frame floor
 under its frame lock. Root/intermediate page tables are not included in this
@@ -74,8 +77,11 @@ reserve access. Isolated counter tests exercise node/ordinary ceilings without
 filling the live physical pool.
 
 This is deterministic kernel testing and an AArch64 security-guest regression,
-not a real-EL0 image-quota probe, full node pressure soak, allocator-failure
-injection or exhaustive cross-LP teardown proof. Stack, page-table, kernel heap,
+not a real-EL0 image-quota probe, full node pressure soak, real allocator
+exhaustion/corruption or exhaustive cross-LP teardown proof. Shared preparation
+fault adapters additionally check failed physical release, pool identity,
+uncertain publication, domain ceilings and mixed retained/owned teardown.
+Stack, page-table, kernel heap,
 empty namespace/control-block and general metadata accounting remain open.
 
 Constructor-failure fixtures verify the registration error, unchanged backing

@@ -95,8 +95,10 @@ Before enforcing complete page-table quotas:
    operations still need their own generation-fenced, lock-safe phases.
    Owning-root destruction now retains whole heap/image charges when any
    physical release fails; only complete successful release permits refund.
-   Provisional frame rollback still needs joint frame-and-charge ownership on
-   release failure; translation frames remain uncharged.
+   [Joint provisional preparation](../../reference/kernel-backing-preparation.md)
+   now retains the original domain/node charge on rejected release or uncertain
+   publication, including across root destruction; translation frames remain
+   uncharged.
    Close the remaining user/domain locking gaps (SEC-18), then enforce
    reliable quiescence at every physical release. Future live compaction must
    own detached tables until invalidation and walk quiescence are established.

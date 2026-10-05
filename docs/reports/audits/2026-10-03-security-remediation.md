@@ -92,8 +92,11 @@ invalidation/destruction. This fixes final root release under lifecycle/table
 guards, without completing earlier IPC/MMIO/live-mapping phase work.
 Owning-root physical teardown now makes heap/image accounts nonrefundable
 before release starts; any allocator rejection retains both complete charges.
-Only an entirely successful walk permits refund. Provisional frame rollback,
-translation-frame admission and recovery from corrupted allocator state remain
+Only an entirely successful walk permits refund of non-quarantined backing.
+Heap/image provisional preparation now jointly owns the frame, reservation and
+original address-space borrow; rejected release and uncertain publication retain
+the original domain/node charge even across root destruction and ASID reuse.
+Translation-frame admission and recovery from corrupted allocator state remain
 separate work.
 
 ## Enforced contracts
@@ -2814,3 +2817,77 @@ guards, recoverable shootdown, unresponsive recipients and complete quiescence
 remain SEC-18 work. The audit remains partial. Contributor instructions,
 reference/testing Markdown, investigation, LaTeX source and TLA+ conformance
 were updated; models and PDF were not rebuilt.
+
+## Continuation: joint provisional frame and charge ownership — 2026-10-05
+
+The failed owning-root release batch was committed as `8ed90b29`. This pass
+fixes the separate provisional path: a raw frame owner formerly ignored release
+failure while its independently scoped node reservation could refund. Keeping
+only the node reservation would also have allowed repeated failed preparation
+to evade the original domain's page ceiling, or later root teardown to refund
+retained backing.
+
+`PreparingUserBacking` now owns the frame, reservation and exclusive borrow of
+the original address space. The caller retains its table guard after exact
+generation validation. Reservation and fallible tracking precede allocation;
+the joint owner captures backing before zero initialization. Heap and
+ELF/runtime mapping use this owner, including fill callbacks, with no separate
+caller-side charge commit. Standalone reservation/commit access is restricted
+to the memory implementation. Root registry insertion asserts preflighted
+capacity and cannot silently allocate after leaf publication.
+
+Rollback first arms `ProvisionalRelease` in the borrowed account, making its
+page consume the original domain ceiling and node pool before physical release.
+Only confirmed release removes those counts and refunds. Rejection or abandoned
+confirmation retains bounded `quarantined_pages` counts. Normal root teardown
+refunds only non-quarantined pages; failed root release still retains the whole
+account. Software-generation reuse cannot refund an older charge, and platform
+promotion cannot reclassify quarantined backing. No per-frame metadata ledger,
+allocator retry or recovery bypass is added.
+
+Publication is marked uncertain before entering the mapper. A rejecting mapper
+must return before installing a leaf; both production walkers satisfy that
+contract. The fallback never deallocates uncertain publication and recognizes
+all three transfer states: active reservation before commit, inert reservation
+after commit, and removed reservation before physical ownership transfer. It
+retains the frame and counts a committed page only once. This is conservative
+quarantine, not panic recovery or a new invalidation API.
+
+Uncharged `PreparingUserFrame` remains for x86 initial-root preparation and
+foreign-backing fixtures. Rejected release now logs instead of silently ignoring
+the result, with no retry. Translation frames still lack admission accounts.
+
+Validation:
+
+- Shared serialized boot fixtures exercise heap/image admission rejection
+  before tracking, tracking rejection before allocation, rejected allocation,
+  unused-owner Drop, mapper rejection, zero/fill preservation and successful
+  transfer/destruction. Failed-release probes cover domain-ceiling enforcement,
+  ordinary/platform pool identity, mixed owned/quarantined refunds, exact slot
+  reuse and physical non-reuse. Installed-leaf probes cover all three
+  publication/charge-transfer states without invoking the deallocator. Abandoned
+  charge-release receipts retain counts. The twelve failure/abandonment cases
+  permanently retain **12 physical frames, six heap-page charges and six
+  image-page charges**, additional to earlier quarantine fixtures.
+- Final four-LP TCG AArch64 security guest, fresh dedicated
+  `backing-preparation-20261005-transfer` storage, HTTP 18094/deployment 17458:
+  **19/19**, zero failed/pending, both scoped probes `0x7fff`, cancellation
+  traffic retired after 4,456 requests. Kernel SHA-256:
+  `564afcc034c96a9c00e1f631079523ea78b942cd0213fd269b38264b9c26f653`.
+  Run `/private/tmp/charlotte-security-backing-preparation-transfer-run.log`;
+  serial `/private/tmp/charlotte-backing-preparation-20261005-transfer-serial.log`.
+  The three preceding preparation guests also passed 19/19 before API
+  restriction, capture-before-initialization and inert-token refinements.
+  Existing soak storage/instances were not modified.
+- Full host suites pass, including the seven standalone slot-owner tests; log
+  `/private/tmp/charlotte-security-backing-preparation-host-tests.log`. Strict
+  locked Clippy passes for AArch64 `acpi,security_test` and x86-64 `acpi`;
+  formatting and diff checks pass. x86 guest execution remains pending.
+
+These are concrete state/failure adapters and normal AArch64 service execution,
+not real physical OOM, allocator corruption, panic unwinding, concurrent hardware
+walks or unresponsive-recipient testing. SEC-07 remains partial for translation
+tables, stacks, kernel heap and general metadata. SEC-18 remains partial for
+live mapping/IPC/MMIO masking guards, recoverable shootdown and complete
+quiescence. Contributor instructions, reference/testing Markdown, investigation,
+LaTeX source and TLA+ conformance were updated; models and PDF were not rebuilt.

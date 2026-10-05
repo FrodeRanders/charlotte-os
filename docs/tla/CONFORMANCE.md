@@ -215,6 +215,13 @@ any rejection retains complete heap/image charges even though the slot/tag may
 retire normally. Only fully successful release permits account refund. The
 atomic model omits allocator errors, partial physical release and these retained
 node charges; it does not prove their fail-closed accounting.
+Heap/image provisional preparation now jointly owns the frame, reservation and
+exclusive address-space borrow. Rejected release and uncertain publication
+retain original domain/node counts; normal root destruction excludes those
+quarantined pages from refunds. The atomic lifetime/load actions omit these
+preparation phases, retained pool identity and partial physical outcomes. Fault
+adapters validate serialized concrete states, not panic recovery or hardware
+quiescence; no new model/TLC result is claimed.
 Generic table identity and software generation fence completion tokens, whose
 storage is preflighted before logical cleanup. The model's atomic close does not
 prove those phases, and earlier IPC/MMIO/mapping lock-held invalidations remain

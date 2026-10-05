@@ -25,7 +25,9 @@ use crate::{
         AddressSpaceHandle,
         AddressSpaceId,
         AddressSpaceRegistrationError,
-        PreparingUserFrame,
+        BackingPreparationError,
+        PreparingUserBacking,
+        backing_budget::Kind,
         linear::{
             MemoryMapping,
             PageType,
@@ -479,28 +481,16 @@ fn map_image_page_with_mapper(
     if address_space.is_mapped(VAddr::from(vaddr)).map_err(|_| DomainLoadError::PageMapping)? {
         return Err(DomainLoadError::PageMapping);
     }
-    let charge =
-        address_space.image_account.reserve().map_err(|_| DomainLoadError::BackingAdmission)?;
-    address_space.prepare_user_frame().map_err(|_| DomainLoadError::FrameTrackingAllocation)?;
-    let preparation =
-        PreparingUserFrame::allocate_zeroed().ok_or(DomainLoadError::FrameAllocation)?;
-    let frame = preparation.frame();
-    let hhdm: *mut u8 = frame.into();
-    // ABI boundary: this exclusive fresh, zeroed frame has no published user
-    // mapping. The fill callback borrows exactly one page before publication.
-    fill(unsafe { core::slice::from_raw_parts_mut(hhdm, PAGE_SIZE) });
-    if !map(
-        address_space,
-        MemoryMapping {
-            vaddr: VAddr::from(vaddr),
-            paddr: frame,
-            page_type,
-        },
-    ) {
-        return Err(DomainLoadError::PageMapping);
-    }
-    preparation.install(address_space);
-    address_space.image_account.commit(charge);
+    let mut preparation =
+        PreparingUserBacking::new(address_space, Kind::Image).map_err(|error| match error {
+            BackingPreparationError::Admission => DomainLoadError::BackingAdmission,
+            BackingPreparationError::Tracking => DomainLoadError::FrameTrackingAllocation,
+            BackingPreparationError::Allocation => DomainLoadError::FrameAllocation,
+        })?;
+    preparation.fill(fill);
+    let frame = preparation
+        .map_with(VAddr::from(vaddr), page_type, map)
+        .map_err(|_| DomainLoadError::PageMapping)?;
     usage::note_owned_frame(handle.id());
     Ok(frame)
 }

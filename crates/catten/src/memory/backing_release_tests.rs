@@ -6,6 +6,7 @@ use super::{
     AddressSpaceInterface,
     PAddr,
     PHYSICAL_FRAME_ALLOCATOR,
+    PreparingUserBacking,
     PreparingUserFrame,
     VAddr,
     backing_budget::{
@@ -93,22 +94,10 @@ pub(crate) fn run(mut destroy: impl FnMut(&mut AddressSpace, &mut Deallocator<'_
 }
 
 fn install(space: &mut AddressSpace, kind: Kind, vaddr: usize) {
-    let charge = match kind {
-        Kind::Heap => space.heap_account.reserve().unwrap(),
-        Kind::Image => space.image_account.reserve().unwrap(),
-    };
-    space.prepare_user_frame().unwrap();
-    let frame = PreparingUserFrame::allocate_zeroed().unwrap();
-    space
-        .map_existing_page(MemoryMapping {
-            vaddr: VAddr::from(vaddr),
-            paddr: frame.frame(),
-            page_type: PageType::UserData,
+    PreparingUserBacking::new(space, kind)
+        .unwrap()
+        .map_with(VAddr::from(vaddr), PageType::UserData, |space, mapping| {
+            space.map_existing_page(mapping).is_ok()
         })
         .unwrap();
-    frame.install(space);
-    match kind {
-        Kind::Heap => space.heap_account.commit(charge),
-        Kind::Image => space.image_account.commit(charge),
-    }
 }

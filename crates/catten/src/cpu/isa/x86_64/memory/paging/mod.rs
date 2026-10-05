@@ -135,7 +135,11 @@ impl AddressSpace {
 
     /// Record one physical frame that belongs to this user address space's
     /// mappings and must be reclaimed when the address space is torn down.
-    pub fn register_user_frame(&mut self, frame: PAddr) {
+    pub(crate) fn register_user_frame(&mut self, frame: PAddr) {
+        assert!(
+            self.owned_frames.len() < self.owned_frames.capacity(),
+            "user frame tracking was not preflighted"
+        );
         self.owned_frames.push(frame);
     }
 
