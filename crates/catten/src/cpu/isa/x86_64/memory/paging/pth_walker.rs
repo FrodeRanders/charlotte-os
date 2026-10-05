@@ -5,17 +5,13 @@
 //! addresses, mapping pages, and unmapping pages as well as adding and removing page table entries
 //! and page tables as needed.
 
-use core::ptr::NonNull;
-
 use super::{
     CR3_ADDRESS_MASK,
     PAGE_SIZE,
-    is_pagetable_unused,
 };
 use crate::{
     cpu::isa::{
         interface::memory::{
-            AddressSpaceInterface,
             MemoryInterface,
             address::VirtualAddress,
         },
@@ -60,8 +56,12 @@ impl<'vas> PthWalker<'vas> {
         <super::MemoryInterfaceImpl as MemoryInterface>::Error::AlreadyMapped
     }
 
-    fn root_table_ptr(&self) -> *mut super::PageTable {
-        PAddr::try_from((self.address_space.cr3 & CR3_ADDRESS_MASK) as usize).unwrap().into()
+    fn root_table_ptr(&self) -> WalkerResult<*mut super::PageTable> {
+        let base = self.address_space.cr3 & CR3_ADDRESS_MASK;
+        if base == 0 {
+            return Err(Self::unmapped_error());
+        }
+        Ok(PAddr::try_from(base as usize).unwrap().into())
     }
 
     fn walk_next_level(
@@ -94,13 +94,22 @@ impl<'vas> PthWalker<'vas> {
         no_execute: bool,
         page_size: bool,
     ) {
-        entry
+        let mut prepared = *entry;
+        prepared
             .set_frame(frame)
             .set_present(true)
             .set_writable(writable)
             .set_user_accessible(user_accessible)
             .set_execute_disabled(no_execute)
             .set_page_size(page_size);
+        Self::publish_entry(entry, prepared);
+    }
+
+    fn publish_entry(entry: &mut super::pte::PageTableEntry, prepared: super::pte::PageTableEntry) {
+        core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
+        // One aligned entry store publishes a completely initialized table
+        // link. Do not expose Present before the other permission bits.
+        unsafe { core::ptr::write_volatile(entry, prepared) };
     }
 
     fn allocate_and_link_table(
@@ -113,6 +122,10 @@ impl<'vas> PthWalker<'vas> {
     ) -> WalkerResult<*mut super::PageTable> {
         let new_table = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame()?;
         unsafe {
+            let new_table_ptr: *mut super::PageTable = new_table.into();
+            // Scrub before publishing: hardware walks are not serialized by
+            // the software address-space lock.
+            core::ptr::write_bytes(new_table_ptr.cast::<u8>(), 0, PAGE_SIZE);
             Self::set_table_entry(
                 &mut (*parent_table_ptr)[parent_index],
                 new_table,
@@ -121,27 +134,15 @@ impl<'vas> PthWalker<'vas> {
                 no_execute,
                 false,
             );
-            let new_table_ptr: *mut super::PageTable = new_table.into();
-            core::ptr::write_bytes(new_table_ptr.cast::<u8>(), 0, PAGE_SIZE);
             Ok(new_table_ptr)
         }
     }
 
     fn ensure_pml4(&mut self) -> WalkerResult<*mut super::PageTable> {
         if self.pml4_ptr.is_null() {
-            // Obtain the PML4 table pointer; all address spaces must have a top level page
-            // table as they are all required to map the kernel and
-            // higher half memory.
-            if self.address_space.cr3 & CR3_ADDRESS_MASK == 0 {
-                let new_pml4 = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame()?;
-                self.address_space.cr3 = <PAddr as Into<u64>>::into(new_pml4) & CR3_ADDRESS_MASK;
-                self.address_space.owns_root = true;
-                self.address_space.load().expect("Error reloading the CR3 register");
-            }
-            self.pml4_ptr = self.root_table_ptr();
-            unsafe {
-                core::ptr::write_bytes(self.pml4_ptr.cast::<u8>(), 0, PAGE_SIZE);
-            }
+            // try_new_user owns initial root preparation. A walker must never
+            // install an uninitialized CR3 or scrub an existing live root.
+            self.pml4_ptr = self.root_table_ptr()?;
         }
         Ok(self.pml4_ptr)
     }
@@ -155,7 +156,7 @@ impl<'vas> PthWalker<'vas> {
     }
 
     pub fn walk(&mut self) -> WalkerResult<()> {
-        self.pml4_ptr = self.root_table_ptr();
+        self.pml4_ptr = self.root_table_ptr()?;
         self.pdpt_ptr =
             self.walk_next_level(self.pml4_ptr, self.vaddr.pml4_index(), false, false)?;
         self.pd_ptr = self.walk_next_level(self.pdpt_ptr, self.vaddr.pdpt_index(), false, true)?;
@@ -168,7 +169,7 @@ impl<'vas> PthWalker<'vas> {
     }
 
     pub fn walk_large_page(&mut self) -> WalkerResult<()> {
-        self.pml4_ptr = self.root_table_ptr();
+        self.pml4_ptr = self.root_table_ptr()?;
         self.pdpt_ptr =
             self.walk_next_level(self.pml4_ptr, self.vaddr.pml4_index(), false, false)?;
         self.pd_ptr = self.walk_next_level(self.pdpt_ptr, self.vaddr.pdpt_index(), false, false)?;
@@ -181,7 +182,7 @@ impl<'vas> PthWalker<'vas> {
     }
 
     pub fn walk_huge_page(&mut self) -> WalkerResult<()> {
-        self.pml4_ptr = self.root_table_ptr();
+        self.pml4_ptr = self.root_table_ptr()?;
         self.pdpt_ptr =
             self.walk_next_level(self.pml4_ptr, self.vaddr.pml4_index(), false, false)?;
         self.pd_ptr = core::ptr::null_mut();
@@ -239,22 +240,13 @@ impl<'vas> PthWalker<'vas> {
             )?;
         }
         if self.pd_ptr.is_null() {
-            // Allocate a new page table for the PD
-            let new_pd = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame()?;
-            unsafe {
-                Self::set_table_entry(
-                    &mut (*self.pdpt_ptr)[self.vaddr.pdpt_index()],
-                    new_pd,
-                    writable,
-                    user_accessible,
-                    no_execute,
-                    false,
-                );
-            }
-            self.pd_ptr = new_pd.into();
-            unsafe {
-                core::ptr::write_bytes(self.pd_ptr.cast::<u8>(), 0, PAGE_SIZE);
-            }
+            self.pd_ptr = self.allocate_and_link_table(
+                self.pdpt_ptr,
+                self.vaddr.pdpt_index(),
+                writable,
+                user_accessible,
+                no_execute,
+            )?;
         }
         if self.pt_ptr.is_null() {
             let pde = unsafe { &(*self.pd_ptr)[self.vaddr.pd_index()] };
@@ -302,16 +294,19 @@ impl<'vas> PthWalker<'vas> {
         }
         // Map the page frame
         unsafe {
-            let pte = &mut (*self.pt_ptr)[self.vaddr.pt_index()];
-            Self::set_table_entry(pte, frame, writable, user_accessible, no_execute, false);
-            // Select the cache attribute for the leaf only; PAT bits in
-            // intermediate table entries are reserved.
-            pte.set_pat_index_bits(pat_index);
             if zero {
-                // for those who may not immediately see it, this is the Rust equivalent of
-                // memset being used to clear the newly mapped page
                 core::ptr::write_bytes(<PAddr as Into<*mut u8>>::into(frame), 0, PAGE_SIZE);
             }
+            let mut prepared = super::pte::PageTableEntry::new(
+                true,
+                writable,
+                user_accessible,
+                pat_index,
+                false,
+                frame,
+            );
+            prepared.set_execute_disabled(no_execute);
+            Self::publish_entry(&mut (*self.pt_ptr)[self.vaddr.pt_index()], prepared);
         }
         // Do NOT reload CR3 here: the address space being mapped may not be the
         // one currently active (e.g. mapping pages into a freshly created user
@@ -336,7 +331,6 @@ impl<'vas> PthWalker<'vas> {
                     let Ok(paddr) = (*pte).try_get_frame() else {
                         return Err(Self::unmapped_error());
                     };
-                    // deallocate all higher level tables that are now unused
                     if (*pte).is_present() {
                         // We do not deallocate the page frame here, as it is the responsibility of
                         // the VMM client calling this function to deallocate the frame if they need
@@ -344,32 +338,12 @@ impl<'vas> PthWalker<'vas> {
                         (*pte).set_present(false);
                     }
 
-                    let pde = &raw mut (*self.pd_ptr)[self.vaddr.pd_index()];
-                    if is_pagetable_unused(NonNull::new_unchecked(self.pt_ptr)) {
-                        PHYSICAL_FRAME_ALLOCATOR
-                            .lock()
-                            .deallocate_frame((*pde).try_get_frame().unwrap())
-                            .unwrap();
-                        (*pde).set_present(false);
-                    }
-
-                    let pdpte = &raw mut (*self.pdpt_ptr)[self.vaddr.pdpt_index()];
-                    if is_pagetable_unused(NonNull::new_unchecked(self.pd_ptr)) {
-                        PHYSICAL_FRAME_ALLOCATOR
-                            .lock()
-                            .deallocate_frame((*pdpte).try_get_frame().unwrap())
-                            .unwrap();
-                        (*pdpte).set_present(false);
-                    }
-
-                    let pml4e = &raw mut (*self.pml4_ptr)[self.vaddr.pml4_index()];
-                    if is_pagetable_unused(NonNull::new_unchecked(self.pdpt_ptr)) {
-                        PHYSICAL_FRAME_ALLOCATOR
-                            .lock()
-                            .deallocate_frame((*pml4e).try_get_frame().unwrap())
-                            .unwrap();
-                        (*pml4e).set_present(false);
-                    }
+                    // Keep empty intermediate tables linked and owned until
+                    // address-space teardown. A local INVLPG does not quiesce
+                    // remote walkers, and this call may hold IRQ-masking
+                    // locks that preclude a synchronous cross-LP rendezvous.
+                    // Remaps reuse the retained tree; Drop reclaims it after
+                    // the domain's threads and translations have retired.
                     // Invalidate the removed translation locally. The cross-LP
                     // shootdown is the responsibility of the VMM client, which
                     // knows the address-space identity and can rendezvous once
@@ -418,9 +392,16 @@ impl<'vas> PthWalker<'vas> {
             }
             // Map the large page frame directly in the Page Directory (PML2) with the PS
             // bit set
-            let pde = &mut (*self.pd_ptr)[self.vaddr.pd_index()];
-            Self::set_table_entry(pde, frame, writable, user_accessible, no_execute, true);
-            pde.set_pat_index_bits_large_huge(pat_index);
+            let mut prepared = super::pte::PageTableEntry::new_large_huge(
+                true,
+                writable,
+                user_accessible,
+                pat_index,
+                false,
+                frame,
+            );
+            prepared.set_execute_disabled(no_execute);
+            Self::publish_entry(&mut (*self.pd_ptr)[self.vaddr.pd_index()], prepared);
         }
         Ok(())
     }
@@ -464,9 +445,16 @@ impl<'vas> PthWalker<'vas> {
             }
             // Map the huge page frame directly in the Page Directory Pointer Table (PML3)
             // with the PS bit set
-            let pdpte = &mut (*self.pdpt_ptr)[self.vaddr.pdpt_index()];
-            Self::set_table_entry(pdpte, frame, writable, user_accessible, no_execute, true);
-            pdpte.set_pat_index_bits_large_huge(pat_index);
+            let mut prepared = super::pte::PageTableEntry::new_large_huge(
+                true,
+                writable,
+                user_accessible,
+                pat_index,
+                false,
+                frame,
+            );
+            prepared.set_execute_disabled(no_execute);
+            Self::publish_entry(&mut (*self.pdpt_ptr)[self.vaddr.pdpt_index()], prepared);
         }
         Ok(())
     }

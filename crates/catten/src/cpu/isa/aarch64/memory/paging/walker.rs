@@ -15,8 +15,6 @@
 //! establishes: a physical frame address converts to a usable pointer via
 //! `PAddr: Into<*mut T>`.
 
-use core::ptr::NonNull;
-
 use super::{
     AddressSpace,
     PAGE_SIZE,
@@ -25,7 +23,6 @@ use super::{
         Descriptor,
         MAIR_IDX_DEVICE,
     },
-    is_table_unused,
 };
 use crate::{
     cpu::isa::{
@@ -136,7 +133,11 @@ impl<'vas> Walker<'vas> {
         unsafe {
             let new_table_ptr: *mut PageTable = new_table.into();
             core::ptr::write_bytes(new_table_ptr.cast::<u8>(), 0, PAGE_SIZE);
-            (*parent_table_ptr)[index] = Descriptor::new_table(new_table);
+            core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
+            core::ptr::write_volatile(
+                &raw mut (*parent_table_ptr)[index],
+                Descriptor::new_table(new_table),
+            );
             Ok(new_table_ptr)
         }
     }
@@ -299,6 +300,10 @@ impl<'vas> Walker<'vas> {
             self.l3_ptr = self.allocate_and_link_table(self.l2_ptr, self.vaddr.pd_index())?;
         }
         unsafe {
+            if zero_frame {
+                core::ptr::write_bytes(<PAddr as Into<*mut u8>>::into(frame), 0, PAGE_SIZE);
+            }
+            core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
             (*self.l3_ptr)[self.vaddr.pt_index()] = Descriptor::new_leaf(
                 frame,
                 writable,
@@ -307,9 +312,6 @@ impl<'vas> Walker<'vas> {
                 mair_index,
                 true,
             );
-            if zero_frame {
-                core::ptr::write_bytes(<PAddr as Into<*mut u8>>::into(frame), 0, PAGE_SIZE);
-            }
             if !no_execute && mair_index != MAIR_IDX_DEVICE {
                 core::arch::asm!(
                     "dsb ishst",
@@ -332,23 +334,12 @@ impl<'vas> Walker<'vas> {
             // We do not free the mapped frame; that is the caller's decision.
             (*l3e).clear();
 
-            let l2e = &raw mut (*self.l2_ptr)[self.vaddr.pd_index()];
-            if is_table_unused(NonNull::new_unchecked(self.l3_ptr)) {
-                PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame((*l2e).frame()).unwrap();
-                (*l2e).clear();
-            }
-
-            let l1e = &raw mut (*self.l1_ptr)[self.vaddr.pdpt_index()];
-            if is_table_unused(NonNull::new_unchecked(self.l2_ptr)) {
-                PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame((*l1e).frame()).unwrap();
-                (*l1e).clear();
-            }
-
-            let l0e = &raw mut (*self.l0_ptr)[self.vaddr.pml4_index()];
-            if is_table_unused(NonNull::new_unchecked(self.l1_ptr)) {
-                PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame((*l0e).frame()).unwrap();
-                (*l0e).clear();
-            }
+            // Keep empty intermediate tables linked and owned until address-
+            // space teardown. Hardware walkers may still name these frames;
+            // neither the table lock nor clearing a leaf permits recycling
+            // them. Reusing this hierarchy also avoids map/unmap table churn.
+            // AddressSpace::drop reclaims the complete private tree after the
+            // lifetime's threads and translations have been retired.
             tlb::inval_page(self.vaddr);
             Ok(paddr)
         }

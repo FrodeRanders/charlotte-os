@@ -53,6 +53,12 @@ pub trait AddressSpaceInterface {
     ) -> Result<(), <MemoryInterfaceImpl as MemoryInterface>::Error> {
         self.map_page(mapping)
     }
+    /// Remove one leaf without releasing its data frame or intermediate
+    /// tables. Empty tables remain owned by the hierarchy for reuse until
+    /// quiescent address-space teardown. Before reusing the returned data
+    /// frame, callers must complete cross-LP invalidation without holding
+    /// locks needed by an IPI recipient. No automatic page-size promotion of
+    /// an existing empty table subtree is performed.
     fn unmap_page(
         &mut self,
         vaddr: VAddr,

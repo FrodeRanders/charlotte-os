@@ -45,6 +45,13 @@ fn tlbi_asid_operand(asid: HwAsidRaw) -> u64 {
     super::paging::encode_hw_asid(asid)
 }
 
+/// A valid range may include the final page without having a representable
+/// exclusive end. Validate each address instead of computing base + bytes.
+fn page_address(base: usize, index: usize) -> usize {
+    let offset = index.checked_mul(PAGE_SIZE).expect("TLBI page offset overflow");
+    base.checked_add(offset).expect("TLBI page address overflow")
+}
+
 type HwAsidRaw = u16;
 
 /// Invalidate a single kernel (global) page translation across all cores.
@@ -72,7 +79,8 @@ pub fn inval_range_kernel(base: VAddr, num_pages: usize) {
     let raw_base = <VAddr as Into<usize>>::into(base);
     unsafe {
         asm!("dsb ishst", options(nostack, preserves_flags));
-        for page in (raw_base..raw_base + num_pages * PAGE_SIZE).step_by(PAGE_SIZE) {
+        for index in 0..num_pages {
+            let page = page_address(raw_base, index);
             let op = (page as u64 >> 12) & 0x0000_0fff_ffff_ffff;
             asm!("tlbi vaae1is, {op}", op = in(reg) op, options(nostack, preserves_flags));
         }
@@ -95,7 +103,8 @@ pub fn inval_range_user(asid: AddressSpaceId, base: VAddr, num_pages: usize) {
     let asid_bits = tlbi_asid_operand(hwasid);
     unsafe {
         asm!("dsb ishst", options(nostack, preserves_flags));
-        for page in (raw_base..raw_base + num_pages * PAGE_SIZE).step_by(PAGE_SIZE) {
+        for index in 0..num_pages {
+            let page = page_address(raw_base, index);
             let op = asid_bits | ((page as u64 >> 12) & 0x0000_0fff_ffff_ffff);
             asm!("tlbi vae1is, {op}", op = in(reg) op, options(nostack, preserves_flags));
         }

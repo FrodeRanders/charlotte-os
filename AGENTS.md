@@ -82,6 +82,12 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   mandatory kernel fixtures may use its panic wrapper. Keep a new translation
   root behind `PreparingUserFrame` until its final architecture ownership
   transfer; root allocation failure must precede namespace publication.
+- Dynamic unmap removes leaves, not intermediate-table ownership. Keep empty
+  tables linked for reuse until quiescent address-space teardown; table charges
+  must follow their actual lifetime, not mapped-leaf counts. Initialize backing
+  and complete entry permissions before publishing a valid table/leaf link.
+  Returning a leaf frame does not authorize reuse before cross-LP invalidation.
+  See `docs/reference/page-table-lifetime.md` for the current policy and gaps.
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`

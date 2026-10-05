@@ -96,16 +96,18 @@ recovery after the owning allocation batch is dropped.
 
 ## Remaining isolation work
 
-This limits memory-object backing storage, not all domain resources. It does
-not budget loader/heap/stack/page-table frames, borrowed capabilities,
-connections, endpoints, queue reservations, general completion records or all
-kernel heap metadata. [Completion-backed timers](completion-timer-budgets.md)
+This allowance limits memory-object backing storage. Other families have
+independent admission: [heaps](heap-admission.md),
+[ELF/runtime backing](loader-admission.md),
+[capability records](capability-admission.md), IPC endpoint/connection/call/reply
+records and several completion/observer families.
+[Completion-backed timers](completion-timer-budgets.md)
 have separate event-admission limits; [scheduler sleeps/watchdogs](scheduler-timer-budgets.md)
 now share their node pool with separate generation-owned domain accounts.
 Other resource families have their own admission rather than being charged to
 the memory-object allowance. Memory capability aliases, including loans, also
-obey [shared record admission](capability-admission.md). Comprehensive loader/heap/stack/page-table and
-general metadata accounting still need aggregate admission and fallible
+obey shared record admission. Stacks, [retained page tables](page-table-lifetime.md),
+kernel heap and comprehensive general metadata still need aggregate admission and fallible
 bookkeeping. The reserved share is a pool, not guaranteed capacity
 for each essential service; a compromised platform service can consume it.
 There is no budget telemetry record in the external observability ABI yet.

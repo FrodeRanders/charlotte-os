@@ -31,7 +31,8 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-14 | Mitigated; audit corrected | Cargo.lock is already tracked. Main build/test runners and CI now enforce --locked; CI actions are commit-pinned, token permissions are read-only, and checkout does not persist credentials. Advisory/license scans and a release dependency inventory remain. |
 | SEC-15 | Mitigated | SigV4 prefixed secret, derived keys, HMAC block/pads and inner digest use zeroizing owners. TLS record buffers are wiped after dropping their borrower, including handshake failure. This is not a complete audit of crypto-library state or compiler-created secret copies. |
 | SEC-16 | Implemented | grantctl polls bounded concurrent operations with per-sender/generation limits and total deadlines. Non-parking authorized lookup avoids a shared name-service waitlist leak. Acquisition retries and publication waits have total deadlines. A two-application cancellation stress and silent-endpoint publication timeout pass in the guest; many-client fairness and controller-replacement testing remain. |
-| SEC-17 | Open; added by source review 2026-10-05 | Both architecture walkers reclaim empty child-table frames before clearing parent entries and completing invalidation. Establish detach/invalidate/quiescence/recycle ordering, with retained ownership through failed or delayed shootdown. This is a source-ordering concern, not a demonstrated race or exploit. |
+| SEC-17 | Implemented for dynamic table unmap | Both walkers retain empty intermediate tables linked and owned for reuse until quiescent address-space teardown, removing premature table recycling. Tables/data are initialized before publication; x86 entries publish complete permissions/cache selection together. Private sparse-alias/reuse/teardown fixtures pass on AArch64. Concurrent walk-race reproduction, live compaction, full table admission and x86 guest execution remain outside this validation. Broader physical-release/shootdown gaps are SEC-18. |
+| SEC-18 | Open; added by source review 2026-10-05 | Kernel-range cleanup releases data before removing mappings/invalidation. Some x86 shootdown callers retain interrupt-masking lifecycle/other guards, and failed IPI delivery is treated as acknowledgement. Introduce owning retirement through a lock-safe, fail-closed quiescence boundary before frame reuse or refunds. Source-review concerns, not demonstrated races or exploits. |
 
 SEC-07 also includes fixed per-route IRQ readiness storage: repeated or retired
 deliveries cannot exhaust a shared wake queue, and deferred route validation/CQ
@@ -73,8 +74,11 @@ Initial runtime root preparation now reports allocation failure before namespace
 publication. x86-64 uses a provisional owner and the physical progress-floor
 check; AArch64 retains lazy roots. Full table-frame quotas remain open. The
 [page-table investigation](../investigations/2026-10-05-page-tables-locality-and-admission.md)
-also records SEC-17: premature empty-table recycling must be addressed before
-safe post-invalidation refunds can underpin full translation-metadata admission.
+records the SEC-17 correction: empty intermediate tables now remain linked and
+owned for reuse until quiescent teardown. Full admission must charge that
+retained high-water footprint. Separate data-release and x86 shootdown gaps
+(SEC-18) still require a lock-safe, fail-closed physical-retirement boundary.
+See [page-table lifetime](../../reference/page-table-lifetime.md).
 
 ## Enforced contracts
 
@@ -242,8 +246,8 @@ implementation proof is claimed.
    only then enable production images without fixture fallback. Migrate sibling
    broker/Durga templates to the new signing file-path interface. Keep developer
    fixtures visibly identified and separate from real credentials.
-3. Correct table reclamation ordering (SEC-17), then extend admission to stacks,
-   page tables and kernel heap,
+3. Correct data-frame retirement and reliable quiescence (SEC-18), then extend
+   admission to stacks, retained page-table frames and kernel heap,
    uncharged callback captures and general weak-only/control-block storage. Add
    typed launch-policy limits and observable counters. Preserve rollback and
    delayed-release accounting, and test essential-service progress under
@@ -2443,3 +2447,74 @@ for full page-table admission. Affinity, placement and replication policies
 were not changed; no QEMU throughput conclusion follows from reading these
 papers. Markdown, LaTeX source and TLA+ conformance were updated; models and PDF
 were not rebuilt.
+
+## Continuation: retained translation hierarchies — 2026-10-05
+
+Fallible initial root preparation and the research investigation were committed
+as `ec8c9609` before this implementation pass.
+
+SEC-17's dynamic table-recycling path is removed on both architectures.
+`unmap_page` clears its leaf but keeps empty intermediate tables linked and
+owned. Remapping the same regions reuses them; quiescent private-address-space
+destruction walks the whole hierarchy. No unmap-path allocation or synchronous
+IPI is introduced. Retained tables consume high-water memory until teardown;
+they are not yet admitted by a table quota. Shared kernel branches remain for
+the kernel lifetime. Live compaction/page-size promotion needs a separate
+owning quiescence protocol, not early frame reuse.
+
+New child tables are scrubbed before their link becomes valid, with release
+ordering before publication. x86 uses one aligned volatile entry publication
+after assembling its permissions and cache selection. The duplicate PD creation
+path now uses the same initialization helper. Its walker no longer constructs
+or loads an uninitialized root or clears an existing root: `try_new_user` is
+the owning construction boundary. Both zeroing page mappers initialize data
+before exposing the leaf; existing-page mapping preserves caller-owned bytes.
+
+A fixture maps one data frame through two independent, never-installed private
+trees, each with three sparse leaf tables. It checks fourteen table frames,
+duplicate rejection, sixteen reuse rounds with stable physical counts, repeated
+unmap rejection, independent aliases, block-promotion rejection, and full
+private-tree reclamation. The existing higher-half fixture now returns its data
+frame after invalidation rather than leaking it.
+
+That cleanup exposed an existing arithmetic defect: range invalidation computed
+an overflowing exclusive end when flushing the final virtual page. A first
+follow-up guest stopped at that overflow. ARM range invalidation and x86 local
+range invalidation now iterate checked page addresses, allowing the final page
+without accepting an actually overflowing offset. The corrected final guest
+completed normally.
+
+Validation:
+
+- AArch64 security guest, four LPs under TCG, fresh dedicated
+  `table-lifetime-20261005-checked` storage, HTTP port 18089 and deployment port
+  17453: **19/19**, zero failed or pending. The sparse-table fixture and final
+  kernel-page invalidation pass; both real scoped probes report `0x7fff`;
+  cancellation traffic retires after 4,484 requests.
+- Guest kernel SHA-256:
+  `f3aaac1fde179f8deb166052b676e34d9e9f2c9297c54acd6448f04a35af8507`.
+  Run log `/private/tmp/charlotte-security-table-lifetime-checked-run.log`;
+  serial `/private/tmp/charlotte-table-lifetime-20261005-checked-serial.log`.
+- Strict locked Clippy passes for AArch64 `acpi,security_test` and x86-64 `acpi`.
+  `scripts/run-host-tests.sh` passes; log
+  `/private/tmp/charlotte-security-table-lifetime-host-tests.log`.
+  `cargo fmt --all -- --check` and `git diff --check` pass.
+- Earlier runs are retained separately: the initial table fixture guest passed
+  19/19; the follow-up `table-lifetime-20261005-final` guest captures the
+  exclusive-end overflow before its correction. Existing soak instances and
+  storage were not changed.
+
+The new source review also records SEC-18. Kernel-range cleanup currently frees
+data before removing its mappings. Some x86 rendezvous callers retain masking
+lifecycle/other guards; the IPI sender logs delivery failure and subtracts that
+recipient from its barrier as if invalidation had succeeded. Neither table
+retention nor a later counter refund repairs these paths. The next correction
+needs owning data retirement, a lock-safe quiescence boundary, and fail-closed
+failure handling with quarantine rather than reuse.
+
+This pass does not execute an x86 guest, reproduce a concurrent hardware walk
+race, inject failed IPIs or physical exhaustion, or prove teardown quiescence.
+SEC-07 remains partial for tables, stacks, kernel heap and comprehensive
+metadata. The new lifetime reference, contributor guidance, Markdown and LaTeX
+sources document the implemented policy and remaining gaps. No models or PDF
+were rebuilt.

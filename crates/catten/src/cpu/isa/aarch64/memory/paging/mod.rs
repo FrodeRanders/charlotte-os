@@ -6,7 +6,6 @@ pub mod walker;
 use alloc::vec::Vec;
 use core::{
     arch::asm,
-    ptr::NonNull,
     sync::atomic::AtomicUsize,
 };
 
@@ -179,19 +178,6 @@ pub const HUGE_PAGE_SIZE: usize = gibibytes(1);
 /// Number of descriptors in a translation table for the 4 KiB granule.
 pub const N_TABLE_ENTRIES: usize = 512;
 pub type PageTable = [Descriptor; N_TABLE_ENTRIES];
-
-/// Returns true if every descriptor in the table is invalid, meaning the table
-/// can be freed once unlinked from its parent.
-pub fn is_table_unused(table_ptr: NonNull<PageTable>) -> bool {
-    unsafe {
-        for i in 0..N_TABLE_ENTRIES {
-            if (table_ptr.as_ref())[i].is_valid() {
-                return false;
-            }
-        }
-    }
-    true
-}
 
 /// An address space is defined by its two translation table base registers:
 /// `TTBR0_EL1` maps the lower half (user space) and `TTBR1_EL1` maps the higher
@@ -605,9 +591,8 @@ impl Drop for AddressSpace {
         }
 
         // Reclaim the private TTBR0 hierarchy and every frame this address
-        // space owned. The shared kernel (TTBR1) tree is untouched, and
-        // tables already released by `unmap_page` have their parent entries
-        // cleared, so the walk cannot visit them twice.
+        // space owned, including empty intermediate tables retained for reuse
+        // by unmap_page. The shared kernel (TTBR1) tree is untouched.
         if self.ttbr0_el1 & TTBR_BADDR_MASK != 0 {
             unsafe fn free_user_tables(table: *mut PageTable, level: u8) {
                 for entry in unsafe { &mut *table } {

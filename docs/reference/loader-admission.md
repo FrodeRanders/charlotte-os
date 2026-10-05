@@ -53,6 +53,8 @@ reports `AddressSpace(RootAllocationFailed)` before namespace publication.
 It uses the same physical progress-floor check; AArch64 retains lazy roots.
 Root/intermediate-table quota accounting and general kernel/registry allocation
 failure handling remain separate work; this is not universal loader OOM safety.
+Empty intermediate tables now stay linked for reuse until quiescent teardown;
+their high-water cost is described in [page-table lifetime](page-table-lifetime.md).
 
 The unused scalar-ASID public ELF/page mapping conveniences were removed.
 Production service loading uses exact handles and the owning preparation.

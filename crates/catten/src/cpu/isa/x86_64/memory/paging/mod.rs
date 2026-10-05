@@ -4,7 +4,6 @@ use alloc::vec::Vec;
 use core::{
     arch::asm,
     iter::Iterator,
-    ptr::NonNull,
 };
 
 use super::{
@@ -58,17 +57,6 @@ pub static CURRENT_LOGICAL_ASID: [core::sync::atomic::AtomicUsize;
     crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS] =
     [const { core::sync::atomic::AtomicUsize::new(KERNEL_ASID) };
         crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS];
-
-pub fn is_pagetable_unused(table_ptr: NonNull<PageTable>) -> bool {
-    unsafe {
-        for i in 0..N_PAGE_TABLE_ENTRIES {
-            if (table_ptr.as_ref())[i].is_present() {
-                return false;
-            }
-        }
-    }
-    true
-}
 
 pub struct AddressSpace {
     // control register 3 i.e. top level page table base register
@@ -606,6 +594,9 @@ impl Drop for AddressSpace {
             return;
         }
 
+        // Empty intermediate tables remain linked for reuse during the domain
+        // lifetime. Reclaim them here only after callers have retired threads
+        // and completed cross-LP invalidation for this private hierarchy.
         unsafe fn free_table(table: *mut PageTable, level: u8) {
             for entry in unsafe { &mut *table } {
                 if !entry.is_present() || level > 1 && entry.get_page_size() {

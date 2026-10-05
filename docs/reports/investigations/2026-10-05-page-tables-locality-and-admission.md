@@ -77,16 +77,17 @@ still panic; the runtime loader uses `try_new_user`.
 
 Before enforcing complete page-table quotas:
 
-1. Audit table retirement versus physical recycling. In both walkers,
-   `unmap_page` currently frees empty child tables before clearing parent
-   entries and completing invalidation. AArch64 broadcasts afterward;
-   x86-64 performs local invalidation and leaves the cross-LP rendezvous to its
-   caller. This source ordering needs correction/validation before allocator
-   reuse can be treated as safe. No race reproduction or exploit is claimed.
-2. Own detached tables until translation invalidation and walk quiescence are
-   established. Never hold a registry required by an IPI recipient across a
-   synchronous rendezvous. Failed or pending invalidation must retain frames
-   and charges, not credit them to a successor generation.
+1. Dynamic unmap now retains empty tables linked in their owning hierarchy for
+   reuse until quiescent address-space teardown. It no longer recycles table
+   frames before clearing parents/invalidation. New tables/data are initialized
+   before publication; x86 entries are assembled before one publishing store.
+   See [the lifetime contract](../../reference/page-table-lifetime.md).
+2. Close the separate data-retirement/shootdown gaps (SEC-18), then enforce
+   reliable quiescence at every physical release. Future live compaction must
+   own detached tables until invalidation and walk quiescence are established.
+   Never hold a registry required by an IPI recipient across a synchronous
+   rendezvous. Failed or pending invalidation must retain frames and charges,
+   not credit them to a successor generation.
 3. Admit each private root/intermediate frame before allocation, with domain and
    node limits and trusted platform headroom. Count shared kernel tables once,
    not once for every user root referencing them. Partial linked trees must
@@ -98,7 +99,9 @@ Before enforcing complete page-table quotas:
    allocation failure, concurrent unmap/reuse and post-shootdown refunds before
    attempting huge pages, table sharing or NUMA replication.
 
-The unmap ordering concern is tracked as SEC-17 in the remediation ledger.
+The dynamic table-unmap correction is tracked as SEC-17 in the remediation
+ledger; the broader physical-release gaps are SEC-18. Sparse alias/reuse and
+teardown fixtures exercise ownership, not a reproduced hardware race or exploit.
 This is implementation work within the existing architecture, not a reason to
 discard its isolation or placement design. The research supplies no evidence
 that page walks caused the Kafka/QEMU throughput observed earlier; that requires

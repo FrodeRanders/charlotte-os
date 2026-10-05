@@ -67,9 +67,27 @@ creating fresh headroom.
 
 These are initial kernel admission policies, independent of telemetry filtering
 and placement feedback. Signed deployment fields and a userspace policy API for
-these limits remain future work. Heap, loader, page-table, IPC-capability and
-completion metadata need additional aggregate budgets; memory-object admission
-alone does not establish complete resource isolation.
+these limits remain future work. Demand-backed heaps and ELF/runtime pages have
+independent generation-owned accounts and node pools. Capability records,
+IPC operations and several completion/observer families also have separate
+admission. Stacks, translation tables, general kernel heap and comprehensive
+metadata accounting remain open.
+
+\paragraph{Translation-table lifetime.}
+Removing a page mapping clears the leaf while retaining empty intermediate
+tables in their owning hierarchy. Subsequent mappings reuse those tables;
+quiescent address-space teardown releases the complete private tree. Hardware
+page walks do not take software locks, so an empty table cannot be recycled
+merely because its last leaf was removed. New table backing is initialized
+before its parent link becomes valid.
+
+Retained tables follow the hierarchy's high-water footprint and will need
+their own admission limits. Shared physical data still requires independent
+user translation trees in each domain. Kernel trees are shared and must be
+accounted for once. Automatic promotion of an empty subtree to a large-page
+leaf is not implemented. Returning an unmapped data frame likewise does not
+authorize reuse before translation invalidation has completed; kernel data
+retirement and lock-safe x86 shootdown remain hardening work.
 
 \section{Four transfer modes}
 

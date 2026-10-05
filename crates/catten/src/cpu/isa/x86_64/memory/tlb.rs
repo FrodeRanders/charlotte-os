@@ -40,7 +40,10 @@ fn invlpg(page: usize) {
 
 fn invlpg_range(base: VAddr, num_pages: usize) {
     let raw_base = <VAddr as Into<usize>>::into(base);
-    for page in (raw_base..raw_base + num_pages * PAGE_SIZE).step_by(PAGE_SIZE) {
+    // The final page is valid even though its exclusive end wraps usize.
+    for index in 0..num_pages {
+        let offset = index.checked_mul(PAGE_SIZE).expect("INVLPG page offset overflow");
+        let page = raw_base.checked_add(offset).expect("INVLPG page address overflow");
         invlpg(page);
     }
 }

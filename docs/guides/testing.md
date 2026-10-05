@@ -511,6 +511,19 @@ before namespace publication, consumes no frames/backing charges and preserves
 ASID capacity. The x86-only root fixture tests rejected allocation and successful
 inactive-PML4 teardown; AArch64 cannot execute that architecture-specific test.
 
+## Page-table lifetime tests
+
+The synchronous VM fixture creates two private, never-installed hierarchies
+aliasing one data frame across three sparse leaf tables per root. Sixteen
+unmap/remap rounds must retain stable table counts, reject duplicate/repeated
+operations and block promotion over empty tables, preserve the other domain's
+translations, and return every private table at teardown. See
+[page-table lifetime](../reference/page-table-lifetime.md).
+The higher-half VM fixture also flushes the final kernel page before releasing
+its backing, guarding against exclusive-end overflow in range invalidation.
+This checks physical ownership/reuse, not a concurrent hardware-walk race or
+failed cross-LP shootdown. AArch64 guest execution does not execute x86 code.
+
 ## Rule for new service logic
 
 Keep the thin syscall loop and process entry point in an EL0 binary. Put policy
