@@ -62,12 +62,16 @@ owner's guards alone does not prove recipient progress.
 
 ## Integration still required
 
-Boot fixtures exercise real address-space leases. **Production mapping, IPC and
-MMIO paths have not been migrated**, and their masking guards remain. Before
-activating split-phase operations, implement:
+Public memory-object map/map-any/unmap paths now acquire an operation lease
+before object-registry access and retain it through scratch release and TLB
+invalidation. They release it explicitly after the operation returns, including
+ordinary failure; panic or abandonment retains the root. IPC loan-revocation
+paths still rely on IPC serialization, and MMIO paths have not been migrated.
+Before extending split-phase operation leases, implement:
 
-1. Lease admission before subsystem serialization, with backing, exact scratch
-   reservation and loan/connection authority retained in one operation owner.
+1. Compose IPC/MMIO leases with backing, exact scratch reservation and
+   loan/connection authority in one operation owner. IPC must acquire lifecycle
+   before IPC serialization, never from within an IPC guard.
 2. Translation identity capture after lazy root/tag preparation; then release
    preparation guards before rendezvous. Syscall entry's interrupt state and
    unrelated outer guards still matter for recipient progress.

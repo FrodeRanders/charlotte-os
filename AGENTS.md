@@ -120,9 +120,13 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   completion must not discharge the mapping pin or clear loan restrictions.
   Range checks do not replace generation/reservation ownership. See
   `docs/reference/scratch-admission.md`.
-  These pins do not replace lifecycle/IPC serialization or lease an ASID; do
-  not drop those guards across numeric-ASID finish without a generation fence.
-  See `docs/reference/memory-object-retirement.md`.
+  Public memory-object map/map-any/unmap operations own an
+  `AddressSpaceOperation` from before registry access through scratch completion
+  and TLB invalidation. Complete it explicitly on ordinary success/error; panic
+  or abandonment retains the root. IPC loan revocation still runs under IPC
+  serialization and must not acquire lifecycle beneath that guard. MMIO
+  operations have not yet migrated. These pins do not lease an ASID; see
+  `docs/reference/memory-object-retirement.md`.
   Final user-root close detaches into `RetiredAddressSpace`/`RetiredEntry`,
   leasing the software slot through post-guard invalidation and destruction.
   Never take/drop a published user root under the address-space table guard or

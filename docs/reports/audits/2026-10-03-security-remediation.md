@@ -3262,3 +3262,34 @@ policy is the next caller integration step, before activating production leases.
 General metadata admission, recoverable shootdown and complete hardware
 quiescence remain open. Contributor instructions, reference/testing Markdown,
 manual source and TLA+ conformance were updated; models and PDF were not rebuilt.
+
+## Continuation: lease public memory-object mappings — 2026-10-05
+
+The supervisor staged-close integration was committed as `a2a42424`. This
+continuation applies the generation lease to the public memory-object mapping
+syscalls. `map`, `map_any` and `unmap` acquire an `AddressSpaceOperation` before
+object-registry access and retain it across scratch allocation/release,
+page-table changes, mapping-pin completion and TLB invalidation. Their wrapper
+explicitly completes the lease on ordinary success and error returns. A panic
+or abandoned operation retains the root. New admission against a closing root
+returns the distinct memory status `AddressSpaceClosing` (17).
+
+This lets root close fence new leases and wait for an already-running public
+mapping syscall without holding the global lifecycle guard across its TLB
+invalidation. Existing `MappingRetirementPin` independently retains physical
+backing; it is not a generation lease. IPC loan revocation still uses IPC
+serialization, and MMIO map/unmap still need their own lease plus resource
+owner.
+
+Strict locked AArch64 `acpi,security_test` and x86-64 `acpi` Clippy pass, as do
+`cargo fmt --all -- --check` and `git diff --check`. No host or guest tests were
+run for this continuation. The public lease composition, close-race interleaving
+and new syscall status therefore still need direct fixture coverage before this
+path should be treated as fully verified.
+
+Production IPC loan/copy/move, MMIO and DMA/device invalidation are still
+incomplete. In particular, an IPC lease must be acquired before entering its
+global serialization, then be composed with all attachment/backing and reply
+authority so failed or abandoned completion retains every resource. The legacy
+paths' guards remain in place. SEC-18 remains partial; no x86 guest progress or
+hardware-quiescence proof is claimed.

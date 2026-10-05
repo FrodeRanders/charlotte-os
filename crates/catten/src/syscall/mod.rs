@@ -1326,6 +1326,7 @@ fn memory_status(error: object::MemoryObjectError) -> u64 {
         object::MemoryObjectError::NotLent => 14,
         object::MemoryObjectError::OutOfScratch => 15,
         object::MemoryObjectError::ResourceLimit => 16,
+        object::MemoryObjectError::AddressSpaceClosing => 17,
     }
 }
 

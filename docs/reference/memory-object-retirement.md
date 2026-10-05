@@ -106,10 +106,13 @@ the mapping operations described here still retain their outer serialization.
 
 A [live-generation lease foundation](live-address-space-operations.md) now
 retains roots through explicit completion and rejects busy close before mutation.
-Mapping/IPC/MMIO are not migrated yet. Backing pins, scratch/authority owners and
-the staged lease-admission fence and supervisor busy-close policy must be
-composed before releasing guards. Staged close does not fence every legacy
-mapping path or revoke its authority while older leases drain.
+Public memory-object map/map-any/unmap calls hold a lease through page-table
+changes and TLB invalidation, and release it on ordinary error as well as
+success. Their mapping pins still independently retain backing. IPC loan
+revocation continues to rely on IPC serialization; MMIO mapping is not migrated.
+Compose their backing/scratch/authority owners with leases before releasing those
+guards. The staged fence does not cover non-lease paths or revoke their
+authority while older operations drain.
 
 ## Verification
 

@@ -133,16 +133,18 @@ detachment. Its linear table/slot/generation token survives moving metadata.
 Root close rejects outstanding leases before subsystem retirement; only explicit
 completion of the last lease permits normal close. Abandonment retains the live
 root, tag and charges. Boot fixtures exercise this foundation, but production
-mapping and IPC still retain their masking guards. An owned staged-close request
-now fences new operation leases while older leases drain. Pending poll returns
+Public memory-object map, map-any and unmap calls now retain an operation lease
+through page-table changes and TLB invalidation. IPC loan revocation still uses
+IPC serialization, and MMIO operations remain to be migrated. An owned
+staged-close request fences new operation leases while older leases drain. Pending poll returns
 the request owner without subsystem retirement; once ready, cleanup proceeds
 through the detached-root boundary. Dropping the request or exhausting its
 lease-drain waiting budget retains the closing root, tag, slot and charges.
 Later completion cannot reopen admission. The fence applies to operation leases,
 not all existing resource paths, and the waiting budget does not bound hardware
 rendezvous. Split-phase integration still needs scratch/loan authority owners
-and operation leases in production mapping, IPC and MMIO paths. Deployment and
-node-shutdown supervisors now retain a teardown owner across polls and refuse
+and operation leases in IPC and MMIO paths. Deployment and node-shutdown
+supervisors retain a teardown owner across polls and refuse
 to report reclamation after a terminal error. They do not reclaim a root whose
 close failed or whose leases did not drain.
 

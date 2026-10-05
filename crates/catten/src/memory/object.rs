@@ -25,6 +25,10 @@ use crate::{
             PageType,
             VAddr,
         },
+        operation::{
+            AddressSpaceOperation,
+            OperationError,
+        },
         physical::PAddr,
     },
 };
@@ -66,6 +70,7 @@ pub enum MemoryObjectError {
     LendingActive,
     NotLent,
     ResourceLimit,
+    AddressSpaceClosing,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -593,6 +598,26 @@ pub(crate) fn close_scratch_address_space(asid: AddressSpaceId) {
     SCRATCH_WINDOWS.lock().remove(&asid);
 }
 
+/// Keep the exact address-space generation alive through a mapping operation,
+/// then explicitly finish its lease on both success and ordinary error paths.
+/// Panic or abandonment retains the generation rather than allowing premature
+/// teardown.
+fn with_address_space_operation<T>(
+    asid: AddressSpaceId,
+    operation: impl FnOnce() -> Result<T, MemoryObjectError>,
+) -> Result<T, MemoryObjectError> {
+    let handle = crate::memory::current_address_space_handle(asid)
+        .ok_or(MemoryObjectError::AddressSpaceMissing)?;
+    let lease = AddressSpaceOperation::acquire(handle).map_err(|error| match error {
+        OperationError::Closing => MemoryObjectError::AddressSpaceClosing,
+        OperationError::Limit => MemoryObjectError::ResourceLimit,
+        _ => MemoryObjectError::AddressSpaceMissing,
+    })?;
+    let result = operation();
+    lease.release().map_err(|_| MemoryObjectError::AddressSpaceMissing)?;
+    result
+}
+
 /// Map a memory object into the calling address space's scratch window at a
 /// kernel-assigned virtual address and return it.
 pub fn map_any(
@@ -600,10 +625,17 @@ pub fn map_any(
     cap: MemoryObjectCap,
     writable: bool,
 ) -> Result<VAddr, MemoryObjectError> {
-    // The scratch reservation and page-table installation belong to the same
-    // address-space lifetime. Otherwise teardown/reuse could occur between
-    // them and apply the old generation's reservation to the new occupant.
-    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+    with_address_space_operation(asid, || map_any_with_lease(asid, cap, writable))
+}
+
+fn map_any_with_lease(
+    asid: AddressSpaceId,
+    cap: MemoryObjectCap,
+    writable: bool,
+) -> Result<VAddr, MemoryObjectError> {
+    // The operation lease retains this exact generation across scratch
+    // reservation, page-table installation and TLB invalidation. Staged close
+    // fences later operations and waits for this owner before resource cleanup.
     let pages = {
         let registry = MEMORY_OBJECTS.lock();
         let cap_entry = registry.lookup(asid, cap)?;
@@ -650,8 +682,15 @@ pub fn map(
         return Err(MemoryObjectError::MapFailed);
     }
 
-    // Serialize against address-space teardown/reuse for the complete map.
-    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+    with_address_space_operation(asid, || map_with_lease(asid, cap, base, writable))
+}
+
+fn map_with_lease(
+    asid: AddressSpaceId,
+    cap: MemoryObjectCap,
+    base: VAddr,
+    writable: bool,
+) -> Result<(), MemoryObjectError> {
     let pages = {
         let registry = MEMORY_OBJECTS.lock();
         let cap_entry = registry.lookup(asid, cap)?;
@@ -673,7 +712,7 @@ pub fn map(
     result
 }
 
-/// Install a mapping while the caller holds `ADDRESS_SPACE_LIFECYCLE`.
+/// Install a mapping while the caller owns an exact address-space operation.
 fn map_locked(
     asid: AddressSpaceId,
     cap: MemoryObjectCap,
@@ -807,12 +846,12 @@ fn map_locked_with_cleanup(
 }
 
 pub fn unmap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), MemoryObjectError> {
-    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
-    unmap_serialized(asid, cap)
+    with_address_space_operation(asid, || unmap_serialized(asid, cap))
 }
 
-/// Caller holds lifecycle or IPC serialization. Retirement drains IPC before
-/// memory cleanup, so its mapped-loan revocations must not re-enter lifecycle.
+/// Caller retains either a live address-space operation or the global IPC
+/// serialization. Retirement drains IPC before memory cleanup, so mapped-loan
+/// revocation must not acquire lifecycle from underneath the IPC guard.
 fn unmap_serialized(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), MemoryObjectError> {
     let (mapping, pages, pin) = {
         let mut registry = MEMORY_OBJECTS.lock();
