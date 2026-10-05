@@ -3305,11 +3305,19 @@ owners; abandonment retains the capability claim and root. The syscall reports
 address-space closing and capability busy as distinct statuses.
 
 Strict AArch64 `acpi,security_test` and x86-64 `acpi` Clippy pass, along with
-formatting and diff checks. No tests were run for this continuation. The MMIO
-map/close interleaving therefore still needs direct fixture coverage.
+formatting and diff checks. The first AArch64 guest run found that resolving the
+address-space identity before checking the device capability changed established
+error precedence for retired fixture namespaces. A follow-up exposed the same
+issue for a valid but unmapped MMIO capability. The adapter now probes the
+capability/type/mapping state first, then acquires the exact address-space lease,
+and repeats the checks atomically when claiming the operation. The corrected
+`--security-test --fresh-storage` AArch64 run completed with 19 passed, 0 failed,
+0 pending.
 
 `device_close` and whole-address-space device cleanup still perform MMIO
 invalidation under lifecycle serialization. IRQ/DMA/device teardown, IPC loan
 revocation and attachment operations have not been converted to lease-composed
 owners. SEC-18 remains partial; this change only removes the global lifecycle
-guard from public MMIO mapping syscalls.
+guard from public MMIO mapping syscalls. The guest covers ordinary map/unmap and
+close behavior, but does not force `device_close` to race an in-flight operation;
+that specific interleaving remains untested.

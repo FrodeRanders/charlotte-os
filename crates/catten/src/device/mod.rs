@@ -159,6 +159,23 @@ struct MmioOperation {
 }
 
 impl MmioOperation {
+    fn validate(
+        asid: AddressSpaceId,
+        cap: DeviceCap,
+        expect_mapped: bool,
+    ) -> Result<(), DeviceError> {
+        let mut devices = DEVICES.lock();
+        match lookup_mut(&mut devices, asid, cap)? {
+            DeviceObject::Mmio(region) if region.operation_in_flight => {
+                Err(DeviceError::OperationInFlight)
+            }
+            DeviceObject::Mmio(region) if region.mapped.is_some() == expect_mapped => Ok(()),
+            DeviceObject::Mmio(_) if expect_mapped => Err(DeviceError::NotMapped),
+            DeviceObject::Mmio(_) => Err(DeviceError::AlreadyMapped),
+            _ => Err(DeviceError::WrongType),
+        }
+    }
+
     fn begin(asid: AddressSpaceId, cap: DeviceCap) -> Result<Self, DeviceError> {
         let mut devices = DEVICES.lock();
         let object = lookup_mut(&mut devices, asid, cap)?;
@@ -706,8 +723,13 @@ pub fn dma_unmap(
 fn with_mmio_operation<T>(
     asid: AddressSpaceId,
     cap: DeviceCap,
+    expect_mapped: bool,
     operation: impl FnOnce() -> Result<T, DeviceError>,
 ) -> Result<T, DeviceError> {
+    // Preserve capability/type error precedence for callers whose namespace
+    // has already gone away; repeat the check when claiming below because the
+    // capability may close between this probe and lease acquisition.
+    MmioOperation::validate(asid, cap, expect_mapped)?;
     let handle =
         crate::memory::current_address_space_handle(asid).ok_or(DeviceError::NamespaceRetired)?;
     let address_space = AddressSpaceOperation::acquire(handle).map_err(|error| match error {
@@ -744,7 +766,7 @@ pub fn mmio_map(
     if !charlotte_launch::user_address::valid_pages(base.into(), 1) {
         return Err(DeviceError::MapFailed);
     }
-    with_mmio_operation(asid, cap, || mmio_map_with_operation(asid, cap, base, writable))
+    with_mmio_operation(asid, cap, false, || mmio_map_with_operation(asid, cap, base, writable))
 }
 
 fn mmio_map_with_operation(
@@ -789,7 +811,7 @@ pub fn mmio_map_any(
     cap: DeviceCap,
     writable: bool,
 ) -> Result<VAddr, DeviceError> {
-    with_mmio_operation(asid, cap, || mmio_map_any_with_operation(asid, cap, writable))
+    with_mmio_operation(asid, cap, false, || mmio_map_any_with_operation(asid, cap, writable))
 }
 
 fn mmio_map_any_with_operation(
@@ -864,7 +886,7 @@ fn map_mmio_at(
 
 /// Unmap a previously mapped MMIO region from the caller's address space.
 pub fn mmio_unmap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError> {
-    with_mmio_operation(asid, cap, || mmio_unmap_with_operation(asid, cap))
+    with_mmio_operation(asid, cap, true, || mmio_unmap_with_operation(asid, cap))
 }
 
 fn mmio_unmap_with_operation(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError> {
