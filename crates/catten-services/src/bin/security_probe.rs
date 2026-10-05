@@ -17,6 +17,7 @@ use catten_rt::{
         Endpoint,
         OwnedMemory,
         PendingCall,
+        ThreadHandle,
     },
 };
 use catten_services::{
@@ -49,6 +50,10 @@ impl Drop for CloseWatches {
     fn drop(&mut self) {
         drop(self.endpoint.take());
     }
+}
+
+extern "C" fn thread_probe_entry() {
+    unsafe { catten_syscall::thread_exit() }
 }
 
 fn check(condition: bool, failure: u32) {
@@ -472,6 +477,20 @@ fn main(ctx: Context) -> ! {
     drop(cancel_connection);
     check(Completion::timer(1).and_then(Completion::wait).is_ok(), 38);
     checks |= 16_384;
+    // This descriptor permits only the already-running main thread. Failed
+    // construction must return an error and leave the domain able to proceed.
+    check(unsafe { ThreadHandle::spawn(thread_probe_entry as *const () as usize, 0) }.is_err(), 42);
+    let foreign_tid = match ctx.manifest_value(status::FOREIGN_THREAD_KEY) {
+        Some(ManifestValue::Unsigned(tid)) => tid,
+        _ => {
+            check(false, 43);
+            0
+        }
+    };
+    check(unsafe { catten_syscall::observe_thread_exit(foreign_tid) } == u64::MAX, 44);
+    check(catten_syscall::observe_thread_exit_generation(foreign_tid, u64::MAX) == u64::MAX, 45);
+    check(catten_syscall::socket_owner_status(0, 0, 0) == u64::MAX, 46);
+    checks |= 32_768;
     config::write::<u32>(status::CHECKS, checks);
     config::write::<u32>(status::STAGE, status::PASSED);
     catten_rt::logln!("[security-probe] passed checks={:#x}", checks);

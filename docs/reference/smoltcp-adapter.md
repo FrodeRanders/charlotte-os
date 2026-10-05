@@ -140,7 +140,7 @@ state aggregated across the node:
 
 The TCP/IP service allocates its smoltcp `SocketSet` once at startup. Its
 launch manifest accepts the bounded `sockslot`, `sockquot`, and `bufquot`
-values (64 slots, 64 sockets per domain, and 2 MiB per-domain buffers by
+values (64 slots, 16 sockets per domain, and 2 MiB per-domain buffers by
 default; the policy ceilings are 1024, 1024, and 32 MiB respectively). The
 effective socket capacity is clamped to the tcpip domain's heap, so a normal
 4 MiB domain remains at 64 slots while a larger launch budget can support more.
@@ -160,11 +160,22 @@ Socket and buffer budgets are accounted against that identity, preventing one
 application from exhausting the shared network service. This is a service-side
 quota: the physical pages are still owned by the tcpip domain, and kernel-level
 cross-domain memory charging is a later accounting refinement. The status
-snapshot also reports the configured capacity and quotas. Domain-death
-reclamation is kept as an explicit lifecycle integration point; generation
-checks prevent stale access while that notification path is developed. A
-graceful close is reclaimed as soon as smoltcp reaches a terminal state; if a
-peer leaves the connection in FIN-WAIT/TIME-WAIT, tcpip force-aborts it after a
+snapshot also reports the configured capacity and quotas.
+
+Sixteen application slots (or all available slots in a smaller table) are
+reserved for kernel-designated platform domains. Ordinary clients cannot
+claim platform status through artifact names, roles or manifests. TCP/IP's
+trusted launch installs an exact-generation kernel designation before its
+first thread runs. Only that service may query authenticated socket-owner
+liveness and platform classification. A dead, aborting, closing or replaced
+owner loses all sockets, including TCP listeners and open UDP sockets, on the
+next progressing reactor sweep. Numeric ASID reuse cannot revive them.
+
+Creation reply failure removes the newly installed record and smoltcp socket
+immediately. Unactivated sockets whose successful creation result was never
+observed expire after five seconds. Deferred receives own a `ReplyToken`, so
+reclamation also closes retained IPC authority. Graceful close is reclaimed as
+soon as smoltcp reaches a terminal state; if a peer leaves the connection in FIN-WAIT/TIME-WAIT, tcpip force-aborts it after a
 bounded five-second grace period. This prevents reconnect churn from pinning a
 tenant's quota indefinitely. Applications should still close sockets promptly,
 and callers retrying admission receive bounded backoff rather than an

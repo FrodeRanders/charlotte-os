@@ -47,3 +47,16 @@ The S3 TLS service prefers architectural random words and transparently uses
 the `rng` service for any remainder. Other applications should resolve `rng`
 through the name service and retain the returned owned connection rather than
 accessing VirtIO or DMA directly.
+
+## TCP/IP startup
+
+TCP/IP initializes its smoltcp interface only after obtaining 40 fresh entropy
+bytes through the architectural source or the owned `rng` service connection.
+Failure withholds network startup; no public constant or clock supplies a
+fallback. Eight bytes seed smoltcp's existing protocol RNG. The remaining 32
+bytes independently key HMAC-SHA-256 counter-based ephemeral-port selection in
+49152–65535. Port selection is not a public ascending sequence, and disclosure
+of smoltcp's seed does not reveal the port key. Keys are wiped when dropped.
+
+This hardens startup random state; it does not replace smoltcp's internal RNG
+with a cryptographic generator or authenticate network peers.

@@ -220,6 +220,7 @@ pub fn validate_user_elf(image: &[u8]) -> bool {
             return false;
         }
         let reserved = [
+            (charlotte_launch::user_address::STACK_BASE, charlotte_launch::user_address::STACK_END),
             (CONFIG_VADDR, CONFIG_VADDR + PAGE_SIZE),
             (CQ_VADDR, CQ_VADDR + PAGE_SIZE),
             (INPUT_VADDR, INPUT_VADDR + PAGE_SIZE),

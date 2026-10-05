@@ -189,6 +189,7 @@ pub mod scratch;
 pub mod shard;
 pub mod statistics;
 pub mod syscall;
+mod thread_admission;
 pub mod waiters;
 
 use crate::logln;
@@ -294,6 +295,7 @@ pub fn run_synchronous_self_tests() {
     completion::test_completion_caps();
     completion::test_detached_operations();
     crate::completion::exit_tests::test_admission();
+    thread_admission::run();
     crate::completion::callback_tests::test_admission();
     ipc::test_endpoint_ipc();
     ipc::test_endpoint_resize();

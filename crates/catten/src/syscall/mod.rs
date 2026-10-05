@@ -375,6 +375,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::MonotonicClock => sys_monotonic_clock(frame),
         SyscallNumber::NodePressure => sys_node_pressure(frame),
         SyscallNumber::LaunchDescriptorMatches => sys_launch_descriptor_matches(frame),
+        SyscallNumber::SocketOwnerStatus => sys_socket_owner_status(frame),
         SyscallNumber::IsFrameRouter => {
             frame.regs[0] = u64::from(crate::service::supervisor::is_frame_router(
                 frame.regs[1] as usize,
@@ -385,6 +386,41 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
 }
 
 // ---- individual syscall implementations ------------------------------------
+
+fn sys_socket_owner_status(frame: &mut TrapFrame) {
+    let caller = caller_asid(frame);
+    let target = frame.regs[1] as usize;
+    let generation = frame.regs[2];
+    let principal = frame.regs[3];
+    frame.regs[0] = u64::MAX;
+    if !crate::service::supervisor::is_tcpip(caller) {
+        return;
+    }
+    frame.regs[0] = 0;
+    let Some(authority) = crate::memory::domain_authority(target) else {
+        return;
+    };
+    if authority.address_space.generation() as u64 != generation || authority.principal != principal
+    {
+        return;
+    }
+    let Ok(operation) =
+        crate::memory::operation::AddressSpaceOperation::acquire(authority.address_space)
+    else {
+        return;
+    };
+    if crate::cpu::scheduler::system_scheduler::domain_has_live_threads(authority.address_space) {
+        frame.regs[0] =
+            if crate::memory::budget::platform_identity(target) == Some(authority.address_space) {
+                2
+            } else {
+                1
+            };
+    }
+    if operation.release().is_err() {
+        frame.regs[0] = 0;
+    }
+}
 
 fn sys_launch_descriptor_matches(frame: &mut TrapFrame) {
     let mut digest = [0; 32];
@@ -893,6 +929,13 @@ fn sys_spawn_thread(frame: &mut TrapFrame) {
     let entry_vaddr = frame.regs[1] as usize;
     let target_lp = frame.regs[2] as LpId;
 
+    frame.regs[0] = u64::MAX;
+    frame.regs[1] = 0;
+    if !charlotte_launch::user_address::valid_range(entry_vaddr, 1)
+        || frame.regs[2] >= crate::cpu::multiprocessor::get_lp_count() as u64
+    {
+        return;
+    }
     // A shard runs at EL0 in the *caller's* address space. `Thread::new` with a
     // non-kernel ASID builds a user thread context that drops to EL0 via
     // `user_trampoline`, loading the entry into ELR_EL1 and switching TTBR0 to
@@ -910,39 +953,37 @@ fn sys_spawn_thread(frame: &mut TrapFrame) {
     // through `scheduler::spawn_thread` (which submits to the least-loaded LP)
     // and then `submit_to_lp`: that would enqueue the same thread on two run
     // queues.
-    let thread = Thread::new(asid, entry_fn);
+    let thread = match Thread::try_new(asid, entry_fn) {
+        Ok(thread) => thread,
+        Err(_) => {
+            frame.regs[0] = u64::MAX;
+            frame.regs[1] = 0;
+            return;
+        }
+    };
     let generation = thread.generation;
     let tid = match publish_thread(thread) {
         Ok(tid) => tid,
-        Err(error) => {
-            let table_threads = crate::cpu::scheduler::threads::thread_count_for_asid(asid);
-            let max_threads = crate::memory::current_address_space_handle(asid)
-                .map(|_| crate::memory::domain_limits(asid).max_threads);
-            crate::early_logln!(
-                "SPAWN_THREAD: address space {} rejected new thread: {:?} table_threads={} \
-                 max_threads={:?}",
-                asid,
-                error,
-                table_threads,
-                max_threads
-            );
-            crate::cpu::scheduler::abort_address_space(asid)
+        Err(_) => {
+            frame.regs[0] = u64::MAX;
+            frame.regs[1] = 0;
+            return;
         }
     };
-    SYSTEM_SCHEDULER.read().submit_to_lp(tid, target_lp).unwrap_or_else(|_| {
-        let lpc = crate::cpu::multiprocessor::get_lp_count();
-        logln!(
-            "SPAWN_THREAD: target LP {target_lp} does not exist (lp_count={lpc}); falling back to \
-             least-loaded LP"
-        );
-        SYSTEM_SCHEDULER
-            .read()
-            .submit_new_thread(tid)
-            .map(|_| ())
-            .expect("SPAWN_THREAD: submit_new_thread fallback failed")
-    });
+    if SYSTEM_SCHEDULER.read().submit_to_lp(tid, target_lp).is_err() {
+        let retired = {
+            let mut table = crate::cpu::scheduler::threads::MASTER_THREAD_TABLE.write();
+            if table.get(tid).is_ok_and(|thread| thread.generation == generation) {
+                table.take_element(tid).ok()
+            } else {
+                None
+            }
+        };
+        drop(retired);
+        return;
+    }
     // Return the recyclable thread id in x0 and the publication generation in
-    // x1. Legacy callers use x0 only; ownership-aware runtimes retain both so
+    // x1. Ownership-aware runtimes retain both so
     // a delayed join cannot attach to a replacement occupying the same slot.
     frame.regs[0] = tid as u64;
     frame.regs[1] = generation;
@@ -967,7 +1008,7 @@ fn sys_observe_thread_exit(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
     let tid = frame.regs[1] as crate::cpu::scheduler::threads::ThreadId;
     let expected_generation = (frame.regs[2] != 0).then_some(frame.regs[2]);
-    match crate::completion::observe_thread_exit_with_generation(asid, tid, expected_generation) {
+    match crate::completion::observe_own_thread_exit(asid, tid, expected_generation) {
         Ok(cap) => frame.regs[0] = cap,
         Err(_) => frame.regs[0] = u64::MAX,
     }
@@ -2197,22 +2238,20 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
         crate::service::bootstrap::write_handoff_state(loaded.config_frame, 1, moved_cap, 0);
     }
 
-    // Start the replacement domain.
-    let entry_vaddr = loaded.entry_vaddr;
-    let entry: extern "C" fn() =
-        unsafe { core::mem::transmute::<usize, extern "C" fn()>(entry_vaddr) };
-    crate::cpu::scheduler::spawn_thread_on_lp(
-        loaded.asid,
-        entry,
-        crate::cpu::isa::lp::ops::get_lp_id(),
-    );
+    // Preparation failure tears down the unstarted replacement namespace.
+    let new_asid = loaded.asid;
+    let limits = crate::service::supervisor::adaptive_service_limits(loaded.address_space);
+    if crate::service::supervisor::try_start_domain_with_limits(loaded, limits).is_err() {
+        frame.regs[0] = 0;
+        return;
+    }
     // The replacement was deliberately queued on this LP. Yield once before
     // returning to the manager so the child reaches its startup/registration
     // path ahead of the parent issuing the publication lookup.
     crate::cpu::scheduler::yield_lp();
 
     // Report the new domain's ASID as evidence.
-    frame.regs[0] = loaded.asid as u64;
+    frame.regs[0] = new_asid as u64;
 }
 
 fn deployment_agent_authorized(caller_asid: crate::memory::AddressSpaceId) -> bool {

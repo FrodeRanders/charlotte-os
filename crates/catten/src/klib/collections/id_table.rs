@@ -148,6 +148,18 @@ impl<T> IdTable<T> {
         }
     }
 
+    /// Prepare every growing metadata vector before publishing the payload.
+    pub(crate) fn try_add_element(&mut self, element: T) -> Result<usize, (T, Error)> {
+        if let Some(&id) = self.available_ids.last() {
+            if self.slots[id].generation == usize::MAX {
+                return Err((element, Error::AllocationFailed));
+            }
+        } else if self.list.try_reserve(1).is_err() || self.slots.try_reserve(1).is_err() {
+            return Err((element, Error::AllocationFailed));
+        }
+        Ok(self.add_element(element))
+    }
+
     pub fn get(&self, element_id: usize) -> Result<&T, Error> {
         self.list.get(element_id).ok_or(Error::IdNotActive)?.as_ref().ok_or(Error::IdNotActive)
     }

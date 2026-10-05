@@ -1272,6 +1272,30 @@ pub(crate) fn observe_thread_exit_with_generation(
     tid: crate::cpu::scheduler::threads::ThreadId,
     expected_generation: Option<crate::cpu::scheduler::threads::ThreadGeneration>,
 ) -> Result<CompletionCap, SubmitError> {
+    observe_thread_exit_scoped(asid, tid, expected_generation, None)
+}
+
+/// EL0 adapter: target authority is restricted to the exact caller domain.
+pub(crate) fn observe_own_thread_exit(
+    asid: AddressSpaceId,
+    tid: crate::cpu::scheduler::threads::ThreadId,
+    expected_generation: Option<crate::cpu::scheduler::threads::ThreadGeneration>,
+) -> Result<CompletionCap, SubmitError> {
+    let handle =
+        crate::memory::current_address_space_handle(asid).ok_or(SubmitError::WouldBlock)?;
+    let operation = crate::memory::operation::AddressSpaceOperation::acquire(handle)
+        .map_err(|_| SubmitError::WouldBlock)?;
+    let result = observe_thread_exit_scoped(asid, tid, expected_generation, Some(handle));
+    operation.release().map_err(|_| SubmitError::WouldBlock)?;
+    result
+}
+
+fn observe_thread_exit_scoped(
+    asid: AddressSpaceId,
+    tid: crate::cpu::scheduler::threads::ThreadId,
+    expected_generation: Option<crate::cpu::scheduler::threads::ThreadGeneration>,
+    caller: Option<crate::memory::AddressSpaceHandle>,
+) -> Result<CompletionCap, SubmitError> {
     let mut submission = EventSubmission::new(asid)?;
     let cap = submission.cap();
     let completion = submission.completion().clone();
@@ -1282,18 +1306,28 @@ pub(crate) fn observe_thread_exit_with_generation(
         completion: Arc::downgrade(&completion),
     })
     .map_err(|_| SubmitError::WouldBlock)?;
-    let registration = match expected_generation {
-        Some(generation) => crate::cpu::scheduler::observe_thread_exit_with_generation(
+    let registration = if let Some(caller) = caller {
+        crate::cpu::scheduler::observe_thread_exit_in_domain(
+            caller,
             tid,
-            generation,
+            expected_generation,
             Arc::downgrade(&observer),
             submission.take_charge(),
-        ),
-        None => crate::cpu::scheduler::observe_thread_exit(
-            tid,
-            Arc::downgrade(&observer),
-            submission.take_charge(),
-        ),
+        )
+    } else {
+        match expected_generation {
+            Some(generation) => crate::cpu::scheduler::observe_thread_exit_with_generation(
+                tid,
+                generation,
+                Arc::downgrade(&observer),
+                submission.take_charge(),
+            ),
+            None => crate::cpu::scheduler::observe_thread_exit(
+                tid,
+                Arc::downgrade(&observer),
+                submission.take_charge(),
+            ),
+        }
     };
     match registration {
         Ok(registration) => {

@@ -741,10 +741,9 @@ fn launch_network_appliance_with_services_mode(
         };
         manifest_len += 1;
     }
-    let tcpip = crate::service::supervisor::spawn_with_manifest(
+    let tcpip = crate::service::supervisor::spawn_tcpip_with_manifest(
         crate::service::store::service_elf(b"tcpip").expect("[launch] tcpip.elf"),
         ns,
-        ConnectionRights::CALL,
         &manifest[..manifest_len],
     );
     let httpd = crate::service::supervisor::spawn_with_manifest(

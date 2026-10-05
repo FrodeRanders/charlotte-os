@@ -683,7 +683,7 @@ pub fn map(
     if !base.is_aligned_to(PAGE_SIZE) {
         return Err(MemoryObjectError::NotPageAligned);
     }
-    if !charlotte_launch::user_address::valid_pages(base.into(), 1) {
+    if !charlotte_launch::user_address::valid_application_pages(base.into(), 1) {
         return Err(MemoryObjectError::MapFailed);
     }
 
@@ -757,7 +757,10 @@ fn map_locked_with_cleanup(
             .objects
             .get_mut(&cap_entry.object)
             .ok_or(MemoryObjectError::UnknownCapability)?;
-        if !charlotte_launch::user_address::valid_pages(base.into(), object.frames.len()) {
+        if !charlotte_launch::user_address::valid_application_pages(
+            base.into(),
+            object.frames.len(),
+        ) {
             return Err(MemoryObjectError::MapFailed);
         }
         if object.destroy_when_unpinned || object.retirement_pins != 0 {

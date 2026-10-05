@@ -786,7 +786,7 @@ pub fn mmio_map(
     if !base.is_aligned_to(PAGE_SIZE) {
         return Err(DeviceError::NotPageAligned);
     }
-    if !charlotte_launch::user_address::valid_pages(base.into(), 1) {
+    if !charlotte_launch::user_address::valid_application_pages(base.into(), 1) {
         return Err(DeviceError::MapFailed);
     }
     with_mmio_operation(asid, cap, false, || mmio_map_with_operation(asid, cap, base, writable))
@@ -880,7 +880,8 @@ fn map_mmio_at(
     cap: DeviceCap,
     mapping: MmioMapping,
 ) -> Result<(), DeviceError> {
-    if !charlotte_launch::user_address::valid_pages(mapping.base.into(), mapping.pages) {
+    if !charlotte_launch::user_address::valid_application_pages(mapping.base.into(), mapping.pages)
+    {
         return Err(DeviceError::InvalidRange);
     }
     for index in 0..mapping.pages {

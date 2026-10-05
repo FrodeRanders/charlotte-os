@@ -10,6 +10,7 @@ pub(crate) mod operation;
 pub mod physical;
 pub(crate) mod preparation;
 pub(crate) mod retirement;
+pub(crate) mod thread_stack;
 pub(crate) mod translation;
 pub mod usage;
 

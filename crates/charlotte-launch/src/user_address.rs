@@ -10,6 +10,21 @@ pub fn valid_range(start: usize, len: usize) -> bool {
     start >= PAGE_SIZE && len != 0 && start.checked_add(len).is_some_and(|end| end <= USER_END)
 }
 
+/// Exclusive per-domain stack arena, including one guard page per slot.
+pub const STACK_BASE: usize = 0x0100_0000;
+pub const STACK_STRIDE: usize = (crate::MAX_USER_STACK_PAGES + 1) * PAGE_SIZE;
+pub const STACK_END: usize = STACK_BASE + crate::MAX_USER_THREADS * STACK_STRIDE;
+
+pub fn overlaps_stack(start: usize, len: usize) -> bool {
+    start.checked_add(len).is_none_or(|end| start < STACK_END && STACK_BASE < end)
+}
+
+/// Application-selected mappings cannot occupy current or future stacks.
+pub fn valid_application_pages(start: usize, pages: usize) -> bool {
+    valid_pages(start, pages)
+        && pages.checked_mul(PAGE_SIZE).is_some_and(|len| !overlaps_stack(start, len))
+}
+
 pub fn valid_pages(start: usize, pages: usize) -> bool {
     start.is_multiple_of(PAGE_SIZE)
         && pages.checked_mul(PAGE_SIZE).is_some_and(|len| valid_range(start, len))
@@ -18,6 +33,19 @@ pub fn valid_pages(start: usize, pages: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn applications_cannot_map_stacks_or_bridge_their_guards() {
+        assert!(valid_application_pages(STACK_BASE - PAGE_SIZE, 1));
+        assert!(!valid_application_pages(STACK_BASE - PAGE_SIZE, 2));
+        assert!(!valid_application_pages(STACK_BASE, 1));
+        assert!(!valid_application_pages(STACK_END - PAGE_SIZE, 1));
+        assert!(valid_application_pages(STACK_END, 1));
+        assert!(!valid_application_pages(PAGE_SIZE, usize::MAX));
+        for slot in 0..crate::MAX_USER_THREADS {
+            assert!(!valid_application_pages(STACK_BASE + slot * STACK_STRIDE, 1));
+        }
+    }
 
     #[test]
     fn mapping_ranges_reject_aliases_kernel_null_and_overflow() {

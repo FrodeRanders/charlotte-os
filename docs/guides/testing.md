@@ -751,3 +751,26 @@ test harness. The authorization implementation follows this rule: the policy
 engine is host-tested independently, while connection minting remains target
 code and must not be enabled until the kernel supplies an authenticated,
 generation-aware caller identity.
+
+## Renewed security regressions (2026-10-05)
+
+`scripts/run-host-tests.sh` exercises the production socket registry against
+fixed smoltcp storage: rejected creation delivery, dead-owner generations,
+unactivated expiry, admission reserves and buffer-count recovery. It also
+checks complete/partial entropy failure, independent interface/port keys and
+stack-arena application mapping exclusions.
+
+The synchronous boot suite runs `self_test::thread_admission::run` on both
+compiled architecture paths. It forces a stack collision without overwriting
+the existing page, rejects quota before backing allocation, injects initial
+allocation rejection, fills all 64 stack reservations, churns slots, verifies
+initial-launch rollback and ASID reuse, and sends raw foreign user/kernel
+watch syscalls with zero, matching and stale generations. Same-domain and
+trusted internal watches remain covered.
+
+`scripts/run-aarch64.sh --security-test --instance NAME --fresh-storage
+--timeout 130` additionally executes EL0 spawn-quota rejection, foreign watch
+rejection and denial of TCP/IP's privileged owner-status syscall. Its scoped
+probe reports `checks=0xffff`. These checks supplement the 19 deferred tests.
+The final remediation evidence is linked from
+[the remediation report](../reports/audits/2026-10-05-security-remediation.md).

@@ -156,8 +156,12 @@ fn test_validation() {
     image[24..32].copy_from_slice(&gap.to_le_bytes());
     image[80..88].copy_from_slice(&gap.to_le_bytes());
     assert!(!validate_user_elf(&image), "ELF cannot occupy the adaptive heap extension");
-    image[24..32].copy_from_slice(&0x0100_0000u64.to_le_bytes());
-    image[80..88].copy_from_slice(&0x0100_0000u64.to_le_bytes());
+    let stack = charlotte_launch::user_address::STACK_BASE as u64;
+    image[24..32].copy_from_slice(&stack.to_le_bytes());
+    image[80..88].copy_from_slice(&stack.to_le_bytes());
+    assert!(!validate_user_elf(&image), "ELF cannot occupy the stack arena");
+    image[24..32].copy_from_slice(&0x0400_0000u64.to_le_bytes());
+    image[80..88].copy_from_slice(&0x0400_0000u64.to_le_bytes());
     image[104..112]
         .copy_from_slice(&(backing_budget::IMAGE_DOMAIN_PAGES * PAGE_SIZE as u64).to_le_bytes());
     assert!(validate_user_elf(&image));

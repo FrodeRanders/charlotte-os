@@ -10,6 +10,28 @@ impl Drop for Tracked {
 }
 
 #[test]
+fn rejected_fallible_publication_returns_the_owner_without_running_drop() {
+    let drops = Arc::new(AtomicUsize::new(0));
+    let mut table = IdTable::new();
+    let id = table.add_element(Tracked(drops.clone()));
+    drop(table.take_element(id).unwrap());
+    table.slots[id].generation = usize::MAX;
+    let Err((owner, error)) = table.try_add_element(Tracked(drops.clone())) else {
+        panic!("exhausted generation must reject before publication");
+    };
+    assert_eq!(error, Error::AllocationFailed);
+    assert_eq!(drops.load(Ordering::Relaxed), 1);
+    assert!(table.get(id).is_err());
+    assert_eq!(table.available_ids, [id]);
+    // The caller can now release its serialization before destroying a payload
+    // that may invalidate translations or reenter scheduler/source registries.
+    drop(table);
+    assert_eq!(drops.load(Ordering::Relaxed), 1);
+    drop(owner);
+    assert_eq!(drops.load(Ordering::Relaxed), 2);
+}
+
+#[test]
 fn staged_close_fences_new_leases_but_allows_existing_completions() {
     let mut table = IdTable::new();
     let id = table.add_element(1);

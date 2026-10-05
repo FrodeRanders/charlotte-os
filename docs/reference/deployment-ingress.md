@@ -72,9 +72,9 @@ four 4 KiB stack pages per thread and at most one active thread, including the
 bootstrap thread, with five seconds to drain before forced retirement. Valid
 `CDEPLOY5` execution values are 1 through 64; shutdown grace is zero through
 300,000 milliseconds. All three values are signed and enforced exactly by the kernel; values outside those
-ranges are rejected rather than clamped. A thread publication beyond the
-signed quota aborts that protection domain under the current fail-closed spawn
-ABI. The release pipeline should take all three requirements from the signed,
+ranges are rejected rather than clamped. A thread spawn beyond the signed
+quota rejects before stack construction and returns `(u64::MAX, 0)`; the owned
+runtime reports `ThreadError::SpawnFailed`, leaving the caller running. The release pipeline should take all three requirements from the signed,
 developer-reviewed component plan. For compatibility, `CDEPLOY1` is interpreted
 as four pages and 16 threads, while `CDEPLOY2` retains its signed stack pages
 and receives the 16-thread default. `CDEPLOY3` receives the five-second

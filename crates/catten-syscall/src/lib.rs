@@ -156,6 +156,7 @@ define_syscall_numbers!(
     (NodePressure, 82),
     (LaunchDescriptorMatches, 83),
     (IsFrameRouter, 84),
+    (SocketOwnerStatus, 85),
 );
 
 /// Supervisor-assigned roles carried in the kernel-authenticated IPC sender
@@ -436,6 +437,7 @@ unsafe fn svc3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             80 => asm!("svc #80", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             82 => asm!("svc #82", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             84 => asm!("svc #84", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            85 => asm!("svc #85", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             _ => panic!("syscall {:?} has no svc3 emitter", imm),
         }
     }
@@ -1391,7 +1393,8 @@ pub unsafe fn spawn_thread(entry_vaddr: usize, target_lp: u32) -> u64 {
 }
 
 /// Spawn a new EL0 thread and return its recyclable numeric id together with
-/// the monotonic generation captured at publication time.
+/// the monotonic generation captured at publication time. Failure returns
+/// `(u64::MAX, 0)` without terminating the caller.
 ///
 /// The generation must accompany the id when registering a delayed exit
 /// observer, otherwise TID reuse could attach the observer to a replacement.
@@ -1500,6 +1503,13 @@ pub fn launch_descriptor_matches(asid: u64, generation: u64, digest: &[u8; 32]) 
 /// Check a kernel-authenticated sender against the designated live router.
 pub fn is_frame_router(asid: u64, generation: u64) -> bool {
     unsafe { svc3(SyscallNumber::IsFrameRouter, asid, generation, 0) == 1 }
+}
+
+/// Trusted TCP/IP adapter query for an authenticated socket owner. Returns
+/// 0 for dead/stale, 1 for an ordinary live domain, 2 for a platform domain.
+/// All other callers receive u64::MAX; this does not delegate watch authority.
+pub fn socket_owner_status(asid: u64, generation: u64, principal: u64) -> u64 {
+    unsafe { svc3(SyscallNumber::SocketOwnerStatus, asid, generation, principal) }
 }
 
 /// Send a 64-bit message to the target LP's domain-local mailbox.

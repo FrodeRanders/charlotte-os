@@ -351,6 +351,7 @@ pub struct Thread {
     /// pinned regardless of table reallocation.
     pub context: Box<ThreadContext>,
     pub asid: AddressSpaceId,
+    pub(crate) address_space: Option<crate::memory::AddressSpaceHandle>,
     /// Distinguishes successive occupants of a reusable [`ThreadId`] slot.
     pub generation: ThreadGeneration,
     pub(crate) wait_sponsor: crate::klib::observer::WaitSponsor,
@@ -390,28 +391,47 @@ pub const THREAD_CTX_OFFSET: usize = offset_of!(Thread, context);
 
 impl Thread {
     pub fn new(asid: AddressSpaceId, entry_point: extern "C" fn()) -> Self {
+        Self::try_new(asid, entry_point).expect("mandatory thread construction failed")
+    }
+
+    pub(crate) fn try_new(
+        asid: AddressSpaceId,
+        entry_point: extern "C" fn(),
+    ) -> Result<Self, crate::cpu::scheduler::system_scheduler::Error> {
+        use crate::cpu::scheduler::system_scheduler::Error;
+        let address_space = if asid == KERNEL_ASID {
+            None
+        } else {
+            Some(crate::memory::current_address_space_handle(asid).ok_or(Error::ThreadTerminated)?)
+        };
         let generation = NEXT_THREAD_GENERATION
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
                 charlotte_lifecycle::claim_generation(next).map(|(_, following)| following)
             })
-            .unwrap_or_else(|_| panic!("thread generation namespace exhausted"));
+            .map_err(|_| Error::ThreadPreparationFailed)?;
         let context = if asid != KERNEL_ASID {
             let limits = crate::memory::domain_limits(asid);
-            let context = ThreadContext::create_user_thread_context(
-                asid,
+            ThreadContext::create_user_thread_context(
+                address_space.expect("user identity captured"),
                 entry_point,
                 limits.user_stack_pages,
             )
-            .expect("Error creating user thread context");
-            crate::memory::usage::note_thread_created(asid, limits.user_stack_pages);
-            context
+            .map_err(|_| Error::ThreadPreparationFailed)?
         } else {
             ThreadContext::create_kernel_thread_context(entry_point)
-                .expect("Error creating kernel thread context")
+                .map_err(|_| Error::ThreadPreparationFailed)?
         };
-        Thread {
-            context: Box::new(context),
+        let context = Box::try_new(context).map_err(|_| Error::ThreadPreparationFailed)?;
+        if asid != KERNEL_ASID {
+            crate::memory::usage::note_thread_created(
+                asid,
+                crate::memory::domain_limits(asid).user_stack_pages,
+            );
+        }
+        Ok(Thread {
+            context,
             asid,
+            address_space,
             generation,
             wait_sponsor: crate::memory::budget::waiter_sponsor(asid),
             timer_sponsor: crate::memory::budget::timer_sponsor(asid),
@@ -428,7 +448,7 @@ impl Thread {
             retired_tid: None,
             reap_lp: None,
             exit_observers: exit_source::ExitSource::new(),
-        }
+        })
     }
 
     fn trace_lifecycle(&self, phase: u64, current_sp: usize) {

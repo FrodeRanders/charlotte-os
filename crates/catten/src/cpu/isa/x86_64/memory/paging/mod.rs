@@ -65,6 +65,7 @@ pub struct AddressSpace {
     /// Physical frames allocated for this address space's user mappings.
     /// Page-table frames are recovered by the existing lower-half tree walk.
     owned_frames: Vec<PAddr>,
+    pub(crate) thread_stack_slots: u64,
     pub(crate) heap_account: crate::memory::backing_budget::Account,
     pub(crate) image_account: crate::memory::backing_budget::Account,
 }
@@ -115,6 +116,7 @@ impl AddressSpace {
             cr3: <PAddr as Into<u64>>::into(frame) & CR3_ADDRESS_MASK,
             owns_root: true,
             owned_frames: Vec::new(),
+            thread_stack_slots: 0,
             heap_account: crate::memory::backing_budget::Account::new(
                 crate::memory::backing_budget::Kind::Heap,
             ),
@@ -215,6 +217,7 @@ impl AddressSpaceInterface for AddressSpace {
             cr3,
             owns_root: false,
             owned_frames: Vec::new(),
+            thread_stack_slots: 0,
             heap_account: crate::memory::backing_budget::Account::new(
                 crate::memory::backing_budget::Kind::Heap,
             ),

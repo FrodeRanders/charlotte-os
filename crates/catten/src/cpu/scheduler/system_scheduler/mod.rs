@@ -108,6 +108,9 @@ pub fn publish_thread(thread: Thread) -> Result<ThreadId, Error> {
     if asid != crate::memory::KERNEL_ASID {
         let handle =
             crate::memory::current_address_space_handle(asid).ok_or(Error::ThreadTerminated)?;
+        if thread.address_space != Some(handle) {
+            return Err(Error::ThreadTerminated);
+        }
         if aborting.get(&asid).is_some_and(|generation| *generation == handle.generation()) {
             return Err(Error::ThreadTerminated);
         }
@@ -123,7 +126,28 @@ pub fn publish_thread(thread: Thread) -> Result<ThreadId, Error> {
     }) {
         return Err(Error::DomainThreadLimitExceeded);
     }
-    Ok(table.add_element(thread))
+    let publication = table.try_add_element(thread);
+    // A rejected payload still owns stacks and can notify exit subscribers.
+    // Release scheduler serialization before running any of its destructors.
+    drop(table);
+    drop(aborting);
+    publication.map_err(|(thread, _)| {
+        drop(thread);
+        Error::ThreadPreparationFailed
+    })
+}
+
+/// Exact-generation process liveness for the trusted remote-resource adapter.
+/// Abort fencing and publication use this same gate before the thread table.
+pub(crate) fn domain_has_live_threads(handle: crate::memory::AddressSpaceHandle) -> bool {
+    let aborting = ABORTING_ADDRESS_SPACES.lock();
+    if aborting.get(&handle.id()) == Some(&handle.generation()) {
+        return false;
+    }
+    MASTER_THREAD_TABLE
+        .read()
+        .iter()
+        .any(|entry| entry.as_ref().is_some_and(|thread| thread.address_space == Some(handle)))
 }
 
 pub fn set_rebalance_window_millis(window_millis: u64) {
@@ -137,6 +161,8 @@ pub enum Error {
     DomainThreadLimitExceeded,
     ThreadTerminated,
     WaitRegistrationFailed,
+    PermissionDenied,
+    ThreadPreparationFailed,
 }
 
 /// The system-wide thread scheduler
@@ -277,7 +303,7 @@ impl SystemScheduler {
             }
         };
         let mut sched_guard = sched.lock();
-        sched_guard.add_thread(tid, None).expect("Error adding thread to target LP");
+        sched_guard.add_thread(tid, None).map_err(|_| Error::InvalidThread)?;
         {
             let mut table = MASTER_THREAD_TABLE.write();
             let thread = table.get_mut(tid).map_err(|_| Error::InvalidThread)?;

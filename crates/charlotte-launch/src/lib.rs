@@ -636,10 +636,8 @@ pub mod tcpip_config {
     /// A high policy ceiling for server-oriented launches. The effective
     /// capacity is clamped to the tcpip domain's actual heap at startup.
     pub const MAX_SOCKET_SLOTS: usize = 1024;
-    /// Default per-domain socket budget. This matches the default shared
-    /// SocketSet capacity; the actual usable value is still bounded by that
-    /// global table and by the tcpip heap.
-    pub const DEFAULT_SOCKETS_PER_PRINCIPAL: usize = 64;
+    /// Ordinary domains share the non-platform portion of the socket table.
+    pub const DEFAULT_SOCKETS_PER_PRINCIPAL: usize = 16;
     pub const MAX_SOCKETS_PER_PRINCIPAL: usize = 1024;
     /// 64 TCP-sized sockets (two 16 KiB buffers per socket). UDP sockets use
     /// less, but share the same byte budget.
@@ -932,7 +930,8 @@ pub mod security_probe_status {
     pub const STARTED: u32 = 1;
     pub const PASSED: u32 = 2;
     pub const FAILED: u32 = 3;
-    pub const EXPECTED_CHECKS: u32 = 0x7fff;
+    pub const EXPECTED_CHECKS: u32 = 0xffff;
+    pub const FOREIGN_THREAD_KEY: u64 = super::manifest_key(b"secttid");
     pub const MODE_KEY: u64 = super::manifest_key(b"sectmode");
     pub const ALTERNATE_KEY: u64 = super::manifest_key(b"sectalt");
     pub const DEPLOYMENT_KEY: u64 = super::manifest_key(b"sectkey");

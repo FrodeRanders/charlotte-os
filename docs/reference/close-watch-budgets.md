@@ -69,8 +69,12 @@ can race an already captured callback: the completion's terminal transition
 and exact-object identity check prevent a late callback from changing a
 cancelled result, duplicating completion, or completing a reused capability.
 
-Thread lookup, generation checking and registration are serialized with removal
-from the master thread table. The returned token owns unlinking, using only the
+EL0 thread watches require the target's captured address-space identity to
+match the caller's exact live generation, including when the expected thread
+generation is zero. Foreign user/kernel threads reject before their source is
+charged. A separate trusted kernel adapter preserves supervisor cross-domain
+observation. Target authorization, generation checking and registration are
+serialized with removal from the master thread table. The returned token owns unlinking, using only the
 independent list lock. Reaping closes/detaches the list and invokes callbacks
 outside source/list/table guards, before the thread's stack is deallocated.
 Retaining a registration token after notification cannot retain its former

@@ -107,6 +107,8 @@ test = false
 bench = false
 
 [dependencies]
+hmac = { version = "0.12.1", default-features = false }
+sha2 = { version = "0.10.9", default-features = false }
 charlotte-authorization = { path = "../charlotte-authorization" }
 catten-rt = { path = "../catten-rt" }
 charlotte-launch = { path = "../charlotte-launch" }

@@ -68,6 +68,8 @@ pub enum ProfileLaunchError {
     RollbackDomain(crate::memory::AddressSpaceCloseError),
     InvalidDeploymentDescriptor,
     DescriptorArtifactMismatch,
+    Thread(crate::cpu::scheduler::system_scheduler::Error),
+    Limits(crate::memory::DomainLimitError),
 }
 
 /// Own an unstarted domain and any kernel-side bootstrap profile. Namespace
@@ -377,10 +379,12 @@ const NS_OP_REGISTER: u32 = 1;
 /// settle before declaring the node ready for cluster communication.
 const BOOT_SETTLE_MS: u64 = 3_000;
 
-pub(crate) fn start_domain_with_limits(
+pub(crate) fn try_start_domain_with_limits(
     loaded: loader::LoadedDomain,
     limits: ServiceLimits,
-) -> ServiceDomain {
+) -> Result<ServiceDomain, ProfileLaunchError> {
+    let transaction = DomainLaunchTransaction::new(loaded);
+    let loaded = transaction.loaded();
     // Only the supervisor's ambient platform launch path receives progress
     // reserve. Scoped applications already have an immutable descriptor.
     if crate::memory::domain_authority(loaded.asid)
@@ -388,19 +392,19 @@ pub(crate) fn start_domain_with_limits(
     {
         crate::memory::budget::mark_platform(loaded.address_space);
     }
-    assert!(
-        limits.user_stack_size != 0 && limits.user_stack_size.is_multiple_of(loader::PAGE_SIZE),
-        "[supervisor] user stack limit must be a non-zero whole number of pages"
-    );
+    if limits.user_stack_size == 0 || !limits.user_stack_size.is_multiple_of(loader::PAGE_SIZE) {
+        return transaction.abort(ProfileLaunchError::ProfileTooLarge);
+    }
     let user_stack_pages = limits.user_stack_size / loader::PAGE_SIZE;
-    crate::memory::set_domain_limits(
+    if let Err(error) = crate::memory::set_domain_limits(
         loaded.address_space,
         crate::memory::DomainLimits {
             user_stack_pages,
             max_threads: limits.max_threads,
         },
-    )
-    .unwrap_or_else(|error| panic!("[supervisor] invalid service limits: {error:?}"));
+    ) {
+        return transaction.abort(ProfileLaunchError::Limits(error));
+    }
 
     let entry: extern "C" fn() =
         unsafe { core::mem::transmute::<usize, extern "C" fn()>(loaded.entry_vaddr) };
@@ -408,7 +412,14 @@ pub(crate) fn start_domain_with_limits(
     // depends on an SGI edge; if that edge is delayed or lost, the service
     // cannot register and every blocking lookup behind it deadlocks. Normal
     // scheduler policy may still migrate explicitly migration-safe work.
-    let tid = spawn_thread_on_lp(loaded.asid, entry, crate::cpu::isa::lp::ops::get_lp_id());
+    let tid = match crate::cpu::scheduler::try_spawn_thread_on_lp(
+        loaded.asid,
+        entry,
+        crate::cpu::isa::lp::ops::get_lp_id(),
+    ) {
+        Ok(tid) => tid,
+        Err(error) => return transaction.abort(ProfileLaunchError::Thread(error)),
+    };
     let generation = MASTER_THREAD_TABLE
         .read()
         .get(tid)
@@ -419,14 +430,23 @@ pub(crate) fn start_domain_with_limits(
             )
         })
         .generation;
-    ServiceDomain {
+    let domain = ServiceDomain {
         asid: loaded.asid,
         address_space: loaded.address_space,
         tid,
         generation,
         config_frame: loaded.config_frame,
         status_frame: loaded.status_frame,
-    }
+    };
+    let _ = transaction.finish();
+    Ok(domain)
+}
+
+pub(crate) fn start_domain_with_limits(
+    loaded: loader::LoadedDomain,
+    limits: ServiceLimits,
+) -> ServiceDomain {
+    try_start_domain_with_limits(loaded, limits).expect("mandatory service launch failed")
 }
 
 pub(crate) fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
@@ -441,7 +461,9 @@ pub(crate) fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
 /// high-water mark, one page of headroom is added, clamped to the default
 /// and signed maxima; a cold boot or an unknown principal keeps the default.
 /// Signed descriptor limits never pass through here.
-fn adaptive_service_limits(address_space: crate::memory::AddressSpaceHandle) -> ServiceLimits {
+pub(crate) fn adaptive_service_limits(
+    address_space: crate::memory::AddressSpaceHandle,
+) -> ServiceLimits {
     let default_limits = ServiceLimits::default();
     let Some(authority) = crate::memory::domain_authority(address_space.id()) else {
         return default_limits;
@@ -578,6 +600,28 @@ pub(crate) fn is_grant_controller(asid: AddressSpaceId) -> bool {
     controller.is_some_and(|controller| {
         controller.domain.asid == asid
             && crate::memory::address_space_handle_is_current(controller.domain.address_space)
+    })
+}
+
+static TCPIP: spin::Mutex<Option<AddressSpaceHandle>> = spin::Mutex::new(None);
+
+pub(crate) fn is_tcpip(asid: AddressSpaceId) -> bool {
+    let identity = *TCPIP.lock();
+    identity.is_some_and(|identity| {
+        identity.id() == asid && crate::memory::address_space_handle_is_current(identity)
+    })
+}
+
+/// Only this trusted launch path installs socket-owner inspection authority,
+/// before scheduler admission. Application names/roles cannot impersonate it.
+pub(crate) fn spawn_tcpip_with_manifest(
+    image: &[u8],
+    name_service: &NameServiceHandle,
+    manifest: &[bootstrap::ManifestEntry<'_>],
+) -> ServiceDomain {
+    spawn_with_manifest_policy(image, name_service, ConnectionRights::CALL, manifest, |identity| {
+        *TCPIP.lock() = Some(identity);
+        adaptive_service_limits(identity)
     })
 }
 
@@ -827,7 +871,7 @@ pub fn try_spawn_with_read_only_profile_and_limits(
     bootstrap::write_bootstrap_cap(transaction.loaded().config_frame, connection);
     bootstrap::write_profile_cap(transaction.loaded().config_frame, target, metadata);
     bootstrap::write_manifest(transaction.loaded().config_frame, &[]);
-    Ok(start_domain_with_limits(transaction.finish(), limits))
+    try_start_domain_with_limits(transaction.finish(), limits)
 }
 
 /// Launch a signed application with no name-service capability. Its bootstrap
@@ -926,7 +970,7 @@ fn try_spawn_deployment_with_manifest(
     bootstrap::write_bootstrap_cap(transaction.loaded().config_frame, connection);
     bootstrap::write_profile_cap(transaction.loaded().config_frame, target, profile_metadata);
     bootstrap::write_manifest(transaction.loaded().config_frame, manifest);
-    Ok(start_domain_with_limits(transaction.finish(), limits))
+    try_start_domain_with_limits(transaction.finish(), limits)
 }
 
 /// Start the node observability service and delegate the unique
@@ -943,6 +987,7 @@ pub enum ObserverLaunchError {
     Load(loader::DomainLoadError),
     BootstrapConnection(ipc::IpcError),
     Admission,
+    Thread(ProfileLaunchError),
 }
 
 static OBSERVER_LAUNCH_CLAIMED: AtomicBool = AtomicBool::new(false);
@@ -1005,7 +1050,7 @@ pub fn try_start_observability_service(
     let loaded = loader::try_load_domain(image).map_err(ObserverLaunchError::Load)?;
     let prepared =
         PreparingObserver::new(loaded, name_service.domain.asid, name_service.endpoint_cap)?;
-    let domain = prepared.start();
+    let domain = prepared.start()?;
     claim.finish(domain.address_space);
     Ok(domain)
 }
@@ -1042,11 +1087,13 @@ impl PreparingObserver {
         })
     }
 
-    fn start(self) -> ServiceDomain {
+    fn start(self) -> Result<ServiceDomain, ObserverLaunchError> {
         bootstrap::write_bootstrap_cap(self.domain.loaded().config_frame, self.connection);
         bootstrap::write_system_observer_cap(self.domain.loaded().config_frame, self.observer);
         bootstrap::write_manifest(self.domain.loaded().config_frame, &[]);
-        start_domain(self.domain.finish())
+        let limits = adaptive_service_limits(self.domain.loaded().address_space);
+        try_start_domain_with_limits(self.domain.finish(), limits)
+            .map_err(ObserverLaunchError::Thread)
     }
 }
 
@@ -1312,6 +1359,7 @@ pub enum UpgradeSpawnError {
     Load(loader::DomainLoadError),
     Ipc(crate::ipc::IpcError),
     Memory(crate::memory::object::MemoryObjectError),
+    Thread(ProfileLaunchError),
 }
 
 /// Load and start a replacement service domain, handing it the old
@@ -1393,7 +1441,8 @@ pub fn try_spawn_upgrade(
         &target_state_caps,
         delegated_ep.unwrap_or(0),
     );
-    Ok(start_domain(loaded))
+    let limits = adaptive_service_limits(loaded.address_space);
+    try_start_domain_with_limits(loaded, limits).map_err(UpgradeSpawnError::Thread)
 }
 
 /// Return the embedded ELF image for a given upgrade selector.

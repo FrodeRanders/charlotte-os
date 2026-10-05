@@ -12,6 +12,7 @@ pub enum CompletionError {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ThreadError {
+    SpawnFailed,
     ObserverRegistrationFailed,
     Completion(CompletionError),
 }
@@ -33,12 +34,15 @@ impl ThreadHandle {
     /// # Safety
     /// `entry_vaddr` must identify a valid `extern "C" fn()` entry point in
     /// the current address space and `target_lp` must identify a logical CPU.
-    pub unsafe fn spawn(entry_vaddr: usize, target_lp: u32) -> Self {
+    pub unsafe fn spawn(entry_vaddr: usize, target_lp: u32) -> Result<Self, ThreadError> {
         let (tid, generation) =
             unsafe { catten_syscall::spawn_thread_with_generation(entry_vaddr, target_lp) };
-        Self {
-            identity: ThreadIdentity::new(tid, generation),
+        if tid == u64::MAX || generation == 0 {
+            return Err(ThreadError::SpawnFailed);
         }
+        Ok(Self {
+            identity: ThreadIdentity::new(tid, generation),
+        })
     }
 
     pub const fn id(&self) -> u64 {

@@ -51,5 +51,7 @@ should be updated with the implementation when those contracts change.
   read-only connector profile delivery.
 - [Kafka client service](kafka-client.md) — idempotent production,
   read-committed consumption, transactional offsets, and owned backpressure.
+- [User thread admission](user-thread-admission.md) — fallible construction,
+  exclusive per-domain stack slots, retirement and scoped exit watches.
 - [Cryptographic entropy](entropy.md) — architectural randomness, the
   capability-scoped VirtIO RNG service, and QEMU provisioning.

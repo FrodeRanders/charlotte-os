@@ -7,6 +7,10 @@
 
 extern crate alloc;
 
+pub mod network_random;
+pub mod socket_lifetime;
+pub mod socket_state;
+
 /// Authorization policy state machine shared by a co-located name/policy
 /// service and a possible future standalone policy service.
 pub use charlotte_authorization as authorization;

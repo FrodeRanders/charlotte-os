@@ -137,6 +137,34 @@ pub fn spawn_thread_on_lp(
     tid
 }
 
+/// Fallible user-domain launch; failure leaves no published thread.
+pub(crate) fn try_spawn_thread_on_lp(
+    asid: AddressSpaceId,
+    entry_point: extern "C" fn(),
+    lp: crate::cpu::isa::lp::LpId,
+) -> Result<ThreadId, system_scheduler::Error> {
+    if lp >= crate::cpu::multiprocessor::get_lp_count() {
+        return Err(system_scheduler::Error::InvalidThread);
+    }
+    let thread = Thread::try_new(asid, entry_point)?;
+    let generation = thread.generation;
+    let tid = publish_thread(thread)?;
+    let submission = SYSTEM_SCHEDULER.read().submit_to_lp(tid, lp);
+    if let Err(error) = submission {
+        let removed = {
+            let mut table = MASTER_THREAD_TABLE.write();
+            if table.get(tid).is_ok_and(|thread| thread.generation == generation) {
+                table.take_element(tid).ok()
+            } else {
+                None
+            }
+        };
+        drop(removed);
+        return Err(error);
+    }
+    Ok(tid)
+}
+
 /// Spawn work whose creator explicitly certifies that it owns no LP-local
 /// resources while Ready. This is intentionally separate from `spawn_thread`:
 /// migration must be opt-in, never inferred from scheduler state alone.
@@ -488,7 +516,7 @@ pub(crate) fn observe_thread_exit(
     observer: Weak<dyn Observer>,
     charge: crate::completion::watch_budget::Charge,
 ) -> Result<threads::exit_source::ExitRegistration, system_scheduler::Error> {
-    observe_thread_exit_matching(thread_id, None, observer, charge)
+    observe_thread_exit_matching(thread_id, None, None, observer, charge)
 }
 
 /// Generation-bound variant of [`observe_thread_exit`].
@@ -508,17 +536,31 @@ pub(crate) fn observe_thread_exit_with_generation(
     observer: Weak<dyn Observer>,
     charge: crate::completion::watch_budget::Charge,
 ) -> Result<threads::exit_source::ExitRegistration, system_scheduler::Error> {
-    observe_thread_exit_matching(thread_id, Some(expected_generation), observer, charge)
+    observe_thread_exit_matching(thread_id, Some(expected_generation), None, observer, charge)
 }
 
-fn observe_thread_exit_matching(
+pub(crate) fn observe_thread_exit_in_domain(
+    caller: crate::memory::AddressSpaceHandle,
     thread_id: ThreadId,
     expected_generation: Option<ThreadGeneration>,
     observer: Weak<dyn Observer>,
     charge: crate::completion::watch_budget::Charge,
 ) -> Result<threads::exit_source::ExitRegistration, system_scheduler::Error> {
+    observe_thread_exit_matching(thread_id, expected_generation, Some(caller), observer, charge)
+}
+
+fn observe_thread_exit_matching(
+    thread_id: ThreadId,
+    expected_generation: Option<ThreadGeneration>,
+    caller: Option<crate::memory::AddressSpaceHandle>,
+    observer: Weak<dyn Observer>,
+    charge: crate::completion::watch_budget::Charge,
+) -> Result<threads::exit_source::ExitRegistration, system_scheduler::Error> {
     let table = MASTER_THREAD_TABLE.write();
     if let Ok(thread) = table.get(thread_id) {
+        if caller.is_some_and(|caller| thread.address_space != Some(caller)) {
+            return Err(system_scheduler::Error::PermissionDenied);
+        }
         let generation_matches = expected_generation.is_none_or(|expected| {
             let captured = charlotte_lifecycle::ThreadIdentity::new(thread_id as u64, expected);
             let current =

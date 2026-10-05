@@ -106,6 +106,11 @@ fn wait_for(domain: &ServiceDomain, predicate: impl Fn(&ServiceDomain) -> bool, 
 fn spawn(artifact_key: &[u8; 32], deployment_key: &[u8; 32], mode: u64) -> ProbeDomain {
     let manifest = [
         ManifestEntry {
+            key: status::FOREIGN_THREAD_KEY,
+            flags: 0,
+            value: ManifestValue::Unsigned(supervisor::node_name_service().domain.tid as u64),
+        },
+        ManifestEntry {
             key: status::MODE_KEY,
             flags: 0,
             value: ManifestValue::Unsigned(mode),
