@@ -62,25 +62,27 @@ owner's guards alone does not prove recipient progress.
 
 ## Integration still required
 
-Public memory-object map/map-any/unmap paths now acquire an operation lease
-before object-registry access and retain it through scratch release and TLB
+Public memory-object and MMIO map/map-any/unmap paths now acquire an operation
+lease before registry access and retain it through scratch release and TLB
 invalidation. They release it explicitly after the operation returns, including
-ordinary failure; panic or abandonment retains the root. IPC loan-revocation
-paths still rely on IPC serialization, and MMIO paths have not been migrated.
-Before extending split-phase operation leases, implement:
+ordinary failure; panic or abandonment retains the root. MMIO additionally
+claims its device capability until invalidation finishes, so concurrent
+`device_close` rejects without consuming it. IPC loan-revocation paths still
+rely on IPC serialization. MMIO capability close and address-space cleanup
+still hold lifecycle across invalidation. Before extending split-phase operation
+leases, implement:
 
-1. Compose IPC/MMIO leases with backing, exact scratch reservation and
-   loan/connection authority in one operation owner. IPC must acquire lifecycle
-   before IPC serialization, never from within an IPC guard.
+1. Compose IPC leases with backing, exact scratch reservation and loan/connection
+   authority in one operation owner. IPC must acquire lifecycle before IPC
+   serialization, never from within an IPC guard. Move MMIO close and
+   address-space cleanup invalidation out of lifecycle under an owned claim.
 2. Translation identity capture after lazy root/tag preparation; then release
    preparation guards before rendezvous. Syscall entry's interrupt state and
    unrelated outer guards still matter for recipient progress.
 3. Invalidation, scratch and authority completion before consuming the lease.
    Failure/abandonment must retain every uncertain resource, without rendezvous
    in Drop under unknown caller locks.
-4. Compose production mapping/IPC/MMIO operations with backing, scratch and
-   authority owners before releasing their current guards.
-5. Extend supervisor lifecycle policy as needed. Deployment retirement and
+2. Extend supervisor lifecycle policy as needed. Deployment retirement and
    node/device shutdown now retain a `DomainTeardown` owner and poll outside
    registry/coordinator guards. The supervisor bounds thread/lease drain to five
    seconds; terminal reclamation error retains the deployment entry or prevents

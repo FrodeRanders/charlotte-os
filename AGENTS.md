@@ -123,9 +123,11 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   Public memory-object map/map-any/unmap operations own an
   `AddressSpaceOperation` from before registry access through scratch completion
   and TLB invalidation. Complete it explicitly on ordinary success/error; panic
-  or abandonment retains the root. IPC loan revocation still runs under IPC
-  serialization and must not acquire lifecycle beneath that guard. MMIO
-  operations have not yet migrated. These pins do not lease an ASID; see
+  or abandonment retains the root. MMIO also claims its capability in-flight
+  until invalidation; close returns busy without consuming it. IPC loan
+  revocation still runs under IPC serialization and must not acquire lifecycle
+  beneath that guard. MMIO capability close/address-space cleanup still uses
+  lifecycle through its invalidation. These pins do not lease an ASID; see
   `docs/reference/memory-object-retirement.md`.
   Final user-root close detaches into `RetiredAddressSpace`/`RetiredEntry`,
   leasing the software slot through post-guard invalidation and destruction.

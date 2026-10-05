@@ -2023,6 +2023,8 @@ fn device_status(error: crate::device::DeviceError) -> u64 {
         DeviceError::RouteGenerationExhausted => 16,
         DeviceError::ResourceLimit => 17,
         DeviceError::NamespaceRetired => 18,
+        DeviceError::AddressSpaceClosing => 19,
+        DeviceError::OperationInFlight => 20,
     }
 }
 

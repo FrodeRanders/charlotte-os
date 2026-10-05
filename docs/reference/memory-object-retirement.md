@@ -108,11 +108,14 @@ A [live-generation lease foundation](live-address-space-operations.md) now
 retains roots through explicit completion and rejects busy close before mutation.
 Public memory-object map/map-any/unmap calls hold a lease through page-table
 changes and TLB invalidation, and release it on ordinary error as well as
-success. Their mapping pins still independently retain backing. IPC loan
-revocation continues to rely on IPC serialization; MMIO mapping is not migrated.
-Compose their backing/scratch/authority owners with leases before releasing those
-guards. The staged fence does not cover non-lease paths or revoke their
-authority while older operations drain.
+success. Their mapping pins still independently retain backing. MMIO
+map/map-any/unmap also holds a generation lease and a capability in-flight claim
+through invalidation; concurrent device close rejects while that claim is held.
+IPC loan revocation continues to rely on IPC serialization. MMIO close and
+whole-domain device cleanup still hold lifecycle across invalidation. Compose
+IPC attachment, backing/scratch and authority owners with leases before
+releasing those guards. The staged fence does not cover non-lease paths or
+revoke their authority while older operations drain.
 
 ## Verification
 

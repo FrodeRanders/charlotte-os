@@ -69,6 +69,10 @@ use crate::{
     memory::{
         AddressSpaceId,
         VAddr,
+        operation::{
+            AddressSpaceOperation,
+            OperationError,
+        },
         physical::PAddr,
     },
 };
@@ -125,6 +129,10 @@ pub enum DeviceError {
     DmaInvalid,
     /// Shared capability admission or identity space is exhausted.
     ResourceLimit,
+    /// The address-space generation is no longer accepting device mappings.
+    AddressSpaceClosing,
+    /// An MMIO operation still owns this capability.
+    OperationInFlight,
     /// The namespace is retiring and cannot receive new device authority.
     NamespaceRetired,
 }
@@ -138,6 +146,47 @@ struct MmioRegion {
     mapped: Option<VAddr>,
     /// Whether `mapped` owns a kernel-assigned scratch-window range.
     scratch_mapped: bool,
+    operation_in_flight: bool,
+}
+
+/// A serialized operation on one MMIO capability. Abandonment leaves the
+/// in-flight bit set, so close cannot consume the mapping record while a TLB
+/// operation may still be running.
+#[must_use]
+struct MmioOperation {
+    asid: AddressSpaceId,
+    cap: DeviceCap,
+}
+
+impl MmioOperation {
+    fn begin(asid: AddressSpaceId, cap: DeviceCap) -> Result<Self, DeviceError> {
+        let mut devices = DEVICES.lock();
+        let object = lookup_mut(&mut devices, asid, cap)?;
+        let DeviceObject::Mmio(region) = object else {
+            return Err(DeviceError::WrongType);
+        };
+        if region.operation_in_flight {
+            return Err(DeviceError::OperationInFlight);
+        }
+        region.operation_in_flight = true;
+        Ok(Self {
+            asid,
+            cap,
+        })
+    }
+
+    fn finish(self) -> Result<(), DeviceError> {
+        let mut devices = DEVICES.lock();
+        let object = lookup_mut(&mut devices, self.asid, self.cap)?;
+        let DeviceObject::Mmio(region) = object else {
+            return Err(DeviceError::WrongType);
+        };
+        if !region.operation_in_flight {
+            return Err(DeviceError::OperationInFlight);
+        }
+        region.operation_in_flight = false;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -480,6 +529,7 @@ pub fn grant_mmio(
             pages,
             mapped: None,
             scratch_mapped: false,
+            operation_in_flight: false,
         }),
     ))
 }
@@ -653,6 +703,33 @@ pub fn dma_unmap(
 
 // ---- MMIO operations -------------------------------------------------------
 
+fn with_mmio_operation<T>(
+    asid: AddressSpaceId,
+    cap: DeviceCap,
+    operation: impl FnOnce() -> Result<T, DeviceError>,
+) -> Result<T, DeviceError> {
+    let handle =
+        crate::memory::current_address_space_handle(asid).ok_or(DeviceError::NamespaceRetired)?;
+    let address_space = AddressSpaceOperation::acquire(handle).map_err(|error| match error {
+        OperationError::Closing => DeviceError::AddressSpaceClosing,
+        OperationError::Limit => DeviceError::ResourceLimit,
+        _ => DeviceError::NamespaceRetired,
+    })?;
+    let mmio = match MmioOperation::begin(asid, cap) {
+        Ok(operation) => operation,
+        Err(error) => {
+            address_space.release().map_err(|_| DeviceError::NamespaceRetired)?;
+            return Err(error);
+        }
+    };
+    let result = operation();
+    let mmio_result = mmio.finish();
+    let address_space_result = address_space.release().map_err(|_| DeviceError::NamespaceRetired);
+    mmio_result?;
+    address_space_result?;
+    result
+}
+
 /// Map an MMIO region capability into the caller's address space at `base`,
 /// as Device-nGnRnE memory reachable from EL0.
 pub fn mmio_map(
@@ -667,9 +744,15 @@ pub fn mmio_map(
     if !charlotte_launch::user_address::valid_pages(base.into(), 1) {
         return Err(DeviceError::MapFailed);
     }
-    // Serialize the capability check, page-table update, and mapping record
-    // against teardown and ASID reuse.
-    let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+    with_mmio_operation(asid, cap, || mmio_map_with_operation(asid, cap, base, writable))
+}
+
+fn mmio_map_with_operation(
+    asid: AddressSpaceId,
+    cap: DeviceCap,
+    base: VAddr,
+    writable: bool,
+) -> Result<(), DeviceError> {
     let (pages, result) = {
         let mut devices = DEVICES.lock();
         let object = lookup_mut(&mut devices, asid, cap)?;
@@ -706,9 +789,14 @@ pub fn mmio_map_any(
     cap: DeviceCap,
     writable: bool,
 ) -> Result<VAddr, DeviceError> {
-    // Take lifecycle before DEVICES: teardown uses the same ordering. The
-    // scratch reservation and MMIO mapping must target one AS generation.
-    let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+    with_mmio_operation(asid, cap, || mmio_map_any_with_operation(asid, cap, writable))
+}
+
+fn mmio_map_any_with_operation(
+    asid: AddressSpaceId,
+    cap: DeviceCap,
+    writable: bool,
+) -> Result<VAddr, DeviceError> {
     let (base, pages, result) = {
         let mut devices = DEVICES.lock();
         let object = lookup_mut(&mut devices, asid, cap)?;
@@ -776,7 +864,10 @@ fn map_mmio_at(
 
 /// Unmap a previously mapped MMIO region from the caller's address space.
 pub fn mmio_unmap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError> {
-    let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+    with_mmio_operation(asid, cap, || mmio_unmap_with_operation(asid, cap))
+}
+
+fn mmio_unmap_with_operation(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError> {
     let (base, pages, scratch, result) = {
         let mut devices = DEVICES.lock();
         let object = lookup_mut(&mut devices, asid, cap)?;
@@ -913,6 +1004,12 @@ pub fn close_cap(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError
     let mut close_error = None;
     let object = {
         let mut devices = DEVICES.lock();
+        if matches!(
+            devices.get(&asid).and_then(|caps| caps.caps.get(&cap)),
+            Some(DeviceObject::Mmio(region)) if region.operation_in_flight
+        ) {
+            return Err(DeviceError::OperationInFlight);
+        }
         let object = devices
             .get_mut(&asid)
             .and_then(|caps| caps.caps.remove(&cap))

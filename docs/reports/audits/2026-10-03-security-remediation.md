@@ -3293,3 +3293,23 @@ global serialization, then be composed with all attachment/backing and reply
 authority so failed or abandoned completion retains every resource. The legacy
 paths' guards remain in place. SEC-18 remains partial; no x86 guest progress or
 hardware-quiescence proof is claimed.
+
+## Continuation: lease MMIO map/unmap — 2026-10-05
+
+Public MMIO map/map-any/unmap now acquire an `AddressSpaceOperation` before
+device-registry access and retain it through page-table changes, scratch release
+and TLB invalidation. A per-capability in-flight bit serializes these operations
+with `device_close`: close returns `OperationInFlight` without consuming the
+capability while the mapping owner is active. Ordinary errors complete both
+owners; abandonment retains the capability claim and root. The syscall reports
+address-space closing and capability busy as distinct statuses.
+
+Strict AArch64 `acpi,security_test` and x86-64 `acpi` Clippy pass, along with
+formatting and diff checks. No tests were run for this continuation. The MMIO
+map/close interleaving therefore still needs direct fixture coverage.
+
+`device_close` and whole-address-space device cleanup still perform MMIO
+invalidation under lifecycle serialization. IRQ/DMA/device teardown, IPC loan
+revocation and attachment operations have not been converted to lease-composed
+owners. SEC-18 remains partial; this change only removes the global lifecycle
+guard from public MMIO mapping syscalls.
