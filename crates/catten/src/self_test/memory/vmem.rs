@@ -21,6 +21,7 @@ pub fn test_vmem() {
     #[cfg(target_arch = "x86_64")]
     {
         crate::cpu::isa::memory::paging::pte::PageTableEntry::self_test_pat_encoding();
+        AddressSpace::self_test_root_preparation();
         logln!("x86-64 PAT page-table encoding tests passed.");
     }
 

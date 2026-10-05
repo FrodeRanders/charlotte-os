@@ -31,6 +31,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-14 | Mitigated; audit corrected | Cargo.lock is already tracked. Main build/test runners and CI now enforce --locked; CI actions are commit-pinned, token permissions are read-only, and checkout does not persist credentials. Advisory/license scans and a release dependency inventory remain. |
 | SEC-15 | Mitigated | SigV4 prefixed secret, derived keys, HMAC block/pads and inner digest use zeroizing owners. TLS record buffers are wiped after dropping their borrower, including handshake failure. This is not a complete audit of crypto-library state or compiler-created secret copies. |
 | SEC-16 | Implemented | grantctl polls bounded concurrent operations with per-sender/generation limits and total deadlines. Non-parking authorized lookup avoids a shared name-service waitlist leak. Acquisition retries and publication waits have total deadlines. A two-application cancellation stress and silent-endpoint publication timeout pass in the guest; many-client fairness and controller-replacement testing remain. |
+| SEC-17 | Open; added by source review 2026-10-05 | Both architecture walkers reclaim empty child-table frames before clearing parent entries and completing invalidation. Establish detach/invalidate/quiescence/recycle ordering, with retained ownership through failed or delayed shootdown. This is a source-ordering concern, not a demonstrated race or exploit. |
 
 SEC-07 also includes fixed per-route IRQ readiness storage: repeated or retired
 deliveries cannot exhaust a shared wake queue, and deferred route validation/CQ
@@ -67,6 +68,13 @@ validation and image planning precede namespace creation; owned frame mapping
 and unstarted-domain rollback report backing failures. See
 [loader admission](../../reference/loader-admission.md). Stacks, page tables and
 the kernel heap remain unbudgeted by these accounts.
+
+Initial runtime root preparation now reports allocation failure before namespace
+publication. x86-64 uses a provisional owner and the physical progress-floor
+check; AArch64 retains lazy roots. Full table-frame quotas remain open. The
+[page-table investigation](../investigations/2026-10-05-page-tables-locality-and-admission.md)
+also records SEC-17: premature empty-table recycling must be addressed before
+safe post-invalidation refunds can underpin full translation-metadata admission.
 
 ## Enforced contracts
 
@@ -234,7 +242,8 @@ implementation proof is claimed.
    only then enable production images without fixture fallback. Migrate sibling
    broker/Durga templates to the new signing file-path interface. Keep developer
    fixtures visibly identified and separate from real credentials.
-3. Extend admission to stacks, page tables and kernel heap,
+3. Correct table reclamation ordering (SEC-17), then extend admission to stacks,
+   page tables and kernel heap,
    uncharged callback captures and general weak-only/control-block storage. Add
    typed launch-policy limits and observable counters. Preserve rollback and
    delayed-release accounting, and test essential-service progress under
@@ -2374,3 +2383,63 @@ node-wide pressure soak or exhaustive teardown-race proof ran. Specialized
 architecture/self-test mappers are not migrated production entry points.
 Markdown, LaTeX source and TLA+ conformance were updated; no model or PDF rebuild
 ran. The deployment restrictions and other open audit findings are unchanged.
+
+## Continuation: page-table research and fallible root preparation — 2026-10-05
+
+ELF/runtime admission was committed as `fe455867`. The requested page-table
+article and its primary Mitosis/Hydra references reinforce existing accounting
+and locality directions; they do not require changing Charlotte's capability
+domains or LP-affinity architecture. The investigation distinguishes shared
+backing from per-address-space translation cost, dense from sparse mappings,
+LP affinity from NUMA placement, and measurement from speculative replication.
+It also avoids promising preserved TLB state on current x86-64 without PCID.
+
+Runtime address-space construction now calls `AddressSpace::try_new_user`.
+x86-64 initial PML4 preparation uses `PreparingUserFrame`: admit physical
+headroom under the allocator guard, allocate and zero a private frame, copy
+only shared kernel entries, then consume the owner at the documented root
+ownership boundary. Root exhaustion returns
+`AddressSpaceRegistrationError::RootAllocationFailed`, propagated through
+`DomainLoadError::AddressSpace`, before allocating/publishing a namespace.
+AArch64 constructs an empty lazy-root owner; subsequent root allocation stays
+in its fallible mapper. Mandatory trusted kernel fixture constructors retain
+their explicit panic wrapper. This adds no full table quota or NUMA allocator.
+
+Validation:
+
+- Constructor-failure injection returns the expected registration error,
+  preserves physical/image-backing counts, and leaves reusable ASID capacity
+  available to the next generation. The x86-specific fixture also checks
+  rejected root allocation and successful owned inactive-PML4 destruction.
+  That fixture was compiled, **not executed**, because no x86 guest ran.
+- Four-LP AArch64 security guest passed **19/19**, including the new constructor
+  fixture, existing heap/image/device/observer/CQ admission fixtures and both
+  real scoped probes at `0x7fff`. Cancellation traffic retired after **4,500**
+  requests. This does not simulate real x86 physical exhaustion.
+- Host tests passed. Strict Clippy passed for AArch64 `acpi,security_test` and
+  x86-64 `acpi`; an initial ARM-only unused root-transfer helper warning was
+  corrected by restricting that x86 boundary to its architecture. Formatting
+  and diff checks passed.
+
+Guest kernel SHA-256:
+`5f4d92c22570701644e497255f05c76d1f81b345c5c56a15ff84eab2a73153b5`.
+Run: `/private/tmp/charlotte-security-root-preparation-run.log`.
+Serial: `/private/tmp/charlotte-root-preparation-20261005-serial.log`.
+Host: `/private/tmp/charlotte-security-root-preparation-host-tests.log`.
+Dedicated fresh storage/ports did not alter existing soak instances.
+
+SEC-17 is a newly recorded source-review gap: both `unmap_page` implementations
+return empty table frames to the physical allocator before clearing parent
+entries and invalidating translations. AArch64's subsequent broadcast and
+x86-64's local invalidation/caller rendezvous do not establish that the frames
+were unavailable for reuse in the preceding interval. Correct reclamation must
+retain detached frames through walk/TLB quiescence before physical recycling
+and quota refunds. No real-hardware reproduction, cross-LP exploit, model proof
+or new reclamation fix is claimed in this batch.
+
+SEC-07 stays partial for stack, translation-table, kernel-heap and general
+metadata accounting/failure paths. SEC-17 reclamation is the next prerequisite
+for full page-table admission. Affinity, placement and replication policies
+were not changed; no QEMU throughput conclusion follows from reading these
+papers. Markdown, LaTeX source and TLA+ conformance were updated; models and PDF
+were not rebuilt.

@@ -48,7 +48,10 @@ after partial ELF/runtime mapping or CQ installation closes the unstarted
 namespace, its CQs and owned backing. Logical retirement denies new image
 mapping but retains charges until physical address-space destruction. Mandatory
 boot-service wrappers can still treat failed launch as fatal after preparation
-cleanup. Initial x86-64 root allocation and general kernel/registry allocation
+cleanup. Initial x86-64 root construction now owns its provisional frame and
+reports `AddressSpace(RootAllocationFailed)` before namespace publication.
+It uses the same physical progress-floor check; AArch64 retains lazy roots.
+Root/intermediate-table quota accounting and general kernel/registry allocation
 failure handling remain separate work; this is not universal loader OOM safety.
 
 The unused scalar-ASID public ELF/page mapping conveniences were removed.
@@ -72,3 +75,10 @@ This is deterministic kernel testing and an AArch64 security-guest regression,
 not a real-EL0 image-quota probe, full node pressure soak, allocator-failure
 injection or exhaustive cross-LP teardown proof. Stack, page-table, kernel heap,
 empty namespace/control-block and general metadata accounting remain open.
+
+Constructor-failure fixtures verify the registration error, unchanged backing
+and physical counts, and preserved reusable ASID capacity. An x86-only fixture
+checks a rejected root allocator and owned inactive PML4 teardown; it requires
+an x86 guest to execute. See the
+[page-table investigation](../reports/investigations/2026-10-05-page-tables-locality-and-admission.md)
+for locality and reclamation work that must accompany full table budgets.

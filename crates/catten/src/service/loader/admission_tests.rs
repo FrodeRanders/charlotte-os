@@ -9,6 +9,7 @@ use crate::memory::{
 };
 
 pub fn test_admission() {
+    test_root_failure();
     test_validation();
     let before = backing_budget::test_used_pages(Kind::Image);
     let heap_before = backing_budget::test_used_pages(Kind::Heap);
@@ -103,6 +104,29 @@ pub fn test_admission() {
     crate::logln!(
         "[loader admission] bounded validation, fill/zero, quota, mapping rollback, \
          retirement/reuse and signed partial/successful launch cleanup passed"
+    );
+}
+
+fn test_root_failure() {
+    let previous = create_user_address_space_handle();
+    memory::close_user_address_space_handle(previous).unwrap();
+    let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let image_pages = backing_budget::test_used_pages(Kind::Image);
+    assert_eq!(
+        try_create_user_address_space_handle_with(|| {
+            Err(crate::cpu::isa::memory::Error::PMemError(memory::physical::Error::OutOfFrames))
+        }),
+        Err(AddressSpaceRegistrationError::RootAllocationFailed)
+    );
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+    assert_eq!(backing_budget::test_used_pages(Kind::Image), image_pages);
+    let replacement = create_user_address_space_handle();
+    assert_eq!(replacement.id(), previous.id());
+    assert_ne!(replacement, previous);
+    memory::close_user_address_space_handle(replacement).unwrap();
+    crate::logln!(
+        "[root preparation] constructor failure returned before namespace publication; ASID \
+         capacity preserved"
     );
 }
 

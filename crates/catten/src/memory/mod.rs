@@ -199,6 +199,7 @@ pub enum AddressSpaceCloseError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddressSpaceRegistrationError {
+    RootAllocationFailed,
     HardwareAsidExhausted,
     CapabilityNamespaceAllocationFailed,
     /// The image failed cluster signature verification (unsigned or
@@ -334,6 +335,14 @@ impl PreparingUserFrame {
     pub(crate) fn install(mut self, address_space: &mut AddressSpace) {
         address_space.register_user_frame(self.frame());
         self.0 = None;
+    }
+
+    /// Architecture ownership boundary: the returned frame is adopted exactly
+    /// once by an owning translation root, not by the data-frame registry.
+    /// Call only after all fallible root preparation has completed.
+    #[cfg(target_arch = "x86_64")]
+    pub(crate) fn into_translation_root(mut self) -> PAddr {
+        self.0.take().unwrap()
     }
 }
 

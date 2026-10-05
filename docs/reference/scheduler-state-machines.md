@@ -450,6 +450,16 @@ keeps ordinary threads on their established LP, while `pinned_lp` is a hard
 constraint for explicit shard placement. A low-pass runtime sampler may move
 only explicitly certified compute-only work after a sustained imbalance.
 
+Affinity is a locality policy, not a NUMA allocation policy. Data and page-table
+placement are separate: moving execution can leave translation walks accessing
+remote memory on NUMA hardware. Charlotte's frame allocator is not NUMA-aware;
+x86-64 also has no PCID policy and CR3 reloads flush non-global translations.
+Do not assume affinity preserves all TLB state across context switches. The
+[page-table investigation](../reports/investigations/2026-10-05-page-tables-locality-and-admission.md)
+connects Mitosis/Hydra research to accounting, quiescent reclamation and future
+topology-aware placement. No automatic table replication or affinity-policy
+change follows from that analysis.
+
 The scheduler supports one deliberately narrow rebalancing operation:
 `try_rebalance()` may move an explicitly certified, queued `Ready` thread from
 the busiest LP to the least-loaded LP when their load differs by at least two.

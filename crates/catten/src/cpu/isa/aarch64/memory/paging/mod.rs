@@ -219,8 +219,14 @@ impl AddressSpace {
     /// kernel (TTBR1) mappings. The lower-half root and hardware ASID are
     /// assigned lazily, before the first user mapping or table registration.
     pub fn new_user() -> Self {
+        Self::try_new_user().expect("user address-space preparation failed")
+    }
+
+    /// AArch64 roots remain lazy: allocation failure is reported by mapping,
+    /// not by constructing the still-empty address-space owner.
+    pub fn try_new_user() -> Result<Self, super::Error> {
         let current = Self::get_current();
-        Self {
+        Ok(Self {
             ttbr0_el1: 0,
             ttbr1_el1: current.ttbr1_el1,
             hw_asid: 0,
@@ -233,7 +239,7 @@ impl AddressSpace {
             image_account: crate::memory::backing_budget::Account::new(
                 crate::memory::backing_budget::Kind::Image,
             ),
-        }
+        })
     }
 
     /// Record one physical frame that belongs to this user address space's

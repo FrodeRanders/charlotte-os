@@ -78,6 +78,10 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   creation; use `PreparingUserFrame` and fallible mapping rather than scalar
   loader helpers or panic-on-failure backing allocation. Charges survive until
   physical teardown, including partial launch preparation failures.
+- Runtime address-space creation uses `AddressSpace::try_new_user`; trusted
+  mandatory kernel fixtures may use its panic wrapper. Keep a new translation
+  root behind `PreparingUserFrame` until its final architecture ownership
+  transfer; root allocation failure must precede namespace publication.
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`

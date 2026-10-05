@@ -204,7 +204,7 @@ mode.
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
 | `StageTrusted` / `StageUntrusted` / `RejectUntrustedLoad` | signed service bundle/object-store staging; `verify_image_signature`, `try_load_domain` | Direct for the trust gate: unsigned, tampered, or artifact-mismatched bytes cannot reach address-space allocation/mapping. Cryptography and ELF parsing are abstracted to the trust bit. |
-| `Load` | `loader::try_load_domain` | Abstract: bounded ELF layout/planning, image/runtime backing admission, heap commitment, partial-preparation rollback, page tables and finite hardware-ASID allocation are omitted. The model's atomic successful Load is not a proof of these concrete budgets or failure paths. |
+| `Load` | `loader::try_load_domain` | Abstract: bounded ELF layout/planning, image/runtime backing admission, heap commitment, partial-preparation rollback, fallible initial root creation, page-table reclamation and finite hardware-ASID allocation are omitted. The model's atomic successful Load is not a proof of these concrete budgets or failure paths. |
 | `Start` | `start_domain`, `spawn_thread_on_lp` | Direct for the initial `(tid, generation)` domain handle. |
 | `Prepare` | `NameCatalog::apply_command(CMD_REGISTER)` | Direct: increments the retained generation, records the owner, and stores an inactive entry. A replacement is intentionally unresolvable until activation. Exhaustion returns generation zero without changing the entry. |
 | `PublishLocal` | node-local `ns::register` from DNS registration flow | Direct for installing the re-delegable local connection before distributed visibility. The local name service independently allocates and returns its checked generation. |

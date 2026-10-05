@@ -21,6 +21,17 @@ The kernel shards its own state per-LP, meaning each LP has:
 An LP is a \textbf{place}: threads are pinned to an LP at creation and, by default,
 stay there. Migration is opt-in and restricted.
 
+Affinity preserves a deliberate locality choice; it does not establish a
+NUMA allocation policy. Page-table memory can be remote even when the data
+it translates is local. \href{https://arxiv.org/abs/1910.05398}{Mitosis} and
+\href{https://www.usenix.org/conference/atc24/presentation/gao-bin-scalable}{Hydra}
+study the benefits and coherence costs of page-table migration and replication.
+Charlotte retains its existing affinity policy while treating translation
+metadata as a separate accounting and future placement concern. The present
+physical allocator is not NUMA-aware, and x86-64 has no PCID policy: CR3
+reloads flush non-global translations. Affinity alone therefore does not
+promise that translations remain cached across context switches.
+
 \section{The shard: the userspace unit of ownership}
 
 A shard is a userspace ownership and execution domain. The rules of the shard are

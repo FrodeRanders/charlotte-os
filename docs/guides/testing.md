@@ -506,6 +506,11 @@ CQs on teardown. Layout fixtures check bounded headers, adaptive-heap exclusion
 and oversized BSS planning. This does not inject physical exhaustion or add a
 scoped EL0 quota bit. See [loader admission](../reference/loader-admission.md).
 
+Constructor-failure injection verifies that `RootAllocationFailed` returns
+before namespace publication, consumes no frames/backing charges and preserves
+ASID capacity. The x86-only root fixture tests rejected allocation and successful
+inactive-PML4 teardown; AArch64 cannot execute that architecture-specific test.
+
 ## Rule for new service logic
 
 Keep the thin syscall loop and process entry point in an EL0 binary. Put policy

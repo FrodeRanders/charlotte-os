@@ -365,11 +365,21 @@ pub fn create_user_address_space_handle() -> AddressSpaceHandle {
     try_create_user_address_space_handle().expect("[loader] address-space creation failed")
 }
 
-/// Try to create a fresh user address space without turning finite hardware
-/// ASID exhaustion into a kernel panic.
+/// Report initial root, namespace metadata and finite hardware-ASID admission
+/// failures before handing a runtime caller a new address-space identity.
 pub fn try_create_user_address_space_handle()
 -> Result<AddressSpaceHandle, AddressSpaceRegistrationError> {
-    crate::memory::register_user_address_space(AddressSpace::new_user())
+    try_create_user_address_space_handle_with(AddressSpace::try_new_user)
+}
+
+// Kernel-only constructor adapter: test failure before any namespace/ASID
+// publication without exhausting the physical allocator.
+fn try_create_user_address_space_handle_with(
+    construct: impl FnOnce() -> Result<AddressSpace, crate::cpu::isa::memory::Error>,
+) -> Result<AddressSpaceHandle, AddressSpaceRegistrationError> {
+    let address_space =
+        construct().map_err(|_| AddressSpaceRegistrationError::RootAllocationFailed)?;
+    crate::memory::register_user_address_space(address_space)
 }
 
 /// Verify the ELF image's cluster signature note before anything is mapped.

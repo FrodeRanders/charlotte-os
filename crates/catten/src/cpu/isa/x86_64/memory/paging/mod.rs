@@ -95,22 +95,32 @@ impl AddressSpace {
     /// through the address-space table and it becomes active only when a thread
     /// switches CR3 to it.
     pub fn new_user() -> Self {
+        Self::try_new_user().expect("user address-space preparation failed")
+    }
+
+    /// Runtime callers report initial root exhaustion rather than panicking
+    /// before the loader's owning preparation exists.
+    pub fn try_new_user() -> Result<Self, super::Error> {
+        Self::try_new_user_with_root(crate::memory::PreparingUserFrame::allocate_zeroed)
+    }
+
+    fn try_new_user_with_root(
+        allocate: impl FnOnce() -> Option<crate::memory::PreparingUserFrame>,
+    ) -> Result<Self, super::Error> {
         let current = Self::get_current();
-        let new_pml4 = PHYSICAL_FRAME_ALLOCATOR
-            .lock()
-            .allocate_frame()
-            .expect("Failed to allocate a PML4 frame for a user address space.");
+        let root = allocate()
+            .ok_or(super::Error::PMemError(crate::memory::physical::Error::OutOfFrames))?;
+        let new_pml4 = root.frame();
         let new_pml4_ptr: *mut PageTable = new_pml4.into();
         unsafe {
-            core::ptr::write_bytes(new_pml4_ptr.cast::<u8>(), 0, PAGE_SIZE);
             let cur_pml4: *const PageTable =
                 PAddr::try_from((current.cr3 & CR3_ADDRESS_MASK) as usize).unwrap().into();
             for index in 256..N_PAGE_TABLE_ENTRIES {
                 (*new_pml4_ptr)[index] = (*cur_pml4)[index];
             }
         }
-        AddressSpace {
-            cr3: <PAddr as Into<u64>>::into(new_pml4) & CR3_ADDRESS_MASK,
+        Ok(AddressSpace {
+            cr3: <PAddr as Into<u64>>::into(root.into_translation_root()) & CR3_ADDRESS_MASK,
             owns_root: true,
             owned_frames: Vec::new(),
             heap_account: crate::memory::backing_budget::Account::new(
@@ -119,7 +129,20 @@ impl AddressSpace {
             image_account: crate::memory::backing_budget::Account::new(
                 crate::memory::backing_budget::Kind::Image,
             ),
-        }
+        })
+    }
+
+    pub(crate) fn self_test_root_preparation() {
+        let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+        assert!(Self::try_new_user_with_root(|| None).is_err());
+        assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+        let address_space = Self::try_new_user().unwrap();
+        assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - 1);
+        drop(address_space);
+        assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+        crate::logln!(
+            "[root preparation] rejected allocation and owned inactive PML4 teardown passed"
+        );
     }
 
     /// Record one physical frame that belongs to this user address space's
