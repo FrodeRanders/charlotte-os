@@ -72,7 +72,12 @@ the kernel heap remain unbudgeted by these accounts.
 
 Initial runtime root preparation now reports allocation failure before namespace
 publication. x86-64 uses a provisional owner and the physical progress-floor
-check; AArch64 retains lazy roots. Full table-frame quotas remain open. The
+check; AArch64 retains lazy roots. Both walkers now use `PreparingTable` for
+root/intermediate publication, with per-frame progress-floor checks for
+private/lower-half tables and an explicit shared-kernel reserve policy. ARM
+allocation failure consumes no tag, and failed tag admission releases the
+unpublished root. Partial construction prefixes stay owned until retry or
+quiescent destruction. Full table-frame quotas remain open. The
 [page-table investigation](../investigations/2026-10-05-page-tables-locality-and-admission.md)
 records the SEC-17 correction: empty intermediate tables now remain linked and
 owned for reuse until quiescent teardown. Full admission must charge that
@@ -2891,3 +2896,71 @@ tables, stacks, kernel heap and general metadata. SEC-18 remains partial for
 live mapping/IPC/MMIO masking guards, recoverable shootdown and complete
 quiescence. Contributor instructions, reference/testing Markdown, investigation,
 LaTeX source and TLA+ conformance were updated; models and PDF were not rebuilt.
+
+## Continuation: owned root/intermediate-table preparation — 2026-10-05
+
+The joint user-backing preparation batch was committed as `854177bd`. This
+continuation corrects a remaining preparation boundary, without claiming full
+translation admission: both walkers previously called the physical allocator
+directly for child tables and ARM lazy roots. The fresh frame had no Rust owner
+until parent/root publication, and these requests bypassed the existing
+physical progress floor used by heap/image and initial x86 root preparation.
+
+`PreparingTable` now captures fresh backing before zeroing and retains it
+through all fallible preparation. Its consuming publication callback adopts
+into a parent link or root exactly once. The owner disarms before invoking that
+boundary, so an interrupted publication cannot recycle a potentially reachable
+frame. Unconfirmed publication can sacrifice capacity; it is not a new recovery
+or quiescence API. Normal unpublished rejection returns its frame, and failed
+release is logged without retry. The old scalar x86 initial-root transfer
+helper is removed.
+
+Private/lower-half requests test the one-eighth physical free-frame floor under
+the allocator guard on each root/intermediate allocation. Shared higher-half
+kernel requests may consume that reserve for progress, but still fail on actual
+allocator exhaustion. Architecture mapping context selects scope after
+user-accessible address validation; applications cannot choose the bypass.
+This policy has no domain/node table counters, trusted per-domain quota or
+global RAM ledger. Other unbudgeted kernel consumers can still exhaust memory.
+
+ARM lazy-root allocation now precedes hardware-tag acquisition. Rejected frame
+preparation consumes no tag; rejected tag admission drops the unpublished frame
+without publishing TTBR0. Linked construction prefixes remain in the same
+owning hierarchy on later allocation failure. Retry reuses them, and cached
+empty branches can remap without any new table request. Existing quiescent
+private-tree destruction still owns final release.
+
+Validation:
+
+- Per-walker local fault adapters execute the production mapping paths with
+  zero through four accepted allocations. Each failure checks absent leaves and
+  exact retained-prefix counts, followed by retry, zero-allocation cached remap,
+  and a sparse second branch rejected after one table then completed using its
+  prefix. Aliased foreign data stays intact, active hardware roots stay unchanged,
+  and teardown returns every private table before its separate data owner drops.
+  Heap/image charge counts remain unchanged; table frames are not charged yet.
+- Additional fixtures check both scope/floor predicates, zeroed unpublished
+  owner Drop, and rejected ARM hardware-tag admission after real frame
+  preparation. These probes leave **no additional retained frames**. The
+  x86-only initial-root failure/cleanup fixture compiles but was not executed.
+- Four-LP TCG AArch64 security guest, fresh dedicated
+  `table-preparation-20261005` storage, HTTP 18095/deployment 17459:
+  **19/19**, zero failed/pending, both scoped probes `0x7fff`, cancellation
+  traffic retired after 4,468 requests. Kernel SHA-256:
+  `8ee7ee61aba3bb4d586e16d1eff5248e00845437407ad5bc154f8c1c0e91edf2`.
+  Run `/private/tmp/charlotte-security-table-preparation-run.log`;
+  serial `/private/tmp/charlotte-table-preparation-20261005-serial.log`.
+  Existing soak storage and instances were not modified.
+- Full host suites pass, including seven standalone slot-owner tests; log
+  `/private/tmp/charlotte-security-table-preparation-host-tests.log`. Strict
+  locked Clippy passes for AArch64 `acpi,security_test` and x86-64 `acpi`;
+  formatting and diff checks pass. No x86 guest was run.
+
+The floor checks use real allocator state in production; tests validate the
+predicate and synthetic rejection points, not actual pressure or physical OOM.
+They do not execute publication unwind, concurrent hardware walks, real failed
+recipients or x86 rendezvous progress. SEC-07 remains partial for table quotas,
+stacks, kernel heap and general metadata. SEC-18 remains partial for live
+mapping/IPC/MMIO masking guards, recoverable shootdown and full quiescence.
+Contributor instructions, reference/testing Markdown, investigation, manual
+source and TLA+ conformance were updated; models and PDF were not rebuilt.

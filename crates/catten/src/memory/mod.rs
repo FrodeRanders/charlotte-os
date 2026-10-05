@@ -9,6 +9,7 @@ pub mod object;
 pub mod physical;
 pub(crate) mod preparation;
 pub(crate) mod retirement;
+pub(crate) mod translation;
 pub mod usage;
 
 pub use linear::VAddr;
@@ -331,13 +332,15 @@ impl PreparingUserFrame {
     }
 
     fn allocate() -> Option<Self> {
+        Self::allocate_with_policy(|free, usable| {
+            charlotte_lifecycle::resources::frames_available(free, usable, 1)
+        })
+    }
+
+    fn allocate_with_policy(allow: impl FnOnce(u64, u64) -> bool) -> Option<Self> {
         let page_size = crate::cpu::isa::memory::paging::PAGE_SIZE;
         let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-        if !charlotte_lifecycle::resources::frames_available(
-            allocator.free_frames() as u64,
-            allocator.usable_bytes() / page_size as u64,
-            1,
-        ) {
+        if !allow(allocator.free_frames() as u64, allocator.usable_bytes() / page_size as u64) {
             return None;
         }
         let frame = allocator.allocate_frame().ok()?;
@@ -373,14 +376,6 @@ impl PreparingUserFrame {
         deallocate: impl FnOnce(PAddr) -> Result<(), physical::Error>,
     ) -> Result<(), physical::Error> {
         deallocate(self.0.take().unwrap())
-    }
-
-    /// Architecture ownership boundary: the returned frame is adopted exactly
-    /// once by an owning translation root, not by the data-frame registry.
-    /// Call only after all fallible root preparation has completed.
-    #[cfg(target_arch = "x86_64")]
-    pub(crate) fn into_translation_root(mut self) -> PAddr {
-        self.0.take().unwrap()
     }
 }
 

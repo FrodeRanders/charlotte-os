@@ -86,8 +86,14 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   physical teardown, including partial launch preparation failures.
 - Runtime address-space creation uses `AddressSpace::try_new_user`; trusted
   mandatory kernel fixtures may use its panic wrapper. Keep a new translation
-  root behind `PreparingUserFrame` until its final architecture ownership
+  root behind `PreparingTable` until its final architecture ownership
   transfer; root allocation failure must precede namespace publication.
+  Both walkers use `PreparingTable` for root/intermediate publication. Keep
+  fallible work before its consuming `publish`; an interrupted publication must
+  never recycle potentially reachable backing. Private/lower-half tables
+  preserve the physical progress floor. Shared higher-half kernel tables may
+  consume that reserve; derive scope from validated architecture mapping
+  context, never application input. This is not translation-table admission.
 - Dynamic unmap removes leaves, not intermediate-table ownership. Keep empty
   tables linked for reuse until quiescent address-space teardown; table charges
   must follow their actual lifetime, not mapped-leaf counts. Initialize backing

@@ -20,12 +20,15 @@ use crate::{
             vaddr::VAddr,
         },
     },
-    memory::PHYSICAL_FRAME_ALLOCATOR,
+    memory::translation::{
+        PreparingTable,
+        TableScope,
+    },
 };
 type WalkerError = <super::MemoryInterfaceImpl as MemoryInterface>::Error;
 type WalkerResult<T> = Result<T, WalkerError>;
 
-pub struct PthWalker<'vas> {
+pub(crate) struct PthWalker<'vas, Prepare = fn(TableScope) -> Option<PreparingTable>> {
     pub address_space: &'vas mut super::AddressSpace,
     pub vaddr: VAddr,
     pub pml4_ptr: *mut super::PageTable,
@@ -33,10 +36,38 @@ pub struct PthWalker<'vas> {
     pub pd_ptr: *mut super::PageTable,
     pub pt_ptr: *mut super::PageTable,
     pub page_frame_ptr: *mut [u8; super::PAGE_SIZE],
+    prepare: Prepare,
 }
 
 impl<'vas> PthWalker<'vas> {
     pub fn new(address_space: &'vas mut super::AddressSpace, vaddr: VAddr) -> Self {
+        Self::with_preparer(address_space, vaddr, PreparingTable::allocate)
+    }
+
+    pub(crate) fn test_table_preparation() {
+        crate::memory::translation::tests::run(|space, vaddr, frame, limit| {
+            let mut remaining = limit;
+            let prepare = |scope| {
+                assert_eq!(scope, TableScope::PrivateUser);
+                if remaining == 0 {
+                    return None;
+                }
+                let table = PreparingTable::allocate(scope)?;
+                remaining -= 1;
+                Some(table)
+            };
+            PthWalker::with_preparer(space, vaddr, prepare)
+                .map_existing_page(frame, true, true, true, 0)
+        });
+    }
+}
+
+impl<'vas, Prepare: FnMut(TableScope) -> Option<PreparingTable>> PthWalker<'vas, Prepare> {
+    fn with_preparer(
+        address_space: &'vas mut super::AddressSpace,
+        vaddr: VAddr,
+        prepare: Prepare,
+    ) -> Self {
         Self {
             address_space,
             vaddr,
@@ -45,6 +76,7 @@ impl<'vas> PthWalker<'vas> {
             pd_ptr: core::ptr::null_mut(),
             pt_ptr: core::ptr::null_mut(),
             page_frame_ptr: core::ptr::null_mut(),
+            prepare,
         }
     }
 
@@ -120,20 +152,19 @@ impl<'vas> PthWalker<'vas> {
         user_accessible: bool,
         no_execute: bool,
     ) -> WalkerResult<*mut super::PageTable> {
-        let new_table = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame()?;
+        let scope = if usize::from(self.vaddr) >> 63 == 1 {
+            TableScope::SharedKernel
+        } else {
+            TableScope::PrivateUser
+        };
+        let preparation = (self.prepare)(scope)
+            .ok_or(WalkerError::PMemError(crate::memory::physical::Error::OutOfFrames))?;
+        let new_table_ptr: *mut super::PageTable = preparation.frame().into();
         unsafe {
-            let new_table_ptr: *mut super::PageTable = new_table.into();
-            // Scrub before publishing: hardware walks are not serialized by
-            // the software address-space lock.
-            core::ptr::write_bytes(new_table_ptr.cast::<u8>(), 0, PAGE_SIZE);
-            Self::set_table_entry(
-                &mut (*parent_table_ptr)[parent_index],
-                new_table,
-                writable,
-                user_accessible,
-                no_execute,
-                false,
-            );
+            let entry = &mut (*parent_table_ptr)[parent_index];
+            preparation.publish(|frame| {
+                Self::set_table_entry(entry, frame, writable, user_accessible, no_execute, false);
+            });
             Ok(new_table_ptr)
         }
     }

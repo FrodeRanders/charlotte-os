@@ -44,6 +44,12 @@ volatile store. Its walker no longer has a second root-construction path that
 could load an uninitialized CR3 or clear an existing root. Runtime root
 construction belongs to `try_new_user`.
 
+Both walkers now retain [owned table preparation](page-table-preparation.md)
+through the final publication boundary. Private/lower-half table allocations
+also preserve the physical progress floor; shared higher-half kernel tables may
+consume its reserve. Partial linked trees remain owned on mapping failure.
+This adds no table quota and does not change the invalidation obligations.
+
 The zeroing `map_page` path initializes data before exposing its leaf on both
 architectures. `map_existing_page` preserves data already initialized and owned
 by its caller.

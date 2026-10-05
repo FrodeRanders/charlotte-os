@@ -41,9 +41,12 @@ remain a separate, uncharged concern.
 
 Under the frame-allocator guard, heap backing also preserves the existing
 one-eighth physical free-frame floor. That check concerns the requested heap
-frame, not every page-table allocation needed to map it. Image/runtime backing
-uses the same floor check; stack, page-table and kernel allocations can still
-consume the floor.
+frame. [Private-table preparation](page-table-preparation.md) now also checks
+the floor for each root/intermediate frame needed by the mapping. A rejected
+mapping can retain a partial owned tree. Image/runtime backing uses the same
+data-frame check; shared kernel tables, stacks and other kernel allocations can
+still consume the reserve. None of these floor checks charges tables to the
+heap pool.
 
 Retirement fences new heap commitment under the mapping guard, without
 refunding live pages. `AddressSpace::drop` returns its owned frames before its

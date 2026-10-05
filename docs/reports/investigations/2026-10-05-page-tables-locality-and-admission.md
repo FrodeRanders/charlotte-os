@@ -75,6 +75,15 @@ zeros its fresh PML4, preserves the physical progress floor, and returns
 AArch64 keeps its lazy-root policy. Trusted mandatory fixture constructors may
 still panic; the runtime loader uses `try_new_user`.
 
+Root/intermediate construction now uses
+[owned table preparation](../../reference/page-table-preparation.md) in both
+walkers. Private/lower-half allocations check the physical progress floor;
+shared higher-half kernel allocations may consume the reserve. Partial trees
+remain owned on rejection and reuse their prefix on retry. ARM root allocation
+failure no longer consumes a hardware tag; rejected tag admission releases its
+unpublished frame. This is preparation and progress policy, not table quotas or
+a resolution of the remaining live-operation locking/quiescence gaps.
+
 Before enforcing complete page-table quotas:
 
 1. Dynamic unmap now retains empty tables linked in their owning hierarchy for

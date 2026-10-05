@@ -41,7 +41,9 @@ ASID reuse. Unconfirmed publication retains backing without deallocation. See
 
 The backing allocator also preserves the existing one-eighth free-frame floor
 under its frame lock. Root/intermediate page tables are not included in this
-page reservation and can still consume the floor. The fallible loading path
+page reservation. Their private/lower-half preparation now separately checks
+the floor; shared kernel tables may consume its reserve. See
+[owned table preparation](page-table-preparation.md). The fallible loading path
 reports `BackingAdmission`, `FrameTrackingAllocation`, `FrameAllocation`,
 `PageMapping` and `StaleAddressSpace` through `DomainLoadError` rather than
 panicking at these backing operations.

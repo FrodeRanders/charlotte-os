@@ -524,6 +524,20 @@ its backing, guarding against exclusive-end overflow in range invalidation.
 This checks physical ownership/reuse, not a concurrent hardware-walk race or
 failed cross-LP shootdown. AArch64 guest execution does not execute x86 code.
 
+## Translation-frame preparation tests
+
+Per-walker fault adapters reject each private-tree allocation prefix, then check
+retry and empty-table reuse with zero fresh-allocation allowance. A sparse
+second branch fails after one table, retains its partial ownership, then
+completes without rebuilding the prefix. Assertions check exact physical counts,
+alias data preservation, unchanged active hardware roots, complete private
+teardown and unchanged heap/image charges. ARM additionally rejects hardware-tag
+admission after frame preparation and checks that no root/tag is published.
+Scope/floor predicates and both zeroed-owner Drop paths are checked separately.
+These fixtures retain no additional frames. See
+[table preparation](../reference/page-table-preparation.md). They do not force
+real exhaustion or prove publication unwind, hardware-walk races or x86 progress.
+
 ## Kernel data-retirement tests
 
 Boot fixtures warm a retained kernel table subtree, then compare actual data

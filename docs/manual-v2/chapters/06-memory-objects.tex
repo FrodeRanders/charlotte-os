@@ -134,6 +134,15 @@ promotion cannot recover or reclassify the retained charge. If publication is
 unconfirmed, cleanup retains backing without attempting deallocation. These
 are bounded account counters, not a growing recovery queue.
 
+Translation roots and intermediate tables also have an owning preparation
+through publication. Private lower-half tables preserve the physical progress
+floor on each allocation; shared higher-half kernel tables may consume that
+reserve. Mapping failure can leave a partial linked tree, which remains owned
+for retry or quiescent destruction. ARM allocates the root before acquiring a
+hardware tag, releasing the unpublished frame if tag admission fails. This
+preparation policy adds no translation-table quota and does not resolve the
+remaining lock-held invalidations.
+
 \section{Four transfer modes}
 
 CharlotteOS defines four transfer modes, enforced by the MMU:

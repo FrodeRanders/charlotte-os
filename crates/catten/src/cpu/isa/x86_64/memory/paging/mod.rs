@@ -89,11 +89,15 @@ impl AddressSpace {
     /// Runtime callers report initial root exhaustion rather than panicking
     /// before the loader's owning preparation exists.
     pub fn try_new_user() -> Result<Self, super::Error> {
-        Self::try_new_user_with_root(crate::memory::PreparingUserFrame::allocate_zeroed)
+        Self::try_new_user_with_root(|| {
+            crate::memory::translation::PreparingTable::allocate(
+                crate::memory::translation::TableScope::PrivateUser,
+            )
+        })
     }
 
     fn try_new_user_with_root(
-        allocate: impl FnOnce() -> Option<crate::memory::PreparingUserFrame>,
+        allocate: impl FnOnce() -> Option<crate::memory::translation::PreparingTable>,
     ) -> Result<Self, super::Error> {
         let current = Self::get_current();
         let root = allocate()
@@ -107,8 +111,8 @@ impl AddressSpace {
                 (*new_pml4_ptr)[index] = (*cur_pml4)[index];
             }
         }
-        Ok(AddressSpace {
-            cr3: <PAddr as Into<u64>>::into(root.into_translation_root()) & CR3_ADDRESS_MASK,
+        Ok(root.publish(|frame| AddressSpace {
+            cr3: <PAddr as Into<u64>>::into(frame) & CR3_ADDRESS_MASK,
             owns_root: true,
             owned_frames: Vec::new(),
             heap_account: crate::memory::backing_budget::Account::new(
@@ -117,7 +121,7 @@ impl AddressSpace {
             image_account: crate::memory::backing_budget::Account::new(
                 crate::memory::backing_budget::Kind::Image,
             ),
-        })
+        }))
     }
 
     pub(crate) fn self_test_root_preparation() {
@@ -131,6 +135,10 @@ impl AddressSpace {
         crate::logln!(
             "[root preparation] rejected allocation and owned inactive PML4 teardown passed"
         );
+    }
+
+    pub(crate) fn test_table_preparation() {
+        pth_walker::PthWalker::test_table_preparation();
     }
 
     /// Record one physical frame that belongs to this user address space's

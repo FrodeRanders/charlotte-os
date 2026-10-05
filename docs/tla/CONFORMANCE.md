@@ -206,6 +206,13 @@ concrete pin/quarantine and teardown-vector removal paths are not modeled by
 the atomic lifetime actions. They do not discharge the remaining lifecycle/IPC
 masking-guard or hardware-quiescence obligations.
 
+Concrete root/intermediate allocation now uses `PreparingTable` through
+publication. Private/lower-half allocation preserves the physical progress
+floor, while shared higher-half kernel tables may consume it. Local per-walker
+fault adapters check partial linked prefixes, retry/reuse and exact inactive-tree
+teardown. The atomic lifetime/load models omit preparation owners, floor policy,
+hardware tags and table counts; this is not a new model proof or TLC result.
+
 Final root close now detaches into `RetiredAddressSpace`: software-slot ownership
 and the captured ARM hardware tag survive lifecycle/table guard release. Root
 destruction follows invalidation; slot completion follows physical teardown.

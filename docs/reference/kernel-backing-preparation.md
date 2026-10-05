@@ -56,8 +56,10 @@ logged, not repaired: a frame already reported free is not made allocated
 again. Fault adapters reject before the real allocator and check that their
 frames remain allocated.
 
-Uncharged `PreparingUserFrame` remains only for x86 initial-root preparation
-and foreign-backing fixtures. Its failed release is logged and not retried;
+Uncharged `PreparingUserFrame` remains inside the data/table owners and for
+foreign-backing fixtures. Translation publication uses the dedicated
+[PreparingTable owner](page-table-preparation.md). Failed unpublished release
+is logged and not retried;
 it has no heap/image reservation to refund. Translation-table admission,
 aggregate kernel metadata, stacks and kernel heap remain separate SEC-07 work.
 This owner retains the table guard; it does not fix live mapping/IPC/MMIO

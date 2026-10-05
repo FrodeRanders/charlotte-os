@@ -38,7 +38,10 @@ use crate::{
             MemoryInterface,
         },
     },
-    memory::PHYSICAL_FRAME_ALLOCATOR,
+    memory::translation::{
+        PreparingTable,
+        TableScope,
+    },
 };
 
 type WalkerError = <super::super::MemoryInterfaceImpl as MemoryInterface>::Error;
@@ -48,17 +51,63 @@ type WalkerResult<T> = Result<T, WalkerError>;
 /// any other low bits are not part of the table base address.
 const TTBR_BADDR_MASK: u64 = 0x0000_ffff_ffff_f000;
 
-pub struct Walker<'vas> {
+pub(crate) struct Walker<'vas, Prepare = fn(TableScope) -> Option<PreparingTable>> {
     pub address_space: &'vas mut AddressSpace,
     pub vaddr: VAddr,
     pub l0_ptr: *mut PageTable,
     pub l1_ptr: *mut PageTable,
     pub l2_ptr: *mut PageTable,
     pub l3_ptr: *mut PageTable,
+    prepare: Prepare,
 }
 
 impl<'vas> Walker<'vas> {
     pub fn new(address_space: &'vas mut AddressSpace, vaddr: VAddr) -> Self {
+        Self::with_preparer(address_space, vaddr, PreparingTable::allocate)
+    }
+
+    pub(crate) fn test_table_preparation() {
+        // A prepared but unpublished lazy root must be released when tag
+        // admission fails, without touching the active hardware root.
+        let free = crate::memory::PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+        let mut space = AddressSpace::try_new_user().unwrap();
+        assert!(matches!(
+            Walker::new(&mut space, VAddr::from(charlotte_launch::HEAP_VADDR))
+                .ensure_root_with_tag(|_| false),
+            Err(WalkerError::HardwareAsidExhausted)
+        ));
+        assert_eq!(space.hw_asid(), 0);
+        assert_eq!(space.get_ttbr0(), 0);
+        drop(space);
+        assert_eq!(crate::memory::PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+        crate::memory::translation::tests::run(|space, vaddr, frame, limit| {
+            let mut remaining = limit;
+            let prepare = |scope| {
+                assert_eq!(scope, TableScope::PrivateUser);
+                if remaining == 0 {
+                    return None;
+                }
+                let table = PreparingTable::allocate(scope)?;
+                remaining -= 1;
+                Some(table)
+            };
+            Walker::with_preparer(space, vaddr, prepare).map_existing_page(
+                frame,
+                true,
+                true,
+                true,
+                super::descriptor::MAIR_IDX_NORMAL,
+            )
+        });
+    }
+}
+
+impl<'vas, Prepare: FnMut(TableScope) -> Option<PreparingTable>> Walker<'vas, Prepare> {
+    fn with_preparer(
+        address_space: &'vas mut AddressSpace,
+        vaddr: VAddr,
+        prepare: Prepare,
+    ) -> Self {
         Self {
             address_space,
             vaddr,
@@ -66,6 +115,7 @@ impl<'vas> Walker<'vas> {
             l1_ptr: core::ptr::null_mut(),
             l2_ptr: core::ptr::null_mut(),
             l3_ptr: core::ptr::null_mut(),
+            prepare,
         }
     }
 
@@ -82,6 +132,16 @@ impl<'vas> Walker<'vas> {
     /// higher half have their top bit set.
     fn is_higher_half(&self) -> bool {
         (<VAddr as Into<usize>>::into(self.vaddr) >> 63) & 1 == 1
+    }
+
+    fn prepare_table(&mut self) -> WalkerResult<PreparingTable> {
+        let scope = if self.is_higher_half() {
+            TableScope::SharedKernel
+        } else {
+            TableScope::PrivateUser
+        };
+        (self.prepare)(scope)
+            .ok_or(WalkerError::PMemError(crate::memory::physical::Error::OutOfFrames))
     }
 
     /// The physical base of the root (L0) table for this address, taken from the
@@ -129,15 +189,14 @@ impl<'vas> Walker<'vas> {
         parent_table_ptr: *mut PageTable,
         index: usize,
     ) -> WalkerResult<*mut PageTable> {
-        let new_table = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame()?;
+        let preparation = self.prepare_table()?;
+        let new_table_ptr: *mut PageTable = preparation.frame().into();
         unsafe {
-            let new_table_ptr: *mut PageTable = new_table.into();
-            core::ptr::write_bytes(new_table_ptr.cast::<u8>(), 0, PAGE_SIZE);
-            core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
-            core::ptr::write_volatile(
-                &raw mut (*parent_table_ptr)[index],
-                Descriptor::new_table(new_table),
-            );
+            let entry = &raw mut (*parent_table_ptr)[index];
+            preparation.publish(|frame| {
+                core::sync::atomic::fence(core::sync::atomic::Ordering::Release);
+                core::ptr::write_volatile(entry, Descriptor::new_table(frame));
+            });
             Ok(new_table_ptr)
         }
     }
@@ -201,6 +260,13 @@ impl<'vas> Walker<'vas> {
     /// empty. Kernel (higher half) mappings already have a root established by
     /// Limine; freshly created user address spaces may not.
     fn ensure_root(&mut self) -> WalkerResult<*mut PageTable> {
+        self.ensure_root_with_tag(|space| space.ensure_hw_asid().is_some())
+    }
+
+    fn ensure_root_with_tag(
+        &mut self,
+        acquire_tag: impl FnOnce(&mut AddressSpace) -> bool,
+    ) -> WalkerResult<*mut PageTable> {
         if self.root_table_base().is_none() {
             // Creating a root for an inactive address space must not install
             // that address space on the CPU doing the construction. Remember
@@ -212,20 +278,18 @@ impl<'vas> Walker<'vas> {
             } else {
                 current.get_ttbr0() == self.address_space.get_ttbr0()
             };
-            if !self.is_higher_half() {
-                self.address_space.ensure_hw_asid().ok_or(WalkerError::HardwareAsidExhausted)?;
+            let preparation = self.prepare_table()?;
+            if !self.is_higher_half() && !acquire_tag(self.address_space) {
+                return Err(WalkerError::HardwareAsidExhausted);
             }
-            let new_root = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame()?;
-            unsafe {
-                let new_root_ptr: *mut PageTable = new_root.into();
-                core::ptr::write_bytes(new_root_ptr.cast::<u8>(), 0, PAGE_SIZE);
-            }
-            let base = <PAddr as Into<u64>>::into(new_root) & TTBR_BADDR_MASK;
-            if self.is_higher_half() {
-                self.address_space.set_ttbr1(base);
-            } else {
-                self.address_space.install_ttbr0_base(base);
-            }
+            preparation.publish(|frame| {
+                let base = <PAddr as Into<u64>>::into(frame) & TTBR_BADDR_MASK;
+                if self.is_higher_half() {
+                    self.address_space.set_ttbr1(base);
+                } else {
+                    self.address_space.install_ttbr0_base(base);
+                }
+            });
             if was_active {
                 self.address_space.load().expect("Failed to load new root translation table");
             }

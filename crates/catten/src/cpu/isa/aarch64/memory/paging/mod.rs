@@ -242,6 +242,10 @@ impl AddressSpace {
         self.owned_frames.try_reserve(1)
     }
 
+    pub(crate) fn test_table_preparation() {
+        walker::Walker::test_table_preparation();
+    }
+
     pub fn get_ttbr0(&self) -> u64 {
         self.ttbr0_el1
     }
