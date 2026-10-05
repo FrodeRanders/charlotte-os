@@ -6,6 +6,7 @@ pub mod budget;
 pub mod linear;
 pub mod object;
 pub mod physical;
+pub(crate) mod retirement;
 pub mod usage;
 
 pub use linear::VAddr;
@@ -195,6 +196,8 @@ pub enum AddressSpaceCloseError {
     KernelAddressSpace,
     AddressSpaceMissing,
     StaleHandle,
+    RetirementMetadataAllocationFailed,
+    QuiescenceFailed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -432,21 +435,34 @@ pub fn address_space_handle_is_current(handle: AddressSpaceHandle) -> bool {
 pub fn close_user_address_space_handle(
     handle: AddressSpaceHandle,
 ) -> Result<(), AddressSpaceCloseError> {
-    // Serialize validation, shootdown, and removal as one address-space
-    // lifetime operation. Otherwise this handle could be validated, then the
-    // ASID closed and reused before its stale translations are purged.
-    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
-    match ADDRESS_SPACE_TABLE.lock().generation(handle.id) {
-        Ok(generation) if generation == handle.generation => {}
-        Ok(_) => return Err(AddressSpaceCloseError::StaleHandle),
-        Err(_) => return Err(AddressSpaceCloseError::AddressSpaceMissing),
-    }
-    close_user_address_space_locked(handle)
+    // Serialize validation and logical subsystem cleanup, then detach into a
+    // slot-leasing owner. Releasing lifecycle may not make this ASID reusable
+    // before the owned hierarchy has passed final invalidation/destruction.
+    let retired = {
+        let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+        close_user_address_space_locked(handle)?
+    };
+    // The owner retains the complete private hierarchy, backing accounts and
+    // software-slot lease. Final invalidation/destruction holds neither the
+    // lifecycle nor the address-space table guard.
+    retired.release()
 }
 
 fn close_user_address_space_locked(
     handle: AddressSpaceHandle,
-) -> Result<(), AddressSpaceCloseError> {
+) -> Result<retirement::RetiredAddressSpace, AddressSpaceCloseError> {
+    close_user_address_space_with_preflight(handle, IdTable::prepare_retirement)
+}
+
+// Kernel-only fault adapter; caller retains lifecycle. Runtime always uses
+// the real fallible completion-storage preflight, before logical mutation.
+fn close_user_address_space_with_preflight(
+    handle: AddressSpaceHandle,
+    prepare: impl FnOnce(
+        &mut AddressSpaceTable,
+        usize,
+    ) -> Result<(), crate::klib::collections::id_table::Error>,
+) -> Result<retirement::RetiredAddressSpace, AddressSpaceCloseError> {
     let asid = handle.id;
     if asid == KERNEL_ASID {
         return Err(AddressSpaceCloseError::KernelAddressSpace);
@@ -457,6 +473,9 @@ fn close_user_address_space_locked(
         Ok(_) => return Err(AddressSpaceCloseError::StaleHandle),
         Err(_) => return Err(AddressSpaceCloseError::AddressSpaceMissing),
     }
+
+    prepare(&mut ADDRESS_SPACE_TABLE.lock(), asid)
+        .map_err(|_| AddressSpaceCloseError::RetirementMetadataAllocationFailed)?;
 
     // Fence demand-heap admission under the same guard as mapping. Keep its
     // charges until AddressSpace::drop has actually returned the frames.
@@ -478,11 +497,6 @@ fn close_user_address_space_locked(
     crate::completion::close_address_space(asid);
     crate::syscall::close_mailbox_address_space(asid);
     crate::capability::close_address_space(asid);
-
-    // All mappings have now been removed. Domain supervision retired this
-    // lifetime's threads before entering teardown; purge every LP before the
-    // page-table hierarchy itself is returned to the frame allocator.
-    crate::cpu::isa::memory::tlb::inval_asid(asid);
 
     // Retain this generation's stack high-water mark and heap peak for the
     // service principal before the authority and accounting entries
@@ -510,12 +524,11 @@ fn close_user_address_space_locked(
     DOMAIN_LIMITS.lock().remove(&asid);
     usage::unregister_domain(asid);
 
-    ADDRESS_SPACE_TABLE
+    let entry = ADDRESS_SPACE_TABLE
         .lock()
-        .remove_element(asid)
-        .map_err(|_| AddressSpaceCloseError::AddressSpaceMissing)?;
-    budget::forget(handle);
-    Ok(())
+        .retire_element(asid)
+        .expect("preflighted address-space retirement lost its serialized slot");
+    Ok(retirement::RetiredAddressSpace::new(handle, entry))
 }
 /// The starting virtual address of the higher half direct mapping region created by the bootloader.
 /// This should be remapped by the VMM during BSP init to be placed at the address specified by the

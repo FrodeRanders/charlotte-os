@@ -69,6 +69,13 @@ independent of DMA/copy retention. Final unpin cannot bypass its invalidation
 fence, and failed detach/rollback retains charged backing. That ownership does
 not yet permit releasing lifecycle/IPC serialization across ASID-based finish.
 
+[Final root retirement](address-space-retirement.md) now detaches the private
+hierarchy into a software-slot-leasing owner. Its final invalidation/destruction
+runs after lifecycle/table guards are gone; ARM invalidates the captured hardware
+tag rather than a detached table entry. The slot is reusable only after physical
+destruction. Failure/abandonment retains hierarchy, charges and slot. Earlier
+mapping/IPC/device lock-held invalidations and full quiescence remain open.
+
 ## Verification
 
 The synchronous boot fixture builds two private, never-installed roots mapping

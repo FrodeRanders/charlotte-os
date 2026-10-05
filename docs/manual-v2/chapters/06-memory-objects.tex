@@ -104,6 +104,16 @@ moves existing mapping records one object at a time, without temporary teardown
 vectors. These owners still depend on lifecycle or IPC serialization for the
 address-space identity; they do not yet resolve the x86 lock-held rendezvous gap.
 
+Final user-root destruction now follows a separate two-phase boundary. Logical
+cleanup detaches the private hierarchy into an owner that leases its software
+slot. After lifecycle and table guards are released, that owner invalidates
+translations, destroys backing and completes the slot lease. ARM uses the owned
+hardware tag rather than looking up the detached software entry. A replacement
+cannot reuse the slot or tag before completion; failed or abandoned cleanup
+retains the hierarchy and its charges. This corrects the final root boundary,
+while earlier mapping, loan and device invalidations still need lock-safe
+retirement phases. Domain supervision must establish thread quiescence first.
+
 \section{Four transfer modes}
 
 CharlotteOS defines four transfer modes, enforced by the MMU:

@@ -32,7 +32,7 @@ finding open. “Open” means no correction was implemented in this pass.
 | SEC-15 | Mitigated | SigV4 prefixed secret, derived keys, HMAC block/pads and inner digest use zeroizing owners. TLS record buffers are wiped after dropping their borrower, including handshake failure. This is not a complete audit of crypto-library state or compiler-created secret copies. |
 | SEC-16 | Implemented | grantctl polls bounded concurrent operations with per-sender/generation limits and total deadlines. Non-parking authorized lookup avoids a shared name-service waitlist leak. Acquisition retries and publication waits have total deadlines. A two-application cancellation stress and silent-endpoint publication timeout pass in the guest; many-client fairness and controller-replacement testing remain. |
 | SEC-17 | Implemented for dynamic table unmap | Both walkers retain empty intermediate tables linked and owned for reuse until quiescent address-space teardown, removing premature table recycling. Tables/data are initialized before publication; x86 entries publish complete permissions/cache selection together. Private sparse-alias/reuse/teardown fixtures pass on AArch64. Concurrent walk-race reproduction, live compaction, full table admission and x86 guest execution remain outside this validation. Broader physical-release/shootdown gaps are SEC-18. |
-| SEC-18 | Partially implemented | Kernel-range retirement detaches before post-arena/table-guard invalidation/release; Drop quarantines. Memory-object retirement pins now independently retain backing/charges through invalidation and fence borrower authority, including last DMA/copy unpin and failed rollback/detach. Installed-prefix/leaf-identity checks preserve foreign mappings. x86 failed IPI delivery no longer credits the barrier and stops the initiator. User/device/domain lifecycle/IPC masking-guard paths, unresponsive recipients, recoverable epoch-fenced failure and complete teardown quiescence remain open. AArch64 fixtures pass; x86 guest and real delivery-failure execution remain pending. |
+| SEC-18 | Partially implemented | Kernel-range retirement detaches before post-guard invalidation/release; Drop quarantines. Memory-object retirement pins protect backing/charges through invalidation and fence borrower authority, including last external unpin and failed rollback/detach; prefix/identity checks preserve foreign leaves. Final root retirement now leases the software slot through post-lifecycle/table-guard invalidation/destruction, retaining the owned ARM tag and backing accounts. x86 failed delivery cannot credit the barrier. Earlier live mapping/IPC/MMIO lock-held invalidations, unresponsive recipients, recoverable epoch-fenced failure and complete quiescence remain open. AArch64/host fixtures pass; x86 guest and real delivery-failure execution remain pending. |
 
 SEC-07 also includes fixed per-route IRQ readiness storage: repeated or retired
 deliveries cannot exhaust a shared wake queue, and deferred route validation/CQ
@@ -85,6 +85,11 @@ last-unpin release before invalidation and quarantining failed detach/rollback.
 This preserves charged backing without yet leasing address-space generations
 across an unlocked finish. See
 [memory-object retirement](../../reference/memory-object-retirement.md).
+
+The [final root boundary](../../reference/address-space-retirement.md) now
+retains a detached hierarchy and software-slot lease through post-guard
+invalidation/destruction. This fixes final root release under lifecycle/table
+guards, without completing earlier IPC/MMIO/live-mapping phase work.
 
 ## Enforced contracts
 
@@ -2660,3 +2665,87 @@ phases, recoverable epoch-fenced shootdown and complete quiescence. SEC-07 still
 includes stacks, tables, kernel heap and general metadata admission. Contributor
 guidance, reference/testing Markdown, manual source and TLA+ conformance were
 updated; models and PDF were not rebuilt.
+
+## Continuation: leased final address-space retirement — 2026-10-05
+
+The memory-object retirement batch was committed as `57aa57e9`. This pass
+corrects another SEC-18 boundary: final translation invalidation previously ran
+under the lifecycle guard, and removing the table entry invoked the private
+root destructor under the table guard. Simply dropping those guards would have
+made the numeric slot reusable before old translations and backing retired.
+
+`RetiredAddressSpace` now owns a detached hierarchy and a generation-bound
+software-slot lease. Under lifecycle serialization, close validates the handle
+and fallibly prepares completion storage before any logical subsystem mutation.
+It fences admission, drains resources, records high-water usage and removes
+authority/usage records, then detaches the root without returning its slot.
+After lifecycle/table guards are gone, the owner invalidates, destroys the
+private hierarchy/backing, forgets the exact sponsor, then completes its slot.
+Heap/image account ownership survives through actual physical destruction.
+
+ARM final invalidation uses the owned hardware tag, not a lookup through the
+detached software table. The tag remains owned through root destruction, whose
+existing defensive invalidation is preserved. x86 uses its completed no-PCID
+non-global rendezvous. Borrowed snapshots/shared kernel trees are not released.
+Lookups and repeated close see a detached entry as missing; registration cannot
+reuse it until completion, and later reuse receives a new software generation.
+
+The generic table primitive has a non-cloneable table-identity/slot-generation
+completion token and a `ManuallyDrop` resource owner. Failure/abandonment
+quarantines resource and slot; completion cannot allocate or accept a token from
+another table/generation. Free-ID storage is preflighted for existing slots
+before logical mutation. The old destructive `remove_element` method is removed.
+Ordinary scheduler extraction still transfers into a new owner with
+`take_element`. Initial table growth and comprehensive metadata quotas are not
+made fallible or budgeted by this change.
+
+Retirement state is stored alongside the existing generation metadata rather
+than in an additional growing vector. This avoids introducing another initial
+slot-growth allocation point; it does not bound that metadata's total bytes.
+
+Validation:
+
+- Seven standalone host tests cover delayed slot reuse and destruction,
+  abandonment, exact table/generation identity, failed preflight, interleaved
+  completions without allocation, and corrupted completion-capacity rejection.
+  `scripts/run-host-tests.sh` now runs this kernel-only primitive despite the
+  kernel binary's disabled Cargo test harness. Full host suites pass; log
+  `/private/tmp/charlotte-security-root-retirement-host-tests.log`.
+- Single-mutator guest fixtures check preflight rejection before any partial
+  namespace/backing retirement, guard availability during final invalidation,
+  exact physical and heap-charge release, registration while a root is detached,
+  leased software ID/ARM tag non-reuse and stale-handle rejection after reuse.
+- Failed final invalidation and abandoned owner deliberately retain two complete
+  roots. Each logs **five physical frames: one charged heap data page plus four
+  translation frames**; two software slots and ARM tags remain reserved. No
+  recovery bypass frees them. These are additional to six memory-object data
+  pages/four object charges and the kernel-range fixture's one page.
+- Final four-LP TCG AArch64 security guest, fresh dedicated
+  `root-retirement-20261005-typed` storage, HTTP 18092/deployment 17456:
+  **19/19**, zero failed/pending, both scoped probes `0x7fff`, cancellation
+  traffic retired after 4,524 requests. Kernel SHA-256:
+  `b35ee09b8d6b7dbe0c25f7e5c7466ebd2fb115a396275e1089e513f2438937a5`.
+  Run `/private/tmp/charlotte-security-root-retirement-typed-run.log`;
+  serial `/private/tmp/charlotte-root-retirement-20261005-typed-serial.log`.
+  Both preceding root-retirement guests also passed 19/19 before the typed-slot
+  metadata consolidation. Existing soak instances/storage were not modified.
+- Strict locked Clippy passes for AArch64 `acpi,security_test` and x86-64 `acpi`.
+  Formatting and diff checks pass. x86 guest execution remains pending.
+
+This fixes the final root's own lifecycle/table-guard boundary. Domain
+supervision still must quiesce threads first, and callers must not retain an
+unrelated masking guard required by a recipient. Earlier IPC-loan, MMIO/device
+and live-memory mapping invalidations still retain outer lifecycle/IPC guards;
+those operations need their own exact-generation, backing, scratch and authority
+leases. Root-slot retirement is not that live-operation lease. Real failed/
+unresponsive recipients, recoverable epochs, concurrent hardware walks, physical
+OOM and complete quiescence remain unproven. SEC-18 and broader SEC-07 admission
+remain partial. Contributor guidance, reference/testing Markdown, LaTeX source
+and TLA+ conformance were updated; models and PDF were not rebuilt.
+
+The review also records a remaining destructor error path: architecture root
+destructors ignore physical frame-deallocation errors and then drop heap/image
+accounts. This refactor preserves those accounts through the destructor but
+does not yet retain their charges on a failed physical release. That fail-closed
+accounting correction and allocator-release fault injection remain required;
+the exact-count fixtures validate successful release only.

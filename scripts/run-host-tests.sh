@@ -16,6 +16,14 @@ trap 'rmdir "$host_work_dir"' EXIT
 # temporary directory while retaining absolute manifest paths.
 cd "$host_work_dir"
 
+# The kernel binary disables the Cargo test harness. Exercise its generic
+# retirement-slot owner directly as a standalone host Rust unit-test crate.
+mkdir -p "$repo_root/target/host-self-tests"
+"$host_rustc" --edition=2024 --test \
+    "$repo_root/crates/catten/src/klib/collections/id_table.rs" \
+    -o "$repo_root/target/host-self-tests/id-table-tests"
+"$repo_root/target/host-self-tests/id-table-tests"
+
 manifests=()
 for manifest_path in "$repo_root"/crates/*/Cargo.toml; do
     crate_dir="${manifest_path%/Cargo.toml}"

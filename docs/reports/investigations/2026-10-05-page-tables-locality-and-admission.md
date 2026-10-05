@@ -89,6 +89,12 @@ Before enforcing complete page-table quotas:
    failed detach/rollback quarantines the original charge. Its installed-prefix
    and leaf-identity checks preserve foreign mappings. Those receipts still
    require lifecycle/IPC serialization and do not lease a generation.
+   [Final root retirement](../../reference/address-space-retirement.md) now
+   separately leases the software slot while a detached hierarchy completes
+   post-guard invalidation/destruction. Earlier live mapping and loan/device
+   operations still need their own generation-fenced, lock-safe phases.
+   Root-destructor frame-release errors also need fail-closed heap/image charge
+   retention; current destruction ignores those allocator results.
    Close the remaining user/domain locking gaps (SEC-18), then enforce
    reliable quiescence at every physical release. Future live compaction must
    own detached tables until invalidation and walk quiescence are established.

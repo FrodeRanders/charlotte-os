@@ -188,7 +188,7 @@ the never-issued property is preserved. The safe model exercises
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
 | Address-space `Allocate` / `CaptureHandle` | `register_user_address_space`, `AddressSpaceHandle` | Direct for recyclable numeric ASID plus monotonic software generation. The scratch-window allocator is keyed by ASID with a stored generation field, so a recycled ASID receives fresh allocation state. Unmapped ranges are recycled only after page-table removal and TLB invalidation. |
-| Address-space `CloseExact` | `close_user_address_space_handle`; generation checks in teardown and scratch reservation; `ADDRESS_SPACE_LIFECYCLE` serialization in map/unmap | Direct for rejecting a stale handle after ASID reuse. Map/unmap do not compare generations themselves; they hold `ADDRESS_SPACE_LIFECYCLE`, which close also holds, so a mapping cannot straddle a close/reuse boundary. |
+| Address-space `CloseExact` | `close_user_address_space_handle`; generation checks, lifecycle serialization, `RetiredAddressSpace` and `RetiredEntry` | Direct for rejecting stale handles. Logical subsystem cleanup remains lifecycle-serialized; a detached root leases its slot through post-guard invalidation/destruction before reuse. The atomic model omits this intermediate invisible-but-leased state, completion metadata, failed invalidation and quarantine. Live map/unmap still retain lifecycle across their own finish. |
 | Hardware-ASID `Allocate` / `Retire` / `Invalidate` | AArch64 hardware-ASID allocator and TLB invalidation | Abstract: page-table contents are omitted; tag reuse is allowed only after invalidation removes stale translations. |
 | Interrupt-route `Bind` / `QueueWake` / `Unbind` / `DrainSafe` | device interrupt binding, route generation, deferred wake drain | Abstract generation-fencing check for one route. The implementation now has independent atomic mailboxes with retained watermarks and a guarded CQ preparation step; mailbox capacity, atomic claim/publication, binding exhaustion and controller MMIO are not modeled here. |
 
@@ -205,6 +205,15 @@ installed-prefix and physical-identity checks protect foreign leaves. These
 concrete pin/quarantine and teardown-vector removal paths are not modeled by
 the atomic lifetime actions. They do not discharge the remaining lifecycle/IPC
 masking-guard or hardware-quiescence obligations.
+
+Final root close now detaches into `RetiredAddressSpace`: software-slot ownership
+and the captured ARM hardware tag survive lifecycle/table guard release. Root
+destruction and account refunds follow invalidation; slot completion follows
+physical destruction. Failure/abandonment retains hierarchy, accounts and slot.
+Generic table identity and software generation fence completion tokens, whose
+storage is preflighted before logical cleanup. The model's atomic close does not
+prove those phases, and earlier IPC/MMIO/mapping lock-held invalidations remain
+SEC-18 work. No new TLC result is claimed for this implementation change.
 
 The August `memory_map_any` work did not change memory ownership in
 `CharlotteIPC`; it changed address-space placement. Its safety-relevant part

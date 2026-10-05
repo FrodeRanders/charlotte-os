@@ -553,6 +553,22 @@ fixture's one page. No test-only recovery bypass frees them. See
 [memory-object retirement](../reference/memory-object-retirement.md). These are
 interleaving fixtures, not concurrent hardware stress or x86 progress proofs.
 
+## Final address-space retirement tests
+
+Final-root retirement guest fixtures inject metadata-preflight rejection before
+namespace/backing retirement, then check detached-root frame/heap-charge
+retention, lifecycle/table guard availability during invalidation, registration
+without leased-slot/tag reuse, exact physical release and stale-handle rejection.
+Failed barrier and abandonment permanently retain two private roots, each with
+one charged heap page and its private translation frames. Their frame counts
+are logged. These are additional to earlier quarantine probes, not recovered
+through test-only cleanup. Seven standalone host tests exercise the kernel's
+generic slot owner, including table/generation identity, destructor ownership,
+interleaved completion, preflight rejection and fail-closed completion metadata.
+`scripts/run-host-tests.sh` runs them even though the kernel disables Cargo's
+test harness. See [final root retirement](../reference/address-space-retirement.md).
+These fixtures do not prove x86 recipient progress or complete lock-safe teardown.
+
 ## Rule for new service logic
 
 Keep the thin syscall loop and process entry point in an EL0 binary. Put policy

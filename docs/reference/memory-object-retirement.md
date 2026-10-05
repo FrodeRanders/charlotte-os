@@ -70,6 +70,11 @@ and complete teardown quiescence remain open. See
 [kernel frame retirement](kernel-frame-retirement.md) and
 [page-table lifetime](page-table-lifetime.md).
 
+The [final address-space root](address-space-retirement.md) now has a detached
+slot-leasing owner that finishes after lifecycle/table guards are released.
+That separate close boundary does not lease an arbitrary live mapping's ASID;
+the mapping operations described here still retain their outer serialization.
+
 ## Verification
 
 Single-mutator boot fixtures inject the final copy/DMA unpin between detach and

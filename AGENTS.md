@@ -101,6 +101,14 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   These pins do not replace lifecycle/IPC serialization or lease an ASID; do
   not drop those guards across numeric-ASID finish without a generation fence.
   See `docs/reference/memory-object-retirement.md`.
+  Final user-root close detaches into `RetiredAddressSpace`/`RetiredEntry`,
+  leasing the software slot through post-guard invalidation and destruction.
+  Never take/drop a published user root under the address-space table guard or
+  return its slot before quiescence. Invalidate ARM using the owned hardware
+  tag, not a detached numeric-ASID lookup. Abandonment quarantines the complete
+  root/accounts/slot; only explicit release completes its lease. This does not
+  replace thread quiescence or solve earlier mapping/IPC/device locking. See
+  `docs/reference/address-space-retirement.md`.
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`

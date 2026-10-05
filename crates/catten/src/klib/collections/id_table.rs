@@ -1,16 +1,76 @@
 use alloc::vec::Vec;
-use core::fmt::Debug;
+use core::{
+    fmt::Debug,
+    mem::ManuallyDrop,
+    sync::atomic::{
+        AtomicUsize,
+        Ordering,
+    },
+};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     IdNotActive,
+    AllocationFailed,
+    WrongRetirement,
+}
+
+static TABLE_IDENTITIES: AtomicUsize = AtomicUsize::new(1);
+
+/// A detached value still owns its table slot until explicit value release
+/// followed by slot completion. Drop quarantines both, without invoking T's
+/// destructor under an unknown caller guard.
+#[must_use]
+pub(crate) struct RetiredEntry<T> {
+    value: ManuallyDrop<T>,
+    slot: Option<SlotRetirement>,
+}
+
+impl<T> Drop for RetiredEntry<T> {
+    fn drop(&mut self) {
+        // Deliberately do not run T::drop or complete its slot. The resource
+        // stays quarantined unless explicit release proved quiescence.
+    }
+}
+
+impl<T> RetiredEntry<T> {
+    pub(crate) fn value(&self) -> &T {
+        &self.value
+    }
+
+    /// The resource-specific owner must establish quiescence first. Returning
+    /// this token does not make the slot reusable until its table accepts it.
+    pub(crate) fn release_value(mut self) -> SlotRetirement {
+        // SAFETY: this consumes the unique owner; ManuallyDrop prevents an
+        // implicit destructor during abandonment or a panicking T::drop.
+        unsafe {
+            ManuallyDrop::drop(&mut self.value);
+        }
+        self.slot.take().expect("retired entry slot missing")
+    }
+}
+
+/// Linear completion token bound to one table and one slot generation.
+/// An abandoned token keeps the slot unavailable; there is no restoring Drop.
+#[must_use]
+pub(crate) struct SlotRetirement {
+    table: usize,
+    id: usize,
+    generation: usize,
 }
 
 #[derive(Debug)]
 pub struct IdTable<T> {
     list: Vec<Option<T>>,
     available_ids: Vec<usize>,
-    generations: Vec<usize>,
+    slots: Vec<SlotState>,
+    identity: usize,
+}
+
+#[derive(Debug)]
+struct SlotState {
+    generation: usize,
+    retiring: bool,
 }
 
 impl<T> IdTable<T> {
@@ -18,14 +78,18 @@ impl<T> IdTable<T> {
         IdTable {
             list: Vec::new(),
             available_ids: Vec::new(),
-            generations: Vec::new(),
+            slots: Vec::new(),
+            identity: TABLE_IDENTITIES
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1))
+                .expect("table identity exhausted"),
         }
     }
 
     pub fn add_element(&mut self, element: T) -> usize {
         if let Some(id) = self.available_ids.pop() {
-            self.generations[id] =
-                self.generations[id].checked_add(1).expect("ID generation exhausted");
+            let state = &mut self.slots[id];
+            debug_assert!(!state.retiring);
+            state.generation = state.generation.checked_add(1).expect("ID generation exhausted");
             self.list[id] = Some(element);
             id
         } else {
@@ -33,7 +97,12 @@ impl<T> IdTable<T> {
             self.list.push(Some(element));
             // Generation zero is reserved for handles that were never
             // initialized. The first occupant of every slot is generation 1.
-            self.generations.push(1);
+            // Retirement shares the existing generation metadata allocation;
+            // adding a slot does not introduce a third growing state vector.
+            self.slots.push(SlotState {
+                generation: 1,
+                retiring: false,
+            });
             id
         }
     }
@@ -52,17 +121,7 @@ impl<T> IdTable<T> {
     /// long-lived handles to distinguish the new object from its predecessor.
     pub fn generation(&self, element_id: usize) -> Result<usize, Error> {
         self.get(element_id)?;
-        self.generations.get(element_id).copied().ok_or(Error::IdNotActive)
-    }
-
-    pub fn remove_element(&mut self, element_id: usize) -> Result<(), Error> {
-        match self.list.get_mut(element_id).ok_or(Error::IdNotActive)?.take() {
-            Some(_) => {
-                self.available_ids.push(element_id);
-                Ok(())
-            }
-            None => Err(Error::IdNotActive),
-        }
+        self.slots.get(element_id).map(|state| state.generation).ok_or(Error::IdNotActive)
     }
 
     pub fn take_element(&mut self, element_id: usize) -> Result<T, Error> {
@@ -73,6 +132,58 @@ impl<T> IdTable<T> {
             }
             None => Err(Error::IdNotActive),
         }
+    }
+
+    /// Prepare free-slot storage before irreversible subsystem retirement.
+    /// Reserve for every existing slot, so other detached owners can finish
+    /// while this one is outside the table without allocating on completion.
+    pub(crate) fn prepare_retirement(&mut self, element_id: usize) -> Result<(), Error> {
+        self.prepare_retirement_with(element_id, |available, slots| {
+            available.try_reserve_exact(slots - available.len()).map_err(|_| ())
+        })
+    }
+
+    fn prepare_retirement_with(
+        &mut self,
+        element_id: usize,
+        reserve: impl FnOnce(&mut Vec<usize>, usize) -> Result<(), ()>,
+    ) -> Result<(), Error> {
+        self.get(element_id)?;
+        reserve(&mut self.available_ids, self.list.len()).map_err(|_| Error::AllocationFailed)
+    }
+
+    pub(crate) fn retire_element(&mut self, element_id: usize) -> Result<RetiredEntry<T>, Error> {
+        self.prepare_retirement(element_id)?;
+        let value = self.list[element_id].take().ok_or(Error::IdNotActive)?;
+        self.slots[element_id].retiring = true;
+        Ok(RetiredEntry {
+            value: ManuallyDrop::new(value),
+            slot: Some(SlotRetirement {
+                table: self.identity,
+                id: element_id,
+                generation: self.slots[element_id].generation,
+            }),
+        })
+    }
+
+    pub(crate) fn finish_retirement(&mut self, slot: SlotRetirement) -> Result<(), Error> {
+        if slot.table != self.identity
+            || !self
+                .slots
+                .get(slot.id)
+                .is_some_and(|state| state.retiring && state.generation == slot.generation)
+        {
+            return Err(Error::WrongRetirement);
+        }
+        // Prepared before detachment; no allocation is allowed here. A new
+        // slot can only add free IDs by another preflighted retirement (or
+        // an ordinary take, whose push also grows capacity when necessary).
+        if self.available_ids.len() == self.available_ids.capacity() {
+            return Err(Error::AllocationFailed);
+        }
+        self.slots[slot.id].retiring = false;
+        self.available_ids.push(slot.id);
+        Ok(())
     }
 
     pub fn iter(&self) -> core::slice::Iter<'_, Option<T>> {
@@ -92,3 +203,9 @@ impl<T> Default for IdTable<T> {
 
 unsafe impl<T> Send for IdTable<T> where T: Send {}
 unsafe impl<T> Sync for IdTable<T> where T: Sync {}
+
+#[cfg(test)]
+#[path = "id_table/tests.rs"]
+mod tests;
+#[cfg(test)]
+extern crate alloc;

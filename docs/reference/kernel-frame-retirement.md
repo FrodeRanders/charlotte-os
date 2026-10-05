@@ -72,6 +72,11 @@ concurrently. Partial detach and failed rollback quarantine rather than recycle
 uncertain backing. This is an ownership prerequisite for the remaining lock-safe
 phase work, not a correction of the outer x86 lifecycle/IPC locking gap.
 
+The [final user-root boundary](address-space-retirement.md) now leases its
+software slot while retaining the detached hierarchy through post-guard
+invalidation/destruction. This removes lifecycle/table guards from that final
+step; earlier memory-object/IPC/MMIO invalidations still need their own phases.
+
 ## Verification
 
 Single-mutator boot fixtures verify detach-before-release, retained data after
