@@ -20,6 +20,7 @@ pub(crate) enum OperationError {
     StaleHandle,
     Limit,
     WrongLease,
+    Closing,
 }
 
 /// Retains the exact live root/slot and hence its hardware tag and accounts.
@@ -47,6 +48,7 @@ impl AddressSpaceOperation {
         }
         let lease = table.lease(handle.id(), handle.generation()).map_err(|error| match error {
             Error::LeaseLimit => OperationError::Limit,
+            Error::Closing => OperationError::Closing,
             _ => OperationError::WrongLease,
         })?;
         Ok(Self {

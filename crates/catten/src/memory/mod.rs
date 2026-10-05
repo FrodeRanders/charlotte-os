@@ -207,6 +207,8 @@ pub enum AddressSpaceCloseError {
     RetirementMetadataAllocationFailed,
     QuiescenceFailed,
     OperationsInFlight,
+    CloseInProgress,
+    OperationDrainTimedOut,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -490,6 +492,9 @@ fn close_user_address_space_with_preflight(
         Ok(_) => return Err(AddressSpaceCloseError::StaleHandle),
         Err(_) => return Err(AddressSpaceCloseError::AddressSpaceMissing),
     }
+    if ADDRESS_SPACE_TABLE.lock().is_closing(asid).unwrap() {
+        return Err(AddressSpaceCloseError::CloseInProgress);
+    }
 
     prepare(&mut ADDRESS_SPACE_TABLE.lock(), asid).map_err(|error| match error {
         crate::klib::collections::id_table::Error::Leased => {
@@ -497,6 +502,17 @@ fn close_user_address_space_with_preflight(
         }
         _ => AddressSpaceCloseError::RetirementMetadataAllocationFailed,
     })?;
+
+    close_user_address_space_after_preflight(handle, None)
+}
+
+// Caller holds lifecycle and has prepared completion storage while validating
+// exact identity and zero live operations. Only a staged owner supplies a slot.
+fn close_user_address_space_after_preflight(
+    handle: AddressSpaceHandle,
+    closing: Option<crate::klib::collections::id_table::ClosingSlot>,
+) -> Result<retirement::RetiredAddressSpace, AddressSpaceCloseError> {
+    let asid = handle.id();
 
     // Fence demand-heap admission under the same guard as mapping. Keep its
     // charges until AddressSpace::drop has actually returned the frames.
@@ -545,10 +561,14 @@ fn close_user_address_space_with_preflight(
     DOMAIN_LIMITS.lock().remove(&asid);
     usage::unregister_domain(asid);
 
-    let entry = ADDRESS_SPACE_TABLE
-        .lock()
-        .retire_element(asid)
-        .expect("preflighted address-space retirement lost its serialized slot");
+    let entry = {
+        let mut table = ADDRESS_SPACE_TABLE.lock();
+        match closing {
+            Some(slot) => table.retire_closing(slot),
+            None => table.retire_element(asid),
+        }
+        .expect("preflighted address-space retirement lost its serialized slot")
+    };
     Ok(retirement::RetiredAddressSpace::new(handle, entry))
 }
 /// The starting virtual address of the higher half direct mapping region created by the bootloader.

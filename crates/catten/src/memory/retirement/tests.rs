@@ -41,6 +41,8 @@ fn assert_detached(handle: AddressSpaceHandle) {
 pub(crate) fn run() {
     test_live_operations();
     test_abandoned_operation();
+    test_staged_close();
+    test_staged_close_timeout();
     test_preflight_failure();
     test_successful_retirement();
     test_quarantine(false);
@@ -48,7 +50,111 @@ pub(crate) fn run() {
     crate::logln!(
         "[root retirement] preflight rollback, post-guard invalidation, retained backing/charges, \
          leased slot and hardware tag, exact reuse, failed barrier and Drop quarantine passed \
-         (two retired roots and one retained live root)"
+         (two retired roots, one retained live root and one retained closing root)"
+    );
+}
+
+fn test_staged_close() {
+    let before = backing_budget::test_used_pages(Kind::Heap);
+    let owner = loader::create_user_address_space_handle();
+    assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
+    let object = memory::object::allocate(owner.id(), 1).unwrap();
+    memory::object::map_any(owner.id(), object, true).unwrap();
+    let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let first = AddressSpaceOperation::acquire(owner).unwrap();
+    let second = AddressSpaceOperation::acquire(owner).unwrap();
+    let closing = ClosingAddressSpace::begin(owner).unwrap();
+    assert!(matches!(AddressSpaceOperation::acquire(owner), Err(OperationError::Closing)));
+    assert!(matches!(
+        ClosingAddressSpace::begin(owner),
+        Err(AddressSpaceCloseError::CloseInProgress)
+    ));
+    assert_eq!(
+        memory::close_user_address_space_handle(owner),
+        Err(AddressSpaceCloseError::CloseInProgress)
+    );
+    let CloseProgress::Pending(closing) =
+        closing.poll_with(|_, _| panic!("pending close must not invalidate translations")).unwrap()
+    else {
+        panic!("close completed with two outstanding operations");
+    };
+    assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
+    assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
+    assert_eq!(memory::current_address_space_handle(owner.id()), Some(owner));
+    assert!(memory::budget::accepting(owner));
+    assert!(memory::object::info(owner.id(), object).unwrap().mapped);
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+    assert_eq!(backing_budget::test_used_pages(Kind::Heap), before + 1);
+    first.release().unwrap();
+    let CloseProgress::Pending(closing) = closing.poll().unwrap() else {
+        panic!("close completed with one outstanding operation");
+    };
+    // Older operations can complete after admission is fenced, without taking
+    // lifecycle or accidentally making the slot available to another close.
+    {
+        let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+        second.release().unwrap();
+    }
+    assert!(matches!(AddressSpaceOperation::acquire(owner), Err(OperationError::Closing)));
+    assert!(matches!(
+        closing
+            .poll_with(|space, handle| {
+                assert_detached(handle);
+                assert_eq!(backing_budget::test_used_pages(Kind::Heap), before + 1);
+                invalidate(space, handle)
+            })
+            .unwrap(),
+        CloseProgress::Complete
+    ));
+    assert_eq!(backing_budget::test_used_pages(Kind::Heap), before);
+    let replacement = loader::create_user_address_space_handle();
+    assert_eq!(replacement.id(), owner.id());
+    assert_ne!(replacement, owner);
+    AddressSpaceOperation::acquire(replacement).unwrap().release().unwrap();
+    // A ready request may complete even with a zero waiting budget.
+    ClosingAddressSpace::begin(replacement).unwrap().wait(0).unwrap();
+}
+
+fn test_staged_close_timeout() {
+    let before = backing_budget::test_used_pages(Kind::Heap);
+    let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let owner = loader::create_user_address_space_handle();
+    assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
+    let retained = free - PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let operation = AddressSpaceOperation::acquire(owner).unwrap();
+    #[cfg(target_arch = "aarch64")]
+    let tag = ADDRESS_SPACE_TABLE.lock().get(owner.id()).unwrap().hw_asid();
+    assert_eq!(
+        ClosingAddressSpace::begin(owner).unwrap().wait(0),
+        Err(AddressSpaceCloseError::OperationDrainTimedOut)
+    );
+    assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
+    assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
+    operation.release().unwrap();
+    // Timeout abandons only the request, not its fence or root. Draining the
+    // last lease afterwards cannot resurrect admission or steal close authority.
+    assert!(matches!(AddressSpaceOperation::acquire(owner), Err(OperationError::Closing)));
+    assert_eq!(
+        memory::close_user_address_space_handle(owner),
+        Err(AddressSpaceCloseError::CloseInProgress)
+    );
+    assert!(matches!(
+        ClosingAddressSpace::begin(owner),
+        Err(AddressSpaceCloseError::CloseInProgress)
+    ));
+    assert_eq!(memory::current_address_space_handle(owner.id()), Some(owner));
+    assert!(memory::budget::accepting(owner));
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - retained);
+    assert_eq!(backing_budget::test_used_pages(Kind::Heap), before + 1);
+    #[cfg(target_arch = "aarch64")]
+    assert_eq!(ADDRESS_SPACE_TABLE.lock().get(owner.id()).unwrap().hw_asid(), tag);
+    let other = loader::create_user_address_space_handle();
+    assert_ne!(other.id(), owner.id());
+    memory::close_user_address_space_handle(other).unwrap();
+    crate::logln!(
+        "[staged close] lease admission fence, pending owner return, old-operation completion, \
+         post-guard release and bounded timeout passed; retained_frames={} heap_pages=1",
+        retained
     );
 }
 

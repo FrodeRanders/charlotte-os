@@ -7,8 +7,9 @@ through final invalidation and destruction.
 Acquisition takes lifecycle before the address-space table, rejects kernel,
 missing and stale handles, and increments an inline slot count. `SlotLease` is
 a linear table/slot/generation token, not a pointer into moving table vectors.
-There is no per-lease allocation; each generic slot gains one count. Overflow
-rejects admission. Retirement preflight and ordinary extraction reject leases.
+There is no per-lease allocation; each generic slot stores a count and closing
+flag. Overflow rejects admission. Retirement preflight and ordinary extraction
+reject leases.
 Root close returns `OperationsInFlight` before subsystem retirement or completion
 metadata allocation: the root, hardware tag, accounts and namespace stay present.
 Busy close has not fenced new operations or retired capability/backing admission.
@@ -19,12 +20,45 @@ invalidate or destroy resources. Only after the last completion may normal root
 close proceed. Wrong-identity and underflow completion reject without mutation.
 Drop retains the count: abandonment leaves a live root whose close stays busy,
 not a detached quarantined namespace. Generic table destruction likewise retains
-leased payloads. There is no forced decrement or recovery bypass.
+leased or closing payloads. There is no forced decrement or recovery bypass.
 
 This protects checked retirement/extraction, not arbitrary trusted mutation via
 `get_mut`/iterators. Callers must not replace/drop a leased root. Thread
 quiescence is still required for actual close; copying a handle does not extend
 the operation's lifetime after explicit release.
+
+## Owned staged close
+
+`memory::retirement::ClosingAddressSpace::begin(handle)` requires the caller to
+establish thread quiescence first. It validates the exact generation and prepares
+free-slot completion storage before publishing a closing flag. Preparation
+failure leaves admission unchanged. The request owns a linear `ClosingSlot`
+bound to its table/slot/generation. The owner itself is inline; admission may
+allocate shared completion storage.
+
+Closing rejects new operation leases with `OperationError::Closing` and rejects
+competing staged or immediate close with `CloseInProgress`. Older operations may
+still explicitly complete. `poll(self)` returns `CloseProgress::Pending(self)`
+while any lease remains, without subsystem retirement or invalidation. The
+caller must retain the returned owner. When ready, poll refreshes completion
+storage (the table may have grown during the unlocked interval), performs the
+existing logical cleanup under lifecycle, then releases those guards before
+final root invalidation/destruction. Immediate close remains a distinct
+nonwaiting operation: if no staged fence exists, a busy result changes nothing.
+
+`wait(self, timeout_ms)` polls and sleeps only after its own guards have gone.
+Timeout returns `OperationDrainTimedOut`; dropping the request retains the
+closing flag, root, tag, slot and accounts, even if the last operation later
+completes. A ready request can complete with a zero waiting budget. Neither
+timeout nor another close request can force recovery. Final invalidation can
+still stall in the current x86 rendezvous; this timeout bounds the **lease-drain
+polling interval**, not all teardown or hardware waiting.
+
+The fence covers **operation-lease admission only**. Existing non-lease resource
+paths retain their current guards and admission until logical cleanup. Begin
+does not stop threads, revoke all capabilities or install a controller queue.
+Callers must not hold unrelated masking guards across poll/wait; releasing the
+owner's guards alone does not prove recipient progress.
 
 ## Integration still required
 
@@ -41,9 +75,10 @@ split-phase operations, implement:
 3. Invalidation, scratch and authority completion before consuming the lease.
    Failure/abandonment must retain every uncertain resource, without rendezvous
    in Drop under unknown caller locks.
-4. Closing-admission fencing and bounded/deferred busy-close handling outside
-   lifecycle/IPC. Do not turn normal overlap into a supervisor kernel panic or
-   confuse it with permanent abandoned retention.
+4. Integrate the staged lease fence and pending owner with supervisor/controller
+   policy outside lifecycle/IPC. Do not turn normal overlap into a kernel panic
+   or confuse it with permanent abandoned retention. No production supervisor
+   caller uses staged close yet.
 
 SEC-18 remains partial, including recoverable shootdown and hardware quiescence.
 This is not a new wire API, scheduler reference, capability right, metadata
@@ -51,10 +86,14 @@ budget or completed x86 progress fix.
 
 ## Verification
 
-Twelve direct host slot-owner tests include five new live-lease tests:
+Eighteen direct host slot-owner tests include five live-lease tests:
 overlapping counts, rejection before retirement allocation, exact reuse after
 last completion, wrong table/generation, overflow/underflow, abandonment/table
 destruction and growth to 2,047 entries without pointer-based identity.
+Six staged-close tests check admission fencing, existing completion, failed
+preparation without a published fence, wrong identity, abandoned closing with
+zero leases, completion-capacity refresh after growth, and fail-closed
+detachment without prepared capacity.
 
 Boot fixtures use a real root, heap backing and mapped object. Busy close
 preserves frame/charge counts, ARM hardware tag, mappings and new admission.
@@ -63,6 +102,14 @@ Detached and reused generations reject acquisition. Success cleans up normally;
 abandonment deliberately retains one additional live root, its software slot/tag,
 one heap-page charge and private table frames. Counts are logged. Serialized
 fixtures and x86 compilation imply neither concurrent stress nor x86 IPI progress.
+
+Staged-close boot fixtures check two pending polls, owner return, old-operation
+completion under lifecycle, new-lease and competing-close rejection, retained
+mapped backing before readiness, final post-guard cleanup and exact slot reuse.
+A zero-budget wait checks ready success and pending timeout. Timeout deliberately
+retains one additional closing root, one heap-page charge and its private table
+frames, slot and ARM tag. Subsequent lease completion cannot reopen it. Nonzero
+wait scheduling and concurrent close stress are not exercised by these fixtures.
 
 See [final root retirement](address-space-retirement.md),
 [memory-object retirement](memory-object-retirement.md) and

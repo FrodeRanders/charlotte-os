@@ -253,9 +253,14 @@ backing retirement; abandonment retains a live root. Host and guest fixtures
 check identity, counter limits, vector growth, busy-close non-mutation and
 retention. The atomic model has no lease counts, busy-close result or abandoned
 live state; `CaptureHandle` alone does not model this retention. Production
-mapping/IPC/MMIO paths still hold their existing guards. This foundation does
-not prove closing-admission fencing, deferred close or x86 rendezvous progress;
-no model source or TLC result changed.
+mapping/IPC/MMIO paths still hold their existing guards. An owned staged-close
+request now fences new leases and returns its owner while old leases drain;
+timeout/abandonment retains the closing state even after the last completion.
+Host and guest fixtures check these serialized states. The model also omits
+closing admission, linear close authority, pending polls, capacity refresh and
+timeout retention; its atomic close does not prove this protocol. Production
+controller integration and x86 rendezvous progress remain open. No model source
+or TLC result changed.
 
 The August `memory_map_any` work did not change memory ownership in
 `CharlotteIPC`; it changed address-space placement. Its safety-relevant part

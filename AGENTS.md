@@ -136,8 +136,16 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   before subsystem mutation. Acquire lifecycle before table/subsystem guards,
   never under IPC/device serialization; release takes only the table. Do not
   replace/drop a leased root through mutable table access. Production split-phase
-  use also needs backing/scratch/authority owners and closing-admission/busy-close
-  handling; do not remove masking guards merely because this foundation exists.
+  use also needs backing/scratch/authority owners and caller busy-close policy;
+  do not remove masking guards merely because this foundation exists.
+  `ClosingAddressSpace` owns a staged operation-lease admission fence after
+  thread quiescence. Pending poll must return that owner; older leases may
+  complete but new leases and competing close requests must reject. Dropping
+  the request or timing out retains the fence/root, even after the last lease
+  finishes. Never clear closing or force-decrement abandoned counts. Poll/wait
+  must release their lifecycle/table guards before sleep or final invalidation;
+  callers must also avoid unrelated masking guards. This fences lease admission,
+  not every legacy resource path or the supervisor's deployment policy.
   See `docs/reference/live-address-space-operations.md`.
   Owning-root physical teardown uses `FrameRelease`: disarm the root and make
   heap/image accounts nonrefundable before release starts. Only a fully

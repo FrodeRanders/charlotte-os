@@ -3157,3 +3157,67 @@ panic. This foundation provides neither that controller policy nor an operation
 metadata budget. SEC-07 and SEC-18 remain partial. Contributor instructions,
 reference/testing Markdown, manual source and TLA+ conformance were updated;
 models and PDF were not rebuilt.
+
+## Continuation: owned staged-close lease fence — 2026-10-05
+
+The live-generation lease foundation was committed as `acf94445`. This
+continuation adds linear close authority and pending-owner return before any
+production split-phase mapping/IPC migration. SEC-18 remains partial.
+
+`ClosingSlot` records exact table/slot/generation identity. Begin validates the
+live generation and prepares completion metadata before publishing an inline
+closing flag. Existing leases can complete; new leases and competing staged or
+immediate close requests reject. While leases remain, `ClosingAddressSpace::poll`
+returns the pending owner without logical subsystem cleanup or invalidation.
+On readiness, it refreshes free-ID capacity after possible table growth, performs
+the existing logical cleanup under lifecycle, and releases its guards before
+final root invalidation/destruction. Final staged detachment does not allocate.
+Both close forms share the logical cleanup rather than duplicating its resource
+ordering. Immediate close remains nonwaiting and nonmutating when busy.
+
+The consuming wait helper bounds lease-drain polling and returns
+`OperationDrainTimedOut` without forcing counts, clearing the fence or freeing
+the root. Timeout/abandonment retains closing even if the last operation later
+completes; generic table destruction also retains closing payloads. There is no
+recovery bypass or controller queue. This waiting budget does **not** bound
+logical teardown or the current hardware rendezvous, which can still stall.
+
+Validation:
+
+- Six added direct host slot tests bring that suite to **18/18**. They cover
+  fencing and older completion, competing close/extraction rejection, failed
+  preparation without mutation, wrong table/generation, abandonment with no
+  leases, capacity refresh after growth, and rejection rather than allocation
+  on unprepared final detachment. Full host suites pass; log
+  `/private/tmp/charlotte-security-staged-close-host-tests.log`.
+- Guest fixtures retain a real charged root and mapped object through two
+  pending polls. They check old-operation release under lifecycle, new-lease
+  rejection, owner return, guard availability, final cleanup and exact generation
+  reuse. Zero-budget waits cover ready success and pending timeout. Timeout
+  retains **one additional closing root, five physical frames, one heap-page
+  charge, software slot and ARM tag**. The fixture then releases its last lease
+  and confirms that admission stays closed and another close cannot reclaim it.
+  Earlier one live leased root and two detached-root quarantines remain separate.
+  Nonzero wait scheduling and concurrent close stress were not exercised.
+- Four-LP TCG AArch64 security guest, fresh dedicated `staged-close-20261005`
+  storage, HTTP 18099/deployment 17463: **19/19**, zero failed/pending, both
+  scoped probes `0x7fff`; cancellation traffic retired after 4,472 requests.
+  Kernel SHA-256:
+  `410e06b3498b869cae34982736472c63b0f1aedc47f7a9d6d7428f2d40f7eb09`.
+  Run `/private/tmp/charlotte-security-staged-close-run.log`;
+  serial `/private/tmp/charlotte-staged-close-20261005-serial.log`. Existing soak
+  storage/instances were not modified.
+- Strict locked Clippy passes for AArch64 `acpi,security_test` and x86-64
+  `acpi`; formatting and diff checks pass. No x86 guest was run.
+
+This is an **operation-lease admission fence**, not a universal domain-resource
+fence: legacy paths still hold their current serialization and admission until
+logical cleanup. Callers must first establish thread quiescence and must not
+hold unrelated masking guards across poll/wait. Production mapping/IPC/MMIO do
+not yet acquire these leases or compose backing, exact scratch reservation and
+loan/connection authority in one operation owner. The supervisor still uses
+immediate close and assumes no outstanding operations; its pending/timeout
+policy is the next caller integration step, before activating production leases.
+General metadata admission, recoverable shootdown and complete hardware
+quiescence remain open. Contributor instructions, reference/testing Markdown,
+manual source and TLA+ conformance were updated; models and PDF were not rebuilt.

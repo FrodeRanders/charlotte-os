@@ -10,6 +10,107 @@ impl Drop for Tracked {
 }
 
 #[test]
+fn staged_close_fences_new_leases_but_allows_existing_completions() {
+    let mut table = IdTable::new();
+    let id = table.add_element(1);
+    let generation = table.generation(id).unwrap();
+    let lease = table.lease(id, generation).unwrap();
+    let close = table.begin_close(id, generation).unwrap();
+    assert_eq!(table.is_closing(id), Ok(true));
+    assert!(matches!(table.lease(id, generation), Err(Error::Closing)));
+    assert!(matches!(table.begin_close(id, generation), Err(Error::Closing)));
+    assert_eq!(table.prepare_retirement(id), Err(Error::Closing));
+    assert_eq!(table.take_element(id), Err(Error::Closing));
+    assert_eq!(table.prepare_closing_retirement(&close), Err(Error::Leased));
+    table.finish_lease(lease).unwrap();
+    table.prepare_closing_retirement(&close).unwrap();
+    let capacity = table.available_ids.capacity();
+    let retired = table.retire_closing(close).unwrap();
+    table.finish_retirement(retired.release_value()).unwrap();
+    assert_eq!(table.available_ids.capacity(), capacity);
+    assert_eq!(table.add_element(2), id);
+    assert_eq!(table.is_closing(id), Ok(false));
+    assert_ne!(table.generation(id).unwrap(), generation);
+}
+
+#[test]
+fn staged_close_preparation_failure_does_not_publish_the_fence() {
+    let mut table = IdTable::new();
+    let id = table.add_element(1);
+    let generation = table.generation(id).unwrap();
+    let lease = table.lease(id, generation).unwrap();
+    assert!(matches!(
+        table.begin_close_with(id, generation, |_, _| Err(())),
+        Err(Error::AllocationFailed)
+    ));
+    assert_eq!(table.is_closing(id), Ok(false));
+    assert_eq!(table.slots[id].leases, 1);
+    let second = table.lease(id, generation).unwrap();
+    table.finish_lease(lease).unwrap();
+    table.finish_lease(second).unwrap();
+    assert_eq!(table.take_element(id), Ok(1));
+}
+
+#[test]
+fn staged_close_identity_cannot_retire_another_table_or_generation() {
+    let mut first = IdTable::new();
+    let mut second = IdTable::new();
+    let a = first.add_element(1);
+    let b = second.add_element(2);
+    let close = first.begin_close(a, first.generation(a).unwrap()).unwrap();
+    let own = second.begin_close(b, second.generation(b).unwrap()).unwrap();
+    assert_eq!(second.prepare_closing_retirement(&close), Err(Error::WrongRetirement));
+    assert!(matches!(second.retire_closing(close), Err(Error::WrongRetirement)));
+    assert_eq!(first.is_closing(a), Ok(true));
+    let mut own = own;
+    own.generation += 1; // Private corruption fixture, never a recovery API.
+    assert_eq!(second.prepare_closing_retirement(&own), Err(Error::WrongRetirement));
+    assert!(matches!(second.retire_closing(own), Err(Error::WrongRetirement)));
+    assert_eq!(second.get(b), Ok(&2));
+    assert_eq!(second.is_closing(b), Ok(true));
+}
+
+#[test]
+fn dropped_staged_close_retains_payload_even_without_remaining_leases() {
+    let drops = Arc::new(AtomicUsize::new(0));
+    let mut table = IdTable::new();
+    let id = table.add_element(Tracked(drops.clone()));
+    drop(table.begin_close(id, table.generation(id).unwrap()).unwrap());
+    assert_eq!(table.is_closing(id), Ok(true));
+    assert!(matches!(table.take_element(id), Err(Error::Closing)));
+    drop(table);
+    assert_eq!(drops.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn staged_close_refreshes_completion_capacity_after_growth() {
+    let mut table = IdTable::new();
+    let id = table.add_element(1);
+    let close = table.begin_close(id, table.generation(id).unwrap()).unwrap();
+    for value in 2..128 {
+        table.add_element(value);
+    }
+    assert!(table.available_ids.capacity() < table.list.len());
+    table.prepare_closing_retirement(&close).unwrap();
+    let capacity = table.available_ids.capacity();
+    let retired = table.retire_closing(close).unwrap();
+    table.finish_retirement(retired.release_value()).unwrap();
+    assert_eq!(table.available_ids.capacity(), capacity);
+}
+
+#[test]
+fn staged_detachment_never_allocates_on_unprepared_capacity() {
+    let drops = Arc::new(AtomicUsize::new(0));
+    let mut table = IdTable::new();
+    let id = table.add_element(Tracked(drops.clone()));
+    let close = table.begin_close(id, table.generation(id).unwrap()).unwrap();
+    table.available_ids = Vec::new(); // Completion-invariant corruption fixture.
+    assert!(matches!(table.retire_closing(close), Err(Error::AllocationFailed)));
+    assert_eq!(table.is_closing(id), Ok(true));
+    assert_eq!(drops.load(Ordering::Relaxed), 0);
+}
+
+#[test]
 fn live_leases_block_all_extraction_until_the_last_completion() {
     let drops = Arc::new(AtomicUsize::new(0));
     let mut table = IdTable::new();

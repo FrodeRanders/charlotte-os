@@ -16,6 +16,7 @@ pub enum Error {
     Leased,
     LeaseLimit,
     WrongLease,
+    Closing,
 }
 
 static TABLE_IDENTITIES: AtomicUsize = AtomicUsize::new(1);
@@ -79,6 +80,19 @@ impl Drop for SlotLease {
     }
 }
 
+/// Sole authority to complete a staged close. Dropping this token retains its
+/// admission fence and payload; it never cancels closing or returns a slot.
+#[must_use]
+pub(crate) struct ClosingSlot {
+    table: usize,
+    id: usize,
+    generation: usize,
+}
+
+impl Drop for ClosingSlot {
+    fn drop(&mut self) {}
+}
+
 #[derive(Debug)]
 pub struct IdTable<T> {
     list: Vec<Option<T>>,
@@ -92,6 +106,7 @@ struct SlotState {
     generation: usize,
     retiring: bool,
     leases: usize,
+    closing: bool,
 }
 
 impl<T> IdTable<T> {
@@ -109,7 +124,10 @@ impl<T> IdTable<T> {
     pub fn add_element(&mut self, element: T) -> usize {
         if let Some(id) = self.available_ids.pop() {
             let state = &mut self.slots[id];
-            assert!(!state.retiring && state.leases == 0, "reusing retained slot");
+            assert!(
+                !state.retiring && !state.closing && state.leases == 0,
+                "reusing retained slot"
+            );
             state.generation = state.generation.checked_add(1).expect("ID generation exhausted");
             self.list[id] = Some(element);
             id
@@ -124,6 +142,7 @@ impl<T> IdTable<T> {
                 generation: 1,
                 retiring: false,
                 leases: 0,
+                closing: false,
             });
             id
         }
@@ -148,6 +167,9 @@ impl<T> IdTable<T> {
 
     pub fn take_element(&mut self, element_id: usize) -> Result<T, Error> {
         self.get(element_id)?;
+        if self.slots[element_id].closing {
+            return Err(Error::Closing);
+        }
         if self.slots[element_id].leases != 0 {
             return Err(Error::Leased);
         }
@@ -169,6 +191,9 @@ impl<T> IdTable<T> {
             return Err(Error::WrongLease);
         }
         let state = &mut self.slots[element_id];
+        if state.closing {
+            return Err(Error::Closing);
+        }
         state.leases = state.leases.checked_add(1).ok_or(Error::LeaseLimit)?;
         Ok(SlotLease {
             table: self.identity,
@@ -188,6 +213,86 @@ impl<T> IdTable<T> {
         Ok(())
     }
 
+    pub(crate) fn is_closing(&self, id: usize) -> Result<bool, Error> {
+        self.get(id)?;
+        Ok(self.slots[id].closing)
+    }
+
+    pub(crate) fn begin_close(
+        &mut self,
+        id: usize,
+        generation: usize,
+    ) -> Result<ClosingSlot, Error> {
+        self.begin_close_with(id, generation, |available, slots| {
+            available.try_reserve_exact(slots - available.len()).map_err(|_| ())
+        })
+    }
+
+    fn begin_close_with(
+        &mut self,
+        id: usize,
+        generation: usize,
+        reserve: impl FnOnce(&mut Vec<usize>, usize) -> Result<(), ()>,
+    ) -> Result<ClosingSlot, Error> {
+        if self.generation(id)? != generation {
+            return Err(Error::WrongRetirement);
+        }
+        if self.slots[id].closing {
+            return Err(Error::Closing);
+        }
+        // Existing leases may drain, but no irreversible admission fence is
+        // published until completion metadata preparation succeeds.
+        reserve(&mut self.available_ids, self.list.len()).map_err(|_| Error::AllocationFailed)?;
+        self.slots[id].closing = true;
+        Ok(ClosingSlot {
+            table: self.identity,
+            id,
+            generation,
+        })
+    }
+
+    pub(crate) fn prepare_closing_retirement(&mut self, slot: &ClosingSlot) -> Result<(), Error> {
+        self.validate_closing(slot)?;
+        if self.slots[slot.id].leases != 0 {
+            return Err(Error::Leased);
+        }
+        // Other slots may have been added during the unlocked drain interval.
+        self.available_ids
+            .try_reserve_exact(self.list.len() - self.available_ids.len())
+            .map_err(|_| Error::AllocationFailed)
+    }
+
+    fn validate_closing(&self, slot: &ClosingSlot) -> Result<(), Error> {
+        if slot.table != self.identity
+            || self.generation(slot.id).ok() != Some(slot.generation)
+            || !self.slots[slot.id].closing
+            || self.slots[slot.id].retiring
+        {
+            return Err(Error::WrongRetirement);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn retire_closing(&mut self, slot: ClosingSlot) -> Result<RetiredEntry<T>, Error> {
+        self.validate_closing(&slot)?;
+        if self.slots[slot.id].leases != 0 {
+            return Err(Error::Leased);
+        }
+        if self.available_ids.capacity() < self.list.len() {
+            return Err(Error::AllocationFailed); // No allocation after subsystem cleanup.
+        }
+        let value = self.list[slot.id].take().ok_or(Error::IdNotActive)?;
+        self.slots[slot.id].retiring = true;
+        Ok(RetiredEntry {
+            value: ManuallyDrop::new(value),
+            slot: Some(SlotRetirement {
+                table: slot.table,
+                id: slot.id,
+                generation: slot.generation,
+            }),
+        })
+    }
+
     /// Prepare free-slot storage before irreversible subsystem retirement.
     /// Reserve for every existing slot, so other detached owners can finish
     /// while this one is outside the table without allocating on completion.
@@ -203,6 +308,9 @@ impl<T> IdTable<T> {
         reserve: impl FnOnce(&mut Vec<usize>, usize) -> Result<(), ()>,
     ) -> Result<(), Error> {
         self.get(element_id)?;
+        if self.slots[element_id].closing {
+            return Err(Error::Closing);
+        }
         if self.slots[element_id].leases != 0 {
             return Err(Error::Leased);
         }
@@ -238,6 +346,7 @@ impl<T> IdTable<T> {
             return Err(Error::AllocationFailed);
         }
         self.slots[slot.id].retiring = false;
+        self.slots[slot.id].closing = false;
         self.available_ids.push(slot.id);
         Ok(())
     }
@@ -254,7 +363,7 @@ impl<T> IdTable<T> {
 impl<T> Drop for IdTable<T> {
     fn drop(&mut self) {
         for (entry, state) in self.list.iter_mut().zip(&self.slots) {
-            if state.leases != 0 {
+            if state.leases != 0 || state.closing {
                 // Even table destruction cannot recycle a leased payload.
                 // Kernel address-space tables are static; this also protects
                 // generic callers and host fixtures without a recovery bypass.

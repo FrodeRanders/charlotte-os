@@ -133,9 +133,15 @@ detachment. Its linear table/slot/generation token survives moving metadata.
 Root close rejects outstanding leases before subsystem retirement; only explicit
 completion of the last lease permits normal close. Abandonment retains the live
 root, tag and charges. Boot fixtures exercise this foundation, but production
-mapping and IPC still retain their masking guards. Split-phase integration also
-needs scratch/loan authority owners, closing-admission fencing and busy-close
-handling.
+mapping and IPC still retain their masking guards. An owned staged-close request
+now fences new operation leases while older leases drain. Pending poll returns
+the request owner without subsystem retirement; once ready, cleanup proceeds
+through the detached-root boundary. Dropping the request or exhausting its
+lease-drain waiting budget retains the closing root, tag, slot and charges.
+Later completion cannot reopen admission. The fence applies to operation leases,
+not all existing resource paths, and the waiting budget does not bound hardware
+rendezvous. Split-phase integration still needs scratch/loan authority owners
+and supervisor policy for pending or abandoned close requests.
 
 Physical teardown makes heap and image charges nonrefundable before releasing
 any owned frame. Both architecture destructors attempt the bounded private-tree

@@ -107,7 +107,9 @@ the mapping operations described here still retain their outer serialization.
 A [live-generation lease foundation](live-address-space-operations.md) now
 retains roots through explicit completion and rejects busy close before mutation.
 Mapping/IPC/MMIO are not migrated yet. Backing pins, scratch/authority owners and
-closing-admission/busy-close handling must be composed before releasing guards.
+the staged lease-admission fence and supervisor busy-close policy must be
+composed before releasing guards. Staged close does not fence every legacy
+mapping path or revoke its authority while older leases drain.
 
 ## Verification
 

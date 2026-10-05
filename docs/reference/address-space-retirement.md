@@ -85,8 +85,11 @@ translation-frame or kernel-heap budget; those remain SEC-07 work.
 Live operations have a separate linear slot lease. Retirement/extraction reject
 nonzero counts; root close returns `OperationsInFlight` before subsystem
 mutation. Explicit completion releases only the original table/generation's
-count. Abandonment retains a live root, not a detached one. Production mapping
-and busy-close handling still need migration. See
+count. Abandonment retains a live root, not a detached one. An owned staged close
+can instead fence new lease admission and return its request owner while old
+leases drain. Timeout or abandonment retains that closing root and fence; it
+does not authorize destructive cleanup. Production mapping and supervisor
+busy-close policy still need migration. See
 [live address-space operations](live-address-space-operations.md).
 
 Failed final invalidation or abandonment retains the whole hierarchy, physical
@@ -115,13 +118,16 @@ hardware-walk quiescence remain open. See
 ## Verification
 
 The host test runner now compiles the kernel's generic slot owner as a standalone
-Rust test crate. Twelve tests cover detach-before-destroy, delayed reuse,
+Rust test crate. Eighteen tests cover detach-before-destroy, delayed reuse,
 destructor ownership, abandonment, table identity, stale generations, failed
 preflight and interleaved completion without allocation, including a corrupted
 completion-capacity fixture. These are serialized state/interleaving tests.
 Five live-lease tests additionally cover overlapping counts, pre-allocation
 rejection, completion identity, counter limits, vector growth and abandoned
 lease/table destruction.
+Six staged-close tests cover fencing, exact close authority, preparation
+rollback, old-lease completion, abandonment and allocation-free final detachment
+after completion-capacity refresh.
 
 Single-mutator guest fixtures check failed preflight before namespace/backing
 retirement, guard availability during final invalidation, exact physical and
@@ -136,7 +142,11 @@ Live-operation fixtures verify busy-close non-mutation, retained tag/backing,
 continued admission, release without lifecycle re-entry and stale/detached
 acquisition rejection. Abandonment retains one additional live root with one
 charged heap page and private tables. Its namespace stays present and close
-remains busy, unlike the two detached-root probes above.
+remains busy, unlike the two detached-root probes above. Staged-close fixtures
+add pending-owner return, new-lease rejection, post-guard cleanup and zero-budget
+wait success/timeout. The timeout probe retains one further closing root, one
+heap-page charge and its private tables. Its lease subsequently completes, but
+the abandoned close fence remains; another caller cannot reclaim it.
 
 Architecture-shared destructor fault adapters exercise normal release, each of
 four table/root and two heap/image release positions, and rejection of all six.
