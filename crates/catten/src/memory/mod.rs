@@ -212,6 +212,7 @@ pub enum AddressSpaceCloseError {
     OperationDrainTimedOut,
     IpcCleanupFailed,
     DeviceCleanupFailed,
+    MemoryCleanupFailed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -486,7 +487,6 @@ fn finish_user_address_space_cleanup(
 ) -> Result<retirement::RetiredAddressSpace, AddressSpaceCloseError> {
     let asid = handle.id();
 
-    object::close_address_space(asid);
     object::close_scratch_address_space(asid);
     crate::completion::close_address_space(asid);
     crate::syscall::close_mailbox_address_space(asid);

@@ -255,7 +255,7 @@ impl<T> IdTable<T> {
         })
     }
 
-    /// No cleanup lease may enter after backing teardown begins. Existing
+    /// No cleanup lease may enter after final root teardown begins. Existing
     /// owners must drain first; a rejected seal does not change admission.
     pub(crate) fn seal_close(&mut self, slot: &ClosingSlot) -> Result<(), Error> {
         self.validate_closing(slot)?;

@@ -6,7 +6,7 @@ destruction. `RetiredAddressSpace` owns the detached private hierarchy, its
 heap/image accounts and a lease on the software slot until invalidation and
 physical destruction have completed.
 
-## Two phases
+## Owned cleanup and root retirement
 
 Under lifecycle serialization, close validates the exact handle and prepares
 completion metadata fallibly before retiring any subsystem. Failure here leaves
@@ -17,9 +17,13 @@ serialization. `PreparedNamespaceDevices` borrows the closing root through
 MMIO invalidation, scratch completion and DMA destruction after those guards
 leave. Only its exact completion receipt permits further retirement. IPC loan
 cleanup then borrows that closing owner and retains exact peer roots while releasing
-lifecycle/IPC for physical revocation. After IPC removal, cleanup admission is
-sealed with zero leases. Remaining memory cleanup, high-water accounting and
-authority/usage removal retain lifecycle. The address space is detached from the
+lifecycle/IPC for physical revocation. After IPC removal, memory cleanup borrows
+that owner and retains every mapped peer in existing mapping nodes before moving
+records and invalidating outside lifecycle. A preparing backing pin keeps the
+records visible until peer admission completes. Unmapped authority also waits for
+live revocation/transfer and DMA/copy fences. Only confirmed memory completion and
+zero leases permit cleanup sealing. High-water accounting and remaining
+namespace metadata removal retain lifecycle. The address space is detached from the
 table into the owning receipt, without returning its ID to the free-slot list.
 
 Device cleanup can reject detachment, invalidation, scratch completion or DMA
@@ -28,8 +32,10 @@ authority, scratch and original backing; subsequent polls cannot skip that phase
 IPC cleanup can reject uncertain loan revocation with `IpcCleanupFailed` before
 the root is detached. The closing owner then retains its fence, original root,
 slot, tag and backing accounts. No object/root destruction or slot refund follows
-that rejection. Earlier subsystem retirement and confirmed loans are not rolled
-back. The retained namespace rejects fresh operation leases and competing close;
+that rejection. Memory admission/physical cleanup errors likewise return
+`MemoryCleanupFailed`. Unstarted admission returns its peer leases and pin;
+physical failure retains every affected mapped root, backing and scratch claim.
+Earlier subsystem retirement and confirmed loans/objects are not rolled back. The retained namespace rejects fresh operation leases and competing close;
 there is no retry or force-clear recovery API. The supervisor propagates/caches
 this terminal teardown error rather than treating it as successful reclamation.
 
@@ -118,8 +124,9 @@ a staged server close is already pending. Whole-domain IPC loans now compose
 closing ownership and peer cleanup leases, including already-closing peers;
 ordinary admission stays fenced and cleanup admission seals before backing
 teardown. Whole-domain devices now borrow the closing root through unlocked
-physical cleanup. Whole-domain memory and move/copy/result attachment cleanup
-still need their own completion owners before releasing outer serialization. See
+physical cleanup. Whole-domain memory now retains all mapped roots through its
+own receipts outside lifecycle. Move/copy/result attachment cleanup still needs
+completion ownership before releasing outer IPC serialization. See
 [live address-space operations](live-address-space-operations.md).
 
 Failed final invalidation or abandonment retains the whole hierarchy, physical
@@ -133,12 +140,15 @@ Missing acknowledgements still stall.
 
 This corrects the **final root** boundary: its own lifecycle/table guards no
 longer surround the last rendezvous or `AddressSpace::drop`. Earlier
-whole-domain memory and IPC move/copy/result attachment cleanup retain
+IPC move/copy/result attachment cleanup retains
 lifecycle/IPC serialization across some x86 invalidations. Whole-domain IPC loan
 revocation now runs outside those guards through borrowed closing ownership and
 exact peer cleanup leases. Whole-domain device cleanup now runs outside lifecycle
 with its own receipt; uncertain DMA completion retains the root. Loan revocation
-rejects DMA-pinned loans before claiming them. Public live mapping, direct loan
+rejects DMA-pinned loans before claiming them. Whole-domain memory cleanup now
+owns backing, scratch, authority and mapped peer leases before releasing lifecycle.
+Unmapped revocation peers stay Pending until owned prior state returns. Public
+live mapping, direct loan
 revocation, all existing borrowed-memory replies and explicit call/reply cancellation
 now supply their own leases and completion owners. Remaining paths need the
 same composition before guards can be released. The final-root lease does not
@@ -198,3 +208,6 @@ concurrent hardware walks and unresponsive-LP recovery are not tested here.
 
 Device ownership and DMA-pinned loan regression evidence is recorded in the
 [device retirement remediation](../reports/audits/2026-10-06-security-device-retirement.md).
+
+Mapped-peer memory ownership and unmapped reader retention are documented in
+the [memory cleanup remediation](../reports/audits/2026-10-06-security-memory-retirement.md).

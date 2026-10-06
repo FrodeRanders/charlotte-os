@@ -364,7 +364,7 @@ fn test_failed_map_cleanup(create: &mut impl FnMut(&str) -> usize) {
         );
         crate::cpu::isa::memory::tlb::inval_range_user(owner, base, 2);
         drop(pin); // Failed cleanup does not release its backing pin.
-        assert_eq!(MEMORY_OBJECTS.lock().objects[&id].mappings[&owner].installed_pages, 1);
+        assert_eq!(MEMORY_OBJECTS.lock().objects[&id].mappings[&owner].state.installed_pages, 1);
         assert!(info(owner, cap).unwrap().mapped);
         assert_eq!(close_cap(owner, cap), Err(MemoryObjectError::LendingActive));
         let receipt = detach(id, owner);

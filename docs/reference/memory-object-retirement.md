@@ -45,8 +45,9 @@ All batches are attempted, retaining the first error. Any failure leaves the pin
 undischarged, even when some leaves have been removed. Domain cleanup moves
 records before detachment; ordinary unmap removes its record only after the full
 detach succeeds. Invalidations and scratch/authority completion retain their
-existing ordering. Whole-domain memory cleanup and IPC move/copy/result
-attachment cleanup retain their outer lifecycle/IPC guards. Namespace loan
+existing ordering. Whole-domain memory now borrows closing ownership and retains
+mapped peer leases before releasing lifecycle. IPC move/copy/result attachment
+cleanup retains its outer IPC guard. Namespace loan
 revocation now borrows closing ownership and retains peer cleanup leases. Public mapping operations, all existing
 borrowed-memory replies, explicit call/reply cancellation and direct loan revocation
 now own live-generation leases across these phases, as described below.
@@ -91,8 +92,9 @@ detach/invalidation checks succeed.
 The backing receipts themselves do not own an address-space generation lease.
 Their caller must retain one or retain lifecycle/IPC serialization across the
 complete operation. Numeric ASIDs and scratch identities must not be reused
-between detach and finish. Whole-domain memory and move/copy/result
-attachment cleanup still depend on those outer guards. Namespace loan cleanup
+between detach and finish. Move/copy/result attachment cleanup still depends on
+its outer IPC guard. Whole-domain memory now retains exact mapped roots in its
+own completion owner. Namespace loan cleanup
 now owns the closing generation and leases its peer before releasing IPC.
 
 Consequently SEC-18 remains partial: several user/device/domain paths still
@@ -262,10 +264,10 @@ root retirement, preserving original roots, charges, endpoint claims, failed
 receipts and uncertain pins without publishing terminal success. Unstarted
 receipts may be restored. Abandonment also retains peer leases and token claims.
 Namespace removal iterates admitted registry storage without snapshots. Cleanup
-admission permanently seals after IPC drain and zero leases, before remaining
-memory teardown. Raw boot fixtures alone retain serialized namespace loan
-revocation. Move/copy/result attachments, whole-domain memory cleanup,
-and comprehensive failure recovery/quiescence remain separate work.
+admission permanently seals after IPC and owned memory drain and zero leases,
+before root backing teardown. Raw boot fixtures alone retain serialized namespace loan
+revocation. Move/copy/result attachments and comprehensive failure
+recovery/quiescence remain separate work.
 
 Loan preparation rejects any live DMA pin under the memory registry before
 claiming `Revoking`; DMA admission also rejects that fence under the same guard.
@@ -368,3 +370,37 @@ records whole-domain loan cleanup and closing-peer validation.
 
 Device ownership and DMA-pinned loan regression evidence is recorded in the
 [device retirement remediation](../reports/audits/2026-10-06-security-device-retirement.md).
+
+## Owned whole-domain memory cleanup
+
+Mapping publication captures the exact `AddressSpaceHandle` before registry
+access while its operation lease retains that generation. Admitted mapping nodes
+carry optional cleanup leases, avoiding a teardown snapshot. For each object,
+`PreparingNamespaceObject` acquires a pin while mappings remain visible, then
+retains peers outside the registry, including already-closing peers. Competing
+cleanup returns Pending while that pin is active and cannot seal an unleased
+mapped root. Borrowed closing ownership and the permanent kernel root need no
+additional user-root lease. Unstarted admission rejection returns admitted peer
+leases and the pin without moving mappings or changing destruction state.
+
+After every affected peer is retained, `PreparedNamespaceObject` owns detached
+map records and the backing pin. Fixed batches check leaf identity and detach
+outside the registry; invalidation and scratch completion run outside lifecycle
+and table guards. Success releases backing/authority, then peer leases. Physical
+detach/invalidation/scratch failure or abandonment retains the pin, affected
+mapped roots, scratch and original closing root. Rejected physical frame release
+retains its original charge and affected roots after quiescence; it does not retry
+partially released backing. Earlier completed objects stay completed. Namespace close
+returns `MemoryCleanupFailed`, or Pending for another live pin/authority fence.
+Only exact object and namespace completion receipts permit subsequent sealing.
+
+Unmapped borrowed caps also wait for live revocation/transfer and DMA/copy fences
+before their borrower state and authority are removed. A revocation's owned prior
+reader list must return before another reader namespace can disappear; otherwise
+completion could restore a stale borrower entry. Destroy-fenced objects cannot
+resume authority and retain independent backing pins/charges through their own
+lifetime. Root slot/tag/account destruction remains a separate final owner.
+
+The historical serialized `close_address_space_fixture` adapter is used only at
+raw boot-fixture boundaries. It is not a production fallback or compatibility path.
+See the [memory cleanup remediation](../reports/audits/2026-10-06-security-memory-retirement.md).

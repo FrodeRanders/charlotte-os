@@ -256,8 +256,20 @@ fn test_failed_completion_and_drop(create: &mut impl FnMut(&str) -> usize) {
         let fresh = reserve_scratch(borrower, 1).unwrap();
         assert_ne!(fresh, base, "failed loan completion reused scratch");
         release_scratch(borrower, fresh, 1).unwrap();
-        close_test_address_space(borrower).unwrap();
-        close_test_address_space(owner).unwrap();
+        // Namespace cleanup must not supersede this uncertain revocation or
+        // erase caps that its owned prior state still references. Both roots
+        // remain closing, with no recovery/count-reset bypass in the fixture.
+        for asid in [borrower, owner] {
+            assert_eq!(
+                close_test_address_space(asid),
+                Err(AddressSpaceCloseError::OperationsInFlight)
+            );
+            assert!(current_address_space_handle(asid).is_some());
+            assert_eq!(
+                close_test_address_space(asid),
+                Err(AddressSpaceCloseError::CloseInProgress)
+            );
+        }
         assert_eq!(budget::used(handle), used_page(), "failed loan completion refunded charge");
         assert!(MEMORY_OBJECTS.lock().objects.contains_key(&id));
     }

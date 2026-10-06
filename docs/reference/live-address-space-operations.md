@@ -48,8 +48,12 @@ root through post-guard MMIO invalidation, scratch completion and DMA teardown.
 Only its exact completion receipt permits IPC loan cleanup to start. Device
 failure/abandonment retains unfinished records and the closing root; polling
 cannot skip that failed phase. It then drains IPC loans outside lifecycle/IPC
-as described below. After IPC removal and cleanup-lease drain, poll permanently seals cleanup admission before
-remaining memory cleanup and root detachment under lifecycle. Final root
+as described below. After IPC removal, owned memory cleanup retains exact mapped
+peers before detachment and invalidates outside lifecycle. Its preparing pin keeps
+mappings visible while peer leases are admitted. Unmapped caps wait for live
+revocation/transfer and DMA/copy fences. Only after confirmed memory removal and
+cleanup-lease drain does poll seal admission before final namespace metadata
+cleanup and root detachment under lifecycle. Final root
 invalidation/destruction runs after those guards are gone. Immediate close remains a distinct
 nonwaiting operation: if no staged fence exists, a busy result changes nothing.
 Once immediate close passes preflight, it also owns a closing slot before
@@ -122,8 +126,8 @@ root/fence and uncertain backing without publishing that call's terminal result;
 unstarted receipts can be restored. Abandonment retains the claim, peer leases,
 closing owner and loan pins. Each confirmed token is removed before authority
 cleanup; queued calls publish `REPLY_ENDPOINT_CLOSED`, delivered calls retain
-`REPLY_CANCELLED`. IPC removal uses admitted registry storage. Before memory
-teardown, `seal_close` requires zero leases and permanently rejects cleanup
+`REPLY_CANCELLED`. IPC removal uses admitted registry storage. After owned memory
+cleanup and before root teardown, `seal_close` requires zero leases and permanently rejects cleanup
 admission. `retire_closing` additionally requires that seal. A peer captured
 before namespace removal must revalidate under IPC and return its lease on
 rejection. No snapshot, force-clear or counter decrement bypass is provided.
@@ -139,8 +143,16 @@ revocation rejects live DMA pins before claiming under the memory registry,
 preventing a peer from restoring lender access while device teardown is pending.
 Before extending split-phase operation leases, implement:
 
-1. Extend composed completion ownership to whole-domain memory cleanup
-   and move/copy/result attachment cleanup. Namespace loan cleanup now retains
+Whole-domain memory now borrows closing ownership and retains mapped peer
+leases in admitted map nodes. Capture their exact generation at mapping publication;
+never resolve a reusable ASID during cleanup admission. Before detachment, a
+preparing backing pin prevents mapping changes or peer cleanup/sealing. Failed
+admission returns only unstarted leases/pins. Physical failure or abandonment
+retains the mapped peer counts and closing root; no release runs in Drop. Final
+unmapped-cap removal waits for live revocation state to return before clearing a
+borrower and consuming authority. The serialized bulk adapter is fixture-only.
+
+1. Extend composed completion ownership to move/copy/result attachment cleanup. Namespace loan cleanup now retains
    closing ownership, peer leases, loan receipts, scratch and authority outside
    IPC/lifecycle. The remaining adapters still retain outer serialization.
    Do not reuse live operation admission under a lifecycle/subsystem guard.
@@ -202,3 +214,6 @@ from two callers; borrower roots have no application threads. See the
 
 Device ownership and DMA-pinned loan regression evidence is recorded in the
 [device retirement remediation](../reports/audits/2026-10-06-security-device-retirement.md).
+
+Mapped-peer memory ownership and unmapped reader retention are documented in
+the [memory cleanup remediation](../reports/audits/2026-10-06-security-memory-retirement.md).

@@ -1,5 +1,5 @@
 //! Closing roots compose device and bounded IPC cleanup outside lifecycle/IPC.
-//! Remaining memory cleanup retains its serialization; the detached
+//! Whole-domain memory cleanup retains exact mapped peers; the detached
 //! owner leases its slot through final invalidation/destruction.
 
 use super::{
@@ -23,6 +23,7 @@ pub(crate) struct ClosingAddressSpace {
     cleanup_started: bool,
     devices_closed: bool,
     ipc_closed: bool,
+    memory_closed: bool,
 }
 
 #[must_use]
@@ -76,6 +77,7 @@ impl ClosingAddressSpace {
             cleanup_started: false,
             devices_closed: false,
             ipc_closed: false,
+            memory_closed: false,
         })
     }
 
@@ -106,7 +108,7 @@ impl ClosingAddressSpace {
         &self,
         handle: AddressSpaceHandle,
     ) -> Result<super::operation::AddressSpaceOperation, super::operation::OperationError> {
-        assert!(self.cleanup_started && self.devices_closed && !self.ipc_closed);
+        assert!(self.cleanup_started && self.devices_closed && !self.memory_closed);
         super::operation::AddressSpaceOperation::acquire_for_close(handle, &self.slot)
     }
 
@@ -117,10 +119,25 @@ impl ClosingAddressSpace {
     // Boot fixtures can reject a real prepared receipt and inspect the unlocked
     // interval. Production always uses LoanRevocation's physical cleanup.
     pub(crate) fn prepare_with_loan_cleanup(
+        self,
+        finish: impl FnMut(
+            super::object::LoanRevocation,
+        ) -> Result<(), super::object::MemoryObjectError>,
+    ) -> Result<RetirementProgress, AddressSpaceCloseError> {
+        self.prepare_with_cleanup(finish, |object| object.finish())
+    }
+
+    pub(crate) fn prepare_with_cleanup(
         mut self,
         finish: impl FnMut(
             super::object::LoanRevocation,
         ) -> Result<(), super::object::MemoryObjectError>,
+        finish_memory: impl FnMut(
+            super::object::namespace_close::PreparedNamespaceObject<'_>,
+        ) -> Result<
+            super::object::namespace_close::NamespaceObjectClosed,
+            super::object::MemoryObjectError,
+        >,
     ) -> Result<RetirementProgress, AddressSpaceCloseError> {
         if !self.start_cleanup()? {
             return Ok(RetirementProgress::Pending(self));
@@ -132,6 +149,27 @@ impl ClosingAddressSpace {
                 return Ok(RetirementProgress::Pending(self));
             }
             self.ipc_closed = true;
+        }
+        if !self.memory_closed {
+            {
+                let _lifecycle = super::ADDRESS_SPACE_LIFECYCLE.lock();
+                match ADDRESS_SPACE_TABLE.lock().prepare_closing_retirement(&self.slot) {
+                    Err(Error::Leased) => return Ok(RetirementProgress::Pending(self)),
+                    Err(error) => return Err(close_error(error)),
+                    Ok(()) => {}
+                }
+            }
+            match super::object::namespace_close::close_with(&self, finish_memory)
+                .map_err(|_| AddressSpaceCloseError::MemoryCleanupFailed)?
+            {
+                super::object::namespace_close::MemoryProgress::Pending => {
+                    return Ok(RetirementProgress::Pending(self));
+                }
+                super::object::namespace_close::MemoryProgress::Complete(closed) => {
+                    assert_eq!(closed.handle(), self.handle);
+                    self.memory_closed = true;
+                }
+            }
         }
         let _lifecycle = super::ADDRESS_SPACE_LIFECYCLE.lock();
         {
@@ -198,6 +236,13 @@ impl ClosingAddressSpace {
 
     pub(crate) fn device_cleanup_handle(&self) -> AddressSpaceHandle {
         assert!(self.cleanup_started && !self.devices_closed && !self.ipc_closed);
+        self.handle
+    }
+
+    pub(crate) fn memory_cleanup_handle(&self) -> AddressSpaceHandle {
+        assert!(
+            self.cleanup_started && self.devices_closed && self.ipc_closed && !self.memory_closed
+        );
         self.handle
     }
 

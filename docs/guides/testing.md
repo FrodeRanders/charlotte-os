@@ -828,3 +828,20 @@ publish no result before unpin. These are ownership/pin tests, not physical DMA
 timeout or failed-IPI injection. Use the isolated guest commands above; exact
 commands, results and limitations are in the
 [device retirement report](../reports/audits/2026-10-06-security-device-retirement.md).
+
+## Owned namespace memory cleanup
+
+New boot fixtures retain local and mapped peer roots through bounded detach and
+post-guard invalidation, including already-closing peers. Preparation rejection
+checks an exact stale generation without walking a successor; admitted leases
+roll back while mappings remain intact. Partial detach, failed barriers/scratch
+and abandoned receipts retain backing, scratch and all affected roots. An unmapped
+reader must stay Pending while another revocation owns its prior borrower list.
+
+Existing failed-loan fixtures now retain their roots as well as data pages. This
+batch retains 18 additional roots, nine new object pages and four heap pages;
+there is no test-only recovery path. A deferred fixture exercises production
+local/peer invalidation after secondary LPs start. Roots have no application
+threads; hardware failure recovery and concurrent hardware-walk stress remain
+separate work. Commands and evidence are in the
+[memory retirement report](../reports/audits/2026-10-06-security-memory-retirement.md).

@@ -134,7 +134,7 @@ impl LoanRevocation {
             borrower_cap,
             pin,
             prior: core::mem::replace(&mut object.lend_state, LendState::Revoking),
-            mapping: object.mappings.get(&borrower).copied(),
+            mapping: object.mappings.get(&borrower).map(|mapping| mapping.state),
             pages: object.frames.len(),
         })
     }
@@ -145,7 +145,7 @@ impl LoanRevocation {
         let mut registry = MEMORY_OBJECTS.lock();
         let object = registry.objects.get_mut(&self.pin.object).expect("prepared loan missing");
         assert!(matches!(object.lend_state, LendState::Revoking));
-        assert_eq!(object.mappings.get(&self.borrower).copied(), self.mapping);
+        assert_eq!(object.mappings.get(&self.borrower).map(|mapping| mapping.state), self.mapping);
         object.lend_state = core::mem::replace(&mut self.prior, LendState::None);
         drop(registry);
         self.pin.release(None);
@@ -216,7 +216,7 @@ impl LoanRevocation {
         let object = registry.objects.get_mut(&self.pin.object).expect("revoking object missing");
         assert!(matches!(object.lend_state, LendState::Revoking), "loan revocation fence lost");
         assert_eq!(
-            object.mappings.get(&self.borrower).copied(),
+            object.mappings.get(&self.borrower).map(|mapping| mapping.state),
             self.mapping,
             "revoking mapping changed"
         );

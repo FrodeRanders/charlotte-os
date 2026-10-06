@@ -179,12 +179,21 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   bounded per-token cancellation receipts outside lifecycle/IPC. Retain peers
   through closing-owner cleanup leases before claiming, including already-closing
   peers; ordinary operation admission stays fenced. Seal cleanup admission after
-  IPC drain and zero leases, before memory/root backing teardown. Never admit a
+  IPC and owned memory drain and zero leases, before root backing teardown. Never admit a
   peer after sealing, acquire lifecycle beneath IPC, consume uncertain receipts,
   or allocate namespace snapshots. Pending returns the closing owner; failure or
   abandonment retains its fence/root and uncertain pins. Serialized namespace
-  loan cleanup is confined to raw boot fixtures. Move/copy/result attachments and
-  whole-domain memory cleanup retain their existing serialization.
+  loan cleanup is confined to raw boot fixtures. Whole-domain memory cleanup
+  borrows the closing root and retains mapped peer generations in admitted mapping
+  records before moving them out of the registry. A preparing pin keeps mappings
+  visible and competing cleanup pending until every peer is retained. Never acquire
+  lifecycle under the object registry or allocate root/mapping snapshots. Roll back
+  only unstarted admission; physical failure/abandonment retains backing, mapped
+  peer leases, scratch and the closing root. Unmapped caps wait for live revocation,
+  DMA/copy or transfer fences before borrower state/authority removal. Only exact
+  completion receipts permit cleanup sealing and final root teardown. The serialized
+  whole-domain memory adapter is confined to raw boot fixtures. Move/copy/result
+  attachments retain their existing serialization.
   Bulk reply-token cleanup must not report failed loan revocation as terminal.
   Whole-domain device cleanup borrows the exact closing root through
   `PreparedNamespaceDevices`. Detach admitted registry storage and remove IRQ

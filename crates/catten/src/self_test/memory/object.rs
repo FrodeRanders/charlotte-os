@@ -236,7 +236,7 @@ pub fn test_memory_objects() {
         .expect("memory object: borrower cleanup lend failed");
     object::map(writer, borrower_cleanup_lend, VAddr::from(0x99000usize), true)
         .expect("memory object: borrower cleanup map failed");
-    object::close_address_space(writer);
+    object::close_address_space_fixture(writer);
     assert_eq!(
         object::info(writer, borrower_cleanup_lend),
         Err(MemoryObjectError::UnknownCapability)
@@ -320,7 +320,7 @@ pub fn test_memory_objects() {
             .expect("memory object: deferred cleanup copy pin failed");
         let dma_pin = object::pin_for_dma(pinned_owner, pinned_cap, true, false, false)
             .expect("memory object: deferred cleanup DMA pin failed");
-        object::close_address_space(pinned_owner);
+        object::close_address_space_fixture(pinned_owner);
         object::unpin_dma(dma_pin);
         object::unpin_copy(copy_pin);
         close_test_address_space(pinned_owner)
@@ -339,7 +339,7 @@ pub fn test_memory_objects() {
         let deferred_pin =
             object::pin_for_dma(deferred_borrower, deferred_lend, true, false, false)
                 .expect("memory object: deferred guard borrower pin failed");
-        object::close_address_space(deferred_owner);
+        object::close_address_space_fixture(deferred_owner);
         assert_eq!(
             object::map(deferred_borrower, deferred_lend, VAddr::from(0xbc000usize), false),
             Err(MemoryObjectError::LendingActive),
@@ -362,10 +362,10 @@ pub fn test_memory_objects() {
         .expect("memory object: owner cleanup lend failed");
     object::map(reader, owner_cleanup_lend, VAddr::from(0xbb000usize), false)
         .expect("memory object: owner cleanup reader map failed");
-    object::close_address_space(owner);
+    object::close_address_space_fixture(owner);
     assert_eq!(object::info(reader, owner_cleanup_lend), Err(MemoryObjectError::UnknownCapability));
-    object::close_address_space(reader);
-    object::close_address_space(target);
+    object::close_address_space_fixture(reader);
+    object::close_address_space_fixture(target);
 
     close_test_address_space(writer).expect("memory object: failed to close writer AS");
     close_test_address_space(reader).expect("memory object: failed to close reader AS");

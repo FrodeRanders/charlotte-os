@@ -340,6 +340,7 @@ extern "C" fn verify_el0_result() {
             super::user_isolation::verify();
             crate::ipc::cancellation::tests::run_endpoint_runtime();
             crate::device::retirement::tests::run_runtime();
+            crate::memory::object::namespace_close::tests::run_runtime();
             crate::self_test::results::pass(crate::self_test::results::TestId::El0);
             // Teardown belongs to the verifier: once the observable result is
             // committed, the payload has no further role. This is idempotent
