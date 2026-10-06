@@ -20,8 +20,10 @@ use crate::{
 };
 
 fn stage(handle: AddressSpaceHandle) -> RetiredAddressSpace {
-    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
-    memory::close_user_address_space_locked(handle).unwrap()
+    match ClosingAddressSpace::begin_ready(handle).unwrap().prepare_retirement().unwrap() {
+        RetirementProgress::Ready(retired) => retired,
+        RetirementProgress::Pending(_) => panic!("ready fixture retirement unexpectedly pending"),
+    }
 }
 
 fn assert_detached(handle: AddressSpaceHandle) {
@@ -249,9 +251,8 @@ fn test_preflight_failure() {
     assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     {
-        let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
         assert!(matches!(
-            memory::close_user_address_space_with_preflight(owner, |_, _| {
+            ClosingAddressSpace::begin_with(owner, |_, _| {
                 Err(crate::klib::collections::id_table::Error::AllocationFailed)
             }),
             Err(AddressSpaceCloseError::RetirementMetadataAllocationFailed)

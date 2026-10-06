@@ -1,4 +1,4 @@
-.section .rodata.el0_pingpong, "a"
+.pushsection .rodata.el0_pingpong, "a"
 .balign 4
 
 .global __catten_el0_ping_start
@@ -118,3 +118,4 @@ __catten_el0_pong_start:
 
     svc #8
 __catten_el0_pong_end:
+.popsection

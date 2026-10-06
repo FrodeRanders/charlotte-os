@@ -1,4 +1,4 @@
-.section .text.catten_el0_ipc_memory_copy, "ax"
+.pushsection .text.catten_el0_ipc_memory_copy, "ax"
 .balign 16
 
 .global __catten_el0_ipc_memory_copy_server_start
@@ -141,3 +141,4 @@ __catten_el0_ipc_memory_copy_client_start:
     ud2
 
 __catten_el0_ipc_memory_copy_client_end:
+.popsection

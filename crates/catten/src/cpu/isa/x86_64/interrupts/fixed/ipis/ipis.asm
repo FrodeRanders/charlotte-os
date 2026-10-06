@@ -53,7 +53,7 @@
 1:
 .endm
 
-.section .text
+.pushsection .text
 .global isr_asynchronous_ipi
 isr_asynchronous_ipi:
     IPI_PROLOGUE
@@ -74,3 +74,4 @@ isr_scheduler_ipi:
     call cond_yield_lp
     IPI_EPILOGUE
     iretq
+.popsection

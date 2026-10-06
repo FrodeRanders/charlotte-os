@@ -45,8 +45,9 @@ All batches are attempted, retaining the first error. Any failure leaves the pin
 undischarged, even when some leaves have been removed. Domain cleanup moves
 records before detachment; ordinary unmap removes its record only after the full
 detach succeeds. Invalidations and scratch/authority completion retain their
-existing ordering. Whole-domain cleanup and bulk IPC cancellation retain their
-outer lifecycle/IPC guards. Public mapping operations, all existing
+existing ordering. Whole-domain memory cleanup and IPC move/copy/result
+attachment cleanup retain their outer lifecycle/IPC guards. Namespace loan
+revocation now borrows closing ownership and retains peer cleanup leases. Public mapping operations, all existing
 borrowed-memory replies, explicit call/reply cancellation and direct loan revocation
 now own live-generation leases across these phases, as described below.
 
@@ -90,8 +91,9 @@ detach/invalidation checks succeed.
 The backing receipts themselves do not own an address-space generation lease.
 Their caller must retain one or retain lifecycle/IPC serialization across the
 complete operation. Numeric ASIDs and scratch identities must not be reused
-between detach and finish. Whole-domain cleanup and bulk IPC cancellation still
-depend on those outer guards.
+between detach and finish. Whole-domain memory/device and move/copy/result
+attachment cleanup still depend on those outer guards. Namespace loan cleanup
+now owns the closing generation and leases its peer before releasing IPC.
 
 Consequently SEC-18 remains partial: several user/device/domain paths still
 perform x86 rendezvous under an outer interrupt-masking lifecycle/IPC guard.
@@ -244,27 +246,24 @@ force-clear, timeout reclamation or recovery API. `PendingCall::close` returns
 its Rust owner on rejection; its Drop/consuming-wait fallback aborts the domain
 if close cannot confirm safety rather than ending the borrow normally.
 
-Whole-domain cleanup still uses the IPC-serialized adapter and needs a
-namespace completion owner before unlocking. Its reply-token cleanup records
-successful loans and returns an error while retaining a failed token without
-reporting terminal completion. Endpoint close and serialized pending-call close
-confirm all relevant loans before consuming close authority, pending records or
-queued attachments. A failed token is marked `cleanup_failed`; receive/readiness
-and reply cannot restore usable authority. Earlier successful loans remain removed
-from the token, while the failed receipt retains its backing pin and fence.
-Close failure publishes neither endpoint closure nor a caller cancellation wake.
+Whole-domain loan cleanup now borrows the exact `ClosingAddressSpace` and
+retains peers through cleanup leases, including already-closing namespaces.
+Ordinary operation admission remains closed. Record sponsorship and every owned
+endpoint are fenced before unlock, preventing new calls from entering the drain.
+Per-token cancellation claims prepare bounded receipts under IPC, then detach,
+invalidate and complete scratch outside IPC/lifecycle. Each confirmed loan is
+recorded before capability/result visibility. Queued calls return
+`REPLY_ENDPOINT_CLOSED`; delivered calls retain `REPLY_CANCELLED`.
 
-Namespace cleanup preflights all tokens involving that namespace, including
-delivered replies and foreign callers, before consuming IPC capabilities. It
-returns errors to root retirement instead of discarding failed token ownership.
-Root cleanup retains its exact root, slot, accounts and closing fence on
-`IpcCleanupFailed`; competing close and fresh operation leases reject. Admission
-and some other subsystems may already be retired, so this is a terminal retained
-namespace, not a rollback or retry API. Cleanup iterates admitted registry storage
-without allocating capability/token snapshots.
-Whole-root cleanup uses a non-leasing adapter after existing leases drain, never
-acquiring lifecycle beneath IPC. Split-phase bulk teardown and comprehensive
-failure recovery/quiescence remain separate work.
+Pending returns the closing owner for later polling. Failure returns an error to
+root retirement, preserving original roots, charges, endpoint claims, failed
+receipts and uncertain pins without publishing terminal success. Unstarted
+receipts may be restored. Abandonment also retains peer leases and token claims.
+Namespace removal iterates admitted registry storage without snapshots. Cleanup
+admission permanently seals after IPC drain and zero leases, before remaining
+memory teardown. Raw boot fixtures alone retain serialized namespace loan
+revocation. Move/copy/result attachments, whole-domain memory/device cleanup,
+and comprehensive failure recovery/quiescence remain separate work.
 
 Coherent DMA and executing CPUs
 retain their existing quiescence obligations; a revocation transaction does not
@@ -346,9 +345,13 @@ only before starting cleanup. If rejection exposes readable work, its readiness
 edge is re-signaled after unlock. Abandoning an owner retains its claim/root;
 abandoning a current call also retains that caller's lease, token and loan pins.
 
-Loan-free endpoint close remains atomic under IPC. Whole-domain cleanup does not
-use this live-leasing owner beneath lifecycle; it retains its serialized adapter
-and failure propagation. Physical CPU/DMA quiescence and recoverable x86 shootdown
+Loan-free endpoint close remains atomic under IPC. Whole-domain cleanup uses
+borrowed closing ownership and peer cleanup leases rather than invoking this
+live-leasing owner beneath lifecycle. Its loan cleanup now runs outside IPC;
+move/copy/result attachment cleanup retains its existing serialized adapter. Physical CPU/DMA quiescence and recoverable x86 shootdown
 failures remain separate work. See the
 [endpoint remediation](../reports/audits/2026-10-06-security-endpoint-close.md)
 for the executed regressions.
+
+The [namespace remediation](../reports/audits/2026-10-06-security-namespace-close.md)
+records whole-domain loan cleanup and closing-peer validation.

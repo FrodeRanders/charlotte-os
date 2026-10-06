@@ -46,6 +46,7 @@ use crate::{
 pub(crate) mod budget;
 pub(crate) mod cancellation;
 mod endpoint_close;
+pub(crate) mod namespace_close;
 pub(crate) mod record_budget;
 pub(crate) mod record_tests;
 pub(crate) mod reply;
@@ -2234,10 +2235,11 @@ fn signal_observers(observers: WaitNotifications) {
     observers.notify();
 }
 
-/// Serialized root cleanup may retire admission and confirm some loans before
-/// rejection. It returns no successful namespace retirement on uncertain cleanup;
-/// the caller must retain its exact root and closing fence on error.
-pub fn close_address_space(asid: AddressSpaceId) -> Result<(), IpcError> {
+/// Raw kernel boot-fixture cleanup. Fixtures also exercise synthetic namespaces
+/// that have no ClosingAddressSpace. Production root close exclusively uses
+/// namespace_close with a borrowed closing owner; do not use this serialized
+/// loan adapter for published runtime domains.
+pub(crate) fn close_address_space_fixture(asid: AddressSpaceId) -> Result<(), IpcError> {
     {
         let mut ipc = IPC.write();
         assert!(
@@ -2272,6 +2274,10 @@ pub fn close_address_space(asid: AddressSpaceId) -> Result<(), IpcError> {
             cursor = token;
         }
     }
+    drain_namespace_caps(asid)
+}
+
+fn drain_namespace_caps(asid: AddressSpaceId) -> Result<(), IpcError> {
     // Use admitted registry storage as the work list, not an infallibly
     // allocated teardown snapshot. Closing one call may also remove a reply cap.
     loop {

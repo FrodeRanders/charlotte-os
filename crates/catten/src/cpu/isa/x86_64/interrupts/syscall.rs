@@ -55,6 +55,7 @@ use crate::{
 };
 
 global_asm!(
+    ".pushsection .text",
     ".global syscall_entry",
     "syscall_entry:",
     // SYSCALL leaves RSP at a user-controlled address. Switch GS and stacks
@@ -118,6 +119,7 @@ global_asm!(
     // Restore the userspace GS base and return through the ring-3 frame.
     "swapgs",
     "iretq",
+    ".popsection",
     syscall_entry_handler = sym crate::cpu::isa::x86_64::interrupts::syscall::syscall_entry_handler,
 );
 

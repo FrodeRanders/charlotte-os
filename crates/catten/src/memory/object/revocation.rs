@@ -1,6 +1,7 @@
 //! Loan authority, mapped backing and namespace retention through revocation.
 //! Direct callers, borrowed-memory replies and explicit call/reply cancellation
-//! lease both roots. Endpoint/domain bulk cleanup retains IPC serialization.
+//! lease both roots. Endpoint and namespace close borrow their root owner and
+//! retain peer leases; only raw boot-fixture adapters retain IPC serialization.
 
 use super::*;
 
@@ -85,8 +86,9 @@ pub(crate) struct LoanRevocation {
 }
 
 impl LoanRevocation {
-    /// Caller holds leases for both namespaces or the complete IPC write
-    /// serialization (the kernel namespace is permanent). No table guard or
+    /// Caller retains both roots through leases or borrowed closing ownership;
+    /// raw boot fixtures may instead retain complete IPC serialization. The
+    /// kernel namespace is permanent. No table guard or
     /// lifecycle acquisition occurs here.
     pub(crate) fn prepare(
         owner: AddressSpaceId,
@@ -192,7 +194,7 @@ impl LoanRevocation {
         }
 
         let mut registry = MEMORY_OBJECTS.lock();
-        // The leases (or IPC guard), Revoking state and pin exclude namespace
+        // Root owners (or fixture IPC guard), Revoking state and pin exclude namespace
         // cleanup, capability removal and mapping mutation. No fallible work
         // may follow successful scratch release: these are ownership invariants,
         // not a new lookup through a reusable namespace.

@@ -1,4 +1,4 @@
-.section .text.catten_el0_ipc_block, "ax"
+.pushsection .text.catten_el0_ipc_block, "ax"
 .balign 4
 
 .global __catten_el0_ipc_block_server_start
@@ -85,3 +85,4 @@ __catten_el0_ipc_block_client_start:
     svc #8
 
 __catten_el0_ipc_block_client_end:
+.popsection

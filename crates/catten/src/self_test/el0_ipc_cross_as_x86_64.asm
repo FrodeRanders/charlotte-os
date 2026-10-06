@@ -1,4 +1,4 @@
-.section .text.catten_el0_ipc_cross_as, "ax"
+.pushsection .text.catten_el0_ipc_cross_as, "ax"
 .balign 16
 
 .global __catten_el0_ipc_cross_server_start
@@ -71,3 +71,4 @@ __catten_el0_ipc_cross_client_start:
     ud2
 
 __catten_el0_ipc_cross_client_end:
+.popsection

@@ -61,7 +61,7 @@ skip_ih_call_\vector:
     iretq
 .endm
 
-.section .text
+.pushsection .text
 .altmacro
 .set vector_num, 0
 .rept 220
@@ -69,3 +69,4 @@ skip_ih_call_\vector:
     .set vector_num, vector_num+1
 .endr
 .noaltmacro
+.popsection

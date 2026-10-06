@@ -278,7 +278,7 @@ fn test_retirement() {
     assert_eq!(fresh.used(), [1, 0, 0]);
     close_cap(replacement.id(), fresh_connection).unwrap();
     crate::memory::close_user_address_space_handle(replacement).unwrap();
-    close_address_space(recipient).unwrap();
+    close_address_space_fixture(recipient).unwrap();
 }
 
 fn test_node_limits() {

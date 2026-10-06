@@ -456,88 +456,36 @@ pub fn address_space_handle_is_current(handle: AddressSpaceHandle) -> bool {
 pub fn close_user_address_space_handle(
     handle: AddressSpaceHandle,
 ) -> Result<(), AddressSpaceCloseError> {
-    // Serialize validation and logical subsystem cleanup, then detach into a
-    // slot-leasing owner. Releasing lifecycle may not make this ASID reusable
-    // before the owned hierarchy has passed final invalidation/destruction.
-    let retired = {
-        let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
-        close_user_address_space_locked(handle)?
-    };
-    // The owner retains the complete private hierarchy, backing accounts and
-    // software-slot lease. Final invalidation/destruction holds neither the
-    // lifecycle nor the address-space table guard.
-    retired.release()
-}
-
-fn close_user_address_space_locked(
-    handle: AddressSpaceHandle,
-) -> Result<retirement::RetiredAddressSpace, AddressSpaceCloseError> {
-    close_user_address_space_with_preflight(handle, IdTable::prepare_retirement)
-}
-
-// Kernel-only fault adapter; caller retains lifecycle. Runtime always uses
-// the real fallible completion-storage preflight, before logical mutation.
-fn close_user_address_space_with_preflight(
-    handle: AddressSpaceHandle,
-    prepare: impl FnOnce(
-        &mut AddressSpaceTable,
-        usize,
-    ) -> Result<(), crate::klib::collections::id_table::Error>,
-) -> Result<retirement::RetiredAddressSpace, AddressSpaceCloseError> {
-    let asid = handle.id;
-    if asid == KERNEL_ASID {
-        return Err(AddressSpaceCloseError::KernelAddressSpace);
-    }
-
-    match ADDRESS_SPACE_TABLE.lock().generation(asid) {
-        Ok(generation) if generation == handle.generation => {}
-        Ok(_) => return Err(AddressSpaceCloseError::StaleHandle),
-        Err(_) => return Err(AddressSpaceCloseError::AddressSpaceMissing),
-    }
-    if ADDRESS_SPACE_TABLE.lock().is_closing(asid).unwrap() {
-        return Err(AddressSpaceCloseError::CloseInProgress);
-    }
-
-    prepare(&mut ADDRESS_SPACE_TABLE.lock(), asid).map_err(|error| match error {
-        crate::klib::collections::id_table::Error::Leased => {
-            AddressSpaceCloseError::OperationsInFlight
+    let closing = retirement::ClosingAddressSpace::begin_ready(handle)?;
+    match closing.prepare_retirement()? {
+        retirement::RetirementProgress::Pending(_) => {
+            // Preflight was ready, but a peer cleanup may have leased this root
+            // after the fence. Abandonment retains that fence and exact root.
+            Err(AddressSpaceCloseError::OperationsInFlight)
         }
-        _ => AddressSpaceCloseError::RetirementMetadataAllocationFailed,
-    })?;
-
-    // Logical cleanup can now reject uncertain IPC loans. Own the admission
-    // fence before that irreversible phase; any error retains this generation,
-    // its hierarchy and charges rather than reopening an incomplete namespace.
-    let closing = ADDRESS_SPACE_TABLE
-        .lock()
-        .begin_close(asid, handle.generation())
-        .map_err(|_| AddressSpaceCloseError::RetirementMetadataAllocationFailed)?;
-    close_user_address_space_after_preflight(handle, closing)
+        retirement::RetirementProgress::Ready(retired) => retired.release(),
+    }
 }
 
-// Caller holds lifecycle and has prepared completion storage while validating
-// exact identity and zero live operations. Every close owns its linear fence.
-fn close_user_address_space_after_preflight(
+// Caller retains lifecycle and has drained existing operations. This phase
+// stops resource sponsorship and DMA before unlocked IPC loan cleanup starts.
+fn begin_user_address_space_cleanup(handle: AddressSpaceHandle) {
+    let asid = handle.id();
+    ADDRESS_SPACE_TABLE.lock().get_mut(asid).unwrap().heap_account.retire();
+    ADDRESS_SPACE_TABLE.lock().get_mut(asid).unwrap().image_account.retire();
+    crate::capability::retire_address_space(asid);
+    budget::retire(handle);
+    crate::device::close_address_space(asid);
+}
+
+// Caller retains lifecycle, has drained cleanup leases and sealed admission.
+// IPC loan cleanup and namespace removal have already completed outside locks.
+fn finish_user_address_space_cleanup(
     handle: AddressSpaceHandle,
     closing: crate::klib::collections::id_table::ClosingSlot,
 ) -> Result<retirement::RetiredAddressSpace, AddressSpaceCloseError> {
     let asid = handle.id();
 
-    // Fence demand-heap admission under the same guard as mapping. Keep its
-    // charges until AddressSpace::drop has actually returned the frames.
-    ADDRESS_SPACE_TABLE.lock().get_mut(asid).unwrap().heap_account.retire();
-    ADDRESS_SPACE_TABLE.lock().get_mut(asid).unwrap().image_account.retire();
-    // Refuse new memory-object sponsorship before draining subsystem payloads.
-    crate::capability::retire_address_space(asid);
-    budget::retire(handle);
-
-    // DMA mappings must be revoked before memory-object teardown releases
-    // their pinned frames.
-    crate::device::close_address_space(asid);
-    // Quiesce IPC transactions before destroying their memory attachments.
-    // A retiring destination can reject a later vector entry; earlier moves
-    // must still be present so rollback can restore their original handles.
-    crate::ipc::close_address_space(asid).map_err(|_| AddressSpaceCloseError::IpcCleanupFailed)?;
     object::close_address_space(asid);
     object::close_scratch_address_space(asid);
     crate::completion::close_address_space(asid);

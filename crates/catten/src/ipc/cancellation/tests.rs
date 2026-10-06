@@ -13,6 +13,7 @@ use crate::memory::{
     retirement::{
         CloseProgress,
         ClosingAddressSpace,
+        RetirementProgress,
     },
 };
 
@@ -20,6 +21,7 @@ struct Fixture {
     caller: AddressSpaceHandle,
     server: AddressSpaceHandle,
     endpoint: CapabilityId,
+    connection: CapabilityId,
     call: CapabilityId,
     reply: Option<CapabilityId>,
     borrows: Vec<MemoryBorrow>,
@@ -113,6 +115,7 @@ impl Fixture {
             caller,
             server,
             endpoint,
+            connection,
             call,
             reply,
             borrows,
@@ -140,6 +143,12 @@ pub(crate) fn run() {
     partial_failure();
     serialized_bulk_success();
     serialized_bulk_failure();
+    namespace_success();
+    namespace_closing_peers();
+    namespace_kernel_caller();
+    namespace_preparation_failure();
+    namespace_partial_failure();
+    namespace_abandonment();
     owned_endpoint_success();
     owned_endpoint_rollback();
     owned_endpoint_failure();
@@ -365,7 +374,7 @@ fn partial_failure() {
         Some(AddressSpaceCloseError::IpcCleanupFailed)
     );
     assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));
-    assert_eq!(receive(fixture.server.id(), fixture.endpoint), Err(IpcError::PermissionDenied));
+    assert_eq!(receive(fixture.server.id(), fixture.endpoint), Err(IpcError::Pending));
 }
 
 fn serialized_bulk_success() {
@@ -822,6 +831,29 @@ pub(crate) fn run_endpoint_runtime() {
     crate::logln!(
         "[IPC endpoint retirement] mapped loans from two callers retired with secondary LPs online"
     );
+    // Whole-domain retirement also revokes mapped loans with secondary LPs
+    // online. These roots have no application threads or active hardware walks.
+    let fixture = Fixture::create(2, true, false);
+    let other = fixture.append(2, false);
+    memory::close_user_address_space_handle(fixture.server).unwrap();
+    for caller in [&fixture, &other] {
+        assert_eq!(
+            poll_reply(caller.caller.id(), caller.call).unwrap().unwrap().result,
+            if caller.reply.is_some() {
+                REPLY_CANCELLED
+            } else {
+                REPLY_ENDPOINT_CLOSED
+            }
+        );
+        for borrow in &caller.borrows {
+            assert!(!object::info(borrow.owner, borrow.owner_cap).unwrap().lent);
+        }
+        memory::close_user_address_space_handle(caller.caller).unwrap();
+    }
+    crate::logln!(
+        "[IPC namespace runtime] delivered/queued mapped loans from two callers retired with \
+         secondary LPs online"
+    );
 }
 
 fn abandonment() {
@@ -851,5 +883,273 @@ fn abandonment() {
             pages: 1,
             objects: 1
         }
+    );
+}
+
+fn namespace_success() {
+    for delivered in [false, true] {
+        for close_server in [false, true] {
+            let fixture = Fixture::new(2, delivered);
+            let handle = if close_server {
+                fixture.server
+            } else {
+                fixture.caller
+            };
+            let mut boundaries = 0;
+            let RetirementProgress::Ready(retired) = ClosingAddressSpace::begin_ready(handle)
+                .unwrap()
+                .prepare_with_loan_cleanup(|loan| {
+                    loan.finish_observed(|| {
+                        boundaries += 1;
+                        unlocked();
+                        assert_eq!(memory::current_address_space_handle(handle.id()), Some(handle));
+                        assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));
+                        assert!(matches!(
+                            AddressSpaceOperation::acquire(handle),
+                            Err(crate::memory::operation::OperationError::Closing)
+                        ));
+                        assert_eq!(
+                            receive(fixture.server.id(), fixture.endpoint),
+                            Err(if delivered && !close_server {
+                                IpcError::NoMessage
+                            } else {
+                                IpcError::Pending
+                            })
+                        );
+                    })
+                })
+                .unwrap()
+            else {
+                panic!("namespace fixture unexpectedly pending")
+            };
+            assert!(boundaries >= 6);
+            if close_server {
+                assert_eq!(
+                    poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap().result,
+                    if delivered {
+                        REPLY_CANCELLED
+                    } else {
+                        REPLY_ENDPOINT_CLOSED
+                    }
+                );
+                for borrow in &fixture.borrows {
+                    assert!(!object::info(borrow.owner, borrow.owner_cap).unwrap().lent);
+                }
+            } else {
+                assert_eq!(
+                    IPC.read().cap(fixture.caller.id(), fixture.call),
+                    Err(IpcError::UnknownCapability)
+                );
+                assert_eq!(
+                    receive(fixture.server.id(), fixture.endpoint),
+                    Err(IpcError::NoMessage)
+                );
+            }
+            assert_eq!(memory::current_address_space_handle(handle.id()), None);
+            retired.release().unwrap();
+            memory::close_user_address_space_handle(
+                if close_server {
+                    fixture.caller
+                } else {
+                    fixture.server
+                },
+            )
+            .unwrap();
+        }
+    }
+    // Scalar self-call borrows one closing owner for both roles, never attempts
+    // fresh admission after that root's fence, and consumes the pending record.
+    // Memory lending deliberately rejects same-namespace transfers.
+    let root = crate::service::loader::create_user_address_space_handle();
+    let endpoint = endpoint_create(root.id(), 0x5345_4c46, 1, 2).unwrap();
+    let connection =
+        connection_delegate(root.id(), endpoint, root.id(), ConnectionRights::CALL).unwrap();
+    scalar_call(root.id(), connection, 1, 0).unwrap();
+    memory::close_user_address_space_handle(root).unwrap();
+    assert_eq!(memory::current_address_space_handle(root.id()), None);
+}
+
+fn namespace_closing_peers() {
+    for close_server in [false, true] {
+        let fixture = Fixture::new(2, true);
+        let mut caller = ClosingAddressSpace::begin(fixture.caller).unwrap();
+        let mut server = ClosingAddressSpace::begin(fixture.server).unwrap();
+        assert!(caller.start_cleanup().unwrap());
+        assert!(server.start_cleanup().unwrap());
+        let (owner, peer) = if close_server {
+            (server, caller)
+        } else {
+            (caller, server)
+        };
+        let mut peer = Some(peer);
+        let RetirementProgress::Ready(retired) = owner
+            .prepare_with_loan_cleanup(|loan| {
+                loan.finish_observed(|| {
+                    unlocked();
+                    // Both logical namespace fences already exist. The active
+                    // claim and cleanup lease prevent the other owner from advancing.
+                    let CloseProgress::Pending(pending) = peer.take().unwrap().poll().unwrap()
+                    else {
+                        panic!("closing peer escaped the cleanup lease")
+                    };
+                    peer = Some(pending);
+                    assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));
+                    assert_eq!(
+                        reply(fixture.server.id(), fixture.reply.unwrap(), 0),
+                        Err(IpcError::ReplyAlreadyUsed)
+                    );
+                })
+            })
+            .unwrap()
+        else {
+            panic!("closing-peer cleanup unexpectedly pending")
+        };
+        retired.release().unwrap();
+        assert!(matches!(peer.take().unwrap().poll().unwrap(), CloseProgress::Complete));
+        for handle in [fixture.caller, fixture.server] {
+            assert_eq!(memory::current_address_space_handle(handle.id()), None);
+        }
+    }
+}
+
+fn namespace_preparation_failure() {
+    let fixture = Fixture::new(2, false);
+    let identity = resolve(&IPC.read(), fixture.caller.id(), fixture.call).unwrap().unwrap();
+    let borrow = fixture.borrows[1];
+    let loan = LoanRevocation::prepare(
+        borrow.owner,
+        borrow.owner_cap,
+        borrow.borrower,
+        borrow.borrower_cap,
+    )
+    .unwrap();
+    assert!(matches!(
+        ClosingAddressSpace::begin_ready(fixture.server).unwrap().prepare_retirement(),
+        Err(AddressSpaceCloseError::IpcCleanupFailed)
+    ));
+    let ipc = IPC.read();
+    let token = &ipc.reply_tokens[&identity.token];
+    assert!(!token.completing && !token.cleanup_failed);
+    assert_eq!(token.borrows, fixture.borrows);
+    assert!(ipc.cap(fixture.server.id(), fixture.endpoint).is_ok());
+    drop(ipc);
+    // Earlier unstarted receipts were restored and peer leases completed.
+    assert!(object::info(fixture.borrows[0].owner, fixture.borrows[0].owner_cap).unwrap().lent);
+    AddressSpaceOperation::acquire(fixture.caller).unwrap().release().unwrap();
+    loan.cancel_prepared();
+    memory::close_user_address_space_handle(fixture.caller).unwrap();
+    assert_eq!(
+        memory::close_user_address_space_handle(fixture.server),
+        Err(AddressSpaceCloseError::CloseInProgress)
+    );
+    assert_eq!(memory::current_address_space_handle(fixture.server.id()), Some(fixture.server));
+}
+
+fn namespace_partial_failure() {
+    let fixture = Fixture::new(3, false);
+    let identity = resolve(&IPC.read(), fixture.caller.id(), fixture.call).unwrap().unwrap();
+    let endpoint = receive_endpoint_id(&IPC.read(), fixture.server.id(), fixture.endpoint).unwrap();
+    let used = memory::budget::used(fixture.caller);
+    let free = memory::PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let mut finished = 0;
+    assert!(matches!(
+        ClosingAddressSpace::begin_ready(fixture.server).unwrap().prepare_with_loan_cleanup(
+            |loan| {
+                unlocked();
+                finished += 1;
+                if finished == 2 {
+                    drop(loan); // Retain a real backing pin and uncertain loan fence.
+                    Err(MemoryObjectError::UnmapFailed)
+                } else {
+                    loan.finish_observed(unlocked)
+                }
+            }
+        ),
+        Err(AddressSpaceCloseError::IpcCleanupFailed)
+    ));
+    assert_eq!(finished, 2);
+    let ipc = IPC.read();
+    assert!(ipc.endpoints[&endpoint].closing && !ipc.endpoints[&endpoint].closed);
+    assert_eq!(ipc.endpoints[&endpoint].queue.len(), 1);
+    assert_eq!(ipc.reply_tokens[&identity.token].borrows, fixture.borrows[..2]);
+    assert!(ipc.reply_tokens[&identity.token].cleanup_failed);
+    assert!(!ipc.reply_tokens[&identity.token].completing);
+    assert!(ipc.pending_calls[&identity.call].result.is_none());
+    assert!(ipc.cap(fixture.server.id(), fixture.endpoint).is_ok());
+    drop(ipc);
+    assert_eq!(memory::PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+    assert_eq!(memory::budget::used(fixture.caller), used);
+    assert_eq!(receive(fixture.server.id(), fixture.endpoint), Err(IpcError::Pending));
+    assert_eq!(
+        memory::close_user_address_space_handle(fixture.caller),
+        Err(AddressSpaceCloseError::IpcCleanupFailed)
+    );
+    for handle in [fixture.caller, fixture.server] {
+        assert_eq!(memory::current_address_space_handle(handle.id()), Some(handle));
+        assert_eq!(
+            memory::close_user_address_space_handle(handle),
+            Err(AddressSpaceCloseError::CloseInProgress)
+        );
+    }
+}
+
+fn namespace_abandonment() {
+    let fixture = Fixture::new(2, false);
+    let identity = resolve(&IPC.read(), fixture.caller.id(), fixture.call).unwrap().unwrap();
+    let mut owner = ClosingAddressSpace::begin(fixture.server).unwrap();
+    assert!(owner.start_cleanup().unwrap());
+    let call = PreparedCancellation::prepare_namespace_token(&owner, identity.token).unwrap();
+    drop(call);
+    let CloseProgress::Pending(owner) = owner.poll().unwrap() else {
+        panic!("abandoned namespace call completed")
+    };
+    drop(owner);
+    assert!(IPC.read().reply_tokens[&identity.token].completing);
+    assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));
+    assert_eq!(
+        memory::close_user_address_space_handle(fixture.server),
+        Err(AddressSpaceCloseError::CloseInProgress)
+    );
+    assert_eq!(
+        memory::close_user_address_space_handle(fixture.caller),
+        Err(AddressSpaceCloseError::OperationsInFlight)
+    );
+    assert_eq!(memory::current_address_space_handle(fixture.server.id()), Some(fixture.server));
+    assert_eq!(memory::current_address_space_handle(fixture.caller.id()), Some(fixture.caller));
+    crate::logln!(
+        "[IPC namespace ownership] unlocked queued/delivered cleanup, both closing peers, \
+         preparation rollback, partial failure and abandonment passed; failed roots/backing \
+         retained"
+    );
+}
+
+fn namespace_kernel_caller() {
+    let kernel = memory::current_address_space_handle(KERNEL_ASID).unwrap();
+    let used = memory::budget::used(kernel);
+    for delivered in [false, true] {
+        let server = crate::service::loader::create_user_address_space_handle();
+        let endpoint = endpoint_create(server.id(), 0x4b45_524e, 1, 2).unwrap();
+        let fixture = Fixture::enqueue(kernel, server, endpoint, 2, delivered, false);
+        memory::close_user_address_space_handle(server).unwrap();
+        assert_eq!(
+            poll_reply(KERNEL_ASID, fixture.call).unwrap().unwrap().result,
+            if delivered {
+                REPLY_CANCELLED
+            } else {
+                REPLY_ENDPOINT_CLOSED
+            }
+        );
+        for borrow in &fixture.borrows {
+            assert!(!object::info(KERNEL_ASID, borrow.owner_cap).unwrap().lent);
+            object::close_cap(KERNEL_ASID, borrow.owner_cap).unwrap();
+        }
+        close_cap(KERNEL_ASID, fixture.call).unwrap();
+        close_cap(KERNEL_ASID, fixture.connection).unwrap();
+        assert_eq!(memory::current_address_space_handle(KERNEL_ASID), Some(kernel));
+        assert_eq!(memory::budget::used(kernel), used);
+    }
+    crate::logln!(
+        "[IPC namespace kernel caller] queued/delivered mapped read/write loans retired without \
+         leasing or closing the permanent root"
     );
 }

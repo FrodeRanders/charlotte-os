@@ -1,6 +1,6 @@
-//! Final private-root retirement. Logical subsystem cleanup still requires
-//! lifecycle serialization; the detached owner then leases its software slot
-//! and owns backing through lock-free final invalidation/destruction.
+//! Closing roots compose bounded IPC loan cleanup outside lifecycle/IPC.
+//! Remaining memory/device cleanup retains its serialization; the detached
+//! owner leases its slot through final invalidation/destruction.
 
 use super::{
     ADDRESS_SPACE_TABLE,
@@ -20,6 +20,14 @@ use crate::klib::collections::id_table::{
 pub(crate) struct ClosingAddressSpace {
     handle: AddressSpaceHandle,
     slot: ClosingSlot,
+    cleanup_started: bool,
+    ipc_closed: bool,
+}
+
+#[must_use]
+pub(crate) enum RetirementProgress {
+    Pending(ClosingAddressSpace),
+    Ready(RetiredAddressSpace),
 }
 
 #[must_use]
@@ -31,6 +39,18 @@ pub(crate) enum CloseProgress {
 impl ClosingAddressSpace {
     /// Caller must establish thread quiescence before staging root close.
     pub(crate) fn begin(handle: AddressSpaceHandle) -> Result<Self, AddressSpaceCloseError> {
+        Self::begin_with(handle, |_, _| Ok(()))
+    }
+
+    /// Immediate close rejects busy roots before publishing a fence.
+    pub(crate) fn begin_ready(handle: AddressSpaceHandle) -> Result<Self, AddressSpaceCloseError> {
+        Self::begin_with(handle, super::AddressSpaceTable::prepare_retirement)
+    }
+
+    fn begin_with(
+        handle: AddressSpaceHandle,
+        prepare: impl FnOnce(&mut super::AddressSpaceTable, usize) -> Result<(), Error>,
+    ) -> Result<Self, AddressSpaceCloseError> {
         if handle.id() == super::KERNEL_ASID {
             return Err(AddressSpaceCloseError::KernelAddressSpace);
         }
@@ -41,10 +61,19 @@ impl ClosingAddressSpace {
             Ok(_) => return Err(AddressSpaceCloseError::StaleHandle),
             Err(_) => return Err(AddressSpaceCloseError::AddressSpaceMissing),
         }
+        if table.is_closing(handle.id()).unwrap() {
+            return Err(AddressSpaceCloseError::CloseInProgress);
+        }
+        prepare(&mut table, handle.id()).map_err(|error| match error {
+            Error::Leased => AddressSpaceCloseError::OperationsInFlight,
+            error => close_error(error),
+        })?;
         let slot = table.begin_close(handle.id(), handle.generation()).map_err(close_error)?;
         Ok(Self {
             handle,
             slot,
+            cleanup_started: false,
+            ipc_closed: false,
         })
     }
 
@@ -56,20 +85,86 @@ impl ClosingAddressSpace {
         self,
         invalidate: impl FnOnce(&AddressSpace, AddressSpaceHandle) -> bool,
     ) -> Result<CloseProgress, AddressSpaceCloseError> {
-        let retired = {
-            let _lifecycle = super::ADDRESS_SPACE_LIFECYCLE.lock();
-            {
-                let mut table = ADDRESS_SPACE_TABLE.lock();
-                match table.prepare_closing_retirement(&self.slot) {
-                    Err(Error::Leased) => return Ok(CloseProgress::Pending(self)),
-                    Err(error) => return Err(close_error(error)),
-                    Ok(()) => {}
-                }
+        match self.prepare_retirement()? {
+            RetirementProgress::Pending(pending) => Ok(CloseProgress::Pending(pending)),
+            RetirementProgress::Ready(retired) => {
+                retired.release_with(invalidate)?;
+                Ok(CloseProgress::Complete)
             }
-            super::close_user_address_space_after_preflight(self.handle, self.slot)?
-        };
-        retired.release_with(invalidate)?;
-        Ok(CloseProgress::Complete)
+        }
+    }
+
+    pub(crate) fn handle(&self) -> AddressSpaceHandle {
+        self.handle
+    }
+
+    /// Peer admission is available only to a borrowed, started closing owner.
+    /// Ordinary operations still reject both closing roots. No guard escapes.
+    pub(crate) fn retain_peer(
+        &self,
+        handle: AddressSpaceHandle,
+    ) -> Result<super::operation::AddressSpaceOperation, super::operation::OperationError> {
+        assert!(self.cleanup_started && !self.ipc_closed);
+        super::operation::AddressSpaceOperation::acquire_for_close(handle, &self.slot)
+    }
+
+    pub(crate) fn prepare_retirement(self) -> Result<RetirementProgress, AddressSpaceCloseError> {
+        self.prepare_with_loan_cleanup(super::object::LoanRevocation::finish)
+    }
+
+    // Boot fixtures can reject a real prepared receipt and inspect the unlocked
+    // interval. Production always uses LoanRevocation's physical cleanup.
+    pub(crate) fn prepare_with_loan_cleanup(
+        mut self,
+        finish: impl FnMut(
+            super::object::LoanRevocation,
+        ) -> Result<(), super::object::MemoryObjectError>,
+    ) -> Result<RetirementProgress, AddressSpaceCloseError> {
+        if !self.start_cleanup()? {
+            return Ok(RetirementProgress::Pending(self));
+        }
+        if !self.ipc_closed {
+            if !crate::ipc::namespace_close::close_with(&self, finish)
+                .map_err(|_| AddressSpaceCloseError::IpcCleanupFailed)?
+            {
+                return Ok(RetirementProgress::Pending(self));
+            }
+            self.ipc_closed = true;
+        }
+        let _lifecycle = super::ADDRESS_SPACE_LIFECYCLE.lock();
+        {
+            let mut table = ADDRESS_SPACE_TABLE.lock();
+            match table.prepare_closing_retirement(&self.slot) {
+                Err(Error::Leased) => return Ok(RetirementProgress::Pending(self)),
+                Err(error) => return Err(close_error(error)),
+                Ok(()) => {}
+            }
+            table.seal_close(&self.slot).map_err(close_error)?;
+        }
+        super::finish_user_address_space_cleanup(self.handle, self.slot)
+            .map(RetirementProgress::Ready)
+    }
+
+    /// Establish logical admission/DMA fences once, after older leases drain.
+    /// This separated phase also permits deterministic closing-peer fixtures.
+    pub(crate) fn start_cleanup(&mut self) -> Result<bool, AddressSpaceCloseError> {
+        if self.cleanup_started {
+            return Ok(true);
+        }
+        let _lifecycle = super::ADDRESS_SPACE_LIFECYCLE.lock();
+        {
+            let mut table = ADDRESS_SPACE_TABLE.lock();
+            match table.prepare_closing_retirement(&self.slot) {
+                Err(Error::Leased) => return Ok(false),
+                Err(error) => return Err(close_error(error)),
+                Ok(()) => {}
+            }
+        }
+        super::begin_user_address_space_cleanup(self.handle);
+        crate::ipc::namespace_close::begin(self)
+            .map_err(|_| AddressSpaceCloseError::IpcCleanupFailed)?;
+        self.cleanup_started = true;
+        Ok(true)
     }
 
     /// Bounded polling/sleep happens only after this owner's lifecycle/table
@@ -114,7 +209,7 @@ impl RetiredAddressSpace {
         }
     }
 
-    pub(super) fn release(self) -> Result<(), AddressSpaceCloseError> {
+    pub(crate) fn release(self) -> Result<(), AddressSpaceCloseError> {
         self.release_with(invalidate)
     }
 

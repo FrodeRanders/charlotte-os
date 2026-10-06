@@ -694,8 +694,8 @@ pub fn test_endpoint_ipc() {
         .expect("memory IPC death owner close after server death failed");
     close_test_address_space(death_client).expect("memory IPC death client AS close failed");
 
-    ipc::close_address_space(client).unwrap();
-    ipc::close_address_space(server).unwrap();
+    ipc::close_address_space_fixture(client).unwrap();
+    ipc::close_address_space_fixture(server).unwrap();
     logln!("Endpoint IPC subsystem tests passed.");
 }
 
@@ -842,8 +842,8 @@ pub fn test_endpoint_admission() {
     assert_eq!(account.used(), [1, 4]);
     ipc::close_cap(client, connection).unwrap();
     ipc::close_cap(server, service).unwrap();
-    ipc::close_address_space(client).unwrap();
-    ipc::close_address_space(server).unwrap();
+    ipc::close_address_space_fixture(client).unwrap();
+    ipc::close_address_space_fixture(server).unwrap();
     assert_eq!(account.used(), [0, 0]);
     assert_eq!(budget::node_used(), before);
 
@@ -904,7 +904,7 @@ pub fn test_endpoint_admission() {
     assert_eq!(fresh.used(), [1, 4]);
     ipc::close_cap(replacement, fresh_endpoint).unwrap();
     close_test_address_space(replacement).unwrap();
-    ipc::close_address_space(client).unwrap();
+    ipc::close_address_space_fixture(client).unwrap();
     assert_eq!(budget::node_used(), before);
     logln!("Aggregate endpoint admission passed.");
 }
@@ -998,8 +998,8 @@ pub fn test_close_watch_admission() {
     assert!(completion::poll(client, late).unwrap().is_some());
     assert_eq!(account.used(), 0);
     completion::close(client, late).unwrap();
-    ipc::close_address_space(client).unwrap();
-    ipc::close_address_space(server).unwrap();
+    ipc::close_address_space_fixture(client).unwrap();
+    ipc::close_address_space_fixture(server).unwrap();
     completion::close_address_space(client);
     assert_eq!(budget::node_used(), before);
 
@@ -1105,8 +1105,8 @@ pub fn test_close_watch_admission() {
         ipc::close_cap(client, inspect).unwrap();
     }
     ipc::close_cap(server, endpoint).unwrap();
-    ipc::close_address_space(server).unwrap();
-    ipc::close_address_space(client).unwrap();
+    ipc::close_address_space_fixture(server).unwrap();
+    ipc::close_address_space_fixture(client).unwrap();
     assert_eq!(budget::node_used(), before);
 
     // Unpublished owner rollback must not revoke an exact numeric replacement.
@@ -1165,7 +1165,7 @@ pub fn test_close_watch_admission() {
     assert_eq!(budget::node_used(), full);
     crate::memory::close_user_address_space_handle(handle).unwrap();
     ipc::close_cap(server, endpoint).unwrap();
-    ipc::close_address_space(server).unwrap();
+    ipc::close_address_space_fixture(server).unwrap();
     let blocked = budget::DomainBudget::new(1);
     assert!(budget::reserve(&blocked, false).is_err());
     assert_eq!(blocked.used(), 0);
@@ -1397,10 +1397,10 @@ pub fn test_endpoint_ipc_connection_attach() {
         "connection to restarted service must report endpoint closed"
     );
 
-    ipc::close_address_space(client).unwrap();
+    ipc::close_address_space_fixture(client).unwrap();
     crate::completion::close_address_space(client);
-    ipc::close_address_space(service).unwrap();
-    ipc::close_address_space(nameservice).unwrap();
+    ipc::close_address_space_fixture(service).unwrap();
+    ipc::close_address_space_fixture(nameservice).unwrap();
     logln!("Endpoint IPC connection attachment tests passed.");
 }
 

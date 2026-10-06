@@ -1,6 +1,7 @@
 //! Explicit call/reply close owns loan cleanup outside IPC serialization.
 //! Explicit endpoint close borrows its server-root owner for one queued call
-//! at a time. Whole-domain bulk cleanup retains its serialized adapter.
+//! at a time. Namespace retirement borrows a closing root and admits peer
+//! cleanup leases before claiming the token, including already-closing peers.
 
 use super::*;
 use crate::memory::{
@@ -20,6 +21,7 @@ enum CloseTarget {
     Call,
     Reply,
     Endpoint(EndpointId),
+    Namespace(AddressSpaceId),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -32,6 +34,12 @@ struct Identity {
     namespaces: [Option<AddressSpaceHandle>; 2],
 }
 
+#[derive(Clone, Copy)]
+enum RootOwner<'a> {
+    Endpoint(&'a endpoint_close::PreparedEndpointClose),
+    Namespace(&'a crate::memory::retirement::ClosingAddressSpace),
+}
+
 /// Records, queue attachments and exact roots remain retained by the claim.
 /// Abandonment retains that claim, the leases and every uncertain loan pin.
 #[must_use]
@@ -41,7 +49,7 @@ pub(super) struct PreparedCancellation<'a> {
     identity: Identity,
     namespaces: [Option<AddressSpaceOperation>; 2],
     loans: Vec<(MemoryBorrow, LoanRevocation)>,
-    endpoint_owner: Option<&'a endpoint_close::PreparedEndpointClose>,
+    root_owner: Option<RootOwner<'a>>,
 }
 
 fn resolve(
@@ -163,6 +171,38 @@ fn resolve_endpoint_front(
     }))
 }
 
+fn resolve_namespace_token(
+    ipc: &IpcRegistry,
+    asid: AddressSpaceId,
+    token: ReplyTokenId,
+) -> Result<Option<Identity>, IpcError> {
+    let Some(reply) = ipc.reply_tokens.get(&token) else {
+        return Ok(None);
+    };
+    let pending = ipc.pending_calls.get(&reply.call).ok_or(IpcError::UnknownCapability)?;
+    if reply.server != asid && pending.caller != asid {
+        return Err(IpcError::PermissionDenied);
+    }
+    if reply.completing {
+        return Err(IpcError::Pending);
+    }
+    if reply.cleanup_failed {
+        return Err(IpcError::MemoryTransferFailed);
+    }
+    if pending.result.is_some() {
+        return Err(IpcError::ReplyAlreadyUsed);
+    }
+    Ok(Some(Identity {
+        target: CloseTarget::Namespace(asid),
+        token,
+        call: reply.call,
+        caller: pending.caller,
+        server: reply.server,
+        namespaces: [pending.caller, reply.server]
+            .map(|owner| ipc.caps.get(&owner).and_then(|caps| caps.address_space)),
+    }))
+}
+
 impl<'a> PreparedCancellation<'a> {
     fn prepare(asid: AddressSpaceId, cap: CapabilityId) -> Result<Self, IpcError> {
         Self::prepare_with(asid, cap, None, resolve)
@@ -171,13 +211,30 @@ impl<'a> PreparedCancellation<'a> {
     pub(super) fn prepare_endpoint_front(
         owner: &'a endpoint_close::PreparedEndpointClose,
     ) -> Result<Self, IpcError> {
-        Self::prepare_with(owner.asid(), owner.cap(), Some(owner), resolve_endpoint_front)
+        Self::prepare_with(
+            owner.asid(),
+            owner.cap(),
+            Some(RootOwner::Endpoint(owner)),
+            resolve_endpoint_front,
+        )
+    }
+
+    pub(super) fn prepare_namespace_token(
+        owner: &'a crate::memory::retirement::ClosingAddressSpace,
+        token: ReplyTokenId,
+    ) -> Result<Self, IpcError> {
+        Self::prepare_with(
+            owner.handle().id(),
+            token,
+            Some(RootOwner::Namespace(owner)),
+            resolve_namespace_token,
+        )
     }
 
     fn prepare_with(
         asid: AddressSpaceId,
         cap: CapabilityId,
-        endpoint_owner: Option<&'a endpoint_close::PreparedEndpointClose>,
+        root_owner: Option<RootOwner<'a>>,
         resolve: fn(
             &IpcRegistry,
             AddressSpaceId,
@@ -191,18 +248,47 @@ impl<'a> PreparedCancellation<'a> {
             identity,
             namespaces: [None, None],
             loans: Vec::new(),
-            endpoint_owner,
+            root_owner,
         };
         let prepared = (|| {
             // Lifecycle always precedes IPC. Kernel identity is permanent.
             for (index, owner) in [identity.caller, identity.server].into_iter().enumerate() {
-                if let Some(endpoint) = operation.endpoint_owner {
-                    assert_eq!(identity.namespaces[1], Some(endpoint.handle()));
-                    if owner == identity.server {
-                        // The endpoint owner is borrowed through completion.
-                        // Its lease predates any staged server-root close.
+                match operation.root_owner {
+                    Some(RootOwner::Endpoint(endpoint)) => {
+                        assert_eq!(identity.namespaces[1], Some(endpoint.handle()));
+                        if owner == identity.server {
+                            // Borrow the endpoint's pre-existing server lease.
+                            continue;
+                        }
+                    }
+                    Some(RootOwner::Namespace(namespace)) => {
+                        if owner == namespace.handle().id() {
+                            assert_eq!(identity.namespaces[index], Some(namespace.handle()));
+                            // The Rust borrow retains the linear closing owner.
+                            continue;
+                        }
+                        if owner == KERNEL_ASID {
+                            // The kernel table entry has a captured handle too,
+                            // but its permanent root must never obtain a user
+                            // operation lease (which correctly rejects it).
+                            continue;
+                        }
+                        if let Some(handle) = identity.namespaces[index] {
+                            operation.namespaces[index] = Some(
+                                namespace.retain_peer(handle).map_err(|error| match error {
+                                    crate::memory::operation::OperationError::Closing
+                                    | crate::memory::operation::OperationError::AddressSpaceMissing
+                                    | crate::memory::operation::OperationError::StaleHandle => IpcError::Pending,
+                                    _ => IpcError::ResourceLimit,
+                                })?,
+                            );
+                            continue;
+                        }
+                        // Synthetic boot namespaces can carry scalar calls.
+                        // Loans require captured roots, checked below under IPC.
                         continue;
                     }
+                    None => {}
                 }
                 if owner != KERNEL_ASID {
                     let handle = identity.namespaces[index].ok_or(IpcError::UnknownCapability)?;
@@ -225,7 +311,13 @@ impl<'a> PreparedCancellation<'a> {
                 .try_reserve_exact(borrows.len())
                 .map_err(|_| IpcError::ResourceLimit)?;
             for &borrow in borrows {
-                if borrow.owner != identity.caller || borrow.borrower != identity.server {
+                if borrow.owner != identity.caller
+                    || borrow.borrower != identity.server
+                    || [identity.caller, identity.server]
+                        .into_iter()
+                        .zip(identity.namespaces)
+                        .any(|(owner, handle)| owner != KERNEL_ASID && handle.is_none())
+                {
                     operation.cancel_prepared();
                     return Err(IpcError::MemoryTransferFailed);
                 }
@@ -322,7 +414,8 @@ impl<'a> PreparedCancellation<'a> {
             let message = endpoint.queue.remove(index)?;
             // Removing a claimed front may expose work whose original CQ wake
             // was consumed while receive could not yet dequeue it.
-            let endpoint_close = matches!(identity.target, CloseTarget::Endpoint(_));
+            let endpoint_close = matches!(identity.target, CloseTarget::Endpoint(_))
+                || matches!(identity.target, CloseTarget::Namespace(owner) if owner == identity.server);
             Some((
                 message,
                 Delivery {
@@ -339,6 +432,7 @@ impl<'a> PreparedCancellation<'a> {
                 },
             ))
         });
+        let was_queued = queued.is_some();
         let delivery = queued.map(|(message, delivery)| {
             for cap in message.memory {
                 let _ = crate::memory::object::try_close_cap(identity.server, cap);
@@ -363,18 +457,33 @@ impl<'a> PreparedCancellation<'a> {
             ipc.remove_cap(identity.server, cap).expect("claimed reply cap missing");
         }
         let observers = match identity.target {
-            CloseTarget::Call => {
-                ipc.remove_cap(self.asid, self.cap).expect("claimed call cap missing");
+            CloseTarget::Call | CloseTarget::Namespace(_) if identity.caller == self.asid => {
+                let cap = if identity.target == CloseTarget::Call {
+                    self.cap
+                } else {
+                    ipc.caps[&self.asid]
+                        .caps
+                        .iter()
+                        .find_map(|(&id, cap)| {
+                            (cap.payload
+                                == Capability::PendingCall {
+                                    call: identity.call,
+                                })
+                            .then_some(id)
+                        })
+                        .expect("retiring call cap missing")
+                };
+                ipc.remove_cap(self.asid, cap).expect("claimed call cap missing");
                 ipc.pending_calls
                     .remove(&identity.call)
                     .expect("claimed pending call missing")
                     .observers
                     .close()
             }
-            CloseTarget::Reply | CloseTarget::Endpoint(_) => {
+            CloseTarget::Reply | CloseTarget::Endpoint(_) | CloseTarget::Namespace(_) => {
                 if identity.target == CloseTarget::Reply {
                     assert_eq!(reply_cap, Some(self.cap));
-                } else {
+                } else if matches!(identity.target, CloseTarget::Endpoint(_)) {
                     assert!(reply_cap.is_none(), "queued endpoint call acquired reply authority");
                 }
                 let call = ipc
@@ -383,7 +492,9 @@ impl<'a> PreparedCancellation<'a> {
                     .expect("claimed pending call missing");
                 assert!(call.result.is_none());
                 call.result = Some(ReplyValue {
-                    result: if matches!(identity.target, CloseTarget::Endpoint(_)) {
+                    result: if matches!(identity.target, CloseTarget::Endpoint(_))
+                        || (matches!(identity.target, CloseTarget::Namespace(_)) && was_queued)
+                    {
                         REPLY_ENDPOINT_CLOSED
                     } else {
                         REPLY_CANCELLED
@@ -393,6 +504,7 @@ impl<'a> PreparedCancellation<'a> {
                 });
                 call.observers.close()
             }
+            CloseTarget::Call => unreachable!("call close must own the caller"),
         };
         drop(ipc);
         let released = self.release_namespaces();

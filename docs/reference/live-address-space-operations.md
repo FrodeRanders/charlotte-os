@@ -5,7 +5,7 @@ generation. It differs from `RetiredAddressSpace`, which owns a detached root
 through final invalidation and destruction.
 
 Acquisition takes lifecycle before the address-space table, rejects kernel,
-missing and stale handles, and increments an inline slot count. `SlotLease` is
+missing and stale handles, and increments an inline slot count. Ordinary admission rejects closing roots. `SlotLease` is
 a linear table/slot/generation token, not a pointer into moving table vectors.
 There is no per-lease allocation; each generic slot stores a count and closing
 flag. Overflow rejects admission. Retirement preflight and ordinary extraction
@@ -41,9 +41,12 @@ competing staged or immediate close with `CloseInProgress`. Older operations may
 still explicitly complete. `poll(self)` returns `CloseProgress::Pending(self)`
 while any lease remains, without subsystem retirement or invalidation. The
 caller must retain the returned owner. When ready, poll refreshes completion
-storage (the table may have grown during the unlocked interval), performs the
-existing logical cleanup under lifecycle, then releases those guards before
-final root invalidation/destruction. Immediate close remains a distinct
+storage (the table may have grown during the unlocked interval), fences backing,
+capability and IPC record sponsorship, and retires devices under lifecycle.
+It then drains IPC loans outside lifecycle/IPC as described below. After IPC
+removal and cleanup-lease drain, poll permanently seals cleanup admission before
+remaining memory cleanup and root detachment under lifecycle. Final root
+invalidation/destruction runs after those guards are gone. Immediate close remains a distinct
 nonwaiting operation: if no staged fence exists, a busy result changes nothing.
 Once immediate close passes preflight, it also owns a closing slot before
 subsystem mutation. An IPC cleanup error retains that fence and root just like
@@ -101,20 +104,37 @@ retains roots, claim and queued ownership. Explicit endpoint close with queued
 loans now retains a server-root owner and endpoint admission claim, processing
 each call with a cancellation owner that borrows the server and leases its caller.
 It works through an already-staged server close without reacquiring that lease.
-Whole-domain cleanup remains serialized and does not acquire fresh operation
-leases from beneath lifecycle.
+Whole-domain IPC loan cleanup borrows its `ClosingAddressSpace` through each
+per-token cancellation transaction. Endpoint claims fence incoming work and
+record retirement fences outgoing call sponsorship before unlock. Peer retention
+uses `lease_for_close`: it requires the exact linear closing owner, validates
+both generations under lifecycle/table, and admits only peers that have not
+sealed backing teardown. An already-closing peer can participate without
+reopening ordinary admission. Self-calls borrow the same owner for both roles.
+Claims, prepared receipts and backing pins still fence physical cleanup.
+
+Pending claims return the closing owner for a later poll. Failure retains the
+root/fence and uncertain backing without publishing that call's terminal result;
+unstarted receipts can be restored. Abandonment retains the claim, peer leases,
+closing owner and loan pins. Each confirmed token is removed before authority
+cleanup; queued calls publish `REPLY_ENDPOINT_CLOSED`, delivered calls retain
+`REPLY_CANCELLED`. IPC removal uses admitted registry storage. Before memory
+teardown, `seal_close` requires zero leases and permanently rejects cleanup
+admission. `retire_closing` additionally requires that seal. A peer captured
+before namespace removal must revalidate under IPC and return its lease on
+rejection. No snapshot, force-clear or counter decrement bypass is provided.
+Move/copy/result attachment cleanup still uses the serialized memory adapter.
+Raw kernel boot-fixture adapters alone retain IPC-serialized namespace loan cleanup.
 Claimed/failed queue fronts are not readable; removal re-signals endpoint/CQ
 readiness after IPC unlock, and failed tokens cannot resume delivery or reply.
 Whole-domain device cleanup still holds lifecycle across invalidation. Before
 extending split-phase operation leases, implement:
 
-1. Extend composed completion ownership to whole-domain IPC cleanup and
-   whole-domain device cleanup. Replies and explicit call/reply cancellation
-   retain roots, loan receipts, scratch and authority while releasing IPC; bulk
-   namespace paths still retain outer serialization. They need namespace
-   ownership and admission suitable for an already-closing root, not a new live
-   lease acquired from beneath lifecycle/IPC. Do not reuse explicit close's
-   leasing path while holding those guards.
+1. Extend composed completion ownership to whole-domain device/memory cleanup
+   and move/copy/result attachment cleanup. Namespace loan cleanup now retains
+   closing ownership, peer leases, loan receipts, scratch and authority outside
+   IPC/lifecycle. The remaining adapters still retain outer serialization.
+   Do not reuse live operation admission under a lifecycle/subsystem guard.
 2. Translation identity capture after lazy root/tag preparation; then release
    preparation guards before rendezvous. Syscall entry's interrupt state and
    unrelated outer guards still matter for recipient progress.
@@ -133,7 +153,7 @@ budget or completed x86 progress fix.
 
 ## Verification
 
-Eighteen direct host slot-owner tests include five live-lease tests:
+Twenty-three direct host slot-owner tests include five live-lease tests:
 overlapping counts, rejection before retirement allocation, exact reuse after
 last completion, wrong table/generation, overflow/underflow, abandonment/table
 destruction and growth to 2,047 entries without pointer-based identity.
@@ -161,3 +181,12 @@ wait scheduling and concurrent close stress are not exercised by these fixtures.
 See [final root retirement](address-space-retirement.md),
 [memory-object retirement](memory-object-retirement.md) and
 [scratch admission](scratch-admission.md).
+
+Namespace-retirement fixtures additionally cover queued/delivered mapped loans,
+self-calls, both peers already in logical cleanup, competing pending polls,
+preparation rollback, partial physical failure and abandoned transactions.
+Four additional host slot tests cover closing-peer cleanup admission, permanent
+sealing, exact table/generation/overflow rejection and retained abandoned leases.
+A deferred domain-close fixture runs with secondary LPs online and checks loans
+from two callers; borrower roots have no application threads. See the
+[namespace remediation](../reports/audits/2026-10-06-security-namespace-close.md).

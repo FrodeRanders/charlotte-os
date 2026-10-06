@@ -1,4 +1,4 @@
-.section .rodata
+.pushsection .rodata
 .balign 16
 .global user_register_probe_start
 .global user_register_probe_end
@@ -53,3 +53,4 @@ user_register_probe_start:
     str x1, [x0, #16]
     svc #8
 user_register_probe_end:
+.popsection

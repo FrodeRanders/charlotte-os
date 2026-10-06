@@ -1,4 +1,4 @@
-.section .text.catten_el0_ipc, "ax"
+.pushsection .text.catten_el0_ipc, "ax"
 .balign 16
 
 .global __catten_el0_ipc_start
@@ -82,3 +82,4 @@ __catten_el0_ipc_start:
     ud2
 
 __catten_el0_ipc_end:
+.popsection

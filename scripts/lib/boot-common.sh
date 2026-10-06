@@ -164,6 +164,7 @@ catten_boot_report_kernel() {
         echo "error: kernel payload does not exist: ${kernel}" >&2
         return 1
     fi
+    python3 "${CATTEN_BOOT_ROOT_DIR}/scripts/check-kernel-asm-sections.py" "$kernel" || return 1
     kernel_sha256="$(catten_boot_sha256 "$kernel")" || return 1
     echo ">>> Kernel payload: ${kernel}"
     echo ">>> Kernel SHA-256: ${kernel_sha256}"

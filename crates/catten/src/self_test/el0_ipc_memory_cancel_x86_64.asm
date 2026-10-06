@@ -1,4 +1,4 @@
-.section .text.catten_el0_ipc_memory_cancel, "ax"
+.pushsection .text.catten_el0_ipc_memory_cancel, "ax"
 .balign 16
 
 .global __catten_el0_ipc_memory_cancel_server_start
@@ -245,3 +245,4 @@ __catten_el0_ipc_memory_cancel_client_start:
     ud2
 
 __catten_el0_ipc_memory_cancel_client_end:
+.popsection

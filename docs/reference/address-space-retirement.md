@@ -12,8 +12,11 @@ Under lifecycle serialization, close validates the exact handle and prepares
 completion metadata fallibly before retiring any subsystem. Failure here leaves
 the namespace, table entry and backing admission active. Both immediate and staged
 close own a `ClosingSlot` before irreversible cleanup. It then fences backing
-and capability admission, drains subsystem resources, records high-water usage,
-and removes authority/usage records. The address space is detached from the
+and capability admission and retires devices under lifecycle. IPC loan cleanup
+then borrows that closing owner and retains exact peer roots while releasing
+lifecycle/IPC for physical revocation. After IPC removal, cleanup admission is
+sealed with zero leases. Remaining memory cleanup, high-water accounting and
+authority/usage removal retain lifecycle. The address space is detached from the
 table into the owning receipt, without returning its ID to the free-slot list.
 
 IPC cleanup can reject uncertain loan revocation with `IpcCleanupFailed` before
@@ -105,9 +108,11 @@ post-IPC invalidation; abandonment prevents root close. Returned authority
 stays hidden until publication. Explicit call/reply cancellation also owns both
 roots through unlocked revocation. Explicit endpoint close additionally borrows
 its server-root owner across each queued call's unlocked cleanup, including when
-a staged server close is already pending. Whole-domain IPC and whole-domain
-device cleanup still need
-their own completion owners before releasing outer serialization. See
+a staged server close is already pending. Whole-domain IPC loans now compose
+closing ownership and peer cleanup leases, including already-closing peers;
+ordinary admission stays fenced and cleanup admission seals before backing
+teardown. Whole-domain memory/device and move/copy/result attachment cleanup
+still need their own completion owners before releasing outer serialization. See
 [live address-space operations](live-address-space-operations.md).
 
 Failed final invalidation or abandonment retains the whole hierarchy, physical
@@ -121,8 +126,10 @@ Missing acknowledgements still stall.
 
 This corrects the **final root** boundary: its own lifecycle/table guards no
 longer surround the last rendezvous or `AddressSpace::drop`. Earlier
-whole-domain memory/device cleanup and bulk IPC cleanup retain lifecycle/IPC
-serialization across some x86 invalidations. Public live mapping, direct loan
+whole-domain memory/device and IPC move/copy/result attachment cleanup retain
+lifecycle/IPC serialization across some x86 invalidations. Whole-domain IPC loan
+revocation now runs outside those guards through borrowed closing ownership and
+exact peer cleanup leases. Public live mapping, direct loan
 revocation, all existing borrowed-memory replies and explicit call/reply cancellation
 now supply their own leases and completion owners. Remaining paths need the
 same composition before guards can be released. The final-root lease does not
@@ -137,7 +144,7 @@ hardware-walk quiescence remain open. See
 ## Verification
 
 The host test runner now compiles the kernel's generic slot owner as a standalone
-Rust test crate. Eighteen tests cover detach-before-destroy, delayed reuse,
+Rust test crate. Twenty-three tests cover detach-before-destroy, delayed reuse,
 destructor ownership, abandonment, table identity, stale generations, failed
 preflight and interleaved completion without allocation, including a corrupted
 completion-capacity fixture. These are serialized state/interleaving tests.

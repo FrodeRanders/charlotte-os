@@ -47,6 +47,7 @@ fn staged_close_fences_new_leases_but_allows_existing_completions() {
     table.finish_lease(lease).unwrap();
     table.prepare_closing_retirement(&close).unwrap();
     let capacity = table.available_ids.capacity();
+    table.seal_close(&close).unwrap();
     let retired = table.retire_closing(close).unwrap();
     table.finish_retirement(retired.release_value()).unwrap();
     assert_eq!(table.available_ids.capacity(), capacity);
@@ -115,6 +116,7 @@ fn staged_close_refreshes_completion_capacity_after_growth() {
     assert!(table.available_ids.capacity() < table.list.len());
     table.prepare_closing_retirement(&close).unwrap();
     let capacity = table.available_ids.capacity();
+    table.seal_close(&close).unwrap();
     let retired = table.retire_closing(close).unwrap();
     table.finish_retirement(retired.release_value()).unwrap();
     assert_eq!(table.available_ids.capacity(), capacity);
@@ -126,6 +128,7 @@ fn staged_detachment_never_allocates_on_unprepared_capacity() {
     let mut table = IdTable::new();
     let id = table.add_element(Tracked(drops.clone()));
     let close = table.begin_close(id, table.generation(id).unwrap()).unwrap();
+    table.seal_close(&close).unwrap();
     table.available_ids = Vec::new(); // Completion-invariant corruption fixture.
     assert!(matches!(table.retire_closing(close), Err(Error::AllocationFailed)));
     assert_eq!(table.is_closing(id), Ok(true));
@@ -356,4 +359,84 @@ fn completion_never_allocates_when_preflight_invariant_is_corrupted() {
     assert_eq!(table.finish_retirement(slot), Err(Error::AllocationFailed));
     assert!(table.slots[id].retiring);
     assert_ne!(table.add_element(2), id);
+}
+
+#[test]
+fn closing_peers_admit_cleanup_without_reopening_ordinary_leases() {
+    let mut table = IdTable::new();
+    let a = table.add_element(1);
+    let b = table.add_element(2);
+    let ag = table.generation(a).unwrap();
+    let bg = table.generation(b).unwrap();
+    let ac = table.begin_close(a, ag).unwrap();
+    let bc = table.begin_close(b, bg).unwrap();
+    let ab = table.lease_for_close(&ac, b, bg).unwrap();
+    let ba = table.lease_for_close(&bc, a, ag).unwrap();
+    assert!(matches!(table.lease(a, ag), Err(Error::Closing)));
+    assert!(matches!(table.lease(b, bg), Err(Error::Closing)));
+    assert_eq!(table.seal_close(&ac), Err(Error::Leased));
+    assert_eq!(table.seal_close(&bc), Err(Error::Leased));
+    assert!(!table.slots[a].cleanup_sealed && !table.slots[b].cleanup_sealed);
+    table.finish_lease(ab).unwrap();
+    table.finish_lease(ba).unwrap();
+    table.seal_close(&ac).unwrap();
+    assert!(matches!(table.lease_for_close(&bc, a, ag), Err(Error::Closing)));
+    assert!(matches!(table.lease_for_close(&ac, b, bg), Err(Error::Closing)));
+    table.seal_close(&bc).unwrap();
+    for close in [ac, bc] {
+        let retired = table.retire_closing(close).unwrap();
+        table.finish_retirement(retired.release_value()).unwrap();
+    }
+    let reused = table.add_element(3);
+    let generation = table.generation(reused).unwrap();
+    assert!(!table.slots[reused].cleanup_sealed);
+    let lease = table.lease(reused, generation).unwrap();
+    table.finish_lease(lease).unwrap();
+}
+
+#[test]
+fn cleanup_admission_checks_table_generation_and_overflow_before_mutation() {
+    let mut first = IdTable::new();
+    let mut second = IdTable::new();
+    let owner = first.add_element(1);
+    let peer = first.add_element(2);
+    let close = first.begin_close(owner, first.generation(owner).unwrap()).unwrap();
+    let other = second.add_element(3);
+    let other_close = second.begin_close(other, second.generation(other).unwrap()).unwrap();
+    let generation = first.generation(peer).unwrap();
+    assert!(matches!(
+        first.lease_for_close(&other_close, peer, generation),
+        Err(Error::WrongRetirement)
+    ));
+    assert!(matches!(first.lease_for_close(&close, peer, generation + 1), Err(Error::WrongLease)));
+    assert_eq!(first.slots[peer].leases, 0);
+    first.slots[peer].leases = usize::MAX;
+    assert!(matches!(first.lease_for_close(&close, peer, generation), Err(Error::LeaseLimit)));
+    assert_eq!(first.slots[peer].leases, usize::MAX);
+}
+
+#[test]
+fn abandoned_cleanup_lease_retains_peer_root_and_sealing_fence() {
+    let drops = Arc::new(AtomicUsize::new(0));
+    let mut table = IdTable::new();
+    let a = table.add_element(Tracked(drops.clone()));
+    let b = table.add_element(Tracked(drops.clone()));
+    let ac = table.begin_close(a, table.generation(a).unwrap()).unwrap();
+    let bc = table.begin_close(b, table.generation(b).unwrap()).unwrap();
+    drop(table.lease_for_close(&ac, b, table.generation(b).unwrap()).unwrap());
+    drop(ac);
+    assert_eq!(table.seal_close(&bc), Err(Error::Leased));
+    drop(bc);
+    drop(table);
+    assert_eq!(drops.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn staged_detachment_requires_permanent_cleanup_sealing() {
+    let mut table = IdTable::new();
+    let id = table.add_element(1);
+    let close = table.begin_close(id, table.generation(id).unwrap()).unwrap();
+    assert!(matches!(table.retire_closing(close), Err(Error::Closing)));
+    assert_eq!(table.get(id), Ok(&1));
+    assert!(table.is_closing(id).unwrap());
 }

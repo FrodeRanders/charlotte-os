@@ -33,6 +33,36 @@ pub(crate) struct AddressSpaceOperation {
 }
 
 impl AddressSpaceOperation {
+    /// Only namespace retirement uses this admission. The borrowed closing
+    /// owner and its peer must both precede sealed backing teardown.
+    pub(super) fn acquire_for_close(
+        handle: AddressSpaceHandle,
+        owner: &crate::klib::collections::id_table::ClosingSlot,
+    ) -> Result<Self, OperationError> {
+        if handle.id() == KERNEL_ASID {
+            return Err(OperationError::KernelAddressSpace);
+        }
+        let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+        let mut table = ADDRESS_SPACE_TABLE.lock();
+        match table.generation(handle.id()) {
+            Ok(generation) if generation == handle.generation() => {}
+            Ok(_) => return Err(OperationError::StaleHandle),
+            Err(_) => return Err(OperationError::AddressSpaceMissing),
+        }
+        let lease =
+            table.lease_for_close(owner, handle.id(), handle.generation()).map_err(|error| {
+                match error {
+                    Error::LeaseLimit => OperationError::Limit,
+                    Error::Closing => OperationError::Closing,
+                    _ => OperationError::WrongLease,
+                }
+            })?;
+        Ok(Self {
+            handle,
+            lease,
+        })
+    }
+
     /// Acquire lifecycle before the table, never under an IPC/device registry.
     /// This serializes admission with the complete close preflight/cleanup.
     pub(crate) fn acquire(handle: AddressSpaceHandle) -> Result<Self, OperationError> {

@@ -208,8 +208,8 @@ pub(crate) fn test_source_admission() {
     crate::memory::close_user_address_space_handle(replacement).unwrap();
     close_cap(SERVER, endpoint).unwrap();
     close_cap(CLIENT, connection).unwrap();
-    close_address_space(SERVER).unwrap();
-    close_address_space(CLIENT).unwrap();
+    close_address_space_fixture(SERVER).unwrap();
+    close_address_space_fixture(CLIENT).unwrap();
     assert_eq!(waiter_budget::node_used(), baseline);
     crate::logln!(
         "[ipc waiters] SUCCESS: source bounds, cancellation/rearm, message/reply/close \
@@ -303,8 +303,8 @@ pub(crate) fn test_scheduled_cleanup() {
     close_cap(CLIENT, call_cap).unwrap();
     close_cap(SERVER, endpoint).unwrap();
     close_cap(CLIENT, connection).unwrap();
-    close_address_space(SERVER).unwrap();
-    close_address_space(CLIENT).unwrap();
+    close_address_space_fixture(SERVER).unwrap();
+    close_address_space_fixture(CLIENT).unwrap();
     // A real loan must remain available to the server throughout admission
     // pressure and be revoked by reply before the caller returns.
     let server = crate::service::loader::create_user_address_space_handle();

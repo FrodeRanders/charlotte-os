@@ -1,4 +1,4 @@
-.section .text.catten_el0_pingpong, "ax"
+.pushsection .text.catten_el0_pingpong, "ax"
 .balign 16
 
 .global __catten_el0_ping_start
@@ -103,3 +103,4 @@ __catten_el0_pong_start:
     ud2
 
 __catten_el0_pong_end:
+.popsection

@@ -1,4 +1,4 @@
-.section .text.catten_el0_demo, "ax"
+.pushsection .text.catten_el0_demo, "ax"
 .balign 16
 
 .global __catten_el0_demo_coord_start
@@ -58,3 +58,4 @@ __catten_el0_demo_worker_start:
     ud2
 
 __catten_el0_demo_worker_end:
+.popsection

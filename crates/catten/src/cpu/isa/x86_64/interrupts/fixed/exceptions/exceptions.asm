@@ -1,6 +1,6 @@
 .code64
 
-.section .text
+.pushsection .text
 // Ordinary faults use ih_fault; hardware aborts and NMI stay separate.
 .extern ih_double_fault
 .extern ih_non_maskable_interrupt
@@ -169,3 +169,4 @@ isr_non_maskable_interrupt:
     cli
     EX_EPILOGUE_NO_ERROR_CODE
     iretq
+.popsection

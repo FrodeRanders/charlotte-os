@@ -405,7 +405,7 @@ extern "C" fn verify_el0_service() {
         .expect("[service] K2 address-space close failed");
     logln!("[service] live handoff verified");
 
-    ipc::close_address_space(KCLIENT_ASID).unwrap();
+    ipc::close_address_space_fixture(KCLIENT_ASID).unwrap();
     logln!(
         "[service] SUCCESS: bootstrap delivery, name lookup, stale-connection failure, and \
          restart generation all verified."

@@ -8,6 +8,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [2026-10-06 owned namespace loan cleanup and assembly permissions (SEC-18/26)](audits/2026-10-06-security-namespace-close.md)
 - [2026-10-06 owned explicit endpoint close (SEC-18 follow-up)](audits/2026-10-06-security-endpoint-close.md)
 - [2026-10-06 bulk IPC cleanup failure propagation (SEC-18 follow-up)](audits/2026-10-06-security-bulk-cleanup.md)
 - [2026-10-05 security follow-up and remediation (SEC-23–25)](audits/2026-10-05-security-follow-up.md)

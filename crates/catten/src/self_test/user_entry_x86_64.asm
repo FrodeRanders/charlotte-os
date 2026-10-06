@@ -1,4 +1,4 @@
-.section .rodata
+.pushsection .rodata
 .balign 16
 .global user_register_probe_start
 .global user_register_probe_end
@@ -62,3 +62,4 @@ user_state_probe_start:
     mov eax, 8
     syscall
 user_state_probe_end:
+.popsection

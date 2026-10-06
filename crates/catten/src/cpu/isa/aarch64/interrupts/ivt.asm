@@ -105,7 +105,7 @@
     msr spsr_el1, x10
 .endm
 
-.text
+.pushsection .text
 .extern sync_dispatcher
 .extern irq_dispatcher
 .extern fiq_dispatcher
@@ -243,3 +243,4 @@ pop_simd_regs
 pop_fp_status
 pop_volatile_regs
 eret
+.popsection

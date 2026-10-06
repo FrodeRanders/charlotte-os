@@ -107,6 +107,7 @@ struct SlotState {
     retiring: bool,
     leases: usize,
     closing: bool,
+    cleanup_sealed: bool,
 }
 
 impl<T> IdTable<T> {
@@ -143,6 +144,7 @@ impl<T> IdTable<T> {
                 retiring: false,
                 leases: 0,
                 closing: false,
+                cleanup_sealed: false,
             });
             id
         }
@@ -225,6 +227,45 @@ impl<T> IdTable<T> {
         Ok(())
     }
 
+    /// A closing owner may retain a peer while draining shared resources. This
+    /// does not reopen ordinary admission. Both roots must precede the sealed
+    /// backing-teardown phase; exact identity is checked under the same guard.
+    pub(crate) fn lease_for_close(
+        &mut self,
+        owner: &ClosingSlot,
+        peer: usize,
+        generation: usize,
+    ) -> Result<SlotLease, Error> {
+        self.validate_closing(owner)?;
+        if self.slots[owner.id].cleanup_sealed {
+            return Err(Error::Closing);
+        }
+        if self.generation(peer)? != generation {
+            return Err(Error::WrongLease);
+        }
+        let state = &mut self.slots[peer];
+        if state.cleanup_sealed {
+            return Err(Error::Closing);
+        }
+        state.leases = state.leases.checked_add(1).ok_or(Error::LeaseLimit)?;
+        Ok(SlotLease {
+            table: self.identity,
+            id: peer,
+            generation,
+        })
+    }
+
+    /// No cleanup lease may enter after backing teardown begins. Existing
+    /// owners must drain first; a rejected seal does not change admission.
+    pub(crate) fn seal_close(&mut self, slot: &ClosingSlot) -> Result<(), Error> {
+        self.validate_closing(slot)?;
+        if self.slots[slot.id].leases != 0 {
+            return Err(Error::Leased);
+        }
+        self.slots[slot.id].cleanup_sealed = true;
+        Ok(())
+    }
+
     pub(crate) fn is_closing(&self, id: usize) -> Result<bool, Error> {
         self.get(id)?;
         Ok(self.slots[id].closing)
@@ -287,6 +328,9 @@ impl<T> IdTable<T> {
 
     pub(crate) fn retire_closing(&mut self, slot: ClosingSlot) -> Result<RetiredEntry<T>, Error> {
         self.validate_closing(&slot)?;
+        if !self.slots[slot.id].cleanup_sealed {
+            return Err(Error::Closing);
+        }
         if self.slots[slot.id].leases != 0 {
             return Err(Error::Leased);
         }
@@ -362,6 +406,7 @@ impl<T> IdTable<T> {
         }
         self.slots[slot.id].retiring = false;
         self.slots[slot.id].closing = false;
+        self.slots[slot.id].cleanup_sealed = false;
         self.available_ids.push(slot.id);
         Ok(())
     }

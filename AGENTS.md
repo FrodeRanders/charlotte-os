@@ -42,6 +42,10 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   named constants, or `concat!` for long protocol/HTML literals that otherwise
   depend on line-continuation whitespace.
 - Build bundled AArch64 services with `scripts/build-catten-services.sh`.
+- Scope `global_asm!` sections with `.pushsection`/`.popsection`; blocks share
+  assembler state within a codegen unit. Native kernel trampolines must remain
+  in executable, read-only ELF sections and load segments. Boot runners enforce
+  this through `scripts/check-kernel-asm-sections.py`.
 - Run `cargo fmt --all -- --check` after Rust edits. All Rust packages belong
   to the root workspace even when they use separate build targets.
 - For ownership changes, test success, submission failure, mapping failure,
@@ -170,9 +174,17 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   outside IPC/lifecycle; publish each call's result only after its cleanup. Keep
   endpoint close watches/readiness parked until final close, and re-signal readable
   work after ordinary rejection. Abandonment retains the endpoint claim/root and
-  any active call's claim/caller root/pins. Whole-domain cleanup still retains
-  serialization; root cleanup
-  uses its non-leasing adapter after leases drain, never lifecycle beneath IPC.
+  any active call's claim/caller root/pins. Whole-domain IPC loan cleanup borrows
+  the exact `ClosingAddressSpace`, fences endpoint/record admission, and uses
+  bounded per-token cancellation receipts outside lifecycle/IPC. Retain peers
+  through closing-owner cleanup leases before claiming, including already-closing
+  peers; ordinary operation admission stays fenced. Seal cleanup admission after
+  IPC drain and zero leases, before memory/root backing teardown. Never admit a
+  peer after sealing, acquire lifecycle beneath IPC, consume uncertain receipts,
+  or allocate namespace snapshots. Pending returns the closing owner; failure or
+  abandonment retains its fence/root and uncertain pins. Serialized namespace
+  loan cleanup is confined to raw boot fixtures. Move/copy/result attachments and
+  whole-domain memory/device cleanup retain their existing serialization.
   Bulk reply-token cleanup must not report failed loan revocation as terminal.
   Whole-domain device cleanup still
   retains lifecycle through invalidation. Backing pins do not lease an ASID; see

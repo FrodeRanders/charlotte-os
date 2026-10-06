@@ -1,4 +1,4 @@
-.section .text
+.pushsection .text
 
 .extern signal_eoi
 .extern reset_lp_timer
@@ -59,3 +59,4 @@ isr_lapic_timer:
     pop r12
     m_leave_kernel_gs
     iretq
+.popsection

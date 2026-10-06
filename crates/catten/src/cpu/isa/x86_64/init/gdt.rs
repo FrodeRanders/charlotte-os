@@ -126,6 +126,7 @@ impl Gdt {
 }
 
 core::arch::global_asm!(
+    ".pushsection .text",
     ".global reload_segment_regs",
     "reload_segment_regs:",
     "movzx rax, word ptr [KERNEL_CODE_SELECTOR]",
@@ -140,7 +141,8 @@ core::arch::global_asm!(
     "mov fs, ax",
     "mov gs, ax",
     "mov ss, ax",
-    "ret"
+    "ret",
+    ".popsection"
 );
 
 unsafe extern "C" {

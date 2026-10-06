@@ -1,4 +1,4 @@
-.section .text.catten_el0_ipc_memory, "ax"
+.pushsection .text.catten_el0_ipc_memory, "ax"
 .balign 4
 
 .global __catten_el0_ipc_memory_server_start
@@ -326,3 +326,4 @@ __catten_el0_ipc_memory_client_start:
     svc #8
 
 __catten_el0_ipc_memory_client_end:
+.popsection
