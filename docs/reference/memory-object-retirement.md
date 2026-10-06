@@ -172,8 +172,9 @@ Returned connections additionally own an unpublished `PreparedConnection`,
 sponsored by the requester, and borrow the source endpoint/connection capability
 through the reply claim. Explicit source-close waits outside IPC until that
 claim ends. Queued connections and unobserved returned connections are rejected
-with `Pending` before grant or loan preparation: their earlier queue/call could
-otherwise reclaim them indirectly. Delivery/observation is monotonic, so a
+by ordinary IPC lookup with `UnknownCapability` before grant or loan preparation:
+their earlier queue/call still owns them. There is no queue-scan qualification
+fallback. Delivery/observation is monotonic, so a
 qualified source stays under explicit-close ownership. Its existing payload
 keeps the endpoint record alive even if an unrelated endpoint-owner domain
 closes. Such closure still makes the endpoint unavailable; a retained grant
@@ -182,7 +183,9 @@ does not resurrect it.
 After loan cleanup, destination authority is published and installed under IPC
 before result visibility. Ordinary preparation/cleanup/publication failure
 refunds the hidden grant and its sponsorship before releasing leases. The
-source is borrowed, never escrowed or re-admitted. Operation abandonment retains
+source is borrowed, never escrowed or re-admitted. Destination connections remain
+inaccessible in their pending result until first observation, including against
+minting, calls, watches and explicit close. Operation abandonment retains
 the source claim but refunds the still-unpublished destination. Observed results
 belong to the caller; pending-call close reclaims only unobserved returned grants.
 

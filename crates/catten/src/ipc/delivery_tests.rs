@@ -1,5 +1,6 @@
-//! Raw kernel ABI fixtures for guessed, undelivered move/copy capabilities.
+//! Raw kernel ABI fixtures for guessed, undelivered owning IPC capabilities.
 //! These scalars inspect admitted IPC records; applications use runtime owners.
+mod connection;
 use super::*;
 use crate::memory::{
     self,
@@ -83,6 +84,7 @@ fn reclaimed(asid: AddressSpaceId, cap: MemoryObjectCap) {
 }
 
 pub(crate) fn run() {
+    connection::run();
     queued_scalar();
     queued_vector();
     returned_memory();

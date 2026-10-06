@@ -96,8 +96,10 @@ while revocation runs outside IPC. Close waits without holding IPC; abandonment
 retains claim, roots and backing. Ordinary cleanup failure completes root leases
 but keeps uncertain loan backing fenced. Returned connections also protect their
 delivered/observed minting source with the claim and own caller-sponsored hidden
-grant authority through publication. Source-close waits outside IPC; ordinary
-failure refunds the grant before releasing leases. Returned memory owns a
+grant authority through publication. Queued/unobserved connections fail ordinary
+IPC lookup before grant/loan preparation; no queue scan is needed. Installed
+returned authority remains inaccessible until first result observation.
+Source-close waits outside IPC; ordinary failure refunds the grant before releasing leases. Returned memory owns a
 qualified source's escrow/backing pin and hidden destination reservation in the
 same operation. Memory close waits outside the registry for the transfer owner;
 rollback restores source authority and releases its pin atomically. No-loan

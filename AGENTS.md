@@ -76,7 +76,14 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   copy/move/loan and DMA. Publish delivery under IPC with the exact queue/result
   still owned; readiness waiting alone does not transfer ownership. Non-IPC
   transfers use `commit_transfers`/`commit_transfers_with_authority`. Loans retain
-  their owned revocation contract.
+  their owned revocation contract. Queued and unobserved returned connections
+  also retain pending delivery in their admitted IPC entry. Ordinary IPC lookup
+  rejects them, including send/call, mint/delegation, watches, management target
+  resolution and explicit close. Publish their delivery under the same IPC hold
+  as dequeue/first observation. Only internal cleanup may consume hidden grants;
+  endpoint-reference accounting must still retain their backing metadata. Direct
+  mint/delegation and launch grants remain immediately usable. Do not restore a
+  queue-scan qualification fallback for hidden connection sources.
   Device grants take lifecycle before device/backend registries, reserve before
   hardware creation and retain a `PreparedDmaDomain` until publication. Failed
   hardware rollback must quarantine reachable backing, never recycle it.

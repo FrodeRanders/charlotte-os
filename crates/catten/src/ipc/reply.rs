@@ -106,13 +106,8 @@ impl PreparedReply {
             }
             if let Some((source, requested)) = returned {
                 let (endpoint, rights) = mintable_endpoint(&ipc, server, source, requested)?;
-                // Undelivered authority can be removed indirectly by queue or
-                // unobserved-result cleanup. Do not pin it using only the
-                // explicit source-cap close claim. Observation/delivery are
-                // monotonic, and connection transfers mint fresh identities.
-                if source_reclaimable(&ipc, server, source) {
-                    return Err(IpcError::Pending);
-                }
+                // Ordinary lookup rejects undelivered sources. Delivered
+                // identities remain protected against close by this reply claim.
                 operation.connection = Some(ReturnedConnection {
                     source,
                     grant: PreparedConnection::new(
@@ -289,17 +284,6 @@ impl PreparedReply {
         token.connection_source = None;
         token.completing = false;
     }
-}
-
-fn source_reclaimable(ipc: &IpcRegistry, server: AddressSpaceId, source: CapabilityId) -> bool {
-    ipc.pending_calls.values().any(|call| {
-        call.caller == server
-            && !call.observed
-            && call.result.is_some_and(|result| result.cap == Some(source))
-    }) || ipc.endpoints.values().any(|endpoint| {
-        endpoint.owner == server
-            && endpoint.queue.iter().any(|message| message.connection == Some(source))
-    })
 }
 
 fn memory_source_reclaimable(

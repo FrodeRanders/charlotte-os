@@ -863,3 +863,22 @@ Existing returned-memory/loan tests check the same visibility after split-phase
 reply completion. These fixtures add no deliberate quarantined roots or pages.
 The x86/AArch64 isolated commands, results and scope are in the
 [delivery report](../reports/audits/2026-10-06-security-memory-delivery.md).
+
+
+## IPC connection delivery
+
+The connection fixtures in `ipc::delivery_tests` capture live hidden queue/result
+identities and check rejected send/call, mint/delegation, close watches, management
+target resolution and explicit close, with unchanged capability/record charges.
+Connection-only and combined copied-memory calls cover receive failure, delivery,
+cancellation and endpoint close. Delivered grants can mint attenuated children
+that survive call close; hidden ones cannot. Closing either root reclaims queued
+grants and original sponsorship. Returned grants stay hidden through readiness
+waiting; first poll publishes them, and repeat polling after grant close does
+not republish missing authority. Unobserved call/root cleanup consumes hidden
+results. Existing split-phase reply tests still exercise source-close claims,
+loan cleanup and preparation/publication failures.
+
+These fixtures add no intentional quarantined roots/pages. Exact guest commands,
+results and limits are in the
+[connection delivery report](../reports/audits/2026-10-06-security-connection-delivery.md).

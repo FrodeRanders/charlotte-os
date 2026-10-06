@@ -139,17 +139,24 @@ Its Drop removes only the speculative capability on result-write failure,
 leaving the internal token, caller-sponsored record, queue and attachments
 untouched. Admission failure leaves both queue and result bytes unchanged.
 Commit finishes result writing and dequeues without another fallible step.
-One-way messages require no reply slot and can drain a full namespace. Existing
-queued attachment authority is not newly hidden by this receive transaction.
+One-way messages require no reply slot and can drain a full namespace. Queued
+owning memory and connections remain inaccessible after authority publication
+until this commit. Result-page writing failure leaves their pending delivery
+state intact. Loans retain their separate owned revocation contract.
 An owned receiver should release resources or apply backpressure on resource
 errors rather than spin on a queue whose reply cannot yet be admitted.
 
 A connection-bearing reply reserves shared and family authority before revoking
 any loan. Quota rejection leaves the token and all loans live. Publication then
 composes its returned connection and optional memory after successful revocations.
-Completed unobserved calls own returned authority until cancellation; observed
-authority remains with the caller. Individual loan revocations are still
-fallible, so unmap, retirement or publication-scratch allocation failure after
+Completed unobserved calls own returned memory/connection authority until
+cancellation. Ordinary lookup rejects those pending destinations even when their
+IDs are guessed. The first successful reply poll publishes both families under
+IPC before marking observation; readiness waiting alone does not publish them.
+Observed authority remains with the caller. Repeat polling returns the stored
+result without republishing consumed grants. Direct connection mint/delegation
+and non-IPC memory transfers retain immediate visibility. Individual loan
+revocations are still fallible, so unmap, retirement or publication-scratch allocation failure after
 a successful revocation may leave a subset revoked; it
 does not publish fresh returned authority. This is not atomic TLB-shootdown or
 loan-revocation rollback.
@@ -266,3 +273,22 @@ platform headroom and rejection/refund at the enforced ceilings. It does not fil
 live node pool. These are kernel fixtures, not a new EL0 quota probe or an
 exhaustive concurrent-retirement proof. The existing TLA+ serial-authority
 model does not model these admission lifetimes.
+
+
+## IPC connection delivery visibility
+
+`PreparedConnection::install` marks queued and returned connection grants as
+pending in their existing admitted entry under IPC. `IpcRegistry::cap` rejects
+those entries before any send, call, mint, watch, supervisor-target resolution or
+explicit close. No queued grant can mint a child that outlives cancellation.
+Hidden entries still participate in endpoint-reference accounting and retain
+original sponsorship until private queue/result/namespace cleanup removes them.
+The cleanup lookup is private and unavailable to application operations.
+
+Receive and first reply observation publish only the exact connection owned by
+their queue/result receipt. A successfully delivered connection becomes usable
+and can legitimately mint attenuated children that survive later call close.
+Reply source qualification now follows ordinary visibility lookup rather than a
+scan of every queue/result. Existing explicit source-close claims and root leases
+still protect delivered sources through split-phase loan cleanup.
+See the [connection delivery report](../reports/audits/2026-10-06-security-connection-delivery.md).

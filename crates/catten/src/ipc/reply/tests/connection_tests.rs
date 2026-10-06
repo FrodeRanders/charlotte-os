@@ -285,7 +285,7 @@ fn undelivered_source() {
                 fixture.reply,
                 Some((source, ConnectionRights::ALL))
             ),
-            Err(IpcError::Pending)
+            Err(IpcError::UnknownCapability)
         ));
         assert_eq!(used(fixture.caller.id()), before);
         assert!(object::info(fixture.server.id(), fixture.borrows[0].borrower_cap).unwrap().mapped);

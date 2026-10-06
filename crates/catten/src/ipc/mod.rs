@@ -191,6 +191,8 @@ enum Capability {
 #[derive(Debug)]
 struct AdmittedCapability {
     payload: Capability,
+    /// Queued/unobserved connection authority is still exclusively IPC-owned.
+    delivery_pending: bool,
     // Lookup copies only payload authority. The unique stored entry retains
     // sponsorship until removal, including internal cancellation paths.
     _connection_charge: Option<record_budget::Charge>,
@@ -227,6 +229,7 @@ impl AsIpcCaps {
             id,
             AdmittedCapability {
                 payload: cap,
+                delivery_pending: false,
                 _connection_charge: charge,
             },
         );
@@ -374,14 +377,16 @@ impl PreparedConnection {
 
     /// Only after joint authority publication under IPC serialization.
     fn install(self, ipc: &mut IpcRegistry) -> CapabilityId {
-        ipc.as_caps(self.target).insert_admitted(
+        let id = ipc.as_caps(self.target).insert_admitted(
             self.authority.identity(),
             Capability::Connection {
                 endpoint: self.endpoint,
                 rights: self.rights,
             },
             Some(self.charge),
-        )
+        );
+        ipc.as_caps(self.target).caps.get_mut(&id).unwrap().delivery_pending = true;
+        id
     }
 }
 
@@ -607,14 +612,43 @@ impl IpcRegistry {
     }
 
     fn cap(&self, asid: AddressSpaceId, cap: CapabilityId) -> Result<Capability, IpcError> {
+        let entry = self.cap_entry(asid, cap)?;
+        if entry.delivery_pending {
+            return Err(IpcError::UnknownCapability);
+        }
+        Ok(entry.payload)
+    }
+
+    fn cap_entry(
+        &self,
+        asid: AddressSpaceId,
+        cap: CapabilityId,
+    ) -> Result<&AdmittedCapability, IpcError> {
         if !crate::capability::contains(asid, cap, crate::capability::ObjectKind::Ipc) {
             return Err(IpcError::UnknownCapability);
         }
-        self.caps
-            .get(&asid)
-            .and_then(|caps| caps.caps.get(&cap))
-            .map(|entry| entry.payload)
-            .ok_or(IpcError::UnknownCapability)
+        self.caps.get(&asid).and_then(|caps| caps.caps.get(&cap)).ok_or(IpcError::UnknownCapability)
+    }
+
+    /// Only internal teardown can consume IPC-owned undelivered connections.
+    fn cap_for_cleanup(
+        &self,
+        asid: AddressSpaceId,
+        cap: CapabilityId,
+    ) -> Result<Capability, IpcError> {
+        Ok(self.cap_entry(asid, cap)?.payload)
+    }
+
+    /// Receive/first result observation holds IPC exclusively and owns the
+    /// exact receipt. Public close/mint/use cannot consume its hidden grant.
+    fn deliver_connection(&mut self, asid: AddressSpaceId, cap: CapabilityId) {
+        let entry = self
+            .caps
+            .get_mut(&asid)
+            .and_then(|caps| caps.caps.get_mut(&cap))
+            .expect("IPC delivery connection missing");
+        assert!(matches!(entry.payload, Capability::Connection { .. }) && entry.delivery_pending);
+        entry.delivery_pending = false;
     }
 
     fn remove_cap(
@@ -1474,16 +1508,25 @@ impl<'a> PreparedReceive<'a> {
     }
 
     fn commit(mut self) -> ScalarMessage {
-        let endpoint = self.ipc.endpoints.get_mut(&self.endpoint).unwrap();
-        let message = endpoint.queue.pop_front().expect("prepared receive retains queue ownership");
+        let (message, interface, version) = {
+            let endpoint = self.ipc.endpoints.get_mut(&self.endpoint).unwrap();
+            (
+                endpoint.queue.pop_front().expect("prepared receive retains queue ownership"),
+                endpoint.interface,
+                endpoint.version,
+            )
+        };
+        if let Some(cap) = message.connection {
+            self.ipc.deliver_connection(self.receiver, cap);
+        }
         crate::memory::object::deliver_memory(self.receiver, &message.memory);
         ScalarMessage {
             sender: message.sender,
             sender_generation: message.sender_generation,
             sender_principal: message.sender_principal,
             sender_roles: message.sender_roles,
-            interface: endpoint.interface,
-            version: endpoint.version,
+            interface,
+            version,
             opcode: message.opcode,
             arg0: message.arg0,
             reply: self.reply.take(),
@@ -1875,11 +1918,15 @@ pub fn poll_reply(
     // return the same reply (callers that adopt returned capabilities track
     // their own one-shot state).
     let result = call.result;
+    let observe = !call.observed;
     if let Some(reply) = result
-        && !call.observed
+        && observe
     {
+        if let Some(cap) = reply.cap {
+            ipc.deliver_connection(caller, cap);
+        }
         crate::memory::object::deliver_memory(caller, reply.memory.as_slice());
-        call.observed = true;
+        ipc.pending_calls.get_mut(&call_id).unwrap().observed = true;
     }
     Ok(result)
 }
@@ -2045,8 +2092,8 @@ fn close_cap_with_wait(
     close_cap_in_mode(asid, cap, true, wait)
 }
 
-/// Root cleanup retains lifecycle and has already drained operation leases.
-/// It must never acquire another lifecycle lease underneath that guard.
+/// Root/fixture cleanup owns namespace retirement and has drained claims.
+/// It may consume hidden connection grants but must not acquire new live leases.
 fn close_cap_serialized(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError> {
     close_cap_in_mode(asid, cap, false, crate::cpu::scheduler::yield_lp)
 }
@@ -2074,7 +2121,12 @@ fn close_cap_in_mode_with_revoker(
     // reaches here only after the reply's exact-generation root leases drain.
     let mut ipc = loop {
         let ipc = IPC.write();
-        let busy = match ipc.cap(asid, cap)? {
+        let payload = if detached {
+            ipc.cap(asid, cap)?
+        } else {
+            ipc.cap_for_cleanup(asid, cap)?
+        };
+        let busy = match payload {
             Capability::PendingCall {
                 call,
             } => ipc.reply_tokens.values().any(|token| token.call == call && token.completing),
@@ -2345,7 +2397,7 @@ fn prepare_serialized_close(
     cap: CapabilityId,
     revoke: &mut impl FnMut(MemoryBorrow) -> Result<(), crate::memory::object::MemoryObjectError>,
 ) -> Result<(), IpcError> {
-    match ipc.cap(asid, cap)? {
+    match ipc.cap_for_cleanup(asid, cap)? {
         Capability::Endpoint {
             endpoint,
             ..
