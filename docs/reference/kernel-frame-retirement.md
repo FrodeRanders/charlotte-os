@@ -7,11 +7,12 @@ teardown and failed range preparation use this owner; the previous
 
 ## Owning preparation and cleanup
 
-The caller creates a receipt outside its arena guard. A provisional frame owner
-releases an allocation that fails before its leaf is installed. Once installed,
-the kernel mapping owns that frame. On partial preparation failure, only the
-successfully installed prefix is detached into the receipt. A failing
-`AlreadyMapped` operation cannot steal a pre-existing leaf.
+The caller creates a receipt outside its arena guard. Once installed, the
+kernel mapping owns each frame. On partial preparation failure, the unpublished
+frame rejected by mapping joins the same receipt as the successfully installed
+prefix. Its physical release failure is reported by explicit post-guard cleanup,
+not hidden by a provisional frame destructor. Only this operation's installed
+prefix is detached; a failing `AlreadyMapped` cannot steal a pre-existing leaf.
 
 Stack teardown retains arena serialization while removing leaves and updating
 guard-page references. Physical release happens afterward, with the arena and
@@ -67,8 +68,9 @@ invoke x86 invalidation while retaining other interrupt-masking guards. Those
 need explicit retirement phases that preserve captured generation, mapping
 state, loans/pins and charges while releasing locks before the rendezvous.
 Abandoned-root recovery and complete platform/device quiescence remain open.
-Kernel-stack/range byte admission and general metadata budgets
-also remain part of SEC-07.
+Runtime kernel/user stack pairs now have [capacity admission](stack-admission.md)
+that survives uncertain range retirement. General kernel-range/heap and metadata
+budgets remain part of SEC-07; inherited boot stacks remain outside runtime admission.
 
 [Memory-object retirement](memory-object-retirement.md) now separately retains
 backing through mapping invalidation even when the final DMA/copy pin releases

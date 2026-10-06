@@ -23,11 +23,7 @@ use core::sync::atomic::{
 
 use crate::{
     cpu::isa::{
-        interface::memory::{
-            AddressSpaceInterface,
-            MemoryMapping,
-            address::VirtualAddress,
-        },
+        interface::memory::address::VirtualAddress,
         lp::ops::{
             kernel_thread_trampoline,
             user_trampoline,
@@ -35,86 +31,11 @@ use crate::{
         memory::paging::PAGE_SIZE,
     },
     memory::{
-        ADDRESS_SPACE_TABLE,
-        AddressSpaceId,
-        PHYSICAL_FRAME_ALLOCATOR,
         VAddr,
-        allocators::stack_allocator::{
-            Error,
-            allocate_stack,
-            deallocate_stack,
-        },
-        linear::PageType,
+        allocators::stack_allocator::Error,
+        thread_stack::KERNEL_STACK_PAGES as INIT_KERNEL_STACK_PAGES,
     },
 };
-
-const INIT_KERNEL_STACK_PAGES: usize = 16;
-
-#[derive(Debug)]
-struct UserStack {
-    slot: crate::memory::thread_stack::StackSlot,
-    asid: AddressSpaceId,
-    /// Bottom of the thread's virtual stack region; also the growth floor.
-    base: VAddr,
-    /// Maximum committed pages (the signed or adaptive stack policy).
-    budget_pages: usize,
-    /// Pages mapped so far, counted from the top.
-    committed_pages: usize,
-}
-
-impl UserStack {
-    fn base_addr(&self) -> usize {
-        self.base.into()
-    }
-
-    fn top(&self) -> usize {
-        self.base_addr() + self.budget_pages * PAGE_SIZE
-    }
-
-    fn committed_low(&self) -> usize {
-        self.top() - self.committed_pages * PAGE_SIZE
-    }
-}
-
-fn deallocate_user_stack(stack: UserStack) -> bool {
-    let mut ok = true;
-    let mut frames = [None; charlotte_launch::MAX_USER_STACK_PAGES];
-    let low = stack.committed_low();
-    let handle = stack.slot.identity();
-    {
-        let mut table = ADDRESS_SPACE_TABLE.lock();
-        if table.generation(handle.id()).ok() != Some(handle.generation()) {
-            return false;
-        }
-        let Ok(space) = table.get_mut(handle.id()) else {
-            return false;
-        };
-        for (index, frame) in frames.iter_mut().enumerate().take(stack.committed_pages) {
-            match space.unmap_page(VAddr::from(low + index * PAGE_SIZE)) {
-                Ok(unmapped) => *frame = Some(unmapped),
-                Err(_) => ok = false,
-            }
-        }
-    }
-    // The slot owns the original root through invalidation, outside its guard.
-    crate::cpu::isa::memory::tlb::inval_range_user(
-        handle.id(),
-        VAddr::from(low),
-        stack.committed_pages,
-    );
-    {
-        let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-        for frame in frames.into_iter().flatten() {
-            if allocator.deallocate_frame(frame).is_err() {
-                ok = false;
-            }
-        }
-    }
-    if ok {
-        stack.slot.released();
-    }
-    ok
-}
 
 /// The initial kernel-stack frame consumed by `switch_ctx`'s restore path when
 /// a freshly created thread is first scheduled.
@@ -185,24 +106,10 @@ pub struct ThreadContext {
     /// race). `switch_ctx` accesses this with byte-sized acquire/release and
     /// exclusive operations.
     pub on_cpu: AtomicU8,
-    _kernel_stack_buf: VAddr,
-    _user_stack: Option<UserStack>,
+    _stacks: crate::memory::thread_stack::Stacks,
     /// Lowest user stack pointer observed for this thread. Sampling happens
     /// from the context-switch path, so it must remain a plain relaxed atomic.
     user_stack_low_water: AtomicUsize,
-}
-
-impl Drop for ThreadContext {
-    fn drop(&mut self) {
-        if let Some(user_stack) = self._user_stack.take()
-            && !deallocate_user_stack(user_stack)
-        {
-            crate::early_logln!("WARNING: failed to free user stack on thread teardown");
-        }
-        if deallocate_stack(self._kernel_stack_buf, INIT_KERNEL_STACK_PAGES).is_err() {
-            crate::early_logln!("WARNING: failed to free kernel stack on thread teardown");
-        }
-    }
 }
 
 impl ThreadContext {
@@ -220,7 +127,7 @@ impl ThreadContext {
 
     /// Bounds of the mapped kernel-stack pages, excluding both guard pages.
     pub(crate) fn kernel_stack_bounds(&self) -> (usize, usize) {
-        let base: usize = self._kernel_stack_buf.into();
+        let base: usize = self._stacks.kernel_base().into();
         (base, base + INIT_KERNEL_STACK_PAGES * PAGE_SIZE)
     }
 
@@ -229,7 +136,7 @@ impl ThreadContext {
     /// bounds check also rejects a stale pointer from a previous occupant of
     /// this LP, whose stack lies in a different VA stride.
     pub(crate) fn sample_user_stack_pointer(&self, sp: usize) {
-        let Some(stack) = self._user_stack.as_ref() else {
+        let Some(stack) = self._stacks.user_stack() else {
             return;
         };
         if (stack.base_addr()..stack.top()).contains(&sp) {
@@ -243,18 +150,12 @@ impl ThreadContext {
     /// [`Self::user_stack_usage`] is the growth headroom the demand-grown
     /// stack protocol can still charge.
     pub(crate) fn user_stack_committed_pages(&self) -> usize {
-        self._user_stack.as_ref().map_or(0, |stack| stack.committed_pages)
+        self._stacks.committed_pages()
     }
 
     /// Reserved (budget) and touched pages of this thread's user stack.
     pub(crate) fn user_stack_usage(&self) -> (usize, usize) {
-        let Some(stack) = self._user_stack.as_ref() else {
-            return (0, 0);
-        };
-        let low_water =
-            self.user_stack_low_water.load(Ordering::Relaxed).clamp(stack.base_addr(), stack.top());
-        let used = (stack.top() - low_water).div_ceil(PAGE_SIZE).min(stack.committed_pages);
-        (stack.budget_pages, used)
+        self._stacks.usage(self.user_stack_low_water.load(Ordering::Relaxed))
     }
 
     /// Extend this thread's user stack downward to cover `fault_addr`.
@@ -263,66 +164,17 @@ impl ThreadContext {
     /// was mapped, or `None` outside the growable guard region and when free
     /// frames are below the pressure reserve. Mapping is one page at a time so
     /// a partial failure leaves an exact committed count; whatever was mapped
-    /// is still released by `deallocate_user_stack` when the fatal path
+    /// is still released by the owning stack transaction when the fatal path
     /// retires the domain.
     pub(crate) fn grow_user_stack(&mut self, fault_addr: usize) -> Option<usize> {
-        let stack = self._user_stack.as_mut()?;
-        let page = fault_addr & !(PAGE_SIZE - 1);
-        let low = stack.committed_low();
-        let base = stack.base_addr();
-        if page >= low || page < base {
-            return None;
-        }
-        let (free_frames, total_frames) = {
-            let allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-            (allocator.free_frames() as u64, allocator.usable_bytes() / PAGE_SIZE as u64)
-        };
-        let reserve_frames =
-            (total_frames / charlotte_lifecycle::STACK_GROWTH_RESERVE_DIVISOR).max(1);
-        let required_frames = ((low - page) / PAGE_SIZE) as u64;
-        if free_frames < reserve_frames.saturating_add(required_frames) {
-            return None;
-        }
-        let asid = stack.asid;
-        let mut mapped_low = low;
-        let mut grew = false;
-        while mapped_low > page {
-            let vaddr = mapped_low - PAGE_SIZE;
-            let frame = match PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame() {
-                Ok(frame) => frame,
-                Err(_) => break,
-            };
-            let page_ptr: *mut u8 = frame.into();
-            unsafe {
-                core::ptr::write_bytes(page_ptr, 0, PAGE_SIZE);
-            }
-            let mapped = {
-                let mut as_table = ADDRESS_SPACE_TABLE.lock();
-                as_table.get_mut(asid).is_ok_and(|user_as| {
-                    user_as
-                        .map_page(MemoryMapping {
-                            vaddr: VAddr::from(vaddr),
-                            paddr: frame,
-                            page_type: PageType::UserData,
-                        })
-                        .is_ok()
-                })
-            };
-            if !mapped {
-                let _ = PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame);
-                break;
-            }
-            stack.committed_pages += 1;
-            mapped_low = vaddr;
-            grew = true;
-        }
-        grew.then_some(mapped_low)
+        self._stacks.grow_user_stack(fault_addr)
     }
 
     /// Create the context for a kernel thread that begins executing at
     /// `entry_point` at EL1 on its own kernel stack.
     pub fn create_kernel_thread_context(entry_point: extern "C" fn()) -> Result<Self, Error> {
-        let kernel_stack_buf = allocate_stack(INIT_KERNEL_STACK_PAGES)?;
+        let stacks = crate::memory::thread_stack::Stacks::kernel()?;
+        let kernel_stack_buf = stacks.kernel_base();
         let mut kernel_stack_top = kernel_stack_buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE;
         // The current (kernel) address space's TTBR0 is what a kernel thread
         // runs with; higher-half kernel mappings live in TTBR1 and are shared.
@@ -357,8 +209,7 @@ impl ThreadContext {
         Ok(ThreadContext {
             saved_sp: <VAddr as Into<u64>>::into(kernel_stack_top),
             on_cpu: AtomicU8::new(0),
-            _kernel_stack_buf: kernel_stack_buf,
-            _user_stack: None,
+            _stacks: stacks,
             user_stack_low_water: AtomicUsize::new(0),
         })
     }
@@ -372,33 +223,9 @@ impl ThreadContext {
         entry_point: extern "C" fn(),
         user_stack_pages: usize,
     ) -> Result<Self, Error> {
-        assert!(
-            (1..=charlotte_launch::MAX_USER_STACK_PAGES).contains(&user_stack_pages),
-            "invalid userspace stack limit"
-        );
-        let asid = identity.id();
-        let preparation = crate::memory::thread_stack::PreparingStackPage::reserve(identity)
-            .map_err(|_| Error::InvalidStack)?;
-        let stack_base = preparation.base();
-        let user_stack_top_va = stack_base + user_stack_pages * PAGE_SIZE;
-        const _: () = assert!(charlotte_launch::INITIAL_USER_STACK_PAGES == 1);
-        let initial_pages = 1;
-        let mapped_low = user_stack_top_va - PAGE_SIZE;
-        let slot = preparation.map(mapped_low).map_err(|_| Error::InvalidStack)?;
-        let user_stack = UserStack {
-            slot,
-            asid,
-            base: VAddr::from(stack_base),
-            budget_pages: user_stack_pages,
-            committed_pages: initial_pages,
-        };
-        let kernel_stack_buf = match allocate_stack(INIT_KERNEL_STACK_PAGES) {
-            Ok(stack) => stack,
-            Err(error) => {
-                let _ = deallocate_user_stack(user_stack);
-                return Err(error);
-            }
-        };
+        let stacks = crate::memory::thread_stack::Stacks::user(identity, user_stack_pages)?;
+        let kernel_stack_buf = stacks.kernel_base();
+        let user_stack_top_va = stacks.user_stack().unwrap().top();
         let mut kernel_stack_top = kernel_stack_buf + INIT_KERNEL_STACK_PAGES * PAGE_SIZE;
         // Run the user thread in its own address space's lower half (TTBR0).
         // TTBR0 is not stored in the frame: `switch_ctx` reloads it from the
@@ -432,8 +259,7 @@ impl ThreadContext {
         Ok(ThreadContext {
             saved_sp: <VAddr as Into<u64>>::into(kernel_stack_top),
             on_cpu: AtomicU8::new(0),
-            _kernel_stack_buf: kernel_stack_buf,
-            _user_stack: Some(user_stack),
+            _stacks: stacks,
             user_stack_low_water: AtomicUsize::new(user_stack_top_va),
         })
     }

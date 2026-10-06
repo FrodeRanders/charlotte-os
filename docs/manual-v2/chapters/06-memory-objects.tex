@@ -72,8 +72,20 @@ independent generation-owned accounts and node pools. Capability records,
 IPC operations and several completion/observer families also have separate
 admission. Private translation tables have owning-root limits and a node pool;
 fresh shared runtime kernel tables have a separate node pool. Inherited boot
-tables, IOMMU tables, stacks, general kernel heap and comprehensive metadata
+tables/stacks, IOMMU tables, general kernel heap and comprehensive metadata
 accounting remain open.
+
+\paragraph{Stack capacity admission.}
+Before backing allocation, each runtime user-thread slot reserves its configured
+maximum user pages plus sixteen kernel pages in a separate node stack pool.
+The pool uses one eighth of usable RAM; ordinary domains may consume three
+quarters, leaving trusted-platform headroom. A root has at most 64 exclusive
+slots and at most 64 user pages per slot. User backing still grows on demand.
+One owning transaction retains both stack ranges, the original root lease and
+the reservation through physical cleanup. Refund requires confirmed release of
+both ranges; failed or abandoned cleanup retains the entire maximum charge and
+slot even if other pages were freed. Kernel-only threads reserve sixteen pages
+from trusted admission. Inherited boot/CPU stacks remain outside this runtime pool.
 
 \paragraph{Translation-table lifetime.}
 Removing a page mapping clears the leaf while retaining empty intermediate

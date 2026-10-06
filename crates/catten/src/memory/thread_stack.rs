@@ -6,6 +6,13 @@ use super::{
 };
 
 const _: () = assert!(charlotte_launch::MAX_USER_THREADS == 64);
+pub(crate) const KERNEL_STACK_PAGES: usize = 16;
+mod budget;
+mod stacks;
+pub(crate) use stacks::Stacks;
+pub(crate) fn test_admission() {
+    stacks::tests::run();
+}
 
 /// One owner for provisional physical backing and stack/root admission.
 /// Panic during mapping quarantines both; ordinary rejected mapping releases
@@ -18,7 +25,9 @@ pub(crate) struct PreparingStackPage {
 
 impl PreparingStackPage {
     pub(crate) fn reserve(handle: AddressSpaceHandle) -> Result<Self, ()> {
-        Self::with_frame(handle, super::PreparingUserFrame::allocate_zeroed)
+        let preparation = Self::with_frame(handle, super::PreparingUserFrame::allocate)?;
+        preparation.frame.as_ref().unwrap().zero();
+        Ok(preparation)
     }
 
     pub(crate) fn with_frame(
@@ -26,12 +35,13 @@ impl PreparingStackPage {
         allocate: impl FnOnce() -> Option<super::PreparingUserFrame>,
     ) -> Result<Self, ()> {
         let slot = StackSlot::reserve(handle)?;
-        let frame = allocate().ok_or(())?;
-        Ok(Self {
-            frame: Some(frame),
+        let mut preparation = Self {
+            frame: None,
             slot: Some(slot),
             mapping_started: false,
-        })
+        };
+        preparation.frame = Some(allocate().ok_or(())?);
+        Ok(preparation)
     }
 
     pub(crate) fn base(&self) -> usize {
@@ -44,6 +54,9 @@ impl PreparingStackPage {
             MemoryMapping,
         };
         let handle = self.slot.as_ref().unwrap().identity();
+        if !self.slot.as_ref().unwrap().contains_page(low) {
+            return Err(());
+        }
         let frame = self.frame.as_ref().unwrap().frame();
         self.mapping_started = true;
         let mapped = {
@@ -71,16 +84,33 @@ impl PreparingStackPage {
     }
 }
 
-impl Drop for PreparingStackPage {
-    fn drop(&mut self) {
+impl PreparingStackPage {
+    fn rollback_with(
+        &mut self,
+        release: impl FnOnce(super::PAddr) -> Result<(), super::physical::Error>,
+    ) {
         if self.mapping_started {
             if let Some(frame) = self.frame.take() {
                 frame.quarantine();
             }
             if let Some(slot) = self.slot.as_mut() {
                 slot.published();
+                slot.uncertain = true;
+            }
+        } else if let Some(frame) = self.frame.take() {
+            let slot = self.slot.as_mut().unwrap();
+            slot.published();
+            slot.uncertain = true;
+            if frame.release_with(release).is_ok() {
+                slot.uncertain = false;
+                slot.reachable = false;
             }
         }
+    }
+}
+impl Drop for PreparingStackPage {
+    fn drop(&mut self) {
+        self.rollback_with(|frame| super::PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame));
     }
 }
 
@@ -90,6 +120,9 @@ pub(crate) struct StackSlot {
     operation: Option<AddressSpaceOperation>,
     slot: usize,
     reachable: bool,
+    uncertain: bool,
+    user_pages: usize,
+    charge: Option<budget::Reservation>,
 }
 
 impl core::fmt::Debug for StackSlot {
@@ -102,7 +135,8 @@ impl StackSlot {
     pub(crate) fn reserve(handle: AddressSpaceHandle) -> Result<Self, ()> {
         let asid = handle.id();
         let operation = AddressSpaceOperation::acquire(handle).map_err(|_| ())?;
-        let maximum = super::domain_limits(asid).max_threads;
+        let limits = super::domain_limits(asid);
+        let platform = super::budget::platform_identity(asid) == Some(handle);
         let mut table = ADDRESS_SPACE_TABLE.lock();
         let Ok(space) = table.get_mut(asid) else {
             drop(table);
@@ -110,17 +144,27 @@ impl StackSlot {
             return Err(());
         };
         let bits = space.thread_stack_slots;
-        if bits.count_ones() as usize >= maximum || bits == u64::MAX {
+        if bits.count_ones() as usize >= limits.max_threads || bits == u64::MAX {
             drop(table);
             let _ = operation.release();
             return Err(());
         }
+        let Some(charge) =
+            budget::Reservation::reserve(limits.user_stack_pages + KERNEL_STACK_PAGES, platform)
+        else {
+            drop(table);
+            let _ = operation.release();
+            return Err(());
+        };
         let slot = (!bits).trailing_zeros() as usize;
         space.thread_stack_slots |= 1 << slot;
         Ok(Self {
             operation: Some(operation),
             slot,
             reachable: false,
+            uncertain: false,
+            user_pages: limits.user_stack_pages,
+            charge: Some(charge),
         })
     }
 
@@ -137,8 +181,16 @@ impl StackSlot {
         self.reachable = true;
     }
 
+    fn contains_page(&self, low: usize) -> bool {
+        low.is_multiple_of(4096)
+            && (self.base()..self.base() + self.user_pages * 4096).contains(&low)
+    }
+
     /// Only call after all leaves are detached, invalidated and released.
     pub(crate) fn released(mut self) {
+        if self.uncertain {
+            return;
+        }
         self.reachable = false;
         self.release();
     }
@@ -156,6 +208,9 @@ impl StackSlot {
             if let Ok(space) = table.get_mut(handle.id()) {
                 space.thread_stack_slots &= !(1 << self.slot);
             }
+        }
+        if let Some(charge) = self.charge.take() {
+            charge.refund();
         }
         let _ = operation.release();
     }

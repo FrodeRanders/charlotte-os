@@ -219,6 +219,10 @@ impl PreparingKernelFrame {
     fn install(mut self) {
         self.frame.take();
     }
+
+    fn retire(mut self, retirement: &mut RetiredKernelRange) {
+        retirement.retain(self.frame.take().unwrap());
+    }
 }
 
 impl Drop for PreparingKernelFrame {
@@ -276,7 +280,7 @@ fn allocate_and_map_with(
     let mut kas = KERNEL_AS.lock();
     for index in 0..num_pages {
         let result = allocate(page_size, index).and_then(|frame| {
-            map(
+            let result = map(
                 &mut kas,
                 MemoryMapping {
                     vaddr: base + index * page_size.num_bytes(),
@@ -284,7 +288,14 @@ fn allocate_and_map_with(
                     page_type: PageType::KernelData,
                 },
                 index,
-            )?;
+            );
+            if let Err(error) = result {
+                // Carry the unpublished frame in the same post-guard receipt
+                // as the installed prefix. Rollback must report its physical
+                // release failure to the original admission owner too.
+                frame.retire(retirement);
+                return Err(error.into());
+            }
             frame.install();
             Ok(())
         });

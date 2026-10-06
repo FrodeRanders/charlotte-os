@@ -294,6 +294,20 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   promotion cannot reclassify an account with quarantined pages. Private tables
   have their own lifetime admission; fresh shared kernel tables retain a separate
   node charge for the kernel lifetime, independent of private-root refunds.
+- Runtime thread stacks use `thread_stack::Stacks` for both user/kernel backing.
+  Reserve the full configured user capacity plus sixteen kernel pages before
+  allocation; kernel-only threads reserve sixteen pages. Keep the original
+  `StackSlot` root lease, bitmap slot and captured classification until both
+  ranges are detached, invalidated and physically released. Partial cleanup,
+  failed provisional release and interrupted publication retain the whole
+  reservation, slot and root, even after ordinary committed pages are freed.
+  Growth borrows that owner and revalidates its exact generation; it never
+  reconstructs cleanup from ASID or adds backing outside captured capacity.
+  Kernel mapping rejection moves unpublished frames into `RetiredKernelRange`
+  too; only confirmed post-guard release authorizes a completed rollback result.
+  Raw stack allocation is confined to that admitted memory adapter. Inherited
+  boot/CPU stacks remain outside runtime admission. See
+  `docs/reference/stack-admission.md`.
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`

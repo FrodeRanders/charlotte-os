@@ -20,13 +20,18 @@ layout validation exclude the entire arena, including unused slots/guards.
 The architecture walkers still permit trusted stack mappings within it.
 
 `PreparingStackPage` owns the exact `StackSlot` root lease and a zeroed,
-fallibly admitted physical page until leaf publication. The physical progress
+fallibly allocated physical page until leaf publication. The physical progress
 floor applies before allocation. Mapping interruption quarantines both owners;
-confirmed mapping rejection drops them. Each architecture's context then owns
-the published slot and committed stack range. Teardown detaches leaves under
+confirmed mapping rejection refunds only after successful physical release.
+Each architecture's context owns one `Stacks` transaction for the published
+slot and both user/kernel ranges. Teardown detaches leaves under
 the table guard, releases the guard, invalidates translations, and releases
-backing before returning the slot. Failed cleanup retains the original slot
-and root lease. Demand growth remains within the admitted per-thread budget.
+backing before returning the slot. A separate node reservation covers the
+configured maximum user pages plus sixteen kernel pages before allocation.
+Refund requires confirmed cleanup of both ranges. Failed cleanup retains the
+original slot, root lease and whole reservation. Demand growth borrows that
+owner, revalidates exact identity and stays within its captured capacity. See
+[stack admission](stack-admission.md) for budgets and failure behavior.
 
 The master thread records the captured address-space handle, independently
 from its reusable numeric ASID/TID. Publication revalidates that handle and the
@@ -35,8 +40,9 @@ the same thread-table lock as generation checking and source registration.
 Zero expected thread generation permits only a current same-domain target.
 Trusted supervisor watches use a distinct internal adapter.
 
-These per-domain limits do not establish whole-node thread/control-block,
-translation-table or kernel-heap admission. Existing x86 cross-LP teardown
+Stack data and translation tables have independent node admission. These limits
+do not establish general thread/control-block metadata or kernel-heap admission.
+Existing x86 cross-LP teardown
 limitations remain documented separately. See the
 [renewed audit remediation](../reports/audits/2026-10-05-security-remediation.md)
 for regression evidence and validation scope.

@@ -143,17 +143,37 @@ impl From<memory::Error> for Error {
 /// The address returned by this function is the base (lowest) address of the
 /// usable stack region, page-aligned. The usable region is surrounded by one
 /// guard page below and one above, which are recorded in
-/// [`KERNEL_GUARD_PAGE_SET`] so the stack can later be validated and freed.
-pub fn allocate_stack(n_pages: usize) -> Result<VAddr, Error> {
+/// [`KERNEL_GUARD_PAGES`] so the stack can later be validated and freed.
+/// Used only by the owning admitted stack transaction, which retains its
+/// reservation on incomplete physical rollback or interrupted preparation.
+pub(crate) struct AllocationFailure {
+    pub(crate) error: Error,
+    pub(crate) retained: bool,
+}
+
+pub(in crate::memory) fn allocate_stack(n_pages: usize) -> Result<VAddr, AllocationFailure> {
     let mut retirement = RetiredKernelRange::new();
     // Serialize the whole region-search-then-map sequence against other LPs.
     let result = with_arena(1, n_pages as u64, || allocate_stack_locked(n_pages, &mut retirement));
     // Failed preparation must not free its prefix under the arena/table locks.
-    retirement.release()?;
-    if let Ok(base) = result {
-        crate::cpu::isa::memory::tlb::inval_range_kernel(base, n_pages);
+    if let Err(error) = retirement.release() {
+        return Err(AllocationFailure {
+            error: error.into(),
+            retained: true,
+        });
     }
-    result
+    if let Ok(base) = result
+        && crate::cpu::isa::memory::tlb::try_inval_range_kernel(base, n_pages).is_err()
+    {
+        return Err(AllocationFailure {
+            error: Error::AllocatorsMemory(memory::Error::RetirementFailed),
+            retained: true,
+        });
+    }
+    result.map_err(|error| AllocationFailure {
+        error,
+        retained: false,
+    })
 }
 
 fn allocate_stack_locked(
@@ -189,7 +209,10 @@ fn allocate_stack_locked(
 
 /// Deallocate a kernel stack previously allocated by [`allocate_stack`]. The
 /// argument is the base address returned by `allocate_stack`.
-pub fn deallocate_stack(stack_buf_base: VAddr, n_pages: usize) -> Result<(), Error> {
+pub(in crate::memory) fn deallocate_stack(
+    stack_buf_base: VAddr,
+    n_pages: usize,
+) -> Result<(), Error> {
     let mut retirement = RetiredKernelRange::new();
     // Serialize teardown against concurrent alloc/free on other LPs.
     let result = with_arena(2, stack_buf_base.into(), || {

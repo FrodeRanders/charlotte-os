@@ -72,7 +72,7 @@ pub(crate) fn test_kernel_retirement() {
     );
     assert!(matches!(result, Err(Error::IsaMemoryError(_))));
     assert!(!KERNEL_AS.lock().is_mapped(base).unwrap());
-    assert_eq!(free(), baseline - 1);
+    assert_eq!(free(), baseline - 2);
     retirement.release().unwrap();
     assert_eq!(free(), baseline);
 
@@ -92,7 +92,7 @@ pub(crate) fn test_kernel_retirement() {
         Err(Error::IsaMemoryError(_))
     ));
     assert_eq!(KERNEL_AS.lock().translate_address(second).unwrap(), foreign.frame());
-    assert_eq!(free(), baseline - 2);
+    assert_eq!(free(), baseline - 3);
     retirement.release().unwrap();
     assert_eq!(free(), baseline - 1);
     assert_eq!(KERNEL_AS.lock().unmap_page(second).unwrap(), foreign.frame());

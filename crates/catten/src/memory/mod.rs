@@ -314,7 +314,8 @@ pub(crate) fn commit_user_heap_page(asid: AddressSpaceId, fault_addr: usize) -> 
 }
 
 /// Uncharged provisional frame for translation-root preparation and foreign
-/// backing fixtures. Heap/image preparation must use PreparingUserBacking.
+/// backing fixtures. Stack preparation may use it only inside an owning
+/// stack admission transaction. Heap/image preparation uses PreparingUserBacking.
 pub(crate) struct PreparingUserFrame(Option<PAddr>);
 
 impl Drop for PreparingUserFrame {

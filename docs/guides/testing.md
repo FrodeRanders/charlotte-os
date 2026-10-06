@@ -962,3 +962,21 @@ the pressure adapter never clears real charges or recovers backing. These are
 single-mutator counter-pressure fixtures, not real physical OOM or concurrent
 hardware-walk proofs. Commands and results are in the
 [shared-table audit record](../reports/audits/2026-10-06-security-kernel-table-admission.md).
+
+### Stack backing admission
+
+The synchronous thread fixtures now test the combined maximum user/kernel
+reservation and its exact refund after both physical ranges complete. A real
+demand-growth fixture preserves a foreign colliding leaf, records partial
+growth, releases rejected preparation and retries successfully. Counter pressure
+rejects ordinary preparation before its allocator callback while allowing real
+trusted-platform and kernel-only stack pairs, then ordinary recovery.
+
+Five failed/abandoned cases retain five roots/slots and 85 admission pages.
+Three data frames and one real sixteen-page kernel stack stay unavailable,
+alongside the private root hierarchies. Rejected cleanup, incomplete preparation
+and interrupted growth use injected owner states. These are serialized boot
+fixtures, not physical node exhaustion or actual panic unwinding. Kernel-range
+rollback fixtures also verify that rejected unpublished backing stays in the
+post-guard retirement receipt without consuming foreign leaves. See the
+[stack audit record](../reports/audits/2026-10-07-security-stack-admission.md).

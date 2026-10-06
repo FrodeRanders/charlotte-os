@@ -61,6 +61,7 @@ fn frame(asid: usize, arg1: u64, arg2: u64, arg3: u64) -> TrapFrame {
 }
 
 pub(crate) fn run() {
+    memory::thread_stack::test_admission();
     let own = domain();
     let foreign = domain();
     let own_thread = Thread::try_new(own.id(), unused_entry).unwrap();
