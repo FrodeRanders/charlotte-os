@@ -161,9 +161,9 @@ impl PreparedEndpointClose {
                     break;
                 };
                 if front.reply.is_none() {
-                    // No borrow is attached to an asynchronous send. Moved or
-                    // copied memory retains its own backing/authority on a busy
-                    // close, as in the ordinary endpoint cleanup adapter.
+                    // No borrow is attached to an asynchronous send. Its
+                    // undelivered move/copy caps cannot acquire application
+                    // mappings, loans or DMA/copy pins before this cleanup.
                     let message = endpoint.queue.pop_front().unwrap();
                     for cap in message.memory {
                         let _ = crate::memory::object::try_close_cap(self.asid, cap);

@@ -72,7 +72,8 @@ pub(crate) fn close_with(
     }
     // Loan-free authority cleanup uses admitted registry storage as its work
     // list. No new root lease is acquired under IPC. Existing move/copy/result
-    // attachment cleanup still uses the serialized memory adapter.
+    // attachment cleanup uses the serialized memory adapter. Undelivered
+    // move/copy authority cannot acquire application mappings or pins.
     drain_namespace_caps(asid)?;
     Ok(true)
 }

@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [2026-10-06 IPC owned-memory delivery visibility (SEC-29)](audits/2026-10-06-security-memory-delivery.md)
+
 - [2026-10-06 owned memory retirement and unmapped revocation peers (SEC-18/28)](audits/2026-10-06-security-memory-retirement.md)
 
 - [2026-10-06 owned device retirement and DMA loan revocation (SEC-18/27)](audits/2026-10-06-security-device-retirement.md)

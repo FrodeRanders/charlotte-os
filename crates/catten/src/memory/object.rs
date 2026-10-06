@@ -304,6 +304,8 @@ struct MemoryCap {
     rights: MemoryObjectRights,
     /// Owned by a PreparedTransfer until escrow and its pin finish together.
     transfer_in_flight: bool,
+    /// IPC owns this move/copy until receive or reply observation.
+    delivery_pending: bool,
 }
 
 #[derive(Debug)]
@@ -344,6 +346,20 @@ impl MemoryObjectRegistry {
     }
 
     fn lookup(
+        &self,
+        asid: AddressSpaceId,
+        cap: MemoryObjectCap,
+    ) -> Result<MemoryCap, MemoryObjectError> {
+        let entry = self.lookup_for_cleanup(asid, cap)?;
+        if entry.delivery_pending {
+            return Err(MemoryObjectError::UnknownCapability);
+        }
+        Ok(entry)
+    }
+
+    /// IPC cleanup owns queued/unobserved authority even though applications
+    /// cannot use it. Never use this lookup for application memory operations.
+    fn lookup_for_cleanup(
         &self,
         asid: AddressSpaceId,
         cap: MemoryObjectCap,
@@ -412,6 +428,7 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
             object: object_id,
             rights: MemoryObjectRights::ALL,
             transfer_in_flight: false,
+            delivery_pending: false,
         },
     );
     Ok(cap)
@@ -1190,6 +1207,29 @@ pub(crate) fn commit_transfers_with_authority(
     transfers: &mut [PreparedTransfer],
     additional: &mut [&mut crate::capability::Reservation],
 ) -> Result<(), MemoryObjectError> {
+    commit_transfers_with_delivery(transfers, additional, false)
+}
+
+/// IPC retains move/copy destinations until delivery. Loans keep their existing
+/// revocation contract: their lender/borrower receipts own any mapped backing.
+pub(crate) fn commit_undelivered_transfers(
+    transfers: &mut [PreparedTransfer],
+) -> Result<(), MemoryObjectError> {
+    commit_undelivered_transfers_with_authority(transfers, &mut [])
+}
+
+pub(crate) fn commit_undelivered_transfers_with_authority(
+    transfers: &mut [PreparedTransfer],
+    additional: &mut [&mut crate::capability::Reservation],
+) -> Result<(), MemoryObjectError> {
+    commit_transfers_with_delivery(transfers, additional, true)
+}
+
+fn commit_transfers_with_delivery(
+    transfers: &mut [PreparedTransfer],
+    additional: &mut [&mut crate::capability::Reservation],
+    delivery_pending: bool,
+) -> Result<(), MemoryObjectError> {
     use crate::capability::{
         Publication,
         SourceDisposition,
@@ -1288,6 +1328,7 @@ pub(crate) fn commit_transfers_with_authority(
                     object: source.entry.object,
                     rights: *rights,
                     transfer_in_flight: false,
+                    delivery_pending,
                 }
             }
             PreparedPayload::Copy {
@@ -1316,6 +1357,7 @@ pub(crate) fn commit_transfers_with_authority(
                     object,
                     rights: MemoryObjectRights::ALL,
                     transfer_in_flight: false,
+                    delivery_pending,
                 }
             }
             PreparedPayload::Loan {
@@ -1352,6 +1394,7 @@ pub(crate) fn commit_transfers_with_authority(
                         MemoryObjectRights::MAP_READ
                     },
                     transfer_in_flight: false,
+                    delivery_pending: false,
                 }
             }
         };
@@ -1359,6 +1402,20 @@ pub(crate) fn commit_transfers_with_authority(
         transfer.committed = true;
     }
     Ok(())
+}
+
+/// IPC delivery boundary. The caller holds IPC exclusively and still owns the
+/// exact queued message or unobserved result. No application can close, escrow,
+/// map or DMA-pin an undelivered move/copy before this registry transition.
+pub(crate) fn deliver_memory(asid: AddressSpaceId, caps: &[MemoryObjectCap]) {
+    let mut registry = MEMORY_OBJECTS.lock();
+    for &cap in caps {
+        // A direct lender may have revoked a loan before receive. Those loan
+        // receipts retain their existing semantics and need no publication.
+        if let Some(entry) = registry.caps.get_mut(&asid).and_then(|caps| caps.caps.get_mut(&cap)) {
+            entry.delivery_pending = false;
+        }
+    }
 }
 
 pub fn move_to(
@@ -1543,6 +1600,9 @@ pub(crate) fn close_cap_with_wait(
         drop(registry);
         wait();
     };
+    // Guessed queued/unobserved destinations remain owned by IPC, including
+    // against explicit application close. Only its cleanup adapter can consume.
+    registry.lookup(asid, cap)?;
     finish_close_cap(registry, asid, cap)
 }
 
@@ -1582,7 +1642,7 @@ fn finish_close_cap(
 ) -> Result<(), MemoryObjectError> {
     // Reject before mutating payload ownership. Reinserting a rejected cap
     // could allocate, so there must be no remove-and-restore cleanup ladder.
-    let cap_entry = registry.lookup(asid, cap)?;
+    let cap_entry = registry.lookup_for_cleanup(asid, cap)?;
 
     let should_destroy = {
         let object =

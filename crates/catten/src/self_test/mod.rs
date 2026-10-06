@@ -302,6 +302,7 @@ pub fn run_synchronous_self_tests() {
     ipc::test_endpoint_resize();
     ipc::test_endpoint_admission();
     crate::ipc::record_tests::test_admission();
+    crate::ipc::delivery_tests::run();
     crate::ipc::reply::tests::run();
     crate::ipc::cancellation::tests::run();
     ipc::test_close_watch_admission();

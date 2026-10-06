@@ -70,12 +70,12 @@ fn close_and_return() {
         );
         assert_eq!(waits, 1);
         assert_eq!(
-            object::info(fixture.caller.id(), destination).unwrap().owner,
-            fixture.caller.id()
+            object::info(fixture.caller.id(), destination),
+            Err(MemoryObjectError::UnknownCapability)
         );
         assert_eq!(
-            object::snapshot_bytes(fixture.caller.id(), destination, 32).unwrap(),
-            [0xa5; 32]
+            object::snapshot_bytes(fixture.caller.id(), destination, 32),
+            Err(MemoryObjectError::UnknownCapability)
         );
         if observed {
             assert_eq!(
@@ -85,7 +85,10 @@ fn close_and_return() {
         }
         close_cap(fixture.caller.id(), fixture.call).unwrap();
         if observed {
-            assert!(object::info(fixture.caller.id(), destination).is_ok());
+            assert_eq!(
+                object::snapshot_bytes(fixture.caller.id(), destination, 32).unwrap(),
+                [0xa5; 32]
+            );
             object::close_cap(fixture.caller.id(), destination).unwrap();
         } else {
             assert_eq!(
@@ -219,7 +222,10 @@ fn undelivered_source() {
             Err(IpcError::Pending)
         ));
         assert_eq!(used(fixture.caller.id()), before);
-        assert!(object::info(fixture.server.id(), memory).is_ok());
+        assert_eq!(
+            object::info(fixture.server.id(), memory),
+            Err(MemoryObjectError::UnknownCapability)
+        );
         if queued {
             assert_eq!(receive(fixture.server.id(), endpoint).unwrap().memory, Some(memory));
         } else {

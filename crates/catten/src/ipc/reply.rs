@@ -190,7 +190,7 @@ impl PreparedReply {
         finish: impl FnMut(LoanRevocation) -> Result<(), MemoryObjectError>,
     ) -> Result<(), IpcError> {
         self.finish_with_publication(result, finish, |memory, authority| {
-            crate::memory::object::commit_transfers_with_authority(memory, authority)
+            crate::memory::object::commit_undelivered_transfers_with_authority(memory, authority)
                 .map_err(|_| IpcError::MemoryTransferFailed)
         })
     }

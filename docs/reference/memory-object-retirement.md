@@ -404,3 +404,32 @@ lifetime. Root slot/tag/account destruction remains a separate final owner.
 The historical serialized `close_address_space_fixture` adapter is used only at
 raw boot-fixture boundaries. It is not a production fallback or compatibility path.
 See the [memory cleanup remediation](../reports/audits/2026-10-06-security-memory-retirement.md).
+
+
+## Undelivered owning IPC memory
+
+IPC moves/copies stay inaccessible after authority publication until receive or
+first reply observation. Their `MemoryCap` carries `delivery_pending`; ordinary
+lookup rejects it even when an application guesses a valid scalar ID. This
+covers information/byte access, CPU mapping, DMA pinning, copy/move/loan source
+preparation and explicit application close. Scalar/vector calls and sends, plus
+both returned-memory reply paths, publish through
+`commit_undelivered_transfers[_with_authority]`. Trusted non-IPC transfers retain
+immediate delivery through the ordinary commit API.
+
+Receive publishes all owning attachments under IPC only after result-page
+writing succeeds. Failed speculative receive leaves them hidden and queued.
+The first successful `poll_reply` publishes returned memory before observation
+is recorded under the same IPC hold. Subsequent polling does not republish
+consumed or moved authority. `wait_reply` observes readiness only. Delivered
+moves/copies belong to the receiver and survive call/endpoint cancellation;
+unobserved/queued ones remain exclusively reclaimable by IPC.
+
+The private cleanup lookup permits consuming hidden authority; normal explicit
+memory close does not. Applications cannot create mappings, loans or pins that
+would make its serialized cleanup reject while IPC discards the owning receipt.
+This cleanup frees unmapped backing; it does not perform TLB invalidation beneath
+IPC. Existing loan receipts keep their distinct owned revocation semantics,
+including raw kernel fixtures that map queued loans. No new CPU/DMA quiescence,
+recoverable shootdown or allocator-latency guarantee follows from this gate.
+See the [delivery remediation](../reports/audits/2026-10-06-security-memory-delivery.md).

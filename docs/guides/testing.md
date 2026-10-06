@@ -845,3 +845,21 @@ local/peer invalidation after secondary LPs start. Roots have no application
 threads; hardware failure recovery and concurrent hardware-walk stress remain
 separate work. Commands and evidence are in the
 [memory retirement report](../reports/audits/2026-10-06-security-memory-retirement.md).
+
+
+## IPC owned-memory delivery
+
+`ipc::delivery_tests` runs before secondary LP startup using raw kernel ABI
+fixtures. It captures real queued/unobserved IDs and verifies that information,
+byte access, mapping, explicit close, transfer/loan preparation and DMA pinning
+reject before delivery while unified authority remains live. Scalar/vector
+moves and copies cover calls/sends, cancellation and successful handoff. Failed
+receive result-page writing retains hidden queue ownership. Endpoint and
+whole-server cleanup reclaim hidden authority; scalar cleanup checks original
+sponsorship refunds. Returned memory stays hidden through readiness waiting,
+then polling transfers ownership or unobserved call close reclaims it.
+
+Existing returned-memory/loan tests check the same visibility after split-phase
+reply completion. These fixtures add no deliberate quarantined roots or pages.
+The x86/AArch64 isolated commands, results and scope are in the
+[delivery report](../reports/audits/2026-10-06-security-memory-delivery.md).

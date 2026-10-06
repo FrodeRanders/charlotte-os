@@ -68,8 +68,15 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   `docs/reference/capability-admission.md` for the current enforcement scope.
   IPC calls use `PreparedCall`/`PreparedConnection` to own metadata and fresh
   authority alongside their attachments. Compose reservations through
-  `commit_transfers_with_authority` while retaining every affected payload
-  registry; do not publish memory and then attempt fallible IPC admission.
+  `commit_undelivered_transfers_with_authority` while retaining every affected
+  payload registry; do not publish memory and then attempt fallible IPC admission.
+  IPC moves/copies, including asynchronous sends and returned memory, remain
+  inaccessible until receive or first reply observation. Ordinary memory lookup
+  must reject their pending delivery state, including explicit close, mapping,
+  copy/move/loan and DMA. Publish delivery under IPC with the exact queue/result
+  still owned; readiness waiting alone does not transfer ownership. Non-IPC
+  transfers use `commit_transfers`/`commit_transfers_with_authority`. Loans retain
+  their owned revocation contract.
   Device grants take lifecycle before device/backend registries, reserve before
   hardware creation and retain a `PreparedDmaDomain` until publication. Failed
   hardware rollback must quarantine reachable backing, never recycle it.
@@ -193,7 +200,9 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   DMA/copy or transfer fences before borrower state/authority removal. Only exact
   completion receipts permit cleanup sealing and final root teardown. The serialized
   whole-domain memory adapter is confined to raw boot fixtures. Move/copy/result
-  attachments retain their existing serialization.
+  attachment cleanup remains serialized, but undelivered owning memory cannot
+  acquire application mappings/pins before that cleanup. Physical allocator
+  release latency and hardware quiescence/recovery remain separate work.
   Bulk reply-token cleanup must not report failed loan revocation as terminal.
   Whole-domain device cleanup borrows the exact closing root through
   `PreparedNamespaceDevices`. Detach admitted registry storage and remove IRQ

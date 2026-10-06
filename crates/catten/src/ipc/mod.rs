@@ -45,6 +45,7 @@ use crate::{
 
 pub(crate) mod budget;
 pub(crate) mod cancellation;
+pub(crate) mod delivery_tests;
 mod endpoint_close;
 pub(crate) mod namespace_close;
 pub(crate) mod record_budget;
@@ -449,12 +450,12 @@ impl PreparedCall {
         let server = reserve_endpoint_queue(ipc, endpoint)?;
         let call_cap = self.authority.identity();
         if let Some(connection) = &mut self.connection {
-            crate::memory::object::commit_transfers_with_authority(
+            crate::memory::object::commit_undelivered_transfers_with_authority(
                 &mut self.transfers,
                 &mut [&mut self.authority, &mut connection.authority],
             )
         } else {
-            crate::memory::object::commit_transfers_with_authority(
+            crate::memory::object::commit_undelivered_transfers_with_authority(
                 &mut self.transfers,
                 &mut [&mut self.authority],
             )
@@ -979,8 +980,12 @@ pub fn scalar_send_with_memory_move(
     }
 
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let server_memory_cap = crate::memory::object::move_to(sender, memory_cap, server)
+    let mut transfer = crate::memory::object::prepare_move(sender, memory_cap, server)
         .map_err(|_| IpcError::MemoryTransferFailed)?;
+    let server_memory_cap = transfer.target_cap();
+    crate::memory::object::commit_undelivered_transfers(core::slice::from_mut(&mut transfer))
+        .map_err(|_| IpcError::MemoryTransferFailed)?;
+    drop(transfer);
     let delivery = enqueue_scalar_with_memory(
         &mut ipc,
         endpoint_id,
@@ -1015,8 +1020,12 @@ pub fn scalar_send_with_memory_copy(
     }
 
     let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let server_memory_cap = crate::memory::object::copy_to(sender, memory_cap, server)
+    let mut transfer = crate::memory::object::prepare_copy(sender, memory_cap, server)
         .map_err(|_| IpcError::MemoryTransferFailed)?;
+    let server_memory_cap = transfer.target_cap();
+    crate::memory::object::commit_undelivered_transfers(core::slice::from_mut(&mut transfer))
+        .map_err(|_| IpcError::MemoryTransferFailed)?;
+    drop(transfer);
     let delivery = enqueue_scalar_with_memory(
         &mut ipc,
         endpoint_id,
@@ -1467,6 +1476,7 @@ impl<'a> PreparedReceive<'a> {
     fn commit(mut self) -> ScalarMessage {
         let endpoint = self.ipc.endpoints.get_mut(&self.endpoint).unwrap();
         let message = endpoint.queue.pop_front().expect("prepared receive retains queue ownership");
+        crate::memory::object::deliver_memory(self.receiver, &message.memory);
         ScalarMessage {
             sender: message.sender,
             sender_generation: message.sender_generation,
@@ -1822,12 +1832,12 @@ fn complete_reply(
     }
     let returned_memory_cap = returned_move.as_ref().map(|transfer| transfer.target_cap());
     if let Some(connection) = &mut connection {
-        crate::memory::object::commit_transfers_with_authority(
+        crate::memory::object::commit_undelivered_transfers_with_authority(
             returned_move.as_mut_slice(),
             &mut [&mut connection.authority],
         )
     } else {
-        crate::memory::object::commit_transfers(returned_move.as_mut_slice())
+        crate::memory::object::commit_undelivered_transfers(returned_move.as_mut_slice())
     }
     .map_err(|_| IpcError::MemoryTransferFailed)?;
     drop(returned_move);
@@ -1865,7 +1875,10 @@ pub fn poll_reply(
     // return the same reply (callers that adopt returned capabilities track
     // their own one-shot state).
     let result = call.result;
-    if result.is_some() {
+    if let Some(reply) = result
+        && !call.observed
+    {
+        crate::memory::object::deliver_memory(caller, reply.memory.as_slice());
         call.observed = true;
     }
     Ok(result)
@@ -2514,7 +2527,7 @@ pub fn vector_send(
 
     let mut memory_caps = Vec::new();
     let mut transfers = read_vector_page(sender, cap_vector, server, false, &mut memory_caps)?;
-    crate::memory::object::commit_transfers(&mut transfers)
+    crate::memory::object::commit_undelivered_transfers(&mut transfers)
         .map_err(|_| IpcError::MemoryTransferFailed)?;
     drop(transfers);
     // Queue availability was validated under this same IPC write guard; none
