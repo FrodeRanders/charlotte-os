@@ -184,10 +184,17 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   or allocate namespace snapshots. Pending returns the closing owner; failure or
   abandonment retains its fence/root and uncertain pins. Serialized namespace
   loan cleanup is confined to raw boot fixtures. Move/copy/result attachments and
-  whole-domain memory/device cleanup retain their existing serialization.
+  whole-domain memory cleanup retain their existing serialization.
   Bulk reply-token cleanup must not report failed loan revocation as terminal.
-  Whole-domain device cleanup still
-  retains lifecycle through invalidation. Backing pins do not lease an ASID; see
+  Whole-domain device cleanup borrows the exact closing root through
+  `PreparedNamespaceDevices`. Detach admitted registry storage and remove IRQ
+  routes under lifecycle/device serialization; release those guards before
+  MMIO invalidation, scratch completion or DMA destruction. Release device
+  authority only after confirmed cleanup. Failure/abandonment retains unfinished
+  records, authority, scratch and the closing root; no physical cleanup in Drop.
+  Require the exact completion receipt before progressing to IPC loan cleanup.
+  Loan revocation rejects DMA pins under the memory registry; CPU invalidation
+  never substitutes for DMA completion. Backing pins do not lease an ASID; see
   `docs/reference/memory-object-retirement.md`.
   Final user-root close detaches into `RetiredAddressSpace`/`RetiredEntry`,
   leasing the software slot through post-guard invalidation and destruction.

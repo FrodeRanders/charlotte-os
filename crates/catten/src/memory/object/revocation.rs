@@ -103,7 +103,11 @@ impl LoanRevocation {
         if object.owner != owner {
             return Err(MemoryObjectError::WrongOwner);
         }
-        if object.destroy_when_unpinned || object.retirement_pins != 0 {
+        // A peer may retire this loan while the borrower's device owner is
+        // still stopping DMA outside lifecycle. CPU invalidation cannot revoke
+        // a DMA translation. Keep loan authority fenced until all DMA pins
+        // finish; pin_for_dma rejects Revoking under this same registry.
+        if object.destroy_when_unpinned || object.retirement_pins != 0 || object.dma_pins != 0 {
             return Err(MemoryObjectError::LendingActive);
         }
         match &object.lend_state {

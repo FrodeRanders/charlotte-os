@@ -211,6 +211,7 @@ pub enum AddressSpaceCloseError {
     CloseInProgress,
     OperationDrainTimedOut,
     IpcCleanupFailed,
+    DeviceCleanupFailed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -468,14 +469,13 @@ pub fn close_user_address_space_handle(
 }
 
 // Caller retains lifecycle and has drained existing operations. This phase
-// stops resource sponsorship and DMA before unlocked IPC loan cleanup starts.
+// stops resource sponsorship before owned device/IPC cleanup starts.
 fn begin_user_address_space_cleanup(handle: AddressSpaceHandle) {
     let asid = handle.id();
     ADDRESS_SPACE_TABLE.lock().get_mut(asid).unwrap().heap_account.retire();
     ADDRESS_SPACE_TABLE.lock().get_mut(asid).unwrap().image_account.retire();
     crate::capability::retire_address_space(asid);
     budget::retire(handle);
-    crate::device::close_address_space(asid);
 }
 
 // Caller retains lifecycle, has drained cleanup leases and sealed admission.

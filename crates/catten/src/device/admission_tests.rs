@@ -94,6 +94,7 @@ pub(crate) fn test_admission() {
     );
     crate::memory::close_user_address_space_handle(owner).unwrap();
     test_reused_grant();
+    retirement::tests::run();
     logln!(
         "[device admission] quota, MMIO/IRQ recovery, DMA create/refund/rollback and exact \
          namespace reuse passed"

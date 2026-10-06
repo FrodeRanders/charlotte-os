@@ -91,7 +91,7 @@ detach/invalidation checks succeed.
 The backing receipts themselves do not own an address-space generation lease.
 Their caller must retain one or retain lifecycle/IPC serialization across the
 complete operation. Numeric ASIDs and scratch identities must not be reused
-between detach and finish. Whole-domain memory/device and move/copy/result
+between detach and finish. Whole-domain memory and move/copy/result
 attachment cleanup still depend on those outer guards. Namespace loan cleanup
 now owns the closing generation and leases its peer before releasing IPC.
 
@@ -116,13 +116,15 @@ success. Their mapping pins still independently retain backing. MMIO
 map/map-any/unmap also holds a generation lease and a capability in-flight claim
 through invalidation; concurrent device close rejects while that claim is held.
 Explicit device close also leases its root and detaches its device object before
-releasing lifecycle for invalidation. Whole-domain device cleanup still holds
-lifecycle. All existing borrowed-memory reply variants now compose a reply claim
-and both namespace leases before releasing IPC. Explicit pending-call/reply
+releasing lifecycle for invalidation. Whole-domain device cleanup now borrows
+its closing root through an owning receipt outside lifecycle. It retains unfinished
+device records/authority and scratch on failure; DMA teardown must complete
+before its IPC drain. All existing borrowed-memory reply variants now compose
+a reply claim and both namespace leases before releasing IPC. Explicit pending-call/reply
 close now composes the same ownership in a separate cancellation owner;
-explicit endpoint close borrows a server owner for each queued call, while
-whole-domain cleanup still needs namespace composition. The staged fence does
-not cover non-lease paths or revoke their authority while older operations drain.
+explicit endpoint close borrows a server owner for each queued call.
+Whole-domain loans now borrow closing ownership and retain exact peer leases.
+The staged fence does not cover non-lease paths or revoke their authority while older operations drain.
 
 ## Owned loan revocation
 
@@ -262,8 +264,16 @@ receipts may be restored. Abandonment also retains peer leases and token claims.
 Namespace removal iterates admitted registry storage without snapshots. Cleanup
 admission permanently seals after IPC drain and zero leases, before remaining
 memory teardown. Raw boot fixtures alone retain serialized namespace loan
-revocation. Move/copy/result attachments, whole-domain memory/device cleanup,
+revocation. Move/copy/result attachments, whole-domain memory cleanup,
 and comprehensive failure recovery/quiescence remain separate work.
+
+Loan preparation rejects any live DMA pin under the memory registry before
+claiming `Revoking`; DMA admission also rejects that fence under the same guard.
+CPU detach/invalidation cannot revoke device translations. Rejected revocation
+leaves the original loan and mappings intact and returns its newly admitted root
+leases. IPC reply/cancellation publishes no terminal result until DMA pins finish
+and loan cleanup succeeds. Whole-domain device teardown remains ordered before
+its IPC drain; a concurrently retiring peer also observes this pin guard.
 
 Coherent DMA and executing CPUs
 retain their existing quiescence obligations; a revocation transaction does not
@@ -355,3 +365,6 @@ for the executed regressions.
 
 The [namespace remediation](../reports/audits/2026-10-06-security-namespace-close.md)
 records whole-domain loan cleanup and closing-peer validation.
+
+Device ownership and DMA-pinned loan regression evidence is recorded in the
+[device retirement remediation](../reports/audits/2026-10-06-security-device-retirement.md).

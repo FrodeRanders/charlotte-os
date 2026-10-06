@@ -1,5 +1,5 @@
-//! Closing roots compose bounded IPC loan cleanup outside lifecycle/IPC.
-//! Remaining memory/device cleanup retains its serialization; the detached
+//! Closing roots compose device and bounded IPC cleanup outside lifecycle/IPC.
+//! Remaining memory cleanup retains its serialization; the detached
 //! owner leases its slot through final invalidation/destruction.
 
 use super::{
@@ -21,6 +21,7 @@ pub(crate) struct ClosingAddressSpace {
     handle: AddressSpaceHandle,
     slot: ClosingSlot,
     cleanup_started: bool,
+    devices_closed: bool,
     ipc_closed: bool,
 }
 
@@ -73,6 +74,7 @@ impl ClosingAddressSpace {
             handle,
             slot,
             cleanup_started: false,
+            devices_closed: false,
             ipc_closed: false,
         })
     }
@@ -104,7 +106,7 @@ impl ClosingAddressSpace {
         &self,
         handle: AddressSpaceHandle,
     ) -> Result<super::operation::AddressSpaceOperation, super::operation::OperationError> {
-        assert!(self.cleanup_started && !self.ipc_closed);
+        assert!(self.cleanup_started && self.devices_closed && !self.ipc_closed);
         super::operation::AddressSpaceOperation::acquire_for_close(handle, &self.slot)
     }
 
@@ -148,23 +150,55 @@ impl ClosingAddressSpace {
     /// Establish logical admission/DMA fences once, after older leases drain.
     /// This separated phase also permits deterministic closing-peer fixtures.
     pub(crate) fn start_cleanup(&mut self) -> Result<bool, AddressSpaceCloseError> {
+        self.start_cleanup_with_devices(|devices| devices.finish())
+    }
+
+    // Boot fixtures can reject or abandon actual detached device ownership.
+    pub(crate) fn start_cleanup_with_devices(
+        &mut self,
+        finish: impl FnOnce(
+            crate::device::retirement::PreparedNamespaceDevices<'_>,
+        ) -> Result<
+            crate::device::retirement::NamespaceDevicesClosed,
+            crate::device::DeviceError,
+        >,
+    ) -> Result<bool, AddressSpaceCloseError> {
         if self.cleanup_started {
-            return Ok(true);
+            return if self.devices_closed {
+                Ok(true)
+            } else {
+                // The previous attempt lost its owning receipt. Never skip
+                // unfinished device cleanup merely because admission is fenced.
+                Err(AddressSpaceCloseError::DeviceCleanupFailed)
+            };
         }
-        let _lifecycle = super::ADDRESS_SPACE_LIFECYCLE.lock();
-        {
+        let devices = {
+            let lifecycle = super::ADDRESS_SPACE_LIFECYCLE.lock();
             let mut table = ADDRESS_SPACE_TABLE.lock();
             match table.prepare_closing_retirement(&self.slot) {
                 Err(Error::Leased) => return Ok(false),
                 Err(error) => return Err(close_error(error)),
                 Ok(()) => {}
             }
-        }
-        super::begin_user_address_space_cleanup(self.handle);
-        crate::ipc::namespace_close::begin(self)
-            .map_err(|_| AddressSpaceCloseError::IpcCleanupFailed)?;
-        self.cleanup_started = true;
+            drop(table);
+            self.cleanup_started = true;
+            super::begin_user_address_space_cleanup(self.handle);
+            crate::ipc::namespace_close::begin(self)
+                .map_err(|_| AddressSpaceCloseError::IpcCleanupFailed)?;
+            crate::device::retirement::PreparedNamespaceDevices::prepare(self, &lifecycle)
+                .map_err(|_| AddressSpaceCloseError::DeviceCleanupFailed)?
+        };
+        // The receipt borrows this exact closing root through MMIO invalidation
+        // and DMA teardown. Neither lifecycle nor a device/table guard escapes.
+        let closed = finish(devices).map_err(|_| AddressSpaceCloseError::DeviceCleanupFailed)?;
+        assert_eq!(closed.handle(), self.handle);
+        self.devices_closed = true;
         Ok(true)
+    }
+
+    pub(crate) fn device_cleanup_handle(&self) -> AddressSpaceHandle {
+        assert!(self.cleanup_started && !self.devices_closed && !self.ipc_closed);
+        self.handle
     }
 
     /// Bounded polling/sleep happens only after this owner's lifecycle/table

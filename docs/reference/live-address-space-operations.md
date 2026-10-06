@@ -42,9 +42,13 @@ still explicitly complete. `poll(self)` returns `CloseProgress::Pending(self)`
 while any lease remains, without subsystem retirement or invalidation. The
 caller must retain the returned owner. When ready, poll refreshes completion
 storage (the table may have grown during the unlocked interval), fences backing,
-capability and IPC record sponsorship, and retires devices under lifecycle.
-It then drains IPC loans outside lifecycle/IPC as described below. After IPC
-removal and cleanup-lease drain, poll permanently seals cleanup admission before
+capability and IPC record sponsorship, and detaches device authority under
+lifecycle/device serialization. An owning device receipt borrows the closing
+root through post-guard MMIO invalidation, scratch completion and DMA teardown.
+Only its exact completion receipt permits IPC loan cleanup to start. Device
+failure/abandonment retains unfinished records and the closing root; polling
+cannot skip that failed phase. It then drains IPC loans outside lifecycle/IPC
+as described below. After IPC removal and cleanup-lease drain, poll permanently seals cleanup admission before
 remaining memory cleanup and root detachment under lifecycle. Final root
 invalidation/destruction runs after those guards are gone. Immediate close remains a distinct
 nonwaiting operation: if no staged fence exists, a busy result changes nothing.
@@ -127,10 +131,15 @@ Move/copy/result attachment cleanup still uses the serialized memory adapter.
 Raw kernel boot-fixture adapters alone retain IPC-serialized namespace loan cleanup.
 Claimed/failed queue fronts are not readable; removal re-signals endpoint/CQ
 readiness after IPC unlock, and failed tokens cannot resume delivery or reply.
-Whole-domain device cleanup still holds lifecycle across invalidation. Before
-extending split-phase operation leases, implement:
+Whole-domain device cleanup now uses `PreparedNamespaceDevices` outside
+lifecycle/device/table guards. It checks exact leaf identity before detach,
+retains scratch until confirmed invalidation, and releases each device capability
+only after physical completion. DMA failure stops root retirement. Loan
+revocation rejects live DMA pins before claiming under the memory registry,
+preventing a peer from restoring lender access while device teardown is pending.
+Before extending split-phase operation leases, implement:
 
-1. Extend composed completion ownership to whole-domain device/memory cleanup
+1. Extend composed completion ownership to whole-domain memory cleanup
    and move/copy/result attachment cleanup. Namespace loan cleanup now retains
    closing ownership, peer leases, loan receipts, scratch and authority outside
    IPC/lifecycle. The remaining adapters still retain outer serialization.
@@ -190,3 +199,6 @@ sealing, exact table/generation/overflow rejection and retained abandoned leases
 A deferred domain-close fixture runs with secondary LPs online and checks loans
 from two callers; borrower roots have no application threads. See the
 [namespace remediation](../reports/audits/2026-10-06-security-namespace-close.md).
+
+Device ownership and DMA-pinned loan regression evidence is recorded in the
+[device retirement remediation](../reports/audits/2026-10-06-security-device-retirement.md).

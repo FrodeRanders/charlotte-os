@@ -811,3 +811,20 @@ application threads; concurrent hardware walks and failed-recipient/device
 recovery remain separate validation work. Use the isolated x86 and AArch64 guest
 commands above; evidence is in the
 [endpoint close report](../reports/audits/2026-10-06-security-endpoint-close.md).
+
+## Owned device retirement and DMA loans
+
+Device boot fixtures exercise scratch/direct MMIO cleanup, fake backend DMA
+completion, exact leaf/generation checks, preparation rejection, partial
+physical failure and abandonment. Six additional closing roots remain retained,
+including five heap-page charges. A deferred fixture closes mapped MMIO after
+secondary LPs start; x86 executes real cross-LP invalidation. Roots have no
+application threads and device registers are never accessed.
+
+Loan fixtures hold real nonexclusive DMA pins for read/write loans, verify
+revocation rejection preserves mappings and lender restrictions, then explicitly
+unpin and complete cleanup. Queued/delivered IPC cancellation and reply must
+publish no result before unpin. These are ownership/pin tests, not physical DMA
+timeout or failed-IPI injection. Use the isolated guest commands above; exact
+commands, results and limitations are in the
+[device retirement report](../reports/audits/2026-10-06-security-device-retirement.md).

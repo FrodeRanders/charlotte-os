@@ -41,6 +41,7 @@ fn checked_invalidate(asid: usize, base: VAddr, pages: usize) -> bool {
 pub(crate) fn run(create: &mut impl FnMut(&str) -> usize) {
     test_success(create);
     test_preparation_errors(create);
+    test_dma_pin_rejection(create);
     test_staged_close(create);
     test_failed_completion_and_drop(create);
     crate::logln!(
@@ -131,6 +132,43 @@ fn test_preparation_errors(create: &mut impl FnMut(&str) -> usize) {
     close_cap(owner, cap).unwrap();
     close_test_address_space(owner).unwrap();
     close_test_address_space(borrower).unwrap();
+}
+
+fn test_dma_pin_rejection(create: &mut impl FnMut(&str) -> usize) {
+    for writable in [false, true] {
+        let owner = create("DMA-pinned loan owner");
+        let borrower = create("DMA-pinned loan borrower");
+        let cap = allocate(owner, 1).unwrap();
+        let loan = if writable {
+            lend_write(owner, cap, borrower).unwrap()
+        } else {
+            lend_read(owner, cap, borrower).unwrap()
+        };
+        let base = map_any(borrower, loan, writable).unwrap();
+        let pin = pin_for_dma(borrower, loan, true, writable, false).unwrap();
+        assert_eq!(revoke_lend(owner, cap, borrower, loan), Err(MemoryObjectError::LendingActive));
+        assert!(info(owner, cap).unwrap().lent);
+        assert!(info(borrower, loan).unwrap().mapped);
+        assert_eq!(
+            ADDRESS_SPACE_TABLE.lock().get_mut(borrower).unwrap().translate_address(base).unwrap(),
+            pin.frames[0]
+        );
+        // Rejected preparation returns both leases and leaves the original
+        // loan/pin intact. This is pin-state validation, not IOMMU fault injection.
+        for asid in [owner, borrower] {
+            AddressSpaceOperation::acquire(current_address_space_handle(asid).unwrap())
+                .unwrap()
+                .release()
+                .unwrap();
+        }
+        unpin_dma(pin);
+        revoke_lend(owner, cap, borrower, loan).unwrap();
+        assert!(!info(owner, cap).unwrap().lent);
+        close_cap(owner, cap).unwrap();
+        close_test_address_space(owner).unwrap();
+        close_test_address_space(borrower).unwrap();
+    }
+    crate::logln!("[loan revocation] read/write DMA pins reject revocation until explicit unpin");
 }
 
 fn test_staged_close(create: &mut impl FnMut(&str) -> usize) {

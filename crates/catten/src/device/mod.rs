@@ -39,6 +39,7 @@ pub mod smmu;
 pub mod vt_d;
 
 pub(crate) mod admission_tests;
+pub(crate) mod retirement;
 
 use alloc::collections::BTreeMap;
 use core::sync::atomic::{
@@ -1130,7 +1131,7 @@ fn close_cap_inner(asid: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceErr
 
 /// Inspection: the owning address space of the interrupt route for `intid`,
 /// if any. A driver's route is installed by [`interrupt_bind_cq`] and removed
-/// on [`close_cap`] or [`close_address_space`], so this reports whether a
+/// on [`close_cap`] or whole-domain retirement, so this reports whether a
 /// live driver currently owns the interrupt — used to verify that device
 /// authority is reclaimed when a driver domain is torn down (architecture
 /// doc §13, success criterion 9).
@@ -1139,57 +1140,6 @@ pub fn interrupt_route_owner(intid: u32) -> Option<AddressSpaceId> {
     match ROUTE_TABLE[slot].load(Ordering::Acquire) {
         0 => None,
         packed => Some(unpack_route(packed).0),
-    }
-}
-
-/// Reclaim every device capability owned by `asid` on address-space teardown:
-/// unmap MMIO regions, mask and unroute interrupt sources. Called from
-/// `close_user_address_space`.
-pub fn close_address_space(asid: AddressSpaceId) {
-    let objects = {
-        let mut devices = DEVICES.lock();
-        match devices.remove(&asid) {
-            Some(caps) => {
-                // Removal must retire every route before another grant can
-                // publish the same source. Match close_cap's lock ordering.
-                for object in caps.caps.values() {
-                    if let DeviceObject::Interrupt(irq) = object {
-                        unroute_interrupt(irq.intid);
-                    }
-                }
-                caps.caps
-            }
-            None => return,
-        }
-    };
-    for cap in objects.keys() {
-        assert!(
-            crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Device),
-            "device payload capability was absent from unified table"
-        );
-    }
-    for object in objects.values() {
-        match object {
-            DeviceObject::Mmio(region) => {
-                if let Some(base) = region.mapped {
-                    for index in 0..region.pages {
-                        let _ = arch_unmap(asid, base + (index * PAGE_SIZE));
-                    }
-                }
-            }
-            DeviceObject::Interrupt(_) => {}
-            DeviceObject::DmaDomain {
-                id,
-            } => {
-                if let Err(error) = dma::destroy_domain(*id) {
-                    crate::logln!(
-                        "[dma] quarantining DMA domain {} after teardown failure: {:?}",
-                        id,
-                        error
-                    );
-                }
-            }
-        }
     }
 }
 

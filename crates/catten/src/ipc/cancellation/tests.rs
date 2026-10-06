@@ -139,6 +139,7 @@ pub(crate) fn run() {
     success_and_wait();
     queued_endpoint_close();
     preparation_rollback();
+    dma_pin_rejection();
     staged_close();
     partial_failure();
     serialized_bulk_success();
@@ -227,6 +228,49 @@ fn success_and_wait() {
         REPLY_CANCELLED
     );
     fixture.close();
+}
+
+fn dma_pin_rejection() {
+    for delivered in [false, true] {
+        let fixture = Fixture::create(2, delivered, false);
+        let pins: Vec<_> = fixture
+            .borrows
+            .iter()
+            .enumerate()
+            .map(|(index, borrow)| {
+                object::pin_for_dma(
+                    borrow.borrower,
+                    borrow.borrower_cap,
+                    true,
+                    index % 2 == 1,
+                    false,
+                )
+                .unwrap()
+            })
+            .collect();
+        assert_eq!(
+            close_cap(fixture.caller.id(), fixture.call),
+            Err(IpcError::MemoryTransferFailed)
+        );
+        assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));
+        if let Some(token) = fixture.reply {
+            assert_eq!(reply(fixture.server.id(), token, 0), Err(IpcError::MemoryTransferFailed));
+            assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));
+        }
+        for borrow in &fixture.borrows {
+            assert!(object::info(borrow.owner, borrow.owner_cap).unwrap().lent);
+            assert!(object::info(borrow.borrower, borrow.borrower_cap).unwrap().mapped);
+        }
+        for pin in pins {
+            object::unpin_dma(pin);
+        }
+        close_cap(fixture.caller.id(), fixture.call).unwrap();
+        for borrow in &fixture.borrows {
+            assert!(!object::info(borrow.owner, borrow.owner_cap).unwrap().lent);
+        }
+        fixture.close();
+    }
+    crate::logln!("[IPC DMA loans] cancellation/reply preserve read/write loans until DMA unpin");
 }
 
 fn queued_endpoint_close() {
