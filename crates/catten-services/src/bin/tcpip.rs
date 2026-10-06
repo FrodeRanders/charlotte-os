@@ -78,12 +78,15 @@ use catten_syscall::{
     memory_close,
     memory_map_any,
     memory_unmap,
-    submit_detached_timer,
     thread_exit,
 };
 use charlotte_launch::tcpip_status as status;
 use charlotte_protocol_net::decode_status;
-use charlotte_smoltcp::CharlotteEthDevice;
+use charlotte_smoltcp::{
+    CharlotteEthDevice,
+    MAX_IPC_REQUESTS_PER_CYCLE,
+    ReactorClock,
+};
 use smoltcp::{
     iface::{
         Config,
@@ -115,15 +118,9 @@ use smoltcp::{
 };
 
 const FRAME_MAX: usize = 4096;
-/// Detached-timer cadence for the smoltcp clock. A continuously IPC-woken
-/// reactor must not collapse the timebase to a fixed 1 ms per iteration; the
-/// timer fires independently of endpoint traffic and re-arms each cycle.
-/// Kept at 100 ms (matching the discovery service) rather than 10 ms: smoltcp's
-/// timers (delayed ACK, RTO) tolerate the coarser granularity, and the lower
-/// re-arm rate avoids interacting with the 10 ms scheduler quantum on LP 0.
+/// Upper bound on idle protocol polling; endpoint readiness can wake sooner.
 const CLOCK_TICK_MS: u64 = 50;
 const ASSIGNMENT_REFRESH_MS: u64 = 1_000;
-const CLOCK_TIMER_COOKIE: u64 = 0x5443_5049_434c_4b31;
 /// Per-socket buffer size. The httpd report exceeds one 4096-byte page, so a
 /// single-page buffer forces the sender to stall mid-stream while the peer
 /// drains it; a larger buffer lets a full report be accepted without blocking.
@@ -544,8 +541,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         next_sock_id: 1,
         random,
     };
-    let mut ticks: u64 = 0;
-    let mut elapsed_ms: u64 = 1;
+    let (counter, frequency) = catten_syscall::monotonic_clock();
+    let mut clock = ReactorClock::new(counter, frequency).unwrap_or_else(|| fail(0xe00b));
+    let mut rx_queue_drops = 0u64;
     let mut rx_total: u32 = 0;
     let mut rx_map_errors: u32 = 0;
     let mut rx_last_map_status: u32 = 0;
@@ -563,11 +561,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     });
     config::write::<u32>(status::STAGE, 6);
 
-    // Arm a detached timer as the smoltcp timebase. Reading its cookie from
-    // the completion queue gives a real elapsed time that is independent of
-    // how often endpoint traffic wakes the bounded CQ wait.
     let cq = ctx.completion_queue_layout();
-    let mut clock_armed = submit_detached_timer(CLOCK_TICK_MS, 0, CLOCK_TIMER_COOKIE) != u64::MAX;
     let mut assignment_client = AssignmentClient::new();
     let mut next_assignment_refresh_ms = 0u64;
 
@@ -592,7 +586,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             catten_rt::logln!("[tcpip] shutdown: released {} socket(s)", socket_count);
             return request;
         }
-        device.poll_smoltcp(&mut iface, &mut sockets, &mut ticks, elapsed_ms);
+        let (counter, frequency) = catten_syscall::monotonic_clock();
+        let ticks = clock.sample(counter, frequency).unwrap_or_else(|| fail(0xe00b));
+        config::write::<u64>(status::MONOTONIC_MS, ticks);
+        device.poll_smoltcp(&mut iface, &mut sockets, ticks);
         let assignments_due = ticks >= next_assignment_refresh_ms;
         if assignments_due {
             next_assignment_refresh_ms = ticks.saturating_add(ASSIGNMENT_REFRESH_MS);
@@ -610,13 +607,15 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // receive, socket backpressure, and loss before the stack. `tx_ok` and
         // `tx_err` count client OP_SEND calls, not emitted Ethernet frames.
         let tick = HEARTBEAT_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        config::write::<u64>(status::REACTOR_CYCLES, tick.saturating_add(1));
         if tick & 0x3ff == 0 {
             let summary = summarize_sockets(&state, &sockets);
             catten_rt::logln!(
-                "[tcpip] hb rx={} rxq={} rx_map_err={}:{} tx_ok={} tx_err={} sockets={} \
-                 tcp=l{}/c{}/e{}/x{}/z{} udp={} recv={}/{} send_ready={}",
+                "[tcpip] hb rx={} rxq={} rx_drop={} rx_map_err={}:{} tx_ok={} tx_err={} \
+                 sockets={} tcp=l{}/c{}/e{}/x{}/z{} udp={} recv={}/{} send_ready={}",
                 rx_total,
                 device.rx_len(),
+                rx_queue_drops,
                 rx_map_errors,
                 rx_last_map_status,
                 tx_ok,
@@ -799,7 +798,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
         }
 
-        loop {
+        for _ in 0..MAX_IPC_REQUESTS_PER_CYCLE {
             let msg = ipc_recv_authenticated(endpoint.as_raw());
             let _attachments = catten_services::RequestAttachments::new(msg.memory, msg.connection);
             if msg.status == ipc_status::NO_MESSAGE {
@@ -1306,12 +1305,26 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     let frame = unsafe {
                         core::slice::from_raw_parts(scratch_vaddr_2_vaddr as *const u8, frame_len)
                     };
-                    device.push_rx(frame.to_vec());
+                    let admitted = device.push_rx(frame);
+                    if !admitted {
+                        rx_queue_drops = rx_queue_drops.saturating_add(1);
+                        config::write::<u32>(
+                            status::RX_QUEUE_DROPS,
+                            rx_queue_drops.min(u32::MAX as u64) as u32,
+                        );
+                    }
                     memory_unmap(msg.memory);
                     memory_close(msg.memory);
                     rx_total = rx_total.wrapping_add(1);
                     config::write::<u32>(status::RX_TOTAL, rx_total);
-                    ipc_reply(msg.reply, 0);
+                    ipc_reply(
+                        msg.reply,
+                        if admitted {
+                            0
+                        } else {
+                            socket::ERR_WOULD_BLOCK
+                        },
+                    );
                 }
 
                 socket::OP_STATUS => {
@@ -1397,25 +1410,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
         }
 
-        let (_, timed_out) = cq_wait_timeout(1, CLOCK_TICK_MS, 0);
-        let mut clock_fired = false;
-        while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
-            if completion.cookie == CLOCK_TIMER_COOKIE {
-                clock_fired = true;
-                clock_armed = false;
+        let _ = cq_wait_timeout(1, CLOCK_TICK_MS, 0);
+        // Bound draining even if another source can replenish this CQ. Time
+        // comes from the scalar clock, not the number of cookies consumed.
+        for _ in 0..cq.entries {
+            if unsafe { cq_read(cq.base, cq.entries) }.is_none() {
+                break;
             }
-        }
-        // The detached timer advances the clock independently of IPC traffic;
-        // a continuously-woken cq_wait must not collapse smoltcp's timebase
-        // to a fixed 1 ms and stall retransmit/ACK timers under load.
-        if clock_fired || timed_out != 0 {
-            if !clock_armed {
-                clock_armed =
-                    submit_detached_timer(CLOCK_TICK_MS, 0, CLOCK_TIMER_COOKIE) != u64::MAX;
-            }
-            elapsed_ms = CLOCK_TICK_MS;
-        } else {
-            elapsed_ms = 0;
         }
     }
 }

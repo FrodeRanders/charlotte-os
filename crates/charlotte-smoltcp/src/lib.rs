@@ -18,8 +18,8 @@
 //! let mut device = CharlotteEthDevice::new(net_conn, 1500);
 //! let mut iface = smoltcp::iface::Interface::new(config, &mut device);
 //! loop {
-//!     // ... on socket::OP_FRAME: device.push_rx(frame) ...
-//!     device.poll_smoltcp(&mut iface, &mut sockets, &mut ticks, elapsed_ms);
+//!     // ... on socket::OP_FRAME: device.push_rx(&frame) ...
+//!     device.poll_smoltcp(&mut iface, &mut sockets, now_ms);
 //! }
 //! ```
 //!
@@ -53,6 +53,42 @@ use smoltcp::{
 };
 
 /// Scratch virtual address for building transmit frames.
+/// A request flood cannot postpone packet processing or owner reclamation
+/// indefinitely by keeping the shared IPC endpoint nonempty.
+pub const MAX_IPC_REQUESTS_PER_CYCLE: usize = 16;
+pub const RX_QUEUE_MAX_FRAMES: usize = 32;
+pub const RX_QUEUE_MAX_BYTES: usize = 64 * 1024;
+
+/// Derive protocol time from the trusted counter, never from wake/timer counts.
+pub struct ReactorClock {
+    origin: u64,
+    frequency: u64,
+    last_ms: u64,
+}
+
+impl ReactorClock {
+    pub fn new(origin: u64, frequency: u64) -> Option<Self> {
+        (frequency != 0).then_some(Self {
+            origin,
+            frequency,
+            last_ms: 0,
+        })
+    }
+
+    pub fn sample(&mut self, counter: u64, frequency: u64) -> Option<u64> {
+        if frequency != self.frequency {
+            return None;
+        }
+        let delta = counter.checked_sub(self.origin)?;
+        let ms = (u128::from(delta) * 1000 / u128::from(frequency)).min(i64::MAX as u128) as u64;
+        if ms < self.last_ms {
+            return None;
+        }
+        self.last_ms = ms;
+        Some(ms)
+    }
+}
+
 const TX_SCRATCH: usize = 0x0000_0000_00c0_1000;
 
 pub struct CharlotteEthDevice {
@@ -62,6 +98,7 @@ pub struct CharlotteEthDevice {
     /// Frames delivered through the service's `OP_FRAME` ingress (from the
     /// frouter) awaiting consumption by smoltcp.
     rx: VecDeque<alloc::vec::Vec<u8>>,
+    rx_bytes: usize,
 }
 
 pub struct CharlotteRx {
@@ -81,15 +118,30 @@ impl CharlotteEthDevice {
             conn,
             mtu,
             rx: VecDeque::new(),
+            rx_bytes: 0,
         }
     }
 
     /// Push a received frame (delivered by the frouter through the service's
     /// `OP_FRAME` ingress) onto the receive queue for smoltcp to consume.
-    pub fn push_rx(&mut self, frame: alloc::vec::Vec<u8>) {
-        if !frame.is_empty() && frame.len() <= 4096 {
-            self.rx.push_back(frame);
+    /// Admission precedes copying: rejected traffic cannot allocate another
+    /// frame or grow queue metadata. Allocation pressure drops one packet.
+    pub fn push_rx(&mut self, frame: &[u8]) -> bool {
+        if frame.is_empty()
+            || frame.len() > 4096
+            || self.rx.len() >= RX_QUEUE_MAX_FRAMES
+            || self.rx_bytes.saturating_add(frame.len()) > RX_QUEUE_MAX_BYTES
+        {
+            return false;
         }
+        let mut owned = alloc::vec::Vec::new();
+        if self.rx.try_reserve(1).is_err() || owned.try_reserve_exact(frame.len()).is_err() {
+            return false;
+        }
+        owned.extend_from_slice(frame);
+        self.rx_bytes += owned.len();
+        self.rx.push_back(owned);
+        true
     }
 
     /// Number of frames queued and not yet consumed by smoltcp.
@@ -97,24 +149,16 @@ impl CharlotteEthDevice {
         self.rx.len()
     }
 
-    /// smoltcp calls this repeatedly.  We poll the driver-independent frame
-    /// queue and advance the monotonic clock by the elapsed milliseconds.
+    /// Poll a bounded frame backlog using the absolute sampled monotonic time.
     pub fn poll_smoltcp(
         &mut self,
         iface: &mut smoltcp::iface::Interface,
         sockets: &mut smoltcp::iface::SocketSet,
-        ticks: &mut u64,
-        elapsed_ms: u64,
+        now_ms: u64,
     ) {
-        advance_ticks(ticks, elapsed_ms);
-        let now = Instant::from_millis(*ticks as i64);
+        let now = Instant::from_millis(now_ms.min(i64::MAX as u64) as i64);
         iface.poll(now, self, sockets);
     }
-}
-
-/// Advance the crudely simulated monotonic clock by `elapsed_ms`.
-fn advance_ticks(ticks: &mut u64, elapsed_ms: u64) {
-    *ticks = ticks.saturating_add(elapsed_ms);
 }
 
 impl Device for CharlotteEthDevice {
@@ -129,6 +173,7 @@ impl Device for CharlotteEthDevice {
 
     fn receive(&mut self, _now: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
         let frame = self.rx.pop_front()?;
+        self.rx_bytes -= frame.len();
         Some((
             CharlotteRx {
                 frame,
@@ -212,10 +257,10 @@ mod tests {
         assert_eq!(device.rx_len(), 0);
         assert!(device.receive(now).is_none());
 
-        device.push_rx(alloc::vec![1u8; 64]);
-        device.push_rx(alloc::vec![2u8; 64]);
-        device.push_rx(alloc::vec![]);
-        device.push_rx(alloc::vec![3u8; 8192]);
+        device.push_rx(&alloc::vec![1u8; 64]);
+        device.push_rx(&alloc::vec![2u8; 64]);
+        device.push_rx(&alloc::vec![]);
+        device.push_rx(&alloc::vec![3u8; 8192]);
         assert_eq!(device.rx_len(), 2);
 
         let (rx, _tx) = device.receive(now).unwrap();
@@ -227,12 +272,45 @@ mod tests {
     }
 
     #[test]
-    fn ticks_advance_by_elapsed() {
-        use super::advance_ticks;
-        let mut ticks = 0u64;
-        advance_ticks(&mut ticks, 50);
-        assert_eq!(ticks, 50);
-        advance_ticks(&mut ticks, 1);
-        assert_eq!(ticks, 51);
+    fn sustained_ingress_keeps_count_and_byte_bounds_and_recovers_capacity() {
+        let now = smoltcp::time::Instant::from_millis(0);
+        for size in [64, 4096] {
+            let mut device = CharlotteEthDevice::new(0, 1500);
+            let frame = alloc::vec![0x55; size];
+            let capacity = super::RX_QUEUE_MAX_FRAMES.min(super::RX_QUEUE_MAX_BYTES / size);
+            for _ in 0..capacity {
+                assert!(device.push_rx(&frame));
+            }
+            for _ in 0..4096 {
+                assert!(!device.push_rx(&frame));
+            }
+            assert_eq!(device.rx_len(), capacity);
+            assert_eq!(device.rx_bytes, capacity * size);
+            for _ in 0..4096 {
+                device.receive(now).unwrap();
+                assert!(device.push_rx(&frame));
+                assert!(!device.push_rx(&frame));
+            }
+            for _ in 0..capacity {
+                device.receive(now).unwrap();
+            }
+            assert_eq!(device.rx_bytes, 0);
+            assert!(device.push_rx(&frame));
+        }
+    }
+
+    #[test]
+    fn late_and_frequent_wakes_use_actual_elapsed_time() {
+        let mut clock = super::ReactorClock::new(100, 10_000).unwrap();
+        assert_eq!(clock.sample(100, 10_000), Some(0));
+        assert_eq!(clock.sample(101, 10_000), Some(0));
+        assert_eq!(clock.sample(25_100, 10_000), Some(2500));
+        assert_eq!(clock.sample(50_100, 10_000), Some(5000));
+        assert!(clock.sample(50_101, 10_000).is_some()); // same millisecond
+        assert!(clock.sample(100, 10_000).is_none());
+        assert!(clock.sample(50_100, 1).is_none());
+        assert!(super::ReactorClock::new(0, 0).is_none());
+        let mut huge = super::ReactorClock::new(0, 1).unwrap();
+        assert_eq!(huge.sample(u64::MAX, 1), Some(i64::MAX as u64));
     }
 }

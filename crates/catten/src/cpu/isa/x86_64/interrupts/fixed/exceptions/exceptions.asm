@@ -1,30 +1,10 @@
 .code64
 
 .section .text
-//Handlers
-.extern ih_divide_by_zero
+// Ordinary faults use ih_fault; hardware aborts and NMI stay separate.
 .extern ih_double_fault
-.extern ih_general_protection_fault
-.extern ih_page_fault
-.extern ih_segment_not_present
-.extern ih_debug
 .extern ih_non_maskable_interrupt
-.extern ih_breakpoint
-.extern ih_overflow
-.extern ih_bound_range_exceeded
-.extern ih_invalid_opcode
-.extern ih_device_not_available
-.extern ih_invalid_tss
-.extern ih_stack_segment_fault
-.extern ih_x87_floating_point
-.extern ih_alignment_check
 .extern ih_machine_check
-.extern ih_simd_floating_point
-.extern ih_virtualization
-.extern ih_control_protection
-.extern ih_hypervisor_injection
-.extern ih_vmm_communication
-.extern ih_security_exception
 
 .macro EX_SAVE_REGISTERS
 	// save the caller saved registers
@@ -102,185 +82,90 @@
 1:
 .endm
 
-//The actual ISRs
-.global isr_divide_by_zero
-isr_divide_by_zero:
-	EX_PROLOGUE_NO_ERROR_CODE
-	call ih_divide_by_zero
-	EX_EPILOGUE_NO_ERROR_CODE
-	iretq
+// The hardware CS, not a fault-code guess or reusable TID, identifies origin.
+// Ten saved words precede the hardware frame. All ordinary fault vectors pass
+// the same trusted frame to Rust; hardware aborts and watchdog NMIs stay separate.
+.extern ih_fault
+.macro FAULT_NO_ERROR name, vector
+.global \name
+\name:
+    EX_PROLOGUE_NO_ERROR_CODE
+    mov edi, \vector
+    xor esi, esi
+    mov rdx, [r12 + 8 * 10] // RIP
+    mov rcx, [r12 + 8 * 11] // CS
+    xor r8d, r8d
+    call ih_fault
+    cli // keep restoring GS atomic with respect to maskable interrupts
+    EX_EPILOGUE_NO_ERROR_CODE
+    iretq
+.endm
+
+.macro FAULT_ERROR name, vector
+.global \name
+\name:
+    EX_PROLOGUE_WITH_ERROR_CODE
+    EX_ALIGN_CALL_STACK
+    mov edi, \vector
+    mov rsi, [r12 + 8 * 10] // error code
+    mov rdx, [r12 + 8 * 11] // RIP
+    mov rcx, [r12 + 8 * 12] // CS
+    .if \vector == 14
+        mov r8, cr2
+    .else
+        xor r8d, r8d
+    .endif
+    call ih_fault
+    cli
+    EX_EPILOGUE_WITH_ERROR_CODE
+    iretq
+.endm
+
+FAULT_NO_ERROR isr_divide_by_zero, 0
+FAULT_NO_ERROR isr_debug, 1
+FAULT_NO_ERROR isr_breakpoint, 3
+FAULT_NO_ERROR isr_overflow, 4
+FAULT_NO_ERROR isr_bound_range_exceeded, 5
+FAULT_NO_ERROR isr_invalid_opcode, 6
+FAULT_NO_ERROR isr_device_not_available, 7
+FAULT_ERROR isr_invalid_tss, 10
+FAULT_ERROR isr_segment_not_present, 11
+FAULT_ERROR isr_stack_segment_fault, 12
+FAULT_ERROR isr_general_protection_fault, 13
+FAULT_ERROR isr_page_fault, 14
+FAULT_NO_ERROR isr_x87_floating_point, 16
+FAULT_ERROR isr_alignment_check, 17
+FAULT_NO_ERROR isr_simd_floating_point, 19
+FAULT_NO_ERROR isr_virtualization, 20
+FAULT_ERROR isr_control_protection, 21
+FAULT_NO_ERROR isr_hypervisor_injection, 28
+FAULT_ERROR isr_vmm_communication, 29
+FAULT_ERROR isr_security_exception, 30
 
 .global isr_double_fault
 isr_double_fault:
-	//Registers are not saved since this exception is an abort
-	pop rdi //pop the error code (should always be 0)
-	and rsp, -16
-	cld
-	call ih_double_fault
-	hlt //halt the core since double faults are an abort
-
-.global isr_general_protection_fault
-isr_general_protection_fault:
-	EX_PROLOGUE_WITH_ERROR_CODE_AND_FAULT_ADDR
-	mov rdx, [r12 + 8 * 8] // saved RAX
-	call ih_general_protection_fault
-	EX_EPILOGUE_WITH_ERROR_CODE
-	iretq
-
-.global isr_page_fault
-isr_page_fault:
-	EX_PROLOGUE_WITH_ERROR_CODE_AND_FAULT_ADDR
-	mov rdx, cr2
-	call ih_page_fault
-	EX_EPILOGUE_WITH_ERROR_CODE
-	iretq
-
-.global isr_segment_not_present
-isr_segment_not_present:
-	EX_PROLOGUE_WITH_ERROR_CODE_AND_FAULT_ADDR
-	call ih_segment_not_present
-	EX_EPILOGUE_WITH_ERROR_CODE
-	iretq
-
-.global isr_debug
-isr_debug:
-	EX_PROLOGUE_NO_ERROR_CODE
-	call ih_debug
-	EX_EPILOGUE_NO_ERROR_CODE
-	iretq
-
-.global isr_non_maskable_interrupt
-isr_non_maskable_interrupt:
-	EX_PROLOGUE_NO_ERROR_CODE
-	// r12 points below the ten registers saved by EX_SAVE_REGISTERS. The
-	// hardware NMI frame begins immediately above them; vector 2 uses IST, so
-	// the interrupted stack pointer is present even for a ring-0 interruption.
-	mov rdi, [r12 + 8 * 10] // RIP
-	mov rsi, [r12 + 8 * 11] // CS
-	mov rdx, [r12 + 8 * 12] // RFLAGS
-	mov rcx, [r12 + 8 * 13] // interrupted RSP
-	mov r8, rbp             // interrupted frame pointer
-	call ih_non_maskable_interrupt
-	EX_EPILOGUE_NO_ERROR_CODE
-	iretq
-
-.global isr_breakpoint
-isr_breakpoint:
-	EX_PROLOGUE_NO_ERROR_CODE
-	call ih_breakpoint
-	EX_EPILOGUE_NO_ERROR_CODE
-	iretq
-
-
-.global isr_overflow
-isr_overflow:
-	EX_PROLOGUE_NO_ERROR_CODE
-	call ih_overflow
-	EX_EPILOGUE_NO_ERROR_CODE
-	iretq
-
-.global isr_bound_range_exceeded
-isr_bound_range_exceeded:
-	EX_PROLOGUE_NO_ERROR_CODE
-	call ih_bound_range_exceeded
-	EX_EPILOGUE_NO_ERROR_CODE
-	iretq
-
-.global isr_invalid_opcode
-isr_invalid_opcode:
-	EX_PROLOGUE_NO_ERROR_CODE
-	call ih_invalid_opcode
-	EX_EPILOGUE_NO_ERROR_CODE
-	iretq
-
-.global isr_device_not_available
-isr_device_not_available:
-	EX_PROLOGUE_NO_ERROR_CODE
-	call ih_device_not_available
-	EX_EPILOGUE_NO_ERROR_CODE
-	iretq
-
-.global isr_invalid_tss
-isr_invalid_tss:
-	EX_PROLOGUE_WITH_ERROR_CODE
-	EX_ALIGN_CALL_STACK
-	call ih_invalid_tss
-	EX_EPILOGUE_WITH_ERROR_CODE
-	iretq
-
-.global isr_stack_segment_fault
-isr_stack_segment_fault:
-	EX_PROLOGUE_WITH_ERROR_CODE
-	EX_ALIGN_CALL_STACK
-	call ih_stack_segment_fault
-	EX_EPILOGUE_WITH_ERROR_CODE
-	iretq
-
-.global isr_x87_floating_point
-isr_x87_floating_point:
-	EX_PROLOGUE_NO_ERROR_CODE
-	call ih_x87_floating_point
-	EX_EPILOGUE_NO_ERROR_CODE
-	iretq
-
-.global isr_alignment_check
-isr_alignment_check:
-	EX_PROLOGUE_WITH_ERROR_CODE
-	EX_ALIGN_CALL_STACK
-	call ih_alignment_check
-	EX_EPILOGUE_WITH_ERROR_CODE
-	iretq
+    pop rdi
+    and rsp, -16
+    cld
+    call ih_double_fault
+    hlt
 
 .global isr_machine_check
 isr_machine_check:
-	// Registers are not saved since this exception is an abort
-	// Unlike Double Fault, Machine Check does not push an error code
-	and rsp, -16
-	cld
-	call ih_machine_check
-	hlt // Halt the core since machine checks indicate severe hardware issues
+    and rsp, -16
+    cld
+    call ih_machine_check
+    hlt
 
-.global isr_simd_floating_point
-isr_simd_floating_point:
-	EX_PROLOGUE_NO_ERROR_CODE
-	call ih_simd_floating_point
-	EX_EPILOGUE_NO_ERROR_CODE
-	iretq
-
-.global isr_virtualization
-isr_virtualization:
-	EX_PROLOGUE_NO_ERROR_CODE
-	call ih_virtualization
-	EX_EPILOGUE_NO_ERROR_CODE
-	iretq
-
-.global isr_control_protection
-isr_control_protection:
-	EX_PROLOGUE_WITH_ERROR_CODE
-	EX_ALIGN_CALL_STACK
-	call ih_control_protection
-	EX_EPILOGUE_WITH_ERROR_CODE
-	iretq
-
-.global isr_hypervisor_injection
-isr_hypervisor_injection:
-	EX_PROLOGUE_NO_ERROR_CODE
-	call ih_hypervisor_injection
-	EX_EPILOGUE_NO_ERROR_CODE
-	iretq
-
-.global isr_vmm_communication
-isr_vmm_communication:
-	EX_PROLOGUE_WITH_ERROR_CODE
-	EX_ALIGN_CALL_STACK
-	call ih_vmm_communication
-	EX_EPILOGUE_WITH_ERROR_CODE
-	iretq
-
-.global isr_security_exception
-isr_security_exception:
-	EX_PROLOGUE_WITH_ERROR_CODE
-	EX_ALIGN_CALL_STACK
-	call ih_security_exception
-	EX_EPILOGUE_WITH_ERROR_CODE
-	iretq
+.global isr_non_maskable_interrupt
+isr_non_maskable_interrupt:
+    EX_PROLOGUE_NO_ERROR_CODE
+    mov rdi, [r12 + 8 * 10] // RIP
+    mov rsi, [r12 + 8 * 11] // CS
+    mov rdx, [r12 + 8 * 12] // RFLAGS
+    mov rcx, [r12 + 8 * 13] // interrupted RSP (IST)
+    mov r8, rbp
+    call ih_non_maskable_interrupt
+    cli
+    EX_EPILOGUE_NO_ERROR_CODE
+    iretq

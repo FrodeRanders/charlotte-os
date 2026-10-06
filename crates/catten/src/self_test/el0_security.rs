@@ -178,6 +178,36 @@ extern "C" fn verify() {
         |domain| word(domain, status::REQUESTS) >= 64,
         "cancellation traffic start",
     );
+    let socket_floods =
+        [spawn(&artifact_key, &deployment_key, 2), spawn(&artifact_key, &deployment_key, 2)];
+    for socket_flood in &socket_floods {
+        wait_for(
+            socket_flood.get(),
+            |domain| word(domain, status::REQUESTS) >= 64,
+            "socket pressure start",
+        );
+    }
+    let tcpip = crate::service::launch::steady_state().appliance.unwrap().tcpip;
+    let tcpip_base: *const u8 = tcpip.status_frame.into();
+    let tcpip_word =
+        |offset: usize| unsafe { core::ptr::read_volatile(tcpip_base.add(offset).cast::<u64>()) };
+    let start_ms = tcpip_word(charlotte_launch::tcpip_status::MONOTONIC_MS);
+    let start_cycles = tcpip_word(charlotte_launch::tcpip_status::REACTOR_CYCLES);
+    let pressure_deadline = crate::self_test::results::Deadline::after_millis(10_000);
+    while tcpip_word(charlotte_launch::tcpip_status::MONOTONIC_MS) < start_ms.saturating_add(1_000)
+    {
+        pressure_deadline.assert_pending("TCP/IP clock progress under admitted client pressure");
+        sleep_millis(10);
+    }
+    assert!(tcpip_word(charlotte_launch::tcpip_status::REACTOR_CYCLES) > start_cycles);
+    for socket_flood in socket_floods {
+        let requests = word(socket_flood.get(), status::REQUESTS);
+        socket_flood.stop();
+        logln!(
+            "[security] TCP/IP cycle/time progress under socket pressure; retired {requests} \
+             requests"
+        );
+    }
     let mut previous_generation = 0;
     let mut previous_domain: Option<crate::memory::AddressSpaceHandle> = None;
     for _ in 0..2 {

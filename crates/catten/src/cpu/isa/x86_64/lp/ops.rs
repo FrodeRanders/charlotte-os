@@ -23,6 +23,11 @@ pub static PER_CPU: [crate::klib::sync_cell::SyncUnsafeCell<PerCpuData>;
     crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS];
 
 pub fn init_lp_state() {
+    let leaf1 = core::arch::x86_64::__cpuid(1);
+    assert!(
+        leaf1.edx & ((1 << 24) | (1 << 26)) == (1 << 24) | (1 << 26),
+        "x86_64 CPU lacks required FXSR/SSE2 state support"
+    );
     let basic_max = core::arch::x86_64::__cpuid(0).eax;
     let extended_max = core::arch::x86_64::__cpuid(0x8000_0000).eax;
     let leaf7 = (basic_max >= 7).then(|| core::arch::x86_64::__cpuid_count(7, 0));
@@ -41,7 +46,16 @@ pub fn init_lp_state() {
     );
     unsafe {
         core::arch::asm! {
+            // Eager FXSAVE/FXRSTOR owns every enabled extended register.
+            // Do not inherit bootloader TS/EM or expose unsaved AVX state.
+            "mov rax, cr0",
+            "and rax, -13",      // clear EM and TS
+            "or rax, 0x22",      // MP and NE
+            "mov cr0, rax",
             "mov rax, cr4",
+            "or rax, 0x600",     // OSFXSR and OSXMMEXCPT
+            "btr rax, 18",       // OSXSAVE off: no unsaved AVX/XSAVE state
+
             "or rax, 1<<16",     // enable FSGSBASE
             // The kernel never executes user mappings. User data is reached
             // through validated physical/HHDM aliases, so SMEP can remain on.
@@ -400,7 +414,24 @@ pub extern "C" fn switch_ctx(curr_rsp0_ptr: *mut u64, next_rsp0_ptr: *const u64)
         "push rax",
         // compute the stack pointer offset in the thread context and save it to the current thread context
         "mov [rdi], rsp",
+        "fxsave64 [rdi + 32]",
+        "rdfsbase rax",
+        "mov [rdi + 16], rax",
+        "mov ecx, 0xc0000102", // hidden user GS while kernel GS is active
+        "rdmsr",
+        "shl rdx, 32",
+        "or rax, rdx",
+        "mov [rdi + 24], rax",
         "skip_save:",
+        "fxrstor64 [rsi + 32]",
+        "mov rax, [rsi + 16]",
+        "wrfsbase rax",
+        "mov rax, [rsi + 24]",
+        "mov rdx, rax",
+        "shr rdx, 32",
+        "mov ecx, 0xc0000102",
+        "wrmsr",
+
         // load the stack pointer from the next thread context
         "mov rsp, [rsi]",
         // restore caller-saved registers
@@ -458,16 +489,25 @@ pub extern "C" fn enter_init_thread_ctx(rsp0_ptr: *const u64) {
 /// path with a valid `UserEntryFrames` layout at the top of the kernel stack
 /// and the kernel GS base active.
 pub unsafe extern "C" fn user_trampoline() -> ! {
-    // Safety: This function should only be entered by returning from `yield_lp` after having
-    // switched to a new user thread. The caller is responsible for ensuring that the stack is
-    // properly set up with a `UserEntryFrames` struct, and that the CPU is in the correct state for
-    // executing this trampoline (e.g., interrupts disabled, correct segment selectors, etc.).
     naked_asm!(
-        // Context switches run with the per-LP kernel GS base active. Swap to
-        // the zero user base before entering ring 3; the hidden kernel base is
-        // retained for the next privilege transition.
+        // FPU and both user TLS bases were initialized from this context by
+        // switch_ctx. Clear every GPR except the prepared user stack pointer.
+        "xor eax, eax",
+        "xor ebx, ebx",
+        "xor ecx, ecx",
+        "xor edx, edx",
+        "xor esi, esi",
+        "xor edi, edi",
+        "xor ebp, ebp",
+        "xor r8d, r8d",
+        "xor r9d, r9d",
+        "xor r10d, r10d",
+        "xor r11d, r11d",
+        "xor r12d, r12d",
+        "xor r13d, r13d",
+        "xor r14d, r14d",
+        "xor r15d, r15d",
         "swapgs",
-        // `iretq` to the user entry point
         "iretq",
     );
 }

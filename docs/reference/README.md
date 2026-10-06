@@ -55,3 +55,5 @@ should be updated with the implementation when those contracts change.
   exclusive per-domain stack slots, retirement and scoped exit watches.
 - [Cryptographic entropy](entropy.md) — architectural randomness, the
   capability-scoped VirtIO RNG service, and QEMU provisioning.
+
+- [User faults and initial CPU state](user-fault-containment.md)

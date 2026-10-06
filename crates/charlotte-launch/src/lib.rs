@@ -394,6 +394,10 @@ pub mod tcpip_status {
     pub const RX_MAP_ERRORS: usize = 24;
     /// Raw memory-map status from the most recent rejected frame.
     pub const RX_LAST_MAP_STATUS: usize = 28;
+    pub const RX_QUEUE_DROPS: usize = 32;
+    /// Absolute reactor time sampled from the kernel monotonic clock.
+    pub const MONOTONIC_MS: usize = 40;
+    pub const REACTOR_CYCLES: usize = 48;
 }
 
 pub mod tcpclient_status {

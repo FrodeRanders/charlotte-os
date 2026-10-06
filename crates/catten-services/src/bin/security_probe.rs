@@ -123,6 +123,32 @@ fn main(ctx: Context) -> ! {
     let endpoint = Endpoint::create(0x5ec, 1, 8).unwrap_or_else(|_| catten_rt::domain_abort());
     config::write::<u32>(status::STAGE, status::STARTED);
 
+    if matches!(ctx.manifest_value(status::MODE_KEY), Some(ManifestValue::Unsigned(2))) {
+        let tcpip =
+            grant_client::acquire(controller, &descriptor, b"tcpip", deployment::RIGHT_CALL)
+                .unwrap_or_else(|_| catten_rt::domain_abort());
+        let mut submitted = 0u32;
+        loop {
+            if let Some(shutdown) = ctx.lifecycle().shutdown_requested() {
+                drop(tcpip);
+                drop(endpoint);
+                shutdown.complete();
+            }
+            // Real admitted clients continuously replenish the shared queue.
+            // Every pending call remains in the owning batch through response
+            // or cancellation; no integer cleanup or borrowed backing escapes.
+            let batch: Vec<_> = (0..8)
+                .filter_map(|_| tcpip.call(socket::OP_CONNECTION_STATE, u64::MAX).ok())
+                .collect();
+            submitted = submitted.saturating_add(batch.len() as u32);
+            for call in batch {
+                let result = call.wait().unwrap_or_else(|_| catten_rt::domain_abort());
+                check(result.result == socket::ERR_BAD_SOCKET, 47);
+            }
+            config::write::<u32>(status::REQUESTS, submitted);
+        }
+    }
+
     if matches!(ctx.manifest_value(status::MODE_KEY), Some(ManifestValue::Unsigned(1))) {
         // Publish from a distinct domain: copied IPC attachments deliberately
         // reject same-domain destinations. Never receive on this endpoint.

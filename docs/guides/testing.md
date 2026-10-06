@@ -774,3 +774,22 @@ rejection and denial of TCP/IP's privileged owner-status syscall. Its scoped
 probe reports `checks=0xffff`. These checks supplement the 19 deferred tests.
 The final remediation evidence is linked from
 [the remediation report](../reports/audits/2026-10-05-security-remediation.md).
+
+## User entry, x86 faults and TCP/IP pressure
+
+The normal EL0 verifier additionally runs `self_test::user_isolation::verify`.
+Handwritten architecture stubs snapshot initial GPR and FP/SIMD state before
+any runtime code. x86 checks default controls, zero payload and FS/GS bases,
+then preserves nonzero x87/XMM/TLS state through a timer wait and another
+fresh domain. Separate domains exercise invalid opcode, divide-by-zero, user
+CLI, unmapped data, NX fetch and rejected stack growth. Each domain must retire
+while the verifier remains alive; fixture backing uses the normal image owners.
+
+Run the x86 guest with `scripts/run-x86_64.sh --no-network --instance NAME
+--fresh-storage --timeout 160`. The AArch64 security guest also runs the first
+entry snapshot and two scoped TCP/IP CALL pressure clients, verifies at least
+one second of real protocol-clock progress and advancing reactor cycles, then
+retires the pressure clients before the existing scoped authorization checks.
+Host adapter tests cover saturated count/byte limits, sustained refill,
+drain/reuse and delayed/frequent clock samples. A deliberate physical packet
+flood and NIC fault recovery are separate validation work.

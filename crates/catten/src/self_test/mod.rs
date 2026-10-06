@@ -190,6 +190,7 @@ pub mod shard;
 pub mod statistics;
 pub mod syscall;
 mod thread_admission;
+mod user_isolation;
 pub mod waiters;
 
 use crate::logln;

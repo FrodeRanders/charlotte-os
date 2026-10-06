@@ -3,7 +3,6 @@ use crate::{
         init::gdt,
         interrupts::idt::Idt,
     },
-    logln,
     memory::VAddr,
 };
 
@@ -76,172 +75,70 @@ unsafe extern "custom" {
     fn isr_security_exception();
 }
 
-#[unsafe(no_mangle)]
-extern "C" fn ih_double_fault(_error_code: u64) {
-    // Safety: This function is called by the CPU on a double fault exception.
-    logln!("A double fault has occurred in kernelspace! Panicking!");
-    panic!("Double fault");
+/// Only a saved ring-3 code selector permits application containment. Kernel
+/// faults, NMIs and hardware aborts must never be disguised as tenant failures.
+const fn user_origin(cs: u64) -> bool {
+    cs & 3 == 3
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn ih_divide_by_zero() {
-    logln!("Divide by zero exception occurred!");
-    panic!("Divide by zero");
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn ih_debug() {
-    logln!("Debug exception occurred!");
-    panic!("Debug exception");
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn ih_non_maskable_interrupt(rip: u64, cs: u64, rflags: u64, rsp: u64, rbp: u64) {
-    // The scheduler watchdog uses a requested NMI to snapshot an LP that may
-    // be spinning with maskable interrupts disabled. The NMI itself must not
-    // log, allocate, or take a lock: the interrupted LP may own that lock.
-    if crate::debug_trace::record_requested_nmi(rip, cs, rflags, rsp, rbp) {
-        return;
-    }
-    logln!("Non-maskable interrupt occurred!");
-    panic!("Non-maskable interrupt");
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn ih_breakpoint() {
-    logln!("Breakpoint exception occurred!");
-    panic!("Breakpoint exception");
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn ih_overflow() {
-    logln!("Overflow exception occurred!");
-    panic!("Overflow exception");
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn ih_bound_range_exceeded() {
-    logln!("Bound range exceeded exception occurred!");
-    panic!("Bound range exceeded");
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn ih_invalid_opcode() {
-    logln!("Invalid opcode exception occurred!");
-    panic!("Invalid opcode");
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn ih_device_not_available() {
-    logln!("Device not available exception occurred!");
-    panic!("Device not available");
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn ih_invalid_tss() {
-    logln!("Invalid TSS exception occurred!");
-    panic!("Invalid TSS");
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn ih_segment_not_present(error_code: u64, address: VAddr) {
-    panic!(
-        "Segment not present exception occurred at address 0x{address:?} with segment selector \
-         index {error_code}"
-    );
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn ih_stack_segment_fault() {
-    logln!("Stack segment fault occurred!");
-    panic!("Stack segment fault");
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn ih_general_protection_fault(error_code: u64, fault_addr: VAddr, rax_val: u64) {
-    panic!(
-        "General protection fault occurred at virtual address=0x{fault_addr:x?} with error \
-         code=0x{error_code:x}, and RAX=0x{rax_val:x}."
-    );
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn ih_page_fault(error_code: u64, rip: VAddr, cr2: VAddr) {
-    // Demand-grown user stack: a not-present, user-mode, data access to the
-    // guard region is growth, not a fault. Instruction fetches and protection
-    // violations stay fatal. The mapping path invalidated the faulting
-    // translation, so the ISR epilogue's `iretq` retries the instruction.
-    let not_present = error_code & 0b1 == 0;
-    let user = error_code & 0b100 != 0;
-    let data = error_code & 0b1_0000 == 0;
-    if not_present && user && data {
+extern "C" fn ih_fault(vector: u64, error_code: u64, rip: VAddr, cs: u64, address: VAddr) {
+    if user_origin(cs) {
         let asid = crate::cpu::isa::x86_64::memory::paging::CURRENT_LOGICAL_ASID
-            [crate::cpu::isa::x86_64::lp::ops::get_lp_id() as usize]
+            [crate::cpu::isa::lp::ops::get_lp_id() as usize]
             .load(core::sync::atomic::Ordering::Acquire);
-        if asid != crate::memory::KERNEL_ASID {
-            let fault_addr: usize = cr2.into();
+        assert_ne!(asid, crate::memory::KERNEL_ASID, "ring-3 fault without a live user context");
+        // The complete hardware/GPR frame is on this thread's trusted stack
+        // and GS is already the kernel base. Let remote retirement/shootdown
+        // IPIs progress before taking any scheduler or address-space guard.
+        crate::cpu::isa::lp::ops::unmask_interrupts!();
+        let not_present_data = error_code & (1 | 4 | 16) == 4;
+        if vector == 14 && not_present_data {
+            let fault_addr = usize::from(address);
             if crate::cpu::scheduler::threads::grow_current_user_stack(asid, fault_addr).is_some()
                 || crate::memory::commit_user_heap_page(asid, fault_addr)
             {
                 return;
             }
         }
+        crate::early_logln!(
+            "FATAL USER FAULT: ASID={} vector={} error={:#x} RIP={:?} address={:?}",
+            asid,
+            vector,
+            error_code,
+            rip,
+            address
+        );
+        crate::cpu::scheduler::abort_address_space(asid);
     }
     panic!(
-        "Page fault at RIP={rip:?} and faulting address={cr2:?} with error code 0b{error_code:b}"
+        "Kernel exception vector={vector} error={error_code:#x} RIP={rip:?} CS={cs:#x} \
+         address={address:?}"
     );
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn ih_x87_floating_point() {
-    logln!("x87 floating point exception occurred!");
-    panic!("x87 floating point exception");
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn ih_alignment_check() {
-    logln!("Alignment check exception occurred!");
-    panic!("Alignment check");
+extern "C" fn ih_double_fault(_error_code: u64) {
+    panic!("Double fault");
 }
 
 #[unsafe(no_mangle)]
 extern "C" fn ih_machine_check() {
-    logln!("Machine check exception occurred!");
     panic!("Machine check");
 }
 
 #[unsafe(no_mangle)]
-extern "C" fn ih_simd_floating_point() {
-    logln!("SIMD floating point exception occurred!");
-    panic!("SIMD floating point exception");
+extern "C" fn ih_non_maskable_interrupt(rip: u64, cs: u64, rflags: u64, rsp: u64, rbp: u64) {
+    if crate::debug_trace::record_requested_nmi(rip, cs, rflags, rsp, rbp) {
+        return;
+    }
+    panic!("Non-maskable interrupt");
 }
 
-#[unsafe(no_mangle)]
-extern "C" fn ih_virtualization() {
-    logln!("Virtualization exception occurred!");
-    panic!("Virtualization exception");
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn ih_control_protection() {
-    logln!("Control protection exception occurred!");
-    panic!("Control protection exception");
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn ih_hypervisor_injection() {
-    logln!("Hypervisor injection exception occurred!");
-    panic!("Hypervisor injection");
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn ih_vmm_communication() {
-    logln!("VMM communication exception occurred!");
-    panic!("VMM communication");
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn ih_security_exception() {
-    logln!("Security exception occurred!");
-    panic!("Security exception");
+pub(crate) fn test_fault_origin() {
+    assert!(user_origin(gdt::USER_CODE_SELECTOR as u64));
+    assert!(!user_origin(gdt::KERNEL_CODE_SELECTOR as u64));
+    assert!(!user_origin(0));
+    assert!(!user_origin(1));
+    assert!(!user_origin(2));
 }

@@ -220,6 +220,23 @@ impl From<id_table::Error> for Error {
     }
 }
 
+/// Eagerly owned x87/MMX/SSE state. AVX is unavailable while OSXSAVE is
+/// disabled; the software-float ABI does not grant access to unsaved hardware
+/// state. A fresh image contains zero register payload and default controls.
+#[repr(C, align(16))]
+#[derive(Debug)]
+pub(crate) struct FxState([u8; 512]);
+
+impl Default for FxState {
+    fn default() -> Self {
+        let mut bytes = [0; 512];
+        bytes[..2].copy_from_slice(&0x037fu16.to_le_bytes());
+        bytes[24..28].copy_from_slice(&0x1f80u32.to_le_bytes());
+        Self(bytes)
+    }
+}
+
+#[repr(C, align(16))]
 #[derive(Debug, Default)]
 pub struct ThreadContext {
     /// The saved kernel stack pointer at which this thread's `switch_ctx` frame
@@ -230,6 +247,10 @@ pub struct ThreadContext {
     /// `TSS.RSP0` so a ring-3 interrupt or syscall entry lands on the correct
     /// per-thread stack).
     pub kernel_stack_top: u64,
+    pub(crate) fs_base: u64,
+    /// While kernel GS is active, this lives in IA32_KERNEL_GS_BASE.
+    pub(crate) user_gs_base: u64,
+    pub(crate) fp_state: FxState,
     _kernel_stack_buf: VAddr,
     _user_stack_buf: Option<UserStack>,
     /// Lowest ring-3 stack pointer observed for this thread. Sampling happens
@@ -415,6 +436,9 @@ impl ThreadContext {
         Ok(ThreadContext {
             rsp_cpl0: <VAddr as Into<u64>>::into(kernel_stack_top),
             kernel_stack_top: <VAddr as Into<u64>>::into(kernel_stack_top_va),
+            fs_base: 0,
+            user_gs_base: 0,
+            fp_state: FxState::default(),
             _kernel_stack_buf: kernel_stack_buf,
             _user_stack_buf: Some(user_stack),
             user_stack_low_water: AtomicUsize::new(user_stack_top_va),
@@ -430,6 +454,9 @@ impl ThreadContext {
         Ok(ThreadContext {
             rsp_cpl0: <VAddr as Into<u64>>::into(kernel_stack_top),
             kernel_stack_top: <VAddr as Into<u64>>::into(kernel_stack_top_va),
+            fs_base: 0,
+            user_gs_base: 0,
+            fp_state: FxState::default(),
             _kernel_stack_buf: kernel_stack_buf,
             _user_stack_buf: None,
             user_stack_low_water: AtomicUsize::new(0),
@@ -442,3 +469,10 @@ pub static TC_RSP_CPL0_OFFSET: usize = offset_of!(ThreadContext, rsp_cpl0);
 
 #[unsafe(no_mangle)]
 pub static TC_KERNEL_STACK_TOP_OFFSET: usize = offset_of!(ThreadContext, kernel_stack_top);
+
+// switch_ctx receives a pointer to rsp_cpl0. The auxiliary state is part of
+// the same pinned context allocation and remains valid across the switch.
+const _: () = assert!(offset_of!(ThreadContext, rsp_cpl0) == 0);
+const _: () = assert!(offset_of!(ThreadContext, fs_base) == 16);
+const _: () = assert!(offset_of!(ThreadContext, user_gs_base) == 24);
+const _: () = assert!(offset_of!(ThreadContext, fp_state) == 32);

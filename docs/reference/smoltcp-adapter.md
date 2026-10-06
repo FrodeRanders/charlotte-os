@@ -84,8 +84,8 @@ for the boot-done marker, then runs a poll loop that:
 
 1. Pushes incoming `OP_FRAME` deliveries (IPv4/ARP from the frouter) into the
    adapter's receive queue;
-2. Runs `iface.poll()` on a monotonic clock advanced by the poll interval;
-3. Services the socket API (`OP_SOCKET`/`OP_CONNECT`/`OP_BIND`/`OP_LISTEN`/
+2. Runs `iface.poll()` using milliseconds sampled from the kernel monotonic counter;
+3. Services at most 16 requests per cycle through the socket API (`OP_SOCKET`/`OP_CONNECT`/`OP_BIND`/`OP_LISTEN`/
    `OP_ACCEPT`/`OP_SEND`/`OP_RECV`/`OP_CLOSE`) over its endpoint;
 4. Completes deferred `OP_RECV` replies when socket data arrives.
 
@@ -266,3 +266,25 @@ The report has two sources with different privileges:
 - **Kernel scheduler data** comes from the `observe` service, which holds the
   unique `SystemObserver` capability granting system-wide thread statistics.
   The httpd queries it over IPC; it never holds the capability itself.
+
+## Bounded reactor progress
+
+The TCP/IP reactor samples the kernel counter/frequency each cycle. Delayed or
+frequent wakes do not distort transport time, socket expiry or assignment
+refresh. CQ draining is bounded to the ring capacity and IPC processing to 16
+requests before returning to shutdown checks, packet polling and reclamation.
+This is a cycle bound, not a per-client fairness guarantee.
+
+`CharlotteEthDevice::push_rx(&[u8])` admits at most 32 frames and 64 KiB of queued
+payload. It checks both limits before copying, prepares allocations fallibly,
+and returns rejection on congestion. TCP/IP returns `ERR_WOULD_BLOCK` to the
+router for that frame and increments its drop counter. Slot/byte capacity
+returns when the frame is removed for consumption. The socket heap reserve
+also leaves space for this bounded backlog. No finite timeout for an
+unresponsive NIC transmit operation is introduced.
+
+Status-page diagnostics expose `RX_QUEUE_DROPS`, `MONOTONIC_MS` and
+`REACTOR_CYCLES`. Host regressions keep refilling a saturated queue while
+checking bounds, drain/reuse and actual-clock progression. The security guest
+adds two scoped CALL clients and checks reactor/clock progress under their
+request batches. See [the follow-up report](../reports/audits/2026-10-05-security-follow-up.md).

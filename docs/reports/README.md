@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [2026-10-05 security follow-up and remediation (SEC-23–25)](audits/2026-10-05-security-follow-up.md)
+
 - [2026-10-05 security remediation](audits/2026-10-05-security-remediation.md)
 - [2026-10-05 renewed security audit](audits/2026-10-05-security-audit.md)
 - [2026-10-03 security audit](audits/2026-10-03-security-audit.md)
