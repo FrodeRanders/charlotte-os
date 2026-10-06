@@ -245,9 +245,24 @@ if close cannot confirm safety rather than ending the borrow normally.
 
 Bulk endpoint/domain cleanup still uses the IPC-serialized adapter and needs a
 multi-call completion owner before unlocking. Its reply-token cleanup now records
-successful loans and retains a failed token without reporting terminal completion.
+successful loans and returns an error while retaining a failed token without
+reporting terminal completion. Endpoint close and serialized pending-call close
+confirm all relevant loans before consuming close authority, pending records or
+queued attachments. A failed token is marked `cleanup_failed`; receive/readiness
+and reply cannot restore usable authority. Earlier successful loans remain removed
+from the token, while the failed receipt retains its backing pin and fence.
+Close failure publishes neither endpoint closure nor a caller cancellation wake.
+
+Namespace cleanup preflights all tokens involving that namespace, including
+delivered replies and foreign callers, before consuming IPC capabilities. It
+returns errors to root retirement instead of discarding failed token ownership.
+Root cleanup retains its exact root, slot, accounts and closing fence on
+`IpcCleanupFailed`; competing close and fresh operation leases reject. Admission
+and some other subsystems may already be retired, so this is a terminal retained
+namespace, not a rollback or retry API. Cleanup iterates admitted registry storage
+without allocating capability/token snapshots.
 Whole-root cleanup uses a non-leasing adapter after existing leases drain, never
-acquiring lifecycle beneath IPC. Bulk pending-call teardown and comprehensive
+acquiring lifecycle beneath IPC. Split-phase bulk teardown and comprehensive
 failure recovery/quiescence remain separate work.
 
 Coherent DMA and executing CPUs
@@ -290,3 +305,14 @@ in addition to the kernel-range fixture's one quarantined page. These fixtures
 model the dangerous interleaving, not a concurrent hardware-walk stress test.
 AArch64 security guests execute them; x86 compilation does not establish x86
 IPI progress or execute its failure path.
+
+Bulk-cancellation fixtures additionally exercise queued endpoint close and
+queued/delivered caller-root close with mapped loans. A real prepared loan is
+abandoned on the second cleanup step to model uncertain physical retirement.
+The fixtures verify partial-success receipts, retained queue/call/capability
+authority, zero terminal waiter notifications, failed receive/reply admission,
+propagated root errors, closing-lease rejection and non-reuse of roots, frames
+and original charges. Failed probes intentionally retain their namespaces and
+backing; no recovery bypass frees them. See the
+[bulk cleanup remediation](../reports/audits/2026-10-06-security-bulk-cleanup.md)
+for executed guest results and limits.

@@ -91,8 +91,8 @@ pub(crate) fn run() {
     abandonment();
     crate::logln!(
         "[IPC reply ownership] unlocked loan detach, competing reply/close, preparation rollback, \
-         staged close, partial failure and abandonment passed (two retained data pages and two \
-         live roots)"
+         staged close, partial failure and abandonment passed; failed cleanup retains exact \
+         closing roots and original backing charges"
     );
 }
 
@@ -265,15 +265,17 @@ fn completion_failure() {
         object::close_cap(fixture.caller.id(), fixture.owners[1]),
         Err(MemoryObjectError::LendingActive)
     );
-    let caller = fixture.caller;
-    fixture.close(); // Ordinary error released both leases; failed backing stays pinned.
-    assert_eq!(
-        memory::budget::used(caller),
-        memory::budget::Amount {
-            pages: 1,
-            objects: 1
-        }
-    );
+    let used = memory::budget::used(fixture.caller);
+    for handle in [fixture.caller, fixture.server] {
+        assert_eq!(
+            memory::close_user_address_space_handle(handle),
+            Err(AddressSpaceCloseError::IpcCleanupFailed)
+        );
+        assert_eq!(memory::current_address_space_handle(handle.id()), Some(handle));
+    }
+    // Returned leases do not prove uncertain loan cleanup. Whole-root close
+    // retains the token, roots and every original charge on that rejection.
+    assert_eq!(memory::budget::used(fixture.caller), used);
 }
 
 fn abandonment() {

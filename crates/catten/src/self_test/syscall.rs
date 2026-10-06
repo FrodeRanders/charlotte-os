@@ -366,7 +366,7 @@ pub fn test_syscall_dispatch() {
         syscall::syscall_dispatch(&mut f, call_no::IPC_CLOSE);
         assert_eq!(f.regs[0], 0, "IPC_CLOSE should close known caps");
     }
-    crate::ipc::close_address_space(asid);
+    crate::ipc::close_address_space(asid).unwrap();
 
     let memory_owner = create_syscall_test_address_space("owner");
     let memory_server = create_syscall_test_address_space("server");

@@ -45,6 +45,9 @@ storage (the table may have grown during the unlocked interval), performs the
 existing logical cleanup under lifecycle, then releases those guards before
 final root invalidation/destruction. Immediate close remains a distinct
 nonwaiting operation: if no staged fence exists, a busy result changes nothing.
+Once immediate close passes preflight, it also owns a closing slot before
+subsystem mutation. An IPC cleanup error retains that fence and root just like
+an abandoned staged request; it cannot reopen admission after partial retirement.
 
 `wait(self, timeout_ms)` polls and sleeps only after its own guards have gone.
 Timeout returns `OperationDrainTimedOut`; dropping the request retains the

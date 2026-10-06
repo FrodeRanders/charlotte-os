@@ -210,6 +210,7 @@ pub enum AddressSpaceCloseError {
     OperationsInFlight,
     CloseInProgress,
     OperationDrainTimedOut,
+    IpcCleanupFailed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -504,14 +505,21 @@ fn close_user_address_space_with_preflight(
         _ => AddressSpaceCloseError::RetirementMetadataAllocationFailed,
     })?;
 
-    close_user_address_space_after_preflight(handle, None)
+    // Logical cleanup can now reject uncertain IPC loans. Own the admission
+    // fence before that irreversible phase; any error retains this generation,
+    // its hierarchy and charges rather than reopening an incomplete namespace.
+    let closing = ADDRESS_SPACE_TABLE
+        .lock()
+        .begin_close(asid, handle.generation())
+        .map_err(|_| AddressSpaceCloseError::RetirementMetadataAllocationFailed)?;
+    close_user_address_space_after_preflight(handle, closing)
 }
 
 // Caller holds lifecycle and has prepared completion storage while validating
-// exact identity and zero live operations. Only a staged owner supplies a slot.
+// exact identity and zero live operations. Every close owns its linear fence.
 fn close_user_address_space_after_preflight(
     handle: AddressSpaceHandle,
-    closing: Option<crate::klib::collections::id_table::ClosingSlot>,
+    closing: crate::klib::collections::id_table::ClosingSlot,
 ) -> Result<retirement::RetiredAddressSpace, AddressSpaceCloseError> {
     let asid = handle.id();
 
@@ -529,7 +537,7 @@ fn close_user_address_space_after_preflight(
     // Quiesce IPC transactions before destroying their memory attachments.
     // A retiring destination can reject a later vector entry; earlier moves
     // must still be present so rollback can restore their original handles.
-    crate::ipc::close_address_space(asid);
+    crate::ipc::close_address_space(asid).map_err(|_| AddressSpaceCloseError::IpcCleanupFailed)?;
     object::close_address_space(asid);
     object::close_scratch_address_space(asid);
     crate::completion::close_address_space(asid);
@@ -564,11 +572,9 @@ fn close_user_address_space_after_preflight(
 
     let entry = {
         let mut table = ADDRESS_SPACE_TABLE.lock();
-        match closing {
-            Some(slot) => table.retire_closing(slot),
-            None => table.retire_element(asid),
-        }
-        .expect("preflighted address-space retirement lost its serialized slot")
+        table
+            .retire_closing(closing)
+            .expect("preflighted address-space retirement lost its serialized slot")
     };
     Ok(retirement::RetiredAddressSpace::new(handle, entry))
 }

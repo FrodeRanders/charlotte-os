@@ -405,7 +405,7 @@ extern "C" fn verify_el0_uart() {
     );
 
     state.driver = Some(driver2);
-    ipc::close_address_space(KCLIENT_ASID);
+    ipc::close_address_space(KCLIENT_ASID).unwrap();
 
     logln!(
         "[uart] SUCCESS: userspace driver served console writes and an interrupt-driven deferred \

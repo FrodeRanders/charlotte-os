@@ -10,10 +10,19 @@ physical destruction have completed.
 
 Under lifecycle serialization, close validates the exact handle and prepares
 completion metadata fallibly before retiring any subsystem. Failure here leaves
-the namespace, table entry and backing admission active. It then fences backing
+the namespace, table entry and backing admission active. Both immediate and staged
+close own a `ClosingSlot` before irreversible cleanup. It then fences backing
 and capability admission, drains subsystem resources, records high-water usage,
 and removes authority/usage records. The address space is detached from the
 table into the owning receipt, without returning its ID to the free-slot list.
+
+IPC cleanup can reject uncertain loan revocation with `IpcCleanupFailed` before
+the root is detached. The closing owner then retains its fence, original root,
+slot, tag and backing accounts. No object/root destruction or slot refund follows
+that rejection. Earlier subsystem retirement and confirmed loans are not rolled
+back. The retained namespace rejects fresh operation leases and competing close;
+there is no retry or force-clear recovery API. The supervisor propagates/caches
+this terminal teardown error rather than treating it as successful reclamation.
 
 The lifecycle and table guards are then gone. The detached owner invalidates
 using its captured translation identity, tears down the private tree and

@@ -110,11 +110,13 @@ pub(crate) fn run() {
     preparation_rollback();
     staged_close();
     partial_failure();
+    serialized_bulk_success();
+    serialized_bulk_failure();
     abandonment();
     crate::logln!(
         "[IPC cancellation ownership] queued/delivered close, unlocked loan cleanup, competing \
          close/reply/receive, staged close, preparation rollback, partial failure and abandonment \
-         passed (two retained data pages and two live roots)"
+         passed; bulk failure retains queued authority and exact closing roots"
     );
 }
 
@@ -302,22 +304,164 @@ fn partial_failure() {
     drop(ipc);
     let mut ipc = IPC.write();
     let mut notifications = WaitNotifications::empty();
-    consume_reply_token(&mut ipc, identity.token, REPLY_ENDPOINT_CLOSED, &mut notifications);
+    assert_eq!(
+        consume_reply_token(&mut ipc, identity.token, REPLY_ENDPOINT_CLOSED, &mut notifications),
+        Err(IpcError::MemoryTransferFailed)
+    );
     assert!(
         ipc.pending_calls[&identity.call].result.is_none(),
         "bulk cleanup falsely reported a failed loan as terminal"
     );
     drop(ipc);
     signal_observers(notifications);
-    let caller = fixture.caller;
-    fixture.close(); // Leases returned; uncertain backing remains quarantined.
+    // Ordinary failure returns the operation leases, but whole-domain cleanup
+    // must retain its root/slot and fail rather than discard the failed token.
+    let used = memory::budget::used(fixture.caller);
+    let free = memory::PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     assert_eq!(
-        memory::budget::used(caller),
-        memory::budget::Amount {
-            pages: 1,
-            objects: 1
-        }
+        memory::close_user_address_space_handle(fixture.caller),
+        Err(AddressSpaceCloseError::IpcCleanupFailed)
     );
+    assert_eq!(memory::budget::used(fixture.caller), used);
+    assert_eq!(memory::PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+    assert!(matches!(
+        AddressSpaceOperation::acquire(fixture.caller),
+        Err(crate::memory::operation::OperationError::Closing)
+    ));
+    assert_eq!(
+        ClosingAddressSpace::begin(fixture.server).unwrap().poll().err(),
+        Some(AddressSpaceCloseError::IpcCleanupFailed)
+    );
+    assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));
+    assert_eq!(receive(fixture.server.id(), fixture.endpoint), Err(IpcError::PermissionDenied));
+}
+
+fn serialized_bulk_success() {
+    // Endpoint close preflights mapped loans before returning any caller's
+    // borrow. The root adapter covers both queued and delivered call ownership.
+    let fixture = Fixture::new(2, false);
+    close_cap(fixture.server.id(), fixture.endpoint).unwrap();
+    assert_eq!(
+        poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap().result,
+        REPLY_ENDPOINT_CLOSED
+    );
+    for borrow in &fixture.borrows {
+        assert!(!object::info(borrow.owner, borrow.owner_cap).unwrap().lent);
+        assert_eq!(
+            object::info(borrow.borrower, borrow.borrower_cap),
+            Err(MemoryObjectError::UnknownCapability)
+        );
+    }
+    fixture.close();
+    for delivered in [false, true] {
+        let fixture = Fixture::new(2, delivered);
+        memory::close_user_address_space_handle(fixture.caller).unwrap();
+        assert_eq!(receive(fixture.server.id(), fixture.endpoint), Err(IpcError::NoMessage));
+        if let Some(reply) = fixture.reply {
+            assert_eq!(
+                IPC.read().cap(fixture.server.id(), reply),
+                Err(IpcError::UnknownCapability)
+            );
+        }
+        memory::close_user_address_space_handle(fixture.server).unwrap();
+    }
+}
+
+fn serialized_bulk_failure() {
+    for close_endpoint in [false, true] {
+        let fixture = Fixture::new(3, false);
+        let identity = resolve(&IPC.read(), fixture.caller.id(), fixture.call).unwrap().unwrap();
+        let endpoint =
+            receive_endpoint_id(&IPC.read(), fixture.server.id(), fixture.endpoint).unwrap();
+        let used = memory::budget::used(fixture.caller);
+        let hits = Arc::new(core::sync::atomic::AtomicUsize::new(0));
+        let counter = hits.clone();
+        let observer: Arc<dyn Observer> = crate::klib::observer::CallOnNotify::new(move || {
+            counter.fetch_add(1, Ordering::Relaxed);
+        });
+        let sponsor = WaitSponsor::new(false);
+        let registration = PendingCallObservable {
+            call: identity.call,
+        }
+        .try_register_waiter(Arc::downgrade(&observer), &sponsor)
+        .unwrap();
+        let (asid, cap) = if close_endpoint {
+            (fixture.server.id(), fixture.endpoint)
+        } else {
+            (fixture.caller.id(), fixture.call)
+        };
+        let mut finished = 0;
+        assert_eq!(
+            close_cap_in_mode_with_revoker(
+                asid,
+                cap,
+                false,
+                || panic!("unclaimed bulk close must not wait"),
+                |borrow| {
+                    let loan = LoanRevocation::prepare(
+                        borrow.owner,
+                        borrow.owner_cap,
+                        borrow.borrower,
+                        borrow.borrower_cap,
+                    )
+                    .unwrap();
+                    finished += 1;
+                    if finished == 2 {
+                        // Abandon a real prepared backing pin, modeling rejected
+                        // physical cleanup rather than a synthetic token flag.
+                        drop(loan);
+                        Err(MemoryObjectError::UnmapFailed)
+                    } else {
+                        loan.finish()
+                    }
+                }
+            ),
+            Err(IpcError::MemoryTransferFailed)
+        );
+        assert_eq!(finished, 2);
+        let ipc = IPC.read();
+        assert!(ipc.cap(asid, cap).is_ok());
+        assert!(!ipc.endpoints[&endpoint].closed);
+        assert_eq!(ipc.endpoints[&endpoint].queue.len(), 1);
+        assert_eq!(ipc.reply_tokens[&identity.token].borrows, fixture.borrows[..2]);
+        assert!(ipc.reply_tokens[&identity.token].cleanup_failed);
+        assert!(ipc.pending_calls[&identity.call].result.is_none());
+        drop(ipc);
+        assert_eq!(hits.load(Ordering::Relaxed), 0);
+        assert_eq!(receive(fixture.server.id(), fixture.endpoint), Err(IpcError::Pending));
+        assert_eq!(
+            close_cap(fixture.server.id(), fixture.endpoint),
+            Err(IpcError::MemoryTransferFailed)
+        );
+        assert_eq!(
+            close_cap_serialized(fixture.caller.id(), fixture.call),
+            Err(IpcError::MemoryTransferFailed)
+        );
+        let free = memory::PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+        for handle in [fixture.caller, fixture.server] {
+            assert_eq!(
+                memory::close_user_address_space_handle(handle),
+                Err(AddressSpaceCloseError::IpcCleanupFailed)
+            );
+            assert_eq!(memory::current_address_space_handle(handle.id()), Some(handle));
+            assert_eq!(
+                memory::close_user_address_space_handle(handle),
+                Err(AddressSpaceCloseError::CloseInProgress)
+            );
+            assert!(matches!(
+                AddressSpaceOperation::acquire(handle),
+                Err(crate::memory::operation::OperationError::Closing)
+            ));
+        }
+        assert_eq!(memory::PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+        assert_eq!(memory::budget::used(fixture.caller), used);
+        let fresh = crate::service::loader::create_user_address_space_handle();
+        assert_ne!(fresh.id(), fixture.caller.id());
+        assert_ne!(fresh.id(), fixture.server.id());
+        memory::close_user_address_space_handle(fresh).unwrap();
+        assert_eq!(hits.load(Ordering::Relaxed), 0);
+        drop(registration);
+    }
 }
 
 fn abandonment() {

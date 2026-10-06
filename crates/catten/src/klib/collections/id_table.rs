@@ -329,7 +329,10 @@ impl<T> IdTable<T> {
         reserve(&mut self.available_ids, self.list.len()).map_err(|_| Error::AllocationFailed)
     }
 
-    pub(crate) fn retire_element(&mut self, element_id: usize) -> Result<RetiredEntry<T>, Error> {
+    // Generic host ownership fixtures exercise immediate retirement. Published
+    // production roots always own a ClosingSlot before subsystem cleanup.
+    #[cfg(test)]
+    fn retire_element(&mut self, element_id: usize) -> Result<RetiredEntry<T>, Error> {
         self.prepare_retirement(element_id)?;
         let value = self.list[element_id].take().ok_or(Error::IdNotActive)?;
         self.slots[element_id].retiring = true;

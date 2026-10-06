@@ -66,7 +66,7 @@ impl ClosingAddressSpace {
                     Ok(()) => {}
                 }
             }
-            super::close_user_address_space_after_preflight(self.handle, Some(self.slot))?
+            super::close_user_address_space_after_preflight(self.handle, self.slot)?
         };
         retired.release_with(invalidate)?;
         Ok(CloseProgress::Complete)
