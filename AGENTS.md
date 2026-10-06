@@ -83,7 +83,10 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   as dequeue/first observation. Only internal cleanup may consume hidden grants;
   endpoint-reference accounting must still retain their backing metadata. Direct
   mint/delegation and launch grants remain immediately usable. Do not restore a
-  queue-scan qualification fallback for hidden connection sources.
+  queue-scan qualification fallback for hidden connection or memory sources.
+  Returned memory uses ordinary visible-source `PreparedTransfer` admission;
+  hidden or borrowed sources reject before loan mutation and retain their
+  original queue/call ownership.
   Device grants take lifecycle before device/backend registries, reserve before
   hardware creation and retain a `PreparedDmaDomain` until publication. Failed
   hardware rollback must quarantine reachable backing, never recycle it.

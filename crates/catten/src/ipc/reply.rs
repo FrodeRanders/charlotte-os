@@ -120,9 +120,9 @@ impl PreparedReply {
                 });
             }
             if let Some(source) = memory {
-                if memory_source_reclaimable(&ipc, server, source) {
-                    return Err(IpcError::Pending);
-                }
+                // Ordinary memory lookup rejects queued/unobserved owning
+                // sources. PreparedTransfer owns the exact visible source's
+                // escrow and backing through cleanup/publication.
                 operation.memory = Some(
                     crate::memory::object::prepare_move(server, source, identities[0].0)
                         .map_err(|_| IpcError::MemoryTransferFailed)?,
@@ -284,21 +284,6 @@ impl PreparedReply {
         token.connection_source = None;
         token.completing = false;
     }
-}
-
-fn memory_source_reclaimable(
-    ipc: &IpcRegistry,
-    server: AddressSpaceId,
-    source: MemoryObjectCap,
-) -> bool {
-    ipc.pending_calls.values().any(|call| {
-        call.caller == server
-            && !call.observed
-            && call.result.is_some_and(|result| result.memory == Some(source))
-    }) || ipc.endpoints.values().any(|endpoint| {
-        endpoint.owner == server
-            && endpoint.queue.iter().any(|message| message.memory.contains(&source))
-    })
 }
 
 fn validate(

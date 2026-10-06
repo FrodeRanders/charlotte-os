@@ -109,6 +109,15 @@ impl Fixture {
         // Queued caps are guessed only by this raw kernel fixture. This lets
         // queued close exercise a real mapped-loan shootdown, not just metadata.
         for (index, borrow) in borrows.iter().enumerate() {
+            // Neither queued nor delivered loans confer copy/move ownership.
+            assert!(matches!(
+                object::prepare_copy(server.id(), borrow.borrower_cap, caller.id()),
+                Err(MemoryObjectError::WrongOwner)
+            ));
+            assert!(matches!(
+                object::prepare_move(server.id(), borrow.borrower_cap, caller.id()),
+                Err(MemoryObjectError::MissingRight)
+            ));
             object::map_any(server.id(), borrow.borrower_cap, index % 2 == 1).unwrap();
         }
         Self {

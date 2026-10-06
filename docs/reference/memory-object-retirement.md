@@ -192,9 +192,10 @@ belong to the caller; pending-call close reclaims only unobserved returned grant
 Returned memory additionally retains a `PreparedTransfer` containing source
 escrow, backing pin and hidden destination reservation. The source must be
 owned, transferable and unmapped. Queued and unobserved-result memory is
-rejected with `Pending` before loan mutation: the earlier queue/call still owns
-its cleanup. Delivery or observation transfers that responsibility to the
-server. Both root leases prevent source/destination namespace reuse during the
+rejected by ordinary memory lookup before loan mutation: the earlier queue/call
+still owns its cleanup. IPC reports `MemoryTransferFailed` from owned transfer
+preparation; no global queue/result scan supplies qualification. Delivery or
+observation transfers that responsibility to the server. Both root leases prevent source/destination namespace reuse during the
 unlocked interval.
 
 Memory close checks the source's transfer fence before authority lookup. It
@@ -436,3 +437,21 @@ IPC. Existing loan receipts keep their distinct owned revocation semantics,
 including raw kernel fixtures that map queued loans. No new CPU/DMA quiescence,
 recoverable shootdown or allocator-latency guarantee follows from this gate.
 See the [delivery remediation](../reports/audits/2026-10-06-security-memory-delivery.md).
+
+
+## Returned-memory source qualification
+
+Both connection and memory reply sources now qualify through their ordinary
+visibility lookup. Split-phase returned-memory preparation no longer visits the
+global pending-call/endpoint registries or scans the server's queued attachment
+vectors under the IPC write hold. Queued/unobserved owning memory is inaccessible through its admitted payload
+state; delivered/observed sources must still pass `PreparedTransfer` ownership,
+rights, mapping, pin and exact-generation checks before loan cleanup starts.
+
+Queued and delivered loans retain their existing revocation contract. Their
+borrower has map rights, not transfer ownership; copy preparation requires object
+ownership too. Rejected borrowed-memory return leaves input loans, mappings,
+pending result and destination admission unchanged. A normal reply can still
+revoke those loans afterward. DMA-pinned revocation can reject and retain its
+receipt/backing; this removes no physical quiescence requirement.
+See the [source qualification follow-up](../reports/audits/2026-10-06-security-source-qualification.md).

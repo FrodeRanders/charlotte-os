@@ -288,7 +288,7 @@ The cleanup lookup is private and unavailable to application operations.
 Receive and first reply observation publish only the exact connection owned by
 their queue/result receipt. A successfully delivered connection becomes usable
 and can legitimately mint attenuated children that survive later call close.
-Reply source qualification now follows ordinary visibility lookup rather than a
-scan of every queue/result. Existing explicit source-close claims and root leases
-still protect delivered sources through split-phase loan cleanup.
+Connection and memory reply source qualification follows ordinary visibility
+lookup rather than visiting the global IPC registries for qualification.
+Existing explicit source-close claims and root leases still protect delivered sources through split-phase loan cleanup.
 See the [connection delivery report](../reports/audits/2026-10-06-security-connection-delivery.md).

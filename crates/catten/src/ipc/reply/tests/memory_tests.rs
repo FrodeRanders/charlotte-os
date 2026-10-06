@@ -11,6 +11,7 @@ pub(super) fn run() {
     publication_rollback();
     preparation_failure();
     undelivered_source();
+    borrowed_source();
     staged_close_and_joint_publication();
     source_fence();
     crate::logln!(
@@ -219,7 +220,7 @@ fn undelivered_source() {
         let before = used(fixture.caller.id());
         assert!(matches!(
             PreparedReply::prepare_with_memory(fixture.server.id(), fixture.reply, memory),
-            Err(IpcError::Pending)
+            Err(IpcError::MemoryTransferFailed)
         ));
         assert_eq!(used(fixture.caller.id()), before);
         assert_eq!(
@@ -264,6 +265,32 @@ fn staged_close_and_joint_publication() {
     assert_eq!((result.cap, result.memory), (Some(connection), Some(destination)));
     assert!(matches!(closing.poll().unwrap(), CloseProgress::Complete));
     memory::close_user_address_space_handle(fixture.server).unwrap();
+}
+
+fn borrowed_source() {
+    let fixture = Fixture::new(2);
+    let borrowed = fixture.borrows[0].borrower_cap;
+    let before = used(fixture.caller.id());
+    // Visible borrowed bytes do not confer ownership of returnable backing.
+    assert!(matches!(
+        object::prepare_copy(fixture.server.id(), borrowed, fixture.caller.id()),
+        Err(MemoryObjectError::WrongOwner)
+    ));
+    assert!(matches!(
+        PreparedReply::prepare_with_memory(fixture.server.id(), fixture.reply, borrowed),
+        Err(IpcError::MemoryTransferFailed)
+    ));
+    assert_eq!(used(fixture.caller.id()), before);
+    assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));
+    for borrow in &fixture.borrows {
+        assert!(object::info(borrow.borrower, borrow.borrower_cap).unwrap().mapped);
+        assert!(object::info(borrow.owner, borrow.owner_cap).unwrap().lent);
+    }
+    // Ordinary reply can still revoke both loans after failed qualification.
+    reply(fixture.server.id(), fixture.reply, 7).unwrap();
+    let result = poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap();
+    assert_eq!((result.result, result.memory), (7, None));
+    fixture.close();
 }
 
 fn source_fence() {

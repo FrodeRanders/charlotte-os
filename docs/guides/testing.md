@@ -882,3 +882,16 @@ loan cleanup and preparation/publication failures.
 These fixtures add no intentional quarantined roots/pages. Exact guest commands,
 results and limits are in the
 [connection delivery report](../reports/audits/2026-10-06-security-connection-delivery.md).
+
+
+## Returned-memory source qualification
+
+Returned-memory fixtures verify queued/unobserved owning sources reject through
+`PreparedTransfer` with no destination-charge or input-loan mutation, then become
+eligible after receive/poll. A visible borrowed source rejects copy/returned-move
+ownership while two input loans remain mapped and the pending result stays empty;
+a normal reply subsequently revokes both. Cancellation fixtures also verify copy
+and move rejection for both queued and delivered read/write loans before mapping
+and exercising their existing cleanup interleavings. No additional fault
+quarantine is introduced. Results and remaining scope are in the
+[source qualification follow-up](../reports/audits/2026-10-06-security-source-qualification.md).
