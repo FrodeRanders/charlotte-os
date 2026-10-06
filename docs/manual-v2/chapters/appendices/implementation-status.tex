@@ -236,9 +236,15 @@ repository history remain authoritative.
         E1000E drain transmit descriptors and stop their DMA engines. AArch64
         then selects the FADT-advertised SMC/HVC conduit and boot-validates a
         terminal PSCI \texttt{SYSTEM\_OFF}; x86-64 ACPI poweroff remains open.
-        Independent kernel verification of reset/IOMMU invalidation,
-        controller-managed instance leases, rolling replica replacement, and
-        coordinated rollback remain future work.
+        Kernel-owned QEMU NVMe reset now precedes first DMA grant and requester
+        reassignment. Intel VT-d draining, AMD-Vi strict completion stores and
+        Arm SMMUv3 ASID invalidation retain backing on rejection; the three QEMU
+        targets exercise failed teardown, retry and reset before reassignment.
+        x86 CPU invalidation has bounded epoch-fenced retry, including global
+        translations, and physical stack cleanup runs in scheduled same-LP
+        reapers. Broader device/physical-platform reset verification, recovery
+        of abandoned owners, controller-managed instance leases, rolling
+        replica replacement and coordinated rollback remain future work.
     \item \textbf{HVF does not honor hardware ASIDs.} Apple's
         Hypervisor.framework strips the ASID bits from \texttt{TTBR0\_EL1} on
         read and does not use them to isolate user translations, so the kernel's

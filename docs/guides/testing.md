@@ -895,3 +895,35 @@ and move rejection for both queued and delivered read/write loans before mapping
 and exercising their existing cleanup interleavings. No additional fault
 quarantine is introduced. Results and remaining scope are in the
 [source qualification follow-up](../reports/audits/2026-10-06-security-source-qualification.md).
+
+### Staged rollback and QEMU recovery
+
+The staged-copy fixtures prepare under both exact roots outside IPC, then reject
+partial vector preparation, retirement storage, publication and a closed
+destination. A 35-page rollback crosses allocator batches; callbacks verify
+that IPC/lifecycle/table/object/allocator guards are available and root close
+still rejects until staging ends. Existing success, copy isolation, ownership
+transfer, loans and returned-capability cleanup remain enabled.
+
+Five host epoch tests cover stale/duplicate acknowledgement, non-regression,
+exclusive publication and epoch exhaustion. Three IOMMU command tests cover
+required VT-d drains, AMD full-address/exact-epoch completion and SMMU ring
+phase/fullness. A deferred four-LP x86 fixture omits an actual IPI, separately
+times out with one missing acknowledgement, retains the exact root/charge/slot,
+and then completes a fresh real rendezvous. It never manufactures a hardware
+acknowledgement or re-adopts a quarantined owner.
+
+A pre-driver fixture on each supported QEMU NVMe target enables a controller
+with DMA admin queues, rejects one teardown completion after detachment, checks
+pin retention and retiring-map rejection, then retries real invalidation.
+Reassignment rejects while old MMIO authority survives; after cleanup, a real
+controller reset must precede a new domain and leave `EN/RDY=0`. Subsequent
+operational NVMe/object-store/persistent-Raft tests verify storage still works.
+The fixture submits no I/O command and does not suppress a physical IOMMU ACK.
+
+Run Intel VT-d and AMD-Vi with `scripts/run-x86_64.sh --no-network`, adding
+`--iommu amd` for AMD. Run SMMUv3 with `scripts/run-aarch64.sh --security-test`.
+Use separate `--instance` names, `--fresh-storage` and isolated Arm forwarding
+ports. Final validation passed **15/15** on each x86 backend and **19/19** on
+Arm. Exact commands and limitations are in the
+[staging/quiescence audit record](../reports/audits/2026-10-06-security-staged-quiescence.md).

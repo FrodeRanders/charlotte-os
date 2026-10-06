@@ -157,9 +157,10 @@ retains the mapped peer counts and closing root; no release runs in Drop. Final
 unmapped-cap removal waits for live revocation state to return before clearing a
 borrower and consuming authority. The serialized bulk adapter is fixture-only.
 
-1. Extend ownership separation to unpublished staged-copy rollback and general
-   allocator/metadata work under IPC. Published attachments now carry detached
-   backing outside IPC; namespace loans retain closing ownership, peer leases,
+1. Extend ownership separation to general allocator/metadata work under IPC.
+   Copy/vector staging and unpublished rollback now run outside IPC under both
+   exact roots. Published attachments carry detached backing outside IPC;
+   namespace loans retain closing ownership, peer leases,
    loan receipts, scratch and authority outside IPC/lifecycle. Do not reuse live
    operation admission under a lifecycle/subsystem guard.
 2. Translation identity capture after lazy root/tag preparation; then release
@@ -174,9 +175,11 @@ borrower and consuming authority. The serialized bulk adapter is fixture-only.
    seconds; terminal reclamation error retains the deployment entry or prevents
    node poweroff. This provides no recovery path for abandoned close.
 
-SEC-18 remains partial, including recoverable shootdown and hardware quiescence.
-This is not a new wire API, scheduler reference, capability right, metadata
-budget or completed x86 progress fix.
+SEC-18 remains partial. Bounded x86 epoch retry and QEMU NVMe reset/reassignment
+are implemented and tested; broader reset support, recovery of abandoned owners
+and physical-platform quiescence remain open. See
+[hardware quiescence](hardware-quiescence.md). No new wire API, capability right
+or metadata budget follows from these ownership boundaries.
 
 ## Verification
 

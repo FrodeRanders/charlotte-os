@@ -35,6 +35,7 @@ use crate::{
 };
 
 pub type PcieSegmentGroupNum = u16;
+pub(crate) mod reset;
 pub type PcieBusSegmentNum = u8;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]

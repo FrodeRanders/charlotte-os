@@ -24,6 +24,50 @@ pub fn flush_current_non_global() {
     }
 }
 
+/// Include global translations and paging-structure caches in physical
+/// retirement. CR3 reload alone does not invalidate CR4.PGE global entries.
+pub(crate) fn flush_all_local() {
+    unsafe {
+        asm!(
+            "mov {original}, cr4",
+            "mov {temporary}, {original}",
+            "and {temporary}, -129",
+            "mov cr4, {temporary}",
+            "mov cr4, {original}",
+            original = out(reg) _, temporary = out(reg) _,
+            options(nostack),
+        );
+    }
+    flush_current_non_global();
+}
+
+pub fn try_inval_range_user(
+    _asid: AddressSpaceId,
+    _base: VAddr,
+    pages: usize,
+) -> Result<(), super::super::interrupts::fixed::ipis::ShootdownError> {
+    if pages == 0 {
+        return Ok(());
+    }
+    super::super::interrupts::fixed::ipis::try_send_sync_shootdown()
+}
+
+pub fn try_inval_range_kernel(
+    _base: VAddr,
+    pages: usize,
+) -> Result<(), super::super::interrupts::fixed::ipis::ShootdownError> {
+    if pages == 0 {
+        return Ok(());
+    }
+    super::super::interrupts::fixed::ipis::try_send_sync_shootdown()
+}
+
+pub fn try_inval_asid(
+    _asid: AddressSpaceId,
+) -> Result<(), super::super::interrupts::fixed::ipis::ShootdownError> {
+    super::super::interrupts::fixed::ipis::try_send_sync_shootdown()
+}
+
 /// Invalidate a single translation locally (the currently active CR3) with
 /// `invlpg`. Safe in any context; the cross-LP part is the synchronous shootdown
 /// in [`send_sync_shootdown`](crate::cpu::isa::x86_64::interrupts::fixed::ipis::send_sync_shootdown).

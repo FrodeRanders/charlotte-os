@@ -52,6 +52,7 @@ pub(crate) mod namespace_close;
 pub(crate) mod record_budget;
 pub(crate) mod record_tests;
 pub(crate) mod reply;
+mod submission;
 pub(crate) mod waiter_tests;
 
 use attachments::MemoryAttachments;
@@ -459,28 +460,55 @@ impl PreparedCall {
     }
 
     fn commit_with_memory(
-        mut self,
+        self,
         ipc: &mut IpcRegistry,
         endpoint: EndpointId,
         opcode: u32,
         arg0: u64,
         prepare_memory: impl FnOnce(Vec<MemoryObjectCap>) -> Result<MemoryAttachments, IpcError>,
     ) -> Result<(CapabilityId, Delivery), IpcError> {
-        let server = reserve_endpoint_queue(ipc, endpoint)?;
-        let memory = prepare_memory(core::mem::take(&mut self.memory))?;
+        // Scalar move/loan paths and raw fixtures have no staged copies to
+        // release here. Copy/vector submissions retain errors past IPC unlock.
+        self.commit_retained(ipc, endpoint, opcode, arg0, prepare_memory).map_err(
+            |(error, owner)| {
+                drop(owner);
+                error
+            },
+        )
+    }
+
+    // Returning the owner inline avoids a fallible teardown allocation.
+    #[allow(clippy::result_large_err)]
+    fn commit_retained(
+        mut self,
+        ipc: &mut IpcRegistry,
+        endpoint: EndpointId,
+        opcode: u32,
+        arg0: u64,
+        prepare_memory: impl FnOnce(Vec<MemoryObjectCap>) -> Result<MemoryAttachments, IpcError>,
+    ) -> Result<(CapabilityId, Delivery), (IpcError, Self)> {
+        let preparation = (|| {
+            let server = reserve_endpoint_queue(ipc, endpoint)?;
+            let memory = prepare_memory(core::mem::take(&mut self.memory))?;
+            if let Some(connection) = &mut self.connection {
+                crate::memory::object::commit_undelivered_transfers_with_authority(
+                    &mut self.transfers,
+                    &mut [&mut self.authority, &mut connection.authority],
+                )
+            } else {
+                crate::memory::object::commit_undelivered_transfers_with_authority(
+                    &mut self.transfers,
+                    &mut [&mut self.authority],
+                )
+            }
+            .map_err(|_| IpcError::MemoryTransferFailed)?;
+            Ok((server, memory))
+        })();
+        let (server, memory) = match preparation {
+            Ok(prepared) => prepared,
+            Err(error) => return Err((error, self)),
+        };
         let call_cap = self.authority.identity();
-        if let Some(connection) = &mut self.connection {
-            crate::memory::object::commit_undelivered_transfers_with_authority(
-                &mut self.transfers,
-                &mut [&mut self.authority, &mut connection.authority],
-            )
-        } else {
-            crate::memory::object::commit_undelivered_transfers_with_authority(
-                &mut self.transfers,
-                &mut [&mut self.authority],
-            )
-        }
-        .map_err(|_| IpcError::MemoryTransferFailed)?;
         // Pins must end before the newly published objects become writable.
         self.transfers.clear();
         let caller = self.pending.caller;
@@ -1042,31 +1070,7 @@ pub fn scalar_send_with_memory_copy(
     arg0: u64,
     memory_cap: MemoryObjectCap,
 ) -> Result<(), IpcError> {
-    let mut ipc = IPC.write();
-    let (endpoint_id, rights) = match ipc.cap(sender, connection_cap)? {
-        Capability::Connection {
-            endpoint,
-            rights,
-        } => (endpoint, rights),
-        _ => return Err(IpcError::WrongType),
-    };
-    if !rights.contains(ConnectionRights::SEND) {
-        return Err(IpcError::PermissionDenied);
-    }
-
-    let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let mut transfer = crate::memory::object::prepare_copy(sender, memory_cap, server)
-        .map_err(|_| IpcError::MemoryTransferFailed)?;
-    let server_memory_cap = transfer.target_cap();
-    let memory = MemoryAttachments::single(server_memory_cap)?;
-    crate::memory::object::commit_undelivered_transfers(core::slice::from_mut(&mut transfer))
-        .map_err(|_| IpcError::MemoryTransferFailed)?;
-    drop(transfer);
-    let delivery = enqueue_message(&mut ipc, endpoint_id, sender, opcode, arg0, None, memory, None)
-        .expect("reserved memory-send endpoint changed under IPC ownership");
-    drop(ipc);
-    deliver(delivery);
-    Ok(())
+    submission::send_copy(sender, connection_cap, opcode, arg0, memory_cap)
 }
 
 pub fn scalar_call(
@@ -1159,6 +1163,16 @@ fn scalar_call_with_connection_impl(
     delegate_rights: ConnectionRights,
     copied_memory: Option<MemoryObjectCap>,
 ) -> Result<CapabilityId, IpcError> {
+    if let Some(memory_cap) = copied_memory {
+        return submission::call_copy(
+            caller,
+            connection_cap,
+            opcode,
+            arg0,
+            memory_cap,
+            Some((delegate_cap, delegate_rights)),
+        );
+    }
     let mut ipc = IPC.write();
     let (endpoint_id, rights) = match ipc.cap(caller, connection_cap)? {
         Capability::Connection {
@@ -1180,12 +1194,6 @@ fn scalar_call_with_connection_impl(
     let mut prepared = ipc.stage_call(caller)?;
     prepared.connection =
         Some(PreparedConnection::new(&mut ipc, caller, server, delegated_endpoint, granted)?);
-    if let Some(memory_cap) = copied_memory {
-        prepared.attach(
-            crate::memory::object::prepare_copy(caller, memory_cap, server)
-                .map_err(|_| IpcError::MemoryTransferFailed)?,
-        )?;
-    }
     let (call_cap, delivery) = prepared.commit(&mut ipc, endpoint_id, opcode, arg0)?;
     drop(ipc);
     deliver(delivery);
@@ -1230,28 +1238,7 @@ pub fn scalar_call_with_memory_copy(
     arg0: u64,
     memory_cap: MemoryObjectCap,
 ) -> Result<CapabilityId, IpcError> {
-    let mut ipc = IPC.write();
-    let (endpoint_id, rights) = match ipc.cap(caller, connection_cap)? {
-        Capability::Connection {
-            endpoint,
-            rights,
-        } => (endpoint, rights),
-        _ => return Err(IpcError::WrongType),
-    };
-    if !rights.contains(ConnectionRights::CALL) {
-        return Err(IpcError::PermissionDenied);
-    }
-
-    let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let mut prepared = ipc.stage_call(caller)?;
-    prepared.attach(
-        crate::memory::object::prepare_copy(caller, memory_cap, server)
-            .map_err(|_| IpcError::MemoryTransferFailed)?,
-    )?;
-    let (call_cap, delivery) = prepared.commit(&mut ipc, endpoint_id, opcode, arg0)?;
-    drop(ipc);
-    deliver(delivery);
-    Ok(call_cap)
+    submission::call_copy(caller, connection_cap, opcode, arg0, memory_cap, None)
 }
 
 pub fn scalar_call_with_memory_borrow_read(
@@ -2586,34 +2573,7 @@ pub fn vector_send(
     arg0: u64,
     cap_vector: MemoryObjectCap,
 ) -> Result<(), IpcError> {
-    let mut ipc = IPC.write();
-    let (endpoint_id, rights) = match ipc.cap(sender, connection)? {
-        Capability::Connection {
-            endpoint,
-            rights,
-        } => (endpoint, rights),
-        _ => return Err(IpcError::WrongType),
-    };
-    if !rights.contains(ConnectionRights::SEND) {
-        return Err(IpcError::PermissionDenied);
-    }
-    let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-
-    let mut memory_caps = Vec::new();
-    let mut transfers = read_vector_page(sender, cap_vector, server, false, &mut memory_caps)?;
-    let memory = MemoryAttachments::try_new(memory_caps)?;
-    crate::memory::object::commit_undelivered_transfers(&mut transfers)
-        .map_err(|_| IpcError::MemoryTransferFailed)?;
-    drop(transfers);
-    // Queue availability was validated under this same IPC write guard; none
-    // of attachment preparation/publication changes the endpoint or its queue.
-    let delivery = enqueue_message(&mut ipc, endpoint_id, sender, opcode, arg0, None, memory, None)
-        .expect("reserved vector-send endpoint changed under IPC ownership");
-    drop(ipc);
-    deliver(delivery);
-
-    let _ = crate::memory::object::close_cap(sender, cap_vector);
-    Ok(())
+    submission::vector(sender, connection, opcode, arg0, cap_vector, false).map(|_| ())
 }
 
 pub fn vector_call(
@@ -2623,29 +2583,8 @@ pub fn vector_call(
     arg0: u64,
     cap_vector: MemoryObjectCap,
 ) -> Result<CapabilityId, IpcError> {
-    let mut ipc = IPC.write();
-    let (endpoint_id, rights) = match ipc.cap(caller, connection)? {
-        Capability::Connection {
-            endpoint,
-            rights,
-        } => (endpoint, rights),
-        _ => return Err(IpcError::WrongType),
-    };
-    if !rights.contains(ConnectionRights::CALL) {
-        return Err(IpcError::PermissionDenied);
-    }
-    let server = reserve_endpoint_queue(&ipc, endpoint_id)?;
-    let mut prepared = ipc.stage_call(caller)?;
-
-    let mut memory_caps = Vec::new();
-    let transfers = read_vector_page(caller, cap_vector, server, true, &mut memory_caps)?;
-    prepared.attach_vector(transfers, memory_caps)?;
-    let (call_cap, delivery) = prepared.commit(&mut ipc, endpoint_id, opcode, arg0)?;
-    drop(ipc);
-    deliver(delivery);
-
-    let _ = crate::memory::object::close_cap(caller, cap_vector);
-    Ok(call_cap)
+    submission::vector(caller, connection, opcode, arg0, cap_vector, true)
+        .map(|call| call.expect("vector call did not publish call authority"))
 }
 
 fn read_vector_page(
@@ -2672,7 +2611,8 @@ fn read_vector_page(
         return Err(IpcError::MemoryTransferFailed);
     }
     let entries_ptr = unsafe { vector_bytes.as_ptr().add(2) } as *const CapVectorEntry;
-    let mut entries = Vec::with_capacity(count);
+    let mut entries = Vec::new();
+    entries.try_reserve_exact(count).map_err(|_| IpcError::ResourceLimit)?;
     for i in 0..count {
         let entry = unsafe { core::ptr::read_unaligned(entries_ptr.add(i)) };
         if entry.reserved != 0 || entry.mode > 3 || (!is_call && entry.mode >= 2) {

@@ -3,6 +3,9 @@
 These documents explain current code-facing contracts and invariants. They
 should be updated with the implementation when those contracts change.
 
+- [Hardware quiescence](hardware-quiescence.md) — bounded CPU epoch retry,
+  DMA completion requirements, requester fencing and supported QEMU NVMe reset.
+
 - [Scheduler state machines](scheduler-state-machines.md) — thread, timer,
   completion, CQ, interrupt, context-switch, and lock-order invariants.
 - [Locking](locking.md) — the synchronization primitives (spin mutex/rwlock,

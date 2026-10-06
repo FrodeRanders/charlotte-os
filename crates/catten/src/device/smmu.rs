@@ -141,6 +141,7 @@ struct Mapping {
 }
 
 struct Domain {
+    retiring: bool,
     sid: u32,
     asid: u16,
     root: PAddr,
@@ -227,6 +228,7 @@ impl Domain {
             ptr::write_volatile(cd_words.add(3), 0xff);
         }
         let mut domain = Self {
+            retiring: false,
             sid,
             asid,
             root,
@@ -277,6 +279,9 @@ impl Domain {
     }
 
     fn map(&mut self, pin: DmaPin, direction: Direction) -> Result<u64, (Error, DmaPin)> {
+        if self.retiring {
+            return Err((Error::UnknownDomain, pin));
+        }
         if self.mappings.values().any(|mapping| mapping.pin.object_id() == pin.object_id()) {
             return Err((Error::AlreadyMapped, pin));
         }
@@ -335,6 +340,9 @@ impl Domain {
     }
 
     fn clear_mapping(&mut self, iova: u64) -> Result<Mapping, Error> {
+        if self.retiring {
+            return Err(Error::UnknownDomain);
+        }
         let mapping = self.mappings.remove(&iova).ok_or(Error::UnknownMapping)?;
         for index in 0..mapping.pages {
             let address = iova + (index * PAGE_SIZE) as u64;
@@ -352,6 +360,14 @@ impl Domain {
 
 impl Smmu {
     fn issue(&mut self, command: [u64; 2]) -> Result<(), Error> {
+        if !charlotte_lifecycle::iommu::smmu_queue_has_space(
+            self.cmd_prod,
+            read32(self.config.base, CMDQ_CONS),
+            QUEUE_ENTRIES,
+        ) {
+            // Preserve timed-out/unconsumed commands and backing on retry.
+            return Err(Error::HardwareTimeout);
+        }
         let slot = (self.cmd_prod & (QUEUE_ENTRIES - 1)) as usize;
         let entry = unsafe { self.cmdq.into_hhdm_mut::<u64>().add(slot * 2) };
         unsafe {
@@ -394,6 +410,14 @@ impl Smmu {
             Some(cd) => STE_VALID | (STE_CFG_S1 << 1) | (u64::from(cd) & 0x000f_ffff_ffff_ffc0),
             None => STE_VALID | (STE_CFG_ABORT << 1),
         };
+        if cd.is_none() {
+            // Publish abort before changing any formerly live secondary word.
+            // Leave the old metadata intact until configuration maintenance
+            // completes; teardown separately invalidates the original ASID.
+            unsafe { ptr::write_volatile(ste, first) };
+            barrier();
+            return self.invalidate_ste(sid);
+        }
         unsafe {
             for index in 1..8 {
                 ptr::write_volatile(ste.add(index), 0);
@@ -522,10 +546,16 @@ pub fn stream_id(requester_id: u32) -> Result<u32, Error> {
     config.stream_id(requester_id).ok_or(Error::InvalidStream)
 }
 
-pub fn create_domain(sid: u32, msi_address: Option<u64>) -> Result<u64, Error> {
+pub(crate) fn create_domain_with_reset(
+    sid: u32,
+    msi_address: Option<u64>,
+    reset: impl FnOnce(bool) -> Result<(), Error>,
+) -> Result<u64, Error> {
     with_smmu(|smmu| {
-        if smmu.streams.contains_key(&sid) {
-            return Err(Error::StreamInUse);
+        match smmu.streams.get(&sid) {
+            Some(0) => reset(true)?,
+            Some(_) => return Err(Error::StreamInUse),
+            None => reset(false)?,
         }
         let id = smmu.next_domain;
         smmu.next_domain += 1;
@@ -540,7 +570,7 @@ pub fn create_domain(sid: u32, msi_address: Option<u64>) -> Result<u64, Error> {
             // back; otherwise retain the record as quarantined until a later
             // acknowledged destroy.
             if smmu.write_ste(sid, None).is_ok() {
-                smmu.streams.remove(&sid);
+                *smmu.streams.get_mut(&sid).unwrap() = 0;
                 let domain = smmu.domains.remove(&id).expect("new SMMU domain disappeared");
                 let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
                 for frame in domain.table_frames {
@@ -620,18 +650,28 @@ pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
 
 pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
     let mappings = with_smmu(|smmu| {
-        let Some(domain) = smmu.domains.get(&domain_id) else {
+        let Some(domain) = smmu.domains.get_mut(&domain_id) else {
             return Ok(Vec::new());
         };
+        domain.retiring = true;
         let sid = domain.sid;
+        let asid = domain.asid;
         // Do not release mappings or their memory pins until the aborting STE
         // has been acknowledged. On timeout the domain remains quarantined:
         // leaking authority is preferable to freeing frames a device may
         // still be able to translate.
         smmu.write_ste(sid, None)?;
+        if super::test_reject_retirement() {
+            return Err(Error::HardwareTimeout);
+        }
+        // CFGI/SYNC retires structure fetches; TLBI/SYNC additionally completes
+        // client transactions translated by this ASID before data-pin release.
+        smmu.invalidate_asid(asid)?;
         let mut domain = smmu.domains.remove(&domain_id).expect("SMMU domain disappeared");
         let mappings = core::mem::take(&mut domain.mappings).into_values().collect::<Vec<_>>();
-        smmu.streams.remove(&sid);
+        // Hardware translation/drain completion does not reset queued device
+        // work. Keep the requester fenced until a confirmed device reset.
+        *smmu.streams.get_mut(&sid).expect("registered source") = 0;
         let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
         for frame in domain.table_frames {
             let _ = allocator.deallocate_frame(frame);

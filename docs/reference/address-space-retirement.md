@@ -125,24 +125,27 @@ closing ownership and peer cleanup leases, including already-closing peers;
 ordinary admission stays fenced and cleanup admission seals before backing
 teardown. Whole-domain devices now borrow the closing root through unlocked
 physical cleanup. Whole-domain memory now retains all mapped roots through its
-own receipts outside lifecycle. Move/copy/result attachment cleanup still needs
-completion ownership before releasing outer IPC serialization. See
+own receipts outside lifecycle. Published move/copy/result attachment cleanup
+and unpublished copy/vector rollback now release backing outside IPC. See
 [live address-space operations](live-address-space-operations.md).
 
 Failed final invalidation or abandonment retains the whole hierarchy, physical
 backing, hardware tag, software slot and backing accounts. There is no automatic
 recovery or administrative reclamation API. Quarantine can reduce capacity.
-`QuiescenceFailed` is a kernel-side fault-adapter result; the current real x86
-delivery failure stops the initiator rather than returning a retryable error.
-Missing acknowledgements still stall.
+The real x86 sender returns rejected delivery or bounded acknowledgement failure.
+`RetiredAddressSpace::release_retry_with` returns the same owner on invalidation
+failure; production final invalidation makes up to three fresh attempts before
+quarantining. Successful physical release remains consuming and cannot retry a
+partially freed hierarchy. See [hardware quiescence](hardware-quiescence.md).
 
 ## Remaining SEC-18 work
 
 This corrects the **final root** boundary: its own lifecycle/table guards no
 longer surround the last rendezvous or `AddressSpace::drop`. Published IPC
 move/copy/result attachment cleanup now detaches unmapped backing and its original
-charge under IPC, then releases outside serialization. Unpublished staged-copy
-rollback and general allocator/metadata work under IPC remain open. Whole-domain IPC loan
+charge under IPC, then releases outside serialization. Unpublished copy/vector
+rollback now also runs outside IPC. General allocator/metadata work under IPC
+remains open. Whole-domain IPC loan
 revocation now runs outside those guards through borrowed closing ownership and
 exact peer cleanup leases. Whole-domain device cleanup now runs outside lifecycle
 with its own receipt; uncertain DMA completion retains the root. Loan revocation
@@ -155,8 +158,8 @@ now supply their own leases and completion owners. Remaining paths need the
 same composition before guards can be released. The final-root lease does not
 provide such a lease for an arbitrary still-live mapping operation.
 
-Thus complete x86 teardown progress, recoverable shootdown failure and full
-hardware-walk quiescence remain open. See
+Complete platform/device quiescence and recovery of abandoned owners remain
+open despite bounded shootdown retry and tested QEMU NVMe reset. See
 [memory-object retirement](memory-object-retirement.md),
 [kernel frame retirement](kernel-frame-retirement.md) and
 [page-table lifetime](page-table-lifetime.md).

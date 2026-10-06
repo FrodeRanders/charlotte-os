@@ -296,13 +296,29 @@ impl RetiredAddressSpace {
         self,
         invalidate: impl FnOnce(&AddressSpace, AddressSpaceHandle) -> bool,
     ) -> Result<(), AddressSpaceCloseError> {
+        match self.release_retry_with(invalidate) {
+            Ok(()) => Ok(()),
+            Err(owner) => {
+                crate::early_logln!(
+                    "[memory] quarantined address-space root asid={} generation={}",
+                    owner.handle.id(),
+                    owner.handle.generation()
+                );
+                Err(AddressSpaceCloseError::QuiescenceFailed)
+            }
+        }
+    }
+
+    /// Keep this exact detached root/slot/account owner on rejection. Retrying
+    /// invalidation is safe; no physical destruction starts before success.
+    // The inline root owner must survive failure without allocating an error box.
+    #[allow(clippy::result_large_err)]
+    fn release_retry_with(
+        self,
+        invalidate: impl FnOnce(&AddressSpace, AddressSpaceHandle) -> bool,
+    ) -> Result<(), Self> {
         if !invalidate(self.entry.value(), self.handle) {
-            crate::early_logln!(
-                "[memory] quarantined address-space root asid={} generation={}",
-                self.handle.id(),
-                self.handle.generation()
-            );
-            return Err(AddressSpaceCloseError::QuiescenceFailed);
+            return Err(self);
         }
         // Quiescence precedes all root/data/table destruction and account
         // refunds. No masking guard is held during AddressSpace::drop.
@@ -325,14 +341,21 @@ fn invalidate(space: &AddressSpace, handle: AddressSpaceHandle) -> bool {
         if space.hw_asid() != 0 {
             crate::cpu::isa::memory::tlb::inval_hardware_asid(space.hw_asid());
         }
+        true
     }
     #[cfg(target_arch = "x86_64")]
     {
         let _ = space;
-        // No PCID: the completed rendezvous flushes all non-global entries.
-        crate::cpu::isa::memory::tlb::inval_asid(handle.id());
+        // No PCID: the completed rendezvous flushes global/non-global entries.
+        // Retry only invalidation, before any physical teardown. Each attempt
+        // gets a distinct acknowledgement epoch; rejection retains this root.
+        for _ in 0..3 {
+            if crate::cpu::isa::memory::tlb::try_inval_asid(handle.id()).is_ok() {
+                return true;
+            }
+        }
+        false
     }
-    true
 }
 
 pub(crate) mod tests;

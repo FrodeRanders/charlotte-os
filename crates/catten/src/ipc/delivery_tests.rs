@@ -87,6 +87,7 @@ fn reclaimed(asid: AddressSpaceId, cap: MemoryObjectCap) {
 pub(crate) fn run() {
     connection::run();
     backing::run();
+    submission::tests::run();
     queued_scalar();
     queued_vector();
     returned_memory();

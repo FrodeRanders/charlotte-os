@@ -99,5 +99,6 @@ pub fn test_sync_ipi_shootdown() {
     let lp_count = crate::cpu::multiprocessor::get_lp_count();
     logln!("[ipi] verifying synchronous TLB-shootdown rendezvous across {lp_count} LP(s)...");
     crate::cpu::isa::interrupts::fixed::ipis::send_sync_shootdown();
+    crate::memory::retirement::tests::test_runtime_recovery();
     logln!("[ipi] synchronous TLB-shootdown rendezvous completed.");
 }

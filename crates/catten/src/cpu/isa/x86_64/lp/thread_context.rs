@@ -182,11 +182,17 @@ fn deallocate_user_stack(stack: UserStack) -> bool {
         }
     }
     // The slot owns the original root through invalidation, outside its guard.
-    crate::cpu::isa::memory::tlb::inval_range_user(
+    if crate::cpu::isa::memory::tlb::try_inval_range_user(
         handle.id(),
         VAddr::from(low),
         stack.committed_pages,
-    );
+    )
+    .is_err()
+    {
+        // Detached backing and the published slot/root lease remain retained.
+        // A failed rendezvous never permits physical reuse.
+        return false;
+    }
     {
         let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
         for frame in frames.into_iter().flatten() {

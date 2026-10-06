@@ -149,8 +149,7 @@ impl PreparedNamespaceObject<'_> {
         self.finish_with(
             unmap_pages,
             |asid, base, pages| {
-                crate::cpu::isa::memory::tlb::inval_range_user(asid, base, pages);
-                true
+                crate::cpu::isa::memory::tlb::try_inval_range_user(asid, base, pages).is_ok()
             },
             release_scratch,
         )

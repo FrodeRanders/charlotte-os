@@ -293,6 +293,9 @@ extern "C" fn finish_boot() {
         // scheduler starts; allowing one of them to race this LazyLock's first
         // initialization made device discovery depend on scheduling order.
         spin::LazyLock::force(&DEVICE_TOPOLOGY);
+        // Topology publication is complete. Stack preparation can rendezvous
+        // with APs, so do not inherit this boot-only local interrupt mask.
+        unmask_interrupts!();
         logln!("Spawning initial kernel thread to probe device topology...");
         let thread_id = spawn_thread(KERNEL_ASID, probe_device_topology);
         logln!("Initial thread spawned with ID = {thread_id}.");
@@ -300,6 +303,10 @@ extern "C" fn finish_boot() {
     #[cfg(all(feature = "hvf_compat", not(feature = "live_upgrade_test")))]
     logln!("PCI topology probe skipped (hvf_compat: ECAM MMIO triggers HVF assertion).");
     unmask_interrupts!();
+    #[cfg(target_arch = "x86_64")]
+    crate::cpu::scheduler::threads::start_reapers();
+    #[cfg(not(feature = "hvf_compat"))]
+    crate::device::recovery_tests::run();
     // Reach the operational service composition before admitting tests that
     // consume it. In particular, AArch64's UART test loads cclient.elf from
     // the object store, while the NVMe verifier observes the storage handles
@@ -319,10 +326,8 @@ extern "C" fn finish_boot() {
     // become ready.
     self_test::run_deferred_self_tests();
 
-    // Keep the remaining admission and boot-time rebalance phase atomic with
-    // respect to this LP, matching the previous boot ordering. Interrupts are
-    // restored once every initial kernel thread has been submitted.
-    mask_interrupts!();
+    // Thread preparation can rendezvous. Keep interrupts enabled; each
+    // scheduler publication below supplies its own short serialization.
     // Spawn the async-syscall demonstration (submit -> async worker -> complete
     // -> wake), exercising the completion ABI end-to-end once the scheduler is
     // active.
@@ -341,8 +346,8 @@ extern "C" fn finish_boot() {
     #[cfg(feature = "hvf_compat")]
     logln!("Local storage-backed node-ready publication skipped under hvf_compat.");
     // Initial admission is intentionally affinity-preserving. Once the full
-    // boot workload is known, migrate explicitly certified Ready work from
-    // overloaded LPs before any of those contexts begin executing.
+    // boot workload is known, migrate explicitly certified, still-Ready work
+    // from overloaded LPs. Contexts that already started remain ineligible.
     #[cfg(not(feature = "live_upgrade_test"))]
     {
         let mut rebalanced = 0usize;

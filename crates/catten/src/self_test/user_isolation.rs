@@ -125,8 +125,16 @@ impl Fixture {
             deadline.assert_pending("faulted user thread retirement");
             scheduler::yield_lp();
         }
-        memory::close_user_address_space_handle(self.handle)
-            .expect("user isolation fixture teardown");
+        loop {
+            match memory::close_user_address_space_handle(self.handle) {
+                Ok(()) => break,
+                Err(memory::AddressSpaceCloseError::OperationsInFlight) => {
+                    deadline.assert_pending("user stack retirement lease");
+                    scheduler::yield_lp();
+                }
+                result => result.expect("user isolation fixture teardown"),
+            }
+        }
     }
 }
 

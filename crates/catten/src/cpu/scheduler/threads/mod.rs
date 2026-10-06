@@ -196,9 +196,25 @@ pub fn retire_requested_threads() {
 }
 
 /// Drops any threads awaiting reaping on the *current* LP, freeing their stacks.
-/// MUST be called from a thread other than the one being reaped (e.g. from
-/// `cond_yield_lp` after the context switch away from the dying thread). Safe to
-/// call when there is nothing to reap.
+#[cfg(target_arch = "x86_64")]
+pub(crate) fn start_reapers() {
+    extern "C" fn reap() {
+        loop {
+            reap_dead_threads();
+            crate::cpu::scheduler::sleep_millis(1);
+        }
+    }
+    // A switch to this same-LP worker proves the dying context is off-CPU.
+    // Workers stay pinned and blocked between batches; all physical cleanup
+    // runs in guard-free thread context with IRQ/IPI progress available.
+    for lp in 0..crate::cpu::multiprocessor::get_lp_count() {
+        crate::cpu::scheduler::spawn_thread_on_lp(KERNEL_ASID, reap, lp);
+    }
+}
+
+/// Must run after switching away from the dying thread, on its original LP.
+/// Safe to call when there is nothing to reap. x86 uses scheduled workers so
+/// physical invalidation can complete with IRQs enabled.
 pub fn reap_dead_threads() {
     let lp = crate::cpu::isa::lp::ops::get_lp_id();
     // Move this LP's dead threads out under the lock, then drop them after

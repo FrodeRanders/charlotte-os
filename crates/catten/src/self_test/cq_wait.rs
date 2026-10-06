@@ -64,7 +64,6 @@ fn test_scheduler_waiter_admission() {
         cpu::{
             isa::lp::ops::get_lp_id,
             scheduler::{
-                spawn_thread_on_lp,
                 system_scheduler::{
                     Error,
                     SYSTEM_SCHEDULER,
@@ -126,9 +125,11 @@ fn test_scheduler_waiter_admission() {
 
     // This IRQ-safe guard prevents local dispatch while examining a Ready
     // worker. It is pinned to this LP and never certified for migration.
+    let prepared = Thread::new(KERNEL_ASID, admission_worker);
     let barrier = crate::cpu::multiprocessor::spin::mutex::Mutex::new(());
     let guard = barrier.lock();
-    let worker = spawn_thread_on_lp(KERNEL_ASID, admission_worker, get_lp_id());
+    let worker = publish_thread(prepared).unwrap();
+    SYSTEM_SCHEDULER.read().submit_to_lp(worker, get_lp_id()).unwrap();
     assert!(matches!(
         SYSTEM_SCHEDULER.read().block_thread(worker, &Reject),
         Err(Error::WaitRegistrationFailed)

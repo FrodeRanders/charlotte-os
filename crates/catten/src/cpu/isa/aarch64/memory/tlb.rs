@@ -92,13 +92,27 @@ pub fn inval_range_kernel(base: VAddr, num_pages: usize) {
 /// across all cores. Uses the ASID-qualified `VAE1IS` variant so that only the
 /// target address space's entries are affected.
 pub fn inval_range_user(asid: AddressSpaceId, base: VAddr, num_pages: usize) {
+    try_inval_range_user(asid, base, num_pages).expect("user invalidation lost its live root");
+}
+
+#[derive(Debug)]
+pub enum InvalidationError {
+    AddressSpaceMissing,
+}
+
+pub fn try_inval_range_user(
+    asid: AddressSpaceId,
+    base: VAddr,
+    num_pages: usize,
+) -> Result<(), InvalidationError> {
+    if num_pages == 0 {
+        return Ok(());
+    }
     let hwasid = match ADDRESS_SPACE_TABLE.lock().get(asid) {
         Ok(address_space) if address_space.hw_asid() != 0 => address_space.hw_asid(),
-        _ => return,
+        Ok(_) => return Ok(()), // root has never acquired a translation tag
+        Err(_) => return Err(InvalidationError::AddressSpaceMissing),
     };
-    if num_pages == 0 {
-        return;
-    }
     let raw_base = <VAddr as Into<usize>>::into(base);
     let asid_bits = tlbi_asid_operand(hwasid);
     unsafe {
@@ -110,6 +124,7 @@ pub fn inval_range_user(asid: AddressSpaceId, base: VAddr, num_pages: usize) {
         }
         asm!("dsb ish", "isb", options(nostack, preserves_flags));
     }
+    Ok(())
 }
 
 /// Invalidate all translations belonging to an address space across all cores.
@@ -138,4 +153,10 @@ pub fn inval_hardware_asid(hwasid: HwAsidRaw) {
             options(nostack, preserves_flags)
         );
     }
+}
+
+// ARM broadcast DSB completes synchronously; no software IPI timeout/retry.
+pub fn try_inval_range_kernel(base: VAddr, pages: usize) -> Result<(), core::convert::Infallible> {
+    inval_range_kernel(base, pages);
+    Ok(())
 }

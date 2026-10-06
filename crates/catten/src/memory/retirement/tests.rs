@@ -41,6 +41,7 @@ fn assert_detached(handle: AddressSpaceHandle) {
 }
 
 pub(crate) fn run() {
+    test_retry_quiescence();
     test_live_operations();
     test_abandoned_operation();
     test_staged_close();
@@ -343,5 +344,72 @@ fn test_quarantine(abandon: bool) {
         "[root retirement] quarantine abandon={} retained_frames={} heap_pages=1",
         abandon,
         physical_pages
+    );
+}
+
+fn test_retry_quiescence() {
+    let before = backing_budget::test_used_pages(Kind::Heap);
+    let owner = loader::create_user_address_space_handle();
+    assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
+    let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let retired = stage(owner);
+    let retired = retired
+        .release_retry_with(|_, handle| {
+            assert_detached(handle);
+            false
+        })
+        .expect_err("rejected invalidation consumed root");
+    assert_detached(owner);
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+    assert_eq!(backing_budget::test_used_pages(Kind::Heap), before + 1);
+    let intervening = loader::create_user_address_space_handle();
+    assert_ne!(intervening.id(), owner.id());
+    assert!(retired.release_retry_with(invalidate).is_ok());
+    assert_eq!(backing_budget::test_used_pages(Kind::Heap), before);
+    let successor = loader::create_user_address_space_handle();
+    assert_eq!(successor.id(), owner.id());
+    assert_ne!(successor, owner);
+    memory::close_user_address_space_handle(successor).unwrap();
+    memory::close_user_address_space_handle(intervening).unwrap();
+}
+
+/// Concurrent guest probe avoids global allocator/pool counters: background
+/// services may allocate. Inspect only this exact owned root's charge/slot.
+#[cfg(target_arch = "x86_64")]
+pub(crate) fn test_runtime_recovery() {
+    use crate::cpu::isa::interrupts::fixed::ipis::{
+        self,
+        ShootdownError,
+    };
+    if crate::cpu::multiprocessor::get_lp_count() <= 1 {
+        return;
+    }
+    for timeout in [false, true] {
+        let owner = loader::create_user_address_space_handle();
+        assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
+        let retired = stage(owner);
+        let retired = retired
+            .release_retry_with(|space, handle| {
+                assert_detached(handle);
+                assert_eq!(space.heap_account.pages(), 1);
+                let failure = ipis::test_incomplete_rendezvous(timeout);
+                if timeout {
+                    assert!(matches!(failure, Err(ShootdownError::TimedOut)));
+                } else {
+                    assert!(matches!(failure, Err(ShootdownError::Delivery(_))));
+                }
+                false
+            })
+            .expect_err("unconfirmed rendezvous released root");
+        assert_detached(owner);
+        assert_eq!(retired.entry.value().heap_account.pages(), 1);
+        let intervening = loader::create_user_address_space_handle();
+        assert_ne!(intervening.id(), owner.id());
+        assert!(retired.release_retry_with(invalidate).is_ok());
+        memory::close_user_address_space_handle(intervening).unwrap();
+    }
+    crate::logln!(
+        "[root recovery] cross-LP delivery rejection and missing acknowledgement retained \
+         root/charge; fresh rendezvous completed physical teardown"
     );
 }

@@ -43,17 +43,21 @@ Intermediate tables remain linked for reuse under the
 
 ## x86 delivery failure
 
-The synchronous IPI sender no longer subtracts failed deliveries from its
-acknowledgement barrier. A failed send logs a fatal diagnostic and stops the
-initiating LP with ownership/barrier latched. The caller cannot resume and
-reuse backing; other shootdowns cannot overtake the incomplete operation.
-Other LPs are not automatically stopped. This is fail-stop protection, not a
-recoverable timeout/retry protocol or an availability guarantee.
+The fallible synchronous sender now uses one monotonic request epoch and one
+acknowledgement per LP. Each acknowledgement follows a flush that includes
+global translations and paging-structure caches. Delivery rejection and missing
+acknowledgements return errors without crediting the failed participant. A new
+attempt cannot count stale or duplicate acknowledgements. Coordinator admission
+is bounded to 500 ms, followed by a separate 100 ms acknowledgement budget.
+Initiators must have IRQs enabled and hold no masking guard; the coordinator
+wait yields before acquiring ownership. Legacy mandatory callers panic on
+rejection, while owning retirement receipts retain backing for explicit retry.
 
-A recipient that never acknowledges still stalls the existing rendezvous.
-Recovery would require exact participant/epoch tracking and a way to prove
-that an unresponsive LP cannot resume using old translations. Merely expiring
-a timer and crediting its acknowledgement would recreate the original hazard.
+The scheduled, pinned reaper on each x86 LP releases dead-thread stacks with
+IRQs enabled. IRQ tails only stage retirement; they do not wait synchronously
+on an initiator they may have interrupted. A timeout leaves backing unavailable
+and does not prove that an unresponsive LP cannot resume. Retry requires a
+fresh successful rendezvous. See [hardware quiescence](hardware-quiescence.md).
 
 ## Remaining SEC-18 scope
 
@@ -62,8 +66,8 @@ cleanup. Several user-memory, device and address-space lifecycle paths still
 invoke x86 invalidation while retaining other interrupt-masking guards. Those
 need explicit retirement phases that preserve captured generation, mapping
 state, loans/pins and charges while releasing locks before the rendezvous.
-Complete user/domain teardown quiescence and recoverable x86 failure handling
-remain open. Kernel-stack/range byte admission and general metadata budgets
+Abandoned-root recovery and complete platform/device quiescence remain open.
+Kernel-stack/range byte admission and general metadata budgets
 also remain part of SEC-07.
 
 [Memory-object retirement](memory-object-retirement.md) now separately retains
@@ -86,8 +90,10 @@ of foreign backing, and pre-mutation metadata/range rejection. A Drop fixture
 deliberately quarantines **one 4 KiB page** for the lifetime of the test guest;
 its free-frame count must not increase and its diagnostic count must increase.
 
-The x86-only fake-sender fixture checks that failed delivery leaves the barrier
-unchanged and excludes the initiating LP. It does not execute the fatal halt
-branch. AArch64 executes the kernel ownership fixtures and security regression;
-x86 guest execution, real failed/unresponsive recipients, concurrent virtual
-reuse and full physical-pressure testing remain outstanding.
+The host epoch tests cover stale, duplicate and non-regressing acknowledgements,
+exclusive coordinator ownership and identity exhaustion. The boot fake sender
+checks rejected delivery. A running four-LP x86 fixture omits one actual IPI,
+then separately omits one acknowledgement, retaining its exact root, slot and
+charge before a fresh real rendezvous releases them. This does not stop a CPU
+or prove physical-platform failure recovery. See the
+[staging/quiescence audit record](../reports/audits/2026-10-06-security-staged-quiescence.md).

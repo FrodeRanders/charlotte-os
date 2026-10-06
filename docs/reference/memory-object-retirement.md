@@ -98,11 +98,13 @@ lookup or mapping invalidation remains in their physical release. Whole-domain
 memory retains exact mapped roots in its completion owner. Namespace loan
 cleanup owns the closing generation and leases its peer before releasing IPC.
 
-SEC-18 remains partial. Unpublished staged-copy rollback still frees backing
-beneath IPC, and ordinary submission and metadata destruction still use allocator
-work under serialization. Raw kernel fixtures retain serialized loan adapters.
-Recoverable shootdown failures and complete CPU/DMA teardown quiescence remain
-open. See
+SEC-18 remains partial. Copy/vector preparation and unpublished copy rollback
+now run outside IPC under exact root leases; publication revalidates captured
+authority. General metadata allocation/destruction still uses allocator work
+under serialization. Raw kernel fixtures retain serialized loan adapters.
+Bounded x86 retry and QEMU NVMe reset now have hardware-path regressions;
+abandoned-root recovery and wider platform/device quiescence remain open. See
+[hardware quiescence](hardware-quiescence.md),
 [kernel frame retirement](kernel-frame-retirement.md) and
 [page-table lifetime](page-table-lifetime.md).
 
@@ -491,8 +493,10 @@ Physical release uses at most sixteen frames per allocator hold, consuming each
 frame identity before deallocation. The allocator is unlocked between batches;
 original accounting is refunded only after successful completion. This bounds
 one hold's frame count, not end-to-end scheduling latency or all outer guards.
-Staged-copy preparation/rollback and general metadata allocation/destruction
-under IPC remain separate SEC-18/07 work.
+Copy/vector submissions now prepare and roll back unpublished backing outside
+IPC, retaining both exact roots until staging ends. `commit_retained` returns
+its failed `PreparedCall` before frame-owner destruction. General metadata
+allocation/destruction under IPC remains separate SEC-18/07 work.
 
 Boot regressions cover preparation-storage rejection with source restoration,
 two full vectors (510 owning attachments), unlocked call/result/endpoint cleanup,

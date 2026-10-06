@@ -157,8 +157,7 @@ impl RetiredKernelRange {
     /// never a blocking rendezvous in an unknown locking context.
     pub fn release(&mut self) -> Result<(), Error> {
         self.release_with(|base, num_pages| {
-            crate::cpu::isa::memory::tlb::inval_range_kernel(base, num_pages);
-            true
+            crate::cpu::isa::memory::tlb::try_inval_range_kernel(base, num_pages).is_ok()
         })
     }
 

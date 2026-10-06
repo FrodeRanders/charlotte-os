@@ -70,8 +70,7 @@ impl<'root> PreparedNamespaceDevices<'root> {
         self.finish_with(
             unmap_owned_mmio,
             |handle, base, pages| {
-                crate::cpu::isa::memory::tlb::inval_range_user(handle.id(), base, pages);
-                true
+                crate::cpu::isa::memory::tlb::try_inval_range_user(handle.id(), base, pages).is_ok()
             },
             crate::memory::object::release_scratch,
             dma::destroy_domain,

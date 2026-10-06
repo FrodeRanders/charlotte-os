@@ -1,8 +1,10 @@
 //! Host-testable lifecycle decisions and primitives used at kernel/userspace boundaries.
 #![no_std]
 
+pub mod iommu;
 pub mod irq;
 pub mod resources;
+pub mod shootdown;
 
 /// Convert a relative tick count without truncation or deadline wrap. An
 /// unrepresentable timeout remains far-future rather than becoming immediate.

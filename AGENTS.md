@@ -218,8 +218,24 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   acquire application mappings/pins. Retain original charges through physical
   release; Drop quarantines, and rejected release never refunds or retries.
   Frame release holds the physical allocator for at most sixteen frames per
-  batch. Staged-copy rollback under IPC and hardware quiescence/recovery remain
-  separate work.
+  batch. Copy/vector submission captures both exact roots, prepares outside
+  IPC and returns failed `PreparedCall` ownership before dropping copied frames.
+  Revalidate captured connection, endpoint and namespace identity at publication.
+  General metadata allocation/destruction under IPC remains separate work.
+  x86 invalidation uses bounded epoch-fenced acknowledgements, including global
+  translations; never enable IRQs beneath an unknown mask or count failed/stale
+  deliveries. Scheduled same-LP reapers perform physical stack release outside
+  IRQ tails. Retry only a retained retirement owner, never abandoned backing.
+  DMA teardown fences map/unmap before hardware detachment. Require VT-d read/
+  write drains, AMD strict completion-store epochs, and SMMU ASID TLBI/SYNC
+  before releasing data pins. Preserve unconsumed command queues after timeout.
+  A completed domain destroy retains its requester fence until confirmed reset;
+  supported QEMU NVMe reset owns config serialization and disabled bus mastering
+  through new-domain creation. Reject old MMIO authority before reset; uncertain
+  MMIO cleanup retains its claim, root and mapping/scratch record. Explicit
+  MMIO close detaches authority but keeps its claimed descriptor reset-visible
+  until confirmed completion. Unsupported reset targets remain fenced.
+  See `docs/reference/hardware-quiescence.md`.
   Bulk reply-token cleanup must not report failed loan revocation as terminal.
   Whole-domain device cleanup borrows the exact closing root through
   `PreparedNamespaceDevices`. Detach admitted registry storage and remove IRQ

@@ -84,7 +84,6 @@ const CCMD_CIRG: u64 = 1 << 62;
 // IOTLB invalidation register bits. Its location is reported by ECAP.IRO;
 // the first register is IVA and IOTLB follows eight bytes later.
 const IOTLB_IVA: u64 = 1 << 63;
-const IOTLB_IIRG: u64 = 1 << 60;
 
 // Fault status register bits (bits 0..7 are the latched fault/error sources).
 const FSTS_FAULT_MASK: u32 = 0xff;
@@ -106,6 +105,7 @@ struct Mapping {
 }
 
 struct Domain {
+    retiring: bool,
     source_id: u16,
     agaw: u8,
     levels: usize,
@@ -121,6 +121,7 @@ impl Domain {
         let root = alloc_zeroed_frame()?;
         let levels = ((agaw - 12) / 9) as usize;
         let mut domain = Self {
+            retiring: false,
             source_id,
             agaw,
             levels,
@@ -196,6 +197,9 @@ impl Domain {
     }
 
     fn map(&mut self, pin: DmaPin, direction: Direction) -> Result<u64, (Error, DmaPin)> {
+        if self.retiring {
+            return Err((Error::UnknownDomain, pin));
+        }
         if self.mappings.values().any(|mapping| mapping.pin.object_id() == pin.object_id()) {
             return Err((Error::AlreadyMapped, pin));
         }
@@ -234,6 +238,9 @@ impl Domain {
     }
 
     fn clear_mapping(&mut self, iova: u64) -> Result<Mapping, Error> {
+        if self.retiring {
+            return Err(Error::UnknownDomain);
+        }
         let mapping = self.mappings.remove(&iova).ok_or(Error::UnknownMapping)?;
         for index in 0..mapping.pages {
             self.clear_page(iova + (index * PAGE_SIZE) as u64);
@@ -246,6 +253,7 @@ struct Unit {
     base: usize,
     agaw: u8,
     iotlb_invalidate: usize,
+    draining_command: u64,
     max_domains: u64,
     root_table: PAddr,
     context_tables: BTreeMap<u16, PAddr>,
@@ -259,8 +267,9 @@ impl Unit {
         let root = unsafe { self.root_table.into_hhdm_mut::<u64>() };
         let entry = unsafe { root.add(bus as usize * 2) };
         unsafe {
-            entry.write_volatile((u64::from(context_table) & ADDR_MASK) | 1);
             entry.add(1).write_volatile(0);
+            core::sync::atomic::fence(Ordering::Release);
+            entry.write_volatile((u64::from(context_table) & ADDR_MASK) | 1);
         }
     }
 
@@ -270,8 +279,16 @@ impl Unit {
         // 128-bit context entry: lo = present + second-stage page table
         // pointer, hi = adjusted guest address width (AW) in bits 2:0.
         unsafe {
-            entry.write_volatile((u64::from(root) & ADDR_MASK) | 1);
+            if u64::from(root) == 0 {
+                // Clear Present, not just the address. Never expose a valid
+                // pointer to physical zero or alter live secondary metadata
+                // before configuration/IOTLB retirement completes.
+                entry.write_volatile(0);
+                return;
+            }
             entry.add(1).write_volatile(((domain_id as u64) << 8) | aw);
+            core::sync::atomic::fence(Ordering::Release);
+            entry.write_volatile((u64::from(root) & ADDR_MASK) | 1);
         }
     }
 
@@ -287,7 +304,7 @@ impl Unit {
     }
 
     fn flush_iotlb(&self) -> Result<(), Error> {
-        write64(self.base, self.iotlb_invalidate, IOTLB_IVA | IOTLB_IIRG);
+        write64(self.base, self.iotlb_invalidate, self.draining_command);
         for _ in 0..1_000_000 {
             if read64(self.base, self.iotlb_invalidate) & IOTLB_IVA == 0 {
                 return Ok(());
@@ -385,6 +402,11 @@ fn initialize(config: crate::environment::acpi::sdt::dmar::DmarConfig) -> Result
         return Err(Error::Unsupported);
     }
     let cap = read64(base, CAP);
+    // A cache invalidation without draining accepted reads/writes does not
+    // authorize physical backing reuse. Reject unsupported hardware before
+    // allocating or publishing a root/context table.
+    let draining_command =
+        charlotte_lifecycle::iommu::vtd_draining_command(cap).ok_or(Error::Unsupported)?;
     let ecap = read64(base, ECAP);
     let agaw = supported_agaw(cap).ok_or(Error::Unsupported)?;
     let iotlb_invalidate =
@@ -443,6 +465,7 @@ fn initialize(config: crate::environment::acpi::sdt::dmar::DmarConfig) -> Result
         base,
         agaw,
         iotlb_invalidate,
+        draining_command,
         max_domains,
         root_table,
         context_tables: BTreeMap::new(),
@@ -479,11 +502,17 @@ pub fn stream_id(requester_id: u32) -> Result<u32, Error> {
     Ok(source_id as u32)
 }
 
-pub fn create_domain(sid: u32, msi_address: Option<u64>) -> Result<u64, Error> {
+pub(crate) fn create_domain_with_reset(
+    sid: u32,
+    msi_address: Option<u64>,
+    reset: impl FnOnce(bool) -> Result<(), Error>,
+) -> Result<u64, Error> {
     with_unit(|unit| {
-        let source_id = sid as u16;
-        if unit.sources.contains_key(&source_id) {
-            return Err(Error::StreamInUse);
+        let source_id = u16::try_from(sid).map_err(|_| Error::InvalidStream)?;
+        match unit.sources.get(&source_id) {
+            Some(0) => reset(true)?,
+            Some(_) => return Err(Error::StreamInUse),
+            None => reset(false)?,
         }
         let id = unit.next_domain;
         if id >= unit.max_domains || id > u16::MAX as u64 {
@@ -515,7 +544,7 @@ pub fn create_domain(sid: u32, msi_address: Option<u64>) -> Result<u64, Error> {
         if let Err(error) = unit.flush_context_cache() {
             unit.write_context_entry(bus, devfunc, PAddr::from(0u64), 0, 0);
             if unit.flush_context_cache().is_ok() && unit.flush_iotlb().is_ok() {
-                unit.sources.remove(&source_id);
+                *unit.sources.get_mut(&source_id).unwrap() = 0;
                 let domain = unit.domains.remove(&id).expect("new VT-d domain disappeared");
                 let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
                 for frame in domain.table_frames {
@@ -605,9 +634,10 @@ pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
 
 pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
     let mappings = with_unit(|unit| {
-        let Some(domain) = unit.domains.get(&domain_id) else {
+        let Some(domain) = unit.domains.get_mut(&domain_id) else {
             return Ok(Vec::new());
         };
+        domain.retiring = true;
         let source_id = domain.source_id;
         // Quarantine the source id before releasing mappings or their pins:
         // write a non-present context entry and wait for the hardware to
@@ -616,6 +646,9 @@ pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
         let devfunc = (source_id & 0xff) as u8;
         unit.write_context_entry(bus, devfunc, PAddr::from(0u64), 0, 0);
         unit.flush_context_cache()?;
+        if super::test_reject_retirement() {
+            return Err(Error::HardwareTimeout);
+        }
         unit.flush_iotlb()?;
         let mut domain = unit.domains.remove(&domain_id).expect("VT-d domain disappeared");
         let mut pins = core::mem::take(&mut domain.mappings)
@@ -623,7 +656,9 @@ pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
             .map(|mapping| mapping.pin)
             .collect::<Vec<_>>();
         pins.append(&mut domain.quarantined_pins);
-        unit.sources.remove(&source_id);
+        // Hardware translation/drain completion does not reset queued device
+        // work. Keep the requester fenced until a confirmed device reset.
+        *unit.sources.get_mut(&source_id).expect("registered source") = 0;
         let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
         for frame in domain.table_frames {
             let _ = allocator.deallocate_frame(frame);

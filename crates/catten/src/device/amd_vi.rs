@@ -105,6 +105,7 @@ struct Mapping {
 }
 
 struct Domain {
+    retiring: bool,
     source_id: u16,
     root: PAddr,
     table_frames: Vec<PAddr>,
@@ -117,6 +118,7 @@ impl Domain {
     fn new(source_id: u16) -> Result<Self, Error> {
         let root = alloc_zeroed_frame()?;
         Ok(Self {
+            retiring: false,
             source_id,
             root,
             table_frames: alloc::vec![root],
@@ -183,6 +185,9 @@ impl Domain {
     }
 
     fn map(&mut self, pin: DmaPin, direction: Direction) -> Result<u64, (Error, DmaPin)> {
+        if self.retiring {
+            return Err((Error::UnknownDomain, pin));
+        }
         if self.mappings.values().any(|mapping| mapping.pin.object_id() == pin.object_id()) {
             return Err((Error::AlreadyMapped, pin));
         }
@@ -221,6 +226,9 @@ impl Domain {
     }
 
     fn clear_mapping(&mut self, iova: u64) -> Result<Mapping, Error> {
+        if self.retiring {
+            return Err(Error::UnknownDomain);
+        }
         let mapping = self.mappings.remove(&iova).ok_or(Error::UnknownMapping)?;
         for index in 0..mapping.pages {
             self.clear_page(iova + (index * PAGE_SIZE) as u64);
@@ -234,6 +242,8 @@ struct Unit {
     devtab: PAddr,
     cmd_buf: PAddr,
     cmd_tail: u32,
+    completion: PAddr,
+    completion_epoch: u64,
     next_domain: u64,
     domains: BTreeMap<u64, Domain>,
     sources: BTreeMap<u16, u64>,
@@ -253,29 +263,56 @@ impl Unit {
             0
         };
         unsafe {
-            entry.write_volatile(d0);
+            if !valid {
+                entry.write_volatile(0);
+                return;
+            }
             entry.add(1).write_volatile(0);
             entry.add(2).write_volatile(0);
             entry.add(3).write_volatile(0);
+            core::sync::atomic::fence(Ordering::Release);
+            entry.write_volatile(d0);
         }
     }
 
-    fn submit_command(&mut self, cmd0: u64, cmd1: u64) -> Result<(), Error> {
+    fn queue_command(&mut self, cmd0: u64, cmd1: u64) -> Result<(), Error> {
         let tail = self.cmd_tail as usize;
+        let head = read64(self.base, CMD_HEAD);
+        let new_tail = (tail + 16) & (CMD_BUFFER_BYTES - 1);
+        if head >= CMD_BUFFER_BYTES as u64 || head & 15 != 0 || new_tail as u64 == head {
+            // A timed-out command can still be in flight. Never overwrite its
+            // ring slot merely because a later caller wants to retry.
+            return Err(Error::HardwareTimeout);
+        }
         let entry = unsafe { self.cmd_buf.into_hhdm_mut::<u64>().add(tail / 8) };
         unsafe {
             entry.write_volatile(cmd0);
             entry.add(1).write_volatile(cmd1);
         }
-        let new_tail = (tail + 16) & (CMD_BUFFER_BYTES - 1);
+        core::sync::atomic::fence(Ordering::Release);
         self.cmd_tail = new_tail as u32;
         write64(self.base, CMD_TAIL, new_tail as u64);
+        Ok(())
+    }
+
+    fn submit_command(&mut self, cmd0: u64, cmd1: u64) -> Result<(), Error> {
+        let epoch = self.completion_epoch.checked_add(1).ok_or(Error::HardwareTimeout)?;
+        let command =
+            charlotte_lifecycle::iommu::amd_completion_command(u64::from(self.completion), epoch)
+                .ok_or(Error::Unsupported)?;
+        self.completion_epoch = epoch;
+        self.queue_command(cmd0, cmd1)?;
+        self.queue_command(command[0], command[1])?;
         for _ in 0..1_000_000 {
-            if read64(self.base, CMD_HEAD) == new_tail as u64 {
+            let observed = unsafe { self.completion.into_hhdm_ptr::<u64>().read_volatile() };
+            if charlotte_lifecycle::iommu::completion_matches(observed, epoch) {
+                core::sync::atomic::fence(Ordering::Acquire);
                 return Ok(());
             }
             core::hint::spin_loop();
         }
+        // The semaphore and command backing remain Unit-owned, including on
+        // timeout. A late completion cannot satisfy a different retry epoch.
         Err(Error::HardwareTimeout)
     }
 
@@ -344,6 +381,17 @@ fn initialize(config: crate::environment::acpi::sdt::ivrs::IvrsConfig) -> Result
         }
     };
 
+    // Kernel/backend boundary: this private hardware completion cell is owned
+    // by Unit for its lifetime. It must outlive every timed-out coherent store.
+    let completion = match alloc_zeroed_frame() {
+        Ok(frame) => frame,
+        Err(error) => {
+            free_frames(event_log, 1);
+            free_frames(cmd_buf, 1);
+            free_frames(devtab, DEVICE_TABLE_FRAMES);
+            return Err(error);
+        }
+    };
     // Cover the complete 16-bit DeviceID space. Bits 8:0 encode one less than
     // the table length in 4-KiB units (511 for a 2-MiB table).
     write64(base, DEV_TABLE, u64::from(devtab) | (DEVICE_TABLE_FRAMES as u64 - 1));
@@ -363,6 +411,8 @@ fn initialize(config: crate::environment::acpi::sdt::ivrs::IvrsConfig) -> Result
         devtab,
         cmd_buf,
         cmd_tail: 0,
+        completion,
+        completion_epoch: 0,
         next_domain: 1,
         domains: BTreeMap::new(),
         sources: BTreeMap::new(),
@@ -385,14 +435,20 @@ pub fn initialize_early() -> Result<(), Error> {
 
 pub fn stream_id(requester_id: u32) -> Result<u32, Error> {
     crate::environment::acpi::sdt::ivrs::discover_amd_vi().ok_or(Error::Unsupported)?;
-    Ok(requester_id & 0xffff)
+    u16::try_from(requester_id).map(u32::from).map_err(|_| Error::InvalidStream)
 }
 
-pub fn create_domain(sid: u32, _msi_address: Option<u64>) -> Result<u64, Error> {
+pub(crate) fn create_domain_with_reset(
+    sid: u32,
+    _msi_address: Option<u64>,
+    reset: impl FnOnce(bool) -> Result<(), Error>,
+) -> Result<u64, Error> {
     with_unit(|unit| {
-        let source_id = sid as u16;
-        if unit.sources.contains_key(&source_id) {
-            return Err(Error::StreamInUse);
+        let source_id = u16::try_from(sid).map_err(|_| Error::InvalidStream)?;
+        match unit.sources.get(&source_id) {
+            Some(0) => reset(true)?,
+            Some(_) => return Err(Error::StreamInUse),
+            None => reset(false)?,
         }
         let id = unit.next_domain;
         unit.next_domain = unit.next_domain.checked_add(1).ok_or(Error::MapFailed)?;
@@ -404,7 +460,7 @@ pub fn create_domain(sid: u32, _msi_address: Option<u64>) -> Result<u64, Error> 
         if let Err(error) = unit.flush_device_table(source_id) {
             unit.write_dte(source_id, PAddr::from(0u64), false);
             if unit.flush_device_table(source_id).is_ok() && unit.flush_iotlb().is_ok() {
-                unit.sources.remove(&source_id);
+                *unit.sources.get_mut(&source_id).unwrap() = 0;
                 let domain = unit.domains.remove(&id).expect("new AMD-Vi domain disappeared");
                 let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
                 for frame in domain.table_frames {
@@ -489,14 +545,18 @@ pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
 
 pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
     let mappings = with_unit(|unit| {
-        let Some(domain) = unit.domains.get(&domain_id) else {
+        let Some(domain) = unit.domains.get_mut(&domain_id) else {
             return Ok(Vec::new());
         };
+        domain.retiring = true;
         let source_id = domain.source_id;
         // Remove the translation entry and flush the cached DTE before freeing
         // the page tables a device might still walk.
         unit.write_dte(source_id, PAddr::from(0u64), false);
         unit.flush_device_table(source_id)?;
+        if super::test_reject_retirement() {
+            return Err(Error::HardwareTimeout);
+        }
         unit.flush_iotlb()?;
         let mut domain = unit.domains.remove(&domain_id).expect("AMD-Vi domain disappeared");
         let mut pins = core::mem::take(&mut domain.mappings)
@@ -504,7 +564,9 @@ pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
             .map(|mapping| mapping.pin)
             .collect::<Vec<_>>();
         pins.append(&mut domain.quarantined_pins);
-        unit.sources.remove(&source_id);
+        // Hardware translation/drain completion does not reset queued device
+        // work. Keep the requester fenced until a confirmed device reset.
+        *unit.sources.get_mut(&source_id).expect("registered source") = 0;
         let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
         for frame in domain.table_frames {
             let _ = allocator.deallocate_frame(frame);

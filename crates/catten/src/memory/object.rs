@@ -729,7 +729,10 @@ fn map_any_with_lease(
     let base = reserve_scratch(asid, pages)?;
     let mut pin = None;
     let result = map_locked(asid, cap, base, writable, true, &mut pin);
-    crate::cpu::isa::memory::tlb::inval_range_user(asid, base, pages);
+    if crate::cpu::isa::memory::tlb::try_inval_range_user(asid, base, pages).is_err() {
+        // Keep the scratch extent and any installed/rollback backing pin.
+        return Err(MemoryObjectError::UnmapFailed);
+    }
     let mut scratch_released = true;
     if let Err(error) = result {
         // If rollback itself failed, retaining the virtual range is safer than
@@ -786,7 +789,9 @@ fn map_with_lease(
     };
     let mut pin = None;
     let result = map_locked(asid, cap, base, writable, false, &mut pin);
-    crate::cpu::isa::memory::tlb::inval_range_user(asid, base, pages);
+    if crate::cpu::isa::memory::tlb::try_inval_range_user(asid, base, pages).is_err() {
+        return Err(MemoryObjectError::UnmapFailed);
+    }
     if result != Err(MemoryObjectError::UnmapFailed)
         && let Some(pin) = pin
     {
@@ -963,10 +968,13 @@ fn unmap_serialized(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), Me
         (mapping, pages, pin)
     };
     let result = pin.unmap_with(asid, mapping.base, mapping.installed_pages, unmap_pages);
+    if crate::cpu::isa::memory::tlb::try_inval_range_user(asid, mapping.base, pages).is_err() {
+        // Leaves may be detached, but neither scratch nor its pin may complete.
+        return Err(MemoryObjectError::UnmapFailed);
+    }
     if result.is_ok() {
         MEMORY_OBJECTS.lock().objects.get_mut(&pin.object).unwrap().mappings.remove(&asid);
     }
-    crate::cpu::isa::memory::tlb::inval_range_user(asid, mapping.base, pages);
     if result.is_ok() && mapping.scratch {
         release_scratch(asid, mapping.base, pages)?;
     }
@@ -1915,8 +1923,7 @@ impl RetiredObjectMappings {
 
     fn finish(self, closing_asid: AddressSpaceId) {
         self.finish_with(closing_asid, |asid, base, pages| {
-            crate::cpu::isa::memory::tlb::inval_range_user(asid, base, pages);
-            true
+            crate::cpu::isa::memory::tlb::try_inval_range_user(asid, base, pages).is_ok()
         });
     }
 

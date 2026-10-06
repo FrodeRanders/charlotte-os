@@ -113,7 +113,11 @@ Device grants own lifecycle before taking a device/backend registry and borrow
 that guard for shared reservation. MMIO/interrupt payload publication is under
 `DEVICES`; an IRQ grant remains serialized with the existing uniqueness check.
 DMA admission precedes stream lookup/hardware domain creation. Creation runs
-without `DEVICES`, but with lifecycle, so normal retirement cannot interleave.
+under `DEVICES` and lifecycle, so reset checks cannot race register authority
+grant/map/close. Retired requesters remain fenced until a supported confirmed
+reset; QEMU NVMe reset retains config serialization and disabled bus mastering
+through new-domain creation. Old MMIO authority prevents reassignment. See
+[hardware quiescence](hardware-quiescence.md).
 `PreparedDmaDomain` owns created hardware until capability/payload installation.
 Failure destroys it outside `DEVICES`; backend destroy failure quarantines
 reachable backing/stream state rather than freeing it. Count admission neither
