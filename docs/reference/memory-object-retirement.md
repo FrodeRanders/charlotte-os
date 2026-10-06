@@ -46,9 +46,9 @@ undischarged, even when some leaves have been removed. Domain cleanup moves
 records before detachment; ordinary unmap removes its record only after the full
 detach succeeds. Invalidations and scratch/authority completion retain their
 existing ordering. Whole-domain memory now borrows closing ownership and retains
-mapped peer leases before releasing lifecycle. IPC move/copy/result attachment
-cleanup retains its outer IPC guard. Namespace loan
-revocation now borrows closing ownership and retains peer cleanup leases. Public mapping operations, all existing
+mapped peer leases before releasing lifecycle. Published IPC move/copy/result
+attachment cleanup now carries detached backing outside IPC, as described below.
+Namespace loan revocation now borrows closing ownership and retains peer cleanup leases. Public mapping operations, all existing
 borrowed-memory replies, explicit call/reply cancellation and direct loan revocation
 now own live-generation leases across these phases, as described below.
 
@@ -92,16 +92,17 @@ detach/invalidation checks succeed.
 The backing receipts themselves do not own an address-space generation lease.
 Their caller must retain one or retain lifecycle/IPC serialization across the
 complete operation. Numeric ASIDs and scratch identities must not be reused
-between detach and finish. Move/copy/result attachment cleanup still depends on
-its outer IPC guard. Whole-domain memory now retains exact mapped roots in its
-own completion owner. Namespace loan cleanup
-now owns the closing generation and leases its peer before releasing IPC.
+between detach and finish. Published unmapped IPC attachments instead detach
+all authority under IPC and retain original backing charges outside it; no ASID
+lookup or mapping invalidation remains in their physical release. Whole-domain
+memory retains exact mapped roots in its completion owner. Namespace loan
+cleanup owns the closing generation and leases its peer before releasing IPC.
 
-Consequently SEC-18 remains partial: several user/device/domain paths still
-perform x86 rendezvous under an outer interrupt-masking lifecycle/IPC guard.
-The next phase must preserve captured generation, backing, scratch reservation
-and loan authority while releasing those guards. Recoverable shootdown failures
-and complete teardown quiescence remain open. See
+SEC-18 remains partial. Unpublished staged-copy rollback still frees backing
+beneath IPC, and ordinary submission and metadata destruction still use allocator
+work under serialization. Raw kernel fixtures retain serialized loan adapters.
+Recoverable shootdown failures and complete CPU/DMA teardown quiescence remain
+open. See
 [kernel frame retirement](kernel-frame-retirement.md) and
 [page-table lifetime](page-table-lifetime.md).
 
@@ -201,7 +202,8 @@ unlocked interval.
 Memory close checks the source's transfer fence before authority lookup. It
 releases the registry and yields until the transfer completes, rather than
 mistaking an escrowed source for an invalid capability. Serialized IPC cleanup
-uses a nonwaiting busy check instead; it cannot park beneath IPC. Ordinary
+uses a nonwaiting retirement check instead; it cannot park beneath IPC.
+It carries detached backing to explicit release after unlocking. Ordinary
 rollback restores source authority, releases the backing pin and clears the
 fence under one registry hold. Rejected close never removes/reinserts payloads.
 Late transfer Drop cannot change a successor's reused scalar capability: escrow
@@ -315,12 +317,12 @@ reject detachment, invalidation and scratch completion, and abandon a transactio
 Each retains one backing page and its charge after both domains close. These
 four probes verify guard availability but do not stress concurrent hardware.
 
-Failure probes intentionally quarantine **eleven 4 KiB data pages and nine object
+Failure probes intentionally quarantine **twelve 4 KiB data pages and ten object
 charges** for the test guest's lifetime. They never re-adopt the backing. This is
 in addition to the kernel-range fixture's one quarantined page. These fixtures
 model the dangerous interleaving, not a concurrent hardware-walk stress test.
-AArch64 security guests execute them; x86 compilation does not establish x86
-IPI progress or execute its failure path.
+Both architecture guests execute the software fault fixtures. They do not
+inject actual failed hardware IPI delivery or establish recovery from it.
 
 Bulk-cancellation fixtures additionally exercise queued endpoint close and
 queued/delivered caller-root close with mapped loans. A real prepared loan is
@@ -361,10 +363,11 @@ only before starting cleanup. If rejection exposes readable work, its readiness
 edge is re-signaled after unlock. Abandoning an owner retains its claim/root;
 abandoning a current call also retains that caller's lease, token and loan pins.
 
-Loan-free endpoint close remains atomic under IPC. Whole-domain cleanup uses
-borrowed closing ownership and peer cleanup leases rather than invoking this
-live-leasing owner beneath lifecycle. Its loan cleanup now runs outside IPC;
-move/copy/result attachment cleanup retains its existing serialized adapter. Physical CPU/DMA quiescence and recoverable x86 shootdown
+Loan-free endpoint authority removal remains atomic under IPC; its detached
+backing releases after unlock. Whole-domain cleanup uses borrowed closing
+ownership and peer cleanup leases rather than invoking this live-leasing owner
+beneath lifecycle. Its loan cleanup and published move/copy/result frame release
+run outside IPC. Physical CPU/DMA quiescence and recoverable x86 shootdown
 failures remain separate work. See the
 [endpoint remediation](../reports/audits/2026-10-06-security-endpoint-close.md)
 for the executed regressions.
@@ -455,3 +458,46 @@ pending result and destination admission unchanged. A normal reply can still
 revoke those loans afterward. DMA-pinned revocation can reject and retain its
 receipt/backing; this removes no physical quiescence requirement.
 See the [source qualification follow-up](../reports/audits/2026-10-06-security-source-qualification.md).
+
+
+## Published IPC backing release
+
+Queued move/copy attachments and unobserved returned memory remain unmapped and
+inaccessible through ordinary application lookup. Cleanup removes their exact
+capability and object under IPC plus the memory registry into `RetiredMemory`.
+That owner retains the frame vector and original sponsor charge. It performs no
+physical free until explicit consuming `release` after IPC unlock. Abandonment
+quarantines backing and charge without registry access, allocator work or a
+retry. Any rejected physical release retains the full original charge even if
+some frames already released; logical IPC close may complete because all
+reachable authority was detached and no mappings/pins remain.
+
+`MemoryAttachments` reserves retirement-owner storage fallibly before attachment
+publication. Admission failure rolls back unpublished transfers and fresh IPC
+admission. Its capacity is bounded by `CAP_VECTOR_MAX` (255), not a smaller
+assumed vector size. Queue cleanup moves the existing admitted queue storage
+outside IPC, retaining that storage's sponsorship until its actual destruction.
+No teardown snapshot, growth or large fixed-size retirement array is needed.
+Single unobserved results use one inline retirement owner.
+
+Prepared cancellation confirms every loan first, then retires undelivered owning
+attachments under IPC. Physical release finishes before returning its root
+leases. Explicit endpoint close likewise retains its server lease and claim
+through asynchronous backing release and forwards each call's cleanup owner.
+Whole-domain cleanup keeps its borrowed closing root. Delivered and observed
+memory remains application-owned and is not reclaimed by these receipts.
+
+Physical release uses at most sixteen frames per allocator hold, consuming each
+frame identity before deallocation. The allocator is unlocked between batches;
+original accounting is refunded only after successful completion. This bounds
+one hold's frame count, not end-to-end scheduling latency or all outer guards.
+Staged-copy preparation/rollback and general metadata allocation/destruction
+under IPC remain separate SEC-18/07 work.
+
+Boot regressions cover preparation-storage rejection with source restoration,
+two full vectors (510 owning attachments), unlocked call/result/endpoint cleanup,
+loan cleanup before ownership detachment, live root leases during physical
+release, mapped/pinned retirement rejection, 35-page release across multiple
+batches, original accounting across ASID reuse and Drop quarantine. The latter
+adds one intentionally retained page and object charge to the fixture totals.
+See the [IPC backing release follow-up](../reports/audits/2026-10-06-security-ipc-backing-release.md).

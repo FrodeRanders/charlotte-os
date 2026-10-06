@@ -102,7 +102,7 @@ impl Fixture {
                     .find(|message| message.reply == Some(identity.token))
                     .unwrap()
                     .memory
-                    .clone(),
+                    .to_vec(),
             )
         };
         let reply = delivered.then(|| receive(server.id(), endpoint).unwrap().reply.unwrap());
@@ -145,6 +145,8 @@ fn unlocked() {
 }
 
 pub(crate) fn run() {
+    owned_endpoint_backing_release();
+    queued_backing_release();
     success_and_wait();
     queued_endpoint_close();
     preparation_rollback();
@@ -1205,4 +1207,69 @@ fn namespace_kernel_caller() {
         "[IPC namespace kernel caller] queued/delivered mapped read/write loans retired without \
          leasing or closing the permanent root"
     );
+}
+
+fn queued_backing_release() {
+    let fixture = Fixture::new(2, false);
+    let operation = PreparedCancellation::prepare(fixture.caller.id(), fixture.call).unwrap();
+    let mut releases = 0;
+    operation
+        .finish_with_cleanup(
+            |loan| loan.finish_observed(unlocked),
+            |owner| {
+                unlocked();
+                object::retirement_tests::assert_backing_release_unlocked();
+                for handle in [fixture.caller, fixture.server] {
+                    assert_eq!(
+                        memory::close_user_address_space_handle(handle),
+                        Err(AddressSpaceCloseError::OperationsInFlight)
+                    );
+                }
+                for &cap in &fixture.attachments {
+                    assert_eq!(
+                        object::info(fixture.server.id(), cap),
+                        Err(MemoryObjectError::UnknownCapability)
+                    );
+                }
+                owner.release().unwrap();
+                releases += 1;
+            },
+        )
+        .unwrap();
+    assert_eq!(releases, 2, "confirmed loans must not produce duplicate backing owners");
+    fixture.close();
+}
+
+fn owned_endpoint_backing_release() {
+    let fixture = Fixture::new(2, false);
+    let source = object::allocate(fixture.caller.id(), 1).unwrap();
+    scalar_send_with_memory_move(fixture.caller.id(), fixture.connection, 77, 0, source).unwrap();
+    let owner = super::super::endpoint_close::PreparedEndpointClose::prepare(
+        fixture.server.id(),
+        fixture.endpoint,
+    )
+    .unwrap();
+    let mut releases = 0;
+    owner
+        .finish_with_cleanup(
+            |loan| loan.finish_observed(unlocked),
+            || panic!("endpoint cleanup waited"),
+            |owner| {
+                unlocked();
+                object::retirement_tests::assert_backing_release_unlocked();
+                assert_eq!(
+                    memory::close_user_address_space_handle(fixture.server),
+                    Err(AddressSpaceCloseError::OperationsInFlight)
+                );
+                owner.release().unwrap();
+                releases += 1;
+            },
+        )
+        .unwrap();
+    assert_eq!(releases, 3);
+    assert_eq!(
+        poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap().result,
+        REPLY_ENDPOINT_CLOSED
+    );
+    fixture.close();
 }

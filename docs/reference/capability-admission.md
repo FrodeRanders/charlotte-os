@@ -60,7 +60,8 @@ frames/pins. Source escrow restoration, pin release and clearing the source's
 transfer fence share one memory-registry hold: close cannot observe restored
 authority with an unfinished transfer pin. Public memory close waits outside
 the registry while that fence is owned; serialized IPC cleanup instead uses a
-nonwaiting busy check without consuming authority. Close rejection leaves the
+nonwaiting retirement check without consuming busy authority, then releases
+its detached backing after IPC unlock. Close rejection leaves the
 payload in place, without remove-and-reinsert allocation. A committed loan keeps
 the transfer fence until its preparation owner drops, preventing a new read
 preparation from stealing the fence during that interval. Teardown may remove

@@ -1,6 +1,6 @@
 //! Single-mutator boot fixtures at the raw kernel ownership boundary. Fault
 //! adapters exercise the same detach/finish helpers as runtime teardown.
-//! Quarantine probes intentionally reserve eleven data pages for the guest's
+//! Quarantine probes intentionally reserve twelve data pages for the guest's
 //! lifetime; there is no test-only re-adoption/release escape hatch.
 
 use super::*;
@@ -42,6 +42,7 @@ fn invalidate(asid: usize, base: VAddr, pages: usize) -> bool {
 
 pub(crate) fn run(mut create: impl FnMut(&str) -> usize) {
     revocation::tests::run(&mut create);
+    test_detached_backing(&mut create);
     test_batched_detach(&mut create);
     test_scratch_completion_failure(&mut create);
     test_last_unpin(&mut create);
@@ -52,7 +53,8 @@ pub(crate) fn run(mut create: impl FnMut(&str) -> usize) {
     crate::logln!(
         "[object retirement] bounded lock-separated batches, last-unpin fence, borrower \
          authority, scratch rejection, partial detach, failed barrier, Drop quarantine and \
-         foreign-leaf preservation passed (eleven reserved data pages including loan revocation)"
+         foreign-leaf preservation passed (twelve reserved data pages including loan revocation \
+         and detached backing)"
     );
 }
 
@@ -386,4 +388,56 @@ fn test_failed_map_cleanup(create: &mut impl FnMut(&str) -> usize) {
     assert_eq!(budget::used(handle), amount(2));
     close_test_address_space(owner).unwrap();
     assert_eq!(budget::used(handle), amount(2));
+}
+
+pub(crate) fn assert_backing_release_unlocked() {
+    assert!(MEMORY_OBJECTS.try_lock().is_some(), "backing release held memory registry");
+    assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some(), "backing release held lifecycle");
+    assert!(ADDRESS_SPACE_TABLE.try_lock().is_some(), "backing release held table");
+    assert!(PHYSICAL_FRAME_ALLOCATOR.try_lock().is_some(), "allocator already held before release");
+}
+
+fn test_detached_backing(create: &mut impl FnMut(&str) -> usize) {
+    for abandon in [false, true] {
+        let asid = create("detached backing original");
+        let handle = current_address_space_handle(asid).unwrap();
+        let pages = if abandon {
+            1
+        } else {
+            35
+        };
+        let cap = allocate(asid, pages).unwrap();
+        let pin = pin_for_copy(asid, cap).unwrap();
+        assert!(matches!(try_retire_cap(asid, cap), Err(MemoryObjectError::LendingActive)));
+        assert!(info(asid, cap).is_ok());
+        unpin_copy(pin);
+        map_any(asid, cap, false).unwrap();
+        assert!(matches!(try_retire_cap(asid, cap), Err(MemoryObjectError::AlreadyMapped)));
+        assert!(info(asid, cap).unwrap().mapped);
+        unmap(asid, cap).unwrap();
+        let before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+        let retired = try_retire_cap(asid, cap).unwrap();
+        assert_eq!(info(asid, cap), Err(MemoryObjectError::UnknownCapability));
+        assert_eq!(budget::used(handle), amount(pages as u64));
+        assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before);
+        close_test_address_space(asid).unwrap();
+        let successor = create("detached backing successor");
+        let successor_handle = current_address_space_handle(successor).unwrap();
+        assert_eq!(successor, asid);
+        assert_ne!(successor_handle, handle);
+        assert_eq!(budget::used(successor_handle), budget::Amount::default());
+        assert_eq!(budget::used(handle), amount(pages as u64));
+        let before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+        if abandon {
+            drop(retired);
+            assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before);
+            assert_eq!(budget::used(handle), amount(1));
+        } else {
+            retired.release_observed(assert_backing_release_unlocked).unwrap();
+            assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before + pages);
+            assert_eq!(budget::used(handle), budget::Amount::default());
+        }
+        assert_eq!(budget::used(successor_handle), budget::Amount::default());
+        close_test_address_space(successor).unwrap();
+    }
 }

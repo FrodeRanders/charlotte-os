@@ -132,12 +132,19 @@ impl ChargedFrames {
         if self.frames.is_empty() {
             return false;
         }
-        let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
         let mut failed = false;
-        for frame in self.frames.drain(..) {
-            failed |= allocator.deallocate_frame(frame).is_err();
+        while !self.frames.is_empty() {
+            let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+            for _ in 0..RETIREMENT_FRAME_BATCH {
+                let Some(frame) = self.frames.pop() else {
+                    break;
+                };
+                failed |= allocator.deallocate_frame(frame).is_err();
+            }
+            // Bound this allocator hold independently of object size. Pop each
+            // identity before release so interrupted cleanup never retries it.
+            drop(allocator);
         }
-        drop(allocator);
         if failed {
             // Fail closed: a failed physical release must not create fresh
             // quota headroom. Retain the bounded ledger charge as quarantine.
@@ -159,6 +166,41 @@ impl ChargedFrames {
     fn into_parts(mut self) -> (Vec<PAddr>, super::budget::Charge) {
         let frames = core::mem::take(&mut self.frames);
         (frames, self.charge.take().expect("staged charge missing"))
+    }
+}
+
+/// Unmapped, authority-detached backing owns its original sponsor until explicit
+/// physical release. Drop quarantines: never free under an unknown outer guard.
+#[must_use]
+pub(crate) struct RetiredMemory {
+    backing: Option<ChargedFrames>,
+}
+
+impl core::fmt::Debug for RetiredMemory {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("RetiredMemory")
+            .field("pages", &self.backing.as_ref().map_or(0, |backing| backing.frames.len()))
+            .finish()
+    }
+}
+
+impl Drop for RetiredMemory {
+    fn drop(&mut self) {
+        if let Some(backing) = self.backing.take() {
+            core::mem::forget(backing);
+        }
+    }
+}
+
+impl RetiredMemory {
+    pub(crate) fn release(self) -> Result<(), MemoryObjectError> {
+        self.release_observed(|| {})
+    }
+
+    fn release_observed(mut self, observe: impl FnOnce()) -> Result<(), MemoryObjectError> {
+        // A panicking observer still leaves the backing behind this owner.
+        observe();
+        self.backing.take().map_or(Ok(()), ChargedFrames::release)
     }
 }
 
@@ -1603,11 +1645,12 @@ pub(crate) fn close_cap_with_wait(
     // Guessed queued/unobserved destinations remain owned by IPC, including
     // against explicit application close. Only its cleanup adapter can consume.
     registry.lookup(asid, cap)?;
-    finish_close_cap(registry, asid, cap)
+    prepare_close_cap(registry, asid, cap)?.release()
 }
 
-/// Serialized IPC/root cleanup must not wait under outer masking guards.
-/// Busy rejection consumes no authority; normal teardown retains pinned backing.
+/// Nonwaiting raw kernel fixture adapter. Published IPC cleanup instead retains
+/// try_retire_cap's owner and releases it after serialization. Busy rejection
+/// consumes no authority; normal teardown retains pinned backing.
 pub(crate) fn try_close_cap(
     asid: AddressSpaceId,
     cap: MemoryObjectCap,
@@ -1616,7 +1659,20 @@ pub(crate) fn try_close_cap(
     if transfer_in_flight(&registry, asid, cap) {
         return Err(MemoryObjectError::LendingActive);
     }
-    finish_close_cap(registry, asid, cap)
+    prepare_close_cap(registry, asid, cap)?.release()
+}
+
+/// IPC adapter: retire authority/payload under serialization, then retain this
+/// owner until the caller releases every outer guard. No physical release here.
+pub(crate) fn try_retire_cap(
+    asid: AddressSpaceId,
+    cap: MemoryObjectCap,
+) -> Result<RetiredMemory, MemoryObjectError> {
+    let registry = MEMORY_OBJECTS.lock();
+    if transfer_in_flight(&registry, asid, cap) {
+        return Err(MemoryObjectError::LendingActive);
+    }
+    prepare_close_cap(registry, asid, cap)
 }
 
 fn transfer_in_flight(
@@ -1631,7 +1687,7 @@ fn transfer_in_flight(
         .is_some_and(|entry| entry.transfer_in_flight)
 }
 
-fn finish_close_cap(
+fn prepare_close_cap(
     mut registry: lock_api::MutexGuard<
         '_,
         crate::cpu::multiprocessor::spin::mutex::MutexCore,
@@ -1639,7 +1695,7 @@ fn finish_close_cap(
     >,
     asid: AddressSpaceId,
     cap: MemoryObjectCap,
-) -> Result<(), MemoryObjectError> {
+) -> Result<RetiredMemory, MemoryObjectError> {
     // Reject before mutating payload ownership. Reinserting a rejected cap
     // could allocate, so there must be no remove-and-restore cleanup ladder.
     let cap_entry = registry.lookup_for_cleanup(asid, cap)?;
@@ -1682,7 +1738,9 @@ fn finish_close_cap(
     let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Memory);
     assert!(revoked, "memory payload capability was absent from unified table");
     drop(registry);
-    backing.map_or(Ok(()), ChargedFrames::release)
+    Ok(RetiredMemory {
+        backing,
+    })
 }
 
 /// Detached mappings keep a separate registry pin: the last concurrent DMA

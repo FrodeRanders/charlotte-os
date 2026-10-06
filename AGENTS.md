@@ -165,7 +165,8 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   memory retains a `PreparedTransfer`: qualify delivery/observation, escrow its
   exact source, and publish it jointly with any returned connection before
   result visibility. Memory close waits outside registry/IPC for source escrow
-  and pin completion; serialized cleanup uses `try_close_cap` without waiting.
+  and pin completion; serialized cleanup uses `try_retire_cap` without waiting,
+  then consumes the backing owner after IPC unlock.
   Restore escrow, release its pin and clear its transfer fence under one memory
   registry hold; never touch a successor's reused ASID/capability. Abandonment
   restores unstarted returned-memory escrow but retains the reply/connection
@@ -209,10 +210,16 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   peer leases, scratch and the closing root. Unmapped caps wait for live revocation,
   DMA/copy or transfer fences before borrower state/authority removal. Only exact
   completion receipts permit cleanup sealing and final root teardown. The serialized
-  whole-domain memory adapter is confined to raw boot fixtures. Move/copy/result
-  attachment cleanup remains serialized, but undelivered owning memory cannot
-  acquire application mappings/pins before that cleanup. Physical allocator
-  release latency and hardware quiescence/recovery remain separate work.
+  whole-domain memory adapter is confined to raw boot fixtures. Published
+  move/copy/result attachment cleanup removes authority under IPC into
+  `RetiredMemory`, then releases backing outside IPC. Admit `MemoryAttachments`
+  retirement storage before publication; carry bulk queues in their existing
+  admitted storage, never allocate a teardown snapshot. Undelivered owners cannot
+  acquire application mappings/pins. Retain original charges through physical
+  release; Drop quarantines, and rejected release never refunds or retries.
+  Frame release holds the physical allocator for at most sixteen frames per
+  batch. Staged-copy rollback under IPC and hardware quiescence/recovery remain
+  separate work.
   Bulk reply-token cleanup must not report failed loan revocation as terminal.
   Whole-domain device cleanup borrows the exact closing root through
   `PreparedNamespaceDevices`. Detach admitted registry storage and remove IRQ

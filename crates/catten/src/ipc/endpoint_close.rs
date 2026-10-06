@@ -147,11 +147,20 @@ impl PreparedEndpointClose {
 
     pub(super) fn finish_with(
         self,
+        finish: impl FnMut(LoanRevocation) -> Result<(), MemoryObjectError>,
+        wait: impl FnMut(),
+    ) -> Result<(), IpcError> {
+        self.finish_with_cleanup(finish, wait, attachments::release_one)
+    }
+
+    pub(super) fn finish_with_cleanup(
+        self,
         mut finish: impl FnMut(LoanRevocation) -> Result<(), MemoryObjectError>,
         mut wait: impl FnMut(),
+        mut release: impl FnMut(crate::memory::object::RetiredMemory),
     ) -> Result<(), IpcError> {
         loop {
-            {
+            let memory = {
                 let mut ipc = IPC.write();
                 assert_eq!(ipc.caps[&self.asid].address_space, Some(self.handle));
                 let endpoint =
@@ -164,20 +173,24 @@ impl PreparedEndpointClose {
                     // No borrow is attached to an asynchronous send. Its
                     // undelivered move/copy caps cannot acquire application
                     // mappings, loans or DMA/copy pins before this cleanup.
-                    let message = endpoint.queue.pop_front().unwrap();
-                    for cap in message.memory {
-                        let _ = crate::memory::object::try_close_cap(self.asid, cap);
-                    }
+                    let mut message = endpoint.queue.pop_front().unwrap();
+                    message.memory.retire(self.asid);
                     if let Some(cap) = message.connection {
                         let _ = ipc.remove_cap(self.asid, cap);
                     }
-                    continue;
+                    Some(message.memory)
+                } else {
+                    None
                 }
+            };
+            if let Some(memory) = memory {
+                memory.release_with(&mut release);
+                continue;
             }
             // Lifecycle admission precedes IPC. A competing caller cancellation
             // can win between capture and claim; re-resolve the current front.
             let result = match cancellation::PreparedCancellation::prepare_endpoint_front(&self) {
-                Ok(call) => call.finish_with(&mut finish),
+                Ok(call) => call.finish_with_cleanup(&mut finish, &mut release),
                 Err(IpcError::Pending) => {
                     wait();
                     continue;

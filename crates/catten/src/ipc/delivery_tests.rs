@@ -1,5 +1,6 @@
 //! Raw kernel ABI fixtures for guessed, undelivered owning IPC capabilities.
 //! These scalars inspect admitted IPC records; applications use runtime owners.
+mod backing;
 mod connection;
 use super::*;
 use crate::memory::{
@@ -42,7 +43,7 @@ impl Fixture {
         else {
             unreachable!()
         };
-        ipc.endpoints[&endpoint].queue.front().unwrap().memory.clone()
+        ipc.endpoints[&endpoint].queue.front().unwrap().memory.to_vec()
     }
 
     fn close(self) {
@@ -85,6 +86,7 @@ fn reclaimed(asid: AddressSpaceId, cap: MemoryObjectCap) {
 
 pub(crate) fn run() {
     connection::run();
+    backing::run();
     queued_scalar();
     queued_vector();
     returned_memory();

@@ -362,8 +362,16 @@ impl<'a> PreparedCancellation<'a> {
     }
 
     pub(super) fn finish_with(
+        self,
+        finish: impl FnMut(LoanRevocation) -> Result<(), MemoryObjectError>,
+    ) -> Result<(), IpcError> {
+        self.finish_with_cleanup(finish, attachments::release_one)
+    }
+
+    pub(super) fn finish_with_cleanup(
         mut self,
         mut finish: impl FnMut(LoanRevocation) -> Result<(), MemoryObjectError>,
+        mut release: impl FnMut(crate::memory::object::RetiredMemory),
     ) -> Result<(), IpcError> {
         while let Some((borrow, loan)) = self.loans.pop() {
             // No lifecycle, IPC, registry or table guard crosses cleanup.
@@ -433,15 +441,15 @@ impl<'a> PreparedCancellation<'a> {
             ))
         });
         let was_queued = queued.is_some();
-        let delivery = queued.map(|(message, delivery)| {
-            for cap in message.memory {
-                let _ = crate::memory::object::try_close_cap(identity.server, cap);
-            }
-            if let Some(cap) = message.connection {
-                let _ = ipc.remove_cap(identity.server, cap);
-            }
-            delivery
-        });
+        let (delivery, memory) = queued
+            .map(|(mut message, delivery)| {
+                message.memory.retire(identity.server);
+                if let Some(cap) = message.connection {
+                    let _ = ipc.remove_cap(identity.server, cap);
+                }
+                (delivery, message.memory)
+            })
+            .unzip();
         // Receive mints at most one visible cap for this one-shot token. Find
         // it without allocating a teardown snapshot or fresh authority.
         let reply_cap = ipc.caps.get(&identity.server).and_then(|caps| {
@@ -507,6 +515,9 @@ impl<'a> PreparedCancellation<'a> {
             CloseTarget::Call => unreachable!("call close must own the caller"),
         };
         drop(ipc);
+        if let Some(memory) = memory {
+            memory.release_with(&mut release);
+        }
         let released = self.release_namespaces();
         if let Some(delivery) = delivery {
             deliver(delivery);

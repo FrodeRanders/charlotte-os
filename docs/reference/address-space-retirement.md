@@ -139,9 +139,10 @@ Missing acknowledgements still stall.
 ## Remaining SEC-18 work
 
 This corrects the **final root** boundary: its own lifecycle/table guards no
-longer surround the last rendezvous or `AddressSpace::drop`. Earlier
-IPC move/copy/result attachment cleanup retains
-lifecycle/IPC serialization across some x86 invalidations. Whole-domain IPC loan
+longer surround the last rendezvous or `AddressSpace::drop`. Published IPC
+move/copy/result attachment cleanup now detaches unmapped backing and its original
+charge under IPC, then releases outside serialization. Unpublished staged-copy
+rollback and general allocator/metadata work under IPC remain open. Whole-domain IPC loan
 revocation now runs outside those guards through borrowed closing ownership and
 exact peer cleanup leases. Whole-domain device cleanup now runs outside lifecycle
 with its own receipt; uncertain DMA completion retains the root. Loan revocation

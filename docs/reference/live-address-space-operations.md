@@ -133,7 +133,10 @@ cleanup and before root teardown, `seal_close` requires zero leases and permanen
 admission. `retire_closing` additionally requires that seal. A peer captured
 before namespace removal must revalidate under IPC and return its lease on
 rejection. No snapshot, force-clear or counter decrement bypass is provided.
-Move/copy/result attachment cleanup still uses the serialized memory adapter.
+Published move/copy/result attachment cleanup now retires authority under IPC
+into an owner of backing and the original charge, then frees outside IPC.
+Prepared cancellation/endpoint close retains its root leases through that release;
+whole-domain cleanup retains its borrowed closing root.
 Raw kernel boot-fixture adapters alone retain IPC-serialized namespace loan cleanup.
 Claimed/failed queue fronts are not readable; removal re-signals endpoint/CQ
 readiness after IPC unlock, and failed tokens cannot resume delivery or reply.
@@ -154,10 +157,11 @@ retains the mapped peer counts and closing root; no release runs in Drop. Final
 unmapped-cap removal waits for live revocation state to return before clearing a
 borrower and consuming authority. The serialized bulk adapter is fixture-only.
 
-1. Extend composed completion ownership to move/copy/result attachment cleanup. Namespace loan cleanup now retains
-   closing ownership, peer leases, loan receipts, scratch and authority outside
-   IPC/lifecycle. The remaining adapters still retain outer serialization.
-   Do not reuse live operation admission under a lifecycle/subsystem guard.
+1. Extend ownership separation to unpublished staged-copy rollback and general
+   allocator/metadata work under IPC. Published attachments now carry detached
+   backing outside IPC; namespace loans retain closing ownership, peer leases,
+   loan receipts, scratch and authority outside IPC/lifecycle. Do not reuse live
+   operation admission under a lifecycle/subsystem guard.
 2. Translation identity capture after lazy root/tag preparation; then release
    preparation guards before rendezvous. Syscall entry's interrupt state and
    unrelated outer guards still matter for recipient progress.

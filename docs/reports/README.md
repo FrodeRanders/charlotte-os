@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [2026-10-06 IPC backing release outside serialization (SEC-18 follow-up)](audits/2026-10-06-security-ipc-backing-release.md)
+
 - [2026-10-06 returned-memory source qualification (SEC-18 follow-up)](audits/2026-10-06-security-source-qualification.md)
 
 - [2026-10-06 IPC connection delivery visibility (SEC-30)](audits/2026-10-06-security-connection-delivery.md)

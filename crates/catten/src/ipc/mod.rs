@@ -43,6 +43,7 @@ use crate::{
     },
 };
 
+mod attachments;
 pub(crate) mod budget;
 pub(crate) mod cancellation;
 pub(crate) mod delivery_tests;
@@ -52,6 +53,8 @@ pub(crate) mod record_budget;
 pub(crate) mod record_tests;
 pub(crate) mod reply;
 pub(crate) mod waiter_tests;
+
+use attachments::MemoryAttachments;
 
 type WaiterList = Arc<ObserverList<waiter_budget::Charge>>;
 type WaitNotifications = NotificationBatch<waiter_budget::Charge>;
@@ -237,7 +240,7 @@ impl AsIpcCaps {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct QueuedMessage {
     sender: AddressSpaceId,
     sender_generation: u64,
@@ -248,7 +251,7 @@ struct QueuedMessage {
     /// Internal token identity. The receiver-visible capability is allocated
     /// only when this message is dequeued.
     reply: Option<ReplyTokenId>,
-    memory: Vec<MemoryObjectCap>,
+    memory: MemoryAttachments,
     connection: Option<CapabilityId>,
 }
 
@@ -446,13 +449,25 @@ impl PreparedCall {
     }
 
     fn commit(
-        mut self,
+        self,
         ipc: &mut IpcRegistry,
         endpoint: EndpointId,
         opcode: u32,
         arg0: u64,
     ) -> Result<(CapabilityId, Delivery), IpcError> {
+        self.commit_with_memory(ipc, endpoint, opcode, arg0, MemoryAttachments::try_new)
+    }
+
+    fn commit_with_memory(
+        mut self,
+        ipc: &mut IpcRegistry,
+        endpoint: EndpointId,
+        opcode: u32,
+        arg0: u64,
+        prepare_memory: impl FnOnce(Vec<MemoryObjectCap>) -> Result<MemoryAttachments, IpcError>,
+    ) -> Result<(CapabilityId, Delivery), IpcError> {
         let server = reserve_endpoint_queue(ipc, endpoint)?;
+        let memory = prepare_memory(core::mem::take(&mut self.memory))?;
         let call_cap = self.authority.identity();
         if let Some(connection) = &mut self.connection {
             crate::memory::object::commit_undelivered_transfers_with_authority(
@@ -492,17 +507,9 @@ impl PreparedCall {
                 _charge: self.reply_charge,
             },
         );
-        let delivery = enqueue_message(
-            ipc,
-            endpoint,
-            caller,
-            opcode,
-            arg0,
-            Some(token),
-            self.memory,
-            attached,
-        )
-        .expect("prepared call retains endpoint queue ownership");
+        let delivery =
+            enqueue_message(ipc, endpoint, caller, opcode, arg0, Some(token), memory, attached)
+                .expect("prepared call retains endpoint queue ownership");
         Ok((call_cap, delivery))
     }
 }
@@ -1017,18 +1024,12 @@ pub fn scalar_send_with_memory_move(
     let mut transfer = crate::memory::object::prepare_move(sender, memory_cap, server)
         .map_err(|_| IpcError::MemoryTransferFailed)?;
     let server_memory_cap = transfer.target_cap();
+    let memory = MemoryAttachments::single(server_memory_cap)?;
     crate::memory::object::commit_undelivered_transfers(core::slice::from_mut(&mut transfer))
         .map_err(|_| IpcError::MemoryTransferFailed)?;
     drop(transfer);
-    let delivery = enqueue_scalar_with_memory(
-        &mut ipc,
-        endpoint_id,
-        sender,
-        opcode,
-        arg0,
-        None,
-        Some(server_memory_cap),
-    )?;
+    let delivery = enqueue_message(&mut ipc, endpoint_id, sender, opcode, arg0, None, memory, None)
+        .expect("reserved memory-send endpoint changed under IPC ownership");
     drop(ipc);
     deliver(delivery);
     Ok(())
@@ -1057,18 +1058,12 @@ pub fn scalar_send_with_memory_copy(
     let mut transfer = crate::memory::object::prepare_copy(sender, memory_cap, server)
         .map_err(|_| IpcError::MemoryTransferFailed)?;
     let server_memory_cap = transfer.target_cap();
+    let memory = MemoryAttachments::single(server_memory_cap)?;
     crate::memory::object::commit_undelivered_transfers(core::slice::from_mut(&mut transfer))
         .map_err(|_| IpcError::MemoryTransferFailed)?;
     drop(transfer);
-    let delivery = enqueue_scalar_with_memory(
-        &mut ipc,
-        endpoint_id,
-        sender,
-        opcode,
-        arg0,
-        None,
-        Some(server_memory_cap),
-    )?;
+    let delivery = enqueue_message(&mut ipc, endpoint_id, sender, opcode, arg0, None, memory, None)
+        .expect("reserved memory-send endpoint changed under IPC ownership");
     drop(ipc);
     deliver(delivery);
     Ok(())
@@ -1334,20 +1329,16 @@ fn enqueue_scalar(
     arg0: u64,
     reply: Option<ReplyTokenId>,
 ) -> Result<Delivery, IpcError> {
-    enqueue_message(ipc, endpoint_id, sender, opcode, arg0, reply, Vec::new(), None)
-}
-
-fn enqueue_scalar_with_memory(
-    ipc: &mut IpcRegistry,
-    endpoint_id: EndpointId,
-    sender: AddressSpaceId,
-    opcode: u32,
-    arg0: u64,
-    reply: Option<ReplyTokenId>,
-    memory: Option<MemoryObjectCap>,
-) -> Result<Delivery, IpcError> {
-    let memory_vec: Vec<MemoryObjectCap> = memory.into_iter().collect();
-    enqueue_message(ipc, endpoint_id, sender, opcode, arg0, reply, memory_vec, None)
+    enqueue_message(
+        ipc,
+        endpoint_id,
+        sender,
+        opcode,
+        arg0,
+        reply,
+        MemoryAttachments::default(),
+        None,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1358,7 +1349,7 @@ fn enqueue_message(
     opcode: u32,
     arg0: u64,
     reply: Option<ReplyTokenId>,
-    memory: Vec<MemoryObjectCap>,
+    memory: MemoryAttachments,
     connection: Option<CapabilityId>,
 ) -> Result<Delivery, IpcError> {
     let (sender_generation, sender_principal, sender_roles) =
@@ -2113,8 +2104,19 @@ fn close_cap_in_mode_with_revoker(
     asid: AddressSpaceId,
     cap: CapabilityId,
     detached: bool,
+    wait: impl FnMut(),
+    revoke: impl FnMut(MemoryBorrow) -> Result<(), crate::memory::object::MemoryObjectError>,
+) -> Result<(), IpcError> {
+    close_cap_with_cleanup(asid, cap, detached, wait, revoke, attachments::release_one)
+}
+
+fn close_cap_with_cleanup(
+    asid: AddressSpaceId,
+    cap: CapabilityId,
+    detached: bool,
     mut wait: impl FnMut(),
     mut revoke: impl FnMut(MemoryBorrow) -> Result<(), crate::memory::object::MemoryObjectError>,
+    mut release: impl FnMut(crate::memory::object::RetiredMemory),
 ) -> Result<(), IpcError> {
     // Keep the caller's borrow alive until a claimed reply has finished its
     // detached cleanup. Never wait with IPC serialization held. Domain cleanup
@@ -2188,6 +2190,9 @@ fn close_cap_in_mode_with_revoker(
     let mut observers = WaitNotifications::empty();
     let mut cq_wake = None;
     let mut close_watches = None;
+    let mut retired_queue = budget::AdmittedQueue::default();
+    let mut retired_message = None;
+    let mut retired_result = None;
     match ipc.remove_cap(asid, cap)? {
         Capability::Endpoint {
             endpoint,
@@ -2208,18 +2213,17 @@ fn close_cap_in_mode_with_revoker(
             } else {
                 budget::AdmittedQueue::default()
             };
-            for message in queued.drain(..) {
+            for message in queued.iter_mut() {
                 if let Some(token) = message.reply {
                     consume_reply_token(&mut ipc, token, REPLY_ENDPOINT_CLOSED, &mut observers)
                         .expect("preflighted endpoint loan cleanup changed under IPC");
                 }
-                for memory_cap in &message.memory {
-                    let _ = crate::memory::object::try_close_cap(asid, *memory_cap);
-                }
+                message.memory.retire(asid);
                 if let Some(connection_cap) = message.connection {
                     let _ = ipc.remove_cap(asid, connection_cap);
                 }
             }
+            retired_queue = queued;
             // Retire the registry entry once no capability can name it, so
             // endpoint create/close cycles cannot grow the registry forever.
             if !endpoint_referenced(&ipc, endpoint) {
@@ -2241,11 +2245,12 @@ fn close_cap_in_mode_with_revoker(
                             let _ = ipc.remove_cap(asid, returned_cap);
                         }
                         if let Some(memory_cap) = reply.memory {
-                            let _ = crate::memory::object::try_close_cap(asid, memory_cap);
+                            retired_result = attachments::retire_one(asid, memory_cap);
                         }
                     }
                 } else {
-                    cancel_queued_call(&mut ipc, call, &mut observers, &mut cq_wake);
+                    retired_message =
+                        cancel_queued_call(&mut ipc, call, &mut observers, &mut cq_wake);
                 }
             }
         }
@@ -2266,6 +2271,16 @@ fn close_cap_in_mode_with_revoker(
         }
     }
     drop(ipc);
+    if let Some(owner) = retired_result {
+        release(owner);
+    }
+    if let Some(memory) = retired_message {
+        memory.release_with(&mut release);
+    }
+    for message in retired_queue.drain(..) {
+        message.memory.release_with(&mut release);
+    }
+    drop(retired_queue);
     if let Some(watches) = close_watches {
         watches.notify();
     }
@@ -2474,7 +2489,8 @@ fn cancel_queued_call(
     call: PendingCallId,
     observers: &mut WaitNotifications,
     cq_wake: &mut Option<(AddressSpaceId, crate::completion::CqId)>,
-) {
+) -> Option<MemoryAttachments> {
+    let mut memory = None;
     while let Some((token, server)) = ipc
         .reply_tokens
         .iter()
@@ -2485,7 +2501,12 @@ fn cancel_queued_call(
             !retired.completing && !retired.cleanup_failed && retired.borrows.is_empty(),
             "cancelling an unfinished reply"
         );
-        cancel_queued_message_with_token(ipc, server, token, observers, cq_wake);
+        if let Some(retired) =
+            cancel_queued_message_with_token(ipc, server, token, observers, cq_wake)
+        {
+            assert!(memory.is_none(), "one call acquired multiple queued messages");
+            memory = Some(retired);
+        }
         ipc.remove_matching_caps(
             server,
             Capability::ReplyToken {
@@ -2493,6 +2514,7 @@ fn cancel_queued_call(
             },
         );
     }
+    memory
 }
 
 fn cancel_queued_message_with_token(
@@ -2501,7 +2523,7 @@ fn cancel_queued_message_with_token(
     token: ReplyTokenId,
     observers: &mut WaitNotifications,
     cq_wake: &mut Option<(AddressSpaceId, crate::completion::CqId)>,
-) {
+) -> Option<MemoryAttachments> {
     for endpoint in ipc.endpoints.values_mut() {
         if endpoint.owner != server {
             continue;
@@ -2510,20 +2532,20 @@ fn cancel_queued_message_with_token(
         {
             observers.append(endpoint.readiness_observers.drain());
             *cq_wake = endpoint.notify_cq.map(|cq| (endpoint.owner, cq));
-            if let Some(message) = endpoint.queue.remove(index) {
-                for memory_cap in &message.memory {
-                    // Confirmed loans are already gone; copies/moves are still
-                    // queued and must be released. No uncertain loan reaches here.
-                    let _ = crate::memory::object::try_close_cap(server, *memory_cap);
-                }
+            if let Some(mut message) = endpoint.queue.remove(index) {
+                // Confirmed loans are already gone. Carry unmapped owning
+                // attachments in their admitted storage past IPC unlock.
+                message.memory.retire(server);
                 if let Some(connection_cap) = message.connection {
                     ipc.remove_cap(server, connection_cap)
                         .expect("queued connection disappeared during cancellation");
                 }
+                return Some(message.memory);
             }
-            return;
+            return None;
         }
     }
+    None
 }
 
 fn revoke_memory_borrow(
@@ -2579,14 +2601,14 @@ pub fn vector_send(
 
     let mut memory_caps = Vec::new();
     let mut transfers = read_vector_page(sender, cap_vector, server, false, &mut memory_caps)?;
+    let memory = MemoryAttachments::try_new(memory_caps)?;
     crate::memory::object::commit_undelivered_transfers(&mut transfers)
         .map_err(|_| IpcError::MemoryTransferFailed)?;
     drop(transfers);
     // Queue availability was validated under this same IPC write guard; none
     // of attachment preparation/publication changes the endpoint or its queue.
-    let delivery =
-        enqueue_message(&mut ipc, endpoint_id, sender, opcode, arg0, None, memory_caps, None)
-            .expect("reserved vector-send endpoint changed under IPC ownership");
+    let delivery = enqueue_message(&mut ipc, endpoint_id, sender, opcode, arg0, None, memory, None)
+        .expect("reserved vector-send endpoint changed under IPC ownership");
     drop(ipc);
     deliver(delivery);
 
