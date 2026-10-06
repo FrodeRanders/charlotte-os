@@ -45,6 +45,7 @@ use crate::{
 
 pub(crate) mod budget;
 pub(crate) mod cancellation;
+mod endpoint_close;
 pub(crate) mod record_budget;
 pub(crate) mod record_tests;
 pub(crate) mod reply;
@@ -271,6 +272,9 @@ struct Endpoint {
     /// these: they fire exclusively when the endpoint closes.
     close_observers: Arc<ObserverList<crate::completion::watch_budget::Charge>>,
     closed: bool,
+    /// Owned explicit close fences queue use without reporting terminal closure.
+    /// Abandonment retains this claim and the owner's exact root lease.
+    closing: bool,
     /// When bound, endpoint readiness is delivered to this completion queue
     /// of the owner as a coalesced wake (architecture doc §16.3: readiness is
     /// a notification, not a completion). Posted on the empty→nonempty queue
@@ -712,6 +716,7 @@ pub fn endpoint_create(
             readiness_observers,
             close_observers,
             closed: false,
+            closing: false,
             notify_cq: None,
         },
     );
@@ -751,8 +756,11 @@ pub fn endpoint_bind_cq(
     if endpoint.owner != owner {
         return Err(IpcError::PermissionDenied);
     }
+    if endpoint.closing {
+        return Err(IpcError::Pending);
+    }
     endpoint.notify_cq = Some(cq);
-    let already_readable = endpoint.closed || !endpoint.queue.is_empty();
+    let already_readable = endpoint_available(&ipc, &ipc.endpoints[&endpoint_id]);
     drop(ipc);
     // Close the bind-versus-enqueue race. An enqueue before the binding could
     // not signal this CQ; an enqueue after it observes `notify_cq`. If the
@@ -796,6 +804,9 @@ pub fn endpoint_resize(
     }
     if endpoint.closed {
         return Err(IpcError::EndpointClosed);
+    }
+    if endpoint.closing {
+        return Err(IpcError::Pending);
     }
     if capacity > endpoint.queue.capacity() {
         // Charge both backing allocations during growth. A failed admission
@@ -916,6 +927,9 @@ fn mintable_endpoint(
     };
     if !source_rights.contains(ConnectionRights::MINT_CONNECTION) {
         return Err(IpcError::PermissionDenied);
+    }
+    if ipc.endpoints.get(&endpoint).is_some_and(|endpoint| endpoint.closing) {
+        return Err(IpcError::Pending);
     }
     Ok((endpoint, requested.intersection(source_rights)))
 }
@@ -1322,6 +1336,9 @@ fn enqueue_message(
     if endpoint.closed {
         return Err(IpcError::EndpointClosed);
     }
+    if endpoint.closing {
+        return Err(IpcError::Pending);
+    }
     if endpoint.queue.len() >= endpoint.capacity {
         return Err(IpcError::QueueFull);
     }
@@ -1358,6 +1375,9 @@ fn reserve_endpoint_queue(
     let endpoint = ipc.endpoints.get(&endpoint_id).ok_or(IpcError::UnknownCapability)?;
     if endpoint.closed {
         return Err(IpcError::EndpointClosed);
+    }
+    if endpoint.closing {
+        return Err(IpcError::Pending);
     }
     if endpoint.queue.len() >= endpoint.capacity {
         return Err(IpcError::QueueFull);
@@ -1555,6 +1575,9 @@ fn receive_endpoint_id(
     if endpoint.closed {
         return Err(IpcError::EndpointClosed);
     }
+    if endpoint.closing {
+        return Err(IpcError::Pending);
+    }
     Ok(endpoint_id)
 }
 
@@ -1566,13 +1589,14 @@ fn endpoint_is_readable_or_closed(endpoint_id: EndpointId) -> Result<bool, IpcEr
 
 fn endpoint_available(ipc: &IpcRegistry, endpoint: &Endpoint) -> bool {
     endpoint.closed
-        || endpoint.queue.front().is_some_and(|message| {
-            message.reply.is_none_or(|token| {
-                ipc.reply_tokens
-                    .get(&token)
-                    .is_some_and(|token| !token.completing && !token.cleanup_failed)
-            })
-        })
+        || (!endpoint.closing
+            && endpoint.queue.front().is_some_and(|message| {
+                message.reply.is_none_or(|token| {
+                    ipc.reply_tokens
+                        .get(&token)
+                        .is_some_and(|token| !token.completing && !token.cleanup_failed)
+                })
+            }))
 }
 
 struct EndpointObservable {
@@ -2047,15 +2071,19 @@ fn close_cap_in_mode_with_revoker(
                 endpoint,
                 ..
             } => {
-                ipc.reply_tokens.values().any(|token| {
-                    token.completing && token.server == asid && token.connection_source == Some(cap)
-                }) || ipc.endpoints.get(&endpoint).is_some_and(|endpoint| {
-                    endpoint.queue.iter().any(|message| {
-                        message.reply.is_some_and(|token| {
-                            ipc.reply_tokens.get(&token).is_some_and(|token| token.completing)
+                ipc.endpoints.get(&endpoint).is_some_and(|endpoint| endpoint.closing)
+                    || ipc.reply_tokens.values().any(|token| {
+                        token.completing
+                            && token.server == asid
+                            && token.connection_source == Some(cap)
+                    })
+                    || ipc.endpoints.get(&endpoint).is_some_and(|endpoint| {
+                        endpoint.queue.iter().any(|message| {
+                            message.reply.is_some_and(|token| {
+                                ipc.reply_tokens.get(&token).is_some_and(|token| token.completing)
+                            })
                         })
                     })
-                })
             }
             Capability::Connection {
                 ..
@@ -2065,10 +2093,16 @@ fn close_cap_in_mode_with_revoker(
         };
         if !busy {
             if detached && cancellation::has_loans(&ipc, asid, cap)? {
+                let endpoint = matches!(ipc.cap(asid, cap)?, Capability::Endpoint { .. });
                 drop(ipc);
                 // Revalidate identity and claim after admitting both roots.
                 // Another close/reply can win this preparation interval.
-                match cancellation::close(asid, cap) {
+                let result = if endpoint {
+                    endpoint_close::close(asid, cap)
+                } else {
+                    cancellation::close(asid, cap)
+                };
+                match result {
                     Err(IpcError::Pending) => {
                         wait();
                         continue;

@@ -793,3 +793,21 @@ retires the pressure clients before the existing scoped authorization checks.
 Host adapter tests cover saturated count/byte limits, sustained refill,
 drain/reuse and delayed/frequent clock samples. A deliberate physical packet
 flood and NIC fault recovery are separate validation work.
+
+## Owned endpoint close
+
+The synchronous IPC cancellation fixtures now close endpoints containing mapped
+loans from two caller roots. They check staged server close, competing close and
+caller cancellation, preparation rollback, readiness restoration, queued
+copy/move/connection cleanup, partial physical failure and abandoned ownership.
+Endpoint close watches must remain pending through loan cleanup. Failure probes
+retain their exact roots and backing without a reclamation bypass.
+
+The normal EL0 verifier also runs `ipc::cancellation::tests::run_endpoint_runtime`
+after secondary LPs are online. It closes an endpoint with mapped loans from
+two callers and checks terminal results and restored loan authority. x86 sends
+actual synchronous shootdown IPIs during this probe. Borrower roots have no
+application threads; concurrent hardware walks and failed-recipient/device
+recovery remain separate validation work. Use the isolated x86 and AArch64 guest
+commands above; evidence is in the
+[endpoint close report](../reports/audits/2026-10-06-security-endpoint-close.md).

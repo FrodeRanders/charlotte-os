@@ -35,6 +35,28 @@ impl Fixture {
         let caller = crate::service::loader::create_user_address_space_handle();
         let server = crate::service::loader::create_user_address_space_handle();
         let endpoint = endpoint_create(server.id(), 0x4341_4e43, 1, 4).unwrap();
+        Self::enqueue(caller, server, endpoint, count, delivered, extras)
+    }
+
+    fn append(&self, count: usize, extras: bool) -> Self {
+        Self::enqueue(
+            crate::service::loader::create_user_address_space_handle(),
+            self.server,
+            self.endpoint,
+            count,
+            false,
+            extras,
+        )
+    }
+
+    fn enqueue(
+        caller: AddressSpaceHandle,
+        server: AddressSpaceHandle,
+        endpoint: CapabilityId,
+        count: usize,
+        delivered: bool,
+        extras: bool,
+    ) -> Self {
         let connection =
             connection_delegate(server.id(), endpoint, caller.id(), ConnectionRights::ALL).unwrap();
         let mut descriptor = Vec::new();
@@ -72,7 +94,13 @@ impl Fixture {
             };
             (
                 ipc.reply_tokens[&identity.token].borrows.clone(),
-                ipc.endpoints[&id].queue.front().unwrap().memory.clone(),
+                ipc.endpoints[&id]
+                    .queue
+                    .iter()
+                    .find(|message| message.reply == Some(identity.token))
+                    .unwrap()
+                    .memory
+                    .clone(),
             )
         };
         let reply = delivered.then(|| receive(server.id(), endpoint).unwrap().reply.unwrap());
@@ -112,6 +140,10 @@ pub(crate) fn run() {
     partial_failure();
     serialized_bulk_success();
     serialized_bulk_failure();
+    owned_endpoint_success();
+    owned_endpoint_rollback();
+    owned_endpoint_failure();
+    owned_endpoint_abandonment();
     abandonment();
     crate::logln!(
         "[IPC cancellation ownership] queued/delivered close, unlocked loan cleanup, competing \
@@ -462,6 +494,334 @@ fn serialized_bulk_failure() {
         assert_eq!(hits.load(Ordering::Relaxed), 0);
         drop(registration);
     }
+}
+
+fn owned_endpoint_success() {
+    use super::super::endpoint_close::PreparedEndpointClose;
+    let fixture = Fixture::new(2, false);
+    let other = fixture.append(1, true);
+    let connection =
+        connection_mint(fixture.server.id(), fixture.endpoint, ConnectionRights::ALL).unwrap();
+    scalar_send(fixture.server.id(), connection, 77, 0).unwrap();
+    let scalar_call = scalar_call(fixture.server.id(), connection, 78, 0).unwrap();
+    endpoint_resize(fixture.server.id(), fixture.endpoint, 8).unwrap();
+    crate::completion::open_address_space(fixture.caller.id(), 16);
+    let caller_connection = connection_delegate(
+        fixture.server.id(),
+        fixture.endpoint,
+        fixture.caller.id(),
+        ConnectionRights::ALL,
+    )
+    .unwrap();
+    let source = endpoint_create(fixture.caller.id(), 0x434c_4f53, 1, 1).unwrap();
+    let attached_call = scalar_call_with_connection(
+        fixture.caller.id(),
+        caller_connection,
+        79,
+        0,
+        source,
+        ConnectionRights::ALL,
+    )
+    .unwrap();
+    let attached = {
+        let ipc = IPC.read();
+        let endpoint = receive_endpoint_id(&ipc, fixture.server.id(), fixture.endpoint).unwrap();
+        ipc.endpoints[&endpoint].queue.back().unwrap().connection.unwrap()
+    };
+    let close_watch = watch_connection_closed(fixture.caller.id(), caller_connection).unwrap();
+    let endpoint = receive_endpoint_id(&IPC.read(), fixture.server.id(), fixture.endpoint).unwrap();
+    let mut owner =
+        Some(PreparedEndpointClose::prepare(fixture.server.id(), fixture.endpoint).unwrap());
+    assert_eq!(receive(fixture.server.id(), fixture.endpoint), Err(IpcError::Pending));
+    assert_eq!(scalar_send(fixture.server.id(), connection, 99, 0), Err(IpcError::Pending));
+    assert_eq!(
+        scalar_call_with_memory_borrow_read(
+            fixture.caller.id(),
+            caller_connection,
+            99,
+            0,
+            fixture.borrows[0].owner_cap
+        ),
+        Err(IpcError::Pending)
+    );
+    assert_eq!(
+        connection_mint(fixture.server.id(), fixture.endpoint, ConnectionRights::ALL),
+        Err(IpcError::Pending)
+    );
+    assert_eq!(endpoint_resize(fixture.server.id(), fixture.endpoint, 8), Err(IpcError::Pending));
+    assert_eq!(endpoint_bind_cq(fixture.server.id(), fixture.endpoint, 0), Err(IpcError::Pending));
+    assert!(!endpoint_is_readable_or_closed(endpoint).unwrap());
+    assert_eq!(
+        memory::close_user_address_space_handle(fixture.server),
+        Err(AddressSpaceCloseError::OperationsInFlight)
+    );
+    let hits = Arc::new(core::sync::atomic::AtomicUsize::new(0));
+    let counter = hits.clone();
+    let observer: Arc<dyn Observer> = crate::klib::observer::CallOnNotify::new(move || {
+        unlocked();
+        counter.fetch_add(1, Ordering::Relaxed);
+    });
+    let sponsor = WaitSponsor::new(false);
+    let registration = EndpointObservable {
+        endpoint,
+    }
+    .try_register_waiter(Arc::downgrade(&observer), &sponsor)
+    .unwrap();
+    assert!(registration.is_owned());
+    let mut waits = 0;
+    assert_eq!(
+        close_cap_with_wait(fixture.server.id(), fixture.endpoint, || {
+            unlocked();
+            owner
+                .take()
+                .unwrap()
+                .finish_with(
+                    |loan| {
+                        loan.finish_observed(|| {
+                            unlocked();
+                            assert_eq!(hits.load(Ordering::Relaxed), 0);
+                            assert!(
+                                crate::completion::poll(fixture.caller.id(), close_watch)
+                                    .unwrap()
+                                    .is_none()
+                            );
+                        })
+                    },
+                    || panic!("uncontested endpoint close waited"),
+                )
+                .unwrap();
+            waits += 1;
+        }),
+        Err(IpcError::UnknownCapability)
+    );
+    assert_eq!(waits, 1);
+    assert_eq!(hits.load(Ordering::Relaxed), 1);
+    assert!(crate::completion::poll(fixture.caller.id(), close_watch).unwrap().is_some());
+    for pending in [&fixture, &other] {
+        assert_eq!(
+            poll_reply(pending.caller.id(), pending.call).unwrap().unwrap().result,
+            REPLY_ENDPOINT_CLOSED
+        );
+        for &cap in &pending.attachments {
+            assert_eq!(
+                object::info(pending.server.id(), cap),
+                Err(MemoryObjectError::UnknownCapability)
+            );
+        }
+        for borrow in &pending.borrows {
+            assert!(!object::info(borrow.owner, borrow.owner_cap).unwrap().lent);
+        }
+    }
+    assert_eq!(
+        poll_reply(fixture.server.id(), scalar_call).unwrap().unwrap().result,
+        REPLY_ENDPOINT_CLOSED
+    );
+    assert_eq!(
+        poll_reply(fixture.caller.id(), attached_call).unwrap().unwrap().result,
+        REPLY_ENDPOINT_CLOSED
+    );
+    assert_eq!(IPC.read().cap(fixture.server.id(), attached), Err(IpcError::UnknownCapability));
+    assert!(IPC.read().cap(fixture.caller.id(), source).is_ok());
+    drop(registration);
+    memory::close_user_address_space_handle(other.caller).unwrap();
+    fixture.close();
+
+    // A staged server close must not defeat per-call admission: every call
+    // borrows the endpoint owner's already-admitted server lease.
+    let fixture = Fixture::new(1, false);
+    let owner = PreparedEndpointClose::prepare(fixture.server.id(), fixture.endpoint).unwrap();
+    let closing = ClosingAddressSpace::begin(fixture.server).unwrap();
+    let CloseProgress::Pending(closing) = closing.poll().unwrap() else {
+        panic!("endpoint lease missing");
+    };
+    owner
+        .finish_with(
+            |loan| loan.finish_observed(unlocked),
+            || panic!("staged endpoint close waited"),
+        )
+        .unwrap();
+    assert!(matches!(closing.poll().unwrap(), CloseProgress::Complete));
+    assert_eq!(
+        poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap().result,
+        REPLY_ENDPOINT_CLOSED
+    );
+    memory::close_user_address_space_handle(fixture.caller).unwrap();
+
+    // A caller cancellation can win just before the endpoint claim. Wait for
+    // its owned cleanup outside IPC, then complete the now-empty endpoint.
+    let fixture = Fixture::new(1, false);
+    let owner = PreparedEndpointClose::prepare(fixture.server.id(), fixture.endpoint).unwrap();
+    let mut cancellation =
+        Some(PreparedCancellation::prepare(fixture.caller.id(), fixture.call).unwrap());
+    let mut waits = 0;
+    owner
+        .finish_with(
+            |_| panic!("competing cancellation should own the loan"),
+            || {
+                unlocked();
+                cancellation
+                    .take()
+                    .unwrap()
+                    .finish_with(|loan| loan.finish_observed(unlocked))
+                    .unwrap();
+                waits += 1;
+            },
+        )
+        .unwrap();
+    assert_eq!(waits, 1);
+    assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Err(IpcError::UnknownCapability));
+    fixture.close();
+}
+
+fn owned_endpoint_rollback() {
+    use super::super::endpoint_close::PreparedEndpointClose;
+    let fixture = Fixture::new(2, false);
+    let borrowed = fixture.borrows[1];
+    let blocker = LoanRevocation::prepare(
+        borrowed.owner,
+        borrowed.owner_cap,
+        borrowed.borrower,
+        borrowed.borrower_cap,
+    )
+    .unwrap();
+    let owner = PreparedEndpointClose::prepare(fixture.server.id(), fixture.endpoint).unwrap();
+    assert_eq!(
+        owner.finish_with(LoanRevocation::finish, || panic!("preparation failure waited")),
+        Err(IpcError::MemoryTransferFailed)
+    );
+    assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));
+    assert!(
+        endpoint_is_readable_or_closed(
+            receive_endpoint_id(&IPC.read(), fixture.server.id(), fixture.endpoint).unwrap()
+        )
+        .unwrap()
+    );
+    let first = fixture.borrows[0];
+    LoanRevocation::prepare(first.owner, first.owner_cap, first.borrower, first.borrower_cap)
+        .unwrap()
+        .cancel_prepared();
+    blocker.cancel_prepared();
+    close_cap(fixture.server.id(), fixture.endpoint).unwrap();
+    fixture.close();
+
+    let fixture = Fixture::new(1, false);
+    let endpoint = receive_endpoint_id(&IPC.read(), fixture.server.id(), fixture.endpoint).unwrap();
+    let owner = PreparedEndpointClose::prepare(fixture.server.id(), fixture.endpoint).unwrap();
+    let hits = Arc::new(core::sync::atomic::AtomicUsize::new(0));
+    let counter = hits.clone();
+    let observer: Arc<dyn Observer> = crate::klib::observer::CallOnNotify::new(move || {
+        unlocked();
+        counter.fetch_add(1, Ordering::Relaxed);
+    });
+    let sponsor = WaitSponsor::new(false);
+    let registration = EndpointObservable {
+        endpoint,
+    }
+    .try_register_waiter(Arc::downgrade(&observer), &sponsor)
+    .unwrap();
+    let caller = ClosingAddressSpace::begin(fixture.caller).unwrap();
+    assert_eq!(
+        owner.finish_with(
+            |_| panic!("rejected caller lease started a loan"),
+            || panic!("caller admission failure waited")
+        ),
+        Err(IpcError::ResourceLimit)
+    );
+    assert_eq!(hits.load(Ordering::Relaxed), 1, "rejected endpoint close stranded readable work");
+    assert!(endpoint_is_readable_or_closed(endpoint).unwrap());
+    assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));
+    assert!(matches!(caller.poll().unwrap(), CloseProgress::Complete));
+    drop(registration);
+    memory::close_user_address_space_handle(fixture.server).unwrap();
+}
+
+fn owned_endpoint_failure() {
+    use super::super::endpoint_close::PreparedEndpointClose;
+    let fixture = Fixture::new(2, false);
+    let other = fixture.append(2, true);
+    let identity = resolve(&IPC.read(), other.caller.id(), other.call).unwrap().unwrap();
+    let owner = PreparedEndpointClose::prepare(fixture.server.id(), fixture.endpoint).unwrap();
+    let mut completed = 0;
+    assert_eq!(
+        owner.finish_with(
+            |loan| {
+                unlocked();
+                completed += 1;
+                if completed == 3 {
+                    drop(loan);
+                    Err(MemoryObjectError::UnmapFailed)
+                } else {
+                    loan.finish_observed(unlocked)
+                }
+            },
+            || panic!("partial physical failure waited")
+        ),
+        Err(IpcError::MemoryTransferFailed)
+    );
+    assert_eq!(completed, 3);
+    assert_eq!(
+        poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap().result,
+        REPLY_ENDPOINT_CLOSED
+    );
+    assert_eq!(poll_reply(other.caller.id(), other.call), Ok(None));
+    let ipc = IPC.read();
+    assert!(ipc.cap(fixture.server.id(), fixture.endpoint).is_ok());
+    let endpoint =
+        ipc.endpoints.values().find(|endpoint| endpoint.owner == fixture.server.id()).unwrap();
+    assert!(!endpoint.closing && !endpoint.closed && endpoint.queue.len() == 1);
+    assert!(ipc.reply_tokens[&identity.token].cleanup_failed);
+    drop(ipc);
+    assert_eq!(receive(fixture.server.id(), fixture.endpoint), Err(IpcError::Pending));
+    memory::close_user_address_space_handle(fixture.caller).unwrap();
+    for handle in [other.caller, fixture.server] {
+        assert_eq!(
+            memory::close_user_address_space_handle(handle),
+            Err(AddressSpaceCloseError::IpcCleanupFailed)
+        );
+    }
+}
+
+fn owned_endpoint_abandonment() {
+    use super::super::endpoint_close::PreparedEndpointClose;
+    let fixture = Fixture::create(1, false, false);
+    let owner = PreparedEndpointClose::prepare(fixture.server.id(), fixture.endpoint).unwrap();
+    let operation = PreparedCancellation::prepare_endpoint_front(&owner).unwrap();
+    drop(operation); // Retains the caller lease, token claim and loan pin.
+    drop(owner); // Retains the borrowed server-root lease and endpoint fence.
+    assert_eq!(receive(fixture.server.id(), fixture.endpoint), Err(IpcError::Pending));
+    for handle in [fixture.caller, fixture.server] {
+        assert_eq!(
+            memory::close_user_address_space_handle(handle),
+            Err(AddressSpaceCloseError::OperationsInFlight)
+        );
+    }
+    assert!(matches!(
+        PreparedEndpointClose::prepare(fixture.server.id(), fixture.endpoint),
+        Err(IpcError::Pending)
+    ));
+}
+
+/// Run after secondary LPs are online. Actual mapped-loan revocation sends x86
+/// shootdown IPIs without holding IPC/lifecycle serialization. No guard-availability
+/// assertion races unrelated verifiers; these roots have no application threads.
+pub(crate) fn run_endpoint_runtime() {
+    let fixture = Fixture::new(2, false);
+    let other = fixture.append(2, true);
+    close_cap(fixture.server.id(), fixture.endpoint).unwrap();
+    for pending in [&fixture, &other] {
+        assert_eq!(
+            poll_reply(pending.caller.id(), pending.call).unwrap().unwrap().result,
+            REPLY_ENDPOINT_CLOSED
+        );
+        for borrow in &pending.borrows {
+            assert!(!object::info(borrow.owner, borrow.owner_cap).unwrap().lent);
+        }
+    }
+    memory::close_user_address_space_handle(other.caller).unwrap();
+    fixture.close();
+    crate::logln!(
+        "[IPC endpoint retirement] mapped loans from two callers retired with secondary LPs online"
+    );
 }
 
 fn abandonment() {

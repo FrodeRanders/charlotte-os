@@ -103,7 +103,9 @@ the supervisor retains a staged teardown owner across pending polls. All existin
 borrowed-memory IPC replies also own both roots and a reply claim through
 post-IPC invalidation; abandonment prevents root close. Returned authority
 stays hidden until publication. Explicit call/reply cancellation also owns both
-roots through unlocked revocation. Bulk endpoint/domain IPC and whole-domain
+roots through unlocked revocation. Explicit endpoint close additionally borrows
+its server-root owner across each queued call's unlocked cleanup, including when
+a staged server close is already pending. Whole-domain IPC and whole-domain
 device cleanup still need
 their own completion owners before releasing outer serialization. See
 [live address-space operations](live-address-space-operations.md).

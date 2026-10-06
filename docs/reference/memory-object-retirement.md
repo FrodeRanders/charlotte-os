@@ -117,8 +117,9 @@ Explicit device close also leases its root and detaches its device object before
 releasing lifecycle for invalidation. Whole-domain device cleanup still holds
 lifecycle. All existing borrowed-memory reply variants now compose a reply claim
 and both namespace leases before releasing IPC. Explicit pending-call/reply
-close now composes the same ownership in a separate cancellation owner; bulk
-endpoint/domain cleanup still needs that composition. The staged fence does
+close now composes the same ownership in a separate cancellation owner;
+explicit endpoint close borrows a server owner for each queued call, while
+whole-domain cleanup still needs namespace composition. The staged fence does
 not cover non-lease paths or revoke their authority while older operations drain.
 
 ## Owned loan revocation
@@ -243,8 +244,8 @@ force-clear, timeout reclamation or recovery API. `PendingCall::close` returns
 its Rust owner on rejection; its Drop/consuming-wait fallback aborts the domain
 if close cannot confirm safety rather than ending the borrow normally.
 
-Bulk endpoint/domain cleanup still uses the IPC-serialized adapter and needs a
-multi-call completion owner before unlocking. Its reply-token cleanup now records
+Whole-domain cleanup still uses the IPC-serialized adapter and needs a
+namespace completion owner before unlocking. Its reply-token cleanup records
 successful loans and returns an error while retaining a failed token without
 reporting terminal completion. Endpoint close and serialized pending-call close
 confirm all relevant loans before consuming close authority, pending records or
@@ -316,3 +317,38 @@ and original charges. Failed probes intentionally retain their namespaces and
 backing; no recovery bypass frees them. See the
 [bulk cleanup remediation](../reports/audits/2026-10-06-security-bulk-cleanup.md)
 for executed guest results and limits.
+
+## Owned explicit endpoint close
+
+Explicit close of an endpoint containing loans now retains an inline
+`PreparedEndpointClose` and its exact server-root lease. Its endpoint claim
+rejects enqueue, receive, mint, resize and CQ rebinding with `Pending`, and hides
+readiness without reporting terminal closure. A competing endpoint close waits
+outside IPC. Root retirement rejects while that lease or claim remains owned.
+
+The owner processes admitted queue storage one call at a time. A queued call's
+`PreparedCancellation` borrows the server owner, leases its exact caller before
+IPC, revalidates the front token and prepares its bounded loan receipts. It does
+not reacquire the server lease: a staged server close may already fence new
+admission. Detach/invalidation/scratch completion runs outside IPC/lifecycle and
+registry/table guards. Only that call's confirmed cleanup permits attachment
+removal and `REPLY_ENDPOINT_CLOSED`; earlier completed calls can finish even if
+a later call rejects. Asynchronous sends have no loans and use their existing
+copy/move cleanup. No whole-queue/root snapshot is allocated.
+
+Endpoint close watches, readiness and bound CQ closure notification occur after
+the queue is empty, endpoint authority is removed, IPC is unlocked and the server
+lease completes. The claim stays live through final publication so a new loan
+cannot enter that interval. Ordinary preparation/physical cleanup rejection
+returns the endpoint capability, clears its endpoint claim and completes the
+server lease. Failed call pins/token fences remain; untouched loans are restored
+only before starting cleanup. If rejection exposes readable work, its readiness
+edge is re-signaled after unlock. Abandoning an owner retains its claim/root;
+abandoning a current call also retains that caller's lease, token and loan pins.
+
+Loan-free endpoint close remains atomic under IPC. Whole-domain cleanup does not
+use this live-leasing owner beneath lifecycle; it retains its serialized adapter
+and failure propagation. Physical CPU/DMA quiescence and recoverable x86 shootdown
+failures remain separate work. See the
+[endpoint remediation](../reports/audits/2026-10-06-security-endpoint-close.md)
+for the executed regressions.

@@ -161,7 +161,17 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   receipts. Abandonment retains queue/claim/roots
   and loan pins. `PendingCall::close` returns its owner on error; its Drop/wait
   fallback aborts the domain on rejected close rather than ending an unsafe Rust
-  borrow. Bulk endpoint/domain cleanup still retains serialization; root cleanup
+  borrow. Explicit endpoint close with queued loans owns a `PreparedEndpointClose`
+  claim and exact server-root lease. Fence enqueue/receive/mint/resize while it is
+  live; process one queued call at a time with `PreparedCancellation` borrowing
+  that server owner and leasing the captured caller. Never acquire a fresh server
+  lease after a staged server close, clear the endpoint claim before final
+  publication, or allocate a whole-queue teardown snapshot. Complete each loan
+  outside IPC/lifecycle; publish each call's result only after its cleanup. Keep
+  endpoint close watches/readiness parked until final close, and re-signal readable
+  work after ordinary rejection. Abandonment retains the endpoint claim/root and
+  any active call's claim/caller root/pins. Whole-domain cleanup still retains
+  serialization; root cleanup
   uses its non-leasing adapter after leases drain, never lifecycle beneath IPC.
   Bulk reply-token cleanup must not report failed loan revocation as terminal.
   Whole-domain device cleanup still

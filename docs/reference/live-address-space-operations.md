@@ -97,17 +97,21 @@ receive and conflicting close from consuming queued or delivered ownership.
 Physical cleanup runs outside IPC; each success is recorded before final cap
 removal and notification. Failure returns leases, but retains the cap and
 uncertain loan pin/fence without publishing a terminal result. Abandonment
-retains roots, claim and queued ownership. Bulk endpoint/domain cleanup remains
-serialized and does not acquire fresh operation leases from beneath lifecycle.
+retains roots, claim and queued ownership. Explicit endpoint close with queued
+loans now retains a server-root owner and endpoint admission claim, processing
+each call with a cancellation owner that borrows the server and leases its caller.
+It works through an already-staged server close without reacquiring that lease.
+Whole-domain cleanup remains serialized and does not acquire fresh operation
+leases from beneath lifecycle.
 Claimed/failed queue fronts are not readable; removal re-signals endpoint/CQ
 readiness after IPC unlock, and failed tokens cannot resume delivery or reply.
 Whole-domain device cleanup still holds lifecycle across invalidation. Before
 extending split-phase operation leases, implement:
 
-1. Extend composed completion ownership to bulk endpoint/domain IPC cleanup and
+1. Extend composed completion ownership to whole-domain IPC cleanup and
    whole-domain device cleanup. Replies and explicit call/reply cancellation
    retain roots, loan receipts, scratch and authority while releasing IPC; bulk
-   paths still retain outer serialization. They need multi-call/namespace
+   namespace paths still retain outer serialization. They need namespace
    ownership and admission suitable for an already-closing root, not a new live
    lease acquired from beneath lifecycle/IPC. Do not reuse explicit close's
    leasing path while holding those guards.
