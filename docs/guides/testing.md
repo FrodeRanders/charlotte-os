@@ -945,3 +945,20 @@ fixtures otherwise refund all table admission at confirmed physical teardown.
 Run the same three QEMU targets above with fresh instance names. Exact commands,
 results and limits are in the
 [table admission audit record](../reports/audits/2026-10-06-security-table-admission.md).
+
+### Shared kernel translation admission
+
+The same architecture boot fixtures exercise real higher-half mappings with
+shared node admission. They check rejection before physical allocation, unused/
+zeroed-owner refunds, retained sparse construction prefixes, repeated rejection,
+sixteen cached reuse rounds at the ceiling, and mapping retry after pressure
+ends. Four user-root creation/destruction rounds borrow the same alias without
+duplicating or refunding shared charges. Invalidation precedes return of the
+foreign data frame and runs outside `KERNEL_AS`.
+
+Linked empty fixture tables remain kernel-owned and charged. Two additional
+rejected/abandoned preparations intentionally retain two frames and charges;
+the pressure adapter never clears real charges or recovers backing. These are
+single-mutator counter-pressure fixtures, not real physical OOM or concurrent
+hardware-walk proofs. Commands and results are in the
+[shared-table audit record](../reports/audits/2026-10-06-security-kernel-table-admission.md).

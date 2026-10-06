@@ -1,4 +1,4 @@
-# Private translation-table admission
+# Translation-table admission
 
 Each owning user `AddressSpace` embeds a separate translation `Account`.
 Admission counts actual 4 KiB roots and intermediate tables, independently of
@@ -19,9 +19,33 @@ Platform private tables may consume the physical progress floor, within their
 table pool and domain ceiling. Ordinary private tables preserve that floor.
 All paths remain subject to real allocator exhaustion.
 
+## Shared runtime kernel tables
+
+Fresh shared higher-half tables have a separate node pool of one sixty-fourth
+of usable RAM, rounded down to pages (minimum one). `PreparingTable` retains
+an owning shared charge, reserved before physical allocation. The short pool
+guard is released before allocation, zeroing, publication or physical rollback.
+The architecture derives scope from validated mapping context; applications
+cannot request the shared policy. Shared requests can use the physical progress
+floor, subject to their hard pool limit and real allocator exhaustion.
+
+Successful publication retains the charge permanently for the kernel lifetime.
+Copying a shared link into another root does not charge again; destroying that
+root does not refund it. Empty branches and linked partial construction remain
+charged and reusable at the ceiling. Only an unused reservation or confirmed
+physical release of unpublished backing permits refund. Failed release,
+interruption and abandonment retain backing and admission; Drop never refunds
+an uncertain charge or retries a consumed release.
+
+Bootloader-inherited tables predate `PreparingTable` and are outside this pool.
+The policy counts fresh runtime table frames once; it is not a complete boot
+table census. There is no shared-table compaction/reclamation path, per-domain
+sponsorship, fairness guarantee or reserved platform subpool. Stack/kernel-heap
+data and IOMMU tables have separate unresolved admission needs.
+
 ## Lifetime and rollback
 
-`PreparingTable` reserves against the exact account before allocating backing
+For private tables, `PreparingTable` reserves against the exact account before allocating backing
 and holds its exclusive Rust borrow through initialization, publication or
 rollback. Production mapping retains the original address-space table guard
 and generation. Preparation does not resolve a reusable ASID, allocate an
@@ -65,8 +89,19 @@ interrupted-owner state; they do not perform real panic unwinding or claim
 hardware-race reproduction. QEMU results live in the
 [audit record](../reports/audits/2026-10-06-security-table-admission.md).
 
+Shared fixtures reject admission before an allocator callback, refund unused
+and successfully released preparation, retain a real sparse higher-half prefix,
+reject fresh branches repeatedly, reuse cached branches sixteen times at the
+ceiling, and complete a mapping after pressure ends. Four user-root creation/
+destruction rounds verify shared alias visibility and unchanged shared charges.
+Two additional rejected/abandoned shared preparations retain two physical frames
+and charges. Their interruption is simulated. Published empty fixture tables
+remain owned and reusable, with exact physical/count deltas; they are not
+quarantined. See the
+[shared-table audit record](../reports/audits/2026-10-06-security-kernel-table-admission.md).
+
 This closes the renewed audit's private sparse-table admission path. SEC-07
-remains partial for shared kernel tables, kernel heap, stacks and general
-metadata/callback admission. This pool is not a complete physical-memory
-ledger, live tree compactor, IOMMU-table budget, NUMA policy or worst-case
+remains partial for inherited kernel tables, IOMMU tables, kernel heap, stacks
+and general metadata/callback admission. These pools are not a complete
+physical-memory ledger, live tree compactor, IOMMU-table budget, NUMA policy or worst-case
 latency guarantee. Empty private tables remain linked until quiescent teardown.

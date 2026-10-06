@@ -29,6 +29,7 @@ pub(crate) fn run(
         let mut account = super::Account::new();
         let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
         let charged = super::account::test_used_pages();
+        let shared = super::shared::used_pages();
         let table = PreparingTable::allocate(
             scope,
             (scope == TableScope::PrivateUser).then_some(&mut account),
@@ -39,6 +40,7 @@ pub(crate) fn run(
         assert!(unsafe { core::slice::from_raw_parts(bytes, 4096) }.iter().all(|&byte| byte == 0));
         drop(table);
         assert_eq!(super::account::test_used_pages(), charged);
+        assert_eq!(super::shared::used_pages(), shared);
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
     }
     #[cfg(target_arch = "aarch64")]
@@ -123,6 +125,7 @@ pub(crate) fn run(
          retry/cached reuse, sparse partial tree and exact teardown passed (no retained frames)"
     );
     super::admission_tests::run();
+    super::shared_tests::run();
 }
 
 fn active_root() -> (u64, u64) {

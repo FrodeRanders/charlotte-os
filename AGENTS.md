@@ -122,7 +122,12 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   roles/manifests or a later ASID lookup. Physical teardown refunds tables only
   after a fully successful walk, excluding prior quarantined provisional pages.
   Failed release retains the original domain/node charge; snapshots cannot
-  allocate private branches. Shared kernel tables remain separate admission work.
+  allocate private branches. Fresh shared kernel tables reserve an owning node
+  charge before allocation; publication retains it for the kernel lifetime.
+  Never charge copied shared links again or refund them on user-root teardown.
+  Refund unused reservations, and unpublished backing only after confirmed
+  physical release; failure/abandonment retains charges. Inherited boot tables remain outside this
+  runtime pool, not retroactively adopted ownership.
   See `docs/reference/translation-admission.md`.
 - Dynamic unmap removes leaves, not intermediate-table ownership. Keep empty
   tables linked for reuse until quiescent address-space teardown; table charges
@@ -287,7 +292,8 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   quarantined account through a successor ASID. Successful root teardown must
   exclude previously quarantined provisional pages from its refund. Platform
   promotion cannot reclassify an account with quarantined pages. Private tables
-  have their own lifetime admission; shared kernel tables remain separate work.
+  have their own lifetime admission; fresh shared kernel tables retain a separate
+  node charge for the kernel lifetime, independent of private-root refunds.
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`

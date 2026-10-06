@@ -24,7 +24,8 @@ mapping addresses are validated before entering the walker. Applications cannot
 select a kernel-scope allocation policy. Private requests also retain their
 exact [table admission account](translation-admission.md), reserved before
 physical allocation and borrowed through publication or rollback. Shared kernel
-tables and other unbudgeted consumers can still exhaust physical memory.
+requests reserve an owning charge in a separate runtime-table node pool before
+allocation. Other unbudgeted consumers can still exhaust physical memory.
 
 ## Publication and root identity
 
@@ -68,3 +69,10 @@ frames. Separate admission fixtures retain two rejected/abandoned provisional
 frames and verify that their original charges survive root teardown. These are
 serialized boot probes and QEMU regressions, not real physical OOM, publication
 unwinding or concurrent hardware-walk proofs.
+
+Shared-table admission fixtures additionally test real higher-half mapping,
+partial-prefix retention, cached reuse at the ceiling, and no duplicate charge
+or refund when user roots borrow the shared hierarchy. Two rejected/abandoned
+shared preparations retain two more frames/charges. Unpublished success refunds
+only after confirmed physical release; linked kernel tables stay charged for
+the kernel lifetime. Bootloader-inherited tables remain outside runtime admission.

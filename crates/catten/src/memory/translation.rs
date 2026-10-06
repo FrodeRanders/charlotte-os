@@ -1,5 +1,5 @@
 //! Owning zeroed translation-frame preparation. This is publication/lifetime
-//! protection, private-table admission and physical progress policy.
+//! protection, private/shared table admission and physical progress policy.
 
 use super::{
     PAddr,
@@ -8,6 +8,7 @@ use super::{
 
 pub(crate) mod account;
 pub(crate) use account::Account;
+mod shared;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum TableScope {
@@ -25,6 +26,7 @@ fn allowed(scope: TableScope, platform: bool, free: u64, usable: u64) -> bool {
 pub(crate) struct PreparingTable<'a> {
     frame: Option<PreparingUserFrame>,
     account: Option<&'a mut Account>,
+    shared: Option<shared::Charge>,
     state: PreparationState,
 }
 
@@ -52,6 +54,7 @@ impl<'a> PreparingTable<'a> {
         let mut preparation = Self {
             frame: None,
             account,
+            shared: None,
             state: PreparationState::Unpublished,
         };
         if let Some(account) = preparation.account.as_deref_mut()
@@ -60,6 +63,9 @@ impl<'a> PreparingTable<'a> {
             // No reservation exists for Drop to refund.
             preparation.state = PreparationState::Installed;
             return None;
+        }
+        if scope == TableScope::SharedKernel {
+            preparation.shared = Some(shared::Charge::reserve()?);
         }
         preparation.frame =
             Some(allocate(preparation.account.as_deref().is_some_and(Account::is_platform))?);
@@ -80,6 +86,9 @@ impl<'a> PreparingTable<'a> {
         self.state = PreparationState::Publishing;
         self.frame.take().unwrap().quarantine();
         let result = publish(frame);
+        if let Some(charge) = self.shared.take() {
+            charge.publish();
+        }
         self.state = PreparationState::Installed;
         result
     }
@@ -112,11 +121,19 @@ impl<'a> PreparingTable<'a> {
                 if let Some(account) = self.account.as_deref_mut() {
                     account.refund_quarantined();
                 }
+                if let Some(charge) = self.shared.take() {
+                    charge.refund();
+                }
             } else {
                 crate::logln!("[table preparation] rejected physical release; backing retained");
             }
-        } else if let Some(account) = self.account.as_deref_mut() {
-            account.refund_unpublished();
+        } else {
+            if let Some(account) = self.account.as_deref_mut() {
+                account.refund_unpublished();
+            }
+            if let Some(charge) = self.shared.take() {
+                charge.refund();
+            }
         }
     }
 
@@ -139,4 +156,5 @@ impl Drop for PreparingTable<'_> {
 }
 
 mod admission_tests;
+mod shared_tests;
 pub(crate) mod tests;

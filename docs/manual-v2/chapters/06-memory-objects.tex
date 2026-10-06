@@ -70,8 +70,10 @@ and placement feedback. Signed deployment fields and a userspace policy API for
 these limits remain future work. Demand-backed heaps and ELF/runtime pages have
 independent generation-owned accounts and node pools. Capability records,
 IPC operations and several completion/observer families also have separate
-admission. Stacks, translation tables, general kernel heap and comprehensive
-metadata accounting remain open.
+admission. Private translation tables have owning-root limits and a node pool;
+fresh shared runtime kernel tables have a separate node pool. Inherited boot
+tables, IOMMU tables, stacks, general kernel heap and comprehensive metadata
+accounting remain open.
 
 \paragraph{Translation-table lifetime.}
 Removing a page mapping clears the leaf while retaining empty intermediate
@@ -81,8 +83,8 @@ page walks do not take software locks, so an empty table cannot be recycled
 merely because its last leaf was removed. New table backing is initialized
 before its parent link becomes valid.
 
-Retained tables follow the hierarchy's high-water footprint and will need
-their own admission limits. Shared physical data still requires independent
+Retained tables follow the hierarchy's high-water footprint and consume their
+own admission limits. Shared physical data still requires independent
 user translation trees in each domain. Kernel trees are shared and must be
 accounted for once. Automatic promotion of an empty subtree to a large-page
 leaf is not implemented. Returning an unmapped data frame likewise does not
@@ -162,15 +164,16 @@ supervisors retain a teardown owner across polls and refuse
 to report reclamation after a terminal error. They do not reclaim a root whose
 close failed or whose leases did not drain.
 
-Physical teardown makes heap and image charges nonrefundable before releasing
+Physical teardown makes heap, image and private-table charges nonrefundable before releasing
 any owned frame. Both architecture destructors attempt the bounded private-tree
 and data-frame cleanup; only complete success permits account refund. If one
 release fails, the whole charge remains consumed, even if other frames were
 returned. There is no automatic retry of a partially destroyed hierarchy.
 After proven translation quiescence, the software slot and hardware tag can be
 reused independently of these retained charges. Failed invalidation instead
-retains the complete root, tag and slot. Translation-frame admission remains
-separate work.
+retains the complete root, tag and slot. Successful private-tree teardown excludes
+previously quarantined provisional table charges from its refund. Shared kernel
+charges are independent of that private teardown and remain consumed.
 
 Heap and image preparation jointly own the provisional frame, its reservation
 and an exclusive borrow of the original address space. The caller retains the
@@ -188,8 +191,15 @@ floor on each allocation; shared higher-half kernel tables may consume that
 reserve. Mapping failure can leave a partial linked tree, which remains owned
 for retry or quiescent destruction. ARM allocates the root before acquiring a
 hardware tag, releasing the unpublished frame if tag admission fails. This
-preparation policy adds no translation-table quota and does not resolve the
-remaining lock-held invalidations.
+preparation reserves private frames against the original root account and fresh
+shared kernel frames against a separate node pool before physical allocation.
+Private roots admit at most 1,024 table frames; their node pool uses one sixteenth
+of usable RAM with one quarter reserved from ordinary domains. Shared runtime
+tables use one sixty-fourth of usable RAM and retain their charges for the kernel
+lifetime. Copying shared links does not charge again, and user-root destruction
+cannot refund them. Rejected release and unconfirmed publication retain backing
+and admission. Inherited boot tables remain outside runtime admission. This
+does not resolve remaining lock-held invalidations or general metadata admission.
 
 \section{Four transfer modes}
 

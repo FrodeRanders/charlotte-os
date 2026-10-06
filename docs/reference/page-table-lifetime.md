@@ -25,9 +25,11 @@ the same regions reuses cached tables; mapping additional sparse regions can
 grow it. Kernel trees retain empty branches for the kernel lifetime. There is
 now a separate [private translation budget](translation-admission.md); heap/image
 admission does not charge these frames. Roots, partial linked trees and retained
-empty branches remain charged until confirmed physical teardown. Shared kernel
-tables remain outside this budget; there is no complete kernel-table pool or
-physical-memory ledger.
+empty branches remain charged until confirmed physical teardown. Fresh shared
+runtime kernel tables have a separate node pool and retain their charges for
+the kernel lifetime. Borrowing/copying shared links does not duplicate charges;
+user-root destruction cannot refund them. Bootloader-inherited tables remain
+outside admission; these pools are not a complete physical-memory ledger.
 
 An empty linked subtree also prevents installing a large/huge leaf over that
 subtree. Automatic page-size promotion and live tree compaction are not
