@@ -34,6 +34,7 @@ pub(crate) fn run(mut destroy: impl FnMut(&mut AddressSpace, &mut Deallocator<'_
     for reject in [0, 1, 2, 3, 4, 5, 6, usize::MAX] {
         let heap_before = backing_budget::test_used_pages(Kind::Heap);
         let image_before = backing_budget::test_used_pages(Kind::Image);
+        let tables_before = super::translation::account::test_used_pages();
         let free_before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
         let mut space = AddressSpace::try_new_user().unwrap();
         install(&mut space, Kind::Heap, charlotte_launch::HEAP_VADDR);
@@ -83,13 +84,14 @@ pub(crate) fn run(mut destroy: impl FnMut(&mut AddressSpace, &mut Deallocator<'_
         let retained = u64::from(failed != 0);
         assert_eq!(backing_budget::test_used_pages(Kind::Heap), heap_before + retained);
         assert_eq!(backing_budget::test_used_pages(Kind::Image), image_before + retained);
+        assert_eq!(super::translation::account::test_used_pages(), tables_before + 4 * retained);
         drop(foreign);
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free_before - failed);
     }
     crate::logln!(
         "[root release] success, each table/root/heap/image failure, all-release failure, no \
          retry, borrowed root and foreign leaf passed (12 retained frames; 7 heap and 7 image \
-         charges)"
+         charges; 28 table charges)"
     );
 }
 

@@ -3,6 +3,8 @@
 These documents explain current code-facing contracts and invariants. They
 should be updated with the implementation when those contracts change.
 
+- [Private translation admission](translation-admission.md) — root/intermediate
+  budgets, exact account ownership, retained branches and platform progress.
 - [Hardware quiescence](hardware-quiescence.md) — bounded CPU epoch retry,
   DMA completion requirements, requester fencing and supported QEMU NVMe reset.
 

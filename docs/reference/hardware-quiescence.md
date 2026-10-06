@@ -91,6 +91,6 @@ then retries against all real LPs without fake acknowledgements.
 This is QEMU evidence, not a physical-device or worst-case latency proof. The
 NVMe fixture submits no outstanding I/O command. Generic PCI function/bus reset,
 VirtIO/AHCI/NIC reset adapters, stalled physical CPUs, interrupt-remapping/ATS
-coverage, controller recovery for abandoned owners and complete metadata/table
+coverage, controller recovery for abandoned owners and complete kernel metadata/table
 admission remain open. See the
 [audit record](../reports/audits/2026-10-06-security-staged-quiescence.md).

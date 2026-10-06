@@ -199,6 +199,7 @@ pub struct AddressSpace {
     pub(crate) thread_stack_slots: u64,
     pub(crate) heap_account: crate::memory::backing_budget::Account,
     pub(crate) image_account: crate::memory::backing_budget::Account,
+    pub(crate) table_account: crate::memory::translation::Account,
 }
 
 impl AddressSpace {
@@ -227,7 +228,16 @@ impl AddressSpace {
             image_account: crate::memory::backing_budget::Account::new(
                 crate::memory::backing_budget::Kind::Image,
             ),
+            table_account: crate::memory::translation::Account::new(),
         })
+    }
+
+    /// Trusted ambient supervisor construction; classification precedes lazy
+    /// root allocation and cannot be selected by manifest roles or syscalls.
+    pub(crate) fn try_new_platform_user() -> Result<Self, super::Error> {
+        let mut space = Self::try_new_user()?;
+        space.table_account.mark_platform();
+        Ok(space)
     }
 
     /// Record one physical frame that belongs to this user address space's
@@ -256,28 +266,25 @@ impl AddressSpace {
         self.ttbr1_el1
     }
 
-    pub(super) fn set_ttbr1(&mut self, ttbr1: u64) {
-        self.ttbr1_el1 = ttbr1;
-    }
-
     pub fn hw_asid(&self) -> HwAsid {
         self.hw_asid
     }
 
     pub(crate) fn ensure_hw_asid(&mut self) -> Option<HwAsid> {
-        if self.hw_asid == 0 {
-            self.hw_asid = HW_ASID_ALLOCATOR.lock().allocate()?;
-            self.owns_hw_asid = true;
-            self.ttbr0_el1 = (self.ttbr0_el1 & TTBR_BADDR_MASK) | encode_hw_asid(self.hw_asid);
-        }
-        Some(self.hw_asid)
+        Self::acquire_hw_asid(&mut self.hw_asid, &mut self.owns_hw_asid, &mut self.ttbr0_el1)
     }
 
-    /// Install a lower-half root without disturbing this address space's TLB
-    /// identity. Fresh user spaces acquire a nonzero tag on first mapping.
-    pub(super) fn install_ttbr0_base(&mut self, base: u64) {
-        debug_assert_ne!(self.hw_asid, 0);
-        self.ttbr0_el1 = (base & TTBR_BADDR_MASK) | encode_hw_asid(self.hw_asid);
+    fn acquire_hw_asid(
+        hw_asid: &mut HwAsid,
+        owns_hw_asid: &mut bool,
+        ttbr0: &mut u64,
+    ) -> Option<HwAsid> {
+        if *hw_asid == 0 {
+            *hw_asid = HW_ASID_ALLOCATOR.lock().allocate()?;
+            *owns_hw_asid = true;
+            *ttbr0 = (*ttbr0 & TTBR_BADDR_MASK) | encode_hw_asid(*hw_asid);
+        }
+        Some(*hw_asid)
     }
 
     /// Map a physical MMIO region into this address space at its higher half
@@ -353,6 +360,7 @@ impl AddressSpaceInterface for AddressSpace {
             image_account: crate::memory::backing_budget::Account::new(
                 crate::memory::backing_budget::Kind::Image,
             ),
+            table_account: crate::memory::translation::Account::new(),
         }
     }
 
@@ -611,6 +619,7 @@ impl AddressSpace {
         let mut release = crate::memory::backing_budget::FrameRelease::new(
             &mut self.heap_account,
             &mut self.image_account,
+            &mut self.table_account,
             deallocate,
         );
 

@@ -23,11 +23,11 @@ retirement queue or cross-core rendezvous inside dynamic unmap.
 The memory cost follows the hierarchy's high-water footprint. Repeated use of
 the same regions reuses cached tables; mapping additional sparse regions can
 grow it. Kernel trees retain empty branches for the kernel lifetime. There is
-currently no private-table quota or kernel-table pool; heap/image admission
-does not charge these frames. This policy is a lifetime correction, not an
-aggregate memory-exhaustion solution. Full table admission must count actual
-roots and intermediate frames, including retained branches and partial
-preparation, until they are physically released.
+now a separate [private translation budget](translation-admission.md); heap/image
+admission does not charge these frames. Roots, partial linked trees and retained
+empty branches remain charged until confirmed physical teardown. Shared kernel
+tables remain outside this budget; there is no complete kernel-table pool or
+physical-memory ledger.
 
 An empty linked subtree also prevents installing a large/huge leaf over that
 subtree. Automatic page-size promotion and live tree compaction are not
@@ -46,9 +46,10 @@ construction belongs to `try_new_user`.
 
 Both walkers now retain [owned table preparation](page-table-preparation.md)
 through the final publication boundary. Private/lower-half table allocations
-also preserve the physical progress floor; shared higher-half kernel tables may
-consume its reserve. Partial linked trees remain owned on mapping failure.
-This adds no table quota and does not change the invalidation obligations.
+also reserve their exact owning root's table account. Ordinary roots preserve
+the physical progress floor; trusted platform roots and shared higher-half
+kernel tables may consume its reserve. Partial linked trees remain owned and
+charged on mapping failure. Admission does not change invalidation obligations.
 
 The zeroing `map_page` path initializes data before exposing its leaf on both
 architectures. `map_existing_page` preserves data already initialized and owned
@@ -72,8 +73,8 @@ and complete cross-LP teardown safety remain open.
 
 Memory-object cleanup also has a [retirement pin](memory-object-retirement.md)
 independent of DMA/copy retention. Final unpin cannot bypass its invalidation
-fence, and failed detach/rollback retains charged backing. That ownership does
-not yet permit releasing lifecycle/IPC serialization across ASID-based finish.
+fence, and failed detach/rollback retains charged backing. Its composed root
+leases permit physical completion outside lifecycle/IPC serialization.
 
 [Final root retirement](address-space-retirement.md) now detaches the private
 hierarchy into a software-slot-leasing owner. Its final invalidation/destruction
@@ -93,7 +94,7 @@ release. It also returns the backing frame and checks the original free count.
 The existing higher-half VM fixture now invalidates the final kernel page
 before returning its data frame, covering the exclusive-end arithmetic edge.
 
-This fixture executes on AArch64; x86 execution requires an x86 guest. It is not
+This fixture executes on AArch64 and x86 QEMU. It is not
 a concurrent hardware-walk race reproduction, forced allocator-OOM test,
 failed-IPI test, or proof of quiescent teardown. See the
 [investigation](../reports/investigations/2026-10-05-page-tables-locality-and-admission.md)

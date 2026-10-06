@@ -68,6 +68,7 @@ pub struct AddressSpace {
     pub(crate) thread_stack_slots: u64,
     pub(crate) heap_account: crate::memory::backing_budget::Account,
     pub(crate) image_account: crate::memory::backing_budget::Account,
+    pub(crate) table_account: crate::memory::translation::Account,
 }
 
 impl AddressSpace {
@@ -90,18 +91,31 @@ impl AddressSpace {
     /// Runtime callers report initial root exhaustion rather than panicking
     /// before the loader's owning preparation exists.
     pub fn try_new_user() -> Result<Self, super::Error> {
-        Self::try_new_user_with_root(|| {
-            crate::memory::translation::PreparingTable::allocate(
-                crate::memory::translation::TableScope::PrivateUser,
-            )
-        })
+        Self::try_new_user_with_root(false, || true)
+    }
+
+    /// Trusted ambient supervisor construction; no userspace input selects it.
+    pub(crate) fn try_new_platform_user() -> Result<Self, super::Error> {
+        Self::try_new_user_with_root(true, || true)
     }
 
     fn try_new_user_with_root(
-        allocate: impl FnOnce() -> Option<crate::memory::translation::PreparingTable>,
+        platform: bool,
+        allow: impl FnOnce() -> bool,
     ) -> Result<Self, super::Error> {
         let current = Self::get_current();
-        let root = allocate()
+        let mut table_account = crate::memory::translation::Account::new();
+        if platform {
+            table_account.mark_platform();
+        }
+        let root = allow()
+            .then(|| {
+                crate::memory::translation::PreparingTable::allocate(
+                    crate::memory::translation::TableScope::PrivateUser,
+                    Some(&mut table_account),
+                )
+            })
+            .flatten()
             .ok_or(super::Error::PMemError(crate::memory::physical::Error::OutOfFrames))?;
         let new_pml4 = root.frame();
         let new_pml4_ptr: *mut PageTable = new_pml4.into();
@@ -112,7 +126,10 @@ impl AddressSpace {
                 (*new_pml4_ptr)[index] = (*cur_pml4)[index];
             }
         }
-        Ok(root.publish(|frame| AddressSpace {
+        // Transfer the prepared frame before moving its exact embedded account.
+        // No fallible work follows; lost construction retains the charge.
+        let frame = root.publish(|frame| frame);
+        Ok(AddressSpace {
             cr3: <PAddr as Into<u64>>::into(frame) & CR3_ADDRESS_MASK,
             owns_root: true,
             owned_frames: Vec::new(),
@@ -123,12 +140,13 @@ impl AddressSpace {
             image_account: crate::memory::backing_budget::Account::new(
                 crate::memory::backing_budget::Kind::Image,
             ),
-        }))
+            table_account,
+        })
     }
 
     pub(crate) fn self_test_root_preparation() {
         let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
-        assert!(Self::try_new_user_with_root(|| None).is_err());
+        assert!(Self::try_new_user_with_root(false, || false).is_err());
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
         let address_space = Self::try_new_user().unwrap();
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - 1);
@@ -224,6 +242,7 @@ impl AddressSpaceInterface for AddressSpace {
             image_account: crate::memory::backing_budget::Account::new(
                 crate::memory::backing_budget::Kind::Image,
             ),
+            table_account: crate::memory::translation::Account::new(),
         }
     }
 
@@ -626,6 +645,7 @@ impl AddressSpace {
         let mut release = crate::memory::backing_budget::FrameRelease::new(
             &mut self.heap_account,
             &mut self.image_account,
+            &mut self.table_account,
             deallocate,
         );
 

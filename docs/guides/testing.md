@@ -927,3 +927,21 @@ Use separate `--instance` names, `--fresh-storage` and isolated Arm forwarding
 ports. Final validation passed **15/15** on each x86 backend and **19/19** on
 Arm. Exact commands and limitations are in the
 [staging/quiescence audit record](../reports/audits/2026-10-06-security-staged-quiescence.md).
+
+### Private translation admission
+
+Both architecture boot fixtures count private roots/intermediates against their
+owning account. They exercise sparse partial construction, rejection/retry,
+cached reuse at the ceiling and independent aliases. A public memory-object
+fixture repeatedly rejects sparse mapping, verifies unchanged source backing
+and usable authority, then remaps cached tables and closes normally. An ordinary
+table-admission pressure adapter preserves actual counters and physical memory
+while testing platform root/mapping progress and ordinary recovery.
+
+Root-release failure fixtures now check whole-account table retention. Two new
+rejected/abandoned provisional cases retain two physical frames and charges;
+they simulate owner interruption, not real panic unwinding. Prefix/success
+fixtures otherwise refund all table admission at confirmed physical teardown.
+Run the same three QEMU targets above with fresh instance names. Exact commands,
+results and limits are in the
+[table admission audit record](../reports/audits/2026-10-06-security-table-admission.md).

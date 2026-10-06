@@ -62,11 +62,11 @@ prove that every possible caller enters without an unrelated masking guard.
 
 Both architecture destructors now use `FrameRelease`. Before invalidation or
 physical teardown can fail, the owning root is disarmed against repeated
-destruction and its heap/image accounts are made nonrefundable. The bounded
+destruction and its heap/image/table accounts are made nonrefundable. The bounded
 private-table walk and tracked data-frame releases continue after an allocator
 rejection. Only success for **every** release allows the later account-field
 destructors to return charges for released backing. Earlier provisional
-quarantine remains nonrefundable even after a successful walk. A failure conservatively retains both
+quarantine remains nonrefundable even after a successful walk. A failure conservatively retains all
 accounts in full, even when other frames were successfully released. There is
 no per-failed-frame allocation, retry queue or automatic charge recovery.
 
@@ -87,8 +87,9 @@ accounts nonrefundable; kernel panic/unwind recovery is not tested here.
 Heap/image provisional rollback now uses
 [joint frame-and-charge preparation](kernel-backing-preparation.md), whose
 retained pages are excluded from successful root refunds. This does not cover
-all physical-release callers. Uncharged translation preparation logs failures;
-translation frames themselves still lack admission accounts.
+all physical-release callers. Private translation preparation retains its
+[owning admission account](translation-admission.md) through publication or
+confirmed release; shared kernel tables remain outside that pool.
 
 ## Slot ownership and failure
 
@@ -103,8 +104,8 @@ where a different owner takes over immediately.
 Free-ID storage is reserved before logical mutation for all existing slots.
 Completion does not allocate, even when other detached owners finish in between.
 An unexpected missing-capacity invariant fails closed rather than allocating in
-completion. This does not make initial table growth fallible or add a namespace,
-translation-frame or kernel-heap budget; those remain SEC-07 work.
+completion. This slot primitive does not add a namespace or kernel-heap budget;
+those remain SEC-07 work. Private translation frames have separate admission.
 
 Live operations have a separate linear slot lease. Retirement/extraction reject
 nonzero counts; root close returns `OperationsInFlight` before subsystem

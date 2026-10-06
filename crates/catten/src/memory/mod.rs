@@ -475,6 +475,7 @@ fn begin_user_address_space_cleanup(handle: AddressSpaceHandle) {
     let asid = handle.id();
     ADDRESS_SPACE_TABLE.lock().get_mut(asid).unwrap().heap_account.retire();
     ADDRESS_SPACE_TABLE.lock().get_mut(asid).unwrap().image_account.retire();
+    ADDRESS_SPACE_TABLE.lock().get_mut(asid).unwrap().table_account.retire();
     crate::capability::retire_address_space(asid);
     budget::retire(handle);
 }

@@ -232,6 +232,7 @@ impl ProvisionalRelease<'_> {
 pub(crate) struct FrameRelease<'a> {
     heap: &'a mut Account,
     image: &'a mut Account,
+    tables: &'a mut super::translation::Account,
     deallocate: &'a mut dyn FnMut(super::PAddr) -> Result<(), super::physical::Error>,
     failed: usize,
 }
@@ -240,16 +241,19 @@ impl<'a> FrameRelease<'a> {
     pub(crate) fn new(
         heap: &'a mut Account,
         image: &'a mut Account,
+        tables: &'a mut super::translation::Account,
         deallocate: &'a mut dyn FnMut(super::PAddr) -> Result<(), super::physical::Error>,
     ) -> Self {
         assert!(!heap.quarantined && !image.quarantined);
         heap.retire();
         image.retire();
+        tables.retire();
         heap.quarantined = true;
         image.quarantined = true;
         Self {
             heap,
             image,
+            tables,
             deallocate,
             failed: 0,
         }
@@ -268,6 +272,7 @@ impl<'a> FrameRelease<'a> {
         if self.failed == 0 {
             self.heap.quarantined = false;
             self.image.quarantined = false;
+            self.tables.confirm_release();
         } else {
             crate::logln!(
                 "[root release] quarantined failures={} heap_pages={} image_pages={}",

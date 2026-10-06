@@ -205,6 +205,7 @@ pub(crate) fn mark_platform(handle: AddressSpaceHandle) {
     assert_eq!(table.generation(handle.id()).ok(), Some(handle.generation()));
     table.get_mut(handle.id()).unwrap().heap_account.mark_platform();
     table.get_mut(handle.id()).unwrap().image_account.mark_platform();
+    table.get_mut(handle.id()).unwrap().table_account.mark_platform();
     let mut ledger = LEDGER.lock();
     let account = ledger.account((handle.id(), handle.generation()));
     assert!(!account.retired);

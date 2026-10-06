@@ -24,13 +24,21 @@ pub(crate) fn run(
     mut map: impl FnMut(&mut AddressSpace, VAddr, PAddr, usize) -> Result<(), Error>,
 ) {
     PreparingTable::test_policy();
+    super::account::test_pool();
     for scope in [TableScope::PrivateUser, TableScope::SharedKernel] {
+        let mut account = super::Account::new();
         let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
-        let table = PreparingTable::allocate(scope).unwrap();
+        let charged = super::account::test_used_pages();
+        let table = PreparingTable::allocate(
+            scope,
+            (scope == TableScope::PrivateUser).then_some(&mut account),
+        )
+        .unwrap();
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - 1);
         let bytes: *const u8 = table.frame().into();
         assert!(unsafe { core::slice::from_raw_parts(bytes, 4096) }.iter().all(|&byte| byte == 0));
         drop(table);
+        assert_eq!(super::account::test_used_pages(), charged);
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
     }
     #[cfg(target_arch = "aarch64")]
@@ -43,6 +51,7 @@ pub(crate) fn run(
         let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
         let heap = backing_budget::test_used_pages(Kind::Heap);
         let image = backing_budget::test_used_pages(Kind::Image);
+        let tables = super::account::test_used_pages();
         let mut space = AddressSpace::try_new_user().unwrap();
         let data = PreparingUserFrame::allocate_zeroed().unwrap();
         let bytes: *mut u8 = data.frame().into();
@@ -76,6 +85,7 @@ pub(crate) fn run(
             result.unwrap();
         }
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - 5);
+        assert_eq!(space.table_account.pages(), 4);
         assert_eq!(space.translate_address(first).unwrap(), data.frame());
         let leaf = space.unmap_page(first).unwrap();
         assert_eq!(leaf, data.frame());
@@ -93,6 +103,7 @@ pub(crate) fn run(
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - 6);
         map(&mut space, sparse, data.frame(), 1).unwrap();
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - 7);
+        assert_eq!(space.table_account.pages(), 6);
         assert_eq!(space.translate_address(sparse).unwrap(), data.frame());
         assert!(
             unsafe { core::slice::from_raw_parts(bytes, 4096) }.iter().all(|&byte| byte == 0x5a)
@@ -105,11 +116,13 @@ pub(crate) fn run(
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
         assert_eq!(backing_budget::test_used_pages(Kind::Heap), heap);
         assert_eq!(backing_budget::test_used_pages(Kind::Image), image);
+        assert_eq!(super::account::test_used_pages(), tables);
     }
     crate::logln!(
         "[table preparation] scope/floor policy, zeroed-owner Drop, every construction prefix, \
          retry/cached reuse, sparse partial tree and exact teardown passed (no retained frames)"
     );
+    super::admission_tests::run();
 }
 
 fn active_root() -> (u64, u64) {

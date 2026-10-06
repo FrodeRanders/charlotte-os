@@ -51,7 +51,7 @@ type WalkerResult<T> = Result<T, WalkerError>;
 /// any other low bits are not part of the table base address.
 const TTBR_BADDR_MASK: u64 = 0x0000_ffff_ffff_f000;
 
-pub(crate) struct Walker<'vas, Prepare = fn(TableScope) -> Option<PreparingTable>> {
+pub(crate) struct Walker<'vas, Prepare = fn(TableScope) -> bool> {
     pub address_space: &'vas mut AddressSpace,
     pub vaddr: VAddr,
     pub l0_ptr: *mut PageTable,
@@ -63,7 +63,7 @@ pub(crate) struct Walker<'vas, Prepare = fn(TableScope) -> Option<PreparingTable
 
 impl<'vas> Walker<'vas> {
     pub fn new(address_space: &'vas mut AddressSpace, vaddr: VAddr) -> Self {
-        Self::with_preparer(address_space, vaddr, PreparingTable::allocate)
+        Self::with_preparer(address_space, vaddr, |_| true)
     }
 
     pub(crate) fn test_table_preparation() {
@@ -73,7 +73,7 @@ impl<'vas> Walker<'vas> {
         let mut space = AddressSpace::try_new_user().unwrap();
         assert!(matches!(
             Walker::new(&mut space, VAddr::from(charlotte_launch::HEAP_VADDR))
-                .ensure_root_with_tag(|_| false),
+                .ensure_root_with_tag(|_, _, _| false),
             Err(WalkerError::HardwareAsidExhausted)
         ));
         assert_eq!(space.hw_asid(), 0);
@@ -85,11 +85,10 @@ impl<'vas> Walker<'vas> {
             let prepare = |scope| {
                 assert_eq!(scope, TableScope::PrivateUser);
                 if remaining == 0 {
-                    return None;
+                    return false;
                 }
-                let table = PreparingTable::allocate(scope)?;
                 remaining -= 1;
-                Some(table)
+                true
             };
             Walker::with_preparer(space, vaddr, prepare).map_existing_page(
                 frame,
@@ -102,7 +101,7 @@ impl<'vas> Walker<'vas> {
     }
 }
 
-impl<'vas, Prepare: FnMut(TableScope) -> Option<PreparingTable>> Walker<'vas, Prepare> {
+impl<'vas, Prepare: FnMut(TableScope) -> bool> Walker<'vas, Prepare> {
     fn with_preparer(
         address_space: &'vas mut AddressSpace,
         vaddr: VAddr,
@@ -134,14 +133,23 @@ impl<'vas, Prepare: FnMut(TableScope) -> Option<PreparingTable>> Walker<'vas, Pr
         (<VAddr as Into<usize>>::into(self.vaddr) >> 63) & 1 == 1
     }
 
-    fn prepare_table(&mut self) -> WalkerResult<PreparingTable> {
+    fn prepare_table(&mut self) -> WalkerResult<PreparingTable<'_>> {
         let scope = if self.is_higher_half() {
             TableScope::SharedKernel
         } else {
             TableScope::PrivateUser
         };
-        (self.prepare)(scope)
-            .ok_or(WalkerError::PMemError(crate::memory::physical::Error::OutOfFrames))
+        if scope == TableScope::PrivateUser && !self.address_space.owns_root {
+            return Err(WalkerError::PermissionDenied);
+        }
+        if !(self.prepare)(scope) {
+            return Err(WalkerError::PMemError(crate::memory::physical::Error::OutOfFrames));
+        }
+        PreparingTable::allocate(
+            scope,
+            (scope == TableScope::PrivateUser).then_some(&mut self.address_space.table_account),
+        )
+        .ok_or(WalkerError::PMemError(crate::memory::physical::Error::OutOfFrames))
     }
 
     /// The physical base of the root (L0) table for this address, taken from the
@@ -260,12 +268,14 @@ impl<'vas, Prepare: FnMut(TableScope) -> Option<PreparingTable>> Walker<'vas, Pr
     /// empty. Kernel (higher half) mappings already have a root established by
     /// Limine; freshly created user address spaces may not.
     fn ensure_root(&mut self) -> WalkerResult<*mut PageTable> {
-        self.ensure_root_with_tag(|space| space.ensure_hw_asid().is_some())
+        self.ensure_root_with_tag(|tag, owns, ttbr| {
+            AddressSpace::acquire_hw_asid(tag, owns, ttbr).is_some()
+        })
     }
 
     fn ensure_root_with_tag(
         &mut self,
-        acquire_tag: impl FnOnce(&mut AddressSpace) -> bool,
+        acquire_tag: impl FnOnce(&mut super::HwAsid, &mut bool, &mut u64) -> bool,
     ) -> WalkerResult<*mut PageTable> {
         if self.root_table_base().is_none() {
             // Creating a root for an inactive address space must not install
@@ -278,16 +288,39 @@ impl<'vas, Prepare: FnMut(TableScope) -> Option<PreparingTable>> Walker<'vas, Pr
             } else {
                 current.get_ttbr0() == self.address_space.get_ttbr0()
             };
-            let preparation = self.prepare_table()?;
-            if !self.is_higher_half() && !acquire_tag(self.address_space) {
+            let higher = self.is_higher_half();
+            let scope = if higher {
+                TableScope::SharedKernel
+            } else {
+                TableScope::PrivateUser
+            };
+            if scope == TableScope::PrivateUser && !self.address_space.owns_root {
+                return Err(WalkerError::PermissionDenied);
+            }
+            if !(self.prepare)(scope) {
+                return Err(WalkerError::PMemError(crate::memory::physical::Error::OutOfFrames));
+            }
+            let AddressSpace {
+                table_account,
+                hw_asid,
+                owns_hw_asid,
+                ttbr0_el1,
+                ttbr1_el1,
+                ..
+            } = &mut *self.address_space;
+            let preparation =
+                PreparingTable::allocate(scope, (!higher).then_some(table_account))
+                    .ok_or(WalkerError::PMemError(crate::memory::physical::Error::OutOfFrames))?;
+            if !higher && !acquire_tag(hw_asid, owns_hw_asid, ttbr0_el1) {
                 return Err(WalkerError::HardwareAsidExhausted);
             }
             preparation.publish(|frame| {
                 let base = <PAddr as Into<u64>>::into(frame) & TTBR_BADDR_MASK;
-                if self.is_higher_half() {
-                    self.address_space.set_ttbr1(base);
+                if higher {
+                    *ttbr1_el1 = base;
                 } else {
-                    self.address_space.install_ttbr0_base(base);
+                    debug_assert_ne!(*hw_asid, 0);
+                    *ttbr0_el1 = base | super::encode_hw_asid(*hw_asid);
                 }
             });
             if was_active {

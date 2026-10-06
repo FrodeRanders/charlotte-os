@@ -28,7 +28,7 @@ use crate::{
 type WalkerError = <super::MemoryInterfaceImpl as MemoryInterface>::Error;
 type WalkerResult<T> = Result<T, WalkerError>;
 
-pub(crate) struct PthWalker<'vas, Prepare = fn(TableScope) -> Option<PreparingTable>> {
+pub(crate) struct PthWalker<'vas, Prepare = fn(TableScope) -> bool> {
     pub address_space: &'vas mut super::AddressSpace,
     pub vaddr: VAddr,
     pub pml4_ptr: *mut super::PageTable,
@@ -41,7 +41,7 @@ pub(crate) struct PthWalker<'vas, Prepare = fn(TableScope) -> Option<PreparingTa
 
 impl<'vas> PthWalker<'vas> {
     pub fn new(address_space: &'vas mut super::AddressSpace, vaddr: VAddr) -> Self {
-        Self::with_preparer(address_space, vaddr, PreparingTable::allocate)
+        Self::with_preparer(address_space, vaddr, |_| true)
     }
 
     pub(crate) fn test_table_preparation() {
@@ -50,11 +50,10 @@ impl<'vas> PthWalker<'vas> {
             let prepare = |scope| {
                 assert_eq!(scope, TableScope::PrivateUser);
                 if remaining == 0 {
-                    return None;
+                    return false;
                 }
-                let table = PreparingTable::allocate(scope)?;
                 remaining -= 1;
-                Some(table)
+                true
             };
             PthWalker::with_preparer(space, vaddr, prepare)
                 .map_existing_page(frame, true, true, true, 0)
@@ -62,7 +61,7 @@ impl<'vas> PthWalker<'vas> {
     }
 }
 
-impl<'vas, Prepare: FnMut(TableScope) -> Option<PreparingTable>> PthWalker<'vas, Prepare> {
+impl<'vas, Prepare: FnMut(TableScope) -> bool> PthWalker<'vas, Prepare> {
     fn with_preparer(
         address_space: &'vas mut super::AddressSpace,
         vaddr: VAddr,
@@ -157,8 +156,17 @@ impl<'vas, Prepare: FnMut(TableScope) -> Option<PreparingTable>> PthWalker<'vas,
         } else {
             TableScope::PrivateUser
         };
-        let preparation = (self.prepare)(scope)
-            .ok_or(WalkerError::PMemError(crate::memory::physical::Error::OutOfFrames))?;
+        if scope == TableScope::PrivateUser && !self.address_space.owns_root {
+            return Err(WalkerError::PermissionDenied);
+        }
+        if !(self.prepare)(scope) {
+            return Err(WalkerError::PMemError(crate::memory::physical::Error::OutOfFrames));
+        }
+        let preparation = PreparingTable::allocate(
+            scope,
+            (scope == TableScope::PrivateUser).then_some(&mut self.address_space.table_account),
+        )
+        .ok_or(WalkerError::PMemError(crate::memory::physical::Error::OutOfFrames))?;
         let new_table_ptr: *mut super::PageTable = preparation.frame().into();
         unsafe {
             let entry = &mut (*parent_table_ptr)[parent_index];

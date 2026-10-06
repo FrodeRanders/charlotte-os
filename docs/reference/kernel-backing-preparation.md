@@ -59,9 +59,10 @@ frames remain allocated.
 Uncharged `PreparingUserFrame` remains inside the data/table owners and for
 foreign-backing fixtures. Translation publication uses the dedicated
 [PreparingTable owner](page-table-preparation.md). Failed unpublished release
-is logged and not retried;
-it has no heap/image reservation to refund. Translation-table admission,
-aggregate kernel metadata, stacks and kernel heap remain separate SEC-07 work.
+is logged and not retried. Private tables retain their independent admission
+account through confirmed release; they never refund a heap/image reservation.
+Shared kernel tables, aggregate kernel metadata, stacks and kernel heap remain
+separate SEC-07 work.
 This owner retains the table guard; it does not fix live mapping/IPC/MMIO
 masking-guard or x86 shootdown progress issues.
 

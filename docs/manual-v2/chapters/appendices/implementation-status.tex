@@ -312,7 +312,14 @@ repository history remain authoritative.
         identity. All scheduler Observable sources require fallible owning
         registration, including boot publication/results; no weak-only trait
         fallback remains. General control-block storage and broader kernel
-        heap/capability/page-table accounting remain unfinished.
+        heap/capability/shared-kernel-table accounting remain unfinished.
+        Private translation roots and intermediates now have an embedded
+        lifetime account: 1,024 frames per domain, a node pool of one sixteenth
+        of usable RAM and reserved platform headroom. Partial linked trees and
+        cached empty branches remain charged until confirmed physical teardown.
+        Trusted platform classification precedes root allocation; failed release
+        retains the original charge. Shared kernel/IOMMU tables, stacks and
+        general metadata remain separate admission work.
     \item \textbf{Cross-machine Raft boundary:} two TCG guests share a private
         QEMU LAN (stream backend on AArch64, socket backend on x86-64); the
         reliable-message frame transport and remote Raft peer routing are

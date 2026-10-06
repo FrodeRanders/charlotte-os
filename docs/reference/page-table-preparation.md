@@ -9,19 +9,21 @@ x86 permission/cache bits are assembled before its aligned entry publication.
 
 ## Scope and physical progress
 
-Private/lower-half translation requests preserve the existing one-eighth
+Ordinary private/lower-half translation requests preserve the existing one-eighth
 free-frame floor. The predicate and allocation run under the same frame-allocator
 guard. Each actual root/intermediate allocation checks the floor; empty linked
 branches reuse existing frames without a new request. A failure may therefore
 leave a partial tree, but those published tables remain owned until retry or
 quiescent destruction. Heap/image page rollback does not free the tree's tables.
 
-Shared higher-half kernel requests may consume that reserve for kernel progress.
+Trusted platform private requests and shared higher-half kernel requests may
+consume that reserve for kernel progress.
 They remain subject to real allocator exhaustion and owned preparation. The
 architecture derives `TableScope` from its mapping context; user-accessible
 mapping addresses are validated before entering the walker. Applications cannot
-select a kernel-scope allocation policy. This is a physical progress policy,
-**not** domain/node translation quotas or a global RAM ledger. Shared kernel
+select a kernel-scope allocation policy. Private requests also retain their
+exact [table admission account](translation-admission.md), reserved before
+physical allocation and borrowed through publication or rollback. Shared kernel
 tables and other unbudgeted consumers can still exhaust physical memory.
 
 ## Publication and root identity
@@ -43,9 +45,10 @@ caller's existing fatal or fallible policy.
 
 Private trees retain linked empty tables and release them only through the
 existing [lifetime contract](page-table-lifetime.md) and
-[final root retirement](address-space-retirement.md). The earlier mapping,
-IPC-loan and MMIO masking-guard invalidations remain SEC-18 work. Table charges,
-when added, must follow actual retained/published and quarantined lifetimes.
+[final root retirement](address-space-retirement.md). Mapping, IPC-loan and MMIO
+ownership is composed through exact root leases and receipts. Table charges
+follow retained/published and quarantined lifetimes; complete physical-platform
+quiescence and broader recovery remain SEC-18 work.
 
 ## Verification
 
@@ -56,11 +59,12 @@ remap cached empty branches with zero fresh-allocation allowance, and reject
 then complete a sparse second branch. Aliases preserve their foreign data,
 active hardware roots remain unchanged, and private destruction returns every
 table before the separately owned data page is released. Heap/image pools stay
-unchanged because table admission is still unimplemented.
+unchanged because tables have an independent pool, whose counts are also checked.
 
 Separate checks cover both scope/floor predicates, zeroed unpublished-owner Drop
 and rejected ARM hardware-tag admission. The existing x86 root-allocation
-fixture compiles but requires an x86 guest to execute. These tests leave **no
-additional retained frames**. They are serialized boot probes and the AArch64
-security regression, not real physical OOM, pressure stress, publication
-unwinding, concurrent hardware walks or x86 guest/shootdown-progress proofs.
+fixture executes in x86 QEMU. These prefix fixtures leave no additional retained
+frames. Separate admission fixtures retain two rejected/abandoned provisional
+frames and verify that their original charges survive root teardown. These are
+serialized boot probes and QEMU regressions, not real physical OOM, publication
+unwinding or concurrent hardware-walk proofs.

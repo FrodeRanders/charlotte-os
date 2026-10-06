@@ -554,8 +554,14 @@ fn try_load_domain_with_preparation(
     if image_backing_pages(image) > crate::memory::backing_budget::IMAGE_DOMAIN_PAGES {
         return Err(DomainLoadError::BackingAdmission);
     }
-    let address_space =
-        try_create_user_address_space_handle().map_err(DomainLoadError::AddressSpace)?;
+    let address_space = try_create_user_address_space_handle_with(
+        if platform {
+            AddressSpace::try_new_platform_user
+        } else {
+            AddressSpace::try_new_user
+        },
+    )
+    .map_err(DomainLoadError::AddressSpace)?;
     let mut preparation = PreparingDomain(Some(address_space));
     if platform {
         crate::memory::budget::mark_platform(address_space);

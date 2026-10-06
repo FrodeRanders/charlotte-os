@@ -41,8 +41,9 @@ ASID reuse. Unconfirmed publication retains backing without deallocation. See
 
 The backing allocator also preserves the existing one-eighth free-frame floor
 under its frame lock. Root/intermediate page tables are not included in this
-page reservation. Their private/lower-half preparation now separately checks
-the floor; shared kernel tables may consume its reserve. See
+page reservation. Their private/lower-half preparation has separate
+[translation admission](translation-admission.md); ordinary tables preserve
+the floor, while trusted platform and shared kernel tables may consume its reserve. See
 [owned table preparation](page-table-preparation.md). The fallible loading path
 reports `BackingAdmission`, `FrameTrackingAllocation`, `FrameAllocation`,
 `PageMapping` and `StaleAddressSpace` through `DomainLoadError` rather than
@@ -55,9 +56,10 @@ mapping but retains charges until physical address-space destruction. Mandatory
 boot-service wrappers can still treat failed launch as fatal after preparation
 cleanup. Initial x86-64 root construction now owns its provisional frame and
 reports `AddressSpace(RootAllocationFailed)` before namespace publication.
-It uses the same physical progress-floor check; AArch64 retains lazy roots.
-Root/intermediate-table quota accounting and general kernel/registry allocation
-failure handling remain separate work; this is not universal loader OOM safety.
+Ordinary roots use the physical progress-floor check; trusted platform table
+classification precedes root allocation. AArch64 retains lazy roots.
+General kernel/registry allocation failure handling and shared kernel tables
+remain separate work; this is not universal loader OOM safety.
 Empty intermediate tables now stay linked for reuse until quiescent teardown;
 their high-water cost is described in [page-table lifetime](page-table-lifetime.md).
 
@@ -83,7 +85,7 @@ not a real-EL0 image-quota probe, full node pressure soak, real allocator
 exhaustion/corruption or exhaustive cross-LP teardown proof. Shared preparation
 fault adapters additionally check failed physical release, pool identity,
 uncertain publication, domain ceilings and mixed retained/owned teardown.
-Stack, page-table, kernel heap,
+Stack, shared kernel-table, kernel heap,
 empty namespace/control-block and general metadata accounting remain open.
 
 Constructor-failure fixtures verify the registration error, unchanged backing

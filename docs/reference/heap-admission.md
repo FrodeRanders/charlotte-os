@@ -36,8 +36,8 @@ original domain ceiling and node pool; root destruction and ASID reuse cannot
 refund it. An unconfirmed publication retains reachable backing without
 deallocation. Frame tracking is preflighted before allocation; successful
 insertion therefore allocates nothing. See
-[joint preparation](kernel-backing-preparation.md). Page-table allocations
-remain a separate, uncharged concern.
+[joint preparation](kernel-backing-preparation.md). Private page-table allocations
+have a [separate owning budget](translation-admission.md).
 
 Under the frame-allocator guard, heap backing also preserves the existing
 one-eighth physical free-frame floor. That check concerns the requested heap
@@ -77,5 +77,5 @@ always uses the real architecture mapper.
 These are deterministic kernel fixtures plus ordinary service heap faults in
 the AArch64 security guest. They are not a new real-EL0 quota probe, a node-wide
 pressure soak, forced allocator exhaustion or exhaustive teardown-race proof.
-Image/runtime backing has its own admission. User/kernel stacks, page-table
-backing, kernel heap and general metadata remain separate SEC-07 work.
+Image/runtime backing and private tables have their own admission. User/kernel
+stacks, shared kernel tables, kernel heap and general metadata remain SEC-07 work.

@@ -8,6 +8,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [2026-10-06 private translation-table admission (SEC-07)](audits/2026-10-06-security-table-admission.md)
 - [2026-10-06 staged-copy rollback and QEMU quiescence/recovery (SEC-18)](audits/2026-10-06-security-staged-quiescence.md)
 
 - [2026-10-06 IPC backing release outside serialization (SEC-18 follow-up)](audits/2026-10-06-security-ipc-backing-release.md)

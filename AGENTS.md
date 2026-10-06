@@ -112,9 +112,18 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   Both walkers use `PreparingTable` for root/intermediate publication. Keep
   fallible work before its consuming `publish`; an interrupted publication must
   never recycle potentially reachable backing. Private/lower-half tables
-  preserve the physical progress floor. Shared higher-half kernel tables may
-  consume that reserve; derive scope from validated architecture mapping
-  context, never application input. This is not translation-table admission.
+  preserve the physical progress floor for ordinary domains. Shared higher-half
+  kernel tables and trusted platform private tables may consume that reserve;
+  derive scope from validated architecture mapping context, never application
+  input. Private roots/intermediates reserve the embedded `table_account` before
+  allocation. `PreparingTable` keeps its exact borrow through publication/rollback;
+  retained empty or partial trees remain charged. Classify trusted platform
+  translation admission before initial root allocation, never from artifact
+  roles/manifests or a later ASID lookup. Physical teardown refunds tables only
+  after a fully successful walk, excluding prior quarantined provisional pages.
+  Failed release retains the original domain/node charge; snapshots cannot
+  allocate private branches. Shared kernel tables remain separate admission work.
+  See `docs/reference/translation-admission.md`.
 - Dynamic unmap removes leaves, not intermediate-table ownership. Keep empty
   tables linked for reuse until quiescent address-space teardown; table charges
   must follow their actual lifetime, not mapped-leaf counts. Initialize backing
@@ -277,8 +286,8 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   retains the whole charge; never retry partially freed tables or restore a
   quarantined account through a successor ASID. Successful root teardown must
   exclude previously quarantined provisional pages from its refund. Platform
-  promotion cannot reclassify an account with quarantined pages. Translation
-  tables still require separate admission.
+  promotion cannot reclassify an account with quarantined pages. Private tables
+  have their own lifetime admission; shared kernel tables remain separate work.
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`
