@@ -701,12 +701,22 @@ without leased-slot/tag reuse, exact physical release and stale-handle rejection
 Failed barrier and abandonment permanently retain two private roots, each with
 one charged heap page and its private translation frames. Their frame counts
 are logged. These are additional to earlier quarantine probes, not recovered
-through test-only cleanup. Eighteen standalone host tests exercise the kernel's
+through test-only cleanup. Twenty-seven standalone host tests exercise the kernel's
 generic slot owner, including table/generation identity, destructor ownership,
 interleaved completion, preflight rejection and fail-closed completion metadata.
+Four return-storage cases check publication rejection with the original payload
+returned, mixed extraction/retirement without pointer/capacity changes,
+allocation-free reuse and corrupted capacity rejected without repair.
 `scripts/run-host-tests.sh` runs them even though the kernel disables Cargo's
 test harness. See [final root retirement](../reference/address-space-retirement.md).
 These fixtures do not prove x86 recipient progress or complete lock-safe teardown.
+
+Registration guest fixtures additionally reject slot publication 64 times after
+actual root, namespace-metadata and hardware-tag preparation. Returned roots are
+released after lifecycle/table guards leave; physical frames and table charges
+recover, existing namespaces remain live and the next successful registration
+uses the exact expected slot/generation. The private adapters simulate metadata
+rejection and instrument its release boundary, without forcing actual heap OOM.
 
 Live-operation fixtures check overlapping leases, busy-close non-mutation,
 retained mappings/tag/charges, continued admission, explicit release and

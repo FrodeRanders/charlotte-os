@@ -8,8 +8,9 @@ physical destruction have completed.
 
 ## Owned cleanup and root retirement
 
-Under lifecycle serialization, close validates the exact handle and prepares
-completion metadata fallibly before retiring any subsystem. Failure here leaves
+Under lifecycle serialization, close validates the exact handle and checks its
+publication-prepared completion metadata before retiring any subsystem. Failure
+here leaves
 the namespace, table entry and backing admission active. Both immediate and staged
 close own a `ClosingSlot` before irreversible cleanup. It then fences backing
 and capability admission and detaches devices under lifecycle/device
@@ -101,11 +102,23 @@ table or generation cannot make a slot reusable. The former destructive
 `remove_element` helper is removed; scheduler extraction still uses `take_element`
 where a different owner takes over immediately.
 
-Free-ID storage is reserved before logical mutation for all existing slots.
-Completion does not allocate, even when other detached owners finish in between.
-An unexpected missing-capacity invariant fails closed rather than allocating in
-completion. This slot primitive does not add a namespace or kernel-heap budget;
-those remain SEC-07 work. Private translation frames have separate admission.
+New-slot publication fallibly prepares all three metadata vectors: payload,
+generation and enough free-ID capacity for every slot. Reusing an available
+slot does not allocate. Failed publication returns the unconsumed payload before
+any slot/generation mutation. Runtime thread and address-space registration use
+this fallible path; rejected owners are destroyed after serialization leaves.
+Address-space slot preparation failure returns `TableAllocationFailed` and
+releases its unpublished root and hardware tag outside lifecycle/table guards.
+
+Ordinary extraction, close preflights and final slot completion do not allocate,
+even when slots are added during an unlocked close or detached owners finish in
+between. Preflights check capacity rather than growing it. A missing-capacity
+invariant rejects before ordinary extraction or close fencing; an already-closing
+owner retains its root/fence on rejection. No cleanup path repairs that invariant
+by allocating. This slot primitive does not add a namespace or kernel-heap budget;
+high-water vector backing remains retained for table lifetime. Private translation
+frames have separate admission. Evidence:
+[slot return storage audit](../reports/audits/2026-10-07-security-slot-return-storage.md).
 
 Live operations have a separate linear slot lease. Retirement/extraction reject
 nonzero counts; root close returns `OperationsInFlight` before subsystem
@@ -168,16 +181,27 @@ open despite bounded shootdown retry and tested QEMU NVMe reset. See
 ## Verification
 
 The host test runner now compiles the kernel's generic slot owner as a standalone
-Rust test crate. Twenty-three tests cover detach-before-destroy, delayed reuse,
+Rust test crate. Twenty-seven tests cover detach-before-destroy, delayed reuse,
 destructor ownership, abandonment, table identity, stale generations, failed
 preflight and interleaved completion without allocation, including a corrupted
 completion-capacity fixture. These are serialized state/interleaving tests.
-Five live-lease tests additionally cover overlapping counts, pre-allocation
+Live-lease cases cover overlapping counts, pre-allocation
 rejection, completion identity, counter limits, vector growth and abandoned
 lease/table destruction.
-Six staged-close tests cover fencing, exact close authority, preparation
+Staged-close cases cover fencing, exact close authority, preparation
 rollback, old-lease completion, abandonment and allocation-free final detachment
-after completion-capacity refresh.
+after publication-prepared capacity validation. Four return-storage cases check
+publication rollback with the payload returned, mixed extraction/retirement,
+allocation-free reuse and rejection without repair on corrupted capacity.
+
+Guest registration fixtures reject slot publication 64 times after real root,
+namespace-metadata and hardware-tag preparation. They check lifecycle/table/kernel
+mapping/physical-allocator guard availability before destroying the returned
+root, restoration of free frames and table charges, no namespace/limit
+publication, preservation of an unrelated live namespace and exact slot/generation
+recovery. The fixture
+substitutes only publication and asserts at the ordinary rejection-release
+boundary; it does not force physical OOM or a real allocator corruption.
 
 Single-mutator guest fixtures check failed preflight before namespace/backing
 retirement, guard availability during final invalidation, exact physical and

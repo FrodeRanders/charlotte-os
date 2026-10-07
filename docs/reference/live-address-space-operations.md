@@ -30,18 +30,18 @@ the operation's lifetime after explicit release.
 ## Owned staged close
 
 `memory::retirement::ClosingAddressSpace::begin(handle)` requires the caller to
-establish thread quiescence first. It validates the exact generation and prepares
-free-slot completion storage before publishing a closing flag. Preparation
+establish thread quiescence first. It validates the exact generation and checks
+publication-prepared free-slot completion storage before publishing a closing flag. Preparation
 failure leaves admission unchanged. The request owns a linear `ClosingSlot`
-bound to its table/slot/generation. The owner itself is inline; admission may
-allocate shared completion storage.
+bound to its table/slot/generation. The owner itself is inline; slot-storage
+admission does not allocate.
 
 Closing rejects new operation leases with `OperationError::Closing` and rejects
 competing staged or immediate close with `CloseInProgress`. Older operations may
 still explicitly complete. `poll(self)` returns `CloseProgress::Pending(self)`
 while any lease remains, without subsystem retirement or invalidation. The
-caller must retain the returned owner. When ready, poll refreshes completion
-storage (the table may have grown during the unlocked interval), fences backing,
+caller must retain the returned owner. When ready, poll revalidates completion
+storage (new slots prepare their own capacity before publication), fences backing,
 capability and IPC record sponsorship, and detaches device authority under
 lifecycle/device serialization. An owning device receipt borrows the closing
 root through post-guard MMIO invalidation, scratch completion and DMA teardown.
@@ -183,14 +183,16 @@ or metadata budget follows from these ownership boundaries.
 
 ## Verification
 
-Twenty-three direct host slot-owner tests include five live-lease tests:
-overlapping counts, rejection before retirement allocation, exact reuse after
+Twenty-seven direct host slot-owner tests include live-lease cases:
+overlapping counts, rejection before retirement mutation, exact reuse after
 last completion, wrong table/generation, overflow/underflow, abandonment/table
 destruction and growth to 2,047 entries without pointer-based identity.
-Six staged-close tests check admission fencing, existing completion, failed
+Staged-close cases check admission fencing, existing completion, failed
 preparation without a published fence, wrong identity, abandoned closing with
-zero leases, completion-capacity refresh after growth, and fail-closed
-detachment without prepared capacity.
+zero leases, publication-prepared completion capacity after growth, and
+fail-closed detachment without prepared capacity. Return-storage cases also
+check rejection before publication/extraction, allocation-free mixed retirement
+and ordinary extraction, reuse and missing-capacity rejection without repair.
 
 Boot fixtures use a real root, heap backing and mapped object. Busy close
 preserves frame/charge counts, ARM hardware tag, mappings and new admission.

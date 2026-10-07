@@ -108,6 +108,7 @@ pub fn test_admission() {
 }
 
 fn test_root_failure() {
+    memory::registration_tests::test_publication_rejection();
     let previous = create_user_address_space_handle();
     memory::close_user_address_space_handle(previous).unwrap();
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();

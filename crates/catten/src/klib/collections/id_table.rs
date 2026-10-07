@@ -122,7 +122,40 @@ impl<T> IdTable<T> {
         }
     }
 
+    /// Panic wrapper for mandatory kernel initialization and trusted fixtures.
+    /// Runtime roots and threads must use the fallible publication API.
     pub fn add_element(&mut self, element: T) -> usize {
+        self.try_add_element(element).unwrap_or_else(|_| panic!("ID table slot preparation failed"))
+    }
+
+    /// Prepare payload, generation and return-ID storage before publication.
+    /// Extraction and delayed retirement must never need fresh allocation.
+    pub(crate) fn try_add_element(&mut self, element: T) -> Result<usize, (T, Error)> {
+        self.try_add_element_with(element, |available, additional| {
+            available.try_reserve(additional).map_err(|_| ())
+        })
+    }
+
+    fn try_add_element_with(
+        &mut self,
+        element: T,
+        reserve_return_ids: impl FnOnce(&mut Vec<usize>, usize) -> Result<(), ()>,
+    ) -> Result<usize, (T, Error)> {
+        if let Some(&id) = self.available_ids.last() {
+            if self.slots[id].generation == usize::MAX {
+                return Err((element, Error::AllocationFailed));
+            }
+        } else {
+            let Some(slots) = self.list.len().checked_add(1) else {
+                return Err((element, Error::AllocationFailed));
+            };
+            if self.list.try_reserve(1).is_err()
+                || self.slots.try_reserve(1).is_err()
+                || reserve_return_ids(&mut self.available_ids, slots).is_err()
+            {
+                return Err((element, Error::AllocationFailed));
+            }
+        }
         if let Some(id) = self.available_ids.pop() {
             let state = &mut self.slots[id];
             assert!(
@@ -131,14 +164,14 @@ impl<T> IdTable<T> {
             );
             state.generation = state.generation.checked_add(1).expect("ID generation exhausted");
             self.list[id] = Some(element);
-            id
+            Ok(id)
         } else {
             let id = self.list.len();
             self.list.push(Some(element));
             // Generation zero is reserved for handles that were never
             // initialized. The first occupant of every slot is generation 1.
-            // Retirement shares the existing generation metadata allocation;
-            // adding a slot does not introduce a third growing state vector.
+            // All three vectors, including eventual free-ID storage, were
+            // prepared before any payload or generation mutation.
             self.slots.push(SlotState {
                 generation: 1,
                 retiring: false,
@@ -146,20 +179,8 @@ impl<T> IdTable<T> {
                 closing: false,
                 cleanup_sealed: false,
             });
-            id
+            Ok(id)
         }
-    }
-
-    /// Prepare every growing metadata vector before publishing the payload.
-    pub(crate) fn try_add_element(&mut self, element: T) -> Result<usize, (T, Error)> {
-        if let Some(&id) = self.available_ids.last() {
-            if self.slots[id].generation == usize::MAX {
-                return Err((element, Error::AllocationFailed));
-            }
-        } else if self.list.try_reserve(1).is_err() || self.slots.try_reserve(1).is_err() {
-            return Err((element, Error::AllocationFailed));
-        }
-        Ok(self.add_element(element))
     }
 
     pub fn get(&self, element_id: usize) -> Result<&T, Error> {
@@ -186,6 +207,11 @@ impl<T> IdTable<T> {
         }
         if self.slots[element_id].leases != 0 {
             return Err(Error::Leased);
+        }
+        // Publication already prepared this capacity. Reject corruption
+        // before extracting ownership; never allocate after logical removal.
+        if self.available_ids.len() == self.available_ids.capacity() {
+            return Err(Error::AllocationFailed);
         }
         match self.list.get_mut(element_id).ok_or(Error::IdNotActive)?.take() {
             Some(element) => {
@@ -277,7 +303,7 @@ impl<T> IdTable<T> {
         generation: usize,
     ) -> Result<ClosingSlot, Error> {
         self.begin_close_with(id, generation, |available, slots| {
-            available.try_reserve_exact(slots - available.len()).map_err(|_| ())
+            (available.capacity() >= slots).then_some(()).ok_or(())
         })
     }
 
@@ -293,8 +319,8 @@ impl<T> IdTable<T> {
         if self.slots[id].closing {
             return Err(Error::Closing);
         }
-        // Existing leases may drain, but no irreversible admission fence is
-        // published until completion metadata preparation succeeds.
+        // Publication prepared completion metadata. Validate it before any
+        // irreversible fence; existing leases may still drain afterward.
         reserve(&mut self.available_ids, self.list.len()).map_err(|_| Error::AllocationFailed)?;
         self.slots[id].closing = true;
         Ok(ClosingSlot {
@@ -309,10 +335,13 @@ impl<T> IdTable<T> {
         if self.slots[slot.id].leases != 0 {
             return Err(Error::Leased);
         }
-        // Other slots may have been added during the unlocked drain interval.
-        self.available_ids
-            .try_reserve_exact(self.list.len() - self.available_ids.len())
-            .map_err(|_| Error::AllocationFailed)
+        // Any slots added while unlocked prepared their return storage too.
+        // A broken invariant must retain the closing owner, never allocate
+        // after irreversible subsystem cleanup.
+        if self.available_ids.capacity() < self.list.len() {
+            return Err(Error::AllocationFailed);
+        }
+        Ok(())
     }
 
     fn validate_closing(&self, slot: &ClosingSlot) -> Result<(), Error> {
@@ -349,12 +378,11 @@ impl<T> IdTable<T> {
         })
     }
 
-    /// Prepare free-slot storage before irreversible subsystem retirement.
-    /// Reserve for every existing slot, so other detached owners can finish
-    /// while this one is outside the table without allocating on completion.
+    /// Validate publication-prepared free-slot storage before retirement.
+    /// Interleaved detached owners can complete without growing that storage.
     pub(crate) fn prepare_retirement(&mut self, element_id: usize) -> Result<(), Error> {
         self.prepare_retirement_with(element_id, |available, slots| {
-            available.try_reserve_exact(slots - available.len()).map_err(|_| ())
+            (available.capacity() >= slots).then_some(()).ok_or(())
         })
     }
 
@@ -398,9 +426,8 @@ impl<T> IdTable<T> {
         {
             return Err(Error::WrongRetirement);
         }
-        // Prepared before detachment; no allocation is allowed here. A new
-        // slot can only add free IDs by another preflighted retirement (or
-        // an ordinary take, whose push also grows capacity when necessary).
+        // Prepared before publication; no allocation is allowed here. Every
+        // intervening slot addition prepares its own return capacity too.
         if self.available_ids.len() == self.available_ids.capacity() {
             return Err(Error::AllocationFailed);
         }

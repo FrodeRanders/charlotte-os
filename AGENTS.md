@@ -305,6 +305,14 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   promotion cannot reclassify an account with quarantined pages. Private tables
   have their own lifetime admission; fresh shared kernel tables retain a separate
   node charge for the kernel lifetime, independent of private-root refunds.
+- Kernel `IdTable` publication prepares payload, generation and return-ID
+  capacity together before mutation. Use `try_add_element` for runtime roots and
+  threads; rejected payloads remain owned and must be destroyed after table and
+  lifecycle/scheduler guards leave. `take_element`, close preflights and final
+  slot completion must not allocate or repair missing capacity during teardown.
+  Missing capacity rejects before extraction/fencing or retains the existing
+  closing owner. The panic wrapper is confined to mandatory kernel initialization
+  and trusted fixtures.
 - Runtime thread stacks use `thread_stack::Stacks` for both user/kernel backing.
   Reserve the full configured user capacity plus sixteen kernel pages before
   allocation; kernel-only threads reserve sixteen pages. Keep the original

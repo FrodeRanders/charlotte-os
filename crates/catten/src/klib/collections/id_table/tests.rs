@@ -10,6 +10,116 @@ impl Drop for Tracked {
 }
 
 #[test]
+fn return_storage_rejection_returns_payload_before_publication() {
+    let drops = Arc::new(AtomicUsize::new(0));
+    let mut table = IdTable::new();
+    table.try_add_element(Tracked(drops.clone())).unwrap_or_else(|_| panic!("fixture setup"));
+    let capacity = table.available_ids.capacity();
+    while table.list.len() < capacity {
+        table.try_add_element(Tracked(drops.clone())).unwrap_or_else(|_| panic!("fixture setup"));
+    }
+    let len = table.list.len();
+    let backing = table.available_ids.as_ptr();
+    let Err((owner, error)) = table.try_add_element_with(Tracked(drops.clone()), |_, _| Err(()))
+    else {
+        panic!("return-storage allocation rejection must prevent publication");
+    };
+    assert_eq!(error, Error::AllocationFailed);
+    assert_eq!(table.list.len(), len);
+    assert_eq!(table.slots.len(), len);
+    assert_eq!(table.available_ids.capacity(), capacity);
+    assert_eq!(table.available_ids.as_ptr(), backing);
+    assert!(table.available_ids.is_empty());
+    assert_eq!(drops.load(Ordering::Relaxed), 0);
+    for id in 0..len {
+        assert!(table.get(id).is_ok());
+        assert_eq!(table.generation(id), Ok(1));
+    }
+    let recovered = table.try_add_element(owner).unwrap_or_else(|_| panic!("fixture recovery"));
+    assert_eq!(recovered, len);
+    let capacity = table.available_ids.capacity();
+    let backing = table.available_ids.as_ptr();
+    for id in 0..=len {
+        drop(table.take_element(id).unwrap());
+        assert_eq!(table.available_ids.capacity(), capacity);
+        assert_eq!(table.available_ids.as_ptr(), backing);
+    }
+    assert_eq!(drops.load(Ordering::Relaxed), len + 1);
+}
+
+#[test]
+fn extraction_and_interleaved_retirement_use_publication_storage() {
+    let mut table = IdTable::new();
+    for value in 0..64 {
+        table.try_add_element(value).unwrap();
+    }
+    let capacity = table.available_ids.capacity();
+    let backing = table.available_ids.as_ptr();
+    let mut retired = Vec::new();
+    for id in 0..64 {
+        if id % 2 == 0 {
+            retired.push(table.retire_element(id).unwrap());
+        } else {
+            assert_eq!(table.take_element(id), Ok(id));
+        }
+        assert_eq!(table.available_ids.capacity(), capacity);
+        assert_eq!(table.available_ids.as_ptr(), backing);
+    }
+    for receipt in retired {
+        table.finish_retirement(receipt.release_value()).unwrap();
+        assert_eq!(table.available_ids.capacity(), capacity);
+        assert_eq!(table.available_ids.as_ptr(), backing);
+    }
+    assert_eq!(table.available_ids.len(), 64);
+    for _ in 0..64 {
+        let id =
+            table.try_add_element_with(0, |_, _| panic!("reused slot must not allocate")).unwrap();
+        assert_eq!(table.generation(id), Ok(2));
+    }
+    assert_eq!(table.available_ids.capacity(), capacity);
+    assert_eq!(table.available_ids.as_ptr(), backing);
+}
+
+#[test]
+fn ordinary_extraction_rejects_missing_capacity_before_ownership_change() {
+    let drops = Arc::new(AtomicUsize::new(0));
+    let mut table = IdTable::new();
+    let id = table.add_element(Tracked(drops.clone()));
+    let generation = table.generation(id).unwrap();
+    table.available_ids = Vec::new(); // Private completion-invariant corruption.
+    assert!(matches!(table.take_element(id), Err(Error::AllocationFailed)));
+    assert!(table.get(id).is_ok());
+    assert_eq!(table.generation(id), Ok(generation));
+    assert_eq!(drops.load(Ordering::Relaxed), 0);
+    assert_eq!(table.available_ids.capacity(), 0);
+    drop(table);
+    assert_eq!(drops.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn retirement_checks_never_repair_missing_capacity_by_allocating() {
+    let mut table = IdTable::new();
+    let id = table.add_element(1);
+    let generation = table.generation(id).unwrap();
+    table.available_ids = Vec::new(); // Private completion-invariant corruption.
+    assert_eq!(table.prepare_retirement(id), Err(Error::AllocationFailed));
+    assert!(matches!(table.begin_close(id, generation), Err(Error::AllocationFailed)));
+    assert_eq!(table.is_closing(id), Ok(false));
+    assert_eq!(table.get(id), Ok(&1));
+    assert_eq!(table.available_ids.capacity(), 0);
+
+    // Restore only the fixture's deliberately corrupted metadata, then corrupt
+    // it again after an admitted close to exercise the retained-owner check.
+    table.available_ids.try_reserve(table.list.len()).unwrap();
+    let close = table.begin_close(id, generation).unwrap();
+    table.available_ids = Vec::new();
+    assert_eq!(table.prepare_closing_retirement(&close), Err(Error::AllocationFailed));
+    assert_eq!(table.is_closing(id), Ok(true));
+    assert_eq!(table.get(id), Ok(&1));
+    assert_eq!(table.available_ids.capacity(), 0);
+}
+
+#[test]
 fn rejected_fallible_publication_returns_the_owner_without_running_drop() {
     let drops = Arc::new(AtomicUsize::new(0));
     let mut table = IdTable::new();
@@ -106,16 +216,19 @@ fn dropped_staged_close_retains_payload_even_without_remaining_leases() {
 }
 
 #[test]
-fn staged_close_refreshes_completion_capacity_after_growth() {
+fn staged_close_needs_no_completion_allocation_after_growth() {
     let mut table = IdTable::new();
     let id = table.add_element(1);
     let close = table.begin_close(id, table.generation(id).unwrap()).unwrap();
     for value in 2..128 {
         table.add_element(value);
     }
-    assert!(table.available_ids.capacity() < table.list.len());
-    table.prepare_closing_retirement(&close).unwrap();
+    assert!(table.available_ids.capacity() >= table.list.len());
     let capacity = table.available_ids.capacity();
+    let backing = table.available_ids.as_ptr();
+    table.prepare_closing_retirement(&close).unwrap();
+    assert_eq!(table.available_ids.capacity(), capacity);
+    assert_eq!(table.available_ids.as_ptr(), backing);
     table.seal_close(&close).unwrap();
     let retired = table.retire_closing(close).unwrap();
     table.finish_retirement(retired.release_value()).unwrap();

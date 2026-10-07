@@ -9,6 +9,7 @@ pub mod object;
 pub(crate) mod operation;
 pub mod physical;
 pub(crate) mod preparation;
+pub(crate) mod registration_tests;
 pub(crate) mod retirement;
 pub(crate) mod thread_stack;
 pub(crate) mod translation;
@@ -218,6 +219,7 @@ pub enum AddressSpaceCloseError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddressSpaceRegistrationError {
     RootAllocationFailed,
+    TableAllocationFailed,
     HardwareAsidExhausted,
     CapabilityNamespaceAllocationFailed,
     /// The image failed cluster signature verification (unsigned or
@@ -248,14 +250,37 @@ fn prepare_user_address_space(
 /// Add an address space and return the generation-bearing identity of this
 /// particular slot occupancy.
 pub fn register_user_address_space(
-    mut address_space: AddressSpace,
+    address_space: AddressSpace,
 ) -> Result<AddressSpaceHandle, AddressSpaceRegistrationError> {
-    let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+    register_user_address_space_with(address_space, IdTable::try_add_element, drop)
+}
+
+fn register_user_address_space_with(
+    mut address_space: AddressSpace,
+    publish: impl FnOnce(
+        &mut IdTable<AddressSpace>,
+        AddressSpace,
+    )
+        -> Result<usize, (AddressSpace, crate::klib::collections::id_table::Error)>,
+    reject: impl FnOnce(AddressSpace),
+) -> Result<AddressSpaceHandle, AddressSpaceRegistrationError> {
+    let lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
     let namespace = crate::capability::prepare_namespace()
         .map_err(|_| AddressSpaceRegistrationError::CapabilityNamespaceAllocationFailed)?;
     prepare_user_address_space(&mut address_space)?;
     let mut table = ADDRESS_SPACE_TABLE.lock();
-    let id = table.add_element(address_space);
+    let id = match publish(&mut table, address_space) {
+        Ok(id) => id,
+        Err((address_space, _)) => {
+            // The unpublished root still owns physical backing and its ARM
+            // hardware tag. Destroy it only after both masking guards leave.
+            drop(table);
+            drop(lifecycle);
+            drop(namespace);
+            reject(address_space);
+            return Err(AddressSpaceRegistrationError::TableAllocationFailed);
+        }
+    };
     debug_assert_ne!(id, KERNEL_ASID);
     let generation = table.generation(id).expect("new address space missing generation");
     let handle = AddressSpaceHandle {
