@@ -6,6 +6,7 @@
 //! the same Ed25519 key for more than one role.
 
 mod production;
+pub mod signed_policy;
 pub use production::{
     ProductionTrustCandidate,
     ProductionTrustError,

@@ -106,3 +106,9 @@ The first SEC-04 prerequisite is now a
 It checks keys and policy context and produces reviewable bytes. It supplies
 neither authenticated bootstrap nor recipient custody and does not change any
 finding's closure state.
+
+[Signed bootstrap policy tooling](bootstrap-trust-policy.md) now authenticates
+those public bytes under a separate caller-supplied bootstrap key and checks
+explicit revision lineage. Protected key/state provisioning, atomic installation,
+executable boot authentication and recipient custody remain required. Host
+verification is not a replacement for those gates; finding states are unchanged.

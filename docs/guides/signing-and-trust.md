@@ -77,11 +77,60 @@ generated independently, or have suitable custody.
 
 The commands print a digest for review. The output has no signature. The cluster
 and revision floor supplied to `trust-policy-check` are not protected state, and
-changing them is not rollback protection. Same-revision policy substitution
-requires authenticated bytes/digest binding at the future provisioning boundary.
+changing them is not rollback protection. The signed format below binds the
+exact public policy and checks revision lineage against explicitly supplied state.
 No runtime gate accepts a candidate as authorization, and production builds
-continue to refuse. Protected boot, enrollment, policy authentication, protected
+continue to refuse. Protected boot, enrollment, protected
 revision state and recipient custody are the next prerequisites.
+
+## Signed trust policy
+
+Generate a separate bootstrap signing key, then sign an initial candidate:
+
+```sh
+cluster-sign generate /secure/signing/bootstrap.hex /secure/signing/bootstrap.pub
+cluster-sign trust-policy-sign /secure/signing/cluster.cbtrust \
+  /secure/signing/cluster.ctrust /secure/signing/bootstrap.hex orders enroll 1
+cluster-sign trust-policy-verify /secure/signing/cluster.cbtrust \
+  /secure/signing/bootstrap.pub orders enroll 1
+```
+
+The bootstrap private argument accepts a key-file path only, with the existing
+owner/mode/zeroization checks and no legacy argv-secret exception. The bootstrap
+key cannot be any development fixture or an admission-role key. Signed output is
+created exclusively, after self-verification. A failed check writes no policy.
+
+After authorized installation, retain the printed **accepted-digest** together
+with the policy sequence. To sign revision 2 of an initial revision-1 policy,
+prepare its new candidate and use the actual accepted digest in place of the
+placeholder below. These digests are public, not private-key material.
+
+```sh
+cluster-sign trust-policy-sign /secure/signing/cluster-v2.cbtrust \
+  /secure/signing/cluster-v2.ctrust /secure/signing/bootstrap.hex orders \
+  installed 1 ACCEPTED_DIGEST_HEX
+cluster-sign trust-policy-verify /secure/signing/cluster-v2.cbtrust \
+  /secure/signing/bootstrap.pub orders installed 1 ACCEPTED_DIGEST_HEX
+```
+
+`installed` verifies either the exact accepted current record or its immediate
+successor with the correct predecessor digest. Signing requires the immediate
+successor. Older records, another policy at the accepted revision, skipped
+revisions and a wrong predecessor reject. The accepted digest is the
+domain-separated signed-fields digest printed by these commands; do not use
+the candidate-file hash or complete signed-file hash instead.
+
+The commands require an explicit `enroll` or `installed` mode and never switch
+modes after failure. The signed record is bounded to 328 bytes; public-file
+readers retain the Unix regular-file/no-follow policy. It contains public policy
+and a signature, no private material.
+
+These commands do not install trust or update protected state. CLI arguments and
+host files do not establish a protected anchor or rollback protection. A future
+installer must pin the key/cluster, persist acceptance state and publish authority
+atomically; concurrent reuse of an old expectation is unsafe. Firmware/kernel
+authentication and recipient-key custody are still missing, so production
+builds remain disabled. See the [wire contract and integration gates](../reference/bootstrap-trust-policy.md).
 
 ## Build-script migration
 

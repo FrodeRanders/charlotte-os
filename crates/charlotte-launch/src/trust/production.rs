@@ -73,14 +73,7 @@ impl ProductionTrustCandidate {
         // Ed25519-to-X25519 conversion of one role's underlying key material.
         let mut identities = [[0; 32]; 4];
         for index in 0..3 {
-            let point = CompressedEdwardsY(keys[index]).decompress().ok_or(InvalidSigningKey)?;
-            if point.compress().to_bytes() != keys[index]
-                || point.is_small_order()
-                || !point.is_torsion_free()
-            {
-                return Err(InvalidSigningKey);
-            }
-            identities[index] = point.to_montgomery().to_bytes();
+            identities[index] = signing_identity(&keys[index])?;
         }
         if !canonical_montgomery(&trust.recipient_key)
             // This fixed scalar is a public validation probe, not key material
@@ -129,6 +122,35 @@ impl ProductionTrustCandidate {
     pub fn encode(&self) -> [u8; ENCODED_LEN] {
         self.0.encode_fields()
     }
+}
+
+pub(super) fn signing_identity(key: &[u8; 32]) -> Result<[u8; 32], ProductionTrustError> {
+    let point =
+        CompressedEdwardsY(*key).decompress().ok_or(ProductionTrustError::InvalidSigningKey)?;
+    if point.compress().to_bytes() != *key || point.is_small_order() || !point.is_torsion_free() {
+        return Err(ProductionTrustError::InvalidSigningKey);
+    }
+    Ok(point.to_montgomery().to_bytes())
+}
+
+pub(super) fn reject_development_signing_key(
+    key: &[u8; 32],
+    identity: &[u8; 32],
+) -> Result<(), ProductionTrustError> {
+    let fixtures = [
+        crate::CLUSTER_PUBLIC_KEY,
+        crate::DEVELOPMENT_OPERATIONS_PUBLIC_KEY,
+        crate::DEVELOPMENT_RECIPIENT_PUBLIC_KEY,
+    ];
+    if fixtures.contains(key) || *identity == crate::DEVELOPMENT_RECIPIENT_PUBLIC_KEY {
+        return Err(ProductionTrustError::DevelopmentKey);
+    }
+    for fixture in &fixtures[..2] {
+        if signing_identity(fixture)? == *identity {
+            return Err(ProductionTrustError::DevelopmentKey);
+        }
+    }
+    Ok(())
 }
 
 fn canonical_montgomery(key: &[u8; 32]) -> bool {

@@ -1834,6 +1834,8 @@ fn run() -> Result<()> {
         Some("node-key") => node_key(&args[2..]),
         Some("trust-policy-create") => trust_policy::create(&args[2..]),
         Some("trust-policy-check") => trust_policy::check(&args[2..]),
+        Some("trust-policy-sign") => trust_policy::sign(&args[2..]),
+        Some("trust-policy-verify") => trust_policy::verify(&args[2..]),
         Some("operations-recipient-generate") => operations_recipient_generate(&args[2..]),
         Some("operations-signing-generate") => operations_signing_generate(&args[2..]),
         Some("operations-seal") => operations_seal(&args[2..]),
@@ -1939,47 +1941,52 @@ fn run() -> Result<()> {
             );
             Ok(())
         }
-        _ => Err("usage: cluster-sign generate <private-key-file> <public-key-file> | elf-sign \
-                  <elf> <name> <private-key-file> [service|driver|bootstrap|admin] [version] \
-                  [rollback] [flags] [provenance-sha256|-] | elf-verify <elf> <name> \
-                  <pubkey-hex> | sha256 <file> | deployment-sign <output> <artifact-name> \
-                  <object-key> <artifact-sha256> <node-key> <sequence> <stack-pages-per-thread> \
-                  <max-threads> <shutdown-grace-ms> <private-key-file> [--replicas=N | \
-                  --every-eligible-node] [--min-distinct-nodes=N] [--max-instances-per-node=N] \
-                  [--spread-replicas] [--affinity-group=N] [--anti-affinity-group=N] \
-                  [service=send|call|client|publish ...] | deployment-verify <descriptor> \
-                  <pubkey-hex> | deployment-notify <descriptor> [host:port] | deployment-status \
-                  <artifact-name> [host:port] [wait-seconds] | deployment-apply <host:port> \
-                  <wait-seconds> <descriptor>... | release-sign <output> <release-name> \
-                  <sequence> <private-key-file> <descriptor>... | release-verify <release> \
-                  <pubkey-hex> | release-notify <release> [host:port] | release-apply <release> \
-                  [host:port] [wait-seconds] | shutdown-sign <output> <sequence> <target-node> \
-                  <not-before-unix> <expires-unix> <node-grace-ms> <phase-grace-ms> \
-                  <private-key-file> | shutdown-verify <intent> <pubkey-hex> | shutdown-notify \
-                  <intent> [host:port] | ingress-policy-sign <output> <sequence> \
-                  <not-before-unix> <expires-unix> <cluster-id-hex> \
-                  <ops-ed25519-private-key-file> ([NAME=]VIP:PORT... | --clear) | \
-                  ingress-policy-verify <policy> <cluster-id-hex> <ops-ed25519-public-key-file> \
-                  | ingress-policy-notify <policy> [host:port] | ingress-policy-status \
-                  [host:port] | node-key <mac-address> | trust-policy-create <output> \
-                  <cluster-mnemonic> <sequence> <artifact-public-file> <deployment-public-file> \
-                  <operations-public-file> <recipient-public-file> | trust-policy-check <input> \
-                  <cluster-mnemonic> <minimum-sequence> | operations-recipient-generate \
-                  <private-key-file> <public-key-file> | operations-signing-generate \
-                  <private-key-file> <public-key-file> | operations-seal <output> <profile-name> \
-                  <s3|kafka> <cluster-id-hex> <release-sha256> <sequence> <expires-unix> \
-                  <recipient-public-key-file> <ops-ed25519-private-key-file> <profile-file> | \
-                  operations-verify <envelope> <ops-ed25519-public-key-file> | operations-open \
-                  <envelope> <cluster-id-hex> <release-sha256> <now-unix> \
-                  <recipient-private-key-file> <ops-ed25519-public-key-file> <output> | \
-                  operations-bundle-sign <output> <bundle-sequence> <cluster-id-hex> \
-                  <release-ed25519-public-key-hex> <ops-ed25519-private-key-file> \
-                  <recipient-public-key-file> <release> (<target-artifact> <object-key> \
-                  <envelope>)... | operations-bundle-verify <bundle> <cluster-id-hex> \
-                  <release-ed25519-public-key-hex> <ops-ed25519-public-key-file> \
-                  <recipient-public-key-file> <now-unix> | operations-bundle-notify <bundle> \
-                  [host:port] | cluster-id <mnemonic> | selftest"
-            .to_owned()),
+        _ => {
+            Err("usage: cluster-sign generate <private-key-file> <public-key-file> | elf-sign \
+                 <elf> <name> <private-key-file> [service|driver|bootstrap|admin] [version] \
+                 [rollback] [flags] [provenance-sha256|-] | elf-verify <elf> <name> <pubkey-hex> \
+                 | sha256 <file> | deployment-sign <output> <artifact-name> <object-key> \
+                 <artifact-sha256> <node-key> <sequence> <stack-pages-per-thread> <max-threads> \
+                 <shutdown-grace-ms> <private-key-file> [--replicas=N | --every-eligible-node] \
+                 [--min-distinct-nodes=N] [--max-instances-per-node=N] [--spread-replicas] \
+                 [--affinity-group=N] [--anti-affinity-group=N] [service=send|call|client|publish \
+                 ...] | deployment-verify <descriptor> <pubkey-hex> | deployment-notify \
+                 <descriptor> [host:port] | deployment-status <artifact-name> [host:port] \
+                 [wait-seconds] | deployment-apply <host:port> <wait-seconds> <descriptor>... | \
+                 release-sign <output> <release-name> <sequence> <private-key-file> \
+                 <descriptor>... | release-verify <release> <pubkey-hex> | release-notify \
+                 <release> [host:port] | release-apply <release> [host:port] [wait-seconds] | \
+                 shutdown-sign <output> <sequence> <target-node> <not-before-unix> <expires-unix> \
+                 <node-grace-ms> <phase-grace-ms> <private-key-file> | shutdown-verify <intent> \
+                 <pubkey-hex> | shutdown-notify <intent> [host:port] | ingress-policy-sign \
+                 <output> <sequence> <not-before-unix> <expires-unix> <cluster-id-hex> \
+                 <ops-ed25519-private-key-file> ([NAME=]VIP:PORT... | --clear) | \
+                 ingress-policy-verify <policy> <cluster-id-hex> <ops-ed25519-public-key-file> | \
+                 ingress-policy-notify <policy> [host:port] | ingress-policy-status [host:port] | \
+                 node-key <mac-address> | trust-policy-create <output> <cluster-mnemonic> \
+                 <sequence> <artifact-public-file> <deployment-public-file> \
+                 <operations-public-file> <recipient-public-file> | trust-policy-check <input> \
+                 <cluster-mnemonic> <minimum-sequence> | trust-policy-sign <output> <candidate> \
+                 <bootstrap-private-file> <cluster-mnemonic> (enroll <minimum-sequence> | \
+                 installed <accepted-sequence> <accepted-digest-hex>) | trust-policy-verify \
+                 <signed-policy> <bootstrap-public-file> <cluster-mnemonic> (enroll \
+                 <minimum-sequence> | installed <accepted-sequence> <accepted-digest-hex>) | \
+                 operations-recipient-generate <private-key-file> <public-key-file> | \
+                 operations-signing-generate <private-key-file> <public-key-file> | \
+                 operations-seal <output> <profile-name> <s3|kafka> <cluster-id-hex> \
+                 <release-sha256> <sequence> <expires-unix> <recipient-public-key-file> \
+                 <ops-ed25519-private-key-file> <profile-file> | operations-verify <envelope> \
+                 <ops-ed25519-public-key-file> | operations-open <envelope> <cluster-id-hex> \
+                 <release-sha256> <now-unix> <recipient-private-key-file> \
+                 <ops-ed25519-public-key-file> <output> | operations-bundle-sign <output> \
+                 <bundle-sequence> <cluster-id-hex> <release-ed25519-public-key-hex> \
+                 <ops-ed25519-private-key-file> <recipient-public-key-file> <release> \
+                 (<target-artifact> <object-key> <envelope>)... | operations-bundle-verify \
+                 <bundle> <cluster-id-hex> <release-ed25519-public-key-hex> \
+                 <ops-ed25519-public-key-file> <recipient-public-key-file> <now-unix> | \
+                 operations-bundle-notify <bundle> [host:port] | cluster-id <mnemonic> | selftest"
+                .to_owned())
+        }
     }
 }
 
@@ -2054,6 +2061,221 @@ mod tests {
         write_new_hex_key(&recipient_path, &recipient, false).unwrap();
         args.push(recipient_path);
         args
+    }
+
+    #[cfg(unix)]
+    fn signed_policy_args(directory: &TestDirectory) -> (Vec<String>, String) {
+        let candidate = trust_policy_args(directory);
+        trust_policy::create(&candidate).unwrap();
+        let private = directory.path("bootstrap.hex");
+        let public = directory.path("bootstrap.pub");
+        signing_generate(&[private.clone(), public.clone()]).unwrap();
+        (
+            vec![
+                directory.path("policy.signed"),
+                candidate[0].clone(),
+                private,
+                candidate[1].clone(),
+                "enroll".into(),
+                "7".into(),
+            ],
+            public,
+        )
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn signed_policy_commands_enroll_rotate_and_preserve_existing_output() {
+        use charlotte_launch::trust::signed_policy::{
+            self,
+            BootstrapKey,
+            PolicyExpectation,
+        };
+        let directory = TestDirectory::new();
+        let (mut args, public_path) = signed_policy_args(&directory);
+        trust_policy::sign(&args).unwrap();
+        let original = fs::read(&args[0]).unwrap();
+        trust_policy::verify(&[
+            args[0].clone(),
+            public_path.clone(),
+            args[3].clone(),
+            "enroll".into(),
+            "7".into(),
+        ])
+        .unwrap();
+        assert!(trust_policy::sign(&args).is_err());
+        assert_eq!(fs::read(&args[0]).unwrap(), original);
+        let public = BootstrapKey::new(
+            read_hex_key(&public_path, 32, "public key").unwrap().try_into().unwrap(),
+        )
+        .unwrap();
+        let cluster = charlotte_launch::trust::cluster_id(args[3].as_bytes()).unwrap();
+        let accepted = signed_policy::verify(
+            &original,
+            &public,
+            &cluster,
+            &PolicyExpectation::enrollment(7).unwrap(),
+        )
+        .unwrap();
+        let mut candidate =
+            charlotte_launch::trust::AdmissionTrust::decode(&fs::read(&args[1]).unwrap()).unwrap();
+        candidate.sequence = 8;
+        fs::write(&args[1], candidate.encode().unwrap()).unwrap();
+        args[0] = directory.path("rotated.signed");
+        args[4] = "installed".into();
+        args.push(hex_encode(&accepted.digest()));
+        trust_policy::sign(&args).unwrap();
+        trust_policy::verify(&[
+            args[0].clone(),
+            public_path.clone(),
+            args[3].clone(),
+            "installed".into(),
+            "7".into(),
+            args[6].clone(),
+        ])
+        .unwrap();
+        let next = signed_policy::verify(
+            &fs::read(&args[0]).unwrap(),
+            &public,
+            &cluster,
+            &accepted.installed_expectation().unwrap(),
+        )
+        .unwrap();
+        assert!(trust_policy::verify(&[
+            directory.path("policy.signed"),
+            public_path.clone(),
+            args[3].clone(),
+            "installed".into(),
+            "8".into(),
+            hex_encode(&next.digest())
+        ])
+        .is_err());
+        trust_policy::verify(&[
+            args[0].clone(),
+            public_path.clone(),
+            args[3].clone(),
+            "installed".into(),
+            "8".into(),
+            hex_encode(&next.digest()),
+        ])
+        .unwrap();
+        assert!(trust_policy::verify(&[
+            args[0].clone(),
+            public_path.clone(),
+            "foreign".into(),
+            "installed".into(),
+            "8".into(),
+            hex_encode(&next.digest())
+        ])
+        .is_err());
+        // A different accepted revision/digest is not silently replaced by the
+        // record's own values or retried as fresh enrollment.
+        assert!(trust_policy::verify(&[
+            args[0].clone(),
+            public_path,
+            args[3].clone(),
+            "installed".into(),
+            "8".into(),
+            "a5".repeat(32)
+        ])
+        .is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn signed_policy_signing_rejects_unsafe_keys_context_and_role_reuse_before_output() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = TestDirectory::new();
+        let (args, public_path) = signed_policy_args(&directory);
+        let mut invalid = args.clone();
+        invalid[5] = "8".into();
+        assert!(trust_policy::sign(&invalid).is_err());
+        invalid = args.clone();
+        invalid[3] = "foreign".into();
+        assert!(trust_policy::sign(&invalid).is_err());
+        invalid = args.clone();
+        let fixture = Zeroizing::new(development_fixture_hex(include_str!("../dev-key.hex")));
+        invalid[2] = fixture.to_string();
+        let error = trust_policy::sign(&invalid).unwrap_err();
+        assert!(!error.contains(fixture.as_str()));
+        assert!(!std::path::Path::new(&args[0]).exists());
+        fs::set_permissions(&args[2], fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(trust_policy::sign(&args).unwrap_err().contains("permissions"));
+        fs::set_permissions(&args[2], fs::Permissions::from_mode(0o600)).unwrap();
+        let private = read_private_key(&args[2], 64).unwrap();
+        let mut mismatched = private.clone();
+        mismatched[32] ^= 1;
+        write_new_hex_key(&directory.path("mismatched.hex"), &mismatched, true).unwrap();
+        invalid = args.clone();
+        invalid[2] = directory.path("mismatched.hex");
+        assert!(trust_policy::sign(&invalid).unwrap_err().contains("halves"));
+        let fixture_path = directory.path("fixture.hex");
+        write_new_file(&fixture_path, include_str!("../dev-key.hex").as_bytes(), true).unwrap();
+        invalid[2] = fixture_path;
+        assert!(trust_policy::sign(&invalid).unwrap_err().contains("DevelopmentKey"));
+        let mut candidate =
+            charlotte_launch::trust::AdmissionTrust::decode(&fs::read(&args[1]).unwrap()).unwrap();
+        candidate.artifact_key =
+            read_hex_key(&public_path, 32, "public key").unwrap().try_into().unwrap();
+        fs::write(&args[1], candidate.encode().unwrap()).unwrap();
+        assert!(trust_policy::sign(&args).unwrap_err().contains("SharedBootstrapRole"));
+        assert!(!std::path::Path::new(&args[0]).exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn signed_policy_commands_require_explicit_state_and_bounded_regular_records() {
+        use std::os::unix::fs::symlink;
+        let directory = TestDirectory::new();
+        let (args, public_path) = signed_policy_args(&directory);
+        let accepted_digest = "a5".repeat(32);
+        let zero_digest = "00".repeat(32);
+        let modes: &[&[&str]] = &[
+            &[],
+            &["enroll"],
+            &["enroll", "0"],
+            &["enroll", "1", "extra"],
+            &["installed", "7"],
+            &["installed", "0", &accepted_digest],
+            &["installed", "7", &zero_digest],
+            &["installed", "7", "not-hex"],
+            &["installed", "18446744073709551616", &accepted_digest],
+            &["unknown", "1"],
+        ];
+        for mode in modes {
+            let mut sign_args = args[..4].to_vec();
+            sign_args.extend(mode.iter().map(|value| (*value).to_owned()));
+            assert!(trust_policy::sign(&sign_args).is_err());
+            let mut verify_args = vec![args[0].clone(), public_path.clone(), args[3].clone()];
+            verify_args.extend(mode.iter().map(|value| (*value).to_owned()));
+            assert!(trust_policy::verify(&verify_args).is_err());
+            assert!(!std::path::Path::new(&args[0]).exists());
+        }
+        trust_policy::sign(&args).unwrap();
+        let original = fs::read(&args[0]).unwrap();
+        let verify_args =
+            vec![args[0].clone(), public_path, args[3].clone(), "enroll".into(), "7".into()];
+        for malformed in
+            [original[..327].to_vec(), [original.as_slice(), &[0]].concat(), vec![0; 4097]]
+        {
+            fs::write(&args[0], malformed).unwrap();
+            assert!(trust_policy::verify(&verify_args).is_err());
+        }
+        fs::write(&args[0], &original).unwrap();
+        let alias = directory.path("record-alias");
+        symlink(&args[0], &alias).unwrap();
+        let fifo = directory.path("record-fifo");
+        let fifo_name = std::ffi::CString::new(fifo.as_str()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo_name.as_ptr(), 0o600) }, 0);
+        for source in [alias, fifo, directory.0.to_str().unwrap().to_owned()] {
+            let mut input = verify_args.clone();
+            input[0] = source;
+            assert!(trust_policy::verify(&input).is_err());
+        }
+        let mut tampered = original;
+        tampered[327] ^= 1;
+        fs::write(&args[0], tampered).unwrap();
+        assert!(trust_policy::verify(&verify_args).unwrap_err().contains("InvalidSignature"));
     }
 
     #[cfg(unix)]

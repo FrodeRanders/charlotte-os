@@ -10,6 +10,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [2026-10-07 signed bootstrap policy and revision lineage (SEC-04)](audits/2026-10-07-security-signed-trust-policy.md)
 - [2026-10-07 public trust preflight and remediation criteria (SEC-04/07/18)](audits/2026-10-07-security-trust-preflight.md)
 - [2026-10-07 whole-domain thread abort ownership (SEC-07/18)](audits/2026-10-07-security-domain-thread-abort.md)
 - [2026-10-07 prepared deferred thread retirement (SEC-07/18)](audits/2026-10-07-security-thread-retirement.md)
