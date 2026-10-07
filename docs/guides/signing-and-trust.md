@@ -50,6 +50,39 @@ encode 32. Unix owner/mode checks do not audit ACLs, backup copies, host memory
 or a hostile signing workstation. Real private-key file handling on non-Unix
 hosts is refused until ACL enforcement exists.
 
+## Public trust-policy preflight
+
+Prepare an unsigned `CTRUST1` public policy using the four public files above:
+
+```sh
+cluster-sign trust-policy-create /secure/signing/cluster.ctrust orders 1 \
+  /secure/signing/artifact.pub /secure/signing/deployment.pub \
+  /secure/signing/ops.pub /secure/signing/recipient.pub
+cluster-sign trust-policy-check /secure/signing/cluster.ctrust orders 1
+```
+
+The final check argument is the minimum accepted policy sequence, not a secret.
+Creation is exclusive: it cannot overwrite an existing policy. Input is bounded
+to 4096 bytes per public-key file and exactly 184 bytes for policy checking;
+Unix readers reject symlinks, directories and FIFOs. Public files accept hex,
+blank lines and whole-line comments. Pass public files only.
+
+The shared `ProductionTrustCandidate` validator requires nonzero policy fields,
+the expected cluster and revision floor, four distinct role keys, canonical
+prime-order Ed25519 signing points and a canonical, contributory X25519 recipient.
+It rejects the shipped development public keys in every role, their signing-key
+sign aliases/conversions and conversion of a signing role into the recipient.
+It cannot prove that independently supplied private keys are secret, were
+generated independently, or have suitable custody.
+
+The commands print a digest for review. The output has no signature. The cluster
+and revision floor supplied to `trust-policy-check` are not protected state, and
+changing them is not rollback protection. Same-revision policy substitution
+requires authenticated bytes/digest binding at the future provisioning boundary.
+No runtime gate accepts a candidate as authorization, and production builds
+continue to refuse. Protected boot, enrollment, policy authentication, protected
+revision state and recipient custody are the next prerequisites.
+
 ## Build-script migration
 
 Replace the retired secret-valued environment variable with a path:
@@ -77,5 +110,7 @@ Broker packaging and Durga-generated command templates in sibling repositories
 still need migration to file-path arguments. Their public-fixture demos remain
 compatible; custom real-key callers must migrate before using this signer.
 
-See the [security remediation ledger](../reports/audits/2026-10-03-security-remediation.md)
-for remaining production-trust and credential-custody work.
+See the [current security remediation criteria](../reference/security-remediation.md)
+for remaining production-trust and credential-custody work, and the
+[historical remediation ledger](../reports/audits/2026-10-03-security-remediation.md)
+for earlier evidence.

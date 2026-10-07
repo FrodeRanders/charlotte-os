@@ -10,6 +10,7 @@ path = "src/lib.rs"
 bench = false
 
 [dependencies]
+curve25519-dalek = { version = "5.0.0", default-features = false }
 ed25519-compact = { version = "2.3.1", default-features = false }
 hpke = { version = "0.14.0", default-features = false, features = ["chacha", "x25519"] }
 rand_core = { version = "0.10.0", default-features = false }

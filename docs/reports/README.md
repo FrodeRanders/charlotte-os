@@ -8,6 +8,21 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
+  — living status; historical reports below retain their original scope.
+- [2026-10-07 public trust preflight and remediation criteria (SEC-04/07/18)](audits/2026-10-07-security-trust-preflight.md)
+- [2026-10-07 whole-domain thread abort ownership (SEC-07/18)](audits/2026-10-07-security-domain-thread-abort.md)
+- [2026-10-07 prepared deferred thread retirement (SEC-07/18)](audits/2026-10-07-security-thread-retirement.md)
+- [2026-10-07 prepared slot-return storage (SEC-07/18)](audits/2026-10-07-security-slot-return-storage.md)
+- [2026-10-07 fallible timer observer allocation (SEC-07/18)](audits/2026-10-07-security-timer-observer-allocation.md)
+- [2026-10-07 provisional kernel-frame preparation (SEC-18)](audits/2026-10-07-security-kernel-preparation.md)
+- [2026-10-07 observer-list backing admission (SEC-07)](audits/2026-10-07-security-observer-lists.md)
+- [2026-10-07 timer backing admission (SEC-07)](audits/2026-10-07-security-timer-backing.md)
+- [2026-10-07 completion backing admission (SEC-07)](audits/2026-10-07-security-completion-backing.md)
+- [2026-10-07 bounded kernel-frame release (SEC-18)](audits/2026-10-07-security-kernel-release.md)
+- [2026-10-07 IOMMU backing admission (SEC-07)](audits/2026-10-07-security-iommu-admission.md)
+- [2026-10-07 runtime stack admission (SEC-07)](audits/2026-10-07-security-stack-admission.md)
+- [2026-10-06 shared kernel-table admission (SEC-07)](audits/2026-10-06-security-kernel-table-admission.md)
 - [2026-10-06 private translation-table admission (SEC-07)](audits/2026-10-06-security-table-admission.md)
 - [2026-10-06 staged-copy rollback and QEMU quiescence/recovery (SEC-18)](audits/2026-10-06-security-staged-quiescence.md)
 

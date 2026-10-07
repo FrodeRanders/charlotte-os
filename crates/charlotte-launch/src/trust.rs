@@ -5,6 +5,12 @@
 //! by the decision it authorizes even when a development installation uses
 //! the same Ed25519 key for more than one role.
 
+mod production;
+pub use production::{
+    ProductionTrustCandidate,
+    ProductionTrustError,
+};
+
 pub const MAGIC: &[u8; 8] = b"CTRUST1\0";
 pub const VERSION: u16 = 1;
 pub const ENCODED_LEN: usize = 184;
@@ -46,6 +52,10 @@ impl AdmissionTrust {
         if !self.is_valid() {
             return None;
         }
+        Some(self.encode_fields())
+    }
+
+    fn encode_fields(&self) -> [u8; ENCODED_LEN] {
         let mut bytes = [0u8; ENCODED_LEN];
         bytes[..8].copy_from_slice(MAGIC);
         bytes[8..10].copy_from_slice(&VERSION.to_le_bytes());
@@ -56,7 +66,7 @@ impl AdmissionTrust {
         bytes[88..120].copy_from_slice(&self.deployment_key);
         bytes[120..152].copy_from_slice(&self.operations_key);
         bytes[152..184].copy_from_slice(&self.recipient_key);
-        Some(bytes)
+        bytes
     }
 
     pub fn decode(bytes: &[u8]) -> Option<Self> {

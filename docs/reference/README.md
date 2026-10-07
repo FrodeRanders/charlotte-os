@@ -3,6 +3,8 @@
 These documents explain current code-facing contracts and invariants. They
 should be updated with the implementation when those contracts change.
 
+- [Security remediation](security-remediation.md) — current finding ledger,
+  finite SEC-07/18 completion criteria and production security milestones.
 - [Private translation admission](translation-admission.md) — root/intermediate
   budgets, exact account ownership, retained branches and platform progress.
 - [Hardware quiescence](hardware-quiescence.md) — bounded CPU epoch retry,

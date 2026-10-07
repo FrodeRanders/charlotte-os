@@ -4,6 +4,8 @@
 //! SHA-256, and verifier.  Host tooling and the kernel therefore cannot drift
 //! into subtly different interpretations of the signed byte stream.
 
+mod trust_policy;
+
 #[cfg(unix)]
 use std::os::unix::fs::{
     MetadataExt,
@@ -1830,6 +1832,8 @@ fn run() -> Result<()> {
         Some("ingress-policy-notify") => ingress_policy_notify(&args[2..]),
         Some("ingress-policy-status") => ingress_policy_status(&args[2..]),
         Some("node-key") => node_key(&args[2..]),
+        Some("trust-policy-create") => trust_policy::create(&args[2..]),
+        Some("trust-policy-check") => trust_policy::check(&args[2..]),
         Some("operations-recipient-generate") => operations_recipient_generate(&args[2..]),
         Some("operations-signing-generate") => operations_signing_generate(&args[2..]),
         Some("operations-seal") => operations_seal(&args[2..]),
@@ -1957,7 +1961,10 @@ fn run() -> Result<()> {
                   <ops-ed25519-private-key-file> ([NAME=]VIP:PORT... | --clear) | \
                   ingress-policy-verify <policy> <cluster-id-hex> <ops-ed25519-public-key-file> \
                   | ingress-policy-notify <policy> [host:port] | ingress-policy-status \
-                  [host:port] | node-key <mac-address> | operations-recipient-generate \
+                  [host:port] | node-key <mac-address> | trust-policy-create <output> \
+                  <cluster-mnemonic> <sequence> <artifact-public-file> <deployment-public-file> \
+                  <operations-public-file> <recipient-public-file> | trust-policy-check <input> \
+                  <cluster-mnemonic> <minimum-sequence> | operations-recipient-generate \
                   <private-key-file> <public-key-file> | operations-signing-generate \
                   <private-key-file> <public-key-file> | operations-seal <output> <profile-name> \
                   <s3|kafka> <cluster-id-hex> <release-sha256> <sequence> <expires-unix> \
@@ -2032,6 +2039,114 @@ mod tests {
             assert!(hex_decode(malformed).is_err());
         }
         assert_eq!(hex_decode("00aBff").unwrap(), [0, 0xab, 0xff]);
+    }
+
+    #[cfg(unix)]
+    fn trust_policy_args(directory: &TestDirectory) -> Vec<String> {
+        let mut args = vec![directory.path("policy.ctrust"), "policy-tests".into(), "7".into()];
+        for role in ["artifact", "deployment", "operations"] {
+            let path = directory.path(role);
+            write_new_hex_key(&path, KeyPair::generate().pk.as_ref(), false).unwrap();
+            args.push(path);
+        }
+        let recipient_path = directory.path("recipient");
+        let recipient = operations::recipient_public_key(&[77; 32]).unwrap();
+        write_new_hex_key(&recipient_path, &recipient, false).unwrap();
+        args.push(recipient_path);
+        args
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn public_trust_policy_creation_is_exclusive_and_checks_exact_cluster_and_revision() {
+        let directory = TestDirectory::new();
+        let args = trust_policy_args(&directory);
+        trust_policy::create(&args).unwrap();
+        let bytes = fs::read(&args[0]).unwrap();
+        assert_eq!(bytes.len(), charlotte_launch::trust::ENCODED_LEN);
+        let decoded = charlotte_launch::trust::AdmissionTrust::decode(&bytes).unwrap();
+        assert_eq!(decoded.sequence, 7);
+        assert_eq!(decoded.artifact_key.as_slice(), read_hex_key(&args[3], 32, "public").unwrap());
+        trust_policy::check(&[args[0].clone(), args[1].clone(), "7".into()]).unwrap();
+        assert!(
+            trust_policy::check(&[args[0].clone(), "another-cluster".into(), "1".into()]).is_err()
+        );
+        assert!(trust_policy::check(&[args[0].clone(), args[1].clone(), "8".into()]).is_err());
+        assert!(trust_policy::check(&[args[0].clone(), args[1].clone(), "0".into()]).is_err());
+        assert!(trust_policy::create(&args).is_err());
+        assert_eq!(fs::read(&args[0]).unwrap(), bytes);
+        assert!(trust_policy::create(&[]).is_err());
+        assert!(trust_policy::check(&[]).is_err());
+        for malformed in
+            [bytes[..bytes.len() - 1].to_vec(), [bytes.as_slice(), &[0]].concat(), vec![0; 184]]
+        {
+            fs::write(&args[0], malformed).unwrap();
+            assert!(trust_policy::check(&[args[0].clone(), args[1].clone(), "1".into()]).is_err());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn public_trust_policy_failures_publish_no_output() {
+        let directory = TestDirectory::new();
+        let args = trust_policy_args(&directory);
+        let artifact = fs::read(&args[3]).unwrap();
+        let cases = [
+            hex_encode(&charlotte_launch::CLUSTER_PUBLIC_KEY),
+            hex_encode(&charlotte_launch::DEVELOPMENT_OPERATIONS_PUBLIC_KEY),
+            hex_encode(&charlotte_launch::DEVELOPMENT_RECIPIENT_PUBLIC_KEY),
+            "00".repeat(32),
+            "ff".repeat(32),
+            "x".repeat(65),
+            "0".repeat(4097),
+            // Publicly known fixture tests private-length rejection without
+            // creating a secret in an ordinary String.
+            development_fixture_hex(include_str!("../dev-key.hex")),
+        ];
+        for key in cases {
+            fs::write(&args[3], key).unwrap();
+            assert!(trust_policy::create(&args).is_err());
+            assert!(!std::path::Path::new(&args[0]).exists());
+        }
+        fs::write(&args[3], artifact).unwrap();
+        let mut shared = args.clone();
+        shared[4] = shared[3].clone();
+        assert!(trust_policy::create(&shared).is_err());
+        assert!(!std::path::Path::new(&args[0]).exists());
+        let mut invalid = args.clone();
+        invalid[1].clear();
+        assert!(trust_policy::create(&invalid).is_err());
+        for revision in ["0", "-1", "18446744073709551616", "invalid"] {
+            invalid = args.clone();
+            invalid[2] = revision.into();
+            assert!(trust_policy::create(&invalid).is_err());
+        }
+        assert!(!std::path::Path::new(&args[0]).exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn public_trust_policy_readers_reject_symlinks_directories_and_fifos() {
+        use std::os::unix::fs::symlink;
+        let directory = TestDirectory::new();
+        let args = trust_policy_args(&directory);
+        let alias = directory.path("alias");
+        symlink(&args[3], &alias).unwrap();
+        let fifo = directory.path("fifo");
+        let fifo_name = std::ffi::CString::new(fifo.as_str()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo_name.as_ptr(), 0o600) }, 0);
+        for source in [alias, directory.0.to_str().unwrap().to_owned(), fifo] {
+            let mut invalid = args.clone();
+            invalid[3] = source.clone();
+            assert!(trust_policy::create(&invalid).is_err());
+            assert!(trust_policy::check(&[source, args[1].clone(), "1".into()]).is_err());
+            assert!(!std::path::Path::new(&args[0]).exists());
+        }
+        // create_new also rejects a symlink output without modifying its target.
+        symlink(&args[3], &args[0]).unwrap();
+        let before = fs::read(&args[3]).unwrap();
+        assert!(trust_policy::create(&args).is_err());
+        assert_eq!(fs::read(&args[3]).unwrap(), before);
     }
 
     #[test]
