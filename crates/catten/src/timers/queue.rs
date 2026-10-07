@@ -3,13 +3,47 @@
 //! No high-water VecDeque backing or allocation occurs during insertion.
 
 use alloc::boxed::Box;
+use core::ops::{
+    Deref,
+    DerefMut,
+};
 
-use super::TimerEvent;
+use super::{
+    EventAdmission,
+    TimerEvent,
+};
+
+#[derive(Debug)]
+pub(super) struct OwnedNode {
+    node: Box<Node>,
+    // Field order frees the entire node before returning its reservation.
+    _admission: EventAdmission,
+}
+impl OwnedNode {
+    pub(super) fn new(node: Box<Node>, admission: EventAdmission) -> Self {
+        Self {
+            node,
+            _admission: admission,
+        }
+    }
+}
+impl Deref for OwnedNode {
+    type Target = Node;
+
+    fn deref(&self) -> &Node {
+        &self.node
+    }
+}
+impl DerefMut for OwnedNode {
+    fn deref_mut(&mut self) -> &mut Node {
+        &mut self.node
+    }
+}
 
 #[derive(Debug)]
 pub(super) struct Node {
     pub(super) event: TimerEvent,
-    next: Option<Box<Node>>,
+    next: Option<OwnedNode>,
 }
 impl Node {
     pub(super) fn new(event: TimerEvent) -> Self {
@@ -22,7 +56,7 @@ impl Node {
 
 #[derive(Debug, Default)]
 pub(super) struct Events {
-    head: Option<Box<Node>>,
+    head: Option<OwnedNode>,
     quantum: Option<TimerEvent>,
     anonymous: usize,
 }
@@ -47,7 +81,7 @@ impl Events {
         self.quantum = Some(event);
     }
 
-    pub(super) fn insert_prepared(&mut self, mut node: Box<Node>) {
+    pub(super) fn insert_prepared(&mut self, mut node: OwnedNode) {
         assert!(node.event.key.is_none() && node.next.is_none());
         let mut link = &mut self.head;
         while link.as_ref().is_some_and(|queued| queued.event.deadline <= node.event.deadline) {
@@ -67,7 +101,13 @@ impl Events {
         let mut node = self.head.take()?;
         self.head = node.next.take();
         self.anonymous -= 1;
-        Some(node.event)
+        // Moving out frees the Box while the outside admission remains live;
+        // the returned event retains its own owner through notification/drop.
+        let Node {
+            event,
+            ..
+        } = *node.node;
+        Some(event)
     }
 
     pub(super) fn retain(&mut self, mut keep: impl FnMut(&TimerEvent) -> bool) {

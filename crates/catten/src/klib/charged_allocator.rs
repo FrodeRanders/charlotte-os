@@ -19,11 +19,13 @@ use core::{
     },
 };
 
+#[derive(Debug)]
 struct Allocation<C> {
     charge: C,
     started: AtomicBool,
 }
 
+#[derive(Debug)]
 pub(crate) struct ChargedAllocator<C> {
     charge: Option<Arc<Allocation<C>>>,
 }

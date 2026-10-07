@@ -1,7 +1,6 @@
 //! Kernel fixtures for scheduler event admission and allocation-free queue publication.
 
 use alloc::{
-    boxed::Box,
     sync::Arc,
     vec::Vec,
 };
@@ -18,10 +17,7 @@ use super::{
         self,
         SchedulerSponsor,
     },
-    queue::{
-        Events,
-        Node,
-    },
+    queue::Events,
 };
 use crate::{
     cpu::{
@@ -56,8 +52,8 @@ pub(crate) fn test_admission() {
     let mut events = Events::default();
     for deadline in (1..=budget::MAX_DOMAIN_TIMERS).rev() {
         let mut event = TimerEvent::from(deadline as u64);
-        event._charge = Some(sponsor.reserve().unwrap());
-        events.insert_prepared(Box::try_new(Node::new(event)).unwrap());
+        event._charge = Some(super::EventAdmission::try_new(sponsor.reserve().unwrap()).unwrap());
+        events.insert_prepared(PreparedEvent::new(event).unwrap().node);
     }
     assert_eq!(sponsor.used(), 1024);
     assert!(sponsor.reserve().is_err());
@@ -81,18 +77,22 @@ pub(crate) fn test_admission() {
     let (event, handle) =
         TimerEvent::charged(ExtDuration::from_millis(60_000), sponsor.reserve().unwrap()).unwrap();
     assert!(PreparedEvent::new_with(event, |_| Err(())).is_err());
-    assert_eq!(sponsor.used(), 0);
+    assert_eq!(sponsor.used(), 1, "rejected node leaves live cancellation backing charged");
     assert_eq!(get_int_state(), entry_irq);
     drop(handle);
+    assert_eq!(sponsor.used(), 0);
     let (event, handle) =
         TimerEvent::charged(ExtDuration::from_millis(60_000), sponsor.reserve().unwrap()).unwrap();
     let prepared = PreparedEvent::new(event).unwrap();
     assert_eq!(get_int_state(), entry_irq);
     assert_eq!(sponsor.used(), 1);
     drop(prepared);
-    assert_eq!(sponsor.used(), 0);
+    assert_eq!(sponsor.used(), 1, "retained handle outlives discarded node");
     assert_eq!(get_int_state(), entry_irq);
     drop(handle);
+    assert_eq!(sponsor.used(), 0);
+
+    test_retained_cancellation_admission();
 
     let retained = sponsor.reserve().unwrap();
     sponsor.retire();
@@ -149,8 +149,72 @@ pub(crate) fn test_admission() {
     assert_eq!(budget::node_used(), baseline);
     crate::logln!(
         "[timer events] SUCCESS: scheduler/domain/node admission, shared reserve, prepared-node \
-         rollback, sorted/iterative reclamation, inline quantum and retirement"
+         rollback, sorted/iterative reclamation, inline quantum, retained cancellation backing \
+         and retirement"
     );
+}
+
+fn test_retained_cancellation_admission() {
+    let baseline = budget::node_used();
+    let domain = budget::DomainBudget::new(1);
+    let (event, handle) = TimerEvent::charged(
+        ExtDuration::from_millis(60_000),
+        budget::reserve(&domain, false).unwrap(),
+    )
+    .unwrap();
+    let weak = Arc::downgrade(&handle.state);
+    let aliases: Vec<_> = (0..128).map(|_| weak.clone()).collect();
+    let mut events = Events::default();
+    events.insert_prepared(PreparedEvent::new(event).unwrap().node);
+    // Ordinary event expiry removes queue backing but not an outstanding
+    // cancellation handle. No hardware deadline/completion is manufactured.
+    drop(events.pop_front().unwrap());
+    assert_eq!(domain.used(), 1);
+    assert!(budget::reserve(&domain, false).is_err());
+    drop(handle);
+    assert!(weak.upgrade().is_none());
+    assert_eq!(domain.used(), 1);
+    assert!(budget::reserve(&domain, false).is_err());
+    drop(aliases);
+    assert_eq!(domain.used(), 1);
+    drop(weak);
+    assert_eq!(domain.used(), 0);
+    drop(budget::reserve(&domain, false).unwrap());
+
+    // Rejected preparation must preserve a retained handle's original charge;
+    // a retained event must also stay charged when its handle goes first.
+    let sponsor = SchedulerSponsor::new(false);
+    let (event, handle) =
+        TimerEvent::charged(ExtDuration::from_millis(60_000), sponsor.reserve().unwrap()).unwrap();
+    drop(handle);
+    assert_eq!(sponsor.used(), 1);
+    assert!(PreparedEvent::new_with(event, |_| Err(())).is_err());
+    assert_eq!(sponsor.used(), 0);
+
+    let original = crate::service::loader::create_user_address_space_handle();
+    let old = crate::memory::budget::timer_sponsor(original.id());
+    let (event, handle) =
+        TimerEvent::charged(ExtDuration::from_millis(60_000), old.reserve().unwrap()).unwrap();
+    let stale = Arc::downgrade(&handle.state);
+    drop((event, handle));
+    crate::memory::budget::retire(original);
+    assert!(old.reserve().is_err());
+    crate::memory::close_user_address_space_handle(original).unwrap();
+    let replacement = crate::service::loader::create_user_address_space_handle();
+    assert_eq!(original.id(), replacement.id());
+    assert_ne!(original.generation(), replacement.generation());
+    let new = crate::memory::budget::timer_sponsor(replacement.id());
+    let fresh = new.reserve().unwrap();
+    assert!(stale.upgrade().is_none());
+    assert_eq!(old.used(), 1);
+    assert_eq!(new.used(), 1);
+    assert_eq!(budget::node_used(), (baseline.0 + 2, baseline.1 + 2));
+    drop(stale);
+    assert_eq!(old.used(), 0);
+    assert_eq!(new.used(), 1);
+    drop(fresh);
+    crate::memory::close_user_address_space_handle(replacement).unwrap();
+    assert_eq!(budget::node_used(), baseline);
 }
 
 /// Kernel fixture only: substitute this executing thread's sponsor to force

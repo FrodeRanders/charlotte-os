@@ -1,6 +1,6 @@
 //! Shared node admission for completion and scheduler timer events, including cancelled events
-//! awaiting reclamation on another LP. A charge belongs to the queued event,
-//! not to its shorter-lived completion record.
+//! awaiting reclamation on another LP. A charge follows event/node backing and
+//! cancellation references, not the shorter-lived completion record or queue membership.
 
 use alloc::sync::Arc;
 

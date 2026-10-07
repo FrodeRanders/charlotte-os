@@ -52,6 +52,7 @@ use crate::{
         },
     },
     klib::{
+        charged_allocator::ChargedAllocator,
         observer::{
             Observable,
             Observer,
@@ -114,8 +115,13 @@ static NEXT_TIMER_EVENT_ID: AtomicU64 = AtomicU64::new(1);
 /// resumes the waiter on a different LP; the owner removes the event eagerly
 /// whenever cancellation happens on its original LP.
 pub(crate) struct TimerEventCancelHandle {
-    state: Arc<TimerEventCancellation>,
+    state: Arc<TimerEventCancellation, EventAdmission>,
 }
+
+// One event reservation covers its node and cancellation backing. Clones used
+// as lifetime owners never allocate; only the cancellation Arc uses its single
+// allocation allowance. The node carries an outside owner through Box release.
+type EventAdmission = ChargedAllocator<budget::Charge>;
 
 pub type Timestamp = <LpTimer as LpTimerIfce>::Timestamp;
 
@@ -124,7 +130,7 @@ pub type Timestamp = <LpTimer as LpTimerIfce>::Timestamp;
 /// Enqueue additionally masks its local comparator transaction and updates
 /// shared cancellation ownership to the actual publishing LP.
 pub(crate) struct PreparedEvent {
-    node: Box<queue::Node>,
+    node: queue::OwnedNode,
 }
 
 impl PreparedEvent {
@@ -137,7 +143,8 @@ impl PreparedEvent {
         allocate: impl FnOnce(queue::Node) -> Result<Box<queue::Node>, ()>,
     ) -> Result<Self, ()> {
         assert!(event.key.is_none() && event._charge.is_some());
-        let node = allocate(queue::Node::new(event))?;
+        let admission = event._charge.as_ref().unwrap().clone();
+        let node = queue::OwnedNode::new(allocate(queue::Node::new(event))?, admission);
         Ok(Self {
             node,
         })
@@ -239,13 +246,13 @@ pub(crate) enum TimerEventKey {
 pub struct TimerEvent {
     deadline: Timestamp,
     key: Option<TimerEventKey>,
-    cancellation: Option<Arc<TimerEventCancellation>>,
+    cancellation: Option<Arc<TimerEventCancellation, EventAdmission>>,
     // Internal timer producers each install exactly one callback. Embed that
     // slot instead of allocating an unbounded weak-observer queue.
     callback: Mutex<Option<Weak<dyn Observer>>>,
     waiters: WaiterSource,
-    // Released only when the actual queue node/event is destroyed.
-    _charge: Option<budget::Charge>,
+    // Shared with the node's outside owner and every cancellation reference.
+    _charge: Option<EventAdmission>,
 }
 
 #[derive(Debug)]
@@ -261,7 +268,7 @@ impl TimerEvent {
         sponsor: &budget::SchedulerSponsor,
     ) -> Result<PreparedEvent, ()> {
         assert!(self._charge.is_none() && self.key.is_none());
-        self._charge = Some(sponsor.reserve()?);
+        self._charge = Some(EventAdmission::try_new(sponsor.reserve()?).map_err(|_| ())?);
         PreparedEvent::new(self)
     }
 
@@ -276,14 +283,20 @@ impl TimerEvent {
         event
     }
 
-    fn try_cancellable(duration: ExtDuration) -> Result<(Self, TimerEventCancelHandle), ()> {
+    pub(crate) fn charged(
+        duration: ExtDuration,
+        charge: budget::Charge,
+    ) -> Result<(Self, TimerEventCancelHandle), ()> {
+        let admission = EventAdmission::try_new(charge).map_err(|_| ())?;
         let id = NEXT_TIMER_EVENT_ID.fetch_add(1, Ordering::Relaxed);
-        let state = Arc::try_new(TimerEventCancellation {
-            id,
-            owner_lp: AtomicU32::new(crate::cpu::isa::lp::ops::get_lp_id()),
-            cancelled: AtomicBool::new(false),
-        })
-        .map_err(|_| ())?;
+        let state = admission
+            .clone()
+            .try_arc(TimerEventCancellation {
+                id,
+                owner_lp: AtomicU32::new(crate::cpu::isa::lp::ops::get_lp_id()),
+                cancelled: AtomicBool::new(false),
+            })
+            .map_err(|_| ())?;
         let handle = TimerEventCancelHandle {
             state: state.clone(),
         };
@@ -293,17 +306,8 @@ impl TimerEvent {
             cancellation: Some(state),
             callback: Mutex::new(None),
             waiters: WaiterSource::new(),
-            _charge: None,
+            _charge: Some(admission),
         };
-        Ok((event, handle))
-    }
-
-    pub(crate) fn charged(
-        duration: ExtDuration,
-        charge: budget::Charge,
-    ) -> Result<(Self, TimerEventCancelHandle), ()> {
-        let (mut event, handle) = Self::try_cancellable(duration)?;
-        event._charge = Some(charge);
         Ok((event, handle))
     }
 
@@ -470,7 +474,7 @@ impl TimerQueue {
         removed
     }
 
-    fn add_prepared(&mut self, node: Box<queue::Node>) {
+    fn add_prepared(&mut self, node: queue::OwnedNode) {
         self.purge_cancelled();
         if node
             .event

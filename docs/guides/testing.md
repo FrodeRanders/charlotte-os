@@ -309,7 +309,10 @@ Scheduler timer-event fixtures separately allocate 1,024 sorted nodes, test
 reuse and iterative removal, and keep the quantum inline while anonymous
 admission is full. Shared node/ordinary saturation is counter-only. They cover
 platform promotion, retirement, exact ASID reuse and an injected node-allocation
-failure. Scheduled tests substitute only their current kernel thread's sponsor
+failure. Cancellation-backing fixtures remove real nodes with a retained handle
+and 128 weak aliases, reject admission until final release and preserve the
+successor's account after exact ASID reuse. Preparation rejection covers both
+handle/event destruction orders. Scheduled tests substitute only their current kernel thread's sponsor
 to force event rejection before parking, check generic/CQ waits and synthetic
 timed-completion status 3 with the pending capability retained, then cancel and
 close it. Sleep/watchdog cycles reconcile event charges; busy-local cancellation

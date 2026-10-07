@@ -29,7 +29,13 @@ future charges only; an existing ordinary charge remains ordinary until release.
 Outstanding events retain their original account after teardown and ASID reuse.
 Dropping an old event cannot credit a replacement generation.
 
-An event owns its charge while prepared, queued and notifying callbacks.
+One reservation follows an event while prepared, queued and notifying callbacks,
+and any cancellation backing retained after event destruction. Event and node
+owners share the charged allocator's private holder; no extra event counts are
+reserved. The node's outside owner keeps admission until its Box is freed.
+Cancellation state is the adapter's one permitted allocation; other clones
+retain lifetime only, including strong and weak cancellation references.
+The final owner frees the private holder before refunding its original charge.
 Anonymous queue nodes are fixed-size `Box` allocations prepared fallibly before
 Blocked state or completion publication. The sorted linked queue inserts those
 owners without allocation and frees nodes on removal; it does not retain
@@ -95,10 +101,13 @@ reclamation and 64 sleep plus 64 watchdog accounting cycles. An owner-LP fixture
 simulates relocation before publication; it is not an actual cross-LP purge or
 migration test. The scoped real-EL0 verifier is unchanged.
 
-These counts bound retained event/node quantities, not the entire kernel heap
-or allocator overhead. Sponsor/control-block allocation, weak-only references
-that outlive events, general callback metadata, thread-exit observers and
-loader/page-table/heap admission remain incomplete. Aborted sleepers can retain
+These counts bound retained event/node/cancellation backing quantities, not
+the entire kernel heap or allocator overhead. Queue diagnostics count actual
+membership, while event admission can remain occupied by cancellation backing
+after removal. Sponsor allocations, independent waiter-list control blocks,
+general callback metadata and other weak-only storage remain incomplete.
+Evidence: [timer backing audit](../reports/audits/2026-10-07-security-timer-backing.md).
+Aborted sleepers can retain
 charged event storage until the original deadline. Per-principal aggregates,
 deadline-indexed cancellation and production fairness remain future work.
 SEC-07 remains partial; this is not hostile-workload containment certification.

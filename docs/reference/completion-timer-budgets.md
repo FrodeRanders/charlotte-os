@@ -2,8 +2,8 @@
 
 Completion-backed timers have two independent lifetimes: the operation record
 and the actual event in an LP's timer queue. Admission accounts for both.
-Closing a record cannot return timer-event capacity while its queue node still
-exists.
+Closing a record cannot return timer-event capacity while its queue node or
+retained cancellation backing still exists.
 
 | Limit | Current kernel policy |
 | --- | --- |
@@ -38,9 +38,19 @@ each interrupt, so a distant deadline does not cause an out-of-range panic or
 an early completion. AArch64 programs an absolute 64-bit comparator, as
 described in [Arm's Generic Timer guide, §4.4](https://documentation-service.arm.com/static/651fbd69bc48b0381ce0e06c).
 
-Each event owns a linear charge. A fresh completion namespace has a fresh
-reference-counted budget owner; old events retain their original owner until
-queue removal. Late release cannot credit a replacement namespace. Retained
+Each event reserves one linear charge. Its prepared/queued node, event and
+cancellation allocation share lifetime owners for that same reservation; they
+do not reserve additional event counts. `queue::OwnedNode` holds admission
+outside its Box, freeing the node before returning admission. Moving an event
+out of a node retains admission through the returned event's destruction.
+Cancellation state uses the charged allocator, so retained handles and weak
+references keep admission even after event removal. The private charge holder
+is freed before the original reservation is refunded. Queue-node allocation
+rejection retains admission while any cancellation backing remains alive.
+
+A fresh completion namespace has a fresh reference-counted budget owner; old
+backing retains its original owner through final release, including after
+namespace retirement and ASID reuse. Late release cannot credit a replacement namespace. Retained
 detached CQ results also keep their existing operation-submission slot until
 delivery, independently of whether their timer event has been reclaimed.
 
@@ -72,7 +82,12 @@ numeric handle again.
 Boot-path tests cover domain/node rejection, reserved platform progress,
 counter reconciliation, 64 cancellation/close cycles with hour-long timers,
 capability/detached shared capacity, maximum-value timeout rollback, deferred queue reclamation, and
-captured-callback rejection after exact numeric namespace reuse. The scoped
+captured-callback rejection after exact numeric namespace reuse. Additional
+kernel fixtures remove real nodes while retaining cancellation handles and 128
+weak aliases, reject new admission until final release, exercise preparation
+failure in both handle/event drop orders and check old weak backing against an
+exactly reused ASID. See [timer backing audit](../reports/audits/2026-10-07-security-timer-backing.md).
+The scoped
 EL0 security probe additionally fills its timer capacity, drops the owning
 batch within a bounded deadline, churns 64 more hour-long timers and completes
 a short timer after recovery. Pure checked event counters and saturating

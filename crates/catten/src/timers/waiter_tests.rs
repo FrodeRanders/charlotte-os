@@ -82,8 +82,10 @@ pub(crate) fn test_admission() {
     assert_eq!(hits.load(Ordering::Relaxed), 66);
     drop(token);
 
+    let event_sponsor = super::budget::SchedulerSponsor::new(false);
     let (cancelled, handle) =
-        TimerEvent::try_cancellable(ExtDuration::from_millis(60_000)).unwrap();
+        TimerEvent::charged(ExtDuration::from_millis(60_000), event_sponsor.reserve().unwrap())
+            .unwrap();
     cancelled.register_observer(Arc::downgrade(&observer));
     let token = cancelled.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap();
     handle.state.cancelled.store(true, Ordering::Release);
@@ -92,7 +94,9 @@ pub(crate) fn test_admission() {
     assert_eq!(sponsor.used(), 1); // Suppression alone does not free queue storage.
     drop(cancelled);
     assert_eq!(sponsor.used(), 0);
+    assert_eq!(event_sponsor.used(), 1);
     drop((token, handle));
+    assert_eq!(event_sponsor.used(), 0);
 
     let discarded = TimerEvent::from(ExtDuration::from_millis(60_000));
     let token = discarded.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap();

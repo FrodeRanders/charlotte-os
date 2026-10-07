@@ -337,6 +337,13 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   Allocator clones share one allocation allowance; never expose a weak or bare
   Arc to their private charge holder. See
   `docs/reference/completion-record-budgets.md`.
+- Anonymous timer admission follows the event, `queue::OwnedNode` and all
+  cancellation references through final backing release. Keep the node's
+  lifetime owner outside its Box; queue removal or callback completion alone
+  cannot refund a retained cancellation allocation. Shared allocator clones
+  retain one original reservation; only the cancellation state consumes their
+  allocation allowance. No uncharged cancellable constructor remains. See
+  `docs/reference/scheduler-timer-budgets.md`.
 - Non-scheduler completion callbacks use `completion::observe` and retain its
   `CompletionObservation` owner. Dropping that owner cancels only the
   subscription, not the operation or its producer. Keep arbitrary callback work
