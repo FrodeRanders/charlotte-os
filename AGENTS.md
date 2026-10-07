@@ -356,7 +356,10 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   lifetime owner outside its Box; queue removal or callback completion alone
   cannot refund a retained cancellation allocation. Shared allocator clones
   retain one original reservation; only the cancellation state consumes their
-  allocation allowance. No uncharged cancellable constructor remains. See
+  allocation allowance. Completion timer producer observers must be allocated
+  fallibly before callback registration, record/authority publication and enqueue;
+  rejection retains no prepared event or submission slot. No uncharged
+  cancellable constructor remains. See
   `docs/reference/scheduler-timer-budgets.md`.
 - Non-scheduler completion callbacks use `completion::observe` and retain its
   `CompletionObservation` owner. Dropping that owner cancels only the

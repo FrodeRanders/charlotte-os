@@ -76,9 +76,14 @@ guards and the mask are released before yield.
 - Timed completion wait returns `WAIT_ADMISSION_FAILED` (3), leaving the
   operation/capability live. The Rust owner retains ownership as documented in
   the waiter reference. Poll and immediate-terminal fast paths are unchanged.
-- Capability and detached completion-timer submissions prepare their node
-  before publishing a record. Failure returns `SubmitError::WouldBlock`, with
-  the existing submission-failure syscall representation.
+- Capability and detached completion-timer submissions prepare their node and
+  fallibly allocate their producer observer before callback registration,
+  record/authority publication and enqueue. Observer allocation rejection drops
+  the prepared event/node/cancellation state, record and any hidden capability
+  reservation. Failure returns `SubmitError::WouldBlock`, with the existing
+  submission-failure syscall representation. Registry insertion still uses
+  infallible `BTreeMap` allocation; this does not make the entire submission
+  path safe under heap exhaustion.
 
 Timed callbacks capture the executing thread's generation before parking;
 source registration confirms that same live generation. Prepared nodes hold no
@@ -92,6 +97,14 @@ filter/destruction, the inline quantum, shared node/ordinary saturation
 (counter-only at the node maximum), platform promotion, retirement and exact
 ASID reuse. A deterministic queue-node allocation failure checks charge rollback;
 it is not a physical allocator-exhaustion test.
+
+Completion fixtures inject producer-observer allocation failure after real
+event/node and record preparation, for both capability and detached timers.
+Repeated rejection restores capability, record, timer and list counts without
+publishing a CQ result or disturbing an existing pending operation. A retained
+weak reference to the rejected record keeps its original charge until final
+release; real immediate expiry and cancellation recover afterward. The injected
+allocator is private to the kernel fixture and substitutes only that allocation.
 
 Scheduled fixtures temporarily substitute only their own kernel thread's
 sponsor to force rejection. They check Running state/constraints, generic/CQ
@@ -108,6 +121,8 @@ after removal. Independent waiter-list backing has separate
 [allocation admission](observer-list-admission.md). Sponsor allocations,
 general callback metadata and other weak-only storage remain incomplete.
 Evidence: [timer backing audit](../reports/audits/2026-10-07-security-timer-backing.md).
+Observer failure correction:
+[timer observer allocation audit](../reports/audits/2026-10-07-security-timer-observer-allocation.md).
 Aborted sleepers can retain
 charged event storage until the original deadline. Per-principal aggregates,
 deadline-indexed cancellation and production fairness remain future work.

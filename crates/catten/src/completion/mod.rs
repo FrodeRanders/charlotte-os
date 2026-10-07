@@ -31,6 +31,7 @@ pub(crate) mod callback_tests;
 pub mod cq;
 pub(crate) mod cq_budget;
 pub(crate) mod exit_tests;
+pub(crate) mod timer_tests;
 pub(crate) mod watch_budget;
 
 use alloc::{
@@ -1181,6 +1182,16 @@ pub(crate) fn abort_submission(asid: AddressSpaceId, cap: CompletionCap) -> Resu
 /// when the deadline expires, so a user-space service waiting on `cq_wait` is
 /// released exactly at the deadline.
 pub fn submit_timer(asid: AddressSpaceId, timeout_ms: u64) -> Result<CompletionCap, SubmitError> {
+    submit_timer_with_observer(asid, timeout_ms, Arc::try_new)
+}
+
+fn submit_timer_with_observer(
+    asid: AddressSpaceId,
+    timeout_ms: u64,
+    allocate: impl FnOnce(
+        CompletionTimerObserver,
+    ) -> Result<Arc<CompletionTimerObserver>, core::alloc::AllocError>,
+) -> Result<CompletionCap, SubmitError> {
     let platform_identity = crate::memory::budget::platform_identity(asid);
     let (cap, timer_event) = {
         let mut registry = COMPLETIONS.write();
@@ -1209,12 +1220,15 @@ pub fn submit_timer(asid: AddressSpaceId, timeout_ms: u64) -> Result<CompletionC
         .map_err(|_| SubmitError::WouldBlock)?;
         let completion = Completion::new(None, record_charge)?;
         let cap = reservation.identity();
-        let observer = Arc::new(CompletionTimerObserver {
+        // Allocate before publishing authority or registering the callback.
+        // Rejection drops the prepared event, record and hidden reservation.
+        let observer = allocate(CompletionTimerObserver {
             asid,
             cap,
             result: OpResult::Ok(0),
             completion: Arc::downgrade(&completion),
-        });
+        })
+        .map_err(|_| SubmitError::WouldBlock)?;
         timer_event.event().register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
         completion.set_timer_observer(observer, cancel);
         let cap = reservation.publish().map_err(|_| SubmitError::WouldBlock)?;
@@ -1510,6 +1524,18 @@ pub fn submit_detached_timer(
     timeout_ms: u64,
     user_data: u64,
 ) -> Result<OperationId, SubmitError> {
+    submit_detached_timer_with_observer(asid, cq, timeout_ms, user_data, Arc::try_new)
+}
+
+fn submit_detached_timer_with_observer(
+    asid: AddressSpaceId,
+    cq: CqId,
+    timeout_ms: u64,
+    user_data: u64,
+    allocate: impl FnOnce(
+        DetachedTimerObserver,
+    ) -> Result<Arc<DetachedTimerObserver>, core::alloc::AllocError>,
+) -> Result<OperationId, SubmitError> {
     let platform_identity = crate::memory::budget::platform_identity(asid);
     let (operation, timer_event) = {
         let mut registry = COMPLETIONS.write();
@@ -1532,10 +1558,11 @@ pub fn submit_detached_timer(
         let timer_event =
             crate::timers::PreparedEvent::new(timer_event).map_err(|_| SubmitError::WouldBlock)?;
         let operation = alloc_operation_id();
-        let observer = Arc::new(DetachedTimerObserver {
+        let observer = allocate(DetachedTimerObserver {
             asid,
             operation,
-        });
+        })
+        .map_err(|_| SubmitError::WouldBlock)?;
         timer_event.event().register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
         entries.detached.insert(
             operation,

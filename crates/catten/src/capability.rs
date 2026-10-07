@@ -481,6 +481,11 @@ pub fn contains(owner: AddressSpaceId, cap: ObjectCapability, kind: ObjectKind) 
         .is_some_and(|entry| entry.kind == kind && entry.state == EntryState::Live)
 }
 
+/// Diagnostic counts include staged reservations as well as live authority.
+pub(crate) fn node_admission_used() -> (usize, usize) {
+    budget::node_used()
+}
+
 /// Revoke a capability if it belongs to `owner` and has the expected kind.
 pub fn remove(owner: AddressSpaceId, cap: ObjectCapability, kind: ObjectKind) -> bool {
     let mut tables = CAPABILITIES.lock();

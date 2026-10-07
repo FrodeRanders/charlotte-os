@@ -192,6 +192,7 @@ pub fn test_completion_caps() {
 /// Kernel-boundary tests intentionally retain raw capabilities to verify the
 /// admission and cancellation ABI, independently of userspace owner wrappers.
 fn test_completion_timer_admission() {
+    completion::timer_tests::test_observer_allocation_rollback();
     use crate::timers::budget::{
         self,
         DomainBudget,
