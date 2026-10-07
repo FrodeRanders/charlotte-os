@@ -3,10 +3,7 @@
 //! uncontended locks allocate nothing. Tokens enter only the independent list
 //! lock on cancellation.
 
-use alloc::sync::{
-    Arc,
-    Weak,
-};
+use alloc::sync::Weak;
 
 use super::{
     Observable,
@@ -14,6 +11,7 @@ use super::{
     WaitRegistration,
     WaitSponsor,
     registration::{
+        ListRef,
         NotificationBatch,
         ObserverList,
         RegistrationError,
@@ -24,7 +22,7 @@ use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
 #[derive(Debug)]
 pub(crate) struct WaiterSource {
-    list: Mutex<Option<Arc<ObserverList<waiter_budget::Charge>>>>,
+    list: Mutex<Option<ListRef<waiter_budget::Charge>>>,
 }
 
 impl WaiterSource {
@@ -42,7 +40,10 @@ impl WaiterSource {
         let list = {
             let mut slot = self.list.lock();
             if slot.is_none() {
-                *slot = Some(ObserverList::try_new(waiter_budget::SOURCE_LIMIT)?);
+                *slot = Some(ObserverList::try_new(
+                    waiter_budget::SOURCE_LIMIT,
+                    sponsor.list_platform()?,
+                )?);
             }
             slot.as_ref().unwrap().clone()
         };

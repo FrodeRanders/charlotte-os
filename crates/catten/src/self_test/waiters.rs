@@ -107,7 +107,7 @@ pub fn test_waiter_admission() {
     let baseline = waiter_budget::node_used();
     assert_eq!(baseline, (0, 0));
     let sponsor = WaitSponsor::new(false);
-    let list = ObserverList::try_new(waiter_budget::SOURCE_LIMIT).unwrap();
+    let list = ObserverList::try_new(waiter_budget::SOURCE_LIMIT, false).unwrap();
     let notified = Arc::new(AtomicUsize::new(0));
     let count = notified.clone();
     let reentrant_list = list.clone();
@@ -153,13 +153,13 @@ pub fn test_waiter_admission() {
     let mut sources = Vec::new();
     let mut registrations = Vec::new();
     for _ in 0..waiter_budget::DOMAIN_LIMIT / waiter_budget::SOURCE_LIMIT {
-        let source = ObserverList::try_new(waiter_budget::SOURCE_LIMIT).unwrap();
+        let source = ObserverList::try_new(waiter_budget::SOURCE_LIMIT, false).unwrap();
         for _ in 0..waiter_budget::SOURCE_LIMIT {
             registrations.push(sponsor.register(&source, Arc::downgrade(&observer)).unwrap());
         }
         sources.push(source);
     }
-    let extra = ObserverList::try_new(waiter_budget::SOURCE_LIMIT).unwrap();
+    let extra = ObserverList::try_new(waiter_budget::SOURCE_LIMIT, false).unwrap();
     assert!(matches!(
         sponsor.register(&extra, Arc::downgrade(&observer)),
         Err(RegistrationError::ResourceLimit)
@@ -210,7 +210,7 @@ pub fn test_waiter_admission() {
     // A retained old-generation entry cannot release the replacement's quota.
     let handle = crate::service::loader::create_user_address_space_handle();
     let old = crate::memory::budget::waiter_sponsor(handle.id());
-    let source = ObserverList::try_new(waiter_budget::SOURCE_LIMIT).unwrap();
+    let source = ObserverList::try_new(waiter_budget::SOURCE_LIMIT, false).unwrap();
     let token = old.register(&source, Arc::downgrade(&observer)).unwrap();
     crate::memory::budget::retire(handle);
     assert!(matches!(

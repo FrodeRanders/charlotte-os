@@ -55,10 +55,7 @@ extern "C" fn admission_worker() {
 }
 
 fn test_scheduler_waiter_admission() {
-    use alloc::sync::{
-        Arc,
-        Weak,
-    };
+    use alloc::sync::Weak;
 
     use crate::{
         cpu::{
@@ -100,7 +97,7 @@ fn test_scheduler_waiter_admission() {
             Err(RegistrationError::ResourceLimit)
         }
     }
-    struct Source(Arc<ObserverList<waiter_budget::Charge>>);
+    struct Source(crate::klib::observer::registration::ListRef<waiter_budget::Charge>);
     impl Observable for Source {
         fn try_register_waiter(
             &self,
@@ -144,7 +141,7 @@ fn test_scheduler_waiter_admission() {
         );
         (thread.generation, thread.migration_constraints)
     };
-    let source = Source(ObserverList::try_new(waiter_budget::SOURCE_LIMIT).unwrap());
+    let source = Source(ObserverList::try_new(waiter_budget::SOURCE_LIMIT, false).unwrap());
     SYSTEM_SCHEDULER
         .read()
         .block_thread_with_constraint(worker, &source, MigrationConstraint::GeneralWait)

@@ -9,8 +9,31 @@ use alloc::{
     },
 };
 
-use super::Observer;
-use crate::cpu::multiprocessor::spin::mutex::Mutex;
+use super::{
+    Observer,
+    list_budget,
+};
+use crate::{
+    cpu::multiprocessor::spin::mutex::Mutex,
+    klib::charged_allocator::ChargedAllocator,
+};
+
+#[derive(Debug)]
+pub(crate) struct ListRef<C>(Arc<ObserverList<C>, ChargedAllocator<list_budget::Charge>>);
+
+impl<C> Clone for ListRef<C> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<C> core::ops::Deref for ListRef<C> {
+    type Target = ObserverList<C>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegistrationError {
@@ -48,21 +71,46 @@ pub(crate) struct ObserverList<C> {
 }
 
 impl<C> ObserverList<C> {
-    pub(crate) fn try_new(capacity: usize) -> Result<Arc<Self>, RegistrationError> {
-        Arc::try_new(Self {
-            state: Mutex::new(State {
-                head: None,
-                count: 0,
-                next_id: 1,
-                closed: false,
-            }),
-            capacity,
-        })
-        .map_err(|_| RegistrationError::AllocationFailed)
+    pub(crate) fn try_new(
+        capacity: usize,
+        platform: bool,
+    ) -> Result<ListRef<C>, RegistrationError> {
+        Self::try_new_with(capacity, platform, |value, allocator| allocator.try_arc(value))
     }
 
+    fn try_new_with(
+        capacity: usize,
+        platform: bool,
+        allocate: impl FnOnce(
+            Self,
+            ChargedAllocator<list_budget::Charge>,
+        ) -> Result<
+            Arc<Self, ChargedAllocator<list_budget::Charge>>,
+            core::alloc::AllocError,
+        >,
+    ) -> Result<ListRef<C>, RegistrationError> {
+        let allocator = ChargedAllocator::try_new(list_budget::reserve(platform)?)
+            .map_err(|_| RegistrationError::AllocationFailed)?;
+        allocate(
+            Self {
+                state: Mutex::new(State {
+                    head: None,
+                    count: 0,
+                    next_id: 1,
+                    closed: false,
+                }),
+                capacity,
+            },
+            allocator,
+        )
+        .map(ListRef)
+        .map_err(|_| RegistrationError::AllocationFailed)
+    }
+}
+
+impl<C> ListRef<C> {
     pub(crate) fn register(
-        self: &Arc<Self>,
+        &self,
         observer: Weak<dyn Observer>,
         charge: C,
     ) -> Result<Registration<C>, RegistrationError> {
@@ -72,7 +120,7 @@ impl<C> ObserverList<C> {
     }
 
     fn register_with(
-        self: &Arc<Self>,
+        &self,
         observer: Weak<dyn Observer>,
         charge: C,
         allocate: impl FnOnce(EntryNode<C>) -> Result<Box<EntryNode<C>>, RegistrationError>,
@@ -106,7 +154,9 @@ impl<C> ObserverList<C> {
             id,
         })
     }
+}
 
+impl<C> ObserverList<C> {
     fn remove(&self, id: u64) {
         let mut state = self.state.lock();
         let mut link = &mut state.head;
@@ -152,7 +202,7 @@ pub(crate) fn test_entry_allocation_rollback() {
         klib::observer::CallOnNotify,
     };
     let account = budget::DomainBudget::new(1);
-    let list = ObserverList::try_new(1).unwrap();
+    let list = ObserverList::try_new(1, false).unwrap();
     let callback: Arc<dyn Observer> = CallOnNotify::new(|| panic!("failed entry notified"));
     assert_eq!(
         list.register_with(
@@ -174,6 +224,7 @@ pub(crate) fn test_entry_allocation_rollback() {
     drop(token);
     assert_eq!(account.used(), 0);
     assert_eq!(Arc::weak_count(&callback), 0);
+    list_tests::test_list_backing_admission();
 }
 
 impl<C> Drop for ObserverList<C> {
@@ -186,7 +237,7 @@ impl<C> Drop for ObserverList<C> {
 #[must_use]
 #[derive(Debug)]
 pub(crate) struct Registration<C> {
-    list: Arc<ObserverList<C>>,
+    list: ListRef<C>,
     id: u64,
 }
 
@@ -238,3 +289,6 @@ impl<C> Drop for NotificationBatch<C> {
         }
     }
 }
+
+#[path = "registration/list_tests.rs"]
+mod list_tests;

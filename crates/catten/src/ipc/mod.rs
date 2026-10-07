@@ -31,6 +31,7 @@ use crate::{
         WaitRegistration,
         WaitSponsor,
         registration::{
+            ListRef,
             NotificationBatch,
             ObserverList,
             RegistrationError,
@@ -57,7 +58,7 @@ pub(crate) mod waiter_tests;
 
 use attachments::MemoryAttachments;
 
-type WaiterList = Arc<ObserverList<waiter_budget::Charge>>;
+type WaiterList = ListRef<waiter_budget::Charge>;
 type WaitNotifications = NotificationBatch<waiter_budget::Charge>;
 
 /// Debugger-visible cooperative admission retries: readable wait, reply wait.
@@ -279,7 +280,7 @@ struct Endpoint {
     /// Lifecycle observers installed through `watch_connection_closed`.
     /// Unlike readiness observers, ordinary message delivery must not wake
     /// these: they fire exclusively when the endpoint closes.
-    close_observers: Arc<ObserverList<crate::completion::watch_budget::Charge>>,
+    close_observers: ListRef<crate::completion::watch_budget::Charge>,
     closed: bool,
     /// Owned explicit close fences queue use without reporting terminal closure.
     /// Abandonment retains this claim and the owner's exact root lease.
@@ -328,7 +329,7 @@ impl PendingCall {
         Ok(Self {
             caller,
             result: None,
-            observers: ObserverList::try_new(waiter_budget::SOURCE_LIMIT)
+            observers: ObserverList::try_new(waiter_budget::SOURCE_LIMIT, charge.platform())
                 .map_err(|_| IpcError::ResourceLimit)?,
             observed: false,
             _charge: charge,
@@ -766,10 +767,10 @@ pub fn endpoint_create(
     let queue = budget::AdmittedQueue::new(&namespace.endpoint_budget, platform, capacity)
         .map_err(|_| IpcError::ResourceLimit)?;
     let close_observers =
-        ObserverList::try_new(crate::completion::watch_budget::MAX_ENDPOINT_WATCHES)
+        ObserverList::try_new(crate::completion::watch_budget::MAX_ENDPOINT_WATCHES, platform)
             .map_err(|_| IpcError::ResourceLimit)?;
-    let readiness_observers =
-        ObserverList::try_new(waiter_budget::SOURCE_LIMIT).map_err(|_| IpcError::ResourceLimit)?;
+    let readiness_observers = ObserverList::try_new(waiter_budget::SOURCE_LIMIT, platform)
+        .map_err(|_| IpcError::ResourceLimit)?;
     let reservation = ipc.reserve_cap(owner)?;
     let cap = reservation.publish().map_err(cap_admission_error)?;
     // Everything after publication is infallible under this IPC write guard.

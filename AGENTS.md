@@ -329,6 +329,14 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`
   and invoke detached notifications after subsystem guards are released.
+- Observer lists use `ListRef` and `ObserverList::try_new` with independent
+  allocation admission. Capture classification from source admission or the
+  first waiter/watch sponsor; never infer it from caller-controlled roles or
+  re-resolve an ASID under a source lock. Empty tokens and weak-only backing
+  retain the original node/ordinary slot through final allocation release.
+  Do not restore bare global-allocator list Arcs or an uncharged constructor.
+  Entry admission and list allocation admission remain separate. See
+  `docs/reference/observer-list-admission.md`.
 - Completion records use `CompletionRef`/`CompletionWeak` and
   `ChargedAllocator::try_arc`. Their original admission follows allocation
   lifetime through final weak release, including the private charge holder's

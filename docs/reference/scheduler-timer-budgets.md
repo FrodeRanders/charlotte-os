@@ -104,7 +104,8 @@ migration test. The scoped real-EL0 verifier is unchanged.
 These counts bound retained event/node/cancellation backing quantities, not
 the entire kernel heap or allocator overhead. Queue diagnostics count actual
 membership, while event admission can remain occupied by cancellation backing
-after removal. Sponsor allocations, independent waiter-list control blocks,
+after removal. Independent waiter-list backing has separate
+[allocation admission](observer-list-admission.md). Sponsor allocations,
 general callback metadata and other weak-only storage remain incomplete.
 Evidence: [timer backing audit](../reports/audits/2026-10-07-security-timer-backing.md).
 Aborted sleepers can retain

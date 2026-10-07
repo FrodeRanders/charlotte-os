@@ -320,6 +320,15 @@ retains its charge until purge. A cancellation-owner fixture simulates relocatio
 before publication, not actual remote-LP reclamation. See
 [scheduler timer-event budgets](../reference/scheduler-timer-budgets.md).
 
+Observer-list allocation fixtures retain empty lists with tokens and 128 weak
+aliases, inject construction rejection and check captured platform classification
+through sponsor promotion/retirement. Counter-only node pressure rejects list,
+completion, CQ, callback, endpoint and call preparation, while a real platform
+waiter progresses under ordinary pressure. Release permits retry and exact
+counter reconciliation. These are serialized kernel fixtures, not physical OOM
+or an EL0 many-client flood. See
+[observer-list admission](../reference/observer-list-admission.md).
+
 The scoped application verifier does not force ASID reuse, restart the grant
 controller, inject allocation failures or prove many-client fairness. It does
 not exercise the complete S3/Raft release pipeline with independent roots, or

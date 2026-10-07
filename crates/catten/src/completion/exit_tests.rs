@@ -250,7 +250,7 @@ pub(crate) fn test_admission() {
     assert_eq!(account.used(), 0);
     drop(token);
     // Generic source close semantics are exercised without a Thread allocation.
-    let list = crate::klib::observer::registration::ObserverList::try_new(1).unwrap();
+    let list = crate::klib::observer::registration::ObserverList::try_new(1, false).unwrap();
     drop(list.close());
     assert_eq!(
         list.register(Arc::downgrade(&callback), budget::reserve(&account, false).unwrap())

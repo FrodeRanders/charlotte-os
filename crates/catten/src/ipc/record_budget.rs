@@ -63,6 +63,10 @@ pub(crate) struct Charge {
 }
 
 impl Charge {
+    pub(crate) fn platform(&self) -> bool {
+        self.platform
+    }
+
     /// Divide one atomic reservation into independently retained record owners.
     pub(crate) fn split(&mut self, amount: [u64; 3]) -> Self {
         for (remaining, part) in self.amount.iter_mut().zip(amount) {

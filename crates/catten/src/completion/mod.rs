@@ -224,7 +224,7 @@ struct CompletionInner {
     event_observation: Option<EventObservation>,
     /// Non-scheduler callbacks use a separate lazy one-shot list. Its entries
     /// share event-watch admission, not scheduler-waiter sponsorship.
-    callbacks: Option<Arc<crate::klib::observer::registration::ObserverList<watch_budget::Charge>>>,
+    callbacks: Option<crate::klib::observer::registration::ListRef<watch_budget::Charge>>,
 }
 
 struct EventObservation {
@@ -294,11 +294,8 @@ pub struct Completion {
     /// Stable, never-reused identity of this operation (see [`OperationId`]).
     operation: OperationId,
     inner: Mutex<CompletionInner>,
-    waiters: Arc<
-        crate::klib::observer::registration::ObserverList<
-            crate::klib::observer::waiter_budget::Charge,
-        >,
-    >,
+    waiters:
+        crate::klib::observer::registration::ListRef<crate::klib::observer::waiter_budget::Charge>,
 }
 
 impl Completion {
@@ -306,10 +303,12 @@ impl Completion {
         buffer: Option<Vec<u8>>,
         record_charge: budget::Charge,
     ) -> Result<CompletionRef, SubmitError> {
+        let platform = record_charge.platform();
         let allocator =
             ChargedAllocator::try_new(record_charge).map_err(|_| SubmitError::WouldBlock)?;
         let waiters = crate::klib::observer::registration::ObserverList::try_new(
             crate::klib::observer::waiter_budget::SOURCE_LIMIT,
+            platform,
         )
         .map_err(|_| SubmitError::WouldBlock)?;
         allocator
@@ -592,11 +591,8 @@ struct CqState {
     /// cursor per waiter rather than this queue-wide cursor.
     last_seen_generation: u64,
     /// Threads blocked waiting for this queue to become readable.
-    waiters: Arc<
-        crate::klib::observer::registration::ObserverList<
-            crate::klib::observer::waiter_budget::Charge,
-        >,
-    >,
+    waiters:
+        crate::klib::observer::registration::ListRef<crate::klib::observer::waiter_budget::Charge>,
     #[allow(dead_code)]
     _buf: Option<alloc::vec::Vec<u64>>,
     // Last: free heap backing before returning admission.
@@ -865,6 +861,7 @@ fn stage_cq(
         last_seen_generation: 0,
         waiters: crate::klib::observer::registration::ObserverList::try_new(
             crate::klib::observer::waiter_budget::SOURCE_LIMIT,
+            platform,
         )
         .map_err(|_| CqOpenError::AllocationFailed)?,
         _buf: None,
@@ -1954,6 +1951,7 @@ pub(crate) fn observe_registered(
                 inner.callbacks = Some(
                     crate::klib::observer::registration::ObserverList::try_new(
                         watch_budget::MAX_COMPLETION_CALLBACKS,
+                        charge.platform(),
                     )
                     .map_err(|_| ObserveError::ResourceLimit)?,
                 );

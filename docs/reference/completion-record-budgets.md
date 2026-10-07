@@ -108,7 +108,8 @@ These are retained-state counts, not byte accounting for the entire kernel
 heap. Separate [CQ admission](completion-queue-budgets.md) bounds registered
 queues and kernel-owned ring/backlog backing. Completion record/control-block
 storage and its auxiliary charge holder are covered by the record count, not
-an aggregate byte budget. Registry nodes, observer lists, arbitrary callback
+an aggregate byte budget. Observer-list backing has separate
+[allocation admission](observer-list-admission.md). Registry nodes, arbitrary callback
 captures and other weak-only Arc/control-block allocations are not covered here.
 General metadata allocation and reclamation remain separate work. Endpoint-close and
 thread-exit registrations now share [owning lists and event-watch admission](close-watch-budgets.md).

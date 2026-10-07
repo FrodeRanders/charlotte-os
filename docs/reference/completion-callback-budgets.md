@@ -26,7 +26,8 @@ capacity of 16 does not entitle it to 128 linked callbacks.
 `ObserveError` distinguishes an absent/retired namespace, a missing/replaced
 capability and resource/allocation rejection. Rejection leaves the operation,
 buffer and existing subscriptions unchanged. A failed entry returns its staged
-charge. List construction uses `Arc::try_new`, entries `Box::try_new`. Lists are
+charge. List construction uses a fallible charged Arc with separate
+[list allocation admission](observer-list-admission.md); entries use `Box::try_new`. Lists are
 created lazily on first pending subscription, avoiding callback-list allocation
 for scheduler-only completions.
 
@@ -54,9 +55,9 @@ its strong callback until Drop, even after notification; the token alone does
 not retain the operation. Callback captures may retain an operation, whose
 separate record charge follows the allocation through both strong and weak
 references; see [completion-record admission](completion-record-budgets.md).
-Entry counters do not
-account for arbitrary capture sizes, retained empty control blocks or the whole
-kernel heap.
+List allocation admission covers retained empty list/control-block backing.
+Entry counters do not account for arbitrary capture sizes, other weak-only
+allocations or the whole kernel heap.
 
 ## Scheduler sources are a different contract
 

@@ -59,7 +59,9 @@ destruction is iterative rather than recursively consuming kernel stack.
 
 Completion/list/Waker allocations use fallible allocation in the migrated
 path. Counts bound the fixed-size entry storage, not allocator overhead, every
-weak-only Arc/control block or all associated registry metadata.
+weak-only Arc/control block or all associated registry metadata. Observer-list
+backing has separate [allocation admission](observer-list-admission.md), retained
+through empty tokens and final weak release.
 
 Namespace destruction explicitly discards registrations even when an old
 completion is retained. CQ replacement/destruction still requires a quiescent
@@ -119,8 +121,8 @@ before moving, copying, lending or vector-transferring memory and before minting
 delegated connection attachments. List allocation failure returns before these
 effects. This is not a claim that capability/registry insertion and every later
 allocation are now fallible. Separate IPC record admission bounds call, reply
-and connection counts; list control blocks and other general metadata still
-need comprehensive admission and fallible allocation.
+and connection counts; list backing now has separate node-wide admission.
+Other general metadata still needs comprehensive admission and fallible allocation.
 
 ## Kernel blocking locks
 
@@ -135,7 +137,8 @@ A const-initializable `WaiterSource` prepares its list fallibly on first
 contention. Uncontended data-lock acquisition allocates nothing. Initialization
 uses a short independent spin guard; admission/entry allocation follows after
 that guard is released. The list control block remains with the lock source
-until destruction, outside the entry count. Source destruction closes/discards
+until final source/token/weak destruction, outside the entry count but within
+separate list admission. Source destruction closes/discards
 entries even if registration tokens retain the list. A free mutex can report
 ready without retaining a registration; normal acquisition always retries CAS.
 

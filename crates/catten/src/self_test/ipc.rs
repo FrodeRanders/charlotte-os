@@ -1016,7 +1016,7 @@ pub fn test_close_watch_admission() {
             completion::complete_registered(client, cap, completion, OpResult::Ok(99)).unwrap();
         }
     });
-    let list = ObserverList::try_new(1).unwrap();
+    let list = ObserverList::try_new(1, false).unwrap();
     let token = list.register(Arc::downgrade(&late_observer), staged.take_charge()).unwrap();
     assert!(!captured.set_event_observation(late_observer.clone(), token));
     assert_eq!(staged.commit(), cap);
@@ -1037,7 +1037,7 @@ pub fn test_close_watch_admission() {
 
     // The detached batch keeps its charges and weak references until it is
     // destroyed. Registration-token Drop alone cannot credit detached storage.
-    let list = ObserverList::try_new(2).unwrap();
+    let list = ObserverList::try_new(2, false).unwrap();
     let account = budget::DomainBudget::new(2);
     let first = budget::reserve(&account, false).unwrap();
     let second = budget::reserve(&account, false).unwrap();
@@ -1071,7 +1071,7 @@ pub fn test_close_watch_admission() {
     batch.notify();
     assert_eq!(hits.load(Ordering::Relaxed), 1);
     assert_eq!(account.used(), 0);
-    let list = ObserverList::try_new(1).unwrap();
+    let list = ObserverList::try_new(1, false).unwrap();
     let token = list
         .register(Arc::downgrade(&observer), budget::reserve(&account, false).unwrap())
         .unwrap();

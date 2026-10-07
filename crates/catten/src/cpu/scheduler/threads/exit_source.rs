@@ -1,9 +1,6 @@
 //! Owned, bounded thread-exit subscriptions, independent of the thread table.
 
-use alloc::sync::{
-    Arc,
-    Weak,
-};
+use alloc::sync::Weak;
 
 use crate::{
     completion::watch_budget,
@@ -11,6 +8,7 @@ use crate::{
     klib::observer::{
         Observer,
         registration::{
+            ListRef,
             ObserverList,
             Registration,
             RegistrationError,
@@ -22,7 +20,7 @@ pub(crate) type ExitRegistration = Registration<watch_budget::Charge>;
 
 #[derive(Debug)]
 pub(crate) struct ExitSource {
-    list: Mutex<Option<Arc<ObserverList<watch_budget::Charge>>>>,
+    list: Mutex<Option<ListRef<watch_budget::Charge>>>,
 }
 
 impl ExitSource {
@@ -40,7 +38,10 @@ impl ExitSource {
         let list = {
             let mut slot = self.list.lock();
             if slot.is_none() {
-                *slot = Some(ObserverList::try_new(watch_budget::MAX_THREAD_WATCHES)?);
+                *slot = Some(ObserverList::try_new(
+                    watch_budget::MAX_THREAD_WATCHES,
+                    charge.platform(),
+                )?);
             }
             slot.as_ref().unwrap().clone()
         };

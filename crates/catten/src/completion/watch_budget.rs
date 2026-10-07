@@ -45,6 +45,12 @@ pub(crate) struct Charge {
     platform: bool,
 }
 
+impl Charge {
+    pub(crate) fn platform(&self) -> bool {
+        self.platform
+    }
+}
+
 pub(crate) fn reserve(domain: &Arc<DomainBudget>, platform: bool) -> Result<Charge, ()> {
     let mut local = domain.0.lock();
     local.reserve().map_err(|_| ())?;

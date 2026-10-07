@@ -34,6 +34,14 @@ impl DomainBudget {
         self.0.lock().count.used()
     }
 
+    pub(crate) fn list_platform(&self) -> Result<bool, super::registration::RegistrationError> {
+        let local = self.0.lock();
+        if local.retired {
+            return Err(super::registration::RegistrationError::Closed);
+        }
+        Ok(local.platform)
+    }
+
     pub(crate) fn retire(&self) {
         self.0.lock().retired = true;
     }

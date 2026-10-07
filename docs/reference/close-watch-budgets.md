@@ -39,15 +39,16 @@ Endpoint and thread lifecycle watches use a fallible one-shot `ObserverList`, se
 from the existing scheduler-readiness observer queues. Each registration is a
 fixed-size, individually allocated list entry with a weak observer reference
 and an owning charge. There is no growing vector or retained spare list capacity.
-List and callback allocation use `Arc::try_new`; entry allocation uses
+Lists use fallible charged allocation and callbacks use `Arc::try_new`; entry allocation uses
 `Box::try_new`. The charge sits outside that Box so storage and its weak
 reference are destroyed before admission is returned. The kernel enables the
 nightly allocator API for these paths.
 Registration-count admission bounds this fixed-layout entry storage, not the
 entire allocator's metadata or every weak Arc allocation in the kernel.
 Thread sources allocate the list lazily on their first subscription. An empty
-list/control block can remain for that thread's lifetime; its backing is not
-charged by these entry counters. Global thread/control-block admission remains
+list/control block can remain for that thread's lifetime; it now consumes separate
+[observer-list allocation admission](observer-list-admission.md), through final
+token/weak release. It is independent of these entry counters. Global thread/control-block admission remains
 separate unfinished work.
 
 The completion owns both its callback and registration token. Cancelling,
@@ -58,7 +59,7 @@ notification-batch destruction are iterative, avoiding recursive list teardown
 on kernel stacks.
 Namespace teardown and replacement explicitly release registrations even if
 a kernel waiter retains the old completion object; its separate record charge
-still follows that retained strong reference.
+still follows its allocation through retained strong and weak references.
 
 Endpoint close marks the list closed and detaches a notification batch without
 allocation. IPC releases its registry lock before invoking callbacks. A detached

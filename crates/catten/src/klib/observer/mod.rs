@@ -1,5 +1,6 @@
 //! Observer pattern implementation for event notification
 
+pub(crate) mod list_budget;
 pub(crate) mod registration;
 pub(crate) mod waiter_budget;
 pub(crate) mod waiter_source;
@@ -39,9 +40,13 @@ impl WaitSponsor {
         self.0.used()
     }
 
+    pub(crate) fn list_platform(&self) -> Result<bool, registration::RegistrationError> {
+        self.0.list_platform()
+    }
+
     pub(crate) fn register(
         &self,
-        list: &Arc<registration::ObserverList<waiter_budget::Charge>>,
+        list: &registration::ListRef<waiter_budget::Charge>,
         observer: Weak<dyn Observer>,
     ) -> Result<WaitRegistration, registration::RegistrationError> {
         let charge = waiter_budget::reserve(&self.0)?;
