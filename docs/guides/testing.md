@@ -779,6 +779,18 @@ generation-aware caller identity.
 
 ## Renewed security regressions (2026-10-05)
 
+Deferred thread-retirement regressions additionally exercise four standalone
+host list tests through `scripts/run-host-tests.sh`. A per-test-thread allocator
+tracer checks zero allocations during staging, filtering, requeue and explicit
+release of 1,024 prepared nodes. Abandoned nodes/lists retain their payloads.
+Guest thread-admission fixtures check pre-stack node rejection, actual warmed
+kernel-stack recovery, current-stack/LP-head retention, unlocked exit callbacks
+and the retirement transition fence; Arm also checks a synthetic ownership flag.
+The scheduled exit-watch fixture checks exact self-exit handle/context retention
+before switching and completion afterward. Existing real remote-abort verifiers
+still run. See
+[thread retirement](../reference/thread-retirement.md) for fixture limits.
+
 `scripts/run-host-tests.sh` exercises the production socket registry against
 fixed smoltcp storage: rejected creation delivery, dead-owner generations,
 unactivated expiry, admission reserves and buffer-count recovery. It also

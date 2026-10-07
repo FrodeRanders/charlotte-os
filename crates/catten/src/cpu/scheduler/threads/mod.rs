@@ -23,11 +23,11 @@
 //! the context switch away from them.
 
 pub(crate) mod exit_source;
+pub(crate) mod retirement_tests;
 pub mod waker;
 
 use alloc::{
     boxed::Box,
-    collections::BTreeMap,
     sync::{
         Arc,
         Weak,
@@ -56,7 +56,13 @@ use crate::{
         scheduler::threads::waker::Waker,
     },
     klib::{
-        collections::id_table::IdTable,
+        collections::{
+            id_table::IdTable,
+            retirement_list::{
+                PreparedEntry,
+                RetirementList,
+            },
+        },
         observer::Observer,
         statistics::{
             RunningStatistics,
@@ -97,15 +103,28 @@ pub(crate) fn account_retired_cpu_ticks(thread: &Thread) {
 /// stack (in `ThreadContext::drop`) while it is still executing on it, so
 /// `abort` stages the dying thread here instead of dropping it.
 ///
-/// The list is **per-LP** on purpose: a thread is reaped only by the LP it died
-/// on, and only from [`reap_dead_threads`], which runs in `cond_yield_lp`
-/// *after* the `switch_ctx` that leaves the dying thread's stack. This
-/// guarantees the dying thread is no longer executing anywhere before its stack
-/// is freed. A shared, cross-LP list would let one LP free a stack that a thread
-/// on another LP has not yet switched off — a use-after-free that manifests as a
-/// translation fault on the next timer-IRQ return.
-pub static DEAD_THREADS: LazyLock<RwLock<BTreeMap<LpId, Vec<Thread>>>> =
-    LazyLock::new(|| RwLock::new(BTreeMap::new()));
+/// The list is **per-LP** on purpose. Arm reaps after a scheduling switch;
+/// x86 uses a pinned scheduled reaper on the dying thread's LP. Both retain
+/// the node if its stack contains the executing SP; Arm additionally checks
+/// the context's assembly ownership flag. A shared, cross-LP reaper could free
+/// a stack before its owning LP has switched away.
+static DEAD_THREADS: RwLock<
+    [RetirementList<Thread>; crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS],
+> = RwLock::new(
+    [const { RetirementList::new() }; crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS],
+);
+
+pub(crate) fn has_staged_asid(asid: AddressSpaceId) -> bool {
+    DEAD_THREADS.read().iter().flat_map(RetirementList::iter).any(|thread| thread.asid == asid)
+}
+
+pub(crate) fn has_staged_generation(generation: ThreadGeneration) -> bool {
+    DEAD_THREADS
+        .read()
+        .iter()
+        .flat_map(RetirementList::iter)
+        .any(|thread| thread.generation == generation)
+}
 
 /// Number of threads currently moving from the master table into an LP's
 /// deferred-reaping list.
@@ -148,10 +167,11 @@ pub fn stage_dead_thread(lp: LpId, tid: ThreadId, mut thread: Thread) {
     thread.retired_tid = Some(tid);
     thread.reap_lp = Some(lp);
     thread.trace_lifecycle(crate::debug_trace::THREAD_LIFECYCLE_STAGE, current_stack_pointer());
-    DEAD_THREADS.write().entry(lp).or_default().push(thread);
+    let storage = thread.retirement.take().expect("thread retirement storage missing");
+    DEAD_THREADS.write()[lp as usize].push(storage.publish(thread));
 }
 
-/// Complete remote abort requests after the owning LP has selected another
+/// Complete abort requests after the owning LP has selected another
 /// context. The old thread intentionally remains `Running(lp)` in the master
 /// table during the switch so its saved-stack slot stays valid.
 pub fn retire_requested_threads() {
@@ -161,34 +181,26 @@ pub fn retire_requested_threads() {
         .get_lp_scheduler()
         .lock()
         .get_tid();
-    let requested: Vec<(ThreadId, ThreadGeneration)> = MASTER_THREAD_TABLE
-        .read()
-        .iter()
-        .enumerate()
-        .filter_map(|(tid, thread)| {
-            let thread = thread.as_ref()?;
-            (thread.abort_owner_lp.load(Ordering::Acquire) == lp as usize
-                && tid != active_tid.unwrap_or(usize::MAX)
-                && thread.abort_requested.load(Ordering::Acquire))
-            .then_some((tid, thread.generation))
-        })
-        .collect();
-
-    for (tid, generation) in requested {
-        let _retirement = begin_retirement();
-        let thread = {
+    // Capture a finite scan ceiling, not a heap-backed teardown snapshot.
+    // Each selected occupant is claimed under the table using its own request
+    // and generation; new slots beyond the ceiling wait for the next boundary.
+    let ceiling = MASTER_THREAD_TABLE.read().iter().len();
+    for tid in 0..ceiling {
+        let (thread, generation, _retirement) = {
             let mut table = MASTER_THREAD_TABLE.write();
-            let still_requested = table.get(tid).is_ok_and(|thread| {
-                thread.generation == generation
-                    && thread.abort_owner_lp.load(Ordering::Acquire) == lp as usize
+            let requested = table.get(tid).is_ok_and(|thread| {
+                thread.abort_owner_lp.load(Ordering::Acquire) == lp as usize
+                    && Some(tid) != active_tid
                     && thread.abort_requested.load(Ordering::Acquire)
             });
-            if !still_requested {
+            if !requested {
                 continue;
             }
+            let retirement = begin_retirement();
             let thread = table.take_element(tid).expect("validated abort target disappeared");
+            let generation = thread.generation;
             account_retired_cpu_ticks(&thread);
-            thread
+            (thread, generation, retirement)
         };
         record_exit(lp, tid, generation);
         stage_dead_thread(lp, tid, thread);
@@ -217,44 +229,78 @@ pub(crate) fn start_reapers() {
 /// physical invalidation can complete with IRQs enabled.
 pub fn reap_dead_threads() {
     let lp = crate::cpu::isa::lp::ops::get_lp_id();
-    // Move this LP's dead threads out under the lock, then drop them after
-    // releasing it so their `Drop` (which frees stacks via the frame allocator)
-    // does not run while holding the DEAD_THREADS lock.
-    let (dead, _retirement): (Vec<Thread>, RetirementGuard) = {
+    reap_dead_threads_with(lp, current_stack_pointer());
+}
+
+/// Own both the detached nodes and their lifecycle publication fence. Drop
+/// retains the marker as well as nodes; abandonment cannot look like reaping.
+struct ReapBatch {
+    threads: RetirementList<Thread>,
+    deferred: RetirementList<Thread>,
+    transition: Option<RetirementGuard>,
+}
+
+impl ReapBatch {
+    fn complete(mut self) {
+        assert!(
+            self.threads.is_empty() && self.deferred.is_empty(),
+            "unfinished thread reap batch"
+        );
+        drop(self.transition.take());
+    }
+}
+
+impl Drop for ReapBatch {
+    fn drop(&mut self) {
+        if let Some(transition) = self.transition.take() {
+            core::mem::forget(transition);
+        }
+    }
+}
+
+fn reap_dead_threads_with(lp: LpId, current_sp: usize) {
+    let mut batch = {
         let mut guard = DEAD_THREADS.write();
-        match guard.get_mut(&lp) {
-            Some(threads) if !threads.is_empty() => {
-                // The reaper's local vector is another publication gap.
-                // Keep it covered through deferred reinsert and final Drop.
-                let retirement = begin_retirement();
-                (core::mem::take(threads), retirement)
-            }
-            _ => return,
+        let threads = &mut guard[lp as usize];
+        if threads.is_empty() {
+            return;
+        }
+        let transition = begin_retirement();
+        ReapBatch {
+            threads: core::mem::take(threads),
+            deferred: RetirementList::new(),
+            transition: Some(transition),
         }
     };
-
-    // `switch_ctx` is coroutine-like: it returns through the incoming
-    // context's older `cond_yield_lp` invocation.  Consequently an LP-local
-    // reap list can contain that very incoming context (for example after a
-    // remote abort/re-admission race).  LP identity alone is therefore not a
-    // sufficient proof that a stack is no longer live.  Never unmap the stack
-    // containing the instruction stream's current SP; leave it for the next
-    // switch on this LP.
-    let current_sp = current_stack_pointer();
-    let (deferred, reclaimable): (Vec<_>, Vec<_>) = dead.into_iter().partition(|thread| {
-        let is_current_stack = thread.context.kernel_stack_contains(current_sp);
-        let phase = if is_current_stack {
+    // Staging prepends nodes. Preserve prior insertion-order notification while
+    // walking the detached batch iteratively, outside the registry guard.
+    batch.threads.reverse();
+    while let Some(entry) = batch.threads.pop() {
+        let thread = entry.value();
+        // switch_ctx returns through the incoming context's older yield call.
+        // Retain the actual executing stack, even on its owning LP. ARM also
+        // supplies the assembly ownership handshake; x86 migration stays off.
+        let in_use = thread.context.kernel_stack_contains(current_sp) || thread.context.is_on_cpu();
+        let phase = if in_use {
             crate::debug_trace::THREAD_LIFECYCLE_REAP_DEFER
         } else {
             crate::debug_trace::THREAD_LIFECYCLE_REAP_RECLAIM
         };
         thread.trace_lifecycle(phase, current_sp);
-        is_current_stack
-    });
-    if !deferred.is_empty() {
-        DEAD_THREADS.write().entry(lp).or_default().extend(deferred);
+        if in_use {
+            batch.deferred.push(entry);
+        } else {
+            entry.release();
+        }
     }
-    drop(reclaimable);
+    batch.deferred.reverse();
+    {
+        let mut guard = DEAD_THREADS.write();
+        while let Some(entry) = batch.deferred.pop() {
+            guard[lp as usize].push(entry);
+        }
+    }
+    batch.complete();
 }
 
 #[cfg(target_arch = "aarch64")]
@@ -401,6 +447,9 @@ pub struct Thread {
     retired_tid: Option<ThreadId>,
     reap_lp: Option<LpId>,
     exit_observers: exit_source::ExitSource,
+    // One empty node follows this owner until it stages itself. A staged
+    // thread has None here: its containing node owns the whole payload.
+    retirement: Option<PreparedEntry<Thread>>,
 }
 
 pub const THREAD_CTX_OFFSET: usize = offset_of!(Thread, context);
@@ -414,12 +463,22 @@ impl Thread {
         asid: AddressSpaceId,
         entry_point: extern "C" fn(),
     ) -> Result<Self, crate::cpu::scheduler::system_scheduler::Error> {
+        Self::try_new_with_retirement(asid, entry_point, PreparedEntry::try_new)
+    }
+
+    fn try_new_with_retirement(
+        asid: AddressSpaceId,
+        entry_point: extern "C" fn(),
+        allocate: impl FnOnce() -> Result<PreparedEntry<Thread>, core::alloc::AllocError>,
+    ) -> Result<Self, crate::cpu::scheduler::system_scheduler::Error> {
         use crate::cpu::scheduler::system_scheduler::Error;
         let address_space = if asid == KERNEL_ASID {
             None
         } else {
             Some(crate::memory::current_address_space_handle(asid).ok_or(Error::ThreadTerminated)?)
         };
+        // Failure precedes generation claim, stack backing and publication.
+        let retirement = allocate().map_err(|_| Error::ThreadPreparationFailed)?;
         let generation = NEXT_THREAD_GENERATION
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
                 charlotte_lifecycle::claim_generation(next).map(|(_, following)| following)
@@ -464,6 +523,7 @@ impl Thread {
             retired_tid: None,
             reap_lp: None,
             exit_observers: exit_source::ExitSource::new(),
+            retirement: Some(retirement),
         })
     }
 

@@ -604,13 +604,15 @@ impl SystemScheduler {
         // A migration/context-switch boundary can leave the separately stored
         // ThreadState snapshot briefly pointing at the previous LP; preferring
         // that stale snapshot makes self-abort remove from the wrong scheduler.
-        let current_lp =
-            self.current_lp_for_thread_generation(tid, expected_generation).or(state_lp);
-        // A remote caller must not remove a context which is still executing:
-        // its owning CPU may otherwise enter the kernel after the address space
-        // or stack has already been reclaimed. Ask that CPU to switch first.
+        let executing_lp = self.current_lp_for_thread_generation(tid, expected_generation);
+        let current_lp = executing_lp.or(state_lp);
+        // Keep an executing context and its scheduler handle until the owner
+        // switches away, including self-abort. Removing the local handle here
+        // makes the switch treat the outgoing context as absent, skipping its
+        // save and ARM's on_cpu release handshake. Remote queued work also
+        // remains owned until that LP's safe retirement boundary.
         if let Some(owner_lp) = current_lp
-            && owner_lp != get_lp_id()
+            && (owner_lp != get_lp_id() || executing_lp.is_some())
         {
             let table = MASTER_THREAD_TABLE.read();
             let thread = table.get(tid).map_err(|_| Error::InvalidThread)?;
@@ -619,7 +621,10 @@ impl SystemScheduler {
             }
             thread.abort_owner_lp.store(owner_lp as usize, Ordering::Release);
             thread.abort_requested.store(true, Ordering::Release);
-            if LocalIntCtlr::send_unicast_ipi(owner_lp, SCHEDULER_IPI_VECTOR).is_err() {
+            drop(table);
+            if owner_lp == get_lp_id() {
+                self.lp_schedulers[&owner_lp].lock().set_ctx_switch_pending();
+            } else if LocalIntCtlr::send_unicast_ipi(owner_lp, SCHEDULER_IPI_VECTOR).is_err() {
                 // Keep the request authoritative even if the prompt IPI could
                 // not be delivered. The owner LP's periodic scheduler tick
                 // will observe it and retire the thread; clearing it here

@@ -274,14 +274,47 @@ extern "C" fn held_worker() {
     }
 }
 
+extern "C" fn held_self_exit_worker() {
+    held_worker();
+    let tid = scheduler::system_scheduler::get_thread_id().unwrap();
+    let generation = MASTER_THREAD_TABLE.read().get(tid).unwrap().generation;
+    let lp = crate::cpu::isa::lp::ops::get_lp_id();
+    scheduler::system_scheduler::SYSTEM_SCHEDULER
+        .read()
+        .abort_thread_generation(tid, generation)
+        .unwrap();
+    // Self-exit must retain the exact outgoing handle/context until the
+    // switch has saved it and released the architecture's CPU ownership.
+    {
+        let table = MASTER_THREAD_TABLE.read();
+        let thread = table.get(tid).unwrap();
+        assert_eq!(thread.generation, generation);
+        assert!(thread.abort_requested.load(Ordering::Acquire));
+        assert_eq!(thread.abort_owner_lp.load(Ordering::Acquire), lp as usize);
+        #[cfg(target_arch = "aarch64")]
+        assert!(thread.context.is_on_cpu());
+    }
+    assert_eq!(
+        scheduler::system_scheduler::SYSTEM_SCHEDULER
+            .read()
+            .get_lp_scheduler()
+            .lock()
+            .get_current_handle(),
+        Some((tid, generation))
+    );
+    scheduler::yield_lp();
+    panic!("self-exit resumed after its retirement request");
+}
+
 pub(crate) fn test_scheduled_cleanup() {
     super::open_address_space(SCHEDULED_CLIENT, 4);
     let account = super::watch_admission(SCHEDULED_CLIENT).unwrap();
     let mut generation = 0;
     RELEASE_WORKER.store(false, Ordering::Release);
-    let tid = scheduler::spawn_thread_after_publish(KERNEL_ASID, held_worker, |_, captured| {
-        generation = captured
-    });
+    let tid =
+        scheduler::spawn_thread_after_publish(KERNEL_ASID, held_self_exit_worker, |_, captured| {
+            generation = captured
+        });
     for _ in 0..128 {
         let cap =
             super::observe_thread_exit_with_generation(SCHEDULED_CLIENT, tid, Some(generation))
@@ -317,7 +350,7 @@ pub(crate) fn test_scheduled_cleanup() {
     assert_eq!(account.used(), 0);
     super::close_address_space(SCHEDULED_CLIENT);
     crate::logln!(
-        "[exit watches] SUCCESS: live-target cancel/rearm, real exit, fast worker \
-         registration-before-admission and deferred producer cancellation"
+        "[exit watches] SUCCESS: live-target cancel/rearm, self-exit switch ownership, fast \
+         worker registration-before-admission and deferred producer cancellation"
     );
 }

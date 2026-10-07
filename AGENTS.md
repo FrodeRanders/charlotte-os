@@ -313,6 +313,17 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   Missing capacity rejects before extraction/fencing or retains the existing
   closing owner. The panic wrapper is confined to mandatory kernel initialization
   and trusted fixtures.
+- Runtime threads prepare an owning retirement-list node fallibly before
+  generation claim, stack backing and publication. Staging, detached-batch
+  filtering and reinsertion use those nodes and inline LP heads, never growing
+  maps/vectors. `ReapBatch` owns its nodes and transition marker through explicit
+  completion; abandonment retains both. Release detached nodes only on the
+  owner LP after the executing-stack and architecture ownership checks, outside
+  thread/staging guards. Self-exit retains its current handle/context through
+  the outgoing save and CPU-ownership handshake; mark a requested abort rather
+  than removing that handle before switching. Owner-LP abort cleanup scans a
+  captured slot ceiling and claims each exact occupant under the table; do not
+  restore a teardown snapshot there. See `docs/reference/thread-retirement.md`.
 - Runtime thread stacks use `thread_stack::Stacks` for both user/kernel backing.
   Reserve the full configured user capacity plus sixteen kernel pages before
   allocation; kernel-only threads reserve sixteen pages. Keep the original

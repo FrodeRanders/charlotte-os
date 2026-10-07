@@ -48,8 +48,8 @@ use crate::{
                 get_thread_id,
             },
             threads::{
-                DEAD_THREADS,
                 MASTER_THREAD_TABLE,
+                has_staged_generation,
                 retirement_in_flight,
             },
         },
@@ -251,11 +251,7 @@ extern "C" fn remote_abort_coordinator() {
             .read()
             .get(target)
             .is_ok_and(|thread| thread.generation == target_generation);
-        let in_dead = DEAD_THREADS
-            .read()
-            .values()
-            .flatten()
-            .any(|thread| thread.generation == target_generation);
+        let in_dead = has_staged_generation(target_generation);
         // Retirement moves a thread between two separately locked tables.
         // Do not mistake the remove-before-stage interval for completed
         // reaping; a recycled TID, conversely, must not keep us waiting for an

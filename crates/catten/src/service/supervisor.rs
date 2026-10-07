@@ -1275,11 +1275,7 @@ pub fn domain_exited(domain: &ServiceDomain) -> bool {
     if crate::cpu::scheduler::threads::retirement_in_flight() {
         return false;
     }
-    let staged = crate::cpu::scheduler::threads::DEAD_THREADS
-        .read()
-        .values()
-        .flatten()
-        .any(|thread| thread.asid == domain.asid);
+    let staged = crate::cpu::scheduler::threads::has_staged_asid(domain.asid);
     charlotte_lifecycle::retirement_snapshot_is_quiescent(
         epoch_before,
         crate::cpu::scheduler::threads::retirement_epoch(),

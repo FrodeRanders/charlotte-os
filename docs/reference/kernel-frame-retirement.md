@@ -84,6 +84,9 @@ IRQs enabled. IRQ tails only stage retirement; they do not wait synchronously
 on an initiator they may have interrupted. A timeout leaves backing unavailable
 and does not prove that an unresponsive LP cannot resume. Retry requires a
 fresh successful rendezvous. See [hardware quiescence](hardware-quiescence.md).
+Deferred thread staging and filtering now use
+[preallocated owning nodes](thread-retirement.md), including their lifecycle
+transition fence; that storage no longer allocates after thread extraction.
 
 ## Remaining SEC-18 scope
 

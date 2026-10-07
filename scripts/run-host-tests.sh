@@ -24,6 +24,13 @@ mkdir -p "$repo_root/target/host-self-tests"
     -o "$repo_root/target/host-self-tests/id-table-tests"
 "$repo_root/target/host-self-tests/id-table-tests"
 
+# Thread retirement storage is prepared before publication; linking/filtering
+# and explicit node release run through a host allocation tracer.
+"$host_rustc" --edition=2024 --test \
+    "$repo_root/crates/catten/src/klib/collections/retirement_list.rs" \
+    -o "$repo_root/target/host-self-tests/retirement-list-tests"
+"$repo_root/target/host-self-tests/retirement-list-tests"
+
 # Scratch metadata admission/release is architecture independent. Exercise the
 # production allocator directly, including its local metadata-failure adapter.
 "$host_rustc" --edition=2024 --test \
