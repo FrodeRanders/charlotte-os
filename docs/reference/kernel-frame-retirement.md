@@ -21,15 +21,30 @@ returning any data to the allocator. New stacks may reuse the virtual region
 after detachment; its old physical frames remain unavailable until invalidation
 finishes. The allocator cannot assign those old frames to the new stack early.
 
-An incomplete detachment or failed invalidation preserves the receipt. Explicit
-release can retry; already returned frames cannot be released twice. Dropping
-unfinished cleanup permanently quarantines its remaining physical backing and
-increments `QUARANTINED_KERNEL_PAGES`. Drop neither initiates a rendezvous nor
-guesses that backing is safe to reuse. There is currently no administrative
-quarantine-recovery API or external telemetry field for that counter.
+Incomplete detachment retains backing. A failed invalidation preserves a receipt
+that may retry its barrier before physical release begins. Once that barrier
+succeeds, the receipt arms a terminal physical-release phase before invoking the
+allocator. Any physical error or interruption prevents another release or receipt
+reuse; it must never revisit addresses already returned to a successor owner.
+Only a completely successful walk resets the receipt for reuse. Repeated release
+of a successfully completed receipt remains harmless.
+
+Physical cleanup expands each standard/large/huge extent into 4 KiB frames and
+uses a fixed sixteen-address batch. Each physical allocator hold releases at
+most sixteen base frames, with the guard gone between batches. No heap allocation,
+address-space lookup or new table/arena guard is needed. This bounds each hold,
+not the total walk time, fair scheduling or other allocator helpers.
+
+Confirmed base-frame progress updates the diagnostic count even when it splits a
+large extent. Dropping unfinished cleanup permanently quarantines its remaining
+backing and increments `QUARANTINED_KERNEL_PAGES`; uncertain interrupted batch
+progress may conservatively overcount. Drop neither retries physical release nor
+initiates a rendezvous. Stack owners retain their whole original reservation on
+uncertain completion even if most actual frames released. There is no
+administrative quarantine-recovery API or external telemetry field for the counter.
 
 This kernel boundary uses a mutable owning receipt for retry, rather than an
-allocated error owner: the same helper initializes the kernel heap before a
+allocated error owner before physical release: the same helper initializes the kernel heap before a
 Rust allocator exists. Its inline metadata has 256 frame slots **per operation**.
 The current boot heap needs at most 132 large frames; kernel stacks use sixteen
 4 KiB frames. Oversized, unaligned or overflowing operations fail before
@@ -91,6 +106,18 @@ and mapping failure after an installed prefix, real `AlreadyMapped` protection
 of foreign backing, and pre-mutation metadata/range rejection. A Drop fixture
 deliberately quarantines **one 4 KiB page** for the lifetime of the test guest;
 its free-frame count must not increase and its diagnostic count must increase.
+
+Additional fixtures verify 35 standard pages release in batches of 16/16/3, a
+real 2 MiB leaf releases in thirty-two batches, and physical/table guards are
+available at each successful batch boundary. Injected rejection of its final
+base-frame release preserves one frame and freezes the receipt. A fresh physical
+owner claims an already released address; rejected retry leaves it untouched and
+normal successor Drop releases it. Receipt reinitialization also rejects.
+A simulated interruption after a real completed barrier retains one further
+frame without permitting a physical retry. Together with the original Drop case,
+these kernel-range fixtures retain three 4 KiB frames. No allocator corruption,
+real panic unwinding or physical hardware failure is injected. See the
+[physical-release audit record](../reports/audits/2026-10-07-security-kernel-release.md).
 
 The host epoch tests cover stale, duplicate and non-regressing acknowledgements,
 exclusive coordinator ownership and identity exhaustion. The boot fake sender

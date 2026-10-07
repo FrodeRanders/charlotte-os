@@ -116,6 +116,8 @@ pub(crate) fn test_kernel_retirement() {
     assert_eq!(free(), baseline);
     assert!(!KERNEL_AS.lock().is_mapped(base).unwrap());
     assert_eq!(retirement.len, 0);
+    test_physical_release(base);
+    let baseline = free();
     // Abandonment is deliberately fail-closed. This fixture permanently
     // reserves one 4 KiB page; it must never be adopted/freed a second time.
     let quarantined = QUARANTINED_KERNEL_PAGES.load(Ordering::Relaxed);
@@ -129,5 +131,143 @@ pub(crate) fn test_kernel_retirement() {
         "[kernel retirement] detach-before-release, failed barrier/retry, allocation/map \
          rollback, foreign-leaf preservation, bounded metadata and Drop quarantine (one reserved \
          test page) passed"
+    );
+}
+
+fn invalidate(base: VAddr, pages: usize) -> bool {
+    crate::cpu::isa::memory::tlb::try_inval_range_kernel(base, pages).is_ok()
+}
+
+fn guards_available() {
+    assert!(PHYSICAL_FRAME_ALLOCATOR.try_lock().is_some());
+    assert!(KERNEL_AS.try_lock().is_some());
+}
+
+fn test_physical_release(base: VAddr) {
+    // Cross receipt entries and exercise a short final batch. No allocator
+    // guard survives into the between-batch hook or another subsystem.
+    let mut retirement = RetiredKernelRange::new();
+    let baseline = free();
+    try_allocate_and_map_range(base, PageSize::Standard, 35, &mut retirement).unwrap();
+    retire_kernel_range(base, PageSize::Standard, 35, &mut retirement).unwrap();
+    let mut batches = 0;
+    let mut boundaries = 0;
+    retirement
+        .release_with_batches(
+            invalidate,
+            |frames| {
+                guards_available();
+                batches += 1;
+                assert_eq!(
+                    frames.len(),
+                    if batches == 3 {
+                        3
+                    } else {
+                        16
+                    }
+                );
+                release_batch(frames)
+            },
+            || {
+                guards_available();
+                boundaries += 1;
+            },
+        )
+        .unwrap();
+    assert_eq!((batches, boundaries), (3, 3));
+    assert_eq!(free(), baseline);
+
+    // A real 2 MiB leaf must be detached and invalidated before any of its
+    // 512 base frames are returned. Warm any architecture table metadata.
+    let heap_probe = physical::HEAP_PHYS_BASE.load(Ordering::Relaxed);
+    let large_base = base + PageSize::Large.num_bytes();
+    try_allocate_and_map_range(large_base, PageSize::Large, 1, &mut retirement).unwrap();
+    retire_kernel_range(large_base, PageSize::Large, 1, &mut retirement).unwrap();
+    let mut batches = 0;
+    retirement
+        .release_with_batches(
+            invalidate,
+            |frames| {
+                batches += 1;
+                assert_eq!(frames.len(), RELEASE_BATCH_PAGES);
+                release_batch(frames)
+            },
+            guards_available,
+        )
+        .unwrap();
+    assert_eq!(batches, 32);
+    let baseline = free();
+    let quarantined = QUARANTINED_KERNEL_PAGES.load(Ordering::Relaxed);
+    try_allocate_and_map_range(large_base, PageSize::Large, 1, &mut retirement).unwrap();
+    let first = KERNEL_AS.lock().translate_address(large_base).unwrap();
+    retire_kernel_range(large_base, PageSize::Large, 1, &mut retirement).unwrap();
+    assert!(!KERNEL_AS.lock().is_mapped(large_base).unwrap());
+    let mut batches = 0;
+    assert!(matches!(
+        retirement.release_with_batches(
+            invalidate,
+            |frames| {
+                batches += 1;
+                if batches == 32 {
+                    let (completed, result) = release_batch(&frames[..15]);
+                    result.unwrap();
+                    // Reject before the last real deallocation. Its backing
+                    // remains unavailable; earlier frames are genuinely free.
+                    (completed, Err(physical::Error::InvalidPAddr))
+                } else {
+                    release_batch(frames)
+                }
+            },
+            guards_available,
+        ),
+        Err(Error::PfaError(physical::Error::InvalidPAddr))
+    ));
+    assert_eq!(batches, 32);
+    assert_eq!(retirement.released_pages, 511);
+    assert!(retirement.release_started);
+    guards_available();
+    assert_eq!(free(), baseline - 1);
+    // Kernel physical-ownership fixture: reclaim the first freed address for
+    // a new owner to reproduce allocator reuse, then forbid stale cleanup.
+    PHYSICAL_FRAME_ALLOCATOR.lock().mark_frame_unavailable(first).unwrap();
+    let successor = PreparingKernelFrame {
+        frame: Some(first),
+        page_size: PageSize::Standard,
+    };
+    assert!(matches!(
+        retirement.release_with_batches(
+            |_, _| panic!("frozen receipt retried invalidation"),
+            |_| panic!("frozen receipt touched successor backing"),
+            || panic!("frozen receipt ran a completion hook"),
+        ),
+        Err(Error::RetirementFailed)
+    ));
+    assert!(matches!(retirement.begin(base, PageSize::Standard, 0), Err(Error::InvalidRange)));
+    assert_eq!(free(), baseline - 2);
+    drop(retirement);
+    assert_eq!(QUARANTINED_KERNEL_PAGES.load(Ordering::Relaxed), quarantined + 1);
+    assert_eq!(free(), baseline - 2);
+    drop(successor);
+    assert_eq!(free(), baseline - 1);
+    // Large allocation updates a legacy boot-heap diagnostic probe. This
+    // serialized fixture must not leave it pointing at reclaimed test data.
+    physical::HEAP_PHYS_BASE.store(heap_probe, Ordering::Relaxed);
+
+    // Simulate interruption after the real barrier and phase admission but
+    // before its first physical callback. There is no synthetic hardware ACK.
+    let mut interrupted = RetiredKernelRange::new();
+    try_allocate_and_map_range(base, PageSize::Standard, 1, &mut interrupted).unwrap();
+    retire_kernel_range(base, PageSize::Standard, 1, &mut interrupted).unwrap();
+    assert!(invalidate(base, 1));
+    interrupted.quiescent = true;
+    interrupted.release_started = true;
+    assert!(matches!(interrupted.release(), Err(Error::RetirementFailed)));
+    drop(interrupted);
+    assert_eq!(free(), baseline - 2);
+    assert_eq!(QUARANTINED_KERNEL_PAGES.load(Ordering::Relaxed), quarantined + 2);
+    crate::logln!(
+        "[kernel physical release] 35-page/2 MiB batches, post-guard completion, terminal partial \
+         failure, successor preservation and interrupted owner passed (two additional retained \
+         base frames)"
     );
 }

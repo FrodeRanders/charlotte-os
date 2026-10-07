@@ -92,6 +92,20 @@ impl PageSize {
 /// uses at most 132 large frames; kernel stacks use 16 standard frames.
 pub(crate) const KERNEL_RANGE_FRAME_CAPACITY: usize = 256;
 pub(crate) static QUARANTINED_KERNEL_PAGES: AtomicUsize = AtomicUsize::new(0);
+const RELEASE_BATCH_PAGES: usize = 16;
+
+// Expand large/huge extents into base frames before acquiring the allocator.
+// Never hold it for an entire large-frame deallocation or a whole receipt.
+fn release_batch(frames: &[PAddr]) -> (usize, Result<(), physical::Error>) {
+    assert!(frames.len() <= RELEASE_BATCH_PAGES);
+    let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+    for (index, frame) in frames.iter().copied().enumerate() {
+        if let Err(error) = allocator.deallocate_frame(frame) {
+            return (index, Err(error));
+        }
+    }
+    (frames.len(), Ok(()))
+}
 
 /// Owns data removed from a kernel range until completed invalidation. The
 /// caller supplies this owner outside its arena/table guard. No frame address
@@ -106,6 +120,8 @@ pub struct RetiredKernelRange {
     len: usize,
     detached: bool,
     quiescent: bool,
+    release_started: bool,
+    released_pages: usize,
 }
 
 impl RetiredKernelRange {
@@ -118,13 +134,16 @@ impl RetiredKernelRange {
             len: 0,
             detached: true,
             quiescent: false,
+            release_started: false,
+            released_pages: 0,
         }
     }
 
     fn begin(&mut self, base: VAddr, page_size: PageSize, num_pages: usize) -> Result<(), Error> {
         let raw: usize = base.into();
         let stride = page_size.num_bytes();
-        if self.len != 0
+        if self.release_started
+            || self.len != 0
             || num_pages > KERNEL_RANGE_FRAME_CAPACITY
             || !raw.is_multiple_of(stride)
             || num_pages != 0
@@ -152,9 +171,9 @@ impl RetiredKernelRange {
     }
 
     /// Finish only after arena/table and other IRQ-masking guards are gone.
-    /// A mutable owner permits retry after failure without allocating an
-    /// error owner before heap initialization. Drop is a quarantine fallback,
-    /// never a blocking rendezvous in an unknown locking context.
+    /// A mutable owner permits invalidation retry before physical release,
+    /// without allocating an error owner before heap initialization. Physical
+    /// failure is terminal. Drop quarantines rather than initiating a rendezvous.
     pub fn release(&mut self) -> Result<(), Error> {
         self.release_with(|base, num_pages| {
             crate::cpu::isa::memory::tlb::try_inval_range_kernel(base, num_pages).is_ok()
@@ -162,6 +181,20 @@ impl RetiredKernelRange {
     }
 
     fn release_with(&mut self, invalidate: impl FnOnce(VAddr, usize) -> bool) -> Result<(), Error> {
+        self.release_with_batches(invalidate, release_batch, || {})
+    }
+
+    fn release_with_batches(
+        &mut self,
+        invalidate: impl FnOnce(VAddr, usize) -> bool,
+        mut release: impl FnMut(&[PAddr]) -> (usize, Result<(), physical::Error>),
+        mut after_batch: impl FnMut(),
+    ) -> Result<(), Error> {
+        // Reject before callbacks or interpreting stale physical addresses.
+        // A failed batch may have returned a prefix now owned by a successor.
+        if self.release_started {
+            return Err(Error::RetirementFailed);
+        }
         if self.len == 0 {
             return Ok(());
         }
@@ -175,14 +208,39 @@ impl RetiredKernelRange {
             }
             self.quiescent = true;
         }
-        let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-        for frame in &mut self.frames[..self.len] {
-            if let Some(address) = *frame {
-                self.page_size.deallocate(&mut allocator, address)?;
-                *frame = None;
+        // Arm before the first physical call. Rejection/interruption is
+        // terminal; only a completely successful walk permits receipt reuse.
+        self.release_started = true;
+        let pages = self.page_size.num_bytes() / AddressSpace::PAGE_SIZE;
+        let mut batch = [PAddr::default(); RELEASE_BATCH_PAGES];
+        let mut count = 0;
+        let mut flush = |frames: &[PAddr]| -> Result<(), Error> {
+            let (completed, result) = release(frames);
+            assert!(completed <= frames.len());
+            self.released_pages += completed;
+            result?;
+            assert_eq!(completed, frames.len());
+            // Production release has dropped its physical guard here.
+            after_batch();
+            Ok(())
+        };
+        for address in self.frames[..self.len].iter().copied().flatten() {
+            for index in 0..pages {
+                batch[count] = address + index * AddressSpace::PAGE_SIZE;
+                count += 1;
+                if count == RELEASE_BATCH_PAGES {
+                    flush(&batch)?;
+                    count = 0;
+                }
             }
         }
+        if count != 0 {
+            flush(&batch[..count])?;
+        }
+        self.frames[..self.len].fill(None);
         self.len = 0;
+        self.release_started = false;
+        self.released_pages = 0;
         Ok(())
     }
 }
@@ -191,7 +249,10 @@ impl Drop for RetiredKernelRange {
     fn drop(&mut self) {
         let remaining = self.frames[..self.len].iter().filter(|frame| frame.is_some()).count();
         if remaining != 0 {
-            let pages = remaining * (self.page_size.num_bytes() / AddressSpace::PAGE_SIZE);
+            // Confirmed base-frame progress may split an original large/huge
+            // extent. Its addresses are diagnostic only after release starts.
+            let pages = remaining * (self.page_size.num_bytes() / AddressSpace::PAGE_SIZE)
+                - self.released_pages;
             QUARANTINED_KERNEL_PAGES.fetch_add(pages, Ordering::Relaxed);
             crate::early_logln!(
                 "[memory] quarantined {} kernel backing page(s) at {:?}; detached={} quiescent={}",

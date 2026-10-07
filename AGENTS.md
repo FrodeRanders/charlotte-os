@@ -138,8 +138,13 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
 - Kernel-range rollback/teardown uses `RetiredKernelRange`, supplied outside
   arena/page-table guards. Detach first, release guards, then explicitly release
   backing after invalidation. Its Drop quarantines; it must never rendezvous or
-  free unconfirmed backing under an unknown lock. Early-boot metadata is inline
-  and bounded. Never turn failed IPI delivery into an acknowledgement. See
+  free unconfirmed backing under an unknown lock. Arm the receipt's terminal
+  physical-release phase before allocator calls; only invalidation failure before
+  that phase may retry. A physical rejection/interruption must never revisit
+  returned addresses or allow receipt reuse. Release at most sixteen 4 KiB frames
+  per allocator hold, including large/huge extents; retain whole stack reservations
+  on incomplete cleanup. Early-boot metadata is inline and bounded. Never turn
+  failed IPI delivery into an acknowledgement. See
   `docs/reference/kernel-frame-retirement.md` for scope and remaining x86 work.
   Memory-object mapping work retains `MappingRetirementPin` through its
   invalidation; the last DMA/copy unpin must not bypass that ownership. Preserve

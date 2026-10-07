@@ -1001,3 +1001,17 @@ suppresses no physical ACK and does not prove physical-platform recovery.
 Use the existing Intel/AMD/Arm commands above with fresh, isolated instances.
 Contracts and evidence: [IOMMU admission](../reference/iommu-table-admission.md)
 and [audit record](../reports/audits/2026-10-07-security-iommu-admission.md).
+
+### Terminal kernel-range physical release
+
+Kernel-range boot fixtures exercise real detach/invalidation followed by physical
+batches of 16/16/3 for 35 standard pages and thirty-two batches for a 2 MiB leaf.
+Between-batch hooks assert the physical and kernel-table guards are available.
+Rejecting the final base frame after 511 successful releases freezes that receipt;
+a successor claims a freed address and rejected retry/reinitialization must leave
+it untouched. A simulated interruption after real invalidation also forbids retry.
+Two additional frames remain quarantined alongside the existing one-frame Drop
+fixture. These are serialized injections, not actual allocator corruption, panic
+unwinding, hardware failure or a worst-case latency proof. Existing failed-barrier
+retry and ordinary stack cleanup remain enabled. See the
+[kernel release audit record](../reports/audits/2026-10-07-security-kernel-release.md).

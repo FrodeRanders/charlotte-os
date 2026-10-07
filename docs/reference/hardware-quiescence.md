@@ -19,7 +19,7 @@ Only local identity capture/flush is briefly masked. An unsupported masked
 context returns `InterruptsMasked`; legacy mandatory wrappers panic. Owned
 mapping, loan, MMIO, namespace and final-root cleanup retain backing on failure.
 Final-root invalidation tries three fresh epochs. `RetiredKernelRange` retains
-its receipt for explicit retry; `RetiredAddressSpace::release_retry_with` returns
+its receipt for invalidation retry before physical release starts; `RetiredAddressSpace::release_retry_with` returns
 its owner before any physical teardown on invalidation rejection. Once physical
 release starts, a partial failure cannot be retried or refunded.
 
