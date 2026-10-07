@@ -101,3 +101,16 @@ pub fn pending_fault_events() -> u32 {
         Err(_) => 0,
     }
 }
+
+pub(super) fn test_table_admission() {
+    match detect().unwrap() {
+        Backend::Vtd => super::vt_d::test_table_admission(),
+        Backend::AmdVi => super::amd_vi::test_table_admission(),
+    }
+}
+pub(super) fn test_reject_sparse_map(id: u64) {
+    match detect().unwrap() {
+        Backend::Vtd => super::vt_d::test_reject_sparse_map(id),
+        Backend::AmdVi => super::amd_vi::test_reject_sparse_map(id),
+    }
+}

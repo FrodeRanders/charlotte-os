@@ -308,6 +308,18 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   Raw stack allocation is confined to that admitted memory adapter. Inherited
   boot/CPU stacks remain outside runtime admission. See
   `docs/reference/stack-admission.md`.
+- IOMMU backing uses `device::dma_tables::Tables` for domain roots/intermediates,
+  SMMU descriptors and shared unit tables/queues/completion cells. Reserve actual
+  pages before physical allocation, retain an exclusive owner through zeroing
+  and fallible ledger preparation, and mark published before hardware authority.
+  Failed creation/retirement retains its registered retiring domain/source fence
+  unless detachment, hardware maintenance/drain and complete physical release
+  succeed. Partial physical release freezes the owner and whole charge; never
+  retry freed tables or refund by reusable IDs. Empty branches stay charged and
+  cached until retirement. Failed data-leaf prefixes require confirmed hardware
+  completion before pin release; prepare quarantine capacity before publication,
+  retain rejected pins, and consume teardown collections outside backend guards
+  without allocating snapshots. See `docs/reference/iommu-table-admission.md`.
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`

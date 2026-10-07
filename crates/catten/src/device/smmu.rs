@@ -22,6 +22,10 @@ use core::{
 
 use spin::LazyLock;
 
+use super::dma_tables::{
+    Scope,
+    Tables,
+};
 use crate::{
     cpu::{
         isa::{
@@ -39,7 +43,6 @@ use crate::{
     environment::acpi::sdt::iort::SmmuV3Config,
     memory::{
         AddressSpace,
-        PHYSICAL_FRAME_ALLOCATOR,
         object::{
             self,
             DmaPin,
@@ -145,11 +148,12 @@ struct Domain {
     sid: u32,
     asid: u16,
     root: PAddr,
-    table_frames: Vec<PAddr>,
+    tables: Tables,
     l3_tables: BTreeMap<u64, PAddr>,
     next_iova: u64,
     mappings: BTreeMap<u64, Mapping>,
     cd: PAddr,
+    quarantined_pins: Vec<DmaPin>,
 }
 
 struct Smmu {
@@ -157,6 +161,7 @@ struct Smmu {
     sid_bits: u8,
     oas: u8,
     strtab: PAddr,
+    _tables: Tables,
     cmdq: PAddr,
     cmd_prod: u32,
     next_domain: u64,
@@ -192,12 +197,6 @@ fn wait_ack(base: usize, register: usize, value: u32) -> Result<(), Error> {
     Err(Error::HardwareTimeout)
 }
 
-fn alloc_zeroed_frame() -> Result<PAddr, Error> {
-    let frame = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().map_err(|_| Error::MapFailed)?;
-    unsafe { ptr::write_bytes(frame.into_hhdm_mut::<u8>(), 0, PAGE_SIZE) };
-    Ok(frame)
-}
-
 fn set_descriptor(table: PAddr, index: usize, descriptor: Descriptor) {
     let table = unsafe { table.into_hhdm_mut::<PageTable>() };
     unsafe { (*table)[index] = descriptor };
@@ -205,8 +204,9 @@ fn set_descriptor(table: PAddr, index: usize, descriptor: Descriptor) {
 
 impl Domain {
     fn new(asid: u16, sid: u32, oas: u8, msi_address: Option<u64>) -> Result<Self, Error> {
-        let root = alloc_zeroed_frame()?;
-        let cd = alloc_zeroed_frame()?;
+        let mut tables = Tables::new(Scope::Domain);
+        let root = tables.allocate_frame()?;
+        let cd = tables.allocate_frame()?;
         let cd_words = unsafe { cd.into_hhdm_mut::<u64>() };
         // 48-bit IOVA, 4 KiB granule, WB/WA walks, inner-shareable, TTBR1
         // disabled, implementation output-address size inherited from IDR5.
@@ -232,22 +232,16 @@ impl Domain {
             sid,
             asid,
             root,
-            table_frames: alloc::vec![root],
+            tables,
             l3_tables: BTreeMap::new(),
             next_iova: IOVA_START,
             mappings: BTreeMap::new(),
             cd,
+            quarantined_pins: Vec::new(),
         };
         if let Some(address) = msi_address {
             let page = address & !(PAGE_SIZE as u64 - 1);
-            if let Err(error) = domain.map_page(page, PAddr::from(page), true) {
-                let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-                for frame in domain.table_frames {
-                    let _ = allocator.deallocate_frame(frame);
-                }
-                let _ = allocator.deallocate_frame(domain.cd);
-                return Err(error);
-            }
+            domain.map_page(page, PAddr::from(page), true)?;
         }
         Ok(domain)
     }
@@ -268,9 +262,9 @@ impl Domain {
             parent = if descriptor.is_valid() {
                 descriptor.frame()
             } else {
-                let next = alloc_zeroed_frame()?;
+                let next = self.tables.allocate_frame()?;
+                barrier();
                 set_descriptor(parent, index, Descriptor::new_table(next));
-                self.table_frames.push(next);
                 next
             };
         }
@@ -278,16 +272,22 @@ impl Domain {
         Ok(parent)
     }
 
-    fn map(&mut self, pin: DmaPin, direction: Direction) -> Result<u64, (Error, DmaPin)> {
+    fn map(&mut self, pin: DmaPin, direction: Direction) -> Result<u64, (Error, DmaPin, bool)> {
         if self.retiring {
-            return Err((Error::UnknownDomain, pin));
+            return Err((Error::UnknownDomain, pin, false));
         }
-        if self.mappings.values().any(|mapping| mapping.pin.object_id() == pin.object_id()) {
-            return Err((Error::AlreadyMapped, pin));
+        if self.mappings.values().any(|mapping| mapping.pin.object_id() == pin.object_id())
+            || self.quarantined_pins.iter().any(|held| held.object_id() == pin.object_id())
+        {
+            return Err((Error::AlreadyMapped, pin, false));
+        }
+        // Prepare enough quarantine capacity for every live mapping, before leaves.
+        if self.quarantined_pins.try_reserve(self.mappings.len() + 1).is_err() {
+            return Err((Error::Memory, pin, false));
         }
         let pages = pin.frames().len();
         let Some(bytes) = (pages as u64).checked_mul(PAGE_SIZE as u64) else {
-            return Err((Error::OutOfIova, pin));
+            return Err((Error::OutOfIova, pin, false));
         };
         let iova = self.next_iova;
         let Some(next_iova) = self
@@ -296,7 +296,7 @@ impl Domain {
             .and_then(|next| next.checked_add(PAGE_SIZE as u64 - 1))
             .map(|next| next & !(PAGE_SIZE as u64 - 1))
         else {
-            return Err((Error::OutOfIova, pin));
+            return Err((Error::OutOfIova, pin, false));
         };
         let writable = direction.device_writes();
         for (index, frame) in pin.frames().iter().copied().enumerate() {
@@ -309,7 +309,7 @@ impl Domain {
                     unsafe { (*l3.into_hhdm_mut::<PageTable>())[slot].clear() };
                 }
                 barrier();
-                return Err((error, pin));
+                return Err((error, pin, index != 0));
             }
         }
         barrier();
@@ -457,23 +457,21 @@ fn initialize(mut config: SmmuV3Config) -> Result<Smmu, Error> {
     let entries = 1usize << sid_bits;
     let strtab_bytes = entries.checked_mul(STE_SIZE).ok_or(Error::MapFailed)?;
     let strtab_frames = strtab_bytes.div_ceil(PAGE_SIZE);
-    let strtab = PHYSICAL_FRAME_ALLOCATOR
-        .lock()
-        .allocate_contiguous(strtab_frames, strtab_bytes.next_power_of_two())
-        .map_err(|_| Error::MapFailed)?;
-    unsafe { ptr::write_bytes(strtab.into_hhdm_mut::<u8>(), 0, strtab_frames * PAGE_SIZE) };
+    let mut tables = Tables::new(Scope::Unit);
+    let strtab = tables.allocate(strtab_frames, strtab_bytes.next_power_of_two().max(PAGE_SIZE))?;
     for sid in 0..entries {
         let ste = unsafe { strtab.into_hhdm_mut::<u64>().add(sid * 8) };
         unsafe { ptr::write_volatile(ste, STE_VALID) };
     }
-    let cmdq = alloc_zeroed_frame()?;
-    let eventq = alloc_zeroed_frame()?;
+    let cmdq = tables.allocate_frame()?;
+    let eventq = tables.allocate_frame()?;
 
     write32(config.base, CR0, 0);
     wait_ack(config.base, CR0_ACK, 0)?;
     // Inner-shareable WB table and queue walks.
     write32(config.base, CR1, (3 << 10) | (1 << 8) | (1 << 6) | (3 << 4) | (1 << 2) | 1);
     write32(config.base, CR2, (1 << 2) | (1 << 1));
+    tables.publish();
     write64(config.base, STRTAB_BASE, u64::from(strtab) | (1 << 62));
     write32(config.base, STRTAB_BASE_CFG, sid_bits as u32);
     write64(config.base, CMDQ_BASE, u64::from(cmdq) | 8);
@@ -491,6 +489,7 @@ fn initialize(mut config: SmmuV3Config) -> Result<Smmu, Error> {
         sid_bits,
         oas: (idr5 & 7) as u8,
         strtab,
+        _tables: tables,
         cmdq,
         cmd_prod: 0,
         next_domain: 1,
@@ -564,19 +563,17 @@ pub(crate) fn create_domain_with_reset(
         let cd = domain.cd;
         smmu.domains.insert(id, domain);
         smmu.streams.insert(sid, id);
+        smmu.domains.get_mut(&id).unwrap().tables.publish();
         if let Err(error) = smmu.write_ste(sid, Some(cd)) {
-            // Never leave a half-installed domain registered: if the aborting
-            // STE can be acknowledged, roll the stream, domain and frames
-            // back; otherwise retain the record as quarantined until a later
-            // acknowledged destroy.
-            if smmu.write_ste(sid, None).is_ok() {
+            smmu.domains.get_mut(&id).unwrap().retiring = true;
+            // Retain the exact owner unless abort, original-ASID maintenance
+            // and complete physical release all succeed.
+            if smmu.write_ste(sid, None).is_ok()
+                && smmu.invalidate_asid(asid).is_ok()
+                && smmu.domains.get_mut(&id).unwrap().tables.release().is_ok()
+            {
                 *smmu.streams.get_mut(&sid).unwrap() = 0;
-                let domain = smmu.domains.remove(&id).expect("new SMMU domain disappeared");
-                let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-                for frame in domain.table_frames {
-                    let _ = allocator.deallocate_frame(frame);
-                }
-                let _ = allocator.deallocate_frame(domain.cd);
+                smmu.domains.remove(&id).expect("new IOMMU domain disappeared");
             } else {
                 crate::logln!("[smmu] quarantining failed domain {} for sid {:#x}", id, sid);
             }
@@ -603,15 +600,22 @@ pub fn map(
     .map_err(|_| Error::Memory)?;
     let mut pending_pin = Some(pin);
     let result = with_smmu(|smmu| {
-        let (iova, asid) = {
+        let (mapped, asid) = {
             let domain = smmu.domains.get_mut(&domain_id).ok_or(Error::UnknownDomain)?;
             let pin = pending_pin.take().expect("DMA pin consumed twice");
-            match domain.map(pin, direction) {
-                Ok(iova) => (iova, domain.asid),
-                Err((error, pin)) => {
+            (domain.map(pin, direction), domain.asid)
+        };
+        let iova = match mapped {
+            Ok(iova) => iova,
+            Err((error, pin, prefix)) => {
+                if !prefix
+                    || (!super::test_reject_map_rollback() && smmu.invalidate_asid(asid).is_ok())
+                {
                     pending_pin = Some(pin);
-                    return Err(error);
+                } else {
+                    smmu.domains.get_mut(&domain_id).unwrap().quarantined_pins.push(pin);
                 }
+                return Err(error);
             }
         };
         // If hardware does not acknowledge this invalidation, keep the
@@ -649,9 +653,9 @@ pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
 }
 
 pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
-    let mappings = with_smmu(|smmu| {
+    let retired = with_smmu(|smmu| {
         let Some(domain) = smmu.domains.get_mut(&domain_id) else {
-            return Ok(Vec::new());
+            return Ok(None);
         };
         domain.retiring = true;
         let sid = domain.sid;
@@ -667,20 +671,19 @@ pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
         // CFGI/SYNC retires structure fetches; TLBI/SYNC additionally completes
         // client transactions translated by this ASID before data-pin release.
         smmu.invalidate_asid(asid)?;
-        let mut domain = smmu.domains.remove(&domain_id).expect("SMMU domain disappeared");
-        let mappings = core::mem::take(&mut domain.mappings).into_values().collect::<Vec<_>>();
+        smmu.domains.get_mut(&domain_id).unwrap().tables.release()?;
         // Hardware translation/drain completion does not reset queued device
         // work. Keep the requester fenced until a confirmed device reset.
         *smmu.streams.get_mut(&sid).expect("registered source") = 0;
-        let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-        for frame in domain.table_frames {
-            let _ = allocator.deallocate_frame(frame);
-        }
-        let _ = allocator.deallocate_frame(domain.cd);
-        Ok(mappings)
+        Ok(smmu.domains.remove(&domain_id))
     })?;
-    for mapping in mappings {
-        object::unpin_dma(mapping.pin);
+    if let Some(domain) = retired {
+        for mapping in domain.mappings.into_values() {
+            object::unpin_dma(mapping.pin);
+        }
+        for pin in domain.quarantined_pins {
+            object::unpin_dma(pin);
+        }
     }
     Ok(())
 }
@@ -746,4 +749,41 @@ pub fn pending_fault_events() -> u32 {
     let producer = read32(mmio, EVTQ_PROD) & (EVENT_ENTRIES * 2 - 1);
     let consumer = IRQ_EVENT_CONS.load(Ordering::Acquire);
     producer.wrapping_sub(consumer) & (EVENT_ENTRIES * 2 - 1)
+}
+
+/// Private, never hardware-published walkers; the data frame is borrowed.
+pub(super) fn test_table_admission() {
+    let baseline = super::dma_tables::used();
+    let data = crate::memory::PreparingUserFrame::allocate_zeroed().unwrap();
+    let mut domain = Domain::new(1, 0, 5, None).unwrap();
+    let initial = domain.tables.pages();
+    domain.tables.set_limit(initial + 3);
+    domain.map_page(0x4000_0000, data.frame(), true).unwrap();
+    assert_eq!(domain.tables.pages(), initial + 3);
+    let l3 = domain.l3_tables[&(0x4000_0000 >> 21)];
+    unsafe { (*l3.into_hhdm_mut::<PageTable>())[0].clear() };
+    domain.map_page(0x4000_0000, data.frame(), false).unwrap();
+    assert_eq!(domain.tables.pages(), initial + 3);
+    domain.tables.set_limit(initial + 4);
+    assert_eq!(domain.map_page(0x8000_0000, data.frame(), true), Err(Error::MapFailed));
+    assert_eq!(domain.tables.pages(), initial + 4);
+    assert_eq!(domain.map_page(0x8000_0000, data.frame(), true), Err(Error::MapFailed));
+    assert_eq!(domain.tables.pages(), initial + 4);
+    domain.tables.set_limit(initial + 5);
+    domain.map_page(0x8000_0000, data.frame(), true).unwrap();
+    assert_eq!(domain.tables.pages(), initial + 5);
+    drop(domain);
+    assert_eq!(super::dma_tables::used(), baseline);
+    drop(data);
+}
+
+/// Serialized fixture places the next map across a cached/fresh leaf-table boundary.
+pub(super) fn test_reject_sparse_map(id: u64) {
+    with_smmu(|unit| {
+        let domain = unit.domains.get_mut(&id).unwrap();
+        domain.next_iova = IOVA_START + (2 * 1024 * 1024 - PAGE_SIZE) as u64;
+        domain.tables.set_limit(domain.tables.pages());
+        Ok(())
+    })
+    .unwrap();
 }

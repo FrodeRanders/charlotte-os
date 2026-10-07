@@ -45,9 +45,15 @@ teardown; a missing live root in range invalidation now rejects.
   not first modify secondary words of the formerly live STE.
 
 Each backend marks a retiring domain before hardware detachment. Map and unmap
-reject on that domain, while destroy may retry. Failed completion retains its
+reject on that domain. Destroy may retry hardware completion before physical
+release starts; a partially consumed physical release is terminal. Failed completion retains its
 table backing, mappings/pins and requester ownership. Queue storage and AMD's
 completion cell survive timeout and late commands.
+
+[Hardware-table admission](iommu-table-admission.md) carries charges through
+this boundary. Complete physical table release is also required before removing
+the registered owner/source fence. Failed map prefixes require the same data-pin
+completion boundary even when table admission rejects a later page.
 
 ## Requester reset and reassignment
 

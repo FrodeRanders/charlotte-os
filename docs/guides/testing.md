@@ -980,3 +980,24 @@ fixtures, not physical node exhaustion or actual panic unwinding. Kernel-range
 rollback fixtures also verify that rejected unpublished backing stays in the
 post-guard retirement receipt without consuming foreign leaves. See the
 [stack audit record](../reports/audits/2026-10-07-security-stack-admission.md).
+
+### IOMMU table admission and failed-map cleanup
+
+Serialized pre-driver fixtures on Intel VT-d, AMD-Vi and SMMUv3 exercise actual
+private table walkers under small domain ceilings, linked sparse prefixes,
+repeated rejection, cached reuse and retry. Common owners cover node/subpool
+limits, contiguous zeroed allocation, unused refund, published abandonment and
+terminal partial physical release. Five charged pages and three actual frames
+are deliberately retained; physical rejection and abandonment are injected.
+
+The QEMU NVMe recovery fixture checks charge retention through rejected drain,
+real completion/refund and capability refund under domain-pool pressure. A
+two-page buffer crosses a cached/fresh leaf-table boundary at the ceiling. Real
+rollback maintenance releases its pin; rejected completion retains it until
+real domain retirement. Duplicate mapping and premature memory close reject.
+Operational storage tests run afterward. The fixture submits no I/O command,
+suppresses no physical ACK and does not prove physical-platform recovery.
+
+Use the existing Intel/AMD/Arm commands above with fresh, isolated instances.
+Contracts and evidence: [IOMMU admission](../reference/iommu-table-admission.md)
+and [audit record](../reports/audits/2026-10-07-security-iommu-admission.md).

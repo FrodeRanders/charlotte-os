@@ -39,6 +39,7 @@ pub mod smmu;
 pub mod vt_d;
 
 pub(crate) mod admission_tests;
+mod dma_tables;
 pub(crate) mod recovery_tests;
 pub(crate) mod retirement;
 
@@ -49,6 +50,15 @@ static REJECT_RETIREMENT: core::sync::atomic::AtomicBool =
 // never fake a hardware acknowledgement or discharge backing ownership.
 fn test_reject_retirement() -> bool {
     REJECT_RETIREMENT.swap(false, Ordering::AcqRel)
+}
+
+// Serialized boot fixture rejects completion after clearing an installed prefix.
+// The real hardware completion remains required before releasing its pin.
+static REJECT_MAP_ROLLBACK: core::sync::atomic::AtomicBool =
+    core::sync::atomic::AtomicBool::new(false);
+
+fn test_reject_map_rollback() -> bool {
+    REJECT_MAP_ROLLBACK.swap(false, Ordering::AcqRel)
 }
 
 use alloc::collections::BTreeMap;

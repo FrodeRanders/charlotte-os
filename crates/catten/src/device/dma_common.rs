@@ -3,7 +3,7 @@
 //! Both drivers expose the same interface to the device-capability layer, so
 //! they share one error and direction type rather than duplicating them.
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     Unsupported,
     InvalidStream,

@@ -30,6 +30,10 @@ use core::{
 
 use spin::LazyLock;
 
+use super::dma_tables::{
+    Scope,
+    Tables,
+};
 use crate::{
     cpu::{
         isa::interface::memory::AddressSpaceInterface,
@@ -37,7 +41,6 @@ use crate::{
     },
     memory::{
         AddressSpace,
-        PHYSICAL_FRAME_ALLOCATOR,
         object::{
             self,
             DmaPin,
@@ -110,7 +113,7 @@ struct Domain {
     agaw: u8,
     levels: usize,
     root: PAddr,
-    table_frames: Vec<PAddr>,
+    tables: Tables,
     next_iova: u64,
     mappings: BTreeMap<u64, Mapping>,
     quarantined_pins: Vec<DmaPin>,
@@ -118,7 +121,8 @@ struct Domain {
 
 impl Domain {
     fn new(source_id: u16, agaw: u8, msi_address: Option<u64>) -> Result<Self, Error> {
-        let root = alloc_zeroed_frame()?;
+        let mut tables = Tables::new(Scope::Domain);
+        let root = tables.allocate_frame()?;
         let levels = ((agaw - 12) / 9) as usize;
         let mut domain = Self {
             retiring: false,
@@ -126,7 +130,7 @@ impl Domain {
             agaw,
             levels,
             root,
-            table_frames: alloc::vec![root],
+            tables,
             next_iova: IOVA_START,
             mappings: BTreeMap::new(),
             quarantined_pins: Vec::new(),
@@ -136,13 +140,7 @@ impl Domain {
         // the interrupt controller rather than faulting.
         if let Some(address) = msi_address {
             let page = address & !(PAGE_SIZE as u64 - 1);
-            if let Err(error) = domain.map_page(page, PAddr::from(page), true) {
-                let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-                for frame in domain.table_frames {
-                    let _ = allocator.deallocate_frame(frame);
-                }
-                return Err(error);
-            }
+            domain.map_page(page, PAddr::from(page), true)?;
         }
         Ok(domain)
     }
@@ -155,8 +153,8 @@ impl Domain {
             let entry = unsafe { parent.into_hhdm_mut::<u64>().add(index) };
             let value = unsafe { entry.read_volatile() };
             if value & 1 == 0 {
-                let next = alloc_zeroed_frame()?;
-                self.table_frames.push(next);
+                let next = self.tables.allocate_frame()?;
+                core::sync::atomic::fence(Ordering::Release);
                 unsafe { entry.write_volatile((u64::from(next) & ADDR_MASK) | 3) };
             }
             parent = PAddr::from(unsafe { entry.read_volatile() } & ADDR_MASK);
@@ -196,16 +194,22 @@ impl Domain {
         unsafe { entry.write_volatile(0) };
     }
 
-    fn map(&mut self, pin: DmaPin, direction: Direction) -> Result<u64, (Error, DmaPin)> {
+    fn map(&mut self, pin: DmaPin, direction: Direction) -> Result<u64, (Error, DmaPin, bool)> {
         if self.retiring {
-            return Err((Error::UnknownDomain, pin));
+            return Err((Error::UnknownDomain, pin, false));
         }
-        if self.mappings.values().any(|mapping| mapping.pin.object_id() == pin.object_id()) {
-            return Err((Error::AlreadyMapped, pin));
+        if self.mappings.values().any(|mapping| mapping.pin.object_id() == pin.object_id())
+            || self.quarantined_pins.iter().any(|held| held.object_id() == pin.object_id())
+        {
+            return Err((Error::AlreadyMapped, pin, false));
+        }
+        // Prepare enough quarantine capacity for every live mapping, before leaves.
+        if self.quarantined_pins.try_reserve(self.mappings.len() + 1).is_err() {
+            return Err((Error::Memory, pin, false));
         }
         let pages = pin.frames().len();
         let Some(bytes) = (pages as u64).checked_mul(PAGE_SIZE as u64) else {
-            return Err((Error::OutOfIova, pin));
+            return Err((Error::OutOfIova, pin, false));
         };
         let iova = self.next_iova;
         let Some(next_iova) = self
@@ -214,7 +218,7 @@ impl Domain {
             .and_then(|next| next.checked_add(PAGE_SIZE as u64 - 1))
             .map(|next| next & !(PAGE_SIZE as u64 - 1))
         else {
-            return Err((Error::OutOfIova, pin));
+            return Err((Error::OutOfIova, pin, false));
         };
         let writable = direction.device_writes();
         for (index, frame) in pin.frames().iter().copied().enumerate() {
@@ -223,7 +227,7 @@ impl Domain {
                 for rollback_index in 0..index {
                     self.clear_page(iova + (rollback_index * PAGE_SIZE) as u64);
                 }
-                return Err((error, pin));
+                return Err((error, pin, index != 0));
             }
         }
         self.next_iova = next_iova;
@@ -256,6 +260,7 @@ struct Unit {
     draining_command: u64,
     max_domains: u64,
     root_table: PAddr,
+    tables: Tables,
     context_tables: BTreeMap<u16, PAddr>,
     next_domain: u64,
     domains: BTreeMap<u64, Domain>,
@@ -357,12 +362,6 @@ fn wait_gsts_clear(base: usize, mask: u32) -> Result<(), Error> {
     Err(Error::HardwareTimeout)
 }
 
-fn alloc_zeroed_frame() -> Result<PAddr, Error> {
-    let frame = PHYSICAL_FRAME_ALLOCATOR.lock().allocate_frame().map_err(|_| Error::MapFailed)?;
-    unsafe { ptr::write_bytes(frame.into_hhdm_mut::<u8>(), 0, PAGE_SIZE) };
-    Ok(frame)
-}
-
 fn supported_agaw(cap: u64) -> Option<u8> {
     // CAP.SAGAW is the five-bit field at bits 12:8. Its bit positions
     // correspond to 30-, 39-, 48-, and 57-bit adjusted guest widths. Prefer
@@ -421,13 +420,15 @@ fn initialize(config: crate::environment::acpi::sdt::dmar::DmarConfig) -> Result
         current.map_mmio_region(config.base, register_bytes).map_err(|_| Error::MapFailed)?;
     }
 
-    let root_table = alloc_zeroed_frame()?;
+    let mut tables = Tables::new(Scope::Unit);
+    let root_table = tables.allocate_frame()?;
 
     // Disable translation while installing the root table, then publish it and
     // re-enable translation. The firmware may leave the unit in an arbitrary
     // state, so write the control register rather than read-modify-writing it.
     write32(base, GCMD, 0);
     wait_gsts_clear(base, GSTS_TES)?;
+    tables.publish();
     write64(base, RTADDR, u64::from(root_table) & ADDR_MASK);
     write32(base, GCMD, GCMD_SRTP);
     wait_gsts(base, GSTS_RTPS)?;
@@ -468,6 +469,7 @@ fn initialize(config: crate::environment::acpi::sdt::dmar::DmarConfig) -> Result
         draining_command,
         max_domains,
         root_table,
+        tables,
         context_tables: BTreeMap::new(),
         next_domain: 1,
         domains: BTreeMap::new(),
@@ -523,16 +525,7 @@ pub(crate) fn create_domain_with_reset(
 
         let bus = source_id >> 8;
         if !unit.context_tables.contains_key(&bus) {
-            let context_table = match alloc_zeroed_frame() {
-                Ok(table) => table,
-                Err(error) => {
-                    let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-                    for frame in domain.table_frames {
-                        let _ = allocator.deallocate_frame(frame);
-                    }
-                    return Err(error);
-                }
-            };
+            let context_table = unit.tables.allocate_frame()?;
             unit.set_root_entry(bus, context_table);
             unit.context_tables.insert(bus, context_table);
         }
@@ -540,16 +533,17 @@ pub(crate) fn create_domain_with_reset(
         let root = domain.root;
         unit.domains.insert(id, domain);
         unit.sources.insert(source_id, id);
+        unit.domains.get_mut(&id).unwrap().tables.publish();
         unit.write_context_entry(bus, devfunc, root, id as u16, agaw_aw(unit.agaw));
         if let Err(error) = unit.flush_context_cache() {
+            unit.domains.get_mut(&id).unwrap().retiring = true;
             unit.write_context_entry(bus, devfunc, PAddr::from(0u64), 0, 0);
-            if unit.flush_context_cache().is_ok() && unit.flush_iotlb().is_ok() {
+            if unit.flush_context_cache().is_ok()
+                && unit.flush_iotlb().is_ok()
+                && unit.domains.get_mut(&id).unwrap().tables.release().is_ok()
+            {
                 *unit.sources.get_mut(&source_id).unwrap() = 0;
-                let domain = unit.domains.remove(&id).expect("new VT-d domain disappeared");
-                let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-                for frame in domain.table_frames {
-                    let _ = allocator.deallocate_frame(frame);
-                }
+                unit.domains.remove(&id).expect("new IOMMU domain disappeared");
             } else {
                 crate::logln!(
                     "[vtd] quarantining failed domain {} for source {:#x}",
@@ -580,20 +574,23 @@ pub fn map(
     .map_err(|_| Error::Memory)?;
     let mut pending_pin = Some(pin);
     let result = with_unit(|unit| {
-        let iova = {
+        let mapped = {
             let domain = unit.domains.get_mut(&domain_id).ok_or(Error::UnknownDomain)?;
             let pin = pending_pin.take().expect("DMA pin consumed twice");
-            match domain.map(pin, direction) {
-                Ok(iova) => iova,
-                Err((error, pin)) => {
+            domain.map(pin, direction)
+        };
+        let iova = match mapped {
+            Ok(iova) => iova,
+            Err((error, pin, prefix)) => {
+                if !prefix || (!super::test_reject_map_rollback() && unit.flush_iotlb().is_ok()) {
                     pending_pin = Some(pin);
-                    return Err(error);
+                } else {
+                    unit.domains.get_mut(&domain_id).unwrap().quarantined_pins.push(pin);
                 }
+                return Err(error);
             }
         };
-        // If the hardware never acknowledges the invalidation the mapping stays
-        // installed until domain destruction, but returning no IOVA keeps the
-        // driver from touching the possibly-stale translation.
+        // Unconfirmed rollback retains the pin until acknowledged domain retirement.
         if let Err(error) = unit.flush_iotlb() {
             let mapping = unit
                 .domains
@@ -633,9 +630,9 @@ pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
 }
 
 pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
-    let mappings = with_unit(|unit| {
+    let retired = with_unit(|unit| {
         let Some(domain) = unit.domains.get_mut(&domain_id) else {
-            return Ok(Vec::new());
+            return Ok(None);
         };
         domain.retiring = true;
         let source_id = domain.source_id;
@@ -650,23 +647,19 @@ pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
             return Err(Error::HardwareTimeout);
         }
         unit.flush_iotlb()?;
-        let mut domain = unit.domains.remove(&domain_id).expect("VT-d domain disappeared");
-        let mut pins = core::mem::take(&mut domain.mappings)
-            .into_values()
-            .map(|mapping| mapping.pin)
-            .collect::<Vec<_>>();
-        pins.append(&mut domain.quarantined_pins);
+        unit.domains.get_mut(&domain_id).unwrap().tables.release()?;
         // Hardware translation/drain completion does not reset queued device
         // work. Keep the requester fenced until a confirmed device reset.
         *unit.sources.get_mut(&source_id).expect("registered source") = 0;
-        let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-        for frame in domain.table_frames {
-            let _ = allocator.deallocate_frame(frame);
-        }
-        Ok(pins)
+        Ok(unit.domains.remove(&domain_id))
     })?;
-    for pin in mappings {
-        object::unpin_dma(pin);
+    if let Some(domain) = retired {
+        for mapping in domain.mappings.into_values() {
+            object::unpin_dma(mapping.pin);
+        }
+        for pin in domain.quarantined_pins {
+            object::unpin_dma(pin);
+        }
     }
     Ok(())
 }
@@ -728,4 +721,40 @@ pub fn pending_fault_events() -> u32 {
         return 0;
     }
     (read32(base, FSTS) >> 1) & 1
+}
+
+/// Private, never hardware-published walkers; the data frame is borrowed.
+pub(super) fn test_table_admission() {
+    let baseline = super::dma_tables::used();
+    let data = crate::memory::PreparingUserFrame::allocate_zeroed().unwrap();
+    let mut domain = Domain::new(0, 48, None).unwrap();
+    let initial = domain.tables.pages();
+    domain.tables.set_limit(initial + 3);
+    domain.map_page(0x4000_0000, data.frame(), true).unwrap();
+    assert_eq!(domain.tables.pages(), initial + 3);
+    domain.clear_page(0x4000_0000);
+    domain.map_page(0x4000_0000, data.frame(), false).unwrap();
+    assert_eq!(domain.tables.pages(), initial + 3);
+    domain.tables.set_limit(initial + 4);
+    assert_eq!(domain.map_page(0x8000_0000, data.frame(), true), Err(Error::MapFailed));
+    assert_eq!(domain.tables.pages(), initial + 4);
+    assert_eq!(domain.map_page(0x8000_0000, data.frame(), true), Err(Error::MapFailed));
+    assert_eq!(domain.tables.pages(), initial + 4);
+    domain.tables.set_limit(initial + 5);
+    domain.map_page(0x8000_0000, data.frame(), true).unwrap();
+    assert_eq!(domain.tables.pages(), initial + 5);
+    drop(domain);
+    assert_eq!(super::dma_tables::used(), baseline);
+    drop(data);
+}
+
+/// Serialized fixture places the next map across a cached/fresh leaf-table boundary.
+pub(super) fn test_reject_sparse_map(id: u64) {
+    with_unit(|unit| {
+        let domain = unit.domains.get_mut(&id).unwrap();
+        domain.next_iova = IOVA_START + (2 * 1024 * 1024 - PAGE_SIZE) as u64;
+        domain.tables.set_limit(domain.tables.pages());
+        Ok(())
+    })
+    .unwrap();
 }

@@ -40,9 +40,10 @@ an uncertain charge or retries a consumed release.
 Bootloader-inherited tables predate `PreparingTable` and are outside this pool.
 The policy counts fresh runtime table frames once; it is not a complete boot
 table census. There is no shared-table compaction/reclamation path, per-domain
-sponsorship, fairness guarantee or reserved platform subpool. Stack/kernel-heap
-data has separate [stack admission](stack-admission.md); kernel-heap data and
-IOMMU tables retain unresolved admission needs.
+sponsorship, fairness guarantee or reserved platform subpool. Runtime stack data
+has separate [stack admission](stack-admission.md).
+IOMMU backing has [hardware-table admission](iommu-table-admission.md);
+kernel-heap data and general metadata retain unresolved admission needs.
 
 ## Lifetime and rollback
 
@@ -102,7 +103,8 @@ quarantined. See the
 [shared-table audit record](../reports/audits/2026-10-06-security-kernel-table-admission.md).
 
 This closes the renewed audit's private sparse-table admission path. SEC-07
-remains partial for inherited kernel tables/stacks, IOMMU tables, kernel heap
-and general metadata/callback admission. These pools are not a complete
-physical-memory ledger, live tree compactor, IOMMU-table budget, NUMA policy or worst-case
+remains partial for inherited kernel tables/stacks, kernel heap
+and general metadata/callback admission. IOMMU tables use their own
+[admission owner](iommu-table-admission.md). These pools are not a complete
+physical-memory ledger, live tree compactor, NUMA policy or worst-case
 latency guarantee. Empty private tables remain linked until quiescent teardown.
