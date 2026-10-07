@@ -109,6 +109,14 @@ establish those conditions. Initial platform service loading still uses the
 compiled development root; there is no production launch selector yet. The
 captured name-service handle also does not replace shutdown/root leases.
 
+The [disposable x86 QEMU Secure Boot fixture](../guides/qemu-secure-boot.md)
+now exercises signed EFI/config/kernel/module loading and the kernel handoff.
+Its boot selector accepts only the exact compiled installed test revision/digest;
+an otherwise valid successor cannot publish before its state is installed.
+The fixture uses public test enrollment/state/recipient material and retains
+development platform-service roots. It is not a production boot selector,
+persistent-state adapter or custody provider.
+
 ## Protected integration still required
 
 SEC-04 remains partial until an adapter provides all of these boundaries:

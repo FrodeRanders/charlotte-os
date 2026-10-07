@@ -34,6 +34,13 @@ fn prepared() -> PreparedBootTrust {
 
 pub(crate) fn run() {
     let live = configured_admission_trust();
+    #[cfg(feature = "boot_trust_test")]
+    {
+        let expected = verified();
+        let installed_digest = BOOT_TRUST.lock().as_ref().unwrap().view.verified_digest;
+        assert_eq!(live, Some(*expected.policy().public()));
+        assert_eq!(installed_digest, Some(expected.digest()));
+    }
     let ns = crate::service::supervisor::node_name_service();
     let slot = Mutex::new(None);
     assert!(with_installed_trust(&slot, |_, _, _| panic!("unpublished key exposed")).is_none());

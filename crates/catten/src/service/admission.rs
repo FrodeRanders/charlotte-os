@@ -161,3 +161,6 @@ fn with_installed_trust<T>(
 }
 
 pub(crate) mod tests;
+
+#[cfg(feature = "boot_trust_test")]
+pub(super) mod boot_fixture;

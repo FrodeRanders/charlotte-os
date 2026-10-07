@@ -46,6 +46,12 @@ pub static MEMORY_MAP_REQUEST: MemmapRequest = MemmapRequest::new();
 #[unsafe(link_section = ".limine_requests")]
 pub static HHDM_REQUEST: HhdmRequest = HhdmRequest::new();
 
+#[cfg(feature = "boot_trust_test")]
+#[used]
+#[unsafe(link_section = ".limine_requests")]
+pub static BOOT_POLICY_MODULES_REQUEST: limine::request::ModulesRequest =
+    limine::request::ModulesRequest::new();
+
 #[used]
 #[unsafe(link_section = ".limine_requests")]
 pub static EXECUTABLE_ADDRESS_REQUEST: ExecutableAddressRequest = ExecutableAddressRequest::new();

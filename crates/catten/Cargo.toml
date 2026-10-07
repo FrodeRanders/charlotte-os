@@ -81,6 +81,9 @@ shutdown_test = []
 # Adversarial scoped-launch/grant/raw-frame checks with independently signed
 # test artifacts from CATTEN_SECURITY_TEST_DIR. Adds to the normal boot suite.
 security_test = ["virtio_net_test"]
+# Disposable x86 QEMU Secure Boot fixture: require an authenticated test-policy
+# module and select its public, known test recipient. Never production custody.
+boot_trust_test = []
 # Run the x86_64 EL0 smoke test: loads a real Rust ELF (the `smoke` service)
 # into ring 3. Requires CATTEN_X86_64_SMOKE_ELF to point at the signed ELF.
 x86_el0_smoke = []

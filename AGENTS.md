@@ -60,6 +60,11 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   zeroizing recipient-key owner and checks its public binding. It does not
   authenticate the platform, install rollback-resistant state or provide
   custody; production remains disabled until those boundaries are implemented.
+  `boot_trust_test` is an x86 QEMU fixture with public test keys/state, never
+  production enrollment. Boot consumes exact installed policy state; the shared
+  verifier's direct-successor acceptance is for installation and must not permit
+  publication before state commit. Keep substituted boot inputs rejected before
+  kernel entry or trust publication, with explicit execution evidence.
 - Internal APIs and wire formats have no backward-compatibility requirement.
   Remove compatibility-only branches when a coherent replacement is ready;
   do not preserve an unsafe allocation path for older callers.

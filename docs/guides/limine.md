@@ -112,3 +112,8 @@ Signing the stock EFI file without enrolling and hashing the configuration
 does not give Limine's kernel/config integrity policy. Conversely, enrolling a
 config hash without signing the resulting EFI binary does not establish a
 firmware trust chain.
+
+The [disposable QEMU Secure Boot matrix](qemu-secure-boot.md) now generates that
+chain under test-only firmware certificates and checks loader/config/kernel/
+policy substitution and kernel policy-state rejection. Ordinary boot defaults
+remain development configuration; the test does not enable production.

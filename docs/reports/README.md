@@ -10,6 +10,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [2026-10-08 QEMU Secure Boot chain and signed-policy consumption (SEC-04)](audits/2026-10-08-security-qemu-secure-boot.md)
 - [2026-10-07 one-shot kernel boot trust handoff (SEC-04)](audits/2026-10-07-security-boot-trust-handoff.md)
 - [2026-10-07 signed bootstrap policy and revision lineage (SEC-04)](audits/2026-10-07-security-signed-trust-policy.md)
 - [2026-10-07 public trust preflight and remediation criteria (SEC-04/07/18)](audits/2026-10-07-security-trust-preflight.md)

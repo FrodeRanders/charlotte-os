@@ -4,6 +4,7 @@ set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 bash "$repo_root/scripts/tests/test-signing-policy.sh"
 python3 "$repo_root/scripts/tests/test-boot-results.py"
+python3 "$repo_root/scripts/tests/test-secure-boot-results.py"
 toolchain="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' "$repo_root/rust-toolchain.toml")"
 host_cargo="$(rustup which --toolchain "$toolchain" cargo)"
 host_rustc="$(rustup which --toolchain "$toolchain" rustc)"

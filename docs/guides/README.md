@@ -7,6 +7,8 @@ These documents contain repeatable workflows rather than architectural claims.
   build-matched symbol maps, and offline function/source lookup.
 - [Limine dependency and boot policy](limine.md) — exact version pins, binary
   provenance, update validation, and measured/Secure Boot boundaries.
+- [Disposable QEMU Secure Boot tests](qemu-secure-boot.md) — signed EFI/config/
+  kernel/policy chain, negative boot evidence and test-only provisioning scope.
 - [Userspace development](userspace-development.md) — `catten-rt`, entry
   points, launch manifests, capabilities, and service packaging.
 - [Signing and development trust](signing-and-trust.md) — restricted key-file

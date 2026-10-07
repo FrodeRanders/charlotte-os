@@ -78,6 +78,51 @@ fn kernel_boot_handoff_fixture_is_reproducible_public_test_material() {
     )
     .unwrap();
     assert_eq!(verified.policy().public(), &public);
+    for (sequence, operations_seed, predecessor, fixture, error) in [
+        (
+            6,
+            22,
+            [0; 32],
+            include_bytes!("../../catten/src/service/admission/test-policy-previous.bin"),
+            Some(PolicyError::RevisionRollback),
+        ),
+        (
+            7,
+            23,
+            [0; 32],
+            include_bytes!("../../catten/src/service/admission/test-policy-conflict.bin"),
+            Some(PolicyError::RevisionConflict),
+        ),
+        (
+            8,
+            22,
+            verified.digest(),
+            include_bytes!("../../catten/src/service/admission/test-policy-next.bin"),
+            None,
+        ),
+    ] {
+        let other = AdmissionTrust {
+            sequence,
+            operations_key: *pair(operations_seed).pk,
+            ..public
+        };
+        let other = ProductionTrustCandidate::validate(other, &public.cluster_id, 1).unwrap();
+        assert_eq!(fixture, &sign(&other, predecessor));
+        let result = signed_policy::verify(
+            fixture,
+            &BootstrapKey::new(*pair(31).pk).unwrap(),
+            &public.cluster_id,
+            &verified.installed_expectation().unwrap(),
+        );
+        if let Some(error) = error {
+            assert_eq!(result, Err(error));
+        } else {
+            assert_ne!(
+                result.unwrap().installed_expectation().unwrap(),
+                verified.installed_expectation().unwrap()
+            );
+        }
+    }
 }
 
 #[test]

@@ -118,3 +118,10 @@ manifests and the final kernel gate share its immutable public policy; recipient
 key mismatch and later policy replacement reject. Development selection remains
 explicit. The protected installer/boot selector, initial platform-service roots
 and recipient custody are still missing; **SEC-04 remains partial**.
+
+An [x86 QEMU Secure Boot matrix](../guides/qemu-secure-boot.md) now exercises
+firmware-to-Limine/config/kernel/policy integrity and signed-module consumption
+under disposable test authority. Boot requires the exact installed test state,
+rejecting stale/conflicting/uninstalled policies before publication. This is
+execution evidence for that test chain; production enrollment, persistent
+anti-rollback state, non-fixture platform-service roots and custody remain open.

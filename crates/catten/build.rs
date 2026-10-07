@@ -14,6 +14,12 @@ fn main() {
     println!("cargo:rustc-env=CATTEN_TRUST_MODE=development");
     println!("cargo:warning=DEVELOPMENT image: public fixture trust; do not deploy real secrets");
     let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+    if env::var_os("CARGO_FEATURE_BOOT_TRUST_TEST").is_some() {
+        assert_eq!(arch, "x86_64", "boot_trust_test supports only the x86 QEMU fixture");
+        println!(
+            "cargo:warning=boot_trust_test uses public test enrollment/state/recipient fixtures"
+        );
+    }
 
     match arch.as_str() {
         "x86_64" => {
