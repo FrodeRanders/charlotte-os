@@ -497,69 +497,16 @@ pub fn launch_network_stack_with_services(
     })
 }
 
-/// Spawn this node's cluster services: `disco` (Ethernet-broadcast
-/// discovery), `relmsg` (reliable messages), and `dns`.
-///
-/// DNS owns the node's one durable Raft member. Membership, names, deployment
-/// state, and cluster events therefore share one ordered log.
-pub fn launch_node_cluster(ns: &NameServiceHandle, cluster: &[u8]) -> Cluster {
-    let trust = charlotte_launch::development_admission_trust(cluster)
-        .expect("valid development admission trust");
-    launch_node_cluster_with_trust_and_services(ns, cluster, trust, &[])
-}
-
-/// Spawn cluster services and bind distributed ingress to an optional
-/// deployment-backed service identity.
-pub fn launch_node_cluster_with_service(
-    ns: &NameServiceHandle,
-    cluster: &[u8],
-    service: Option<ClusterTcpService>,
-) -> Cluster {
-    let trust = charlotte_launch::development_admission_trust(cluster)
-        .expect("valid development admission trust");
-    launch_node_cluster_with_trust_and_services(ns, cluster, trust, service.as_slice())
-}
-
-pub fn launch_node_cluster_with_services(
-    ns: &NameServiceHandle,
+/// Spawn cluster services with the boot-published policy also used by the
+/// kernel operational gate and deployment agents. DNS owns the durable Raft
+/// member for membership, names, deployment state and cluster events.
+fn launch_node_cluster_with_services(
+    boot_trust: &super::admission::BootTrust,
     cluster: &[u8],
     services: &[ClusterTcpService],
 ) -> Cluster {
-    let trust = charlotte_launch::development_admission_trust(cluster)
-        .expect("valid development admission trust");
-    launch_node_cluster_with_trust_and_services(ns, cluster, trust, services)
-}
-
-/// Spawn cluster services with caller-provisioned, role-separated public
-/// admission trust. Production platform integration uses this entry point;
-/// no private key is accepted by the launch contract.
-pub fn launch_node_cluster_with_trust(
-    ns: &NameServiceHandle,
-    cluster: &[u8],
-    trust: charlotte_launch::trust::AdmissionTrust,
-) -> Cluster {
-    launch_node_cluster_with_trust_and_services(ns, cluster, trust, &[])
-}
-
-/// Production cluster launch with role-separated admission trust and optional
-/// service-specific ingress placement policy.
-pub fn launch_node_cluster_with_trust_and_service(
-    ns: &NameServiceHandle,
-    cluster: &[u8],
-    trust: charlotte_launch::trust::AdmissionTrust,
-    service: Option<ClusterTcpService>,
-) -> Cluster {
-    launch_node_cluster_with_trust_and_services(ns, cluster, trust, service.as_slice())
-}
-
-/// Production cluster launch with one canonical operations-owned ingress
-/// assignment table shared with DNS and the packet path.
-pub fn launch_node_cluster_with_trust_and_services(
-    ns: &NameServiceHandle,
-    cluster: &[u8],
-    trust: charlotte_launch::trust::AdmissionTrust,
-    services: &[ClusterTcpService],
-) -> Cluster {
+    let ns = boot_trust.name_service();
+    let trust = boot_trust.public();
     const CLUSTER_KEY: u64 = charlotte_launch::manifest_key(b"cluster");
     const ELECTION_KEY: u64 = charlotte_launch::manifest_key(b"elect-ms");
     const INGRESS_SERVICES_KEY: u64 = charlotte_launch::manifest_key(b"vips");
@@ -783,62 +730,15 @@ fn launch_network_appliance_with_services_mode(
     }
 }
 
-/// Launch the signed deployment path once both durable local storage and the
-/// network exist. The S3 connector remains separately provisioned because its
-/// endpoint and credentials are machine policy, not deployment metadata.
-pub fn launch_deployment_plane(ns: &NameServiceHandle, cluster: &[u8]) -> DeploymentPlane {
-    let trust = charlotte_launch::development_admission_trust(cluster)
-        .expect("valid development admission trust");
-    // Development fixture matching `DEVELOPMENT_RECIPIENT_PUBLIC_KEY`. A
-    // production platform must inject its sealed recipient key through
-    // `launch_deployment_plane_with_operational_key` instead.
-    const DEVELOPMENT_RECIPIENT_PRIVATE_KEY: [u8; 32] = [
-        0xf0, 0x27, 0x76, 0xea, 0x15, 0x74, 0x49, 0x30, 0x94, 0xee, 0xf5, 0xb9, 0x9d, 0xb4, 0xd9,
-        0x57, 0x89, 0x0d, 0x0f, 0x48, 0x3c, 0xd9, 0x2b, 0xad, 0xe2, 0x6c, 0xe3, 0xcb, 0x10, 0x7d,
-        0x3b, 0x0d,
-    ];
-    launch_deployment_plane_with_operational_key(
-        ns,
-        cluster,
-        trust,
-        DEVELOPMENT_RECIPIENT_PRIVATE_KEY,
-    )
-}
-
-/// Launch the administration and reconciliation plane with caller-provisioned
-/// public trust. Artifact and deployment roles may be distinct.
-pub fn launch_deployment_plane_with_trust(
-    ns: &NameServiceHandle,
+/// Launch the signed deployment path with the same published policy as DNS
+/// and the kernel gate. S3 endpoint/credentials remain separately provisioned.
+fn launch_deployment_plane(
+    boot_trust: &super::admission::BootTrust,
     cluster: &[u8],
-    trust: charlotte_launch::trust::AdmissionTrust,
 ) -> DeploymentPlane {
-    launch_deployment_plane_configured(ns, cluster, trust, None)
-}
-
-/// Launch the reconciliation plane with the cluster's HPKE recipient key held
-/// only by the kernel. The key is checked against public admission trust and
-/// is never copied into the agent or connector catalog.
-pub fn launch_deployment_plane_with_operational_key(
-    ns: &NameServiceHandle,
-    cluster: &[u8],
-    trust: charlotte_launch::trust::AdmissionTrust,
-    recipient_private_key: [u8; 32],
-) -> DeploymentPlane {
-    launch_deployment_plane_configured(ns, cluster, trust, Some(recipient_private_key))
-}
-
-fn launch_deployment_plane_configured(
-    ns: &NameServiceHandle,
-    cluster: &[u8],
-    trust: charlotte_launch::trust::AdmissionTrust,
-    recipient_private_key: Option<[u8; 32]>,
-) -> DeploymentPlane {
+    let ns = boot_trust.name_service();
+    let trust = boot_trust.public();
     assert_eq!(trust.cluster_id, charlotte_launch::trust::cluster_id(cluster).unwrap());
-    assert!(crate::service::supervisor::configure_operational_launch_trust(
-        *ns,
-        trust,
-        recipient_private_key,
-    ));
     let admission_trust = trust.encode().expect("valid admission trust");
     let controller_trust = [ManifestEntry {
         key: charlotte_launch::ADMISSION_TRUST_MANIFEST_KEY,
@@ -1053,14 +953,39 @@ pub extern "C" fn launch_steady_state() {
     logln!(
         "[security] DEVELOPMENT image: public fixture trust; not suitable for real credentials."
     );
+    launch_steady_state_with_trust(
+        b"charlotte",
+        super::admission::PreparedBootTrust::development(b"charlotte"),
+    )
+    .unwrap_or_else(|_| panic!("boot admission trust rejected"));
+}
+
+/// Trusted boot adapter boundary, called once from a scheduler-owned boot
+/// thread. A future protected adapter must commit state and obtain custody
+/// before this handoff. Rejection returns the owner before service composition.
+#[allow(clippy::result_large_err)] // Inline private owner; admission failure must not allocate.
+pub(crate) fn launch_steady_state_with_trust(
+    cluster_mnemonic: &[u8],
+    prepared: super::admission::PreparedBootTrust,
+) -> Result<(), super::admission::PreparedBootTrust> {
+    if !prepared.matches_cluster(cluster_mnemonic) {
+        return Err(prepared);
+    }
     let ns = crate::service::supervisor::node_name_service();
+    // Publish once, before any cluster/deployment consumer receives its
+    // manifest. Production has no boot adapter yet and remains disabled.
+    let boot_trust = prepared.publish(ns)?;
     let storage = launch_storage(&ns);
     let entropy = launch_entropy(&ns);
     let cluster_services = configured_cluster_tcp_services();
     let network = launch_network_stack_with_services(&ns, &cluster_services);
     let (cluster, appliance) = match network {
         Some(_) => (
-            Some(launch_node_cluster_with_services(&ns, b"charlotte", &cluster_services)),
+            Some(launch_node_cluster_with_services(
+                &boot_trust,
+                cluster_mnemonic,
+                &cluster_services,
+            )),
             Some(launch_network_appliance_with_services_mode(
                 &ns,
                 storage.is_some(),
@@ -1072,7 +997,7 @@ pub extern "C" fn launch_steady_state() {
         None => (None, None),
     };
     let deployment = if storage.is_some() && network.is_some() {
-        Some(launch_deployment_plane(&ns, b"charlotte"))
+        Some(launch_deployment_plane(&boot_trust, cluster_mnemonic))
     } else {
         None
     };
@@ -1086,6 +1011,7 @@ pub extern "C" fn launch_steady_state() {
     });
     STEADY_STATE_OBSERVERS.drain().notify();
     logln!("[launch] steady-state service set published.");
+    Ok(())
 }
 
 /// Read the published steady-state service set, blocking until the launch

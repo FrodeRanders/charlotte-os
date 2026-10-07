@@ -2399,7 +2399,7 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
         frame.regs[0] = 0;
         return;
     };
-    let Some(trust) = crate::service::supervisor::configured_admission_trust() else {
+    let Some(trust) = crate::service::admission::configured_admission_trust() else {
         frame.regs[0] = 0;
         return;
     };
@@ -2501,7 +2501,7 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
         return;
     }
 
-    let launched = crate::service::supervisor::with_operational_launch_trust(
+    let launched = crate::service::admission::with_operational_launch_trust(
         |trust, recipient_private_key, name_service| {
             let descriptor = charlotte_launch::deployment::decode(pickup.descriptor)?;
             let release = charlotte_launch::release::decode(pickup.release)?;
@@ -2655,7 +2655,7 @@ fn sys_request_node_shutdown(frame: &mut TrapFrame) {
         charlotte_launch::shutdown::ENCODED_LEN,
     );
     close_input();
-    let Some(trust) = crate::service::supervisor::configured_admission_trust() else {
+    let Some(trust) = crate::service::admission::configured_admission_trust() else {
         frame.regs[0] = u64::MAX;
         return;
     };

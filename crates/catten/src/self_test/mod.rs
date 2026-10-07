@@ -324,6 +324,7 @@ pub fn run_synchronous_self_tests() {
 /// execute it from a scheduler-owned kernel thread after the AP schedulers are
 /// live.
 pub fn run_deferred_self_tests() {
+    crate::service::admission::tests::run();
     if cfg!(feature = "cluster_ingress_test") {
         el0_net::test_el0_net();
         #[cfg(feature = "cluster_ingress_test")]

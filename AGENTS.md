@@ -53,6 +53,13 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
 
 ## Architectural boundaries
 
+- Kernel admission policy is published once through
+  `service::admission::PreparedBootTrust`. Cluster/deployment manifests borrow
+  its `BootTrust` view; never configure their policy independently of the kernel
+  gate or overwrite an installed boot policy. Signed preparation consumes a
+  zeroizing recipient-key owner and checks its public binding. It does not
+  authenticate the platform, install rollback-resistant state or provide
+  custody; production remains disabled until those boundaries are implemented.
 - Internal APIs and wire formats have no backward-compatibility requirement.
   Remove compatibility-only branches when a coherent replacement is ready;
   do not preserve an unsafe allocation path for older callers.

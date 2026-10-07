@@ -60,6 +60,27 @@ fn verify(
 }
 
 #[test]
+fn kernel_boot_handoff_fixture_is_reproducible_public_test_material() {
+    // These deterministic seeds and recipient value are publicly known test
+    // material. The checked-in kernel record contains public bytes only.
+    let public = AdmissionTrust {
+        cluster_id: trust::cluster_id(b"boot-trust-tests").unwrap(),
+        ..*candidate(7).public()
+    };
+    let policy = ProductionTrustCandidate::validate(public, &public.cluster_id, 1).unwrap();
+    let fixture = include_bytes!("../../catten/src/service/admission/test-policy.bin");
+    assert_eq!(fixture, &sign(&policy, [0; 32]));
+    let verified = signed_policy::verify(
+        fixture,
+        &BootstrapKey::new(*pair(31).pk).unwrap(),
+        &public.cluster_id,
+        &PolicyExpectation::enrollment(7).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(verified.policy().public(), &public);
+}
+
+#[test]
 fn exact_public_policy_is_signed_with_a_separate_bootstrap_key() {
     let policy = candidate(7);
     let bytes = sign(&policy, [0; 32]);

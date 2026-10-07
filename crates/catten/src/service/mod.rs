@@ -12,6 +12,7 @@
 //!   initial capability;
 //! - [`supervisor`] spawns, observes, and tears down service domains.
 
+pub(crate) mod admission;
 pub mod bootstrap;
 pub mod launch;
 pub mod loader;

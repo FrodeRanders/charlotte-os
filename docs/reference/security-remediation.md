@@ -112,3 +112,9 @@ those public bytes under a separate caller-supplied bootstrap key and checks
 explicit revision lineage. Protected key/state provisioning, atomic installation,
 executable boot authentication and recipient custody remain required. Host
 verification is not a replacement for those gates; finding states are unchanged.
+
+The kernel now has a consuming, one-shot boot-policy handoff. DNS/deployment
+manifests and the final kernel gate share its immutable public policy; recipient
+key mismatch and later policy replacement reject. Development selection remains
+explicit. The protected installer/boot selector, initial platform-service roots
+and recipient custody are still missing; **SEC-04 remains partial**.
