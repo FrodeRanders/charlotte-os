@@ -1638,7 +1638,7 @@ struct EndpointObservable {
 struct EndpointCloseCompletionObserver {
     asid: AddressSpaceId,
     cap: crate::completion::CompletionCap,
-    completion: Weak<crate::completion::Completion>,
+    completion: crate::completion::CompletionWeak,
 }
 
 impl Observer for EndpointCloseCompletionObserver {

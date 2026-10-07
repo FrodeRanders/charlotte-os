@@ -21,11 +21,22 @@ is shared, not a guaranteed allowance for each essential service.
 
 ## Charges follow retained state
 
-A capability-backed completion owns its charge until its last strong reference
-is destroyed. Closing its capability returns its submission slot, but a kernel
-waiter or captured callback retaining the object keeps the record charged.
+A capability-backed completion retains its charge through the allocation's
+lifetime, including weak-only control-block backing. Closing its capability
+returns its submission slot, but strong or weak kernel references keep the
+record charged. The last strong reference destroys the payload; the last weak
+reference permits allocation release and the original reservation's refund.
 Merely observing its result does not release either resource. Namespace teardown
-can remove the public handle without destroying a retained object.
+can remove the public handle while retained backing remains charged.
+
+`CompletionRef` and `CompletionWeak` use `ChargedAllocator`, whose private charge
+holder follows every allocator clone. All holder owners use `Arc::into_inner`,
+so its allocation is freed before its one reservation is refunded, including
+concurrent final destruction. No weak reference to that holder escapes. Clones
+share one allocation allowance and cannot allocate another record or revive a
+freed allocation. `ChargedAllocator::try_arc` retains a preparation owner through
+failed construction, keeping the charge until the rejected payload is destroyed.
+This adapter is for fixed record allocations, not general growable containers.
 
 A detached operation moves its charge into an owning CQ backlog entry if its
 result cannot enter the ring. Its operation ID is no longer addressable, but
@@ -35,8 +46,9 @@ entry remains in independently allocated CQ backing.
 
 Cancelling non-timer work still waits for its producer to post a terminal
 result, except [endpoint-close watches](close-watch-budgets.md), whose owning
-registration can be cancelled locally. Timer cancellation can terminate the record immediately, but a cancelled
-event on a busy or remote LP retains its separate
+registration can be cancelled locally. Timer cancellation can terminate the
+payload immediately, but its producer's weak reference retains record admission
+until queue reclamation. A cancelled event on a busy or remote LP also retains its separate
 [timer-event charge](completion-timer-budgets.md) until queue reclamation.
 
 Kernel-controlled CQ replacement discards the old queue's undelivered results.
@@ -55,7 +67,7 @@ syscall submission-failure sentinel report backpressure; the runtime returns
 
 The completion registry checks the namespace's exact generation for retirement
 before admission. Every namespace has a fresh reference-counted budget owner.
-Old objects retain their original owner after ASID reuse, so late destruction
+Old strong and weak references retain their original owner after ASID reuse, so late destruction
 cannot credit a replacement. Completion close rechecks the captured object's
 identity under the registry lock before removing a handle: a delayed close
 cannot revoke a different object that reused its numeric capability.
@@ -67,13 +79,16 @@ the completion registry.
 
 ## Verification and remaining work
 
-Synchronous guest tests cover retained strong references after capability
-close, mixed capability/detached admission, non-timer cancellation, retained
+Synchronous guest tests cover retained strong and weak references after capability
+close, 128 weak clones, failed upgrade after payload destruction, record
+backpressure until final weak release, mixed capability/detached admission,
+non-timer cancellation, retained
 results and delivery, CQ replacement and teardown, submission rollback,
 timer-event rejection, ordinary and total pool saturation, actual submission
 progress for a kernel-designated platform domain, retirement rejection across
 all four submission paths, and exact numeric ASID/capability reuse with a stale
-captured close. Reservation-only pool exhaustion does not allocate the
+captured close and a stale weak allocation charged to the old generation.
+Reservation-only pool exhaustion does not allocate the
 equivalent maximum record footprint.
 
 The scoped EL0 probe fills its record capacity with owned endpoint-close
@@ -82,15 +97,20 @@ works, closes the watched endpoint, consumes every completion and waits for a
 short timer after recovery. A further probe drops an entire watch batch while
 its endpoint remains live, validating local cancellation rather than requiring
 endpoint death for destructor progress.
-The shared checked counter has host overflow/rejection/release tests.
+The shared checked counter has host overflow/rejection/release tests. Six host
+tests execute the actual allocation adapter: strong/weak lifetime, holder
+allocation rejection, rejected payload destruction before refund, prevention of
+allocation multiplication/revival, concurrent final weak destruction and
+concurrent cloned-allocator admission. Evidence:
+[completion backing audit](../reports/audits/2026-10-07-security-completion-backing.md).
 
 These are retained-state counts, not byte accounting for the entire kernel
 heap. Separate [CQ admission](completion-queue-budgets.md) bounds registered
-queues and kernel-owned ring/backlog backing. Registry nodes, worker stacks, observer lists,
-and weak-only Arc/control-block allocations are not separately charged here.
-In particular, a weak reference can retain allocation storage after the strong
-object's fields and charge have dropped. Observer cancellation/reclamation and
-fallible metadata allocation still require hardening. Endpoint-close and
+queues and kernel-owned ring/backlog backing. Completion record/control-block
+storage and its auxiliary charge holder are covered by the record count, not
+an aggregate byte budget. Registry nodes, observer lists, arbitrary callback
+captures and other weak-only Arc/control-block allocations are not covered here.
+General metadata allocation and reclamation remain separate work. Endpoint-close and
 thread-exit registrations now share [owning lists and event-watch admission](close-watch-budgets.md).
 Completion/CQ/IPC scheduler
 waiters also have [separate owning admission](scheduler-waiter-budgets.md);

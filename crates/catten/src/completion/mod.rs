@@ -59,6 +59,7 @@ use crate::{
         },
     },
     klib::{
+        charged_allocator::ChargedAllocator,
         observer::{
             Observable,
             Observer,
@@ -76,6 +77,10 @@ use crate::{
 /// unified object-capability table. Values are never reused within an address
 /// space, so a stale handle cannot alias a later operation.
 pub type CompletionCap = u64;
+
+// Kernel-private owners carry record admission through all strong/weak handles.
+pub(crate) type CompletionRef = Arc<Completion, ChargedAllocator<budget::Charge>>;
+pub(crate) type CompletionWeak = Weak<Completion, ChargedAllocator<budget::Charge>>;
 
 /// The stable identity of one submitted operation (architecture doc §8.2).
 ///
@@ -237,7 +242,7 @@ struct CompletionExitObserver {
     cap: CompletionCap,
     /// The result to post when the thread exits.
     result: OpResult,
-    completion: Weak<Completion>,
+    completion: CompletionWeak,
 }
 
 impl Observer for CompletionExitObserver {
@@ -256,7 +261,7 @@ struct CompletionTimerObserver {
     asid: AddressSpaceId,
     cap: CompletionCap,
     result: OpResult,
-    completion: Weak<Completion>,
+    completion: CompletionWeak,
 }
 
 impl Observer for CompletionTimerObserver {
@@ -294,34 +299,34 @@ pub struct Completion {
             crate::klib::observer::waiter_budget::Charge,
         >,
     >,
-    // Last: release admission after retained state and observers are dropped.
-    _record_charge: budget::Charge,
 }
 
 impl Completion {
     fn new(
         buffer: Option<Vec<u8>>,
         record_charge: budget::Charge,
-    ) -> Result<Arc<Self>, SubmitError> {
+    ) -> Result<CompletionRef, SubmitError> {
+        let allocator =
+            ChargedAllocator::try_new(record_charge).map_err(|_| SubmitError::WouldBlock)?;
         let waiters = crate::klib::observer::registration::ObserverList::try_new(
             crate::klib::observer::waiter_budget::SOURCE_LIMIT,
         )
         .map_err(|_| SubmitError::WouldBlock)?;
-        Arc::try_new(Self {
-            operation: alloc_operation_id(),
-            inner: Mutex::new(CompletionInner {
-                buffer,
-                state: OpState::InFlight,
-                worker_observation: None,
-                timer_observer: None,
-                timer_cancel: None,
-                event_observation: None,
-                callbacks: None,
-            }),
-            waiters,
-            _record_charge: record_charge,
-        })
-        .map_err(|_| SubmitError::WouldBlock)
+        allocator
+            .try_arc(Self {
+                operation: alloc_operation_id(),
+                inner: Mutex::new(CompletionInner {
+                    buffer,
+                    state: OpState::InFlight,
+                    worker_observation: None,
+                    timer_observer: None,
+                    timer_cancel: None,
+                    event_observation: None,
+                    callbacks: None,
+                }),
+                waiters,
+            })
+            .map_err(|_| SubmitError::WouldBlock)
     }
 
     fn operation_id(&self) -> OperationId {
@@ -659,7 +664,7 @@ impl Drop for CqState {
     }
 }
 struct AsCompletions {
-    table: BTreeMap<CompletionCap, Arc<Completion>>,
+    table: BTreeMap<CompletionCap, CompletionRef>,
     /// Shared upper bound for capability records, in-flight detached
     /// operations, and completed detached records awaiting CQ delivery.
     capacity: usize,
@@ -983,10 +988,10 @@ pub fn close_address_space(asid: AddressSpaceId) {
     }
 }
 
-pub fn completion_of(
+pub(crate) fn completion_of(
     asid: AddressSpaceId,
     cap: CompletionCap,
-) -> Result<Arc<Completion>, CapError> {
+) -> Result<CompletionRef, CapError> {
     if !crate::capability::contains(asid, cap, crate::capability::ObjectKind::Completion) {
         return Err(CapError::UnknownCap);
     }
@@ -1011,7 +1016,7 @@ fn submit_captured(
     asid: AddressSpaceId,
     buffer: Option<Vec<u8>>,
     event_watch: bool,
-) -> Result<(CompletionCap, Arc<Completion>, Option<watch_budget::Charge>), SubmitError> {
+) -> Result<(CompletionCap, CompletionRef, Option<watch_budget::Charge>), SubmitError> {
     let platform_identity = crate::memory::budget::platform_identity(asid);
     let mut registry = COMPLETIONS.write();
     let as_completions = registry.get_mut(&asid).ok_or(SubmitError::UnknownAddressSpace)?;
@@ -1048,7 +1053,7 @@ fn submit_captured(
 pub(crate) struct EventSubmission {
     asid: AddressSpaceId,
     cap: CompletionCap,
-    completion: Arc<Completion>,
+    completion: CompletionRef,
     charge: Option<watch_budget::Charge>,
     committed: bool,
 }
@@ -1069,7 +1074,7 @@ impl EventSubmission {
         self.cap
     }
 
-    pub(crate) fn completion(&self) -> &Arc<Completion> {
+    pub(crate) fn completion(&self) -> &CompletionRef {
         &self.completion
     }
 
@@ -1368,7 +1373,7 @@ pub fn complete(
 pub(crate) fn complete_registered(
     asid: AddressSpaceId,
     cap: CompletionCap,
-    completion: Arc<Completion>,
+    completion: CompletionRef,
     result: OpResult,
 ) -> Result<(), CapError> {
     // Transition and publish under one registry hold so a concurrent poll or
@@ -1844,7 +1849,7 @@ pub fn close(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
 pub(crate) fn close_registered(
     asid: AddressSpaceId,
     cap: CompletionCap,
-    completion: Arc<Completion>,
+    completion: CompletionRef,
 ) -> Result<(), CapError> {
     if !completion.is_reclaimable() {
         return Err(CapError::NotComplete);
@@ -1920,7 +1925,7 @@ pub fn observe(
 pub(crate) fn observe_registered(
     asid: AddressSpaceId,
     cap: CompletionCap,
-    captured: &Arc<Completion>,
+    captured: &CompletionRef,
     observer: Arc<dyn Observer>,
 ) -> Result<CompletionObservation, ObserveError> {
     let platform_identity = crate::memory::budget::platform_identity(asid);

@@ -118,9 +118,12 @@ The fourteenth bit fills shared completion-record capacity with owned
 endpoint-close watches. Timer submission must fail while the record budget is
 full, scalar IPC must still work, and closing the watched endpoint must allow
 all watches to complete and a short timer to run. Synchronous tests cover
-retained strong references and detached results, ordinary/total record pools,
+retained strong and weak references and detached results, ordinary/total record pools,
 platform progress, CQ replacement, retirement and a stale captured close after
-exact numeric ASID/capability reuse. See
+exact numeric ASID/capability reuse, including an old weak allocation that must
+not refund the successor's account. Six host tests execute the kernel's actual
+charged allocator for lifetime, allocation-failure destruction order, clone
+admission and concurrent final weak release. See
 [completion-record budgets](../reference/completion-record-budgets.md).
 
 Kernel-only CQ admission tests additionally exhaust queue counts and kernel

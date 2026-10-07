@@ -52,7 +52,9 @@ Cancellation can race a callback already captured for notification. Callbacks
 must be short, tolerate that race and use captured identity. The owner retains
 its strong callback until Drop, even after notification; the token alone does
 not retain the operation. Callback captures may retain an operation, whose
-separate record charge follows that strong reference. Entry counters do not
+separate record charge follows the allocation through both strong and weak
+references; see [completion-record admission](completion-record-budgets.md).
+Entry counters do not
 account for arbitrary capture sizes, retained empty control blocks or the whole
 kernel heap.
 

@@ -335,7 +335,15 @@ fn test_completion_record_admission() {
     assert_eq!(completion::submit(asid, OpCode::Nop, None), Err(SubmitError::WouldBlock));
     assert_eq!(completion::submit_timer(asid, 1), Err(SubmitError::WouldBlock));
     assert_eq!(completion::timer_events_used(asid), 0);
+    let weak = alloc::sync::Arc::downgrade(&retained);
+    let mut weak_clones: alloc::vec::Vec<_> = (0..128).map(|_| weak.clone()).collect();
     drop(retained);
+    assert!(weak.upgrade().is_none());
+    assert_eq!(account.used(), 1, "weak-only record backing remains admitted");
+    assert_eq!(completion::submit(asid, OpCode::Nop, None), Err(SubmitError::WouldBlock));
+    weak_clones.clear();
+    assert_eq!(account.used(), 1);
+    drop(weak);
     assert_eq!(account.used(), 0);
     let cap = completion::submit(asid, OpCode::Nop, None).unwrap();
     completion::abort_submission(asid, cap).unwrap();
@@ -480,15 +488,21 @@ fn test_completion_record_admission() {
         Err(completion::CapError::UnknownCap)
     );
     assert_eq!(completion::state_of(replacement, cap).unwrap(), OpStateKind::InFlight);
+    let stale = alloc::sync::Arc::downgrade(&captured);
     drop(captured);
+    assert!(stale.upgrade().is_none());
+    assert_eq!(account.used(), 1, "weak-only old generation retains its own record charge");
+    assert_eq!(fresh.used(), 1);
+    assert_eq!(budget::node_used(), (before.0 + 2, before.1 + 2));
+    drop(stale);
     assert_eq!(account.used(), 0);
     assert_eq!(fresh.used(), 1, "old-generation release cannot credit replacement");
     completion::abort_submission(replacement, cap).unwrap();
     crate::self_test::close_test_address_space(replacement).unwrap();
     assert_eq!(budget::node_used(), before);
     logln!(
-        "[completion records] quotas, retained objects/results, rollback, retirement and ASID \
-         reuse passed"
+        "[completion records] quotas, retained strong/weak objects/results, rollback, retirement \
+         and exact ASID reuse passed"
     );
 }
 

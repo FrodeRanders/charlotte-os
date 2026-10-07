@@ -329,6 +329,14 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`
   and invoke detached notifications after subsystem guards are released.
+- Completion records use `CompletionRef`/`CompletionWeak` and
+  `ChargedAllocator::try_arc`. Their original admission follows allocation
+  lifetime through final weak release, including the private charge holder's
+  deallocation. Keep the preparation owner through failed payload construction;
+  do not restore field-owned charges or bare global-allocator record Arcs.
+  Allocator clones share one allocation allowance; never expose a weak or bare
+  Arc to their private charge holder. See
+  `docs/reference/completion-record-budgets.md`.
 - Non-scheduler completion callbacks use `completion::observe` and retain its
   `CompletionObservation` owner. Dropping that owner cancels only the
   subscription, not the operation or its producer. Keep arbitrary callback work
