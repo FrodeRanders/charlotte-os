@@ -245,6 +245,12 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   translations; never enable IRQs beneath an unknown mask or count failed/stale
   deliveries. Scheduled same-LP reapers perform physical stack release outside
   IRQ tails. Retry only a retained retirement owner, never abandoned backing.
+  Provisional kernel data frames follow the same rule: `PreparingKernelFrame`
+  Drop only retains backing and updates its atomic diagnostic. Success consumes
+  it into mapping ownership; ordinary rejection consumes it into
+  `RetiredKernelRange`. Never free, invalidate, acquire allocator/table guards or
+  log from that destructor, even for apparently unpublished backing. Do not
+  re-adopt an abandoned frame by address.
   DMA teardown fences map/unmap before hardware detachment. Require VT-d read/
   write drains, AMD strict completion-store epochs, and SMMU ASID TLBI/SYNC
   before releasing data pins. Preserve unconsumed command queues after timeout.

@@ -96,8 +96,10 @@ pub(crate) fn test_kernel_retirement() {
     retirement.release().unwrap();
     assert_eq!(free(), baseline - 1);
     assert_eq!(KERNEL_AS.lock().unmap_page(second).unwrap(), foreign.frame());
-    crate::cpu::isa::memory::tlb::inval_range_kernel(second, 1);
-    drop(foreign);
+    let mut foreign_retirement = RetiredKernelRange::new();
+    foreign_retirement.begin(second, PageSize::Standard, 1).unwrap();
+    foreign.retire(&mut foreign_retirement);
+    foreign_retirement.release().unwrap();
     assert_eq!(free(), baseline);
 
     // Admission bounds precede mutation; the progress receipt can be reused.
@@ -127,10 +129,11 @@ pub(crate) fn test_kernel_retirement() {
     drop(retirement);
     assert_eq!(free(), baseline - 1);
     assert_eq!(QUARANTINED_KERNEL_PAGES.load(Ordering::Relaxed), quarantined + 1);
+    test_preparation_abandonment(base);
     crate::logln!(
         "[kernel retirement] detach-before-release, failed barrier/retry, allocation/map \
          rollback, foreign-leaf preservation, bounded metadata and Drop quarantine (one reserved \
-         test page) passed"
+         test page) and preparation abandonment passed"
     );
 }
 
@@ -247,7 +250,10 @@ fn test_physical_release(base: VAddr) {
     drop(retirement);
     assert_eq!(QUARANTINED_KERNEL_PAGES.load(Ordering::Relaxed), quarantined + 1);
     assert_eq!(free(), baseline - 2);
-    drop(successor);
+    let mut successor_retirement = RetiredKernelRange::new();
+    successor_retirement.begin(base, PageSize::Standard, 1).unwrap();
+    successor.retire(&mut successor_retirement);
+    successor_retirement.release().unwrap();
     assert_eq!(free(), baseline - 1);
     // Large allocation updates a legacy boot-heap diagnostic probe. This
     // serialized fixture must not leave it pointing at reclaimed test data.
@@ -269,5 +275,52 @@ fn test_physical_release(base: VAddr) {
         "[kernel physical release] 35-page/2 MiB batches, post-guard completion, terminal partial \
          failure, successor preservation and interrupted owner passed (two additional retained \
          base frames)"
+    );
+}
+
+fn test_preparation_abandonment(base: VAddr) {
+    let baseline = free();
+    let quarantined = QUARANTINED_KERNEL_PAGES.load(Ordering::Relaxed);
+    // Even a definitely unpublished owner cannot infer whether its caller
+    // holds the physical allocator. Drop must not acquire it or release data.
+    let unpublished = PageSize::Standard.allocate().unwrap();
+    {
+        let allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+        assert_eq!(allocator.free_frames(), baseline - 1);
+        drop(unpublished);
+        assert_eq!(allocator.free_frames(), baseline - 1);
+    }
+    assert_eq!(QUARANTINED_KERNEL_PAGES.load(Ordering::Relaxed), quarantined + 1);
+
+    // Simulate successful leaf publication before the preparation owner is
+    // consumed. Both guards are live at abandonment, without panic unwinding
+    // or manufactured TLB acknowledgements. Warmed tables allocate nothing.
+    let published = PageSize::Standard.allocate().unwrap();
+    let frame = published.frame();
+    let address = base + 2 * AddressSpace::PAGE_SIZE;
+    {
+        let mut space = KERNEL_AS.lock();
+        space
+            .map_page(MemoryMapping {
+                vaddr: address,
+                paddr: frame,
+                page_type: PageType::KernelData,
+            })
+            .unwrap();
+        let allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+        assert_eq!(allocator.free_frames(), baseline - 2);
+        drop(published);
+        assert_eq!(allocator.free_frames(), baseline - 2);
+        assert_eq!(space.translate_address(address).unwrap(), frame);
+        // Remove this fixture's leaf, but never re-adopt abandoned backing.
+        assert_eq!(space.unmap_page(address).unwrap(), frame);
+    }
+    assert!(invalidate(address, 1));
+    assert_eq!(free(), baseline - 2);
+    assert_eq!(QUARANTINED_KERNEL_PAGES.load(Ordering::Relaxed), quarantined + 2);
+    guards_available();
+    crate::logln!(
+        "[kernel preparation] unpublished/published abandonment retains backing under \
+         allocator/table guards (two additional reserved pages)"
     );
 }

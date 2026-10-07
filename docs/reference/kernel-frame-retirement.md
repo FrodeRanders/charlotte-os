@@ -14,6 +14,16 @@ prefix. Its physical release failure is reported by explicit post-guard cleanup,
 not hidden by a provisional frame destructor. Only this operation's installed
 prefix is detached; a failing `AlreadyMapped` cannot steal a pre-existing leaf.
 
+The provisional `PreparingKernelFrame` cannot infer publication or its caller's
+lock context in Drop. Abandonment therefore leaves its complete extent unavailable
+and updates only the atomic quarantine counter. Drop takes no allocator/table
+guard, frees no data, performs no invalidation and enters no logger. Ordinary
+success consumes it into mapping ownership; confirmed rejection consumes it
+into `RetiredKernelRange` for explicit post-guard release. Even a definitely
+unpublished owner must use that receipt for ordinary rollback, rather than
+reintroducing physical cleanup under an unknown guard. An abandoned extent
+cannot be re-adopted or retried from its former numeric address.
+
 Stack teardown retains arena serialization while removing leaves and updating
 guard-page references. Physical release happens afterward, with the arena and
 page-table guards gone. The receipt completes architecture invalidation before
@@ -112,12 +122,25 @@ real 2 MiB leaf releases in thirty-two batches, and physical/table guards are
 available at each successful batch boundary. Injected rejection of its final
 base-frame release preserves one frame and freezes the receipt. A fresh physical
 owner claims an already released address; rejected retry leaves it untouched and
-normal successor Drop releases it. Receipt reinitialization also rejects.
+explicit successor retirement releases it. Receipt reinitialization also rejects.
+The successor and detached foreign-leaf fixtures now consume their provisional
+owners into fresh receipts for explicit release; their destructors no longer
+perform physical cleanup.
 A simulated interruption after a real completed barrier retains one further
 frame without permitting a physical retry. Together with the original Drop case,
 these kernel-range fixtures retain three 4 KiB frames. No allocator corruption,
 real panic unwinding or physical hardware failure is injected. See the
 [physical-release audit record](../reports/audits/2026-10-07-security-kernel-release.md).
+
+Additional preparation fixtures abandon a real unpublished page while holding
+the physical allocator, then abandon a real published leaf while holding both
+the allocator and kernel table. Drop returns without taking those guards or
+returning frames. The published leaf still resolves to its unavailable backing.
+The fixture later detaches and invalidates its leaf, but never re-adopts that backing.
+These two additional 4 KiB pages remain reserved, bringing the kernel-frame
+fixtures' total to five data pages. This simulates interruption explicitly;
+there is no panic unwinding or live application trigger. See the
+[preparation audit record](../reports/audits/2026-10-07-security-kernel-preparation.md).
 
 The host epoch tests cover stale, duplicate and non-regressing acknowledgements,
 exclusive coordinator ownership and identity exhaustion. The boot fake sender

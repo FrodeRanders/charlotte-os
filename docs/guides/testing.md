@@ -1030,3 +1030,14 @@ fixture. These are serialized injections, not actual allocator corruption, panic
 unwinding, hardware failure or a worst-case latency proof. Existing failed-barrier
 retry and ordinary stack cleanup remain enabled. See the
 [kernel release audit record](../reports/audits/2026-10-07-security-kernel-release.md).
+
+Provisional kernel-frame fixtures also abandon one real unpublished owner
+under the physical allocator and one published leaf owner under both allocator
+and kernel-table guards. Drop must return without freeing data or acquiring
+those guards; the live leaf retains its exact physical identity. The fixture
+detaches and invalidates that leaf afterward but keeps both abandoned frames
+unavailable permanently. These add two 4 KiB pages to the previous three
+kernel-range quarantine pages. Ordinary foreign-leaf/successor cleanup now uses
+fresh explicit receipts. This is controlled abandonment, not panic unwinding
+or an EL0-triggered fault. See
+[kernel preparation audit](../reports/audits/2026-10-07-security-kernel-preparation.md).

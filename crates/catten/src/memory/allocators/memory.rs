@@ -17,7 +17,6 @@ use crate::{
         physical::{
             self,
             PAddr,
-            PhysicalFrameAllocator,
         },
     },
 };
@@ -71,18 +70,6 @@ impl PageSize {
             frame: Some(frame),
             page_size: self,
         })
-    }
-
-    fn deallocate(
-        self,
-        allocator: &mut PhysicalFrameAllocator,
-        frame: PAddr,
-    ) -> Result<(), physical::Error> {
-        match self {
-            Self::Standard => allocator.deallocate_frame(frame),
-            Self::Large => allocator.deallocate_large_frame(frame),
-            Self::Huge => allocator.deallocate_huge_frame(frame),
-        }
     }
 }
 
@@ -288,17 +275,16 @@ impl PreparingKernelFrame {
 
 impl Drop for PreparingKernelFrame {
     fn drop(&mut self) {
-        let Some(frame) = self.frame.take() else {
+        if self.frame.take().is_none() {
             return;
-        };
-        // Release the allocator guard before invoking diagnostics.
-        let failed =
-            self.page_size.deallocate(&mut PHYSICAL_FRAME_ALLOCATOR.lock(), frame).is_err();
-        if failed {
-            QUARANTINED_KERNEL_PAGES
-                .fetch_add(self.page_size.num_bytes() / AddressSpace::PAGE_SIZE, Ordering::Relaxed);
-            crate::early_logln!("[memory] quarantined unpublished kernel frame {:?}", frame);
         }
+        // A mapper may have published before ownership transfer was interrupted.
+        // Drop has neither a confirmed publication outcome nor a lock context.
+        // Ordinary rejection consumes this owner into RetiredKernelRange for
+        // explicit post-guard invalidation/release; abandonment never frees.
+        QUARANTINED_KERNEL_PAGES
+            .fetch_add(self.page_size.num_bytes() / AddressSpace::PAGE_SIZE, Ordering::Relaxed);
+        // Even diagnostics must not enter a logger beneath an unknown guard.
     }
 }
 
