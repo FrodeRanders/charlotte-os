@@ -791,6 +791,17 @@ before switching and completion afterward. Existing real remote-abort verifiers
 still run. See
 [thread retirement](../reference/thread-retirement.md) for fixture limits.
 
+Whole-domain abort fixtures also check the inline root fence, rejection of an
+already-prepared thread, repeated late preparation, callback guard availability,
+TID replacement between capture and claim, ASID reuse and final root/frame
+recovery. Repeated sweeps release their temporary root leases; stale, closing and
+kernel targets reject before force publication. A prepared thread cannot publish
+after staged root close. Isolated node/deployment bookkeeping retains failed
+stale-root aborts without status access, counter updates or retry. These use real
+never-scheduled roots/threads; existing scheduled cross-LP/security/shutdown
+fixtures cover integration. See the
+[domain abort audit](../reports/audits/2026-10-07-security-domain-thread-abort.md).
+
 `scripts/run-host-tests.sh` exercises the production socket registry against
 fixed smoltcp storage: rejected creation delivery, dead-owner generations,
 unactivated expiry, admission reserves and buffer-count recovery. It also

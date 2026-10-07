@@ -2792,19 +2792,47 @@ pub(crate) fn retire_deployed_artifact_with_registry(
             }
         }
         let deadline_reached = entry.retirement_deadline_ms.is_some_and(|deadline| now >= deadline);
-        if force || deadline_reached {
-            if !entry.force_requested {
-                crate::service::bootstrap::write_lifecycle_request(
-                    domain.config_frame,
-                    charlotte_launch::lifecycle::STATE_FORCE_TERMINATING,
-                    entry.retirement_reason,
-                    entry.retirement_deadline_ms.unwrap_or(now),
-                );
-                entry.force_requested = true;
+        if (force || deadline_reached) && !entry.force_requested {
+            let reason = entry.retirement_reason;
+            let deadline = entry.retirement_deadline_ms.unwrap_or(now);
+            entry.teardown = DeploymentTeardown::Polling;
+            // Lease admission takes lifecycle before scheduler state. Retain
+            // the registry claim, not its masking guard, through exact-root
+            // force publication and the generation-qualified abort sweep.
+            drop(deployed);
+            let result = crate::cpu::scheduler::system_scheduler::abort_domain_threads_with_request(
+                domain.address_space,
+                || {
+                    crate::service::bootstrap::write_lifecycle_request(
+                        domain.config_frame,
+                        charlotte_launch::lifecycle::STATE_FORCE_TERMINATING,
+                        reason,
+                        deadline,
+                    )
+                },
+            );
+            let mut deployed = registry.lock();
+            let entry = deployed
+                .iter_mut()
+                .find(|entry| entry.domain.address_space == domain.address_space)
+                .expect("claimed deployment abort entry lost");
+            assert!(matches!(entry.teardown, DeploymentTeardown::Polling));
+            match result {
+                Ok(()) => {
+                    entry.force_requested = true;
+                    entry.teardown = DeploymentTeardown::NotStarted;
+                }
+                Err(error) => {
+                    crate::logln!(
+                        "[supervisor] exact deployment thread abort rejected: {:?}",
+                        error
+                    );
+                    entry.teardown = DeploymentTeardown::Failed(
+                        crate::service::supervisor::DomainTeardownError::ThreadAbortRejected,
+                    );
+                    return u64::MAX;
+                }
             }
-            crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
-                .read()
-                .abort_as_threads(domain.asid);
         }
         return 1;
     }

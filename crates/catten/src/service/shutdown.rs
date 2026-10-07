@@ -17,7 +17,7 @@ use core::sync::atomic::{
 use crate::{
     cpu::scheduler::{
         monotonic_millis,
-        system_scheduler::SYSTEM_SCHEDULER,
+        system_scheduler::abort_domain_threads_with_request,
     },
     service::{
         bootstrap,
@@ -154,6 +154,7 @@ struct DomainRetirement {
     domain: ServiceDomain,
     request_published: bool,
     force_requested: bool,
+    abort_failed: bool,
     teardown: Option<DomainTeardown>,
     lifecycle_status: Option<u32>,
 }
@@ -172,6 +173,7 @@ impl ShutdownPhaseSpec {
                 domain,
                 request_published: false,
                 force_requested: false,
+                abort_failed: false,
                 teardown: None,
                 lifecycle_status: None,
             }],
@@ -286,6 +288,13 @@ impl NodeShutdownCoordinator {
             let mut index = 0;
             while index < current.domains.len() {
                 let retirement = &mut current.domains[index];
+                if retirement.abort_failed {
+                    return NodeShutdownProgress::ReclamationFailed {
+                        phase: current.phase,
+                        error: DomainTeardownError::ThreadAbortRejected,
+                        remaining_domains: current.domains.len(),
+                    };
+                }
                 if retirement.teardown.is_some() || supervisor::domain_exited(&retirement.domain) {
                     if retirement.teardown.is_none() {
                         retirement.lifecycle_status =
@@ -339,14 +348,25 @@ impl NodeShutdownCoordinator {
                     retirement.request_published = true;
                 }
                 if now >= phase_deadline && !retirement.force_requested {
-                    bootstrap::write_lifecycle_request(
-                        retirement.domain.config_frame,
-                        charlotte_launch::lifecycle::STATE_FORCE_TERMINATING,
-                        charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
-                        phase_deadline,
-                    );
+                    if let Err(error) =
+                        abort_domain_threads_with_request(retirement.domain.address_space, || {
+                            bootstrap::write_lifecycle_request(
+                                retirement.domain.config_frame,
+                                charlotte_launch::lifecycle::STATE_FORCE_TERMINATING,
+                                charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+                                phase_deadline,
+                            )
+                        })
+                    {
+                        retirement.abort_failed = true;
+                        crate::logln!("[shutdown] exact domain thread abort rejected: {:?}", error);
+                        return NodeShutdownProgress::ReclamationFailed {
+                            phase: current.phase,
+                            error: DomainTeardownError::ThreadAbortRejected,
+                            remaining_domains: current.domains.len(),
+                        };
+                    }
                     retirement.force_requested = true;
-                    SYSTEM_SCHEDULER.read().abort_as_threads(retirement.domain.asid);
                 }
                 index += 1;
             }
@@ -472,16 +492,23 @@ impl Drop for NodeShutdownCoordinator {
             for retirement in &mut phase.domains {
                 if retirement.teardown.is_none()
                     && !retirement.force_requested
+                    && !retirement.abort_failed
                     && !supervisor::domain_exited(&retirement.domain)
                 {
-                    bootstrap::write_lifecycle_request(
-                        retirement.domain.config_frame,
-                        charlotte_launch::lifecycle::STATE_FORCE_TERMINATING,
-                        charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
-                        self.node_deadline_ms,
-                    );
-                    SYSTEM_SCHEDULER.read().abort_as_threads(retirement.domain.asid);
-                    retirement.force_requested = true;
+                    match abort_domain_threads_with_request(retirement.domain.address_space, || {
+                        bootstrap::write_lifecycle_request(
+                            retirement.domain.config_frame,
+                            charlotte_launch::lifecycle::STATE_FORCE_TERMINATING,
+                            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+                            self.node_deadline_ms,
+                        )
+                    }) {
+                        Ok(()) => retirement.force_requested = true,
+                        Err(error) => crate::logln!(
+                            "[shutdown] retained domain after exact thread abort rejection: {:?}",
+                            error
+                        ),
+                    }
                 }
             }
         }

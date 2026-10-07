@@ -144,7 +144,10 @@ impl StackSlot {
             return Err(());
         };
         let bits = space.thread_stack_slots;
-        if bits.count_ones() as usize >= limits.max_threads || bits == u64::MAX {
+        if space.thread_admission_closed
+            || bits.count_ones() as usize >= limits.max_threads
+            || bits == u64::MAX
+        {
             drop(table);
             let _ = operation.release();
             return Err(());

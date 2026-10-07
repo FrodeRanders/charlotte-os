@@ -32,6 +32,15 @@ use core::sync::atomic::{
     Ordering,
 };
 
+mod domain_abort;
+pub(crate) use domain_abort::{
+    abort_domain_threads,
+    abort_domain_threads_with_request,
+};
+pub(crate) fn test_domain_abort() {
+    domain_abort::tests::run();
+}
+
 use super::lp_schedulers::LpScheduler;
 use crate::{
     cpu::{
@@ -61,7 +70,6 @@ use crate::{
         },
     },
     logln,
-    memory::AddressSpaceId,
 };
 
 const SCHED_TRACE: bool = false;
@@ -85,33 +93,34 @@ pub const MAX_TRACKED_LPS: usize = 256;
 pub static LP_LOAD_SUMMARIES: [AtomicUsize; MAX_TRACKED_LPS] =
     [const { AtomicUsize::new(0) }; MAX_TRACKED_LPS];
 
-/// Serializes thread-table publication with a domain-abort snapshot.
-///
-/// The map retains the generation of an address-space lifetime whose abort has
-/// begun. A later occupant of the same numeric ASID is therefore admitted
-/// normally. Holding this gate until every captured TID has been handed to
-/// `abort_thread` also prevents another domain from reusing a captured numeric
-/// TID midway through the sweep.
-static ABORTING_ADDRESS_SPACES: Mutex<BTreeMap<AddressSpaceId, usize>> =
-    Mutex::new(BTreeMap::new());
+/// Serializes thread publication with the exact root's inline abort fence.
+/// No map or per-abort storage is created while teardown is in progress.
+static THREAD_PUBLICATION_GATE: Mutex<()> = Mutex::new(());
+
+pub(crate) fn thread_admission_open(handle: crate::memory::AddressSpaceHandle) -> bool {
+    let table = crate::memory::ADDRESS_SPACE_TABLE.lock();
+    table.generation(handle.id()).ok() == Some(handle.generation())
+        && table.is_closing(handle.id()) == Ok(false)
+        && table.get(handle.id()).is_ok_and(|space| !space.thread_admission_closed)
+}
 
 /// Publish a newly constructed thread unless its address-space lifetime is
 /// already aborting.
 ///
-/// Publication and the abort snapshot use the same gate. A thread is therefore
-/// either visible in the snapshot or rejected; it cannot appear in the master
-/// table just after the snapshot was taken.
+/// Publication and installing the root's abort fence use the same gate. A
+/// thread is either published before the fence or rejected afterward.
 pub fn publish_thread(thread: Thread) -> Result<ThreadId, Error> {
     let asid = thread.asid;
-    let aborting = ABORTING_ADDRESS_SPACES.lock();
+    // Keep the checked root's closing admission state stable through table
+    // publication. Prepared stacks lease its lifetime, but a lease alone does
+    // not prevent staged close from installing its admission fence.
+    let lifecycle =
+        (asid != crate::memory::KERNEL_ASID).then(|| crate::memory::ADDRESS_SPACE_LIFECYCLE.lock());
+    let publication_gate = THREAD_PUBLICATION_GATE.lock();
     let mut maximum = None;
     if asid != crate::memory::KERNEL_ASID {
-        let handle =
-            crate::memory::current_address_space_handle(asid).ok_or(Error::ThreadTerminated)?;
-        if thread.address_space != Some(handle) {
-            return Err(Error::ThreadTerminated);
-        }
-        if aborting.get(&asid).is_some_and(|generation| *generation == handle.generation()) {
+        let handle = thread.address_space.ok_or(Error::ThreadTerminated)?;
+        if handle.id() != asid || !thread_admission_open(handle) {
             return Err(Error::ThreadTerminated);
         }
         maximum = Some(crate::memory::domain_limits(asid).max_threads);
@@ -130,7 +139,8 @@ pub fn publish_thread(thread: Thread) -> Result<ThreadId, Error> {
     // A rejected payload still owns stacks and can notify exit subscribers.
     // Release scheduler serialization before running any of its destructors.
     drop(table);
-    drop(aborting);
+    drop(publication_gate);
+    drop(lifecycle);
     publication.map_err(|(thread, _)| {
         drop(thread);
         Error::ThreadPreparationFailed
@@ -140,8 +150,8 @@ pub fn publish_thread(thread: Thread) -> Result<ThreadId, Error> {
 /// Exact-generation process liveness for the trusted remote-resource adapter.
 /// Abort fencing and publication use this same gate before the thread table.
 pub(crate) fn domain_has_live_threads(handle: crate::memory::AddressSpaceHandle) -> bool {
-    let aborting = ABORTING_ADDRESS_SPACES.lock();
-    if aborting.get(&handle.id()) == Some(&handle.generation()) {
+    let _publication_gate = THREAD_PUBLICATION_GATE.lock();
+    if !thread_admission_open(handle) {
         return false;
     }
     MASTER_THREAD_TABLE
@@ -163,6 +173,7 @@ pub enum Error {
     WaitRegistrationFailed,
     PermissionDenied,
     ThreadPreparationFailed,
+    ThreadRetirementFailed,
 }
 
 /// The system-wide thread scheduler
@@ -662,39 +673,6 @@ impl SystemScheduler {
         record_exit(stage_lp, tid, thread.generation);
         crate::cpu::scheduler::threads::stage_dead_thread(stage_lp, tid, thread);
         Ok(tid)
-    }
-
-    pub fn abort_as_threads(&self, asid: AddressSpaceId) {
-        let mut aborting = ABORTING_ADDRESS_SPACES.lock();
-        let generation = crate::memory::current_address_space_handle(asid)
-            .map(|handle| handle.generation())
-            .unwrap_or(usize::MAX);
-        aborting.insert(asid, generation);
-        let threads_to_abort = MASTER_THREAD_TABLE
-            .read()
-            .iter()
-            .enumerate()
-            .filter_map(|(id, thread)| {
-                thread.as_ref().filter(|thread| thread.asid == asid).map(|_| id)
-            })
-            .collect::<Vec<_>>();
-
-        // Keep publication blocked through the complete sweep. Besides
-        // rejecting late siblings from this address space, this prevents any
-        // captured numeric TID from being recycled by another domain before
-        // it is passed to abort_thread.
-        for tid in threads_to_abort {
-            match self.abort_thread(tid) {
-                Ok(_) | Err(Error::InvalidThread) => {}
-                Err(error) => crate::early_logln!(
-                    "WARNING: failed to abort thread {} in address space {}: {:?}",
-                    tid,
-                    asid,
-                    error
-                ),
-            }
-        }
-        drop(aborting);
     }
 
     fn get_least_loaded_lp(&self) -> &Mutex<Box<dyn LpScheduler>> {

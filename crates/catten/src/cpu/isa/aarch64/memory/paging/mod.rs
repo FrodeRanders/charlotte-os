@@ -197,6 +197,8 @@ pub struct AddressSpace {
     /// walking the TTBR0 hierarchy at teardown.
     owned_frames: Vec<PAddr>,
     pub(crate) thread_stack_slots: u64,
+    /// Terminal thread-admission fence for this exact root lifetime.
+    pub(crate) thread_admission_closed: bool,
     pub(crate) heap_account: crate::memory::backing_budget::Account,
     pub(crate) image_account: crate::memory::backing_budget::Account,
     pub(crate) table_account: crate::memory::translation::Account,
@@ -222,6 +224,7 @@ impl AddressSpace {
             owns_root: true,
             owned_frames: Vec::new(),
             thread_stack_slots: 0,
+            thread_admission_closed: false,
             heap_account: crate::memory::backing_budget::Account::new(
                 crate::memory::backing_budget::Kind::Heap,
             ),
@@ -354,6 +357,7 @@ impl AddressSpaceInterface for AddressSpace {
             owns_root: false,
             owned_frames: Vec::new(),
             thread_stack_slots: 0,
+            thread_admission_closed: false,
             heap_account: crate::memory::backing_budget::Account::new(
                 crate::memory::backing_budget::Kind::Heap,
             ),

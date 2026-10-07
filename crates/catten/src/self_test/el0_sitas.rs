@@ -16,12 +16,6 @@
 //! three status-page words.
 
 #[cfg(target_arch = "aarch64")]
-use core::sync::atomic::{
-    AtomicUsize,
-    Ordering,
-};
-
-#[cfg(target_arch = "aarch64")]
 use crate::completion;
 #[cfg(target_arch = "aarch64")]
 use crate::cpu::isa::interface::memory::AddressSpaceInterface;
@@ -70,7 +64,9 @@ const PAGE_SIZE: usize = 4096;
 #[cfg(target_arch = "aarch64")]
 static mut SITAS_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
 #[cfg(target_arch = "aarch64")]
-static SITAS_ASID: AtomicUsize = AtomicUsize::new(usize::MAX);
+static SITAS_DOMAIN: crate::cpu::multiprocessor::spin::mutex::Mutex<
+    Option<crate::memory::AddressSpaceHandle>,
+> = crate::cpu::multiprocessor::spin::mutex::Mutex::new(None);
 
 #[cfg(target_arch = "aarch64")]
 const ELF_MAGIC: &[u8; 4] = b"\x7fELF";
@@ -307,8 +303,9 @@ pub fn test_el0_sitas() {
             let _kas = KERNEL_AS.lock();
             AddressSpace::new_user()
         };
-        let asid = crate::memory::register_user_address_space(user_as).unwrap().id();
-        SITAS_ASID.store(asid, Ordering::Release);
+        let handle = crate::memory::register_user_address_space(user_as).unwrap();
+        let asid = handle.id();
+        *SITAS_DOMAIN.lock() = Some(handle);
 
         let entry_vaddr = load_user_elf(
             asid,
@@ -498,12 +495,13 @@ extern "C" fn verify_el0_sitas() {
 
 #[cfg(target_arch = "aarch64")]
 fn teardown_sitas_domain() {
-    let asid = SITAS_ASID.swap(usize::MAX, Ordering::AcqRel);
-    if asid != usize::MAX {
+    let domain = SITAS_DOMAIN.lock().take();
+    if let Some(domain) = domain {
         // Shard threads now terminate themselves (`thread_exit` from the
         // sitas trampoline), so this is a safety net rather than the primary
         // shutdown: abort anything that is still alive so the test domain's
         // threads do not keep LPs permanently runnable.
-        crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER.read().abort_as_threads(asid);
+        crate::cpu::scheduler::system_scheduler::abort_domain_threads(domain)
+            .expect("sitas exact-domain abort rejected");
     }
 }

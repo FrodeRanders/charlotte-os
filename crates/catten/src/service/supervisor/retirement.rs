@@ -20,6 +20,7 @@ const RECLAMATION_GRACE_MS: u64 = 5_000;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DomainTeardownError {
     ThreadsNotQuiescent,
+    ThreadAbortRejected,
     AddressSpace(AddressSpaceCloseError),
 }
 

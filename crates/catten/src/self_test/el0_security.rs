@@ -64,9 +64,11 @@ impl Drop for ProbeDomain {
                     domain.asid
                 );
             } else {
-                crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
-                    .read()
-                    .abort_as_threads(domain.asid);
+                if let Err(error) = crate::cpu::scheduler::system_scheduler::abort_domain_threads(
+                    domain.address_space,
+                ) {
+                    crate::logln!("[security] exceptional exact-root abort rejected: {:?}", error);
+                }
             }
         }
     }

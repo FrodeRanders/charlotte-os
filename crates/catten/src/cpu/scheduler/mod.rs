@@ -302,12 +302,14 @@ pub fn abort() -> ! {
 /// Abort every thread that belongs to `asid`, including the caller.
 ///
 /// Running threads on remote LPs are first marked for acknowledged abort and
-/// interrupted. The calling thread is staged for deferred reaping, then this
-/// LP switches away from its kernel stack and can never return to EL0.
+/// interrupted. The exact root is fenced against new thread publication; the
+/// calling thread remains owned until this LP switches away from its stack.
 pub fn abort_address_space(asid: AddressSpaceId) -> ! {
     assert_ne!(asid, crate::memory::KERNEL_ASID, "refusing to abort the kernel address space");
     crate::early_logln!("Aborting user address space {}", asid);
-    SYSTEM_SCHEDULER.read().abort_as_threads(asid);
+    let handle = crate::memory::current_address_space_handle(asid)
+        .expect("aborting thread's address space missing");
+    system_scheduler::abort_domain_threads(handle).expect("domain thread abort rejected");
     yield_lp();
     unsafe { unreachable_unchecked() }
 }

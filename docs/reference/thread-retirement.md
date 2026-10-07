@@ -59,6 +59,46 @@ without entering callbacks, allocator, logger or physical cleanup. Only explicit
 release destroys a detached payload. There is no abandoned-node/marker recovery
 or force-clear API.
 
+## Whole-domain abort
+
+`DomainAbortSweep` acquires an exact-root `AddressSpaceOperation` before
+scheduler/publication serialization. Under the publication gate it closes the
+root's inline `thread_admission_closed` flag. There is no map insertion or
+per-abort allocation. The flag is terminal for that root lifetime; a fresh root
+begins unfenced. Ordinary thread preparation rejects it before node/generation
+mutation, and stack-slot reservation checks it again. A thread prepared before
+the fence still fails publication and releases its owner after guards leave.
+
+User publication takes lifecycle before the publication gate, qualifies its
+captured root, and keeps abort/closing admission state stable through master-table
+publication. An operation lease alone keeps a root alive but does not prevent a
+staged close from installing its admission fence. Closing roots therefore also
+reject prepared-thread publication and fresh preparation.
+
+The sweep captures a finite thread-slot ceiling and selects only threads whose
+captured address-space handle matches its retained root. It captures each thread
+generation under the table and uses `abort_thread_generation` after that guard
+leaves. Other domains may publish or recycle TIDs between capture and abort; a
+reused generation rejects. The publication gate is not held across the sweep.
+No target lifetime can be newly published after the fence.
+
+Explicit sweep completion releases its own root lease. Pending contexts retain
+their independent stack/root owners and the fence stays closed. Abandonment
+retains the operation count/root/fence; no destructor reopens admission or
+physically releases backing. Sweep completion means abort requests were issued,
+not that threads, devices or roots have reached quiescence.
+
+Forced node/deployment retirement publishes its force request after exact-root
+lease admission/fencing and retains that lease through publication and sweep.
+The request callback runs outside lifecycle, publication and table guards.
+Deployment retirement retains a `Polling` registry claim while releasing the
+registry guard before admission; competing retirement observes pending.
+Success restores ordinary waiting with `force_requested`; rejection caches
+`ThreadAbortRejected` without force-success counters or request publication for
+an inadmissible root. Abandonment retains the registry claim and root operation.
+Delayed callers retain handles; only the synchronous domain-abort ABI resolves
+the current caller's numeric ASID at its entry boundary.
+
 ## Evidence and limits
 
 Four standalone host tests cover preparation rejection, unused preparation
@@ -82,9 +122,10 @@ exercise the normal trampoline's exit path.
 
 The node is allocated from the global heap and adds one thread-sized allocation
 per live/deferred owner. There is no independent node-byte admission pool.
-General heap/metadata/principal accounting remains SEC-07 work. Whole-domain
-abort admission/snapshots, scheduler run-queue allocation and other subsystem
-metadata remain separate allocation paths. Callback internals and Arm's enclosing
+General heap/metadata/principal accounting remains SEC-07 work. Scheduler
+run-queue/migration allocation and other subsystem metadata remain separate
+allocation paths. Callback internals and Arm's enclosing
 interrupt state are unchanged; full SEC-18 lock/quiescence safety is not claimed.
 
 Evidence: [thread retirement audit](../reports/audits/2026-10-07-security-thread-retirement.md).
+Whole-domain evidence: [domain thread abort audit](../reports/audits/2026-10-07-security-domain-thread-abort.md).

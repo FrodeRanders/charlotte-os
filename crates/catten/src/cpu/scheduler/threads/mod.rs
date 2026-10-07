@@ -475,7 +475,12 @@ impl Thread {
         let address_space = if asid == KERNEL_ASID {
             None
         } else {
-            Some(crate::memory::current_address_space_handle(asid).ok_or(Error::ThreadTerminated)?)
+            let handle =
+                crate::memory::current_address_space_handle(asid).ok_or(Error::ThreadTerminated)?;
+            if !crate::cpu::scheduler::system_scheduler::thread_admission_open(handle) {
+                return Err(Error::ThreadTerminated);
+            }
+            Some(handle)
         };
         // Failure precedes generation claim, stack backing and publication.
         let retirement = allocate().map_err(|_| Error::ThreadPreparationFailed)?;

@@ -23,12 +23,6 @@
 //! otherwise.
 
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
-use core::sync::atomic::{
-    AtomicUsize,
-    Ordering,
-};
-
-#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::completion;
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 use crate::cpu::isa::interface::memory::AddressSpaceInterface;
@@ -67,9 +61,11 @@ const EXPECTED_RESULT: u32 = 42;
 /// Physical frame of the result page, read by the verifier via HHDM.
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 static mut DEMO_RESULT_FRAME: Option<crate::memory::physical::PAddr> = None;
-/// Address-space ID plus one; zero means the demo domain has not been created.
+/// Captured exact root identity; taken once by the verifier's abort sweep.
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
-static XLP_ASID: AtomicUsize = AtomicUsize::new(0);
+static XLP_DOMAIN: crate::cpu::multiprocessor::spin::mutex::Mutex<
+    Option<crate::memory::AddressSpaceHandle>,
+> = crate::cpu::multiprocessor::spin::mutex::Mutex::new(None);
 
 /// Coordinator stub. The kernel derives ASID from the running thread; `x0` is
 /// deliberately just a dummy legacy slot here.
@@ -234,8 +230,9 @@ pub fn test_el0_cross_lp_async() {
             let _kas = KERNEL_AS.lock();
             AddressSpace::new_user()
         };
-        let asid = crate::memory::register_user_address_space(user_as).unwrap().id();
-        XLP_ASID.store(asid + 1, Ordering::Release);
+        let handle = crate::memory::register_user_address_space(user_as).unwrap();
+        let asid = handle.id();
+        *XLP_DOMAIN.lock() = Some(handle);
         logln!("[EL0 xLP] user AS asid={}", asid);
 
         // --- map code (coordinator + worker), CQ ring, and result pages ---
@@ -303,15 +300,14 @@ extern "C" fn verify_el0_demo() {
                 value
             );
             crate::self_test::results::pass(crate::self_test::results::TestId::El0CrossLp);
-            let encoded_asid = XLP_ASID.swap(0, Ordering::AcqRel);
-            if encoded_asid != 0 {
+            let domain = XLP_DOMAIN.lock().take();
+            if let Some(domain) = domain {
                 // The worker stub deliberately spins after completing the
                 // request. Retire the complete self-test domain once its
                 // externally visible result has been verified; aborting only
                 // the coordinator leaves that worker permanently runnable.
-                crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
-                    .read()
-                    .abort_as_threads(encoded_asid - 1);
+                crate::cpu::scheduler::system_scheduler::abort_domain_threads(domain)
+                    .expect("EL0 xLP exact-domain abort rejected");
             }
             return;
         }

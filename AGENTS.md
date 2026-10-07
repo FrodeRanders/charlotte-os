@@ -324,6 +324,17 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   than removing that handle before switching. Owner-LP abort cleanup scans a
   captured slot ceiling and claims each exact occupant under the table; do not
   restore a teardown snapshot there. See `docs/reference/thread-retirement.md`.
+- Whole-domain thread abort retains an exact `AddressSpaceOperation` and closes
+  the root's inline thread-admission fence under publication serialization.
+  Sweep a captured slot ceiling with captured thread generations, outside that
+  gate; never grow an abort map or snapshot numeric TIDs. Fence installation
+  and force-request publication require the retained root, not a fresh ASID
+  lookup. Drop retains the root lease/fence. User thread publication takes
+  lifecycle before its gate and rejects aborting or closing roots through
+  publication; stack preparation also rejects the abort fence. Forced deployment
+  abort retains a registry claim while releasing its guard before lease admission.
+  Failed abort remains failed without force-success counters. Rejected root
+  admission publishes no force request.
 - Runtime thread stacks use `thread_stack::Stacks` for both user/kernel backing.
   Reserve the full configured user capacity plus sixteen kernel pages before
   allocation; kernel-only threads reserve sixteen pages. Keep the original
