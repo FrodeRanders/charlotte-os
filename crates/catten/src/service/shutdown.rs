@@ -100,6 +100,7 @@ pub(crate) struct DeviceShutdownDomain {
     kind: DeviceShutdownKind,
     domain: ServiceDomain,
     request_published: bool,
+    page_failed: bool,
     teardown: Option<DomainTeardown>,
 }
 
@@ -109,6 +110,7 @@ impl DeviceShutdownDomain {
             kind,
             domain,
             request_published: false,
+            page_failed: false,
             teardown: None,
         }
     }
@@ -153,6 +155,7 @@ pub enum DeviceShutdownProgress {
 struct DomainRetirement {
     domain: ServiceDomain,
     request_published: bool,
+    page_failed: bool,
     force_requested: bool,
     abort_failed: bool,
     teardown: Option<DomainTeardown>,
@@ -172,6 +175,7 @@ impl ShutdownPhaseSpec {
             domains: alloc::vec![DomainRetirement {
                 domain,
                 request_published: false,
+                page_failed: false,
                 force_requested: false,
                 abort_failed: false,
                 teardown: None,
@@ -288,6 +292,13 @@ impl NodeShutdownCoordinator {
             let mut index = 0;
             while index < current.domains.len() {
                 let retirement = &mut current.domains[index];
+                if retirement.page_failed {
+                    return NodeShutdownProgress::ReclamationFailed {
+                        phase: current.phase,
+                        error: DomainTeardownError::ServicePagesUnavailable,
+                        remaining_domains: current.domains.len(),
+                    };
+                }
                 if retirement.abort_failed {
                     return NodeShutdownProgress::ReclamationFailed {
                         phase: current.phase,
@@ -297,8 +308,20 @@ impl NodeShutdownCoordinator {
                 }
                 if retirement.teardown.is_some() || supervisor::domain_exited(&retirement.domain) {
                     if retirement.teardown.is_none() {
-                        retirement.lifecycle_status =
-                            Some(bootstrap::lifecycle_status(retirement.domain.status_frame));
+                        match bootstrap::with_service_pages(&retirement.domain, |pages| {
+                            pages.lifecycle_status()
+                        }) {
+                            Ok(status) => retirement.lifecycle_status = Some(status),
+                            Err(error) => {
+                                retirement.page_failed = true;
+                                crate::logln!("[shutdown] status pages rejected: {:?}", error);
+                                return NodeShutdownProgress::ReclamationFailed {
+                                    phase: current.phase,
+                                    error: DomainTeardownError::ServicePagesUnavailable,
+                                    remaining_domains: current.domains.len(),
+                                };
+                            }
+                        }
                         retirement.teardown = Some(DomainTeardown::new(retirement.domain));
                     }
                     match retirement.teardown.as_mut().unwrap().poll() {
@@ -339,23 +362,36 @@ impl NodeShutdownCoordinator {
                     continue;
                 }
                 if !retirement.request_published {
-                    bootstrap::write_lifecycle_request(
-                        retirement.domain.config_frame,
-                        charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
-                        charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
-                        phase_deadline,
-                    );
+                    if let Err(error) = bootstrap::with_service_pages(&retirement.domain, |pages| {
+                        pages.write_request(
+                            charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
+                            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+                            phase_deadline,
+                        )
+                    }) {
+                        retirement.page_failed = true;
+                        crate::logln!("[shutdown] drain pages rejected: {:?}", error);
+                        return NodeShutdownProgress::ReclamationFailed {
+                            phase: current.phase,
+                            error: DomainTeardownError::ServicePagesUnavailable,
+                            remaining_domains: current.domains.len(),
+                        };
+                    }
                     retirement.request_published = true;
                 }
                 if now >= phase_deadline && !retirement.force_requested {
                     if let Err(error) =
-                        abort_domain_threads_with_request(retirement.domain.address_space, || {
-                            bootstrap::write_lifecycle_request(
-                                retirement.domain.config_frame,
+                        abort_domain_threads_with_request(retirement.domain.address_space, |root| {
+                            let pages = bootstrap::ServicePages::borrow(root, &retirement.domain)
+                                .map_err(|_| {
+                                crate::cpu::scheduler::system_scheduler::Error::ThreadTerminated
+                            })?;
+                            pages.write_request(
                                 charlotte_launch::lifecycle::STATE_FORCE_TERMINATING,
                                 charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
                                 phase_deadline,
-                            )
+                            );
+                            Ok(())
                         })
                     {
                         retirement.abort_failed = true;
@@ -421,11 +457,28 @@ impl DeviceShutdownCoordinator {
         let mut index = 0;
         while index < self.domains.len() {
             let device = &mut self.domains[index];
+            if device.page_failed {
+                return DeviceShutdownProgress::ReclamationFailed {
+                    kind: device.kind,
+                    error: DomainTeardownError::ServicePagesUnavailable,
+                };
+            }
             if device.teardown.is_some() || supervisor::domain_exited(&device.domain) {
                 if device.teardown.is_none() {
-                    if bootstrap::lifecycle_status(device.domain.status_frame)
-                        != charlotte_launch::lifecycle::STATUS_DEVICE_QUIESCED
-                    {
+                    let status = match bootstrap::with_service_pages(&device.domain, |pages| {
+                        pages.lifecycle_status()
+                    }) {
+                        Ok(status) => status,
+                        Err(error) => {
+                            device.page_failed = true;
+                            crate::logln!("[shutdown] device status pages rejected: {:?}", error);
+                            return DeviceShutdownProgress::ReclamationFailed {
+                                kind: device.kind,
+                                error: DomainTeardownError::ServicePagesUnavailable,
+                            };
+                        }
+                    };
+                    if status != charlotte_launch::lifecycle::STATUS_DEVICE_QUIESCED {
                         return DeviceShutdownProgress::UnverifiedExit {
                             kind: device.kind,
                         };
@@ -449,12 +502,20 @@ impl DeviceShutdownCoordinator {
                 continue;
             }
             if !device.request_published {
-                bootstrap::write_lifecycle_request(
-                    device.domain.config_frame,
-                    charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
-                    charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
-                    self.deadline_ms,
-                );
+                if let Err(error) = bootstrap::with_service_pages(&device.domain, |pages| {
+                    pages.write_request(
+                        charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
+                        charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+                        self.deadline_ms,
+                    )
+                }) {
+                    device.page_failed = true;
+                    crate::logln!("[shutdown] device drain pages rejected: {:?}", error);
+                    return DeviceShutdownProgress::ReclamationFailed {
+                        kind: device.kind,
+                        error: DomainTeardownError::ServicePagesUnavailable,
+                    };
+                }
                 device.request_published = true;
             }
             index += 1;
@@ -493,16 +554,24 @@ impl Drop for NodeShutdownCoordinator {
                 if retirement.teardown.is_none()
                     && !retirement.force_requested
                     && !retirement.abort_failed
+                    && !retirement.page_failed
                     && !supervisor::domain_exited(&retirement.domain)
                 {
-                    match abort_domain_threads_with_request(retirement.domain.address_space, || {
-                        bootstrap::write_lifecycle_request(
-                            retirement.domain.config_frame,
-                            charlotte_launch::lifecycle::STATE_FORCE_TERMINATING,
-                            charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
-                            self.node_deadline_ms,
-                        )
-                    }) {
+                    match abort_domain_threads_with_request(
+                        retirement.domain.address_space,
+                        |root| {
+                            let pages = bootstrap::ServicePages::borrow(root, &retirement.domain)
+                                .map_err(|_| {
+                                crate::cpu::scheduler::system_scheduler::Error::ThreadTerminated
+                            })?;
+                            pages.write_request(
+                                charlotte_launch::lifecycle::STATE_FORCE_TERMINATING,
+                                charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
+                                self.node_deadline_ms,
+                            );
+                            Ok(())
+                        },
+                    ) {
                         Ok(()) => retirement.force_requested = true,
                         Err(error) => crate::logln!(
                             "[shutdown] retained domain after exact thread abort rejection: {:?}",

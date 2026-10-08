@@ -186,7 +186,7 @@ extern "C" fn verify_el0_shutdown() {
         crate::memory::operation::AddressSpaceOperation::acquire(cooperative.address_space)
             .unwrap();
     assert_eq!(
-        bootstrap::lifecycle_status(cooperative.status_frame),
+        bootstrap::with_service_pages(&cooperative, |pages| pages.lifecycle_status()).unwrap(),
         charlotte_launch::lifecycle::STATUS_READY,
         "cooperative probe exited without acknowledging cleanup"
     );
@@ -384,7 +384,7 @@ extern "C" fn verify_el0_shutdown() {
     );
     supervisor::wait_domain_exit(&device, 10_000);
     assert_eq!(
-        bootstrap::lifecycle_status(device.status_frame),
+        bootstrap::with_service_pages(&device, |pages| pages.lifecycle_status()).unwrap(),
         charlotte_launch::lifecycle::STATUS_DEVICE_QUIESCED,
         "device probe used the ordinary service acknowledgement"
     );
@@ -400,6 +400,27 @@ extern "C" fn verify_el0_shutdown() {
     assert_eq!(devices.poll(), DeviceShutdownProgress::Complete);
     logln!("[shutdown] device domain required quiescence acknowledgement before reclamation");
 
+    // Platforms and --no-network runs launch different optional service sets.
+    // Capture the actual set before consuming shutdown ownership. Every
+    // launched phase must acknowledge exactly once; absent phases stay zero.
+    let launched = crate::service::launch::steady_state();
+    assert!(launched.storage.is_some(), "shutdown test requires durable storage");
+    let expected_phases = [
+        (ShutdownPhase::DeploymentIngress, launched.deployment.is_some()),
+        (ShutdownPhase::DeploymentControl, launched.deployment.is_some()),
+        (ShutdownPhase::DeploymentAgent, launched.deployment.is_some()),
+        (ShutdownPhase::HttpIngress, launched.appliance.is_some()),
+        (ShutdownPhase::Time, launched.appliance.is_some()),
+        (ShutdownPhase::ClusterCatalog, launched.cluster.is_some()),
+        (ShutdownPhase::ReliableMessaging, launched.cluster.is_some()),
+        (ShutdownPhase::Discovery, launched.cluster.is_some()),
+        (ShutdownPhase::TcpIp, launched.appliance.is_some()),
+        (ShutdownPhase::FrameRouter, launched.network.is_some()),
+        (ShutdownPhase::ObjectStore, launched.storage.is_some()),
+    ];
+    let expected_device_count = usize::from(launched.storage.is_some())
+        + usize::from(launched.network.is_some())
+        + usize::from(launched.entropy.is_some());
     let production_deadline = monotonic_millis().saturating_add(10_000);
     // The platform services poll the lifecycle page from idle waits that can
     // be as long as their retransmission cadence (200 ms for the reliable
@@ -429,24 +450,13 @@ extern "C" fn verify_el0_shutdown() {
             } => panic!("production node reclamation failed: {:?}", error),
         }
     };
-    for phase in [
-        ShutdownPhase::DeploymentIngress,
-        ShutdownPhase::DeploymentControl,
-        ShutdownPhase::DeploymentAgent,
-        ShutdownPhase::HttpIngress,
-        ShutdownPhase::Time,
-        ShutdownPhase::ClusterCatalog,
-        ShutdownPhase::ReliableMessaging,
-        ShutdownPhase::Discovery,
-        ShutdownPhase::TcpIp,
-        ShutdownPhase::FrameRouter,
-        ShutdownPhase::ObjectStore,
-    ] {
+    for (phase, present) in expected_phases {
         let outcome = node_shutdown_phase_outcome(phase)
             .expect("production node shutdown outcomes disappeared");
         assert_eq!(
-            outcome.acknowledged, 1,
-            "production cooperative phase did not acknowledge cleanup"
+            outcome.acknowledged,
+            usize::from(present),
+            "production cooperative phase did not match the launched service set"
         );
         assert_eq!(
             outcome.unacknowledged, 0,
@@ -454,7 +464,7 @@ extern "C" fn verify_el0_shutdown() {
         );
         assert_eq!(outcome.forced, 0, "production cooperative phase required forced termination");
     }
-    assert!(expected_devices >= 2, "storage and entropy drivers were not retained");
+    assert_eq!(expected_devices, expected_device_count, "launched device owners were not retained");
     let mut production_devices = begin_device_shutdown(production_deadline)
         .expect("production device shutdown did not acquire hardware-root domains");
     loop {

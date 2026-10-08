@@ -26,7 +26,93 @@ use charlotte_launch::{
     ProfileCapabilityMetadata,
 };
 
-use crate::memory::physical::PAddr;
+use crate::memory::{
+    ADDRESS_SPACE_TABLE,
+    AddressSpaceInterface,
+    operation::{
+        AddressSpaceOperation,
+        OperationError,
+    },
+    physical::PAddr,
+};
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) enum ServicePageError {
+    Root(OperationError),
+    WrongBacking,
+}
+
+/// Borrows an admitted exact root. These loader-owned image pages cannot be
+/// unmapped by application memory/MMIO operations; their lifetime is the root's.
+/// No pointer or physical address is exposed to the callback.
+pub(crate) struct ServicePages<'a> {
+    _root: &'a AddressSpaceOperation,
+    config: PAddr,
+    status: PAddr,
+}
+
+impl<'a> ServicePages<'a> {
+    pub(crate) fn borrow(
+        root: &'a AddressSpaceOperation,
+        domain: &super::supervisor::ServiceDomain,
+    ) -> Result<Self, ServicePageError> {
+        let handle = root.handle();
+        if handle != domain.address_space || handle.id() != domain.asid {
+            return Err(ServicePageError::WrongBacking);
+        }
+        let mut table = ADDRESS_SPACE_TABLE.lock();
+        if table.generation(handle.id()).ok() != Some(handle.generation()) {
+            return Err(ServicePageError::WrongBacking);
+        }
+        let space = table.get_mut(handle.id()).map_err(|_| ServicePageError::WrongBacking)?;
+        if space.translate_address(charlotte_launch::CONFIG_VADDR.into()).ok()
+            != Some(domain.config_frame)
+            || space.translate_address(charlotte_launch::STATUS_VADDR.into()).ok()
+                != Some(domain.status_frame)
+        {
+            return Err(ServicePageError::WrongBacking);
+        }
+        Ok(Self {
+            _root: root,
+            config: domain.config_frame,
+            status: domain.status_frame,
+        })
+    }
+
+    pub(crate) fn write_request(&self, state: u32, reason: u32, deadline_ms: u64) {
+        // Serialize kernel writers. This short hold has no allocation, wait,
+        // subsystem access, invalidation or physical destruction.
+        let _table = ADDRESS_SPACE_TABLE.lock();
+        write_lifecycle_request(self.config, state, reason, deadline_ms);
+    }
+
+    pub(crate) fn lifecycle_status(&self) -> u32 {
+        lifecycle_status(self.status)
+    }
+
+    pub(crate) fn object_store_status(&self) -> (u32, u32) {
+        let base: *const u8 = self.status.into();
+        unsafe {
+            (
+                core::ptr::read_volatile(base.add(charlotte_launch::objstore_status::STAGE).cast()),
+                core::ptr::read_volatile(base.add(charlotte_launch::objstore_status::ERROR).cast()),
+            )
+        }
+    }
+}
+
+/// Admission occurs outside subsystem/coordinator guards. Ordinary errors
+/// finish the lease; callback abandonment retains it and therefore the pages.
+pub(crate) fn with_service_pages<T>(
+    domain: &super::supervisor::ServiceDomain,
+    f: impl FnOnce(&ServicePages<'_>) -> T,
+) -> Result<T, ServicePageError> {
+    let root =
+        AddressSpaceOperation::acquire(domain.address_space).map_err(ServicePageError::Root)?;
+    let result = ServicePages::borrow(&root, domain).map(|pages| f(&pages));
+    root.release().map_err(ServicePageError::Root)?;
+    result
+}
 
 /// Byte offset of the per-shard CQ ring base virtual address.
 ///
@@ -68,7 +154,7 @@ pub fn write_launch_header(config_frame: PAddr, heap_bytes: usize) {
 /// Publish a lifecycle transition into a domain's read-only launch page.
 /// Payload fields are written before the release-store of `state` so an EL0
 /// acquire-load observes a complete request.
-pub fn write_lifecycle_request(config_frame: PAddr, state: u32, reason: u32, deadline_ms: u64) {
+fn write_lifecycle_request(config_frame: PAddr, state: u32, reason: u32, deadline_ms: u64) {
     let base: *mut u8 = config_frame.into();
     unsafe {
         core::ptr::write_volatile(
@@ -88,7 +174,7 @@ pub fn write_lifecycle_request(config_frame: PAddr, state: u32, reason: u32, dea
 /// Read the application's lifecycle acknowledgement from its status page.
 /// This is diagnostic evidence only; thread exit remains the authoritative
 /// condition for reclaiming a domain.
-pub fn lifecycle_status(status_frame: PAddr) -> u32 {
+fn lifecycle_status(status_frame: PAddr) -> u32 {
     let base: *mut u8 = status_frame.into();
     let status = unsafe {
         &*(base.add(charlotte_launch::lifecycle::STATUS_STATE_OFFSET)
@@ -277,3 +363,5 @@ pub fn write_manifest(config_frame: PAddr, entries: &[ManifestEntry<'_>]) {
         core::ptr::write_volatile(header_ptr, header);
     }
 }
+
+pub(crate) mod tests;

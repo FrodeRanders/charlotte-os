@@ -2738,10 +2738,7 @@ pub(crate) fn retire_deployed_artifact_with_registry(
         return 0;
     };
     let domain = deployed[position].domain;
-    use crate::service::supervisor::{
-        DeploymentTeardown,
-        DomainTeardown,
-    };
+    use crate::service::supervisor::DeploymentTeardown;
     match deployed[position].teardown {
         DeploymentTeardown::Polling => return 1,
         DeploymentTeardown::Failed(error) => {
@@ -2750,108 +2747,58 @@ pub(crate) fn retire_deployed_artifact_with_registry(
         }
         _ => {}
     }
-    if matches!(deployed[position].teardown, DeploymentTeardown::NotStarted)
-        && !crate::service::supervisor::domain_exited(&domain)
-    {
-        let now = crate::cpu::scheduler::monotonic_millis();
-        let entry = &mut deployed[position];
-        if entry.retirement_deadline_ms.is_none() {
-            let signed_deadline = now.saturating_add(u64::from(entry.shutdown_grace_ms));
-            let deadline = if requested_reason == charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN
-            {
-                signed_deadline.min(enclosing_deadline_ms)
-            } else {
-                signed_deadline
-            };
-            entry.retirement_deadline_ms = Some(deadline);
-            entry.retirement_reason = requested_reason;
-            crate::service::bootstrap::write_lifecycle_request(
-                domain.config_frame,
-                charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
-                entry.retirement_reason,
-                deadline,
-            );
-        } else if requested_reason == charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN {
-            // A node drain subsumes an earlier deployment retirement. It may
-            // shorten the deadline, but it must never extend it.
-            let deadline = entry
-                .retirement_deadline_ms
-                .unwrap_or(enclosing_deadline_ms)
-                .min(enclosing_deadline_ms);
-            let changed = entry.retirement_reason != requested_reason
-                || entry.retirement_deadline_ms != Some(deadline);
-            entry.retirement_reason = requested_reason;
-            entry.retirement_deadline_ms = Some(deadline);
-            if changed && !entry.force_requested {
-                crate::service::bootstrap::write_lifecycle_request(
-                    domain.config_frame,
-                    charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
-                    entry.retirement_reason,
-                    deadline,
-                );
-            }
-        }
-        let deadline_reached = entry.retirement_deadline_ms.is_some_and(|deadline| now >= deadline);
-        if (force || deadline_reached) && !entry.force_requested {
-            let reason = entry.retirement_reason;
-            let deadline = entry.retirement_deadline_ms.unwrap_or(now);
-            entry.teardown = DeploymentTeardown::Polling;
-            // Lease admission takes lifecycle before scheduler state. Retain
-            // the registry claim, not its masking guard, through exact-root
-            // force publication and the generation-qualified abort sweep.
-            drop(deployed);
-            let result = crate::cpu::scheduler::system_scheduler::abort_domain_threads_with_request(
-                domain.address_space,
-                || {
-                    crate::service::bootstrap::write_lifecycle_request(
-                        domain.config_frame,
-                        charlotte_launch::lifecycle::STATE_FORCE_TERMINATING,
-                        reason,
-                        deadline,
-                    )
-                },
-            );
-            let mut deployed = registry.lock();
-            let entry = deployed
-                .iter_mut()
-                .find(|entry| entry.domain.address_space == domain.address_space)
-                .expect("claimed deployment abort entry lost");
-            assert!(matches!(entry.teardown, DeploymentTeardown::Polling));
-            match result {
-                Ok(()) => {
-                    entry.force_requested = true;
-                    entry.teardown = DeploymentTeardown::NotStarted;
-                }
-                Err(error) => {
-                    crate::logln!(
-                        "[supervisor] exact deployment thread abort rejected: {:?}",
-                        error
-                    );
-                    entry.teardown = DeploymentTeardown::Failed(
-                        crate::service::supervisor::DomainTeardownError::ThreadAbortRejected,
-                    );
-                    return u64::MAX;
-                }
-            }
-        }
-        return 1;
-    }
-    let mut teardown =
-        match core::mem::replace(&mut deployed[position].teardown, DeploymentTeardown::Polling) {
-            DeploymentTeardown::NotStarted => {
-                let entry = &mut deployed[position];
-                entry.retirement_acknowledged = entry.retirement_deadline_ms.is_some()
-                    && crate::service::bootstrap::lifecycle_status(domain.status_frame)
-                        == charlotte_launch::lifecycle::STATUS_READY;
-                DomainTeardown::new(domain)
-            }
-            DeploymentTeardown::Pending(owner) => owner,
-            _ => unreachable!("deployment close already claimed or failed"),
-        };
-    // Keep the bounded registry entry admitted and marked Polling, but never
-    // retain its masking guard across root cleanup or invalidation. A competing
-    // retire call returns pending, rather than stealing the owner/slot.
+    let state = core::mem::replace(&mut deployed[position].teardown, DeploymentTeardown::Polling);
+    let drain = DeploymentDrain {
+        deadline_ms: deployed[position].retirement_deadline_ms,
+        reason: deployed[position].retirement_reason,
+        grace_ms: deployed[position].shutdown_grace_ms,
+        force_requested: deployed[position].force_requested,
+        acknowledged: deployed[position].retirement_acknowledged,
+    };
+    // Claim the admitted entry, then release serialization before lifecycle
+    // admission, page access, abort, close or invalidation. Abandonment leaves
+    // Polling in place; another caller cannot steal unfinished work.
     drop(deployed);
+    let (drain, mut teardown) = match state {
+        DeploymentTeardown::NotStarted => match prepare_deployment_drain(
+            domain,
+            drain,
+            force,
+            requested_reason,
+            enclosing_deadline_ms,
+        ) {
+            Ok(result) => result,
+            Err(error) => {
+                let mut deployed = registry.lock();
+                let entry = deployed
+                    .iter_mut()
+                    .find(|entry| entry.domain.address_space == domain.address_space)
+                    .expect("claimed deployment drain entry lost");
+                assert!(matches!(entry.teardown, DeploymentTeardown::Polling));
+                entry.teardown = DeploymentTeardown::Failed(error);
+                return u64::MAX;
+            }
+        },
+        DeploymentTeardown::Pending(owner) => (drain, Some(owner)),
+        _ => unreachable!("deployment close already claimed or failed"),
+    };
+    {
+        let mut deployed = registry.lock();
+        let entry = deployed
+            .iter_mut()
+            .find(|entry| entry.domain.address_space == domain.address_space)
+            .expect("claimed deployment drain entry lost");
+        assert!(matches!(entry.teardown, DeploymentTeardown::Polling));
+        entry.retirement_deadline_ms = drain.deadline_ms;
+        entry.retirement_reason = drain.reason;
+        entry.force_requested = drain.force_requested;
+        entry.retirement_acknowledged = drain.acknowledged;
+        if teardown.is_none() {
+            entry.teardown = DeploymentTeardown::NotStarted;
+            return 1;
+        }
+    }
+    let mut teardown = teardown.take().unwrap();
     let result = teardown.poll();
     let mut deployed = registry.lock();
     let position = deployed
@@ -2894,4 +2841,91 @@ pub(crate) fn retire_deployed_artifact_with_registry(
             .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
     }
     0
+}
+
+/// Inline state borrowed from a claimed deployment entry, never a new registry
+/// allocation. The entry stays Polling through preparation and root access.
+struct DeploymentDrain {
+    deadline_ms: Option<u64>,
+    reason: u32,
+    grace_ms: u32,
+    force_requested: bool,
+    acknowledged: bool,
+}
+
+fn prepare_deployment_drain(
+    domain: crate::service::supervisor::ServiceDomain,
+    mut drain: DeploymentDrain,
+    force: bool,
+    requested_reason: u32,
+    enclosing_deadline_ms: u64,
+) -> Result<
+    (DeploymentDrain, Option<crate::service::supervisor::DomainTeardown>),
+    crate::service::supervisor::DomainTeardownError,
+> {
+    use crate::service::{
+        bootstrap,
+        supervisor::{
+            self,
+            DomainTeardown,
+            DomainTeardownError,
+        },
+    };
+    if supervisor::domain_exited(&domain) {
+        let status = bootstrap::with_service_pages(&domain, |pages| pages.lifecycle_status())
+            .map_err(|_| DomainTeardownError::ServicePagesUnavailable)?;
+        drain.acknowledged =
+            drain.deadline_ms.is_some() && status == charlotte_launch::lifecycle::STATUS_READY;
+        return Ok((drain, Some(DomainTeardown::new(domain))));
+    }
+    let now = crate::cpu::scheduler::monotonic_millis();
+    let old_deadline = drain.deadline_ms;
+    let old_reason = drain.reason;
+    if drain.deadline_ms.is_none() {
+        let signed_deadline = now.saturating_add(u64::from(drain.grace_ms));
+        drain.deadline_ms = Some(
+            if requested_reason == charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN {
+                signed_deadline.min(enclosing_deadline_ms)
+            } else {
+                signed_deadline
+            },
+        );
+        drain.reason = requested_reason;
+    } else if requested_reason == charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN {
+        drain.deadline_ms = Some(drain.deadline_ms.unwrap().min(enclosing_deadline_ms));
+        drain.reason = requested_reason;
+    }
+    let deadline = drain.deadline_ms.unwrap();
+    if (force || now >= deadline) && !drain.force_requested {
+        crate::cpu::scheduler::system_scheduler::abort_domain_threads_with_request(
+            domain.address_space,
+            |root| {
+                let pages = bootstrap::ServicePages::borrow(root, &domain).map_err(|_| {
+                    crate::cpu::scheduler::system_scheduler::Error::ThreadTerminated
+                })?;
+                pages.write_request(
+                    charlotte_launch::lifecycle::STATE_FORCE_TERMINATING,
+                    drain.reason,
+                    deadline,
+                );
+                Ok(())
+            },
+        )
+        .map_err(|_| DomainTeardownError::ThreadAbortRejected)?;
+        drain.force_requested = true;
+    } else {
+        bootstrap::with_service_pages(&domain, |pages| {
+            if !drain.force_requested
+                && (old_deadline != drain.deadline_ms || old_reason != drain.reason)
+            {
+                pages.write_request(
+                    charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
+                    drain.reason,
+                    deadline,
+                );
+            }
+        })
+        .map_err(|_| DomainTeardownError::ServicePagesUnavailable)?;
+    }
+    Ok((drain, None))
 }

@@ -70,7 +70,7 @@ impl DomainAbortSweep {
 }
 
 pub(crate) fn abort_domain_threads(handle: AddressSpaceHandle) -> Result<(), Error> {
-    abort_domain_threads_with_request(handle, || {})
+    abort_domain_threads_with_request(handle, |_| Ok(()))
 }
 
 /// Publish a force request only after exact root admission/fencing, and keep
@@ -78,10 +78,15 @@ pub(crate) fn abort_domain_threads(handle: AddressSpaceHandle) -> Result<(), Err
 /// request callback runs after publication/lifecycle/table guards leave.
 pub(crate) fn abort_domain_threads_with_request(
     handle: AddressSpaceHandle,
-    publish_request: impl FnOnce(),
+    publish_request: impl FnOnce(&AddressSpaceOperation) -> Result<(), Error>,
 ) -> Result<(), Error> {
     let sweep = DomainAbortSweep::begin(handle)?;
-    publish_request();
+    if let Err(error) = publish_request(&sweep.root) {
+        // Ordinary publication rejection releases the lease, retaining the
+        // terminal thread-admission fence. Panic retains both.
+        sweep.root.release().map_err(|_| Error::ThreadRetirementFailed)?;
+        return Err(error);
+    }
     sweep.run(|_, _| {})
 }
 

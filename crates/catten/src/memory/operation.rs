@@ -13,7 +13,7 @@ use crate::klib::collections::id_table::{
     SlotLease,
 };
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OperationError {
     KernelAddressSpace,
     AddressSpaceMissing,

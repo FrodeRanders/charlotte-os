@@ -284,6 +284,13 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   Loan revocation rejects DMA pins under the memory registry; CPU invalidation
   never substitutes for DMA completion. Backing pins do not lease an ASID; see
   `docs/reference/memory-object-retirement.md`.
+  Cooperative supervisor drain/status access uses `bootstrap::with_service_pages`.
+  Admit the exact root outside deployment/coordinator guards and validate both
+  captured runtime frames against its fixed image mappings before access. Borrow
+  the existing abort-sweep lease for force publication; never reacquire through a
+  staged close or write a physical frame from a copied service handle. Cache
+  rejected access without advancing acknowledgement, authority or device gating.
+  Complete ordinary access explicitly; abandonment retains root/image backing.
   Final user-root close detaches into `RetiredAddressSpace`/`RetiredEntry`,
   leasing the software slot through post-guard invalidation and destruction.
   Never take/drop a published user root under the address-space table guard or

@@ -618,19 +618,11 @@ extern "C" fn local_ready_publisher() {
     let storage = crate::service::launch::steady_state()
         .storage
         .expect("local readiness requires durable storage");
-    let object_store_status: *const u8 = storage.objstore.status_frame.into();
     let storage_deadline = monotonic_millis().saturating_add(120_000);
     loop {
-        let stage = unsafe {
-            core::ptr::read_volatile(
-                object_store_status.add(charlotte_launch::objstore_status::STAGE).cast::<u32>(),
-            )
-        };
-        let error = unsafe {
-            core::ptr::read_volatile(
-                object_store_status.add(charlotte_launch::objstore_status::ERROR).cast::<u32>(),
-            )
-        };
+        let (stage, error) =
+            bootstrap::with_service_pages(&storage.objstore, |pages| pages.object_store_status())
+                .expect("local readiness service pages unavailable");
         assert_eq!(error, 0, "local object store failed before node readiness");
         if stage >= 4 {
             break;

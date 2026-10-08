@@ -40,12 +40,14 @@ impl ProbeDomain {
     }
 
     fn stop(mut self) {
-        bootstrap::write_lifecycle_request(
-            self.get().config_frame,
-            charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
-            charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
-            monotonic_millis().saturating_add(5_000),
-        );
+        bootstrap::with_service_pages(self.get(), |pages| {
+            pages.write_request(
+                charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
+                charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+                monotonic_millis().saturating_add(5_000),
+            )
+        })
+        .expect("security probe drain pages");
         supervisor::wait_domain_exit(self.get(), 5_000);
         supervisor::teardown_domain(self.0.take().unwrap()).expect("security probe reclamation");
     }

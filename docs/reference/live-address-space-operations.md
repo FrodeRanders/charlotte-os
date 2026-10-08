@@ -181,6 +181,40 @@ and physical-platform quiescence remain open. See
 [hardware quiescence](hardware-quiescence.md). No new wire API, capability right
 or metadata budget follows from these ownership boundaries.
 
+## Supervisor runtime-page access
+
+`service::bootstrap::with_service_pages(domain, callback)` admits an exact
+`AddressSpaceOperation` before any config/status access. Its borrowed
+`ServicePages` view verifies both fixed runtime mappings against the physical
+frames captured by the trusted loader, as well as ASID and generation identity.
+These pages are loader-owned image backing: application memory/MMIO operations
+cannot unmap them, and the operation lease prevents their root's physical
+teardown. The view exposes bounded requests/status snapshots, never raw pointers
+or physical addresses. Kernel request writers use a short table hold; no
+allocation, wait, invalidation or destruction occurs in that hold.
+
+Deployment retirement marks its existing admitted entry `Polling`, releases the
+registry guard, then admits/accesses pages or aborts. Concurrent callers remain
+pending. Node/device coordinators already poll outside their published slot's
+guard. Status is cached before beginning staged close and never reread after
+successful reclamation. Ordinary access and mapping-validation failure explicitly
+finish the lease; abandoned callbacks retain its count, root and image charge.
+Stale, closing or mismatched backing rejects before the callback. Repeated
+shutdown polls cache rejection, retain bookkeeping and advance no retirement
+counter, device-domain transfer or poweroff gate.
+
+Force publication borrows the abort sweep's existing operation lease and checks
+runtime backing through the same view. It does not acquire a new lease if staged
+close begins after sweep admission. A rejected publication releases the sweep's
+lease while retaining its terminal thread-admission fence. Actual thread reaping
+and `DomainTeardown` remain distinct completion boundaries. The node readiness
+publisher similarly takes a bounded object-store snapshot before yielding.
+
+This is runtime-page lifetime retention, not recipient-key custody, an abandoned
+owner recovery registry or a device-reset receipt. General outer-guard/IRQ-state
+and destructor inventories remain separate SEC-18 work. Raw initial launch-page
+construction remains confined to the trusted loader/supervisor bootstrap boundary.
+
 ## Verification
 
 Twenty-seven direct host slot-owner tests include live-lease cases:

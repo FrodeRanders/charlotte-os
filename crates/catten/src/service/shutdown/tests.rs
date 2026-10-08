@@ -59,6 +59,7 @@ pub(crate) fn test_rejected_thread_abort(stale: ServiceDomain) {
 }
 
 pub(crate) fn test_failed_reclamation(domain: ServiceDomain) {
+    test_rejected_service_pages(domain);
     let mut phase = ShutdownPhaseSpec::one(ShutdownPhase::HttpIngress, domain);
     phase.domains[0].teardown = Some(DomainTeardown::new(domain));
     phase.domains[0].lifecycle_status = Some(charlotte_launch::lifecycle::STATUS_READY);
@@ -124,4 +125,82 @@ fn test_poll_claim() {
     );
     assert!(!slot.lock().polling);
     assert!(slot.lock().coordinator.is_some());
+}
+
+/// Stale or closing roots reject status/drain access and cache that failure.
+/// The caller checks that successor bytes and hardware authority are unchanged.
+pub(crate) fn test_rejected_service_pages(domain: ServiceDomain) {
+    let mut node = NodeShutdownCoordinator::new(
+        u64::MAX,
+        MAX_PHASE_GRACE_MS,
+        alloc::vec![ShutdownPhaseSpec::one(ShutdownPhase::HttpIngress, domain)],
+        alloc::vec![DeviceShutdownDomain::new(DeviceShutdownKind::EntropyDriver, domain)],
+    );
+    for _ in 0..2 {
+        assert_eq!(
+            node.poll(),
+            NodeShutdownProgress::ReclamationFailed {
+                phase: ShutdownPhase::HttpIngress,
+                error: DomainTeardownError::ServicePagesUnavailable,
+                remaining_domains: 1,
+            }
+        );
+        assert!(node.phases[0].domains[0].page_failed);
+        assert!(!node.phases[0].domains[0].request_published);
+        assert!(!node.phases[0].domains[0].force_requested);
+        assert!(node.take_device_domains().is_none());
+        assert_eq!(node.phase_outcome(ShutdownPhase::HttpIngress), ShutdownPhaseOutcome::default());
+    }
+    drop(node);
+    let mut devices = DeviceShutdownCoordinator::new(
+        u64::MAX,
+        alloc::vec![DeviceShutdownDomain::new(DeviceShutdownKind::EntropyDriver, domain),],
+    );
+    for _ in 0..2 {
+        assert_eq!(
+            devices.poll(),
+            DeviceShutdownProgress::ReclamationFailed {
+                kind: DeviceShutdownKind::EntropyDriver,
+                error: DomainTeardownError::ServicePagesUnavailable,
+            }
+        );
+        assert!(devices.domains[0].page_failed);
+        assert!(!devices.domains[0].request_published);
+        assert!(devices.domains[0].teardown.is_none());
+    }
+    let counter = supervisor::DEPLOYMENT_ACKNOWLEDGED_RETIREMENTS.load(Ordering::Relaxed);
+    let registry = crate::cpu::multiprocessor::spin::mutex::Mutex::new(alloc::vec![
+        supervisor::DeployedDomain {
+            principal: 0x7061_6765_7465_7374,
+            domain,
+            shutdown_grace_ms: 60_000,
+            retirement_deadline_ms: None,
+            retirement_reason: 0,
+            force_requested: false,
+            retirement_acknowledged: false,
+            teardown: supervisor::DeploymentTeardown::NotStarted,
+        },
+    ]);
+    for _ in 0..2 {
+        assert_eq!(
+            crate::syscall::retire_deployed_artifact_with_registry(
+                &registry,
+                0x7061_6765_7465_7374,
+                false,
+                charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+                0,
+            ),
+            u64::MAX
+        );
+        let entries = registry.lock();
+        assert_eq!(entries.len(), 1);
+        assert!(matches!(
+            entries[0].teardown,
+            supervisor::DeploymentTeardown::Failed(DomainTeardownError::ServicePagesUnavailable)
+        ));
+        assert!(!entries[0].retirement_acknowledged);
+        assert!(!entries[0].force_requested);
+        assert!(entries[0].retirement_deadline_ms.is_none());
+    }
+    assert_eq!(supervisor::DEPLOYMENT_ACKNOWLEDGED_RETIREMENTS.load(Ordering::Relaxed), counter);
 }

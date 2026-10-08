@@ -21,6 +21,7 @@ const RECLAMATION_GRACE_MS: u64 = 5_000;
 pub enum DomainTeardownError {
     ThreadsNotQuiescent,
     ThreadAbortRejected,
+    ServicePagesUnavailable,
     AddressSpace(AddressSpaceCloseError),
 }
 

@@ -168,3 +168,24 @@ fn test_validation() {
     assert!(validate_user_elf(&image));
     assert!(image_backing_pages(&image) > backing_budget::IMAGE_DOMAIN_PAGES);
 }
+
+/// Real admitted runtime pages without an ELF or scheduled thread. Used only
+/// by the serialized supervisor ownership probes.
+pub(crate) fn service_pages_fixture() -> crate::service::supervisor::ServiceDomain {
+    let handle = create_user_address_space_handle();
+    let config_frame = map_image_page(handle, CONFIG_VADDR, PageType::UserRoData, |bytes| {
+        // Initialize the shared atomic fields before root publication to tests.
+        bytes.fill(0);
+    })
+    .unwrap();
+    crate::service::bootstrap::write_launch_header(config_frame, charlotte_launch::HEAP_SIZE);
+    let status_frame = map_image_page(handle, STATUS_VADDR, PageType::UserData, |_| {}).unwrap();
+    crate::service::supervisor::ServiceDomain {
+        asid: handle.id(),
+        address_space: handle,
+        tid: 0,
+        generation: 0,
+        config_frame,
+        status_frame,
+    }
+}

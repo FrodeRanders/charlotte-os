@@ -20,6 +20,7 @@ use crate::{
 };
 
 pub(crate) fn run() {
+    crate::service::bootstrap::tests::run();
     test_pending_success();
     test_timeout_registry();
     test_stale_owner();

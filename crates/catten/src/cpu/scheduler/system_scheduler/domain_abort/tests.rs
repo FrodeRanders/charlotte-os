@@ -147,7 +147,7 @@ pub(crate) fn run() {
     // Repeated sweeps use the same inline fence and release every temporary
     // root lease. They do not require per-abort registry storage.
     let mut request_published = false;
-    abort_domain_threads_with_request(owner, || {
+    abort_domain_threads_with_request(owner, |root| {
         assert!(THREAD_PUBLICATION_GATE.try_lock().is_some());
         assert!(MASTER_THREAD_TABLE.try_write().is_some());
         assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
@@ -156,7 +156,9 @@ pub(crate) fn run() {
             memory::close_user_address_space_handle(owner),
             Err(AddressSpaceCloseError::OperationsInFlight)
         );
+        assert_eq!(root.handle(), owner);
         request_published = true;
+        Ok(())
     })
     .unwrap();
     assert!(request_published);
@@ -173,7 +175,7 @@ pub(crate) fn run() {
     let successor_tid = publish_thread(Thread::new(successor.id(), unused_entry)).unwrap();
     for _ in 0..64 {
         assert!(matches!(
-            abort_domain_threads_with_request(owner, || panic!(
+            abort_domain_threads_with_request(owner, |_| panic!(
                 "stale root published a force request"
             )),
             Err(Error::ThreadTerminated)
@@ -194,6 +196,16 @@ pub(crate) fn run() {
             status_frame: memory::PAddr::from(0u64),
         },
     );
+    crate::service::shutdown::tests::test_rejected_service_pages(
+        crate::service::supervisor::ServiceDomain {
+            asid: owner.id(),
+            address_space: owner,
+            tid: captured[0].0,
+            generation: captured[0].1,
+            config_frame: 0u64.into(),
+            status_frame: 0u64.into(),
+        },
+    );
     assert!(MASTER_THREAD_TABLE.read().get(successor_tid).is_ok());
     discard(successor_tid);
     discard(later_tid);
@@ -204,7 +216,7 @@ pub(crate) fn run() {
     assert!(matches!(Thread::try_new(successor.id(), unused_entry), Err(Error::ThreadTerminated)));
     for _ in 0..8 {
         assert!(matches!(
-            abort_domain_threads_with_request(successor, || panic!(
+            abort_domain_threads_with_request(successor, |_| panic!(
                 "closing root published a force request"
             )),
             Err(Error::ThreadTerminated)

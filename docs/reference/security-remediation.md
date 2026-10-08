@@ -58,18 +58,19 @@ Relevant contracts: [translation](translation-admission.md),
 
 Implemented paths retain exact roots and ownership through staged copy rollback,
 IPC delivery/reply/cancellation, endpoint and namespace cleanup, memory/device
-retirement, thread abort and final root destruction. Backing is released only
+retirement, thread abort, cooperative runtime-page access and final root destruction. Backing is released only
 after confirmed invalidation/hardware completion; uncertainty retains charges
 and fences. QEMU CPU epochs, VT-d/AMD-Vi/SMMUv3 maintenance and the supported NVMe
 reset path have execution evidence. Aborting threads is request submission, not
 a quiescence receipt.
 
-SEC-18 remains partial until these remaining deliverables are accepted:
+SEC-18 remains partial. These deliverables track its remaining work and the
+implemented R18-2 scope:
 
 | Deliverable | Completion evidence |
 | --- | --- |
 | R18-1: locking and destructor inventory | Enumerate production teardown/publication call chains and their outer guards/IRQ state. Remove allocation, arbitrary callbacks, blocking hardware maintenance and physical destruction from masking serialization. Include scheduler/reaper paths, ARM's enclosing IRQ state and exceptional Drop paths. No destructor may assume that its caller holds no unrelated lock. |
-| R18-2: cooperative shutdown ownership | Lease exact roots and own status/configuration backing through cooperative drain/status access, not just forced abort. Concurrent staged close, domain restart and reused ASID/TID must reject before touching successor backing. |
+| R18-2: cooperative shutdown ownership | Implemented runtime-page retention: exact root admission and fixed image-leaf identity checks precede cooperative drain/status access; force publication borrows its sweep lease. Deployment claims release registry guards before admission. Closing/reused roots and mismatched frames reject before access; ordinary completion releases the lease and abandonment retains image backing. See the [runtime-page contract](live-address-space-operations.md#supervisor-runtime-page-access) and [execution report](../reports/audits/2026-10-08-security-cooperative-pages.md). |
 | R18-3: retained-owner recovery | Define explicit recovery states and a bounded registry for receipts that can safely retry. Retry only phases whose owner proves no physical release has started. Abandoned or partially released owners remain quarantined until a stronger, authenticated reset/reboot boundary proves reuse safe; never clear fences or decrement counts to manufacture progress. Expose bounded operator status. |
 | R18-4: QEMU device coverage | Extend reset contracts to supported VirtIO, AHCI and NIC paths where applicable. Exercise active outstanding I/O, withheld hardware completion, rejected reset, old-MMIO authority, restart and reassignment. The existing NVMe fixture enables real queues but submits no outstanding I/O; that gap remains. Unsupported devices must remain fenced and explicitly excluded from recovery support. |
 | R18-5: concurrent recovery matrix | On Intel VT-d, AMD-Vi and Arm SMMUv3, combine peer/root close, loan/copy/DMA activity, thread switching, actual lost/stale CPU acknowledgements, hardware timeout, interrupted publication and partial physical-release rejection. Verify guard availability, no early pin/refund/reuse, later essential progress, and exact baseline recovery where confirmed completion permits it. |
