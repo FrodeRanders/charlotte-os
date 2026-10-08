@@ -120,6 +120,14 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   commit a charge separately in service/loader code. Failed release consumes
   the original domain ceiling and node pool even after root destruction; an
   unconfirmed published leaf must retain backing without deallocation.
+  Joint heap/image preparation Drop only retains captured backing and charges;
+  no allocator/pool/table guard or logger may be entered there. Ordinary
+  tracking/allocation rejection refunds explicitly, and confirmed mapper rejection
+  explicitly rolls back. Use consuming `cancel_unpublished` for ordinary unused
+  preparation and handle its physical error. Even abandonment before allocation
+  retains its original reservation; neither root teardown nor successor reuse
+  refunds it. This does not qualify raw frame/table/stack destructors or move
+  ordinary physical rollback outside the borrowed table guard.
 - ELF/runtime frames use the independent `image_account` in `backing_budget`.
   Bound layout validation and aggregate image planning before namespace
   creation; use `PreparingUserBacking` and fallible mapping rather than scalar

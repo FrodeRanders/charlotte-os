@@ -126,14 +126,19 @@ pub(crate) fn test_kernel_retirement() {
     try_allocate_and_map_range(base, PageSize::Standard, 1, &mut retirement).unwrap();
     retire_kernel_range(base, PageSize::Standard, 1, &mut retirement).unwrap();
     assert_eq!(free(), baseline - 1);
-    drop(retirement);
+    {
+        let _space = KERNEL_AS.lock();
+        let allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+        drop(retirement);
+        assert_eq!(allocator.free_frames(), baseline - 1);
+    }
     assert_eq!(free(), baseline - 1);
     assert_eq!(QUARANTINED_KERNEL_PAGES.load(Ordering::Relaxed), quarantined + 1);
     test_preparation_abandonment(base);
     crate::logln!(
         "[kernel retirement] detach-before-release, failed barrier/retry, allocation/map \
-         rollback, foreign-leaf preservation, bounded metadata and Drop quarantine (one reserved \
-         test page) and preparation abandonment passed"
+         rollback, foreign-leaf preservation, bounded metadata and Drop quarantine under \
+         allocator/table guards (one reserved test page) and preparation abandonment passed"
     );
 }
 

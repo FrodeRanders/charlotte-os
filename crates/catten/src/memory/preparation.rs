@@ -1,6 +1,7 @@
 //! Joint ownership of a provisional user data frame and its admission charge.
 //! The exclusive address-space borrow remains inside the caller's table guard.
 //! No reusable-ASID lookup or allocation is needed to retain failed rollback.
+//! Ordinary rejection rolls back explicitly; Drop only retains ownership.
 
 use super::{
     AddressSpace,
@@ -72,9 +73,14 @@ impl<'a> PreparingUserBacking<'a> {
             may_be_published: false,
         };
         if !track(preparation.space) {
+            preparation.cancel_unallocated();
             return Err(BackingPreparationError::Tracking);
         }
-        preparation.frame = Some(allocate().ok_or(BackingPreparationError::Allocation)?);
+        let Some(frame) = allocate() else {
+            preparation.cancel_unallocated();
+            return Err(BackingPreparationError::Allocation);
+        };
+        preparation.frame = Some(frame);
         // Capture both owners before initialization, including interruption of
         // the zeroing step. Fill callbacks follow the same joint ownership.
         preparation.frame.as_ref().unwrap().zero();
@@ -112,6 +118,10 @@ impl<'a> PreparingUserBacking<'a> {
             },
         ) {
             self.may_be_published = false;
+            // Mapping already failed; rejected physical rollback retains the
+            // same original charge and never converts that result to success.
+            let _ =
+                self.rollback_with(|frame| PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame));
             return Err(());
         }
         account(self.space, self.kind).commit_prepared(self.charge.as_mut().unwrap());
@@ -121,54 +131,72 @@ impl<'a> PreparingUserBacking<'a> {
         Ok(frame)
     }
 
-    fn rollback_with(&mut self, deallocate: impl FnOnce(PAddr) -> Result<(), physical::Error>) {
-        if self.frame.is_none() {
-            // No backing was allocated: ordinary reservation rollback is safe.
-            drop(self.charge.take());
-            return;
-        }
-        if self.may_be_published {
-            // This owner cannot prove translation quiescence. Do not release a
-            // potentially reachable leaf, even if field transfer was interrupted.
-            if let Some(charge) = self.charge.take() {
-                if charge.is_active() {
-                    let _retained = account(self.space, self.kind).retire_provisional(charge);
-                } else {
-                    // Account commit completed, but the inert charge token was
-                    // not removed yet. Do not count that reservation twice.
-                    account(self.space, self.kind).quarantine_committed_page();
-                }
-            } else {
+    /// No backing exists. Ordinary rejection may refund this unused reservation;
+    /// abandonment cannot infer the caller's lock context and retains it instead.
+    fn cancel_unallocated(&mut self) {
+        assert!(self.frame.is_none());
+        drop(self.charge.take());
+    }
+
+    /// Explicit ordinary cancellation of a definitely unpublished preparation.
+    /// Caller supplies a physical-release context, including its outer guards.
+    /// This does not move physical rollback outside the borrowed table context.
+    pub(crate) fn cancel_unpublished(mut self) -> Result<(), physical::Error> {
+        assert!(!self.may_be_published);
+        self.rollback_with(|frame| PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame))
+    }
+
+    /// Only captured account mutation and disarming tokens: no lock, logger,
+    /// physical release or fallible work, even if no frame was allocated yet.
+    fn retain_abandoned(&mut self) {
+        if let Some(charge) = self.charge.take() {
+            if charge.is_active() {
+                // Disarm PageCharge before its field destructor can refund under
+                // an unknown guard. Keep the original domain and pool charge.
+                let _retained = account(self.space, self.kind).retire_provisional(charge);
+            } else if self.frame.is_some() {
+                // Commit completed, but frame ownership has not reached the
+                // preflighted root registry. Retain without counting it twice.
                 account(self.space, self.kind).quarantine_committed_page();
             }
-            self.frame.take().unwrap().quarantine();
-            crate::logln!(
-                "[backing preparation] unconfirmed publication retained frame and charge"
-            );
-            return;
+        } else if self.frame.is_some() {
+            account(self.space, self.kind).quarantine_committed_page();
+        }
+        if let Some(frame) = self.frame.take() {
+            frame.quarantine();
+        }
+    }
+
+    fn rollback_with(
+        &mut self,
+        deallocate: impl FnOnce(PAddr) -> Result<(), physical::Error>,
+    ) -> Result<(), physical::Error> {
+        assert!(!self.may_be_published, "cannot roll back unconfirmed publication");
+        if self.frame.is_none() {
+            // No backing was allocated: ordinary reservation rollback is safe.
+            self.cancel_unallocated();
+            return Ok(());
         }
         let retirement =
             account(self.space, self.kind).retire_provisional(self.charge.take().unwrap());
         let preparation = self.frame.take().unwrap();
         let frame = preparation.frame();
-        let released = match preparation.release_with(deallocate) {
-            Ok(()) => true,
-            Err(error) => {
-                crate::logln!(
-                    "[backing preparation] release rejected frame={:#x}: {:?}",
-                    usize::from(frame),
-                    error
-                );
-                false
-            }
-        };
-        retirement.finish(released);
+        let released = preparation.release_with(deallocate);
+        if let Err(error) = &released {
+            crate::logln!(
+                "[backing preparation] release rejected frame={:#x}: {:?}",
+                usize::from(frame),
+                error
+            );
+        }
+        retirement.finish(released.is_ok());
+        released
     }
 }
 
 impl Drop for PreparingUserBacking<'_> {
     fn drop(&mut self) {
-        self.rollback_with(|frame| PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame));
+        self.retain_abandoned();
     }
 }
 

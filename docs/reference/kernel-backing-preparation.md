@@ -14,6 +14,8 @@ Admission, tracking and
 allocation failures are distinct. Failure before allocation refunds only the
 unused reservation. `fill` exposes an exclusive bounded page borrow, not frame
 ownership. Heap commitment maps already-zeroed backing without zeroing it twice.
+Tracking/allocation rejection performs that refund explicitly before returning;
+it does not depend on a reservation-releasing preparation destructor.
 
 The consuming `map_with` marks publication as uncertain before entering the
 mapper. A normal rejection must confirm that no leaf was installed; both
@@ -23,6 +25,27 @@ Success commits the reservation to the original account and transfers the
 frame into the preflighted root registry without allocating. Callers no longer
 commit charges separately. The raw reservation/commit API is confined to the
 memory implementation; owning-frame insertion asserts preflighted capacity.
+
+Confirmed mapper rejection invokes ordinary rollback explicitly. A caller
+cancelling a definitely unpublished preparation uses consuming
+`cancel_unpublished`, rather than Drop. The physical rollback still executes in
+the owner's borrowed table context; moving that ordinary path outside masking
+serialization remains G1/G2 work in the [cross-category map](cleanup-recovery.md).
+
+## Abandonment is not ordinary rollback
+
+`PreparingUserBacking::drop` now only transfers the active reservation into the
+captured account's nonrefundable counts and disarms its frame owner. It takes no
+table, allocator or admission-pool lock, invokes no callback, frees no backing
+and enters no logger. An inert committed charge is not counted twice. A frame
+whose ownership has already fully transferred into the root remains root-owned.
+
+This rule also applies to a reservation abandoned before tracking/allocation:
+its domain ceiling and original pool remain consumed even though no physical
+frame exists. Ordinary constructor errors still refund unused reservations.
+Diagnostic charge counts therefore need not equal physically retained frames.
+After abandonment there is no owner to authorize cancellation or retry; neither
+root destruction nor a successor generation can recover that reservation.
 
 Interrupted publication or ownership transfer cannot authorize deallocation.
 The owner's fallback retains the frame and its charge, including when account
@@ -52,8 +75,8 @@ the retained reservation continues to consume the node pool.
 
 This deliberately sacrifices capacity rather than declaring unconfirmed backing
 free. There is no automatic retry or reclamation API. Allocator errors are
-logged, not repaired: a frame already reported free is not made allocated
-again. Fault adapters reject before the real allocator and check that their
+logged on the explicit rollback path, not repaired: a frame already reported
+free is not made allocated again. Fault adapters reject before the real allocator and check that their
 frames remain allocated.
 
 Uncharged `PreparingUserFrame` remains inside the data/table owners and for
@@ -69,18 +92,24 @@ masking-guard or x86 shootdown progress issues.
 ## Verification
 
 Shared boot fixtures cover both heap/image kinds: admission rejection before
-tracking, tracking rejection before allocation, rejected allocation, unused
-preparation Drop, mapping rejection, zero/fill preservation and successful
-publication/destruction. Synthetic release failures exercise domain-ceiling
+tracking, tracking rejection before allocation, rejected allocation, explicit
+unused-preparation cancellation, mapping rejection, zero/fill preservation and
+successful publication/destruction. Synthetic release failures exercise domain-ceiling
 enforcement, ordinary/platform pools, mixed owned/quarantined teardown, software
 generation reuse and fresh-frame non-reuse. Real installed leaves exercise
 abandonment before commit, with an inert token after commit, and after removal
 of that token before frame transfer; no deallocator is called for
-uncertain publication. Abandoned release receipts retain counts without a
-recovery bypass.
+uncertain publication. The three interrupted publication states now exercise
+actual owner Drop while the original table, physical allocator and backing pool
+guards are held. Further allocated/unallocated abandonment probes hold the same
+guards, reject fresh admission at the retained domain ceiling and check charges
+after root destruction and exact software-slot reuse. Abandoned release receipts
+retain counts without a recovery bypass.
 
-The twelve failing/abandoned preparations permanently retain **twelve physical frames,
-six heap-page charges and six image-page charges**, additional to earlier
-root/memory-object/kernel-range fixtures. These are serialized boot probes plus
-the AArch64 security regression, not physical-exhaustion stress, allocator
-corruption, real unwind recovery or x86 guest/hardware progress validation.
+The failing/abandoned preparation fixtures permanently retain **fourteen physical
+frames, eight heap-page charges and eight image-page charges**, additional to
+earlier root/memory-object/kernel-range fixtures. Two charges have no physical
+backing because abandonment occurred before allocation. These are serialized
+boot probes, not physical-exhaustion stress, allocator corruption or real unwind
+recovery. See the [abandonment report](../reports/audits/2026-10-09-security-preparation-abandonment.md)
+for QEMU evidence and the remaining stack-retirement progress concern.

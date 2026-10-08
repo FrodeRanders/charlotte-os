@@ -241,13 +241,8 @@ impl Drop for RetiredKernelRange {
             let pages = remaining * (self.page_size.num_bytes() / AddressSpace::PAGE_SIZE)
                 - self.released_pages;
             QUARANTINED_KERNEL_PAGES.fetch_add(pages, Ordering::Relaxed);
-            crate::early_logln!(
-                "[memory] quarantined {} kernel backing page(s) at {:?}; detached={} quiescent={}",
-                pages,
-                self.base,
-                self.detached,
-                self.quiescent
-            );
+            // Unknown outer context: even the early logger can have unrelated
+            // serialization. Drop only records atomic diagnostics and retains.
             // Physical ownership remains marked unavailable in the allocator.
             // Do not follow stale mappings or publish speculative free space.
         }

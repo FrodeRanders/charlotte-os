@@ -21,12 +21,15 @@ pub(crate) fn run() {
             test_unconfirmed_publication(kind, phase);
         }
         test_abandoned_release(kind);
+        for allocated in [false, true] {
+            test_abandoned_preparation(kind, allocated);
+        }
     }
     crate::logln!(
-        "[backing preparation test] admission/tracking/allocation rejection, Drop and mapping \
-         rollback, fill/success, failed release/domain ceiling, pool identity, mixed \
-         teardown/reuse, unconfirmed publication and abandoned receipt passed (12 retained \
-         frames; 6 heap and 6 image charges)"
+        "[backing preparation test] admission/tracking/allocation rejection, explicit \
+         cancellation and mapping rollback, fill/success, failed release/domain ceiling, pool \
+         identity, mixed teardown/reuse, unconfirmed publication and abandonment under \
+         table/allocator/pool guards passed (14 retained frames; 8 heap and 8 image charges)"
     );
 }
 
@@ -71,7 +74,7 @@ fn test_preparation(kind: Kind) {
     let preparation = PreparingUserBacking::new(&mut space, kind).unwrap();
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), with_root - 1);
     assert_eq!(backing_budget::test_used_pages(kind), used + 1);
-    drop(preparation);
+    preparation.cancel_unpublished().unwrap();
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), with_root);
     assert_eq!(backing_budget::test_used_pages(kind), used);
 
@@ -123,7 +126,7 @@ fn test_rejected_release(kind: Kind, platform: bool) {
         let mut preparation = PreparingUserBacking::new(space, kind).unwrap();
         rejected = preparation.frame.as_ref().unwrap().frame();
         let mut attempts = 0;
-        preparation.rollback_with(|frame| {
+        let result = preparation.rollback_with(|frame| {
             assert_eq!(frame, rejected);
             attempts += 1;
             crate::logln!(
@@ -133,6 +136,7 @@ fn test_rejected_release(kind: Kind, platform: bool) {
             );
             Err(physical::Error::CannotDeallocateUnallocatedFrame)
         });
+        assert!(matches!(result, Err(physical::Error::CannotDeallocateUnallocatedFrame)));
         drop(preparation);
         assert_eq!(attempts, 1);
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before - 1);
@@ -212,12 +216,13 @@ fn test_unconfirmed_publication(kind: Kind, phase: usize) {
                 drop(preparation.charge.take());
             }
         }
-        let mapped = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
         // Simulate interruption before commit, after commit with an inert token
         // still retained, and after removal of that token before frame transfer.
-        preparation.rollback_with(|_| panic!("published backing deallocated without invalidation"));
-        drop(preparation);
-        assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), mapped);
+        let allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+        let mapped = allocator.free_frames();
+        backing_budget::test_with_pool_locked(kind, || drop(preparation));
+        assert_eq!(allocator.free_frames(), mapped);
+        drop(allocator);
         assert_eq!(
             space.translate_address(VAddr::from(charlotte_launch::HEAP_VADDR)).unwrap(),
             frame
@@ -248,5 +253,66 @@ fn test_abandoned_release(kind: Kind) {
     }
     memory::close_user_address_space_handle(owner).unwrap();
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - 1);
+    assert_eq!(backing_budget::test_used_pages(kind), used + 1);
+}
+
+fn test_abandoned_preparation(kind: Kind, allocated: bool) {
+    let used = backing_budget::test_used_pages(kind);
+    let ordinary = backing_budget::test_ordinary_pages(kind);
+    let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let owner = loader::create_user_address_space_handle();
+    {
+        let mut table = ADDRESS_SPACE_TABLE.lock();
+        let space = table.get_mut(owner.id()).unwrap();
+        account(space, kind).set_limit(1).unwrap();
+        let preparation = if allocated {
+            PreparingUserBacking::new(space, kind).unwrap()
+        } else {
+            // Controlled interruption after reservation and before tracking or
+            // allocation. No panic/unwind or production failure hook is used.
+            let charge = account(space, kind).reserve().unwrap();
+            PreparingUserBacking {
+                space,
+                kind,
+                frame: None,
+                charge: Some(charge),
+                may_be_published: false,
+            }
+        };
+        let allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+        let before = allocator.free_frames();
+        // All three original guards are live. Drop must neither refund the
+        // reservation nor enter the allocator, table, pool or a logger.
+        backing_budget::test_with_pool_locked(kind, || drop(preparation));
+        assert_eq!(allocator.free_frames(), before);
+        drop(allocator);
+        assert_eq!(account(space, kind).pages(), 1);
+        assert!(matches!(
+            PreparingUserBacking::new_with(
+                space,
+                kind,
+                |_| panic!("tracking after abandoned charge exhausted ceiling"),
+                || panic!("allocation after abandoned charge exhausted ceiling")
+            ),
+            Err(BackingPreparationError::Admission)
+        ));
+    }
+    assert_eq!(backing_budget::test_used_pages(kind), used + 1);
+    assert_eq!(backing_budget::test_ordinary_pages(kind), ordinary + 1);
+    memory::close_user_address_space_handle(owner).unwrap();
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - usize::from(allocated));
+    assert_eq!(backing_budget::test_used_pages(kind), used + 1);
+    assert_eq!(backing_budget::test_ordinary_pages(kind), ordinary + 1);
+    // Completed root teardown never refunds an earlier abandoned reservation,
+    // even when that reservation had not obtained physical backing yet.
+    let successor = loader::create_user_address_space_handle();
+    assert_eq!(successor.id(), owner.id());
+    assert_ne!(successor, owner);
+    {
+        let mut table = ADDRESS_SPACE_TABLE.lock();
+        assert_eq!(account(table.get_mut(successor.id()).unwrap(), kind).pages(), 0);
+    }
+    memory::close_user_address_space_handle(successor).unwrap();
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - usize::from(allocated));
     assert_eq!(backing_budget::test_used_pages(kind), used + 1);
 }

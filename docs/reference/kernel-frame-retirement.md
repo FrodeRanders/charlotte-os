@@ -48,7 +48,8 @@ not the total walk time, fair scheduling or other allocator helpers.
 Confirmed base-frame progress updates the diagnostic count even when it splits a
 large extent. Dropping unfinished cleanup permanently quarantines its remaining
 backing and increments `QUARANTINED_KERNEL_PAGES`; uncertain interrupted batch
-progress may conservatively overcount. Drop neither retries physical release nor
+progress may conservatively overcount. Drop only updates that atomic diagnostic;
+it no longer enters even the early logger. It neither retries physical release nor
 initiates a rendezvous. Stack owners retain their whole original reservation on
 uncertain completion even if most actual frames released. There is no
 administrative quarantine-recovery API or external telemetry field for the counter.
@@ -119,6 +120,8 @@ and mapping failure after an installed prefix, real `AlreadyMapped` protection
 of foreign backing, and pre-mutation metadata/range rejection. A Drop fixture
 deliberately quarantines **one 4 KiB page** for the lifetime of the test guest;
 its free-frame count must not increase and its diagnostic count must increase.
+It now drops the detached receipt with the kernel-table and physical-allocator
+guards held, checking unchanged free frames without reacquiring either guard.
 
 Additional fixtures verify 35 standard pages release in batches of 16/16/3, a
 real 2 MiB leaf releases in thirty-two batches, and physical/table guards are

@@ -1,6 +1,6 @@
 # Security remediation status and completion criteria
 
-Updated 2026-10-08, following the two security audits and subsequent fixes.
+Updated 2026-10-09, following the two security audits and subsequent fixes.
 Source and tests remain authoritative. Historical reports preserve the state at
 their own revision; their remaining-work paragraphs are not a current backlog.
 
@@ -73,6 +73,13 @@ cross-category gaps. It defines shared custody/controller policy separately
 from typed physical completion, and orders context qualification before adding
 another registry. This is a source-reviewed planning baseline, not completion
 of the full R18-1 call-chain inventory or implementation of a general controller.
+
+The [heap/image abandonment correction](../reports/audits/2026-10-09-security-preparation-abandonment.md)
+now removes allocator/pool access and logging from that preparation fallback,
+and kernel-range fallback no longer logs. Ordinary physical rollback still
+borrows the table; other preparation/stack/backend contexts remain required.
+An initial Intel user-stack lease timeout is recorded as an unresolved progress
+concern; fresh-run success does not close C16/G1/G2/G7 or SEC-18.
 
 | Deliverable | Completion evidence |
 | --- | --- |

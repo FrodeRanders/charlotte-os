@@ -353,3 +353,10 @@ pub(crate) fn test_used_pages(kind: Kind) -> u64 {
 pub(crate) fn test_ordinary_pages(kind: Kind) -> u64 {
     kind.pool().lock().ordinary.used().pages
 }
+
+/// Serialized boot fixture: prove an abandonment path cannot enter its original
+/// admission pool. Preparation has already initialized/reserved that pool.
+pub(super) fn test_with_pool_locked(kind: Kind, action: impl FnOnce()) {
+    let _pool = kind.pool().lock();
+    action();
+}
