@@ -345,16 +345,9 @@ pub(crate) struct PreparingUserFrame(Option<PAddr>);
 
 impl Drop for PreparingUserFrame {
     fn drop(&mut self) {
-        if let Some(frame) = self.0.take() {
-            let released = PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame);
-            if let Err(error) = released {
-                crate::logln!(
-                    "[frame preparation] uncharged release rejected frame={:#x}: {:?}",
-                    usize::from(frame),
-                    error
-                );
-            }
-        }
+        // Abandonment supplies no cleanup context or quiescence proof. Retain
+        // backing without allocator, table, accounting or logger access.
+        self.0 = None;
     }
 }
 
@@ -401,6 +394,12 @@ impl PreparingUserFrame {
 
     fn quarantine(mut self) {
         self.0 = None;
+    }
+
+    /// Explicit fixture/adapter cleanup after proving this backing is
+    /// unpublished, or detached and quiescent. Drop cannot supply that proof.
+    pub(crate) fn release(self) -> Result<(), physical::Error> {
+        self.release_with(|frame| PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame))
     }
 
     /// Consume before invoking the allocator: rejected or interrupted release

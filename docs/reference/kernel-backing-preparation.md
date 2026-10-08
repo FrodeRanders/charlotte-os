@@ -26,6 +26,11 @@ frame into the preflighted root registry without allocating. Callers no longer
 commit charges separately. The raw reservation/commit API is confined to the
 memory implementation; owning-frame insertion asserts preflighted capacity.
 
+Raw frame and table preparation now also retain backing on fallback; ordinary
+adapter/fixture release and unpublished table cancellation are explicit. See
+[translation admission](translation-admission.md). Stack preparation still has
+its separate cleanup/context requirements.
+
 Confirmed mapper rejection invokes ordinary rollback explicitly. A caller
 cancelling a definitely unpublished preparation uses consuming
 `cancel_unpublished`, rather than Drop. The physical rollback still executes in

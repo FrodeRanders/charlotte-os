@@ -616,7 +616,7 @@ pub(super) fn test_table_admission() {
     assert_eq!(domain.tables.pages(), initial + 5);
     drop(domain);
     assert_eq!(super::dma_tables::used(), baseline);
-    drop(data);
+    data.release().unwrap();
 }
 
 /// Serialized fixture places the next map across a cached/fresh leaf-table boundary.

@@ -1,5 +1,10 @@
 //! Fresh runtime kernel tables are shared and retained for the kernel lifetime.
 //! A charge follows preparation, then becomes permanent at link publication.
+use core::sync::atomic::{
+    AtomicU64,
+    Ordering,
+};
+
 use charlotte_lifecycle::resources::{
     Amount,
     Budget,
@@ -20,7 +25,6 @@ fn amount(pages: u64) -> Amount {
 
 struct Pool {
     budget: Budget,
-    quarantined: u64,
 }
 
 // Independent of private roots and data backing. Bootloader-inherited tables
@@ -29,9 +33,10 @@ static POOL: LazyLock<Mutex<Pool>> = LazyLock::new(|| {
     let pages = (PHYSICAL_FRAME_ALLOCATOR.lock().usable_bytes() / 4096 / 64).max(1);
     Mutex::new(Pool {
         budget: Budget::new(amount(pages)),
-        quarantined: 0,
     })
 });
+
+static QUARANTINED: AtomicU64 = AtomicU64::new(0);
 
 #[must_use]
 pub(super) struct Charge {
@@ -64,7 +69,7 @@ impl Drop for Charge {
         if self.retaining {
             // Rejected release, interruption or abandonment retains admission.
             // Drop never refunds or retries potentially reachable backing.
-            POOL.lock().quarantined += 1;
+            QUARANTINED.fetch_add(1, Ordering::Relaxed);
         }
     }
 }
@@ -74,7 +79,7 @@ pub(super) fn used_pages() -> u64 {
 }
 
 pub(super) fn quarantined_pages() -> u64 {
-    POOL.lock().quarantined
+    QUARANTINED.load(Ordering::Relaxed)
 }
 
 /// Single-mutator boot fixture. It changes available admission, never clears
@@ -96,4 +101,10 @@ impl Drop for Pressure {
     fn drop(&mut self) {
         POOL.lock().budget.set_limit(self.0).unwrap();
     }
+}
+
+/// Boot probe: Drop must not try to reacquire its original admission pool.
+pub(super) fn test_with_pool_locked(action: impl FnOnce()) {
+    let _pool = POOL.lock();
+    action();
 }

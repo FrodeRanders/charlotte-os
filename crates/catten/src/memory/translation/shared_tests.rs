@@ -23,7 +23,8 @@ pub(super) fn run() {
     crate::logln!(
         "[shared table admission] rejection before backing allocation, unused/zeroed-owner \
          refund, sparse partial-tree retention/retry, cached reuse at the ceiling and shared-root \
-         counting passed; rejected/abandoned preparation retains two frames/charges"
+         counting passed; rejected/abandoned preparation retains three frames/four charges under \
+         allocator/table/pool guards"
     );
 }
 
@@ -46,7 +47,7 @@ fn preparation() {
     assert_eq!(shared::used_pages(), used);
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
     drop(pressure);
-    drop(PreparingTable::allocate(TableScope::SharedKernel, None).unwrap());
+    PreparingTable::allocate(TableScope::SharedKernel, None).unwrap().cancel_unpublished().unwrap();
     assert_eq!(shared::used_pages(), used);
     assert_eq!(shared::quarantined_pages(), quarantined);
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
@@ -123,7 +124,7 @@ fn shared_tree() {
         assert_eq!(kernel.unmap_page(sparse).unwrap(), data.frame());
     }
     crate::cpu::isa::memory::tlb::try_inval_range_kernel(sparse, 1).unwrap();
-    drop(data);
+    data.release().unwrap();
     assert_eq!(shared::used_pages(), charged);
     assert_eq!(shared::quarantined_pages(), quarantined);
     let retained: usize = (charged - used).try_into().unwrap();
@@ -131,30 +132,60 @@ fn shared_tree() {
 }
 
 fn retained_preparation() {
-    for abandoned in [false, true] {
+    for kind in 0..4 {
         let used = shared::used_pages();
         let quarantined = shared::quarantined_pages();
         let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
         let pressure = shared::Pressure::new(1);
-        let mut preparation = PreparingTable::allocate(TableScope::SharedKernel, None).unwrap();
-        if abandoned {
+        let mut preparation = if kind == 3 {
+            // Actual reservation-only state; no physical allocation is made.
+            PreparingTable {
+                frame: None,
+                account: None,
+                shared: Some(shared::Charge::reserve().unwrap()),
+                state: PreparationState::Unpublished,
+            }
+        } else {
+            PreparingTable::allocate(TableScope::SharedKernel, None).unwrap()
+        };
+        if kind == 1 {
             // Simulate interruption after disarming the frame owner.
             preparation.state = PreparationState::Publishing;
             preparation.frame.take().unwrap().quarantine();
-        } else {
-            preparation.rollback_with(|_| {
+        } else if kind == 0 {
+            let mut attempts = 0;
+            assert!(matches!(
+                preparation.rollback_with(|_| {
+                    attempts += 1;
+                    Err(crate::memory::physical::Error::CannotDeallocateUnallocatedFrame)
+                }),
                 Err(crate::memory::physical::Error::CannotDeallocateUnallocatedFrame)
-            });
+            ));
+            assert_eq!(attempts, 1);
         }
-        drop(preparation);
+        // Fallback and implicit shared charge Drop cannot acquire any of the
+        // original table, physical or admission guards held by this fixture.
+        account::test_with_pool_locked(|| {
+            shared::test_with_pool_locked(|| {
+                let _kernel = crate::memory::KERNEL_AS.lock();
+                let _table = crate::memory::ADDRESS_SPACE_TABLE.lock();
+                let physical = PHYSICAL_FRAME_ALLOCATOR.lock();
+                let before = physical.free_frames();
+                drop(preparation);
+                assert_eq!(physical.free_frames(), before);
+            })
+        });
         assert_eq!(shared::used_pages(), used + 1);
         assert_eq!(shared::quarantined_pages(), quarantined + 1);
         assert!(PreparingTable::allocate(TableScope::SharedKernel, None).is_none());
-        assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - 1);
+        assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - usize::from(kind != 3));
         drop(pressure);
         // A successful provisional retry cannot refund the retained frame.
-        drop(PreparingTable::allocate(TableScope::SharedKernel, None).unwrap());
+        PreparingTable::allocate(TableScope::SharedKernel, None)
+            .unwrap()
+            .cancel_unpublished()
+            .unwrap();
         assert_eq!(shared::used_pages(), used + 1);
-        assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - 1);
+        assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - usize::from(kind != 3));
     }
 }

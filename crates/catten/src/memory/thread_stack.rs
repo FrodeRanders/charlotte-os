@@ -10,6 +10,9 @@ pub(crate) const KERNEL_STACK_PAGES: usize = 16;
 mod budget;
 mod stacks;
 pub(crate) use stacks::Stacks;
+pub(crate) fn retirement_progress() -> [u64; 6] {
+    stacks::retirement_progress()
+}
 pub(crate) fn test_admission() {
     stacks::tests::run();
 }

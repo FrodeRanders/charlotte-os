@@ -60,15 +60,25 @@ impl<'a> PreparingTable<'a> {
         if let Some(account) = preparation.account.as_deref_mut()
             && account.reserve().is_err()
         {
-            // No reservation exists for Drop to refund.
+            // No reservation exists for Drop to retain.
             preparation.state = PreparationState::Installed;
             return None;
         }
         if scope == TableScope::SharedKernel {
-            preparation.shared = Some(shared::Charge::reserve()?);
+            let Some(charge) = shared::Charge::reserve() else {
+                preparation.state = PreparationState::Installed;
+                return None;
+            };
+            preparation.shared = Some(charge);
         }
-        preparation.frame =
-            Some(allocate(preparation.account.as_deref().is_some_and(Account::is_platform))?);
+        let Some(frame) =
+            allocate(preparation.account.as_deref().is_some_and(Account::is_platform))
+        else {
+            // Ordinary allocation rejection explicitly cancels unused admission.
+            preparation.rollback_with(|_| unreachable!("no table backing allocated")).unwrap();
+            return None;
+        };
+        preparation.frame = Some(frame);
         preparation.frame.as_ref().unwrap().zero();
         Some(preparation)
     }
@@ -93,48 +103,48 @@ impl<'a> PreparingTable<'a> {
         result
     }
 
+    /// Cancel only definitely unpublished backing. Ordinary cancellation is
+    /// explicit; abandoning this owner retains its original admission instead.
+    pub(crate) fn cancel_unpublished(mut self) -> Result<(), super::physical::Error> {
+        self.rollback_with(|frame| super::PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame))
+    }
+
     fn rollback_with(
         &mut self,
         deallocate: impl FnOnce(PAddr) -> Result<(), super::physical::Error>,
-    ) {
-        // Disarm retry before invoking even a private deallocator adapter.
-        match core::mem::replace(&mut self.state, PreparationState::Installed) {
-            PreparationState::Installed => return,
-            PreparationState::Publishing => {
-                if let Some(frame) = self.frame.take() {
-                    frame.quarantine();
-                }
-                if let Some(account) = self.account.as_deref_mut() {
-                    account.quarantine_unpublished();
-                }
-                return;
-            }
-            PreparationState::Unpublished => {}
-        }
-        // Account retention precedes release; a rejected or interrupted release
-        // must not return its domain/node charge. No scalar restoration exists.
+    ) -> Result<(), super::physical::Error> {
+        assert!(matches!(self.state, PreparationState::Unpublished));
+        // Disarm retry and retain admission before invoking the deallocator.
+        self.state = PreparationState::Installed;
         if let Some(frame) = self.frame.take() {
             if let Some(account) = self.account.as_deref_mut() {
                 account.quarantine_unpublished();
             }
-            if frame.release_with(deallocate).is_ok() {
-                if let Some(account) = self.account.as_deref_mut() {
-                    account.refund_quarantined();
-                }
-                if let Some(charge) = self.shared.take() {
-                    charge.refund();
-                }
-            } else {
-                crate::logln!("[table preparation] rejected physical release; backing retained");
-            }
-        } else {
+            frame.release_with(deallocate)?;
             if let Some(account) = self.account.as_deref_mut() {
-                account.refund_unpublished();
+                account.refund_quarantined();
             }
-            if let Some(charge) = self.shared.take() {
-                charge.refund();
-            }
+        } else if let Some(account) = self.account.as_deref_mut() {
+            account.refund_unpublished();
         }
+        if let Some(charge) = self.shared.take() {
+            charge.refund();
+        }
+        Ok(())
+    }
+
+    fn retain_abandoned(&mut self) {
+        if !matches!(self.state, PreparationState::Installed) {
+            if let Some(account) = self.account.as_deref_mut() {
+                account.quarantine_unpublished();
+            }
+            self.state = PreparationState::Installed;
+        }
+        if let Some(frame) = self.frame.take() {
+            frame.quarantine();
+        }
+        // Shared Charge::drop only records atomic quarantine; its original
+        // pool reservation remains consumed without taking the pool guard.
     }
 
     pub(crate) fn test_policy() {
@@ -151,7 +161,7 @@ impl<'a> PreparingTable<'a> {
 
 impl Drop for PreparingTable<'_> {
     fn drop(&mut self) {
-        self.rollback_with(|frame| super::PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame));
+        self.retain_abandoned();
     }
 }
 

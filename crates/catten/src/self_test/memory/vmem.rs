@@ -150,7 +150,7 @@ fn test_retained_tables() {
     }
     drop(second);
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), with_backing);
-    drop(frame);
+    frame.release().unwrap();
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), baseline);
     logln!(
         "[table lifetime] sparse aliases, 16 unmap/remap rounds, private-tree isolation, retained \

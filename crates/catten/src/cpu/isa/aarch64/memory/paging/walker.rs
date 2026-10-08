@@ -70,6 +70,7 @@ impl<'vas> Walker<'vas> {
         // A prepared but unpublished lazy root must be released when tag
         // admission fails, without touching the active hardware root.
         let free = crate::memory::PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+        let tables = crate::memory::translation::account::test_used_pages();
         let mut space = AddressSpace::try_new_user().unwrap();
         assert!(matches!(
             Walker::new(&mut space, VAddr::from(charlotte_launch::HEAP_VADDR))
@@ -78,8 +79,14 @@ impl<'vas> Walker<'vas> {
         ));
         assert_eq!(space.hw_asid(), 0);
         assert_eq!(space.get_ttbr0(), 0);
+        assert_eq!(space.table_account.pages(), 0);
+        assert_eq!(crate::memory::translation::account::test_used_pages(), tables);
         drop(space);
         assert_eq!(crate::memory::PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+        crate::logln!(
+            "[table preparation] Arm tag rejection explicitly cancels unpublished root backing \
+             and original table charge"
+        );
         crate::memory::translation::tests::run(|space, vaddr, frame, limit| {
             let mut remaining = limit;
             let prepare = |scope| {
@@ -312,6 +319,7 @@ impl<'vas, Prepare: FnMut(TableScope) -> bool> Walker<'vas, Prepare> {
                 PreparingTable::allocate(scope, (!higher).then_some(table_account))
                     .ok_or(WalkerError::PMemError(crate::memory::physical::Error::OutOfFrames))?;
             if !higher && !acquire_tag(hw_asid, owns_hw_asid, ttbr0_el1) {
+                preparation.cancel_unpublished().map_err(WalkerError::PMemError)?;
                 return Err(WalkerError::HardwareAsidExhausted);
             }
             preparation.publish(|frame| {

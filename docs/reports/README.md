@@ -10,6 +10,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [2026-10-09 table/raw-frame abandonment and stack-retirement diagnostics (SEC-18)](audits/2026-10-09-security-table-abandonment.md)
 - [2026-10-09 heap/image and kernel-range abandonment without cleanup (SEC-18)](audits/2026-10-09-security-preparation-abandonment.md)
 - [2026-10-08 cross-category cleanup and recovery strategy (SEC-07/18)](audits/2026-10-08-security-recovery-strategy.md)
 - [2026-10-08 bounded final-root recovery receipts (SEC-18)](audits/2026-10-08-security-root-recovery.md)

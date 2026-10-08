@@ -55,11 +55,29 @@ account block, or build a per-frame admission ledger. Borrowed current-root
 snapshots cannot allocate private branches; shared higher-half preparation
 continues to use its architecture-derived scope.
 
-Allocation failure refunds the unused reservation. A rejected unpublished
+Ordinary allocation failure explicitly refunds the unused reservation. Ordinary
+unused preparation uses consuming `cancel_unpublished`, which reports physical
+release rejection. The Arm lazy-root hardware-tag rejection explicitly cancels
+its unpublished table before returning; it does not rely on Drop. A rejected unpublished
 physical release retains its original domain and node charge. Retention is
 armed before invoking the deallocator, whose ownership is consumed before the
 call; interruption cannot trigger a retry or premature refund. Unconfirmed
 publication retains backing and a nonrefundable provisional count.
+
+`PreparingTable::drop` retains backing and original admission without allocator,
+accounting-pool or table locks, callbacks or logging. Private quarantine mutates
+only the exclusively borrowed account. Shared charge Drop records quarantine
+atomically, leaving the original pool reservation consumed. Reservation-only
+abandonment also consumes admission, so retained charges can exceed physical
+frames. Completed root destruction excludes those private charges; shared
+charges survive later successful preparation. Ordinary rollback still holds the
+captured table/account context; this change does not move physical rollback
+outside that serialization. See [cleanup/recovery C17 and G1/G2](cleanup-recovery.md).
+
+The raw `PreparingUserFrame` fallback likewise retains backing without cleanup.
+Its consuming release is explicit and requires the adapter/fixture to establish
+unpublished backing or completed detachment/quiescence. It is not an adoption
+API or a substitute for an enclosing table, heap/image or stack transaction.
 
 Linked partial trees and empty branches remain charged after mapping failure
 or unmap. Cached branches can be reused at the exact ceiling. A failed new
@@ -85,22 +103,27 @@ Root-release failure fixtures now also check whole-account table retention.
 The public memory-object path additionally checks repeated sparse-map rejection,
 pin/lease completion, cached remapping and ordinary capability/root close.
 
-Two additional rejected/abandoned provisional fixtures intentionally retain
-two physical frames and two table charges. They simulate rejection and
-interrupted-owner state; they do not perform real panic unwinding or claim
-hardware-race reproduction. QEMU results live in the
-[audit record](../reports/audits/2026-10-06-security-table-admission.md).
+Four private and four shared provisional fixtures cover physical rejection,
+interrupted publication, unpublished abandonment and reservation-only
+abandonment. Drop runs while both address-space guards, the physical allocator
+and both original table admission pools are held. Each category retains three
+physical frames and four charges; private charges survive original-root
+teardown and shared charges survive explicit successful cancellation. Two raw
+frame probes retain two more frames through guarded abandonment and terminal
+release rejection. Interrupted states are simulated, not panic unwinding or
+hardware-race reproduction. Arm's tag-rejection fixture verifies explicit
+backing and original-account refund.
 
-Shared fixtures reject admission before an allocator callback, refund unused
-and successfully released preparation, retain a real sparse higher-half prefix,
-reject fresh branches repeatedly, reuse cached branches sixteen times at the
-ceiling, and complete a mapping after pressure ends. Four user-root creation/
-destruction rounds verify shared alias visibility and unchanged shared charges.
-Two additional rejected/abandoned shared preparations retain two physical frames
-and charges. Their interruption is simulated. Published empty fixture tables
-remain owned and reusable, with exact physical/count deltas; they are not
-quarantined. See the
-[shared-table audit record](../reports/audits/2026-10-06-security-kernel-table-admission.md).
+Shared-tree fixtures still retain a real sparse higher-half prefix, reject fresh
+branches repeatedly, reuse cached branches sixteen times at the ceiling, and
+complete a mapping after pressure ends. Four user-root creation/destruction
+rounds verify shared alias visibility and unchanged shared charges. Published
+empty fixture tables remain owned and reusable; they are not quarantined.
+See the [table abandonment report](../reports/audits/2026-10-09-security-table-abandonment.md)
+for current QEMU evidence, and the historical
+[private](../reports/audits/2026-10-06-security-table-admission.md) and
+[shared](../reports/audits/2026-10-06-security-kernel-table-admission.md) records
+for original admission coverage.
 
 This closes the renewed audit's private sparse-table admission path. SEC-07
 remains partial for inherited kernel tables/stacks, kernel heap

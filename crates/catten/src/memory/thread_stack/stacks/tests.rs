@@ -44,8 +44,8 @@ pub(in crate::memory::thread_stack) fn run() {
     retained_failures();
     crate::logln!(
         "[stack backing admission] maximum user/kernel reservation, growth/collision/retry, \
-         success/Drop refund, rejection before allocation and platform progress passed; five \
-         failed/abandoned owners retain original roots/slots/reservations (19 data frames \
+         success/Drop refund, rejection before allocation and platform progress passed; six \
+         failed/abandoned owners retain original roots/slots/reservations (20 data frames \
          retained)"
     );
 }
@@ -92,7 +92,7 @@ fn growth_and_drop() {
         foreign.frame()
     );
     crate::cpu::isa::memory::tlb::try_inval_range_user(handle.id(), collision, 1).unwrap();
-    drop(foreign);
+    foreign.release().unwrap();
     assert_eq!(stacks.grow_user_stack(base), Some(base));
     assert_eq!(stacks.committed_pages(), 4);
     assert_eq!(stacks.grow_user_stack(base - PAGE), None);
@@ -171,7 +171,8 @@ fn confirmed_constructor_failure() {
 }
 
 fn retained_failures() {
-    for kind in 0..5 {
+    let progress = retirement_progress();
+    for kind in 0..6 {
         let used = budget::used();
         let handle = domain(1, false);
         let initial_free;
@@ -235,7 +236,7 @@ fn retained_failures() {
                 drop(stacks);
                 assert_eq!(free(), initial_free);
             }
-            _ => {
+            4 => {
                 // Reject cleanup of a real mapped kernel range after its user
                 // leaf has been confirmed released. The complete reservation
                 // and root lease must remain, along with all sixteen pages.
@@ -247,6 +248,21 @@ fn retained_failures() {
                 assert_eq!(free(), initial_free + 1);
                 assert!(memory::KERNEL_AS.lock().is_mapped(base).unwrap());
             }
+            _ => {
+                let mut stacks = user_only(handle);
+                initial_free = free();
+                let user = stacks.user.take().unwrap();
+                assert!(
+                    retire_user_with(
+                        user,
+                        |_, _, _| false,
+                        |_| panic!("failed invalidation released stack backing")
+                    )
+                    .is_none()
+                );
+                drop(stacks);
+                assert_eq!(free(), initial_free);
+            }
         }
         assert_eq!(budget::used(), (used.0 + 17, used.1 + 17));
         assert_eq!(slots(handle), 1);
@@ -254,4 +270,12 @@ fn retained_failures() {
         assert!(memory::address_space_handle_is_current(handle));
         assert!(StackSlot::reserve(handle).is_err());
     }
+    let after = retirement_progress();
+    assert_eq!(after[INVALIDATION_REJECTED], progress[INVALIDATION_REJECTED] + 1);
+    assert_eq!(after[PHYSICAL_REJECTED], progress[PHYSICAL_REJECTED] + 1);
+    crate::logln!(
+        "[stack retirement diagnostics] distinct invalidation/physical rejections retain leases \
+         and count once; counters={:?}",
+        after
+    );
 }

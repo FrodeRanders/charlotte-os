@@ -29,8 +29,8 @@ pub(super) fn run() {
     crate::logln!(
         "[table admission] sparse domain ceiling, public object map rejection/cleanup, \
          partial-tree charge/retry, cached reuse, independent roots, ordinary-pressure platform \
-         root/mapping and exact teardown passed; rejected/abandoned preparation retains two \
-         frames/charges"
+         root/mapping and exact teardown passed; rejected/abandoned preparation retains three \
+         frames/four charges under allocator/table/pool guards"
     );
 }
 
@@ -106,7 +106,7 @@ fn sparse_domains() {
     assert_eq!(account::test_used_pages(), used + 4);
     assert_eq!(second.translate_address(VAddr::from(0x8000_0000usize)).unwrap(), data.frame());
     drop(second);
-    drop(data);
+    data.release().unwrap();
     assert_eq!(account::test_used_pages(), used);
     assert_eq!(account::test_ordinary_pages(), ordinary);
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
@@ -139,14 +139,14 @@ fn platform_progress() {
     let mut retry = AddressSpace::try_new_user().unwrap();
     assert!(map(&mut retry, 0x4000_0000, data.frame()));
     drop(retry);
-    drop(data);
+    data.release().unwrap();
     assert_eq!(account::test_used_pages(), used);
     assert_eq!(account::test_ordinary_pages(), ordinary);
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
 }
 
 fn provisional_retention() {
-    for abandoned in [false, true] {
+    for kind in 0..4 {
         let used = account::test_used_pages();
         let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
         let mut space = AddressSpace::try_new_user().unwrap();
@@ -158,22 +158,49 @@ fn provisional_retention() {
         );
         assert_eq!(account.pages(), initial);
         account.set_limit(initial + 1).unwrap();
-        let mut preparation =
-            PreparingTable::allocate(TableScope::PrivateUser, Some(account)).unwrap();
-        if abandoned {
+        let mut preparation = if kind == 3 {
+            // Actual reservation-only state; no physical allocation is made.
+            account.reserve().unwrap();
+            PreparingTable {
+                frame: None,
+                account: Some(account),
+                shared: None,
+                state: PreparationState::Unpublished,
+            }
+        } else {
+            PreparingTable::allocate(TableScope::PrivateUser, Some(account)).unwrap()
+        };
+        if kind == 1 {
             // Emulate interruption after disarm but before publication returns.
             preparation.state = PreparationState::Publishing;
             preparation.frame.take().unwrap().quarantine();
-        } else {
-            preparation.rollback_with(|_| {
+        } else if kind == 0 {
+            let mut attempts = 0;
+            assert!(matches!(
+                preparation.rollback_with(|_| {
+                    attempts += 1;
+                    Err(crate::memory::physical::Error::CannotDeallocateUnallocatedFrame)
+                }),
                 Err(crate::memory::physical::Error::CannotDeallocateUnallocatedFrame)
-            });
+            ));
+            assert_eq!(attempts, 1);
         }
-        drop(preparation);
+        // Fallback and implicit shared charge Drop cannot acquire any of the
+        // original table, physical or admission guards held by this fixture.
+        account::test_with_pool_locked(|| {
+            shared::test_with_pool_locked(|| {
+                let _kernel = crate::memory::KERNEL_AS.lock();
+                let _table = crate::memory::ADDRESS_SPACE_TABLE.lock();
+                let physical = PHYSICAL_FRAME_ALLOCATOR.lock();
+                let before = physical.free_frames();
+                drop(preparation);
+                assert_eq!(physical.free_frames(), before);
+            })
+        });
         assert_eq!(account.pages(), initial + 1);
         assert!(PreparingTable::allocate(TableScope::PrivateUser, Some(account)).is_none());
         drop(space);
         assert_eq!(account::test_used_pages(), used + 1);
-        assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - 1);
+        assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - usize::from(kind != 3));
     }
 }

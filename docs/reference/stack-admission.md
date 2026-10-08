@@ -73,12 +73,25 @@ cached slot reuse, exact reservation/free-count restoration, and platform/kernel
 progress under ordinary admission pressure. Existing thread-publication,
 128-round preparation/Drop churn and launch rollback fixtures still run.
 
-Five failed/abandoned fixtures retain five original roots/slots and 85 reservation
-pages. They retain three provisional/user data frames and one sixteen-page live
+Six failed/abandoned fixtures retain six original roots/slots and 102 reservation
+pages. They retain four provisional/user data frames and one sixteen-page live
 kernel stack, plus their roots' private table hierarchies. The kernel cleanup
 rejection, incomplete preparation marker and interrupted growth are injected
 owner states, not physical hardware failures or actual panic unwinding. Their
-backing remains unavailable for the lifetime of the guest.
+backing remains unavailable for the lifetime of the guest. The additional
+invalidation-rejection fixture never invokes physical release and retains its
+exact slot, root lease and complete reservation.
+
+Six atomic user-retirement observations track starts, successful user release,
+identity rejection, detach rejection, invalidation rejection and rejected
+physical releases. They take no lock, allocate no storage and enter no logger.
+Snapshots are independent counter reads, include injected boot failures and
+cannot identify a particular operation or authorize retry/refund. They describe
+the user half, not completion of the kernel/user pair. The user-isolation
+fixture logs before/after snapshots and its exact root identity only when its
+existing retirement deadline expires, after subsystem guards leave. The prior
+Intel timeout remains unresolved; this adds evidence, not a recovery bypass.
+See the [follow-up report](../reports/audits/2026-10-09-security-table-abandonment.md).
 
 See the [audit record](../reports/audits/2026-10-07-security-stack-admission.md)
 for QEMU evidence. This establishes runtime stack capacity admission, not

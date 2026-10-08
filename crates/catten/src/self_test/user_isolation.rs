@@ -114,6 +114,7 @@ impl Fixture {
 
     fn finish(self) {
         let deadline = super::results::Deadline::after_millis(10_000);
+        let stack_progress = memory::thread_stack::retirement_progress();
         loop {
             let alive = scheduler::threads::MASTER_THREAD_TABLE
                 .read()
@@ -129,6 +130,18 @@ impl Fixture {
             match memory::close_user_address_space_handle(self.handle) {
                 Ok(()) => break,
                 Err(memory::AddressSpaceCloseError::OperationsInFlight) => {
+                    if deadline.is_expired() {
+                        crate::logln!(
+                            "[user isolation] retained stack lease asid={} generation={} \
+                             user-retirement counters \
+                             [started,released,identity,detach,invalidation,physical]: \
+                             before={:?} after={:?}",
+                            self.handle.id(),
+                            self.handle.generation(),
+                            stack_progress,
+                            memory::thread_stack::retirement_progress()
+                        );
+                    }
                     deadline.assert_pending("user stack retirement lease");
                     scheduler::yield_lp();
                 }

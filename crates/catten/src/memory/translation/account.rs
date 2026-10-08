@@ -192,3 +192,9 @@ impl Drop for OrdinaryPressure {
         POOL.lock().ordinary.set_limit(self.0).unwrap();
     }
 }
+
+/// Boot probe: preparation abandonment borrows only the captured account.
+pub(super) fn test_with_pool_locked(action: impl FnOnce()) {
+    let _pool = POOL.lock();
+    action();
+}

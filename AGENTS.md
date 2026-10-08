@@ -126,8 +126,10 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   explicitly rolls back. Use consuming `cancel_unpublished` for ordinary unused
   preparation and handle its physical error. Even abandonment before allocation
   retains its original reservation; neither root teardown nor successor reuse
-  refunds it. This does not qualify raw frame/table/stack destructors or move
-  ordinary physical rollback outside the borrowed table guard.
+  refunds it. This does not qualify stack destructors or move ordinary physical
+  rollback outside the borrowed table guard. Raw `PreparingUserFrame` Drop retains backing;
+  explicit consuming release needs unpublished backing or confirmed quiescence,
+  never address-based re-adoption.
 - ELF/runtime frames use the independent `image_account` in `backing_budget`.
   Bound layout validation and aggregate image planning before namespace
   creation; use `PreparingUserBacking` and fallible mapping rather than scalar
@@ -156,6 +158,13 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   Refund unused reservations, and unpublished backing only after confirmed
   physical release; failure/abandonment retains charges. Inherited boot tables remain outside this
   runtime pool, not retroactively adopted ownership.
+  Table preparation Drop only retains its exact account/frame; shared charge
+  fallback records quarantine atomically without acquiring its pool. Ordinary
+  unused preparation uses consuming `cancel_unpublished` and handles rejection;
+  allocation failure explicitly refunds unused admission. Arm hardware-tag
+  rejection explicitly cancels its prepared lazy root. Reservation-only
+  abandonment retains admission through root destruction. No table/frame
+  fallback may free, invoke callbacks, take allocator/table/pool guards or log.
   See `docs/reference/translation-admission.md`.
 - Dynamic unmap removes leaves, not intermediate-table ownership. Keep empty
   tables linked for reuse until quiescent address-space teardown; table charges

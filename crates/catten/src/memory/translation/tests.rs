@@ -38,7 +38,7 @@ pub(crate) fn run(
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - 1);
         let bytes: *const u8 = table.frame().into();
         assert!(unsafe { core::slice::from_raw_parts(bytes, 4096) }.iter().all(|&byte| byte == 0));
-        drop(table);
+        table.cancel_unpublished().unwrap();
         assert_eq!(super::account::test_used_pages(), charged);
         assert_eq!(super::shared::used_pages(), shared);
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
@@ -114,16 +114,18 @@ pub(crate) fn run(
         assert_inactive_root(&space);
         drop(space);
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - 1);
-        drop(data);
+        data.release().unwrap();
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
         assert_eq!(backing_budget::test_used_pages(Kind::Heap), heap);
         assert_eq!(backing_budget::test_used_pages(Kind::Image), image);
         assert_eq!(super::account::test_used_pages(), tables);
     }
     crate::logln!(
-        "[table preparation] scope/floor policy, zeroed-owner Drop, every construction prefix, \
-         retry/cached reuse, sparse partial tree and exact teardown passed (no retained frames)"
+        "[table preparation] scope/floor policy, zeroed-owner cancellation, every construction \
+         prefix, retry/cached reuse, sparse partial tree and exact teardown passed (no retained \
+         frames)"
     );
+    raw_frame_abandonment();
     super::admission_tests::run();
     super::shared_tests::run();
 }
@@ -146,4 +148,37 @@ fn assert_inactive_root(space: &AddressSpace) {
     );
     #[cfg(target_arch = "x86_64")]
     assert_ne!(current.get_cr3(), space.get_cr3(), "inactive user root installed by construction");
+}
+
+fn raw_frame_abandonment() {
+    // Initialize both pools before taking the physical allocator. These probes
+    // never install a leaf or recover the frame left by a rejected release.
+    let _ = account::test_used_pages();
+    let _ = shared::used_pages();
+    let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let frame = PreparingUserFrame::allocate_zeroed().unwrap();
+    account::test_with_pool_locked(|| {
+        shared::test_with_pool_locked(|| {
+            let _kernel = crate::memory::KERNEL_AS.lock();
+            let _table = crate::memory::ADDRESS_SPACE_TABLE.lock();
+            let physical = PHYSICAL_FRAME_ALLOCATOR.lock();
+            drop(frame);
+            assert_eq!(physical.free_frames(), free - 1);
+        })
+    });
+    let frame = PreparingUserFrame::allocate_zeroed().unwrap();
+    let mut attempts = 0;
+    assert!(matches!(
+        frame.release_with(|_| {
+            attempts += 1;
+            Err(crate::memory::physical::Error::CannotDeallocateUnallocatedFrame)
+        }),
+        Err(crate::memory::physical::Error::CannotDeallocateUnallocatedFrame)
+    ));
+    assert_eq!(attempts, 1);
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - 2);
+    crate::logln!(
+        "[raw frame preparation] Drop under allocator/table/pool guards and terminal release \
+         rejection passed (two retained frames)"
+    );
 }

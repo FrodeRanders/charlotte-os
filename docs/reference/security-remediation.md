@@ -77,9 +77,13 @@ of the full R18-1 call-chain inventory or implementation of a general controller
 The [heap/image abandonment correction](../reports/audits/2026-10-09-security-preparation-abandonment.md)
 now removes allocator/pool access and logging from that preparation fallback,
 and kernel-range fallback no longer logs. Ordinary physical rollback still
-borrows the table; other preparation/stack/backend contexts remain required.
+borrows the table. The [table/raw-frame follow-up](../reports/audits/2026-10-09-security-table-abandonment.md)
+also removes cleanup from private/shared table and raw-frame fallback, preserving
+explicit normal cancellation and Arm hardware-tag rejection. Stack/backend
+contexts and the complete call-chain inventory remain required.
 An initial Intel user-stack lease timeout is recorded as an unresolved progress
-concern; fresh-run success does not close C16/G1/G2/G7 or SEC-18.
+concern; atomic phase observations and timeout snapshots now improve subsequent
+evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.
 
 | Deliverable | Completion evidence |
 | --- | --- |

@@ -85,7 +85,7 @@ pub(crate) fn run(mut destroy: impl FnMut(&mut AddressSpace, &mut Deallocator<'_
         assert_eq!(backing_budget::test_used_pages(Kind::Heap), heap_before + retained);
         assert_eq!(backing_budget::test_used_pages(Kind::Image), image_before + retained);
         assert_eq!(super::translation::account::test_used_pages(), tables_before + 4 * retained);
-        drop(foreign);
+        foreign.release().unwrap();
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free_before - failed);
     }
     crate::logln!(

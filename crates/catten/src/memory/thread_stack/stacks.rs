@@ -1,4 +1,11 @@
 //! A single owner covers both halves of a thread's admitted stack footprint.
+// Bounded diagnostic observations only. No counter authorizes cleanup, refund
+// or retry. Snapshots are not transactional and include boot fault fixtures.
+use core::sync::atomic::{
+    AtomicU64,
+    Ordering,
+};
+
 use super::*;
 use crate::memory::{
     AddressSpaceInterface,
@@ -15,6 +22,17 @@ use crate::memory::{
         PageType,
     },
 };
+static RETIREMENT_PROGRESS: [AtomicU64; 6] = [const { AtomicU64::new(0) }; 6];
+const STARTED: usize = 0;
+const USER_RELEASED: usize = 1;
+const IDENTITY_REJECTED: usize = 2;
+const DETACH_REJECTED: usize = 3;
+const INVALIDATION_REJECTED: usize = 4;
+const PHYSICAL_REJECTED: usize = 5;
+
+pub(super) fn retirement_progress() -> [u64; 6] {
+    core::array::from_fn(|index| RETIREMENT_PROGRESS[index].load(Ordering::Relaxed))
+}
 
 const PAGE: usize = crate::cpu::isa::memory::paging::PAGE_SIZE;
 const _: () = assert!(charlotte_launch::INITIAL_USER_STACK_PAGES == 1 && PAGE == 4096);
@@ -195,6 +213,7 @@ fn retire_user_with(
     invalidate: impl FnOnce(VAddr, usize, AddressSpaceHandle) -> bool,
     mut release: impl FnMut(crate::memory::PAddr) -> Result<(), crate::memory::physical::Error>,
 ) -> Option<StackSlot> {
+    RETIREMENT_PROGRESS[STARTED].fetch_add(1, Ordering::Relaxed);
     let handle = stack.slot.identity();
     let low = stack.committed_low();
     let mut frames = [None; charlotte_launch::MAX_USER_STACK_PAGES];
@@ -202,9 +221,11 @@ fn retire_user_with(
     {
         let mut table = ADDRESS_SPACE_TABLE.lock();
         if table.generation(handle.id()).ok() != Some(handle.generation()) {
+            RETIREMENT_PROGRESS[IDENTITY_REJECTED].fetch_add(1, Ordering::Relaxed);
             return None;
         }
         let Ok(space) = table.get_mut(handle.id()) else {
+            RETIREMENT_PROGRESS[IDENTITY_REJECTED].fetch_add(1, Ordering::Relaxed);
             return None;
         };
         for (index, frame) in frames.iter_mut().enumerate().take(stack.committed_pages) {
@@ -214,17 +235,23 @@ fn retire_user_with(
             }
         }
     }
+    if !ok {
+        RETIREMENT_PROGRESS[DETACH_REJECTED].fetch_add(1, Ordering::Relaxed);
+    }
     if !invalidate(VAddr::from(low), stack.committed_pages, handle) {
+        RETIREMENT_PROGRESS[INVALIDATION_REJECTED].fetch_add(1, Ordering::Relaxed);
         return None;
     }
     // Each release adapter takes only the physical allocator, never a table
     // guard or root lookup. Consumption precedes invoking the callback.
     for frame in frames.into_iter().flatten() {
         if release(frame).is_err() {
+            RETIREMENT_PROGRESS[PHYSICAL_REJECTED].fetch_add(1, Ordering::Relaxed);
             ok = false;
         }
     }
     if ok {
+        RETIREMENT_PROGRESS[USER_RELEASED].fetch_add(1, Ordering::Relaxed);
         Some(stack.slot)
     } else {
         None
