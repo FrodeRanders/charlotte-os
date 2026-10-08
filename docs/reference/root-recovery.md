@@ -66,6 +66,12 @@ Recovered counts reflect retained history, not lifetime cumulative recoveries.
 
 ## Boundaries still required
 
+This is C03 in the [cross-category cleanup/recovery map](cleanup-recovery.md).
+Its custody/claim protocol is the first implemented example; it supplies no
+generic retry proof for the other categories. Common controller and supervisor
+reconciliation work is tracked as G5/G6 there, after context and ownership
+qualification in G1–G3.
+
 No automatic worker or authenticated operator retry endpoint is added. A trusted
 controller must call retry outside unrelated guards and retain its own policy
 state; recovery does not clear a supervisor's cached failure or authorize a

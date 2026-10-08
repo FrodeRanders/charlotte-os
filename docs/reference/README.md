@@ -5,6 +5,9 @@ should be updated with the implementation when those contracts change.
 
 - [Security remediation](security-remediation.md) — current finding ledger,
   finite SEC-07/18 completion criteria and production security milestones.
+- [Cleanup ownership and recovery strategy](cleanup-recovery.md) — source-reviewed
+  owner-family coverage, retry boundaries, shared controller requirements and
+  cross-category completion gates.
 - [Signed bootstrap trust policy](bootstrap-trust-policy.md) — fixed public
   policy authentication, explicit revision lineage and protected integration gaps.
 - [Private translation admission](translation-admission.md) — root/intermediate

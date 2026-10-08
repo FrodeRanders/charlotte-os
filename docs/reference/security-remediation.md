@@ -1,6 +1,6 @@
 # Security remediation status and completion criteria
 
-Updated 2026-10-07, following the two security audits and subsequent fixes.
+Updated 2026-10-08, following the two security audits and subsequent fixes.
 Source and tests remain authoritative. Historical reports preserve the state at
 their own revision; their remaining-work paragraphs are not a current backlog.
 
@@ -67,11 +67,18 @@ a quiescence receipt.
 SEC-18 remains partial. These deliverables track its remaining work and the
 implemented R18-2 scope:
 
+The [cleanup ownership and recovery strategy](cleanup-recovery.md) now maps
+18 owner families, their current retry/retention boundaries and seven named
+cross-category gaps. It defines shared custody/controller policy separately
+from typed physical completion, and orders context qualification before adding
+another registry. This is a source-reviewed planning baseline, not completion
+of the full R18-1 call-chain inventory or implementation of a general controller.
+
 | Deliverable | Completion evidence |
 | --- | --- |
-| R18-1: locking and destructor inventory | Enumerate production teardown/publication call chains and their outer guards/IRQ state. Remove allocation, arbitrary callbacks, blocking hardware maintenance and physical destruction from masking serialization. Include scheduler/reaper paths, ARM's enclosing IRQ state and exceptional Drop paths. No destructor may assume that its caller holds no unrelated lock. |
+| R18-1: locking and destructor inventory | Partial owner-family/context baseline: [C01–C18 and G1/G3/G4](cleanup-recovery.md). Complete every production call chain and implicit field drop, including wider scheduler/observer/allocation paths. Remove allocation, arbitrary callbacks, blocking hardware maintenance and physical destruction from masking serialization. Include ARM's enclosing reaper IRQ state. No destructor may assume that its caller holds no unrelated lock. |
 | R18-2: cooperative shutdown ownership | Implemented runtime-page retention: exact root admission and fixed image-leaf identity checks precede cooperative drain/status access; force publication borrows its sweep lease. Deployment claims release registry guards before admission. Closing/reused roots and mismatched frames reject before access; ordinary completion releases the lease and abandonment retains image backing. See the [runtime-page contract](live-address-space-operations.md#supervisor-runtime-page-access) and [execution report](../reports/audits/2026-10-08-security-cooperative-pages.md). |
-| R18-3: retained-owner recovery | Partial implementation: eight fixed slots retain complete detached roots rejected by final invalidation, with exact serial tickets, two explicit retries, unlocked physical work, masked-caller rejection, terminal abandonment/partial-release states and capability-scoped observer counts. See [final-root recovery](root-recovery.md). Other receipt kinds, an authenticated operator/controller policy and stronger reset/reboot qualification remain required; never clear fences or decrement counts to manufacture progress. |
+| R18-3: retained-owner recovery | Partial implementation: eight fixed slots retain complete detached roots rejected by final invalidation, with exact serial tickets, two explicit retries, unlocked physical work, masked-caller rejection, terminal abandonment/partial-release states and capability-scoped observer counts. See [final-root recovery](root-recovery.md). [G2/G5/G6](cleanup-recovery.md#named-gaps-and-acceptance-gates) track typed owner continuity, supervisor reconciliation and common authorized custody. Other receipt kinds and stronger reset/reboot qualification remain required; never clear fences or decrement counts to manufacture progress. |
 | R18-4: QEMU device coverage | Extend reset contracts to supported VirtIO, AHCI and NIC paths where applicable. Exercise active outstanding I/O, withheld hardware completion, rejected reset, old-MMIO authority, restart and reassignment. The existing NVMe fixture enables real queues but submits no outstanding I/O; that gap remains. Unsupported devices must remain fenced and explicitly excluded from recovery support. |
 | R18-5: concurrent recovery matrix | On Intel VT-d, AMD-Vi and Arm SMMUv3, combine peer/root close, loan/copy/DMA activity, thread switching, actual lost/stale CPU acknowledgements, hardware timeout, interrupted publication and partial physical-release rejection. Verify guard availability, no early pin/refund/reuse, later essential progress, and exact baseline recovery where confirmed completion permits it. |
 | R18-6: physical-platform qualification | For each claimed production device/platform, establish CPU/device reset and drain guarantees, interrupt remapping/ATS policy and negative execution evidence on that hardware. QEMU evidence cannot satisfy this criterion. |

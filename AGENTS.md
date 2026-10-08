@@ -53,6 +53,14 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
 
 ## Architectural boundaries
 
+- Cleanup/recovery changes must update their owner-family row and evidence in
+  `docs/reference/cleanup-recovery.md`. Preserve the containing transaction's
+  exact roots, pins, scratch, authority and original charges. Retained backing
+  or an error code is not a retry owner. Classify unstarted rollback, Pending,
+  owner-preserving retry and terminal retention separately. Qualify the outer
+  IRQ/guard context and implicit field destructors before adding custody for a
+  category; share custody/policy machinery without erasing typed completion
+  proofs. New object instances do not justify a new registry or coverage row.
 - Kernel admission policy is published once through
   `service::admission::PreparedBootTrust`. Cluster/deployment manifests borrow
   its `BootTrust` view; never configure their policy independently of the kernel
