@@ -194,6 +194,22 @@ impl ThreadContext {
     }
 
     /// Bounds of the mapped kernel-stack pages, excluding both guard pages.
+    pub(crate) fn release_stacks(
+        &mut self,
+    ) -> Result<(), crate::memory::thread_stack::RetirementError> {
+        self._stacks.release()
+    }
+
+    pub(crate) fn reject_stack_release_for_test(
+        &mut self,
+    ) -> Result<(), crate::memory::thread_stack::RetirementError> {
+        self._stacks.reject_release_for_test()
+    }
+
+    pub(crate) fn stack_retirement_started(&self) -> bool {
+        self._stacks.retirement_started()
+    }
+
     pub(crate) fn kernel_stack_bounds(&self) -> (usize, usize) {
         let base: usize = self._stacks.kernel_base().into();
         (base, base + INIT_KERNEL_STACK_PAGES * PAGE_SIZE)

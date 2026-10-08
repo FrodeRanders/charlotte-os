@@ -74,7 +74,7 @@ impl Drop for Target {
     fn drop(&mut self) {
         let thread = MASTER_THREAD_TABLE.write().take_element(self.tid).unwrap();
         assert_eq!(thread.generation, self.generation);
-        drop(thread); // Notification must run outside the master table guard.
+        thread.release_unstarted().unwrap(); // Outside the master table guard.
     }
 }
 

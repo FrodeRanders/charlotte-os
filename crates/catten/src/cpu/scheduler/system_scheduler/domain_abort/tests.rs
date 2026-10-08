@@ -19,7 +19,7 @@ use crate::{
         threads::{
             Thread,
             has_staged_generation,
-            reap_dead_threads,
+            reap_dead_threads_with,
         },
     },
     klib::observer::{
@@ -54,7 +54,7 @@ fn discard(tid: ThreadId) {
     // All contexts here are never scheduler-admitted. The fixture owns their
     // exact numeric slots without any concurrent scheduler activity.
     let thread = MASTER_THREAD_TABLE.write().take_element(tid).unwrap();
-    drop(thread);
+    thread.release_unstarted().unwrap();
 }
 
 pub(crate) fn run() {
@@ -62,7 +62,9 @@ pub(crate) fn run() {
     // tables, which must still refund at each exact root's final teardown.
     let warm = domain();
     let threads: Vec<_> = (0..4).map(|_| Thread::new(warm.id(), unused_entry)).collect();
-    drop(threads);
+    for thread in threads {
+        thread.release_unstarted().unwrap();
+    }
     memory::close_user_address_space_handle(warm).unwrap();
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let owner = domain();
@@ -139,7 +141,8 @@ pub(crate) fn run() {
         assert!(MASTER_THREAD_TABLE.read().get(tid).is_err());
         assert!(has_staged_generation(generation));
     }
-    reap_dead_threads();
+    // Boot-only adapter: every context in this fixture was never admitted.
+    reap_dead_threads_with(crate::cpu::isa::lp::ops::get_lp_id(), 0);
     for &(_, generation) in &captured[1..] {
         assert!(!has_staged_generation(generation));
     }

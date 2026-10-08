@@ -9,7 +9,10 @@ const _: () = assert!(charlotte_launch::MAX_USER_THREADS == 64);
 pub(crate) const KERNEL_STACK_PAGES: usize = 16;
 mod budget;
 mod stacks;
-pub(crate) use stacks::Stacks;
+pub(crate) use stacks::{
+    RetirementError,
+    Stacks,
+};
 pub(crate) fn retirement_progress() -> [u64; 6] {
     stacks::retirement_progress()
 }
@@ -214,12 +217,12 @@ impl StackSlot {
     }
 
     /// Only call after all leaves are detached, invalidated and released.
-    pub(crate) fn released(mut self) {
+    pub(crate) fn released(&mut self) -> Result<(), ()> {
         if self.uncertain {
-            return;
+            return Err(());
         }
         self.reachable = false;
-        let _ = self.release();
+        self.release()
     }
 
     fn release(&mut self) -> Result<(), ()> {

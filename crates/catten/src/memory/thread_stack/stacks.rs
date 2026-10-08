@@ -66,15 +66,22 @@ pub(crate) struct Stacks {
     // owns the complete maximum user+kernel reservation and exact root lease.
     kernel_charge: Option<budget::Reservation>,
     kernel_uncertain: bool,
+    // Any started retirement is terminal on rejection/interruption.
+    release_started: bool,
 }
 
 impl Stacks {
     pub(crate) fn kernel() -> Result<Self, Error> {
         let charge =
             budget::Reservation::reserve(KERNEL_STACK_PAGES, true).ok_or(Error::InvalidStack)?;
-        let mut stacks = Self::default();
-        stacks.kernel_charge = Some(charge);
-        stacks.allocate_kernel_with(stack_allocator::allocate_stack)?;
+        let mut stacks = Self {
+            kernel_charge: Some(charge),
+            ..Self::default()
+        };
+        if let Err(error) = stacks.allocate_kernel_with(stack_allocator::allocate_stack) {
+            let _ = stacks.release();
+            return Err(error);
+        }
         Ok(stacks)
     }
 
@@ -85,13 +92,18 @@ impl Stacks {
         let preparation = PreparingStackPage::reserve(handle).map_err(|_| Error::InvalidStack)?;
         let low = preparation.base() + (pages - 1) * PAGE;
         let slot = preparation.map(low).map_err(|_| Error::InvalidStack)?;
-        let mut stacks = Self::default();
-        stacks.user = Some(UserStack {
-            slot,
-            budget_pages: pages,
-            committed_pages: 1,
-        });
-        stacks.allocate_kernel_with(stack_allocator::allocate_stack)?;
+        let mut stacks = Self {
+            user: Some(UserStack {
+                slot,
+                budget_pages: pages,
+                committed_pages: 1,
+            }),
+            ..Self::default()
+        };
+        if let Err(error) = stacks.allocate_kernel_with(stack_allocator::allocate_stack) {
+            let _ = stacks.release();
+            return Err(error);
+        }
         Ok(stacks)
     }
 
@@ -133,6 +145,9 @@ impl Stacks {
     }
 
     pub(crate) fn grow_user_stack(&mut self, address: usize) -> Option<usize> {
+        if self.release_started {
+            return None;
+        }
         let stack = self.user.as_mut()?;
         let page = address & !(PAGE - 1);
         let low = stack.committed_low();
@@ -162,43 +177,73 @@ impl Stacks {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RetirementError {
+    AlreadyStarted,
+    User,
+    Kernel,
+    Admission,
+}
+
 impl Stacks {
-    fn release_with(&mut self, release_kernel: impl FnOnce(VAddr, usize) -> Result<(), Error>) {
-        // Do not return the slot/root or node charge until *both* physical
-        // ranges completed. A partial/uncertain kernel allocation also fences
-        // refund even when no usable kernel base was returned.
-        let user = self.user.take().map(retire_user);
-        let kernel_ok = if let Some(base) = self.kernel.take() {
+    pub(crate) fn reject_release_for_test(&mut self) -> Result<(), RetirementError> {
+        self.release_with(retire_user, |_, _| Err(Error::InvalidStack))
+    }
+
+    pub(crate) fn retirement_started(&self) -> bool {
+        self.release_started
+    }
+
+    /// The caller proves this context is off-CPU and releases enclosing guards.
+    /// Failure retains this pair's admission; it never authorizes a second attempt.
+    pub(crate) fn release(&mut self) -> Result<(), RetirementError> {
+        self.release_with(retire_user, stack_allocator::deallocate_stack)
+    }
+
+    fn release_with(
+        &mut self,
+        release_user: impl FnOnce(&mut UserStack) -> bool,
+        release_kernel: impl FnOnce(VAddr, usize) -> Result<(), Error>,
+    ) -> Result<(), RetirementError> {
+        if self.release_started {
+            return Err(RetirementError::AlreadyStarted);
+        }
+        // Arm before callbacks/detachment: interruption cannot retry freed pages.
+        self.release_started = true;
+        let user_ok = self.user.as_mut().is_none_or(release_user);
+        let kernel_ok = if let Some(base) = self.kernel {
             self.kernel_uncertain = true;
-            let released = release_kernel(base, KERNEL_STACK_PAGES).is_ok();
-            self.kernel_uncertain = !released;
-            released
+            match release_kernel(base, KERNEL_STACK_PAGES) {
+                Ok(()) => {
+                    self.kernel = None;
+                    self.kernel_uncertain = false;
+                    true
+                }
+                Err(_) => false,
+            }
         } else {
             !self.kernel_uncertain
         };
-        if kernel_ok {
-            if let Some(Some(slot)) = user {
-                slot.released();
-            }
-            if let Some(charge) = self.kernel_charge.take() {
-                charge.refund();
-            }
-        } else {
-            crate::early_logln!("[stack admission] kernel cleanup uncertain; admission retained");
+        if !user_ok {
+            return Err(RetirementError::User);
         }
-        // Failed user cleanup drops only a published slot: its original root,
-        // bit and entire reservation remain retained, even if kernel release
-        // succeeded. Default node-reservation Drop never refunds.
+        if !kernel_ok {
+            return Err(RetirementError::Kernel);
+        }
+        if let Some(user) = self.user.as_mut() {
+            user.slot.released().map_err(|_| RetirementError::Admission)?;
+        }
+        if let Some(charge) = self.kernel_charge.take() {
+            charge.refund();
+        }
+        Ok(())
     }
 }
 
-impl Drop for Stacks {
-    fn drop(&mut self) {
-        self.release_with(stack_allocator::deallocate_stack);
-    }
-}
+// No physical destructor. Implicit slot/charge destruction retains their
+// original admission, and scalar mapped ranges are never re-adopted by address.
 
-fn retire_user(stack: UserStack) -> Option<StackSlot> {
+fn retire_user(stack: &mut UserStack) -> bool {
     retire_user_with(
         stack,
         |base, pages, handle| {
@@ -209,10 +254,10 @@ fn retire_user(stack: UserStack) -> Option<StackSlot> {
 }
 
 fn retire_user_with(
-    stack: UserStack,
+    stack: &mut UserStack,
     invalidate: impl FnOnce(VAddr, usize, AddressSpaceHandle) -> bool,
     mut release: impl FnMut(crate::memory::PAddr) -> Result<(), crate::memory::physical::Error>,
-) -> Option<StackSlot> {
+) -> bool {
     RETIREMENT_PROGRESS[STARTED].fetch_add(1, Ordering::Relaxed);
     let handle = stack.slot.identity();
     let low = stack.committed_low();
@@ -222,11 +267,11 @@ fn retire_user_with(
         let mut table = ADDRESS_SPACE_TABLE.lock();
         if table.generation(handle.id()).ok() != Some(handle.generation()) {
             RETIREMENT_PROGRESS[IDENTITY_REJECTED].fetch_add(1, Ordering::Relaxed);
-            return None;
+            return false;
         }
         let Ok(space) = table.get_mut(handle.id()) else {
             RETIREMENT_PROGRESS[IDENTITY_REJECTED].fetch_add(1, Ordering::Relaxed);
-            return None;
+            return false;
         };
         for (index, frame) in frames.iter_mut().enumerate().take(stack.committed_pages) {
             match space.unmap_page(VAddr::from(low + index * PAGE)) {
@@ -240,7 +285,7 @@ fn retire_user_with(
     }
     if !invalidate(VAddr::from(low), stack.committed_pages, handle) {
         RETIREMENT_PROGRESS[INVALIDATION_REJECTED].fetch_add(1, Ordering::Relaxed);
-        return None;
+        return false;
     }
     // Each release adapter takes only the physical allocator, never a table
     // guard or root lookup. Consumption precedes invoking the callback.
@@ -252,9 +297,9 @@ fn retire_user_with(
     }
     if ok {
         RETIREMENT_PROGRESS[USER_RELEASED].fetch_add(1, Ordering::Relaxed);
-        Some(stack.slot)
+        true
     } else {
-        None
+        false
     }
 }
 

@@ -159,7 +159,9 @@ pub(crate) fn try_spawn_thread_on_lp(
                 None
             }
         };
-        drop(removed);
+        if let Some(thread) = removed {
+            let _ = thread.release_unstarted();
+        }
         return Err(error);
     }
     Ok(tid)

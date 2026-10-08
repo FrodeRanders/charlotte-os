@@ -100,11 +100,11 @@ pub(crate) fn account_retired_cpu_ticks(thread: &Thread) {
 
 /// Threads that have exited but are awaiting reaping, keyed by the logical
 /// processor on which they last executed. A thread cannot free its own kernel
-/// stack (in `ThreadContext::drop`) while it is still executing on it, so
+/// stack during explicit pair release while it is still executing on it, so
 /// `abort` stages the dying thread here instead of dropping it.
 ///
-/// The list is **per-LP** on purpose. Arm reaps after a scheduling switch;
-/// x86 uses a pinned scheduled reaper on the dying thread's LP. Both retain
+/// The list is **per-LP** on purpose. Both architectures use a scheduled
+/// pinned reaper on the dying thread's LP, after switching away. Both retain
 /// the node if its stack contains the executing SP; Arm additionally checks
 /// the context's assembly ownership flag. A shared, cross-LP reaper could free
 /// a stack before its owning LP has switched away.
@@ -207,8 +207,7 @@ pub fn retire_requested_threads() {
     }
 }
 
-/// Drops any threads awaiting reaping on the *current* LP, freeing their stacks.
-#[cfg(target_arch = "x86_64")]
+/// Install one pinned worker per LP for explicit stack-pair retirement.
 pub(crate) fn start_reapers() {
     extern "C" fn reap() {
         loop {
@@ -225,9 +224,12 @@ pub(crate) fn start_reapers() {
 }
 
 /// Must run after switching away from the dying thread, on its original LP.
-/// Safe to call when there is nothing to reap. x86 uses scheduled workers so
-/// physical invalidation can complete with IRQs enabled.
+/// Both architectures use scheduled workers for IRQ-enabled invalidation.
+/// A masked caller rejects before claiming any retirement node.
 pub fn reap_dead_threads() {
+    if !crate::cpu::isa::lp::ops::get_int_state() {
+        return;
+    }
     let lp = crate::cpu::isa::lp::ops::get_lp_id();
     reap_dead_threads_with(lp, current_stack_pointer());
 }
@@ -258,7 +260,17 @@ impl Drop for ReapBatch {
     }
 }
 
-fn reap_dead_threads_with(lp: LpId, current_sp: usize) {
+// Boot fixtures call this only for never-admitted contexts. Production enters
+// through the current-LP, IRQ-qualified public wrapper above.
+pub(in crate::cpu::scheduler) fn reap_dead_threads_with(lp: LpId, current_sp: usize) {
+    reap_dead_threads_releasing_with(lp, current_sp, Thread::retire_stacks);
+}
+
+fn reap_dead_threads_releasing_with(
+    lp: LpId,
+    current_sp: usize,
+    mut release: impl FnMut(&mut Thread) -> Result<(), crate::memory::thread_stack::RetirementError>,
+) {
     let mut batch = {
         let mut guard = DEAD_THREADS.write();
         let threads = &mut guard[lp as usize];
@@ -275,22 +287,27 @@ fn reap_dead_threads_with(lp: LpId, current_sp: usize) {
     // Staging prepends nodes. Preserve prior insertion-order notification while
     // walking the detached batch iteratively, outside the registry guard.
     batch.threads.reverse();
-    while let Some(entry) = batch.threads.pop() {
+    while let Some(mut entry) = batch.threads.pop() {
         let thread = entry.value();
         // switch_ctx returns through the incoming context's older yield call.
         // Retain the actual executing stack, even on its owning LP. ARM also
         // supplies the assembly ownership handshake; x86 migration stays off.
         let in_use = thread.context.kernel_stack_contains(current_sp) || thread.context.is_on_cpu();
-        let phase = if in_use {
+        let retained = in_use || thread.context.stack_retirement_started();
+        let phase = if retained {
             crate::debug_trace::THREAD_LIFECYCLE_REAP_DEFER
         } else {
             crate::debug_trace::THREAD_LIFECYCLE_REAP_RECLAIM
         };
         thread.trace_lifecycle(phase, current_sp);
-        if in_use {
+        if retained {
             batch.deferred.push(entry);
-        } else {
+        } else if release(entry.value_mut()).is_ok() {
             entry.release();
+        } else {
+            // The same admitted node retains the entire failed pair. Its phase
+            // fence forbids retry; retained backing is not a recovery receipt.
+            batch.deferred.push(entry);
         }
     }
     batch.deferred.reverse();
@@ -304,7 +321,7 @@ fn reap_dead_threads_with(lp: LpId, current_sp: usize) {
 }
 
 #[cfg(target_arch = "aarch64")]
-fn current_stack_pointer() -> usize {
+pub(in crate::cpu::scheduler) fn current_stack_pointer() -> usize {
     let sp: usize;
     unsafe {
         core::arch::asm!("mov {}, sp", out(reg) sp, options(nomem, nostack, preserves_flags));
@@ -313,7 +330,7 @@ fn current_stack_pointer() -> usize {
 }
 
 #[cfg(target_arch = "x86_64")]
-fn current_stack_pointer() -> usize {
+pub(in crate::cpu::scheduler) fn current_stack_pointer() -> usize {
     let sp: usize;
     unsafe {
         core::arch::asm!("mov {}, rsp", out(reg) sp, options(nomem, nostack, preserves_flags));
@@ -450,6 +467,7 @@ pub struct Thread {
     // One empty node follows this owner until it stages itself. A staged
     // thread has None here: its containing node owns the whole payload.
     retirement: Option<PreparedEntry<Thread>>,
+    retirement_metadata_completed: bool,
 }
 
 pub const THREAD_CTX_OFFSET: usize = offset_of!(Thread, context);
@@ -471,6 +489,23 @@ impl Thread {
         entry_point: extern "C" fn(),
         allocate: impl FnOnce() -> Result<PreparedEntry<Thread>, core::alloc::AllocError>,
     ) -> Result<Self, crate::cpu::scheduler::system_scheduler::Error> {
+        Self::try_new_with_storage(
+            asid,
+            entry_point,
+            allocate,
+            Box::<ThreadContext>::try_new_uninit,
+        )
+    }
+
+    fn try_new_with_storage(
+        asid: AddressSpaceId,
+        entry_point: extern "C" fn(),
+        allocate: impl FnOnce() -> Result<PreparedEntry<Thread>, core::alloc::AllocError>,
+        allocate_context: impl FnOnce() -> Result<
+            Box<core::mem::MaybeUninit<ThreadContext>>,
+            core::alloc::AllocError,
+        >,
+    ) -> Result<Self, crate::cpu::scheduler::system_scheduler::Error> {
         use crate::cpu::scheduler::system_scheduler::Error;
         let address_space = if asid == KERNEL_ASID {
             None
@@ -484,6 +519,7 @@ impl Thread {
         };
         // Failure precedes generation claim, stack backing and publication.
         let retirement = allocate().map_err(|_| Error::ThreadPreparationFailed)?;
+        let mut context_storage = allocate_context().map_err(|_| Error::ThreadPreparationFailed)?;
         let generation = NEXT_THREAD_GENERATION
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
                 charlotte_lifecycle::claim_generation(next).map(|(_, following)| following)
@@ -501,7 +537,10 @@ impl Thread {
             ThreadContext::create_kernel_thread_context(entry_point)
                 .map_err(|_| Error::ThreadPreparationFailed)?
         };
-        let context = Box::try_new(context).map_err(|_| Error::ThreadPreparationFailed)?;
+        context_storage.as_mut().write(context);
+        // The whole context was initialized above; no fallible work follows
+        // before its allocation becomes the stable owning Box.
+        let context = unsafe { context_storage.assume_init() };
         if asid != KERNEL_ASID {
             crate::memory::usage::note_thread_created(
                 asid,
@@ -529,6 +568,7 @@ impl Thread {
             reap_lp: None,
             exit_observers: exit_source::ExitSource::new(),
             retirement: Some(retirement),
+            retirement_metadata_completed: false,
         })
     }
 
@@ -692,8 +732,14 @@ impl Thread {
     }
 }
 
-impl Drop for Thread {
-    fn drop(&mut self) {
+impl Thread {
+    fn finish_retirement_metadata(&mut self) {
+        if self.retirement_metadata_completed {
+            return;
+        }
+        // Metadata and callbacks run once, while the stack's exact root lease
+        // still prevents numeric-ASID reuse. General metadata Drop is separate.
+        self.retirement_metadata_completed = true;
         if let ThreadState::Blocked(waker) = &self.state {
             waker.cancel_registration();
         }
@@ -702,13 +748,39 @@ impl Drop for Thread {
             crate::memory::usage::note_thread_released(self.asid, reserved, used);
         }
         self.exit_observers.notify_exit();
-        // `context` is the first field and is dropped immediately after this
-        // method returns. This record therefore identifies the kernel-stack
-        // deallocation that follows in `ThreadContext::drop`; the stack-arena
-        // trace records the allocator entry and completion by base address.
+    }
+
+    fn retire_stacks(&mut self) -> Result<(), crate::memory::thread_stack::RetirementError> {
+        if self.context.stack_retirement_started() {
+            return Err(crate::memory::thread_stack::RetirementError::AlreadyStarted);
+        }
+        self.finish_retirement_metadata();
         self.trace_lifecycle(
             crate::debug_trace::THREAD_LIFECYCLE_STACK_DEALLOCATE,
             current_stack_pointer(),
         );
+        self.context.release_stacks()
+    }
+
+    /// Ordinary rejection of a context that was never scheduler-admitted.
+    /// The caller must leave publication/scheduler/table guards before entry.
+    #[allow(clippy::result_large_err)] // Returning the complete owner must not allocate.
+    pub(crate) fn release_unstarted(mut self) -> Result<(), Self> {
+        if !matches!(self.state, ThreadState::NeedsLpAssignment)
+            || self.context.is_on_cpu()
+            || self.context.kernel_stack_contains(current_stack_pointer())
+            || self.retire_stacks().is_err()
+        {
+            return Err(self);
+        }
+        Ok(())
+    }
+}
+
+impl Drop for Thread {
+    fn drop(&mut self) {
+        // No stack release here or in implicit context/stack field destruction.
+        // Exit/wait metadata fallback remains a separate caller-context boundary.
+        self.finish_retirement_metadata();
     }
 }

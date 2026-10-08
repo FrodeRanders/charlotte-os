@@ -982,7 +982,9 @@ fn sys_spawn_thread(frame: &mut TrapFrame) {
                 None
             }
         };
-        drop(retired);
+        if let Some(thread) = retired {
+            let _ = thread.release_unstarted();
+        }
         return;
     }
     // Return the recyclable thread id in x0 and the publication generation in

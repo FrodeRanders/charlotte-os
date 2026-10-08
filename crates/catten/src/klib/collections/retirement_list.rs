@@ -55,6 +55,10 @@ impl<T> RetiredEntry<T> {
         self.0.as_ref().unwrap().value.as_ref().unwrap()
     }
 
+    pub(crate) fn value_mut(&mut self) -> &mut T {
+        self.0.as_mut().unwrap().value.as_mut().unwrap()
+    }
+
     fn into_node(mut self) -> Box<Node<T>> {
         self.0.take().unwrap()
     }

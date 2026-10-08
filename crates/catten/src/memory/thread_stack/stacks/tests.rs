@@ -47,7 +47,7 @@ pub(in crate::memory::thread_stack) fn run() {
     preparation_tests::run();
     crate::logln!(
         "[stack backing admission] maximum user/kernel reservation, growth/collision/retry, \
-         success/Drop refund, rejection before allocation and platform progress passed; six \
+         explicit success refund, rejection before allocation and platform progress passed; six \
          failed/abandoned owners retain original roots/slots/reservations (20 data frames \
          retained)"
     );
@@ -57,7 +57,8 @@ fn growth_and_drop() {
     let used = budget::used();
     let handle = domain(4, false);
     // Warm kernel branches independently of user-root final reclamation.
-    let stacks = Stacks::user(handle, 4).unwrap();
+    let mut stacks = Stacks::user(handle, 4).unwrap();
+    stacks.release().unwrap();
     drop(stacks);
     let baseline = free();
     let mut stacks = Stacks::user(handle, 4).unwrap();
@@ -101,6 +102,15 @@ fn growth_and_drop() {
     assert_eq!(stacks.grow_user_stack(base - PAGE), None);
     assert_eq!(stacks.grow_user_stack(base), None);
     assert_eq!(free(), baseline - 20);
+    stacks.release().unwrap();
+    assert_eq!(
+        stacks.release_with(
+            |_| panic!("repeated successful user release"),
+            |_, _| panic!("repeated successful kernel release")
+        ),
+        Err(RetirementError::AlreadyStarted)
+    );
+    assert_eq!(stacks.grow_user_stack(base), None);
     drop(stacks);
     assert_eq!(free(), baseline);
     assert_eq!(budget::used(), used);
@@ -125,15 +135,17 @@ fn pressure() {
     assert!(!allocated);
     assert_eq!(slots(ordinary), 0);
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
-    let stacks = Stacks::user(platform, 1).unwrap();
+    let mut stacks = Stacks::user(platform, 1).unwrap();
     assert_eq!(budget::used(), (used.0 + 17, used.1));
-    let kernel = Stacks::kernel().unwrap();
+    let mut kernel = Stacks::kernel().unwrap();
     assert_eq!(budget::used(), (used.0 + 33, used.1));
+    kernel.release().unwrap();
     drop(kernel);
+    stacks.release().unwrap();
     drop(stacks);
     assert_eq!(budget::used(), used);
     drop(pressure);
-    drop(Stacks::user(ordinary, 1).unwrap());
+    Stacks::user(ordinary, 1).unwrap().release().unwrap();
     assert_eq!(budget::used(), used);
     memory::close_user_address_space_handle(ordinary).unwrap();
     memory::close_user_address_space_handle(platform).unwrap();
@@ -143,13 +155,14 @@ fn user_only(handle: AddressSpaceHandle) -> Stacks {
     let preparation = PreparingStackPage::reserve(handle).unwrap();
     let base = preparation.base();
     let slot = preparation.map(base).unwrap();
-    let mut stacks = Stacks::default();
-    stacks.user = Some(UserStack {
-        slot,
-        budget_pages: 1,
-        committed_pages: 1,
-    });
-    stacks
+    Stacks {
+        user: Some(UserStack {
+            slot,
+            budget_pages: 1,
+            committed_pages: 1,
+        }),
+        ..Stacks::default()
+    }
 }
 
 fn confirmed_constructor_failure() {
@@ -167,6 +180,7 @@ fn confirmed_constructor_failure() {
             }))
             .is_err()
     );
+    stacks.release().unwrap();
     drop(stacks);
     assert_eq!(slots(handle), 0);
     assert_eq!(budget::used(), used);
@@ -210,27 +224,31 @@ fn retained_failures() {
                         }))
                         .is_err()
                 );
+                assert!(stacks.release().is_err());
                 drop(stacks);
                 assert_eq!(free(), initial_free + 1);
             }
             2 => {
                 let mut stacks = user_only(handle);
                 initial_free = free();
-                let user = stacks.user.take().unwrap();
                 assert!(
-                    retire_user_with(
-                        user,
-                        |base, pages, handle| {
-                            crate::cpu::isa::memory::tlb::try_inval_range_user(
-                                handle.id(),
-                                base,
-                                pages,
-                            )
-                            .is_ok()
-                        },
-                        |_| Err(memory::physical::Error::CannotDeallocateUnallocatedFrame)
-                    )
-                    .is_none()
+                    stacks
+                        .release_with(
+                            |user| retire_user_with(
+                                user,
+                                |base, pages, handle| {
+                                    crate::cpu::isa::memory::tlb::try_inval_range_user(
+                                        handle.id(),
+                                        base,
+                                        pages,
+                                    )
+                                    .is_ok()
+                                },
+                                |_| Err(memory::physical::Error::CannotDeallocateUnallocatedFrame)
+                            ),
+                            stack_allocator::deallocate_stack,
+                        )
+                        .is_err()
                 );
                 drop(stacks);
                 assert_eq!(free(), initial_free);
@@ -244,6 +262,7 @@ fn retained_failures() {
                     PreparingGrowthPage::allocate(stacks.user.as_mut().unwrap()).unwrap();
                 preparation.mapping_started = true;
                 drop(preparation);
+                assert!(stacks.release().is_err());
                 drop(stacks);
                 assert_eq!(free(), initial_free);
             }
@@ -254,7 +273,17 @@ fn retained_failures() {
                 let mut stacks = Stacks::user(handle, 1).unwrap();
                 let base = stacks.kernel_base();
                 initial_free = free();
-                stacks.release_with(|_, _| Err(Error::InvalidStack));
+                assert_eq!(
+                    stacks.release_with(retire_user, |_, _| Err(Error::InvalidStack)),
+                    Err(RetirementError::Kernel)
+                );
+                assert_eq!(
+                    stacks.release_with(
+                        |_| panic!("retried user release"),
+                        |_, _| panic!("retried kernel release")
+                    ),
+                    Err(RetirementError::AlreadyStarted)
+                );
                 drop(stacks);
                 assert_eq!(free(), initial_free + 1);
                 assert!(memory::KERNEL_AS.lock().is_mapped(base).unwrap());
@@ -262,14 +291,17 @@ fn retained_failures() {
             _ => {
                 let mut stacks = user_only(handle);
                 initial_free = free();
-                let user = stacks.user.take().unwrap();
                 assert!(
-                    retire_user_with(
-                        user,
-                        |_, _, _| false,
-                        |_| panic!("failed invalidation released stack backing")
-                    )
-                    .is_none()
+                    stacks
+                        .release_with(
+                            |user| retire_user_with(
+                                user,
+                                |_, _, _| false,
+                                |_| panic!("failed invalidation released stack backing")
+                            ),
+                            stack_allocator::deallocate_stack,
+                        )
+                        .is_err()
                 );
                 drop(stacks);
                 assert_eq!(free(), initial_free);

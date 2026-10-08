@@ -4,6 +4,7 @@ use super::*;
 
 pub(super) fn run() {
     cancellation();
+    published_pair_abandonment();
     let used = budget::used();
     initial_abandonment();
     growth_abandonment();
@@ -84,6 +85,7 @@ fn cancellation() {
         );
         assert!(!stacks.user.as_ref().unwrap().slot.uncertain);
         assert_eq!(free(), before);
+        stacks.release().unwrap();
         drop(stacks);
         assert_eq!(budget::used(), used);
         assert_eq!(slots(handle), 0);
@@ -157,9 +159,39 @@ fn growth_abandonment() {
             assert_eq!(stacks.grow_user_stack(stacks.user_stack().unwrap().base_addr()), None);
             // Run published pair retirement outside the probe guards: successful
             // committed-page cleanup cannot discharge abandoned growth admission.
+            assert!(stacks.release().is_err());
             drop(stacks);
             retained(handle, used, platform);
             assert_eq!(free(), before + usize::from(kind == 0));
         }
     }
+}
+
+fn published_pair_abandonment() {
+    for platform in [false, true] {
+        let handle = domain(1, platform);
+        let used = budget::used();
+        let stacks = Stacks::user(handle, 1).unwrap();
+        let base = stacks.kernel_base();
+        let user_low = stacks.user.as_ref().unwrap().committed_low();
+        let before = free();
+        let progress = retirement_progress();
+        drop_under_guards(|| drop(stacks));
+        assert_eq!(retirement_progress(), progress);
+        assert_eq!(free(), before);
+        assert!(memory::KERNEL_AS.lock().is_mapped(base).unwrap());
+        assert!(
+            ADDRESS_SPACE_TABLE
+                .lock()
+                .get_mut(handle.id())
+                .unwrap()
+                .is_mapped(VAddr::from(user_low))
+                .unwrap()
+        );
+        retained(handle, used, platform);
+    }
+    crate::logln!(
+        "[published stack abandonment] complete pair Drop under lifecycle/table/allocator/pool \
+         guards retains two roots/slots, 34 reservation/data pages"
+    );
 }

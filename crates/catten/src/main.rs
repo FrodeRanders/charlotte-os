@@ -303,7 +303,6 @@ extern "C" fn finish_boot() {
     #[cfg(all(feature = "hvf_compat", not(feature = "live_upgrade_test")))]
     logln!("PCI topology probe skipped (hvf_compat: ECAM MMIO triggers HVF assertion).");
     unmask_interrupts!();
-    #[cfg(target_arch = "x86_64")]
     crate::cpu::scheduler::threads::start_reapers();
     #[cfg(not(feature = "hvf_compat"))]
     crate::device::recovery_tests::run();

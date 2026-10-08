@@ -410,6 +410,13 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   Raw stack allocation is confined to that admitted memory adapter. Inherited
   boot/CPU stacks remain outside runtime admission. See
   `docs/reference/stack-admission.md`.
+  Published stack-pair release is explicit and one-shot; field destruction only
+  retains backing/admission. Both architectures use pinned IRQ-enabled reapers,
+  never physical cleanup in IRQ tails. Failed pairs stay in their existing
+  retirement nodes and subsequent scans must not retry. Context storage is
+  admitted before generation/backing; ordinary publication/submission rejection
+  releases never-admitted stacks after local serialization leaves. Preserve
+  outer masks; general thread metadata fallback remains separately qualified.
 - IOMMU backing uses `device::dma_tables::Tables` for domain roots/intermediates,
   SMMU descriptors and shared unit tables/queues/completion cells. Reserve actual
   pages before physical allocation, retain an exclusive owner through zeroing

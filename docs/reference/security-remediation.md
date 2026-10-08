@@ -82,9 +82,14 @@ also removes cleanup from private/shared table and raw-frame fallback, preservin
 explicit normal cancellation and Arm hardware-tag rejection. The
 [stack preparation follow-up](../reports/audits/2026-10-09-security-stack-preparation-abandonment.md)
 removes physical/lease/pool cleanup from initial/growth and unpublished-slot
-fallback, while retaining explicit ordinary cancellation. Published stack/backend
-contexts, growth's enclosing thread-table guard and the complete call-chain
-inventory remain required.
+fallback, while retaining explicit ordinary cancellation. The
+[published-pair follow-up](../reports/audits/2026-10-09-security-published-stack-retirement.md)
+removes physical stack/context destruction, adds Arm pinned IRQ-enabled reaping
+and retains failed complete pairs in their existing nodes without retry. Ordinary
+rejection runs explicit cleanup after local guards; context metadata allocation
+precedes generation/backing. General thread metadata fallback, outer ordinary
+caller masks, backend contexts, growth's enclosing thread-table guard and the
+complete call-chain inventory remain required.
 An initial Intel user-stack lease timeout is recorded as an unresolved progress
 concern; atomic phase observations and timeout snapshots now improve subsequent
 evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.

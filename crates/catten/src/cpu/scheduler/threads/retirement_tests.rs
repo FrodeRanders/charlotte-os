@@ -13,7 +13,10 @@ use super::*;
 use crate::{
     completion,
     klib::observer::CallOnNotify,
-    memory::PHYSICAL_FRAME_ALLOCATOR,
+    memory::{
+        AddressSpaceInterface,
+        PHYSICAL_FRAME_ALLOCATOR,
+    },
 };
 
 extern "C" fn unused_entry() {}
@@ -27,13 +30,26 @@ pub(crate) fn run() {
             Err(crate::cpu::scheduler::system_scheduler::Error::ThreadPreparationFailed)
         ));
     }
+    for _ in 0..64 {
+        assert!(matches!(
+            Thread::try_new_with_storage(
+                KERNEL_ASID,
+                unused_entry,
+                PreparedEntry::try_new,
+                || Err(AllocError)
+            ),
+            Err(crate::cpu::scheduler::system_scheduler::Error::ThreadPreparationFailed)
+        ));
+    }
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
     assert_eq!(NEXT_THREAD_GENERATION.load(Ordering::Relaxed), generation);
 
     // Warm physical kernel-stack table backing, which is cached independently
     // of thread/node ownership. These contexts are never scheduler-admitted.
     let warm: Vec<_> = (0..3).map(|_| Thread::new(KERNEL_ASID, unused_entry)).collect();
-    drop(warm);
+    for thread in warm {
+        thread.release_unstarted().unwrap();
+    }
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let asid = 0xc0ae_b007;
     completion::open_address_space(asid, 3);
@@ -82,6 +98,10 @@ pub(crate) fn run() {
         stage_dead_thread(other_lp, usize::MAX - 2, third);
     }
     assert!(retirement_epoch() > epoch);
+    assert!(!crate::cpu::isa::lp::ops::get_int_state());
+    reap_dead_threads();
+    assert_eq!(calls.load(Ordering::Relaxed), 0);
+    assert!(has_staged_generation(retained_generation));
     reap_dead_threads_with(lp, retained_sp);
     assert_eq!(calls.load(Ordering::Relaxed), 1);
     assert!(has_staged_generation(retained_generation));
@@ -124,8 +144,52 @@ pub(crate) fn run() {
     drop((observer_a, observer_b, observer_c, token_a, token_b, token_c));
     completion::close_address_space(asid);
     crate::capability::close_address_space(asid);
+    terminal_pair_retention(lp);
     crate::logln!(
-        "[thread retirement] prepared-node rejection, same-LP/current-stack retention, unlocked \
-         callbacks and physical stack recovery passed"
+        "[thread retirement] node/context-storage rejection, masked entry, same-LP/current-stack \
+         retention, unlocked callbacks and physical stack recovery passed"
+    );
+}
+
+fn terminal_pair_retention(lp: LpId) {
+    let thread = Thread::new(KERNEL_ASID, unused_entry);
+    let generation = thread.generation;
+    let base = thread.context.kernel_stack_bounds().0;
+    let before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let context_identity = &*thread.context as *const ThreadContext;
+    stage_dead_thread(lp, usize::MAX - 3, thread);
+    let mut attempts = 0;
+    // Inject one per-call physical rejection while the reaper still owns the
+    // complete node; its ordinary error branch must reinsert that same owner.
+    reap_dead_threads_releasing_with(lp, current_stack_pointer(), |thread| {
+        attempts += 1;
+        assert!(DEAD_THREADS.try_write().is_some());
+        assert!(MASTER_THREAD_TABLE.try_write().is_some());
+        thread.finish_retirement_metadata();
+        thread.context.reject_stack_release_for_test()
+    });
+    assert_eq!(attempts, 1);
+    for _ in 0..2 {
+        reap_dead_threads_with(lp, current_stack_pointer());
+        assert!(has_staged_generation(generation));
+        {
+            let guard = DEAD_THREADS.read();
+            let retained =
+                guard[lp as usize].iter().find(|thread| thread.generation == generation).unwrap();
+            assert_eq!(&*retained.context as *const ThreadContext, context_identity);
+            assert!(retained.retirement_metadata_completed);
+            assert!(retained.context.stack_retirement_started());
+        }
+        assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before);
+        assert!(
+            crate::memory::KERNEL_AS.lock().is_mapped(crate::memory::VAddr::from(base)).unwrap()
+        );
+    }
+    // The existing registry node keeps the owner, and no fresh custody entry
+    // or scalar retry exists. This retained kernel pair costs sixteen pages.
+    assert!(!retirement_in_flight());
+    crate::logln!(
+        "[published stack retirement] failed pair/node retained through two scans; no physical \
+         retry"
     );
 }

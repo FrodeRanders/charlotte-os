@@ -121,14 +121,14 @@ pub(crate) fn run() {
     assert_eq!(status.regs[0], u64::MAX);
     for target in [tid, foreign_tid, kernel_tid] {
         let thread = MASTER_THREAD_TABLE.write().take_element(target).unwrap();
-        drop(thread);
+        thread.release_unstarted().unwrap();
     }
     assert!(!crate::cpu::scheduler::system_scheduler::domain_has_live_threads(own));
     // Repeated detached preparation must reuse the same bounded slot.
     for _ in 0..128 {
         let thread = Thread::try_new(own.id(), unused_entry).unwrap();
         assert_eq!(ADDRESS_SPACE_TABLE.lock().get(own.id()).unwrap().thread_stack_slots, 1);
-        drop(thread);
+        thread.release_unstarted().unwrap();
         assert_eq!(ADDRESS_SPACE_TABLE.lock().get(own.id()).unwrap().thread_stack_slots, 0);
     }
     let replacement = Thread::try_new(foreign.id(), unused_entry).unwrap();
@@ -137,7 +137,7 @@ pub(crate) fn run() {
     syscall::syscall_dispatch(&mut stale, catten_syscall::SyscallNumber::ObserveThreadExit as u16);
     assert_eq!(stale.regs[0], u64::MAX);
     let thread = MASTER_THREAD_TABLE.write().take_element(replacement_tid).unwrap();
-    drop(thread);
+    thread.release_unstarted().unwrap();
     memory::close_user_address_space_handle(foreign).unwrap();
 
     // Allocation rejection follows the same provisional owner as production.

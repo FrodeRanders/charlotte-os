@@ -153,8 +153,10 @@ fn independent_heads_preserve_node_identity_and_owned_payloads() {
     heads[1].push(prepared.publish(Tracked(7, drops.clone())));
     assert!(heads[0].is_empty());
     assert_eq!(heads[1].iter().next().unwrap().0, 7);
-    let entry = heads[1].pop().unwrap();
+    let mut entry = heads[1].pop().unwrap();
     assert_eq!(&**entry.0.as_ref().unwrap() as *const Node<Tracked>, identity);
+    without_allocation(|| entry.value_mut().0 = 8);
+    assert_eq!(entry.value().0, 8);
     assert_eq!(drops.load(Ordering::Relaxed), 0);
     entry.release();
     assert_eq!(drops.load(Ordering::Relaxed), 1);

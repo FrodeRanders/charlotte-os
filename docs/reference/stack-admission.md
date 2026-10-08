@@ -71,10 +71,16 @@ already uncertain stacks reject new growth. Normal growth allocation rejection
 completes its unused preparation explicitly and leaves the parent usable.
 
 This is terminal retention, not a deferred retry owner or reclamation API.
-Published `Stacks`/thread/context Drop still performs physical retirement.
+Published pair release is now explicit and arms a one-shot phase fence before
+any physical work. Stack/context field destruction only retains backing and
+admission; it never enters allocator/table/pool guards or logging. Both
+architectures use pinned IRQ-enabled reapers. Failed pairs retain their entire
+thread/context in the original retirement node and cannot be retried by later
+scans. Ordinary constructor/publication/submission rejection explicitly releases
+a never-admitted pair after local serialization leaves.
 Growth's production `grow_current_user_stack` keeps the master thread-table
-write guard through the operation, including ordinary rollback. These contexts
-and exceptional published cleanup remain [C16/C17/G1/G2](cleanup-recovery.md).
+write guard through the operation, including ordinary rollback. Outer constructor/syscall masks and general thread metadata fallback
+remain [C16/C17/G1/G2](cleanup-recovery.md).
 
 ## Demand growth
 
@@ -100,7 +106,7 @@ Serialized boot fixtures exercise real stack pairs, initial rejection before
 allocation, growth with a foreign-leaf collision, partial progress and retry,
 cached slot reuse, exact reservation/free-count restoration, and platform/kernel
 progress under ordinary admission pressure. Existing thread-publication,
-128-round preparation/Drop churn and launch rollback fixtures still run.
+128-round preparation/explicit-release churn and launch rollback fixtures still run.
 
 Six failed/abandoned fixtures retain six original roots/slots and 102 reservation
 pages. They retain four provisional/user data frames and one sixteen-page live
@@ -143,3 +149,11 @@ See the [audit record](../reports/audits/2026-10-07-security-stack-admission.md)
 for QEMU evidence. This establishes runtime stack capacity admission, not
 complete node exhaustion isolation, metadata budgeting, boot-stack accounting,
 physical-platform quiescence or abandoned-owner recovery.
+
+Two additional ordinary/platform published-pair abandonment fixtures drop while
+holding lifecycle, both table guards, allocator and stack admission pool. They
+retain two exact roots/slots, 34 reservation/data pages and both mapped ranges,
+without incrementing retirement phase counters. A kernel-only failed pair retains
+sixteen mapped pages in its existing thread retirement node through repeated
+scans. Successful pair release also rejects a second attempt before callbacks
+and prevents further growth. See [published-pair evidence](../reports/audits/2026-10-09-security-published-stack-retirement.md).

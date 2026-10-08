@@ -300,10 +300,7 @@ fn cond_yield_lp_impl() {
         }
     }
     crate::cpu::scheduler::threads::retire_requested_threads();
-    // Reap any threads that exited: this runs after switching away from a dying
-    // thread, so we are now on a different thread's stack and can safely free
-    // the dead thread's kernel stack.
-    crate::cpu::scheduler::threads::reap_dead_threads();
+    // Physical reaping runs on pinned IRQ-enabled workers, outside IRQ tails.
     crate::cpu::scheduler::maybe_sample_rebalance();
     // Preserve the caller's interrupt state. In particular, a synchronous
     // syscall enters with an exception frame on the current kernel stack. A

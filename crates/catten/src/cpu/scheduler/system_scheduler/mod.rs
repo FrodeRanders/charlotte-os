@@ -109,41 +109,44 @@ pub(crate) fn thread_admission_open(handle: crate::memory::AddressSpaceHandle) -
 ///
 /// Publication and installing the root's abort fence use the same gate. A
 /// thread is either published before the fence or rejected afterward.
+#[allow(clippy::result_large_err)] // Carry the complete rejected owner out without allocation.
 pub fn publish_thread(thread: Thread) -> Result<ThreadId, Error> {
-    let asid = thread.asid;
-    // Keep the checked root's closing admission state stable through table
-    // publication. Prepared stacks lease its lifetime, but a lease alone does
-    // not prevent staged close from installing its admission fence.
-    let lifecycle =
-        (asid != crate::memory::KERNEL_ASID).then(|| crate::memory::ADDRESS_SPACE_LIFECYCLE.lock());
-    let publication_gate = THREAD_PUBLICATION_GATE.lock();
-    let mut maximum = None;
-    if asid != crate::memory::KERNEL_ASID {
-        let handle = thread.address_space.ok_or(Error::ThreadTerminated)?;
-        if handle.id() != asid || !thread_admission_open(handle) {
-            return Err(Error::ThreadTerminated);
+    // Carry rejected payload ownership out of every serialization scope.
+    let publication = (|| {
+        let asid = thread.asid;
+        let _lifecycle = (asid != crate::memory::KERNEL_ASID)
+            .then(|| crate::memory::ADDRESS_SPACE_LIFECYCLE.lock());
+        let _publication_gate = THREAD_PUBLICATION_GATE.lock();
+        let maximum = if asid != crate::memory::KERNEL_ASID {
+            let Some(handle) = thread.address_space else {
+                return Err((thread, Error::ThreadTerminated));
+            };
+            if handle.id() != asid || !thread_admission_open(handle) {
+                return Err((thread, Error::ThreadTerminated));
+            }
+            Some(crate::memory::domain_limits(asid).max_threads)
+        } else {
+            None
+        };
+        let mut table = MASTER_THREAD_TABLE.write();
+        if maximum.is_some_and(|maximum| {
+            table
+                .iter()
+                .filter(|entry| entry.as_ref().is_some_and(|thread| thread.asid == asid))
+                .count()
+                >= maximum
+        }) {
+            return Err((thread, Error::DomainThreadLimitExceeded));
         }
-        maximum = Some(crate::memory::domain_limits(asid).max_threads);
-    }
-    let mut table = MASTER_THREAD_TABLE.write();
-    if maximum.is_some_and(|maximum| {
         table
-            .iter()
-            .filter(|entry| entry.as_ref().is_some_and(|thread| thread.asid == asid))
-            .count()
-            >= maximum
-    }) {
-        return Err(Error::DomainThreadLimitExceeded);
-    }
-    let publication = table.try_add_element(thread);
-    // A rejected payload still owns stacks and can notify exit subscribers.
-    // Release scheduler serialization before running any of its destructors.
-    drop(table);
-    drop(publication_gate);
-    drop(lifecycle);
-    publication.map_err(|(thread, _)| {
-        drop(thread);
-        Error::ThreadPreparationFailed
+            .try_add_element(thread)
+            .map_err(|(thread, _)| (thread, Error::ThreadPreparationFailed))
+    })();
+    publication.map_err(|(thread, error)| {
+        // Physical rejection retains backing/admission; never invoke it again
+        // through Drop. Outer callers' IRQ state is preserved by the adapters.
+        let _ = thread.release_unstarted();
+        error
     })
 }
 
