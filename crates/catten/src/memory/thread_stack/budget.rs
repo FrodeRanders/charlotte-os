@@ -109,3 +109,9 @@ pub(super) fn test_pool() {
     assert_eq!(pool.total.used().pages, 0);
     assert_eq!(pool.ordinary.used().pages, 0);
 }
+
+/// Boot probe: abandoned preparations must not acquire the original pool.
+pub(super) fn test_with_pool_locked(action: impl FnOnce()) {
+    let _pool = POOL.lock();
+    action();
+}

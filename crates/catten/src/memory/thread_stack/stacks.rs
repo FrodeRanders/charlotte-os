@@ -262,17 +262,34 @@ struct PreparingGrowthPage<'a> {
     stack: &'a mut UserStack,
     frame: Option<PreparingUserFrame>,
     mapping_started: bool,
+    finished: bool,
 }
 impl<'a> PreparingGrowthPage<'a> {
     fn allocate(stack: &'a mut UserStack) -> Option<Self> {
+        Self::allocate_with(stack, || {
+            PreparingUserFrame::allocate_with_policy(|free, total| {
+                free > (total / charlotte_lifecycle::STACK_GROWTH_RESERVE_DIVISOR).max(1)
+            })
+        })
+    }
+
+    fn allocate_with(
+        stack: &'a mut UserStack,
+        allocate: impl FnOnce() -> Option<PreparingUserFrame>,
+    ) -> Option<Self> {
+        assert!(!stack.slot.uncertain);
         let mut preparation = Self {
             stack,
             frame: None,
             mapping_started: false,
+            finished: false,
         };
-        preparation.frame = Some(PreparingUserFrame::allocate_with_policy(|free, total| {
-            free > (total / charlotte_lifecycle::STACK_GROWTH_RESERVE_DIVISOR).max(1)
-        })?);
+        let Some(frame) = allocate() else {
+            // Ordinary allocator rejection leaves the existing stack usable.
+            preparation.finished = true;
+            return None;
+        };
+        preparation.frame = Some(frame);
         preparation.frame.as_ref().unwrap().zero();
         Some(preparation)
     }
@@ -299,24 +316,43 @@ impl<'a> PreparingGrowthPage<'a> {
             self.frame.take().unwrap().quarantine();
         }
         self.mapping_started = false;
+        if mapped {
+            self.finished = true;
+        } else {
+            // Walker rejection confirms non-publication. Explicit rollback
+            // runs after its address-space table guard has left.
+            let _ = self.cancel_unpublished();
+        }
         mapped
+    }
+
+    fn cancel_unpublished(mut self) -> Result<(), crate::memory::physical::Error> {
+        self.rollback_with(|frame| PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame))
+    }
+
+    fn rollback_with(
+        &mut self,
+        release: impl FnOnce(crate::memory::PAddr) -> Result<(), crate::memory::physical::Error>,
+    ) -> Result<(), crate::memory::physical::Error> {
+        assert!(!self.finished && !self.mapping_started && !self.stack.slot.uncertain);
+        self.finished = true;
+        self.stack.slot.uncertain = true;
+        if let Some(frame) = self.frame.take() {
+            frame.release_with(release)?;
+        }
+        self.stack.slot.uncertain = false;
+        Ok(())
     }
 }
 impl Drop for PreparingGrowthPage<'_> {
     fn drop(&mut self) {
-        if let Some(frame) = self.frame.take() {
-            if self.mapping_started {
-                self.stack.slot.uncertain = true;
-                frame.quarantine();
-            } else {
-                self.stack.slot.uncertain = true;
-                if frame
-                    .release_with(|frame| PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame))
-                    .is_ok()
-                {
-                    self.stack.slot.uncertain = false;
-                }
-            }
+        if !self.finished {
+            self.stack.slot.uncertain = true;
         }
+        if let Some(frame) = self.frame.take() {
+            frame.quarantine();
+        }
+        // No allocator, registry, root lookup, reservation release or logger.
+        // The borrowed parent stack retains its complete original admission.
     }
 }

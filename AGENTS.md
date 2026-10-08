@@ -398,6 +398,15 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   reconstructs cleanup from ASID or adds backing outside captured capacity.
   Kernel mapping rejection moves unpublished frames into `RetiredKernelRange`
   too; only confirmed post-guard release authorizes a completed rollback result.
+  Provisional initial/growth stack Drop and implicit `StackSlot` destruction
+  retain backing, slot, exact root lease and original reservation without
+  allocator/table/pool guards, callbacks or logging, even before allocation.
+  Ordinary unused slot/page preparation requires consuming `cancel_unpublished`;
+  constructor allocation or confirmed mapping rejection cancels explicitly.
+  Growth abandonment marks its borrowed parent uncertain; only explicit
+  successful rollback may clear the fence it just armed. Ordinary growth
+  allocation rejection leaves existing backing usable. Published `Stacks` and
+  thread/context retirement still have separate cleanup/context requirements.
   Raw stack allocation is confined to that admitted memory adapter. Inherited
   boot/CPU stacks remain outside runtime admission. See
   `docs/reference/stack-admission.md`.

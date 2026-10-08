@@ -17,6 +17,12 @@ pub(crate) fn test_admission() {
     stacks::tests::run();
 }
 
+#[derive(Debug)]
+pub(crate) enum PreparationError {
+    Physical(super::physical::Error),
+    Slot,
+}
+
 /// One owner for provisional physical backing and stack/root admission.
 /// Panic during mapping quarantines both; ordinary rejected mapping releases
 /// them only after the walker has returned a confirmed non-publication error.
@@ -43,7 +49,11 @@ impl PreparingStackPage {
             slot: Some(slot),
             mapping_started: false,
         };
-        preparation.frame = Some(allocate().ok_or(())?);
+        let Some(frame) = allocate() else {
+            preparation.cancel_unpublished().map_err(|_| ())?;
+            return Err(());
+        };
+        preparation.frame = Some(frame);
         Ok(preparation)
     }
 
@@ -58,6 +68,7 @@ impl PreparingStackPage {
         };
         let handle = self.slot.as_ref().unwrap().identity();
         if !self.slot.as_ref().unwrap().contains_page(low) {
+            self.cancel_unpublished().map_err(|_| ())?;
             return Err(());
         }
         let frame = self.frame.as_ref().unwrap().frame();
@@ -77,6 +88,7 @@ impl PreparingStackPage {
         };
         if !mapped {
             self.mapping_started = false;
+            self.cancel_unpublished().map_err(|_| ())?;
             return Err(());
         }
         // The published leaf is now owned by the context's stack retirement.
@@ -88,32 +100,35 @@ impl PreparingStackPage {
 }
 
 impl PreparingStackPage {
+    /// Ordinary cancellation of definitely unpublished backing. Consumes
+    /// ownership before allocator entry; rejected release retains the complete
+    /// original slot/root/reservation and cannot be retried through Drop.
+    pub(crate) fn cancel_unpublished(mut self) -> Result<(), PreparationError> {
+        self.rollback_with(|frame| super::PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame))
+    }
+
     fn rollback_with(
         &mut self,
         release: impl FnOnce(super::PAddr) -> Result<(), super::physical::Error>,
-    ) {
-        if self.mapping_started {
-            if let Some(frame) = self.frame.take() {
-                frame.quarantine();
-            }
-            if let Some(slot) = self.slot.as_mut() {
-                slot.published();
-                slot.uncertain = true;
-            }
-        } else if let Some(frame) = self.frame.take() {
-            let slot = self.slot.as_mut().unwrap();
-            slot.published();
+    ) -> Result<(), PreparationError> {
+        assert!(!self.mapping_started);
+        let slot = self.slot.as_mut().expect("completed stack preparation");
+        assert!(!slot.reachable && !slot.uncertain);
+        if let Some(frame) = self.frame.take() {
             slot.uncertain = true;
-            if frame.release_with(release).is_ok() {
-                slot.uncertain = false;
-                slot.reachable = false;
-            }
+            frame.release_with(release).map_err(PreparationError::Physical)?;
+            slot.uncertain = false;
         }
+        self.slot.take().unwrap().cancel_unpublished().map_err(|_| PreparationError::Slot)
     }
 }
 impl Drop for PreparingStackPage {
     fn drop(&mut self) {
-        self.rollback_with(|frame| super::PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame));
+        if let Some(frame) = self.frame.take() {
+            frame.quarantine();
+        }
+        // Implicit StackSlot/operation/reservation destruction retains their
+        // original counts without acquiring any guard or running cleanup.
     }
 }
 
@@ -192,40 +207,42 @@ impl StackSlot {
             && (self.base()..self.base() + self.user_pages * 4096).contains(&low)
     }
 
+    /// Cancel ordinary unused admission, before any backing is published.
+    pub(crate) fn cancel_unpublished(mut self) -> Result<(), ()> {
+        assert!(!self.reachable && !self.uncertain);
+        self.release()
+    }
+
     /// Only call after all leaves are detached, invalidated and released.
     pub(crate) fn released(mut self) {
         if self.uncertain {
             return;
         }
         self.reachable = false;
-        self.release();
+        let _ = self.release();
     }
 
-    fn release(&mut self) {
+    fn release(&mut self) -> Result<(), ()> {
         let Some(operation) = self.operation.take() else {
-            return;
+            return Err(());
         };
         let handle = operation.handle();
         {
             let mut table = ADDRESS_SPACE_TABLE.lock();
             if table.generation(handle.id()).ok() != Some(handle.generation()) {
-                return;
+                return Err(());
             }
-            if let Ok(space) = table.get_mut(handle.id()) {
-                space.thread_stack_slots &= !(1 << self.slot);
+            let space = table.get_mut(handle.id()).map_err(|_| ())?;
+            if space.thread_stack_slots & (1 << self.slot) == 0 {
+                return Err(());
             }
+            space.thread_stack_slots &= !(1 << self.slot);
         }
         if let Some(charge) = self.charge.take() {
             charge.refund();
         }
-        let _ = operation.release();
+        operation.release().map_err(|_| ())
     }
 }
-
-impl Drop for StackSlot {
-    fn drop(&mut self) {
-        if !self.reachable {
-            self.release();
-        }
-    }
-}
+// No StackSlot cleanup destructor: operation/charge tokens retain admission on
+// abandonment, including an unpublished or reservation-only preparation.

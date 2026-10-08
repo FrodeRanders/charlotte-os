@@ -28,8 +28,9 @@ memory implementation; owning-frame insertion asserts preflighted capacity.
 
 Raw frame and table preparation now also retain backing on fallback; ordinary
 adapter/fixture release and unpublished table cancellation are explicit. See
-[translation admission](translation-admission.md). Stack preparation still has
-its separate cleanup/context requirements.
+[translation admission](translation-admission.md). Initial/growth stack and unpublished-slot fallback now follows that same rule;
+see [stack admission](stack-admission.md). Ordinary rollback and published stack
+retirement still have separate cleanup/context requirements.
 
 Confirmed mapper rejection invokes ordinary rollback explicitly. A caller
 cancelling a definitely unpublished preparation uses consuming

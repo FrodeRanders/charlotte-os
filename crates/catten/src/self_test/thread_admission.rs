@@ -162,7 +162,9 @@ pub(crate) fn run() {
         *slot = Some(reserved);
     }
     assert!(memory::thread_stack::StackSlot::reserve(own).is_err());
-    drop(slots);
+    for slot in slots.into_iter().flatten() {
+        slot.cancel_unpublished().unwrap();
+    }
     assert_eq!(ADDRESS_SPACE_TABLE.lock().get(own.id()).unwrap().thread_stack_slots, 0);
     let base = charlotte_launch::user_address::STACK_BASE;
     let object = memory::object::allocate(own.id(), 1).unwrap();
@@ -215,7 +217,7 @@ pub(crate) fn run() {
     assert_ne!(successor, own);
     assert!(memory::thread_stack::StackSlot::reserve(own).is_err());
     let slot = memory::thread_stack::StackSlot::reserve(successor).unwrap();
-    drop(slot);
+    slot.cancel_unpublished().unwrap();
     memory::close_user_address_space_handle(successor).unwrap();
     crate::logln!(
         "[thread admission] collision/quota rejection, slot reuse, launch rollback, scoped \

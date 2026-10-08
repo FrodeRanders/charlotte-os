@@ -31,6 +31,12 @@ kernel-only threads. Both architecture contexts retain that owner through
 construction, publication, execution and off-CPU retirement. There is no scalar
 stack cleanup ladder when kernel preparation fails after user mapping.
 
+Ordinary unused admission is cancelled explicitly: `StackSlot::cancel_unpublished`
+checks that no backing was published, then consumes the exact slot/lease/charge.
+`PreparingStackPage::cancel_unpublished` first consumes its frame before physical
+release and reports physical rejection separately from slot completion rejection.
+Constructor allocation rejection, invalid layout and confirmed mapper rejection
+use explicit cancellation; the mapper's local table guard leaves before release.
 Unused reservations refund without backing release. Otherwise, refund requires
 confirmed removal, invalidation and physical release of both ranges. User
 cleanup detaches under the original table/generation guard and invalidates after
@@ -46,6 +52,29 @@ and exact root lease. The domain ceiling is therefore still consumed, and root
 teardown/reusable-ASID lookup cannot refund the charge. Kernel-only failure
 retains the node reservation and uncertain backing. There is no force-clear,
 administrative reclamation or retry of consumed physical release.
+
+## Provisional abandonment
+
+Initial page preparation, growth preparation and implicit `StackSlot` field
+destruction acquire no allocator, table, lifecycle or admission-pool guard and
+enter no callback/logger. They retain original backing/admission even when
+abandoned before allocation. An unpublished slot is not refunded by Drop; only
+ordinary explicit cancellation can release it. Dropping the operation and charge
+tokens retains the original root count and complete maximum reservation.
+
+Growth fallback marks its exclusively borrowed parent slot uncertain and
+quarantines any provisional frame. A later successful committed-prefix release
+cannot discharge that uncertainty, root lease or reservation. A rejected
+explicit provisional release consumes frame ownership once and leaves the same
+fence. Only confirmed explicit rollback can clear the fence that it armed;
+already uncertain stacks reject new growth. Normal growth allocation rejection
+completes its unused preparation explicitly and leaves the parent usable.
+
+This is terminal retention, not a deferred retry owner or reclamation API.
+Published `Stacks`/thread/context Drop still performs physical retirement.
+Growth's production `grow_current_user_stack` keeps the master thread-table
+write guard through the operation, including ordinary rollback. These contexts
+and exceptional published cleanup remain [C16/C17/G1/G2](cleanup-recovery.md).
 
 ## Demand growth
 
@@ -81,6 +110,23 @@ owner states, not physical hardware failures or actual panic unwinding. Their
 backing remains unavailable for the lifetime of the guest. The additional
 invalidation-rejection fixture never invokes physical release and retains its
 exact slot, root lease and complete reservation.
+
+Sixteen additional preparation fixtures cover ordinary and platform admission:
+bare slot, reservation-only initial page, unpublished page, interrupted initial
+publication, reservation-only growth, unpublished growth, interrupted growth
+publication and rejected growth physical rollback. Drop holds lifecycle, both
+address-space guards, physical allocator and the original stack admission pool.
+They retain 272 reservation pages (136 ordinary) and ten provisional frames,
+plus sixteen exact roots and their private hierarchies. Successful committed-page
+cleanup occurs outside those probe guards and cannot refund abandoned growth
+admission. Root close stays busy and quota admission stays rejected.
+
+Normal cancellation, invalid-layout/allocator rejection, growth cancellation and
+growth allocation rejection restore the expected free counts and leave usable
+parents. Existing actual foreign-leaf collision, 64-slot cancellation, successor
+identity and 128-round thread preparation fixtures still run. Interruption is
+modeled, not real panic unwinding. See the
+[preparation report](../reports/audits/2026-10-09-security-stack-preparation-abandonment.md).
 
 Six atomic user-retirement observations track starts, successful user release,
 identity rejection, detach rejection, invalidation rejection and rejected

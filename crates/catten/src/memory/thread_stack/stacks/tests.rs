@@ -6,6 +6,8 @@ use crate::memory::{
     DomainLimits,
 };
 
+mod preparation_tests;
+
 fn domain(pages: usize, platform: bool) -> AddressSpaceHandle {
     let space = if platform {
         AddressSpace::try_new_platform_user()
@@ -42,6 +44,7 @@ pub(in crate::memory::thread_stack) fn run() {
     pressure();
     confirmed_constructor_failure();
     retained_failures();
+    preparation_tests::run();
     crate::logln!(
         "[stack backing admission] maximum user/kernel reservation, growth/collision/retry, \
          success/Drop refund, rejection before allocation and platform progress passed; six \
@@ -181,9 +184,17 @@ fn retained_failures() {
                 // Failed unpublished physical release consumes the slot too.
                 initial_free = free();
                 let mut preparation = PreparingStackPage::reserve(handle).unwrap();
-                preparation.rollback_with(|_| {
-                    Err(memory::physical::Error::CannotDeallocateUnallocatedFrame)
-                });
+                let mut attempts = 0;
+                assert!(matches!(
+                    preparation.rollback_with(|_| {
+                        attempts += 1;
+                        Err(memory::physical::Error::CannotDeallocateUnallocatedFrame)
+                    }),
+                    Err(PreparationError::Physical(
+                        memory::physical::Error::CannotDeallocateUnallocatedFrame
+                    ))
+                ));
+                assert_eq!(attempts, 1);
                 drop(preparation);
                 assert_eq!(free(), initial_free - 1);
             }
