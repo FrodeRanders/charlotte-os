@@ -9,6 +9,8 @@ should be updated with the implementation when those contracts change.
   policy authentication, explicit revision lineage and protected integration gaps.
 - [Private translation admission](translation-admission.md) — root/intermediate
   budgets, exact account ownership, retained branches and platform progress.
+- [Final-root recovery](root-recovery.md) — bounded detached-owner custody,
+  explicit retry and terminal quarantine.
 - [Hardware quiescence](hardware-quiescence.md) — bounded CPU epoch retry,
   DMA completion requirements, requester fencing and supported QEMU NVMe reset.
 

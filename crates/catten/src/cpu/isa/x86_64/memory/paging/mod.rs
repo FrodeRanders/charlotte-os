@@ -697,6 +697,16 @@ impl AddressSpace {
         release.finish()
     }
 
+    /// Explicit final-root release reports rejected backing to the retained
+    /// receipt controller. The owning walk disarms before its first release;
+    /// the subsequent destructor cannot revisit returned physical addresses.
+    pub(crate) fn release_retired_with(
+        &mut self,
+        deallocate: &mut dyn FnMut(PAddr) -> Result<(), crate::memory::physical::Error>,
+    ) -> usize {
+        self.release_owned_with(deallocate)
+    }
+
     pub(crate) fn test_backing_release() {
         crate::memory::backing_release_tests::run(|space, deallocate| {
             space.release_owned_with(deallocate)

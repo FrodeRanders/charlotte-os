@@ -299,6 +299,14 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   root/accounts/slot; only explicit release completes its lease. This does not
   replace thread quiescence or solve earlier mapping/IPC/device locking. See
   `docs/reference/address-space-retirement.md`.
+  Failed final-root invalidation may transfer only its complete detached owner
+  into `retirement::recovery`'s fixed registry. Tickets identify records, never
+  authority. Claim outside registry serialization; retry only invalidation before
+  physical release. Masked production retry rejects before claiming. Complete
+  physical teardown once through `release_value_with`; rejected/partially released
+  backing and abandoned attempts are terminal, never restored or retried. Drop
+  marks its stable admitted cell atomically and quarantines without locks or
+  physical cleanup. Exhaustion returns the original owner; no unbounded spill.
   `AddressSpaceOperation` retains an exact live generation through explicit
   completion; abandonment retains its count/root. Busy close must reject
   before subsystem mutation. Acquire lifecycle before table/subsystem guards,

@@ -42,15 +42,20 @@ impl<T> RetiredEntry<T> {
         &self.value
     }
 
-    /// The resource-specific owner must establish quiescence first. Returning
-    /// this token does not make the slot reusable until its table accepts it.
-    pub(crate) fn release_value(mut self) -> SlotRetirement {
+    /// Caller proves quiescence; finish consumes/disarms physical ownership
+    /// before normal return permits payload Drop and slot completion.
+    /// Panic retains the disarmed payload and slot without another destructor.
+    pub(crate) fn release_value_with<R>(
+        mut self,
+        finish: impl FnOnce(&mut T) -> R,
+    ) -> (SlotRetirement, R) {
+        let result = finish(&mut self.value);
         // SAFETY: this consumes the unique owner; ManuallyDrop prevents an
         // implicit destructor during abandonment or a panicking T::drop.
         unsafe {
             ManuallyDrop::drop(&mut self.value);
         }
-        self.slot.take().expect("retired entry slot missing")
+        (self.slot.take().expect("retired entry slot missing"), result)
     }
 }
 

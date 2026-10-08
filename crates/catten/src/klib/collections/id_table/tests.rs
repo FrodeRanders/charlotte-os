@@ -66,7 +66,7 @@ fn extraction_and_interleaved_retirement_use_publication_storage() {
         assert_eq!(table.available_ids.as_ptr(), backing);
     }
     for receipt in retired {
-        table.finish_retirement(receipt.release_value()).unwrap();
+        table.finish_retirement(receipt.release_value_with(|_| ()).0).unwrap();
         assert_eq!(table.available_ids.capacity(), capacity);
         assert_eq!(table.available_ids.as_ptr(), backing);
     }
@@ -159,7 +159,7 @@ fn staged_close_fences_new_leases_but_allows_existing_completions() {
     let capacity = table.available_ids.capacity();
     table.seal_close(&close).unwrap();
     let retired = table.retire_closing(close).unwrap();
-    table.finish_retirement(retired.release_value()).unwrap();
+    table.finish_retirement(retired.release_value_with(|_| ()).0).unwrap();
     assert_eq!(table.available_ids.capacity(), capacity);
     assert_eq!(table.add_element(2), id);
     assert_eq!(table.is_closing(id), Ok(false));
@@ -231,7 +231,7 @@ fn staged_close_needs_no_completion_allocation_after_growth() {
     assert_eq!(table.available_ids.as_ptr(), backing);
     table.seal_close(&close).unwrap();
     let retired = table.retire_closing(close).unwrap();
-    table.finish_retirement(retired.release_value()).unwrap();
+    table.finish_retirement(retired.release_value_with(|_| ()).0).unwrap();
     assert_eq!(table.available_ids.capacity(), capacity);
 }
 
@@ -270,7 +270,7 @@ fn live_leases_block_all_extraction_until_the_last_completion() {
     assert_eq!(table.prepare_retirement(id), Err(Error::Leased));
     table.finish_lease(second).unwrap();
     let retired = table.retire_element(id).unwrap();
-    table.finish_retirement(retired.release_value()).unwrap();
+    table.finish_retirement(retired.release_value_with(|_| ()).0).unwrap();
     assert_eq!(drops.load(Ordering::Relaxed), 1);
     assert_eq!(table.add_element(Tracked(drops.clone())), id);
     assert_ne!(table.generation(id).unwrap(), generation);
@@ -366,7 +366,7 @@ fn detachment_hides_but_does_not_recycle_or_destroy() {
     assert!(table.generation(id).is_err());
     let another = table.add_element(Tracked(drops.clone()));
     assert_ne!(another, id);
-    let slot = retired.release_value();
+    let slot = retired.release_value_with(|_| ()).0;
     assert_eq!(drops.load(Ordering::Relaxed), 1);
     assert!(!table.available_ids.contains(&id));
     let capacity = table.available_ids.capacity();
@@ -402,12 +402,12 @@ fn table_identity_rejects_equal_id_and_generation() {
     let first_retired = first.retire_element(first_id).unwrap();
     let second_retired = second.retire_element(second_id).unwrap();
     assert_eq!(
-        second.finish_retirement(first_retired.release_value()),
+        second.finish_retirement(first_retired.release_value_with(|_| ()).0),
         Err(Error::WrongRetirement)
     );
     assert!(first.slots[first_id].retiring);
     assert!(second.slots[second_id].retiring);
-    second.finish_retirement(second_retired.release_value()).unwrap();
+    second.finish_retirement(second_retired.release_value_with(|_| ()).0).unwrap();
     assert_eq!(second.add_element(3), second_id);
     assert_ne!(first.add_element(4), first_id);
 }
@@ -416,7 +416,7 @@ fn table_identity_rejects_equal_id_and_generation() {
 fn wrong_generation_completion_cannot_release_slot() {
     let mut table = IdTable::new();
     let id = table.add_element(1);
-    let mut slot = table.retire_element(id).unwrap().release_value();
+    let mut slot = table.retire_element(id).unwrap().release_value_with(|_| ()).0;
     // Kernel-boundary corruption fixture, not a production token constructor.
     slot.generation += 1;
     assert_eq!(table.finish_retirement(slot), Err(Error::WrongRetirement));
@@ -453,10 +453,10 @@ fn interleaved_detached_slots_complete_without_allocating() {
     let added_receipt = table.retire_element(added).unwrap();
     let capacity = table.available_ids.capacity();
     for receipt in receipts {
-        table.finish_retirement(receipt.release_value()).unwrap();
+        table.finish_retirement(receipt.release_value_with(|_| ()).0).unwrap();
         assert_eq!(table.available_ids.capacity(), capacity);
     }
-    table.finish_retirement(added_receipt.release_value()).unwrap();
+    table.finish_retirement(added_receipt.release_value_with(|_| ()).0).unwrap();
     assert_eq!(table.available_ids.capacity(), capacity);
     assert_eq!(table.available_ids.len(), 17);
 }
@@ -465,7 +465,7 @@ fn interleaved_detached_slots_complete_without_allocating() {
 fn completion_never_allocates_when_preflight_invariant_is_corrupted() {
     let mut table = IdTable::new();
     let id = table.add_element(1);
-    let slot = table.retire_element(id).unwrap().release_value();
+    let slot = table.retire_element(id).unwrap().release_value_with(|_| ()).0;
     // Private-state corruption fixture: production cannot discard the
     // preflighted completion storage while an owner is detached.
     table.available_ids = Vec::new();
@@ -498,7 +498,7 @@ fn closing_peers_admit_cleanup_without_reopening_ordinary_leases() {
     table.seal_close(&bc).unwrap();
     for close in [ac, bc] {
         let retired = table.retire_closing(close).unwrap();
-        table.finish_retirement(retired.release_value()).unwrap();
+        table.finish_retirement(retired.release_value_with(|_| ()).0).unwrap();
     }
     let reused = table.add_element(3);
     let generation = table.generation(reused).unwrap();
@@ -552,4 +552,36 @@ fn staged_detachment_requires_permanent_cleanup_sealing() {
     assert!(matches!(table.retire_closing(close), Err(Error::Closing)));
     assert_eq!(table.get(id), Ok(&1));
     assert!(table.is_closing(id).unwrap());
+}
+
+#[test]
+fn resource_completion_precedes_destructor_and_slot_return() {
+    let drops = Arc::new(AtomicUsize::new(0));
+    let mut table = IdTable::new();
+    let id = table.add_element(Tracked(drops.clone()));
+    let retired = table.retire_element(id).unwrap();
+    let (slot, outcome) = retired.release_value_with(|_| {
+        assert_eq!(drops.load(Ordering::Relaxed), 0);
+        17
+    });
+    assert_eq!(outcome, 17);
+    assert_eq!(drops.load(Ordering::Relaxed), 1);
+    assert!(table.available_ids.is_empty());
+    table.finish_retirement(slot).unwrap();
+    assert_eq!(table.add_element(Tracked(drops.clone())), id);
+}
+
+#[test]
+fn interrupted_resource_completion_retains_payload_and_slot() {
+    let drops = Arc::new(AtomicUsize::new(0));
+    let mut table = IdTable::new();
+    let id = table.add_element(Tracked(drops.clone()));
+    let retired = table.retire_element(id).unwrap();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        retired.release_value_with(|_| panic!("interrupted physical completion"));
+    }));
+    assert!(result.is_err());
+    assert_eq!(drops.load(Ordering::Relaxed), 0);
+    assert!(table.available_ids.is_empty());
+    assert_ne!(table.add_element(Tracked(drops.clone())), id);
 }

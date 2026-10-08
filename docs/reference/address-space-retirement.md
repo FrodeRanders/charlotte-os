@@ -96,8 +96,8 @@ confirmed release; shared kernel tables remain outside that pool.
 
 The generic `IdTable` retirement primitive retains an inline `RetiredEntry<T>`
 with a table-identity/slot-generation token. `ManuallyDrop` prevents resource
-destruction when an unfinished receipt is dropped. Explicit value release
-returns a linear slot-completion token; it cannot be cloned. A token from another
+destruction when an unfinished receipt is dropped. Explicit `release_value_with` completion reports the owning physical walk
+before payload destruction and returns a linear slot-completion token; it cannot be cloned. A token from another
 table or generation cannot make a slot reusable. The former destructive
 `remove_element` helper is removed; scheduler extraction still uses `take_element`
 where a different owner takes over immediately.
@@ -143,14 +143,16 @@ own receipts outside lifecycle. Published move/copy/result attachment cleanup
 and unpublished copy/vector rollback now release backing outside IPC. See
 [live address-space operations](live-address-space-operations.md).
 
-Failed final invalidation or abandonment retains the whole hierarchy, physical
-backing, hardware tag, software slot and backing accounts. There is no automatic
-recovery or administrative reclamation API. Quarantine can reduce capacity.
-The real x86 sender returns rejected delivery or bounded acknowledgement failure.
-`RetiredAddressSpace::release_retry_with` returns the same owner on invalidation
-failure; production final invalidation makes up to three fresh attempts before
-quarantining. Successful physical release remains consuming and cannot retry a
-partially freed hierarchy. See [hardware quiescence](hardware-quiescence.md).
+Failed final invalidation retains the whole hierarchy, physical backing,
+hardware tag, software slot and backing accounts. Production final invalidation
+makes up to three fresh x86 rendezvous attempts, then transfers its complete
+owner into a [bounded final-root recovery registry](root-recovery.md). Capacity
+rejection returns ownership and quarantines outside the registry hold. A trusted
+kernel controller can retry that registered invalidation receipt; no automatic
+worker or userspace mutation API is added. Abandoned owners and physical-phase
+failures cannot be adopted or retried. Successful physical release remains
+consuming. Quarantine can reduce capacity. See
+[hardware quiescence](hardware-quiescence.md).
 
 ## Remaining SEC-18 work
 

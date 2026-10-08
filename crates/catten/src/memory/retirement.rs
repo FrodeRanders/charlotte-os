@@ -297,13 +297,24 @@ impl RetiredAddressSpace {
         invalidate: impl FnOnce(&AddressSpace, AddressSpaceHandle) -> bool,
     ) -> Result<(), AddressSpaceCloseError> {
         match self.release_retry_with(invalidate) {
-            Ok(()) => Ok(()),
+            Ok(_) => Ok(()),
             Err(owner) => {
-                crate::early_logln!(
-                    "[memory] quarantined address-space root asid={} generation={}",
-                    owner.handle.id(),
-                    owner.handle.generation()
-                );
+                match recovery::retain(owner) {
+                    Ok(ticket) => crate::early_logln!(
+                        "[root recovery] retained invalidation receipt slot={} serial={}",
+                        ticket.index(),
+                        ticket.serial()
+                    ),
+                    Err(owner) => {
+                        crate::early_logln!(
+                            "[root recovery] registry full; quarantined root asid={} generation={}",
+                            owner.handle.id(),
+                            owner.handle.generation()
+                        );
+                        // Drop outside the registry hold retains complete backing.
+                        drop(owner);
+                    }
+                }
                 Err(AddressSpaceCloseError::QuiescenceFailed)
             }
         }
@@ -316,19 +327,31 @@ impl RetiredAddressSpace {
     fn release_retry_with(
         self,
         invalidate: impl FnOnce(&AddressSpace, AddressSpaceHandle) -> bool,
-    ) -> Result<(), Self> {
+    ) -> Result<usize, Self> {
+        self.release_retry_with_physical(invalidate, &mut |frame| {
+            super::PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame)
+        })
+    }
+
+    #[allow(clippy::result_large_err)] // The exact inline root owner survives invalidation rejection.
+    fn release_retry_with_physical(
+        self,
+        invalidate: impl FnOnce(&AddressSpace, AddressSpaceHandle) -> bool,
+        deallocate: &mut dyn FnMut(super::PAddr) -> Result<(), super::physical::Error>,
+    ) -> Result<usize, Self> {
         if !invalidate(self.entry.value(), self.handle) {
             return Err(self);
         }
         // Quiescence precedes all root/data/table destruction and account
         // refunds. No masking guard is held during AddressSpace::drop.
-        let slot = self.entry.release_value();
+        let (slot, failed) =
+            self.entry.release_value_with(|space| space.release_retired_with(deallocate));
         super::budget::forget(self.handle);
         ADDRESS_SPACE_TABLE
             .lock()
             .finish_retirement(slot)
             .expect("retired address-space slot identity lost");
-        Ok(())
+        Ok(failed)
     }
 }
 
@@ -358,4 +381,5 @@ fn invalidate(space: &AddressSpace, handle: AddressSpaceHandle) -> bool {
     }
 }
 
+pub(crate) mod recovery;
 pub(crate) mod tests;

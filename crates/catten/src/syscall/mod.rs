@@ -613,6 +613,9 @@ fn sys_thread_statistics(frame: &mut TrapFrame) {
     header_words[header::DOMAIN_RECORD_BYTES] =
         (THREAD_STATISTICS_DOMAIN_RECORD_U64S * core::mem::size_of::<u64>()) as u64;
     header_words[header::DOMAIN_RECORD_COUNT] = domains.len() as u64;
+    let recovery = crate::memory::retirement::recovery::status_words(observer);
+    header_words[header::ROOT_RECOVERY_AWAITING..=header::ROOT_RECOVERY_CAPACITY]
+        .copy_from_slice(&recovery);
     for value in header_words {
         push_u64(&mut bytes, value);
     }

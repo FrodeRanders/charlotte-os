@@ -185,7 +185,7 @@ pub struct DomainIdentityInfo {
 // ---- observability wire format ---------------------------------------------
 
 pub const THREAD_STATISTICS_MAGIC: u64 = 0x3154_4154_534f_4343; // "CCOSTAT1"
-pub const THREAD_STATISTICS_VERSION: u64 = 7;
+pub const THREAD_STATISTICS_VERSION: u64 = 8;
 
 pub mod thread_statistics_header {
     pub const MAGIC: usize = 0;
@@ -206,7 +206,16 @@ pub mod thread_statistics_header {
     /// divided by `LOGICAL_PROCESSORS` times the monotonic delta is the node's
     /// CPU utilization.
     pub const CPU_BUSY_TICKS: usize = 11;
-    pub const WORDS: usize = 12;
+    /// Final-root recovery counts; zero for a caller without SystemObserver.
+    pub const ROOT_RECOVERY_AWAITING: usize = 12;
+    pub const ROOT_RECOVERY_RUNNING: usize = 13;
+    pub const ROOT_RECOVERY_LIMIT: usize = 14;
+    pub const ROOT_RECOVERY_RECOVERED: usize = 15;
+    pub const ROOT_RECOVERY_QUARANTINED: usize = 16;
+    pub const ROOT_RECOVERY_ABANDONED: usize = 17;
+    pub const ROOT_RECOVERY_REJECTED_ADMISSIONS: usize = 18;
+    pub const ROOT_RECOVERY_CAPACITY: usize = 19;
+    pub const WORDS: usize = 20;
 }
 
 pub mod thread_statistics_record {

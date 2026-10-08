@@ -19,14 +19,14 @@ use crate::{
     service::loader,
 };
 
-fn stage(handle: AddressSpaceHandle) -> RetiredAddressSpace {
+pub(super) fn stage(handle: AddressSpaceHandle) -> RetiredAddressSpace {
     match ClosingAddressSpace::begin_ready(handle).unwrap().prepare_retirement().unwrap() {
         RetirementProgress::Ready(retired) => retired,
         RetirementProgress::Pending(_) => panic!("ready fixture retirement unexpectedly pending"),
     }
 }
 
-fn assert_detached(handle: AddressSpaceHandle) {
+pub(super) fn assert_detached(handle: AddressSpaceHandle) {
     assert!(
         ADDRESS_SPACE_LIFECYCLE.try_lock().is_some(),
         "lifecycle guard leaked into final invalidation"
@@ -41,6 +41,7 @@ fn assert_detached(handle: AddressSpaceHandle) {
 }
 
 pub(crate) fn run() {
+    recovery::tests::run();
     test_retry_quiescence();
     test_live_operations();
     test_abandoned_operation();
@@ -388,8 +389,8 @@ pub(crate) fn test_runtime_recovery() {
         let owner = loader::create_user_address_space_handle();
         assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
         let retired = stage(owner);
-        let retired = retired
-            .release_retry_with(|space, handle| {
+        assert_eq!(
+            retired.release_with(|space, handle| {
                 assert_detached(handle);
                 assert_eq!(space.heap_account.pages(), 1);
                 let failure = ipis::test_incomplete_rendezvous(timeout);
@@ -399,13 +400,21 @@ pub(crate) fn test_runtime_recovery() {
                     assert!(matches!(failure, Err(ShootdownError::Delivery(_))));
                 }
                 false
-            })
-            .expect_err("unconfirmed rendezvous released root");
+            }),
+            Err(AddressSpaceCloseError::QuiescenceFailed)
+        );
         assert_detached(owner);
-        assert_eq!(retired.entry.value().heap_account.pages(), 1);
+        let status = recovery::snapshot()
+            .entries
+            .into_iter()
+            .flatten()
+            .find(|entry| entry.root == owner)
+            .unwrap();
+        assert_eq!(status.state, recovery::State::AwaitingRetry);
+        assert_eq!(status.heap_pages, 1);
         let intervening = loader::create_user_address_space_handle();
         assert_ne!(intervening.id(), owner.id());
-        assert!(retired.release_retry_with(invalidate).is_ok());
+        assert_eq!(recovery::retry(status.ticket).unwrap().state, recovery::State::Recovered);
         memory::close_user_address_space_handle(intervening).unwrap();
     }
     crate::logln!(

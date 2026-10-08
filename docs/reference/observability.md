@@ -11,6 +11,16 @@ statistics. It is intentionally split into three layers:
 
 This is a foundation, not yet a complete machine-wide monitoring system.
 
+Version 8 also adds eight final-root recovery words to the thread snapshot
+header: awaiting retry, running, retry limit, recovered, quarantined, abandoned,
+rejected admission count and registry capacity. Counts describe the fixed
+registry's current records; recovered history can be replaced by a new serial.
+They are zero for an ordinary caller snapshot. A validated `SystemObserver`
+capability exposes them through the existing `observe` `OP_THREAD_SNAPSHOT`
+owned-memory response. These read-only diagnostics grant no retry, reset or
+fence-clearing authority. HTTP/cluster history formats do not gain these fields.
+See [final-root recovery](root-recovery.md) for state and retention rules.
+
 ## Running statistics
 
 `klib::statistics::RunningStatistics` accepts `u64` samples and records:
@@ -46,7 +56,7 @@ address space. Each snapshot contains:
   (committed is what demand growth has mapped; touched is a high-water mark
   sampled at context switches).
 
-The version-7 snapshot header adds the machine-wide `free_frames` and
+The current version-8 snapshot header carries the machine-wide `free_frames` and
 `usable_frames` from the frame allocator, the online `logical_processors`
 count, and `cpu_busy_ticks`, a monotonic sum of completed slices, currently
 active slices, and retired threads' on-CPU ticks. Delta `cpu_busy_ticks` over
