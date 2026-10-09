@@ -22,10 +22,8 @@ mod budget;
 mod namespace_tests;
 mod record;
 pub(crate) mod record_tests;
-use record::{
-    PreparingRecord,
-    RetiredRecord,
-};
+use record::PreparingRecord;
+pub(crate) use record::RetiredRecord;
 
 pub type ObjectCapability = u64;
 
@@ -256,36 +254,89 @@ pub(crate) fn reserve_in_lifecycle(
 pub(crate) fn reserve_captured(
     owner: AddressSpaceId,
     kind: ObjectKind,
-    mut identity: Option<crate::memory::AddressSpaceHandle>,
+    identity: Option<crate::memory::AddressSpaceHandle>,
 ) -> Result<Reservation, AllocationError> {
-    if owner == crate::memory::KERNEL_ASID {
-        identity = None;
-    }
-    // Prepare authority storage before capability serialization or mutation.
-    // Captured callers can still own a subsystem/lifecycle guard; qualification
-    // of those outer contexts remains separate G1/G4 work.
-    let mut record = PreparingRecord::try_new()?;
-    // Preflight leaves CAPABILITIES before fallible namespace storage work.
-    let missing = identity.is_none() && !CAPABILITIES.lock().contains_key(&owner);
-    let mut prepared = if missing {
-        match prepare_namespace() {
-            Ok(namespace) => Some(namespace),
-            Err(error) => {
-                record.finish();
-                return Err(error);
-            }
-        }
-    } else {
-        None
-    };
-    let result = reserve_prepared_captured(owner, kind, identity, &mut prepared, &mut record);
-    // Another raw fixture/kernel caller may have published while preparing.
-    // Dispose only our unused private metadata after CAPABILITIES unlock.
-    if let Some(unused) = prepared {
-        unused.cancel_unpublished();
-    }
-    record.finish();
+    // Legacy captured callers may still hold outer guards. The same owner is
+    // available to split-phase adapters that prepare before those guards.
+    let mut preparation = PreparedReservation::try_new(owner, kind, identity)?;
+    let result = preparation.reserve();
+    preparation.finish();
     result
+}
+
+struct ReservationStorage {
+    owner: AddressSpaceId,
+    kind: ObjectKind,
+    identity: Option<crate::memory::AddressSpaceHandle>,
+    namespace: Option<PreparingNamespace>,
+    record: PreparingRecord,
+}
+/// Own every fallible authority allocation before local publication guards.
+/// Unused storage/charge must finish explicitly after those guards leave;
+/// abandonment retains all fields without allocation, locks or destruction.
+#[must_use]
+pub(crate) struct PreparedReservation(core::mem::ManuallyDrop<ReservationStorage>);
+impl PreparedReservation {
+    pub(crate) fn try_new(
+        owner: AddressSpaceId,
+        kind: ObjectKind,
+        mut identity: Option<crate::memory::AddressSpaceHandle>,
+    ) -> Result<Self, AllocationError> {
+        if owner == crate::memory::KERNEL_ASID {
+            identity = None;
+        }
+        let record = PreparingRecord::try_new()?;
+        let missing = identity.is_none() && !CAPABILITIES.lock().contains_key(&owner);
+        let namespace = if missing {
+            match prepare_namespace() {
+                Ok(namespace) => Some(namespace),
+                Err(error) => {
+                    record.finish();
+                    return Err(error);
+                }
+            }
+        } else {
+            None
+        };
+        Ok(Self(core::mem::ManuallyDrop::new(ReservationStorage {
+            owner,
+            kind,
+            identity,
+            namespace,
+            record,
+        })))
+    }
+
+    fn reserve(&mut self) -> Result<Reservation, AllocationError> {
+        let storage = &mut *self.0;
+        reserve_prepared_captured(
+            storage.owner,
+            storage.kind,
+            storage.identity,
+            &mut storage.namespace,
+            &mut storage.record,
+        )
+    }
+
+    /// Caller retains lifecycle and revalidates its captured root/closing fence.
+    /// This path cannot allocate, dispose storage or acquire lifecycle itself.
+    pub(crate) fn reserve_in_lifecycle(
+        &mut self,
+        _lifecycle: &LifecycleGuard<'_>,
+    ) -> Result<Reservation, AllocationError> {
+        if self.0.identity.is_some_and(|handle| !crate::memory::budget::accepting(handle)) {
+            return Err(AllocationError::Retired);
+        }
+        self.reserve()
+    }
+
+    pub(crate) fn finish(self) {
+        let storage = core::mem::ManuallyDrop::into_inner(self.0);
+        if let Some(unused) = storage.namespace {
+            unused.cancel_unpublished();
+        }
+        storage.record.finish();
+    }
 }
 
 /// Same captured admission, with storage already owned by the preparation.
@@ -577,6 +628,16 @@ pub(crate) fn node_admission_used() -> (usize, usize) {
 /// Revoke a capability if it belongs to `owner` and has the expected kind.
 pub fn remove(owner: AddressSpaceId, cap: ObjectCapability, kind: ObjectKind) -> bool {
     remove_with_state(owner, cap, kind, |state| state == EntryState::Live)
+}
+
+/// Detach only live authority into its original charged metadata owner. The
+/// caller must retain payload/root dependencies and release after local guards.
+pub(crate) fn detach(
+    owner: AddressSpaceId,
+    cap: ObjectCapability,
+    kind: ObjectKind,
+) -> Option<RetiredRecord> {
+    retire_record(owner, cap, kind, |state| state == EntryState::Live)
 }
 
 /// Trusted payload teardown can also revoke an escrowed source. Its retained

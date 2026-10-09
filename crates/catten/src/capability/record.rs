@@ -79,7 +79,7 @@ impl Drop for PreparingRecord {
 /// Detached authority retains its original entry, class/account and node.
 /// Only explicit release refunds admission; Drop quarantines the entire node.
 #[must_use]
-pub(super) struct RetiredRecord(RetiredEntry<(ObjectCapability, Entry)>);
+pub(crate) struct RetiredRecord(RetiredEntry<(ObjectCapability, Entry)>);
 impl fmt::Debug for RetiredRecord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RetiredRecord").finish_non_exhaustive()
@@ -90,7 +90,7 @@ impl RetiredRecord {
         Self(node)
     }
 
-    pub(super) fn release(self) {
+    pub(crate) fn release(self) {
         let entry_irq = crate::cpu::isa::lp::ops::get_int_state();
         record_tests::boundary(true, entry_irq);
         self.0.release();

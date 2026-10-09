@@ -70,6 +70,9 @@ struct DmaOperation {
     asid: AddressSpaceId,
     cap: DeviceCap,
     id: u64,
+    payload:
+        Option<crate::klib::collections::retirement_list::RetiredEntry<(DeviceCap, DeviceObject)>>,
+    authority: Option<crate::capability::RetiredRecord>,
 }
 
 impl DmaOperation {
@@ -121,6 +124,8 @@ impl DmaOperation {
                 asid,
                 cap,
                 id,
+                payload: None,
+                authority: None,
             }),
             Err(error) => {
                 if let Some(root) = root {
@@ -155,8 +160,8 @@ impl DmaOperation {
     /// Consume authority only after confirmed backend destruction. Keeping the
     /// original payload cell claimed avoids extracting/reallocating metadata
     /// on rejection and fences competing close/namespace cleanup on abandonment.
-    fn complete_close(self) -> Result<(), DeviceError> {
-        let entry = {
+    fn complete_close(mut self) -> Result<(), DeviceError> {
+        {
             let mut devices = DEVICES.lock();
             let DeviceObject::DmaDomain {
                 id,
@@ -168,14 +173,18 @@ impl DmaOperation {
             if *id != self.id || !*operation_in_flight {
                 return Err(DeviceError::OperationInFlight);
             }
-            assert!(crate::capability::remove(
-                self.asid,
-                self.cap,
-                crate::capability::ObjectKind::Device
-            ));
-            devices.get_mut(&self.asid).unwrap().caps.take(&self.cap).unwrap()
-        };
-        registry::release(entry);
+            self.authority = Some(
+                crate::capability::detach(
+                    self.asid,
+                    self.cap,
+                    crate::capability::ObjectKind::Device,
+                )
+                .expect("confirmed DMA close authority absent"),
+            );
+            self.payload = Some(devices.get_mut(&self.asid).unwrap().caps.take(&self.cap).unwrap());
+        }
+        registry::release(self.payload.take().unwrap());
+        registry::release_authority(self.authority.take().unwrap());
         if let Some(root) = core::mem::ManuallyDrop::into_inner(self.root) {
             root.release().map_err(operation_error)?;
         }

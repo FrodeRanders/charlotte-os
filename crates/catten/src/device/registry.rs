@@ -66,4 +66,8 @@ pub(super) fn release<K, V>(entry: RetiredEntry<(K, V)>) {
     tests::boundary(true);
     entry.release();
 }
+pub(super) fn release_authority(record: crate::capability::RetiredRecord) {
+    tests::authority_boundary(true);
+    record.release();
+}
 pub(super) mod tests;

@@ -11,6 +11,7 @@ pub(super) struct Resources {
     pub(super) address_space: Option<AddressSpaceOperation>,
     pub(super) reservation: Option<crate::capability::Reservation>,
     storage: Option<registry::PreparedStorage>,
+    authority: Option<crate::capability::PreparedReservation>,
 }
 impl GrantAdmission {
     pub(super) fn new(owner: AddressSpaceId) -> Result<Self, DeviceError> {
@@ -27,6 +28,7 @@ impl GrantAdmission {
                 address_space,
                 reservation: None,
                 storage: None,
+                authority: None,
             }),
         };
         match registry::PreparedStorage::try_new() {
@@ -34,6 +36,18 @@ impl GrantAdmission {
             Err(error) => {
                 admission.finish()?;
                 return Err(error);
+            }
+        }
+        registry::tests::authority_boundary(false);
+        match crate::capability::PreparedReservation::try_new(
+            owner,
+            crate::capability::ObjectKind::Device,
+            admission.resources.address_space.as_ref().map(AddressSpaceOperation::handle),
+        ) {
+            Ok(authority) => admission.resources.authority = Some(authority),
+            Err(error) => {
+                admission.finish()?;
+                return Err(admission_error(error));
             }
         }
         Ok(admission)
@@ -60,12 +74,12 @@ impl GrantAdmission {
         self.validate_publication()?;
         assert!(self.resources.reservation.is_none());
         self.resources.reservation = Some(
-            crate::capability::reserve_in_lifecycle(
-                self.resources.owner,
-                crate::capability::ObjectKind::Device,
-                lifecycle,
-            )
-            .map_err(admission_error)?,
+            self.resources
+                .authority
+                .as_mut()
+                .unwrap()
+                .reserve_in_lifecycle(lifecycle)
+                .map_err(admission_error)?,
         );
         Ok(())
     }
@@ -97,6 +111,13 @@ impl GrantAdmission {
     pub(super) fn finish(&mut self) -> Result<(), DeviceError> {
         if let Some(storage) = self.resources.storage.take() {
             storage.release();
+        }
+        if let Some(authority) = self.resources.authority.take() {
+            registry::tests::authority_boundary(true);
+            authority.finish();
+        }
+        if self.resources.reservation.is_some() {
+            registry::tests::authority_boundary(true);
         }
         drop(self.resources.reservation.take());
         if let Some(root) = self.resources.address_space.take() {

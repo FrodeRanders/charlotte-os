@@ -20,6 +20,7 @@ use crate::{
 pub(crate) struct PreparedNamespaceDevices<'root> {
     root: &'root ClosingAddressSpace,
     objects: Option<RetiredEntry<(AddressSpaceId, AsDeviceCaps)>>,
+    authority: Option<crate::capability::RetiredRecord>,
 }
 
 /// Produced only after every detached device has completed physical cleanup
@@ -69,6 +70,7 @@ impl<'root> PreparedNamespaceDevices<'root> {
         Ok(Self {
             root,
             objects,
+            authority: None,
         })
     }
 
@@ -132,13 +134,14 @@ impl<'root> PreparedNamespaceDevices<'root> {
                     destroy(id).map_err(|_| DeviceError::DmaInvalid)?;
                 }
             }
-            assert!(
-                crate::capability::remove(handle.id(), cap, ObjectKind::Device),
-                "retired device was absent from unified capability table"
+            self.authority = Some(
+                crate::capability::detach(handle.id(), cap, ObjectKind::Device)
+                    .expect("retired device was absent from unified capability table"),
             );
             registry::release(
                 self.objects.as_mut().unwrap().value_mut().1.caps.take(&cap).unwrap(),
             );
+            registry::release_authority(self.authority.take().unwrap());
         }
         // Only ordinary confirmed completion destroys the admitted map storage.
         // There is no hardware work, allocation, or cleanup callback in Drop.

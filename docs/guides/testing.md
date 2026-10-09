@@ -1157,9 +1157,11 @@ the [record-storage report](../reports/audits/2026-10-09-security-capability-rec
 
 ## Prepared device registry metadata
 
-First/second-node rejection for MMIO, interrupt and DMA grants must publish no
-authority/namespace payload and never reach hardware. Heap-held publication
-checks both fresh namespace linkage and reuse of existing storage. Bounded guest
+Device first/second-node and unified authority-node rejection for MMIO, interrupt
+and DMA grants must publish no authority/namespace payload and never reach
+hardware. Heap-held captured reservation/publication checks both fresh namespace
+linkage and reuse of existing storage. Device serial exhaustion retains its
+provisional original charge until post-guard completion. Bounded guest
 probes at allocated-node/disposal boundaries require backend/lifecycle/device/
 CPU-table/physical/heap availability with unchanged entry IRQ state, including
 real NVMe grants, rejected creation, close and namespace completion. Existing
@@ -1170,10 +1172,32 @@ preparation; its fixture expects `AddressSpaceClosing`.
 Host retirement-list tests trace both allocation and deallocation through ordered
 insertion, mutable iteration, failed/middle/tail detachment and relinking.
 Detached-node/list abandonment releases neither backing nor payload. Explicit
-release happens after the traced guard-equivalent interval. Unified capability
-and backend metadata, general byte/principal admission, caller context and
+release happens after the traced guard-equivalent interval. Other unified
+authority callers and backend metadata, general byte/principal admission, caller context and
 pressure/progress qualification remain separate. See the
 [device-storage evidence](../reports/audits/2026-10-09-security-device-registry-storage.md).
+
+### Device authority contexts and composed close
+
+Shared `PreparedReservation` stages unified storage inside the grant before local
+lifecycle/device/backend holds. Explicit completion checks authority preparation/
+disposal entry contexts, including real NVMe recovery, for local capability,
+lifecycle/device/backend, CPU-table and physical/heap guard availability with
+unchanged entry IRQ state. These counts are phase-entry probes, not heap leak
+balances. Existing quota, retired memory-budget, namespace retirement and exact
+generation/closing tests must still reject before hardware/publication.
+
+Non-DMA close retains one owner for exact root, descriptor, payload and retired
+authority metadata. Heap-held MMIO/IRQ claim verifies logical revocation retains
+its original charge. Scratch/direct MMIO and IRQ success keep a staged root close
+Pending until physical and metadata completion. Detach/invalidation/scratch
+rejection and guarded MMIO/IRQ abandonment retain five exact root leases, five
+original authority charges and four scratch pages; existing architecture-specific
+private-root/table backing and metadata remain retained too. No new device data
+frames are allocated. Old retained IRQ retirement cannot disable a new grant of
+the same INTID. Error injection does not fake hardware acknowledgements or a real
+timeout. There is no started-close retry or custody interface. See the
+[device-authority report](../reports/audits/2026-10-09-security-device-authority-context.md).
 
 ### DMA close claim and metadata rejection
 
@@ -1189,7 +1213,9 @@ boundaries and consumes authority exactly once after confirmed success. Existing
 shared `DmaOperation` guarded abandonment still retains root/claim; no new table,
 data-frame or root-retention fixture is added. Heap-held tests inject error codes,
 not real physical release failures or hardware timeouts. Confirmed-success
-metadata destruction and grant allocation remain open. See the
+metadata destruction and grant allocation were open at that checkpoint; the
+device-authority follow-up above qualifies their local unified boundary. Other
+callers and backend metadata remain open. See the
 [close-claim evidence](../reports/audits/2026-10-09-security-dma-close-claim.md).
 
 ### DMA map/unmap maintenance ownership

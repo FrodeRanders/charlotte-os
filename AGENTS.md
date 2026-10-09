@@ -135,14 +135,23 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   Device grants take lifecycle before device/backend registries, reserve before
   hardware creation and retain a `PreparedDmaDomain` until publication. All
   MMIO/IRQ/DMA grants share `GrantAdmission`: capture the exact root and prepare
-  both namespace/capability nodes fallibly before local publication guards or
-  hardware. Keep their admitted storage and reservation inside that owner;
+  device namespace/payload nodes and unified `PreparedReservation` storage
+  fallibly before local publication guards or hardware. Prepare against the
+  captured root, then revalidate generation, closing and original memory-budget
+  admission under lifecycle before charging/minting. Keep their admitted storage
+  and reservation inside that owner;
   publication only relinks prepared retirement-list nodes under `DEVICES`.
   Dispose unused storage/reservation metadata explicitly after guards leave.
   Detach successful close/namespace nodes into `RetiredEntry` owners and release
   outside lifecycle/device guards; abandonment retains the nodes without field
-  deallocation. Unified capability-table metadata and IOMMU backend registry
-  storage remain separate admission/destruction boundaries. Release
+  deallocation. Device close also detaches unified authority into `RetiredRecord`:
+  non-DMA `PreparedClose` retains it with exact root/descriptor/payload through
+  invalidation and scratch completion; DMA carries it in its existing operation
+  owner after confirmed backend cleanup. Dispose both metadata owners before
+  completing the root, outside local lifecycle/device guards. Failure or
+  abandonment retains the original charge and complete claim; never finish an
+  uncertain close or retry a started one. IOMMU backend registry storage and
+  other unified authority callers remain separate boundaries. Release
   lifecycle after exact root/reservation admission; revalidate the captured root
   generation and closing state under lifecycle before capability publication. DMA
   publication preparation owns the exact root operation and capability

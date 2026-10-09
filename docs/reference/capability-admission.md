@@ -250,6 +250,26 @@ namespace bytes/counts remain outside these capability-record ceilings. Count
 admission is not physical out-of-memory handling or a progress guarantee. See
 the [record-storage evidence](../reports/audits/2026-10-09-security-capability-record-storage.md).
 
+Device grants now stage a shared `PreparedReservation` inside `GrantAdmission`
+before their local lifecycle/device/backend guards. It contains record storage,
+any unused kernel namespace preparation and the captured root identity. Under
+lifecycle, reservation revalidates the exact root's memory-budget admission in
+addition to namespace generation, retirement and the device closing fence.
+Record storage/charges left by rejection finish explicitly after local guards;
+publication performs no authority allocation. The containing grant's inert
+fallback retains preparation, staged reservation and root together.
+
+Explicit device close detaches authority without destroying its node under
+device/lifecycle serialization. Non-DMA `PreparedClose` carries the retired
+record with the exact root, reset-visible MMIO claim and payload; its original
+charge survives invalidation/scratch failure and guarded abandonment. DMA's
+existing operation carries both metadata owners after confirmed backend cleanup.
+Whole-domain device cleanup carries current authority retirement in its existing
+closing-root receipt. All explicitly release metadata after their local guards
+and complete root ownership last. This qualifies these device adapters, not all
+other authority callers or enclosing syscall masks. See the
+[device-authority evidence](../reports/audits/2026-10-09-security-device-authority-context.md).
+
 ## Verification
 
 Device fixtures fill a real namespace, reject MMIO/IRQ/DMA grants and check that

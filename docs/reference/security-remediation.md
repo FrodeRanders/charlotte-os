@@ -208,6 +208,16 @@ and memory-registry unlock. Guarded preparation/retirement abandonment preserves
 two original ordinary charges through root teardown/reuse. Active token Drop and
 outer lifecycle/IPC/device contexts, backend metadata, byte/principal admission
 and pressure/concurrency remain open; SEC-07/18 and finding counts are unchanged.
+The [device authority-context follow-up](../reports/audits/2026-10-09-security-device-authority-context.md)
+now prepares unified authority inside the existing grant before its local guards,
+retaining captured generation and memory-budget policy checks. Close detaches
+authority into charged metadata owners and disposes it after device/lifecycle
+unlock; non-DMA close composes root, descriptor and both metadata owners through
+invalidation/scratch completion. Rejection/abandonment keeps five additional
+exact root leases and original authority charges in explicit terminal probes.
+Heap-held admission/detach and real NVMe metadata boundary probes qualify this
+scope. Other authority callers, backend metadata and complete outer-context,
+byte/progress/custody work remain open; finding counts are unchanged.
 The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.

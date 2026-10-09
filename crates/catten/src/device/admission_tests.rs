@@ -37,6 +37,7 @@ fn destroy_failed(id: u64) -> Result<(), dma::Error> {
 pub(crate) fn test_admission() {
     dma_tables::test_admission();
     registry::tests::run();
+    close::tests::run();
     mapping::test_admission();
     domain_creation::test_admission();
     crate::device_management::drivers::busses::pci_express::topology::reset::test_admission();

@@ -39,6 +39,16 @@ pub(super) fn boundary_after(entry_irq: bool) {
         assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), entry_irq);
     }
 }
+pub(crate) fn assert_local_available() {
+    available(|| CAPABILITIES.try_lock().is_some(), "device authority capability registry");
+    available(
+        || memory::allocators::global_allocator::PRIMARY_ALLOCATOR.try_lock().is_some(),
+        "device authority heap",
+    );
+}
+pub(crate) fn reject_next() {
+    REJECT.store(true, Ordering::Release);
+}
 fn available(mut probe: impl FnMut() -> bool, label: &'static str) {
     let deadline = crate::self_test::results::Deadline::after_millis(1000);
     while !probe() {

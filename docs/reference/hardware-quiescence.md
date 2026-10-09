@@ -131,8 +131,16 @@ make it retryable. See the [close-claim evidence](../reports/audits/2026-10-09-s
 Device payload/namespace metadata now prepares fallibly in shared `GrantAdmission`
 before local guards/hardware and detaches into post-guard owning disposal. The
 original grant retains unused nodes through reset uncertainty or abandonment;
-confirmed backend cleanup still precedes their release. Unified capability-table
-and backend registry metadata remain separate. See the
+confirmed backend cleanup still precedes their release. Device unified authority
+storage now also joins that grant before local guards. Captured generation,
+closing and memory-budget policy remain enforced under lifecycle. Close carries
+detached authority in its original charged owner through physical completion and
+disposes it after local guards, before root completion. Non-DMA `PreparedClose`
+composes descriptor, exact root and both metadata owners; uncertain MMIO and
+guarded IRQ abandonment retain the whole operation without retry or destructor
+cleanup. Other authority callers and backend registry metadata remain separate.
+See the [device-authority context evidence](../reports/audits/2026-10-09-security-device-authority-context.md)
+and the
 [device-storage evidence](../reports/audits/2026-10-09-security-device-registry-storage.md).
 
 ## Requester reset and reassignment

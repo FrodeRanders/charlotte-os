@@ -10,6 +10,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [2026-10-09 device authority preparation and retirement contexts (SEC-07/18)](audits/2026-10-09-security-device-authority-context.md)
 - [2026-10-09 prepared unified capability authority records (SEC-07/18)](audits/2026-10-09-security-capability-record-storage.md)
 - [2026-10-09 prepared unified capability namespace storage (SEC-07/18)](audits/2026-10-09-security-capability-namespace-storage.md)
 - [2026-10-09 prepared device registry storage and post-guard disposal (SEC-07/18)](audits/2026-10-09-security-device-registry-storage.md)

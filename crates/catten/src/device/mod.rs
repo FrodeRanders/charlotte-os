@@ -39,6 +39,7 @@ pub mod smmu;
 pub mod vt_d;
 
 pub(crate) mod admission_tests;
+mod close;
 mod detached_domain;
 mod dma_tables;
 mod domain_creation;
@@ -1334,20 +1335,7 @@ fn close_cap_with(
         // revalidates authority and admits the exact root before claiming.
         return mapping::close_with(asid, cap, after_claim, dma::destroy_domain);
     }
-    // Retain the exact root while closing may invalidate user mappings. Missing
-    // handles are only used by kernel fixtures; syscall callers always name a
-    // live address space.
-    let address_space = crate::memory::current_address_space_handle(asid)
-        .map(|handle| AddressSpaceOperation::acquire(handle).map_err(operation_error))
-        .transpose()?;
-    let result = close_cap_inner(asid, cap, after_claim);
-    if result == Err(DeviceError::UnmapFailed) {
-        return result;
-    }
-    if let Some(address_space) = address_space {
-        address_space.release().map_err(operation_error)?;
-    }
-    result
+    close::run(asid, cap, after_claim)
 }
 
 fn operation_error(error: OperationError) -> DeviceError {
@@ -1355,106 +1343,6 @@ fn operation_error(error: OperationError) -> DeviceError {
         OperationError::Closing => DeviceError::AddressSpaceClosing,
         _ => DeviceError::NamespaceRetired,
     }
-}
-
-fn close_cap_inner(
-    asid: AddressSpaceId,
-    cap: DeviceCap,
-    after_claim: impl FnOnce(),
-) -> Result<(), DeviceError> {
-    let lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
-    let (object, mut retired) = {
-        let mut devices = DEVICES.lock();
-        if matches!(
-            devices.get(&asid).and_then(|caps| caps.caps.get(&cap)),
-            Some(DeviceObject::Mmio(region)) if region.operation_in_flight || reset_range_claimed(region.phys_base, region.pages * PAGE_SIZE)
-        ) || matches!(
-            devices.get(&asid).and_then(|caps| caps.caps.get(&cap)),
-            Some(DeviceObject::DmaDomain {
-                operation_in_flight: true,
-                ..
-            })
-        ) {
-            return Err(DeviceError::OperationInFlight);
-        }
-        let caps = devices.get_mut(&asid).ok_or(DeviceError::UnknownCapability)?;
-        let (object, retired) = match caps.caps.get_mut(&cap) {
-            Some(DeviceObject::Mmio(region)) => {
-                // Preserve the reset-visible descriptor throughout the unlocked
-                // physical interval. Only the exclusive close claim may use
-                // this copied kernel mapping descriptor, never another cap.
-                region.operation_in_flight = true;
-                let revoked =
-                    crate::capability::remove(asid, cap, crate::capability::ObjectKind::Device);
-                assert!(revoked, "MMIO close authority was absent");
-                (DeviceObject::Mmio(*region), None)
-            }
-            Some(DeviceObject::DmaDomain {
-                ..
-            }) => return Err(DeviceError::WrongType),
-            Some(DeviceObject::Interrupt(_)) => {
-                let node = caps.caps.take(&cap).unwrap();
-                (node.value().1, Some(node))
-            }
-            None => return Err(DeviceError::UnknownCapability),
-        };
-        if let DeviceObject::Interrupt(irq) = &object {
-            // Keep the capability-table lock through route removal so a
-            // concurrent grant of the same INTID cannot publish a replacement
-            // route that this teardown then disables.
-            unroute_interrupt(irq.intid);
-        }
-        (object, retired)
-    };
-    // Authority is detached. MMIO retains a claimed reset-visible descriptor;
-    // all physical work is exclusively owned here. Root close waits on the
-    // close operation's lease before it can touch these records.
-    drop(lifecycle);
-    after_claim();
-    let mmio_close = matches!(object, DeviceObject::Mmio(_));
-    match object {
-        DeviceObject::Mmio(region) => {
-            if let Some(base) = region.mapped {
-                let mut failed = false;
-                for index in 0..region.pages {
-                    failed |= arch_unmap(asid, base + (index * PAGE_SIZE)).is_err();
-                }
-                failed |=
-                    crate::cpu::isa::memory::tlb::try_inval_range_user(asid, base, region.pages)
-                        .is_err();
-                if !failed && region.scratch_mapped {
-                    failed |=
-                        crate::memory::object::release_scratch(asid, base, region.pages).is_err();
-                }
-                if failed {
-                    // The original claimed record remains visible to reset
-                    // and close; no allocating reinsertion is needed.
-                    return Err(DeviceError::UnmapFailed);
-                }
-            }
-            retired = Some(
-                DEVICES
-                    .lock()
-                    .get_mut(&asid)
-                    .expect("leased device namespace")
-                    .caps
-                    .take(&cap)
-                    .expect("claimed MMIO disappeared"),
-            );
-        }
-        DeviceObject::Interrupt(_) => {}
-        DeviceObject::DmaDomain {
-            ..
-        } => unreachable!("DMA close uses its admitted claim owner"),
-    }
-    if !mmio_close {
-        let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Device);
-        assert!(revoked, "device payload capability was absent from unified table");
-    }
-    if let Some(node) = retired {
-        registry::release(node);
-    }
-    Ok(())
 }
 
 /// Inspection: the owning address space of the interrupt route for `intid`,
