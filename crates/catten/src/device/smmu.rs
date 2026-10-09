@@ -5,10 +5,6 @@
 //! stream tables, context descriptors, page tables, invalidation queues, and
 //! physical addresses remain kernel-private.
 
-use alloc::{
-    collections::BTreeMap,
-    vec::Vec,
-};
 use core::{
     arch::asm,
     ptr,
@@ -53,7 +49,6 @@ use crate::{
         AddressSpace,
         object::{
             self,
-            DmaPin,
         },
         physical::{
             PAddr,
@@ -147,22 +142,16 @@ impl Direction {
     }
 }
 
-struct Mapping {
-    pin: DmaPin,
-    pages: usize,
-}
-
 pub(super) struct Domain {
     retiring: bool,
     sid: u32,
     asid: u16,
     root: PAddr,
     tables: Tables,
-    l3_tables: BTreeMap<u64, PAddr>,
+    l3_tables: super::mapping_storage::WalkerCache,
     next_iova: u64,
-    mappings: BTreeMap<u64, Mapping>,
+    mappings: super::mapping_storage::Records,
     cd: PAddr,
-    quarantined_pins: Vec<DmaPin>,
 }
 
 struct Commands {
@@ -236,10 +225,9 @@ impl Domain {
             root: PAddr::from(0u64),
             cd: PAddr::from(0u64),
             tables: Tables::new(Scope::Domain),
-            l3_tables: BTreeMap::new(),
+            l3_tables: super::mapping_storage::WalkerCache::new(),
             next_iova: IOVA_START,
-            mappings: BTreeMap::new(),
-            quarantined_pins: Vec::new(),
+            mappings: super::mapping_storage::Records::new(),
         };
         let prepared = (|| {
             domain.root = domain.tables.allocate_frame()?;
@@ -279,11 +267,19 @@ impl Domain {
         &mut self.tables
     }
 
+    /// Only confirmed table cancellation/retirement permits metadata and pin release.
+    pub(super) fn dispose_metadata(self) {
+        assert!(self.tables.is_released(), "DMA metadata release before table completion");
+        self.mappings.release();
+        self.l3_tables.release();
+    }
+
     fn ensure_l3(&mut self, iova: u64) -> Result<PAddr, Error> {
         let key = iova >> 21;
         if let Some(table) = self.l3_tables.get(&key) {
             return Ok(*table);
         }
+        self.l3_tables.prepare()?;
         let indices = [
             ((iova >> 39) & 0x1ff) as usize,
             ((iova >> 30) & 0x1ff) as usize,
@@ -301,7 +297,7 @@ impl Domain {
                 next
             };
         }
-        self.l3_tables.insert(key, parent);
+        self.l3_tables.publish(key, parent);
         Ok(parent)
     }
 
@@ -310,19 +306,11 @@ impl Domain {
         pending: &mut super::mapping::PendingPin,
         direction: Direction,
     ) -> Result<u64, (Error, bool)> {
-        let pin = pending.borrow();
         if self.retiring {
             return Err((Error::UnknownDomain, false));
         }
-        if self.mappings.values().any(|mapping| mapping.pin.object_id() == pin.object_id())
-            || self.quarantined_pins.iter().any(|held| held.object_id() == pin.object_id())
-        {
-            return Err((Error::AlreadyMapped, false));
-        }
-        // Prepare enough quarantine capacity for every live mapping, before leaves.
-        if self.quarantined_pins.try_reserve(self.mappings.len() + 1).is_err() {
-            return Err((Error::Memory, false));
-        }
+        self.mappings.prepare(pending).map_err(|error| (error, false))?;
+        let pin = pending.borrow();
         let pages = pin.frames().len();
         let Some(bytes) = (pages as u64).checked_mul(PAGE_SIZE as u64) else {
             return Err((Error::OutOfIova, false));
@@ -342,7 +330,7 @@ impl Domain {
             if let Err(error) = self.map_page(address, frame, writable) {
                 for rollback_index in 0..index {
                     let rollback_address = iova + (rollback_index * PAGE_SIZE) as u64;
-                    let l3 = self.l3_tables[&(rollback_address >> 21)];
+                    let l3 = *self.l3_tables.get(&(rollback_address >> 21)).unwrap();
                     let slot = ((rollback_address >> 12) & 0x1ff) as usize;
                     unsafe { (*l3.into_hhdm_mut::<PageTable>())[slot].clear() };
                 }
@@ -352,13 +340,7 @@ impl Domain {
         }
         barrier();
         self.next_iova = next_iova;
-        self.mappings.insert(
-            iova,
-            Mapping {
-                pin: pending.take(),
-                pages,
-            },
-        );
+        self.mappings.publish(pending, iova, pages);
         Ok(iova)
     }
 
@@ -377,12 +359,15 @@ impl Domain {
         Ok(())
     }
 
-    fn clear_mapping(&mut self, iova: u64) -> Result<Mapping, Error> {
+    fn clear_mapping(
+        &mut self,
+        iova: u64,
+    ) -> Result<super::mapping_storage::RetiredMapping, Error> {
         if self.retiring {
             return Err(Error::UnknownDomain);
         }
-        let mapping = self.mappings.remove(&iova).ok_or(Error::UnknownMapping)?;
-        for index in 0..mapping.pages {
+        let mapping = self.mappings.take(iova).ok_or(Error::UnknownMapping)?;
+        for index in 0..mapping.value().1.pages {
             let address = iova + (index * PAGE_SIZE) as u64;
             let l3 = *self
                 .l3_tables
@@ -799,8 +784,7 @@ pub(super) fn map_at(
                         .invalidate_asid(owner.held.domain.value_mut().asid)
                         .is_err()
                 {
-                    let pin = owner.pending.take();
-                    owner.held.domain.value_mut().quarantined_pins.push(pin);
+                    owner.held.domain.value_mut().mappings.quarantine(&mut owner.pending);
                 }
             }
             Err(error)
@@ -843,7 +827,7 @@ pub(super) fn unmap_at(
     let result = match owner.held.domain.value_mut().clear_mapping(iova) {
         Err(error) => Err(error),
         Ok(mapping) => {
-            owner.pending.retain(mapping.pin);
+            owner.pending.retain_record(mapping);
             before_completion(super::mapping::Phase::Unmap);
             let completed = if super::test_reject_unmap_completion() {
                 Err(Error::HardwareTimeout)
@@ -854,8 +838,7 @@ pub(super) fn unmap_at(
                 // Quarantine storage was admitted before the original map.
                 // Never allocate an error-path reinsertion node or release
                 // a data pin without the backend's actual completion proof.
-                let pin = owner.pending.take();
-                owner.held.domain.value_mut().quarantined_pins.push(pin);
+                owner.held.domain.value_mut().mappings.quarantine(&mut owner.pending);
             }
             completed
         }
@@ -931,12 +914,7 @@ pub(super) fn destroy_domain_at(
         return Err(error);
     }
     let domain = detached.into_inner();
-    for mapping in domain.mappings.into_values() {
-        object::unpin_dma(mapping.pin);
-    }
-    for pin in domain.quarantined_pins {
-        object::unpin_dma(pin);
-    }
+    domain.dispose_metadata();
     let retired = with_registered(|smmu| {
         assert!(matches!(smmu.domains.get(&domain_id), Some(None)), "claimed domain replaced");
         assert_eq!(smmu.streams.get(&sid), Some(&domain_id));
@@ -1074,14 +1052,12 @@ pub(super) fn test_with_backend_locked(action: impl FnOnce()) {
 
 /// Private typed payload with real tables/metadata, never in the registry.
 pub(super) fn test_private_domain() -> super::private_domain::PrivateDomain {
-    let mut domain =
-        Domain::new(1, 0, 5, Some(0xfee0_0000)).unwrap_or_else(|(error, mut owner)| {
-            owner.value_mut().tables.cancel_private().unwrap();
-            drop(owner.into_inner());
-            panic!("private retention fixture failed: {:?}", error)
-        });
+    let domain = Domain::new(1, 0, 5, Some(0xfee0_0000)).unwrap_or_else(|(error, mut owner)| {
+        owner.value_mut().tables.cancel_private().unwrap();
+        owner.into_inner().dispose_metadata();
+        panic!("private retention fixture failed: {:?}", error)
+    });
 
-    domain.quarantined_pins.try_reserve(2).unwrap();
     super::private_domain::PrivateDomain::Smmu(super::detached_domain::DetachedDomain::new(domain))
 }
 
@@ -1091,14 +1067,17 @@ pub(super) fn test_table_admission() {
     let data = crate::memory::PreparingUserFrame::allocate_zeroed().unwrap();
     let mut domain = Domain::new(1, 0, 5, None).unwrap_or_else(|(error, mut domain)| {
         domain.value_mut().tables.cancel_private().unwrap();
-        drop(domain.into_inner());
+        domain.into_inner().dispose_metadata();
         panic!("private walker preparation rejected: {:?}", error)
     });
     let initial = domain.tables.pages();
+    super::mapping_storage::tests::reject_next(2);
+    assert_eq!(domain.map_page(0x4000_0000, data.frame(), true), Err(Error::Memory));
+    assert_eq!(domain.tables.pages(), initial);
     domain.tables.set_limit(initial + 3);
     domain.map_page(0x4000_0000, data.frame(), true).unwrap();
     assert_eq!(domain.tables.pages(), initial + 3);
-    let l3 = domain.l3_tables[&(0x4000_0000 >> 21)];
+    let l3 = *domain.l3_tables.get(&(0x4000_0000 >> 21)).unwrap();
     unsafe { (*l3.into_hhdm_mut::<PageTable>())[0].clear() };
     domain.map_page(0x4000_0000, data.frame(), false).unwrap();
     assert_eq!(domain.tables.pages(), initial + 3);
@@ -1110,7 +1089,8 @@ pub(super) fn test_table_admission() {
     domain.tables.set_limit(initial + 5);
     domain.map_page(0x8000_0000, data.frame(), true).unwrap();
     assert_eq!(domain.tables.pages(), initial + 5);
-    domain.tables.cancel_unpublished().unwrap();
+    domain.tables.cancel_private().unwrap();
+    domain.dispose_metadata();
     assert_eq!(super::dma_tables::used(), baseline);
     data.release().unwrap();
 }

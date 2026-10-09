@@ -165,6 +165,7 @@ pub(crate) fn run() {
     };
     registry::tests::begin_real();
     backend_registry::tests::begin_real();
+    mapping_storage::tests::begin_real();
     crate::capability::record_tests::begin_real();
     let owner = crate::service::loader::create_user_address_space_handle();
     let mmio = grant_mmio(owner.id(), base, 4).unwrap();
@@ -221,6 +222,23 @@ pub(crate) fn run() {
     })
     .unwrap();
     mmio_map_any(owner.id(), mmio, true).unwrap();
+    let stages = if cfg!(target_arch = "aarch64") {
+        2
+    } else {
+        1
+    };
+    for stage in 1..=stages {
+        let rejected = object::allocate(owner.id(), 1).unwrap();
+        let before = dma_tables::used();
+        mapping_storage::tests::reject_next(stage);
+        assert_eq!(dma_map(owner.id(), domain, rejected, 3), Err(DeviceError::DmaInvalid));
+        assert_eq!(dma_tables::used(), before);
+        object::try_close_cap(owner.id(), rejected).unwrap();
+    }
+    crate::logln!(
+        "[DMA metadata rejection] mapping/walker admission rejected before new table/data leaves; \
+         exact pin cleanup and unchanged table charges; same domain remains usable"
+    );
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     let mut mapped = 0;
     let address = mapping::with_operation(owner.id(), domain, |id| {
@@ -642,6 +660,7 @@ pub(crate) fn run() {
     );
     reset::tests::finish_real();
     backend_registry::tests::finish_real();
+    mapping_storage::tests::finish_real();
     registry::tests::finish_real();
     crate::capability::record_tests::finish_real();
     crate::logln!(

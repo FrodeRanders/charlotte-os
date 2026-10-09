@@ -237,6 +237,10 @@ impl Tables {
         self.state == State::Published && !self.uncertain
     }
 
+    pub(super) fn is_released(&self) -> bool {
+        self.state == State::Released
+    }
+
     /// Backend must first detach authority and confirm all configuration/TLB
     /// maintenance/drains. Shared unit backing has no production release path.
     pub(super) fn release(&mut self) -> Result<(), Error> {

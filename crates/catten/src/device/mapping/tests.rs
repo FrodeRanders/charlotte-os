@@ -1,8 +1,11 @@
 //! Synthetic containing-owner evidence, separate from real QEMU maintenance.
 use super::*;
-use crate::device::dma_tables::{
-    Scope,
-    Tables,
+use crate::{
+    device::dma_tables::{
+        Scope,
+        Tables,
+    },
+    memory::object,
 };
 
 fn destroy_fake(id: u64) -> Result<(), dma::Error> {
@@ -25,6 +28,8 @@ fn grant(root: crate::memory::AddressSpaceHandle) -> DeviceCap {
 struct Payload {
     _tables: Tables,
     _metadata: alloc::vec::Vec<u64>,
+    #[cfg(target_arch = "aarch64")]
+    _walker: super::super::mapping_storage::WalkerCache,
 }
 
 pub(super) fn run() {
@@ -148,18 +153,32 @@ pub(super) fn run() {
     let pin = object::pin_for_dma(root.id(), memory, true, true, false).unwrap();
     let baseline = crate::device::dma_tables::used();
     let mut tables = Tables::new(Scope::Domain);
-    tables.allocate_frame().unwrap();
+    let frame = tables.allocate_frame().unwrap();
+    #[cfg(target_arch = "x86_64")]
+    let _ = frame;
+    #[cfg(target_arch = "aarch64")]
+    let walker = {
+        // Metadata fixture borrows this retained table; no hardware walk occurs.
+        let mut walker = super::super::mapping_storage::WalkerCache::new();
+        walker.prepare().unwrap();
+        walker.publish(1, frame);
+        walker.prepare().unwrap(); // Partial-walk storage retains with the domain.
+        walker
+    };
     tables.publish(); // Synthetic state; no hardware-visible base.
-    let owner = MappingMaintenance::new(
+    let mut owner = MappingMaintenance::new(
         Maintenance::new(
             Payload {
                 _tables: tables,
                 _metadata: alloc::vec![0x444d_415f_5049_4e53u64],
+                #[cfg(target_arch = "aarch64")]
+                _walker: walker,
             },
             alloc::vec![0x454e_4749_4e45u64],
         ),
         PendingPin::new(Some(pin)),
     );
+    owner.pending.prepare().unwrap();
     crate::device::dma_tables::test_drop_under_guards(|| {
         let _devices = DEVICES.lock();
         drop(owner);

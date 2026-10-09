@@ -48,8 +48,8 @@ unpublished state, freezes before physical release, then refunds confirmed
 backing and disposes metadata. Only afterward may the grant refund authority and
 complete its root. Failure returns the complete frozen payload; Drop retains
 every field, original charge, root and reservation without cleanup. There is no
-hardware completion to retry for never hardware-published backing. Per-domain
-mapping/walker metadata admission remains separate.
+hardware completion to retry for never hardware-published backing. Ordinary
+confirmed cancellation now also disposes admitted mapping/cache metadata.
 
 The backend marks domain/unit tables published before the first hardware-visible
 context, DTE, STE or base-register write. Publication also rejects uncertain
@@ -80,8 +80,9 @@ retirement. A failed branch returns a mapping error rather than bypassing quota.
 A failed multi-page map clears only its installed data-leaf prefix. If any data
 leaf was installed, the backend must confirm existing IOTLB drain/ASID maintenance
 before releasing the data pin. Rejected completion retains the pin in the exact
-domain; duplicate maps of that object reject. Quarantine capacity is prepared
-fallibly before any data leaf publication. A later confirmed domain retirement
+domain; duplicate maps of that object reject. Its original mapping node is prepared
+fallibly before any data leaf publication and relinked into quarantine. A later
+confirmed domain retirement
 releases both ordinary mappings and retained pins outside backend serialization.
 This also covers table-admission failure in the middle of a buffer.
 
@@ -168,7 +169,7 @@ slot fence. No registry, queue snapshot or scalar replay is introduced.
 Explicit destruction and published creation rejection use unlocked maintenance/
 physical cleanup; physical finalization uses the registered-state hold even if
 another domain owns the command engine. Complete outer-context qualification,
-per-domain mapping/walker metadata admission and abandoned-owner recovery remain
+general ledger/heap metadata admission and abandoned-owner recovery remain
 separate work. No quota override or partial-release retry is introduced.
 
 QEMU reset now retains the exact endpoint config/BAR/ECAM claim inside the same
@@ -230,9 +231,40 @@ See the [backend-storage evidence](../reports/audits/2026-10-09-security-backend
 The metadata-only guarded grant fixture retains one additional exact root lease,
 one original authority reservation/charge and unused metadata nodes, without new
 IOMMU table or DMA data-frame charge. Existing table-only totals remain VT-d
-38/29, AMD-Vi 34/25 and SMMUv3 40/31 charges/frames. Per-domain mapping maps,
-SMMU walker maps, quarantine/ledger collections, general heap accounting and
-complete outer contexts still need qualification.
+38/29, AMD-Vi 34/25 and SMMUv3 40/31 charges/frames. Per-domain mapping/cache
+storage is addressed below; table ledger collections, general heap accounting
+and complete outer contexts still need qualification.
+
+### Mapping records and walker cache
+
+All three backends share `mapping_storage::Records` and the existing
+`PendingPin`/`MappingMaintenance` owners. A fallible admitted node joins its exact
+pin before data leaves. Successful publication only relinks that node; unmap
+detaches the original record and carries its pin/pages/storage through typed
+hardware completion. Failed unmap relinks the same node into an admitted
+quarantine list. Failed prefix cleanup consumes its pre-leaf node into that list.
+No growing quarantine vector, replacement node or teardown snapshot is needed.
+Duplicate mapping checks include quarantine. Ordinary unstarted failure or
+confirmed completion restores exact backend state before explicit post-guard
+unpin and node disposal. Abandonment retains both fields in the containing owner.
+
+SMMU leaf-table cache misses admit a node before allocating or linking a new
+branch. Completed cache publication only relinks storage, before the data leaf.
+Partial sparse walks retain their unused node in the same domain and may reuse
+it for a later cache miss, while linked frames remain charged. This is ordinary
+walk continuation, not physical-retirement retry. Cached and unused metadata
+stay until confirmed private cancellation or successful domain-table release;
+explicit disposal checks the table owner's Released state. Failure/abandonment
+retains the whole cache and original table charges without heap work in Drop.
+
+See the [mapping metadata evidence](../reports/audits/2026-10-10-security-dma-metadata-storage.md).
+Guarded mapping-owner abandonment now includes an unused mapping node and, on
+Arm, cached plus unused walker nodes in its existing complete transaction. No
+additional root, authority, table charge or data-frame retention is introduced;
+the existing fixture retains one domain table, two data frames and its exact root.
+Storage is fallible, but there is no new byte/principal ceiling or progress proof.
+Table ledger collections, broader metadata/outer contexts, concurrent pressure
+and abandoned-owner custody remain separate work.
 
 ## Evidence and limits
 

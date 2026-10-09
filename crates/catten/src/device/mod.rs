@@ -45,6 +45,7 @@ mod detached_domain;
 mod dma_tables;
 mod domain_creation;
 mod mapping;
+mod mapping_storage;
 mod private_domain;
 mod publication;
 mod registry;

@@ -506,7 +506,7 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   succeed. Partial physical release freezes the owner and whole charge; never
   retry freed tables or refund by reusable IDs. Empty branches stay charged and
   cached until retirement. Failed data-leaf prefixes require confirmed hardware
-  completion before pin release; prepare quarantine capacity before publication,
+  completion before pin release; prepare owning mapping storage before publication,
   retain rejected pins, and consume teardown collections outside backend guards
   without allocating snapshots. Table/region fallback retains original backing,
   charges and ledger storage without entering physical/heap allocators, pools,
@@ -566,8 +566,17 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   domain cell and nonzero source through physical tables and all data unpins;
   detach only then and dispose its node after backend unlock. Explicitly finish
   unused nodes only after confirmed grant rollback or publication and guard
-  release; Drop retains them. Per-domain mapping/walker metadata, byte/principal
-  admission and wider contexts remain separate.
+  release; Drop retains them. Per-domain mappings use shared admitted records:
+  `PendingPin` owns pin and unused/detached node through the containing maintenance.
+  Prepare before data leaves; failed prefix consumes that node and failed unmap
+  relinks its original node into quarantine without allocation. Restore exact
+  backend state before confirmed post-guard unpin and metadata release. SMMU
+  cache misses prepare metadata before branch allocation/linking; partial walks
+  retain unused storage in that same domain for later cache admission. Dispose
+  cached/unused nodes only after confirmed private cancellation or domain-table
+  release, never by field Drop. Metadata does not prove hardware completion or
+  authorize physical retry. Table ledgers, general heap/principal admission and
+  wider contexts remain separate.
   Intel cannot overwrite
   a busy invalidation register; AMD and SMMU retain their existing exact completion
   and unconsumed queue contracts.

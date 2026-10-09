@@ -1,6 +1,6 @@
 # Security remediation status and completion criteria
 
-Updated 2026-10-09, following the two security audits and subsequent fixes.
+Updated 2026-10-10, following the two security audits and subsequent fixes.
 Source and tests remain authoritative. Historical reports preserve the state at
 their own revision; their remaining-work paragraphs are not a current backlog.
 
@@ -229,6 +229,16 @@ charge. Real node rejection and allocation/disposal entry probes qualify this
 scope. Per-domain mapping/walker metadata, other authority callers, general heap/
 principal admission, wider contexts, concurrency and custody remain open; SEC-07/18
 and finding counts are unchanged.
+The [mapping/cache metadata follow-up](../reports/audits/2026-10-10-security-dma-metadata-storage.md)
+now prepares shared mapping nodes before data leaves, retaining the exact pin
+and original node through detached maintenance or allocation-free quarantine.
+SMMU cache misses admit metadata before branch linking and retain unused storage
+through partial walks; confirmed table completion permits post-guard disposal.
+Guarded complete-owner retention includes the new nodes without adding root,
+authority, table or data-frame retention. Heap-held adapters and real node
+rejection/context probes qualify the local storage boundary. Table ledgers,
+other authority callers, broader heap/principal admission, enclosing contexts,
+concurrency and custody remain open. SEC-07/18 and finding counts are unchanged.
 The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.

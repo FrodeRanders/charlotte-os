@@ -55,17 +55,17 @@ impl PrivateDomain {
     fn dispose(self) {
         match self {
             #[cfg(target_arch = "x86_64")]
-            Self::Vtd(domain) => drop(domain.into_inner()),
+            Self::Vtd(domain) => domain.into_inner().dispose_metadata(),
             #[cfg(target_arch = "x86_64")]
-            Self::AmdVi(domain) => drop(domain.into_inner()),
+            Self::AmdVi(domain) => domain.into_inner().dispose_metadata(),
             #[cfg(target_arch = "aarch64")]
-            Self::Smmu(domain) => drop(domain.into_inner()),
+            Self::Smmu(domain) => domain.into_inner().dispose_metadata(),
         }
     }
 }
 
 // Variant payloads use ManuallyDrop through DetachedDomain. No automatic table,
-// BTreeMap, vector, pin or ledger destruction runs on error/abandonment.
+// mapping/cache node, pin or ledger destruction runs on error/abandonment.
 
 pub(super) fn test_admission() {
     tests::run();

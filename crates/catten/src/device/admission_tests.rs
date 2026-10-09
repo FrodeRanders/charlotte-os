@@ -38,6 +38,7 @@ pub(crate) fn test_admission() {
     dma_tables::test_admission();
     registry::tests::run();
     backend_registry::tests::run();
+    mapping_storage::tests::run();
     close::tests::run();
     mapping::test_admission();
     domain_creation::test_admission();

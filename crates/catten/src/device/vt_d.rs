@@ -14,10 +14,6 @@
 //! non-contiguous physical frames are transparently re-mapped into a
 //! contiguous IOVA range.
 
-use alloc::{
-    collections::BTreeMap,
-    vec::Vec,
-};
 use core::{
     ptr,
     sync::atomic::{
@@ -51,7 +47,6 @@ use crate::{
         AddressSpace,
         object::{
             self,
-            DmaPin,
         },
         physical::{
             PAddr,
@@ -110,11 +105,6 @@ pub use super::dma_common::{
     Error,
 };
 
-struct Mapping {
-    pin: DmaPin,
-    pages: usize,
-}
-
 pub(super) struct Domain {
     retiring: bool,
     source_id: u16,
@@ -123,8 +113,7 @@ pub(super) struct Domain {
     root: PAddr,
     tables: Tables,
     next_iova: u64,
-    mappings: BTreeMap<u64, Mapping>,
-    quarantined_pins: Vec<DmaPin>,
+    mappings: super::mapping_storage::Records,
 }
 
 impl Domain {
@@ -142,8 +131,7 @@ impl Domain {
             root: PAddr::from(0u64),
             tables: Tables::new(Scope::Domain),
             next_iova: IOVA_START,
-            mappings: BTreeMap::new(),
-            quarantined_pins: Vec::new(),
+            mappings: super::mapping_storage::Records::new(),
         };
         let prepared = (|| {
             domain.root = domain.tables.allocate_frame()?;
@@ -161,6 +149,12 @@ impl Domain {
 
     pub(super) fn private_tables(&mut self) -> &mut Tables {
         &mut self.tables
+    }
+
+    /// Only confirmed table cancellation/retirement permits metadata and pin release.
+    pub(super) fn dispose_metadata(self) {
+        assert!(self.tables.is_released(), "DMA metadata release before table completion");
+        self.mappings.release();
     }
 
     fn map_page(&mut self, iova: u64, frame: PAddr, writable: bool) -> Result<(), Error> {
@@ -217,19 +211,11 @@ impl Domain {
         pending: &mut super::mapping::PendingPin,
         direction: Direction,
     ) -> Result<u64, (Error, bool)> {
-        let pin = pending.borrow();
         if self.retiring {
             return Err((Error::UnknownDomain, false));
         }
-        if self.mappings.values().any(|mapping| mapping.pin.object_id() == pin.object_id())
-            || self.quarantined_pins.iter().any(|held| held.object_id() == pin.object_id())
-        {
-            return Err((Error::AlreadyMapped, false));
-        }
-        // Prepare enough quarantine capacity for every live mapping, before leaves.
-        if self.quarantined_pins.try_reserve(self.mappings.len() + 1).is_err() {
-            return Err((Error::Memory, false));
-        }
+        self.mappings.prepare(pending).map_err(|error| (error, false))?;
+        let pin = pending.borrow();
         let pages = pin.frames().len();
         let Some(bytes) = (pages as u64).checked_mul(PAGE_SIZE as u64) else {
             return Err((Error::OutOfIova, false));
@@ -254,22 +240,19 @@ impl Domain {
             }
         }
         self.next_iova = next_iova;
-        self.mappings.insert(
-            iova,
-            Mapping {
-                pin: pending.take(),
-                pages,
-            },
-        );
+        self.mappings.publish(pending, iova, pages);
         Ok(iova)
     }
 
-    fn clear_mapping(&mut self, iova: u64) -> Result<Mapping, Error> {
+    fn clear_mapping(
+        &mut self,
+        iova: u64,
+    ) -> Result<super::mapping_storage::RetiredMapping, Error> {
         if self.retiring {
             return Err(Error::UnknownDomain);
         }
-        let mapping = self.mappings.remove(&iova).ok_or(Error::UnknownMapping)?;
-        for index in 0..mapping.pages {
+        let mapping = self.mappings.take(iova).ok_or(Error::UnknownMapping)?;
+        for index in 0..mapping.value().1.pages {
             self.clear_page(iova + (index * PAGE_SIZE) as u64);
         }
         Ok(mapping)
@@ -778,8 +761,7 @@ pub(super) fn map_at(
                 if super::test_reject_map_rollback()
                     || owner.held.commands.value_mut().flush_iotlb().is_err()
                 {
-                    let pin = owner.pending.take();
-                    owner.held.domain.value_mut().quarantined_pins.push(pin);
+                    owner.held.domain.value_mut().mappings.quarantine(&mut owner.pending);
                 }
             }
             Err(error)
@@ -795,11 +777,10 @@ pub(super) fn map_at(
                         .value_mut()
                         .clear_mapping(iova)
                         .expect("new mapping disappeared during rollback");
-                    owner.pending.retain(mapping.pin);
+                    owner.pending.retain_record(mapping);
                     before_completion(super::mapping::Phase::Rollback);
                     if owner.held.commands.value_mut().flush_iotlb().is_err() {
-                        let pin = owner.pending.take();
-                        owner.held.domain.value_mut().quarantined_pins.push(pin);
+                        owner.held.domain.value_mut().mappings.quarantine(&mut owner.pending);
                     }
                     Err(error)
                 }
@@ -827,7 +808,7 @@ pub(super) fn unmap_at(
     let result = match owner.held.domain.value_mut().clear_mapping(iova) {
         Err(error) => Err(error),
         Ok(mapping) => {
-            owner.pending.retain(mapping.pin);
+            owner.pending.retain_record(mapping);
             before_completion(super::mapping::Phase::Unmap);
             let completed = if super::test_reject_unmap_completion() {
                 Err(Error::HardwareTimeout)
@@ -838,8 +819,7 @@ pub(super) fn unmap_at(
                 // Quarantine storage was admitted before the original map.
                 // Never allocate an error-path reinsertion node or release
                 // a data pin without the backend's actual completion proof.
-                let pin = owner.pending.take();
-                owner.held.domain.value_mut().quarantined_pins.push(pin);
+                owner.held.domain.value_mut().mappings.quarantine(&mut owner.pending);
             }
             completed
         }
@@ -916,12 +896,7 @@ pub(super) fn destroy_domain_at(
         return Err(error);
     }
     let domain = detached.into_inner();
-    for mapping in domain.mappings.into_values() {
-        object::unpin_dma(mapping.pin);
-    }
-    for pin in domain.quarantined_pins {
-        object::unpin_dma(pin);
-    }
+    domain.dispose_metadata();
     let retired = with_registered(|unit| {
         assert!(matches!(unit.domains.get(&domain_id), Some(None)), "claimed domain replaced");
         assert_eq!(unit.sources.get(&source_id), Some(&domain_id));
@@ -1040,13 +1015,12 @@ pub(super) fn test_with_backend_locked(action: impl FnOnce()) {
 
 /// Private typed payload with real tables/metadata, never in the registry.
 pub(super) fn test_private_domain() -> super::private_domain::PrivateDomain {
-    let mut domain = Domain::new(0, 48, Some(0xfee0_0000)).unwrap_or_else(|(error, mut owner)| {
+    let domain = Domain::new(0, 48, Some(0xfee0_0000)).unwrap_or_else(|(error, mut owner)| {
         owner.value_mut().tables.cancel_private().unwrap();
-        drop(owner.into_inner());
+        owner.into_inner().dispose_metadata();
         panic!("private retention fixture failed: {:?}", error)
     });
 
-    domain.quarantined_pins.try_reserve(2).unwrap();
     super::private_domain::PrivateDomain::Vtd(super::detached_domain::DetachedDomain::new(domain))
 }
 
@@ -1056,7 +1030,7 @@ pub(super) fn test_table_admission() {
     let data = crate::memory::PreparingUserFrame::allocate_zeroed().unwrap();
     let mut domain = Domain::new(0, 48, None).unwrap_or_else(|(error, mut domain)| {
         domain.value_mut().tables.cancel_private().unwrap();
-        drop(domain.into_inner());
+        domain.into_inner().dispose_metadata();
         panic!("private walker preparation rejected: {:?}", error)
     });
     let initial = domain.tables.pages();
@@ -1074,7 +1048,8 @@ pub(super) fn test_table_admission() {
     domain.tables.set_limit(initial + 5);
     domain.map_page(0x8000_0000, data.frame(), true).unwrap();
     assert_eq!(domain.tables.pages(), initial + 5);
-    domain.tables.cancel_unpublished().unwrap();
+    domain.tables.cancel_private().unwrap();
+    domain.dispose_metadata();
     assert_eq!(super::dma_tables::used(), baseline);
     data.release().unwrap();
 }

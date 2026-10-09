@@ -31,7 +31,7 @@ fn available(mut probe: impl FnMut() -> bool, label: &'static str) {
         core::hint::spin_loop();
     }
 }
-pub(super) fn boundary(dispose: bool) {
+pub(in crate::device) fn boundary(dispose: bool) {
     if !ACTIVE.load(Ordering::Acquire) {
         return;
     }

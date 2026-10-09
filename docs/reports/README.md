@@ -10,6 +10,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [2026-10-10 admitted DMA mapping records and SMMU walker cache (SEC-07/18)](audits/2026-10-10-security-dma-metadata-storage.md)
 - [2026-10-09 admitted IOMMU backend registry storage (SEC-07/18)](audits/2026-10-09-security-backend-registry-storage.md)
 - [2026-10-09 device authority preparation and retirement contexts (SEC-07/18)](audits/2026-10-09-security-device-authority-context.md)
 - [2026-10-09 prepared unified capability authority records (SEC-07/18)](audits/2026-10-09-security-capability-record-storage.md)

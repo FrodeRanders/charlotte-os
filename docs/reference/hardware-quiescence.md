@@ -149,9 +149,19 @@ backing. Publication relinks admitted nodes; confirmed reset reuses the original
 zero fence in place. Destruction retains the empty cell/nonzero requester through
 table release and every data unpin, then detaches its node for post-guard disposal.
 Partial preparation and abandonment retain the exact grant; metadata retention
-does not authorize retry or hardware access. Per-domain mapping/walker metadata,
-wider contexts and byte/principal admission remain separate. See the
+does not authorize retry or hardware access. Wider contexts and byte/principal
+admission remain separate. See the
 [backend-storage evidence](../reports/audits/2026-10-09-security-backend-registry-storage.md).
+
+Mapping/pin metadata now uses admitted nodes shared across all three backends.
+Prepare before data leaves; unmap carries its original detached node through
+maintenance, while rejected cleanup relinks into quarantine without allocating.
+SMMU cache misses admit metadata before new branch links and retain unused
+storage through partial walks. Confirmed completion disposes original records
+outside backend guards; domain cache disposal also requires confirmed table
+release. Drop retains the containing operation and all unfinished metadata.
+These nodes provide ownership, not a hardware acknowledgement or new retry policy.
+See the [mapping metadata evidence](../reports/audits/2026-10-10-security-dma-metadata-storage.md).
 
 ## Requester reset and reassignment
 

@@ -1,15 +1,9 @@
 //! Public DMA map/unmap/close lease their exact root and claim the capability;
 //! backend maintenance separately owns the actual domain/engine and data pin.
+pub(super) use super::mapping_storage::PendingPin;
 use super::{
-    detached_domain::{
-        DetachedDomain,
-        Maintenance,
-    },
+    detached_domain::Maintenance,
     *,
-};
-use crate::memory::object::{
-    self,
-    DmaPin,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,34 +11,6 @@ pub(super) enum Phase {
     Map,
     Rollback,
     Unmap,
-}
-
-#[must_use]
-pub(super) struct PendingPin(DetachedDomain<Option<DmaPin>>);
-
-impl PendingPin {
-    pub(super) fn new(pin: Option<DmaPin>) -> Self {
-        Self(DetachedDomain::new(pin))
-    }
-
-    pub(super) fn borrow(&mut self) -> &DmaPin {
-        self.0.value_mut().as_ref().expect("missing DMA pin")
-    }
-
-    pub(super) fn take(&mut self) -> DmaPin {
-        self.0.value_mut().take().expect("DMA pin consumed twice")
-    }
-
-    pub(super) fn retain(&mut self, pin: DmaPin) {
-        assert!(self.0.value_mut().is_none(), "pending DMA pin replaced");
-        *self.0.value_mut() = Some(pin);
-    }
-
-    pub(super) fn release(self) {
-        if let Some(pin) = self.0.into_inner() {
-            object::unpin_dma(pin);
-        }
-    }
 }
 
 #[must_use]

@@ -1231,6 +1231,27 @@ device-authority follow-up above qualifies their local unified boundary. Other
 callers and backend metadata remain open. See the
 [close-claim evidence](../reports/audits/2026-10-09-security-dma-close-claim.md).
 
+### DMA mapping and walker metadata
+
+Metadata adapters reject mapping-node preparation before publication and require
+pin cleanup, then publish/detach/relink into quarantine with the actual heap held.
+The failed-unmap node retains its exact value address; duplicate mapping and
+premature memory close reject. Confirmed private completion releases pin/storage.
+Arm adapters also reject walker-node admission, publish cache metadata under the
+heap hold and reuse one unused node across partial preparation. Private sparse
+walkers test cache-node rejection before any new table charge, partial table
+prefix retention, cached reuse and successful continuation.
+
+Real NVMe map rejection covers the mapping node on all targets and walker node
+on Arm, requiring unchanged table charges and successful exact-memory close;
+the same domain then passes map/unmap and rejected-completion retirement.
+Metadata allocation/disposal entry probes require local guard availability with
+preserved IRQ state. Existing guarded `MappingMaintenance`/public operation
+abandonment now includes unused mapping storage and Arm cached/unused walker
+nodes, with unchanged one-table/two-data-frame/exact-root retention. This is
+serialized injection, not real OOM, panic unwinding or cross-LP pressure. See the
+[mapping metadata report](../reports/audits/2026-10-10-security-dma-metadata-storage.md).
+
 ### DMA map/unmap maintenance ownership
 
 The real NVMe fixture probes successful map/unmap and rejected sparse-prefix
