@@ -283,8 +283,8 @@ struct Unit {
     devtab: PAddr,
     _tables: Tables,
     next_domain: u64,
-    domains: BTreeMap<u64, Option<Domain>>,
-    sources: BTreeMap<u16, u64>,
+    domains: super::registry::Map<u64, Option<Domain>>,
+    sources: super::registry::Map<u16, u64>,
 }
 
 impl Unit {
@@ -407,8 +407,8 @@ fn initialize(
         devtab: PAddr::from(0u64),
         _tables: Tables::new(Scope::Unit),
         next_domain: 1,
-        domains: BTreeMap::new(),
-        sources: BTreeMap::new(),
+        domains: super::registry::Map::new(),
+        sources: super::registry::Map::new(),
     });
     let unit = owner.value_mut();
     let mut rollback_private = true;
@@ -501,13 +501,21 @@ pub(crate) fn create_domain_with_reset(
         },
         |unit, creation| {
             let source_id = u16::try_from(sid).map_err(|_| Error::InvalidStream)?;
+            if unit.sources.get(&source_id).is_some_and(|id| *id != 0) {
+                return Err(Error::StreamInUse);
+            }
+            let id = unit.next_domain;
+            let next = id.checked_add(1).ok_or(Error::MapFailed)?;
+            creation.metadata = Some(super::backend_registry::Preparing::AmdVi(
+                super::backend_registry::Nodes::new(!unit.sources.contains_key(&source_id), false),
+            ));
+            creation.metadata.as_mut().unwrap().allocate()?;
             match unit.sources.get(&source_id) {
                 Some(0) => reset(true, creation)?,
                 Some(_) => return Err(Error::StreamInUse),
                 None => reset(false, creation)?,
             }
-            let id = unit.next_domain;
-            unit.next_domain = unit.next_domain.checked_add(1).ok_or(Error::MapFailed)?;
+            unit.next_domain = next;
             super::domain_creation::boundary(super::domain_creation::Phase::Allocate);
             let domain = match Domain::new(source_id) {
                 Ok(domain) => domain,
@@ -523,8 +531,13 @@ pub(crate) fn create_domain_with_reset(
                 return Err(Error::MapFailed);
             }
             let root = domain.root;
-            unit.domains.insert(id, Some(domain));
-            unit.sources.insert(source_id, id);
+            let super::backend_registry::Preparing::AmdVi(nodes) =
+                creation.metadata.as_mut().unwrap()
+            else {
+                unreachable!("AmdVi registry preparation replaced");
+            };
+            nodes.publish_domain(&mut unit.domains, id, domain);
+            nodes.publish_source(&mut unit.sources, source_id, id);
             unit.domains.get_mut(&id).and_then(Option::as_mut).unwrap().tables.publish();
             creation.record(id);
             super::domain_creation::boundary(super::domain_creation::Phase::Configure);
@@ -760,14 +773,6 @@ pub(super) fn destroy_domain_at(
         })?;
         return Err(error);
     }
-    with_registered(|unit| {
-        assert!(matches!(unit.domains.get(&domain_id), Some(None)), "claimed domain replaced");
-        assert_eq!(unit.sources.get(&source_id), Some(&domain_id));
-        // Drain does not reset queued device work; reset still owns this fence.
-        *unit.sources.get_mut(&source_id).unwrap() = 0;
-        unit.domains.remove(&domain_id);
-        Ok(())
-    })?;
     let domain = detached.into_inner();
     for mapping in domain.mappings.into_values() {
         object::unpin_dma(mapping.pin);
@@ -775,6 +780,14 @@ pub(super) fn destroy_domain_at(
     for pin in domain.quarantined_pins {
         object::unpin_dma(pin);
     }
+    let retired = with_registered(|unit| {
+        assert!(matches!(unit.domains.get(&domain_id), Some(None)), "claimed domain replaced");
+        assert_eq!(unit.sources.get(&source_id), Some(&domain_id));
+        // Drain does not reset queued device work; reset still owns this fence.
+        *unit.sources.get_mut(&source_id).unwrap() = 0;
+        Ok(unit.domains.take(&domain_id).unwrap())
+    })?;
+    super::backend_registry::release(retired);
     Ok(())
 }
 
@@ -946,4 +959,16 @@ pub(super) fn test_reject_sparse_map(id: u64) {
         Ok(())
     })
     .unwrap();
+}
+
+pub(super) fn test_registry_snapshot(sid: u32) -> (u64, Option<u64>, usize, usize) {
+    with_registered(|unit| {
+        Ok((
+            unit.next_domain,
+            unit.sources.get(&(sid as u16)).copied(),
+            unit.domains.iter().count(),
+            0,
+        ))
+    })
+    .unwrap()
 }

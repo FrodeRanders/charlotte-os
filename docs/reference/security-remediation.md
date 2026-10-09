@@ -218,6 +218,17 @@ exact root leases and original authority charges in explicit terminal probes.
 Heap-held admission/detach and real NVMe metadata boundary probes qualify this
 scope. Other authority callers, backend metadata and complete outer-context,
 byte/progress/custody work remain open; finding counts are unchanged.
+The [backend registry-storage follow-up](../reports/audits/2026-10-09-security-backend-registry-storage.md)
+now admits domain cells, requester fences and VT-d context metadata in typed
+preparation inside the original grant before reset, IDs or physical domain backing.
+Publication relinks shared admitted nodes and reuses the exact zero requester
+fence; destruction keeps the cell/source claim through tables and all data unpins
+before post-guard node disposal. Guarded complete-grant abandonment retains one
+additional exact root/reservation and unused metadata without new IOMMU table/data
+charge. Real node rejection and allocation/disposal entry probes qualify this
+scope. Per-domain mapping/walker metadata, other authority callers, general heap/
+principal admission, wider contexts, concurrency and custody remain open; SEC-07/18
+and finding counts are unchanged.
 The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.

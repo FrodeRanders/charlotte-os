@@ -39,6 +39,7 @@ pub mod smmu;
 pub mod vt_d;
 
 pub(crate) mod admission_tests;
+mod backend_registry;
 mod close;
 mod detached_domain;
 mod dma_tables;
@@ -371,6 +372,7 @@ struct DmaGrantResources {
 #[must_use]
 pub(crate) struct DmaCreation {
     id: Option<u64>,
+    metadata: Option<backend_registry::Preparing>,
     private: Option<private_domain::PrivateDomain>,
     reset: Option<
         crate::device_management::drivers::busses::pci_express::topology::reset::ResetSource<
@@ -383,13 +385,17 @@ impl DmaCreation {
     fn new() -> Self {
         Self {
             id: None,
+            metadata: None,
             private: None,
             reset: None,
         }
     }
 
     fn is_armed(&self) -> bool {
-        self.id.is_some() || self.private.is_some() || self.reset.is_some()
+        self.id.is_some()
+            || self.private.is_some()
+            || self.reset.is_some()
+            || self.metadata.is_some()
     }
 
     fn retain_private(&mut self, domain: private_domain::PrivateDomain) {
@@ -412,6 +418,13 @@ impl DmaCreation {
             return Err(dma::Error::MapFailed);
         }
         Ok(())
+    }
+
+    fn finish_metadata(&mut self) {
+        assert!(self.id.is_none() && self.private.is_none() && self.reset.is_none());
+        if let Some(metadata) = self.metadata.take() {
+            metadata.finish();
+        }
     }
 
     fn record(&mut self, id: u64) {
@@ -513,6 +526,7 @@ impl PreparedDmaDomain {
     }
 
     fn finish(&mut self) -> Result<(), DeviceError> {
+        self.resources.creation.finish_metadata();
         self.resources.admission.finish()
     }
 }

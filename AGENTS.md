@@ -558,7 +558,16 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   Reset, construction and initial configuration run outside local lifecycle/backend
   guards. Restore the exact complete unit on ordinary success/error before grant
   rollback; abandonment retains every field and permanently fences its slot.
-  General metadata admission/destruction and wider contexts remain separate.
+  Backend domain cells, requester fences and VT-d context-table metadata use the
+  shared admitted map. Prepare their typed nodes inside the existing `DmaCreation`
+  before reset, ID mutation or domain backing; partial preparation stays with the
+  complete grant. Publish context metadata before its hardware link, and reuse
+  an exact zero requester fence in place after confirmed reset. Keep the empty
+  domain cell and nonzero source through physical tables and all data unpins;
+  detach only then and dispose its node after backend unlock. Explicitly finish
+  unused nodes only after confirmed grant rollback or publication and guard
+  release; Drop retains them. Per-domain mapping/walker metadata, byte/principal
+  admission and wider contexts remain separate.
   Intel cannot overwrite
   a busy invalidation register; AMD and SMMU retain their existing exact completion
   and unconsumed queue contracts.

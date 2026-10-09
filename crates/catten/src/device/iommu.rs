@@ -192,3 +192,11 @@ pub(super) fn test_private_domain() -> super::private_domain::PrivateDomain {
         Backend::AmdVi => super::amd_vi::test_private_domain(),
     }
 }
+
+pub(super) fn test_registry_snapshot(sid: u32) -> (u64, Option<u64>, usize, usize) {
+    if crate::environment::acpi::sdt::dmar::discover_vtd().is_some() {
+        super::vt_d::test_registry_snapshot(sid)
+    } else {
+        super::amd_vi::test_registry_snapshot(sid)
+    }
+}

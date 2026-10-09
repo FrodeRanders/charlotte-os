@@ -138,10 +138,20 @@ detached authority in its original charged owner through physical completion and
 disposes it after local guards, before root completion. Non-DMA `PreparedClose`
 composes descriptor, exact root and both metadata owners; uncertain MMIO and
 guarded IRQ abandonment retain the whole operation without retry or destructor
-cleanup. Other authority callers and backend registry metadata remain separate.
+cleanup. Other authority callers remain separate.
 See the [device-authority context evidence](../reports/audits/2026-10-09-security-device-authority-context.md)
 and the
 [device-storage evidence](../reports/audits/2026-10-09-security-device-registry-storage.md).
+
+Backend domain cells, requester fences and VT-d context metadata now prepare
+fallibly in the existing complete grant before reset, ID mutation or domain
+backing. Publication relinks admitted nodes; confirmed reset reuses the original
+zero fence in place. Destruction retains the empty cell/nonzero requester through
+table release and every data unpin, then detaches its node for post-guard disposal.
+Partial preparation and abandonment retain the exact grant; metadata retention
+does not authorize retry or hardware access. Per-domain mapping/walker metadata,
+wider contexts and byte/principal admission remain separate. See the
+[backend-storage evidence](../reports/audits/2026-10-09-security-backend-registry-storage.md).
 
 ## Requester reset and reassignment
 

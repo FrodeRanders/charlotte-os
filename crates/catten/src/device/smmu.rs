@@ -178,8 +178,8 @@ struct Smmu {
     strtab: PAddr,
     _tables: Tables,
     next_domain: u64,
-    domains: BTreeMap<u64, Option<Domain>>,
-    streams: BTreeMap<u32, u64>,
+    domains: super::registry::Map<u64, Option<Domain>>,
+    streams: super::registry::Map<u32, u64>,
 }
 
 impl UnitBacking for Smmu {
@@ -527,8 +527,8 @@ fn initialize(
         strtab: PAddr::from(0u64),
         _tables: Tables::new(Scope::Unit),
         next_domain: 1,
-        domains: BTreeMap::new(),
-        streams: BTreeMap::new(),
+        domains: super::registry::Map::new(),
+        streams: super::registry::Map::new(),
     });
     let smmu = owner.value_mut();
     let mut rollback_private = true;
@@ -660,14 +660,22 @@ pub(crate) fn create_domain_with_reset(
             smmu.commands.is_some() && smmu.domains.values().all(Option::is_some)
         },
         |smmu, creation| {
+            if smmu.streams.get(&sid).is_some_and(|id| *id != 0) {
+                return Err(Error::StreamInUse);
+            }
+            let id = smmu.next_domain;
+            let asid = u16::try_from(id).map_err(|_| Error::MapFailed)?;
+            let next = id.checked_add(1).ok_or(Error::MapFailed)?;
+            creation.metadata = Some(super::backend_registry::Preparing::Smmu(
+                super::backend_registry::Nodes::new(!smmu.streams.contains_key(&sid), false),
+            ));
+            creation.metadata.as_mut().unwrap().allocate()?;
             match smmu.streams.get(&sid) {
                 Some(0) => reset(true, creation)?,
                 Some(_) => return Err(Error::StreamInUse),
                 None => reset(false, creation)?,
             }
-            let id = smmu.next_domain;
-            smmu.next_domain = smmu.next_domain.checked_add(1).ok_or(Error::MapFailed)?;
-            let asid = u16::try_from(id).map_err(|_| Error::MapFailed)?;
+            smmu.next_domain = next;
             super::domain_creation::boundary(super::domain_creation::Phase::Allocate);
             let domain = match Domain::new(asid, sid, smmu.oas, msi_address) {
                 Ok(domain) => domain,
@@ -683,8 +691,10 @@ pub(crate) fn create_domain_with_reset(
                 return Err(Error::MapFailed);
             }
             let cd = domain.cd;
-            smmu.domains.insert(id, Some(domain));
-            smmu.streams.insert(sid, id);
+            let super::backend_registry::Preparing::Smmu(nodes) =
+                creation.metadata.as_mut().unwrap();
+            nodes.publish_domain(&mut smmu.domains, id, domain);
+            nodes.publish_source(&mut smmu.streams, sid, id);
             smmu.domains.get_mut(&id).and_then(Option::as_mut).unwrap().tables.publish();
             creation.record(id);
             super::domain_creation::boundary(super::domain_creation::Phase::Configure);
@@ -920,14 +930,6 @@ pub(super) fn destroy_domain_at(
         })?;
         return Err(error);
     }
-    with_registered(|smmu| {
-        assert!(matches!(smmu.domains.get(&domain_id), Some(None)), "claimed domain replaced");
-        assert_eq!(smmu.streams.get(&sid), Some(&domain_id));
-        // Drain does not reset queued device work; reset still owns this fence.
-        *smmu.streams.get_mut(&sid).unwrap() = 0;
-        smmu.domains.remove(&domain_id);
-        Ok(())
-    })?;
     let domain = detached.into_inner();
     for mapping in domain.mappings.into_values() {
         object::unpin_dma(mapping.pin);
@@ -935,6 +937,14 @@ pub(super) fn destroy_domain_at(
     for pin in domain.quarantined_pins {
         object::unpin_dma(pin);
     }
+    let retired = with_registered(|smmu| {
+        assert!(matches!(smmu.domains.get(&domain_id), Some(None)), "claimed domain replaced");
+        assert_eq!(smmu.streams.get(&sid), Some(&domain_id));
+        // Drain does not reset queued device work; reset still owns this fence.
+        *smmu.streams.get_mut(&sid).unwrap() = 0;
+        Ok(smmu.domains.take(&domain_id).unwrap())
+    })?;
+    super::backend_registry::release(retired);
     Ok(())
 }
 
@@ -1114,4 +1124,11 @@ pub(super) fn test_reject_sparse_map(id: u64) {
         Ok(())
     })
     .unwrap();
+}
+
+pub(super) fn test_registry_snapshot(sid: u32) -> (u64, Option<u64>, usize, usize) {
+    with_registered(|smmu| {
+        Ok((smmu.next_domain, smmu.streams.get(&sid).copied(), smmu.domains.iter().count(), 0))
+    })
+    .unwrap()
 }

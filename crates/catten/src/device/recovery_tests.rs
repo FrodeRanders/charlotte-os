@@ -164,6 +164,7 @@ pub(crate) fn run() {
         return;
     };
     registry::tests::begin_real();
+    backend_registry::tests::begin_real();
     crate::capability::record_tests::begin_real();
     let owner = crate::service::loader::create_user_address_space_handle();
     let mmio = grant_mmio(owner.id(), base, 4).unwrap();
@@ -187,6 +188,31 @@ pub(crate) fn run() {
         let _devices = DEVICES.lock();
         source.cancel().unwrap_or_else(|_| panic!("real unstarted reset cancellation"));
     }
+    let sid = dma::stream_id(requester).unwrap();
+    let before = dma::test_registry_snapshot(sid);
+    assert_eq!(before.1, None, "registry fixture requester already registered");
+    #[cfg(target_arch = "x86_64")]
+    let stages = if crate::environment::acpi::sdt::dmar::discover_vtd().is_some() && before.3 == 0 {
+        3
+    } else {
+        2
+    };
+    #[cfg(target_arch = "aarch64")]
+    let stages = 2;
+    for stage in 1..=stages {
+        let charges = dma_tables::used();
+        let authority = crate::capability::admission_tests::test_namespace_used(owner.id());
+        backend_registry::tests::reject_next(stage);
+        assert_eq!(grant_dma_domain(owner.id(), requester, None), Err(DeviceError::DmaUnavailable));
+        assert_eq!(dma::test_registry_snapshot(sid), before);
+        assert_eq!(dma_tables::used(), charges);
+        assert_eq!(crate::capability::admission_tests::test_namespace_used(owner.id()), authority);
+        reset::test_assert_disabled_config_available(&crate::DEVICE_TOPOLOGY.pcie);
+    }
+    crate::logln!(
+        "[backend registry rejection] every required node rejected before reset/domain \
+         IDs/backing; original requester/registry snapshot, table charges and authority preserved"
+    );
     reset::tests::begin_real();
     let memory = object::allocate(owner.id(), 2).unwrap();
     let baseline = dma_tables::used().1;
@@ -615,6 +641,7 @@ pub(crate) fn run() {
          refunded authority and original closing owner completed"
     );
     reset::tests::finish_real();
+    backend_registry::tests::finish_real();
     registry::tests::finish_real();
     crate::capability::record_tests::finish_real();
     crate::logln!(

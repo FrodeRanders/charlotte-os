@@ -48,7 +48,8 @@ unpublished state, freezes before physical release, then refunds confirmed
 backing and disposes metadata. Only afterward may the grant refund authority and
 complete its root. Failure returns the complete frozen payload; Drop retains
 every field, original charge, root and reservation without cleanup. There is no
-hardware completion to retry for never hardware-published backing. Domain allocation/metadata preparation remains separate.
+hardware completion to retry for never hardware-published backing. Per-domain
+mapping/walker metadata admission remains separate.
 
 The backend marks domain/unit tables published before the first hardware-visible
 context, DTE, STE or base-register write. Publication also rejects uncertain
@@ -90,8 +91,8 @@ Domain retirement first marks the owner retiring, detaches hardware authority an
 confirms the backend's existing configuration/TLB maintenance and transaction
 completion. Only then does `Tables::release` consume the physical release walk.
 The admitted domain slot and source fence remain until every table frame releases
-successfully; pins and capability cleanup cannot treat rejected release as a
-successful close.
+successfully and all data pins finish; capability cleanup cannot treat rejected
+release as a successful close.
 
 Release enters a terminal frozen state before touching the allocator. Partial
 failure or interruption retains the whole charge, including capacity for frames
@@ -126,9 +127,11 @@ serialization. Ordinary physical rejection restores the exact frozen owner into
 its existing slot; pins and charges remain. Abandonment never invokes implicit
 field destructors: it retains mapping/quarantine storage, pins, table ledger and
 charges, while the slot and requester fence remain. This terminal state is not
-an operator retry owner. Successful completion removes the empty cell, changes
-the requester to its existing reset-required tombstone, and consumes mapping/pin
-collections outside the backend guard.
+an operator retry owner. Successful completion consumes mapping/pin collections
+outside the backend guard while the empty cell and nonzero source remain claimed.
+Only then does it detach the original owning domain node and change the requester
+to its existing reset-required tombstone. Explicit node disposal leaves backend
+serialization first.
 
 Boot unit initialization uses `unit_initialization::UnitState` in its existing
 typed slot. A short hold claims `Vacant` before unlocked preparation. Ordinary
@@ -165,7 +168,7 @@ slot fence. No registry, queue snapshot or scalar replay is introduced.
 Explicit destruction and published creation rejection use unlocked maintenance/
 physical cleanup; physical finalization uses the registered-state hold even if
 another domain owns the command engine. Complete outer-context qualification,
-registry metadata admission/destruction and abandoned-owner recovery remain
+per-domain mapping/walker metadata admission and abandoned-owner recovery remain
 separate work. No quota override or partial-release retry is introduced.
 
 QEMU reset now retains the exact endpoint config/BAR/ECAM claim inside the same
@@ -184,7 +187,8 @@ when the retained root begins closing before publication. Its guarded synthetic
 owner adds one unit and one domain table charge/frame, two independently charged
 data frames and an exact root/reservation. Table-only intentional totals are
 VT-d **38/29**, AMD-Vi **34/25**, SMMUv3 **40/31** charges/frames. General metadata
-admission, inner fallback and all wider caller contexts remain separate work.
+admission beyond the registry nodes described below, inner fallback and all wider
+caller contexts remain separate work.
 
 Explicit DMA close now keeps its admitted device record claimed through backend
 retirement, with the same exact-root `DmaOperation` as map/unmap. Ordinary failure
@@ -197,9 +201,38 @@ adds no intentional table/data/root retention. Device payload/namespace nodes
 now prepare fallibly inside shared exact-root `GrantAdmission` before local guards
 and hardware, with unused storage retained alongside the typed DMA obligation.
 Close/namespace detachment only relinks their original nodes for post-guard
-disposal. Unified capability-table metadata and the IOMMU backends' own registry
-nodes remain separate work. See the
+disposal. Unified authority storage now joins the grant before local guards;
+other authority callers remain separate work. See the
 [device-storage evidence](../reports/audits/2026-10-09-security-device-registry-storage.md).
+
+### Backend registry metadata
+
+Domain cells, requester/stream fences and VT-d per-bus context metadata now use
+the same `retirement_list::AdmittedMap` as device/capability storage. Typed node
+preparation stays in the existing grant's `DmaCreation` while complete-unit
+ownership excludes competing registry mutation. All required nodes are admitted
+fallibly before reset, domain-ID mutation, physical domain backing or descriptor
+publication. Rejection leaves partial preparation owned; confirmed ordinary grant
+rollback explicitly disposes unused nodes after local guards and before root
+completion. Abandonment retains nodes, original root and authority reservation
+without allocator, registry or hardware work in Drop.
+
+Publication only relinks prepared nodes. VT-d records a context frame before
+publishing its hardware root link. Confirmed reset reuses an existing exact zero
+requester fence in place, without replacing its node. Requester/context metadata
+remains unit-owned; successful domain destruction detaches only the domain cell
+after table/pin completion and disposes it post-guard. Typed maintenance, private
+rollback and frozen physical-release rules are unchanged; metadata retention is
+not a retry owner. No new registry, custody policy or byte/principal budget is
+introduced. Lookup/insertion are linear scans.
+
+See the [backend-storage evidence](../reports/audits/2026-10-09-security-backend-registry-storage.md).
+The metadata-only guarded grant fixture retains one additional exact root lease,
+one original authority reservation/charge and unused metadata nodes, without new
+IOMMU table or DMA data-frame charge. Existing table-only totals remain VT-d
+38/29, AMD-Vi 34/25 and SMMUv3 40/31 charges/frames. Per-domain mapping maps,
+SMMU walker maps, quarantine/ledger collections, general heap accounting and
+complete outer contexts still need qualification.
 
 ## Evidence and limits
 

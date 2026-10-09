@@ -1099,6 +1099,19 @@ and probes table/allocator availability at actual reset waits. See the
 
 ### DMA creation ownership
 
+Backend registry probes reject each required domain/source/context node before
+reset, domain-ID changes or backing allocation. The real NVMe path checks
+unchanged registry snapshots, table/authority charges, available PCI config and
+disabled bus mastering. Generic metadata probes hold the actual heap through
+publication, empty-cell restoration and detach; requester reuse preserves its
+original node address. Preparation/disposal entry probes require local backend,
+lifecycle/device/capability, CPU-table and physical/heap availability while
+preserving entry IRQ state. Complete-grant abandonment under held guards retains
+one additional root lease/reservation and unused metadata, with no new IOMMU
+table or DMA data-frame charge. This is serialized injection, not real OOM,
+panic unwinding or cross-LP pressure. See the
+[backend-storage report](../reports/audits/2026-10-09-security-backend-registry-storage.md).
+
 Real QEMU probes at complete-unit claim, before construction, before initial
 configuration and before exact restoration require backend/lifecycle/device/
 CPU-table/physical/heap availability, unchanged IRQ state, exact-root busy close
