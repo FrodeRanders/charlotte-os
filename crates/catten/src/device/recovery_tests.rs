@@ -102,7 +102,7 @@ fn mapping_unlocked(
         Err(dma::Error::OperationInFlight)
     );
     assert_eq!(
-        dma::create_domain_with_reset(u32::MAX, None, &mut DmaCreation::new(), |_| panic!(
+        dma::create_domain_with_reset(u32::MAX, None, &mut DmaCreation::new(), |_, _| panic!(
             "mapping engine reached reset"
         )),
         Err(dma::Error::OperationInFlight)
@@ -130,6 +130,27 @@ pub(crate) fn run() {
     };
     let owner = crate::service::loader::create_user_address_space_handle();
     let mmio = grant_mmio(owner.id(), base, 4).unwrap();
+    use crate::device_management::drivers::busses::pci_express::topology::reset;
+    let source = {
+        let devices = DEVICES.lock();
+        reset::prepare_qemu_nvme(&crate::DEVICE_TOPOLOGY.pcie, requester, |base, bytes| {
+            reset_registers_available(&devices, owner.id(), base, bytes)
+        })
+        .unwrap_or_else(|_| panic!("real unstarted reset claim"))
+    };
+    assert_eq!(grant_mmio(owner.id(), base, 1), Err(DeviceError::OperationInFlight));
+    assert_eq!(
+        grant_mmio(owner.id(), source.test_config_base(), 1),
+        Err(DeviceError::OperationInFlight)
+    );
+    assert_eq!(mmio_map_any(owner.id(), mmio, true), Err(DeviceError::OperationInFlight));
+    assert_eq!(close_cap(owner.id(), mmio), Err(DeviceError::OperationInFlight));
+    assert_eq!(mmio_unmap(owner.id(), mmio), Err(DeviceError::OperationInFlight));
+    {
+        let _devices = DEVICES.lock();
+        source.cancel().unwrap_or_else(|_| panic!("real unstarted reset cancellation"));
+    }
+    reset::tests::begin_real();
     let memory = object::allocate(owner.id(), 2).unwrap();
     let baseline = dma_tables::used().1;
     let domain = grant_dma_domain(owner.id(), requester, None).unwrap();
@@ -221,9 +242,12 @@ pub(crate) fn run() {
             );
             for sid in [requester, u32::MAX] {
                 assert_eq!(
-                    dma::create_domain_with_reset(sid, None, &mut DmaCreation::new(), |_| panic!(
-                        "claimed engine reached reset"
-                    )),
+                    dma::create_domain_with_reset(
+                        sid,
+                        None,
+                        &mut DmaCreation::new(),
+                        |_, _| panic!("claimed engine reached reset")
+                    ),
                     Err(dma::Error::OperationInFlight)
                 );
             }
@@ -270,7 +294,7 @@ pub(crate) fn run() {
                     requester,
                     None,
                     &mut DmaCreation::new(),
-                    |_| panic!("claimed requester reached reset")
+                    |_, _| panic!("claimed requester reached reset")
                 ),
                 Err(dma::Error::StreamInUse)
             );
@@ -472,6 +496,7 @@ pub(crate) fn run() {
          real retirement"
     );
     crate::memory::close_user_address_space_handle(successor).unwrap();
+    reset::tests::finish_real();
     crate::logln!(
         "[device recovery] rejected drain retained/fenced DMA; real retry, old-MMIO exclusion and \
          QEMU NVMe reset/reassignment passed"

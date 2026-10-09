@@ -85,8 +85,8 @@ complete typed private payloads in that same grant; private physical/metadata
 cancellation leaves local guards before release, refund and root completion.
 Physical rejection/abandonment preserves the whole grant and cannot retry freed
 addresses. This needs no hardware maintenance receipt. Initial creation/reset
-waits, domain allocation/preparation and reset fallback remain separate
-serialized boundaries. See the
+waits under wider lifecycle/backend guards and domain allocation/preparation
+remain separate serialized boundaries. See the
 [grant rollback evidence](../reports/audits/2026-10-09-security-dma-grant-rollback.md)
 and [published-creation follow-up](../reports/audits/2026-10-09-security-dma-creation-rollback.md).
 
@@ -124,16 +124,27 @@ one segment zero. It bounds the controller BAR to 16 KiB and other memory BARs
 to 8 KiB, verifying sizes through restored BAR probes with memory decode and
 bus mastering disabled. Unsupported models/topologies/BAR layouts reject.
 Old overlapping MMIO capability authority rejects reset; only the recipient's
-unmapped, unclaimed launch grants may overlap. Lifecycle and device serialization
-cover this check, and the exact endpoint's config guard survives reset and
-new-domain creation.
+unmapped, unclaimed launch grants may overlap. Device serialization admits an
+inline logical claim in the exact endpoint's config cell after BAR/command
+revalidation. It covers validated BAR bounds and the endpoint's ECAM page;
+ordinary config/MSI lookup and overlapping MMIO grant/map/unmap/close reject it.
+Namespace device preparation also rejects before moving such authority.
+Config and device guards leave before controller polling. Wider lifecycle and
+backend guards remain; releasing them needs complete backend preparation ownership.
 
 The adapter clears `CC.EN`, waits at most 100 ms for `CSTS.RDY=0`, and retains
-disabled bus mastering on failure. Only successful new-domain creation consumes
-the reset owner and enables memory decode/bus mastering. Supported NVMe also
+disabled bus mastering after confirmed reset. `DmaCreation` retains the reset
+owner beside its exact root/reservation and backend obligation before any reset
+write. Hardware uncertainty retains the whole grant and endpoint claim; neither
+Drop nor an error code restores access or retries. Only successful configuration
+and busy-capability publication permit consuming activation and verified memory
+decode/bus mastering. Ordinary cancellation confirms backend cleanup first and
+then consumes an unstarted or confirmed-reset claim with bus mastering disabled.
+Command verification rejection also retains the claim/grant. Supported NVMe also
 resets at its first grant, before new translations can expose old firmware queue
 state. Other fresh devices retain their driver-specific initialization policy;
 their later reassignment remains fenced without a supported reset adapter.
+See the [reset-claim evidence](../reports/audits/2026-10-09-security-pci-reset-claim.md).
 
 Uncertain public MMIO cleanup retains its in-flight claim, exact root lease and
 mapping/scratch record. Explicit close detaches capability authority before

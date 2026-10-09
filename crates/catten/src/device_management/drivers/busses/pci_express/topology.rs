@@ -168,6 +168,7 @@ impl PcieTopology {
 #[derive(Debug)]
 pub struct PcieSegmentGroup {
     pcie_segment_group_num: PcieSegmentGroupNum,
+    ecam_paddr: PAddr,
     ecam_vaddr: VAddr, /* Virtual address where this segment's ECAM is mapped in the kernel's
                         * address space */
     start_bus_num: PcieBusSegmentNum,
@@ -187,6 +188,7 @@ impl PcieSegmentGroup {
         let ecam_vaddr = ecam::map_ecam(ecam_paddr);
         PcieSegmentGroup {
             pcie_segment_group_num,
+            ecam_paddr,
             ecam_vaddr,
             start_bus_num,
             end_bus_num,
@@ -446,10 +448,37 @@ pub struct PcieEndpoint {
      * used for reading/writing config space registers inside this PCIe bus driver ONLY
      * other drivers and the rest of the kernel should use safe functions exposed by this bus
      * driver */
-    cfg_ptr: SpinMutex<NonNull<PcieCfgSpace>>,
+    cfg_ptr: SpinMutex<ConfigSpace>,
+}
+
+// The logical reset claim survives mutex release and owner abandonment. Only
+// the reset adapter accesses a claimed pointer; ordinary config helpers reject.
+#[derive(Debug)]
+struct ConfigSpace {
+    ptr: NonNull<PcieCfgSpace>,
+    reset_ranges: Option<[Option<(usize, usize)>; 7]>,
+}
+
+impl ConfigSpace {
+    fn as_ptr(&self) -> *mut PcieCfgSpace {
+        assert!(self.reset_ranges.is_none(), "claimed PCI config access");
+        self.ptr.as_ptr()
+    }
 }
 
 impl PcieEndpoint {
+    fn config(
+        &self,
+    ) -> Option<
+        lock_api::MutexGuard<'_, crate::cpu::multiprocessor::spin::mutex::MutexCore, ConfigSpace>,
+    > {
+        let config = self.cfg_ptr.lock();
+        if config.reset_ranges.is_some() {
+            return None;
+        }
+        Some(config)
+    }
+
     fn new(
         ecam_vaddr: VAddr,
         segment_group_num: PcieSegmentGroupNum,
@@ -471,10 +500,11 @@ impl PcieEndpoint {
         PcieEndpoint {
             number: function_num,
             identifier,
-            cfg_ptr: SpinMutex::new(
-                NonNull::new(cfg_space_vaddr.into_mut())
+            cfg_ptr: SpinMutex::new(ConfigSpace {
+                ptr: NonNull::new(cfg_space_vaddr.into_mut())
                     .expect("Invalid PCIe config space pointer"),
-            ),
+                reset_ranges: None,
+            }),
         }
     }
 }
@@ -666,7 +696,9 @@ pub fn lookup_first_virtio_net(
                 }
                 let requester_id =
                     ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
-                let cfg = ep.cfg_ptr.lock();
+                let Some(cfg) = ep.config() else {
+                    continue;
+                };
                 let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
                 // QEMU places all modern virtio regions in BAR 4. Verify the
                 // vendor capability instead of mistaking the transitional
@@ -797,7 +829,9 @@ pub fn lookup_first_e1000e(topology: &PcieTopology) -> Option<(u64, usize, u32, 
 
                 let requester_id =
                     ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
-                let cfg = ep.cfg_ptr.lock();
+                let Some(cfg) = ep.config() else {
+                    continue;
+                };
                 let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
                 let bar0 = unsafe { CfgEndpointHeader::bar_at(header, 0) } as u64;
                 logln!(
@@ -895,7 +929,9 @@ pub fn lookup_first_nvme(topology: &PcieTopology) -> Option<(u64, u32, u32, Opti
                 if (class, subclass, prog_if) != (0x01, 0x08, 0x02) {
                     continue;
                 }
-                let cfg = ep.cfg_ptr.lock();
+                let Some(cfg) = ep.config() else {
+                    continue;
+                };
                 let (phys_base, legacy_irq) = {
                     let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
                     let bar0 = unsafe { CfgEndpointHeader::bar_at(header, 0) } as u64;
@@ -978,7 +1014,9 @@ pub fn lookup_first_ahci(topology: &PcieTopology) -> Option<(u64, u32, u32, Opti
                     {
                         continue;
                     }
-                    let cfg = ep.cfg_ptr.lock();
+                    let Some(cfg) = ep.config() else {
+                        continue;
+                    };
                     let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
                     // The HBA register block (ABAR) is memory BAR 5.
                     let bar5 = unsafe { CfgEndpointHeader::bar_at(header, 5) } as u64;
@@ -1040,7 +1078,9 @@ pub fn lookup_first_virtio_blk(topology: &PcieTopology) -> Option<(u64, u32, u32
                     }
                     let requester_id =
                         ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
-                    let cfg = ep.cfg_ptr.lock();
+                    let Some(cfg) = ep.config() else {
+                        continue;
+                    };
                     let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
                     // Locate the modern transport BAR via the common-config
                     // vendor capability (type 1).
@@ -1144,7 +1184,9 @@ pub fn lookup_first_virtio_rng(topology: &PcieTopology) -> Option<(u64, u32, u32
                     }
                     let requester_id =
                         ((bus.number as u32) << 8) | ((device as u32) << 3) | function as u32;
-                    let cfg = endpoint.cfg_ptr.lock();
+                    let Some(cfg) = endpoint.config() else {
+                        continue;
+                    };
                     let header = cfg.as_ptr().cast::<CfgEndpointHeader>();
                     let cfg_bytes = cfg.as_ptr().cast::<u8>();
                     let mut capability =

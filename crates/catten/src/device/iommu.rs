@@ -52,7 +52,7 @@ pub(crate) fn create_domain_with_reset(
     sid: u32,
     msi_address: Option<u64>,
     creation: &mut super::DmaCreation,
-    reset: impl FnOnce(bool) -> Result<(), Error>,
+    reset: impl FnOnce(bool, &mut super::DmaCreation) -> Result<(), Error>,
 ) -> Result<(), Error> {
     match detect()? {
         Backend::Vtd => super::vt_d::create_domain_with_reset(sid, msi_address, creation, reset),

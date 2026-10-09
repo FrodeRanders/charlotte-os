@@ -223,7 +223,10 @@ impl MmioOperation {
     ) -> Result<(), DeviceError> {
         let mut devices = DEVICES.lock();
         match lookup_mut(&mut devices, asid, cap)? {
-            DeviceObject::Mmio(region) if region.operation_in_flight => {
+            DeviceObject::Mmio(region)
+                if region.operation_in_flight
+                    || reset_range_claimed(region.phys_base, region.pages * PAGE_SIZE) =>
+            {
                 Err(DeviceError::OperationInFlight)
             }
             DeviceObject::Mmio(region) if region.mapped.is_some() == expect_mapped => Ok(()),
@@ -239,7 +242,9 @@ impl MmioOperation {
         let DeviceObject::Mmio(region) = object else {
             return Err(DeviceError::WrongType);
         };
-        if region.operation_in_flight {
+        if region.operation_in_flight
+            || reset_range_claimed(region.phys_base, region.pages * PAGE_SIZE)
+        {
             return Err(DeviceError::OperationInFlight);
         }
         region.operation_in_flight = true;
@@ -368,6 +373,11 @@ struct DmaGrantResources {
 pub(crate) struct DmaCreation {
     id: Option<u64>,
     private: Option<private_domain::PrivateDomain>,
+    reset: Option<
+        crate::device_management::drivers::busses::pci_express::topology::reset::ResetSource<
+            'static,
+        >,
+    >,
 }
 
 impl DmaCreation {
@@ -375,15 +385,16 @@ impl DmaCreation {
         Self {
             id: None,
             private: None,
+            reset: None,
         }
     }
 
     fn is_armed(&self) -> bool {
-        self.id.is_some() || self.private.is_some()
+        self.id.is_some() || self.private.is_some() || self.reset.is_some()
     }
 
     fn retain_private(&mut self, domain: private_domain::PrivateDomain) {
-        assert!(!self.is_armed(), "private DMA obligation replaced");
+        assert!(self.id.is_none() && self.private.is_none(), "private DMA obligation replaced");
         self.private = Some(domain);
     }
 
@@ -405,7 +416,7 @@ impl DmaCreation {
     }
 
     fn record(&mut self, id: u64) {
-        assert!(!self.is_armed(), "DMA creation obligation replaced");
+        assert!(self.id.is_none() && self.private.is_none(), "DMA creation obligation replaced");
         self.id = Some(id);
     }
 }
@@ -453,6 +464,9 @@ impl PreparedDmaDomain {
             return Err(self);
         }
         self.rollback_started = true;
+        if self.resources.creation.reset.as_ref().is_some_and(|reset| !reset.can_cancel()) {
+            return Err(self);
+        }
         if cancel_private(&mut self.resources.creation).is_err() {
             return Err(self);
         }
@@ -461,6 +475,13 @@ impl PreparedDmaDomain {
                 return Err(self);
             }
             self.resources.creation.id = None;
+        }
+        if let Some(reset) = self.resources.creation.reset.take() {
+            let _devices = DEVICES.lock();
+            if let Err(reset) = reset.cancel() {
+                self.resources.creation.reset = Some(reset);
+                return Err(self);
+            }
         }
         if self.finish().is_err() {
             return Err(self);
@@ -471,8 +492,30 @@ impl PreparedDmaDomain {
     /// Payload and authority are installed under device serialization before
     /// hardware ownership transfers. Dispose inactive reservation metadata and
     /// finish the operation only after leaving those local guards.
-    fn complete(mut self) -> Result<(), DeviceError> {
+    fn complete(mut self, owner: AddressSpaceId, cap: DeviceCap) -> Result<(), DeviceError> {
         assert!(self.resources.creation.private.is_none(), "publishing private DMA backing");
+        if let Some(reset) = self.resources.creation.reset.as_ref() {
+            crate::device_management::drivers::busses::pci_express::topology::reset::tests::before_activation(reset, owner, cap);
+        }
+        {
+            let mut devices = DEVICES.lock();
+            let DeviceObject::DmaDomain {
+                id,
+                operation_in_flight,
+            } = lookup_mut(&mut devices, owner, cap)?
+            else {
+                return Err(DeviceError::WrongType);
+            };
+            assert_eq!(Some(*id), self.resources.creation.id, "DMA publication replaced");
+            assert!(*operation_in_flight, "DMA publication claim lost");
+            if let Some(reset) = self.resources.creation.reset.take()
+                && let Err(reset) = reset.activate()
+            {
+                self.resources.creation.reset = Some(reset);
+                return Err(DeviceError::DmaUnavailable);
+            }
+            *operation_in_flight = false;
+        }
         self.resources.creation.id = None;
         self.finish()
     }
@@ -739,6 +782,12 @@ pub fn grant_mmio(
     )
     .map_err(admission_error)?;
     let mut devices = DEVICES.lock();
+    if reset_range_claimed(phys_base, byte_len) {
+        drop(devices);
+        drop(lifecycle);
+        drop(reservation);
+        return Err(DeviceError::OperationInFlight);
+    }
     let cap = reservation.publish().map_err(admission_error)?;
     let caps = devices.entry(owner).or_insert_with(AsDeviceCaps::new);
     Ok(caps.insert_admitted(
@@ -813,28 +862,38 @@ fn create_dma_domain(
 ) -> Result<(), DeviceError> {
     use crate::device_management::drivers::busses::pci_express::topology::reset;
     let sid = dma::stream_id(requester_id).map_err(|_| DeviceError::DmaUnavailable)?;
-    // Serialize reset with MMIO grant/map/close. The lifecycle guard
-    // already excludes new root/authority admission. A retired source
-    // can be reused only after old register authority is gone.
-    let devices = DEVICES.lock();
-    let mut reset = None;
-    dma::create_domain_with_reset(sid, msi_address, creation, |required| {
+    // Device serialization admits the endpoint's exact logical config/BAR
+    // claim. The containing grant retains it through backend completion and
+    // capability publication; only explicit activation releases that fence.
+    dma::create_domain_with_reset(sid, msi_address, creation, |required, creation| {
         if !required && !reset::supports_qemu_nvme(&crate::DEVICE_TOPOLOGY.pcie, requester_id) {
             return Ok(());
         }
-        reset = Some(
-            reset::qemu_nvme(&crate::DEVICE_TOPOLOGY.pcie, requester_id, |base, bytes| {
+        let devices = DEVICES.lock();
+        let source =
+            reset::prepare_qemu_nvme(&crate::DEVICE_TOPOLOGY.pcie, requester_id, |base, bytes| {
                 reset_registers_available(&devices, owner, base, bytes)
             })
-            .map_err(|_| dma::Error::Unsupported)?,
-        );
-        Ok(())
+            .map_err(|_| dma::Error::Unsupported)?;
+        assert!(creation.reset.is_none(), "reset claim replaced");
+        creation.reset = Some(source);
+        // Outer lifecycle/backend serialization still remains. Device/config
+        // holds leave before controller polling; broader creation separation
+        // requires complete backend preparation ownership in a later change.
+        drop(devices);
+        creation.reset.as_mut().unwrap().reset().map_err(|_| dma::Error::Unsupported)
     })
     .map_err(|_| DeviceError::DmaUnavailable)?;
-    if let Some(reset) = reset {
-        reset.activate();
-    }
     Ok(())
+}
+
+pub(crate) fn test_reset_devices_available() -> bool {
+    DEVICES.try_lock().is_some()
+}
+
+fn reset_range_claimed(base: usize, bytes: usize) -> bool {
+    use crate::device_management::drivers::busses::pci_express::topology::reset;
+    reset::any_claim_published() && reset::claimed_range(&crate::DEVICE_TOPOLOGY.pcie, base, bytes)
 }
 
 fn reset_registers_available(
@@ -843,18 +902,20 @@ fn reset_registers_available(
     base: usize,
     bytes: usize,
 ) -> bool {
-    devices.iter().all(|(&asid, caps)| {
-        caps.caps.values().all(|object| {
-            let DeviceObject::Mmio(region) = object else {
-                return true;
-            };
-            // Grant validation bounds both ends; no resource identity is inferred
-            // from this range check. Registry claims and lifecycle still own it.
-            let end = region.phys_base + region.pages * PAGE_SIZE;
-            let overlaps = region.phys_base < base + bytes && base < end;
-            !overlaps || (asid == owner && region.mapped.is_none() && !region.operation_in_flight)
+    !reset_range_claimed(base, bytes)
+        && devices.iter().all(|(&asid, caps)| {
+            caps.caps.values().all(|object| {
+                let DeviceObject::Mmio(region) = object else {
+                    return true;
+                };
+                // Grant validation bounds both ends; no resource identity is inferred
+                // from this range check. Registry claims and lifecycle still own it.
+                let end = region.phys_base + region.pages * PAGE_SIZE;
+                let overlaps = region.phys_base < base + bytes && base < end;
+                !overlaps
+                    || (asid == owner && region.mapped.is_none() && !region.operation_in_flight)
+            })
         })
-    })
 }
 
 /// Backend adapter boundary; fixture backends exercise rollback without
@@ -894,13 +955,13 @@ fn grant_dma_domain_with_backend(
             cap,
             DeviceObject::DmaDomain {
                 id,
-                operation_in_flight: false,
+                operation_in_flight: true,
             },
         ))
     })();
     match result {
         Ok(cap) => {
-            prepared.complete()?;
+            prepared.complete(owner, cap)?;
             Ok(cap)
         }
         Err(error) => {
@@ -1330,7 +1391,7 @@ fn close_cap_inner(
         let mut devices = DEVICES.lock();
         if matches!(
             devices.get(&asid).and_then(|caps| caps.caps.get(&cap)),
-            Some(DeviceObject::Mmio(region)) if region.operation_in_flight
+            Some(DeviceObject::Mmio(region)) if region.operation_in_flight || reset_range_claimed(region.phys_base, region.pages * PAGE_SIZE)
         ) || matches!(
             devices.get(&asid).and_then(|caps| caps.caps.get(&cap)),
             Some(DeviceObject::DmaDomain {

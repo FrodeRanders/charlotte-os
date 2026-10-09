@@ -37,6 +37,7 @@ fn destroy_failed(id: u64) -> Result<(), dma::Error> {
 pub(crate) fn test_admission() {
     dma_tables::test_admission();
     mapping::test_admission();
+    crate::device_management::drivers::busses::pci_express::topology::reset::test_admission();
     let owner = crate::service::loader::create_user_address_space_handle();
     let intid = 225;
     assert!(!DEVICES.lock().values().any(|caps| {
@@ -205,7 +206,7 @@ fn test_grant_abandonment() {
                     u32::MAX,
                     None,
                     &mut prepared.resources.creation,
-                    |_| panic!("armed creation obligation reached reset"),
+                    |_, _| panic!("armed creation obligation reached reset"),
                 ),
                 Err(dma::Error::OperationInFlight)
             );
@@ -299,4 +300,21 @@ fn test_reused_grant() {
     close_cap(fresh.id(), cap).unwrap();
     assert_eq!(used(fresh.id()), 0);
     crate::memory::close_user_address_space_handle(fresh).unwrap();
+}
+
+pub(crate) fn test_reset_grant_retention(
+    source: crate::device_management::drivers::busses::pci_express::topology::reset::ResetSource<
+        'static,
+    >,
+    uncertain: bool,
+) {
+    let (root, mut grant) = prepare_fixture(false, false);
+    grant.resources.creation.reset = Some(source);
+    if uncertain {
+        grant = grant.cancel_unpublished().expect_err("uncertain reset refunded grant");
+        assert!(grant.resources.creation.reset.is_some());
+        grant = grant.cancel_unpublished_with(|_| panic!("uncertain reset retried")).err().unwrap();
+    }
+    drop_grant_under_guards(grant);
+    assert_retained_root(root);
 }

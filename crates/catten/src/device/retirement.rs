@@ -47,7 +47,7 @@ impl<'root> PreparedNamespaceDevices<'root> {
         let mut devices = DEVICES.lock();
         if devices.get(&handle.id()).is_some_and(|caps| {
             caps.caps.values().any(|object| {
-                matches!(object, DeviceObject::Mmio(region) if region.operation_in_flight)
+                matches!(object, DeviceObject::Mmio(region) if region.operation_in_flight || reset_range_claimed(region.phys_base, region.pages * PAGE_SIZE))
                     || matches!(
                         object,
                         DeviceObject::DmaDomain {

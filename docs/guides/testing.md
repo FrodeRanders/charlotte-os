@@ -1078,6 +1078,24 @@ These run before AP schedulers leave their boot barrier, and do not simulate
 real hardware timeouts or qualify outstanding I/O, physical devices or boot MMIO
 rollback. See [unit initialization evidence](../reports/audits/2026-10-09-security-iommu-unit-initialization.md).
 
+### PCI reset claim and DMA publication
+
+The real NVMe fixture stages an unstarted endpoint claim and requires rejection
+of BAR/ECAM MMIO grants and existing map/unmap/close without consuming authority.
+Explicit cancellation then permits normal reset. Actual wait-boundary probes
+require config/device availability, preserved IRQ state, disabled bus mastering,
+captured BAR/ECAM exclusion and rejected ordinary config/MSI discovery. Final
+publication probes require the exact root and newly published DMA capability
+to remain busy, with bus mastering disabled, until consuming activation.
+
+RAM-backed fixtures separately check unstarted cancellation, synthetic ready
+activation and rejected uncertain activation/cancellation. Guarded complete-grant
+abandonment retains two additional exact roots/reservations and endpoint/RAM
+metadata without command writes; no new domain-table/data-frame charge is added.
+No real timeout, activation readback failure, outstanding I/O or physical reset
+is injected. Wider lifecycle/backend creation holds remain. See the
+[reset-claim evidence](../reports/audits/2026-10-09-security-pci-reset-claim.md).
+
 ### DMA map/unmap maintenance ownership
 
 The real NVMe fixture probes successful map/unmap and rejected sparse-prefix

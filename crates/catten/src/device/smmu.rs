@@ -646,16 +646,16 @@ pub(crate) fn create_domain_with_reset(
     sid: u32,
     msi_address: Option<u64>,
     creation: &mut super::DmaCreation,
-    reset: impl FnOnce(bool) -> Result<(), Error>,
+    reset: impl FnOnce(bool, &mut super::DmaCreation) -> Result<(), Error>,
 ) -> Result<(), Error> {
     if creation.is_armed() {
         return Err(Error::OperationInFlight);
     }
     with_smmu(|smmu| {
         match smmu.streams.get(&sid) {
-            Some(0) => reset(true)?,
+            Some(0) => reset(true, creation)?,
             Some(_) => return Err(Error::StreamInUse),
-            None => reset(false)?,
+            None => reset(false, creation)?,
         }
         let id = smmu.next_domain;
         smmu.next_domain += 1;

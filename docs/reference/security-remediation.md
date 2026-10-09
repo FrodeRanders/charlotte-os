@@ -154,6 +154,16 @@ domain-table frame, two independently charged data frames and their exact root.
 Initial creation/reset, general metadata admission, full outer contexts,
 concurrent/outstanding-I/O evidence and custody remain open. SEC-18 remains
 partial and the finding counts are unchanged.
+The [PCI reset-claim follow-up](../reports/audits/2026-10-09-security-pci-reset-claim.md)
+now retains the exact endpoint config/BAR/ECAM fence in the original DMA grant.
+Config/device holds leave controller polling; ordinary config/MSI and overlapping
+MMIO authority reject the claim. Explicit activation follows exact busy-cap
+publication; confirmed backing rollback precedes reset cancellation. Hardware
+uncertainty/abandonment retains root, reservation and endpoint claim without
+destructor writes. Real staged exclusion/reset/publication probes and synthetic
+complete-grant guarded retention qualify this scope. Wider lifecycle/backend
+creation guards, preparation metadata, concurrency/outstanding I/O and custody
+remain open; SEC-18 and the finding counts remain unchanged.
 The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.

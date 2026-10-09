@@ -163,6 +163,16 @@ another domain owns the command engine. Complete outer-context qualification,
 registry metadata admission/destruction and abandoned-owner recovery remain
 separate work. No quota override or partial-release retry is introduced.
 
+QEMU reset now retains the exact endpoint config/BAR/ECAM claim inside the same
+grant's `DmaCreation`, through configuration and busy capability publication.
+Controller polling leaves device/config serialization, while wider lifecycle/
+backend creation holds remain. Reset uncertainty or abandonment retains the
+grant and claim without destructor hardware writes. Confirmed post-guard backing
+rollback precedes explicit reset cancellation; successful publication precedes
+verified activation. The synthetic reset fixture retains two additional exact
+roots/reservations and RAM metadata, with no new IOMMU table or DMA data-frame
+charge. See the [reset-claim evidence](../reports/audits/2026-10-09-security-pci-reset-claim.md).
+
 ## Evidence and limits
 
 Serialized boot fixtures check node/subpool accounting, rejection before an

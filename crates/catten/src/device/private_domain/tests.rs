@@ -59,9 +59,12 @@ pub(super) fn run() {
     let pages = grant.resources.creation.private.as_mut().unwrap().tables().pages();
     assert!(pages >= 2);
     assert_eq!(
-        dma::create_domain_with_reset(u32::MAX, None, &mut grant.resources.creation, |_| panic!(
-            "armed private creation reached reset"
-        )),
+        dma::create_domain_with_reset(
+            u32::MAX,
+            None,
+            &mut grant.resources.creation,
+            |_, _| panic!("armed private creation reached reset")
+        ),
         Err(dma::Error::OperationInFlight)
     );
     crate::device::admission_tests::drop_grant_under_guards(grant);

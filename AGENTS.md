@@ -314,8 +314,16 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   write drains, AMD strict completion-store epochs, and SMMU ASID TLBI/SYNC
   before releasing data pins. Preserve unconsumed command queues after timeout.
   A completed domain destroy retains its requester fence until confirmed reset;
-  supported QEMU NVMe reset owns config serialization and disabled bus mastering
-  through new-domain creation. Reject old MMIO authority before reset; uncertain
+  supported QEMU NVMe reset owns the exact endpoint's logical config/BAR/ECAM
+  claim through new-domain creation and capability publication. Short config
+  holds and device serialization leave before reset polling; wider lifecycle/
+  backend creation guards remain. Keep bus mastering disabled until explicit
+  post-publication activation of the exact busy DMA capability. Reject ordinary
+  config/MSI lookup and overlapping MMIO grant/map/close while claimed. Retain
+  reset in the containing `DmaCreation` before writes; uncertainty or abandonment
+  retains its original grant/root/reservation. Only unstarted or confirmed-reset
+  cancellation may clear the claim, after confirmed backend cleanup. Never write
+  hardware, clear claims or reacquire config from Drop. Reject old MMIO authority before reset; uncertain
   MMIO cleanup retains its claim, root and mapping/scratch record. Explicit
   MMIO close detaches authority but keeps its claimed descriptor reset-visible
   until confirmed completion. Unsupported reset targets remain fenced.

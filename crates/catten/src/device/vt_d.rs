@@ -598,7 +598,7 @@ pub(crate) fn create_domain_with_reset(
     sid: u32,
     msi_address: Option<u64>,
     creation: &mut super::DmaCreation,
-    reset: impl FnOnce(bool) -> Result<(), Error>,
+    reset: impl FnOnce(bool, &mut super::DmaCreation) -> Result<(), Error>,
 ) -> Result<(), Error> {
     if creation.is_armed() {
         return Err(Error::OperationInFlight);
@@ -606,9 +606,9 @@ pub(crate) fn create_domain_with_reset(
     with_unit(|unit| {
         let source_id = u16::try_from(sid).map_err(|_| Error::InvalidStream)?;
         match unit.sources.get(&source_id) {
-            Some(0) => reset(true)?,
+            Some(0) => reset(true, creation)?,
             Some(_) => return Err(Error::StreamInUse),
-            None => reset(false)?,
+            None => reset(false, creation)?,
         }
         let id = unit.next_domain;
         if id >= unit.max_domains || id > u16::MAX as u64 {
