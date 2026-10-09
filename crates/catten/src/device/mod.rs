@@ -41,6 +41,7 @@ pub mod vt_d;
 pub(crate) mod admission_tests;
 mod detached_domain;
 mod dma_tables;
+mod domain_creation;
 mod mapping;
 mod private_domain;
 pub(crate) mod recovery_tests;
@@ -520,6 +521,20 @@ impl PreparedDmaDomain {
         self.finish()
     }
 
+    fn validate_publication(&self) -> Result<(), DeviceError> {
+        if let Some(operation) = self.resources.address_space.as_ref() {
+            let handle = operation.handle();
+            let table = crate::memory::ADDRESS_SPACE_TABLE.lock();
+            if table.generation(handle.id()).ok() != Some(handle.generation()) {
+                return Err(DeviceError::NamespaceRetired);
+            }
+            if table.is_closing(handle.id()).unwrap_or(true) {
+                return Err(DeviceError::AddressSpaceClosing);
+            }
+        }
+        Ok(())
+    }
+
     fn finish(&mut self) -> Result<(), DeviceError> {
         drop(self.resources.reservation.take());
         if let Some(address_space) = self.resources.address_space.take() {
@@ -877,9 +892,9 @@ fn create_dma_domain(
             .map_err(|_| dma::Error::Unsupported)?;
         assert!(creation.reset.is_none(), "reset claim replaced");
         creation.reset = Some(source);
-        // Outer lifecycle/backend serialization still remains. Device/config
-        // holds leave before controller polling; broader creation separation
-        // requires complete backend preparation ownership in a later change.
+        // The complete backend unit is claimed in its original slot, while
+        // the enclosing grant owns its exact root/reservation. All local
+        // lifecycle/backend/device/config holds leave controller polling.
         drop(devices);
         creation.reset.as_mut().unwrap().reset().map_err(|_| dma::Error::Unsupported)
     })
@@ -889,6 +904,10 @@ fn create_dma_domain(
 
 pub(crate) fn test_reset_devices_available() -> bool {
     DEVICES.try_lock().is_some()
+}
+
+pub(crate) fn test_reset_backend_available() {
+    dma::test_assert_backend_available();
 }
 
 fn reset_range_claimed(base: usize, bytes: usize) -> bool {
@@ -930,6 +949,7 @@ fn grant_dma_domain_with_backend(
         // The operation prevents root reuse; lifecycle precedes all subsystem
         // guards and captures the reservation's matching namespace identity.
         let lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+        prepared.validate_publication()?;
         prepared.resources.reservation = Some(
             crate::capability::reserve_in_lifecycle(
                 owner,
@@ -938,7 +958,12 @@ fn grant_dma_domain_with_backend(
             )
             .map_err(admission_error)?,
         );
+        drop(lifecycle);
         create(&mut prepared.resources.creation)?;
+        // Recheck the captured generation/closing state before device
+        // serialization. Never reacquire an operation by a reusable ASID.
+        let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+        prepared.validate_publication()?;
         let id = prepared.resources.creation.id.expect("successful DMA creation without owner");
         let mut devices = DEVICES.lock();
         let reservation = prepared.resources.reservation.as_mut().unwrap();

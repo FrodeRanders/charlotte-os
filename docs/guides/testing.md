@@ -1093,8 +1093,26 @@ activation and rejected uncertain activation/cancellation. Guarded complete-gran
 abandonment retains two additional exact roots/reservations and endpoint/RAM
 metadata without command writes; no new domain-table/data-frame charge is added.
 No real timeout, activation readback failure, outstanding I/O or physical reset
-is injected. Wider lifecycle/backend creation holds remain. See the
+is injected. Complete-unit creation now also releases lifecycle/backend holds
+and probes table/allocator availability at actual reset waits. See the
 [reset-claim evidence](../reports/audits/2026-10-09-security-pci-reset-claim.md).
+
+### DMA creation ownership
+
+Real QEMU probes at complete-unit claim, before construction, before initial
+configuration and before exact restoration require backend/lifecycle/device/
+CPU-table/physical/heap availability, unchanged IRQ state, exact-root busy close
+and nested mutation/reset exclusion. A detached domain's real post-drain fixture
+also rejects new creation before reset. Staging root close after real configuration
+must return Pending, reject capability publication before activation, confirm
+post-guard rollback/refund, then complete that same closing owner.
+
+Synthetic success/error restores the actual engine state. Absent-engine and
+empty-domain cells reject before work. Guarded complete-unit/grant abandonment
+retains one unit table, one domain table, two separately charged data frames,
+metadata, an exact root and the original reservation. These are deterministic
+serialized probes, not cross-LP races or actual hardware timeouts. See the
+[creation-phase evidence](../reports/audits/2026-10-09-security-dma-creation-phases.md).
 
 ### DMA map/unmap maintenance ownership
 

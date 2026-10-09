@@ -68,13 +68,14 @@ Confirmed maintenance returns the engine before unlocked physical table release.
 The original empty domain cell/nonzero requester fence persists. Physical
 rejection restores the frozen owner without allocation; abandonment retains its
 claim. Physical finalization uses the registered-state hold even if an unrelated
-domain owns the engine. Initial domain creation/reset waits remain serialized; boot unit
+domain owns the engine. Creation must reject before claiming a unit containing
+any detached domain cell, so it cannot steal that physical finalizer. Boot unit
 initialization and private cancellation now use an unlocked slot claim. See the [command-maintenance evidence](../reports/audits/2026-10-09-security-iommu-command-maintenance.md).
 
 Before a reachable descriptor is published, each backend records its admitted
 domain in `PreparedDmaDomain`'s borrowed `DmaCreation`, alongside the capability
 reservation and exact user-root operation. Creation error retains that obligation;
-it only marks retiring and publishes abort under the backend guard. Published
+it only marks retiring and publishes abort under exclusive unit ownership. Published
 creation or capability-publication rejection invokes one-shot explicit destroy
 after the grant's local lifecycle/device/config guards leave. Confirmed destruction precedes
 reservation refund/root completion. Rejected cleanup or abandonment retains all
@@ -84,9 +85,14 @@ allocation or reset. Never hardware-published constructor errors now retain
 complete typed private payloads in that same grant; private physical/metadata
 cancellation leaves local guards before release, refund and root completion.
 Physical rejection/abandonment preserves the whole grant and cannot retry freed
-addresses. This needs no hardware maintenance receipt. Initial creation/reset
-waits under wider lifecycle/backend guards and domain allocation/preparation
-remain separate serialized boundaries. See the
+addresses. This needs no hardware maintenance receipt. Initial creation now owns
+the complete installed unit in its existing claimed slot; reset, allocation and
+configuration leave local lifecycle/backend serialization. Admission rejects
+an absent engine or any detached domain cell; ordinary return restores exact
+state, while abandonment retains the whole unit and fence. The grant retains
+its original root/reservation and rejects a captured closing root before
+publication. General metadata admission and wider contexts remain open. See the
+[complete-unit creation evidence](../reports/audits/2026-10-09-security-dma-creation-phases.md),
 [grant rollback evidence](../reports/audits/2026-10-09-security-dma-grant-rollback.md)
 and [published-creation follow-up](../reports/audits/2026-10-09-security-dma-creation-rollback.md).
 
@@ -129,8 +135,9 @@ inline logical claim in the exact endpoint's config cell after BAR/command
 revalidation. It covers validated BAR bounds and the endpoint's ECAM page;
 ordinary config/MSI lookup and overlapping MMIO grant/map/unmap/close reject it.
 Namespace device preparation also rejects before moving such authority.
-Config and device guards leave before controller polling. Wider lifecycle and
-backend guards remain; releasing them needs complete backend preparation ownership.
+Config, device, lifecycle and backend guards leave before controller polling.
+The complete installed-unit claim excludes competing backend mutation/reset,
+while the original grant retains its exact root lease and reservation.
 
 The adapter clears `CC.EN`, waits at most 100 ms for `CSTS.RDY=0`, and retains
 disabled bus mastering after confirmed reset. `DmaCreation` retains the reset

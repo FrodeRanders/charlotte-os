@@ -603,71 +603,82 @@ pub(crate) fn create_domain_with_reset(
     if creation.is_armed() {
         return Err(Error::OperationInFlight);
     }
-    with_unit(|unit| {
-        let source_id = u16::try_from(sid).map_err(|_| Error::InvalidStream)?;
-        match unit.sources.get(&source_id) {
-            Some(0) => reset(true, creation)?,
-            Some(_) => return Err(Error::StreamInUse),
-            None => reset(false, creation)?,
-        }
-        let id = unit.next_domain;
-        if id >= unit.max_domains || id > u16::MAX as u64 {
-            return Err(Error::MapFailed);
-        }
-        unit.next_domain = unit.next_domain.checked_add(1).ok_or(Error::MapFailed)?;
-        let domain = match Domain::new(source_id, unit.agaw, msi_address) {
-            Ok(domain) => domain,
-            Err((error, domain)) => {
-                creation.retain_private(super::private_domain::PrivateDomain::Vtd(domain));
-                return Err(error);
+    super::domain_creation::prepare(
+        &UNIT,
+        creation,
+        |unit| {
+            // Physical retirement returns its engine before finalizing an empty
+            // domain cell. Never claim the unit across that already-owned interval.
+            unit.commands.is_some() && unit.domains.values().all(Option::is_some)
+        },
+        |unit, creation| {
+            let source_id = u16::try_from(sid).map_err(|_| Error::InvalidStream)?;
+            match unit.sources.get(&source_id) {
+                Some(0) => reset(true, creation)?,
+                Some(_) => return Err(Error::StreamInUse),
+                None => reset(false, creation)?,
             }
-        };
-        if super::test_reject_private_complete() {
-            creation.retain_private(super::private_domain::PrivateDomain::Vtd(
-                super::detached_domain::DetachedDomain::new(domain),
-            ));
-            return Err(Error::MapFailed);
-        }
-
-        let bus = source_id >> 8;
-        if !unit.context_tables.contains_key(&bus) {
-            let context_table = match unit.tables.allocate_frame() {
-                Ok(table) => table,
-                Err(error) => {
-                    // The domain is still private; only the unit is published.
-                    creation.retain_private(super::private_domain::PrivateDomain::Vtd(
-                        super::detached_domain::DetachedDomain::new(domain),
-                    ));
+            let id = unit.next_domain;
+            if id >= unit.max_domains || id > u16::MAX as u64 {
+                return Err(Error::MapFailed);
+            }
+            unit.next_domain = unit.next_domain.checked_add(1).ok_or(Error::MapFailed)?;
+            super::domain_creation::boundary(super::domain_creation::Phase::Allocate);
+            let domain = match Domain::new(source_id, unit.agaw, msi_address) {
+                Ok(domain) => domain,
+                Err((error, domain)) => {
+                    creation.retain_private(super::private_domain::PrivateDomain::Vtd(domain));
                     return Err(error);
                 }
             };
-            unit.set_root_entry(bus, context_table);
-            unit.context_tables.insert(bus, context_table);
-        }
-        let devfunc = (source_id & 0xff) as u8;
-        let root = domain.root;
-        unit.domains.insert(id, Some(domain));
-        unit.sources.insert(source_id, id);
-        unit.domains.get_mut(&id).and_then(Option::as_mut).unwrap().tables.publish();
-        creation.record(id);
-        unit.write_context_entry(bus, devfunc, root, id as u16, agaw_aw(unit.agaw));
-        let configured = unit.flush_context_cache().and_then(|()| {
-            if super::test_reject_creation() {
-                Err(Error::HardwareTimeout)
-            } else {
-                Ok(())
+            if super::test_reject_private_complete() {
+                creation.retain_private(super::private_domain::PrivateDomain::Vtd(
+                    super::detached_domain::DetachedDomain::new(domain),
+                ));
+                return Err(Error::MapFailed);
             }
-        });
-        if let Err(error) = configured {
-            unit.domains.get_mut(&id).and_then(Option::as_mut).unwrap().retiring = true;
-            unit.write_context_entry(bus, devfunc, PAddr::from(0u64), 0, 0);
-            // The enclosing grant already owns this registered domain's
-            // obligation. Leave all rollback waits/physical work to its explicit
-            // post-guard cancellation, preserving the source and table charge.
-            return Err(error);
-        }
-        Ok(())
-    })
+
+            let bus = source_id >> 8;
+            if !unit.context_tables.contains_key(&bus) {
+                let context_table = match unit.tables.allocate_frame() {
+                    Ok(table) => table,
+                    Err(error) => {
+                        // The domain is still private; only the unit is published.
+                        creation.retain_private(super::private_domain::PrivateDomain::Vtd(
+                            super::detached_domain::DetachedDomain::new(domain),
+                        ));
+                        return Err(error);
+                    }
+                };
+                unit.set_root_entry(bus, context_table);
+                unit.context_tables.insert(bus, context_table);
+            }
+            let devfunc = (source_id & 0xff) as u8;
+            let root = domain.root;
+            unit.domains.insert(id, Some(domain));
+            unit.sources.insert(source_id, id);
+            unit.domains.get_mut(&id).and_then(Option::as_mut).unwrap().tables.publish();
+            creation.record(id);
+            super::domain_creation::boundary(super::domain_creation::Phase::Configure);
+            unit.write_context_entry(bus, devfunc, root, id as u16, agaw_aw(unit.agaw));
+            let configured = unit.flush_context_cache().and_then(|()| {
+                if super::test_reject_creation() {
+                    Err(Error::HardwareTimeout)
+                } else {
+                    Ok(())
+                }
+            });
+            if let Err(error) = configured {
+                unit.domains.get_mut(&id).and_then(Option::as_mut).unwrap().retiring = true;
+                unit.write_context_entry(bus, devfunc, PAddr::from(0u64), 0, 0);
+                // The enclosing grant already owns this registered domain's
+                // obligation. Leave all rollback waits/physical work to its explicit
+                // post-guard cancellation, preserving the source and table charge.
+                return Err(error);
+            }
+            Ok(())
+        },
+    )
 }
 
 fn claim_mapping(

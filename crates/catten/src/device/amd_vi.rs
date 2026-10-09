@@ -491,50 +491,61 @@ pub(crate) fn create_domain_with_reset(
     if creation.is_armed() {
         return Err(Error::OperationInFlight);
     }
-    with_unit(|unit| {
-        let source_id = u16::try_from(sid).map_err(|_| Error::InvalidStream)?;
-        match unit.sources.get(&source_id) {
-            Some(0) => reset(true, creation)?,
-            Some(_) => return Err(Error::StreamInUse),
-            None => reset(false, creation)?,
-        }
-        let id = unit.next_domain;
-        unit.next_domain = unit.next_domain.checked_add(1).ok_or(Error::MapFailed)?;
-        let domain = match Domain::new(source_id) {
-            Ok(domain) => domain,
-            Err((error, domain)) => {
-                creation.retain_private(super::private_domain::PrivateDomain::AmdVi(domain));
+    super::domain_creation::prepare(
+        &UNIT,
+        creation,
+        |unit| {
+            // Physical retirement returns its engine before finalizing an empty
+            // domain cell. Never claim the unit across that already-owned interval.
+            unit.commands.is_some() && unit.domains.values().all(Option::is_some)
+        },
+        |unit, creation| {
+            let source_id = u16::try_from(sid).map_err(|_| Error::InvalidStream)?;
+            match unit.sources.get(&source_id) {
+                Some(0) => reset(true, creation)?,
+                Some(_) => return Err(Error::StreamInUse),
+                None => reset(false, creation)?,
+            }
+            let id = unit.next_domain;
+            unit.next_domain = unit.next_domain.checked_add(1).ok_or(Error::MapFailed)?;
+            super::domain_creation::boundary(super::domain_creation::Phase::Allocate);
+            let domain = match Domain::new(source_id) {
+                Ok(domain) => domain,
+                Err((error, domain)) => {
+                    creation.retain_private(super::private_domain::PrivateDomain::AmdVi(domain));
+                    return Err(error);
+                }
+            };
+            if super::test_reject_private_complete() {
+                creation.retain_private(super::private_domain::PrivateDomain::AmdVi(
+                    super::detached_domain::DetachedDomain::new(domain),
+                ));
+                return Err(Error::MapFailed);
+            }
+            let root = domain.root;
+            unit.domains.insert(id, Some(domain));
+            unit.sources.insert(source_id, id);
+            unit.domains.get_mut(&id).and_then(Option::as_mut).unwrap().tables.publish();
+            creation.record(id);
+            super::domain_creation::boundary(super::domain_creation::Phase::Configure);
+            unit.write_dte(source_id, root, true);
+            let configured = unit.flush_device_table(source_id).and_then(|()| {
+                if super::test_reject_creation() {
+                    Err(Error::HardwareTimeout)
+                } else {
+                    Ok(())
+                }
+            });
+            if let Err(error) = configured {
+                unit.domains.get_mut(&id).and_then(Option::as_mut).unwrap().retiring = true;
+                unit.write_dte(source_id, PAddr::from(0u64), false);
+                // Do not lose the enclosing grant's rollback obligation or perform
+                // maintenance/physical release beneath this guard.
                 return Err(error);
             }
-        };
-        if super::test_reject_private_complete() {
-            creation.retain_private(super::private_domain::PrivateDomain::AmdVi(
-                super::detached_domain::DetachedDomain::new(domain),
-            ));
-            return Err(Error::MapFailed);
-        }
-        let root = domain.root;
-        unit.domains.insert(id, Some(domain));
-        unit.sources.insert(source_id, id);
-        unit.domains.get_mut(&id).and_then(Option::as_mut).unwrap().tables.publish();
-        creation.record(id);
-        unit.write_dte(source_id, root, true);
-        let configured = unit.flush_device_table(source_id).and_then(|()| {
-            if super::test_reject_creation() {
-                Err(Error::HardwareTimeout)
-            } else {
-                Ok(())
-            }
-        });
-        if let Err(error) = configured {
-            unit.domains.get_mut(&id).and_then(Option::as_mut).unwrap().retiring = true;
-            unit.write_dte(source_id, PAddr::from(0u64), false);
-            // Do not lose the enclosing grant's rollback obligation or perform
-            // maintenance/physical release beneath this guard.
-            return Err(error);
-        }
-        Ok(())
-    })
+            Ok(())
+        },
+    )
 }
 
 fn claim_mapping(

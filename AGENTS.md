@@ -118,7 +118,9 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   hidden or borrowed sources reject before loan mutation and retain their
   original queue/call ownership.
   Device grants take lifecycle before device/backend registries, reserve before
-  hardware creation and retain a `PreparedDmaDomain` until publication. DMA
+  hardware creation and retain a `PreparedDmaDomain` until publication. Release
+  lifecycle after exact root/reservation admission; revalidate the captured root
+  generation and closing state under lifecycle before capability publication. DMA
   publication preparation owns the exact root operation and capability
   reservation together with the backend rollback obligation. Borrow capability
   publication; dispose reservation metadata and explicitly roll back only after
@@ -128,10 +130,12 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   creation borrows its `DmaCreation` and records the admitted domain before any
   reachable descriptor publication; errors retain that obligation. Reject an
   armed creation owner before initialization/reset/allocation. Published-domain
-  rejection only marks retiring and publishes abort under serialization; use
+  rejection only marks retiring and publishes abort under exclusive ownership; use
   the enclosing preparation's post-guard destruction for maintenance/physical
-  rollback. Private construction and reset contexts remain separate. Failed
-  hardware rollback must quarantine reachable backing, never recycle it.
+  rollback. Creation owns the complete installed unit in its existing claimed
+  slot through reset, construction and initial configuration, outside backend
+  serialization. Failed hardware rollback must quarantine reachable backing,
+  never recycle it.
 - Demand-backed heap frames use the embedded address-space `heap_account`.
   Retain the exact generation and table guard across admission/mapping, prepare
   frame tracking fallibly, and retain charges until physical teardown. Never
@@ -316,8 +320,9 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   A completed domain destroy retains its requester fence until confirmed reset;
   supported QEMU NVMe reset owns the exact endpoint's logical config/BAR/ECAM
   claim through new-domain creation and capability publication. Short config
-  holds and device serialization leave before reset polling; wider lifecycle/
-  backend creation guards remain. Keep bus mastering disabled until explicit
+  holds and device serialization leave before reset polling; exact grant and
+  complete-unit ownership also release lifecycle/backend guards. Preserve any
+  enclosing IRQ policy. Keep bus mastering disabled until explicit
   post-publication activation of the exact busy DMA capability. Reject ordinary
   config/MSI lookup and overlapping MMIO grant/map/close while claimed. Retain
   reset in the containing `DmaCreation` before writes; uncertainty or abandonment
@@ -504,8 +509,15 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   cell empty and requester nonzero; restore exact domain/engine together before
   post-guard unpin. Rejected unmap quarantines its pin in admitted storage, never
   allocates a reinsertion node. Abandonment retains all fields and public claims
-  without cleanup. Initial domain creation/reset waits and constructor allocation/
-  registry metadata preparation still need phase separation. Intel cannot overwrite
+  without cleanup. Domain creation moves the complete installed unit into a
+  retaining owner and leaves its existing slot `Claimed`. Require an available
+  actual command engine and no detached domain cells before extraction; a domain
+  in physical finalization must retain access to its original registered state.
+  Reset, construction and initial configuration run outside local lifecycle/backend
+  guards. Restore the exact complete unit on ordinary success/error before grant
+  rollback; abandonment retains every field and permanently fences its slot.
+  General metadata admission/destruction and wider contexts remain separate.
+  Intel cannot overwrite
   a busy invalidation register; AMD and SMMU retain their existing exact completion
   and unconsumed queue contracts.
   See `docs/reference/iommu-table-admission.md`.

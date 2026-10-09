@@ -153,7 +153,10 @@ pub(crate) fn run() {
     reset::tests::begin_real();
     let memory = object::allocate(owner.id(), 2).unwrap();
     let baseline = dma_tables::used().1;
-    let domain = grant_dma_domain(owner.id(), requester, None).unwrap();
+    let domain = domain_creation::tests::with_real(owner, Some(memory), || {
+        grant_dma_domain(owner.id(), requester, None)
+    })
+    .unwrap();
     mmio_map_any(owner.id(), mmio, true).unwrap();
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     let mut mapped = 0;
@@ -296,7 +299,7 @@ pub(crate) fn run() {
                     &mut DmaCreation::new(),
                     |_, _| panic!("claimed requester reached reset")
                 ),
-                Err(dma::Error::StreamInUse)
+                Err(dma::Error::OperationInFlight)
             );
             assert_eq!(
                 object::try_close_cap(owner.id(), memory),
@@ -496,6 +499,46 @@ pub(crate) fn run() {
          real retirement"
     );
     crate::memory::close_user_address_space_handle(successor).unwrap();
+    // Close can stage while an older creation lease owns reset/configuration.
+    // Reject publication by captured identity, finish rollback, then let the
+    // same closing owner consume the now-quiescent root. No new lease is used.
+    let root = crate::service::loader::create_user_address_space_handle();
+    let mut closing = None;
+    let charged = dma_tables::used();
+    assert_eq!(
+        domain_creation::tests::with_real(root, None, || {
+            grant_dma_domain_with_backend(
+                root.id(),
+                |creation| {
+                    create_dma_domain(root.id(), requester, None, creation)?;
+                    let owner =
+                        crate::memory::retirement::ClosingAddressSpace::begin(root).unwrap();
+                    closing = Some(match owner.poll().unwrap() {
+                        crate::memory::retirement::CloseProgress::Pending(owner) => owner,
+                        crate::memory::retirement::CloseProgress::Complete => {
+                            panic!("creation root closed early")
+                        }
+                    });
+                    assert!(AddressSpaceOperation::acquire(root).is_err());
+                    Ok(())
+                },
+                destroy_failed_creation,
+            )
+        }),
+        Err(DeviceError::AddressSpaceClosing)
+    );
+    assert_eq!(dma_tables::used(), charged);
+    assert_eq!(crate::capability::admission_tests::test_namespace_used(root.id()), 0);
+    assert!(!DEVICES.lock().contains_key(&root.id()));
+    assert!(matches!(
+        closing.take().unwrap().poll().unwrap(),
+        crate::memory::retirement::CloseProgress::Complete
+    ));
+    crate::logln!(
+        "[DMA creation closing] real configuration with retained root/reservation; staged close \
+         stayed Pending, publication rejected before activation, confirmed post-guard rollback \
+         refunded authority and original closing owner completed"
+    );
     reset::tests::finish_real();
     crate::logln!(
         "[device recovery] rejected drain retained/fenced DMA; real retry, old-MMIO exclusion and \

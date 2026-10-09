@@ -162,8 +162,19 @@ publication; confirmed backing rollback precedes reset cancellation. Hardware
 uncertainty/abandonment retains root, reservation and endpoint claim without
 destructor writes. Real staged exclusion/reset/publication probes and synthetic
 complete-grant guarded retention qualify this scope. Wider lifecycle/backend
-creation guards, preparation metadata, concurrency/outstanding I/O and custody
-remain open; SEC-18 and the finding counts remain unchanged.
+creation guards remained open at that checkpoint and are addressed below;
+preparation metadata, concurrency/outstanding I/O and custody remain open; SEC-18 and the finding counts remain unchanged.
+The [complete-unit creation follow-up](../reports/audits/2026-10-09-security-dma-creation-phases.md)
+now releases local lifecycle/backend serialization through reset, construction
+and initial configuration. The original grant retains its exact root/reservation;
+publication rechecks captured generation and closing state. The existing unit
+slot claims its entire installed payload and rejects absent engines or detached
+domain cells before extraction, preserving physical finalization. Exact ordinary
+restoration precedes rollback; abandonment retains the whole unit and grant.
+Real boundary and staged-close fixtures plus guarded synthetic retention qualify
+this scope. General metadata admission, inner fallback/wider contexts,
+concurrency/outstanding I/O and custody remain open. SEC-18 and finding counts
+remain unchanged.
 The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.

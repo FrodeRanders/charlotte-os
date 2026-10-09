@@ -651,49 +651,60 @@ pub(crate) fn create_domain_with_reset(
     if creation.is_armed() {
         return Err(Error::OperationInFlight);
     }
-    with_smmu(|smmu| {
-        match smmu.streams.get(&sid) {
-            Some(0) => reset(true, creation)?,
-            Some(_) => return Err(Error::StreamInUse),
-            None => reset(false, creation)?,
-        }
-        let id = smmu.next_domain;
-        smmu.next_domain += 1;
-        let asid = u16::try_from(id).map_err(|_| Error::MapFailed)?;
-        let domain = match Domain::new(asid, sid, smmu.oas, msi_address) {
-            Ok(domain) => domain,
-            Err((error, domain)) => {
-                creation.retain_private(super::private_domain::PrivateDomain::Smmu(domain));
+    super::domain_creation::prepare(
+        &SMMU,
+        creation,
+        |smmu| {
+            // Physical retirement returns its engine before finalizing an empty
+            // domain cell. Never claim the unit across that already-owned interval.
+            smmu.commands.is_some() && smmu.domains.values().all(Option::is_some)
+        },
+        |smmu, creation| {
+            match smmu.streams.get(&sid) {
+                Some(0) => reset(true, creation)?,
+                Some(_) => return Err(Error::StreamInUse),
+                None => reset(false, creation)?,
+            }
+            let id = smmu.next_domain;
+            smmu.next_domain = smmu.next_domain.checked_add(1).ok_or(Error::MapFailed)?;
+            let asid = u16::try_from(id).map_err(|_| Error::MapFailed)?;
+            super::domain_creation::boundary(super::domain_creation::Phase::Allocate);
+            let domain = match Domain::new(asid, sid, smmu.oas, msi_address) {
+                Ok(domain) => domain,
+                Err((error, domain)) => {
+                    creation.retain_private(super::private_domain::PrivateDomain::Smmu(domain));
+                    return Err(error);
+                }
+            };
+            if super::test_reject_private_complete() {
+                creation.retain_private(super::private_domain::PrivateDomain::Smmu(
+                    super::detached_domain::DetachedDomain::new(domain),
+                ));
+                return Err(Error::MapFailed);
+            }
+            let cd = domain.cd;
+            smmu.domains.insert(id, Some(domain));
+            smmu.streams.insert(sid, id);
+            smmu.domains.get_mut(&id).and_then(Option::as_mut).unwrap().tables.publish();
+            creation.record(id);
+            super::domain_creation::boundary(super::domain_creation::Phase::Configure);
+            let configured = smmu.write_ste(sid, Some(cd)).and_then(|()| {
+                if super::test_reject_creation() {
+                    Err(Error::HardwareTimeout)
+                } else {
+                    Ok(())
+                }
+            });
+            if let Err(error) = configured {
+                smmu.domains.get_mut(&id).and_then(Option::as_mut).unwrap().retiring = true;
+                // Abort publication is serialized; its CFGI/TLBI/SYNC and physical
+                // rollback belong to the enclosing grant after all local guards.
+                let _ = smmu.publish_ste(sid, None);
                 return Err(error);
             }
-        };
-        if super::test_reject_private_complete() {
-            creation.retain_private(super::private_domain::PrivateDomain::Smmu(
-                super::detached_domain::DetachedDomain::new(domain),
-            ));
-            return Err(Error::MapFailed);
-        }
-        let cd = domain.cd;
-        smmu.domains.insert(id, Some(domain));
-        smmu.streams.insert(sid, id);
-        smmu.domains.get_mut(&id).and_then(Option::as_mut).unwrap().tables.publish();
-        creation.record(id);
-        let configured = smmu.write_ste(sid, Some(cd)).and_then(|()| {
-            if super::test_reject_creation() {
-                Err(Error::HardwareTimeout)
-            } else {
-                Ok(())
-            }
-        });
-        if let Err(error) = configured {
-            smmu.domains.get_mut(&id).and_then(Option::as_mut).unwrap().retiring = true;
-            // Abort publication is serialized; its CFGI/TLBI/SYNC and physical
-            // rollback belong to the enclosing grant after all local guards.
-            let _ = smmu.publish_ste(sid, None);
-            return Err(error);
-        }
-        Ok(())
-    })
+            Ok(())
+        },
+    )
 }
 
 fn claim_mapping(

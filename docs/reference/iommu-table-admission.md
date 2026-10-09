@@ -155,8 +155,13 @@ Its synthetic containing-owner fixture adds one domain-table charge/frame;
 table-only totals are VT-d 36/27, AMD-Vi 32/23 and SMMUv3 38/29 charges/frames.
 Its two retained data frames and user root have independent accounts.
 
-Initial domain constructor allocation, ledger/registry preparation and
-creation/reset hardware waits still occur under backend serialization.
+Initial domain creation now claims the existing installed-unit slot and owns the
+complete unit through reset, constructor allocation, registry preparation and
+initial configuration outside local lifecycle/backend guards. Admission rejects
+when its actual command engine is absent or any domain cell is detached, including
+the post-drain physical-finalization interval. Ordinary success/error restores
+the exact unit before grant rollback; abandonment retains it and its permanent
+slot fence. No registry, queue snapshot or scalar replay is introduced.
 Explicit destruction and published creation rejection use unlocked maintenance/
 physical cleanup; physical finalization uses the registered-state hold even if
 another domain owns the command engine. Complete outer-context qualification,
@@ -165,13 +170,21 @@ separate work. No quota override or partial-release retry is introduced.
 
 QEMU reset now retains the exact endpoint config/BAR/ECAM claim inside the same
 grant's `DmaCreation`, through configuration and busy capability publication.
-Controller polling leaves device/config serialization, while wider lifecycle/
-backend creation holds remain. Reset uncertainty or abandonment retains the
+Controller polling also leaves lifecycle/backend serialization through the
+original grant and complete installed-unit claim. Reset uncertainty or abandonment retains the
 grant and claim without destructor hardware writes. Confirmed post-guard backing
 rollback precedes explicit reset cancellation; successful publication precedes
 verified activation. The synthetic reset fixture retains two additional exact
 roots/reservations and RAM metadata, with no new IOMMU table or DMA data-frame
 charge. See the [reset-claim evidence](../reports/audits/2026-10-09-security-pci-reset-claim.md).
+
+The [complete-unit creation evidence](../reports/audits/2026-10-09-security-dma-creation-phases.md)
+qualifies claim/construction/configuration/restoration boundaries and rejection
+when the retained root begins closing before publication. Its guarded synthetic
+owner adds one unit and one domain table charge/frame, two independently charged
+data frames and an exact root/reservation. Table-only intentional totals are
+VT-d **38/29**, AMD-Vi **34/25**, SMMUv3 **40/31** charges/frames. General metadata
+admission, inner fallback and all wider caller contexts remain separate work.
 
 ## Evidence and limits
 
@@ -246,7 +259,8 @@ charges/seven frames on VT-d**, **four/three on AMD-Vi**, and **ten/nine on
 SMMUv3**, beyond the earlier 22 charges/15 frames; root backing is accounted
 independently. No failed private owner can retry a returned address. At that
 checkpoint unit initialization was still serialized; the follow-up below replaces
-that path. Domain creation/reset and metadata work remain open.
+that path. Domain creation/reset is extended by the complete-unit claim below;
+general metadata admission and wider contexts remain open.
 
 The [unit-initialization follow-up](../reports/audits/2026-10-09-security-iommu-unit-initialization.md)
 checks all real private allocation-region prefixes and complete preparation,

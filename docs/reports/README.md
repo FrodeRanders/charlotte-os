@@ -10,6 +10,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [2026-10-09 complete-unit DMA creation outside local serialization (SEC-18)](audits/2026-10-09-security-dma-creation-phases.md)
 - [2026-10-09 PCI reset claim retained through DMA publication (SEC-18)](audits/2026-10-09-security-pci-reset-claim.md)
 - [2026-10-09 complete DMA map/unmap ownership through unlocked maintenance (SEC-18)](audits/2026-10-09-security-dma-mapping-maintenance.md)
 - [2026-10-09 claimed IOMMU boot initialization (SEC-18)](audits/2026-10-09-security-iommu-unit-initialization.md)

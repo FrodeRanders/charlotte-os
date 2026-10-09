@@ -12,6 +12,25 @@ pub(super) fn probe(source: &ResetSource<'_>) {
         return;
     }
     let irq = crate::cpu::isa::lp::ops::get_int_state();
+    crate::device::test_reset_backend_available();
+    for (name, probe) in [
+        (
+            "lifecycle",
+            (|| crate::memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_some()) as fn() -> bool,
+        ),
+        ("root table", || crate::memory::ADDRESS_SPACE_TABLE.try_lock().is_some()),
+        ("kernel table", || crate::memory::KERNEL_AS.try_lock().is_some()),
+        ("physical allocator", || crate::memory::PHYSICAL_FRAME_ALLOCATOR.try_lock().is_some()),
+        ("heap", || {
+            crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.try_lock().is_some()
+        }),
+    ] {
+        let deadline = crate::self_test::results::Deadline::after_millis(1000);
+        while !probe() {
+            deadline.assert_pending(name);
+            core::hint::spin_loop();
+        }
+    }
     let deadline = crate::cpu::scheduler::monotonic_millis().saturating_add(1000);
     let config = loop {
         if let Some(config) = source.endpoint.cfg_ptr.try_lock() {
@@ -60,9 +79,10 @@ pub(crate) fn finish_real() {
         publications
     );
     crate::logln!(
-        "[PCI reset claim] {} real reset wait boundaries: config/device guards available, bus \
-         mastering disabled, ordinary config/MSI lookup rejected and captured BAR ranges fenced; \
-         wider lifecycle/backend guards remain",
+        "[PCI reset claim] {} real reset wait boundaries: local \
+         config/device/lifecycle/backend/table/allocator guards available, bus mastering \
+         disabled, ordinary config/MSI lookup rejected and captured BAR ranges fenced; IRQ policy \
+         preserved",
         count
     );
 }

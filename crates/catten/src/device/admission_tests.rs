@@ -37,6 +37,7 @@ fn destroy_failed(id: u64) -> Result<(), dma::Error> {
 pub(crate) fn test_admission() {
     dma_tables::test_admission();
     mapping::test_admission();
+    domain_creation::test_admission();
     crate::device_management::drivers::busses::pci_express::topology::reset::test_admission();
     let owner = crate::service::loader::create_user_address_space_handle();
     let intid = 225;
@@ -82,7 +83,8 @@ pub(crate) fn test_admission() {
             destroy_ok
         };
         // Whitebox retirement in the backend pauses the grant after physical
-        // creation but before publication. Normal teardown is lifecycle-fenced.
+        // creation but before publication. The exact root lease now also permits staged close
+        // before publication.
         let transient = crate::service::loader::create_user_address_space_handle();
         let before = DESTROYS.load(Ordering::Relaxed);
         EXPECTED_IRQ.store(crate::cpu::isa::lp::ops::get_int_state(), Ordering::Relaxed);
