@@ -96,8 +96,7 @@ pub(super) fn run() {
     let new = new_token.namespace.clone();
     assert!(!Arc::ptr_eq(&old, &new));
     assert_eq!(old.used(), 1, "detachment must retain original charge");
-    boundary(true);
-    detached.release();
+    release_namespace(detached);
     assert_eq!(old.used(), 0);
     assert_eq!(old_token.publish(), Err(AllocationError::Retired));
     assert_eq!(new.used(), 1, "late token must not change replacement account");
@@ -116,8 +115,7 @@ pub(super) fn run() {
     assert_eq!(first.next_serial, 1);
     assert!(unused.is_some());
     unused.take().unwrap().cancel_unpublished();
-    boundary(true);
-    private.take(&0x5e49).unwrap().release();
+    release_namespace(private.take(&0x5e49).unwrap());
 
     let abandoned = prepare_namespace().unwrap();
     let retained = abandoned.0.value.as_ref().unwrap().budget.clone();

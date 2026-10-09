@@ -226,12 +226,29 @@ These count limits do not charge allocator bytes, empty namespace/control
 blocks, page tables, stack backing, kernel heap or arbitrary callback captures.
 Demand-backed user heaps and ELF/runtime pages now have separate
 [heap](heap-admission.md) and [image](loader-admission.md) physical admission.
-Namespace node/account preparation is fallible. Individual authority-record
-`BTreeMap` allocation remains infallible; per-record removal, reservation/source
-Drop and source revocation during `publish_batch` still have separate serialized
-destruction. Namespace lookup now scans ordered owning nodes linearly; empty
+Namespace and authority-record node preparation is fallible. Both maps use shared
+`retirement_list::AdmittedMap` nodes; lookup and ordered insertion are linear.
+`PreparingRecord` owns storage before capability serialization, charge and serial
+mutation. Identity exhaustion leaves the original charge with that preparation
+until explicit post-capability-unlock completion. Its inert Drop retains every
+unfinished node/charge. There is no infallible record insertion fallback.
+
+Removal detaches a `RetiredRecord` without destruction under `CAPABILITIES`.
+Its original account/class charge survives until explicit node release; Drop
+retains it even after namespace teardown, promotion or ASID reuse. Namespace
+completion drains its existing admitted nodes without allocating a snapshot.
+Batch move publication keeps the retired source in its exact `SourceEscrow`;
+`PreparedTransfer` releases it after payload completion, pin release and memory
+registry unlock. Loan restoration mutates its existing entry in place. Batch
+validation still precedes publication; a rejected batch changes no authority.
+
+The containing lifecycle/IPC/device guards remain separate qualification work.
+Active reservation/escrow Drop still performs ordinary cancellation by entering
+the capability registry, then disposes the detached node after that local guard
+leaves. It is not an inert fallback or a proof of every outer context. Empty
 namespace bytes/counts remain outside these capability-record ceilings. Count
-admission is not physical out-of-memory handling or a progress guarantee.
+admission is not physical out-of-memory handling or a progress guarantee. See
+the [record-storage evidence](../reports/audits/2026-10-09-security-capability-record-storage.md).
 
 ## Verification
 

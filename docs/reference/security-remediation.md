@@ -199,6 +199,15 @@ now prepares its owning node/account before user ASID publication, shares
 account identity and charge lifetime. Individual authority-record metadata,
 outer contexts, backend storage and aggregate byte/progress admission remain
 open; SEC-07/18 and finding counts are unchanged.
+The [authority-record storage follow-up](../reports/audits/2026-10-09-security-capability-record-storage.md)
+extends that same shared machinery to all six kinds. Fallible preparation precedes
+capability serialization and serial/charge mutation. Detached nodes preserve
+original charges until explicit disposal outside `CAPABILITIES`; batch moves
+retain their source node in the containing transfer through payload completion
+and memory-registry unlock. Guarded preparation/retirement abandonment preserves
+two original ordinary charges through root teardown/reuse. Active token Drop and
+outer lifecycle/IPC/device contexts, backend metadata, byte/principal admission
+and pressure/concurrency remain open; SEC-07/18 and finding counts are unchanged.
 The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.

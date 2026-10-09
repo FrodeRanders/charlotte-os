@@ -100,8 +100,15 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   and cancels ordinary unused storage explicitly after they leave. Drop retains
   both allocations.
   Namespace teardown detaches its complete node before releasing entries/account
-  outside `CAPABILITIES`; containing lifecycle/subsystem guards and individual
-  authority-record BTreeMap storage remain separate qualification work.
+  outside `CAPABILITIES`. Individual authority records use the same admitted
+  nodes: `PreparingRecord` owns fallible storage and provisional charge before
+  serial mutation; unused preparation finishes explicitly after capability
+  unlock. `RetiredRecord` owns a detached node and its original charge until
+  explicit release; abandonment retains both without locks or allocation.
+  Batch moves retain this owner in the exact `SourceEscrow` through payload
+  completion; `PreparedTransfer` disposes it after leaving the memory registry.
+  Containing lifecycle/subsystem guards and active reservation/escrow Drop
+  contexts remain separate qualification work.
   The scalar restoration API is removed. See
   `docs/reference/capability-admission.md` for the current enforcement scope.
   IPC calls use `PreparedCall`/`PreparedConnection` to own metadata and fresh

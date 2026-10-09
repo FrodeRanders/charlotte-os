@@ -1129,10 +1129,31 @@ availability; registration preparation also checks lifecycle/table/physical
 availability. They do not qualify every outer caller or simulate real OOM.
 
 Eight shared retirement-list/`AdmittedMap` host tests trace prepared publication,
-lookup, mutable lookup, failed/ordered detach and abandonment. Record-node
-`BTreeMap` allocation/destruction, raw fixture outer guards, concurrency and
-pressure/progress remain separate. See the
+lookup, mutable lookup, failed/ordered detach and abandonment. These generic
+tests do not qualify raw fixture outer guards, concurrency or pressure/progress.
+See the
 [namespace-storage report](../reports/audits/2026-10-09-security-capability-namespace-storage.md).
+
+### Prepared unified authority-record storage
+
+The serialized boot fixture rejects record-node admission for all six kinds
+before serial/charge mutation. With the actual heap held it admits preprepared
+nodes, publishes, escrows/restores and detaches authority. Mixed move/loan/copy
+publication retains the moved source's original charge until explicit completion;
+retired-destination rejection leaves every source/destination unchanged. Ordinary
+cancellation, teardown of escrowed authority and late tokens after exact root
+reuse refund only their original accounts.
+
+Dropping charged preparation and retirement owners with lifecycle/capability/
+heap guards held retains **two original ordinary capability charges**, two record
+nodes and their shared account control block through root close and successor
+reuse. No new physical table/data/root retention is introduced. Boundary probes
+check local capability/heap availability and preserve each operation's entry IRQ
+state, including an already masked caller. Real NVMe recovery runs the same
+probes. This does not qualify all outer guards or active token destructors, induce
+real OOM, or establish cross-LP/pressure/progress behavior. The shared generic
+host implementation is unchanged from the preceding eight-test validation. See
+the [record-storage report](../reports/audits/2026-10-09-security-capability-record-storage.md).
 
 ## Prepared device registry metadata
 

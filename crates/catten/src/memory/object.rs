@@ -1093,6 +1093,12 @@ impl Drop for PreparedTransfer {
             }
             drop(registry);
             deallocate_frames(frames);
+            // Successful move publication carries the detached authority node
+            // in this exact source owner through payload completion and pin
+            // release. Only now may its original metadata/charge be disposed.
+            if let Some(escrow) = source.escrow.as_mut() {
+                escrow.finish_retired();
+            }
         }
         // Hidden destination authority and private-copy backing drop normally.
         // No live destination, mapping or borrower state needs reversal.

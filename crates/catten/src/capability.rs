@@ -4,10 +4,7 @@
 //! each kernel subsystem. Handles remain opaque; their authoritative table
 //! entries carry the object-family tag.
 
-use alloc::{
-    collections::BTreeMap,
-    sync::Arc,
-};
+use alloc::sync::Arc;
 
 use spin::LazyLock;
 
@@ -23,6 +20,12 @@ use crate::{
 pub(crate) mod admission_tests;
 mod budget;
 mod namespace_tests;
+mod record;
+pub(crate) mod record_tests;
+use record::{
+    PreparingRecord,
+    RetiredRecord,
+};
 
 pub type ObjectCapability = u64;
 
@@ -44,7 +47,7 @@ struct AddressSpaceCapabilities {
     address_space: Option<crate::memory::AddressSpaceHandle>,
     platform: bool,
     budget: Arc<budget::DomainBudget>,
-    objects: BTreeMap<ObjectCapability, Entry>,
+    objects: AdmittedMap<ObjectCapability, Entry>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,7 +73,7 @@ impl AddressSpaceCapabilities {
             address_space,
             platform: false,
             budget: budget::DomainBudget::try_new()?,
-            objects: BTreeMap::new(),
+            objects: AdmittedMap::new(),
         })
     }
 }
@@ -198,29 +201,6 @@ fn namespace<'a>(
     Ok(tables.get_mut(&owner).unwrap())
 }
 
-fn insert_entry(
-    table: &mut AddressSpaceCapabilities,
-    kind: ObjectKind,
-    platform: bool,
-    state: EntryState,
-) -> Result<ObjectCapability, AllocationError> {
-    let charge = budget::reserve(&table.budget, platform)?;
-    let (serial, next) = charlotte_lifecycle::claim_generation(table.next_serial)
-        .ok_or(AllocationError::IdentityExhausted)?;
-    table.next_serial = next;
-    let cap = serial;
-    let previous = table.objects.insert(
-        cap,
-        Entry {
-            kind,
-            state,
-            _charge: charge,
-        },
-    );
-    debug_assert!(previous.is_none());
-    Ok(cap)
-}
-
 /// Own a hidden identity and its shared count until publication or Drop. No
 /// subsystem payload is owned here; that subsystem stages its own resources.
 #[must_use]
@@ -281,44 +261,62 @@ pub(crate) fn reserve_captured(
     if owner == crate::memory::KERNEL_ASID {
         identity = None;
     }
+    // Prepare authority storage before capability serialization or mutation.
+    // Captured callers can still own a subsystem/lifecycle guard; qualification
+    // of those outer contexts remains separate G1/G4 work.
+    let mut record = PreparingRecord::try_new()?;
     // Preflight leaves CAPABILITIES before fallible namespace storage work.
-    // Captured callers can still own a subsystem guard: that outer context and
-    // individual record BTreeMap allocation remain separate G1/G4 work.
     let missing = identity.is_none() && !CAPABILITIES.lock().contains_key(&owner);
     let mut prepared = if missing {
-        Some(prepare_namespace()?)
+        match prepare_namespace() {
+            Ok(namespace) => Some(namespace),
+            Err(error) => {
+                record.finish();
+                return Err(error);
+            }
+        }
     } else {
         None
     };
-    let result = (|| {
-        let mut tables = CAPABILITIES.lock();
-        if identity.is_some() && !tables.contains_key(&owner) {
-            return Err(AllocationError::Retired);
-        }
-        let table = namespace(&mut tables, owner, identity, &mut prepared)?;
-        if table.address_space != identity {
-            return Err(AllocationError::Retired);
-        }
-        let cap = insert_entry(
-            table,
-            kind,
-            owner == crate::memory::KERNEL_ASID || table.platform,
-            EntryState::Staged,
-        )?;
-        Ok(Reservation {
-            owner,
-            cap,
-            kind,
-            namespace: table.budget.clone(),
-            active: true,
-        })
-    })();
+    let result = reserve_prepared_captured(owner, kind, identity, &mut prepared, &mut record);
     // Another raw fixture/kernel caller may have published while preparing.
     // Dispose only our unused private metadata after CAPABILITIES unlock.
     if let Some(unused) = prepared {
         unused.cancel_unpublished();
     }
+    record.finish();
     result
+}
+
+/// Same captured admission, with storage already owned by the preparation.
+fn reserve_prepared_captured(
+    owner: AddressSpaceId,
+    kind: ObjectKind,
+    identity: Option<crate::memory::AddressSpaceHandle>,
+    prepared: &mut Option<PreparingNamespace>,
+    record: &mut PreparingRecord,
+) -> Result<Reservation, AllocationError> {
+    let mut tables = CAPABILITIES.lock();
+    if identity.is_some() && !tables.contains_key(&owner) {
+        return Err(AllocationError::Retired);
+    }
+    let table = namespace(&mut tables, owner, identity, prepared)?;
+    if table.address_space != identity {
+        return Err(AllocationError::Retired);
+    }
+    let cap = record.insert(
+        table,
+        kind,
+        owner == crate::memory::KERNEL_ASID || table.platform,
+        EntryState::Staged,
+    )?;
+    Ok(Reservation {
+        owner,
+        cap,
+        kind,
+        namespace: table.budget.clone(),
+        active: true,
+    })
 }
 
 impl Reservation {
@@ -347,20 +345,24 @@ fn discard_captured(
     cap: ObjectCapability,
     namespace: &Arc<budget::DomainBudget>,
     state: EntryState,
-) {
+) -> Option<RetiredRecord> {
     let mut tables = CAPABILITIES.lock();
     if let Some(table) = tables.get_mut(&owner)
         && Arc::ptr_eq(&table.budget, namespace)
         && table.objects.get(&cap).is_some_and(|entry| entry.state == state)
     {
-        table.objects.remove(&cap);
+        return table.objects.take(&cap).map(RetiredRecord::new);
     }
+    None
 }
 
 impl Drop for Reservation {
     fn drop(&mut self) {
-        if self.active {
-            discard_captured(self.owner, self.cap, &self.namespace, EntryState::Staged);
+        if self.active
+            && let Some(retired) =
+                discard_captured(self.owner, self.cap, &self.namespace, EntryState::Staged)
+        {
+            retired.release();
         }
     }
 }
@@ -371,6 +373,7 @@ impl Drop for Reservation {
 #[must_use]
 #[derive(Debug)]
 pub(crate) struct SourceEscrow {
+    retired: Option<RetiredRecord>,
     owner: AddressSpaceId,
     cap: ObjectCapability,
     kind: ObjectKind,
@@ -410,6 +413,7 @@ pub(crate) fn escrow_captured(
     }
     entry.state = EntryState::Escrow;
     Ok(SourceEscrow {
+        retired: None,
         owner,
         cap,
         kind,
@@ -419,6 +423,14 @@ pub(crate) fn escrow_captured(
 }
 
 impl SourceEscrow {
+    /// The containing transaction has finished payload publication and left
+    /// its memory guard. A completed source node must not die inside the batch.
+    pub(crate) fn finish_retired(&mut self) {
+        if let Some(retired) = self.retired.take() {
+            retired.release();
+        }
+    }
+
     pub(crate) fn restore(self) -> Result<ObjectCapability, AllocationError> {
         self.restore_inner(false)
     }
@@ -450,8 +462,11 @@ impl SourceEscrow {
 
 impl Drop for SourceEscrow {
     fn drop(&mut self) {
-        if self.active {
-            discard_captured(self.owner, self.cap, &self.namespace, EntryState::Escrow);
+        if self.active
+            && let Some(retired) =
+                discard_captured(self.owner, self.cap, &self.namespace, EntryState::Escrow)
+        {
+            retired.release();
         }
     }
 }
@@ -512,7 +527,9 @@ pub(crate) fn publish_batch(batch: &mut [Publication<'_>]) -> Result<(), Allocat
             let table = tables.get_mut(&source.owner).unwrap();
             match disposition {
                 SourceDisposition::Revoke => {
-                    table.objects.remove(&source.cap);
+                    assert!(source.retired.is_none(), "source retirement owner replaced");
+                    source.retired =
+                        Some(RetiredRecord::new(table.objects.take(&source.cap).unwrap()));
                 }
                 SourceDisposition::Restore => {
                     table.objects.get_mut(&source.cap).unwrap().state = EntryState::Live;
@@ -531,7 +548,7 @@ pub(crate) fn test_identity_exhaustion() {
     CAPABILITIES.lock().get_mut(&OWNER).unwrap().next_serial = u64::MAX;
     assert_eq!(try_allocate(OWNER, ObjectKind::Mailbox), Err(AllocationError::IdentityExhausted));
     assert!(contains(OWNER, cap, ObjectKind::Mailbox));
-    assert_eq!(CAPABILITIES.lock().get(&OWNER).unwrap().objects.len(), 1);
+    assert_eq!(CAPABILITIES.lock().get(&OWNER).unwrap().objects.iter().count(), 1);
     assert_eq!(CAPABILITIES.lock().get(&OWNER).unwrap().budget.used(), 1);
     assert!(remove(OWNER, cap, ObjectKind::Mailbox));
     close_address_space(OWNER);
@@ -559,19 +576,7 @@ pub(crate) fn node_admission_used() -> (usize, usize) {
 
 /// Revoke a capability if it belongs to `owner` and has the expected kind.
 pub fn remove(owner: AddressSpaceId, cap: ObjectCapability, kind: ObjectKind) -> bool {
-    let mut tables = CAPABILITIES.lock();
-    let Some(table) = tables.get_mut(&owner) else {
-        return false;
-    };
-    if !table
-        .objects
-        .get(&cap)
-        .is_some_and(|entry| entry.kind == kind && entry.state == EntryState::Live)
-    {
-        return false;
-    }
-    table.objects.remove(&cap);
-    true
+    remove_with_state(owner, cap, kind, |state| state == EntryState::Live)
 }
 
 /// Trusted payload teardown can also revoke an escrowed source. Its retained
@@ -581,19 +586,37 @@ pub(crate) fn remove_for_teardown(
     cap: ObjectCapability,
     kind: ObjectKind,
 ) -> bool {
-    let mut tables = CAPABILITIES.lock();
-    let Some(table) = tables.get_mut(&owner) else {
+    remove_with_state(owner, cap, kind, |state| state != EntryState::Staged)
+}
+
+fn remove_with_state(
+    owner: AddressSpaceId,
+    cap: ObjectCapability,
+    kind: ObjectKind,
+    accepts: impl FnOnce(EntryState) -> bool,
+) -> bool {
+    let Some(retired) = retire_record(owner, cap, kind, accepts) else {
         return false;
     };
-    if !table
-        .objects
-        .get(&cap)
-        .is_some_and(|entry| entry.kind == kind && entry.state != EntryState::Staged)
-    {
-        return false;
-    }
-    table.objects.remove(&cap);
+    // Only the local capability guard leaves here. Caller subsystem guards
+    // and ordinary token cleanup remain separate outer-context work.
+    retired.release();
     true
+}
+
+fn retire_record(
+    owner: AddressSpaceId,
+    cap: ObjectCapability,
+    kind: ObjectKind,
+    accepts: impl FnOnce(EntryState) -> bool,
+) -> Option<RetiredRecord> {
+    let mut tables = CAPABILITIES.lock();
+    let table = tables.get_mut(&owner)?;
+    let entry = table.objects.get(&cap)?;
+    if entry.kind != kind || !accepts(entry.state) {
+        return None;
+    }
+    table.objects.take(&cap).map(RetiredRecord::new)
 }
 
 /// Drop the complete authority namespace after subsystem payload teardown.
@@ -606,12 +629,23 @@ pub fn close_address_space(owner: AddressSpaceId) {
         tables.take(&owner)
     };
     if let Some(namespace) = retired {
-        // The node owns every remaining authority entry and its original
-        // account. No BTreeMap/charge/Arc destructor runs under CAPABILITIES.
-        // The containing teardown's outer context remains its obligation.
-        namespace_tests::boundary(true);
-        namespace.release();
+        release_namespace(namespace);
     }
+}
+
+fn release_namespace(
+    mut namespace: crate::klib::collections::retirement_list::RetiredEntry<(
+        AddressSpaceId,
+        AddressSpaceCapabilities,
+    )>,
+) {
+    // Consume existing admitted storage one record at a time, without a
+    // namespace snapshot or allocation. Partial abandonment retains the rest.
+    while let Some((&cap, _)) = namespace.value().1.objects.first_key_value() {
+        RetiredRecord::new(namespace.value_mut().1.objects.take(&cap).unwrap()).release();
+    }
+    namespace_tests::boundary(true);
+    namespace.release();
 }
 
 /// Fence bounded reservations/publication before subsystem payload teardown.
