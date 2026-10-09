@@ -126,6 +126,14 @@ Real QEMU NVMe rejection after actual initial configuration checks guard/config
 availability, disabled bus mastering and exact charge refund. Initial creation/
 reset waits, private construction and full outer contexts remain G1/G3 work;
 SEC-18 and finding counts remain unchanged.
+The [private-construction follow-up](../reports/audits/2026-10-09-security-dma-private-rollback.md)
+now carries root/CD/MSI prefix and metadata rejection in a complete typed grant.
+Private physical release and metadata disposal leave local lifecycle/device/
+backend/config guards first, then confirmed completion refunds authority/root.
+Rejected/abandoned cleanup retains all original charges and dependencies without
+retry. Real prefix rejection and guarded partial-release probes qualify this
+boundary. Initial waits/reset, unit-private initialization and metadata allocation
+remain G1/G3/G4/G7 work; SEC-18 and counts are unchanged.
 The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.

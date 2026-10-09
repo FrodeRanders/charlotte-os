@@ -68,8 +68,8 @@ Confirmed maintenance returns the engine before unlocked physical table release.
 The original empty domain cell/nonzero requester fence persists. Physical
 rejection restores the frozen owner without allocation; abandonment retains its
 claim. Physical finalization uses the registered-state hold even if an unrelated
-domain owns the engine. Creation/map/unmap/initialization waits and private
-rollback remain serialized. See the [command-maintenance evidence](../reports/audits/2026-10-09-security-iommu-command-maintenance.md).
+domain owns the engine. Creation/map/unmap/initialization waits and unit-private
+initialization rollback remain serialized. See the [command-maintenance evidence](../reports/audits/2026-10-09-security-iommu-command-maintenance.md).
 
 Before a reachable descriptor is published, each backend records its admitted
 domain in `PreparedDmaDomain`'s borrowed `DmaCreation`, alongside the capability
@@ -80,8 +80,13 @@ after the grant's local lifecycle/device/config guards leave. Confirmed destruct
 reservation refund/root completion. Rejected cleanup or abandonment retains all
 three without destructor cleanup; no retry/custody interface exists for this
 publication owner. Reusing an armed creation owner rejects before initialization,
-allocation or reset. Initial creation/reset waits, private construction rollback
-and reset fallback remain separate serialized boundaries. See the
+allocation or reset. Never hardware-published constructor errors now retain
+complete typed private payloads in that same grant; private physical/metadata
+cancellation leaves local guards before release, refund and root completion.
+Physical rejection/abandonment preserves the whole grant and cannot retry freed
+addresses. This needs no hardware maintenance receipt. Initial creation/reset
+waits, unit-private initialization rollback, allocation/preparation and reset
+fallback remain separate serialized boundaries. See the
 [grant rollback evidence](../reports/audits/2026-10-09-security-dma-grant-rollback.md)
 and [published-creation follow-up](../reports/audits/2026-10-09-security-dma-creation-rollback.md).
 
@@ -130,3 +135,7 @@ VirtIO/AHCI/NIC reset adapters, stalled physical CPUs, interrupt-remapping/ATS
 coverage, controller recovery for abandoned owners and complete kernel metadata/table
 admission remain open. See the
 [audit record](../reports/audits/2026-10-06-security-staged-quiescence.md).
+
+Private-construction evidence: [typed grant rollback](../reports/audits/2026-10-09-security-dma-private-rollback.md).
+It adds no reset target, hardware acknowledgement, queue reconstruction or
+published-domain recovery mechanism.

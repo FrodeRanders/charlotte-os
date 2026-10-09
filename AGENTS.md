@@ -463,8 +463,13 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   without allocating snapshots. Table/region fallback retains original backing,
   charges and ledger storage without entering physical/heap allocators, pools,
   guards or logging, including reservation-only abandonment. Cancel known-private
-  construction explicitly with `cancel_unpublished` / `prepare_unpublished`;
-  rejection freezes the containing owner and never permits partial-release retry.
+  unit/fixture construction explicitly with `cancel_unpublished` /
+  `prepare_unpublished`. Production domain constructor errors return complete
+  typed private payloads into `DmaCreation`, never physical cancellation or
+  metadata destruction under backend guards. Keep the exact grant root and
+  authority reservation through post-guard `PrivateDomain` cancellation, including
+  VT-d context-table rejection. Freeze before physical release; failure/abandonment
+  retains the complete private grant and never permits partial-release retry.
   Explicit domain destruction publishes the rejecting descriptor and moves the
   complete domain plus actual command engine into `Maintenance` before unlocked
   hardware waits. Empty engine admission fences ordinary backend mutation/reset.
@@ -477,7 +482,8 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   owns the engine. Competing destroy rejects a claimed cell, never treats it as
   completed. Physical rejection restores the exact frozen owner without allocation;
   abandonment retains every field and the claim. Creation/map/unmap/initialization
-  waits and private rollback still need phase separation. Intel cannot overwrite
+  waits, unit-private initialization rollback and allocation/metadata preparation
+  still need phase separation. Intel cannot overwrite
   a busy invalidation register; AMD and SMMU retain their existing exact completion
   and unconsumed queue contracts.
   See `docs/reference/iommu-table-admission.md`.

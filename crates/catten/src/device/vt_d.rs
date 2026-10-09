@@ -107,7 +107,7 @@ struct Mapping {
     pages: usize,
 }
 
-struct Domain {
+pub(super) struct Domain {
     retiring: bool,
     source_id: u16,
     agaw: u8,
@@ -120,32 +120,39 @@ struct Domain {
 }
 
 impl Domain {
-    fn new(source_id: u16, agaw: u8, msi_address: Option<u64>) -> Result<Self, Error> {
-        let (tables, root) = Tables::prepare_unpublished(Scope::Domain, Tables::allocate_frame)?;
-        let levels = ((agaw - 12) / 9) as usize;
+    #[allow(clippy::result_large_err)] // Return the complete private owner inline.
+    fn new(
+        source_id: u16,
+        agaw: u8,
+        msi_address: Option<u64>,
+    ) -> Result<Self, (Error, super::detached_domain::DetachedDomain<Self>)> {
         let mut domain = Self {
             retiring: false,
             source_id,
             agaw,
-            levels,
-            root,
-            tables,
+            levels: ((agaw - 12) / 9) as usize,
+            root: PAddr::from(0u64),
+            tables: Tables::new(Scope::Domain),
             next_iova: IOVA_START,
             mappings: BTreeMap::new(),
             quarantined_pins: Vec::new(),
         };
-        // The device raises MSI/MSI-X by writing the LAPIC message address; the
-        // remapping unit must identity-map that page so the transaction reaches
-        // the interrupt controller rather than faulting.
-        if let Some(address) = msi_address {
-            let page = address & !(PAGE_SIZE as u64 - 1);
-            if let Err(error) = domain.map_page(page, PAddr::from(page), true) {
-                // The private MSI prefix has never entered a context entry.
-                let _ = domain.tables.cancel_unpublished();
-                return Err(error);
+        let prepared = (|| {
+            domain.root = domain.tables.allocate_frame()?;
+            if let Some(address) = msi_address {
+                let page = address & !(PAGE_SIZE as u64 - 1);
+                domain.map_page(page, PAddr::from(page), true)?;
             }
+            Ok(())
+        })();
+        match prepared {
+            Ok(()) => Ok(domain),
+            Err(error) => Err((error, super::detached_domain::DetachedDomain::new(domain))),
         }
-        Ok(domain)
+    }
+
+    pub(super) fn private_tables(&mut self) -> &mut Tables {
+        &mut self.tables
     }
 
     fn map_page(&mut self, iova: u64, frame: PAddr, writable: bool) -> Result<(), Error> {
@@ -556,7 +563,7 @@ pub(crate) fn create_domain_with_reset(
     creation: &mut super::DmaCreation,
     reset: impl FnOnce(bool) -> Result<(), Error>,
 ) -> Result<(), Error> {
-    if creation.id.is_some() {
+    if creation.is_armed() {
         return Err(Error::OperationInFlight);
     }
     with_unit(|unit| {
@@ -571,7 +578,19 @@ pub(crate) fn create_domain_with_reset(
             return Err(Error::MapFailed);
         }
         unit.next_domain = unit.next_domain.checked_add(1).ok_or(Error::MapFailed)?;
-        let domain = Domain::new(source_id, unit.agaw, msi_address)?;
+        let domain = match Domain::new(source_id, unit.agaw, msi_address) {
+            Ok(domain) => domain,
+            Err((error, domain)) => {
+                creation.retain_private(super::private_domain::PrivateDomain::Vtd(domain));
+                return Err(error);
+            }
+        };
+        if super::test_reject_private_complete() {
+            creation.retain_private(super::private_domain::PrivateDomain::Vtd(
+                super::detached_domain::DetachedDomain::new(domain),
+            ));
+            return Err(Error::MapFailed);
+        }
 
         let bus = source_id >> 8;
         if !unit.context_tables.contains_key(&bus) {
@@ -579,7 +598,9 @@ pub(crate) fn create_domain_with_reset(
                 Ok(table) => table,
                 Err(error) => {
                     // The domain is still private; only the unit is published.
-                    let _ = domain.tables.cancel_unpublished();
+                    creation.retain_private(super::private_domain::PrivateDomain::Vtd(
+                        super::detached_domain::DetachedDomain::new(domain),
+                    ));
                     return Err(error);
                 }
             };
@@ -898,11 +919,27 @@ pub(super) fn test_with_backend_locked(action: impl FnOnce()) {
     action();
 }
 
+/// Private typed payload with real tables/metadata, never in the registry.
+pub(super) fn test_private_domain() -> super::private_domain::PrivateDomain {
+    let mut domain = Domain::new(0, 48, Some(0xfee0_0000)).unwrap_or_else(|(error, mut owner)| {
+        owner.value_mut().tables.cancel_private().unwrap();
+        drop(owner.into_inner());
+        panic!("private retention fixture failed: {:?}", error)
+    });
+
+    domain.quarantined_pins.try_reserve(2).unwrap();
+    super::private_domain::PrivateDomain::Vtd(super::detached_domain::DetachedDomain::new(domain))
+}
+
 /// Private, never hardware-published walkers; the data frame is borrowed.
 pub(super) fn test_table_admission() {
     let baseline = super::dma_tables::used();
     let data = crate::memory::PreparingUserFrame::allocate_zeroed().unwrap();
-    let mut domain = Domain::new(0, 48, None).unwrap();
+    let mut domain = Domain::new(0, 48, None).unwrap_or_else(|(error, mut domain)| {
+        domain.value_mut().tables.cancel_private().unwrap();
+        drop(domain.into_inner());
+        panic!("private walker preparation rejected: {:?}", error)
+    });
     let initial = domain.tables.pages();
     domain.tables.set_limit(initial + 3);
     domain.map_page(0x4000_0000, data.frame(), true).unwrap();

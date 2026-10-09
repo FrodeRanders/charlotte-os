@@ -106,6 +106,7 @@ pub(crate) fn test_admission() {
         }
     }
     test_grant_abandonment();
+    super::private_domain::test_admission();
     test_backend_creation_rejection();
     crate::memory::budget::retire(owner);
     assert_eq!(grant_mmio(owner.id(), 0x0900_0000, 1), Err(DeviceError::NamespaceRetired));
@@ -173,7 +174,7 @@ fn prepare_fixture(
 }
 
 #[allow(clippy::drop_non_drop)] // Exercise abandonment of ManuallyDrop fields.
-fn drop_grant_under_guards(prepared: PreparedDmaDomain) {
+pub(super) fn drop_grant_under_guards(prepared: PreparedDmaDomain) {
     let before = DESTROYS.load(Ordering::Relaxed);
     let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
     dma::test_with_backend_locked(|| {

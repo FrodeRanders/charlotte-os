@@ -1054,6 +1054,15 @@ rollback fixtures also verify that rejected unpublished backing stays in the
 post-guard retirement receipt without consuming foreign leaves. See the
 [stack audit record](../reports/audits/2026-10-07-security-stack-admission.md).
 
+The real DMA fixture also rejects each newly allocated private domain prefix
+(VT-d root/MSI walk, AMD root, Arm root/CD/MSI walk) and complete preparation,
+before hardware publication. It checks backend/lifecycle/device/table/physical/
+heap/config availability and disabled bus mastering before physical release and
+metadata disposal, then requires exact charge/authority refund and root close.
+Complete-grant Drop under held guards and injected second-frame release failure
+retain both exact roots/reservations; repeat release adapters must never run.
+See [private rollback evidence](../reports/audits/2026-10-09-security-dma-private-rollback.md).
+
 ### IOMMU table admission and failed-map cleanup
 
 Serialized pre-driver fixtures on Intel VT-d, AMD-Vi and SMMUv3 exercise actual

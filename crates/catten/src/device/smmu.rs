@@ -144,7 +144,7 @@ struct Mapping {
     pages: usize,
 }
 
-struct Domain {
+pub(super) struct Domain {
     retiring: bool,
     sid: u32,
     asid: u16,
@@ -208,51 +208,61 @@ fn set_descriptor(table: PAddr, index: usize, descriptor: Descriptor) {
 }
 
 impl Domain {
-    fn new(asid: u16, sid: u32, oas: u8, msi_address: Option<u64>) -> Result<Self, Error> {
-        let (tables, (root, cd)) = Tables::prepare_unpublished(Scope::Domain, |tables| {
-            Ok((tables.allocate_frame()?, tables.allocate_frame()?))
-        })?;
-        let cd_words = unsafe { cd.into_hhdm_mut::<u64>() };
-        // 48-bit IOVA, 4 KiB granule, WB/WA walks, inner-shareable, TTBR1
-        // disabled, implementation output-address size inherited from IDR5.
-        let tcr = 16u64
-            | (1 << 8)
-            | (1 << 10)
-            | (3 << 12)
-            | (1 << 30)
-            | ((oas as u64) << 32)
-            | CD_VALID
-            | CD_AA64
-            | (1 << 45)
-            | (1 << 46)
-            | (1 << 47)
-            | ((asid as u64) << 48);
-        unsafe {
-            ptr::write_volatile(cd_words, tcr);
-            ptr::write_volatile(cd_words.add(1), u64::from(root));
-            ptr::write_volatile(cd_words.add(3), 0xff);
-        }
+    #[allow(clippy::result_large_err)] // Return the complete private owner inline.
+    fn new(
+        asid: u16,
+        sid: u32,
+        oas: u8,
+        msi_address: Option<u64>,
+    ) -> Result<Self, (Error, super::detached_domain::DetachedDomain<Self>)> {
         let mut domain = Self {
             retiring: false,
             sid,
             asid,
-            root,
-            tables,
+            root: PAddr::from(0u64),
+            cd: PAddr::from(0u64),
+            tables: Tables::new(Scope::Domain),
             l3_tables: BTreeMap::new(),
             next_iova: IOVA_START,
             mappings: BTreeMap::new(),
-            cd,
             quarantined_pins: Vec::new(),
         };
-        if let Some(address) = msi_address {
-            let page = address & !(PAGE_SIZE as u64 - 1);
-            if let Err(error) = domain.map_page(page, PAddr::from(page), true) {
-                // Neither the private CD nor its MSI prefix entered an STE.
-                let _ = domain.tables.cancel_unpublished();
-                return Err(error);
+        let prepared = (|| {
+            domain.root = domain.tables.allocate_frame()?;
+            domain.cd = domain.tables.allocate_frame()?;
+            let cd_words = unsafe { domain.cd.into_hhdm_mut::<u64>() };
+            // Private CD is complete before any hardware-visible STE.
+            let tcr = 16u64
+                | (1 << 8)
+                | (1 << 10)
+                | (3 << 12)
+                | (1 << 30)
+                | ((oas as u64) << 32)
+                | CD_VALID
+                | CD_AA64
+                | (1 << 45)
+                | (1 << 46)
+                | (1 << 47)
+                | ((asid as u64) << 48);
+            unsafe {
+                ptr::write_volatile(cd_words, tcr);
+                ptr::write_volatile(cd_words.add(1), u64::from(domain.root));
+                ptr::write_volatile(cd_words.add(3), 0xff);
             }
+            if let Some(address) = msi_address {
+                let page = address & !(PAGE_SIZE as u64 - 1);
+                domain.map_page(page, PAddr::from(page), true)?;
+            }
+            Ok(())
+        })();
+        match prepared {
+            Ok(()) => Ok(domain),
+            Err(error) => Err((error, super::detached_domain::DetachedDomain::new(domain))),
         }
-        Ok(domain)
+    }
+
+    pub(super) fn private_tables(&mut self) -> &mut Tables {
+        &mut self.tables
     }
 
     fn ensure_l3(&mut self, iova: u64) -> Result<PAddr, Error> {
@@ -595,7 +605,7 @@ pub(crate) fn create_domain_with_reset(
     creation: &mut super::DmaCreation,
     reset: impl FnOnce(bool) -> Result<(), Error>,
 ) -> Result<(), Error> {
-    if creation.id.is_some() {
+    if creation.is_armed() {
         return Err(Error::OperationInFlight);
     }
     with_smmu(|smmu| {
@@ -607,7 +617,19 @@ pub(crate) fn create_domain_with_reset(
         let id = smmu.next_domain;
         smmu.next_domain += 1;
         let asid = u16::try_from(id).map_err(|_| Error::MapFailed)?;
-        let domain = Domain::new(asid, sid, smmu.oas, msi_address)?;
+        let domain = match Domain::new(asid, sid, smmu.oas, msi_address) {
+            Ok(domain) => domain,
+            Err((error, domain)) => {
+                creation.retain_private(super::private_domain::PrivateDomain::Smmu(domain));
+                return Err(error);
+            }
+        };
+        if super::test_reject_private_complete() {
+            creation.retain_private(super::private_domain::PrivateDomain::Smmu(
+                super::detached_domain::DetachedDomain::new(domain),
+            ));
+            return Err(Error::MapFailed);
+        }
         let cd = domain.cd;
         smmu.domains.insert(id, Some(domain));
         smmu.streams.insert(sid, id);
@@ -921,11 +943,28 @@ pub(super) fn test_with_backend_locked(action: impl FnOnce()) {
     action();
 }
 
+/// Private typed payload with real tables/metadata, never in the registry.
+pub(super) fn test_private_domain() -> super::private_domain::PrivateDomain {
+    let mut domain =
+        Domain::new(1, 0, 5, Some(0xfee0_0000)).unwrap_or_else(|(error, mut owner)| {
+            owner.value_mut().tables.cancel_private().unwrap();
+            drop(owner.into_inner());
+            panic!("private retention fixture failed: {:?}", error)
+        });
+
+    domain.quarantined_pins.try_reserve(2).unwrap();
+    super::private_domain::PrivateDomain::Smmu(super::detached_domain::DetachedDomain::new(domain))
+}
+
 /// Private, never hardware-published walkers; the data frame is borrowed.
 pub(super) fn test_table_admission() {
     let baseline = super::dma_tables::used();
     let data = crate::memory::PreparingUserFrame::allocate_zeroed().unwrap();
-    let mut domain = Domain::new(1, 0, 5, None).unwrap();
+    let mut domain = Domain::new(1, 0, 5, None).unwrap_or_else(|(error, mut domain)| {
+        domain.value_mut().tables.cancel_private().unwrap();
+        drop(domain.into_inner());
+        panic!("private walker preparation rejected: {:?}", error)
+    });
     let initial = domain.tables.pages();
     domain.tables.set_limit(initial + 3);
     domain.map_page(0x4000_0000, data.frame(), true).unwrap();

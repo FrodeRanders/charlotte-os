@@ -10,6 +10,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [2026-10-09 typed private DMA construction rollback (SEC-18)](audits/2026-10-09-security-dma-private-rollback.md)
 - [2026-10-09 concurrent abort-sweep executor ownership (SEC-18)](audits/2026-10-09-security-abort-executor.md)
 - [2026-10-09 abort-sweep root completion before caller retirement (SEC-18)](audits/2026-10-09-security-abort-handoff.md)
 - [2026-10-09 IOMMU table/region preparation abandonment (SEC-18)](audits/2026-10-09-security-iommu-preparation-abandonment.md)

@@ -41,6 +41,7 @@ pub mod vt_d;
 pub(crate) mod admission_tests;
 mod detached_domain;
 mod dma_tables;
+mod private_domain;
 pub(crate) mod recovery_tests;
 pub(crate) mod retirement;
 
@@ -53,6 +54,23 @@ static REJECT_CREATION: core::sync::atomic::AtomicBool = core::sync::atomic::Ato
 
 fn test_reject_creation() -> bool {
     REJECT_CREATION.swap(false, Ordering::AcqRel)
+}
+
+// Serialized pre-driver fixture, never caller-controlled policy. Allocated
+// private prefixes stay with the complete grant until post-guard cancellation.
+static REJECT_PRIVATE_ALLOCATION: core::sync::atomic::AtomicU64 =
+    core::sync::atomic::AtomicU64::new(0);
+static REJECT_PRIVATE_COMPLETE: core::sync::atomic::AtomicBool =
+    core::sync::atomic::AtomicBool::new(false);
+
+fn test_reject_private_allocation(pages: u64) -> bool {
+    REJECT_PRIVATE_ALLOCATION
+        .compare_exchange(pages, 0, Ordering::AcqRel, Ordering::Relaxed)
+        .is_ok()
+}
+
+fn test_reject_private_complete() -> bool {
+    REJECT_PRIVATE_COMPLETE.swap(false, Ordering::AcqRel)
 }
 
 // Single-mutator, pre-driver boot fixture. Reject after hardware detachment;
@@ -339,17 +357,45 @@ struct DmaGrantResources {
 #[must_use]
 pub(crate) struct DmaCreation {
     id: Option<u64>,
+    private: Option<private_domain::PrivateDomain>,
 }
 
 impl DmaCreation {
     fn new() -> Self {
         Self {
             id: None,
+            private: None,
         }
     }
 
+    fn is_armed(&self) -> bool {
+        self.id.is_some() || self.private.is_some()
+    }
+
+    fn retain_private(&mut self, domain: private_domain::PrivateDomain) {
+        assert!(!self.is_armed(), "private DMA obligation replaced");
+        self.private = Some(domain);
+    }
+
+    fn cancel_private(&mut self) -> Result<(), dma::Error> {
+        self.cancel_private_with(private_domain::PrivateDomain::cancel)
+    }
+
+    fn cancel_private_with(
+        &mut self,
+        cancel: impl FnOnce(private_domain::PrivateDomain) -> Result<(), private_domain::PrivateDomain>,
+    ) -> Result<(), dma::Error> {
+        if let Some(domain) = self.private.take()
+            && let Err(domain) = cancel(domain)
+        {
+            self.private = Some(domain);
+            return Err(dma::Error::MapFailed);
+        }
+        Ok(())
+    }
+
     fn record(&mut self, id: u64) {
-        assert!(self.id.is_none(), "DMA creation obligation replaced");
+        assert!(!self.is_armed(), "DMA creation obligation replaced");
         self.id = Some(id);
     }
 }
@@ -384,11 +430,22 @@ impl PreparedDmaDomain {
     /// leave. A rejected/interrupted backend release must never be retried by
     /// this publication owner, nor refund its reservation or finish its root.
     #[allow(clippy::result_large_err)] // Return the inline owner without allocation.
-    fn cancel_unpublished(mut self) -> Result<(), Self> {
+    fn cancel_unpublished(self) -> Result<(), Self> {
+        self.cancel_unpublished_with(DmaCreation::cancel_private)
+    }
+
+    #[allow(clippy::result_large_err)] // Keep the entire failed grant inline.
+    fn cancel_unpublished_with(
+        mut self,
+        cancel_private: impl FnOnce(&mut DmaCreation) -> Result<(), dma::Error>,
+    ) -> Result<(), Self> {
         if self.rollback_started {
             return Err(self);
         }
         self.rollback_started = true;
+        if cancel_private(&mut self.resources.creation).is_err() {
+            return Err(self);
+        }
         if let Some(id) = self.resources.creation.id {
             if (self.resources.destroy)(id).is_err() {
                 return Err(self);
@@ -405,6 +462,7 @@ impl PreparedDmaDomain {
     /// hardware ownership transfers. Dispose inactive reservation metadata and
     /// finish the operation only after leaving those local guards.
     fn complete(mut self) -> Result<(), DeviceError> {
+        assert!(self.resources.creation.private.is_none(), "publishing private DMA backing");
         self.resources.creation.id = None;
         self.finish()
     }

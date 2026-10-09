@@ -35,11 +35,19 @@ The full contiguous extent is admitted before allocation. No allocation is
 required between recording physical ownership and publishing a table link.
 Children are initialized before valid-link publication. Ledger metadata and
 physical allocator rejection explicitly cancel only the unused region admission.
-`Tables::prepare_unpublished` rolls back known-private construction prefixes;
-`cancel_unpublished` consumes a never hardware-published table owner. All three
-backend constructors use these boundaries, including VT-d MSI/context rejection
-and SMMUv3 root/CD/MSI preparation. Unused reservations and confirmed private
-release refund exactly once.
+`Tables::prepare_unpublished` remains the explicit unit/private-fixture helper.
+Production domain constructors instead return an owning typed rejection with
+all root/CD/MSI prefixes and metadata, without cancelling under backend guards.
+`DmaCreation` retains that `PrivateDomain` inside the complete grant alongside
+its exact root operation and authority reservation. VT-d context-table rejection
+retains the still-private domain through the same path. After local lifecycle,
+device, backend and config guards leave, private table cancellation verifies
+unpublished state, freezes before physical release, then refunds confirmed
+backing and disposes metadata. Only afterward may the grant refund authority and
+complete its root. Failure returns the complete frozen payload; Drop retains
+every field, original charge, root and reservation without cleanup. There is no
+hardware completion to retry for never hardware-published backing. Unit-private
+initialization rollback and allocation/metadata preparation remain separate.
 
 The backend marks domain/unit tables published before the first hardware-visible
 context, DTE, STE or base-register write. Publication also rejects uncertain
@@ -121,7 +129,7 @@ an operator retry owner. Successful completion removes the empty cell, changes
 the requester to its existing reset-required tombstone, and consumes mapping/pin
 collections outside the backend guard.
 
-Physical allocation, ordinary private construction rollback, ledger/registry
+Physical allocation, unit-private initialization rollback, ledger/registry
 preparation and initial creation/map/unmap/initialization hardware waits still
 occur under backend serialization. Explicit destruction and published creation
 rejection use unlocked maintenance/physical cleanup; physical finalization uses
@@ -194,3 +202,13 @@ available PCI config serialization, table-charge/capability refund and root clos
 Fake rejected cleanup retains one additional root/reservation without new IOMMU
 charges/frames; all five grant-retention fixtures preserve their original roots
 and authority charges. This does not test a real withheld hardware completion.
+
+The [private-construction follow-up](../reports/audits/2026-10-09-security-dma-private-rollback.md)
+adds real rejected root/CD/MSI prefixes and complete metadata preparation, with
+post-guard physical/metadata probes and exact charge/authority refund/root close.
+Guarded complete-grant abandonment and rejected second-frame release retain two
+additional exact roots/reservations. Table-only fixture retention adds **eight
+charges/seven frames on VT-d**, **four/three on AMD-Vi**, and **ten/nine on
+SMMUv3**, beyond the earlier 22 charges/15 frames; root backing is accounted
+independently. No failed private owner can retry a returned address. The unit's
+initialization/metadata allocation and initial creation/reset waits remain open.

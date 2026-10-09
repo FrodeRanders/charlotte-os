@@ -126,7 +126,23 @@ impl Tables {
         if self.state != State::Unpublished {
             return Err(Error::MapFailed);
         }
-        self.release()
+        self.cancel_private()
+    }
+
+    /// Borrowed by the enclosing typed private-domain owner. No published
+    /// backing qualifies, and a failed walk remains frozen with its whole charge.
+    pub(super) fn cancel_private(&mut self) -> Result<(), Error> {
+        self.cancel_private_with(|frame| PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame))
+    }
+
+    pub(super) fn cancel_private_with(
+        &mut self,
+        release: impl FnMut(PAddr) -> Result<(), crate::memory::physical::Error>,
+    ) -> Result<(), Error> {
+        if self.state != State::Unpublished {
+            return Err(Error::MapFailed);
+        }
+        self.release_with(release)
     }
 
     pub(super) fn allocate_frame(&mut self) -> Result<PAddr, Error> {
@@ -134,14 +150,23 @@ impl Tables {
     }
 
     pub(super) fn allocate(&mut self, pages: usize, alignment: usize) -> Result<PAddr, Error> {
-        self.allocate_with(pages, alignment, |pages, alignment| {
+        let frame = self.allocate_with(pages, alignment, |pages, alignment| {
             let mut allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
             if pages == 1 && alignment == PAGE {
                 allocator.allocate_frame()
             } else {
                 allocator.allocate_contiguous(pages, alignment)
             }
-        })
+        })?;
+        // Serialized constructor fixture: rejection leaves the allocated frame
+        // in this exact private ledger, never frees it under the backend guard.
+        if self.scope == Scope::Domain
+            && self.state == State::Unpublished
+            && super::test_reject_private_allocation(self.pages)
+        {
+            return Err(Error::MapFailed);
+        }
+        Ok(frame)
     }
 
     fn allocate_with(

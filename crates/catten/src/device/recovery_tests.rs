@@ -51,6 +51,18 @@ fn creation_rollback_unlocked() {
     crate::device_management::drivers::busses::pci_express::topology::reset::test_assert_disabled_config_available(&crate::DEVICE_TOPOLOGY.pcie);
 }
 
+static PRIVATE_RELEASE_PROBE: core::sync::atomic::AtomicBool =
+    core::sync::atomic::AtomicBool::new(false);
+static PRIVATE_RELEASE_PROBES: core::sync::atomic::AtomicUsize =
+    core::sync::atomic::AtomicUsize::new(0);
+
+pub(super) fn probe_private_release() {
+    if PRIVATE_RELEASE_PROBE.load(Ordering::Acquire) {
+        creation_rollback_unlocked();
+        PRIVATE_RELEASE_PROBES.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
 fn destroy_failed_creation(id: u64) -> Result<(), dma::Error> {
     dma::destroy_domain_at(id, creation_rollback_unlocked, creation_rollback_unlocked)
 }
@@ -239,6 +251,46 @@ pub(crate) fn run() {
         assert_eq!(crate::capability::admission_tests::test_namespace_used(successor.id()), caps);
     }
     assert_eq!(dma_tables::used().1, baseline);
+    // Fail every private root/CD/MSI prefix after its actual physical allocation
+    // and once after complete metadata preparation, before hardware publication.
+    #[cfg(target_arch = "x86_64")]
+    let prefixes = if crate::environment::acpi::sdt::dmar::discover_vtd().is_some() {
+        4
+    } else {
+        1
+    };
+    #[cfg(target_arch = "aarch64")]
+    let prefixes = 5;
+    for prefix in 1..=prefixes + 1 {
+        let rejected = crate::service::loader::create_user_address_space_handle();
+        let charges = dma_tables::used();
+        CREATION_IRQ.store(crate::cpu::isa::lp::ops::get_int_state(), Ordering::Relaxed);
+        PRIVATE_RELEASE_PROBES.store(0, Ordering::Relaxed);
+        PRIVATE_RELEASE_PROBE.store(true, Ordering::Release);
+        if prefix <= prefixes {
+            REJECT_PRIVATE_ALLOCATION.store(prefix, Ordering::Release);
+        } else {
+            REJECT_PRIVATE_COMPLETE.store(true, Ordering::Release);
+        }
+        assert_eq!(
+            grant_dma_domain(rejected.id(), requester, Some(0xfee0_0000)),
+            Err(DeviceError::DmaUnavailable)
+        );
+        PRIVATE_RELEASE_PROBE.store(false, Ordering::Release);
+        assert_eq!(REJECT_PRIVATE_ALLOCATION.load(Ordering::Acquire), 0);
+        assert!(!REJECT_PRIVATE_COMPLETE.load(Ordering::Acquire));
+        assert_eq!(PRIVATE_RELEASE_PROBES.load(Ordering::Relaxed), 2);
+        assert_eq!(dma_tables::used(), charges);
+        assert_eq!(crate::capability::admission_tests::test_namespace_used(rejected.id()), 0);
+        assert!(!DEVICES.lock().contains_key(&rejected.id()));
+        crate::memory::close_user_address_space_handle(rejected).unwrap();
+    }
+    crate::logln!(
+        "[DMA private rollback] all {} allocated prefixes plus complete preparation rejected; \
+         physical/metadata cleanup outside backend/lifecycle/device/config guards, exact \
+         charge/capability refund and root close passed",
+        prefixes
+    );
     let rejected = crate::service::loader::create_user_address_space_handle();
     let charges = dma_tables::used();
     CREATION_IRQ.store(crate::cpu::isa::lp::ops::get_int_state(), Ordering::Relaxed);

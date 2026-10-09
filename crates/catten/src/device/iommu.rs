@@ -147,3 +147,11 @@ pub(super) fn test_command_engines() {
     super::vt_d::test_command_engine();
     super::amd_vi::test_command_engine();
 }
+
+/// Private RAM payload selection; no hardware mutation or domain publication.
+pub(super) fn test_private_domain() -> super::private_domain::PrivateDomain {
+    match detect().unwrap() {
+        Backend::Vtd => super::vt_d::test_private_domain(),
+        Backend::AmdVi => super::amd_vi::test_private_domain(),
+    }
+}
