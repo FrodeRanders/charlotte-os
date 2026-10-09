@@ -82,10 +82,12 @@ pub(super) fn run() {
     assert_eq!(used(), retained);
     super::super::dma::test_table_admission();
     preparation_tests::run();
+    detached_tests::run();
     crate::logln!(
         "[IOMMU admission] node/domain/unit limits, private rollback, partial release fence and \
          cached sparse walkers passed; original release fixtures retain 5 charged pages/3 frames"
     );
 }
 
+mod detached_tests;
 mod preparation_tests;

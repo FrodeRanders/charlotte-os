@@ -70,7 +70,7 @@ This also covers table-admission failure in the middle of a buffer.
 Domain retirement first marks the owner retiring, detaches hardware authority and
 confirms the backend's existing configuration/TLB maintenance and transaction
 completion. Only then does `Tables::release` consume the physical release walk.
-The registered domain and source fence remain until every table frame releases
+The admitted domain slot and source fence remain until every table frame releases
 successfully; pins and capability cleanup cannot treat rejected release as a
 successful close.
 
@@ -82,15 +82,29 @@ frozen release always rejects. A successor cannot refund that original charge.
 Hardware timeout before physical release may still be retried against the same
 owner, as described in [hardware quiescence](hardware-quiescence.md).
 
-Normal destruction moves the owning domain out of its registry and consumes its
-mapping/pin collections directly. It does not allocate a teardown snapshot.
-Physical allocation, ordinary private cancellation, ledger/registry preparation
-and published hardware maintenance/table release still occur under backend
-serialization. Pure fallback retention does not qualify those ordinary outer
-masks or move hardware waits outside the backend guard. General kernel metadata and callback admission, moving all
-allocation out of masking guards, and abandoned-owner recovery remain separate
-work. No quota override, partial-release retry or administrative force-clear is
-introduced.
+Explicit domain destruction confirms the backend's maintenance under its guard,
+then extracts the complete domain into a retention-only `DetachedDomain`. Its
+existing admitted map cell remains empty and its requester entry nonzero, so
+competing map/unmap/destroy and create/reset cannot consume the claim. Domain IDs
+are monotonic and never reused. Absent domains retain idempotent close; an empty
+claimed slot returns rejection. No reinsertion node or teardown snapshot is
+allocated.
+
+Physical table release and successful ledger disposal occur outside backend
+serialization. Ordinary physical rejection restores the exact frozen owner into
+its existing slot; pins and charges remain. Abandonment never invokes implicit
+field destructors: it retains mapping/quarantine storage, pins, table ledger and
+charges, while the slot and requester fence remain. This terminal state is not
+an operator retry owner. Successful completion removes the empty cell, changes
+the requester to its existing reset-required tombstone, and consumes mapping/pin
+collections outside the backend guard.
+
+Physical allocation, ordinary private/creation rollback, ledger/registry
+preparation and hardware maintenance waits still occur under backend
+serialization. Command-engine ownership, complete outer-context qualification,
+registry metadata admission/destruction and abandoned-owner recovery remain
+separate work. No quota override, partial-release retry or administrative
+force-clear is introduced.
 
 ## Evidence and limits
 
@@ -128,3 +142,12 @@ real domain retirement permits it. The fixture submits no I/O command and does
 not suppress a physical hardware acknowledgement. These are QEMU checks, not
 physical-device recovery or whole-node exhaustion proofs. See the
 [audit record](../reports/audits/2026-10-07-security-iommu-admission.md).
+
+The [detached-domain follow-up](../reports/audits/2026-10-09-security-iommu-detached-release.md)
+adds complete-payload abandonment under the same held guards, exact metadata
+identity after partial rejection/restoration and terminal callback exclusion.
+These private fixtures retain three additional domain charges and two frames,
+bringing the table retention fixtures to **22 original charges and 15 frames**.
+Real NVMe maintenance-boundary probes check guard availability, caller IRQ state,
+unchanged pins/charges and competing create/map/unmap/destroy/reset exclusion.
+They are reentrant boot probes, not concurrent multi-LP or outstanding-I/O tests.

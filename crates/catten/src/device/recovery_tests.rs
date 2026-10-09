@@ -48,6 +48,57 @@ pub(crate) fn run() {
         Err(object::MemoryObjectError::LendingActive)
     );
     assert_eq!(dma_map(owner.id(), domain, memory, 3), Err(DeviceError::DmaInvalid));
+    let id = {
+        let devices = DEVICES.lock();
+        let DeviceObject::DmaDomain {
+            id,
+        } = devices[&owner.id()].caps[&domain]
+        else {
+            panic!("DMA fixture cap")
+        };
+        id
+    };
+    let irq_state = crate::cpu::isa::lp::ops::get_int_state();
+    dma::destroy_domain_with(id, || {
+        // This exact boundary is after real hardware maintenance, before any
+        // table release or data unpin. No acknowledgement is fabricated.
+        assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq_state);
+        dma::test_assert_backend_available();
+        drop(
+            crate::memory::ADDRESS_SPACE_LIFECYCLE.try_lock().expect("DMA release holds lifecycle"),
+        );
+        drop(DEVICES.try_lock().expect("DMA release holds device registry"));
+        drop(
+            crate::memory::PHYSICAL_FRAME_ALLOCATOR
+                .try_lock()
+                .expect("DMA release holds physical allocator"),
+        );
+        drop(
+            crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR
+                .try_lock()
+                .expect("DMA release holds heap allocator"),
+        );
+        assert_eq!(dma_tables::used(), live);
+        assert_eq!(dma::destroy_domain(id), Err(dma::Error::UnknownDomain));
+        assert_eq!(dma::unmap(id, address), Err(dma::Error::UnknownDomain));
+        assert_eq!(
+            dma::map(id, owner.id(), memory, dma::Direction::from_bits(3).unwrap(), false),
+            Err(dma::Error::UnknownDomain)
+        );
+        assert_eq!(
+            dma::create_domain_with_reset(requester, None, |_| panic!(
+                "claimed requester reached reset"
+            )),
+            Err(dma::Error::StreamInUse)
+        );
+        assert_eq!(
+            object::try_close_cap(owner.id(), memory),
+            Err(object::MemoryObjectError::LendingActive)
+        );
+        assert_eq!(dma_tables::used(), live);
+    })
+    .unwrap();
+    // Complete the still-owned fixture capability only after backend success.
     close_cap(owner.id(), domain).unwrap();
     assert_eq!(dma_tables::used().1, baseline);
     let successor = crate::service::loader::create_user_address_space_handle();
@@ -115,8 +166,10 @@ pub(crate) fn run() {
     assert_eq!(dma_tables::used().1, baseline);
     object::close_cap(successor.id(), held).unwrap();
     crate::logln!(
-        "[IOMMU recovery] hardware table charges retained until drain, node pressure refunded \
-         capability, rejected sparse-prefix cleanup retained pin until real retirement"
+        "[IOMMU recovery] detached physical-release boundary keeps pins/source claim, guards \
+         available and competing operations fenced; hardware table charges retained until drain, \
+         node pressure refunded capability, rejected sparse-prefix cleanup retained pin until \
+         real retirement"
     );
     crate::memory::close_user_address_space_handle(successor).unwrap();
     crate::logln!(

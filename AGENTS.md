@@ -421,7 +421,7 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   SMMU descriptors and shared unit tables/queues/completion cells. Reserve actual
   pages before physical allocation, retain an exclusive owner through zeroing
   and fallible ledger preparation, and mark published before hardware authority.
-  Failed creation/retirement retains its registered retiring domain/source fence
+  Failed creation/retirement retains its admitted domain slot/source fence
   unless detachment, hardware maintenance/drain and complete physical release
   succeed. Partial physical release freezes the owner and whole charge; never
   retry freed tables or refund by reusable IDs. Empty branches stay charged and
@@ -433,7 +433,13 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   guards or logging, including reservation-only abandonment. Cancel known-private
   construction explicitly with `cancel_unpublished` / `prepare_unpublished`;
   rejection freezes the containing owner and never permits partial-release retry.
-  Ordinary backend serialization still needs separate phase qualification.
+  Explicit domain destruction confirms typed backend maintenance before moving
+  the complete domain into `DetachedDomain`. Keep its original admitted cell
+  empty and requester fence nonzero through unlocked physical release. Competing
+  destroy must reject a claimed cell, never report it absent/completed. Restore
+  physical rejection into that exact cell without allocation; abandonment retains
+  every field and the claim. Hardware waits and private/creation rollback still
+  need separate command-engine phase qualification; no queue/epoch snapshots.
   See `docs/reference/iommu-table-admission.md`.
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline

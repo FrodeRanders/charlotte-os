@@ -255,7 +255,7 @@ struct Unit {
     completion: PAddr,
     completion_epoch: u64,
     next_domain: u64,
-    domains: BTreeMap<u64, Domain>,
+    domains: BTreeMap<u64, Option<Domain>>,
     sources: BTreeMap<u16, u64>,
 }
 
@@ -425,16 +425,23 @@ pub(crate) fn create_domain_with_reset(
         unit.next_domain = unit.next_domain.checked_add(1).ok_or(Error::MapFailed)?;
         let domain = Domain::new(source_id)?;
         let root = domain.root;
-        unit.domains.insert(id, domain);
+        unit.domains.insert(id, Some(domain));
         unit.sources.insert(source_id, id);
-        unit.domains.get_mut(&id).unwrap().tables.publish();
+        unit.domains.get_mut(&id).and_then(Option::as_mut).unwrap().tables.publish();
         unit.write_dte(source_id, root, true);
         if let Err(error) = unit.flush_device_table(source_id) {
-            unit.domains.get_mut(&id).unwrap().retiring = true;
+            unit.domains.get_mut(&id).and_then(Option::as_mut).unwrap().retiring = true;
             unit.write_dte(source_id, PAddr::from(0u64), false);
             if unit.flush_device_table(source_id).is_ok()
                 && unit.flush_iotlb().is_ok()
-                && unit.domains.get_mut(&id).unwrap().tables.release().is_ok()
+                && unit
+                    .domains
+                    .get_mut(&id)
+                    .and_then(Option::as_mut)
+                    .unwrap()
+                    .tables
+                    .release()
+                    .is_ok()
             {
                 *unit.sources.get_mut(&source_id).unwrap() = 0;
                 unit.domains.remove(&id).expect("new IOMMU domain disappeared");
@@ -469,7 +476,11 @@ pub fn map(
     let mut pending_pin = Some(pin);
     let result = with_unit(|unit| {
         let mapped = {
-            let domain = unit.domains.get_mut(&domain_id).ok_or(Error::UnknownDomain)?;
+            let domain = unit
+                .domains
+                .get_mut(&domain_id)
+                .and_then(Option::as_mut)
+                .ok_or(Error::UnknownDomain)?;
             let pin = pending_pin.take().expect("DMA pin consumed twice");
             domain.map(pin, direction)
         };
@@ -479,7 +490,12 @@ pub fn map(
                 if !prefix || (!super::test_reject_map_rollback() && unit.flush_iotlb().is_ok()) {
                     pending_pin = Some(pin);
                 } else {
-                    unit.domains.get_mut(&domain_id).unwrap().quarantined_pins.push(pin);
+                    unit.domains
+                        .get_mut(&domain_id)
+                        .and_then(Option::as_mut)
+                        .unwrap()
+                        .quarantined_pins
+                        .push(pin);
                 }
                 return Err(error);
             }
@@ -488,13 +504,19 @@ pub fn map(
             let mapping = unit
                 .domains
                 .get_mut(&domain_id)
+                .and_then(Option::as_mut)
                 .expect("AMD-Vi domain disappeared during map rollback")
                 .clear_mapping(iova)
                 .expect("new AMD-Vi mapping disappeared during rollback");
             if unit.flush_iotlb().is_ok() {
                 pending_pin = Some(mapping.pin);
             } else {
-                unit.domains.get_mut(&domain_id).unwrap().quarantined_pins.push(mapping.pin);
+                unit.domains
+                    .get_mut(&domain_id)
+                    .and_then(Option::as_mut)
+                    .unwrap()
+                    .quarantined_pins
+                    .push(mapping.pin);
             }
             return Err(error);
         }
@@ -508,10 +530,19 @@ pub fn map(
 
 pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
     let mapping = with_unit(|unit| {
-        let mapping =
-            unit.domains.get_mut(&domain_id).ok_or(Error::UnknownDomain)?.clear_mapping(iova)?;
+        let mapping = unit
+            .domains
+            .get_mut(&domain_id)
+            .and_then(Option::as_mut)
+            .ok_or(Error::UnknownDomain)?
+            .clear_mapping(iova)?;
         if let Err(error) = unit.flush_iotlb() {
-            unit.domains.get_mut(&domain_id).unwrap().quarantined_pins.push(mapping.pin);
+            unit.domains
+                .get_mut(&domain_id)
+                .and_then(Option::as_mut)
+                .unwrap()
+                .quarantined_pins
+                .push(mapping.pin);
             return Err(error);
         }
         Ok(mapping)
@@ -521,10 +552,21 @@ pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
 }
 
 pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
-    let retired = with_unit(|unit| {
-        let Some(domain) = unit.domains.get_mut(&domain_id) else {
+    destroy_domain_with(domain_id, || {})
+}
+
+/// The hook is a per-call boot-fixture boundary, never a global release mode.
+pub(super) fn destroy_domain_with(
+    domain_id: u64,
+    after_detach: impl FnOnce(),
+) -> Result<(), Error> {
+    let detached = with_unit(|unit| {
+        let Some(slot) = unit.domains.get_mut(&domain_id) else {
             return Ok(None);
         };
+        // An empty admitted slot belongs to an active or abandoned release.
+        // Competing close must not interpret it as an already completed domain.
+        let domain = slot.as_mut().ok_or(Error::UnknownDomain)?;
         domain.retiring = true;
         let source_id = domain.source_id;
         // Remove the translation entry and flush the cached DTE before freeing
@@ -535,19 +577,42 @@ pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
             return Err(Error::HardwareTimeout);
         }
         unit.flush_iotlb()?;
-        unit.domains.get_mut(&domain_id).unwrap().tables.release()?;
-        // Hardware translation/drain completion does not reset queued device
-        // work. Keep the requester fenced until a confirmed device reset.
-        *unit.sources.get_mut(&source_id).expect("registered source") = 0;
-        Ok(unit.domains.remove(&domain_id))
+        // Maintenance is confirmed. Keep the admitted cell and nonzero
+        // requester fence while its complete payload leaves serialization.
+        let domain = unit.domains.get_mut(&domain_id).unwrap().take().unwrap();
+        Ok(Some(super::detached_domain::DetachedDomain::new(domain)))
     })?;
-    if let Some(domain) = retired {
-        for mapping in domain.mappings.into_values() {
-            object::unpin_dma(mapping.pin);
-        }
-        for pin in domain.quarantined_pins {
-            object::unpin_dma(pin);
-        }
+    let Some(mut detached) = detached else {
+        return Ok(());
+    };
+    after_detach();
+    let source_id = detached.value_mut().source_id;
+    // Physical release freezes before touching the allocator. Even partial
+    // rejection returns the exact owner to its existing slot without allocation.
+    if let Err(error) = detached.value_mut().tables.release() {
+        with_unit(|unit| {
+            assert_eq!(unit.sources.get(&source_id), Some(&domain_id));
+            let slot = unit.domains.get_mut(&domain_id).expect("claimed domain slot");
+            assert!(slot.is_none(), "claimed domain replaced");
+            *slot = Some(detached.into_inner());
+            Ok(())
+        })?;
+        return Err(error);
+    }
+    with_unit(|unit| {
+        assert!(matches!(unit.domains.get(&domain_id), Some(None)), "claimed domain replaced");
+        assert_eq!(unit.sources.get(&source_id), Some(&domain_id));
+        // Drain does not reset queued device work; reset still owns this fence.
+        *unit.sources.get_mut(&source_id).unwrap() = 0;
+        unit.domains.remove(&domain_id);
+        Ok(())
+    })?;
+    let domain = detached.into_inner();
+    for mapping in domain.mappings.into_values() {
+        object::unpin_dma(mapping.pin);
+    }
+    for pin in domain.quarantined_pins {
+        object::unpin_dma(pin);
     }
     Ok(())
 }
@@ -596,6 +661,11 @@ pub fn pending_fault_events() -> u32 {
     (pending_event_bytes(base) / 16) as u32
 }
 
+/// Boundary probe; does not initialize hardware or spin on contention.
+pub(super) fn test_assert_backend_available() {
+    drop(UNIT.try_lock().expect("physical release holds backend registry"));
+}
+
 /// Guarded abandonment probe; does not initialize or publish hardware.
 pub(super) fn test_with_backend_locked(action: impl FnOnce()) {
     let _guard = UNIT.lock();
@@ -630,7 +700,7 @@ pub(super) fn test_table_admission() {
 /// Serialized fixture places the next map across a cached/fresh leaf-table boundary.
 pub(super) fn test_reject_sparse_map(id: u64) {
     with_unit(|unit| {
-        let domain = unit.domains.get_mut(&id).unwrap();
+        let domain = unit.domains.get_mut(&id).and_then(Option::as_mut).unwrap();
         domain.next_iova = IOVA_START + (2 * 1024 * 1024 - PAGE_SIZE) as u64;
         domain.tables.set_limit(domain.tables.pages());
         Ok(())

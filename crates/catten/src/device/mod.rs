@@ -39,6 +39,7 @@ pub mod smmu;
 pub mod vt_d;
 
 pub(crate) mod admission_tests;
+mod detached_domain;
 mod dma_tables;
 pub(crate) mod recovery_tests;
 pub(crate) mod retirement;

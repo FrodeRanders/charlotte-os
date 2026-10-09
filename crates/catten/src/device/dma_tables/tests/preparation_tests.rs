@@ -24,7 +24,7 @@ pub(super) fn run() {
     );
 }
 
-fn drop_under_guards(action: impl FnOnce()) {
+pub(super) fn drop_under_guards(action: impl FnOnce()) {
     let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
     crate::device::dma::test_with_backend_locked(|| {
         let _table = crate::memory::ADDRESS_SPACE_TABLE.lock();

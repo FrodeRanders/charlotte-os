@@ -93,9 +93,16 @@ complete call-chain inventory remain required.
 The [IOMMU preparation follow-up](../reports/audits/2026-10-09-security-iommu-preparation-abandonment.md)
 also removes physical/pool cleanup and implicit ledger heap deallocation from
 C15 fallback. Private construction and ordinary metadata/allocator rejection use
-explicit cancellation across all three backends. Ordinary physical work and
-published maintenance still retain backend serialization; G3 and the full
+explicit cancellation across all three backends. Ordinary private/creation
+rollback and hardware maintenance still retain backend serialization; G3 and the full
 call-chain inventory remain required. Finding states are unchanged.
+The [detached-domain follow-up](../reports/audits/2026-10-09-security-iommu-detached-release.md)
+now moves explicit DMA destruction's physical table release outside backend
+serialization, preserving the complete owner and existing slot/requester claim.
+Partial physical failure restores that frozen owner without allocation;
+abandonment retains metadata/pins and fences the slot. Hardware waits and creation
+rollback still require command-engine phase ownership, so G3 and SEC-18 remain
+partial. No custody registry or new owner-family row is added.
 The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.

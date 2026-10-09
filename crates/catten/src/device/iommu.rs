@@ -78,6 +78,16 @@ pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
     }
 }
 
+pub(super) fn destroy_domain_with(
+    domain_id: u64,
+    after_detach: impl FnOnce(),
+) -> Result<(), Error> {
+    match detect()? {
+        Backend::Vtd => super::vt_d::destroy_domain_with(domain_id, after_detach),
+        Backend::AmdVi => super::amd_vi::destroy_domain_with(domain_id, after_detach),
+    }
+}
+
 pub fn handle_interrupt(intid: u32) -> bool {
     match detect() {
         Ok(Backend::Vtd) => super::vt_d::handle_interrupt(intid),
@@ -118,4 +128,10 @@ pub(super) fn test_reject_sparse_map(id: u64) {
 /// Hold both compiled backend registries without hardware initialization.
 pub(super) fn test_with_backend_locked(action: impl FnOnce()) {
     super::vt_d::test_with_backend_locked(|| super::amd_vi::test_with_backend_locked(action));
+}
+
+/// Check both compiled registries without initializing hardware or spinning.
+pub(super) fn test_assert_backend_available() {
+    super::vt_d::test_assert_backend_available();
+    super::amd_vi::test_assert_backend_available();
 }

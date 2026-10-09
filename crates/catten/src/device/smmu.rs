@@ -165,7 +165,7 @@ struct Smmu {
     cmdq: PAddr,
     cmd_prod: u32,
     next_domain: u64,
-    domains: BTreeMap<u64, Domain>,
+    domains: BTreeMap<u64, Option<Domain>>,
     streams: BTreeMap<u32, u64>,
 }
 
@@ -568,16 +568,23 @@ pub(crate) fn create_domain_with_reset(
         let asid = u16::try_from(id).map_err(|_| Error::MapFailed)?;
         let domain = Domain::new(asid, sid, smmu.oas, msi_address)?;
         let cd = domain.cd;
-        smmu.domains.insert(id, domain);
+        smmu.domains.insert(id, Some(domain));
         smmu.streams.insert(sid, id);
-        smmu.domains.get_mut(&id).unwrap().tables.publish();
+        smmu.domains.get_mut(&id).and_then(Option::as_mut).unwrap().tables.publish();
         if let Err(error) = smmu.write_ste(sid, Some(cd)) {
-            smmu.domains.get_mut(&id).unwrap().retiring = true;
+            smmu.domains.get_mut(&id).and_then(Option::as_mut).unwrap().retiring = true;
             // Retain the exact owner unless abort, original-ASID maintenance
             // and complete physical release all succeed.
             if smmu.write_ste(sid, None).is_ok()
                 && smmu.invalidate_asid(asid).is_ok()
-                && smmu.domains.get_mut(&id).unwrap().tables.release().is_ok()
+                && smmu
+                    .domains
+                    .get_mut(&id)
+                    .and_then(Option::as_mut)
+                    .unwrap()
+                    .tables
+                    .release()
+                    .is_ok()
             {
                 *smmu.streams.get_mut(&sid).unwrap() = 0;
                 smmu.domains.remove(&id).expect("new IOMMU domain disappeared");
@@ -608,7 +615,11 @@ pub fn map(
     let mut pending_pin = Some(pin);
     let result = with_smmu(|smmu| {
         let (mapped, asid) = {
-            let domain = smmu.domains.get_mut(&domain_id).ok_or(Error::UnknownDomain)?;
+            let domain = smmu
+                .domains
+                .get_mut(&domain_id)
+                .and_then(Option::as_mut)
+                .ok_or(Error::UnknownDomain)?;
             let pin = pending_pin.take().expect("DMA pin consumed twice");
             (domain.map(pin, direction), domain.asid)
         };
@@ -620,7 +631,12 @@ pub fn map(
                 {
                     pending_pin = Some(pin);
                 } else {
-                    smmu.domains.get_mut(&domain_id).unwrap().quarantined_pins.push(pin);
+                    smmu.domains
+                        .get_mut(&domain_id)
+                        .and_then(Option::as_mut)
+                        .unwrap()
+                        .quarantined_pins
+                        .push(pin);
                 }
                 return Err(error);
             }
@@ -641,14 +657,18 @@ pub fn map(
 pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
     let mapping = with_smmu(|smmu| {
         let (mapping, asid) = {
-            let domain = smmu.domains.get_mut(&domain_id).ok_or(Error::UnknownDomain)?;
+            let domain = smmu
+                .domains
+                .get_mut(&domain_id)
+                .and_then(Option::as_mut)
+                .ok_or(Error::UnknownDomain)?;
             (domain.clear_mapping(iova)?, domain.asid)
         };
         if let Err(error) = smmu.invalidate_asid(asid) {
             // Hardware may still translate the removed entry. Retain the
             // mapping record and its pin so an acknowledged domain destroy
             // releases them once the aborting STE is installed.
-            if let Some(domain) = smmu.domains.get_mut(&domain_id) {
+            if let Some(domain) = smmu.domains.get_mut(&domain_id).and_then(Option::as_mut) {
                 domain.mappings.insert(iova, mapping);
             }
             return Err(error);
@@ -660,10 +680,21 @@ pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
 }
 
 pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
-    let retired = with_smmu(|smmu| {
-        let Some(domain) = smmu.domains.get_mut(&domain_id) else {
+    destroy_domain_with(domain_id, || {})
+}
+
+/// The hook is a per-call boot-fixture boundary, never a global release mode.
+pub(super) fn destroy_domain_with(
+    domain_id: u64,
+    after_detach: impl FnOnce(),
+) -> Result<(), Error> {
+    let detached = with_smmu(|smmu| {
+        let Some(slot) = smmu.domains.get_mut(&domain_id) else {
             return Ok(None);
         };
+        // An empty admitted slot belongs to an active or abandoned release.
+        // Competing close must not interpret it as an already completed domain.
+        let domain = slot.as_mut().ok_or(Error::UnknownDomain)?;
         domain.retiring = true;
         let sid = domain.sid;
         let asid = domain.asid;
@@ -678,19 +709,42 @@ pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
         // CFGI/SYNC retires structure fetches; TLBI/SYNC additionally completes
         // client transactions translated by this ASID before data-pin release.
         smmu.invalidate_asid(asid)?;
-        smmu.domains.get_mut(&domain_id).unwrap().tables.release()?;
-        // Hardware translation/drain completion does not reset queued device
-        // work. Keep the requester fenced until a confirmed device reset.
-        *smmu.streams.get_mut(&sid).expect("registered source") = 0;
-        Ok(smmu.domains.remove(&domain_id))
+        // Maintenance is confirmed. Keep the admitted cell and nonzero
+        // requester fence while its complete payload leaves serialization.
+        let domain = smmu.domains.get_mut(&domain_id).unwrap().take().unwrap();
+        Ok(Some(super::detached_domain::DetachedDomain::new(domain)))
     })?;
-    if let Some(domain) = retired {
-        for mapping in domain.mappings.into_values() {
-            object::unpin_dma(mapping.pin);
-        }
-        for pin in domain.quarantined_pins {
-            object::unpin_dma(pin);
-        }
+    let Some(mut detached) = detached else {
+        return Ok(());
+    };
+    after_detach();
+    let sid = detached.value_mut().sid;
+    // Physical release freezes before touching the allocator. Even partial
+    // rejection returns the exact owner to its existing slot without allocation.
+    if let Err(error) = detached.value_mut().tables.release() {
+        with_smmu(|smmu| {
+            assert_eq!(smmu.streams.get(&sid), Some(&domain_id));
+            let slot = smmu.domains.get_mut(&domain_id).expect("claimed domain slot");
+            assert!(slot.is_none(), "claimed domain replaced");
+            *slot = Some(detached.into_inner());
+            Ok(())
+        })?;
+        return Err(error);
+    }
+    with_smmu(|smmu| {
+        assert!(matches!(smmu.domains.get(&domain_id), Some(None)), "claimed domain replaced");
+        assert_eq!(smmu.streams.get(&sid), Some(&domain_id));
+        // Drain does not reset queued device work; reset still owns this fence.
+        *smmu.streams.get_mut(&sid).unwrap() = 0;
+        smmu.domains.remove(&domain_id);
+        Ok(())
+    })?;
+    let domain = detached.into_inner();
+    for mapping in domain.mappings.into_values() {
+        object::unpin_dma(mapping.pin);
+    }
+    for pin in domain.quarantined_pins {
+        object::unpin_dma(pin);
     }
     Ok(())
 }
@@ -758,6 +812,11 @@ pub fn pending_fault_events() -> u32 {
     producer.wrapping_sub(consumer) & (EVENT_ENTRIES * 2 - 1)
 }
 
+/// Boundary probe; does not initialize hardware or spin on contention.
+pub(super) fn test_assert_backend_available() {
+    drop(SMMU.try_lock().expect("physical release holds backend registry"));
+}
+
 /// Guarded abandonment probe; does not initialize or publish hardware.
 pub(super) fn test_with_backend_locked(action: impl FnOnce()) {
     let _guard = SMMU.lock();
@@ -793,7 +852,7 @@ pub(super) fn test_table_admission() {
 /// Serialized fixture places the next map across a cached/fresh leaf-table boundary.
 pub(super) fn test_reject_sparse_map(id: u64) {
     with_smmu(|unit| {
-        let domain = unit.domains.get_mut(&id).unwrap();
+        let domain = unit.domains.get_mut(&id).and_then(Option::as_mut).unwrap();
         domain.next_iova = IOVA_START + (2 * 1024 * 1024 - PAGE_SIZE) as u64;
         domain.tables.set_limit(domain.tables.pages());
         Ok(())

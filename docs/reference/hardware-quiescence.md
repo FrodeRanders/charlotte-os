@@ -52,8 +52,15 @@ completion cell survive timeout and late commands.
 
 [Hardware-table admission](iommu-table-admission.md) carries charges through
 this boundary. Complete physical table release is also required before removing
-the registered owner/source fence. Failed map prefixes require the same data-pin
+the admitted owner-slot/source fence. Failed map prefixes require the same data-pin
 completion boundary even when table admission rejects a later page.
+
+Explicit destruction now releases physical tables outside backend serialization
+after real maintenance succeeds. A complete detached owner retains pins and
+metadata while its original admitted slot and nonzero requester fence exclude
+competing operations. Physical rejection restores the frozen owner without
+allocation; abandonment retains it and its claim. Hardware waits and creation
+rollback remain serialized. See the [detached-release evidence](../reports/audits/2026-10-09-security-iommu-detached-release.md).
 
 ## Requester reset and reassignment
 
