@@ -307,25 +307,83 @@ fn admission_error(error: crate::capability::AllocationError) -> DeviceError {
     }
 }
 
-/// Own backend-created hardware until its capability and payload are installed.
-/// Failed destroy retains backend frames/pins as a quarantined domain: never
-/// recycle memory still potentially reachable by DMA.
+/// Complete grant transaction, including implicit reservation field destruction.
+/// Abandonment must not enter registries, allocators, hardware or logging. The
+/// backend retains the actual domain; this adapter exclusively owns its rollback
+/// obligation until payload publication. Retention is terminal, not a retry API.
 struct PreparedDmaDomain {
+    resources: core::mem::ManuallyDrop<DmaGrantResources>,
+    rollback_started: bool,
+}
+
+struct DmaGrantResources {
+    address_space: Option<AddressSpaceOperation>,
+    reservation: Option<crate::capability::Reservation>,
     id: Option<u64>,
     destroy: fn(u64) -> Result<(), dma::Error>,
 }
 
-impl Drop for PreparedDmaDomain {
-    fn drop(&mut self) {
-        if let Some(id) = self.id.take()
-            && let Err(error) = (self.destroy)(id)
-        {
-            logln!(
-                "[dma] quarantining unpublished domain {} after rollback failure: {:?}",
-                id,
-                error
-            );
+impl PreparedDmaDomain {
+    fn new(
+        owner: AddressSpaceId,
+        destroy: fn(u64) -> Result<(), dma::Error>,
+    ) -> Result<Self, DeviceError> {
+        // Admission precedes lifecycle/device/backend guards. Kernel grants
+        // borrow the permanent kernel root; every user grant leases its exact
+        // generation, including failure before hardware creation.
+        let address_space = if owner == crate::memory::KERNEL_ASID {
+            None
+        } else {
+            let handle = crate::memory::current_address_space_handle(owner)
+                .ok_or(DeviceError::NamespaceRetired)?;
+            Some(AddressSpaceOperation::acquire(handle).map_err(operation_error)?)
+        };
+        Ok(Self {
+            resources: core::mem::ManuallyDrop::new(DmaGrantResources {
+                address_space,
+                reservation: None,
+                id: None,
+                destroy,
+            }),
+            rollback_started: false,
+        })
+    }
+
+    /// Only ordinary rejection invokes this, after the caller's local guards
+    /// leave. A rejected/interrupted backend release must never be retried by
+    /// this publication owner, nor refund its reservation or finish its root.
+    #[allow(clippy::result_large_err)] // Return the inline owner without allocation.
+    fn cancel_unpublished(mut self) -> Result<(), Self> {
+        if self.rollback_started {
+            return Err(self);
         }
+        self.rollback_started = true;
+        if let Some(id) = self.resources.id {
+            if (self.resources.destroy)(id).is_err() {
+                return Err(self);
+            }
+            self.resources.id = None;
+        }
+        if self.finish().is_err() {
+            return Err(self);
+        }
+        Ok(())
+    }
+
+    /// Payload and authority are installed under device serialization before
+    /// hardware ownership transfers. Dispose inactive reservation metadata and
+    /// finish the operation only after leaving those local guards.
+    fn complete(mut self) -> Result<(), DeviceError> {
+        self.resources.id = None;
+        self.finish()
+    }
+
+    fn finish(&mut self) -> Result<(), DeviceError> {
+        drop(self.resources.reservation.take());
+        if let Some(address_space) = self.resources.address_space.take() {
+            address_space.release().map_err(operation_error)?;
+        }
+        Ok(())
     }
 }
 
@@ -702,31 +760,51 @@ fn grant_dma_domain_with_backend(
     create: impl FnOnce() -> Result<u64, DeviceError>,
     destroy: fn(u64) -> Result<(), dma::Error>,
 ) -> Result<DeviceCap, DeviceError> {
-    // Lifecycle is acquired before any device/backend registry. It prevents
-    // normal retirement between hardware creation and capability publication.
-    let lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
-    let reservation = crate::capability::reserve_in_lifecycle(
-        owner,
-        crate::capability::ObjectKind::Device,
-        &lifecycle,
-    )
-    .map_err(admission_error)?;
-    let id = create()?;
-    let mut prepared = PreparedDmaDomain {
-        id: Some(id),
-        destroy,
-    };
-    let mut devices = DEVICES.lock();
-    let cap = reservation.publish().map_err(admission_error)?;
-    let caps = devices.entry(owner).or_insert_with(AsDeviceCaps::new);
-    let cap = caps.insert_admitted(
-        cap,
-        DeviceObject::DmaDomain {
-            id,
-        },
-    );
-    prepared.id = None;
-    Ok(cap)
+    let mut prepared = PreparedDmaDomain::new(owner, destroy)?;
+    let result = (|| {
+        // The operation prevents root reuse; lifecycle precedes all subsystem
+        // guards and captures the reservation's matching namespace identity.
+        let lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+        prepared.resources.reservation = Some(
+            crate::capability::reserve_in_lifecycle(
+                owner,
+                crate::capability::ObjectKind::Device,
+                &lifecycle,
+            )
+            .map_err(admission_error)?,
+        );
+        let id = create()?;
+        prepared.resources.id = Some(id);
+        let mut devices = DEVICES.lock();
+        let reservation = prepared.resources.reservation.as_mut().unwrap();
+        let cap = reservation.identity();
+        // Borrow publication so rejection cannot implicitly destroy a staged
+        // reservation under lifecycle/device guards before hardware rollback.
+        crate::capability::publish_batch(&mut [crate::capability::Publication {
+            destination: reservation,
+            source: None,
+        }])
+        .map_err(admission_error)?;
+        let caps = devices.entry(owner).or_insert_with(AsDeviceCaps::new);
+        Ok(caps.insert_admitted(
+            cap,
+            DeviceObject::DmaDomain {
+                id,
+            },
+        ))
+    })();
+    match result {
+        Ok(cap) => {
+            prepared.complete()?;
+            Ok(cap)
+        }
+        Err(error) => {
+            // Failed cleanup drops only the retaining containing owner. No
+            // fresh ASID lookup, scalar restoration or destructor retry occurs.
+            let _ = prepared.cancel_unpublished();
+            Err(error)
+        }
+    }
 }
 
 /// Resolve a PCI requester id to the DMA stream id used by the platform's

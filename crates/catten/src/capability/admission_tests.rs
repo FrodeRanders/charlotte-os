@@ -10,6 +10,13 @@ use crate::logln;
 const OWNER: AddressSpaceId = 0x5e40;
 pub(crate) const TEST_NAMESPACE_LIMIT: usize = budget::DOMAIN_LIMIT;
 
+/// Guarded publication-owner abandonment must not run Reservation's implicit
+/// registry cleanup or its namespace Arc destructor.
+pub(crate) fn test_with_registry_locked(action: impl FnOnce()) {
+    let _registry = CAPABILITIES.lock();
+    action();
+}
+
 fn account(owner: AddressSpaceId) -> Arc<budget::DomainBudget> {
     CAPABILITIES.lock().get(&owner).unwrap().budget.clone()
 }

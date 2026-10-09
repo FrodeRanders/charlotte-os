@@ -10,9 +10,21 @@ use crate::capability::admission_tests::{
 };
 
 static DESTROYS: AtomicU32 = AtomicU32::new(0);
+static EXPECTED_IRQ: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
 fn destroy_ok(id: u64) -> Result<(), dma::Error> {
     assert_eq!(id, u64::MAX);
+    assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), EXPECTED_IRQ.load(Ordering::Relaxed));
+    dma::test_assert_backend_available();
+    drop(crate::memory::ADDRESS_SPACE_LIFECYCLE.try_lock().expect("rollback holds lifecycle"));
+    drop(DEVICES.try_lock().expect("rollback holds device registry"));
+    drop(crate::memory::ADDRESS_SPACE_TABLE.try_lock().expect("rollback holds root table"));
+    drop(crate::memory::PHYSICAL_FRAME_ALLOCATOR.try_lock().expect("rollback holds allocator"));
+    drop(
+        crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR
+            .try_lock()
+            .expect("rollback holds heap"),
+    );
     DESTROYS.fetch_add(1, Ordering::Relaxed);
     Ok(())
 }
@@ -61,11 +73,17 @@ pub(crate) fn test_admission() {
         Err(DeviceError::DmaUnavailable)
     );
     assert_eq!(used(owner.id()), TEST_NAMESPACE_LIMIT - 1);
-    for destroy in [destroy_ok as fn(u64) -> Result<(), dma::Error>, destroy_failed] {
+    for fails in [false, true] {
+        let destroy = if fails {
+            destroy_failed
+        } else {
+            destroy_ok
+        };
         // Whitebox retirement in the backend pauses the grant after physical
         // creation but before publication. Normal teardown is lifecycle-fenced.
         let transient = crate::service::loader::create_user_address_space_handle();
         let before = DESTROYS.load(Ordering::Relaxed);
+        EXPECTED_IRQ.store(crate::cpu::isa::lp::ops::get_int_state(), Ordering::Relaxed);
         assert_eq!(
             grant_dma_domain_with_backend(
                 transient.id(),
@@ -78,10 +96,15 @@ pub(crate) fn test_admission() {
             Err(DeviceError::NamespaceRetired)
         );
         assert_eq!(DESTROYS.load(Ordering::Relaxed), before + 1);
-        assert_eq!(used(transient.id()), 0);
+        assert_eq!(used(transient.id()), usize::from(fails));
         assert!(!DEVICES.lock().contains_key(&transient.id()));
-        crate::memory::close_user_address_space_handle(transient).unwrap();
+        if fails {
+            assert_retained_root(transient);
+        } else {
+            crate::memory::close_user_address_space_handle(transient).unwrap();
+        }
     }
+    test_grant_abandonment();
     crate::memory::budget::retire(owner);
     assert_eq!(grant_mmio(owner.id(), 0x0900_0000, 1), Err(DeviceError::NamespaceRetired));
     assert_eq!(grant_interrupt(owner.id(), intid), Err(DeviceError::NamespaceRetired));
@@ -100,6 +123,98 @@ pub(crate) fn test_admission() {
     logln!(
         "[device admission] quota, MMIO/IRQ recovery, DMA create/refund/rollback and exact \
          namespace reuse passed"
+    );
+}
+
+fn assert_retained_root(handle: crate::memory::AddressSpaceHandle) {
+    assert_eq!(crate::memory::current_address_space_handle(handle.id()), Some(handle));
+    assert_eq!(
+        crate::memory::close_user_address_space_handle(handle),
+        Err(crate::memory::AddressSpaceCloseError::OperationsInFlight)
+    );
+    let fresh = crate::service::loader::create_user_address_space_handle();
+    assert_ne!(fresh.id(), handle.id());
+    let cap = grant_mmio(fresh.id(), 0x0900_0000, 1).unwrap();
+    close_cap(fresh.id(), cap).unwrap();
+    crate::memory::close_user_address_space_handle(fresh).unwrap();
+    assert_eq!(used(handle.id()), 1);
+}
+
+fn prepare_fixture(
+    has_domain: bool,
+    fails: bool,
+) -> (crate::memory::AddressSpaceHandle, PreparedDmaDomain) {
+    let root = crate::service::loader::create_user_address_space_handle();
+    let mut prepared = PreparedDmaDomain::new(
+        root.id(),
+        if fails {
+            destroy_failed
+        } else {
+            destroy_ok
+        },
+    )
+    .unwrap();
+    let lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+    prepared.resources.reservation = Some(
+        crate::capability::reserve_in_lifecycle(
+            root.id(),
+            crate::capability::ObjectKind::Device,
+            &lifecycle,
+        )
+        .unwrap(),
+    );
+    prepared.resources.id = has_domain.then_some(u64::MAX);
+    drop(lifecycle);
+    (root, prepared)
+}
+
+#[allow(clippy::drop_non_drop)] // Exercise abandonment of ManuallyDrop fields.
+fn drop_grant_under_guards(prepared: PreparedDmaDomain) {
+    let before = DESTROYS.load(Ordering::Relaxed);
+    let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+    dma::test_with_backend_locked(|| {
+        let _devices = DEVICES.lock();
+        let _table = crate::memory::ADDRESS_SPACE_TABLE.lock();
+        let _kernel = crate::memory::KERNEL_AS.lock();
+        crate::capability::admission_tests::test_with_registry_locked(|| {
+            let physical = crate::memory::PHYSICAL_FRAME_ALLOCATOR.lock();
+            let _heap = crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+            let free = physical.free_frames();
+            drop(prepared);
+            assert_eq!(physical.free_frames(), free);
+            assert_eq!(DESTROYS.load(Ordering::Relaxed), before);
+        });
+    });
+}
+
+fn test_grant_abandonment() {
+    // Fake backend obligations: these do not install a hardware domain. The
+    // real root and capability admission exercise implicit field destruction.
+    for has_domain in [false, true] {
+        let (root, prepared) = prepare_fixture(has_domain, false);
+        assert_eq!(used(root.id()), 1);
+        drop_grant_under_guards(prepared);
+        assert_retained_root(root);
+    }
+    let (root, prepared) = prepare_fixture(true, true);
+    EXPECTED_IRQ.store(crate::cpu::isa::lp::ops::get_int_state(), Ordering::Relaxed);
+    let before = DESTROYS.load(Ordering::Relaxed);
+    let prepared = prepared.cancel_unpublished().err().unwrap();
+    assert_eq!(DESTROYS.load(Ordering::Relaxed), before + 1);
+    let prepared = prepared.cancel_unpublished().err().unwrap();
+    assert_eq!(DESTROYS.load(Ordering::Relaxed), before + 1);
+    drop_grant_under_guards(prepared);
+    assert_retained_root(root);
+    // Explicit cancellation of an ordinary unused reservation refunds and
+    // completes the lease. An unrelated successor can close normally.
+    let (root, prepared) = prepare_fixture(false, false);
+    assert!(prepared.cancel_unpublished().is_ok());
+    assert_eq!(used(root.id()), 0);
+    crate::memory::close_user_address_space_handle(root).unwrap();
+    logln!(
+        "[DMA grant rollback] unlocked one-shot rollback, guarded containing-owner Drop, exact \
+         root/capability retention and successor isolation passed; four roots/reservations \
+         retained"
     );
 }
 

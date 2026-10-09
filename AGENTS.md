@@ -108,7 +108,14 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   hidden or borrowed sources reject before loan mutation and retain their
   original queue/call ownership.
   Device grants take lifecycle before device/backend registries, reserve before
-  hardware creation and retain a `PreparedDmaDomain` until publication. Failed
+  hardware creation and retain a `PreparedDmaDomain` until publication. DMA
+  publication preparation owns the exact root operation and capability
+  reservation together with the backend rollback obligation. Borrow capability
+  publication; dispose reservation metadata and explicitly roll back only after
+  local lifecycle/device guards leave. Failed rollback/abandonment retains the
+  entire preparation without hardware, registry, allocator or logging work in
+  Drop. Never retry this publication owner after rollback starts. Backend
+  creation/reset's internal rollback remains separately qualified. Failed
   hardware rollback must quarantine reachable backing, never recycle it.
 - Demand-backed heap frames use the embedded address-space `heap_account`.
   Retain the exact generation and table guard across admission/mapping, prepare

@@ -71,6 +71,15 @@ claim. Physical finalization uses the registered-state hold even if an unrelated
 domain owns the engine. Creation/map/unmap/initialization waits and private
 rollback remain serialized. See the [command-maintenance evidence](../reports/audits/2026-10-09-security-iommu-command-maintenance.md).
 
+An unpublished successful backend creation belongs to `PreparedDmaDomain`
+together with its capability reservation and exact user-root operation. Ordinary
+capability-publication rejection invokes one-shot explicit destroy after the
+grant's local lifecycle/device guards leave. Confirmed destruction precedes
+reservation refund/root completion. Rejected cleanup or abandonment retains all
+three without destructor cleanup; no retry/custody interface exists for this
+publication owner. Backend creation errors and reset's internal rollback remain
+separate serialized boundaries. See the [grant rollback evidence](../reports/audits/2026-10-09-security-dma-grant-rollback.md).
+
 ## Requester reset and reassignment
 
 Successful domain destruction leaves a zero-valued requester tombstone in its

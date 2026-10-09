@@ -110,6 +110,13 @@ timeout restores the exact engine/domain, abandonment retains them and fences th
 unit. Physical completion remains available during unrelated maintenance.
 Creation/map/unmap/initialization waits and private rollback remain G3 work;
 SEC-18 remains partial and finding counts are unchanged.
+The [DMA grant publication follow-up](../reports/audits/2026-10-09-security-dma-grant-rollback.md)
+removes hardware destruction/logging and implicit reservation cleanup from grant
+fallback. It retains the exact root, reservation and backend rollback obligation
+together; ordinary publication rejection rolls back explicitly after local
+guards leave, while failure/abandonment retains all original admission. Backend
+creation/reset's internal rollback, outer caller qualification and general
+publication metadata admission remain G1/G3/G4. Finding states are unchanged.
 The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.
