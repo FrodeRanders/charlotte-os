@@ -8,10 +8,13 @@ use super::{
     ThreadGeneration,
     ThreadId,
 };
-use crate::memory::{
-    ADDRESS_SPACE_TABLE,
-    AddressSpaceHandle,
-    operation::AddressSpaceOperation,
+use crate::{
+    cpu::multiprocessor::interrupt_tracking::LocalInterruptMask,
+    memory::{
+        ADDRESS_SPACE_TABLE,
+        AddressSpaceHandle,
+        operation::AddressSpaceOperation,
+    },
 };
 
 /// Abandonment retains both the root lease and its terminal admission fence.
@@ -42,6 +45,13 @@ impl DomainAbortSweep {
 
     fn run(self, mut before_abort: impl FnMut(ThreadId, ThreadGeneration)) -> Result<(), Error> {
         let handle = self.root.handle();
+        let caller = {
+            // Capture one executing lifetime, not a reusable TID or LP. The
+            // sweep can be preempted/migrate after this short local interval.
+            let _capture = LocalInterruptMask::new();
+            SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_current_handle()
+        };
+        let mut deferred_caller = None;
         let outcome = (|| {
             for tid in 0..self.ceiling {
                 let generation = {
@@ -51,6 +61,12 @@ impl DomainAbortSweep {
                         _ => continue,
                     }
                 };
+                if caller == Some((tid, generation)) {
+                    // Requesting self-abort here could retire this stack with
+                    // the sweep's root operation still held. Finish peers first.
+                    deferred_caller = caller;
+                    continue;
+                }
                 // No publication/thread-table or lifecycle guard survives
                 // into the scheduler claim. A reused TID must reject using
                 // the captured generation, regardless of its new owner.
@@ -62,9 +78,23 @@ impl DomainAbortSweep {
             }
             Ok(())
         })();
+        tests::before_self_handoff(handle, deferred_caller);
+        // Only the final executing-thread request and scalar lease completion
+        // are non-preemptible. No sweep, callback, physical cleanup or yield is
+        // allowed in this interval. Preserve any enclosing IRQ mask.
+        let handoff = LocalInterruptMask::new();
+        let outcome = outcome.and_then(|()| {
+            if let Some((tid, generation)) = deferred_caller {
+                SYSTEM_SCHEDULER
+                    .read()
+                    .request_executing_abort(tid, generation, handle, &handoff)?;
+            }
+            Ok(())
+        });
         // This releases only the sweep's lease, not the terminal fence. Pending
         // thread contexts retain their own stack/root owners until reaped.
         self.root.release().map_err(|_| Error::ThreadRetirementFailed)?;
+        tests::after_self_handoff(handle, deferred_caller, outcome.is_ok());
         outcome
     }
 }

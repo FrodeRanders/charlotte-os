@@ -403,8 +403,13 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   Sweep a captured slot ceiling with captured thread generations, outside that
   gate; never grow an abort map or snapshot numeric TIDs. Fence installation
   and force-request publication require the retained root, not a fresh ASID
-  lookup. Drop retains the root lease/fence. User thread publication takes
-  lifecycle before its gate and rejects aborting or closing roots through
+  lookup. Drop retains the root lease/fence. Retain whole-domain abort's
+  executing caller through peer requests without marking self-abort. Its final
+  exact local self-request and root-operation completion
+  share a short IRQ-state-preserving mask; no scan, yield, IPI or physical cleanup
+  may enter that handoff. This does not qualify unrelated remote interruption.
+  User thread publication takes lifecycle before its gate and rejects aborting
+  or closing roots through
   publication; stack preparation also rejects the abort fence. Forced deployment
   abort retains a registry claim while releasing its guard before lease admission.
   Failed abort remains failed without force-success counters. Rejected root

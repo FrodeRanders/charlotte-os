@@ -92,6 +92,20 @@ leaves. Other domains may publish or recycle TIDs between capture and abort; a
 reused generation rejects. The publication gate is not held across the sweep.
 No target lifetime can be newly published after the fence.
 
+The sweep captures its executing caller's exact TID/generation and defers that
+lifetime while requesting peers. A short `LocalInterruptMask` then spans only
+the final self-request and explicit root-operation completion. The local request
+qualifies the current LP handle, thread generation and captured root under
+LP/thread-table serialization; it neither scans peers nor stages a thread,
+sends an IPI, allocates or releases backing. Guards leave before root completion,
+and the mask preserves the enclosing IRQ state. No scheduler boundary can
+retire that caller between this self-request and release of the sweep's lease.
+The outgoing handle/context remains owned until the subsequent ordinary switch.
+
+This qualifies the sweep's own self-request. Concurrent sweeps or unrelated
+remote aborts can request its executor earlier; protecting every retained kernel
+operation against those requests remains separate context/progress work.
+
 Explicit sweep completion releases its own root lease. Pending contexts retain
 their independent stack/root owners and the fence stays closed. Abandonment
 retains the operation count/root/fence; no destructor reopens admission or
@@ -143,6 +157,13 @@ no failed-pair retry owner, shared custody adapter or abandoned-owner recovery.
 
 Evidence: [thread retirement audit](../reports/audits/2026-10-07-security-thread-retirement.md).
 Whole-domain evidence: [domain thread abort audit](../reports/audits/2026-10-07-security-domain-thread-abort.md).
+
+Self-handoff evidence: [root-operation completion before caller retirement](../reports/audits/2026-10-09-security-abort-handoff.md).
+Its scheduled EL0 fault fixture requests a spinning peer, checks stale-generation
+and wrong-root local-request rejection, then yields eight times with the caller
+still unrequested. Final masked self-request retains its current handle and Arm
+CPU ownership; successful exact-root teardown afterward excludes a leaked sweep
+lease in this episode. The original timeout captures remain unresolved evidence.
 
 Published-pair evidence: [explicit stack retirement](../reports/audits/2026-10-09-security-published-stack-retirement.md).
 

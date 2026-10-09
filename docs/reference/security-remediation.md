@@ -130,10 +130,14 @@ The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.
 It also recurred on AMD during the published-creation follow-up (14 passed/one
-failed; unchanged-artifact repeat 15 passed). A possible domain-abort sweep
-self-request/root-completion handoff is now recorded in the
-[context inventory](cleanup-recovery.md); it needs correction and deterministic
-evidence before being accepted as the cause.
+failed; unchanged-artifact repeat 15 passed). The
+[abort-sweep handoff correction](../reports/audits/2026-10-09-security-abort-handoff.md)
+now defers the caller until peer requests finish and masks only its exact local
+self-request/root-operation completion. A real fault fixture forces eight
+pre-handoff scheduling boundaries and requires successful root teardown.
+This closes the identified self-request window without establishing it as the
+cause of those historical timeouts. Concurrent remote abort and broader caller
+qualification remain open; finding counts are unchanged.
 
 | Deliverable | Completion evidence |
 | --- | --- |

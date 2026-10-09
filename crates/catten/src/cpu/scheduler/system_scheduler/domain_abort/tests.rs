@@ -5,6 +5,7 @@ use alloc::{
     vec::Vec,
 };
 use core::sync::atomic::{
+    AtomicU64,
     AtomicUsize,
     Ordering,
 };
@@ -35,6 +36,117 @@ use crate::{
 };
 
 extern "C" fn unused_entry() {}
+
+// One serialized EL0 fixture; these scalars select observations, never own a
+// root/thread or authorize cleanup. Arm before publishing its faulting caller.
+static HANDOFF_ROOT: AtomicUsize = AtomicUsize::new(0);
+static HANDOFF_GENERATION: AtomicUsize = AtomicUsize::new(0);
+static HANDOFF_PEER: AtomicUsize = AtomicUsize::new(0);
+static HANDOFF_PEER_GENERATION: AtomicU64 = AtomicU64::new(0);
+static HANDOFF_PHASE: AtomicUsize = AtomicUsize::new(0);
+
+pub(crate) fn arm_self_handoff(handle: AddressSpaceHandle, peer: (ThreadId, ThreadGeneration)) {
+    assert_eq!(HANDOFF_ROOT.load(Ordering::Acquire), 0);
+    HANDOFF_GENERATION.store(handle.generation(), Ordering::Relaxed);
+    HANDOFF_PEER.store(peer.0, Ordering::Relaxed);
+    HANDOFF_PEER_GENERATION.store(peer.1, Ordering::Relaxed);
+    HANDOFF_PHASE.store(1, Ordering::Relaxed);
+    HANDOFF_ROOT.store(handle.id() + 1, Ordering::Release);
+}
+
+fn observes(handle: AddressSpaceHandle) -> bool {
+    HANDOFF_ROOT.load(Ordering::Acquire) == handle.id() + 1
+        && HANDOFF_GENERATION.load(Ordering::Relaxed) == handle.generation()
+}
+
+pub(super) fn before_self_handoff(
+    handle: AddressSpaceHandle,
+    caller: Option<(ThreadId, ThreadGeneration)>,
+) {
+    if !observes(handle) {
+        return;
+    }
+    let (tid, generation) = caller.expect("faulting sweep did not defer its caller");
+    let irq = crate::cpu::isa::lp::ops::get_int_state();
+    assert!(THREAD_PUBLICATION_GATE.try_lock().is_some());
+    assert!(memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
+    assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
+    {
+        let table = MASTER_THREAD_TABLE.read();
+        let thread = table.get(tid).unwrap();
+        assert_eq!(thread.generation, generation);
+        assert_eq!(thread.address_space, Some(handle));
+        assert!(!thread.abort_requested.load(Ordering::Acquire));
+        let peer = HANDOFF_PEER.load(Ordering::Relaxed);
+        let peer_generation = HANDOFF_PEER_GENERATION.load(Ordering::Relaxed);
+        if let Ok(thread) = table.get(peer)
+            && thread.generation == peer_generation
+        {
+            assert_eq!(thread.address_space, Some(handle));
+            assert!(thread.abort_requested.load(Ordering::Acquire));
+        }
+    }
+    let kernel = memory::current_address_space_handle(memory::KERNEL_ASID).unwrap();
+    {
+        let mask = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
+        let scheduler = SYSTEM_SCHEDULER.read();
+        assert!(matches!(
+            scheduler.request_executing_abort(tid, generation.wrapping_add(1), handle, &mask),
+            Err(Error::InvalidThread)
+        ));
+        assert!(matches!(
+            scheduler.request_executing_abort(tid, generation, kernel, &mask),
+            Err(Error::InvalidThread)
+        ));
+    }
+    assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
+    // No guard/local mask survives into the forced scheduler boundary. The
+    // fault entry's IRQ state is preserved, never force-enabled by this probe.
+    for _ in 0..8 {
+        crate::cpu::scheduler::yield_lp();
+        assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
+        let table = MASTER_THREAD_TABLE.read();
+        let thread = table.get(tid).unwrap();
+        assert_eq!(thread.generation, generation);
+        assert!(!thread.abort_requested.load(Ordering::Acquire));
+    }
+    assert_eq!(HANDOFF_PHASE.swap(2, Ordering::AcqRel), 1);
+}
+
+pub(super) fn after_self_handoff(
+    handle: AddressSpaceHandle,
+    caller: Option<(ThreadId, ThreadGeneration)>,
+    success: bool,
+) {
+    if !observes(handle) {
+        return;
+    }
+    assert!(success);
+    assert!(!crate::cpu::isa::lp::ops::get_int_state());
+    let (tid, generation) = caller.unwrap();
+    let table = MASTER_THREAD_TABLE.read();
+    let thread = table.get(tid).unwrap();
+    assert_eq!(thread.generation, generation);
+    assert!(thread.abort_requested.load(Ordering::Acquire));
+    #[cfg(target_arch = "aarch64")]
+    assert!(thread.context.is_on_cpu());
+    assert_eq!(
+        thread.abort_owner_lp.load(Ordering::Acquire),
+        crate::cpu::isa::lp::ops::get_lp_id() as usize
+    );
+    assert_eq!(HANDOFF_PHASE.swap(3, Ordering::AcqRel), 2);
+}
+
+pub(crate) fn finish_self_handoff(handle: AddressSpaceHandle) {
+    assert!(observes(handle));
+    assert_eq!(HANDOFF_PHASE.load(Ordering::Acquire), 3);
+    HANDOFF_ROOT.store(0, Ordering::Release);
+    crate::logln!(concat!(
+        "[domain abort] real fault: stale identity rejection, peer request, ",
+        "eight pre-handoff yields, masked self-request/root completion ",
+        "and exact root teardown passed"
+    ));
+}
 
 fn domain() -> AddressSpaceHandle {
     let handle =

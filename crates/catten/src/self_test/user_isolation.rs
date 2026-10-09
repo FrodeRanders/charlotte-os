@@ -40,6 +40,10 @@ struct Fixture {
 
 impl Fixture {
     fn spawn(code: &[u8]) -> Self {
+        Self::spawn_with(code, |_| {})
+    }
+
+    fn spawn_with(code: &[u8], before_publish: impl FnOnce(AddressSpaceHandle)) -> Self {
         assert!(!code.is_empty() && code.len() <= 4096);
         let handle =
             memory::register_user_address_space(memory::AddressSpace::try_new_user().unwrap())
@@ -75,6 +79,7 @@ impl Fixture {
         unsafe {
             core::arch::asm!("dsb ishst", "ic ialluis", "dsb ish", "isb", options(nomem, nostack));
         }
+        before_publish(handle);
         let mut generation = 0;
         // Documented test ABI: entry is a mapped user address, not a kernel function.
         let entry = unsafe { core::mem::transmute::<usize, extern "C" fn()>(0x20000) };
@@ -179,6 +184,7 @@ unsafe fn code(start: *const u8, end: *const u8) -> &'static [u8] {
 }
 
 pub(crate) fn verify() {
+    verify_abort_handoff();
     let snapshot = Fixture::spawn(unsafe {
         code(&raw const user_register_probe_start, &raw const user_register_probe_end)
     });
@@ -221,6 +227,46 @@ pub(crate) fn verify() {
             );
         }
     }
+}
+
+fn verify_abort_handoff() {
+    // First entry faults; the second entry spins in the same admitted root.
+    // The sweep must request that peer and survive explicit scheduling before
+    // requesting its own exit and completing its root operation.
+    let mut instructions = [0u8; 132];
+    #[cfg(target_arch = "x86_64")]
+    {
+        instructions[..4].copy_from_slice(&[0x31, 0xc0, 0x8b, 0]); // null read
+        instructions[128..130].copy_from_slice(&[0xeb, 0xfe]); // jmp .
+    }
+    #[cfg(target_arch = "aarch64")]
+    {
+        instructions[..8].copy_from_slice(&[
+            0x00, 0x00, 0x80, 0xd2, // mov x0, #0
+            0x00, 0x00, 0x40, 0xf9, // ldr x0, [x0]
+        ]);
+        instructions[128..].copy_from_slice(&[0x00, 0x00, 0x00, 0x14]); // b .
+    }
+    let fixture = Fixture::spawn_with(&instructions, |handle| {
+        memory::set_domain_limits(
+            handle,
+            memory::DomainLimits {
+                user_stack_pages: 1,
+                max_threads: 2,
+            },
+        )
+        .unwrap();
+        let mut generation = 0;
+        // Documented fixture ABI: this is the second mapped EL0 entry address.
+        let entry = unsafe { core::mem::transmute::<usize, extern "C" fn()>(0x20080) };
+        let peer = scheduler::spawn_thread_after_publish(handle.id(), entry, |_, value| {
+            generation = value;
+        });
+        scheduler::system_scheduler::arm_self_handoff(handle, (peer, generation));
+    });
+    let handle = fixture.handle;
+    fixture.finish();
+    scheduler::system_scheduler::finish_self_handoff(handle);
 }
 
 fn check_snapshot(snapshot: &Fixture) {

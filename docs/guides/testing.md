@@ -802,6 +802,16 @@ never-scheduled roots/threads; existing scheduled cross-LP/security/shutdown
 fixtures cover integration. See the
 [domain abort audit](../reports/audits/2026-10-07-security-domain-thread-abort.md).
 
+The EL0 verifier additionally faults one thread with a spinning peer in the same
+exact root. A selected fixture probe checks peer abortion, rejects stale caller
+generation/wrong-root local requests, and forces eight cooperative scheduler
+boundaries before the self-request. The caller must remain live and unrequested;
+the final mask must retain its handle/context through root-operation completion.
+The verifier then requires normal peer/caller retirement and exact root close
+under its existing ten-second deadline. No mask survives the forced yields and
+the fault entry's IRQ state is preserved. See the
+[self-handoff evidence](../reports/audits/2026-10-09-security-abort-handoff.md).
+
 `scripts/run-host-tests.sh` exercises the production socket registry against
 fixed smoltcp storage: rejected creation delivery, dead-owner generations,
 unactivated expiry, admission reserves and buffer-count recovery. It also

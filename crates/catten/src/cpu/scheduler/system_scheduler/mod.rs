@@ -40,6 +40,10 @@ pub(crate) use domain_abort::{
 pub(crate) fn test_domain_abort() {
     domain_abort::tests::run();
 }
+pub(crate) use domain_abort::tests::{
+    arm_self_handoff,
+    finish_self_handoff,
+};
 
 use super::lp_schedulers::LpScheduler;
 use crate::{
@@ -590,6 +594,33 @@ impl SystemScheduler {
         let generation =
             MASTER_THREAD_TABLE.read().get(tid).map_err(|_| Error::InvalidThread)?.generation;
         self.abort_thread_generation(tid, generation)
+    }
+
+    /// Request only this LP's exact executing lifetime. The caller retains its
+    /// local mask through completion of any owner held on the outgoing stack.
+    /// Unlike general abort, this cannot scan peers, stage a context, send an
+    /// IPI or perform retirement. LP authority precedes the thread-table check.
+    fn request_executing_abort(
+        &self,
+        tid: ThreadId,
+        generation: ThreadGeneration,
+        root: crate::memory::AddressSpaceHandle,
+        _handoff: &crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask,
+    ) -> Result<(), Error> {
+        let lp = get_lp_id();
+        let local = self.get_lp_scheduler().lock();
+        if local.get_current_handle() != Some((tid, generation)) {
+            return Err(Error::InvalidThread);
+        }
+        let table = MASTER_THREAD_TABLE.read();
+        let thread = table.get(tid).map_err(|_| Error::InvalidThread)?;
+        if thread.generation != generation || thread.address_space != Some(root) {
+            return Err(Error::InvalidThread);
+        }
+        thread.abort_owner_lp.store(lp as usize, Ordering::Release);
+        thread.abort_requested.store(true, Ordering::Release);
+        local.set_ctx_switch_pending();
+        Ok(())
     }
 
     /// Abort exactly one published thread lifetime.
