@@ -41,6 +41,7 @@ pub mod vt_d;
 pub(crate) mod admission_tests;
 mod detached_domain;
 mod dma_tables;
+mod mapping;
 mod private_domain;
 pub(crate) mod recovery_tests;
 pub(crate) mod retirement;
@@ -87,6 +88,13 @@ static REJECT_MAP_ROLLBACK: core::sync::atomic::AtomicBool =
 
 fn test_reject_map_rollback() -> bool {
     REJECT_MAP_ROLLBACK.swap(false, Ordering::AcqRel)
+}
+
+// Serialized pre-driver fixture: failed unmap must retain its data pin.
+static REJECT_UNMAP_COMPLETION: core::sync::atomic::AtomicBool =
+    core::sync::atomic::AtomicBool::new(false);
+fn test_reject_unmap_completion() -> bool {
+    REJECT_UNMAP_COMPLETION.swap(false, Ordering::AcqRel)
 }
 
 use alloc::collections::BTreeMap;
@@ -180,7 +188,7 @@ pub enum DeviceError {
     ResourceLimit,
     /// The address-space generation is no longer accepting device mappings.
     AddressSpaceClosing,
-    /// An MMIO operation still owns this capability.
+    /// An MMIO or DMA operation still owns this capability.
     OperationInFlight,
     /// The namespace is retiring and cannot receive new device authority.
     NamespaceRetired,
@@ -306,6 +314,7 @@ enum DeviceObject {
     Interrupt(InterruptObject),
     DmaDomain {
         id: u64,
+        operation_in_flight: bool,
     },
 }
 
@@ -885,6 +894,7 @@ fn grant_dma_domain_with_backend(
             cap,
             DeviceObject::DmaDomain {
                 id,
+                operation_in_flight: false,
             },
         ))
     })();
@@ -947,18 +957,9 @@ fn dma_map_with_ownership(
     exclusive: bool,
 ) -> Result<u64, DeviceError> {
     let direction = dma::Direction::from_bits(direction).map_err(|_| DeviceError::DmaInvalid)?;
-    let id = {
-        let mut devices = DEVICES.lock();
-        let object = lookup_mut(&mut devices, asid, domain_cap)?;
-        let DeviceObject::DmaDomain {
-            id,
-        } = object
-        else {
-            return Err(DeviceError::WrongType);
-        };
-        *id
-    };
-    dma::map(id, asid, memory_cap, direction, exclusive).map_err(|_| DeviceError::DmaInvalid)
+    mapping::with_operation(asid, domain_cap, |id| {
+        dma::map(id, asid, memory_cap, direction, exclusive)
+    })
 }
 
 pub fn dma_unmap(
@@ -966,18 +967,7 @@ pub fn dma_unmap(
     domain_cap: DeviceCap,
     iova: u64,
 ) -> Result<(), DeviceError> {
-    let id = {
-        let mut devices = DEVICES.lock();
-        let object = lookup_mut(&mut devices, asid, domain_cap)?;
-        let DeviceObject::DmaDomain {
-            id,
-        } = object
-        else {
-            return Err(DeviceError::WrongType);
-        };
-        *id
-    };
-    dma::unmap(id, iova).map_err(|_| DeviceError::DmaInvalid)
+    mapping::with_operation(asid, domain_cap, |id| dma::unmap(id, iova))
 }
 
 // ---- MMIO operations -------------------------------------------------------
@@ -1341,6 +1331,12 @@ fn close_cap_inner(
         if matches!(
             devices.get(&asid).and_then(|caps| caps.caps.get(&cap)),
             Some(DeviceObject::Mmio(region)) if region.operation_in_flight
+        ) || matches!(
+            devices.get(&asid).and_then(|caps| caps.caps.get(&cap)),
+            Some(DeviceObject::DmaDomain {
+                operation_in_flight: true,
+                ..
+            })
         ) {
             return Err(DeviceError::OperationInFlight);
         }
@@ -1404,6 +1400,7 @@ fn close_cap_inner(
         DeviceObject::Interrupt(_) => {}
         DeviceObject::DmaDomain {
             id,
+            ..
         } => {
             if dma::destroy_domain(id).is_err() {
                 let mut devices = DEVICES.lock();

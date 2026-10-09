@@ -305,22 +305,27 @@ impl Domain {
         Ok(parent)
     }
 
-    fn map(&mut self, pin: DmaPin, direction: Direction) -> Result<u64, (Error, DmaPin, bool)> {
+    fn map(
+        &mut self,
+        pending: &mut super::mapping::PendingPin,
+        direction: Direction,
+    ) -> Result<u64, (Error, bool)> {
+        let pin = pending.borrow();
         if self.retiring {
-            return Err((Error::UnknownDomain, pin, false));
+            return Err((Error::UnknownDomain, false));
         }
         if self.mappings.values().any(|mapping| mapping.pin.object_id() == pin.object_id())
             || self.quarantined_pins.iter().any(|held| held.object_id() == pin.object_id())
         {
-            return Err((Error::AlreadyMapped, pin, false));
+            return Err((Error::AlreadyMapped, false));
         }
         // Prepare enough quarantine capacity for every live mapping, before leaves.
         if self.quarantined_pins.try_reserve(self.mappings.len() + 1).is_err() {
-            return Err((Error::Memory, pin, false));
+            return Err((Error::Memory, false));
         }
         let pages = pin.frames().len();
         let Some(bytes) = (pages as u64).checked_mul(PAGE_SIZE as u64) else {
-            return Err((Error::OutOfIova, pin, false));
+            return Err((Error::OutOfIova, false));
         };
         let iova = self.next_iova;
         let Some(next_iova) = self
@@ -329,7 +334,7 @@ impl Domain {
             .and_then(|next| next.checked_add(PAGE_SIZE as u64 - 1))
             .map(|next| next & !(PAGE_SIZE as u64 - 1))
         else {
-            return Err((Error::OutOfIova, pin, false));
+            return Err((Error::OutOfIova, false));
         };
         let writable = direction.device_writes();
         for (index, frame) in pin.frames().iter().copied().enumerate() {
@@ -342,7 +347,7 @@ impl Domain {
                     unsafe { (*l3.into_hhdm_mut::<PageTable>())[slot].clear() };
                 }
                 barrier();
-                return Err((error, pin, index != 0));
+                return Err((error, index != 0));
             }
         }
         barrier();
@@ -350,7 +355,7 @@ impl Domain {
         self.mappings.insert(
             iova,
             Mapping {
-                pin,
+                pin: pending.take(),
                 pages,
             },
         );
@@ -442,10 +447,6 @@ impl Smmu {
 
     fn sync(&mut self) -> Result<(), Error> {
         self.commands.as_mut().ok_or(Error::OperationInFlight)?.sync()
-    }
-
-    fn invalidate_asid(&mut self, asid: u16) -> Result<(), Error> {
-        self.commands.as_mut().ok_or(Error::OperationInFlight)?.invalidate_asid(asid)
     }
 
     fn write_ste(&mut self, sid: u32, cd: Option<PAddr>) -> Result<(), Error> {
@@ -695,12 +696,57 @@ pub(crate) fn create_domain_with_reset(
     })
 }
 
+fn claim_mapping(
+    domain_id: u64,
+) -> Result<super::detached_domain::Maintenance<Domain, Commands>, Error> {
+    with_smmu(|smmu| {
+        let domain =
+            smmu.domains.get(&domain_id).and_then(Option::as_ref).ok_or(Error::UnknownDomain)?;
+        if domain.retiring {
+            return Err(Error::UnknownDomain);
+        }
+        let domain = smmu.domains.get_mut(&domain_id).unwrap().take().unwrap();
+        let commands = smmu.commands.take().expect("admitted mapping engine");
+        Ok(super::detached_domain::Maintenance::new(domain, commands))
+    })
+}
+
+fn restore_mapping(
+    domain_id: u64,
+    mut owner: super::mapping::MappingMaintenance<Domain, Commands>,
+) -> super::mapping::PendingPin {
+    let source = owner.held.domain.value_mut().sid;
+    with_registered(|smmu| {
+        assert!(smmu.commands.is_none(), "claimed mapping engine replaced");
+        assert_eq!(smmu.streams.get(&source), Some(&domain_id));
+        let slot = smmu.domains.get_mut(&domain_id).expect("claimed mapping slot");
+        assert!(slot.is_none(), "claimed mapping domain replaced");
+        *slot = Some(owner.held.domain.into_inner());
+        smmu.commands = Some(owner.held.commands.into_inner());
+        Ok(owner.pending)
+    })
+    .expect("admitted mapping unit disappeared")
+}
+
+/// Production is composed with the exact-root/capability owner in device::mapping.
+/// Direct backend calls are confined to kernel boot fixtures.
 pub fn map(
     domain_id: u64,
     caller: crate::memory::AddressSpaceId,
     memory_cap: u64,
     direction: Direction,
     exclusive: bool,
+) -> Result<u64, Error> {
+    map_at(domain_id, caller, memory_cap, direction, exclusive, |_| {})
+}
+
+pub(super) fn map_at(
+    domain_id: u64,
+    caller: crate::memory::AddressSpaceId,
+    memory_cap: u64,
+    direction: Direction,
+    exclusive: bool,
+    mut before_completion: impl FnMut(super::mapping::Phase),
 ) -> Result<u64, Error> {
     let pin = object::pin_for_dma(
         caller,
@@ -710,71 +756,91 @@ pub fn map(
         exclusive,
     )
     .map_err(|_| Error::Memory)?;
-    let mut pending_pin = Some(pin);
-    let result = with_smmu(|smmu| {
-        let (mapped, asid) = {
-            let domain = smmu
-                .domains
-                .get_mut(&domain_id)
-                .and_then(Option::as_mut)
-                .ok_or(Error::UnknownDomain)?;
-            let pin = pending_pin.take().expect("DMA pin consumed twice");
-            (domain.map(pin, direction), domain.asid)
-        };
-        let iova = match mapped {
-            Ok(iova) => iova,
-            Err((error, pin, prefix)) => {
-                if !prefix
-                    || (!super::test_reject_map_rollback() && smmu.invalidate_asid(asid).is_ok())
+    let pending = super::mapping::PendingPin::new(Some(pin));
+    let held = match claim_mapping(domain_id) {
+        Ok(held) => held,
+        Err(error) => {
+            pending.release();
+            return Err(error);
+        }
+    };
+    let mut owner = super::mapping::MappingMaintenance::new(held, pending);
+    let mapped = owner.held.domain.value_mut().map(&mut owner.pending, direction);
+    let result = match mapped {
+        Err((error, prefix)) => {
+            if prefix {
+                before_completion(super::mapping::Phase::Rollback);
+                if super::test_reject_map_rollback()
+                    || owner
+                        .held
+                        .commands
+                        .value_mut()
+                        .invalidate_asid(owner.held.domain.value_mut().asid)
+                        .is_err()
                 {
-                    pending_pin = Some(pin);
-                } else {
-                    smmu.domains
-                        .get_mut(&domain_id)
-                        .and_then(Option::as_mut)
-                        .unwrap()
-                        .quarantined_pins
-                        .push(pin);
+                    let pin = owner.pending.take();
+                    owner.held.domain.value_mut().quarantined_pins.push(pin);
                 }
-                return Err(error);
             }
-        };
-        // If hardware does not acknowledge this invalidation, keep the
-        // internal mapping and its pin until domain destruction successfully
-        // installs an aborting STE. Returning no IOVA makes the failed mapping
-        // unreachable to the driver.
-        smmu.invalidate_asid(asid)?;
-        Ok(iova)
-    });
-    if let Some(pin) = pending_pin {
-        object::unpin_dma(pin);
-    }
+            Err(error)
+        }
+        Ok(iova) => {
+            before_completion(super::mapping::Phase::Map);
+            match owner
+                .held
+                .commands
+                .value_mut()
+                .invalidate_asid(owner.held.domain.value_mut().asid)
+            {
+                Ok(()) => Ok(iova),
+                Err(error) => {
+                    // Failed initial maintenance retains the existing mapping/pin;
+                    // no IOVA is returned, and domain retirement must complete it.
+                    Err(error)
+                }
+            }
+        }
+    };
+    // Restore exact state in existing cells before releasing confirmed pins,
+    // outside serialization. Abandonment retains every field and both claims.
+    restore_mapping(domain_id, owner).release();
     result
 }
 
 pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
-    let mapping = with_smmu(|smmu| {
-        let (mapping, asid) = {
-            let domain = smmu
-                .domains
-                .get_mut(&domain_id)
-                .and_then(Option::as_mut)
-                .ok_or(Error::UnknownDomain)?;
-            (domain.clear_mapping(iova)?, domain.asid)
-        };
-        if let Err(error) = smmu.invalidate_asid(asid) {
-            // Hardware may still translate the removed entry. Retain the
-            // mapping record and its pin so an acknowledged domain destroy
-            // releases them once the aborting STE is installed.
-            if let Some(domain) = smmu.domains.get_mut(&domain_id).and_then(Option::as_mut) {
-                domain.mappings.insert(iova, mapping);
+    unmap_at(domain_id, iova, |_| {})
+}
+
+pub(super) fn unmap_at(
+    domain_id: u64,
+    iova: u64,
+    mut before_completion: impl FnMut(super::mapping::Phase),
+) -> Result<(), Error> {
+    let held = claim_mapping(domain_id)?;
+    let mut owner =
+        super::mapping::MappingMaintenance::new(held, super::mapping::PendingPin::new(None));
+    let result = match owner.held.domain.value_mut().clear_mapping(iova) {
+        Err(error) => Err(error),
+        Ok(mapping) => {
+            owner.pending.retain(mapping.pin);
+            before_completion(super::mapping::Phase::Unmap);
+            let completed = if super::test_reject_unmap_completion() {
+                Err(Error::HardwareTimeout)
+            } else {
+                owner.held.commands.value_mut().invalidate_asid(owner.held.domain.value_mut().asid)
+            };
+            if completed.is_err() {
+                // Quarantine storage was admitted before the original map.
+                // Never allocate an error-path reinsertion node or release
+                // a data pin without the backend's actual completion proof.
+                let pin = owner.pending.take();
+                owner.held.domain.value_mut().quarantined_pins.push(pin);
             }
-            return Err(error);
+            completed
         }
-        Ok(mapping)
-    })?;
-    object::unpin_dma(mapping.pin);
-    Ok(())
+    };
+    restore_mapping(domain_id, owner).release();
+    result
 }
 
 pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {

@@ -141,7 +141,19 @@ Uncertain control, published error, failed release or abandonment retains the
 complete unit and claim without replay, even when its new backing is private.
 Real allocation-prefix and successful-wait probes plus synthetic terminal
 retention qualify this boundary. Initial domain creation/reset, map/unmap and
-metadata/outer-context work remain open; SEC-18 and counts are unchanged.
+metadata/outer-context work remained open at that checkpoint; SEC-18 and counts
+were unchanged.
+The [map/unmap follow-up](../reports/audits/2026-10-09-security-dma-mapping-maintenance.md)
+now retains the exact public root/capability claim and complete domain, actual
+engine and pending data pin through unlocked walking and maintenance. Exact
+restoration precedes confirmed post-guard unpin. Rejected unmap quarantines its
+pin without exceptional allocating reinsertion; abandonment retains every field
+and claim. Real QEMU boundary probes and rejected-completion/retirement evidence
+qualify this scope, while the synthetic complete-owner fixture retains one
+domain-table frame, two independently charged data frames and their exact root.
+Initial creation/reset, general metadata admission, full outer contexts,
+concurrent/outstanding-I/O evidence and custody remain open. SEC-18 remains
+partial and the finding counts are unchanged.
 The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.

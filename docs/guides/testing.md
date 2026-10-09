@@ -1078,6 +1078,23 @@ These run before AP schedulers leave their boot barrier, and do not simulate
 real hardware timeouts or qualify outstanding I/O, physical devices or boot MMIO
 rollback. See [unit initialization evidence](../reports/audits/2026-10-09-security-iommu-unit-initialization.md).
 
+### DMA map/unmap maintenance ownership
+
+The real NVMe fixture probes successful map/unmap and rejected sparse-prefix
+cleanup before actual backend completion. It requires backend/lifecycle/device/
+CPU-table/physical/heap availability with unchanged IRQ state, exact root and
+capability busy-close behavior, live pin protection and unit-wide mutation/reset
+exclusion. Injected unmap completion rejection leaves the pin and charges live;
+repeated unmap/remap cannot release it. Real acknowledged domain retirement
+permits memory close and refunds the domain account.
+
+A synthetic complete owner abandons actual backing/pin and heap metadata under
+all guards, retaining its public root/capability claim. It adds one original
+domain-table charge/frame plus two data frames in their independent memory
+account; root backing is separate. No actual timeout, lost acknowledgement,
+outstanding I/O, panic unwinding or cross-LP stress is injected. See the
+[mapping-maintenance evidence](../reports/audits/2026-10-09-security-dma-mapping-maintenance.md).
+
 ### IOMMU table admission and failed-map cleanup
 
 Serialized pre-driver fixtures on Intel VT-d, AMD-Vi and SMMUv3 exercise actual

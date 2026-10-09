@@ -490,8 +490,14 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   backing publication; published failure, physical rejection and abandonment
   also never replay initialization. Install only published backing once. Keep
   the boot caller's outer IRQ policy; unit shutdown/recovery remains absent.
-  Domain creation/map/unmap waits and domain allocation/metadata preparation
-  still need phase separation. Intel cannot overwrite
+  Public DMA map/unmap owns an exact `DmaOperation` root/capability claim through
+  completion. Move the complete domain, actual engine and detached pending pin
+  into `MappingMaintenance` before unlocked walking/maintenance. Keep its admitted
+  cell empty and requester nonzero; restore exact domain/engine together before
+  post-guard unpin. Rejected unmap quarantines its pin in admitted storage, never
+  allocates a reinsertion node. Abandonment retains all fields and public claims
+  without cleanup. Initial domain creation/reset waits and constructor allocation/
+  registry metadata preparation still need phase separation. Intel cannot overwrite
   a busy invalidation register; AMD and SMMU retain their existing exact completion
   and unconsumed queue contracts.
   See `docs/reference/iommu-table-admission.md`.

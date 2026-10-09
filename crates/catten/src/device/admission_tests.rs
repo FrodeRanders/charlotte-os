@@ -36,6 +36,7 @@ fn destroy_failed(id: u64) -> Result<(), dma::Error> {
 
 pub(crate) fn test_admission() {
     dma_tables::test_admission();
+    mapping::test_admission();
     let owner = crate::service::loader::create_user_address_space_handle();
     let intid = 225;
     assert!(!DEVICES.lock().values().any(|caps| {

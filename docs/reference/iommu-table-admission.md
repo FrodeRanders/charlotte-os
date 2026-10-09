@@ -141,8 +141,22 @@ published backing and installs the complete unit once; installed maintenance
 still fences initialization when its actual engine is absent. No unit shutdown,
 recovery registry or administrative force-clear is introduced.
 
-Domain physical allocation, ledger/registry preparation and initial domain
-creation/map/unmap hardware waits still occur under backend serialization.
+Ordinary map/unmap now moves the complete domain, actual command engine and
+detached pending pin into `MappingMaintenance`. Its admitted domain cell stays
+empty, requester nonzero and engine absent through unlocked sparse walking,
+leaf detachment and maintenance. Public `DmaOperation` retains the exact root
+lease and capability claim; close and competing operations reject that claim.
+Restore exact domain/engine under one original hold before confirmed post-guard
+unpin and public completion. Rejected unmap retains its pin in pre-admitted
+quarantine on all three backends, without allocating exceptional reinsertion.
+Abandonment retains all fields, claims and charges without cleanup. See the
+[mapping-maintenance evidence](../reports/audits/2026-10-09-security-dma-mapping-maintenance.md).
+Its synthetic containing-owner fixture adds one domain-table charge/frame;
+table-only totals are VT-d 36/27, AMD-Vi 32/23 and SMMUv3 38/29 charges/frames.
+Its two retained data frames and user root have independent accounts.
+
+Initial domain constructor allocation, ledger/registry preparation and
+creation/reset hardware waits still occur under backend serialization.
 Explicit destruction and published creation rejection use unlocked maintenance/
 physical cleanup; physical finalization uses the registered-state hold even if
 another domain owns the command engine. Complete outer-context qualification,

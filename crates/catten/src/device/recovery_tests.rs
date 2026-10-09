@@ -67,6 +67,58 @@ fn destroy_failed_creation(id: u64) -> Result<(), dma::Error> {
     dma::destroy_domain_at(id, creation_rollback_unlocked, creation_rollback_unlocked)
 }
 
+fn mapping_unlocked(
+    root: crate::memory::AddressSpaceHandle,
+    cap: DeviceCap,
+    memory: u64,
+    id: u64,
+    irq: bool,
+) {
+    assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
+    dma::test_assert_backend_available();
+    assert_available(
+        || crate::memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_some(),
+        "mapping lifecycle availability",
+    );
+    assert_available(|| DEVICES.try_lock().is_some(), "mapping device availability");
+    assert_available(
+        || crate::memory::ADDRESS_SPACE_TABLE.try_lock().is_some(),
+        "mapping root table availability",
+    );
+    assert_available(
+        || crate::memory::PHYSICAL_FRAME_ALLOCATOR.try_lock().is_some(),
+        "mapping physical availability",
+    );
+    assert_available(
+        || crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.try_lock().is_some(),
+        "mapping heap availability",
+    );
+    assert_eq!(dma::initialize_early(), Err(dma::Error::OperationInFlight));
+    assert_eq!(dma::destroy_domain(id), Err(dma::Error::OperationInFlight));
+    assert_eq!(dma::destroy_domain(u64::MAX), Err(dma::Error::OperationInFlight));
+    assert_eq!(dma::unmap(id, u64::MAX), Err(dma::Error::OperationInFlight));
+    assert_eq!(
+        dma::map(id, root.id(), memory, dma::Direction::from_bits(3).unwrap(), false),
+        Err(dma::Error::OperationInFlight)
+    );
+    assert_eq!(
+        dma::create_domain_with_reset(u32::MAX, None, &mut DmaCreation::new(), |_| panic!(
+            "mapping engine reached reset"
+        )),
+        Err(dma::Error::OperationInFlight)
+    );
+    assert_eq!(close_cap(root.id(), cap), Err(DeviceError::OperationInFlight));
+    assert_eq!(dma_unmap(root.id(), cap, u64::MAX), Err(DeviceError::OperationInFlight));
+    assert_eq!(
+        crate::memory::close_user_address_space_handle(root),
+        Err(crate::memory::AddressSpaceCloseError::OperationsInFlight)
+    );
+    assert_eq!(
+        object::try_close_cap(root.id(), memory),
+        Err(object::MemoryObjectError::LendingActive)
+    );
+}
+
 pub(crate) fn run() {
     let Some((base, requester)) =
         crate::device_management::drivers::busses::pci_express::topology::reset::test_target(
@@ -82,7 +134,17 @@ pub(crate) fn run() {
     let baseline = dma_tables::used().1;
     let domain = grant_dma_domain(owner.id(), requester, None).unwrap();
     mmio_map_any(owner.id(), mmio, true).unwrap();
-    let address = dma_map(owner.id(), domain, memory, 3).unwrap();
+    let irq = crate::cpu::isa::lp::ops::get_int_state();
+    let mut mapped = 0;
+    let address = mapping::with_operation(owner.id(), domain, |id| {
+        dma::map_at(id, owner.id(), memory, dma::Direction::from_bits(3).unwrap(), false, |phase| {
+            assert_eq!(phase, mapping::Phase::Map);
+            mapping_unlocked(owner, domain, memory, id, irq);
+            mapped += 1;
+        })
+    })
+    .unwrap();
+    assert_eq!(mapped, 1);
     crate::memory::KERNEL_AS.lock().map_mmio_region(base, 4096).unwrap();
     let registers = unsafe { PAddr::from(base as u64).into_hhdm_mut::<u8>() };
     // Configure a real, enabled controller with DMA-addressed admin queues.
@@ -113,6 +175,7 @@ pub(crate) fn run() {
         let devices = DEVICES.lock();
         let DeviceObject::DmaDomain {
             id,
+            ..
         } = devices[&owner.id()].caps[&domain]
         else {
             panic!("DMA fixture cap")
@@ -319,11 +382,22 @@ pub(crate) fn run() {
     // Prime cached leaf tables, then reject a two-page map at their boundary.
     let memory = object::allocate(successor.id(), 2).unwrap();
     let address = dma_map(successor.id(), domain, memory, 3).unwrap();
-    dma_unmap(successor.id(), domain, address).unwrap();
+    let irq = crate::cpu::isa::lp::ops::get_int_state();
+    let mut unmapped = 0;
+    mapping::with_operation(successor.id(), domain, |id| {
+        dma::unmap_at(id, address, |phase| {
+            assert_eq!(phase, mapping::Phase::Unmap);
+            mapping_unlocked(successor, domain, memory, id, irq);
+            unmapped += 1;
+        })
+    })
+    .unwrap();
+    assert_eq!(unmapped, 1);
     let id = {
         let devices = DEVICES.lock();
         let DeviceObject::DmaDomain {
             id,
+            ..
         } = devices[&successor.id()].caps[&domain]
         else {
             panic!("DMA fixture cap")
@@ -332,7 +406,25 @@ pub(crate) fn run() {
     };
     dma::test_reject_sparse_map(id);
     let charged = dma_tables::used();
-    assert_eq!(dma_map(successor.id(), domain, memory, 3), Err(DeviceError::DmaInvalid));
+    let mut rolled_back = 0;
+    assert_eq!(
+        mapping::with_operation(successor.id(), domain, |id| {
+            dma::map_at(
+                id,
+                successor.id(),
+                memory,
+                dma::Direction::from_bits(3).unwrap(),
+                false,
+                |phase| {
+                    assert_eq!(phase, mapping::Phase::Rollback);
+                    mapping_unlocked(successor, domain, memory, id, irq);
+                    rolled_back += 1;
+                },
+            )
+        }),
+        Err(DeviceError::DmaInvalid)
+    );
+    assert_eq!(rolled_back, 1);
     assert_eq!(dma_tables::used(), charged);
     object::close_cap(successor.id(), memory).unwrap();
     let held = object::allocate(successor.id(), 2).unwrap();
@@ -348,6 +440,31 @@ pub(crate) fn run() {
     close_cap(successor.id(), domain).unwrap();
     assert_eq!(dma_tables::used().1, baseline);
     object::close_cap(successor.id(), held).unwrap();
+    // A failed unmap detaches leaves but never discharges their data pin. The
+    // admitted quarantine is terminal to this unmap, completed by real domain
+    // retirement rather than an allocating error-path mapping reinsertion.
+    let domain = grant_dma_domain(successor.id(), requester, None).unwrap();
+    let held = object::allocate(successor.id(), 2).unwrap();
+    let address = dma_map(successor.id(), domain, held, 3).unwrap();
+    let charged = dma_tables::used();
+    REJECT_UNMAP_COMPLETION.store(true, Ordering::Release);
+    assert_eq!(dma_unmap(successor.id(), domain, address), Err(DeviceError::DmaInvalid));
+    assert!(!REJECT_UNMAP_COMPLETION.load(Ordering::Acquire));
+    assert_eq!(dma_tables::used(), charged);
+    assert_eq!(
+        object::try_close_cap(successor.id(), held),
+        Err(object::MemoryObjectError::LendingActive)
+    );
+    assert_eq!(dma_unmap(successor.id(), domain, address), Err(DeviceError::DmaInvalid));
+    assert_eq!(dma_map(successor.id(), domain, held, 3), Err(DeviceError::DmaInvalid));
+    close_cap(successor.id(), domain).unwrap();
+    object::close_cap(successor.id(), held).unwrap();
+    assert_eq!(dma_tables::used().1, baseline);
+    crate::logln!(
+        "[DMA mapping maintenance] real map/unmap/prefix completion outside \
+         backend/lifecycle/device/table guards; exact-root/capability busy close, unit-wide \
+         mutation/reset exclusion and rejected-unmap pin retention until real retirement passed"
+    );
     crate::logln!(
         "[IOMMU recovery] detached physical-release boundary keeps pins/source claim, guards \
          available and competing operations fenced; hardware table charges retained until drain, \

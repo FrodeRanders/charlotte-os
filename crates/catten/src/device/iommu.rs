@@ -82,6 +82,35 @@ pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
     }
 }
 
+pub(super) fn map_at(
+    domain_id: u64,
+    caller: crate::memory::AddressSpaceId,
+    memory_cap: u64,
+    direction: Direction,
+    exclusive: bool,
+    before: impl FnMut(super::mapping::Phase),
+) -> Result<u64, Error> {
+    match detect()? {
+        Backend::Vtd => {
+            super::vt_d::map_at(domain_id, caller, memory_cap, direction, exclusive, before)
+        }
+        Backend::AmdVi => {
+            super::amd_vi::map_at(domain_id, caller, memory_cap, direction, exclusive, before)
+        }
+    }
+}
+
+pub(super) fn unmap_at(
+    domain_id: u64,
+    iova: u64,
+    before: impl FnMut(super::mapping::Phase),
+) -> Result<(), Error> {
+    match detect()? {
+        Backend::Vtd => super::vt_d::unmap_at(domain_id, iova, before),
+        Backend::AmdVi => super::amd_vi::unmap_at(domain_id, iova, before),
+    }
+}
+
 pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
     match detect()? {
         Backend::Vtd => super::vt_d::destroy_domain(domain_id),

@@ -46,9 +46,16 @@ impl<'root> PreparedNamespaceDevices<'root> {
         let handle = root.device_cleanup_handle();
         let mut devices = DEVICES.lock();
         if devices.get(&handle.id()).is_some_and(|caps| {
-            caps.caps.values().any(
-                |object| matches!(object, DeviceObject::Mmio(region) if region.operation_in_flight),
-            )
+            caps.caps.values().any(|object| {
+                matches!(object, DeviceObject::Mmio(region) if region.operation_in_flight)
+                    || matches!(
+                        object,
+                        DeviceObject::DmaDomain {
+                            operation_in_flight: true,
+                            ..
+                        }
+                    )
+            })
         }) {
             return Err(DeviceError::OperationInFlight);
         }
@@ -117,6 +124,7 @@ impl<'root> PreparedNamespaceDevices<'root> {
                 DeviceObject::Interrupt(_) => {}
                 DeviceObject::DmaDomain {
                     id,
+                    ..
                 } => {
                     // Backends retain tables and memory pins on rejected
                     // hardware invalidation. Do not progress to loan/root cleanup.

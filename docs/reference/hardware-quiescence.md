@@ -68,7 +68,7 @@ Confirmed maintenance returns the engine before unlocked physical table release.
 The original empty domain cell/nonzero requester fence persists. Physical
 rejection restores the frozen owner without allocation; abandonment retains its
 claim. Physical finalization uses the registered-state hold even if an unrelated
-domain owns the engine. Initial domain creation/map/unmap waits remain serialized; boot unit
+domain owns the engine. Initial domain creation/reset waits remain serialized; boot unit
 initialization and private cancellation now use an unlocked slot claim. See the [command-maintenance evidence](../reports/audits/2026-10-09-security-iommu-command-maintenance.md).
 
 Before a reachable descriptor is published, each backend records its admitted
@@ -99,6 +99,18 @@ backing publication. Partial release and abandonment also stay fenced; no
 hardware initialization replay, shutdown or custody controller is supplied.
 The boot caller's outer IRQ policy remains unchanged. See the
 [unit initialization evidence](../reports/audits/2026-10-09-security-iommu-unit-initialization.md).
+
+Ordinary map/unmap and installed-prefix rollback now retain the complete domain,
+actual command engine and detached pending pin in `MappingMaintenance` outside
+backend serialization. The empty admitted cell and absent engine fence ordinary
+mutation/reset. Public `DmaOperation` retains the exact root and capability claim
+through restoration and confirmed post-guard unpin; close rejects busy authority.
+Rejected unmap keeps its pin in admitted quarantine until real domain retirement,
+without exceptional allocating reinsertion. Abandonment retains the complete
+owner and claims without cleanup. Real QEMU boundary probes qualify local guard
+availability, preserved IRQ state and competing operations; rejected completion
+is injected, with no outstanding I/O or suppressed hardware acknowledgement.
+See the [mapping-maintenance evidence](../reports/audits/2026-10-09-security-dma-mapping-maintenance.md).
 
 ## Requester reset and reassignment
 
