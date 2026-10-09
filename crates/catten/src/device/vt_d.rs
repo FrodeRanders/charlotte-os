@@ -121,8 +121,7 @@ struct Domain {
 
 impl Domain {
     fn new(source_id: u16, agaw: u8, msi_address: Option<u64>) -> Result<Self, Error> {
-        let mut tables = Tables::new(Scope::Domain);
-        let root = tables.allocate_frame()?;
+        let (tables, root) = Tables::prepare_unpublished(Scope::Domain, Tables::allocate_frame)?;
         let levels = ((agaw - 12) / 9) as usize;
         let mut domain = Self {
             retiring: false,
@@ -140,7 +139,11 @@ impl Domain {
         // the interrupt controller rather than faulting.
         if let Some(address) = msi_address {
             let page = address & !(PAGE_SIZE as u64 - 1);
-            domain.map_page(page, PAddr::from(page), true)?;
+            if let Err(error) = domain.map_page(page, PAddr::from(page), true) {
+                // The private MSI prefix has never entered a context entry.
+                let _ = domain.tables.cancel_unpublished();
+                return Err(error);
+            }
         }
         Ok(domain)
     }
@@ -420,14 +423,17 @@ fn initialize(config: crate::environment::acpi::sdt::dmar::DmarConfig) -> Result
         current.map_mmio_region(config.base, register_bytes).map_err(|_| Error::MapFailed)?;
     }
 
-    let mut tables = Tables::new(Scope::Unit);
-    let root_table = tables.allocate_frame()?;
+    let (mut tables, root_table) = Tables::prepare_unpublished(Scope::Unit, |tables| {
+        let root_table = tables.allocate_frame()?;
+        // No new backing is hardware-visible until RTADDR below.
+        write32(base, GCMD, 0);
+        wait_gsts_clear(base, GSTS_TES)?;
+        Ok(root_table)
+    })?;
 
-    // Disable translation while installing the root table, then publish it and
-    // re-enable translation. The firmware may leave the unit in an arbitrary
-    // state, so write the control register rather than read-modify-writing it.
-    write32(base, GCMD, 0);
-    wait_gsts_clear(base, GSTS_TES)?;
+    // Private preparation confirmed translation disabled. Publish the new
+    // root before installing it and re-enabling translation; firmware-owned
+    // backing was never adopted by this owner.
     tables.publish();
     write64(base, RTADDR, u64::from(root_table) & ADDR_MASK);
     write32(base, GCMD, GCMD_SRTP);
@@ -525,7 +531,14 @@ pub(crate) fn create_domain_with_reset(
 
         let bus = source_id >> 8;
         if !unit.context_tables.contains_key(&bus) {
-            let context_table = unit.tables.allocate_frame()?;
+            let context_table = match unit.tables.allocate_frame() {
+                Ok(table) => table,
+                Err(error) => {
+                    // The domain is still private; only the unit is published.
+                    let _ = domain.tables.cancel_unpublished();
+                    return Err(error);
+                }
+            };
             unit.set_root_entry(bus, context_table);
             unit.context_tables.insert(bus, context_table);
         }
@@ -723,6 +736,12 @@ pub fn pending_fault_events() -> u32 {
     (read32(base, FSTS) >> 1) & 1
 }
 
+/// Guarded abandonment probe; does not initialize or publish hardware.
+pub(super) fn test_with_backend_locked(action: impl FnOnce()) {
+    let _guard = UNIT.lock();
+    action();
+}
+
 /// Private, never hardware-published walkers; the data frame is borrowed.
 pub(super) fn test_table_admission() {
     let baseline = super::dma_tables::used();
@@ -743,7 +762,7 @@ pub(super) fn test_table_admission() {
     domain.tables.set_limit(initial + 5);
     domain.map_page(0x8000_0000, data.frame(), true).unwrap();
     assert_eq!(domain.tables.pages(), initial + 5);
-    drop(domain);
+    domain.tables.cancel_unpublished().unwrap();
     assert_eq!(super::dma_tables::used(), baseline);
     data.release().unwrap();
 }

@@ -204,9 +204,9 @@ fn set_descriptor(table: PAddr, index: usize, descriptor: Descriptor) {
 
 impl Domain {
     fn new(asid: u16, sid: u32, oas: u8, msi_address: Option<u64>) -> Result<Self, Error> {
-        let mut tables = Tables::new(Scope::Domain);
-        let root = tables.allocate_frame()?;
-        let cd = tables.allocate_frame()?;
+        let (tables, (root, cd)) = Tables::prepare_unpublished(Scope::Domain, |tables| {
+            Ok((tables.allocate_frame()?, tables.allocate_frame()?))
+        })?;
         let cd_words = unsafe { cd.into_hhdm_mut::<u64>() };
         // 48-bit IOVA, 4 KiB granule, WB/WA walks, inner-shareable, TTBR1
         // disabled, implementation output-address size inherited from IDR5.
@@ -241,7 +241,11 @@ impl Domain {
         };
         if let Some(address) = msi_address {
             let page = address & !(PAGE_SIZE as u64 - 1);
-            domain.map_page(page, PAddr::from(page), true)?;
+            if let Err(error) = domain.map_page(page, PAddr::from(page), true) {
+                // Neither the private CD nor its MSI prefix entered an STE.
+                let _ = domain.tables.cancel_unpublished();
+                return Err(error);
+            }
         }
         Ok(domain)
     }
@@ -457,17 +461,20 @@ fn initialize(mut config: SmmuV3Config) -> Result<Smmu, Error> {
     let entries = 1usize << sid_bits;
     let strtab_bytes = entries.checked_mul(STE_SIZE).ok_or(Error::MapFailed)?;
     let strtab_frames = strtab_bytes.div_ceil(PAGE_SIZE);
-    let mut tables = Tables::new(Scope::Unit);
-    let strtab = tables.allocate(strtab_frames, strtab_bytes.next_power_of_two().max(PAGE_SIZE))?;
-    for sid in 0..entries {
-        let ste = unsafe { strtab.into_hhdm_mut::<u64>().add(sid * 8) };
-        unsafe { ptr::write_volatile(ste, STE_VALID) };
-    }
-    let cmdq = tables.allocate_frame()?;
-    let eventq = tables.allocate_frame()?;
-
-    write32(config.base, CR0, 0);
-    wait_ack(config.base, CR0_ACK, 0)?;
+    let (mut tables, (strtab, cmdq, eventq)) =
+        Tables::prepare_unpublished(Scope::Unit, |tables| {
+            let strtab =
+                tables.allocate(strtab_frames, strtab_bytes.next_power_of_two().max(PAGE_SIZE))?;
+            for sid in 0..entries {
+                let ste = unsafe { strtab.into_hhdm_mut::<u64>().add(sid * 8) };
+                unsafe { ptr::write_volatile(ste, STE_VALID) };
+            }
+            let cmdq = tables.allocate_frame()?;
+            let eventq = tables.allocate_frame()?;
+            write32(config.base, CR0, 0);
+            wait_ack(config.base, CR0_ACK, 0)?;
+            Ok((strtab, cmdq, eventq))
+        })?;
     // Inner-shareable WB table and queue walks.
     write32(config.base, CR1, (3 << 10) | (1 << 8) | (1 << 6) | (3 << 4) | (1 << 2) | 1);
     write32(config.base, CR2, (1 << 2) | (1 << 1));
@@ -751,6 +758,12 @@ pub fn pending_fault_events() -> u32 {
     producer.wrapping_sub(consumer) & (EVENT_ENTRIES * 2 - 1)
 }
 
+/// Guarded abandonment probe; does not initialize or publish hardware.
+pub(super) fn test_with_backend_locked(action: impl FnOnce()) {
+    let _guard = SMMU.lock();
+    action();
+}
+
 /// Private, never hardware-published walkers; the data frame is borrowed.
 pub(super) fn test_table_admission() {
     let baseline = super::dma_tables::used();
@@ -772,7 +785,7 @@ pub(super) fn test_table_admission() {
     domain.tables.set_limit(initial + 5);
     domain.map_page(0x8000_0000, data.frame(), true).unwrap();
     assert_eq!(domain.tables.pages(), initial + 5);
-    drop(domain);
+    domain.tables.cancel_unpublished().unwrap();
     assert_eq!(super::dma_tables::used(), baseline);
     data.release().unwrap();
 }

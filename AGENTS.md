@@ -428,7 +428,13 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   cached until retirement. Failed data-leaf prefixes require confirmed hardware
   completion before pin release; prepare quarantine capacity before publication,
   retain rejected pins, and consume teardown collections outside backend guards
-  without allocating snapshots. See `docs/reference/iommu-table-admission.md`.
+  without allocating snapshots. Table/region fallback retains original backing,
+  charges and ledger storage without entering physical/heap allocators, pools,
+  guards or logging, including reservation-only abandonment. Cancel known-private
+  construction explicitly with `cancel_unpublished` / `prepare_unpublished`;
+  rejection freezes the containing owner and never permits partial-release retry.
+  Ordinary backend serialization still needs separate phase qualification.
+  See `docs/reference/iommu-table-admission.md`.
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline
   while the scheduler holds its thread table. Use `ObserverList`/`WaiterSource`

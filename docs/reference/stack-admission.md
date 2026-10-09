@@ -157,3 +157,13 @@ without incrementing retirement phase counters. A kernel-only failed pair retain
 sixteen mapped pages in its existing thread retirement node through repeated
 scans. Successful pair release also rejects a second attempt before callbacks
 and prevents further growth. See [published-pair evidence](../reports/audits/2026-10-09-security-published-stack-retirement.md).
+
+The Intel timeout reproduced in the initial IOMMU preparation follow-up. A staged
+node now retains its reported pair error alongside its complete owner. Timeout
+logging copies the exact thread/root/LP, started fence and error outside staging
+serialization; kernel outcomes distinguish invalid stack, detach, physical and
+unconfirmed retirement. Independent global x86 shootdown counters report success,
+busy, masked, exhausted, delivery rejection and timeout. They have no operation
+identity. No diagnostic value or missing staged snapshot grants retry/completion,
+and the original deadline remains unchanged. See the
+[IOMMU follow-up](../reports/audits/2026-10-09-security-iommu-preparation-abandonment.md).

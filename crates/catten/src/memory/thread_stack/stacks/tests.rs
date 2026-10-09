@@ -275,7 +275,7 @@ fn retained_failures() {
                 initial_free = free();
                 assert_eq!(
                     stacks.release_with(retire_user, |_, _| Err(Error::InvalidStack)),
-                    Err(RetirementError::Kernel)
+                    Err(RetirementError::Kernel(KernelFailure::InvalidStack))
                 );
                 assert_eq!(
                     stacks.release_with(

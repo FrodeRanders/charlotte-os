@@ -28,7 +28,7 @@ pub(super) fn run() {
         tables.allocate_with(1, PAGE, |_, _| panic!("table cap must precede allocation")),
         Err(Error::MapFailed)
     );
-    drop(tables);
+    tables.cancel_unpublished().unwrap();
     assert_eq!(used(), baseline);
     {
         let _pressure = ClientPressure::new();
@@ -39,7 +39,7 @@ pub(super) fn run() {
         );
         let mut unit = Tables::new(Scope::Unit);
         unit.allocate_frame().unwrap();
-        drop(unit);
+        unit.cancel_unpublished().unwrap();
     }
     assert_eq!(used(), baseline);
 
@@ -81,8 +81,11 @@ pub(super) fn run() {
     drop(successor);
     assert_eq!(used(), retained);
     super::super::dma::test_table_admission();
+    preparation_tests::run();
     crate::logln!(
         "[IOMMU admission] node/domain/unit limits, private rollback, partial release fence and \
-         cached sparse walkers passed; 5 charged pages/3 frames intentionally retained"
+         cached sparse walkers passed; original release fixtures retain 5 charged pages/3 frames"
     );
 }
+
+mod preparation_tests;

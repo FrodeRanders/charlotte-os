@@ -126,6 +126,32 @@ pub(crate) fn has_staged_generation(generation: ThreadGeneration) -> bool {
         .any(|thread| thread.generation == generation)
 }
 
+/// Copied observations from an exact staged thread; not a completion receipt.
+/// Absence can mean a detached in-flight batch and never proves quiescence.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct StagedRetirementSnapshot {
+    pub(crate) root: Option<crate::memory::AddressSpaceHandle>,
+    pub(crate) lp: Option<LpId>,
+    pub(crate) started: bool,
+    pub(crate) error: Option<crate::memory::thread_stack::RetirementError>,
+}
+
+pub(crate) fn staged_retirement_snapshot(
+    generation: ThreadGeneration,
+) -> Option<StagedRetirementSnapshot> {
+    DEAD_THREADS
+        .read()
+        .iter()
+        .flat_map(RetirementList::iter)
+        .find(|thread| thread.generation == generation)
+        .map(|thread| StagedRetirementSnapshot {
+            root: thread.address_space,
+            lp: thread.reap_lp,
+            started: thread.context.stack_retirement_started(),
+            error: thread.stack_retirement_error,
+        })
+}
+
 /// Number of threads currently moving from the master table into an LP's
 /// deferred-reaping list.
 ///
@@ -302,12 +328,16 @@ fn reap_dead_threads_releasing_with(
         thread.trace_lifecycle(phase, current_sp);
         if retained {
             batch.deferred.push(entry);
-        } else if release(entry.value_mut()).is_ok() {
-            entry.release();
         } else {
-            // The same admitted node retains the entire failed pair. Its phase
-            // fence forbids retry; retained backing is not a recovery receipt.
-            batch.deferred.push(entry);
+            match release(entry.value_mut()) {
+                Ok(()) => entry.release(),
+                Err(error) => {
+                    // Diagnostic outcome stays with the complete admitted owner.
+                    // Its phase fence forbids retry, independent of this value.
+                    entry.value_mut().stack_retirement_error = Some(error);
+                    batch.deferred.push(entry);
+                }
+            }
         }
     }
     batch.deferred.reverse();
@@ -468,6 +498,7 @@ pub struct Thread {
     // thread has None here: its containing node owns the whole payload.
     retirement: Option<PreparedEntry<Thread>>,
     retirement_metadata_completed: bool,
+    stack_retirement_error: Option<crate::memory::thread_stack::RetirementError>,
 }
 
 pub const THREAD_CTX_OFFSET: usize = offset_of!(Thread, context);
@@ -569,6 +600,7 @@ impl Thread {
             exit_observers: exit_source::ExitSource::new(),
             retirement: Some(retirement),
             retirement_metadata_completed: false,
+            stack_retirement_error: None,
         })
     }
 

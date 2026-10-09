@@ -114,3 +114,8 @@ pub(super) fn test_reject_sparse_map(id: u64) {
         Backend::AmdVi => super::amd_vi::test_reject_sparse_map(id),
     }
 }
+
+/// Hold both compiled backend registries without hardware initialization.
+pub(super) fn test_with_backend_locked(action: impl FnOnce()) {
+    super::vt_d::test_with_backend_locked(|| super::amd_vi::test_with_backend_locked(action));
+}

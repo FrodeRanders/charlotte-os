@@ -181,8 +181,31 @@ impl Stacks {
 pub(crate) enum RetirementError {
     AlreadyStarted,
     User,
-    Kernel,
+    Kernel(KernelFailure),
     Admission,
+}
+
+/// Diagnostic classification only; none of these values authorizes retry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum KernelFailure {
+    InvalidStack,
+    Detach,
+    Physical,
+    Unconfirmed,
+}
+impl KernelFailure {
+    fn from_error(error: &Error) -> Self {
+        match error {
+            Error::InvalidStack => Self::InvalidStack,
+            Error::AllocatorsMemory(crate::memory::allocators::memory::Error::RetirementFailed) => {
+                Self::Unconfirmed
+            }
+            Error::AllocatorsMemory(crate::memory::allocators::memory::Error::PfaError(_)) => {
+                Self::Physical
+            }
+            Error::IsaMemoryIfce(_) | Error::AllocatorsMemory(_) => Self::Detach,
+        }
+    }
 }
 
 impl Stacks {
@@ -211,6 +234,7 @@ impl Stacks {
         // Arm before callbacks/detachment: interruption cannot retry freed pages.
         self.release_started = true;
         let user_ok = self.user.as_mut().is_none_or(release_user);
+        let mut kernel_failure = KernelFailure::Unconfirmed;
         let kernel_ok = if let Some(base) = self.kernel {
             self.kernel_uncertain = true;
             match release_kernel(base, KERNEL_STACK_PAGES) {
@@ -219,7 +243,10 @@ impl Stacks {
                     self.kernel_uncertain = false;
                     true
                 }
-                Err(_) => false,
+                Err(error) => {
+                    kernel_failure = KernelFailure::from_error(&error);
+                    false
+                }
             }
         } else {
             !self.kernel_uncertain
@@ -228,7 +255,7 @@ impl Stacks {
             return Err(RetirementError::User);
         }
         if !kernel_ok {
-            return Err(RetirementError::Kernel);
+            return Err(RetirementError::Kernel(kernel_failure));
         }
         if let Some(user) = self.user.as_mut() {
             user.slot.released().map_err(|_| RetirementError::Admission)?;

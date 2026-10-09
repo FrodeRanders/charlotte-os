@@ -1,5 +1,6 @@
 use core::sync::atomic::{
     AtomicBool,
+    AtomicU64,
     Ordering,
 };
 
@@ -32,6 +33,12 @@ pub enum ShootdownError {
     Exhausted,
     Delivery(u32),
     TimedOut,
+}
+
+// Independent global observations only; no operation identity or retry proof.
+static SHOOTDOWN_PROGRESS: [AtomicU64; 6] = [const { AtomicU64::new(0) }; 6];
+pub(crate) fn shootdown_progress() -> [u64; 6] {
+    core::array::from_fn(|index| SHOOTDOWN_PROGRESS[index].load(Ordering::Relaxed))
 }
 
 pub fn enable_sync_shootdowns() {
@@ -70,7 +77,17 @@ pub extern "C" fn ih_synchronous_ipi() {
 /// Failure returns without proof of quiescence; retain the owning backing
 /// receipt. A retry gets a fresh epoch and cannot count stale/duplicate IPIs.
 pub fn try_send_sync_shootdown() -> Result<(), ShootdownError> {
-    rendezvous(send_hardware)
+    let result = rendezvous(send_hardware);
+    let index = match &result {
+        Ok(()) => 0,
+        Err(ShootdownError::Busy) => 1,
+        Err(ShootdownError::InterruptsMasked) => 2,
+        Err(ShootdownError::Exhausted) => 3,
+        Err(ShootdownError::Delivery(_)) => 4,
+        Err(ShootdownError::TimedOut) => 5,
+    };
+    SHOOTDOWN_PROGRESS[index].fetch_add(1, Ordering::Relaxed);
+    result
 }
 
 fn send_hardware(lp: u32) -> bool {

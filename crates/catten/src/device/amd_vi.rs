@@ -119,8 +119,7 @@ struct Domain {
 
 impl Domain {
     fn new(source_id: u16) -> Result<Self, Error> {
-        let mut tables = Tables::new(Scope::Domain);
-        let root = tables.allocate_frame()?;
+        let (tables, root) = Tables::prepare_unpublished(Scope::Domain, Tables::allocate_frame)?;
         Ok(Self {
             retiring: false,
             source_id,
@@ -353,12 +352,15 @@ fn initialize(config: crate::environment::acpi::sdt::ivrs::IvrsConfig) -> Result
     current.map_mmio_region(config.base, 0x4000).map_err(|_| Error::MapFailed)?;
     let base = unsafe { PAddr::from(config.base as u64).into_hhdm_ptr::<u8>() } as usize;
 
-    let mut tables = Tables::new(Scope::Unit);
-    let devtab = tables.allocate(DEVICE_TABLE_FRAMES, DEVICE_TABLE_BYTES)?;
-    let cmd_buf = tables.allocate_frame()?;
-    let event_log = tables.allocate_frame()?;
-    // The completion cell outlives every timed-out coherent store.
-    let completion = tables.allocate_frame()?;
+    let (mut tables, (devtab, cmd_buf, event_log, completion)) =
+        Tables::prepare_unpublished(Scope::Unit, |tables| {
+            let devtab = tables.allocate(DEVICE_TABLE_FRAMES, DEVICE_TABLE_BYTES)?;
+            let cmd_buf = tables.allocate_frame()?;
+            let event_log = tables.allocate_frame()?;
+            // The completion cell outlives every timed-out coherent store.
+            let completion = tables.allocate_frame()?;
+            Ok((devtab, cmd_buf, event_log, completion))
+        })?;
     tables.publish();
     // Cover the complete 16-bit DeviceID space. Bits 8:0 encode one less than
     // the table length in 4-KiB units (511 for a 2-MiB table).
@@ -594,6 +596,12 @@ pub fn pending_fault_events() -> u32 {
     (pending_event_bytes(base) / 16) as u32
 }
 
+/// Guarded abandonment probe; does not initialize or publish hardware.
+pub(super) fn test_with_backend_locked(action: impl FnOnce()) {
+    let _guard = UNIT.lock();
+    action();
+}
+
 /// Private, never hardware-published walkers; the data frame is borrowed.
 pub(super) fn test_table_admission() {
     let baseline = super::dma_tables::used();
@@ -614,7 +622,7 @@ pub(super) fn test_table_admission() {
     domain.tables.set_limit(initial + 5);
     domain.map_page(0x8000_0000, data.frame(), true).unwrap();
     assert_eq!(domain.tables.pages(), initial + 5);
-    drop(domain);
+    domain.tables.cancel_unpublished().unwrap();
     assert_eq!(super::dma_tables::used(), baseline);
     data.release().unwrap();
 }

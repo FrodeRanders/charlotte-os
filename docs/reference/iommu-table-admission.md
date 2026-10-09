@@ -33,12 +33,22 @@ A provisional region holds an exclusive account borrow, the reserved count and
 physical backing through zeroing and transfer into the fallibly prepared ledger.
 The full contiguous extent is admitted before allocation. No allocation is
 required between recording physical ownership and publishing a table link.
-Children are initialized before valid-link publication. Unused reservations and
-confirmed private release refund exactly once.
+Children are initialized before valid-link publication. Ledger metadata and
+physical allocator rejection explicitly cancel only the unused region admission.
+`Tables::prepare_unpublished` rolls back known-private construction prefixes;
+`cancel_unpublished` consumes a never hardware-published table owner. All three
+backend constructors use these boundaries, including VT-d MSI/context rejection
+and SMMUv3 root/CD/MSI preparation. Unused reservations and confirmed private
+release refund exactly once.
 
 The backend marks domain/unit tables published before the first hardware-visible
-context, DTE, STE or base-register write. Published Drop retains backing and its
-original charge. Failed creation retains its registered retiring owner and
+context, DTE, STE or base-register write. Publication also rejects uncertain
+preparation. Every table/region fallback retains backing and its original charge,
+including unpublished and reservation-only abandonment. Region fallback marks
+its exclusively borrowed parent uncertain; later allocation/refund rejects. Table
+fallback retains the ledger allocation as well, avoiding implicit `Vec` heap
+deallocation. Neither fallback enters an allocator, pool, guard, callback or
+logger. Ordinary successful release disposes that ledger explicitly. Failed creation retains its registered retiring owner and
 requester fence unless hardware detachment, maintenance/drain and complete
 physical release all succeed. SMMUv3 creation rollback also completes TLBI/SYNC
 for the original ASID after installing its aborting STE.
@@ -74,8 +84,10 @@ owner, as described in [hardware quiescence](hardware-quiescence.md).
 
 Normal destruction moves the owning domain out of its registry and consumes its
 mapping/pin collections directly. It does not allocate a teardown snapshot.
-Physical allocation and ledger/registry preparation still occur under backend
-serialization. General kernel metadata and callback admission, moving all
+Physical allocation, ordinary private cancellation, ledger/registry preparation
+and published hardware maintenance/table release still occur under backend
+serialization. Pure fallback retention does not qualify those ordinary outer
+masks or move hardware waits outside the backend guard. General kernel metadata and callback admission, moving all
 allocation out of masking guards, and abandoned-owner recovery remain separate
 work. No quota override, partial-release retry or administrative force-clear is
 introduced.
@@ -90,6 +102,23 @@ A published abandonment and an injected partial physical-release failure retain
 five charged pages and three actual frames for the guest lifetime. Rejection
 and abandonment are injected owner states; no actual panic unwinding or physical
 allocator corruption is performed.
+
+Additional probes cover domain and unit scope. Metadata rejection never reaches
+physical allocation, allocator rejection refunds unused admission, reservation-
+only/allocated-region cancellation restores counts, and ordinary constructor
+prefix rejection at one, two and three frames refunds exactly once. Successor
+owners cannot refund earlier retention.
+
+Guarded abandonment holds backend registries, lifecycle, both CPU tables, heap
+and physical allocators and the original pool. Unpublished table Drop and rejected
+published cancellation retain their actual ledger allocations. Region probes
+cover reservation-only, allocated, armed transfer and partial physical rejection;
+uncertain parents reject allocation and physical retry. These retain fourteen
+additional original charges (seven domain) and ten frames. Alongside the original
+release fixtures, the injected retention probes account for nineteen charges and
+thirteen frames, separate from live hardware-unit/domain backing. Simulated
+interruption is not actual panic unwinding or a hardware timeout. See the
+[preparation follow-up](../reports/audits/2026-10-09-security-iommu-preparation-abandonment.md).
 
 The QEMU NVMe recovery fixture checks unchanged charges after rejected hardware
 completion, refund after real retirement, capability refund under domain pressure,

@@ -145,3 +145,10 @@ Evidence: [thread retirement audit](../reports/audits/2026-10-07-security-thread
 Whole-domain evidence: [domain thread abort audit](../reports/audits/2026-10-07-security-domain-thread-abort.md).
 
 Published-pair evidence: [explicit stack retirement](../reports/audits/2026-10-09-security-published-stack-retirement.md).
+
+Failed-node diagnostic snapshots copy only the exact thread's captured root, LP,
+started phase and reported pair error. They allocate no snapshot collection and
+are printed after the registry guard leaves. A detached in-flight batch may be
+absent, so absence is not quiescence. Error classification and independent global
+shootdown counters do not authorize physical retry or clear the earlier Intel
+progress failure; see the [IOMMU follow-up](../reports/audits/2026-10-09-security-iommu-preparation-abandonment.md).

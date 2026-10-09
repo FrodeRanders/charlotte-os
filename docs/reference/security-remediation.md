@@ -90,9 +90,15 @@ rejection runs explicit cleanup after local guards; context metadata allocation
 precedes generation/backing. General thread metadata fallback, outer ordinary
 caller masks, backend contexts, growth's enclosing thread-table guard and the
 complete call-chain inventory remain required.
-An initial Intel user-stack lease timeout is recorded as an unresolved progress
-concern; atomic phase observations and timeout snapshots now improve subsequent
-evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.
+The [IOMMU preparation follow-up](../reports/audits/2026-10-09-security-iommu-preparation-abandonment.md)
+also removes physical/pool cleanup and implicit ledger heap deallocation from
+C15 fallback. Private construction and ordinary metadata/allocator rejection use
+explicit cancellation across all three backends. Ordinary physical work and
+published maintenance still retain backend serialization; G3 and the full
+call-chain inventory remain required. Finding states are unchanged.
+The earlier Intel user-stack lease timeout reproduced during the initial
+IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
+and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.
 
 | Deliverable | Completion evidence |
 | --- | --- |

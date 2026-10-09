@@ -104,6 +104,31 @@ impl Tables {
         }
     }
 
+    /// Prepare private backing before hardware publication. Ordinary rejection
+    /// explicitly rolls back its prefix; abandonment never runs physical work.
+    pub(super) fn prepare_unpublished<T>(
+        scope: Scope,
+        prepare: impl FnOnce(&mut Self) -> Result<T, Error>,
+    ) -> Result<(Self, T), Error> {
+        let mut tables = Self::new(scope);
+        match prepare(&mut tables) {
+            Ok(payload) => Ok((tables, payload)),
+            Err(error) => {
+                let _ = tables.cancel_unpublished();
+                Err(error)
+            }
+        }
+    }
+
+    /// This consumes only a private, never hardware-published owner. Rejected
+    /// physical release freezes the original charge; Drop cannot retry it.
+    pub(super) fn cancel_unpublished(mut self) -> Result<(), Error> {
+        if self.state != State::Unpublished {
+            return Err(Error::MapFailed);
+        }
+        self.release()
+    }
+
     pub(super) fn allocate_frame(&mut self) -> Result<PAddr, Error> {
         self.allocate(1, PAGE)
     }
@@ -125,25 +150,36 @@ impl Tables {
         alignment: usize,
         allocate: impl FnOnce(usize, usize) -> Result<PAddr, crate::memory::physical::Error>,
     ) -> Result<PAddr, Error> {
-        if pages == 0
-            || !alignment.is_power_of_two()
-            || alignment < PAGE
-            || self.uncertain
-            || !matches!(self.state, State::Unpublished | State::Published)
-            || pages as u64 > self.limit.saturating_sub(self.pages)
-        {
+        self.allocate_prepared_with(
+            pages,
+            alignment,
+            |regions| regions.try_reserve(1).map_err(|_| Error::MapFailed),
+            allocate,
+        )
+    }
+
+    fn allocate_prepared_with(
+        &mut self,
+        pages: usize,
+        alignment: usize,
+        prepare_ledger: impl FnOnce(&mut Vec<Region>) -> Result<(), Error>,
+        allocate: impl FnOnce(usize, usize) -> Result<PAddr, crate::memory::physical::Error>,
+    ) -> Result<PAddr, Error> {
+        if !alignment.is_power_of_two() || alignment < PAGE {
             return Err(Error::MapFailed);
         }
-        POOL.lock().reserve(pages as u64, self.scope)?;
-        self.pages += pages as u64;
-        let mut preparation = PreparingRegion {
-            tables: self,
-            pages,
-            frame: None,
-            finished: false,
-        };
-        preparation.tables.regions.try_reserve(1).map_err(|_| Error::MapFailed)?;
-        preparation.frame = Some(allocate(pages, alignment).map_err(|_| Error::MapFailed)?);
+        let mut preparation = PreparingRegion::reserve(self, pages)?;
+        if prepare_ledger(&mut preparation.tables.regions).is_err() {
+            preparation.cancel_unpublished()?;
+            return Err(Error::MapFailed);
+        }
+        match allocate(pages, alignment) {
+            Ok(frame) => preparation.frame = Some(frame),
+            Err(_) => {
+                preparation.cancel_unpublished()?;
+                return Err(Error::MapFailed);
+            }
+        }
         let frame = preparation.frame.unwrap();
         unsafe {
             core::ptr::write_bytes(frame.into_hhdm_mut::<u8>(), 0, pages * PAGE);
@@ -162,7 +198,7 @@ impl Tables {
 
     /// Call before the first hardware-visible root/descriptor/base publication.
     pub(super) fn publish(&mut self) {
-        assert!(self.state == State::Unpublished);
+        assert!(self.state == State::Unpublished && !self.uncertain);
         self.state = State::Published;
     }
 
@@ -199,6 +235,9 @@ impl Tables {
         POOL.lock().release(self.pages, self.scope);
         self.pages = 0;
         self.state = State::Released;
+        // Ordinary explicit completion releases metadata too. Fallback must
+        // retain this ledger instead of implicitly entering the heap allocator.
+        drop(core::mem::take(&mut self.regions));
         Ok(())
     }
 
@@ -221,10 +260,10 @@ impl Tables {
 }
 impl Drop for Tables {
     fn drop(&mut self) {
-        if self.state == State::Unpublished {
-            let _ = self.release();
-        }
-        // Published/uncertain/frozen backing and its original charge remain.
+        // Preserve ledger allocation as well as backing/admission. Vec field
+        // destruction would otherwise enter the heap allocator under unknown
+        // outer guards. Explicit successful release already empties this field.
+        core::mem::forget(core::mem::take(&mut self.regions));
     }
 }
 
@@ -234,22 +273,57 @@ struct PreparingRegion<'a> {
     frame: Option<PAddr>,
     finished: bool,
 }
-impl Drop for PreparingRegion<'_> {
-    fn drop(&mut self) {
-        if self.finished {
-            return;
+impl<'a> PreparingRegion<'a> {
+    fn reserve(tables: &'a mut Tables, pages: usize) -> Result<Self, Error> {
+        if pages == 0
+            || tables.uncertain
+            || !matches!(tables.state, State::Unpublished | State::Published)
+            || pages as u64 > tables.limit.saturating_sub(tables.pages)
+        {
+            return Err(Error::MapFailed);
         }
+        POOL.lock().reserve(pages as u64, tables.scope)?;
+        tables.pages += pages as u64;
+        Ok(Self {
+            tables,
+            pages,
+            frame: None,
+            finished: false,
+        })
+    }
+
+    fn cancel_unpublished(mut self) -> Result<(), Error> {
+        self.rollback_with(|frame| PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame))
+    }
+
+    fn rollback_with(
+        &mut self,
+        mut release: impl FnMut(PAddr) -> Result<(), crate::memory::physical::Error>,
+    ) -> Result<(), Error> {
+        assert!(!self.finished && !self.tables.uncertain);
+        // Disarm before invoking adapters; interruption/rejection is terminal.
+        self.finished = true;
+        self.tables.uncertain = true;
         if let Some(base) = self.frame.take() {
-            self.tables.uncertain = true;
             for index in 0..self.pages {
-                if PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(base + index * PAGE).is_err() {
-                    return;
-                }
+                release(base + index * PAGE).map_err(|_| Error::MapFailed)?;
             }
-            self.tables.uncertain = false;
         }
         POOL.lock().release(self.pages as u64, self.tables.scope);
         self.tables.pages -= self.pages as u64;
+        self.tables.uncertain = false;
+        Ok(())
+    }
+}
+impl Drop for PreparingRegion<'_> {
+    fn drop(&mut self) {
+        if !self.finished {
+            // Even reservation-only abandonment consumes original admission.
+            // The exclusive parent borrow is the complete containing owner.
+            self.tables.uncertain = true;
+        }
+        // Scalar provisional backing is quarantined; no allocator/pool/table
+        // guard, physical callback or logger may be entered from this fallback.
     }
 }
 

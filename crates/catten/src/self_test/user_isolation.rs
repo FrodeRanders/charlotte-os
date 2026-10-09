@@ -131,6 +131,27 @@ impl Fixture {
                 Ok(()) => break,
                 Err(memory::AddressSpaceCloseError::OperationsInFlight) => {
                     if deadline.is_expired() {
+                        // Exact retained-node outcome is copied under staging,
+                        // then printed after its guard leaves. It grants no retry.
+                        if let Some(snapshot) =
+                            scheduler::threads::staged_retirement_snapshot(self.generation)
+                        {
+                            crate::logln!(
+                                "[user isolation] staged thread generation={} root={:?} lp={:?} \
+                                 started={} error={:?}",
+                                self.generation,
+                                snapshot.root,
+                                snapshot.lp,
+                                snapshot.started,
+                                snapshot.error
+                            );
+                        }
+                        #[cfg(target_arch = "x86_64")]
+                        crate::logln!(
+                            "[user isolation] global shootdown observations \
+                             [success,busy,masked,exhausted,delivery,timeout]={:?}",
+                            crate::cpu::isa::interrupts::fixed::ipis::shootdown_progress()
+                        );
                         crate::logln!(
                             "[user isolation] retained stack lease asid={} generation={} \
                              user-retirement counters \

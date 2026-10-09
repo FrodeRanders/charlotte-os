@@ -169,6 +169,14 @@ fn terminal_pair_retention(lp: LpId) {
         thread.context.reject_stack_release_for_test()
     });
     assert_eq!(attempts, 1);
+    let snapshot = staged_retirement_snapshot(generation).unwrap();
+    assert_eq!(snapshot.root, None);
+    assert_eq!(snapshot.lp, Some(lp));
+    assert!(snapshot.started);
+    assert!(matches!(
+        snapshot.error,
+        Some(crate::memory::thread_stack::RetirementError::Kernel(_))
+    ));
     for _ in 0..2 {
         reap_dead_threads_with(lp, current_stack_pointer());
         assert!(has_staged_generation(generation));
