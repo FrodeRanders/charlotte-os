@@ -115,7 +115,12 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   local lifecycle/device guards leave. Failed rollback/abandonment retains the
   entire preparation without hardware, registry, allocator or logging work in
   Drop. Never retry this publication owner after rollback starts. Backend
-  creation/reset's internal rollback remains separately qualified. Failed
+  creation borrows its `DmaCreation` and records the admitted domain before any
+  reachable descriptor publication; errors retain that obligation. Reject an
+  armed creation owner before initialization/reset/allocation. Published-domain
+  rejection only marks retiring and publishes abort under serialization; use
+  the enclosing preparation's post-guard destruction for maintenance/physical
+  rollback. Private construction and reset contexts remain separate. Failed
   hardware rollback must quarantine reachable backing, never recycle it.
 - Demand-backed heap frames use the embedded address-space `heap_account`.
   Retain the exact generation and table guard across admission/mapping, prepare

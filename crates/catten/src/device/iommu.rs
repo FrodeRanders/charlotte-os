@@ -43,11 +43,14 @@ pub fn stream_id(requester_id: u32) -> Result<u32, Error> {
 pub(crate) fn create_domain_with_reset(
     sid: u32,
     msi_address: Option<u64>,
+    creation: &mut super::DmaCreation,
     reset: impl FnOnce(bool) -> Result<(), Error>,
-) -> Result<u64, Error> {
+) -> Result<(), Error> {
     match detect()? {
-        Backend::Vtd => super::vt_d::create_domain_with_reset(sid, msi_address, reset),
-        Backend::AmdVi => super::amd_vi::create_domain_with_reset(sid, msi_address, reset),
+        Backend::Vtd => super::vt_d::create_domain_with_reset(sid, msi_address, creation, reset),
+        Backend::AmdVi => {
+            super::amd_vi::create_domain_with_reset(sid, msi_address, creation, reset)
+        }
     }
 }
 

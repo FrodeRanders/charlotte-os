@@ -6,6 +6,37 @@ use crate::{
     memory::object,
 };
 
+static CREATION_IRQ: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+
+fn creation_rollback_unlocked() {
+    assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), CREATION_IRQ.load(Ordering::Relaxed));
+    dma::test_assert_backend_available();
+    drop(
+        crate::memory::ADDRESS_SPACE_LIFECYCLE
+            .try_lock()
+            .expect("creation rollback holds lifecycle"),
+    );
+    drop(DEVICES.try_lock().expect("creation rollback holds devices"));
+    drop(
+        crate::memory::ADDRESS_SPACE_TABLE.try_lock().expect("creation rollback holds root table"),
+    );
+    drop(
+        crate::memory::PHYSICAL_FRAME_ALLOCATOR
+            .try_lock()
+            .expect("creation rollback holds physical allocator"),
+    );
+    drop(
+        crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR
+            .try_lock()
+            .expect("creation rollback holds heap"),
+    );
+    crate::device_management::drivers::busses::pci_express::topology::reset::test_assert_disabled_config_available(&crate::DEVICE_TOPOLOGY.pcie);
+}
+
+fn destroy_failed_creation(id: u64) -> Result<(), dma::Error> {
+    dma::destroy_domain_at(id, creation_rollback_unlocked, creation_rollback_unlocked)
+}
+
 pub(crate) fn run() {
     let Some((base, requester)) =
         crate::device_management::drivers::busses::pci_express::topology::reset::test_target(
@@ -93,7 +124,7 @@ pub(crate) fn run() {
             );
             for sid in [requester, u32::MAX] {
                 assert_eq!(
-                    dma::create_domain_with_reset(sid, None, |_| panic!(
+                    dma::create_domain_with_reset(sid, None, &mut DmaCreation::new(), |_| panic!(
                         "claimed engine reached reset"
                     )),
                     Err(dma::Error::OperationInFlight)
@@ -134,9 +165,12 @@ pub(crate) fn run() {
                 Err(dma::Error::UnknownDomain)
             );
             assert_eq!(
-                dma::create_domain_with_reset(requester, None, |_| panic!(
-                    "claimed requester reached reset"
-                )),
+                dma::create_domain_with_reset(
+                    requester,
+                    None,
+                    &mut DmaCreation::new(),
+                    |_| panic!("claimed requester reached reset")
+                ),
                 Err(dma::Error::StreamInUse)
             );
             assert_eq!(
@@ -179,6 +213,28 @@ pub(crate) fn run() {
         assert_eq!(crate::capability::admission_tests::test_namespace_used(successor.id()), caps);
     }
     assert_eq!(dma_tables::used().1, baseline);
+    let rejected = crate::service::loader::create_user_address_space_handle();
+    let charges = dma_tables::used();
+    CREATION_IRQ.store(crate::cpu::isa::lp::ops::get_int_state(), Ordering::Relaxed);
+    REJECT_CREATION.store(true, Ordering::Release);
+    assert_eq!(
+        grant_dma_domain_with_backend(
+            rejected.id(),
+            |creation| create_dma_domain(rejected.id(), requester, None, creation),
+            destroy_failed_creation,
+        ),
+        Err(DeviceError::DmaUnavailable)
+    );
+    assert!(!REJECT_CREATION.load(Ordering::Acquire));
+    assert_eq!(dma_tables::used(), charges);
+    assert_eq!(crate::capability::admission_tests::test_namespace_used(rejected.id()), 0);
+    assert!(!DEVICES.lock().contains_key(&rejected.id()));
+    crate::memory::close_user_address_space_handle(rejected).unwrap();
+    crate::logln!(
+        "[DMA creation rollback] real configuration followed by injected rejection; unlocked \
+         maintenance/physical phase with PCI config released and bus mastering disabled, exact \
+         charge/capability refund and root close passed"
+    );
     let domain = grant_dma_domain(successor.id(), requester, None).unwrap();
     assert_eq!(unsafe { core::ptr::read_volatile(registers.add(0x14).cast::<u32>()) } & 1, 0);
     assert_eq!(unsafe { core::ptr::read_volatile(registers.add(0x1c).cast::<u32>()) } & 1, 0);

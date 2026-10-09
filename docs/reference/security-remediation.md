@@ -115,11 +115,25 @@ removes hardware destruction/logging and implicit reservation cleanup from grant
 fallback. It retains the exact root, reservation and backend rollback obligation
 together; ordinary publication rejection rolls back explicitly after local
 guards leave, while failure/abandonment retains all original admission. Backend
-creation/reset's internal rollback, outer caller qualification and general
+private construction/reset contexts, outer caller qualification and general
 publication metadata admission remain G1/G3/G4. Finding states are unchanged.
+The [published-creation follow-up](../reports/audits/2026-10-09-security-dma-creation-rollback.md)
+now records the admitted domain in that enclosing owner before any reachable
+descriptor, including backend error. Published creation rejection uses unlocked
+destruction after local lifecycle/device/config guards leave; confirmed completion
+refunds authority and closes the root, while failure retains the full obligation.
+Real QEMU NVMe rejection after actual initial configuration checks guard/config
+availability, disabled bus mastering and exact charge refund. Initial creation/
+reset waits, private construction and full outer contexts remain G1/G3 work;
+SEC-18 and finding counts remain unchanged.
 The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.
+It also recurred on AMD during the published-creation follow-up (14 passed/one
+failed; unchanged-artifact repeat 15 passed). A possible domain-abort sweep
+self-request/root-completion handoff is now recorded in the
+[context inventory](cleanup-recovery.md); it needs correction and deterministic
+evidence before being accepted as the cause.
 
 | Deliverable | Completion evidence |
 | --- | --- |

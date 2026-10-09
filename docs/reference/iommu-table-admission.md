@@ -53,6 +53,16 @@ requester fence unless hardware detachment, maintenance/drain and complete
 physical release all succeed. SMMUv3 creation rollback also completes TLBI/SYNC
 for the original ASID after installing its aborting STE.
 
+Creation borrows `PreparedDmaDomain`'s `DmaCreation` and records the admitted
+registered domain before publishing a reachable descriptor. An armed owner
+rejects before initialization/reset/allocation. Error leaves that obligation
+armed: backend serialization only marks retiring and publishes abort. The
+enclosing preparation invokes the ordinary unlocked destruction boundary after
+local lifecycle/device/config guards leave. Confirmed destruction refunds the
+capability reservation and completes the exact root; rejected cleanup retains
+both alongside the registered retiring domain. No success-only scalar return
+or backend-internal published rollback can lose the containing obligation.
+
 Partial sparse walks keep their linked intermediate tables charged. Unmap removes
 leaves; empty branches remain cached and reusable at the ceiling until domain
 retirement. A failed branch returns a mapping error rather than bypassing quota.
@@ -80,7 +90,10 @@ already freed; retry never walks freed entries. Unknown provisional handoff also
 retains admission and backing. Repeating successful release is harmless, but
 frozen release always rejects. A successor cannot refund that original charge.
 Hardware timeout before physical release may still be retried against the same
-owner, as described in [hardware quiescence](hardware-quiescence.md).
+retained owner by an existing owning caller, as described in
+[hardware quiescence](hardware-quiescence.md). Failed creation's publication
+preparation terminally retains its root/reservation/obligation; the backend's
+retiring domain alone is not authority to retry that containing preparation.
 
 Explicit domain destruction marks retiring and publishes a rejecting descriptor
 under its registry guard, then moves the complete domain and actual command
@@ -108,10 +121,11 @@ an operator retry owner. Successful completion removes the empty cell, changes
 the requester to its existing reset-required tombstone, and consumes mapping/pin
 collections outside the backend guard.
 
-Physical allocation, ordinary private/creation rollback, ledger/registry
-preparation and creation/map/unmap/initialization hardware waits still occur
-under backend serialization. Explicit destruction's maintenance now runs outside
-it; physical finalization uses the registered-state hold even if another domain
+Physical allocation, ordinary private construction rollback, ledger/registry
+preparation and initial creation/map/unmap/initialization hardware waits still
+occur under backend serialization. Explicit destruction and published creation
+rejection use unlocked maintenance/physical cleanup; physical finalization uses
+the registered-state hold even if another domain
 owns the command engine. Command-engine ownership, complete outer-context qualification,
 registry metadata admission/destruction and abandoned-owner recovery remain
 separate work. No quota override, partial-release retry or administrative
@@ -171,3 +185,12 @@ They cancel private backing explicitly and restore frame/charge baselines.
 The guarded containing-owner probe now also retains a real command metadata
 allocation. Existing retained table counts remain 22 charges and 15 frames.
 No outstanding-I/O, actual panic unwinding or physical-device claim is added.
+
+The [published-creation follow-up](../reports/audits/2026-10-09-security-dma-creation-rollback.md)
+records the backend obligation in its enclosing preparation before hardware
+publication. Actual QEMU NVMe configuration followed by injected rejection
+checks real post-guard maintenance/physical release with disabled bus mastering,
+available PCI config serialization, table-charge/capability refund and root close.
+Fake rejected cleanup retains one additional root/reservation without new IOMMU
+charges/frames; all five grant-retention fixtures preserve their original roots
+and authority charges. This does not test a real withheld hardware completion.

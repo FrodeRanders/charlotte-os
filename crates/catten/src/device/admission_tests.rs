@@ -52,7 +52,7 @@ pub(crate) fn test_admission() {
     assert_eq!(
         grant_dma_domain_with_backend(
             owner.id(),
-            || panic!("over-quota backend creation"),
+            |_| panic!("over-quota backend creation"),
             destroy_ok
         ),
         Err(DeviceError::ResourceLimit)
@@ -69,7 +69,7 @@ pub(crate) fn test_admission() {
     close_cap(owner.id(), irq).unwrap();
     assert_eq!(used(owner.id()), TEST_NAMESPACE_LIMIT - 1);
     assert_eq!(
-        grant_dma_domain_with_backend(owner.id(), || Err(DeviceError::DmaUnavailable), destroy_ok),
+        grant_dma_domain_with_backend(owner.id(), |_| Err(DeviceError::DmaUnavailable), destroy_ok),
         Err(DeviceError::DmaUnavailable)
     );
     assert_eq!(used(owner.id()), TEST_NAMESPACE_LIMIT - 1);
@@ -87,9 +87,10 @@ pub(crate) fn test_admission() {
         assert_eq!(
             grant_dma_domain_with_backend(
                 transient.id(),
-                || {
+                |creation| {
+                    creation.record(u64::MAX);
                     crate::capability::retire_address_space(transient.id());
-                    Ok(u64::MAX)
+                    Ok(())
                 },
                 destroy
             ),
@@ -105,13 +106,14 @@ pub(crate) fn test_admission() {
         }
     }
     test_grant_abandonment();
+    test_backend_creation_rejection();
     crate::memory::budget::retire(owner);
     assert_eq!(grant_mmio(owner.id(), 0x0900_0000, 1), Err(DeviceError::NamespaceRetired));
     assert_eq!(grant_interrupt(owner.id(), intid), Err(DeviceError::NamespaceRetired));
     assert_eq!(
         grant_dma_domain_with_backend(
             owner.id(),
-            || panic!("retired backend creation"),
+            |_| panic!("retired backend creation"),
             destroy_ok
         ),
         Err(DeviceError::NamespaceRetired)
@@ -163,7 +165,9 @@ fn prepare_fixture(
         )
         .unwrap(),
     );
-    prepared.resources.id = has_domain.then_some(u64::MAX);
+    if has_domain {
+        prepared.resources.creation.record(u64::MAX);
+    }
     drop(lifecycle);
     (root, prepared)
 }
@@ -191,8 +195,21 @@ fn test_grant_abandonment() {
     // Fake backend obligations: these do not install a hardware domain. The
     // real root and capability admission exercise implicit field destruction.
     for has_domain in [false, true] {
-        let (root, prepared) = prepare_fixture(has_domain, false);
+        let (root, mut prepared) = prepare_fixture(has_domain, false);
         assert_eq!(used(root.id()), 1);
+        if has_domain {
+            assert_eq!(
+                dma::create_domain_with_reset(
+                    u32::MAX,
+                    None,
+                    &mut prepared.resources.creation,
+                    |_| panic!("armed creation obligation reached reset"),
+                ),
+                Err(dma::Error::OperationInFlight)
+            );
+            assert_eq!(prepared.resources.creation.id, Some(u64::MAX));
+            assert_eq!(used(root.id()), 1);
+        }
         drop_grant_under_guards(prepared);
         assert_retained_root(root);
     }
@@ -215,6 +232,45 @@ fn test_grant_abandonment() {
         "[DMA grant rollback] unlocked one-shot rollback, guarded containing-owner Drop, exact \
          root/capability retention and successor isolation passed; four roots/reservations \
          retained"
+    );
+}
+
+fn test_backend_creation_rejection() {
+    for fails in [false, true] {
+        let root = crate::service::loader::create_user_address_space_handle();
+        let before = DESTROYS.load(Ordering::Relaxed);
+        EXPECTED_IRQ.store(crate::cpu::isa::lp::ops::get_int_state(), Ordering::Relaxed);
+        assert_eq!(
+            grant_dma_domain_with_backend(
+                root.id(),
+                |creation| {
+                    // Unlike an ordinary pre-publication allocation rejection,
+                    // this fake backend has installed its registered obligation
+                    // before returning an error. The adapter must not lose it.
+                    creation.record(u64::MAX);
+                    Err(DeviceError::DmaUnavailable)
+                },
+                if fails {
+                    destroy_failed
+                } else {
+                    destroy_ok
+                },
+            ),
+            Err(DeviceError::DmaUnavailable)
+        );
+        assert_eq!(DESTROYS.load(Ordering::Relaxed), before + 1);
+        assert!(!DEVICES.lock().contains_key(&root.id()));
+        assert_eq!(used(root.id()), usize::from(fails));
+        if fails {
+            assert_retained_root(root);
+        } else {
+            crate::memory::close_user_address_space_handle(root).unwrap();
+        }
+    }
+    logln!(
+        "[DMA creation ownership] backend error preserves registered obligation through unlocked \
+         rollback; confirmed refund and failed exact root/reservation retention passed (one \
+         additional retained root/reservation)"
     );
 }
 

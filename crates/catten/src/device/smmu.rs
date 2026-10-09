@@ -592,8 +592,12 @@ pub fn stream_id(requester_id: u32) -> Result<u32, Error> {
 pub(crate) fn create_domain_with_reset(
     sid: u32,
     msi_address: Option<u64>,
+    creation: &mut super::DmaCreation,
     reset: impl FnOnce(bool) -> Result<(), Error>,
-) -> Result<u64, Error> {
+) -> Result<(), Error> {
+    if creation.id.is_some() {
+        return Err(Error::OperationInFlight);
+    }
     with_smmu(|smmu| {
         match smmu.streams.get(&sid) {
             Some(0) => reset(true)?,
@@ -608,29 +612,22 @@ pub(crate) fn create_domain_with_reset(
         smmu.domains.insert(id, Some(domain));
         smmu.streams.insert(sid, id);
         smmu.domains.get_mut(&id).and_then(Option::as_mut).unwrap().tables.publish();
-        if let Err(error) = smmu.write_ste(sid, Some(cd)) {
-            smmu.domains.get_mut(&id).and_then(Option::as_mut).unwrap().retiring = true;
-            // Retain the exact owner unless abort, original-ASID maintenance
-            // and complete physical release all succeed.
-            if smmu.write_ste(sid, None).is_ok()
-                && smmu.invalidate_asid(asid).is_ok()
-                && smmu
-                    .domains
-                    .get_mut(&id)
-                    .and_then(Option::as_mut)
-                    .unwrap()
-                    .tables
-                    .release()
-                    .is_ok()
-            {
-                *smmu.streams.get_mut(&sid).unwrap() = 0;
-                smmu.domains.remove(&id).expect("new IOMMU domain disappeared");
+        creation.record(id);
+        let configured = smmu.write_ste(sid, Some(cd)).and_then(|()| {
+            if super::test_reject_creation() {
+                Err(Error::HardwareTimeout)
             } else {
-                crate::logln!("[smmu] quarantining failed domain {} for sid {:#x}", id, sid);
+                Ok(())
             }
+        });
+        if let Err(error) = configured {
+            smmu.domains.get_mut(&id).and_then(Option::as_mut).unwrap().retiring = true;
+            // Abort publication is serialized; its CFGI/TLBI/SYNC and physical
+            // rollback belong to the enclosing grant after all local guards.
+            let _ = smmu.publish_ste(sid, None);
             return Err(error);
         }
-        Ok(id)
+        Ok(())
     })
 }
 

@@ -553,8 +553,12 @@ pub fn stream_id(requester_id: u32) -> Result<u32, Error> {
 pub(crate) fn create_domain_with_reset(
     sid: u32,
     msi_address: Option<u64>,
+    creation: &mut super::DmaCreation,
     reset: impl FnOnce(bool) -> Result<(), Error>,
-) -> Result<u64, Error> {
+) -> Result<(), Error> {
+    if creation.id.is_some() {
+        return Err(Error::OperationInFlight);
+    }
     with_unit(|unit| {
         let source_id = u16::try_from(sid).map_err(|_| Error::InvalidStream)?;
         match unit.sources.get(&source_id) {
@@ -587,33 +591,24 @@ pub(crate) fn create_domain_with_reset(
         unit.domains.insert(id, Some(domain));
         unit.sources.insert(source_id, id);
         unit.domains.get_mut(&id).and_then(Option::as_mut).unwrap().tables.publish();
+        creation.record(id);
         unit.write_context_entry(bus, devfunc, root, id as u16, agaw_aw(unit.agaw));
-        if let Err(error) = unit.flush_context_cache() {
+        let configured = unit.flush_context_cache().and_then(|()| {
+            if super::test_reject_creation() {
+                Err(Error::HardwareTimeout)
+            } else {
+                Ok(())
+            }
+        });
+        if let Err(error) = configured {
             unit.domains.get_mut(&id).and_then(Option::as_mut).unwrap().retiring = true;
             unit.write_context_entry(bus, devfunc, PAddr::from(0u64), 0, 0);
-            if unit.flush_context_cache().is_ok()
-                && unit.flush_iotlb().is_ok()
-                && unit
-                    .domains
-                    .get_mut(&id)
-                    .and_then(Option::as_mut)
-                    .unwrap()
-                    .tables
-                    .release()
-                    .is_ok()
-            {
-                *unit.sources.get_mut(&source_id).unwrap() = 0;
-                unit.domains.remove(&id).expect("new IOMMU domain disappeared");
-            } else {
-                crate::logln!(
-                    "[vtd] quarantining failed domain {} for source {:#x}",
-                    id,
-                    source_id
-                );
-            }
+            // The enclosing grant already owns this registered domain's
+            // obligation. Leave all rollback waits/physical work to its explicit
+            // post-guard cancellation, preserving the source and table charge.
             return Err(error);
         }
-        Ok(id)
+        Ok(())
     })
 }
 

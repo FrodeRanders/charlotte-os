@@ -126,6 +126,27 @@ pub(crate) fn supports_qemu_nvme(topology: &PcieTopology, requester: u32) -> boo
         })
 }
 
+/// Pre-driver rollback probe; no config mutation or hardware acknowledgement.
+pub(crate) fn test_assert_disabled_config_available(topology: &PcieTopology) {
+    assert_eq!(topology.segments.len(), 1);
+    let bus = &topology.segments[0].root_bus;
+    let mut found = false;
+    for function in 0..256 {
+        let requester = u32::from(bus.number) << 8 | function;
+        let Some(endpoint) = find_bus(bus, requester, 0) else {
+            continue;
+        };
+        if (endpoint.identifier.vendor_id, endpoint.identifier.device_id) != (0x1b36, 0x0010) {
+            continue;
+        }
+        let config = endpoint.cfg_ptr.try_lock().expect("creation rollback holds PCI config");
+        let command = unsafe { read_volatile(config.as_ptr().cast::<u8>().add(4).cast::<u16>()) };
+        assert_eq!(command & 4, 0, "creation rejection enabled bus mastering");
+        found = true;
+    }
+    assert!(found, "QEMU NVMe config fixture absent");
+}
+
 pub(crate) fn qemu_nvme(
     topology: &PcieTopology,
     requester: u32,

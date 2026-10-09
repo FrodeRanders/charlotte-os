@@ -53,7 +53,15 @@ fn successful_cleanup() {
     let direct_base = VAddr::from(0x3000_0000usize);
     mmio_map(handle.id(), direct, direct_base, false).unwrap();
     let irq = grant_interrupt(handle.id(), 225).unwrap();
-    let domain = grant_dma_domain_with_backend(handle.id(), || Ok(u64::MAX), |_| Ok(())).unwrap();
+    let domain = grant_dma_domain_with_backend(
+        handle.id(),
+        |creation| {
+            creation.record(u64::MAX);
+            Ok(())
+        },
+        |_| Ok(()),
+    )
+    .unwrap();
     let mut closing = ClosingAddressSpace::begin_ready(handle).unwrap();
     let mut unmapped = 0;
     let mut invalidated = 0;
@@ -155,7 +163,15 @@ fn failed_cleanup(failure: Failure) {
     let first = grant_mmio(handle.id(), 0x0900_0000, 1).unwrap();
     let cap = grant_mmio(handle.id(), 0x0900_0000, 2).unwrap();
     let base = mmio_map_any(handle.id(), cap, true).unwrap();
-    let domain = grant_dma_domain_with_backend(handle.id(), || Ok(u64::MAX), |_| Ok(())).unwrap();
+    let domain = grant_dma_domain_with_backend(
+        handle.id(),
+        |creation| {
+            creation.record(u64::MAX);
+            Ok(())
+        },
+        |_| Ok(()),
+    )
+    .unwrap();
     // Foreign leaf identity must be checked before removal. Keep the root
     // quarantined so neither this replacement nor its mapping record is reused.
     if failure == Failure::Detach {

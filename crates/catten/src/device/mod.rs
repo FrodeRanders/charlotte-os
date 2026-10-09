@@ -47,6 +47,14 @@ pub(crate) mod retirement;
 static REJECT_RETIREMENT: core::sync::atomic::AtomicBool =
     core::sync::atomic::AtomicBool::new(false);
 
+// Serialized pre-driver fixture rejects after real initial configuration
+// maintenance. Rollback must still perform its own actual drain/completion.
+static REJECT_CREATION: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+
+fn test_reject_creation() -> bool {
+    REJECT_CREATION.swap(false, Ordering::AcqRel)
+}
+
 // Single-mutator, pre-driver boot fixture. Reject after hardware detachment;
 // never fake a hardware acknowledgement or discharge backing ownership.
 fn test_reject_retirement() -> bool {
@@ -319,8 +327,31 @@ struct PreparedDmaDomain {
 struct DmaGrantResources {
     address_space: Option<AddressSpaceOperation>,
     reservation: Option<crate::capability::Reservation>,
-    id: Option<u64>,
+    creation: DmaCreation,
     destroy: fn(u64) -> Result<(), dma::Error>,
+}
+
+/// Borrowed from the complete grant preparation, never returned as a scalar
+/// success-only handle. Backend admission records its registered domain here
+/// before any reachable descriptor publication. Error leaves that obligation
+/// armed, so the enclosing owner retains its root/reservation through rollback.
+/// No implicit cleanup, copying or address-based re-adoption is available.
+#[must_use]
+pub(crate) struct DmaCreation {
+    id: Option<u64>,
+}
+
+impl DmaCreation {
+    fn new() -> Self {
+        Self {
+            id: None,
+        }
+    }
+
+    fn record(&mut self, id: u64) {
+        assert!(self.id.is_none(), "DMA creation obligation replaced");
+        self.id = Some(id);
+    }
 }
 
 impl PreparedDmaDomain {
@@ -342,7 +373,7 @@ impl PreparedDmaDomain {
             resources: core::mem::ManuallyDrop::new(DmaGrantResources {
                 address_space,
                 reservation: None,
-                id: None,
+                creation: DmaCreation::new(),
                 destroy,
             }),
             rollback_started: false,
@@ -358,11 +389,11 @@ impl PreparedDmaDomain {
             return Err(self);
         }
         self.rollback_started = true;
-        if let Some(id) = self.resources.id {
+        if let Some(id) = self.resources.creation.id {
             if (self.resources.destroy)(id).is_err() {
                 return Err(self);
             }
-            self.resources.id = None;
+            self.resources.creation.id = None;
         }
         if self.finish().is_err() {
             return Err(self);
@@ -374,7 +405,7 @@ impl PreparedDmaDomain {
     /// hardware ownership transfers. Dispose inactive reservation metadata and
     /// finish the operation only after leaving those local guards.
     fn complete(mut self) -> Result<(), DeviceError> {
-        self.resources.id = None;
+        self.resources.creation.id = None;
         self.finish()
     }
 
@@ -699,38 +730,43 @@ pub fn grant_dma_domain(
     requester_id: u32,
     msi_address: Option<u64>,
 ) -> Result<DeviceCap, DeviceError> {
-    use crate::device_management::drivers::busses::pci_express::topology::reset;
     grant_dma_domain_with_backend(
         owner,
-        || {
-            let sid = dma::stream_id(requester_id).map_err(|_| DeviceError::DmaUnavailable)?;
-            // Serialize reset with MMIO grant/map/close. The lifecycle guard
-            // already excludes new root/authority admission. A retired source
-            // can be reused only after old register authority is gone.
-            let devices = DEVICES.lock();
-            let mut reset = None;
-            let id = dma::create_domain_with_reset(sid, msi_address, |required| {
-                if !required
-                    && !reset::supports_qemu_nvme(&crate::DEVICE_TOPOLOGY.pcie, requester_id)
-                {
-                    return Ok(());
-                }
-                reset = Some(
-                    reset::qemu_nvme(&crate::DEVICE_TOPOLOGY.pcie, requester_id, |base, bytes| {
-                        reset_registers_available(&devices, owner, base, bytes)
-                    })
-                    .map_err(|_| dma::Error::Unsupported)?,
-                );
-                Ok(())
-            })
-            .map_err(|_| DeviceError::DmaUnavailable)?;
-            if let Some(reset) = reset {
-                reset.activate();
-            }
-            Ok(id)
-        },
+        |creation| create_dma_domain(owner, requester_id, msi_address, creation),
         dma::destroy_domain,
     )
+}
+
+fn create_dma_domain(
+    owner: AddressSpaceId,
+    requester_id: u32,
+    msi_address: Option<u64>,
+    creation: &mut DmaCreation,
+) -> Result<(), DeviceError> {
+    use crate::device_management::drivers::busses::pci_express::topology::reset;
+    let sid = dma::stream_id(requester_id).map_err(|_| DeviceError::DmaUnavailable)?;
+    // Serialize reset with MMIO grant/map/close. The lifecycle guard
+    // already excludes new root/authority admission. A retired source
+    // can be reused only after old register authority is gone.
+    let devices = DEVICES.lock();
+    let mut reset = None;
+    dma::create_domain_with_reset(sid, msi_address, creation, |required| {
+        if !required && !reset::supports_qemu_nvme(&crate::DEVICE_TOPOLOGY.pcie, requester_id) {
+            return Ok(());
+        }
+        reset = Some(
+            reset::qemu_nvme(&crate::DEVICE_TOPOLOGY.pcie, requester_id, |base, bytes| {
+                reset_registers_available(&devices, owner, base, bytes)
+            })
+            .map_err(|_| dma::Error::Unsupported)?,
+        );
+        Ok(())
+    })
+    .map_err(|_| DeviceError::DmaUnavailable)?;
+    if let Some(reset) = reset {
+        reset.activate();
+    }
+    Ok(())
 }
 
 fn reset_registers_available(
@@ -757,7 +793,7 @@ fn reset_registers_available(
 /// touching a live device. Production uses only the platform DMA dispatcher.
 fn grant_dma_domain_with_backend(
     owner: AddressSpaceId,
-    create: impl FnOnce() -> Result<u64, DeviceError>,
+    create: impl FnOnce(&mut DmaCreation) -> Result<(), DeviceError>,
     destroy: fn(u64) -> Result<(), dma::Error>,
 ) -> Result<DeviceCap, DeviceError> {
     let mut prepared = PreparedDmaDomain::new(owner, destroy)?;
@@ -773,8 +809,8 @@ fn grant_dma_domain_with_backend(
             )
             .map_err(admission_error)?,
         );
-        let id = create()?;
-        prepared.resources.id = Some(id);
+        create(&mut prepared.resources.creation)?;
+        let id = prepared.resources.creation.id.expect("successful DMA creation without owner");
         let mut devices = DEVICES.lock();
         let reservation = prepared.resources.reservation.as_mut().unwrap();
         let cap = reservation.identity();
