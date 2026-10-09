@@ -31,8 +31,8 @@ typed hardware obligation remains in its enclosing grant. Publication under
 `DEVICES` only relinks prepared nodes; explicit close/namespace detachment returns
 owning nodes for post-guard destruction. Unused preparation/abandonment cannot
 implicitly deallocate below unknown guards. This is payload storage admission,
-not conversion of the unified capability table's own metadata or a general
-byte/principal heap budget. See the
+not a general byte/principal heap budget. The unified namespace node now
+shares the same `AdmittedMap`; individual authority records remain separate. See the
 [device-storage evidence](../reports/audits/2026-10-09-security-device-registry-storage.md).
 
 ## Record ownership and publication
@@ -123,11 +123,13 @@ is distinct from private preparation cancellation, which needs no unmap.
 Device grants own lifecycle before taking a device/backend registry and borrow
 that guard for shared reservation. MMIO/interrupt payload publication is under
 `DEVICES`; an IRQ grant remains serialized with the existing uniqueness check.
-DMA admission precedes stream lookup/hardware domain creation. Creation runs
-under `DEVICES` and lifecycle, so reset checks cannot race register authority
-grant/map/close. Retired requesters remain fenced until a supported confirmed
-reset; QEMU NVMe reset retains config serialization and disabled bus mastering
-through new-domain creation. Old MMIO authority prevents reassignment. See
+DMA admission precedes stream lookup/hardware domain creation. Its complete-unit
+and endpoint-reset claims leave local lifecycle/device/backend guards during
+construction/reset and revalidate the exact root before publication. Those
+claims fence conflicting register authority grant/map/close. Retired requesters remain fenced until a supported confirmed
+reset; QEMU NVMe reset retains its logical config/BAR/ECAM claim and disabled
+bus mastering through new-domain creation; polling leaves the config guard.
+Old MMIO authority prevents reassignment. See
 [hardware quiescence](hardware-quiescence.md).
 `PreparedDmaDomain` owns created hardware until capability/payload installation.
 Failure destroys it outside `DEVICES`; backend destroy failure quarantines
@@ -177,11 +179,23 @@ a successful revocation may leave a subset revoked; it
 does not publish fresh returned authority. This is not atomic TLB-shootdown or
 loan-revocation rollback.
 
-User domain creation stages a fallibly allocated budget control block before
-allocating its ASID, then publishes an empty namespace with the real generation.
-Teardown retires capability admission before draining subsystem payloads and
-removes the namespace after draining them. This avoids an address-space lookup
-inside capability allocation under another subsystem's registry guard.
+User domain creation stages both a fallibly allocated namespace node and budget
+control block before lifecycle/table guards and ASID publication. The retaining
+`PreparingNamespace` publishes the real generation by relinking existing storage;
+ordinary unused preparation cancels explicitly after guards leave. Drop retains
+both allocations without entering a registry/allocator. Teardown retires admission
+before payload drain, then detaches the complete owning namespace node under
+`CAPABILITIES`. Remaining entries and their exact account are destroyed after that
+guard leaves. Original charges survive detachment until explicit destruction;
+late tokens still cannot alter a replacement account.
+
+The permanent kernel and raw fixture namespaces also prepare missing namespace
+storage outside `CAPABILITIES`, then recheck under it. A competing publisher's
+existing namespace is retained; unused private preparation is disposed after
+unlock. Real generation-bearing namespaces are never lazily recreated. Captured
+callers may still hold lifecycle/subsystem guards around this path. This is not
+full outer-context qualification. See the
+[namespace-storage evidence](../reports/audits/2026-10-09-security-capability-namespace-storage.md).
 
 Generic `reserve` owns lifecycle briefly for identity capture/admission; the
 returned token does not retain that global guard. Mailbox open already owns
@@ -212,8 +226,12 @@ These count limits do not charge allocator bytes, empty namespace/control
 blocks, page tables, stack backing, kernel heap or arbitrary callback captures.
 Demand-backed user heaps and ELF/runtime pages now have separate
 [heap](heap-admission.md) and [image](loader-admission.md) physical admission.
-`Arc` control-block preparation is fallible, but BTreeMap allocation remains
-infallible. Count admission is not physical out-of-memory handling.
+Namespace node/account preparation is fallible. Individual authority-record
+`BTreeMap` allocation remains infallible; per-record removal, reservation/source
+Drop and source revocation during `publish_batch` still have separate serialized
+destruction. Namespace lookup now scans ordered owning nodes linearly; empty
+namespace bytes/counts remain outside these capability-record ceilings. Count
+admission is not physical out-of-memory handling or a progress guarantee.
 
 ## Verification
 

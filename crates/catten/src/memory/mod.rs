@@ -264,10 +264,16 @@ fn register_user_address_space_with(
         -> Result<usize, (AddressSpace, crate::klib::collections::id_table::Error)>,
     reject: impl FnOnce(AddressSpace),
 ) -> Result<AddressSpaceHandle, AddressSpaceRegistrationError> {
-    let lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+    // Complete namespace backing precedes lifecycle/table publication guards.
     let namespace = crate::capability::prepare_namespace()
         .map_err(|_| AddressSpaceRegistrationError::CapabilityNamespaceAllocationFailed)?;
-    prepare_user_address_space(&mut address_space)?;
+    let lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+    if let Err(error) = prepare_user_address_space(&mut address_space) {
+        drop(lifecycle);
+        namespace.cancel_unpublished();
+        reject(address_space);
+        return Err(error);
+    }
     let mut table = ADDRESS_SPACE_TABLE.lock();
     let id = match publish(&mut table, address_space) {
         Ok(id) => id,
@@ -276,7 +282,7 @@ fn register_user_address_space_with(
             // hardware tag. Destroy it only after both masking guards leave.
             drop(table);
             drop(lifecycle);
-            drop(namespace);
+            namespace.cancel_unpublished();
             reject(address_space);
             return Err(AddressSpaceRegistrationError::TableAllocationFailed);
         }

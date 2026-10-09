@@ -13,11 +13,16 @@ use spin::LazyLock;
 
 use crate::{
     cpu::multiprocessor::spin::mutex::Mutex,
+    klib::collections::retirement_list::{
+        AdmittedMap,
+        PreparedEntry,
+    },
     memory::AddressSpaceId,
 };
 
 pub(crate) mod admission_tests;
 mod budget;
+mod namespace_tests;
 
 pub type ObjectCapability = u64;
 
@@ -76,23 +81,68 @@ impl AddressSpaceCapabilities {
 // leave an interrupt-context caller spinning for a thread that is no longer
 // running. The IRQ-safe mutex masks local interrupts for the complete
 // ownership interval and restores their prior state on unlock.
-static CAPABILITIES: LazyLock<Mutex<BTreeMap<AddressSpaceId, AddressSpaceCapabilities>>> =
-    LazyLock::new(|| Mutex::new(BTreeMap::new()));
+static CAPABILITIES: LazyLock<Mutex<AdmittedMap<AddressSpaceId, AddressSpaceCapabilities>>> =
+    LazyLock::new(|| Mutex::new(AdmittedMap::new()));
 
-/// Prepare namespace metadata before allocating an ASID. Its publication is
-/// infallible except for the kernel allocator used by BTreeMap itself. Empty
-/// namespace metadata is not a charged capability record.
-pub(crate) struct PreparingNamespace(AddressSpaceCapabilities);
+/// Prepare the complete namespace and registry node before ASID publication.
+/// Empty namespaces do not charge a capability record. Abandonment retains
+/// both allocations without invoking their destructors beneath unknown guards.
+#[must_use]
+pub(crate) struct PreparingNamespace(core::mem::ManuallyDrop<NamespaceStorage>);
+struct NamespaceStorage {
+    node: Option<PreparedEntry<(AddressSpaceId, AddressSpaceCapabilities)>>,
+    value: Option<AddressSpaceCapabilities>,
+}
 
 pub(crate) fn prepare_namespace() -> Result<PreparingNamespace, AllocationError> {
-    Ok(PreparingNamespace(AddressSpaceCapabilities::try_new(None)?))
+    if namespace_tests::reject(1) {
+        return Err(AllocationError::AllocationFailed);
+    }
+    let node = PreparedEntry::try_new().map_err(|_| AllocationError::AllocationFailed)?;
+    namespace_tests::boundary(false);
+    let value = if namespace_tests::reject(2) {
+        Err(AllocationError::AllocationFailed)
+    } else {
+        AddressSpaceCapabilities::try_new(None)
+    };
+    match value {
+        Ok(value) => Ok(PreparingNamespace(core::mem::ManuallyDrop::new(NamespaceStorage {
+            node: Some(node),
+            value: Some(value),
+        }))),
+        Err(error) => {
+            namespace_tests::boundary(true);
+            drop(node);
+            Err(error)
+        }
+    }
 }
 
 impl PreparingNamespace {
-    pub(crate) fn publish(mut self, handle: crate::memory::AddressSpaceHandle) {
-        self.0.address_space = Some(handle);
-        let previous = CAPABILITIES.lock().insert(handle.id(), self.0);
-        assert!(previous.is_none(), "capability namespace survived address-space teardown");
+    pub(crate) fn publish(self, handle: crate::memory::AddressSpaceHandle) {
+        self.publish_into(&mut CAPABILITIES.lock(), handle.id(), Some(handle));
+    }
+
+    fn publish_into(
+        mut self,
+        tables: &mut AdmittedMap<AddressSpaceId, AddressSpaceCapabilities>,
+        owner: AddressSpaceId,
+        identity: Option<crate::memory::AddressSpaceHandle>,
+    ) {
+        assert!(
+            !tables.contains_key(&owner),
+            "capability namespace survived address-space teardown"
+        );
+        let mut value = self.0.value.take().unwrap();
+        value.address_space = identity;
+        tables.insert(self.0.node.take().unwrap(), owner, value);
+    }
+
+    /// Ordinary unused preparation must leave local lifecycle/table/registry
+    /// guards first. Drop deliberately cannot assume that context.
+    pub(crate) fn cancel_unpublished(self) {
+        namespace_tests::boundary(true);
+        drop(core::mem::ManuallyDrop::into_inner(self.0));
     }
 }
 
@@ -131,17 +181,21 @@ pub(crate) fn try_allocate(
 pub(crate) type LifecycleGuard<'a> =
     lock_api::MutexGuard<'a, crate::cpu::multiprocessor::spin::mutex::MutexCore, ()>;
 
-fn namespace(
-    tables: &mut BTreeMap<AddressSpaceId, AddressSpaceCapabilities>,
+fn namespace<'a>(
+    tables: &'a mut AdmittedMap<AddressSpaceId, AddressSpaceCapabilities>,
     owner: AddressSpaceId,
     identity: Option<crate::memory::AddressSpaceHandle>,
-) -> Result<&mut AddressSpaceCapabilities, AllocationError> {
-    Ok(match tables.entry(owner) {
-        alloc::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
-        alloc::collections::btree_map::Entry::Vacant(entry) => {
-            entry.insert(AddressSpaceCapabilities::try_new(identity)?)
+    prepared: &mut Option<PreparingNamespace>,
+) -> Result<&'a mut AddressSpaceCapabilities, AllocationError> {
+    if !tables.contains_key(&owner) {
+        // Real user roots prepare at registration. Only permanent kernel/raw
+        // fixture namespaces can be created on this legacy caller boundary.
+        if identity.is_some() {
+            return Err(AllocationError::Retired);
         }
-    })
+        prepared.take().ok_or(AllocationError::Retired)?.publish_into(tables, owner, None);
+    }
+    Ok(tables.get_mut(&owner).unwrap())
 }
 
 fn insert_entry(
@@ -227,27 +281,44 @@ pub(crate) fn reserve_captured(
     if owner == crate::memory::KERNEL_ASID {
         identity = None;
     }
-    let mut tables = CAPABILITIES.lock();
-    if identity.is_some() && !tables.contains_key(&owner) {
-        return Err(AllocationError::Retired);
+    // Preflight leaves CAPABILITIES before fallible namespace storage work.
+    // Captured callers can still own a subsystem guard: that outer context and
+    // individual record BTreeMap allocation remain separate G1/G4 work.
+    let missing = identity.is_none() && !CAPABILITIES.lock().contains_key(&owner);
+    let mut prepared = if missing {
+        Some(prepare_namespace()?)
+    } else {
+        None
+    };
+    let result = (|| {
+        let mut tables = CAPABILITIES.lock();
+        if identity.is_some() && !tables.contains_key(&owner) {
+            return Err(AllocationError::Retired);
+        }
+        let table = namespace(&mut tables, owner, identity, &mut prepared)?;
+        if table.address_space != identity {
+            return Err(AllocationError::Retired);
+        }
+        let cap = insert_entry(
+            table,
+            kind,
+            owner == crate::memory::KERNEL_ASID || table.platform,
+            EntryState::Staged,
+        )?;
+        Ok(Reservation {
+            owner,
+            cap,
+            kind,
+            namespace: table.budget.clone(),
+            active: true,
+        })
+    })();
+    // Another raw fixture/kernel caller may have published while preparing.
+    // Dispose only our unused private metadata after CAPABILITIES unlock.
+    if let Some(unused) = prepared {
+        unused.cancel_unpublished();
     }
-    let table = namespace(&mut tables, owner, identity)?;
-    if table.address_space != identity {
-        return Err(AllocationError::Retired);
-    }
-    let cap = insert_entry(
-        table,
-        kind,
-        owner == crate::memory::KERNEL_ASID || table.platform,
-        EntryState::Staged,
-    )?;
-    Ok(Reservation {
-        owner,
-        cap,
-        kind,
-        namespace: table.budget.clone(),
-        active: true,
-    })
+    result
 }
 
 impl Reservation {
@@ -527,8 +598,19 @@ pub(crate) fn remove_for_teardown(
 
 /// Drop the complete authority namespace after subsystem payload teardown.
 pub fn close_address_space(owner: AddressSpaceId) {
-    if let Some(table) = CAPABILITIES.lock().remove(&owner) {
-        table.budget.retire();
+    let retired = {
+        let mut tables = CAPABILITIES.lock();
+        if let Some(table) = tables.get(&owner) {
+            table.budget.retire();
+        }
+        tables.take(&owner)
+    };
+    if let Some(namespace) = retired {
+        // The node owns every remaining authority entry and its original
+        // account. No BTreeMap/charge/Arc destructor runs under CAPABILITIES.
+        // The containing teardown's outer context remains its obligation.
+        namespace_tests::boundary(true);
+        namespace.release();
     }
 }
 

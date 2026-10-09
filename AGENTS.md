@@ -94,6 +94,14 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   owning payload transaction as well as capability escrow; use `PreparedTransfer`
   and `commit_transfers` rather than reconstructing scalar cleanup. There is
   no unbounded allocator or retirement bypass for any of the six kinds.
+  Unified namespace storage uses shared `retirement_list::AdmittedMap` nodes.
+  `PreparingNamespace` owns its node and original budget account before user
+  ASID publication. User registration prepares outside lifecycle/table guards
+  and cancels ordinary unused storage explicitly after they leave. Drop retains
+  both allocations.
+  Namespace teardown detaches its complete node before releasing entries/account
+  outside `CAPABILITIES`; containing lifecycle/subsystem guards and individual
+  authority-record BTreeMap storage remain separate qualification work.
   The scalar restoration API is removed. See
   `docs/reference/capability-admission.md` for the current enforcement scope.
   IPC calls use `PreparedCall`/`PreparedConnection` to own metadata and fresh

@@ -1114,7 +1114,27 @@ metadata, an exact root and the original reservation. These are deterministic
 serialized probes, not cross-LP races or actual hardware timeouts. See the
 [creation-phase evidence](../reports/audits/2026-10-09-security-dma-creation-phases.md).
 
-### Prepared device registry metadata
+### Prepared unified namespace storage
+
+The serialized boot fixture rejects node/account preparation before user ASID
+publication and checks unchanged root/namespace occupancy, physical frames and
+capability charges. It publishes an exact namespace and detaches a charged one
+with the actual heap held; explicit destruction after unlock refunds only the
+original account. A late staged token cannot alter a replacement with the same
+ASID/capability serial. Unused competing-publisher preparation cancels explicitly.
+Abandonment under lifecycle/capability/heap guards retains one empty node and its
+account, adding two unbudgeted metadata allocations and no record/table/data/root
+charge. Boundary probes preserve entry IRQ state and check capability/heap
+availability; registration preparation also checks lifecycle/table/physical
+availability. They do not qualify every outer caller or simulate real OOM.
+
+Eight shared retirement-list/`AdmittedMap` host tests trace prepared publication,
+lookup, mutable lookup, failed/ordered detach and abandonment. Record-node
+`BTreeMap` allocation/destruction, raw fixture outer guards, concurrency and
+pressure/progress remain separate. See the
+[namespace-storage report](../reports/audits/2026-10-09-security-capability-namespace-storage.md).
+
+## Prepared device registry metadata
 
 First/second-node rejection for MMIO, interrupt and DMA grants must publish no
 authority/namespace payload and never reach hardware. Heap-held publication

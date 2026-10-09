@@ -7,6 +7,7 @@ use alloc::boxed::Box;
 use core::{
     alloc::AllocError,
     fmt,
+    ops::Index,
 };
 
 struct Node<T> {
@@ -182,6 +183,66 @@ impl<T> Drop for RetirementList<T> {
             // O(1) abandonment: no recursive chain destruction or T::drop.
             core::mem::forget(head);
         }
+    }
+}
+
+/// Ordered owning registry storage. Prepare before publication; detach before
+/// explicit disposal. Lookup and sorted insertion are linear scans.
+pub(crate) struct AdmittedMap<K, V>(RetirementList<(K, V)>);
+impl<K: Ord + Copy, V> AdmittedMap<K, V> {
+    pub(crate) const fn new() -> Self {
+        Self(RetirementList::new())
+    }
+
+    pub(crate) fn get(&self, key: &K) -> Option<&V> {
+        self.0.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+    }
+
+    pub(crate) fn get_mut(&mut self, key: &K) -> Option<&mut V> {
+        self.0.iter_mut().find(|(k, _)| k == key).map(|(_, v)| v)
+    }
+
+    pub(crate) fn contains_key(&self, key: &K) -> bool {
+        self.get(key).is_some()
+    }
+
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
+        self.0.iter().map(|(k, v)| (k, v))
+    }
+
+    pub(crate) fn values(&self) -> impl Iterator<Item = &V> {
+        self.0.iter().map(|(_, v)| v)
+    }
+
+    pub(crate) fn first_key_value(&self) -> Option<(&K, &V)> {
+        self.iter().next()
+    }
+
+    pub(crate) fn insert(&mut self, entry: PreparedEntry<(K, V)>, key: K, value: V) {
+        assert!(!self.contains_key(&key), "admitted key replaced");
+        let entry = entry.publish((key, value));
+        self.0.insert_before(entry, |(other, _)| *other > key);
+    }
+
+    pub(crate) fn take(&mut self, key: &K) -> Option<RetiredEntry<(K, V)>> {
+        self.0.take_first(|(k, _)| k == key)
+    }
+}
+impl<K: Ord + Copy, V> Default for AdmittedMap<K, V> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+impl<K: Ord + Copy, V> Index<&K> for AdmittedMap<K, V> {
+    type Output = V;
+
+    fn index(&self, key: &K) -> &V {
+        self.get(key).expect("admitted registry key absent")
+    }
+}
+impl<K: Ord + Copy + fmt::Debug, V: fmt::Debug> fmt::Debug for AdmittedMap<K, V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map().entries(self.iter()).finish()
     }
 }
 

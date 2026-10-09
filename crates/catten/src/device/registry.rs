@@ -1,75 +1,13 @@
 //! Device registry storage uses the same admitted owning nodes as retirement.
 //! Lookup/relink/detach never allocate or destroy a node; release is explicit.
-use core::{
-    fmt,
-    mem::ManuallyDrop,
-    ops::Index,
-};
+use core::mem::ManuallyDrop;
 
 use super::*;
+pub(super) use crate::klib::collections::retirement_list::AdmittedMap as Map;
 use crate::klib::collections::retirement_list::{
     PreparedEntry,
     RetiredEntry,
-    RetirementList,
 };
-
-pub(super) struct Map<K, V>(RetirementList<(K, V)>);
-impl<K: Ord + Copy, V> Map<K, V> {
-    pub(super) const fn new() -> Self {
-        Self(RetirementList::new())
-    }
-
-    pub(super) fn get(&self, key: &K) -> Option<&V> {
-        self.0.iter().find(|(k, _)| k == key).map(|(_, v)| v)
-    }
-
-    pub(super) fn get_mut(&mut self, key: &K) -> Option<&mut V> {
-        self.0.iter_mut().find(|(k, _)| k == key).map(|(_, v)| v)
-    }
-
-    pub(super) fn contains_key(&self, key: &K) -> bool {
-        self.get(key).is_some()
-    }
-
-    pub(super) fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
-        self.0.iter().map(|(k, v)| (k, v))
-    }
-
-    pub(super) fn values(&self) -> impl Iterator<Item = &V> {
-        self.0.iter().map(|(_, v)| v)
-    }
-
-    pub(super) fn first_key_value(&self) -> Option<(&K, &V)> {
-        self.iter().next()
-    }
-
-    pub(super) fn insert(&mut self, entry: PreparedEntry<(K, V)>, key: K, value: V) {
-        assert!(!self.contains_key(&key), "admitted device key replaced");
-        let entry = entry.publish((key, value));
-        self.0.insert_before(entry, |(other, _)| *other > key);
-    }
-
-    pub(super) fn take(&mut self, key: &K) -> Option<RetiredEntry<(K, V)>> {
-        self.0.take_first(|(k, _)| k == key)
-    }
-}
-impl<K: Ord + Copy, V> Default for Map<K, V> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl<K: Ord + Copy, V> Index<&K> for Map<K, V> {
-    type Output = V;
-
-    fn index(&self, key: &K) -> &V {
-        self.get(key).expect("device registry key absent")
-    }
-}
-impl<K: Ord + Copy + fmt::Debug, V: fmt::Debug> fmt::Debug for Map<K, V> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_map().entries(self.iter()).finish()
-    }
-}
 
 struct Storage {
     namespace: Option<PreparedEntry<(AddressSpaceId, AsDeviceCaps)>>,

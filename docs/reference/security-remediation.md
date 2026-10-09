@@ -192,6 +192,13 @@ that shared admission. Host allocator tracing and guest first/second-node
 rejection, heap-held publication and real post-guard disposal qualify this scope.
 Unified capability/backend metadata, byte/principal limits, wider contexts and
 pressure/concurrency remain open; SEC-07/18 and finding counts are unchanged.
+The [unified namespace-storage follow-up](../reports/audits/2026-10-09-security-capability-namespace-storage.md)
+now prepares its owning node/account before user ASID publication, shares
+`AdmittedMap` with device storage, and disposes complete detached namespaces after
+`CAPABILITIES` unlock. Failure and guarded abandonment tests preserve exact
+account identity and charge lifetime. Individual authority-record metadata,
+outer contexts, backend storage and aggregate byte/progress admission remain
+open; SEC-07/18 and finding counts are unchanged.
 The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.

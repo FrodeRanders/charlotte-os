@@ -214,3 +214,45 @@ fn ordered_detached_owner_and_list_abandonment_do_no_allocator_work() {
     assert_eq!(DEALLOCATIONS.with(Cell::get), 0);
     assert_eq!(drops.load(Ordering::Relaxed), 0);
 }
+
+#[test]
+fn admitted_map_keeps_detached_node_identity_without_allocator_work() {
+    let mut map = AdmittedMap::new();
+    let prepared = [3usize, 1, 2].map(|key| (PreparedEntry::try_new().unwrap(), key));
+    DEALLOCATIONS.with(|n| n.set(0));
+    let detached = {
+        let mut detached = None;
+        without_allocation(|| {
+            for (node, key) in prepared {
+                map.insert(node, key, key * 10);
+            }
+            assert_eq!(map.first_key_value(), Some((&1, &10)));
+            assert_eq!(map.values().copied().sum::<usize>(), 60);
+            *map.get_mut(&2).unwrap() += 1;
+            assert_eq!(map[&2], 21);
+            assert!(!map.contains_key(&4));
+            assert!(map.take(&4).is_none());
+            detached = map.take(&2);
+            assert_eq!(map.iter().map(|(key, _)| *key).sum::<usize>(), 4);
+        });
+        detached.unwrap()
+    };
+    assert_eq!(DEALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(detached.value(), &(2, 21));
+    detached.release();
+    for key in [1, 3] {
+        map.take(&key).unwrap().release();
+    }
+    assert!(map.first_key_value().is_none());
+}
+
+#[test]
+fn admitted_map_abandonment_retains_owning_payloads_without_allocator_work() {
+    let drops = Arc::new(AtomicUsize::new(0));
+    let mut map = AdmittedMap::new();
+    map.insert(PreparedEntry::try_new().unwrap(), 1usize, Tracked(1, drops.clone()));
+    DEALLOCATIONS.with(|n| n.set(0));
+    without_allocation(|| drop(map));
+    assert_eq!(DEALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(drops.load(Ordering::Relaxed), 0);
+}
