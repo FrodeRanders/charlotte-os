@@ -340,12 +340,37 @@ pub(crate) fn test_scheduled_cleanup() {
     drop(call_tokens);
     assert_eq!(poll_reply(owner.id(), call_cap).unwrap().unwrap().result, 42);
     close_cap(owner.id(), call_cap).unwrap();
-    crate::memory::close_user_address_space_handle(owner).unwrap();
-    crate::memory::close_user_address_space_handle(server).unwrap();
+    // Polling can observe the result after IPC unlock but before the producer
+    // finishes both root leases. Busy close rejects before mutation; retain
+    // these exact fixture roots and wait for completion, never clear counts.
+    let deadline = crate::self_test::results::Deadline::after_millis(5_000);
+    close_after_reply(owner, deadline);
+    close_after_reply(server, deadline);
     crate::logln!(
         "[ipc waiters] SUCCESS: 64 reply/readiness timeout cleanups; non-mutating rejection; \
          forced untimed receive/reply recovery with a live loan"
     );
+}
+
+fn close_after_reply(
+    root: crate::memory::AddressSpaceHandle,
+    deadline: crate::self_test::results::Deadline,
+) {
+    let mut pending = false;
+    loop {
+        match crate::memory::close_user_address_space_handle(root) {
+            Ok(()) => break,
+            Err(crate::memory::AddressSpaceCloseError::OperationsInFlight) => {
+                pending = true;
+                deadline.assert_pending("IPC fixture reply producer root completion");
+                crate::cpu::scheduler::yield_lp();
+            }
+            result => result.expect("IPC fixture exact root close"),
+        }
+    }
+    if pending {
+        crate::logln!("[ipc waiters] pending reply-producer root close completed: {:?}", root);
+    }
 }
 
 // Kernel fixture IDs, not userspace owners. The verifier retains ownership

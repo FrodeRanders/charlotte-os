@@ -11,12 +11,9 @@
 //! to its affinity LP rather than the globally least-loaded one.
 
 use alloc::sync::Weak;
-use core::{
-    hint::unreachable_unchecked,
-    sync::atomic::{
-        AtomicU64,
-        Ordering,
-    },
+use core::sync::atomic::{
+    AtomicU64,
+    Ordering,
 };
 
 use crate::{
@@ -297,8 +294,11 @@ pub fn abort() -> ! {
             Err(error) => panic!("Error aborting thread: {:?}", error),
         }
     }
-    yield_lp();
-    unsafe { unreachable_unchecked() }
+    // A terminal caller may still hold an abandoned abort-executor owner.
+    // Retain that stack/fence rather than returning into an unsafe continuation.
+    loop {
+        yield_lp();
+    }
 }
 
 /// Abort every thread that belongs to `asid`, including the caller.
@@ -311,9 +311,11 @@ pub fn abort_address_space(asid: AddressSpaceId) -> ! {
     crate::early_logln!("Aborting user address space {}", asid);
     let handle = crate::memory::current_address_space_handle(asid)
         .expect("aborting thread's address space missing");
-    system_scheduler::abort_domain_threads(handle).expect("domain thread abort rejected");
-    yield_lp();
-    unsafe { unreachable_unchecked() }
+    match system_scheduler::abort_domain_threads(handle) {
+        Ok(()) | Err(system_scheduler::Error::ThreadTerminated) => {}
+        Err(error) => panic!("domain thread abort rejected: {:?}", error),
+    }
+    abort()
 }
 
 /// Return the current kernel thread without waiting on scheduler locks.

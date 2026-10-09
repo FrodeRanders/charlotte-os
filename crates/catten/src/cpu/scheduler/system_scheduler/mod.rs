@@ -41,8 +41,11 @@ pub(crate) fn test_domain_abort() {
     domain_abort::tests::run();
 }
 pub(crate) use domain_abort::tests::{
+    arm_concurrent_handoff,
     arm_self_handoff,
+    finish_concurrent_handoff,
     finish_self_handoff,
+    verify_executor_rejection,
 };
 
 use super::lp_schedulers::LpScheduler;
@@ -218,7 +221,14 @@ impl SystemScheduler {
         // Check if the thread already has an affinity LP (read-only, no lock).
         let existing = {
             let table = MASTER_THREAD_TABLE.read();
-            table.get(tid).ok().and_then(|t| t.affinity_lp)
+            table.get(tid).ok().and_then(|t| {
+                let executor = t.abort_executor_lp.load(Ordering::Acquire);
+                if executor != usize::MAX {
+                    Some(executor as LpId)
+                } else {
+                    t.affinity_lp
+                }
+            })
         };
         if let Some(lp) = existing
             && let Some(sched) = self.lp_schedulers.get(&lp)
@@ -638,10 +648,20 @@ impl SystemScheduler {
         let state_lp = {
             let table = MASTER_THREAD_TABLE.read();
             match table.get(tid) {
-                Ok(thread) if thread.generation == expected_generation => match thread.state {
-                    ThreadState::Running(lp_id) | ThreadState::Ready(lp_id) => Some(lp_id),
-                    _ => None,
-                },
+                Ok(thread) if thread.generation == expected_generation => {
+                    let executor = thread.abort_executor_lp.load(Ordering::Acquire);
+                    if executor != usize::MAX {
+                        // Record the request without extracting an off-CPU/blocked
+                        // executor. Its owner completes the root before this fence.
+                        thread.abort_owner_lp.store(executor, Ordering::Release);
+                        thread.abort_requested.store(true, Ordering::Release);
+                        return Ok(tid);
+                    }
+                    match thread.state {
+                        ThreadState::Running(lp_id) | ThreadState::Ready(lp_id) => Some(lp_id),
+                        _ => None,
+                    }
+                }
                 Ok(_) | Err(_) => return Err(Error::InvalidThread),
             }
         };
@@ -664,6 +684,12 @@ impl SystemScheduler {
             if thread.generation != expected_generation {
                 return Err(Error::InvalidThread);
             }
+            let executor = thread.abort_executor_lp.load(Ordering::Acquire);
+            let owner_lp = if executor != usize::MAX {
+                executor as LpId
+            } else {
+                owner_lp
+            };
             thread.abort_owner_lp.store(owner_lp as usize, Ordering::Release);
             thread.abort_requested.store(true, Ordering::Release);
             drop(table);
@@ -682,28 +708,43 @@ impl SystemScheduler {
             }
             return Ok(tid);
         }
+        // Serialize final scheduler removal with executor admission. A target
+        // can have resumed since the earlier snapshot; its exact LP handle and
+        // inline owner must be rechecked before either queue/table mutation.
         let remove_lp = current_lp.or(state_lp);
-        if let Some(lp_id) = remove_lp {
-            self.lp_schedulers[&lp_id]
-                .lock()
-                .remove_thread(tid, Some(expected_generation))
-                .map_err(|_| Error::InvalidThread)?;
-        }
-        // Move the thread out of the table WITHOUT dropping it: a thread cannot
-        // free its own kernel stack while still executing on it. Stage it for
-        // reaping on the LP it last ran on (its own LP for a self-abort). That
-        // LP's `reap_dead_threads` (called from `cond_yield_lp` after switching
-        // away) drops it later, once it is guaranteed off its stack. Staging it
-        // on any other LP would risk freeing a stack still in use.
-        let stage_lp = current_lp.unwrap_or_else(get_lp_id);
+        let mut local = remove_lp.map(|lp| self.lp_schedulers[&lp].lock());
         let _retirement = begin_retirement();
         let mut table = MASTER_THREAD_TABLE.write();
-        if !table.get(tid).is_ok_and(|thread| thread.generation == expected_generation) {
+        let thread = table.get(tid).map_err(|_| Error::InvalidThread)?;
+        if thread.generation != expected_generation {
             return Err(Error::InvalidThread);
         }
+        let executor = thread.abort_executor_lp.load(Ordering::Acquire);
+        if executor != usize::MAX
+            || local
+                .as_ref()
+                .is_some_and(|lp| lp.get_current_handle() == Some((tid, expected_generation)))
+        {
+            let owner = if executor != usize::MAX {
+                executor
+            } else {
+                remove_lp.unwrap() as usize
+            };
+            thread.abort_owner_lp.store(owner, Ordering::Release);
+            thread.abort_requested.store(true, Ordering::Release);
+            if let Some(lp) = local.as_ref() {
+                lp.set_ctx_switch_pending();
+            }
+            return Ok(tid);
+        }
+        if let Some(lp) = local.as_mut() {
+            lp.remove_thread(tid, Some(expected_generation)).map_err(|_| Error::InvalidThread)?;
+        }
+        let stage_lp = current_lp.unwrap_or_else(get_lp_id);
         let thread = table.take_element(tid).map_err(|_| Error::InvalidThread)?;
         crate::cpu::scheduler::threads::account_retired_cpu_ticks(&thread);
         drop(table);
+        drop(local);
         record_exit(stage_lp, tid, thread.generation);
         crate::cpu::scheduler::threads::stage_dead_thread(stage_lp, tid, thread);
         Ok(tid)

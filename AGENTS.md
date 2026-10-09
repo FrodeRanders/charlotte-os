@@ -403,11 +403,16 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   Sweep a captured slot ceiling with captured thread generations, outside that
   gate; never grow an abort map or snapshot numeric TIDs. Fence installation
   and force-request publication require the retained root, not a fresh ASID
-  lookup. Drop retains the root lease/fence. Retain whole-domain abort's
-  executing caller through peer requests without marking self-abort. Its final
-  exact local self-request and root-operation completion
-  share a short IRQ-state-preserving mask; no scan, yield, IPI or physical cleanup
-  may enter that handoff. This does not qualify unrelated remote interruption.
+  lookup. Admit the exact `AbortExecutor` before root acquisition. Pending
+  mutual/remote requests must defer retirement while this owner is live;
+  scheduling/wake/reaping share `abort_ready`, and migration/placement retain its
+  captured LP. Ordinary rejection completes root then executor. Drop retains
+  both fences/root/stack; never clear abandoned ownership. Finish peers before
+  the exact local self-request, root completion and executor release share a
+  short IRQ-state-preserving mask; no scan, yield, IPI or physical cleanup may
+  enter that handoff. Terminal self-abort must not return into an unchecked
+  continuation while retirement remains deferred. This is scoped to abort
+  sweeps, not arbitrary retained kernel operations.
   User thread publication takes lifecycle before its gate and rejects aborting
   or closing roots through
   publication; stack preparation also rejects the abort fence. Forced deployment

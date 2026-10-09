@@ -207,7 +207,7 @@ impl LpScheduler for RoundRobin {
                 MASTER_THREAD_TABLE.read().get(handle.tid),
                 Ok(t) if t.generation == handle.generation
                     && matches!(t.state, ThreadState::Running(_))
-                    && !t.abort_requested.load(Ordering::Acquire)
+                    && !t.abort_ready()
             )
         } else {
             false
@@ -227,8 +227,7 @@ impl LpScheduler for RoundRobin {
             match self.run_queue.pop_front() {
                 Some(handle) => {
                     let valid = MASTER_THREAD_TABLE.read().get(handle.tid).is_ok_and(|thread| {
-                        thread.generation == handle.generation
-                            && !thread.abort_requested.load(Ordering::Acquire)
+                        thread.generation == handle.generation && !thread.abort_ready()
                     });
                     if valid {
                         break handle;
@@ -313,10 +312,14 @@ impl LpScheduler for RoundRobin {
         if expected_generation.is_some_and(|generation| generation != thread.generation) {
             return Err(Error::InvalidThread);
         }
+        let executor = thread.abort_executor_lp.load(Ordering::Acquire);
+        if executor != usize::MAX && executor != self.lp_id as usize {
+            return Err(Error::InvalidThread);
+        }
         // A wake may race a remote abort request. Once termination is
-        // requested, that generation must never be admitted again; its owner
-        // LP will retire it after switching off its stack.
-        if thread.abort_requested.load(Ordering::Acquire) {
+        // requested, retirement-ready generations cannot be admitted again. A
+        // retained abort executor must remain runnable until explicit completion.
+        if thread.abort_ready() {
             return Err(Error::InvalidThread);
         }
         let handle = ThreadHandle {

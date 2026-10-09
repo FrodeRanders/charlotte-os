@@ -148,6 +148,141 @@ pub(crate) fn finish_self_handoff(handle: AddressSpaceHandle) {
     ));
 }
 
+// The two faulting executors rendezvous only after each owns its root lease.
+// These bounded counters are diagnostic selectors, not resource custody.
+static CONCURRENT_ROOT: AtomicUsize = AtomicUsize::new(0);
+static CONCURRENT_GENERATION: AtomicUsize = AtomicUsize::new(0);
+static CONCURRENT_ENTERED: AtomicUsize = AtomicUsize::new(0);
+static CONCURRENT_SCANNED: AtomicUsize = AtomicUsize::new(0);
+static CONCURRENT_COMPLETED: AtomicUsize = AtomicUsize::new(0);
+
+pub(crate) fn arm_concurrent_handoff(handle: AddressSpaceHandle) {
+    assert_eq!(CONCURRENT_ROOT.load(Ordering::Acquire), 0);
+    CONCURRENT_GENERATION.store(handle.generation(), Ordering::Relaxed);
+    CONCURRENT_ENTERED.store(0, Ordering::Relaxed);
+    CONCURRENT_SCANNED.store(0, Ordering::Relaxed);
+    CONCURRENT_COMPLETED.store(0, Ordering::Relaxed);
+    CONCURRENT_ROOT.store(handle.id() + 1, Ordering::Release);
+}
+
+fn concurrent_observes(handle: AddressSpaceHandle) -> bool {
+    CONCURRENT_ROOT.load(Ordering::Acquire) == handle.id() + 1
+        && CONCURRENT_GENERATION.load(Ordering::Relaxed) == handle.generation()
+}
+
+fn rendezvous(counter: &AtomicUsize) {
+    let deadline = crate::self_test::results::Deadline::after_millis(10_000);
+    assert!(counter.fetch_add(1, Ordering::AcqRel) < 2);
+    while counter.load(Ordering::Acquire) != 2 {
+        deadline.assert_pending("concurrent abort executor rendezvous");
+        crate::cpu::scheduler::yield_lp();
+    }
+}
+
+pub(super) fn before_concurrent_sweep(
+    handle: AddressSpaceHandle,
+    caller: Option<(ThreadId, ThreadGeneration)>,
+) {
+    if !concurrent_observes(handle) {
+        return;
+    }
+    assert!(caller.is_some());
+    // Nested admission rejects without consuming the outer executor owner.
+    assert!(matches!(AbortExecutor::acquire(), Err(Error::ThreadRetirementFailed)));
+    rendezvous(&CONCURRENT_ENTERED);
+}
+
+pub(super) fn before_concurrent_completion(
+    handle: AddressSpaceHandle,
+    caller: Option<(ThreadId, ThreadGeneration)>,
+) {
+    if !concurrent_observes(handle) {
+        return;
+    }
+    rendezvous(&CONCURRENT_SCANNED);
+    let (tid, generation) = caller.unwrap();
+    let irq = crate::cpu::isa::lp::ops::get_int_state();
+    // A pending request must also permit a genuine timer wait and exact wake
+    // on the captured LP, rather than leaving the retained executor stranded.
+    crate::cpu::scheduler::sleep_millis(1);
+    for _ in 0..8 {
+        crate::cpu::scheduler::yield_lp();
+        assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
+        let table = MASTER_THREAD_TABLE.read();
+        let thread = table.get(tid).unwrap();
+        assert_eq!(thread.generation, generation);
+        assert_eq!(thread.address_space, Some(handle));
+        assert!(thread.abort_requested.load(Ordering::Acquire));
+        assert!(!thread.abort_ready());
+        assert!(!thread.is_fully_migratable());
+        assert_eq!(
+            thread.abort_executor_lp.load(Ordering::Acquire),
+            crate::cpu::isa::lp::ops::get_lp_id() as usize
+        );
+    }
+}
+
+pub(super) fn after_concurrent_completion(
+    handle: AddressSpaceHandle,
+    caller: Option<(ThreadId, ThreadGeneration)>,
+    success: bool,
+) {
+    if !concurrent_observes(handle) {
+        return;
+    }
+    assert!(success);
+    assert!(!crate::cpu::isa::lp::ops::get_int_state());
+    let (tid, generation) = caller.unwrap();
+    let table = MASTER_THREAD_TABLE.read();
+    let thread = table.get(tid).unwrap();
+    assert_eq!(thread.generation, generation);
+    assert!(thread.abort_ready());
+    assert!(CONCURRENT_COMPLETED.fetch_add(1, Ordering::AcqRel) < 2);
+}
+
+pub(crate) fn finish_concurrent_handoff(handle: AddressSpaceHandle) {
+    assert!(concurrent_observes(handle));
+    assert_eq!(CONCURRENT_COMPLETED.load(Ordering::Acquire), 2);
+    CONCURRENT_ROOT.store(0, Ordering::Release);
+    crate::logln!(concat!(
+        "[domain abort] two faulting executors: nested rejection, mutual abort ",
+        "requests, timer wake and eight deferred-retirement yields each, masked owner completion ",
+        "and exact root teardown passed"
+    ));
+}
+
+pub(crate) fn verify_executor_rejection() {
+    let irq = crate::cpu::isa::lp::ops::get_int_state();
+    let identity = SYSTEM_SCHEDULER
+        .read()
+        .get_lp_scheduler()
+        .lock()
+        .get_current_handle()
+        .expect("executor rejection probe must be scheduled");
+    let kernel = memory::current_address_space_handle(memory::KERNEL_ASID).unwrap();
+    assert!(matches!(abort_domain_threads(kernel), Err(Error::ThreadTerminated)));
+    let root = domain();
+    assert!(matches!(
+        abort_domain_threads_with_request(root, |operation| {
+            assert_eq!(operation.handle(), root);
+            assert!(matches!(AbortExecutor::acquire(), Err(Error::ThreadRetirementFailed)));
+            Err(Error::InvalidThread)
+        }),
+        Err(Error::InvalidThread)
+    ));
+    let table = MASTER_THREAD_TABLE.read();
+    let thread = table.get(identity.0).unwrap();
+    assert_eq!(thread.generation, identity.1);
+    assert_eq!(thread.abort_executor_lp.load(Ordering::Acquire), usize::MAX);
+    assert!(!thread.abort_requested.load(Ordering::Acquire));
+    drop(table);
+    assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
+    memory::close_user_address_space_handle(root).unwrap();
+    crate::logln!(
+        "[domain abort] scheduled root/publication rejection released executor ownership"
+    );
+}
+
 fn domain() -> AddressSpaceHandle {
     let handle =
         memory::register_user_address_space(memory::AddressSpace::try_new_user().unwrap()).unwrap();

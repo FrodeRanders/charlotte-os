@@ -8,27 +8,45 @@ use crate::{
 
 static CREATION_IRQ: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
+// Other LPs can legitimately use global allocators during this pre-driver
+// fixture. One rejected try_lock proves contention, not that this caller owns
+// the lock. Bound observation without yielding or enabling the caller's IRQs;
+// a lock retained by this caller cannot pass, and timeout remains a failure.
+fn assert_available(mut available: impl FnMut() -> bool, boundary: &'static str) {
+    let deadline = crate::self_test::results::Deadline::after_millis(1000);
+    let mut contended = false;
+    while !available() {
+        contended = true;
+        deadline.assert_pending(boundary);
+        core::hint::spin_loop();
+    }
+    if contended {
+        crate::logln!(
+            "[device recovery] lock availability recovered after contention: {}",
+            boundary
+        );
+    }
+}
+
 fn creation_rollback_unlocked() {
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), CREATION_IRQ.load(Ordering::Relaxed));
     dma::test_assert_backend_available();
-    drop(
-        crate::memory::ADDRESS_SPACE_LIFECYCLE
-            .try_lock()
-            .expect("creation rollback holds lifecycle"),
+    assert_available(
+        || crate::memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_some(),
+        "creation rollback lifecycle availability",
     );
-    drop(DEVICES.try_lock().expect("creation rollback holds devices"));
-    drop(
-        crate::memory::ADDRESS_SPACE_TABLE.try_lock().expect("creation rollback holds root table"),
+    assert_available(|| DEVICES.try_lock().is_some(), "creation rollback devices availability");
+    assert_available(
+        || crate::memory::ADDRESS_SPACE_TABLE.try_lock().is_some(),
+        "creation rollback root table availability",
     );
-    drop(
-        crate::memory::PHYSICAL_FRAME_ALLOCATOR
-            .try_lock()
-            .expect("creation rollback holds physical allocator"),
+    assert_available(
+        || crate::memory::PHYSICAL_FRAME_ALLOCATOR.try_lock().is_some(),
+        "creation rollback physical allocator availability",
     );
-    drop(
-        crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR
-            .try_lock()
-            .expect("creation rollback holds heap"),
+    assert_available(
+        || crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.try_lock().is_some(),
+        "creation rollback heap availability",
     );
     crate::device_management::drivers::busses::pci_express::topology::reset::test_assert_disabled_config_available(&crate::DEVICE_TOPOLOGY.pcie);
 }
@@ -97,21 +115,25 @@ pub(crate) fn run() {
             // completion; no other domain/reset may mutate its shared command state.
             assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq_state);
             dma::test_assert_backend_available();
-            drop(
-                crate::memory::ADDRESS_SPACE_LIFECYCLE
-                    .try_lock()
-                    .expect("maintenance holds lifecycle"),
+            assert_available(
+                || crate::memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_some(),
+                "maintenance lifecycle availability",
             );
-            drop(DEVICES.try_lock().expect("maintenance holds device registry"));
-            drop(
-                crate::memory::PHYSICAL_FRAME_ALLOCATOR
-                    .try_lock()
-                    .expect("maintenance holds physical allocator"),
+            assert_available(
+                || DEVICES.try_lock().is_some(),
+                "maintenance device registry availability",
             );
-            drop(
-                crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR
-                    .try_lock()
-                    .expect("maintenance holds heap allocator"),
+            assert_available(
+                || crate::memory::PHYSICAL_FRAME_ALLOCATOR.try_lock().is_some(),
+                "maintenance physical allocator availability",
+            );
+            assert_available(
+                || {
+                    crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR
+                        .try_lock()
+                        .is_some()
+                },
+                "maintenance heap allocator availability",
             );
             assert_eq!(dma_tables::used(), live);
             assert_eq!(dma::initialize_early(), Err(dma::Error::OperationInFlight));
@@ -141,21 +163,25 @@ pub(crate) fn run() {
             // table release or data unpin. No acknowledgement is fabricated.
             assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq_state);
             dma::test_assert_backend_available();
-            drop(
-                crate::memory::ADDRESS_SPACE_LIFECYCLE
-                    .try_lock()
-                    .expect("DMA release holds lifecycle"),
+            assert_available(
+                || crate::memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_some(),
+                "DMA release lifecycle availability",
             );
-            drop(DEVICES.try_lock().expect("DMA release holds device registry"));
-            drop(
-                crate::memory::PHYSICAL_FRAME_ALLOCATOR
-                    .try_lock()
-                    .expect("DMA release holds physical allocator"),
+            assert_available(
+                || DEVICES.try_lock().is_some(),
+                "DMA release device registry availability",
             );
-            drop(
-                crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR
-                    .try_lock()
-                    .expect("DMA release holds heap allocator"),
+            assert_available(
+                || crate::memory::PHYSICAL_FRAME_ALLOCATOR.try_lock().is_some(),
+                "DMA release physical allocator availability",
+            );
+            assert_available(
+                || {
+                    crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR
+                        .try_lock()
+                        .is_some()
+                },
+                "DMA release heap allocator availability",
             );
             assert_eq!(dma_tables::used(), live);
             assert_eq!(dma::destroy_domain(id), Err(dma::Error::UnknownDomain));

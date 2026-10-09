@@ -173,3 +173,23 @@ are printed after the registry guard leaves. A detached in-flight batch may be
 absent, so absence is not quiescence. Error classification and independent global
 shootdown counters do not authorize physical retry or clear the earlier Intel
 progress failure; see the [IOMMU follow-up](../reports/audits/2026-10-09-security-iommu-preparation-abandonment.md).
+
+Concurrent-sweep evidence: [exact executor ownership](../reports/audits/2026-10-09-security-abort-executor.md).
+`AbortExecutor` captures the current TID/generation and installs its inline LP
+fence before the sweep can acquire a root operation. New admission rejects an
+already requested lifetime or nested owner. Remote/mutual abort records the
+request; `abort_ready` permits retirement only after explicit executor release.
+Run-queue requeue/selection, timer wake and owner-LP reaping share that predicate.
+Placement keeps the captured LP and migration rejects the owner. Immediate abort
+revalidates executor/current-handle state under LP/thread serialization before
+queue/table removal. Ordinary rejection completes root then executor; final
+completion does the same under the IRQ-preserving handoff mask.
+
+Dropping the executor does not clear its inline fence. Abandonment retains the
+stack/root with pending requests, and explicit terminal self-abort yields forever
+if ownership still prevents retirement; it cannot return to an unchecked
+continuation. Kernel panic still stops the LP without unwinding. This is permanent
+retention, not an admitted retry/custody owner or a general kernel cancellation
+scheme. The two-fault fixture confirms nested rejection, mutual requests, production
+timer sleeps, eight subsequent yields each and exact root teardown; ordinary
+root/publication rejection is checked on a scheduled kernel executor.

@@ -136,8 +136,12 @@ now defers the caller until peer requests finish and masks only its exact local
 self-request/root-operation completion. A real fault fixture forces eight
 pre-handoff scheduling boundaries and requires successful root teardown.
 This closes the identified self-request window without establishing it as the
-cause of those historical timeouts. Concurrent remote abort and broader caller
-qualification remain open; finding counts are unchanged.
+cause of those historical timeouts. The [executor-owner follow-up](../reports/audits/2026-10-09-security-abort-executor.md)
+now defers mutual/remote requests throughout an admitted sweep, including timer
+wait/wake, before root completion and executor release. Deterministic simultaneous
+faults and scheduled ordinary rejection cover that boundary. Broader retained
+kernel operations, outer caller qualification and historical timeout causation
+remain open; finding counts are unchanged.
 
 | Deliverable | Completion evidence |
 | --- | --- |

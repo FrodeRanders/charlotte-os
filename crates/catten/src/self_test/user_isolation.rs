@@ -184,7 +184,9 @@ unsafe fn code(start: *const u8, end: *const u8) -> &'static [u8] {
 }
 
 pub(crate) fn verify() {
+    scheduler::system_scheduler::verify_executor_rejection();
     verify_abort_handoff();
+    verify_concurrent_abort();
     let snapshot = Fixture::spawn(unsafe {
         code(&raw const user_register_probe_start, &raw const user_register_probe_end)
     });
@@ -267,6 +269,49 @@ fn verify_abort_handoff() {
     let handle = fixture.handle;
     fixture.finish();
     scheduler::system_scheduler::finish_self_handoff(handle);
+}
+
+fn verify_concurrent_abort() {
+    // Both entries wait on a mapped fixture word until both are published.
+    // Otherwise the first fault can fence admission before its peer is ready.
+    // Then both fault and rendezvous inside their admitted sweeps.
+    #[cfg(target_arch = "x86_64")]
+    let code = [
+        0xb9, 0x00, 0x20, 0x01, 0x00, // mov ecx, 0x12000
+        0x83, 0x39, 0x00, // cmp dword [rcx], 0
+        0x75, 0xfb, // jne to cmp
+        0x31, 0xc0, 0x8b, 0x00, // null read
+    ];
+    #[cfg(target_arch = "aarch64")]
+    let code = [
+        0x00, 0x00, 0x84, 0xd2, // mov x0, #0x2000
+        0x20, 0x00, 0xa0, 0xf2, // movk x0, #1, lsl #16
+        0x01, 0x00, 0x40, 0xb9, // ldr w1, [x0]
+        0xe1, 0xff, 0xff, 0x35, // cbnz w1, to ldr
+        0x00, 0x00, 0x80, 0xd2, // mov x0, #0
+        0x00, 0x00, 0x40, 0xf9, // null read
+    ];
+    let fixture = Fixture::spawn_with(&code, |handle| {
+        memory::set_domain_limits(
+            handle,
+            memory::DomainLimits {
+                user_stack_pages: 1,
+                max_threads: 2,
+            },
+        )
+        .unwrap();
+        scheduler::system_scheduler::arm_concurrent_handoff(handle);
+        let entry = unsafe { core::mem::transmute::<usize, extern "C" fn()>(0x20000) };
+        scheduler::spawn_thread(handle.id(), entry);
+    });
+    let handle = fixture.handle;
+    // Fixture boundary: its exact root remains owned and maps this result frame
+    // at 0x12000. A volatile release plus the architecture barrier opens entry.
+    let gate: *mut u32 = fixture.result.into();
+    unsafe { core::ptr::write_volatile(gate, 0) };
+    core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
+    fixture.finish();
+    scheduler::system_scheduler::finish_concurrent_handoff(handle);
 }
 
 fn check_snapshot(snapshot: &Fixture) {

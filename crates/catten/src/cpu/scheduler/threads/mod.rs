@@ -217,7 +217,7 @@ pub fn retire_requested_threads() {
             let requested = table.get(tid).is_ok_and(|thread| {
                 thread.abort_owner_lp.load(Ordering::Acquire) == lp as usize
                     && Some(tid) != active_tid
-                    && thread.abort_requested.load(Ordering::Acquire)
+                    && thread.abort_ready()
             });
             if !requested {
                 continue;
@@ -488,6 +488,9 @@ pub struct Thread {
     /// Cross-LP termination is completed by the CPU that owns the running
     /// context, after it has switched off this thread's stack.
     pub(crate) abort_requested: AtomicBool,
+    // Exact executor ownership defers retirement and migration until explicit
+    // completion. usize::MAX means no owner; abandonment retains the LP fence.
+    pub(crate) abort_executor_lp: AtomicUsize,
     pub(crate) abort_owner_lp: AtomicUsize,
     /// Identity retained after removal from the master table for diagnostic
     /// correlation with the deferred-reaping and stack-deallocation paths.
@@ -594,6 +597,7 @@ impl Thread {
             dispatch_count: 0,
             last_dispatch_tick: None,
             abort_requested: AtomicBool::new(false),
+            abort_executor_lp: AtomicUsize::new(usize::MAX),
             abort_owner_lp: AtomicUsize::new(usize::MAX),
             retired_tid: None,
             reap_lp: None,
@@ -660,11 +664,17 @@ impl Thread {
             | MigrationConstraint::EndpointWait.bit());
     }
 
+    pub(crate) fn abort_ready(&self) -> bool {
+        self.abort_requested.load(Ordering::Acquire)
+            && self.abort_executor_lp.load(Ordering::Acquire) == usize::MAX
+    }
+
     pub fn is_fully_migratable(&self) -> bool {
         self.migration_safe
             && self.pinned_lp.is_none()
             && self.migration_constraints == 0
             && !self.abort_requested.load(Ordering::Acquire)
+            && self.abort_executor_lp.load(Ordering::Acquire) == usize::MAX
             && !self.context.is_on_cpu()
     }
 }

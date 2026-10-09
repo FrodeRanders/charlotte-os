@@ -812,6 +812,21 @@ under its existing ten-second deadline. No mask survives the forced yields and
 the fault entry's IRQ state is preserved. See the
 [self-handoff evidence](../reports/audits/2026-10-09-security-abort-handoff.md).
 
+A second selected EL0 fixture faults two threads in the same exact root. Both
+sweeps rendezvous after root admission, request each other, call timer sleep and
+yield eight times each while their inline executor owners defer retirement.
+Nested admission must reject; each final handoff completes its root operation
+before releasing its executor. Normal retirement and root close must finish
+under the unchanged ten-second deadline. A scheduled kernel probe also checks
+root-admission and force-publication rejection release the executor owner. See
+[concurrent executor evidence](../reports/audits/2026-10-09-security-abort-executor.md).
+The real device-rollback callbacks bound global lock availability by one second;
+a single failed try-lock is contention, not proof of caller ownership. Timeout
+remains a failure and IRQ state/hardware completion rules are unchanged.
+The asynchronous IPC reply fixture drains exact-root busy-close rejection under
+a shared five-second deadline: result observation can precede producer lease
+completion. It neither clears counts nor treats reply visibility as root quiescence.
+
 `scripts/run-host-tests.sh` exercises the production socket registry against
 fixed smoltcp storage: rejected creation delivery, dead-owner generations,
 unactivated expiry, admission reserves and buffer-count recovery. It also
