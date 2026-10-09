@@ -86,13 +86,6 @@ Commands: [signing guide](../../guides/signing-and-trust.md#signed-trust-policy)
 - `cargo fmt --all -- --check`, `git diff --check` and local documentation-link
   checks: passed.
 
-Logs: `/private/tmp/charlotte-signed-policy-host.log`,
-`/private/tmp/charlotte-signed-policy-tests.log`,
-`/private/tmp/charlotte-signed-policy-clippy-{host,x86,arm}.log`,
-`/private/tmp/charlotte-signed-policy-services.log` and
-`/private/tmp/charlotte-signed-policy-cli.log`. Direct production rejection is in
-`/private/tmp/charlotte-signed-policy-production-rejection.log`.
-
 ## Remaining boundaries
 
 This verifies public policy relative to caller-supplied anchor/state. Those

@@ -151,12 +151,6 @@ ports. Initial sandbox forwarding rejection was rerun with approval. Earlier
 x86 runs exposed the corrected masking/reaper/fixture assumptions above; the
 final results are from fresh isolated instances after those corrections.
 
-Logs: `/private/tmp/charlotte-staged-quiescence-host.log`,
-`/private/tmp/charlotte-staged-quiescence-clippy-{x86,arm}.log`,
-`/private/tmp/charlotte-staged-recovery-final-{intel,amd,arm}.log`,
-`/tmp/charlotte-x86-staged-recovery-final-{intel,amd}-20261006-serial.log`, and
-`/tmp/charlotte-staged-recovery-final-arm-20261006-serial.log`.
-
 ## Remaining scope
 
 SEC-18 remains partial for general allocator/metadata work under serialization,

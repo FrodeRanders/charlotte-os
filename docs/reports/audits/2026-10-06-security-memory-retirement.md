@@ -134,17 +134,6 @@ the successful isolated runs. Runners rebuilt kernels, checked native assembly
 permissions and reused signed service bundles. ARM forwarding ports required
 approved execution. No unrelated VM or storage was stopped/reset.
 
-Logs:
-
-- `/private/tmp/charlotte-memory-host.log`
-- `/private/tmp/charlotte-memory-services-build.log`
-- `/private/tmp/charlotte-memory-clippy-x86-final.log`
-- `/private/tmp/charlotte-memory-clippy-arm-final.log`
-- `/private/tmp/charlotte-memory-guest-x86-owned.log`
-- `/tmp/charlotte-x86-memory-owned-20261006-serial.log`
-- `/private/tmp/charlotte-memory-guest-arm-owned.log`
-- `/tmp/charlotte-memory-owned-20261006-serial.log`
-
 ## Remaining scope
 
 SEC-18 remains partial: IPC move/copy/result attachment cleanup still retains

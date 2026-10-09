@@ -101,15 +101,9 @@ The host harness uses the repository toolchain and is included in
 `scripts/run-host-tests.sh`; the full host script was not rerun for this batch.
 Guest runners rebuilt kernels and enforced assembly section permissions, reusing
 validated embedded services for this kernel-only change. Arm required local
-forwarding-port permission. Final logs:
-`/private/tmp/charlotte-thread-retirement-{intel,amd,arm}-final.log`,
-`/private/tmp/charlotte-thread-retirement-clippy-{x86,arm}.log`,
-`/tmp/charlotte-x86-thread-retirement-{intel,amd}-final-20261007-serial.log` and
-`/tmp/charlotte-thread-retirement-arm-final-20261007-serial.log`.
-The initial Arm timeout remains in
-`/tmp/charlotte-thread-retirement-arm-20261007-serial.log`; intermediate runs of
-the corrected self-exit path also passed all three guests before the new
-scheduled pre-switch assertions were added.
+forwarding-port permission.
+Intermediate runs of the corrected self-exit path also passed all three
+guests before the new scheduled pre-switch assertions were added.
 
 ## Remaining scope
 

@@ -92,11 +92,7 @@ Run `cargo +nightly-2026-07-27 test --locked --manifest-path
 charged_allocator` from outside the repository's kernel build-std configuration,
 or use the host-test runner. Guests rebuild kernels/check assembly sections and
 reuse validated embedded services for this kernel-only change. Arm uses the
-required local port-binding permission. Logs:
-`/private/tmp/charlotte-timer-backing-{host,intel,amd,arm}.log`,
-`/private/tmp/charlotte-timer-backing-clippy-{x86,arm}.log`,
-`/tmp/charlotte-x86-timer-backing-{intel,amd}-20261007-serial.log` and
-`/tmp/charlotte-timer-backing-arm-20261007-serial.log`.
+required local port-binding permission.
 
 ## Remaining scope
 

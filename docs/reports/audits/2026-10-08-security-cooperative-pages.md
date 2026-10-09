@@ -121,14 +121,7 @@ scripts/run-aarch64.sh --shutdown-test \
 
 Runners rebuilt kernels and enforced executable/read-only assembly sections.
 Existing validated embedded service bundles were reused for this kernel-only
-change. Networked QEMU required local forwarding-port permission. Final evidence:
-`/private/tmp/charlotte-service-pages-{intel,amd,arm}.log`,
-`/private/tmp/charlotte-service-pages-shutdown-{intel,amd,arm}-final.log`,
-`/private/tmp/charlotte-service-pages-shutdown-{intel,amd}-network.log`,
-`/private/tmp/charlotte-service-pages-clippy-{x86,arm}.log`,
-`/private/tmp/charlotte-service-pages-clippy-shutdown-{x86,arm}-final.log` and
-`/private/tmp/charlotte-service-pages-host.log`.
-
+change. Networked QEMU required local forwarding-port permission.
 
 ## Remaining scope
 

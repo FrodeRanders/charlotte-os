@@ -89,11 +89,7 @@ CATTEN_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
 
 Runners rebuild kernels and check assembly section permissions; this kernel-only
 change reuses validated embedded services. Arm required permission to bind its
-local forwarding ports after sandbox rejection. Logs:
-`/private/tmp/charlotte-completion-backing-{host,intel,amd,arm}.log`,
-`/private/tmp/charlotte-completion-backing-clippy-{x86,arm}.log`,
-`/tmp/charlotte-x86-completion-backing-{intel,amd}-20261007-serial.log` and
-`/tmp/charlotte-completion-backing-arm-20261007-serial.log`.
+local forwarding ports after sandbox rejection.
 
 ## Remaining scope
 

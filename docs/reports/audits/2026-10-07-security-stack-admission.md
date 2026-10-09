@@ -100,10 +100,6 @@ CATTEN_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
 The final Intel run includes the additional mapped-kernel cleanup case. Runners
 rebuild kernels and check native assembly section permissions. Existing validated
 embedded service bundles are reused; userspace and wire formats are unchanged.
-Logs: `/private/tmp/charlotte-stack-admission-{intel,amd,arm}.log`,
-`/private/tmp/charlotte-stack-admission-clippy-{x86,arm}.log`,
-`/tmp/charlotte-x86-stack-admission-{intel,amd}-20261006-serial.log` and
-`/tmp/charlotte-stack-admission-arm-20261006-serial.log`.
 
 ## Remaining scope
 

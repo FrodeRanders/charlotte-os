@@ -81,10 +81,7 @@ CATTEN_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
 
 Runners rebuild the kernels and validate native assembly section permissions.
 Existing validated service bundles are reused; no userspace or protocol change
-is included. Logs: `/private/tmp/charlotte-kernel-table-{intel,amd,arm}.log`,
-`/private/tmp/charlotte-kernel-table-clippy-{x86,arm}.log`,
-`/tmp/charlotte-x86-kernel-table-{intel,amd}-20261006-serial.log` and
-`/tmp/charlotte-kernel-table-arm-20261006-serial.log`.
+is included.
 
 ## Remaining scope
 

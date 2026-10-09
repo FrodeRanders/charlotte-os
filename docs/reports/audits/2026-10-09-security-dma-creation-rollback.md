@@ -107,18 +107,26 @@ unchanged by that follow-up.
 Intel VT-d completed **15 passed, zero failed, zero pending**. The first AMD-Vi
 run passed both new creation checks but completed **14 passed, one failed**:
 the user-isolation fixture's ten-second root-lease deadline expired after a
-divide-by-zero fault in ASID 95, generation three. Its log is preserved at
-`/private/tmp/charlotte-dma-creation-rollback-amd.log`, SHA-256
-`b647d804f0e4c6fc28d0cd15ca3e736d834e2bcb781bc453de1070d1f895519e`.
-User-retirement counters changed from `[185,183,0,0,1,1]` to
-`[192,190,0,0,1,1]`; global shootdown observations were
+divide-by-zero fault in ASID 95, generation three.
+
+Selected failure output (guest timestamps are seconds since boot):
+
+```text
+[+     7.406017] FATAL USER FAULT: ASID=95 vector=0 error=0x0 RIP=VAddr(0x20009) address=VAddr(0x0)
+self-test deadline expired while waiting for user stack retirement lease
+[+    17.415199] SELFTEST COMPLETE: passed=14 failed=1 pending=0 passed_bitmap=0x1bbfe failed_bitmap=0x1 pending_bitmap=0x0
+```
+
+User-retirement counters
+`[started,released,identity,detach,invalidation,physical]` changed from
+`[185,183,0,0,1,1]` to `[192,190,0,0,1,1]`; global shootdown observations
+`[success,busy,masked,exhausted,delivery,timeout]` were
 `[2713,0,0,0,0,0]`. No exact staged-thread snapshot was printed. These independent
 observations do not identify which root lease remained or prove pair completion.
 
 An unchanged-artifact AMD repeat in a fresh instance completed **15 passed,
-zero failed, zero pending**. It is separately recorded at
-`/private/tmp/charlotte-dma-creation-rollback-amd-repeat.log`; this does not erase
-the failed run or resolve its cause. Intel and both AMD runs used kernel SHA-256
+zero failed, zero pending**. The passing repeat does not erase the failed run
+or resolve its cause. Intel and both AMD runs used kernel SHA-256
 `d5a8578ea6d983db3ad0d7d9c81e5987ca4b35f6b80c3fd42c32d62ccaa6e4aa`.
 Arm SMMUv3 completed **19 passed, zero failed, zero pending**, including security
 probe `0xffff`, policy publication generation two and **4,904 cancellation
@@ -135,10 +143,6 @@ These are kernel-only changes; runners reused existing bundled services through
 `dma-creation-rollback-arm-20261009`, each with a 180-second timeout. x86 was
 headless/no-network; Arm used `--security-test`, HTTP port 18619 and deployment
 port 17919. QEMU ran sequentially after the host/final target lint checks.
-
-Logs are `/private/tmp/charlotte-dma-creation-rollback-host.log`,
-`/private/tmp/charlotte-dma-creation-rollback-clippy-{x86,arm}-final.log` and
-`/private/tmp/charlotte-dma-creation-rollback-{intel,amd,arm}.log`.
 
 Initial creation/configuration, map/unmap, controller initialization and NVMe
 reset waits still hold their existing serialization. Private `Domain::new`/

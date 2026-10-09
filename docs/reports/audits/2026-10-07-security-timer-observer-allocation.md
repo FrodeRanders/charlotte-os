@@ -78,11 +78,7 @@ CATTEN_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
 
 All runners exited successfully, rebuilt kernels and enforced assembly section
 permissions. Existing validated embedded services were reused for this
-kernel-only change. Arm required local forwarding-port permission. Final logs:
-`/private/tmp/charlotte-timer-observer-v2-{intel,amd,arm}.log`,
-`/private/tmp/charlotte-timer-observer-clippy-{x86,arm}.log`,
-`/tmp/charlotte-x86-timer-observer-v2-{intel,amd}-20261007-serial.log` and
-`/tmp/charlotte-timer-observer-v2-arm-20261007-serial.log`.
+kernel-only change. Arm required local forwarding-port permission.
 
 ## Remaining scope
 

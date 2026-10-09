@@ -87,14 +87,14 @@ parents stay usable. Existing actual foreign-leaf collision, 64-slot quota,
 
 Final source passed:
 
-| Check | Result | Local log |
-| --- | --- | --- |
-| Complete host harness | Passed, including 29 slot/lease probes and 13 signer tests. | `/private/tmp/charlotte-stack-preparation-host.log` |
-| Kernel Clippy, both custom targets, `--locked -- -D warnings` | Passed. | `/private/tmp/charlotte-stack-preparation-clippy-{x86,arm}-final.log` |
-| Intel VT-d with fresh storage | 15 passed, zero failed/pending. | `/private/tmp/charlotte-stack-preparation-intel.log` |
-| AMD-Vi with fresh storage | 15 passed, zero failed/pending. | `/private/tmp/charlotte-stack-preparation-amd.log` |
-| Arm SMMUv3 security suite with fresh storage | 19 passed, zero failed/pending; probe `0xffff`, publication generations 1/2 and 4,772 cancellation requests retired. | `/private/tmp/charlotte-stack-preparation-arm.log` |
-| Formatting, whitespace and documentation | `cargo fmt --all -- --check`, `git diff --check`, relative links/anchors and unchanged 18-family/seven-gap map passed. | Local checks. |
+| Check | Result |
+| --- | --- |
+| Complete host harness | Passed, including 29 slot/lease probes and 13 signer tests. |
+| Kernel Clippy, both custom targets, `--locked -- -D warnings` | Passed. |
+| Intel VT-d with fresh storage | 15 passed, zero failed/pending. |
+| AMD-Vi with fresh storage | 15 passed, zero failed/pending. |
+| Arm SMMUv3 security suite with fresh storage | 19 passed, zero failed/pending; probe `0xffff`, publication generations 1/2 and 4,772 cancellation requests retired. |
+| Formatting, whitespace and documentation | `cargo fmt --all -- --check`, `git diff --check`, relative links/anchors and unchanged 18-family/seven-gap map passed. |
 
 Each runtime includes the guarded stack-preparation marker, original stack
 failure diagnostics and thread-admission collision/quota/reuse evidence. Kernel

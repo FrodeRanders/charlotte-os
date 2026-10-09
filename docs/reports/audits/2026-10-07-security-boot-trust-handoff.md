@@ -75,11 +75,6 @@ inventory of compiler/cryptographic temporary copies.
 - `cargo fmt --all -- --check`, `git diff --check` and local documentation-link
   checks: passed.
 
-Logs: `/private/tmp/charlotte-boot-trust-host.log`,
-`/private/tmp/charlotte-boot-trust-policy-tests.log`,
-`/private/tmp/charlotte-boot-trust-clippy-{host,x86,arm}.log`,
-`/private/tmp/charlotte-boot-trust-{intel,amd,arm}.log` and
-`/private/tmp/charlotte-boot-trust-production-rejection.log`.
 Kernel-only changes reuse the previously built embedded service bundles.
 
 ## Remaining boundaries

@@ -108,16 +108,6 @@ changes kernel code only. The first ARM launch could not bind host-forwarding
 ports within the sandbox; the approved isolated retry passed. No unrelated VM or
 storage was stopped/reset.
 
-Logs:
-
-- `/private/tmp/charlotte-delivery-host.log`
-- `/private/tmp/charlotte-delivery-clippy-x86.log`
-- `/private/tmp/charlotte-delivery-clippy-arm.log`
-- `/private/tmp/charlotte-delivery-guest-x86.log`
-- `/tmp/charlotte-x86-memory-delivery-20261006-serial.log`
-- `/private/tmp/charlotte-delivery-guest-arm-approved.log`
-- `/tmp/charlotte-memory-delivery-20261006-serial.log`
-
 ## Remaining scope
 
 SEC-18 remains partial: allocator release latency under IPC, recoverable

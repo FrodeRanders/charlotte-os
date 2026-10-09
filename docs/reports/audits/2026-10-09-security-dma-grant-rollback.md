@@ -97,7 +97,7 @@ tests, four retirement-list tests and thirteen signer CLI tests. Clippy passed
 on both custom targets with `--locked -- -D warnings`, using staged service
 bundles. Initial lint runs rejected the fixture's deliberate explicit drop of a
 non-`Drop` containing owner; a documented local fixture allowance corrected that
-lint, and both targets were rerun before QEMU. The failed lint logs are retained.
+lint, and both targets were rerun before QEMU.
 
 Intel VT-d and AMD-Vi each completed **15 passed, zero failed, zero pending** in
 fresh QEMU instances. Arm SMMUv3 completed **19 passed, zero failed, zero pending**,
@@ -113,11 +113,6 @@ These are kernel-only changes; runners used the existing bundled services with
 with fresh storage and a 180-second timeout; x86 was headless/no-network and Arm
 used `--security-test`, HTTP port 18609 and deployment port 17909. QEMU ran
 sequentially after the host/lint checks.
-
-Logs: `/private/tmp/charlotte-dma-grant-rollback-host.log`,
-`/private/tmp/charlotte-dma-grant-rollback-clippy-{x86,arm}-final.log`, and
-`/private/tmp/charlotte-dma-grant-rollback-{intel,amd,arm}.log`.
-Initial lint failures: `/private/tmp/charlotte-dma-grant-rollback-clippy-{x86,arm}.log`.
 
 Backend creation still performs its private allocation/publication rejection
 and hardware rollback under backend serialization. A backend creation error

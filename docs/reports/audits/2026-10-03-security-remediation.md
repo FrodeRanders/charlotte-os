@@ -6,6 +6,12 @@ This records implementation passes following the
 audit is closed or that CharlotteOS is ready for hostile production workloads.
 Implementation and validation span 2026-10-03–05 local time.
 
+Evidence was consolidated into these reports on 2026-10-09. Relevant results,
+artifact hashes and failure observations are recorded inline; temporary-file
+inventories have been removed. Some early captures were no longer available.
+Their historical results remain as originally recorded and were not independently
+reverified during this documentation pass. Routine boot/build output is omitted.
+
 ## Finding ledger
 
 “Implemented” means the identified code defect has a correction in the code.
@@ -219,10 +225,6 @@ Completed checks:
 
 The final network capture used kernel SHA-256
 `87692a78ece7824f447f762b644e94282edf5b7272860bc443a2c7c6e68f4506`.
-Local evidence is in `/private/tmp/charlotte-security-http-run.log`,
-`/private/tmp/charlotte-security-network-20261003-serial.log`, and
-`/private/tmp/charlotte-security-host-tests.log`; these temporary logs are not
-version-controlled and may be removed by later test runs.
 
 Kernel self-tests cover raw null, noncanonical and kernel-half addresses,
 complete-range boundary crossing without leaving a mapping, cross-domain
@@ -343,12 +345,6 @@ Follow-up validation:
   This used only the named `security-signing-20261004` instance and its own
   storage image; existing soak guests/storage were not touched.
 
-Temporary follow-up evidence is in
-`/private/tmp/charlotte-security-signing-host-tests.log`,
-`/private/tmp/charlotte-security-signing-aarch64-services.log`,
-`/private/tmp/charlotte-security-signing-x86-services.log`,
-`/private/tmp/charlotte-security-signing-boot-run.log`, and
-`/private/tmp/charlotte-security-signing-20261004-serial.log`.
 The earlier network/HTTP boot evidence belongs to the first pass, not this
 follow-up. This pass did not exercise a production provisioning path, x86-64
 guest execution, OS ACL enforcement, a compromised signer workstation, or
@@ -420,12 +416,6 @@ The initial successful kernel SHA-256 was
 `eb205b0a46182d2f26a1464485d5bdbfffde9e09508b4fa3be32e0715c030039`.
 The repeat's kernel SHA-256 was
 `380a55643365733503adf90e057b08253f70c5f854d44af7218af891734422b6`.
-Temporary evidence is in `/private/tmp/charlotte-security-grants-run.log`,
-`/private/tmp/charlotte-security-grants-20261004-serial.log`, and
-`/private/tmp/charlotte-security-probe-*-clippy.log`,
-`/private/tmp/charlotte-security-probe-host-tests.log` and
-`/private/tmp/charlotte-security-probe-x86-services.log`. Repeated runs overwrite
-the guest logs; signed fixtures remain under ignored `target/security-test`.
 Only the dedicated guest/storage instance was used; existing soak workloads
 were not stopped or modified.
 
@@ -477,8 +467,6 @@ separately documented IPC-serialized path without that lock acquisition.
 A transient revoking state prevents new mappings, pins and writes while the
 registry is released for unmap/shootdown; failed unmap restores the previous
 loan state. Direct kernel revocation retains lifecycle serialization.
-The stalled capture is preserved in
-`/private/tmp/charlotte-memory-budget-ipc-retirement-lock-regression.log`.
 
 A later capture passed the mapped-loan test but hit the supervisor's one-shot
 quiescence assertion after its earlier exit wait. The node-wide retirement
@@ -487,8 +475,7 @@ local vector was not covered by that marker. The reaper now retains a guard
 through deferred reinsertion and final resource release. A retirement epoch
 also rejects a complete transition between live/staged table snapshots.
 Teardown waits up to five seconds for a stable snapshot; it does not release a
-busy domain. The failed assertion capture remains in
-`/private/tmp/charlotte-memory-budget-teardown-settle-regression.log`.
+busy domain.
 
 Validation:
 
@@ -524,11 +511,7 @@ That capture's kernel SHA-256 was
 The repeat's kernel SHA-256 was
 `6fff1338b0a563cc07991a95ff65069deb336f019e1c62dea354a6634bf0c3f8`;
 the runner generates independent signing fixtures for each run.
-Temporary logs are `/private/tmp/charlotte-memory-budget-run.log`,
-`/private/tmp/charlotte-security-memory-20261004-serial.log`, and
-`/private/tmp/charlotte-memory-budget-host-tests.log`. Repeat logs are
-`/private/tmp/charlotte-memory-budget-repeat-run.log` and
-`/private/tmp/charlotte-security-memory-repeat-20261004-serial.log`. Only the
+Only the
 dedicated security-memory guest/storage instances were used; existing soak
 workloads and their storage were not modified.
 
@@ -615,11 +598,7 @@ Validation:
 
 The final capture's kernel SHA-256 was
 `f5ff10b2782c47ad34db7d91444ef378532e47355fb8aa18a0015cd13c59ed8e`.
-Temporary evidence is in `/private/tmp/charlotte-security-timers-verified-run.log`,
-`/private/tmp/charlotte-security-timers-verified-20261004-serial.log`,
-`/private/tmp/charlotte-security-timers-bounds-run.log`,
-`/private/tmp/charlotte-security-timers-host-tests.log`, and the
-`/private/tmp/charlotte-security-timers-*-clippy.log`/`*-services.log` files.
+
 Only dedicated isolated guest/storage instances were used; existing soak
 workloads and their storage were not modified.
 
@@ -681,10 +660,7 @@ Validation:
 
 The final capture's kernel SHA-256 was
 `ab647c8656192a09e590e51cac6e2a54d840366ffe1bbb2582c7c4b766b60b32`.
-Temporary evidence is in `/private/tmp/charlotte-security-endpoints-final-run.log`,
-`/private/tmp/charlotte-security-endpoints-final-20261004-serial.log`,
-`/private/tmp/charlotte-security-endpoints-host-tests.log`, and the
-`/private/tmp/charlotte-security-endpoints-*-clippy.log`/`*-services.log` files.
+
 These runs used dedicated storage and unused forwarded ports; existing soak
 workloads and stores were not modified.
 
@@ -749,10 +725,7 @@ Validation:
 
 The final capture's kernel SHA-256 was
 `cdf9124544617344685f79841ecec3d72aba022ec16c36907268e01f10cd4ebb`.
-Temporary evidence is in `/private/tmp/charlotte-security-records-final-run.log`,
-`/private/tmp/charlotte-security-records-final-20261004-serial.log`,
-`/private/tmp/charlotte-security-records-host-tests.log`, and the
-`/private/tmp/charlotte-security-records-*-clippy.log`/`*-services.log` files.
+
 An unused test import was removed after the captures to pass both architectures'
 strict lint checks; this did not change the test logic. Dedicated storage and
 ports were used; existing soak guests and stores were not modified.
@@ -819,10 +792,7 @@ Validation:
 
 The capture's kernel SHA-256 was
 `8947d1fb74d82b9955fdf923036827089a729134367f1494232d247cd66cfffb`.
-Temporary evidence is in `/private/tmp/charlotte-security-cq-run.log`,
-`/private/tmp/charlotte-security-cq-20261004-serial.log`,
-`/private/tmp/charlotte-security-cq-host-tests.log` and the
-`/private/tmp/charlotte-security-cq-*-clippy.log`/`*-services.log` files.
+
 Dedicated storage and ports were used; existing soak guests/stores were not
 modified.
 
@@ -909,10 +879,7 @@ Validation:
 
 The final capture's kernel SHA-256 was
 `2160e7ace57bdbeac1ab8514d5a839898ea0c493a2b33169ddf7af702413d942`.
-Temporary evidence is in `/private/tmp/charlotte-security-watches-storage-run.log`,
-`/private/tmp/charlotte-security-watches-storage-20261004-serial.log`,
-`/private/tmp/charlotte-security-watches-host-tests.log`, and the
-`/private/tmp/charlotte-security-watches-*-clippy.log`/`*-services.log` files.
+
 Dedicated storage and ports were used; existing soak guests/stores were not
 modified. Reservation-only pool saturation does not allocate the equivalent
 maximum registration footprint.
@@ -979,10 +946,7 @@ Validation:
 
 The final guest capture's kernel SHA-256 is
 `1750625ee069912969581ba92144e96467e78c119a81cc419345b2e73d6b1631`.
-Evidence is in `/private/tmp/charlotte-security-waiters-reap-final-run.log`,
-`/private/tmp/charlotte-security-waiters-reap-final-20261004-serial.log`,
-`/private/tmp/charlotte-security-waiters-host-tests.log`, and the
-`/private/tmp/charlotte-security-waiters-*-clippy.log`/`*-services.log` files.
+
 Dedicated storage and forwarded ports were used; existing soak guests/stores
 were not modified. One attempted follow-up stopped at compilation on a test
 helper import before booting, then was corrected and rerun successfully.
@@ -1072,13 +1036,6 @@ were used; existing soak guests/stores were not modified.
 
 The final guest capture's kernel SHA-256 is
 `a18d20679e8ac309c9b6189c1a289829b3847ccda19e6455c481285800db6596`.
-Evidence is in `/private/tmp/charlotte-security-ipc-waiters-repeat2-run.log`,
-`/private/tmp/charlotte-security-ipc-waiters-repeat2-20261004-serial.log`,
-`/private/tmp/charlotte-security-ipc-waiters-atomic-run.log`,
-`/private/tmp/charlotte-security-ipc-waiters-repeat1-run.log`,
-`/private/tmp/charlotte-security-ipc-waiters-atomic-20261004-debug-snapshot-lldb.log`,
-`/private/tmp/charlotte-security-ipc-waiters-host-tests.log`, and the
-`/private/tmp/charlotte-security-ipc-waiters-*-clippy.log`/`*-services.log` files.
 
 ## 2026-10-04 continuation — IPC connection/call/reply record admission
 
@@ -1154,11 +1111,7 @@ Validation:
 
 The final guest kernel SHA-256 is
 `c79ee2a69aa189e5b3a743de2b169cad641961d499ba6f69d1e2fcf7e241fc92`.
-Evidence is in `/private/tmp/charlotte-security-ipc-records-final-run.log`,
-`/private/tmp/charlotte-security-ipc-records-final-20261004-serial.log`,
-`/private/tmp/charlotte-security-ipc-records-requester-run.log`,
-`/private/tmp/charlotte-security-ipc-records-host-tests.log`, and the
-`/private/tmp/charlotte-security-ipc-records-*-clippy.log`/`*-services.log` files.
+
 No allocator-failure injection, exhaustive cross-LP teardown race exploration,
 x86-64 guest execution, hostile-pressure soak or PDF rebuild was performed.
 Dedicated storage and forwarded ports were used; existing soak guests/stores
@@ -1231,12 +1184,7 @@ Validation:
 
 The final post-guard guest kernel SHA-256 is
 `15edc69dc87a09544280757e9153eb316c486b33874cf498f07f72784162793a`.
-Evidence is in `/private/tmp/charlotte-security-lock-waiters-final-run.log`,
-`/private/tmp/charlotte-security-lock-waiters-final-20261004-serial.log`,
-`/private/tmp/charlotte-security-lock-waiters-guard-run.log`,
-`/private/tmp/charlotte-security-lock-waiters-guard-20261004-serial.log`,
-`/private/tmp/charlotte-security-lock-waiters-host-tests.log`, and the
-`/private/tmp/charlotte-security-lock-waiters-*-clippy.log`/`*-services.log` files.
+
 No allocator-failure injection, forced quantum at the identified window,
 exhaustive cross-LP interleaving, x86-64 guest, hostile-pressure soak or PDF rebuild
 was performed. Dedicated storage and ports were used; existing soak guests and
@@ -1310,12 +1258,7 @@ Validation:
 
 The final guest kernel SHA-256 is
 `2089d9f75002f01845749eaa1bc8fcc588493c24654ebe220b8f96e14319e472`.
-Evidence is in `/private/tmp/charlotte-security-timer-waiters-run.log`,
-`/private/tmp/charlotte-security-timer-waiters-20261004-serial.log`,
-`/private/tmp/charlotte-security-timer-waiters-repeat-run.log`,
-`/private/tmp/charlotte-security-timer-waiters-repeat-20261004-serial.log`,
-`/private/tmp/charlotte-security-timer-waiters-host-tests.log`, and the
-`/private/tmp/charlotte-security-timer-waiters-*-kernel-clippy.log` files.
+
 No allocator-failure injection, maximum-footprint queue test, exhaustive cross-LP
 interleaving, x86-64 guest, hostile-pressure soak or PDF rebuild was performed.
 Dedicated storage and ports were used; existing soak guests/stores were untouched.
@@ -1410,15 +1353,7 @@ Validation:
 
 The final-policy guest kernel SHA-256 is
 `139e77cf7a99038134f2ba09d683b355798ebbc4108d8614abf33a0ea4774135`.
-Evidence is in `/private/tmp/charlotte-security-timer-events-repeat-run.log`,
-`/private/tmp/charlotte-security-timer-events-repeat-20261004-serial.log`,
-`/private/tmp/charlotte-security-timer-events-bounded-run.log`,
-`/private/tmp/charlotte-security-timer-events-bounded-20261004-serial.log`,
-`/private/tmp/charlotte-security-timer-events-run.log`,
-`/private/tmp/charlotte-security-timer-events-final-20261004-serial.log`
-(failed fixture), `/private/tmp/charlotte-security-timer-events-fixed-run.log`,
-`/private/tmp/charlotte-security-timer-events-host-tests.log`, and the
-`/private/tmp/charlotte-security-timer-events-*-kernel-clippy.log` files.
+
 No physical-allocator exhaustion, exhaustive cross-LP teardown/IRQ exploration,
 x86-64 guest, hostile-pressure soak or PDF rebuild was performed. Dedicated
 storage and forwarded ports were used; existing soak guests/stores were untouched.
@@ -1497,14 +1432,7 @@ Validation:
 
 The final guest kernel SHA-256 is
 `8113f7b0e0f94202462af68113e33dd07d563e5666ae5b739aa32a71ec05aad7`.
-Evidence is in `/private/tmp/charlotte-security-exit-watch-repeat-run.log`,
-`/private/tmp/charlotte-security-exit-watch-repeat-20261004-serial.log`,
-`/private/tmp/charlotte-security-exit-watch-fixed-run.log`,
-`/private/tmp/charlotte-security-exit-watch-fixed-20261004-serial.log`,
-`/private/tmp/charlotte-security-exit-watch-run.log` and
-`/private/tmp/charlotte-security-exit-watch-20261004-serial.log` (failed fixture),
-`/private/tmp/charlotte-security-exit-watch-host-tests.log`, and the
-`/private/tmp/charlotte-security-exit-watch-*-kernel-clippy.log` files.
+
 No exhaustive cross-LP teardown/IRQ exploration, hostile-pressure soak,
 physical allocator-OOM injection or x86-64 guest run was performed. Dedicated
 storage and forwarded ports were used; existing soak guests/stores were untouched.
@@ -1589,16 +1517,7 @@ The final guest kernel SHA-256 is
 `86e1931e7c867d77116f0ed277a1b0aca45fe929bdc3a9d9d5346ee47004aefa`;
 the first final-fixture run used
 `b55881e6061f92318d8e9c6ae6e71a3680325ccef05a74ba20c9aabaee28b3b2`.
-Evidence is in `/private/tmp/charlotte-security-callback-verified-run.log`,
-`/private/tmp/charlotte-security-callback-verified-20261004-serial.log`,
-`/private/tmp/charlotte-security-callback-final-run.log`,
-`/private/tmp/charlotte-security-callback-final-20261004-serial.log`,
-`/private/tmp/charlotte-security-callback-repeat-run.log`,
-`/private/tmp/charlotte-security-callback-repeat-20261004-serial.log`,
-`/private/tmp/charlotte-security-callback-run.log`,
-`/private/tmp/charlotte-security-callback-20261004-serial.log`,
-`/private/tmp/charlotte-security-callback-host-tests.log` and the
-`/private/tmp/charlotte-security-callback-*-kernel-clippy.log` files.
+
 No physical allocator exhaustion, exhaustive IRQ/teardown exploration,
 x86-64 guest or hostile-pressure soak was performed. Dedicated storage and
 forwarded ports were used; existing soak guests/stores were untouched.
@@ -1674,12 +1593,7 @@ Validation:
 
 The final guest kernel SHA-256 is
 `38a155332b759ad64aa102f4ede14ff8ba087b990d5275ecb38a3f13baa8e688`.
-Evidence is in `/private/tmp/charlotte-security-irq-mailbox-host-tests.log`,
-`/private/tmp/charlotte-security-irq-mailbox-run.log`,
-`/private/tmp/charlotte-security-irq-mailbox-repeat-run.log`,
-`/private/tmp/charlotte-security-irq-mailbox-final-run.log`,
-the corresponding `charlotte-security-irq-mailbox-*-20261004-serial.log` files,
-and `/private/tmp/charlotte-security-irq-mailbox-*-kernel-clippy.log`.
+
 No physical allocator exhaustion, x86-64 guest, hardware IRQ stress,
 exhaustive cross-LP masking/rearming or hostile-pressure soak was performed.
 Dedicated storage and forwarded ports were used; existing soak guests/stores
@@ -1761,12 +1675,7 @@ Validation:
 
 The final guest kernel SHA-256 is
 `2272510b864ea3aa65c7d813f6ac1a5ad22b61ad088a69c122156a127957d24b`.
-Evidence is in `/private/tmp/charlotte-security-mailbox-caps-host-tests.log`,
-`/private/tmp/charlotte-security-mailbox-caps-run.log`,
-`/private/tmp/charlotte-security-mailbox-caps-20261004-serial.log`,
-`/private/tmp/charlotte-security-mailbox-caps-final-run.log`,
-`/private/tmp/charlotte-security-mailbox-caps-final-20261004-serial.log` and
-`/private/tmp/charlotte-security-mailbox-caps-*-kernel-clippy.log`.
+
 Dedicated storage and forwarded ports were used; existing soak guests/stores
 were untouched. No x86-64 guest, physical allocator failure injection,
 many-client quota fairness test or exhaustive concurrent-retirement exploration
@@ -1864,12 +1773,8 @@ Final validation:
 
 The passing kernel SHA-256 is
 `bf88ec40dce102fda62b9e9ddc476ee8b31aa79a73cf77e9c7bfb6986391ac96`.
-Evidence is in `/private/tmp/charlotte-security-capability-admission-host-tests.log`,
-`/private/tmp/charlotte-security-capability-admission-*-clippy.log`,
-`/private/tmp/charlotte-security-capability-admission-verified-run.log` and
-`/private/tmp/charlotte-capability-admission-verified-20261005-serial.log`.
-The two failed captures are retained in the initial and `final-run` log files;
-only `verified-run` has a passing authoritative verdict. Existing soak guests
+
+Only the corrected final run has a passing authoritative verdict. Existing soak guests
 and storage were untouched. No x86-64 guest, physical allocation-failure
 injection, many-client quota fairness or exhaustive retirement interleaving
 test was performed. SEC-07 and the other open findings remain open.
@@ -1936,10 +1841,7 @@ Validation:
 
 The final passing kernel SHA-256 is
 `17e3583fb0ec63ecae968029d6669b2dd374a8d347aeeaab46b37555f0a34048`.
-Evidence: `/private/tmp/charlotte-security-memory-moves-host-tests.log`,
-`/private/tmp/charlotte-security-memory-moves-*-clippy.log`,
-`/private/tmp/charlotte-security-memory-moves-final-run.log` and
-`/private/tmp/charlotte-memory-moves-final-20261005-serial.log`.
+
 Initial compilation found incorrect fixture imports/private-constant access;
 those were corrected before the passing guests. An earlier passing guest
 preceded the final IPC pressure regressions and is not the final verdict.
@@ -2034,12 +1936,8 @@ Validation:
 
 The verified kernel SHA-256 is
 `5c28e42f33d2893f0c40743dbf300d5f109634d1a16063678bb44153021c5d4d`.
-Evidence: `/private/tmp/charlotte-security-memory-staging-host-tests.log`,
-`/private/tmp/charlotte-security-memory-staging-*-clippy.log`,
-`/private/tmp/charlotte-security-memory-staging-verified-run.log` and
-`/private/tmp/charlotte-memory-staging-verified-20261005-serial.log`.
-The truncated capture is retained as `memory-staging-final`/`final-run` for
-comparison. Preliminary compilation corrected a renamed-helper shadow and the
+
+Preliminary compilation corrected a renamed-helper shadow and the
 captured generation type; these were not passing validation runs.
 
 SEC-07 remains partial: fresh IPC/device/system-observer capability publication
@@ -2104,10 +2002,6 @@ Validation:
 
 The verified kernel SHA-256 is
 `3a961186543644dacd16b7d9b178dc599bf84cbb350193001992d573b50b7f6a`.
-Evidence: `/private/tmp/charlotte-security-ipc-receive-host-tests.log`,
-`/private/tmp/charlotte-security-ipc-receive-*-clippy.log`,
-`/private/tmp/charlotte-security-ipc-receive-run.log` and
-`/private/tmp/charlotte-ipc-receive-admission-20261005-serial.log`.
 
 SEC-07 remains partial. Call-side pending/delegated authority and returned
 connections still use counted unbounded allocation; they must be composed with
@@ -2191,10 +2085,6 @@ Validation:
 
 Final kernel SHA-256:
 `9af3f879b75362512bd97e0135326dc92eaf9adc6a8fdf02b4623b60922f953a`.
-Evidence: `/private/tmp/charlotte-security-ipc-composition-host-tests.log`,
-`/private/tmp/charlotte-security-ipc-composition-*-clippy.log`,
-`/private/tmp/charlotte-security-ipc-composition-final-run.log` and
-`/private/tmp/charlotte-ipc-composition-final-20261005-serial.log`.
 
 SEC-07 remains partial. Device/system-observer shared publication, broader
 allocator/loader/page-table/heap budgets, comprehensive metadata accounting and
@@ -2266,11 +2156,6 @@ Validation:
 
 Verified kernel SHA-256:
 `cf2bbb5f6a5c3e224749745fe5523c3c4a27bbfb5334bcf1c388b24bb1933635`.
-Evidence: `/private/tmp/charlotte-security-capability-cutover-host-tests.log`,
-`/private/tmp/charlotte-security-capability-cutover-*-clippy.log`,
-`/private/tmp/charlotte-security-capability-cutover-final-run.log` and
-`/private/tmp/charlotte-capability-cutover-final-20261005-serial.log`.
-The failed fixture capture is retained as `capability-cutover`/`cutover-run`.
 
 The shared capability-record admission subtask is implemented. SEC-07 as a whole
 remains partial: loader/page-table/heap bytes, empty namespace/control blocks,
@@ -2328,9 +2213,7 @@ Validation:
 
 Guest kernel SHA-256:
 `2bb8557918224e7f2904cc46f06b5b9ae87d5e5a17ae2cb3d204a8d928cc7851`.
-Run/host logs: `/private/tmp/charlotte-security-heap-admission-run.log` and
-`/private/tmp/charlotte-security-heap-admission-host-tests.log`.
-Serial: `/private/tmp/charlotte-heap-admission-20261005-serial.log`.
+
 Dedicated instance storage and ports left existing soak guests/storage untouched.
 
 SEC-07 remains partial for loader/runtime pages, stacks, page tables, kernel
@@ -2396,10 +2279,7 @@ Validation:
 
 Final guest kernel SHA-256:
 `9caa3304ee8edc8ce557a727d9a4046f025b2fe94285000d8682e3c022b016ff`.
-Run: `/private/tmp/charlotte-security-loader-admission-final-run.log`.
-Serial: `/private/tmp/charlotte-loader-admission-final-20261005-serial.log`.
-Host: `/private/tmp/charlotte-security-loader-admission-host-tests.log`.
-The failed preliminary run remains `charlotte-security-loader-admission-run.log`.
+
 Dedicated fresh instance storage/ports left existing soak storage and guests
 untouched.
 
@@ -2451,9 +2331,7 @@ Validation:
 
 Guest kernel SHA-256:
 `5f4d92c22570701644e497255f05c76d1f81b345c5c56a15ff84eab2a73153b5`.
-Run: `/private/tmp/charlotte-security-root-preparation-run.log`.
-Serial: `/private/tmp/charlotte-root-preparation-20261005-serial.log`.
-Host: `/private/tmp/charlotte-security-root-preparation-host-tests.log`.
+
 Dedicated fresh storage/ports did not alter existing soak instances.
 
 SEC-17 is a newly recorded source-review gap: both `unmap_page` implementations
@@ -2517,14 +2395,10 @@ Validation:
   cancellation traffic retires after 4,484 requests.
 - Guest kernel SHA-256:
   `f3aaac1fde179f8deb166052b676e34d9e9f2c9297c54acd6448f04a35af8507`.
-  Run log `/private/tmp/charlotte-security-table-lifetime-checked-run.log`;
-  serial `/private/tmp/charlotte-table-lifetime-20261005-checked-serial.log`.
 - Strict locked Clippy passes for AArch64 `acpi,security_test` and x86-64 `acpi`.
-  `scripts/run-host-tests.sh` passes; log
-  `/private/tmp/charlotte-security-table-lifetime-host-tests.log`.
+  `scripts/run-host-tests.sh` passes.
   `cargo fmt --all -- --check` and `git diff --check` pass.
-- Earlier runs are retained separately: the initial table fixture guest passed
-  19/19; the follow-up `table-lifetime-20261005-final` guest captures the
+- The initial table fixture guest passed 19/19; a follow-up run exposed the
   exclusive-end overflow before its correction. Existing soak instances and
   storage were not changed.
 
@@ -2592,14 +2466,11 @@ Validation:
   cancellation traffic retires after 4,440 requests.
 - Guest kernel SHA-256:
   `f14bbc8452fee89bc0fdf6292a844495e7d631ae8a68550f3697bec23117f223`.
-  Run `/private/tmp/charlotte-security-kernel-retirement-final-run.log`;
-  serial `/private/tmp/charlotte-kernel-retirement-20261005-final-serial.log`.
   The preceding retirement regression also passed 19/19, before adding the
   deliberate Drop quarantine probe. Existing soak instances/storage were not
   modified.
 - Strict locked Clippy passes for AArch64 `acpi,security_test` and x86-64 `acpi`.
-  Host tests pass; log
-  `/private/tmp/charlotte-security-kernel-retirement-host-tests.log`.
+  Host tests pass.
   Formatting and diff checks pass. x86-only fake-sender code checks unchanged
   acknowledgement counts on failure and exclusion of self, but was compiled
   rather than executed on this AArch64 machine.
@@ -2660,13 +2531,10 @@ Validation:
   **19/19**, zero failed/pending, both scoped probes `0x7fff`, cancellation
   traffic retired after 4,496 requests. Kernel SHA-256:
   `c4bd3930dbaa6ee30b6aaf21e242747d1bc61922c95eec7262fc01f01f66caaa`.
-  Run `/private/tmp/charlotte-security-object-retirement-final-run.log`;
-  serial `/private/tmp/charlotte-object-retirement-20261005-final-serial.log`.
   The preceding guest also passed 19/19 before the final clean-rollback check.
   Existing soak instances/storage were not modified.
 - Strict locked Clippy passes for AArch64 `acpi,security_test` and x86-64 `acpi`.
-  Host suites pass, log
-  `/private/tmp/charlotte-security-object-retirement-host-tests.log`;
+  Host suites pass;
   formatting and diff checks pass.
 
 The fixtures are single-mutator interleaving/failure tests, not concurrent
@@ -2722,8 +2590,7 @@ Validation:
   abandonment, exact table/generation identity, failed preflight, interleaved
   completions without allocation, and corrupted completion-capacity rejection.
   `scripts/run-host-tests.sh` now runs this kernel-only primitive despite the
-  kernel binary's disabled Cargo test harness. Full host suites pass; log
-  `/private/tmp/charlotte-security-root-retirement-host-tests.log`.
+  kernel binary's disabled Cargo test harness. Full host suites pass.
 - Single-mutator guest fixtures check preflight rejection before any partial
   namespace/backing retirement, guard availability during final invalidation,
   exact physical and heap-charge release, registration while a root is detached,
@@ -2738,8 +2605,6 @@ Validation:
   **19/19**, zero failed/pending, both scoped probes `0x7fff`, cancellation
   traffic retired after 4,524 requests. Kernel SHA-256:
   `b35ee09b8d6b7dbe0c25f7e5c7466ebd2fb115a396275e1089e513f2438937a5`.
-  Run `/private/tmp/charlotte-security-root-retirement-typed-run.log`;
-  serial `/private/tmp/charlotte-root-retirement-20261005-typed-serial.log`.
   Both preceding root-retirement guests also passed 19/19 before the typed-slot
   metadata consolidation. Existing soak instances/storage were not modified.
 - Strict locked Clippy passes for AArch64 `acpi,security_test` and x86-64 `acpi`.
@@ -2804,12 +2669,9 @@ Validation:
   **19/19**, zero failed/pending, both scoped probes `0x7fff`, cancellation
   traffic retired after 4,428 requests. Kernel SHA-256:
   `4a04c85eb08501795b968f3bfad5c3294a4aa42ce0ee6274659d7ad6a761de73`.
-  Run `/private/tmp/charlotte-security-root-release-final-run.log`;
-  serial `/private/tmp/charlotte-root-release-20261005-final-serial.log`.
   The preceding guest also passed 19/19 before injected-failure log labeling.
   Existing soak storage and instances were not modified.
-- Full host suites pass, including seven slot-retirement tests; log
-  `/private/tmp/charlotte-security-root-release-host-tests.log`. Strict locked
+- Full host suites pass, including seven slot-retirement tests. Strict locked
   Clippy passes for AArch64 `acpi,security_test` and x86-64 `acpi`; formatting and
   diff checks pass. x86 guest execution remains pending.
 
@@ -2879,13 +2741,10 @@ Validation:
   **19/19**, zero failed/pending, both scoped probes `0x7fff`, cancellation
   traffic retired after 4,456 requests. Kernel SHA-256:
   `564afcc034c96a9c00e1f631079523ea78b942cd0213fd269b38264b9c26f653`.
-  Run `/private/tmp/charlotte-security-backing-preparation-transfer-run.log`;
-  serial `/private/tmp/charlotte-backing-preparation-20261005-transfer-serial.log`.
   The three preceding preparation guests also passed 19/19 before API
   restriction, capture-before-initialization and inert-token refinements.
   Existing soak storage/instances were not modified.
-- Full host suites pass, including the seven standalone slot-owner tests; log
-  `/private/tmp/charlotte-security-backing-preparation-host-tests.log`. Strict
+- Full host suites pass, including the seven standalone slot-owner tests. Strict
   locked Clippy passes for AArch64 `acpi,security_test` and x86-64 `acpi`;
   formatting and diff checks pass. x86 guest execution remains pending.
 
@@ -2948,11 +2807,8 @@ Validation:
   **19/19**, zero failed/pending, both scoped probes `0x7fff`, cancellation
   traffic retired after 4,468 requests. Kernel SHA-256:
   `8ee7ee61aba3bb4d586e16d1eff5248e00845437407ad5bc154f8c1c0e91edf2`.
-  Run `/private/tmp/charlotte-security-table-preparation-run.log`;
-  serial `/private/tmp/charlotte-table-preparation-20261005-serial.log`.
   Existing soak storage and instances were not modified.
-- Full host suites pass, including seven standalone slot-owner tests; log
-  `/private/tmp/charlotte-security-table-preparation-host-tests.log`. Strict
+- Full host suites pass, including seven standalone slot-owner tests. Strict
   locked Clippy passes for AArch64 `acpi,security_test` and x86-64 `acpi`;
   formatting and diff checks pass. No x86 guest was run.
 
@@ -3001,8 +2857,8 @@ Validation:
   tests retain their previous six data pages/four object charges.
 - The initial guest stalled in a test's chained preparation/detachment call:
   borrowing a temporary registry guard extended it across the second phase.
-  Run `/private/tmp/charlotte-security-object-batches-run.log` records the
-  missing authoritative result. The corrected API consumes the guard; the
+  The runner reported `authoritative self-test result was not produced within 60s`.
+  The corrected API consumes the guard; the
   same chained fixture now completes, making that lifetime mistake impossible
   through this preparation boundary.
 - Final four-LP TCG AArch64 security guest, fresh dedicated
@@ -3010,11 +2866,8 @@ Validation:
   **19/19**, zero failed/pending, both scoped probes `0x7fff`; cancellation
   traffic retired after 4,416 requests. Kernel SHA-256:
   `8d85aec34cfd84335dd4fbf10ebba8c41a21ea52e9209bd1f31a944c039e9d2b`.
-  Run `/private/tmp/charlotte-security-object-batches-guard-run.log`;
-  serial `/private/tmp/charlotte-object-batches-20261005-guard-serial.log`.
   Existing soak storage/instances were not modified.
-- Full host suites pass, including seven standalone slot-owner tests; log
-  `/private/tmp/charlotte-security-object-batches-host-tests.log`. Strict locked
+- Full host suites pass, including seven standalone slot-owner tests. Strict locked
   Clippy passes for AArch64 `acpi,security_test` and x86-64 `acpi`; formatting
   and diff checks pass. No x86 guest was executed.
 
@@ -3061,8 +2914,7 @@ Validation:
   first-fit/gap reuse, unchanged release capacity, exact-release rejection,
   local metadata-preflight failure, invalid/exhausted/overflow requests,
   independent windows and a 6,000-operation bitmap-oracle trace. Full host
-  suites, including seven slot-owner tests, pass; log
-  `/private/tmp/charlotte-security-scratch-completion-host-tests.log`.
+  suites, including seven slot-owner tests, pass.
 - A two-borrower boot fixture injects final copy/DMA unpins during invalidation
   and rejects one scratch completion before mutating the real allocator. It
   checks that all barriers precede completion, both release attempts occur,
@@ -3076,8 +2928,6 @@ Validation:
   **19/19**, zero failed/pending, both scoped probes `0x7fff`; cancellation
   traffic retired after 4,436 requests. Kernel SHA-256:
   `2d0d5fe781ee0018a4899c9fd6fe3cd177c12124256b029b5ab94900262862f7`.
-  Run `/private/tmp/charlotte-security-scratch-completion-run.log`;
-  serial `/private/tmp/charlotte-scratch-completion-20261005-serial.log`.
   Existing soak storage/instances were not modified.
 - Strict locked Clippy passes for AArch64 `acpi,security_test` and x86-64
   `acpi`; formatting and diff checks pass. x86 guest execution remains pending.
@@ -3123,8 +2973,7 @@ Validation:
 - Five added direct host slot tests bring that suite to **12/12**: overlapping
   leases, preflight/extraction rejection before allocation, last-completion
   retirement/reuse, wrong table/generation, overflow/underflow, abandonment/table
-  destruction and vector growth to 2,047 entries. Full host suites pass; log
-  `/private/tmp/charlotte-security-live-lease-host-tests.log`.
+  destruction and vector growth to 2,047 entries. Full host suites pass.
 - Guest fixtures retain a real root, charged heap and mapped object. Busy close
   preserves frames, charges, mapped authority, ARM tag and new heap/object
   admission. Completion under lifecycle proves it does not re-enter that guard;
@@ -3138,8 +2987,7 @@ Validation:
   scoped probes `0x7fff`; cancellation traffic retired after 4,484 requests.
   Kernel SHA-256:
   `bb6b104508b99293c61927f017c55789f8f9e5fd0fec8797de7b01ced86de4dc`.
-  Run `/private/tmp/charlotte-security-live-lease-run.log`;
-  serial `/private/tmp/charlotte-live-lease-20261005-serial.log`. Existing soak
+  Existing soak
   storage/instances were not modified.
 - Strict locked Clippy passes for AArch64 `acpi,security_test` and x86-64
   `acpi`; formatting and diff checks pass. No x86 guest was run.
@@ -3229,8 +3077,7 @@ Validation:
   fencing and older completion, competing close/extraction rejection, failed
   preparation without mutation, wrong table/generation, abandonment with no
   leases, capacity refresh after growth, and rejection rather than allocation
-  on unprepared final detachment. Full host suites pass; log
-  `/private/tmp/charlotte-security-staged-close-host-tests.log`.
+  on unprepared final detachment. Full host suites pass.
 - Guest fixtures retain a real charged root and mapped object through two
   pending polls. They check old-operation release under lifecycle, new-lease
   rejection, owner return, guard availability, final cleanup and exact generation
@@ -3245,8 +3092,7 @@ Validation:
   scoped probes `0x7fff`; cancellation traffic retired after 4,472 requests.
   Kernel SHA-256:
   `410e06b3498b869cae34982736472c63b0f1aedc47f7a9d6d7428f2d40f7eb09`.
-  Run `/private/tmp/charlotte-security-staged-close-run.log`;
-  serial `/private/tmp/charlotte-staged-close-20261005-serial.log`. Existing soak
+  Existing soak
   storage/instances were not modified.
 - Strict locked Clippy passes for AArch64 `acpi,security_test` and x86-64
   `acpi`; formatting and diff checks pass. No x86 guest was run.
@@ -3377,8 +3223,6 @@ Validation:
   and nine object charges. There is no recovery bypass.
 - Kernel SHA-256:
   `ce0a429650f9f5ed1f494a7e31470ff6f77c8f95ed8b58c9e7388291a40ce562`.
-  Run `/private/tmp/charlotte-security-loan-revocation-run.log`;
-  serial `/private/tmp/charlotte-loan-revocation-20261005-serial.log`.
 - Strict locked AArch64 `acpi,security_test` and x86-64 `acpi` Clippy,
   `cargo fmt --all -- --check`, and diff checks pass.
 
@@ -3438,8 +3282,6 @@ Final validation:
   That workload is not proof of concurrent execution of the new claim/close race.
 - Kernel SHA-256:
   `ba5c791d2be7f7619b5b34bd308e5911be5ecae803da503a0cf975bb5ed22f94`.
-  Run `/private/tmp/charlotte-security-ipc-reply-final-run.log`;
-  serial `/private/tmp/charlotte-ipc-reply-final-20261005-serial.log`.
 - Strict locked AArch64 `acpi,security_test` and x86-64 `acpi` Clippy,
   `cargo fmt --all -- --check`, and `git diff --check` pass. Bundled AArch64
   services were rebuilt by `scripts/build-catten-services.sh` through the runner.
@@ -3502,8 +3344,6 @@ Validation:
   loop, but neither they nor that workload establish concurrent new-path progress.
 - Kernel SHA-256:
   `5478e97f37d1829cec20e48a0d1c9000bab0fc69cb399b8e15db26b284d68064`.
-  Run `/private/tmp/charlotte-security-ipc-return-final-run.log`;
-  serial `/private/tmp/charlotte-ipc-return-final-20261005-serial.log`.
 - Strict locked AArch64 `acpi,security_test` and x86-64 `acpi` Clippy pass.
   Bundled AArch64 services were rebuilt through `scripts/build-catten-services.sh`.
   Formatting and diff checks pass; x86 guest execution remains pending.
@@ -3575,8 +3415,6 @@ Validation:
   new source-close/rollback races.
 - Kernel SHA-256:
   `a920f42025b8ae8dac02718f6640acd5bd8e89bd86c61cf5a89790a2b83e2e75`.
-  Run `/private/tmp/charlotte-security-ipc-memory-verified-run.log`;
-  serial `/private/tmp/charlotte-ipc-memory-verified-20261005-serial.log`.
 - Strict locked AArch64 `acpi,security_test` and x86-64 `acpi` Clippy pass,
   as do `cargo fmt --all -- --check` and `git diff --check`. Bundled AArch64
   services were rebuilt through `scripts/build-catten-services.sh` by the runner.
@@ -3660,15 +3498,12 @@ Validation:
   ownership boundary. Final guests pass without that erroneous second close.
 - Full `scripts/run-host-tests.sh` passes, including **33 catten-rt tests**, four
   new close/receive owner probes, the 18 slot-owner tests, six scratch tests and
-  the existing protocol/signing suites. Log:
-  `/private/tmp/charlotte-ipc-cancellation-host-tests-final.log`.
+  the existing protocol/signing suites.
 - Scoped security checks remain `0x7fff`; the existing concurrent cancellation
   workload retires after 4,480 requests. That workload does not establish every
   new claim/readiness/physical-failure race under real multi-LP concurrency.
 - Kernel SHA-256:
   `c3e715515eeea6ec9b9329e0accb57ee82f1b5c98d2ba3b1c3cb4961129d6b44`.
-  Run `/private/tmp/charlotte-security-ipc-cancel-ready-run.log`;
-  serial `/private/tmp/charlotte-ipc-cancel-ready-20261005-serial.log`.
 - Bundled AArch64 services are rebuilt through `scripts/build-catten-services.sh`.
   Strict locked AArch64 `acpi,security_test` and x86-64 `acpi` Clippy, formatting
   and diff checks pass. No x86 guest, real fatal-domain execution, independent CQ

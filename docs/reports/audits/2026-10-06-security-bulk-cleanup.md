@@ -76,16 +76,6 @@ its forwarding ports; the approved isolated rerun passed. Existing VMs and their
 storage were not stopped or reset. A final fixture log correction removes obsolete
 retained-page/root counts; it changes no tested behavior.
 
-Logs:
-
-- `/private/tmp/charlotte-bulk-host.log`
-- `/private/tmp/charlotte-bulk-clippy-x86-final.log`
-- `/private/tmp/charlotte-bulk-clippy-arm-final.log`
-- `/private/tmp/charlotte-bulk-guest-x86-v2.log`
-- `/tmp/charlotte-x86-bulk-security-20261006-v2-serial.log`
-- `/private/tmp/charlotte-bulk-guest-arm-v2.log`
-- `/tmp/charlotte-bulk-security-20261006-v2-serial.log`
-
 ## Remaining scope
 
 This is conservative failure propagation, not split-phase bulk retirement.

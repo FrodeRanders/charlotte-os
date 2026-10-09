@@ -93,11 +93,11 @@ existing staged service bundles. `cargo fmt --all -- --check` and `git diff
 --check` passed. Local documentation links/anchors validated and the coverage
 map remains eighteen owner families and seven gates.
 
-| Final QEMU execution | Result | Evidence |
-| --- | --- | --- |
-| Intel VT-d, four LPs, isolated fresh storage | 15 passed, zero failed/pending | `/private/tmp/charlotte-iommu-detached-intel-final.log` |
-| AMD-Vi, four LPs, isolated fresh storage | 15 passed, zero failed/pending | `/private/tmp/charlotte-iommu-detached-amd-final.log` |
-| Arm SMMUv3 security suite, four LPs, isolated fresh storage | 19 passed, zero failed/pending; probe `0xffff`, retired-policy/publication generation 2, 4,836 cancellation requests | `/private/tmp/charlotte-iommu-detached-arm-final.log` |
+| Final QEMU execution | Result |
+| --- | --- |
+| Intel VT-d, four LPs, isolated fresh storage | 15 passed, zero failed/pending |
+| AMD-Vi, four LPs, isolated fresh storage | 15 passed, zero failed/pending |
+| Arm SMMUv3 security suite, four LPs, isolated fresh storage | 19 passed, zero failed/pending; probe `0xffff`, retired-policy/publication generation 2, 4,836 cancellation requests |
 
 Both x86 executions used kernel SHA-256
 `5c963c021a7964bac330e315b7040a2e3ac16d932f6e727ca5369efe4cfd3b93`.
@@ -108,15 +108,11 @@ entries and one Arm entry. QEMU executions ran sequentially after host/Clippy
 completion; bundled userspace code was unchanged. Arm used forwarded ports
 18589/17889 and each runner used a unique instance name with fresh storage.
 
-Final Clippy evidence is in
-`/private/tmp/charlotte-iommu-detached-clippy-{x86,arm}-final-owner.log`;
-host evidence is `/private/tmp/charlotte-iommu-detached-host.log`.
 Preliminary runs also passed, but review found that their new metadata probe
 used a zero-sized element. Those runs do not prove containing heap-allocation
 retention. The corrected probe uses a real allocated vector and additionally
 restores the exact slot under held guards; all three final executions above
-reran that corrected code. Preliminary logs remain in
-`/private/tmp/charlotte-iommu-detached-{intel,amd,arm}.log`.
+reran that corrected code.
 The stack timeout did not recur in these executions; no causal conclusion or
 closure follows from that success.
 

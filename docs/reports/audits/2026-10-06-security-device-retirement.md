@@ -124,17 +124,6 @@ reused signed service bundles. A preceding device-only x86/ARM pair passed
 guard and its regression fixtures. ARM runs used approved isolated forwarding
 ports. No unrelated VM or storage was stopped/reset.
 
-Logs:
-
-- `/private/tmp/charlotte-device-host.log`
-- `/private/tmp/charlotte-device-services-build.log`
-- `/private/tmp/charlotte-device-clippy-x86-final.log`
-- `/private/tmp/charlotte-device-clippy-arm-final.log`
-- `/private/tmp/charlotte-device-guest-x86-final.log`
-- `/tmp/charlotte-x86-device-dma-security-20261006-serial.log`
-- `/private/tmp/charlotte-device-guest-arm-final.log`
-- `/tmp/charlotte-device-dma-security-20261006-serial.log`
-
 ## Remaining scope
 
 SEC-18 remains partial: whole-domain memory and IPC move/copy/result attachment

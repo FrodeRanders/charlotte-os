@@ -97,10 +97,7 @@ The host command is `cargo +nightly-2026-07-27 test --locked --manifest-path
 charged_allocator`, invoked outside the repository's kernel build-std config.
 Guests rebuild kernels and enforce assembly section permissions. This kernel-only
 change reuses validated embedded services. Arm uses required local port-binding
-permission. Logs: `/private/tmp/charlotte-observer-list-{host,intel,amd,arm}.log`,
-`/private/tmp/charlotte-observer-list-clippy-{x86,arm}.log`,
-`/tmp/charlotte-x86-observer-list-{intel,amd}-20261007-serial.log` and
-`/tmp/charlotte-observer-list-arm-20261007-serial.log`.
+permission.
 
 ## Remaining scope
 

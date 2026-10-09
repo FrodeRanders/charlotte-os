@@ -51,6 +51,16 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
 - For ownership changes, test success, submission failure, mapping failure,
   cancellation/drop, and returned-capability cleanup where practical.
 
+## Audit evidence
+
+- Keep published audit reports self-contained. Record concise results, artifact
+  hashes and relevant failure diagnostics inline, or link version-controlled
+  evidence. Do not cite temporary logs or ignored build artifacts as evidence.
+- Prioritize unresolved and intermittent failures; omit routine boot/build
+  output. Preserve failed runs separately from passing repeats and distinguish
+  observations from causal conclusions. If original captures are unavailable,
+  retain the historical result with an explicit verification limitation.
+
 ## Architectural boundaries
 
 - Cleanup/recovery changes must update their owner-family row and evidence in

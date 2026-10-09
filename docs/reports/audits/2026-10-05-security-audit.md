@@ -379,11 +379,8 @@ Kernel SHA-256:
 Lockfile SHA-256:
 `90db6ee790336456e6a4f9c40d1951476b0b91f30e690ce8c6bbb8c7f44460cc`.
 
-Local logs are `/private/tmp/charlotte-renewed-security-audit-guest-approved.log`,
-`/tmp/charlotte-renewed-audit-20261005-approved-serial.log`, and
-`/private/tmp/charlotte-renewed-security-audit-dependencies.json`.
 The [dependency scan result](2026-10-05-security-audit-dependencies.json) is
-retained alongside this report. Temporary guest logs may be removed later.
+retained alongside this report.
 No new x86 build/Clippy result, x86 guest result, hardware attack result or TLC
 run is claimed by this report.
 

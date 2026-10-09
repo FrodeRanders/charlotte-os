@@ -88,11 +88,7 @@ CATTEN_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
 
 Runners rebuild kernels and enforce assembly section permissions. Existing
 validated embedded services are reused for this kernel-only change. Arm uses
-required local forwarding-port permission. Logs:
-`/private/tmp/charlotte-kernel-preparation-{intel,amd,arm}.log`,
-`/private/tmp/charlotte-kernel-preparation-clippy-{x86,arm}.log`,
-`/tmp/charlotte-x86-kernel-preparation-{intel,amd}-20261007-serial.log` and
-`/tmp/charlotte-kernel-preparation-arm-20261007-serial.log`.
+required local forwarding-port permission.
 
 ## Remaining scope
 

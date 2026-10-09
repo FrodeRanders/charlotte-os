@@ -68,12 +68,6 @@ the previously unlisted October 7 remediation batches.
 - `cargo fmt --all -- --check`, `git diff --check` and local documentation-link
   checks: passed.
 
-Logs: `/private/tmp/charlotte-trust-preflight-host.log`,
-`/private/tmp/charlotte-trust-preflight-clippy-{host,x86,arm}.log` and
-`/private/tmp/charlotte-trust-preflight-services.log`. The final signer tests
-are in `/private/tmp/charlotte-trust-preflight-signer-final.log`, and the direct
-production rejection in `/private/tmp/charlotte-trust-preflight-production-rejection.log`.
-
 ## Scope limits and next gate
 
 The candidate is **not authenticated trust**, proof of private-key secrecy,

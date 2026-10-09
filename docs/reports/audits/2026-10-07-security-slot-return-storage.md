@@ -109,11 +109,7 @@ The host harness uses the repository's Rust toolchain and is also included in
 `scripts/run-host-tests.sh`. All guest runners exited successfully, rebuilt
 kernels and enforced assembly section permissions. Existing validated embedded
 services were reused for this kernel-only change. Arm required local
-forwarding-port permission. Logs:
-`/private/tmp/charlotte-slot-storage-{intel,amd,arm}.log`,
-`/private/tmp/charlotte-slot-storage-clippy-{x86,arm}.log`,
-`/tmp/charlotte-x86-slot-storage-{intel,amd}-20261007-serial.log` and
-`/tmp/charlotte-slot-storage-arm-20261007-serial.log`.
+forwarding-port permission.
 
 ## Remaining scope
 

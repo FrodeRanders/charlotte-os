@@ -169,9 +169,6 @@ CATTEN_DEPLOY_HOST_PORT=17585 scripts/run-aarch64.sh --security-test \
   --instance remediation-20261005-complete --fresh-storage --timeout 130
 ```
 
-Serial log: `/tmp/charlotte-remediation-20261005-complete-serial.log`.
-Runner log: `/private/tmp/charlotte-remediation-security-guest-complete.log`.
-Host log: `/private/tmp/charlotte-remediation-host-tests-complete.log`.
 An initial sandbox guest could not bind forwarding ports. A subsequent guest
 caught a missing AArch64 emitter for the new syscall; it was corrected before
 the successful runs. The final run includes the provisional stack owner, allocation-failure

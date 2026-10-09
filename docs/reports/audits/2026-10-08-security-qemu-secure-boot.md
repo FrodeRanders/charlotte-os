@@ -105,14 +105,6 @@ host tests; the final matrix passed all cases with the corrected parser.
 - `cargo fmt --all -- --check`, Python syntax/parser tests, shell syntax,
   `git diff --check` and local documentation-link checks: passed.
 
-Evidence logs: `/private/tmp/charlotte-secure-boot-{prepare,lock,host}.log`,
-`/private/tmp/charlotte-secure-boot-clippy-{host,x86,arm,fixture}.log`,
-`/private/tmp/charlotte-secure-boot-matrix-final.log`,
-`/private/tmp/charlotte-secure-boot-positive-final.log`,
-`/private/tmp/charlotte-secure-boot-default-{intel,arm}.log` and
-`/private/tmp/charlotte-secure-boot-production-rejection.log`.
-The full per-case evidence is under `target/secure-boot-tests/final-matrix`;
-the final positive assertion rerun is under `target/secure-boot-tests/positive-final`.
 Guest service source did not change; existing staged bundles are reused.
 
 ## Remaining production boundaries

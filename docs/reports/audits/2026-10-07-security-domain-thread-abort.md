@@ -110,11 +110,7 @@ CATTEN_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
 Guest runners rebuilt kernels and enforced assembly section permissions, reusing
 validated embedded service bundles for this kernel-only change. Arm required
 local forwarding-port permission. No new standalone host harness was needed;
-the full host script was not rerun. Final logs:
-`/private/tmp/charlotte-domain-abort-{intel,amd,arm}-final.log`,
-`/private/tmp/charlotte-domain-abort-clippy-{x86,arm}.log`,
-`/tmp/charlotte-x86-domain-abort-{intel,amd}-final-20261007-serial.log` and
-`/tmp/charlotte-domain-abort-arm-final-20261007-serial.log`.
+the full host script was not rerun.
 The earlier Intel/Arm runs also passed before the closing-publication regression
 and its complete lifecycle hold were added.
 

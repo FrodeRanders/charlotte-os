@@ -97,11 +97,7 @@ CATTEN_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
 Runners rebuild kernels and verify native assembly section permissions. Existing
 validated embedded services are reused for this kernel-only change. The first
 Arm invocation could not bind its forwarding port in the sandbox; rerunning with
-the required permission completed successfully. Logs:
-`/private/tmp/charlotte-iommu-admission-{intel,amd,arm}.log`,
-`/private/tmp/charlotte-iommu-admission-clippy-{x86,arm}.log`,
-`/tmp/charlotte-x86-iommu-admission-{intel,amd}-20261007-serial.log` and
-`/tmp/charlotte-iommu-admission-arm-20261007-serial.log`.
+the required permission completed successfully.
 
 ## Remaining scope
 

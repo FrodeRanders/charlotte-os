@@ -84,17 +84,6 @@ CATTEN_DEPLOY_HOST_PORT=17688 scripts/run-aarch64.sh --security-test \
   --instance endpoint-security-20261006-approved --fresh-storage --timeout 150
 ```
 
-Logs:
-
-- `/private/tmp/charlotte-endpoint-host.log`
-- `/private/tmp/charlotte-endpoint-services-build.log`
-- `/private/tmp/charlotte-endpoint-clippy-x86-final.log`
-- `/private/tmp/charlotte-endpoint-clippy-arm-final.log`
-- `/private/tmp/charlotte-endpoint-guest-x86.log`
-- `/tmp/charlotte-x86-endpoint-security-20261006-serial.log`
-- `/private/tmp/charlotte-endpoint-guest-arm-approved.log`
-- `/tmp/charlotte-endpoint-security-20261006-approved-serial.log`
-
 ## Remaining scope
 
 SEC-18 remains partial: whole-domain IPC/memory/device retirement, composition

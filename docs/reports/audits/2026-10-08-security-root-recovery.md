@@ -130,11 +130,6 @@ scripts/run-aarch64.sh --security-test \
   --instance root-registry-arm-final-20261008 --fresh-storage --timeout 180
 ```
 
-Final logs: `/private/tmp/charlotte-root-registry-{intel,amd,arm}-final.log`,
-`/private/tmp/charlotte-root-registry-clippy-{x86,arm}-final.log`,
-`/private/tmp/charlotte-root-registry-host-final.log` and
-`/private/tmp/charlotte-root-registry-services-arm.log`.
-
 ## Remaining work
 
 No automatic worker or authenticated operator retry endpoint is enabled. The

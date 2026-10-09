@@ -128,11 +128,11 @@ passed on both custom targets with `--locked -- -D warnings`, using staged
 service bundles. Formatting, diff whitespace and all 88 local documentation
 links/anchors passed; eighteen owner families and seven gates remain unchanged.
 
-| Final QEMU target, four LPs and isolated fresh storage | Result | Evidence |
-| --- | --- | --- |
-| Intel VT-d | 15 passed, zero failed/pending | `/private/tmp/charlotte-iommu-maintenance-intel-final.log` |
-| AMD-Vi | 15 passed, zero failed/pending | `/private/tmp/charlotte-iommu-maintenance-amd-final.log` |
-| Arm SMMUv3 security suite | 19 passed, zero failed/pending; probe `0xffff`, retired-policy/publication generation 2, 4,844 cancellation requests | `/private/tmp/charlotte-iommu-maintenance-arm-final.log` |
+| Final QEMU target, four LPs and isolated fresh storage | Result |
+| --- | --- |
+| Intel VT-d | 15 passed, zero failed/pending |
+| AMD-Vi | 15 passed, zero failed/pending |
+| Arm SMMUv3 security suite | 19 passed, zero failed/pending; probe `0xffff`, retired-policy/publication generation 2, 4,844 cancellation requests |
 
 Both final x86 executions used kernel SHA-256
 `42f81c39d581b69db48dfb1fd5aacda9b8ce8f747b5f98ae5a29bb590db5bee4`.
@@ -143,11 +143,7 @@ entries and one Arm entry. QEMU executions ran sequentially after host/Clippy;
 userspace bundles were unchanged and reused. Arm used forwarded ports
 18599/17899. All instances used distinct names and fresh storage.
 
-Host evidence is `/private/tmp/charlotte-iommu-maintenance-host.log`.
-Final Clippy evidence is
-`/private/tmp/charlotte-iommu-maintenance-clippy-{x86,arm}-tested.log`.
-Preliminary Intel/AMD runs also passed and remain in
-`/private/tmp/charlotte-iommu-maintenance-{intel,amd}.log`. Final runs include the
+Preliminary Intel/AMD runs also passed. Final runs include the
 additional completion/SYNC admission failure after invalidation submission.
 The earlier stack-retirement timeout did not recur; fresh success does not close
 its unresolved diagnosis.

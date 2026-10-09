@@ -95,14 +95,14 @@ same node ownership without allocation.
 
 ## Validation
 
-| Check | Result | Local log |
-| --- | --- | --- |
-| Complete host harness | Passed, including four retirement-list allocation/identity tests, 29 slot/lease probes and 13 signer tests. | `/private/tmp/charlotte-published-stack-host.log` |
-| Both custom-target kernel Clippy checks, `--locked -- -D warnings` | Passed. | `/private/tmp/charlotte-published-stack-clippy-{x86,arm}-final.log` |
-| Intel VT-d, fresh storage | 15 passed, zero failed/pending. | `/private/tmp/charlotte-published-stack-intel-final.log` |
-| AMD-Vi, fresh storage | 15 passed, zero failed/pending. | `/private/tmp/charlotte-published-stack-amd-final.log` |
-| Arm SMMUv3 security suite, fresh storage | 19 passed, zero failed/pending; probe `0xffff`, publication generations 1/2 and 4,856 cancellation requests retired. | `/private/tmp/charlotte-published-stack-arm.log` |
-| Formatting, whitespace and documentation | `cargo fmt --all -- --check`, `git diff --check`, 133 relative links/anchors and unchanged 18-family/seven-gate map passed. | Local checks. |
+| Check | Result |
+| --- | --- |
+| Complete host harness | Passed, including four retirement-list allocation/identity tests, 29 slot/lease probes and 13 signer tests. |
+| Both custom-target kernel Clippy checks, `--locked -- -D warnings` | Passed. |
+| Intel VT-d, fresh storage | 15 passed, zero failed/pending. |
+| AMD-Vi, fresh storage | 15 passed, zero failed/pending. |
+| Arm SMMUv3 security suite, fresh storage | 19 passed, zero failed/pending; probe `0xffff`, publication generations 1/2 and 4,856 cancellation requests retired. |
+| Formatting, whitespace and documentation | `cargo fmt --all -- --check`, `git diff --check`, 133 relative links/anchors and unchanged 18-family/seven-gate map passed. |
 
 QEMU execution was sequential after host/Clippy checks. All targets include the
 published abandonment and failed-node retention markers. Real natural return,
@@ -127,16 +127,15 @@ Initial compile checks caught Box initialization resolving to a borrowed value,
 a fixture trait import/mutable lookup, and Clippy inline-error/initializer issues.
 These were corrected before passing runtime execution. Inline rejected owners
 are deliberately returned without allocation. Initial Intel and AMD executions
-also passed 15/15; their logs lack the final strengthened failure-branch
-reinsertion test and are superseded by the final logs above. No QEMU execution
+also passed 15/15 before the strengthened failure-branch reinsertion test;
+the final executions above reran that test. No QEMU execution
 failed in this batch. The last source edit only updates stale reaper comments.
 
 ## Remaining boundaries
 
-The original Intel user-stack timeout in
-`/private/tmp/charlotte-preparation-drop-intel.log` remains unexplained. Its exact
-root and phase snapshots, original deadline and retained counts remain intact;
-fresh-run success is not a recovery proof.
+The original [Intel user-stack timeout](2026-10-09-security-preparation-abandonment.md#execution-and-unresolved-progress-observation)
+remains unexplained. Later root/phase diagnostics preserve the original deadline
+and retained-count policy; fresh-run success is not a recovery proof.
 
 G1 still includes thread metadata/callback fallback, implicit allocation release,
 outer ordinary constructor/syscall masks and growth's master thread-table guard.

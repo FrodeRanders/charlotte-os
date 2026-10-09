@@ -89,14 +89,14 @@ including one live sixteen-page kernel stack, plus private root tables.
 
 Final source passed:
 
-| Check | Result | Local log |
-| --- | --- | --- |
-| `scripts/run-host-tests.sh` | Complete host harness passed, including 29 slot/lease probes and 13 signer tests. | `/private/tmp/charlotte-table-drop-host.log` |
-| Kernel Clippy, both custom targets, `--locked -- -D warnings` | Passed. | `/private/tmp/charlotte-table-drop-clippy-{x86,arm}-final.log` |
-| Intel VT-d, fresh storage | 15 passed, zero failed/pending. | `/private/tmp/charlotte-table-drop-intel.log` |
-| AMD-Vi, fresh storage | 15 passed, zero failed/pending. | `/private/tmp/charlotte-table-drop-amd.log` |
-| Arm SMMUv3 security suite, fresh storage | 19 passed, zero failed/pending; security probe `0xffff`, publication generations 1/2, 4,720 concurrent cancellation requests retired. | `/private/tmp/charlotte-table-drop-arm.log` |
-| Formatting, whitespace and documentation | `cargo fmt --all -- --check`, `git diff --check`; relative link targets and unchanged 18-family/seven-gap map checked. | Local checks. |
+| Check | Result |
+| --- | --- |
+| `scripts/run-host-tests.sh` | Complete host harness passed, including 29 slot/lease probes and 13 signer tests. |
+| Kernel Clippy, both custom targets, `--locked -- -D warnings` | Passed. |
+| Intel VT-d, fresh storage | 15 passed, zero failed/pending. |
+| AMD-Vi, fresh storage | 15 passed, zero failed/pending. |
+| Arm SMMUv3 security suite, fresh storage | 19 passed, zero failed/pending; security probe `0xffff`, publication generations 1/2, 4,720 concurrent cancellation requests retired. |
+| Formatting, whitespace and documentation | `cargo fmt --all -- --check`, `git diff --check`; relative link targets and unchanged 18-family/seven-gap map checked. |
 
 All three runs include the guarded raw/private/shared probes and the stack
 invalidation/physical-rejection diagnostic marker. Arm additionally records

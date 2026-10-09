@@ -120,15 +120,7 @@ CATTEN_DEPLOY_HOST_PORT=17800 scripts/run-aarch64.sh --security-test \
 Both runners rebuilt their kernels and checked native assembly permissions.
 Validated staged service bundles were reused; this batch changes kernel code
 only. ARM used approved isolated localhost forwarding. No unrelated VM or
-storage was stopped/reset. Logs:
-
-- `/private/tmp/charlotte-ipc-backing-host.log`
-- `/private/tmp/charlotte-ipc-backing-clippy-x86.log`
-- `/private/tmp/charlotte-ipc-backing-clippy-arm.log`
-- `/private/tmp/charlotte-ipc-backing-guest-x86.log`
-- `/tmp/charlotte-x86-ipc-backing-20261006-serial.log`
-- `/private/tmp/charlotte-ipc-backing-guest-arm-approved.log`
-- `/tmp/charlotte-ipc-backing-20261006-serial.log`
+storage was stopped/reset.
 
 ## Remaining scope
 

@@ -90,10 +90,6 @@ CATTEN_DEPLOY_HOST_PORT=17803 scripts/run-aarch64.sh --security-test \
 The runners rebuild kernels and validate native assembly section permissions.
 Existing validated embedded bundles are reused; no userspace or wire-format
 change is included. Arm localhost forwarding uses approved isolated ports.
-Logs: `/private/tmp/charlotte-table-admission-{intel,amd,arm}.log`,
-`/private/tmp/charlotte-table-admission-clippy-{x86,arm}.log`,
-`/tmp/charlotte-x86-table-admission-{intel,amd}-20261006-serial.log`, and
-`/tmp/charlotte-table-admission-arm-20261006-serial.log`.
 
 ## Remaining scope
 

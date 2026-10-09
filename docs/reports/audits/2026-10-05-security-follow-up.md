@@ -114,23 +114,11 @@ corrected it. Neither unsuccessful run is counted as passing evidence. A
 sandbox ARM launch also failed to bind forwarding ports; the approved isolated
 rerun above passed. Existing VMs and stores were not stopped or reset.
 
-Logs:
-
-- `/private/tmp/charlotte-followup-host-final.log`
-- `/private/tmp/charlotte-followup-clippy-x86.log`
-- `/private/tmp/charlotte-followup-clippy-arm.log`
-- `/private/tmp/charlotte-followup-clippy-services.log`
-- `/private/tmp/charlotte-followup-guest-x86-final.log`
-- `/tmp/charlotte-x86-followup-security-20261005-final-serial.log`
-- `/private/tmp/charlotte-followup-guest-arm-approved.log`
-- `/tmp/charlotte-followup-security-20261005-approved-serial.log`
-
 These are implementation regressions, not a physical packet-flood campaign,
 a hardware-abort test, or exhaustive multi-LP migration/exception injection.
 Kernel-origin classification is tested without deliberately panicking the guest.
 Allocation-failure branches in RX admission are source-reviewed; no allocator
 fault was injected there. No dependency version or lockfile change was needed.
-
 
 ## Remaining scope
 

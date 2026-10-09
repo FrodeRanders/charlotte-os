@@ -81,12 +81,20 @@ lifecycle fixtures remain enabled on all three QEMU targets.
 The initial Intel run passed the IOMMU admission/guarded abandonment probes but
 failed user-isolation cleanup after its null-read fault: ASID 90, root generation
 6 remained leased until the existing ten-second deadline. It finished **14
-passed, one failed**. Evidence is preserved in
-`/private/tmp/charlotte-iommu-preparation-intel.log`; executed kernel SHA-256 was
+passed, one failed**. Executed kernel SHA-256 was
 `2ce7eb74fbef2fe18a1ea014bd81fb315040d31e12a4fb3235d1d1b6a0e29c2b`.
 
-Aggregate user-retirement observations changed from `[187,185,0,0,1,1]` to
-`[194,192,0,0,1,1]`: seven starts/releases without additional recorded user-half
+Selected failure output (guest timestamps are seconds since boot):
+
+```text
+[+     1.657945] FATAL USER FAULT: ASID=90 vector=14 error=0x4 RIP=VAddr(0x20002) address=VAddr(0x0)
+self-test deadline expired while waiting for user stack retirement lease
+[+    11.666268] SELFTEST COMPLETE: passed=14 failed=1 pending=0 passed_bitmap=0x1bbfe failed_bitmap=0x1 pending_bitmap=0x0
+```
+
+Aggregate user-retirement observations
+`[started,released,identity,detach,invalidation,physical]` changed from
+`[187,185,0,0,1,1]` to `[194,192,0,0,1,1]`: seven starts/releases without additional recorded user-half
 rejection. This does not correlate the individual pair or prove kernel/admission
 completion. It reproduces the earlier progress concern; no scheduling or
 IOMMU-causation conclusion follows from this evidence.
@@ -106,15 +114,15 @@ deadline, restore abandoned backing or resolve the cause.
 
 ## Validation
 
-| Check | Result | Local log |
-| --- | --- | --- |
-| Complete host harness | Passed, including 29 slot/lease probes, four retirement-list allocation/identity tests and 13 signer tests. | `/private/tmp/charlotte-iommu-preparation-host.log` |
-| Both custom-target kernel Clippy checks, `--locked -- -D warnings` | Passed. | `/private/tmp/charlotte-iommu-preparation-clippy-{x86,arm}-final.log` |
-| Initial Intel VT-d execution | IOMMU probes passed; user-stack retirement timeout, 14 passed/one failed. | `/private/tmp/charlotte-iommu-preparation-intel.log` |
-| Intel VT-d with retained-pair diagnostics, two fresh executions | Each 15 passed, zero failed/pending. | `/private/tmp/charlotte-iommu-preparation-intel-{diagnostics,confirm}.log` |
-| AMD-Vi, fresh storage | 15 passed, zero failed/pending. | `/private/tmp/charlotte-iommu-preparation-amd.log` |
-| Arm SMMUv3 security suite, fresh storage | 19 passed, zero failed/pending; probe `0xffff`, publication generations 1/2 and 4,872 cancellation requests retired. | `/private/tmp/charlotte-iommu-preparation-arm.log` |
-| Formatting, whitespace and documentation | `cargo fmt --all -- --check`, `git diff --check`, 141 relative links/anchors and unchanged 18-family/seven-gate map passed. | Local checks. |
+| Check | Result |
+| --- | --- |
+| Complete host harness | Passed, including 29 slot/lease probes, four retirement-list allocation/identity tests and 13 signer tests. |
+| Both custom-target kernel Clippy checks, `--locked -- -D warnings` | Passed. |
+| Initial Intel VT-d execution | IOMMU probes passed; user-stack retirement timeout, 14 passed/one failed. |
+| Intel VT-d with retained-pair diagnostics, two fresh executions | Each 15 passed, zero failed/pending. |
+| AMD-Vi, fresh storage | 15 passed, zero failed/pending. |
+| Arm SMMUv3 security suite, fresh storage | 19 passed, zero failed/pending; probe `0xffff`, publication generations 1/2 and 4,872 cancellation requests retired. |
+| Formatting, whitespace and documentation | `cargo fmt --all -- --check`, `git diff --check`, 141 relative links/anchors and unchanged 18-family/seven-gate map passed. |
 
 Runtime executions were sequential after host/Clippy work. Every run passed the
 IOMMU preparation abandonment marker, including the initially failed Intel run.

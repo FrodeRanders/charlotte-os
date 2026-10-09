@@ -80,8 +80,21 @@ Initial Clippy checks on both kernel targets and the host suite passed. The firs
 Intel VT-d execution passed the new probes, then failed later in
 `user_isolation::Fixture::finish` while waiting for a user stack retirement lease
 (`passed=14 failed=1`). This is a failed validation run, not a successful result
-with an extended deadline. Its log is
-`/private/tmp/charlotte-preparation-drop-intel.log`.
+with an extended deadline.
+
+The failing kernel SHA-256 was
+`c0d2f33e3e76d94ef9da8d06b0149e9af0b8c352636e72046b45bb89fe99cbb5`.
+The last recorded fault was divide-by-zero in ASID 68. This run predates the
+root-generation and retirement-counter diagnostics; those values cannot be
+recovered from its capture.
+
+Selected failure output (guest timestamps are seconds since boot):
+
+```text
+[+     1.581786] FATAL USER FAULT: ASID=68 vector=0 error=0x0 RIP=VAddr(0x20009) address=VAddr(0x0)
+self-test deadline expired while waiting for user stack retirement lease
+[+    11.608540] SELFTEST COMPLETE: passed=14 failed=1 pending=0 passed_bitmap=0x1bbfe failed_bitmap=0x1 pending_bitmap=0x0
+```
 
 AMD-Vi passed 15/15 and Arm SMMUv3 security passed 19/19. A traced Intel execution
 and a fresh untraced execution each passed 15/15 without changing the fixture
@@ -117,14 +130,6 @@ CATTEN_AARCH64_SERVICE_BUNDLE="$PWD/target/embedded-services/aarch64-unknown-non
 cargo fmt --all -- --check
 git diff --check
 ```
-
-Final runtime logs are `/private/tmp/charlotte-preparation-drop-{intel,amd,arm}-verified.log`;
-Clippy logs are `/private/tmp/charlotte-preparation-drop-clippy-{x86,arm}-final.log`.
-The host log is `/private/tmp/charlotte-preparation-drop-host.log`. Traced and
-untraced intermediate Intel successes are retained as
-`/private/tmp/charlotte-preparation-drop-intel-trace.log` and
-`/private/tmp/charlotte-preparation-drop-intel-final.log`. The first failed run
-remains separately recorded above.
 
 ## Limits and next work
 

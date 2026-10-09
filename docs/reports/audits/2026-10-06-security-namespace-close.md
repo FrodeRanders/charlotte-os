@@ -134,19 +134,6 @@ followed. One intermediate ARM run timed out in firmware before kernel entry.
 Intermediate guest failures also caught result-code/fixture assumptions, which
 were corrected before final runs. No unrelated VM or storage was stopped/reset.
 
-Logs:
-
-- `/private/tmp/charlotte-domain-host-final.log`
-- `/private/tmp/charlotte-domain-services-build.log`
-- `/private/tmp/charlotte-domain-clippy-x86-final.log`
-- `/private/tmp/charlotte-domain-clippy-arm-final.log`
-- `/private/tmp/charlotte-domain-x86-qemu-debug.log`
-- `/private/tmp/charlotte-domain-x86-section-failure.elf`
-- `/private/tmp/charlotte-domain-guest-x86-kernel-peer.log`
-- `/tmp/charlotte-x86-namespace-security-20261006-kernel-peer-serial.log`
-- `/private/tmp/charlotte-domain-guest-arm-kernel-peer.log`
-- `/tmp/charlotte-namespace-security-20261006-kernel-peer-serial.log`
-
 ## Remaining scope
 
 SEC-18 remains partial: whole-domain memory/device teardown, IPC move/copy/result

@@ -113,16 +113,6 @@ validated signed service bundles were reused; this batch changes kernel code
 only. The initial ARM launch could not bind host-forwarding ports in the sandbox;
 the approved isolated retry passed. No unrelated VM or storage was stopped/reset.
 
-Logs:
-
-- `/private/tmp/charlotte-connection-delivery-host.log`
-- `/private/tmp/charlotte-connection-delivery-clippy-x86.log`
-- `/private/tmp/charlotte-connection-delivery-clippy-arm.log`
-- `/private/tmp/charlotte-connection-delivery-guest-x86.log`
-- `/tmp/charlotte-x86-connection-delivery-20261006-serial.log`
-- `/private/tmp/charlotte-connection-delivery-guest-arm-approved.log`
-- `/tmp/charlotte-connection-delivery-20261006-serial.log`
-
 ## Remaining scope
 
 SEC-18 remains partial: allocator release latency under IPC, recoverable
