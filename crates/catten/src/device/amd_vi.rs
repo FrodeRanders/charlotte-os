@@ -30,9 +30,17 @@ pub use super::dma_common::{
     Direction,
     Error,
 };
-use super::dma_tables::{
-    Scope,
-    Tables,
+use super::{
+    dma_tables::{
+        Scope,
+        Tables,
+    },
+    unit_initialization::{
+        self,
+        Rejected,
+        UnitBacking,
+        UnitState,
+    },
 };
 use crate::{
     cpu::{
@@ -360,7 +368,13 @@ impl Commands {
     }
 }
 
-static UNIT: LazyLock<Mutex<Option<Unit>>> = LazyLock::new(|| Mutex::new(None));
+impl UnitBacking for Unit {
+    fn tables(&mut self) -> &mut Tables {
+        &mut self._tables
+    }
+}
+
+static UNIT: LazyLock<Mutex<UnitState<Unit>>> = LazyLock::new(|| Mutex::new(UnitState::Vacant));
 static IRQ_MMIO: AtomicUsize = AtomicUsize::new(0);
 static FAULT_COUNT: AtomicU64 = AtomicU64::new(0);
 
@@ -372,59 +386,68 @@ fn write64(base: usize, offset: usize, value: u64) {
     unsafe { ptr::write_volatile((base + offset) as *mut u64, value) }
 }
 
-fn initialize(config: crate::environment::acpi::sdt::ivrs::IvrsConfig) -> Result<Unit, Error> {
+#[allow(clippy::result_large_err)] // Keep the complete unit owner inline, without allocation.
+fn initialize(
+    config: crate::environment::acpi::sdt::ivrs::IvrsConfig,
+) -> Result<super::detached_domain::DetachedDomain<Unit>, Rejected<Unit>> {
     let mut current = AddressSpace::get_current();
-    current.map_mmio_region(config.base, 0x4000).map_err(|_| Error::MapFailed)?;
+    current
+        .map_mmio_region(config.base, 0x4000)
+        .map_err(|_| Rejected::before_backing(Error::MapFailed))?;
     let base = unsafe { PAddr::from(config.base as u64).into_hhdm_ptr::<u8>() } as usize;
-
-    let (mut tables, (devtab, cmd_buf, event_log, completion)) =
-        Tables::prepare_unpublished(Scope::Unit, |tables| {
-            let devtab = tables.allocate(DEVICE_TABLE_FRAMES, DEVICE_TABLE_BYTES)?;
-            let cmd_buf = tables.allocate_frame()?;
-            let event_log = tables.allocate_frame()?;
-            // The completion cell outlives every timed-out coherent store.
-            let completion = tables.allocate_frame()?;
-            Ok((devtab, cmd_buf, event_log, completion))
-        })?;
-    tables.publish();
-    // Cover the complete 16-bit DeviceID space. Bits 8:0 encode one less than
-    // the table length in 4-KiB units (511 for a 2-MiB table).
-    write64(base, DEV_TABLE, u64::from(devtab) | (DEVICE_TABLE_FRAMES as u64 - 1));
-    write64(base, CMD_BASE, u64::from(cmd_buf) | (8 << 56));
-    write64(base, EVENT_BASE, u64::from(event_log) | (8 << 56));
-    write64(base, CMD_HEAD, 0);
-    write64(base, CMD_TAIL, 0);
-    write64(base, EVENT_HEAD, 0);
-    write64(base, EVENT_TAIL, 0);
-    write64(base, CONTROL, CONTROL_IOMMU_EN | CONTROL_CMD_BUF_EN | CONTROL_EVENT_LOG_EN);
-
-    IRQ_MMIO.store(base, Ordering::Release);
-    crate::logln!("[amdvi] enabled AMD-Vi at {:#x}", config.base);
-
-    Ok(Unit {
+    let mut owner = super::detached_domain::DetachedDomain::new(Unit {
         commands: Some(Commands {
             base,
-            cmd_buf,
+            cmd_buf: PAddr::from(0u64),
             cmd_tail: 0,
-            completion,
+            completion: PAddr::from(0u64),
             completion_epoch: 0,
         }),
-        devtab,
-        _tables: tables,
+        devtab: PAddr::from(0u64),
+        _tables: Tables::new(Scope::Unit),
         next_domain: 1,
         domains: BTreeMap::new(),
         sources: BTreeMap::new(),
-    })
+    });
+    let unit = owner.value_mut();
+    let mut rollback_private = true;
+    let prepared = (|| {
+        unit.devtab = unit._tables.allocate(DEVICE_TABLE_FRAMES, DEVICE_TABLE_BYTES)?;
+        let commands = unit.commands.as_mut().unwrap();
+        commands.cmd_buf = unit._tables.allocate_frame()?;
+        let event_log = unit._tables.allocate_frame()?;
+        commands.completion = unit._tables.allocate_frame()?;
+        if unit_initialization::reject_complete() {
+            return Err(Error::MapFailed);
+        }
+        rollback_private = false; // Hardware control starts; no initialization replay.
+        unit_initialization::publication_boundary();
+        unit._tables.publish();
+        // Cover the complete 16-bit DeviceID space; 511 encodes 2 MiB.
+        write64(base, DEV_TABLE, u64::from(unit.devtab) | (DEVICE_TABLE_FRAMES as u64 - 1));
+        write64(base, CMD_BASE, u64::from(commands.cmd_buf) | (8 << 56));
+        write64(base, EVENT_BASE, u64::from(event_log) | (8 << 56));
+        write64(base, CMD_HEAD, 0);
+        write64(base, CMD_TAIL, 0);
+        write64(base, EVENT_HEAD, 0);
+        write64(base, EVENT_TAIL, 0);
+        write64(base, CONTROL, CONTROL_IOMMU_EN | CONTROL_CMD_BUF_EN | CONTROL_EVENT_LOG_EN);
+        IRQ_MMIO.store(base, Ordering::Release);
+        crate::logln!("[amdvi] enabled AMD-Vi at {:#x}", config.base);
+        Ok(())
+    })();
+    match prepared {
+        Ok(()) => Ok(owner),
+        Err(error) if rollback_private => Err(Rejected::with_owner(error, owner)),
+        Err(error) => Err(Rejected::retain_owner(error, owner)),
+    }
 }
 
 fn with_unit<R>(f: impl FnOnce(&mut Unit) -> Result<R, Error>) -> Result<R, Error> {
     let mut guard = UNIT.lock();
-    if guard.is_none() {
-        let config =
-            crate::environment::acpi::sdt::ivrs::discover_amd_vi().ok_or(Error::Unsupported)?;
-        *guard = Some(initialize(config)?);
-    }
-    let unit = guard.as_mut().expect("installed DMA unit");
+    // Ordinary operations never initialize hardware beneath their callers'
+    // lifecycle/device/config guards. Only boot claims a vacant unit.
+    let unit = guard.installed()?;
     if unit.commands.is_none() {
         return Err(Error::OperationInFlight);
     }
@@ -435,11 +458,22 @@ fn with_unit<R>(f: impl FnOnce(&mut Unit) -> Result<R, Error>) -> Result<R, Erro
 // No initialization, waiting or physical cleanup occurs under this hold.
 fn with_registered<R>(f: impl FnOnce(&mut Unit) -> Result<R, Error>) -> Result<R, Error> {
     let mut guard = UNIT.lock();
-    f(guard.as_mut().ok_or(Error::Unsupported)?)
+    f(guard.installed()?)
+}
+
+#[allow(clippy::result_large_err)] // Keep the complete unit owner inline, without allocation.
+fn prepare_unit() -> Result<super::detached_domain::DetachedDomain<Unit>, Rejected<Unit>> {
+    let config = crate::environment::acpi::sdt::ivrs::discover_amd_vi()
+        .ok_or_else(|| Rejected::before_backing(Error::Unsupported))?;
+    initialize(config)
 }
 
 pub fn initialize_early() -> Result<(), Error> {
-    with_unit(|_| Ok(()))
+    unit_initialization::initialize(&UNIT, prepare_unit, |unit| unit.commands.is_some())
+}
+
+pub(super) fn test_initialization() {
+    unit_initialization::test_real(&UNIT, prepare_unit, 4, 0);
 }
 
 pub fn stream_id(requester_id: u32) -> Result<u32, Error> {

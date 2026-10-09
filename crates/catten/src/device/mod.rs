@@ -44,6 +44,7 @@ mod dma_tables;
 mod private_domain;
 pub(crate) mod recovery_tests;
 pub(crate) mod retirement;
+mod unit_initialization;
 
 static REJECT_RETIREMENT: core::sync::atomic::AtomicBool =
     core::sync::atomic::AtomicBool::new(false);

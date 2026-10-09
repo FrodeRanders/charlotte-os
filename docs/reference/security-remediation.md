@@ -134,6 +134,14 @@ Rejected/abandoned cleanup retains all original charges and dependencies without
 retry. Real prefix rejection and guarded partial-release probes qualify this
 boundary. Initial waits/reset, unit-private initialization and metadata allocation
 remain G1/G3/G4/G7 work; SEC-18 and counts are unchanged.
+The [unit-initialization follow-up](../reports/audits/2026-10-09-security-iommu-unit-initialization.md)
+now claims the existing typed unit slot before unlocked boot preparation/control/
+waits/cancellation and removes lazy initialization below ordinary DMA requests.
+Uncertain control, published error, failed release or abandonment retains the
+complete unit and claim without replay, even when its new backing is private.
+Real allocation-prefix and successful-wait probes plus synthetic terminal
+retention qualify this boundary. Initial domain creation/reset, map/unmap and
+metadata/outer-context work remain open; SEC-18 and counts are unchanged.
 The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.

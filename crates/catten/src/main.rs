@@ -228,24 +228,32 @@ pub extern "C" fn bsp_main() -> ! {
         not(feature = "hvf_compat"),
         not(feature = "live_upgrade_test")
     ))]
-    match crate::device::smmu::initialize_early() {
-        Ok(()) => logln!("[smmu] early initialization complete."),
-        Err(crate::device::smmu::Error::Unsupported) => {
-            logln!("[smmu] no supported SMMUv3 discovered; DMA isolation unavailable.")
+    {
+        crate::device::smmu::test_initialization();
+        match crate::device::smmu::initialize_early() {
+            Ok(()) => logln!("[smmu] early initialization complete."),
+            Err(crate::device::smmu::Error::Unsupported) => {
+                logln!("[smmu] no supported SMMUv3 discovered; DMA isolation unavailable.")
+            }
+            Err(error) => panic!("[smmu] early initialization failed: {:?}", error),
         }
-        Err(error) => panic!("[smmu] early initialization failed: {:?}", error),
     }
     #[cfg(all(
         target_arch = "x86_64",
         not(feature = "hvf_compat"),
         not(feature = "live_upgrade_test")
     ))]
-    match crate::device::iommu::initialize_early() {
-        Ok(()) => logln!("[iommu] early initialization complete."),
-        Err(crate::device::iommu::Error::Unsupported) => {
-            logln!("[iommu] no supported VT-d/AMD-Vi unit discovered; DMA isolation unavailable.")
+    {
+        crate::device::iommu::test_initialization();
+        match crate::device::iommu::initialize_early() {
+            Ok(()) => logln!("[iommu] early initialization complete."),
+            Err(crate::device::iommu::Error::Unsupported) => {
+                logln!(
+                    "[iommu] no supported VT-d/AMD-Vi unit discovered; DMA isolation unavailable."
+                )
+            }
+            Err(error) => panic!("[iommu] early initialization failed: {:?}", error),
         }
-        Err(error) => panic!("[iommu] early initialization failed: {:?}", error),
     }
     self_test::run_synchronous_self_tests();
     // The remaining boot work resolves store-backed ELFs and therefore may

@@ -166,6 +166,12 @@ impl Tables {
         {
             return Err(Error::MapFailed);
         }
+        if self.scope == Scope::Unit
+            && self.state == State::Unpublished
+            && super::unit_initialization::reject_allocation()
+        {
+            return Err(Error::MapFailed);
+        }
         Ok(frame)
     }
 
@@ -225,6 +231,10 @@ impl Tables {
     pub(super) fn publish(&mut self) {
         assert!(self.state == State::Unpublished && !self.uncertain);
         self.state = State::Published;
+    }
+
+    pub(super) fn is_published(&self) -> bool {
+        self.state == State::Published && !self.uncertain
     }
 
     /// Backend must first detach authority and confirm all configuration/TLB
@@ -373,4 +383,8 @@ impl Drop for ClientPressure {
 }
 pub(super) fn test_admission() {
     tests::run();
+}
+
+pub(super) fn test_drop_under_guards(action: impl FnOnce()) {
+    tests::drop_under_guards(action);
 }

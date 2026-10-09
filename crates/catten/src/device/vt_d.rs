@@ -30,9 +30,17 @@ use core::{
 
 use spin::LazyLock;
 
-use super::dma_tables::{
-    Scope,
-    Tables,
+use super::{
+    dma_tables::{
+        Scope,
+        Tables,
+    },
+    unit_initialization::{
+        self,
+        Rejected,
+        UnitBacking,
+        UnitState,
+    },
 };
 use crate::{
     cpu::{
@@ -357,7 +365,13 @@ impl Commands {
     }
 }
 
-static UNIT: LazyLock<Mutex<Option<Unit>>> = LazyLock::new(|| Mutex::new(None));
+impl UnitBacking for Unit {
+    fn tables(&mut self) -> &mut Tables {
+        &mut self.tables
+    }
+}
+
+static UNIT: LazyLock<Mutex<UnitState<Unit>>> = LazyLock::new(|| Mutex::new(UnitState::Vacant));
 static IRQ_MMIO: AtomicUsize = AtomicUsize::new(0);
 static FAULT_COUNT: AtomicU64 = AtomicU64::new(0);
 static FAULT_INTID: AtomicU32 = AtomicU32::new(u32::MAX);
@@ -428,25 +442,31 @@ fn agaw_aw(agaw: u8) -> u64 {
     }
 }
 
-fn initialize(config: crate::environment::acpi::sdt::dmar::DmarConfig) -> Result<Unit, Error> {
+#[allow(clippy::result_large_err)] // Keep the complete unit owner inline, without allocation.
+fn initialize(
+    config: crate::environment::acpi::sdt::dmar::DmarConfig,
+) -> Result<super::detached_domain::DetachedDomain<Unit>, Rejected<Unit>> {
     let mut current = AddressSpace::get_current();
-    current.map_mmio_region(config.base, 0x1000).map_err(|_| Error::MapFailed)?;
+    current
+        .map_mmio_region(config.base, 0x1000)
+        .map_err(|_| Rejected::before_backing(Error::MapFailed))?;
     let base = unsafe { PAddr::from(config.base as u64).into_hhdm_ptr::<u8>() } as usize;
 
     let version = read32(base, VER);
     if version & 0xff < 0x10 {
-        return Err(Error::Unsupported);
+        return Err(Rejected::before_backing(Error::Unsupported));
     }
     let cap = read64(base, CAP);
     // A cache invalidation without draining accepted reads/writes does not
     // authorize physical backing reuse. Reject unsupported hardware before
     // allocating or publishing a root/context table.
-    let draining_command =
-        charlotte_lifecycle::iommu::vtd_draining_command(cap).ok_or(Error::Unsupported)?;
+    let draining_command = charlotte_lifecycle::iommu::vtd_draining_command(cap)
+        .ok_or_else(|| Rejected::before_backing(Error::Unsupported))?;
     let ecap = read64(base, ECAP);
-    let agaw = supported_agaw(cap).ok_or(Error::Unsupported)?;
-    let iotlb_invalidate =
-        ((((ecap >> 8) & 0x3ff) as usize) * 16).checked_add(8).ok_or(Error::Unsupported)?;
+    let agaw = supported_agaw(cap).ok_or_else(|| Rejected::before_backing(Error::Unsupported))?;
+    let iotlb_invalidate = ((((ecap >> 8) & 0x3ff) as usize) * 16)
+        .checked_add(8)
+        .ok_or_else(|| Rejected::before_backing(Error::Unsupported))?;
     let max_domains = (1u64 << (4 + 2 * (cap & 0x7))).min(1 << 16);
     // The fault recording register (FRCD) sits at CAP.FRO * 16 bytes; extend
     // the MMIO mapping past the first page if it lands beyond it.
@@ -454,55 +474,12 @@ fn initialize(config: crate::environment::acpi::sdt::dmar::DmarConfig) -> Result
     FRCD_OFFSET.store(frcd_offset, Ordering::Release);
     let register_bytes = (frcd_offset + 0x10).max(iotlb_invalidate + 8);
     if register_bytes > 0x1000 {
-        current.map_mmio_region(config.base, register_bytes).map_err(|_| Error::MapFailed)?;
+        current
+            .map_mmio_region(config.base, register_bytes)
+            .map_err(|_| Rejected::before_backing(Error::MapFailed))?;
     }
 
-    let (mut tables, root_table) = Tables::prepare_unpublished(Scope::Unit, |tables| {
-        let root_table = tables.allocate_frame()?;
-        // No new backing is hardware-visible until RTADDR below.
-        write32(base, GCMD, 0);
-        wait_gsts_clear(base, GSTS_TES)?;
-        Ok(root_table)
-    })?;
-
-    // Private preparation confirmed translation disabled. Publish the new
-    // root before installing it and re-enabling translation; firmware-owned
-    // backing was never adopted by this owner.
-    tables.publish();
-    write64(base, RTADDR, u64::from(root_table) & ADDR_MASK);
-    write32(base, GCMD, GCMD_SRTP);
-    wait_gsts(base, GSTS_RTPS)?;
-    write32(base, GCMD, GCMD_SRTP | GCMD_TE);
-    wait_gsts(base, GSTS_TES)?;
-
-    IRQ_MMIO.store(base, Ordering::Release);
-    // Route fault events through an MSI. Program the fault-event message
-    // address/data registers, then unmask the fault interrupt.
-    match crate::device::allocate_msi(0) {
-        Some(msi) => {
-            write32(base, FEADDR, msi.address as u32);
-            write32(base, FEUADDR, (msi.address >> 32) as u32);
-            write32(base, FEDATA, msi.data);
-            write32(base, FECTL, 0);
-            FAULT_INTID.store(msi.intid, Ordering::Release);
-            crate::logln!("[vtd] fault MSI enabled (intid={})", msi.intid);
-        }
-        None => {
-            crate::logln!("[vtd] fault MSI unavailable; faults detected via polling");
-        }
-    }
-
-    crate::logln!(
-        "[vtd] enabled VT-d at {:#x}: segment {}, include-all={}, {} bit AGAW, {} translation \
-         levels",
-        config.base,
-        config.segment,
-        config.include_pci_all,
-        agaw,
-        ((agaw - 12) / 9)
-    );
-
-    Ok(Unit {
+    let mut owner = super::detached_domain::DetachedDomain::new(Unit {
         commands: Some(Commands {
             base,
             iotlb_invalidate,
@@ -510,23 +487,71 @@ fn initialize(config: crate::environment::acpi::sdt::dmar::DmarConfig) -> Result
         }),
         agaw,
         max_domains,
-        root_table,
-        tables,
+        root_table: PAddr::from(0u64),
+        tables: Tables::new(Scope::Unit),
         context_tables: BTreeMap::new(),
         next_domain: 1,
         domains: BTreeMap::new(),
         sources: BTreeMap::new(),
-    })
+    });
+    let unit = owner.value_mut();
+    let mut rollback_private = true;
+    let prepared = (|| {
+        unit.root_table = unit.tables.allocate_frame()?;
+        if unit_initialization::reject_complete() {
+            return Err(Error::MapFailed);
+        }
+        // Firmware-owned backing is never adopted. A disable timeout still
+        // leaves the new root private, but all later uncertainty retains it.
+        rollback_private = false; // Hardware control starts; no initialization replay.
+        write32(base, GCMD, 0);
+        unit_initialization::wait_boundary();
+        wait_gsts_clear(base, GSTS_TES)?;
+        unit_initialization::publication_boundary();
+        unit.tables.publish();
+        write64(base, RTADDR, u64::from(unit.root_table) & ADDR_MASK);
+        write32(base, GCMD, GCMD_SRTP);
+        unit_initialization::wait_boundary();
+        wait_gsts(base, GSTS_RTPS)?;
+        write32(base, GCMD, GCMD_SRTP | GCMD_TE);
+        unit_initialization::wait_boundary();
+        wait_gsts(base, GSTS_TES)?;
+
+        IRQ_MMIO.store(base, Ordering::Release);
+        match crate::device::allocate_msi(0) {
+            Some(msi) => {
+                write32(base, FEADDR, msi.address as u32);
+                write32(base, FEUADDR, (msi.address >> 32) as u32);
+                write32(base, FEDATA, msi.data);
+                write32(base, FECTL, 0);
+                FAULT_INTID.store(msi.intid, Ordering::Release);
+                crate::logln!("[vtd] fault MSI enabled (intid={})", msi.intid);
+            }
+            None => crate::logln!("[vtd] fault MSI unavailable; faults detected via polling"),
+        }
+        crate::logln!(
+            "[vtd] enabled VT-d at {:#x}: segment {}, include-all={}, {} bit AGAW, {} translation \
+             levels",
+            config.base,
+            config.segment,
+            config.include_pci_all,
+            agaw,
+            ((agaw - 12) / 9)
+        );
+        Ok(())
+    })();
+    match prepared {
+        Ok(()) => Ok(owner),
+        Err(error) if rollback_private => Err(Rejected::with_owner(error, owner)),
+        Err(error) => Err(Rejected::retain_owner(error, owner)),
+    }
 }
 
 fn with_unit<R>(f: impl FnOnce(&mut Unit) -> Result<R, Error>) -> Result<R, Error> {
     let mut guard = UNIT.lock();
-    if guard.is_none() {
-        let config =
-            crate::environment::acpi::sdt::dmar::discover_vtd().ok_or(Error::Unsupported)?;
-        *guard = Some(initialize(config)?);
-    }
-    let unit = guard.as_mut().expect("installed DMA unit");
+    // Ordinary operations never initialize hardware beneath their callers'
+    // lifecycle/device/config guards. Only boot claims a vacant unit.
+    let unit = guard.installed()?;
     if unit.commands.is_none() {
         return Err(Error::OperationInFlight);
     }
@@ -537,15 +562,26 @@ fn with_unit<R>(f: impl FnOnce(&mut Unit) -> Result<R, Error>) -> Result<R, Erro
 // No initialization, waiting or physical cleanup occurs under this hold.
 fn with_registered<R>(f: impl FnOnce(&mut Unit) -> Result<R, Error>) -> Result<R, Error> {
     let mut guard = UNIT.lock();
-    f(guard.as_mut().ok_or(Error::Unsupported)?)
+    f(guard.installed()?)
 }
 
 /// Initialize the platform DMA remapping unit before driver domains begin
 /// competing for physical memory. Mirroring the SMMU driver, deferring this to
 /// the first DMA-domain request would make the large root-table allocation
 /// depend on how earlier boot allocations fragmented physical memory.
+#[allow(clippy::result_large_err)] // Keep the complete unit owner inline, without allocation.
+fn prepare_unit() -> Result<super::detached_domain::DetachedDomain<Unit>, Rejected<Unit>> {
+    let config = crate::environment::acpi::sdt::dmar::discover_vtd()
+        .ok_or_else(|| Rejected::before_backing(Error::Unsupported))?;
+    initialize(config)
+}
+
 pub fn initialize_early() -> Result<(), Error> {
-    with_unit(|_| Ok(()))
+    unit_initialization::initialize(&UNIT, prepare_unit, |unit| unit.commands.is_some())
+}
+
+pub(super) fn test_initialization() {
+    unit_initialization::test_real(&UNIT, prepare_unit, 1, 3);
 }
 
 pub fn stream_id(requester_id: u32) -> Result<u32, Error> {

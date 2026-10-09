@@ -1063,6 +1063,21 @@ Complete-grant Drop under held guards and injected second-frame release failure
 retain both exact roots/reservations; repeat release adapters must never run.
 See [private rollback evidence](../reports/audits/2026-10-09-security-dma-private-rollback.md).
 
+### IOMMU boot initialization ownership
+
+Before ordinary installation, the selected backend rejects each real private
+allocation-region prefix and complete preparation, requiring exact table-charge
+refund and slot-claim release. Actual successful control waits and publication
+check backend/lifecycle/device/CPU-table/heap/physical availability with preserved
+entry IRQ policy. Contiguous device/stream tables are one region; these probes
+do not inject a failure at every page. Repeat installed initialization must not
+run preparation. Synthetic empty/private abandonment under all guards, second-
+frame rejection and uncertain control/published failures retain the complete
+claim/payload: five original unit charges/four frames, no new domain charge.
+These run before AP schedulers leave their boot barrier, and do not simulate
+real hardware timeouts or qualify outstanding I/O, physical devices or boot MMIO
+rollback. See [unit initialization evidence](../reports/audits/2026-10-09-security-iommu-unit-initialization.md).
+
 ### IOMMU table admission and failed-map cleanup
 
 Serialized pre-driver fixtures on Intel VT-d, AMD-Vi and SMMUv3 exercise actual

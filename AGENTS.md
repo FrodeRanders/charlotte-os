@@ -463,7 +463,7 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   without allocating snapshots. Table/region fallback retains original backing,
   charges and ledger storage without entering physical/heap allocators, pools,
   guards or logging, including reservation-only abandonment. Cancel known-private
-  unit/fixture construction explicitly with `cancel_unpublished` /
+  fixture construction explicitly with `cancel_unpublished` /
   `prepare_unpublished`. Production domain constructor errors return complete
   typed private payloads into `DmaCreation`, never physical cancellation or
   metadata destruction under backend guards. Keep the exact grant root and
@@ -481,8 +481,16 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   Physical finalization uses the registered-state hold even while another domain
   owns the engine. Competing destroy rejects a claimed cell, never treats it as
   completed. Physical rejection restores the exact frozen owner without allocation;
-  abandonment retains every field and the claim. Creation/map/unmap/initialization
-  waits, unit-private initialization rollback and allocation/metadata preparation
+  abandonment retains every field and the claim. Boot unit initialization
+  claims its existing typed `UnitState` slot before unlocked preparation,
+  hardware control, waits and private cancellation; ordinary DMA lookup must
+  never lazily initialize. Preserve the complete unit behind `DetachedDomain`
+  before allocation. Clear only a confirmed unstarted/private rollback claim.
+  Started control uncertainty retains the whole unit and claim even before
+  backing publication; published failure, physical rejection and abandonment
+  also never replay initialization. Install only published backing once. Keep
+  the boot caller's outer IRQ policy; unit shutdown/recovery remains absent.
+  Domain creation/map/unmap waits and domain allocation/metadata preparation
   still need phase separation. Intel cannot overwrite
   a busy invalidation register; AMD and SMMU retain their existing exact completion
   and unconsumed queue contracts.

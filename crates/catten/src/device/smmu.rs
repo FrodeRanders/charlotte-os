@@ -22,9 +22,17 @@ use core::{
 
 use spin::LazyLock;
 
-use super::dma_tables::{
-    Scope,
-    Tables,
+use super::{
+    dma_tables::{
+        Scope,
+        Tables,
+    },
+    unit_initialization::{
+        self,
+        Rejected,
+        UnitBacking,
+        UnitState,
+    },
 };
 use crate::{
     cpu::{
@@ -174,7 +182,13 @@ struct Smmu {
     streams: BTreeMap<u32, u64>,
 }
 
-static SMMU: LazyLock<Mutex<Option<Smmu>>> = LazyLock::new(|| Mutex::new(None));
+impl UnitBacking for Smmu {
+    fn tables(&mut self) -> &mut Tables {
+        &mut self._tables
+    }
+}
+
+static SMMU: LazyLock<Mutex<UnitState<Smmu>>> = LazyLock::new(|| Mutex::new(UnitState::Vacant));
 
 fn read32(base: usize, offset: usize) -> u32 {
     unsafe { ptr::read_volatile((base + offset) as *const u32) }
@@ -472,103 +486,120 @@ impl Smmu {
     }
 }
 
-fn initialize(mut config: SmmuV3Config) -> Result<Smmu, Error> {
+#[allow(clippy::result_large_err)] // Keep the complete unit owner inline, without allocation.
+fn initialize(
+    mut config: SmmuV3Config,
+) -> Result<super::detached_domain::DetachedDomain<Smmu>, Rejected<Smmu>> {
     if !config.coherent {
         // Non-coherent table walks require explicit cache maintenance, which
         // this first implementation intentionally does not pretend to offer.
-        return Err(Error::Unsupported);
+        return Err(Rejected::before_backing(Error::Unsupported));
     }
     let mut current = AddressSpace::get_current();
-    current.map_mmio_region(config.base, 0x2_0000).map_err(|_| Error::MapFailed)?;
+    current
+        .map_mmio_region(config.base, 0x2_0000)
+        .map_err(|_| Rejected::before_backing(Error::MapFailed))?;
     let physical_base = config.base;
     config.base = unsafe { PAddr::from(physical_base as u64).into_hhdm_ptr::<u8>() } as usize;
     let idr0 = read32(config.base, IDR0);
     let idr1 = read32(config.base, IDR1);
     let idr5 = read32(config.base, IDR5);
     if idr0 & (1 << 1) == 0 || idr5 & (1 << 4) == 0 {
-        return Err(Error::Unsupported);
+        return Err(Rejected::before_backing(Error::Unsupported));
     }
     let sid_bits = (idr1 & 0x3f) as u8;
     if sid_bits == 0 || sid_bits > 16 || idr1 & ((1 << 30) | (1 << 29)) != 0 {
-        return Err(Error::Unsupported);
+        return Err(Rejected::before_backing(Error::Unsupported));
     }
     let entries = 1usize << sid_bits;
-    let strtab_bytes = entries.checked_mul(STE_SIZE).ok_or(Error::MapFailed)?;
+    let strtab_bytes =
+        entries.checked_mul(STE_SIZE).ok_or_else(|| Rejected::before_backing(Error::MapFailed))?;
     let strtab_frames = strtab_bytes.div_ceil(PAGE_SIZE);
-    let (mut tables, (strtab, cmdq, eventq)) =
-        Tables::prepare_unpublished(Scope::Unit, |tables| {
-            let strtab =
-                tables.allocate(strtab_frames, strtab_bytes.next_power_of_two().max(PAGE_SIZE))?;
-            for sid in 0..entries {
-                let ste = unsafe { strtab.into_hhdm_mut::<u64>().add(sid * 8) };
-                unsafe { ptr::write_volatile(ste, STE_VALID) };
-            }
-            let cmdq = tables.allocate_frame()?;
-            let eventq = tables.allocate_frame()?;
-            write32(config.base, CR0, 0);
-            wait_ack(config.base, CR0_ACK, 0)?;
-            Ok((strtab, cmdq, eventq))
-        })?;
-    // Inner-shareable WB table and queue walks.
-    write32(config.base, CR1, (3 << 10) | (1 << 8) | (1 << 6) | (3 << 4) | (1 << 2) | 1);
-    write32(config.base, CR2, (1 << 2) | (1 << 1));
-    tables.publish();
-    write64(config.base, STRTAB_BASE, u64::from(strtab) | (1 << 62));
-    write32(config.base, STRTAB_BASE_CFG, sid_bits as u32);
-    write64(config.base, CMDQ_BASE, u64::from(cmdq) | 8);
-    write32(config.base, CMDQ_PROD, 0);
-    write32(config.base, CMDQ_CONS, 0);
-    write64(config.base, EVTQ_BASE, u64::from(eventq) | 7);
-    write32(config.base, EVTQ_PROD, 0);
-    write32(config.base, EVTQ_CONS, 0);
-    barrier();
-    write32(config.base, CR0, CR0_CMDQEN);
-    wait_ack(config.base, CR0_ACK, CR0_CMDQEN)?;
-
-    let mut smmu = Smmu {
+    let mut owner = super::detached_domain::DetachedDomain::new(Smmu {
         commands: Some(Commands {
             base: config.base,
-            cmdq,
+            cmdq: PAddr::from(0u64),
             cmd_prod: 0,
         }),
         sid_bits,
         oas: (idr5 & 7) as u8,
-        strtab,
-        _tables: tables,
+        strtab: PAddr::from(0u64),
+        _tables: Tables::new(Scope::Unit),
         next_domain: 1,
         domains: BTreeMap::new(),
         streams: BTreeMap::new(),
-    };
-    smmu.issue([0x04, 0])?;
-    smmu.issue([0x30, 0])?;
-    smmu.sync()?;
-    write32(config.base, CR0, CR0_CMDQEN | CR0_EVTQEN | CR0_SMMUEN);
-    wait_ack(config.base, CR0_ACK, CR0_CMDQEN | CR0_EVTQEN | CR0_SMMUEN)?;
-    write32(config.base, IRQ_CTRL, IRQ_EVTQ | IRQ_GERROR);
-    wait_ack(config.base, IRQ_CTRL_ACK, IRQ_EVTQ | IRQ_GERROR)?;
-
-    IRQ_MMIO.store(config.base, Ordering::Release);
-    IRQ_EVENTQ.store(u64::from(eventq), Ordering::Release);
-    IRQ_EVENT_INTID.store(config.event_intid, Ordering::Release);
-    IRQ_GERROR_INTID.store(config.gerror_intid, Ordering::Release);
-    crate::cpu::isa::interrupts::gic::enable_spi(config.event_intid, 0);
-    crate::cpu::isa::interrupts::gic::enable_spi(config.gerror_intid, 0);
-    crate::logln!(
-        "[smmu] enabled SMMUv3 at {:#x}: {} StreamID bits, 4 KiB stage-1 translation",
-        physical_base,
-        sid_bits
-    );
-    Ok(smmu)
+    });
+    let smmu = owner.value_mut();
+    let mut rollback_private = true;
+    let prepared = (|| {
+        smmu.strtab = smmu
+            ._tables
+            .allocate(strtab_frames, strtab_bytes.next_power_of_two().max(PAGE_SIZE))?;
+        for sid in 0..entries {
+            let ste = unsafe { smmu.strtab.into_hhdm_mut::<u64>().add(sid * 8) };
+            unsafe { ptr::write_volatile(ste, STE_VALID) };
+        }
+        smmu.commands.as_mut().unwrap().cmdq = smmu._tables.allocate_frame()?;
+        let eventq = smmu._tables.allocate_frame()?;
+        if unit_initialization::reject_complete() {
+            return Err(Error::MapFailed);
+        }
+        rollback_private = false; // Hardware control starts; no initialization replay.
+        write32(config.base, CR0, 0);
+        unit_initialization::wait_boundary();
+        wait_ack(config.base, CR0_ACK, 0)?;
+        // Inner-shareable WB table and queue walks.
+        write32(config.base, CR1, (3 << 10) | (1 << 8) | (1 << 6) | (3 << 4) | (1 << 2) | 1);
+        write32(config.base, CR2, (1 << 2) | (1 << 1));
+        unit_initialization::publication_boundary();
+        smmu._tables.publish();
+        write64(config.base, STRTAB_BASE, u64::from(smmu.strtab) | (1 << 62));
+        write32(config.base, STRTAB_BASE_CFG, sid_bits as u32);
+        write64(config.base, CMDQ_BASE, u64::from(smmu.commands.as_ref().unwrap().cmdq) | 8);
+        write32(config.base, CMDQ_PROD, 0);
+        write32(config.base, CMDQ_CONS, 0);
+        write64(config.base, EVTQ_BASE, u64::from(eventq) | 7);
+        write32(config.base, EVTQ_PROD, 0);
+        write32(config.base, EVTQ_CONS, 0);
+        barrier();
+        write32(config.base, CR0, CR0_CMDQEN);
+        unit_initialization::wait_boundary();
+        wait_ack(config.base, CR0_ACK, CR0_CMDQEN)?;
+        smmu.issue([0x04, 0])?;
+        smmu.issue([0x30, 0])?;
+        unit_initialization::wait_boundary();
+        smmu.sync()?;
+        write32(config.base, CR0, CR0_CMDQEN | CR0_EVTQEN | CR0_SMMUEN);
+        unit_initialization::wait_boundary();
+        wait_ack(config.base, CR0_ACK, CR0_CMDQEN | CR0_EVTQEN | CR0_SMMUEN)?;
+        write32(config.base, IRQ_CTRL, IRQ_EVTQ | IRQ_GERROR);
+        unit_initialization::wait_boundary();
+        wait_ack(config.base, IRQ_CTRL_ACK, IRQ_EVTQ | IRQ_GERROR)?;
+        IRQ_MMIO.store(config.base, Ordering::Release);
+        IRQ_EVENTQ.store(u64::from(eventq), Ordering::Release);
+        IRQ_EVENT_INTID.store(config.event_intid, Ordering::Release);
+        IRQ_GERROR_INTID.store(config.gerror_intid, Ordering::Release);
+        crate::cpu::isa::interrupts::gic::enable_spi(config.event_intid, 0);
+        crate::cpu::isa::interrupts::gic::enable_spi(config.gerror_intid, 0);
+        crate::logln!(
+            "[smmu] enabled SMMUv3 at {:#x}: {} StreamID bits, 4 KiB stage-1 translation",
+            physical_base,
+            sid_bits
+        );
+        Ok(())
+    })();
+    match prepared {
+        Ok(()) => Ok(owner),
+        Err(error) if rollback_private => Err(Rejected::with_owner(error, owner)),
+        Err(error) => Err(Rejected::retain_owner(error, owner)),
+    }
 }
 
 fn with_smmu<R>(f: impl FnOnce(&mut Smmu) -> Result<R, Error>) -> Result<R, Error> {
     let mut guard = SMMU.lock();
-    if guard.is_none() {
-        let config =
-            crate::environment::acpi::sdt::iort::discover_smmuv3().ok_or(Error::Unsupported)?;
-        *guard = Some(initialize(config)?);
-    }
-    let smmu = guard.as_mut().expect("installed DMA unit");
+    // Ordinary operations never initialize hardware beneath their callers'
+    // lifecycle/device/config guards. Only boot claims a vacant unit.
+    let smmu = guard.installed()?;
     if smmu.commands.is_none() {
         return Err(Error::OperationInFlight);
     }
@@ -579,7 +610,7 @@ fn with_smmu<R>(f: impl FnOnce(&mut Smmu) -> Result<R, Error>) -> Result<R, Erro
 // No initialization, waiting or physical cleanup occurs under this hold.
 fn with_registered<R>(f: impl FnOnce(&mut Smmu) -> Result<R, Error>) -> Result<R, Error> {
     let mut guard = SMMU.lock();
-    f(guard.as_mut().ok_or(Error::Unsupported)?)
+    f(guard.installed()?)
 }
 
 /// Initialize the platform SMMU before driver domains begin competing for
@@ -589,8 +620,19 @@ fn with_registered<R>(f: impl FnOnce(&mut Smmu) -> Result<R, Error>) -> Result<R
 /// (4 MiB on QEMU's 16-bit StreamID implementation). Deferring this until an
 /// EL0 driver happens to request its first DMA domain made success depend on
 /// how earlier boot allocations fragmented physical memory.
+#[allow(clippy::result_large_err)] // Keep the complete unit owner inline, without allocation.
+fn prepare_unit() -> Result<super::detached_domain::DetachedDomain<Smmu>, Rejected<Smmu>> {
+    let config = crate::environment::acpi::sdt::iort::discover_smmuv3()
+        .ok_or_else(|| Rejected::before_backing(Error::Unsupported))?;
+    initialize(config)
+}
+
 pub fn initialize_early() -> Result<(), Error> {
-    with_smmu(|_| Ok(()))
+    unit_initialization::initialize(&SMMU, prepare_unit, |unit| unit.commands.is_some())
+}
+
+pub(crate) fn test_initialization() {
+    unit_initialization::test_real(&SMMU, prepare_unit, 3, 5);
 }
 
 pub fn stream_id(requester_id: u32) -> Result<u32, Error> {

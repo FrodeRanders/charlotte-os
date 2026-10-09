@@ -68,8 +68,8 @@ Confirmed maintenance returns the engine before unlocked physical table release.
 The original empty domain cell/nonzero requester fence persists. Physical
 rejection restores the frozen owner without allocation; abandonment retains its
 claim. Physical finalization uses the registered-state hold even if an unrelated
-domain owns the engine. Creation/map/unmap/initialization waits and unit-private
-initialization rollback remain serialized. See the [command-maintenance evidence](../reports/audits/2026-10-09-security-iommu-command-maintenance.md).
+domain owns the engine. Initial domain creation/map/unmap waits remain serialized; boot unit
+initialization and private cancellation now use an unlocked slot claim. See the [command-maintenance evidence](../reports/audits/2026-10-09-security-iommu-command-maintenance.md).
 
 Before a reachable descriptor is published, each backend records its admitted
 domain in `PreparedDmaDomain`'s borrowed `DmaCreation`, alongside the capability
@@ -85,10 +85,20 @@ complete typed private payloads in that same grant; private physical/metadata
 cancellation leaves local guards before release, refund and root completion.
 Physical rejection/abandonment preserves the whole grant and cannot retry freed
 addresses. This needs no hardware maintenance receipt. Initial creation/reset
-waits, unit-private initialization rollback, allocation/preparation and reset
-fallback remain separate serialized boundaries. See the
+waits, domain allocation/preparation and reset fallback remain separate
+serialized boundaries. See the
 [grant rollback evidence](../reports/audits/2026-10-09-security-dma-grant-rollback.md)
 and [published-creation follow-up](../reports/audits/2026-10-09-security-dma-creation-rollback.md).
+
+Boot unit initialization now claims the existing typed slot before unlocked
+allocation, preparation, control and waits. Ordinary backend lookup never lazily
+initializes hardware. Private preparation rejection cancels the whole payload
+before clearing its claim. Once a hardware control write starts, any error
+retains the complete unit and claim, including disable uncertainty before new
+backing publication. Partial release and abandonment also stay fenced; no
+hardware initialization replay, shutdown or custody controller is supplied.
+The boot caller's outer IRQ policy remains unchanged. See the
+[unit initialization evidence](../reports/audits/2026-10-09-security-iommu-unit-initialization.md).
 
 ## Requester reset and reassignment
 

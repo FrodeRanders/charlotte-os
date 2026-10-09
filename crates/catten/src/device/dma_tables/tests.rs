@@ -88,6 +88,7 @@ pub(super) fn run() {
     super::super::dma::test_command_engines();
     assert_eq!(used(), command_charges);
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), command_free);
+    super::super::unit_initialization::test_admission();
     crate::logln!(
         "[IOMMU admission] node/domain/unit limits, private rollback, partial release fence and \
          cached sparse walkers passed; original release fixtures retain 5 charged pages/3 frames"
@@ -96,3 +97,7 @@ pub(super) fn run() {
 
 mod detached_tests;
 mod preparation_tests;
+
+pub(super) fn drop_under_guards(action: impl FnOnce()) {
+    preparation_tests::drop_under_guards(action);
+}

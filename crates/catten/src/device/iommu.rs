@@ -33,6 +33,14 @@ pub fn initialize_early() -> Result<(), Error> {
     }
 }
 
+pub(crate) fn test_initialization() {
+    match detect() {
+        Ok(Backend::Vtd) => super::vt_d::test_initialization(),
+        Ok(Backend::AmdVi) => super::amd_vi::test_initialization(),
+        Err(_) => {}
+    }
+}
+
 pub fn stream_id(requester_id: u32) -> Result<u32, Error> {
     match detect()? {
         Backend::Vtd => super::vt_d::stream_id(requester_id),
