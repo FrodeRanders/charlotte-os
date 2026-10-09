@@ -186,6 +186,16 @@ data frames and an exact root/reservation. Table-only intentional totals are
 VT-d **38/29**, AMD-Vi **34/25**, SMMUv3 **40/31** charges/frames. General metadata
 admission, inner fallback and all wider caller contexts remain separate work.
 
+Explicit DMA close now keeps its admitted device record claimed through backend
+retirement, with the same exact-root `DmaOperation` as map/unmap. Ordinary failure
+preserves authority and completes that public claim without metadata extraction/
+reinsertion; confirmed backend success precedes authority/payload removal and
+root completion. Abandonment retains the claim/root, while the backend's own
+typed complete owner retains unfinished backing. Partial physical release remains
+terminal. The [close-claim evidence](../reports/audits/2026-10-09-security-dma-close-claim.md)
+adds no intentional table/data/root retention. General grant metadata admission
+and confirmed-success registry-node destruction remain separate work.
+
 ## Evidence and limits
 
 Serialized boot fixtures check node/subpool accounting, rejection before an

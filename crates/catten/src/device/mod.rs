@@ -1383,6 +1383,15 @@ fn close_cap_with(
     cap: DeviceCap,
     after_claim: impl FnOnce(),
 ) -> Result<(), DeviceError> {
+    let is_dma = matches!(
+        DEVICES.lock().get(&asid).and_then(|caps| caps.caps.get(&cap)),
+        Some(DeviceObject::DmaDomain { .. })
+    );
+    if is_dma {
+        // Classification borrows only metadata; the shared operation owner
+        // revalidates authority and admits the exact root before claiming.
+        return mapping::close_with(asid, cap, after_claim, dma::destroy_domain);
+    }
     // Retain the exact root while closing may invalidate user mappings. Missing
     // handles are only used by kernel fixtures; syscall callers always name a
     // live address space.
@@ -1438,7 +1447,10 @@ fn close_cap_inner(
                 assert!(revoked, "MMIO close authority was absent");
                 DeviceObject::Mmio(*region)
             }
-            Some(_) => caps.caps.remove(&cap).unwrap(),
+            Some(DeviceObject::DmaDomain {
+                ..
+            }) => return Err(DeviceError::WrongType),
+            Some(DeviceObject::Interrupt(_)) => caps.caps.remove(&cap).unwrap(),
             None => return Err(DeviceError::UnknownCapability),
         };
         if let DeviceObject::Interrupt(irq) = &object {
@@ -1485,15 +1497,8 @@ fn close_cap_inner(
         }
         DeviceObject::Interrupt(_) => {}
         DeviceObject::DmaDomain {
-            id,
             ..
-        } => {
-            if dma::destroy_domain(id).is_err() {
-                let mut devices = DEVICES.lock();
-                devices.entry(asid).or_insert_with(AsDeviceCaps::new).caps.insert(cap, object);
-                return Err(DeviceError::DmaInvalid);
-            }
-        }
+        } => unreachable!("DMA close uses its admitted claim owner"),
     }
     if !mmio_close {
         let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Device);

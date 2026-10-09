@@ -119,6 +119,41 @@ fn mapping_unlocked(
     );
 }
 
+fn close_claim(root: crate::memory::AddressSpaceHandle, cap: DeviceCap, irq: bool) {
+    assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
+    assert_available(|| DEVICES.try_lock().is_some(), "close device registry");
+    assert_available(
+        || crate::memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_some(),
+        "close lifecycle",
+    );
+    assert_available(
+        || crate::memory::ADDRESS_SPACE_TABLE.try_lock().is_some(),
+        "close root table",
+    );
+    assert_available(
+        || crate::memory::PHYSICAL_FRAME_ALLOCATOR.try_lock().is_some(),
+        "close physical allocator",
+    );
+    assert_available(
+        || crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.try_lock().is_some(),
+        "close heap",
+    );
+    assert_eq!(close_cap(root.id(), cap), Err(DeviceError::OperationInFlight));
+    assert_eq!(dma_unmap(root.id(), cap, 0), Err(DeviceError::OperationInFlight));
+    assert_eq!(
+        crate::memory::close_user_address_space_handle(root),
+        Err(crate::memory::AddressSpaceCloseError::OperationsInFlight)
+    );
+    assert!(crate::capability::contains(root.id(), cap, crate::capability::ObjectKind::Device));
+    assert!(matches!(
+        DEVICES.lock()[&root.id()].caps[&cap],
+        DeviceObject::DmaDomain {
+            operation_in_flight: true,
+            ..
+        }
+    ));
+}
+
 pub(crate) fn run() {
     let Some((base, requester)) =
         crate::device_management::drivers::busses::pci_express::topology::reset::test_target(
@@ -187,7 +222,17 @@ pub(crate) fn run() {
     }
     let live = dma_tables::used();
     REJECT_RETIREMENT.store(true, Ordering::Release);
-    assert_eq!(close_cap(owner.id(), domain), Err(DeviceError::DmaInvalid));
+    let charged = crate::capability::admission_tests::test_namespace_used(owner.id());
+    let cell = {
+        let devices = DEVICES.lock();
+        &devices[&owner.id()].caps[&domain] as *const DeviceObject
+    };
+    assert_eq!(
+        close_cap_with(owner.id(), domain, || close_claim(owner, domain, irq)),
+        Err(DeviceError::DmaInvalid)
+    );
+    assert_eq!(crate::capability::admission_tests::test_namespace_used(owner.id()), charged);
+    assert_eq!(&DEVICES.lock()[&owner.id()].caps[&domain] as *const DeviceObject, cell);
     assert!(!REJECT_RETIREMENT.load(Ordering::Acquire));
     assert_eq!(dma_tables::used(), live);
     assert_eq!(
@@ -207,110 +252,138 @@ pub(crate) fn run() {
         id
     };
     let irq_state = crate::cpu::isa::lp::ops::get_int_state();
-    dma::destroy_domain_at(
-        id,
-        || {
-            // The actual engine is exclusively moved. Check before any hardware
-            // completion; no other domain/reset may mutate its shared command state.
-            assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq_state);
-            dma::test_assert_backend_available();
-            assert_available(
-                || crate::memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_some(),
-                "maintenance lifecycle availability",
-            );
-            assert_available(
-                || DEVICES.try_lock().is_some(),
-                "maintenance device registry availability",
-            );
-            assert_available(
-                || crate::memory::PHYSICAL_FRAME_ALLOCATOR.try_lock().is_some(),
-                "maintenance physical allocator availability",
-            );
-            assert_available(
+    mapping::close_with(
+        owner.id(),
+        domain,
+        || close_claim(owner, domain, irq_state),
+        |claimed| {
+            assert_eq!(claimed, id);
+            dma::destroy_domain_at(
+                id,
                 || {
-                    crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR
-                        .try_lock()
-                        .is_some()
+                    close_claim(owner, domain, irq_state);
+                    // The actual engine is exclusively moved. Check before any hardware
+                    // completion; no other domain/reset may mutate its shared command state.
+                    assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq_state);
+                    dma::test_assert_backend_available();
+                    assert_available(
+                        || crate::memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_some(),
+                        "maintenance lifecycle availability",
+                    );
+                    assert_available(
+                        || DEVICES.try_lock().is_some(),
+                        "maintenance device registry availability",
+                    );
+                    assert_available(
+                        || crate::memory::PHYSICAL_FRAME_ALLOCATOR.try_lock().is_some(),
+                        "maintenance physical allocator availability",
+                    );
+                    assert_available(
+                        || {
+                            crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR
+                                .try_lock()
+                                .is_some()
+                        },
+                        "maintenance heap allocator availability",
+                    );
+                    assert_eq!(dma_tables::used(), live);
+                    assert_eq!(dma::initialize_early(), Err(dma::Error::OperationInFlight));
+                    assert_eq!(dma::destroy_domain(id), Err(dma::Error::OperationInFlight));
+                    assert_eq!(dma::destroy_domain(u64::MAX), Err(dma::Error::OperationInFlight));
+                    assert_eq!(dma::unmap(id, address), Err(dma::Error::OperationInFlight));
+                    assert_eq!(
+                        dma::map(
+                            id,
+                            owner.id(),
+                            memory,
+                            dma::Direction::from_bits(3).unwrap(),
+                            false
+                        ),
+                        Err(dma::Error::OperationInFlight)
+                    );
+                    for sid in [requester, u32::MAX] {
+                        assert_eq!(
+                            dma::create_domain_with_reset(
+                                sid,
+                                None,
+                                &mut DmaCreation::new(),
+                                |_, _| panic!("claimed engine reached reset")
+                            ),
+                            Err(dma::Error::OperationInFlight)
+                        );
+                    }
+                    assert_eq!(
+                        object::try_close_cap(owner.id(), memory),
+                        Err(object::MemoryObjectError::LendingActive)
+                    );
+                    assert_eq!(dma_tables::used(), live);
                 },
-                "maintenance heap allocator availability",
-            );
-            assert_eq!(dma_tables::used(), live);
-            assert_eq!(dma::initialize_early(), Err(dma::Error::OperationInFlight));
-            assert_eq!(dma::destroy_domain(id), Err(dma::Error::OperationInFlight));
-            assert_eq!(dma::destroy_domain(u64::MAX), Err(dma::Error::OperationInFlight));
-            assert_eq!(dma::unmap(id, address), Err(dma::Error::OperationInFlight));
-            assert_eq!(
-                dma::map(id, owner.id(), memory, dma::Direction::from_bits(3).unwrap(), false),
-                Err(dma::Error::OperationInFlight)
-            );
-            for sid in [requester, u32::MAX] {
-                assert_eq!(
-                    dma::create_domain_with_reset(
-                        sid,
-                        None,
-                        &mut DmaCreation::new(),
-                        |_, _| panic!("claimed engine reached reset")
-                    ),
-                    Err(dma::Error::OperationInFlight)
-                );
-            }
-            assert_eq!(
-                object::try_close_cap(owner.id(), memory),
-                Err(object::MemoryObjectError::LendingActive)
-            );
-            assert_eq!(dma_tables::used(), live);
-        },
-        || {
-            // This exact boundary is after real hardware maintenance, before any
-            // table release or data unpin. No acknowledgement is fabricated.
-            assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq_state);
-            dma::test_assert_backend_available();
-            assert_available(
-                || crate::memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_some(),
-                "DMA release lifecycle availability",
-            );
-            assert_available(
-                || DEVICES.try_lock().is_some(),
-                "DMA release device registry availability",
-            );
-            assert_available(
-                || crate::memory::PHYSICAL_FRAME_ALLOCATOR.try_lock().is_some(),
-                "DMA release physical allocator availability",
-            );
-            assert_available(
                 || {
-                    crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR
-                        .try_lock()
-                        .is_some()
+                    close_claim(owner, domain, irq_state);
+                    // This exact boundary is after real hardware maintenance, before any
+                    // table release or data unpin. No acknowledgement is fabricated.
+                    assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq_state);
+                    dma::test_assert_backend_available();
+                    assert_available(
+                        || crate::memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_some(),
+                        "DMA release lifecycle availability",
+                    );
+                    assert_available(
+                        || DEVICES.try_lock().is_some(),
+                        "DMA release device registry availability",
+                    );
+                    assert_available(
+                        || crate::memory::PHYSICAL_FRAME_ALLOCATOR.try_lock().is_some(),
+                        "DMA release physical allocator availability",
+                    );
+                    assert_available(
+                        || {
+                            crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR
+                                .try_lock()
+                                .is_some()
+                        },
+                        "DMA release heap allocator availability",
+                    );
+                    assert_eq!(dma_tables::used(), live);
+                    assert_eq!(dma::destroy_domain(id), Err(dma::Error::UnknownDomain));
+                    assert_eq!(dma::unmap(id, address), Err(dma::Error::UnknownDomain));
+                    assert_eq!(
+                        dma::map(
+                            id,
+                            owner.id(),
+                            memory,
+                            dma::Direction::from_bits(3).unwrap(),
+                            false
+                        ),
+                        Err(dma::Error::UnknownDomain)
+                    );
+                    assert_eq!(
+                        dma::create_domain_with_reset(
+                            requester,
+                            None,
+                            &mut DmaCreation::new(),
+                            |_, _| panic!("claimed requester reached reset")
+                        ),
+                        Err(dma::Error::OperationInFlight)
+                    );
+                    assert_eq!(
+                        object::try_close_cap(owner.id(), memory),
+                        Err(object::MemoryObjectError::LendingActive)
+                    );
+                    assert_eq!(dma_tables::used(), live);
                 },
-                "DMA release heap allocator availability",
-            );
-            assert_eq!(dma_tables::used(), live);
-            assert_eq!(dma::destroy_domain(id), Err(dma::Error::UnknownDomain));
-            assert_eq!(dma::unmap(id, address), Err(dma::Error::UnknownDomain));
-            assert_eq!(
-                dma::map(id, owner.id(), memory, dma::Direction::from_bits(3).unwrap(), false),
-                Err(dma::Error::UnknownDomain)
-            );
-            assert_eq!(
-                dma::create_domain_with_reset(
-                    requester,
-                    None,
-                    &mut DmaCreation::new(),
-                    |_, _| panic!("claimed requester reached reset")
-                ),
-                Err(dma::Error::OperationInFlight)
-            );
-            assert_eq!(
-                object::try_close_cap(owner.id(), memory),
-                Err(object::MemoryObjectError::LendingActive)
-            );
-            assert_eq!(dma_tables::used(), live);
+            )
         },
     )
     .unwrap();
-    // Complete the still-owned fixture capability only after backend success.
-    close_cap(owner.id(), domain).unwrap();
+    assert_eq!(close_cap(owner.id(), domain), Err(DeviceError::UnknownCapability));
+    assert_eq!(crate::capability::admission_tests::test_namespace_used(owner.id()), charged - 1);
+    assert!(!DEVICES.lock()[&owner.id()].caps.contains_key(&domain));
+    crate::logln!(
+        "[DMA close recovery] original payload cell/authority survived actual rejected drain; \
+         public close claim fenced nested close/map/root through real maintenance and physical \
+         release, then confirmed success consumed authority once without reinsertion"
+    );
     assert_eq!(dma_tables::used().1, baseline);
     let successor = crate::service::loader::create_user_address_space_handle();
     assert_eq!(grant_dma_domain(successor.id(), requester, None), Err(DeviceError::DmaUnavailable));

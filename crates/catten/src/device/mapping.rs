@@ -1,4 +1,4 @@
-//! Public DMA operations lease their exact root and claim the capability;
+//! Public DMA map/unmap/close lease their exact root and claim the capability;
 //! backend maintenance separately owns the actual domain/engine and data pin.
 use super::{
     detached_domain::{
@@ -100,6 +100,7 @@ impl DmaOperation {
             })?)
         };
         let claim = (|| {
+            let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
             let mut devices = DEVICES.lock();
             let DeviceObject::DmaDomain {
                 id,
@@ -149,6 +150,56 @@ impl DmaOperation {
             root.release().map_err(operation_error)?;
         }
         Ok(())
+    }
+
+    /// Consume authority only after confirmed backend destruction. Keeping the
+    /// original payload cell claimed avoids extracting/reallocating metadata
+    /// on rejection and fences competing close/namespace cleanup on abandonment.
+    fn complete_close(self) -> Result<(), DeviceError> {
+        {
+            let mut devices = DEVICES.lock();
+            let DeviceObject::DmaDomain {
+                id,
+                operation_in_flight,
+            } = lookup_mut(&mut devices, self.asid, self.cap)?
+            else {
+                return Err(DeviceError::WrongType);
+            };
+            if *id != self.id || !*operation_in_flight {
+                return Err(DeviceError::OperationInFlight);
+            }
+            assert!(crate::capability::remove(
+                self.asid,
+                self.cap,
+                crate::capability::ObjectKind::Device
+            ));
+            devices.get_mut(&self.asid).unwrap().caps.remove(&self.cap).unwrap();
+        }
+        if let Some(root) = core::mem::ManuallyDrop::into_inner(self.root) {
+            root.release().map_err(operation_error)?;
+        }
+        Ok(())
+    }
+}
+
+pub(super) fn close_with(
+    asid: AddressSpaceId,
+    cap: DeviceCap,
+    after_claim: impl FnOnce(),
+    destroy: impl FnOnce(u64) -> Result<(), dma::Error>,
+) -> Result<(), DeviceError> {
+    let operation = DmaOperation::begin(asid, cap)?;
+    after_claim();
+    match destroy(operation.id) {
+        Ok(()) => operation.complete_close(),
+        Err(_) => {
+            // A returned backend error has restored/retained its complete
+            // registered owner. Preserve original authority/payload without
+            // allocation, and finish this ordinary root lease. Frozen physical
+            // backing remains terminal; this does not authorize physical retry.
+            operation.complete()?;
+            Err(DeviceError::DmaInvalid)
+        }
     }
 }
 

@@ -1114,6 +1114,23 @@ metadata, an exact root and the original reservation. These are deterministic
 serialized probes, not cross-LP races or actual hardware timeouts. See the
 [creation-phase evidence](../reports/audits/2026-10-09-security-dma-creation-phases.md).
 
+### DMA close claim and metadata rejection
+
+Synthetic busy, hardware-timeout and physical-error returns run with the actual
+heap held. They require the same device payload address, authority and original
+charge after rejection; nested close/map/unmap and exact-root close must reject
+the live claim. A staged root-close fixture remains Pending until confirmed fake
+backend success consumes authority and completes the older exact lease.
+
+Real QEMU rejection preserves the same payload cell/authority. Subsequent close
+keeps that public claim through actual pre-maintenance/post-drain physical
+boundaries and consumes authority exactly once after confirmed success. Existing
+shared `DmaOperation` guarded abandonment still retains root/claim; no new table,
+data-frame or root-retention fixture is added. Heap-held tests inject error codes,
+not real physical release failures or hardware timeouts. Confirmed-success
+metadata destruction and grant allocation remain open. See the
+[close-claim evidence](../reports/audits/2026-10-09-security-dma-close-claim.md).
+
 ### DMA map/unmap maintenance ownership
 
 The real NVMe fixture probes successful map/unmap and rejected sparse-prefix

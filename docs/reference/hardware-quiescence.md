@@ -118,6 +118,18 @@ availability, preserved IRQ state and competing operations; rejected completion
 is injected, with no outstanding I/O or suppressed hardware acknowledgement.
 See the [mapping-maintenance evidence](../reports/audits/2026-10-09-security-dma-mapping-maintenance.md).
 
+Explicit DMA close now uses that same `DmaOperation` claim and exact root
+through backend destruction. Its original device record remains in place and
+ordinary close/map/unmap or namespace preparation rejects its busy claim.
+Returned backend errors preserve authority and complete the public claim without
+allocating reinsertion; the backend's complete retiring/frozen owner remains
+responsible for backing. Only confirmed destruction permits exact cap/domain
+revalidation and authority/payload consumption, followed by root completion.
+Abandonment retains root/claim; it never unclaims or performs hardware work from
+Drop. A frozen physical owner is still terminal; returning an error does not
+make it retryable. See the [close-claim evidence](../reports/audits/2026-10-09-security-dma-close-claim.md).
+General grant metadata admission and successful node destruction remain open.
+
 ## Requester reset and reassignment
 
 Successful domain destruction leaves a zero-valued requester tombstone in its

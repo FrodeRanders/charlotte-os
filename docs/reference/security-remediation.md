@@ -175,6 +175,14 @@ Real boundary and staged-close fixtures plus guarded synthetic retention qualify
 this scope. General metadata admission, inner fallback/wider contexts,
 concurrency/outstanding I/O and custody remain open. SEC-18 and finding counts
 remain unchanged.
+The [DMA close-claim follow-up](../reports/audits/2026-10-09-security-dma-close-claim.md)
+now keeps the original device record/authority in place through backend destruction,
+using the existing exact-root `DmaOperation`. Ordinary rejection restores the
+public claim without allocating reinsertion; confirmed success consumes authority
+only after backend completion. Abandonment retains root/claim. Heap-held synthetic
+rejection and real maintenance/physical probes qualify this scope; general grant
+metadata admission, successful removal/destruction, wider callers and concurrency
+remain open. SEC-18 and finding counts are unchanged.
 The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.

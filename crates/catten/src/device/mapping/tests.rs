@@ -54,8 +54,92 @@ pub(super) fn run() {
             }
         );
     }
+    let cell = {
+        let devices = DEVICES.lock();
+        &devices[&root.id()].caps[&cap] as *const DeviceObject
+    };
+    let charged = crate::capability::admission_tests::test_namespace_used(root.id());
+    for error in [dma::Error::OperationInFlight, dma::Error::HardwareTimeout, dma::Error::MapFailed]
+    {
+        // The complete rejection path must not allocate or deallocate registry
+        // nodes. Holding the actual heap would deadlock the former extraction/
+        // reinsertion path. All capability/root admission is lookup-only here.
+        let heap = crate::memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+        assert_eq!(
+            close_with(
+                root.id(),
+                cap,
+                || {
+                    assert_eq!(close_cap(root.id(), cap), Err(DeviceError::OperationInFlight));
+                    assert_eq!(dma_unmap(root.id(), cap, 0), Err(DeviceError::OperationInFlight));
+                    assert_eq!(
+                        crate::memory::close_user_address_space_handle(root),
+                        Err(crate::memory::AddressSpaceCloseError::OperationsInFlight)
+                    );
+                    assert!(crate::capability::contains(
+                        root.id(),
+                        cap,
+                        crate::capability::ObjectKind::Device
+                    ));
+                },
+                |id| {
+                    assert_eq!(id, u64::MAX);
+                    Err(error)
+                }
+            ),
+            Err(DeviceError::DmaInvalid)
+        );
+        drop(heap);
+        let devices = DEVICES.lock();
+        assert_eq!(&devices[&root.id()].caps[&cap] as *const DeviceObject, cell);
+        assert!(matches!(
+            devices[&root.id()].caps[&cap],
+            DeviceObject::DmaDomain {
+                id: u64::MAX,
+                operation_in_flight: false
+            }
+        ));
+        drop(devices);
+        assert_eq!(crate::capability::admission_tests::test_namespace_used(root.id()), charged);
+    }
     close_cap(root.id(), cap).unwrap();
     crate::memory::close_user_address_space_handle(root).unwrap();
+
+    // An older close lease may finish through a staged root-close fence. Only
+    // confirmed backend success consumes authority and lets the same closing
+    // owner proceed; it never needs to allocate a replacement capability cell.
+    use crate::memory::retirement::{
+        CloseProgress,
+        ClosingAddressSpace,
+    };
+    let root = crate::service::loader::create_user_address_space_handle();
+    let cap = grant(root);
+    let mut closing = None;
+    close_with(
+        root.id(),
+        cap,
+        || {
+            closing = Some(match ClosingAddressSpace::begin(root).unwrap().poll().unwrap() {
+                CloseProgress::Pending(owner) => owner,
+                CloseProgress::Complete => panic!("DMA close root finished before backend"),
+            });
+            assert!(AddressSpaceOperation::acquire(root).is_err());
+            assert!(crate::capability::contains(
+                root.id(),
+                cap,
+                crate::capability::ObjectKind::Device
+            ));
+        },
+        destroy_fake,
+    )
+    .unwrap();
+    assert!(!crate::capability::contains(root.id(), cap, crate::capability::ObjectKind::Device));
+    assert!(matches!(closing.unwrap().poll().unwrap(), CloseProgress::Complete));
+    crate::logln!(
+        "[DMA close ownership] busy/timeout/physical rejection with heap held preserves the same \
+         payload cell and authority; nested close/map and exact-root close reject; confirmed \
+         close consumes authority before the original staged root completes"
+    );
 
     let root = crate::service::loader::create_user_address_space_handle();
     let cap = grant(root);
