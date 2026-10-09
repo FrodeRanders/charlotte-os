@@ -20,6 +20,7 @@ use super::*;
 std::thread_local! {
     static TRACK: Cell<bool> = const { Cell::new(false) };
     static ALLOCATIONS: Cell<usize> = const { Cell::new(0) };
+    static DEALLOCATIONS: Cell<usize> = const { Cell::new(0) };
 }
 
 struct TracedAllocator;
@@ -51,6 +52,9 @@ unsafe impl GlobalAlloc for TracedAllocator {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        if TRACK.try_with(Cell::get).unwrap_or(false) {
+            let _ = DEALLOCATIONS.try_with(|n| n.set(n.get() + 1));
+        }
         unsafe { System.dealloc(ptr, layout) }
     }
 }
@@ -160,4 +164,53 @@ fn independent_heads_preserve_node_identity_and_owned_payloads() {
     assert_eq!(drops.load(Ordering::Relaxed), 0);
     entry.release();
     assert_eq!(drops.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn ordered_relink_lookup_and_detachment_do_no_allocator_work() {
+    let mut list = RetirementList::new();
+    let entries =
+        [4usize, 1, 3, 2].map(|key| PreparedEntry::try_new().unwrap().publish((key, key * 10)));
+    DEALLOCATIONS.with(|n| n.set(0));
+    without_allocation(|| {
+        for entry in entries {
+            let key = entry.value().0;
+            list.insert_before(entry, |v| v.0 > key);
+        }
+        for (expected, value) in list.iter_mut().enumerate() {
+            assert_eq!(value.0, expected + 1);
+            value.1 += 1;
+        }
+        assert!(list.take_first(|v| v.0 == 5).is_none());
+        let middle = list.take_first(|v| v.0 == 3).unwrap();
+        assert_eq!(middle.value(), &(3, 31));
+        list.insert_before(middle, |v| v.0 > 3);
+        let tail = list.take_first(|v| v.0 == 4).unwrap();
+        list.insert_before(tail, |_| false);
+    });
+    assert_eq!(DEALLOCATIONS.with(Cell::get), 0);
+    for expected in 1..=4 {
+        let entry = list.pop().unwrap();
+        assert_eq!(entry.value(), &(expected, expected * 10 + 1));
+        entry.release();
+    }
+    assert!(list.is_empty());
+}
+
+#[test]
+fn ordered_detached_owner_and_list_abandonment_do_no_allocator_work() {
+    let drops = Arc::new(AtomicUsize::new(0));
+    let mut list = RetirementList::new();
+    for key in [2, 1, 3] {
+        let entry = PreparedEntry::try_new().unwrap().publish(Tracked(key, drops.clone()));
+        list.insert_before(entry, |v| v.0 > key);
+    }
+    let node = list.take_first(|v| v.0 == 2).unwrap();
+    DEALLOCATIONS.with(|n| n.set(0));
+    without_allocation(|| {
+        drop(node);
+        drop(list);
+    });
+    assert_eq!(DEALLOCATIONS.with(Cell::get), 0);
+    assert_eq!(drops.load(Ordering::Relaxed), 0);
 }

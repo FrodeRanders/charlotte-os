@@ -120,6 +120,54 @@ impl<T> RetirementList<T> {
             node.value.as_ref()
         })
     }
+
+    /// Relink admitted nodes in caller-defined order without allocating.
+    pub(crate) fn insert_before(
+        &mut self,
+        entry: RetiredEntry<T>,
+        mut before: impl FnMut(&T) -> bool,
+    ) {
+        let mut link = &mut self.head;
+        while link.as_ref().is_some_and(|node| !before(node.value.as_ref().unwrap())) {
+            link = &mut link.as_mut().unwrap().next;
+        }
+        let mut node = entry.into_node();
+        node.next = link.take();
+        *link = Some(node);
+    }
+
+    /// Detach the owning node; its payload and allocation survive until an
+    /// explicit post-guard release. Rejection leaves the list unchanged.
+    pub(crate) fn take_first(
+        &mut self,
+        mut matches: impl FnMut(&T) -> bool,
+    ) -> Option<RetiredEntry<T>> {
+        let mut link = &mut self.head;
+        while let Some(node) = link.as_ref() {
+            if matches(node.value.as_ref().unwrap()) {
+                let mut node = link.take().unwrap();
+                *link = node.next.take();
+                return Some(RetiredEntry(Some(node)));
+            }
+            link = &mut link.as_mut().unwrap().next;
+        }
+        None
+    }
+
+    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        IterMut(self.head.as_deref_mut())
+    }
+}
+
+struct IterMut<'a, T>(Option<&'a mut Node<T>>);
+impl<'a, T> Iterator for IterMut<'a, T> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let node = self.0.take()?;
+        self.0 = node.next.as_deref_mut();
+        node.value.as_mut()
+    }
 }
 
 impl<T> Default for RetirementList<T> {

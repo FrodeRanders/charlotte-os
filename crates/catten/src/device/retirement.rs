@@ -2,8 +2,6 @@
 //! registry storage is the work list; Drop retains unfinished records without
 //! attempting hardware teardown or releasing authority under unknown guards.
 
-use core::mem::ManuallyDrop;
-
 use super::*;
 use crate::{
     capability::{
@@ -11,6 +9,7 @@ use crate::{
         ObjectKind,
     },
     cpu::isa::interface::memory::AddressSpaceInterface,
+    klib::collections::retirement_list::RetiredEntry,
     memory::{
         AddressSpaceHandle,
         retirement::ClosingAddressSpace,
@@ -20,7 +19,7 @@ use crate::{
 #[must_use]
 pub(crate) struct PreparedNamespaceDevices<'root> {
     root: &'root ClosingAddressSpace,
-    objects: ManuallyDrop<BTreeMap<DeviceCap, DeviceObject>>,
+    objects: Option<RetiredEntry<(AddressSpaceId, AsDeviceCaps)>>,
 }
 
 /// Produced only after every detached device has completed physical cleanup
@@ -59,17 +58,17 @@ impl<'root> PreparedNamespaceDevices<'root> {
         }) {
             return Err(DeviceError::OperationInFlight);
         }
-        let objects = devices.remove(&handle.id()).map(|caps| caps.caps).unwrap_or_default();
+        let objects = devices.take(&handle.id());
         // Remove routes under the registry before another grant can reuse an
         // interrupt source. Hardware completion runs after both guards leave.
-        for object in objects.values() {
+        for object in objects.iter().flat_map(|entry| entry.value().1.caps.values()) {
             if let DeviceObject::Interrupt(irq) = object {
                 unroute_interrupt(irq.intid);
             }
         }
         Ok(Self {
             root,
-            objects: ManuallyDrop::new(objects),
+            objects,
         })
     }
 
@@ -96,7 +95,9 @@ impl<'root> PreparedNamespaceDevices<'root> {
         mut destroy: impl FnMut(u64) -> Result<(), dma::Error>,
     ) -> Result<NamespaceDevicesClosed, DeviceError> {
         let handle = self.root.device_cleanup_handle();
-        while let Some((&cap, &object)) = self.objects.first_key_value() {
+        while let Some((cap, object)) = self.objects.as_ref().and_then(|entry| {
+            entry.value().1.caps.first_key_value().map(|(&cap, &object)| (cap, object))
+        }) {
             match object {
                 DeviceObject::Mmio(region) => {
                     if let Some(base) = region.mapped {
@@ -135,11 +136,15 @@ impl<'root> PreparedNamespaceDevices<'root> {
                 crate::capability::remove(handle.id(), cap, ObjectKind::Device),
                 "retired device was absent from unified capability table"
             );
-            self.objects.pop_first();
+            registry::release(
+                self.objects.as_mut().unwrap().value_mut().1.caps.take(&cap).unwrap(),
+            );
         }
         // Only ordinary confirmed completion destroys the admitted map storage.
         // There is no hardware work, allocation, or cleanup callback in Drop.
-        unsafe { ManuallyDrop::drop(&mut self.objects) };
+        if let Some(entry) = self.objects.take() {
+            registry::release(entry);
+        }
         Ok(NamespaceDevicesClosed {
             handle,
         })

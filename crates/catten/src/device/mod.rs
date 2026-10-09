@@ -44,6 +44,9 @@ mod dma_tables;
 mod domain_creation;
 mod mapping;
 mod private_domain;
+mod publication;
+mod registry;
+use publication::GrantAdmission;
 pub(crate) mod recovery_tests;
 pub(crate) mod retirement;
 mod unit_initialization;
@@ -98,7 +101,6 @@ fn test_reject_unmap_completion() -> bool {
     REJECT_UNMAP_COMPLETION.swap(false, Ordering::AcqRel)
 }
 
-use alloc::collections::BTreeMap;
 use core::sync::atomic::{
     AtomicU32,
     AtomicU64,
@@ -107,6 +109,7 @@ use core::sync::atomic::{
 
 #[cfg(target_arch = "x86_64")]
 use iommu as dma;
+use registry::Map;
 #[cfg(target_arch = "aarch64")]
 use smmu as dma;
 use spin::LazyLock;
@@ -326,19 +329,14 @@ enum DeviceObject {
 
 #[derive(Debug)]
 struct AsDeviceCaps {
-    caps: BTreeMap<DeviceCap, DeviceObject>,
+    caps: Map<DeviceCap, DeviceObject>,
 }
 
 impl AsDeviceCaps {
     fn new() -> Self {
         Self {
-            caps: BTreeMap::new(),
+            caps: Map::new(),
         }
-    }
-
-    fn insert_admitted(&mut self, id: DeviceCap, object: DeviceObject) -> DeviceCap {
-        self.caps.insert(id, object);
-        id
     }
 }
 
@@ -359,8 +357,7 @@ struct PreparedDmaDomain {
 }
 
 struct DmaGrantResources {
-    address_space: Option<AddressSpaceOperation>,
-    reservation: Option<crate::capability::Reservation>,
+    admission: GrantAdmission,
     creation: DmaCreation,
     destroy: fn(u64) -> Result<(), dma::Error>,
 }
@@ -427,20 +424,9 @@ impl PreparedDmaDomain {
         owner: AddressSpaceId,
         destroy: fn(u64) -> Result<(), dma::Error>,
     ) -> Result<Self, DeviceError> {
-        // Admission precedes lifecycle/device/backend guards. Kernel grants
-        // borrow the permanent kernel root; every user grant leases its exact
-        // generation, including failure before hardware creation.
-        let address_space = if owner == crate::memory::KERNEL_ASID {
-            None
-        } else {
-            let handle = crate::memory::current_address_space_handle(owner)
-                .ok_or(DeviceError::NamespaceRetired)?;
-            Some(AddressSpaceOperation::acquire(handle).map_err(operation_error)?)
-        };
         Ok(Self {
             resources: core::mem::ManuallyDrop::new(DmaGrantResources {
-                address_space,
-                reservation: None,
+                admission: GrantAdmission::new(owner)?,
                 creation: DmaCreation::new(),
                 destroy,
             }),
@@ -522,30 +508,16 @@ impl PreparedDmaDomain {
     }
 
     fn validate_publication(&self) -> Result<(), DeviceError> {
-        if let Some(operation) = self.resources.address_space.as_ref() {
-            let handle = operation.handle();
-            let table = crate::memory::ADDRESS_SPACE_TABLE.lock();
-            if table.generation(handle.id()).ok() != Some(handle.generation()) {
-                return Err(DeviceError::NamespaceRetired);
-            }
-            if table.is_closing(handle.id()).unwrap_or(true) {
-                return Err(DeviceError::AddressSpaceClosing);
-            }
-        }
-        Ok(())
+        self.resources.admission.validate_publication()
     }
 
     fn finish(&mut self) -> Result<(), DeviceError> {
-        drop(self.resources.reservation.take());
-        if let Some(address_space) = self.resources.address_space.take() {
-            address_space.release().map_err(operation_error)?;
-        }
-        Ok(())
+        self.resources.admission.finish()
     }
 }
 
-static DEVICES: LazyLock<Mutex<BTreeMap<AddressSpaceId, AsDeviceCaps>>> =
-    LazyLock::new(|| Mutex::new(BTreeMap::new()));
+static DEVICES: LazyLock<Mutex<Map<AddressSpaceId, AsDeviceCaps>>> =
+    LazyLock::new(|| Mutex::new(Map::new()));
 
 // ---- lock-free interrupt delivery state -------------------------------------
 //
@@ -789,32 +761,24 @@ pub fn grant_mmio(
     }
     let byte_len = pages.checked_mul(PAGE_SIZE).ok_or(DeviceError::InvalidRange)?;
     phys_base.checked_add(byte_len).ok_or(DeviceError::InvalidRange)?;
-    let lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
-    let reservation = crate::capability::reserve_in_lifecycle(
-        owner,
-        crate::capability::ObjectKind::Device,
-        &lifecycle,
-    )
-    .map_err(admission_error)?;
-    let mut devices = DEVICES.lock();
-    if reset_range_claimed(phys_base, byte_len) {
-        drop(devices);
-        drop(lifecycle);
-        drop(reservation);
-        return Err(DeviceError::OperationInFlight);
-    }
-    let cap = reservation.publish().map_err(admission_error)?;
-    let caps = devices.entry(owner).or_insert_with(AsDeviceCaps::new);
-    Ok(caps.insert_admitted(
-        cap,
-        DeviceObject::Mmio(MmioRegion {
-            phys_base,
-            pages,
-            mapped: None,
-            scratch_mapped: false,
-            operation_in_flight: false,
-        }),
-    ))
+    publication::plain(owner, |admission| {
+        let lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+        admission.reserve(&lifecycle)?;
+        let mut devices = DEVICES.lock();
+        if reset_range_claimed(phys_base, byte_len) {
+            return Err(DeviceError::OperationInFlight);
+        }
+        admission.publish(
+            &mut devices,
+            DeviceObject::Mmio(MmioRegion {
+                phys_base,
+                pages,
+                mapped: None,
+                scratch_mapped: false,
+                operation_in_flight: false,
+            }),
+        )
+    })
 }
 
 /// Grant an interrupt source to `owner`. The driver binds it to a completion
@@ -830,31 +794,26 @@ pub fn grant_interrupt(owner: AddressSpaceId, intid: u32) -> Result<DeviceCap, D
     if route_slot(intid).is_none() {
         return Err(DeviceError::InvalidInterrupt);
     }
-    let lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
-    let mut devices = DEVICES.lock();
-    if devices.values().any(|caps| {
-        caps.caps
-            .values()
-            .any(|object| matches!(object, DeviceObject::Interrupt(irq) if irq.intid == intid))
-    }) {
-        return Err(DeviceError::InterruptInUse);
-    }
-    let reservation = crate::capability::reserve_in_lifecycle(
-        owner,
-        crate::capability::ObjectKind::Device,
-        &lifecycle,
-    )
-    .map_err(admission_error)?;
-    let cap = reservation.publish().map_err(admission_error)?;
-    let caps = devices.entry(owner).or_insert_with(AsDeviceCaps::new);
-    Ok(caps.insert_admitted(
-        cap,
-        DeviceObject::Interrupt(InterruptObject {
-            intid,
-            cq: None,
-            target_lp: 0,
-        }),
-    ))
+    publication::plain(owner, |admission| {
+        let lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+        admission.reserve(&lifecycle)?;
+        let mut devices = DEVICES.lock();
+        if devices.values().any(|caps| {
+            caps.caps
+                .values()
+                .any(|object| matches!(object, DeviceObject::Interrupt(irq) if irq.intid == intid))
+        }) {
+            return Err(DeviceError::InterruptInUse);
+        }
+        admission.publish(
+            &mut devices,
+            DeviceObject::Interrupt(InterruptObject {
+                intid,
+                cq: None,
+                target_lp: 0,
+            }),
+        )
+    })
 }
 
 pub fn grant_dma_domain(
@@ -916,7 +875,7 @@ fn reset_range_claimed(base: usize, bytes: usize) -> bool {
 }
 
 fn reset_registers_available(
-    devices: &BTreeMap<AddressSpaceId, AsDeviceCaps>,
+    devices: &Map<AddressSpaceId, AsDeviceCaps>,
     owner: AddressSpaceId,
     base: usize,
     bytes: usize,
@@ -950,14 +909,7 @@ fn grant_dma_domain_with_backend(
         // guards and captures the reservation's matching namespace identity.
         let lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
         prepared.validate_publication()?;
-        prepared.resources.reservation = Some(
-            crate::capability::reserve_in_lifecycle(
-                owner,
-                crate::capability::ObjectKind::Device,
-                &lifecycle,
-            )
-            .map_err(admission_error)?,
-        );
+        prepared.resources.admission.reserve(&lifecycle)?;
         drop(lifecycle);
         create(&mut prepared.resources.creation)?;
         // Recheck the captured generation/closing state before device
@@ -966,23 +918,13 @@ fn grant_dma_domain_with_backend(
         prepared.validate_publication()?;
         let id = prepared.resources.creation.id.expect("successful DMA creation without owner");
         let mut devices = DEVICES.lock();
-        let reservation = prepared.resources.reservation.as_mut().unwrap();
-        let cap = reservation.identity();
-        // Borrow publication so rejection cannot implicitly destroy a staged
-        // reservation under lifecycle/device guards before hardware rollback.
-        crate::capability::publish_batch(&mut [crate::capability::Publication {
-            destination: reservation,
-            source: None,
-        }])
-        .map_err(admission_error)?;
-        let caps = devices.entry(owner).or_insert_with(AsDeviceCaps::new);
-        Ok(caps.insert_admitted(
-            cap,
+        prepared.resources.admission.publish(
+            &mut devices,
             DeviceObject::DmaDomain {
                 id,
                 operation_in_flight: true,
             },
-        ))
+        )
     })();
     match result {
         Ok(cap) => {
@@ -1198,7 +1140,7 @@ fn mmio_map_any_with_operation(
 }
 
 fn map_mmio_at(
-    devices: &mut impl core::ops::DerefMut<Target = BTreeMap<AddressSpaceId, AsDeviceCaps>>,
+    devices: &mut impl core::ops::DerefMut<Target = Map<AddressSpaceId, AsDeviceCaps>>,
     asid: AddressSpaceId,
     cap: DeviceCap,
     mapping: MmioMapping,
@@ -1421,7 +1363,7 @@ fn close_cap_inner(
     after_claim: impl FnOnce(),
 ) -> Result<(), DeviceError> {
     let lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
-    let object = {
+    let (object, mut retired) = {
         let mut devices = DEVICES.lock();
         if matches!(
             devices.get(&asid).and_then(|caps| caps.caps.get(&cap)),
@@ -1436,7 +1378,7 @@ fn close_cap_inner(
             return Err(DeviceError::OperationInFlight);
         }
         let caps = devices.get_mut(&asid).ok_or(DeviceError::UnknownCapability)?;
-        let object = match caps.caps.get_mut(&cap) {
+        let (object, retired) = match caps.caps.get_mut(&cap) {
             Some(DeviceObject::Mmio(region)) => {
                 // Preserve the reset-visible descriptor throughout the unlocked
                 // physical interval. Only the exclusive close claim may use
@@ -1445,12 +1387,15 @@ fn close_cap_inner(
                 let revoked =
                     crate::capability::remove(asid, cap, crate::capability::ObjectKind::Device);
                 assert!(revoked, "MMIO close authority was absent");
-                DeviceObject::Mmio(*region)
+                (DeviceObject::Mmio(*region), None)
             }
             Some(DeviceObject::DmaDomain {
                 ..
             }) => return Err(DeviceError::WrongType),
-            Some(DeviceObject::Interrupt(_)) => caps.caps.remove(&cap).unwrap(),
+            Some(DeviceObject::Interrupt(_)) => {
+                let node = caps.caps.take(&cap).unwrap();
+                (node.value().1, Some(node))
+            }
             None => return Err(DeviceError::UnknownCapability),
         };
         if let DeviceObject::Interrupt(irq) = &object {
@@ -1459,7 +1404,7 @@ fn close_cap_inner(
             // route that this teardown then disables.
             unroute_interrupt(irq.intid);
         }
-        object
+        (object, retired)
     };
     // Authority is detached. MMIO retains a claimed reset-visible descriptor;
     // all physical work is exclusively owned here. Root close waits on the
@@ -1487,13 +1432,15 @@ fn close_cap_inner(
                     return Err(DeviceError::UnmapFailed);
                 }
             }
-            DEVICES
-                .lock()
-                .get_mut(&asid)
-                .expect("leased device namespace")
-                .caps
-                .remove(&cap)
-                .expect("claimed MMIO disappeared");
+            retired = Some(
+                DEVICES
+                    .lock()
+                    .get_mut(&asid)
+                    .expect("leased device namespace")
+                    .caps
+                    .take(&cap)
+                    .expect("claimed MMIO disappeared"),
+            );
         }
         DeviceObject::Interrupt(_) => {}
         DeviceObject::DmaDomain {
@@ -1503,6 +1450,9 @@ fn close_cap_inner(
     if !mmio_close {
         let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Device);
         assert!(revoked, "device payload capability was absent from unified table");
+    }
+    if let Some(node) = retired {
+        registry::release(node);
     }
     Ok(())
 }
@@ -1609,7 +1559,7 @@ pub fn drain_deferred_wakes() -> usize {
 // ---- helpers ---------------------------------------------------------------
 
 fn lookup_mut(
-    devices: &mut BTreeMap<AddressSpaceId, AsDeviceCaps>,
+    devices: &mut Map<AddressSpaceId, AsDeviceCaps>,
     asid: AddressSpaceId,
     cap: DeviceCap,
 ) -> Result<&mut DeviceObject, DeviceError> {

@@ -128,7 +128,12 @@ revalidation and authority/payload consumption, followed by root completion.
 Abandonment retains root/claim; it never unclaims or performs hardware work from
 Drop. A frozen physical owner is still terminal; returning an error does not
 make it retryable. See the [close-claim evidence](../reports/audits/2026-10-09-security-dma-close-claim.md).
-General grant metadata admission and successful node destruction remain open.
+Device payload/namespace metadata now prepares fallibly in shared `GrantAdmission`
+before local guards/hardware and detaches into post-guard owning disposal. The
+original grant retains unused nodes through reset uncertainty or abandonment;
+confirmed backend cleanup still precedes their release. Unified capability-table
+and backend registry metadata remain separate. See the
+[device-storage evidence](../reports/audits/2026-10-09-security-device-registry-storage.md).
 
 ## Requester reset and reassignment
 

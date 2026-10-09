@@ -118,7 +118,16 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   hidden or borrowed sources reject before loan mutation and retain their
   original queue/call ownership.
   Device grants take lifecycle before device/backend registries, reserve before
-  hardware creation and retain a `PreparedDmaDomain` until publication. Release
+  hardware creation and retain a `PreparedDmaDomain` until publication. All
+  MMIO/IRQ/DMA grants share `GrantAdmission`: capture the exact root and prepare
+  both namespace/capability nodes fallibly before local publication guards or
+  hardware. Keep their admitted storage and reservation inside that owner;
+  publication only relinks prepared retirement-list nodes under `DEVICES`.
+  Dispose unused storage/reservation metadata explicitly after guards leave.
+  Detach successful close/namespace nodes into `RetiredEntry` owners and release
+  outside lifecycle/device guards; abandonment retains the nodes without field
+  deallocation. Unified capability-table metadata and IOMMU backend registry
+  storage remain separate admission/destruction boundaries. Release
   lifecycle after exact root/reservation admission; revalidate the captured root
   generation and closing state under lifecycle before capability publication. DMA
   publication preparation owns the exact root operation and capability
@@ -340,6 +349,8 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   MMIO invalidation, scratch completion or DMA destruction. Release device
   authority only after confirmed cleanup. Failure/abandonment retains unfinished
   records, authority, scratch and the closing root; no physical cleanup in Drop.
+  The detached namespace node owns its original ordered capability list; never
+  copy it into a teardown snapshot or free its backing below registry guards.
   Require the exact completion receipt before progressing to IPC loan cleanup.
   Loan revocation rejects DMA pins under the memory registry; CPU invalidation
   never substitutes for DMA completion. Backing pins do not lease an ASID; see
@@ -509,7 +520,9 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   the backend retains/restores its complete owner; never extract/reinsert a DMA
   capability record on failure. Consume authority/payload only after confirmed
   backend success; abandonment retains the root and claim without cleanup.
-  Confirmed-success registry-node destruction remains a separate metadata boundary. Move the complete domain, actual engine and detached pending pin
+  Confirmed-success device payload nodes now detach into owning receipts for
+  explicit post-guard destruction; unified capability-table metadata remains
+  separate. Move the complete domain, actual engine and detached pending pin
   into `MappingMaintenance` before unlocked walking/maintenance. Keep its admitted
   cell empty and requester nonzero; restore exact domain/engine together before
   post-guard unpin. Rejected unmap quarantines its pin in admitted storage, never

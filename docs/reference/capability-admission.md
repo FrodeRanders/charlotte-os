@@ -24,6 +24,17 @@ class. Applications cannot select the class or override these limits.
 All allocation paths check the same limits, including kernel/platform grants.
 These are not complete aggregate kernel-memory protections.
 
+Device payload storage now uses fallibly prepared owning namespace/capability
+nodes from the existing retirement-list machinery. Shared `GrantAdmission`
+retains the exact root and authority reservation alongside that storage; DMA's
+typed hardware obligation remains in its enclosing grant. Publication under
+`DEVICES` only relinks prepared nodes; explicit close/namespace detachment returns
+owning nodes for post-guard destruction. Unused preparation/abandonment cannot
+implicitly deallocate below unknown guards. This is payload storage admission,
+not conversion of the unified capability table's own metadata or a general
+byte/principal heap budget. See the
+[device-storage evidence](../reports/audits/2026-10-09-security-device-registry-storage.md).
+
 ## Record ownership and publication
 
 Every entry owns its domain/node charge. All three states count:

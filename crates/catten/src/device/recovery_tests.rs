@@ -163,6 +163,7 @@ pub(crate) fn run() {
         crate::logln!("[device recovery] QEMU NVMe fixture skipped: supported controller absent");
         return;
     };
+    registry::tests::begin_real();
     let owner = crate::service::loader::create_user_address_space_handle();
     let mmio = grant_mmio(owner.id(), base, 4).unwrap();
     use crate::device_management::drivers::busses::pci_express::topology::reset;
@@ -613,6 +614,7 @@ pub(crate) fn run() {
          refunded authority and original closing owner completed"
     );
     reset::tests::finish_real();
+    registry::tests::finish_real();
     crate::logln!(
         "[device recovery] rejected drain retained/fenced DMA; real retry, old-MMIO exclusion and \
          QEMU NVMe reset/reassignment passed"

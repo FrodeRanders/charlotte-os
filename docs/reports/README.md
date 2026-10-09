@@ -10,6 +10,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [2026-10-09 prepared device registry storage and post-guard disposal (SEC-07/18)](audits/2026-10-09-security-device-registry-storage.md)
 - [2026-10-09 DMA close claim without allocating reinsertion (SEC-18)](audits/2026-10-09-security-dma-close-claim.md)
 - [2026-10-09 complete-unit DMA creation outside local serialization (SEC-18)](audits/2026-10-09-security-dma-creation-phases.md)
 - [2026-10-09 PCI reset claim retained through DMA publication (SEC-18)](audits/2026-10-09-security-pci-reset-claim.md)

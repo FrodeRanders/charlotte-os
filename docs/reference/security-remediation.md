@@ -183,6 +183,15 @@ only after backend completion. Abandonment retains root/claim. Heap-held synthet
 rejection and real maintenance/physical probes qualify this scope; general grant
 metadata admission, successful removal/destruction, wider callers and concurrency
 remain open. SEC-18 and finding counts are unchanged.
+The [device-registry storage follow-up](../reports/audits/2026-10-09-security-device-registry-storage.md)
+now prepares namespace/payload nodes fallibly before local guards/hardware in
+shared exact-root/reservation `GrantAdmission`. Publication/detachment relinks
+existing retirement-list nodes; confirmed close and namespace completion dispose
+them explicitly after guards. DMA retains its typed hardware obligation alongside
+that shared admission. Host allocator tracing and guest first/second-node
+rejection, heap-held publication and real post-guard disposal qualify this scope.
+Unified capability/backend metadata, byte/principal limits, wider contexts and
+pressure/concurrency remain open; SEC-07/18 and finding counts are unchanged.
 The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.

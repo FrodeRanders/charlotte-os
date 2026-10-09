@@ -156,7 +156,7 @@ impl DmaOperation {
     /// original payload cell claimed avoids extracting/reallocating metadata
     /// on rejection and fences competing close/namespace cleanup on abandonment.
     fn complete_close(self) -> Result<(), DeviceError> {
-        {
+        let entry = {
             let mut devices = DEVICES.lock();
             let DeviceObject::DmaDomain {
                 id,
@@ -173,8 +173,9 @@ impl DmaOperation {
                 self.cap,
                 crate::capability::ObjectKind::Device
             ));
-            devices.get_mut(&self.asid).unwrap().caps.remove(&self.cap).unwrap();
-        }
+            devices.get_mut(&self.asid).unwrap().caps.take(&self.cap).unwrap()
+        };
+        registry::release(entry);
         if let Some(root) = core::mem::ManuallyDrop::into_inner(self.root) {
             root.release().map_err(operation_error)?;
         }

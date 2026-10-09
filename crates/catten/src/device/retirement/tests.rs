@@ -74,7 +74,7 @@ fn successful_cleanup() {
                 assert!(!DEVICES.lock().contains_key(&handle.id()));
                 assert_eq!(
                     grant_mmio(handle.id(), 0x0900_0000, 1),
-                    Err(DeviceError::NamespaceRetired)
+                    Err(DeviceError::AddressSpaceClosing)
                 );
                 receipt.finish_with(
                     |root, base, frame| {

@@ -26,10 +26,23 @@ use core::sync::atomic::{
 
 use crate::logln;
 
-/// Pseudo address-space id for the kernel-API capability tests (only present
-/// in the device and completion registries, never scheduled).
+/// Boot fixture custody spans both asynchronous IRQ rounds. Threads execute in
+/// the kernel domain; device authority belongs to these exact, live user roots.
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
-const DEV_ASID: usize = 0x000d_e71c;
+static FIXTURE_ROOTS: spin::Mutex<
+    Option<(crate::memory::AddressSpaceHandle, crate::memory::AddressSpaceHandle)>,
+> = spin::Mutex::new(None);
+
+#[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
+fn fixture_asid(peer: bool) -> usize {
+    let roots = FIXTURE_ROOTS.lock();
+    let (primary, secondary) = roots.as_ref().expect("[device] fixture roots not installed");
+    if peer {
+        secondary.id()
+    } else {
+        primary.id()
+    }
+}
 
 /// A spare routed interrupt unused by the platform devices driven by the boot
 /// suite. AArch64 uses an SPI on QEMU `virt`; x86_64 allocates a synthetic MSI
@@ -95,6 +108,9 @@ pub fn test_device_capabilities() {
         logln!("Testing device capabilities (MMIO regions and interrupt objects)...");
         crate::completion::test_prepared_wake_identity();
 
+        let primary = crate::service::loader::create_user_address_space_handle();
+        let peer = crate::service::loader::create_user_address_space_handle();
+        assert!(FIXTURE_ROOTS.lock().replace((primary, peer)).is_none());
         completion_open();
 
         #[cfg(target_arch = "x86_64")]
@@ -102,12 +118,12 @@ pub fn test_device_capabilities() {
         let test_intid = test_interrupt();
 
         // --- Capability-model negative tests -------------------------------
-        let mmio =
-            device::grant_mmio(DEV_ASID, 0x0900_0000, 1).expect("[device] grant_mmio failed");
-        let mut irq =
-            device::grant_interrupt(DEV_ASID, test_intid).expect("[device] grant_interrupt failed");
+        let mmio = device::grant_mmio(fixture_asid(false), 0x0900_0000, 1)
+            .expect("[device] grant_mmio failed");
+        let mut irq = device::grant_interrupt(fixture_asid(false), test_intid)
+            .expect("[device] grant_interrupt failed");
         assert_eq!(
-            device::grant_interrupt(DEV_ASID, INVALID_TEST_INTERRUPT),
+            device::grant_interrupt(fixture_asid(false), INVALID_TEST_INTERRUPT),
             Err(DeviceError::InvalidInterrupt),
             "[device] unroutable interrupts must not be delegated"
         );
@@ -117,38 +133,48 @@ pub fn test_device_capabilities() {
             "[device] kernel ASID must not be packed as a driver route"
         );
         assert_eq!(
-            device::grant_mmio(DEV_ASID, usize::MAX & !(4096 - 1), 2),
+            device::grant_mmio(fixture_asid(false), usize::MAX & !(4096 - 1), 2),
             Err(DeviceError::InvalidRange),
             "[device] overflowing MMIO grants must be rejected"
         );
         assert_eq!(
-            device::grant_interrupt(DEV_ASID + 1, test_intid),
+            device::grant_interrupt(fixture_asid(true), test_intid),
             Err(DeviceError::InterruptInUse),
             "[device] an INTID must have a single capability owner"
         );
 
         assert_eq!(
-            device::mmio_map(DEV_ASID, 0xdead_beef, crate::memory::VAddr::from(0x4000usize), true),
+            device::mmio_map(
+                fixture_asid(false),
+                0xdead_beef,
+                crate::memory::VAddr::from(0x4000usize),
+                true
+            ),
             Err(DeviceError::UnknownCapability),
             "[device] mapping an unknown capability must fail"
         );
         assert_eq!(
-            device::mmio_map(DEV_ASID, irq, crate::memory::VAddr::from(0x4000usize), true),
+            device::mmio_map(
+                fixture_asid(false),
+                irq,
+                crate::memory::VAddr::from(0x4000usize),
+                true
+            ),
             Err(DeviceError::WrongType),
             "[device] mapping an interrupt capability as MMIO must fail"
         );
         assert_eq!(
-            device::interrupt_bind_cq(DEV_ASID, mmio, 0),
+            device::interrupt_bind_cq(fixture_asid(false), mmio, 0),
             Err(DeviceError::WrongType),
             "[device] binding an MMIO capability as an interrupt must fail"
         );
         assert_eq!(
-            device::interrupt_ack(DEV_ASID, irq),
+            device::interrupt_ack(fixture_asid(false), irq),
             Err(DeviceError::NotBound),
             "[device] acknowledging an unbound interrupt must fail"
         );
         assert_eq!(
-            device::mmio_unmap(DEV_ASID, mmio),
+            device::mmio_unmap(fixture_asid(false), mmio),
             Err(DeviceError::NotMapped),
             "[device] unmapping an unmapped region must fail"
         );
@@ -167,26 +193,27 @@ pub fn test_device_capabilities() {
         // injection.
         #[cfg(target_arch = "x86_64")]
         {
-            device::close_cap(DEV_ASID, irq)
+            device::close_cap(fixture_asid(false), irq)
                 .expect("[device] close stale-route MSI capability failed");
             allocate_x86_test_interrupt();
-            irq = device::grant_interrupt(DEV_ASID, test_interrupt())
+            irq = device::grant_interrupt(fixture_asid(false), test_interrupt())
                 .expect("[device] fresh MSI grant failed");
         }
 
         // Close the throwaway MMIO grant; the interrupt grant is consumed by
         // the delivery rounds below.
-        device::close_cap(DEV_ASID, mmio).expect("[device] close_cap(mmio) failed");
+        device::close_cap(fixture_asid(false), mmio).expect("[device] close_cap(mmio) failed");
 
         // --- Interrupt delivery to a completion queue ----------------------
-        device::interrupt_bind_cq(DEV_ASID, irq, 0).expect("[device] interrupt_bind_cq failed");
+        device::interrupt_bind_cq(fixture_asid(false), irq, 0)
+            .expect("[device] interrupt_bind_cq failed");
         // The synthetic AArch64 SPI has no physical line behind it. Model it
         // as an edge rather than relying on a nonexistent device to hold a
         // level asserted. x86_64 injects its allocated MSI vector by self-IPI.
         #[cfg(target_arch = "aarch64")]
         crate::cpu::isa::interrupts::gic::configure_synthetic_spi_edge(test_intid);
         assert_eq!(
-            device::interrupt_bind_cq(DEV_ASID, irq, 0),
+            device::interrupt_bind_cq(fixture_asid(false), irq, 0),
             Err(DeviceError::AlreadyBound),
             "[device] double-binding an interrupt must fail"
         );
@@ -253,40 +280,41 @@ fn test_stale_address_space_handle() {
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
 fn test_stale_interrupt_wake(old: u64) -> u64 {
     let test_interrupt = test_interrupt();
-    crate::device::interrupt_bind_cq(DEV_ASID, old, 0)
+    crate::device::interrupt_bind_cq(fixture_asid(false), old, 0)
         .expect("[device] stale-wake initial bind failed");
     // Much more than the previous shared queue capacity. Each source now has
     // one mailbox regardless of how many deliveries precede a drain.
     for _ in 0..crate::device::TOTAL_ROUTE_SLOTS * 2 {
         assert!(crate::device::deliver_interrupt(test_interrupt));
     }
-    crate::device::close_cap(DEV_ASID, old).expect("[device] stale-wake initial close failed");
+    crate::device::close_cap(fixture_asid(false), old)
+        .expect("[device] stale-wake initial close failed");
 
-    let replacement = crate::device::grant_interrupt(DEV_ASID, test_interrupt)
+    let replacement = crate::device::grant_interrupt(fixture_asid(false), test_interrupt)
         .expect("[device] stale-wake replacement interrupt grant failed");
-    crate::device::interrupt_bind_cq(DEV_ASID, replacement, 0)
+    crate::device::interrupt_bind_cq(fixture_asid(false), replacement, 0)
         .expect("[device] stale-wake replacement bind failed");
     // `drain_deferred_wakes` is global: the restarted PL011 driver and any
     // other live route can legitimately contribute wakes while this test runs,
     // so verify the replacement queue's own generation instead of the drain
     // count.
-    let replacement_generation = crate::completion::cq_work_generation(DEV_ASID, 0);
+    let replacement_generation = crate::completion::cq_work_generation(fixture_asid(false), 0);
     crate::device::drain_deferred_wakes();
     assert_eq!(
-        crate::completion::cq_work_generation(DEV_ASID, 0),
+        crate::completion::cq_work_generation(fixture_asid(false), 0),
         replacement_generation,
         "wake from retired interrupt route reached its replacement"
     );
-    crate::completion::test_irq_wake_reentrancy(DEV_ASID, test_interrupt);
+    crate::completion::test_irq_wake_reentrancy(fixture_asid(false), test_interrupt);
     assert!(
-        crate::completion::cq_work_generation(DEV_ASID, 0) > replacement_generation,
+        crate::completion::cq_work_generation(fixture_asid(false), 0) > replacement_generation,
         "fresh interrupt wake was lost after retiring flooded route"
     );
-    assert_eq!(crate::device::interrupt_ack(DEV_ASID, replacement).unwrap(), 1);
-    crate::device::close_cap(DEV_ASID, replacement)
+    assert_eq!(crate::device::interrupt_ack(fixture_asid(false), replacement).unwrap(), 1);
+    crate::device::close_cap(fixture_asid(false), replacement)
         .expect("[device] stale-wake replacement close failed");
     logln!("[device] flooded stale IRQ wakes retired; fresh rebound wake delivered");
-    crate::device::grant_interrupt(DEV_ASID, test_interrupt)
+    crate::device::grant_interrupt(fixture_asid(false), test_interrupt)
         .expect("[device] stale-wake final interrupt grant failed")
 }
 
@@ -294,7 +322,8 @@ fn test_stale_interrupt_wake(old: u64) -> u64 {
 fn completion_open() {
     // A completion-queue address space so interrupt readiness has somewhere
     // to be delivered (queue 0).
-    crate::completion::open_address_space_with_cq(DEV_ASID, 8, 8).expect("CQ setup failed");
+    crate::completion::open_address_space_with_cq(fixture_asid(false), 8, 8)
+        .expect("CQ setup failed");
 }
 
 /// A DMA map pins the object before acquiring the IOMMU registry. Even when the
@@ -393,9 +422,9 @@ extern "C" fn irq_waiter() {
     // Round 1: released by the deterministic kernel delivery path.
     let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     let (pending, count) = loop {
-        let _ = completion::wait_on_cq_timeout(DEV_ASID, 0, 1, 100);
-        let status =
-            device::interrupt_status(DEV_ASID, irq).expect("[device] status after round 1 failed");
+        let _ = completion::wait_on_cq_timeout(fixture_asid(false), 0, 1, 100);
+        let status = device::interrupt_status(fixture_asid(false), irq)
+            .expect("[device] status after round 1 failed");
         if status.0 != 0 {
             break status;
         }
@@ -406,10 +435,11 @@ extern "C" fn irq_waiter() {
     };
     device_phase(2, irq, 0);
     assert!(count >= 1, "[device] round 1 lifetime count must advance");
-    let consumed = device::interrupt_ack(DEV_ASID, irq).expect("[device] ack round 1 failed");
+    let consumed =
+        device::interrupt_ack(fixture_asid(false), irq).expect("[device] ack round 1 failed");
     assert_eq!(consumed, pending, "[device] ack must consume the pending count");
-    let (pending_after, _) =
-        device::interrupt_status(DEV_ASID, irq).expect("[device] status after ack failed");
+    let (pending_after, _) = device::interrupt_status(fixture_asid(false), irq)
+        .expect("[device] status after ack failed");
     assert_eq!(pending_after, 0, "[device] ack must clear pending");
     ROUND1_RELEASED.store(1, Ordering::Release);
     device_phase(3, u64::from(pending), count);
@@ -420,18 +450,19 @@ extern "C" fn irq_waiter() {
     device_phase(4, irq, 0);
     let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     let pending = loop {
-        let _ = completion::wait_on_cq_timeout(DEV_ASID, 0, 1, 100);
-        let (pending, _) =
-            device::interrupt_status(DEV_ASID, irq).expect("[device] status after round 2 failed");
+        let _ = completion::wait_on_cq_timeout(fixture_asid(false), 0, 1, 100);
+        let (pending, _) = device::interrupt_status(fixture_asid(false), irq)
+            .expect("[device] status after round 2 failed");
         if pending != 0 {
             break pending;
         }
         deadline.assert_pending("device round 2 interrupt");
     };
     device_phase(5, irq, 0);
-    let _ = device::interrupt_ack(DEV_ASID, irq).expect("[device] ack round 2 failed");
-    ROUND2_RELEASED.store(1, Ordering::Release);
+    let _ = device::interrupt_ack(fixture_asid(false), irq).expect("[device] ack round 2 failed");
     device_phase(6, u64::from(pending), 0);
+    // Publish only after the wait owner and all fixture-root access complete.
+    ROUND2_RELEASED.store(1, Ordering::Release);
 }
 
 #[cfg(any(target_arch = "aarch64", target_arch = "x86_64"))]
@@ -474,7 +505,7 @@ extern "C" fn irq_driver() {
         crate::cpu::scheduler::yield_lp();
         let now = crate::cpu::scheduler::monotonic_millis();
         if now >= next_reassert {
-            let (pending, _) = device::interrupt_status(DEV_ASID, irq)
+            let (pending, _) = device::interrupt_status(fixture_asid(false), irq)
                 .expect("[device] status while awaiting round 2 failed");
             if pending == 0 {
                 trigger_live_test_interrupt();
@@ -485,11 +516,18 @@ extern "C" fn irq_driver() {
     device_phase(14, irq, 0);
 
     // Tear down the interrupt cap: mask and unroute the source.
-    device::close_cap(DEV_ASID, IRQ_CAP.load(Ordering::Acquire))
+    device::close_cap(fixture_asid(false), IRQ_CAP.load(Ordering::Acquire))
         .expect("[device] close_cap(irq) failed");
-    let recycled = device::grant_interrupt(DEV_ASID + 1, test_interrupt())
+    let recycled = device::grant_interrupt(fixture_asid(true), test_interrupt())
         .expect("[device] closed INTID must become grantable");
-    device::close_cap(DEV_ASID + 1, recycled).expect("[device] recycled interrupt close failed");
+    device::close_cap(fixture_asid(true), recycled)
+        .expect("[device] recycled interrupt close failed");
+
+    let (primary, peer) = FIXTURE_ROOTS.lock().take().expect("[device] fixture roots lost");
+    crate::memory::close_user_address_space_handle(primary)
+        .expect("[device] primary fixture root cleanup failed");
+    crate::memory::close_user_address_space_handle(peer)
+        .expect("[device] peer fixture root cleanup failed");
 
     logln!(
         "[device] SUCCESS: MMIO map/unmap, capability-model rejections, and interrupt delivery to \
@@ -560,17 +598,17 @@ pub fn test_ioapic_routing() {
         device,
     };
 
-    // A pseudo address-space id for the kernel-API capability test; never
-    // scheduled, only present in the device registry.
-    const TEST_ASID: usize = 0x000d_e71c;
+    let root = crate::service::loader::create_user_address_space_handle();
+    let test_asid = root.id();
+    crate::completion::open_address_space_with_cq(test_asid, 8, 8).unwrap();
     // An unused wired GSI on QEMU q35 (the RTC's interrupt line).
     const TEST_GSI: u32 = 8;
 
     logln!("[device] testing x86_64 IOAPIC routing (GSI {TEST_GSI})...");
 
     let cap =
-        device::grant_interrupt(TEST_ASID, TEST_GSI).expect("[device] grant_interrupt failed");
-    device::interrupt_bind_cq(TEST_ASID, cap, 0).expect("[device] interrupt_bind_cq failed");
+        device::grant_interrupt(test_asid, TEST_GSI).expect("[device] grant_interrupt failed");
+    device::interrupt_bind_cq(test_asid, cap, 0).expect("[device] interrupt_bind_cq failed");
 
     let vector = crate::cpu::isa::interrupts::device_irq::gsi_vector(TEST_GSI)
         .expect("[device] GSI was not routed to a vector");
@@ -582,17 +620,19 @@ pub fn test_ioapic_routing() {
 
     let deadline = crate::self_test::results::Deadline::after_millis(5_000);
     loop {
-        let (_pending, count) = device::interrupt_status(TEST_ASID, cap).unwrap();
+        let (_pending, count) = device::interrupt_status(test_asid, cap).unwrap();
         if count >= 1 {
             break;
         }
         deadline.assert_pending("IOAPIC-routed interrupt delivery");
         crate::cpu::scheduler::yield_lp();
     }
-    let (pending, count) = device::interrupt_status(TEST_ASID, cap).unwrap();
+    let (pending, count) = device::interrupt_status(test_asid, cap).unwrap();
     assert_eq!(count, 1, "one IOAPIC-routed interrupt must be counted");
     assert_eq!(pending, 1, "the delivered interrupt must remain pending until acknowledged");
-    device::close_cap(TEST_ASID, cap).expect("[device] close_cap failed");
+    device::close_cap(test_asid, cap).expect("[device] close_cap failed");
+    crate::memory::close_user_address_space_handle(root)
+        .expect("[device] routed interrupt fixture root cleanup failed");
     logln!("[device] x86_64 IOAPIC routing delivered a routed GSI to the completion path.");
 }
 
@@ -612,7 +652,9 @@ pub fn test_msi_routing() {
         device,
     };
 
-    const TEST_ASID: usize = 0x000d_e71c;
+    let root = crate::service::loader::create_user_address_space_handle();
+    let test_asid = root.id();
+    crate::completion::open_address_space_with_cq(test_asid, 8, 8).unwrap();
 
     logln!("[device] testing x86_64 MSI allocation...");
     let message = device::allocate_msi(0).expect("[device] allocate_msi failed");
@@ -632,8 +674,8 @@ pub fn test_msi_routing() {
     );
 
     let cap =
-        device::grant_interrupt(TEST_ASID, message.intid).expect("[device] grant_interrupt failed");
-    device::interrupt_bind_cq(TEST_ASID, cap, 0).expect("[device] interrupt_bind_cq failed");
+        device::grant_interrupt(test_asid, message.intid).expect("[device] grant_interrupt failed");
+    device::interrupt_bind_cq(test_asid, cap, 0).expect("[device] interrupt_bind_cq failed");
 
     // Inject a synthetic delivery on the returned vector (a self-IPI stands in
     // for the device writing the MSI message to the LAPIC).
@@ -641,13 +683,15 @@ pub fn test_msi_routing() {
 
     let deadline = crate::self_test::results::Deadline::after_millis(5_000);
     loop {
-        let (_pending, count) = device::interrupt_status(TEST_ASID, cap).unwrap();
+        let (_pending, count) = device::interrupt_status(test_asid, cap).unwrap();
         if count >= 1 {
             break;
         }
         deadline.assert_pending("MSI interrupt delivery");
         crate::cpu::scheduler::yield_lp();
     }
-    device::close_cap(TEST_ASID, cap).expect("[device] close_cap failed");
+    device::close_cap(test_asid, cap).expect("[device] close_cap failed");
+    crate::memory::close_user_address_space_handle(root)
+        .expect("[device] routed interrupt fixture root cleanup failed");
     logln!("[device] x86_64 MSI allocation delivered a routed interrupt to the completion path.");
 }

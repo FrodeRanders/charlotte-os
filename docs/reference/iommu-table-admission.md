@@ -193,8 +193,13 @@ reinsertion; confirmed backend success precedes authority/payload removal and
 root completion. Abandonment retains the claim/root, while the backend's own
 typed complete owner retains unfinished backing. Partial physical release remains
 terminal. The [close-claim evidence](../reports/audits/2026-10-09-security-dma-close-claim.md)
-adds no intentional table/data/root retention. General grant metadata admission
-and confirmed-success registry-node destruction remain separate work.
+adds no intentional table/data/root retention. Device payload/namespace nodes
+now prepare fallibly inside shared exact-root `GrantAdmission` before local guards
+and hardware, with unused storage retained alongside the typed DMA obligation.
+Close/namespace detachment only relinks their original nodes for post-guard
+disposal. Unified capability-table metadata and the IOMMU backends' own registry
+nodes remain separate work. See the
+[device-storage evidence](../reports/audits/2026-10-09-security-device-registry-storage.md).
 
 ## Evidence and limits
 

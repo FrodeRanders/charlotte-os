@@ -1114,6 +1114,26 @@ metadata, an exact root and the original reservation. These are deterministic
 serialized probes, not cross-LP races or actual hardware timeouts. See the
 [creation-phase evidence](../reports/audits/2026-10-09-security-dma-creation-phases.md).
 
+### Prepared device registry metadata
+
+First/second-node rejection for MMIO, interrupt and DMA grants must publish no
+authority/namespace payload and never reach hardware. Heap-held publication
+checks both fresh namespace linkage and reuse of existing storage. Bounded guest
+probes at allocated-node/disposal boundaries require backend/lifecycle/device/
+CPU-table/physical/heap availability with unchanged entry IRQ state, including
+real NVMe grants, rejected creation, close and namespace completion. Existing
+whole-grant guarded abandonment now retains prepared metadata with exact roots
+and original reservations. A closing root rejects before metadata/authority
+preparation; its fixture expects `AddressSpaceClosing`.
+
+Host retirement-list tests trace both allocation and deallocation through ordered
+insertion, mutable iteration, failed/middle/tail detachment and relinking.
+Detached-node/list abandonment releases neither backing nor payload. Explicit
+release happens after the traced guard-equivalent interval. Unified capability
+and backend metadata, general byte/principal admission, caller context and
+pressure/progress qualification remain separate. See the
+[device-storage evidence](../reports/audits/2026-10-09-security-device-registry-storage.md).
+
 ### DMA close claim and metadata rejection
 
 Synthetic busy, hardware-timeout and physical-error returns run with the actual

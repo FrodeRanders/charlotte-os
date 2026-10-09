@@ -192,7 +192,7 @@ pub(super) fn run() {
         PreparedDmaDomain::new(root.id(), |_| panic!("abandoned creation replayed")).unwrap();
     {
         let lifecycle = memory::ADDRESS_SPACE_LIFECYCLE.lock();
-        grant.resources.reservation = Some(
+        grant.resources.admission.resources.reservation = Some(
             crate::capability::reserve_in_lifecycle(
                 root.id(),
                 crate::capability::ObjectKind::Device,

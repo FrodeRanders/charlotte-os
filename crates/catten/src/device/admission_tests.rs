@@ -36,6 +36,7 @@ fn destroy_failed(id: u64) -> Result<(), dma::Error> {
 
 pub(crate) fn test_admission() {
     dma_tables::test_admission();
+    registry::tests::run();
     mapping::test_admission();
     domain_creation::test_admission();
     crate::device_management::drivers::busses::pci_express::topology::reset::test_admission();
@@ -162,7 +163,7 @@ fn prepare_fixture(
     )
     .unwrap();
     let lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
-    prepared.resources.reservation = Some(
+    prepared.resources.admission.resources.reservation = Some(
         crate::capability::reserve_in_lifecycle(
             root.id(),
             crate::capability::ObjectKind::Device,
