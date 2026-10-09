@@ -116,6 +116,7 @@ pub enum Error {
     UnknownDomain,
     UnknownMapping,
     HardwareTimeout,
+    OperationInFlight,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -156,14 +157,18 @@ struct Domain {
     quarantined_pins: Vec<DmaPin>,
 }
 
+struct Commands {
+    base: usize,
+    cmdq: PAddr,
+    cmd_prod: u32,
+}
+
 struct Smmu {
-    config: SmmuV3Config,
+    commands: Option<Commands>,
     sid_bits: u8,
     oas: u8,
     strtab: PAddr,
     _tables: Tables,
-    cmdq: PAddr,
-    cmd_prod: u32,
     next_domain: u64,
     domains: BTreeMap<u64, Option<Domain>>,
     streams: BTreeMap<u32, u64>,
@@ -362,11 +367,11 @@ impl Domain {
     }
 }
 
-impl Smmu {
+impl Commands {
     fn issue(&mut self, command: [u64; 2]) -> Result<(), Error> {
         if !charlotte_lifecycle::iommu::smmu_queue_has_space(
             self.cmd_prod,
-            read32(self.config.base, CMDQ_CONS),
+            read32(self.base, CMDQ_CONS),
             QUEUE_ENTRIES,
         ) {
             // Preserve timed-out/unconsumed commands and backing on retry.
@@ -380,14 +385,14 @@ impl Smmu {
         }
         barrier();
         self.cmd_prod = (self.cmd_prod + 1) & (QUEUE_ENTRIES * 2 - 1);
-        write32(self.config.base, CMDQ_PROD, self.cmd_prod);
+        write32(self.base, CMDQ_PROD, self.cmd_prod);
         Ok(())
     }
 
     fn sync(&mut self) -> Result<(), Error> {
         self.issue([0x46, 0])?;
         for _ in 0..1_000_000 {
-            if read32(self.config.base, CMDQ_CONS) == self.cmd_prod {
+            if read32(self.base, CMDQ_CONS) == self.cmd_prod {
                 return Ok(());
             }
             core::hint::spin_loop();
@@ -404,8 +409,27 @@ impl Smmu {
         self.issue([0x11 | ((asid as u64) << 48), 0])?;
         self.sync()
     }
+}
+
+impl Smmu {
+    fn issue(&mut self, command: [u64; 2]) -> Result<(), Error> {
+        self.commands.as_mut().ok_or(Error::OperationInFlight)?.issue(command)
+    }
+
+    fn sync(&mut self) -> Result<(), Error> {
+        self.commands.as_mut().ok_or(Error::OperationInFlight)?.sync()
+    }
+
+    fn invalidate_asid(&mut self, asid: u16) -> Result<(), Error> {
+        self.commands.as_mut().ok_or(Error::OperationInFlight)?.invalidate_asid(asid)
+    }
 
     fn write_ste(&mut self, sid: u32, cd: Option<PAddr>) -> Result<(), Error> {
+        self.publish_ste(sid, cd)?;
+        self.commands.as_mut().ok_or(Error::OperationInFlight)?.invalidate_ste(sid)
+    }
+
+    fn publish_ste(&mut self, sid: u32, cd: Option<PAddr>) -> Result<(), Error> {
         if sid >= (1u32 << self.sid_bits) {
             return Err(Error::InvalidStream);
         }
@@ -420,7 +444,7 @@ impl Smmu {
             // completes; teardown separately invalidates the original ASID.
             unsafe { ptr::write_volatile(ste, first) };
             barrier();
-            return self.invalidate_ste(sid);
+            return Ok(());
         }
         unsafe {
             for index in 1..8 {
@@ -434,7 +458,7 @@ impl Smmu {
             ptr::write_volatile(ste, first);
         }
         barrier();
-        self.invalidate_ste(sid)
+        Ok(())
     }
 }
 
@@ -492,13 +516,15 @@ fn initialize(mut config: SmmuV3Config) -> Result<Smmu, Error> {
     wait_ack(config.base, CR0_ACK, CR0_CMDQEN)?;
 
     let mut smmu = Smmu {
-        config,
+        commands: Some(Commands {
+            base: config.base,
+            cmdq,
+            cmd_prod: 0,
+        }),
         sid_bits,
         oas: (idr5 & 7) as u8,
         strtab,
         _tables: tables,
-        cmdq,
-        cmd_prod: 0,
         next_domain: 1,
         domains: BTreeMap::new(),
         streams: BTreeMap::new(),
@@ -532,7 +558,18 @@ fn with_smmu<R>(f: impl FnOnce(&mut Smmu) -> Result<R, Error>) -> Result<R, Erro
             crate::environment::acpi::sdt::iort::discover_smmuv3().ok_or(Error::Unsupported)?;
         *guard = Some(initialize(config)?);
     }
-    f(guard.as_mut().expect("SMMU initialized"))
+    let smmu = guard.as_mut().expect("installed DMA unit");
+    if smmu.commands.is_none() {
+        return Err(Error::OperationInFlight);
+    }
+    f(smmu)
+}
+
+// Only the containing maintenance owner may restore its moved engine/domain.
+// No initialization, waiting or physical cleanup occurs under this hold.
+fn with_registered<R>(f: impl FnOnce(&mut Smmu) -> Result<R, Error>) -> Result<R, Error> {
+    let mut guard = SMMU.lock();
+    f(guard.as_mut().ok_or(Error::Unsupported)?)
 }
 
 /// Initialize the platform SMMU before driver domains begin competing for
@@ -680,49 +717,63 @@ pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
 }
 
 pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
-    destroy_domain_with(domain_id, || {})
+    destroy_domain_at(domain_id, || {}, || {})
 }
 
-/// The hook is a per-call boot-fixture boundary, never a global release mode.
-pub(super) fn destroy_domain_with(
+/// Per-call boot-fixture boundaries; production supplies empty hooks.
+pub(super) fn destroy_domain_at(
     domain_id: u64,
+    before_maintenance: impl FnOnce(),
     after_detach: impl FnOnce(),
 ) -> Result<(), Error> {
-    let detached = with_smmu(|smmu| {
+    let maintenance = with_smmu(|smmu| {
         let Some(slot) = smmu.domains.get_mut(&domain_id) else {
             return Ok(None);
         };
-        // An empty admitted slot belongs to an active or abandoned release.
-        // Competing close must not interpret it as an already completed domain.
         let domain = slot.as_mut().ok_or(Error::UnknownDomain)?;
         domain.retiring = true;
         let sid = domain.sid;
-        let asid = domain.asid;
-        // Do not release mappings or their memory pins until the aborting STE
-        // has been acknowledged. On timeout the domain remains quarantined:
-        // leaking authority is preferable to freeing frames a device may
-        // still be able to translate.
-        smmu.write_ste(sid, None)?;
+        // Publish the rejecting descriptor under registry serialization. No
+        // configuration wait or table release may occur until this guard leaves.
+        smmu.publish_ste(sid, None)?;
+        let domain = smmu.domains.get_mut(&domain_id).unwrap().take().unwrap();
+        let commands = smmu.commands.take().expect("admitted command engine");
+        Ok(Some(super::detached_domain::Maintenance::new(domain, commands)))
+    })?;
+    let Some(mut owner) = maintenance else {
+        return Ok(());
+    };
+    before_maintenance();
+    let sid = owner.domain.value_mut().sid;
+    let asid = owner.domain.value_mut().asid;
+    let completed = (|| {
+        owner.commands.value_mut().invalidate_ste(sid)?;
         if super::test_reject_retirement() {
             return Err(Error::HardwareTimeout);
         }
-        // CFGI/SYNC retires structure fetches; TLBI/SYNC additionally completes
-        // client transactions translated by this ASID before data-pin release.
-        smmu.invalidate_asid(asid)?;
-        // Maintenance is confirmed. Keep the admitted cell and nonzero
-        // requester fence while its complete payload leaves serialization.
-        let domain = smmu.domains.get_mut(&domain_id).unwrap().take().unwrap();
-        Ok(Some(super::detached_domain::DetachedDomain::new(domain)))
+        owner.commands.value_mut().invalidate_asid(asid)
+    })();
+    // Restore the actual engine (including timeout producer/epoch state) and
+    // the rejected domain under one hold of their original admitted registry.
+    let detached = with_registered(|smmu| {
+        assert!(smmu.commands.is_none(), "claimed command engine replaced");
+        assert_eq!(smmu.streams.get(&sid), Some(&domain_id));
+        let slot = smmu.domains.get_mut(&domain_id).expect("claimed domain slot");
+        assert!(slot.is_none(), "claimed domain replaced");
+        smmu.commands = Some(owner.commands.into_inner());
+        if let Err(error) = completed {
+            *slot = Some(owner.domain.into_inner());
+            return Err(error);
+        }
+        Ok(owner.domain)
     })?;
-    let Some(mut detached) = detached else {
-        return Ok(());
-    };
+    let mut detached = detached;
     after_detach();
     let sid = detached.value_mut().sid;
     // Physical release freezes before touching the allocator. Even partial
     // rejection returns the exact owner to its existing slot without allocation.
     if let Err(error) = detached.value_mut().tables.release() {
-        with_smmu(|smmu| {
+        with_registered(|smmu| {
             assert_eq!(smmu.streams.get(&sid), Some(&domain_id));
             let slot = smmu.domains.get_mut(&domain_id).expect("claimed domain slot");
             assert!(slot.is_none(), "claimed domain replaced");
@@ -731,7 +782,7 @@ pub(super) fn destroy_domain_with(
         })?;
         return Err(error);
     }
-    with_smmu(|smmu| {
+    with_registered(|smmu| {
         assert!(matches!(smmu.domains.get(&domain_id), Some(None)), "claimed domain replaced");
         assert_eq!(smmu.streams.get(&sid), Some(&domain_id));
         // Drain does not reset queued device work; reset still owns this fence.
@@ -815,6 +866,56 @@ pub fn pending_fault_events() -> u32 {
 /// Boundary probe; does not initialize hardware or spin on contention.
 pub(super) fn test_assert_backend_available() {
     drop(SMMU.try_lock().expect("physical release holds backend registry"));
+}
+
+/// Private RAM registers/ring, never installed in the SMMU.
+pub(super) fn test_command_engines() {
+    let (tables, (registers, cmdq)) = Tables::prepare_unpublished(Scope::Unit, |tables| {
+        Ok((tables.allocate_frame()?, tables.allocate_frame()?))
+    })
+    .unwrap();
+    let base = unsafe { registers.into_hhdm_mut::<u8>() } as usize;
+    {
+        let mut slot = Some(Commands {
+            base,
+            cmdq,
+            cmd_prod: 0,
+        });
+        let mut owner = super::detached_domain::DetachedDomain::new(slot.take().unwrap());
+        assert_eq!(owner.value_mut().invalidate_asid(7), Err(Error::HardwareTimeout));
+        slot = Some(owner.into_inner());
+        let commands = slot.as_mut().unwrap();
+        assert_eq!(commands.cmd_prod, 2);
+        let ring = unsafe { cmdq.into_hhdm_ptr::<u64>() };
+        let first = unsafe { ring.read_volatile() };
+        assert_eq!(first, 0x11 | (7 << 48));
+        assert_eq!(unsafe { ring.add(2).read_volatile() }, 0x46);
+        assert_eq!(commands.invalidate_ste(9), Err(Error::HardwareTimeout));
+        assert_eq!(commands.cmd_prod, 4);
+        assert_eq!(read32(base, CMDQ_PROD), 4);
+        assert_eq!(unsafe { ring.read_volatile() }, first);
+        write32(base, CMDQ_CONS, 4 ^ QUEUE_ENTRIES); // Full ring.
+        let word = unsafe { ring.add(8).read_volatile() };
+        assert_eq!(commands.issue([0x30, 0]), Err(Error::HardwareTimeout));
+        assert_eq!(commands.cmd_prod, 4);
+        assert_eq!(unsafe { ring.add(8).read_volatile() }, word);
+        write32(base, CMDQ_CONS, 1 << 24); // Invalid consumer must not allow reuse.
+        assert_eq!(commands.issue([0x30, 0]), Err(Error::HardwareTimeout));
+        assert_eq!(commands.cmd_prod, 4);
+        // One slot remains: TLBI enters the queue, then SYNC admission rejects.
+        write32(base, CMDQ_CONS, 5 ^ QUEUE_ENTRIES);
+        let sync_word = unsafe { ring.add(10).read_volatile() };
+        assert_eq!(commands.invalidate_asid(8), Err(Error::HardwareTimeout));
+        assert_eq!(commands.cmd_prod, 5);
+        assert_eq!(read32(base, CMDQ_PROD), 5);
+        assert_eq!(unsafe { ring.add(8).read_volatile() }, 0x11 | (8 << 48));
+        assert_eq!(unsafe { ring.add(10).read_volatile() }, sync_word);
+    } // Private command authority ends before backing cancellation.
+    tables.cancel_unpublished().unwrap();
+    crate::logln!(
+        "[smmu command owner] private timeout producer, full-ring and malformed-consumer \
+         rejection preserved"
+    );
 }
 
 /// Guarded abandonment probe; does not initialize or publish hardware.

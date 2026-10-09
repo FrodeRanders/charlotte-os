@@ -83,6 +83,11 @@ pub(super) fn run() {
     super::super::dma::test_table_admission();
     preparation_tests::run();
     detached_tests::run();
+    let command_charges = used();
+    let command_free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    super::super::dma::test_command_engines();
+    assert_eq!(used(), command_charges);
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), command_free);
     crate::logln!(
         "[IOMMU admission] node/domain/unit limits, private rollback, partial release fence and \
          cached sparse walkers passed; original release fixtures retain 5 charged pages/3 frames"

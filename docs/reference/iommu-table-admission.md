@@ -82,13 +82,22 @@ frozen release always rejects. A successor cannot refund that original charge.
 Hardware timeout before physical release may still be retried against the same
 owner, as described in [hardware quiescence](hardware-quiescence.md).
 
-Explicit domain destruction confirms the backend's maintenance under its guard,
-then extracts the complete domain into a retention-only `DetachedDomain`. Its
-existing admitted map cell remains empty and its requester entry nonzero, so
-competing map/unmap/destroy and create/reset cannot consume the claim. Domain IDs
-are monotonic and never reused. Absent domains retain idempotent close; an empty
-claimed slot returns rejection. No reinsertion node or teardown snapshot is
-allocated.
+Explicit domain destruction marks retiring and publishes a rejecting descriptor
+under its registry guard, then moves the complete domain and actual command
+engine into `Maintenance`. Empty engine admission returns `OperationInFlight`
+before ordinary backend mutation/reset. Its existing admitted domain cell remains
+empty and its requester entry nonzero. Domain IDs are monotonic and never reused.
+No reinsertion node or teardown snapshot is allocated.
+
+Configuration/TLB maintenance and drain execute outside the backend guard using
+the moved engine's existing queue/epoch state. Ordinary rejection restores the
+actual engine and exact retiring domain together under one hold. Abandonment
+retains every field and permanently fences the unit: the engine is never
+reconstructed from a snapshot, restored by Drop, or borrowed through a raw
+pointer after extraction. Unit table/queue/completion backing remains installed
+and unit-owned for its kernel lifetime. Confirmed maintenance returns the engine
+before physical cleanup; the domain/source claim remains. Absent domains retain
+idempotent close when the engine is available; a claimed domain cell rejects.
 
 Physical table release and successful ledger disposal occur outside backend
 serialization. Ordinary physical rejection restores the exact frozen owner into
@@ -100,8 +109,10 @@ the requester to its existing reset-required tombstone, and consumes mapping/pin
 collections outside the backend guard.
 
 Physical allocation, ordinary private/creation rollback, ledger/registry
-preparation and hardware maintenance waits still occur under backend
-serialization. Command-engine ownership, complete outer-context qualification,
+preparation and creation/map/unmap/initialization hardware waits still occur
+under backend serialization. Explicit destruction's maintenance now runs outside
+it; physical finalization uses the registered-state hold even if another domain
+owns the command engine. Command-engine ownership, complete outer-context qualification,
 registry metadata admission/destruction and abandoned-owner recovery remain
 separate work. No quota override, partial-release retry or administrative
 force-clear is introduced.
@@ -151,3 +162,12 @@ bringing the table retention fixtures to **22 original charges and 15 frames**.
 Real NVMe maintenance-boundary probes check guard availability, caller IRQ state,
 unchanged pins/charges and competing create/map/unmap/destroy/reset exclusion.
 They are reentrant boot probes, not concurrent multi-LP or outstanding-I/O tests.
+
+The [command-maintenance follow-up](../reports/audits/2026-10-09-security-iommu-command-maintenance.md)
+adds pre-maintenance guard/IRQ checks and unit-wide mutation/reset exclusion.
+Private RAM tests preserve Intel busy registers, AMD timeout producer/strict
+completion epochs and SMMU timeout producer/full or malformed consumer state.
+They cancel private backing explicitly and restore frame/charge baselines.
+The guarded containing-owner probe now also retains a real command metadata
+allocation. Existing retained table counts remain 22 charges and 15 frames.
+No outstanding-I/O, actual panic unwinding or physical-device claim is added.

@@ -433,13 +433,21 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   guards or logging, including reservation-only abandonment. Cancel known-private
   construction explicitly with `cancel_unpublished` / `prepare_unpublished`;
   rejection freezes the containing owner and never permits partial-release retry.
-  Explicit domain destruction confirms typed backend maintenance before moving
-  the complete domain into `DetachedDomain`. Keep its original admitted cell
-  empty and requester fence nonzero through unlocked physical release. Competing
-  destroy must reject a claimed cell, never report it absent/completed. Restore
-  physical rejection into that exact cell without allocation; abandonment retains
-  every field and the claim. Hardware waits and private/creation rollback still
-  need separate command-engine phase qualification; no queue/epoch snapshots.
+  Explicit domain destruction publishes the rejecting descriptor and moves the
+  complete domain plus actual command engine into `Maintenance` before unlocked
+  hardware waits. Empty engine admission fences ordinary backend mutation/reset.
+  Keep the original domain cell empty and requester nonzero. Hardware rejection
+  restores exact engine state and retiring domain together without allocation;
+  abandonment retains both and permanently fences the unit. Never reconstruct,
+  rewind or auto-restore queue/epoch state. Confirm maintenance before returning
+  the engine and proceeding to unlocked physical release in `DetachedDomain`.
+  Physical finalization uses the registered-state hold even while another domain
+  owns the engine. Competing destroy rejects a claimed cell, never treats it as
+  completed. Physical rejection restores the exact frozen owner without allocation;
+  abandonment retains every field and the claim. Creation/map/unmap/initialization
+  waits and private rollback still need phase separation. Intel cannot overwrite
+  a busy invalidation register; AMD and SMMU retain their existing exact completion
+  and unconsumed queue contracts.
   See `docs/reference/iommu-table-admission.md`.
 - Kernel scheduler `Observable` sources must implement fallible owned waiter
   registration; there is no weak-only default. Do not invoke callbacks inline

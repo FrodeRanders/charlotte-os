@@ -55,12 +55,21 @@ this boundary. Complete physical table release is also required before removing
 the admitted owner-slot/source fence. Failed map prefixes require the same data-pin
 completion boundary even when table admission rejects a later page.
 
-Explicit destruction now releases physical tables outside backend serialization
-after real maintenance succeeds. A complete detached owner retains pins and
-metadata while its original admitted slot and nonzero requester fence exclude
-competing operations. Physical rejection restores the frozen owner without
-allocation; abandonment retains it and its claim. Hardware waits and creation
-rollback remain serialized. See the [detached-release evidence](../reports/audits/2026-10-09-security-iommu-detached-release.md).
+Explicit destruction publishes the rejecting descriptor under its registry,
+then moves the complete domain and actual command engine into `Maintenance`.
+The empty engine fences ordinary backend mutation/reset. Configuration/drain
+waits run outside backend serialization. Hardware rejection restores the exact
+engine state and retiring domain together; abandonment retains both and fences
+the unit permanently. AMD producer/epoch and SMMU producer state are never
+reconstructed, reset or rewound. Intel refuses a new invalidation write until an
+older busy register clears.
+
+Confirmed maintenance returns the engine before unlocked physical table release.
+The original empty domain cell/nonzero requester fence persists. Physical
+rejection restores the frozen owner without allocation; abandonment retains its
+claim. Physical finalization uses the registered-state hold even if an unrelated
+domain owns the engine. Creation/map/unmap/initialization waits and private
+rollback remain serialized. See the [command-maintenance evidence](../reports/audits/2026-10-09-security-iommu-command-maintenance.md).
 
 ## Requester reset and reassignment
 

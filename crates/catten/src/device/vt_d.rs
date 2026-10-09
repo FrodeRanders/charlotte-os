@@ -256,11 +256,15 @@ impl Domain {
     }
 }
 
-struct Unit {
+struct Commands {
     base: usize,
-    agaw: u8,
     iotlb_invalidate: usize,
     draining_command: u64,
+}
+
+struct Unit {
+    commands: Option<Commands>,
+    agaw: u8,
     max_domains: u64,
     root_table: PAddr,
     tables: Tables,
@@ -300,7 +304,29 @@ impl Unit {
         }
     }
 
-    fn flush_context_cache(&self) -> Result<(), Error> {
+    fn flush_context_cache(&mut self) -> Result<(), Error> {
+        self.commands.as_mut().ok_or(Error::OperationInFlight)?.flush_context_cache()
+    }
+
+    fn flush_iotlb(&mut self) -> Result<(), Error> {
+        self.commands.as_mut().ok_or(Error::OperationInFlight)?.flush_iotlb()
+    }
+}
+
+impl Commands {
+    fn wait_idle(&self, register: usize, busy: u64) -> Result<(), Error> {
+        for _ in 0..1_000_000 {
+            if read64(self.base, register) & busy == 0 {
+                return Ok(());
+            }
+            core::hint::spin_loop();
+        }
+        // Never overwrite an unconsumed register command after timeout.
+        Err(Error::HardwareTimeout)
+    }
+
+    fn flush_context_cache(&mut self) -> Result<(), Error> {
+        self.wait_idle(CCMD, CCMD_ICC)?;
         write64(self.base, CCMD, CCMD_ICC | CCMD_CIRG);
         for _ in 0..1_000_000 {
             if read64(self.base, CCMD) & CCMD_ICC == 0 {
@@ -311,7 +337,8 @@ impl Unit {
         Err(Error::HardwareTimeout)
     }
 
-    fn flush_iotlb(&self) -> Result<(), Error> {
+    fn flush_iotlb(&mut self) -> Result<(), Error> {
+        self.wait_idle(self.iotlb_invalidate, IOTLB_IVA)?;
         write64(self.base, self.iotlb_invalidate, self.draining_command);
         for _ in 0..1_000_000 {
             if read64(self.base, self.iotlb_invalidate) & IOTLB_IVA == 0 {
@@ -469,10 +496,12 @@ fn initialize(config: crate::environment::acpi::sdt::dmar::DmarConfig) -> Result
     );
 
     Ok(Unit {
-        base,
+        commands: Some(Commands {
+            base,
+            iotlb_invalidate,
+            draining_command,
+        }),
         agaw,
-        iotlb_invalidate,
-        draining_command,
         max_domains,
         root_table,
         tables,
@@ -490,7 +519,18 @@ fn with_unit<R>(f: impl FnOnce(&mut Unit) -> Result<R, Error>) -> Result<R, Erro
             crate::environment::acpi::sdt::dmar::discover_vtd().ok_or(Error::Unsupported)?;
         *guard = Some(initialize(config)?);
     }
-    f(guard.as_mut().expect("VT-d unit initialized"))
+    let unit = guard.as_mut().expect("installed DMA unit");
+    if unit.commands.is_none() {
+        return Err(Error::OperationInFlight);
+    }
+    f(unit)
+}
+
+// Only the containing maintenance owner may restore its moved engine/domain.
+// No initialization, waiting or physical cleanup occurs under this hold.
+fn with_registered<R>(f: impl FnOnce(&mut Unit) -> Result<R, Error>) -> Result<R, Error> {
+    let mut guard = UNIT.lock();
+    f(guard.as_mut().ok_or(Error::Unsupported)?)
 }
 
 /// Initialize the platform DMA remapping unit before driver domains begin
@@ -674,48 +714,64 @@ pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
 }
 
 pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
-    destroy_domain_with(domain_id, || {})
+    destroy_domain_at(domain_id, || {}, || {})
 }
 
-/// The hook is a per-call boot-fixture boundary, never a global release mode.
-pub(super) fn destroy_domain_with(
+/// Per-call boot-fixture boundaries; production supplies empty hooks.
+pub(super) fn destroy_domain_at(
     domain_id: u64,
+    before_maintenance: impl FnOnce(),
     after_detach: impl FnOnce(),
 ) -> Result<(), Error> {
-    let detached = with_unit(|unit| {
+    let maintenance = with_unit(|unit| {
         let Some(slot) = unit.domains.get_mut(&domain_id) else {
             return Ok(None);
         };
-        // An empty admitted slot belongs to an active or abandoned release.
-        // Competing close must not interpret it as an already completed domain.
         let domain = slot.as_mut().ok_or(Error::UnknownDomain)?;
         domain.retiring = true;
         let source_id = domain.source_id;
-        // Quarantine the source id before releasing mappings or their pins:
-        // write a non-present context entry and wait for the hardware to
-        // acknowledge before freeing frames a device may still translate.
+        // Publish the rejecting descriptor under registry serialization. No
+        // configuration wait or table release may occur until this guard leaves.
         let bus = source_id >> 8;
         let devfunc = (source_id & 0xff) as u8;
         unit.write_context_entry(bus, devfunc, PAddr::from(0u64), 0, 0);
-        unit.flush_context_cache()?;
+        let domain = unit.domains.get_mut(&domain_id).unwrap().take().unwrap();
+        let commands = unit.commands.take().expect("admitted command engine");
+        Ok(Some(super::detached_domain::Maintenance::new(domain, commands)))
+    })?;
+    let Some(mut owner) = maintenance else {
+        return Ok(());
+    };
+    before_maintenance();
+    let source_id = owner.domain.value_mut().source_id;
+    let completed = (|| {
+        owner.commands.value_mut().flush_context_cache()?;
         if super::test_reject_retirement() {
             return Err(Error::HardwareTimeout);
         }
-        unit.flush_iotlb()?;
-        // Maintenance is confirmed. Keep the admitted cell and nonzero
-        // requester fence while its complete payload leaves serialization.
-        let domain = unit.domains.get_mut(&domain_id).unwrap().take().unwrap();
-        Ok(Some(super::detached_domain::DetachedDomain::new(domain)))
+        owner.commands.value_mut().flush_iotlb()
+    })();
+    // Restore the actual engine (including timeout producer/epoch state) and
+    // the rejected domain under one hold of their original admitted registry.
+    let detached = with_registered(|unit| {
+        assert!(unit.commands.is_none(), "claimed command engine replaced");
+        assert_eq!(unit.sources.get(&source_id), Some(&domain_id));
+        let slot = unit.domains.get_mut(&domain_id).expect("claimed domain slot");
+        assert!(slot.is_none(), "claimed domain replaced");
+        unit.commands = Some(owner.commands.into_inner());
+        if let Err(error) = completed {
+            *slot = Some(owner.domain.into_inner());
+            return Err(error);
+        }
+        Ok(owner.domain)
     })?;
-    let Some(mut detached) = detached else {
-        return Ok(());
-    };
+    let mut detached = detached;
     after_detach();
     let source_id = detached.value_mut().source_id;
     // Physical release freezes before touching the allocator. Even partial
     // rejection returns the exact owner to its existing slot without allocation.
     if let Err(error) = detached.value_mut().tables.release() {
-        with_unit(|unit| {
+        with_registered(|unit| {
             assert_eq!(unit.sources.get(&source_id), Some(&domain_id));
             let slot = unit.domains.get_mut(&domain_id).expect("claimed domain slot");
             assert!(slot.is_none(), "claimed domain replaced");
@@ -724,7 +780,7 @@ pub(super) fn destroy_domain_with(
         })?;
         return Err(error);
     }
-    with_unit(|unit| {
+    with_registered(|unit| {
         assert!(matches!(unit.domains.get(&domain_id), Some(None)), "claimed domain replaced");
         assert_eq!(unit.sources.get(&source_id), Some(&domain_id));
         // Drain does not reset queued device work; reset still owns this fence.
@@ -804,6 +860,41 @@ pub fn pending_fault_events() -> u32 {
 /// Boundary probe; does not initialize hardware or spin on contention.
 pub(super) fn test_assert_backend_available() {
     drop(UNIT.try_lock().expect("physical release holds backend registry"));
+}
+
+/// Private RAM register fixture: no remapping unit sees this backing.
+pub(super) fn test_command_engine() {
+    let (tables, registers) =
+        Tables::prepare_unpublished(Scope::Unit, Tables::allocate_frame).unwrap();
+    let base = unsafe { registers.into_hhdm_mut::<u8>() } as usize;
+    {
+        let mut slot = Some(Commands {
+            base,
+            iotlb_invalidate: 0x100,
+            draining_command: charlotte_lifecycle::iommu::vtd_draining_command(3 << 54).unwrap(),
+        });
+        let context = CCMD_ICC | CCMD_CIRG | 0x100;
+        let iotlb = IOTLB_IVA | 0x200;
+        write64(base, CCMD, context);
+        write64(base, 0x100, iotlb);
+        let mut owner = super::detached_domain::DetachedDomain::new(slot.take().unwrap());
+        assert_eq!(owner.value_mut().flush_context_cache(), Err(Error::HardwareTimeout));
+        assert_eq!(owner.value_mut().flush_iotlb(), Err(Error::HardwareTimeout));
+        assert_eq!(read64(base, CCMD), context);
+        assert_eq!(read64(base, 0x100), iotlb);
+        slot = Some(owner.into_inner());
+        let commands = slot.as_mut().unwrap();
+        assert_eq!(commands.base, base);
+        // Only the private RAM fixture clears its bits; no hardware ack is forged.
+        write64(base, CCMD, 0);
+        write64(base, 0x100, 0);
+        assert_eq!(commands.flush_context_cache(), Err(Error::HardwareTimeout));
+        assert_eq!(read64(base, CCMD), CCMD_ICC | CCMD_CIRG);
+        assert_eq!(commands.flush_iotlb(), Err(Error::HardwareTimeout));
+        assert_eq!(read64(base, 0x100), commands.draining_command);
+    } // Private command authority ends before backing cancellation.
+    tables.cancel_unpublished().unwrap();
+    crate::logln!("[vtd command owner] private busy registers preserved before retry submission");
 }
 
 /// Guarded abandonment probe; does not initialize or publish hardware.

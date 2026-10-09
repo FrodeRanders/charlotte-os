@@ -100,9 +100,16 @@ The [detached-domain follow-up](../reports/audits/2026-10-09-security-iommu-deta
 now moves explicit DMA destruction's physical table release outside backend
 serialization, preserving the complete owner and existing slot/requester claim.
 Partial physical failure restores that frozen owner without allocation;
-abandonment retains metadata/pins and fences the slot. Hardware waits and creation
-rollback still require command-engine phase ownership, so G3 and SEC-18 remain
+abandonment retains metadata/pins and fences the slot. Remaining backend waits
+and creation rollback require command-engine phase ownership, so G3 and SEC-18 remain
 partial. No custody registry or new owner-family row is added.
+The [command-maintenance follow-up](../reports/audits/2026-10-09-security-iommu-command-maintenance.md)
+now moves explicit destruction's actual command engine and complete domain before
+unlocked hardware maintenance. Empty engine admission fences ordinary mutation;
+timeout restores the exact engine/domain, abandonment retains them and fences the
+unit. Physical completion remains available during unrelated maintenance.
+Creation/map/unmap/initialization waits and private rollback remain G3 work;
+SEC-18 remains partial and finding counts are unchanged.
 The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.

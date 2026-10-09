@@ -16,6 +16,7 @@ pub enum Error {
     UnknownDomain,
     UnknownMapping,
     HardwareTimeout,
+    OperationInFlight,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

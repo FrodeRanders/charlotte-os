@@ -246,14 +246,18 @@ impl Domain {
     }
 }
 
-struct Unit {
+struct Commands {
     base: usize,
-    devtab: PAddr,
-    _tables: Tables,
     cmd_buf: PAddr,
     cmd_tail: u32,
     completion: PAddr,
     completion_epoch: u64,
+}
+
+struct Unit {
+    commands: Option<Commands>,
+    devtab: PAddr,
+    _tables: Tables,
     next_domain: u64,
     domains: BTreeMap<u64, Option<Domain>>,
     sources: BTreeMap<u16, u64>,
@@ -285,6 +289,16 @@ impl Unit {
         }
     }
 
+    fn flush_device_table(&mut self, source_id: u16) -> Result<(), Error> {
+        self.commands.as_mut().ok_or(Error::OperationInFlight)?.flush_device_table(source_id)
+    }
+
+    fn flush_iotlb(&mut self) -> Result<(), Error> {
+        self.commands.as_mut().ok_or(Error::OperationInFlight)?.flush_iotlb()
+    }
+}
+
+impl Commands {
     fn queue_command(&mut self, cmd0: u64, cmd1: u64) -> Result<(), Error> {
         let tail = self.cmd_tail as usize;
         let head = read64(self.base, CMD_HEAD);
@@ -377,13 +391,15 @@ fn initialize(config: crate::environment::acpi::sdt::ivrs::IvrsConfig) -> Result
     crate::logln!("[amdvi] enabled AMD-Vi at {:#x}", config.base);
 
     Ok(Unit {
-        base,
+        commands: Some(Commands {
+            base,
+            cmd_buf,
+            cmd_tail: 0,
+            completion,
+            completion_epoch: 0,
+        }),
         devtab,
         _tables: tables,
-        cmd_buf,
-        cmd_tail: 0,
-        completion,
-        completion_epoch: 0,
         next_domain: 1,
         domains: BTreeMap::new(),
         sources: BTreeMap::new(),
@@ -397,7 +413,18 @@ fn with_unit<R>(f: impl FnOnce(&mut Unit) -> Result<R, Error>) -> Result<R, Erro
             crate::environment::acpi::sdt::ivrs::discover_amd_vi().ok_or(Error::Unsupported)?;
         *guard = Some(initialize(config)?);
     }
-    f(guard.as_mut().expect("AMD-Vi unit initialized"))
+    let unit = guard.as_mut().expect("installed DMA unit");
+    if unit.commands.is_none() {
+        return Err(Error::OperationInFlight);
+    }
+    f(unit)
+}
+
+// Only the containing maintenance owner may restore its moved engine/domain.
+// No initialization, waiting or physical cleanup occurs under this hold.
+fn with_registered<R>(f: impl FnOnce(&mut Unit) -> Result<R, Error>) -> Result<R, Error> {
+    let mut guard = UNIT.lock();
+    f(guard.as_mut().ok_or(Error::Unsupported)?)
 }
 
 pub fn initialize_early() -> Result<(), Error> {
@@ -552,45 +579,62 @@ pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
 }
 
 pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
-    destroy_domain_with(domain_id, || {})
+    destroy_domain_at(domain_id, || {}, || {})
 }
 
-/// The hook is a per-call boot-fixture boundary, never a global release mode.
-pub(super) fn destroy_domain_with(
+/// Per-call boot-fixture boundaries; production supplies empty hooks.
+pub(super) fn destroy_domain_at(
     domain_id: u64,
+    before_maintenance: impl FnOnce(),
     after_detach: impl FnOnce(),
 ) -> Result<(), Error> {
-    let detached = with_unit(|unit| {
+    let maintenance = with_unit(|unit| {
         let Some(slot) = unit.domains.get_mut(&domain_id) else {
             return Ok(None);
         };
-        // An empty admitted slot belongs to an active or abandoned release.
-        // Competing close must not interpret it as an already completed domain.
         let domain = slot.as_mut().ok_or(Error::UnknownDomain)?;
         domain.retiring = true;
         let source_id = domain.source_id;
-        // Remove the translation entry and flush the cached DTE before freeing
-        // the page tables a device might still walk.
+        // Publish the rejecting descriptor under registry serialization. No
+        // configuration wait or table release may occur until this guard leaves.
         unit.write_dte(source_id, PAddr::from(0u64), false);
-        unit.flush_device_table(source_id)?;
+        let domain = unit.domains.get_mut(&domain_id).unwrap().take().unwrap();
+        let commands = unit.commands.take().expect("admitted command engine");
+        Ok(Some(super::detached_domain::Maintenance::new(domain, commands)))
+    })?;
+    let Some(mut owner) = maintenance else {
+        return Ok(());
+    };
+    before_maintenance();
+    let source_id = owner.domain.value_mut().source_id;
+    let completed = (|| {
+        owner.commands.value_mut().flush_device_table(source_id)?;
         if super::test_reject_retirement() {
             return Err(Error::HardwareTimeout);
         }
-        unit.flush_iotlb()?;
-        // Maintenance is confirmed. Keep the admitted cell and nonzero
-        // requester fence while its complete payload leaves serialization.
-        let domain = unit.domains.get_mut(&domain_id).unwrap().take().unwrap();
-        Ok(Some(super::detached_domain::DetachedDomain::new(domain)))
+        owner.commands.value_mut().flush_iotlb()
+    })();
+    // Restore the actual engine (including timeout producer/epoch state) and
+    // the rejected domain under one hold of their original admitted registry.
+    let detached = with_registered(|unit| {
+        assert!(unit.commands.is_none(), "claimed command engine replaced");
+        assert_eq!(unit.sources.get(&source_id), Some(&domain_id));
+        let slot = unit.domains.get_mut(&domain_id).expect("claimed domain slot");
+        assert!(slot.is_none(), "claimed domain replaced");
+        unit.commands = Some(owner.commands.into_inner());
+        if let Err(error) = completed {
+            *slot = Some(owner.domain.into_inner());
+            return Err(error);
+        }
+        Ok(owner.domain)
     })?;
-    let Some(mut detached) = detached else {
-        return Ok(());
-    };
+    let mut detached = detached;
     after_detach();
     let source_id = detached.value_mut().source_id;
     // Physical release freezes before touching the allocator. Even partial
     // rejection returns the exact owner to its existing slot without allocation.
     if let Err(error) = detached.value_mut().tables.release() {
-        with_unit(|unit| {
+        with_registered(|unit| {
             assert_eq!(unit.sources.get(&source_id), Some(&domain_id));
             let slot = unit.domains.get_mut(&domain_id).expect("claimed domain slot");
             assert!(slot.is_none(), "claimed domain replaced");
@@ -599,7 +643,7 @@ pub(super) fn destroy_domain_with(
         })?;
         return Err(error);
     }
-    with_unit(|unit| {
+    with_registered(|unit| {
         assert!(matches!(unit.domains.get(&domain_id), Some(None)), "claimed domain replaced");
         assert_eq!(unit.sources.get(&source_id), Some(&domain_id));
         // Drain does not reset queued device work; reset still owns this fence.
@@ -664,6 +708,69 @@ pub fn pending_fault_events() -> u32 {
 /// Boundary probe; does not initialize hardware or spin on contention.
 pub(super) fn test_assert_backend_available() {
     drop(UNIT.try_lock().expect("physical release holds backend registry"));
+}
+
+/// Private RAM register/ring fixture, never installed in an IOMMU.
+pub(super) fn test_command_engine() {
+    let (tables, (registers, cmd_buf, completion)) =
+        Tables::prepare_unpublished(Scope::Unit, |tables| {
+            Ok((tables.allocate(3, PAGE_SIZE)?, tables.allocate_frame()?, tables.allocate_frame()?))
+        })
+        .unwrap();
+    let base = unsafe { registers.into_hhdm_mut::<u8>() } as usize;
+    {
+        let mut slot = Some(Commands {
+            base,
+            cmd_buf,
+            cmd_tail: 0,
+            completion,
+            completion_epoch: 0,
+        });
+        let mut owner = super::detached_domain::DetachedDomain::new(slot.take().unwrap());
+        assert_eq!(owner.value_mut().flush_iotlb(), Err(Error::HardwareTimeout));
+        slot = Some(owner.into_inner());
+        let commands = slot.as_mut().unwrap();
+        assert_eq!(commands.cmd_tail, 32);
+        assert_eq!(commands.completion_epoch, 1);
+        let ring = unsafe { cmd_buf.into_hhdm_ptr::<u64>() };
+        let completion_command =
+            charlotte_lifecycle::iommu::amd_completion_command(u64::from(completion), 1).unwrap();
+        assert_eq!(unsafe { ring.add(2).read_volatile() }, completion_command[0]);
+        assert_eq!(unsafe { ring.add(3).read_volatile() }, 1);
+        // A stale coherent store must not satisfy the new exact epoch.
+        unsafe { completion.into_hhdm_mut::<u64>().write_volatile(1) };
+        assert_eq!(commands.flush_iotlb(), Err(Error::HardwareTimeout));
+        assert_eq!(commands.cmd_tail, 64);
+        assert_eq!(commands.completion_epoch, 2);
+        assert_eq!(unsafe { ring.add(3).read_volatile() }, 1);
+        assert_eq!(unsafe { ring.add(7).read_volatile() }, 2);
+        assert_eq!(read64(base, CMD_TAIL), 64);
+        write64(base, CMD_HEAD, 80); // Full at the next slot: preserve prior work.
+        let word = unsafe { ring.add(8).read_volatile() };
+        assert_eq!(commands.flush_iotlb(), Err(Error::HardwareTimeout));
+        assert_eq!(commands.cmd_tail, 64);
+        assert_eq!(commands.completion_epoch, 3);
+        assert_eq!(unsafe { ring.add(8).read_volatile() }, word);
+        // One slot remains: invalidation submits but its completion cannot.
+        // Preserve that installed prefix and the exact new producer/epoch.
+        write64(base, CMD_HEAD, 96);
+        let completion_word = unsafe { ring.add(10).read_volatile() };
+        assert_eq!(commands.flush_iotlb(), Err(Error::HardwareTimeout));
+        assert_eq!(commands.cmd_tail, 80);
+        assert_eq!(commands.completion_epoch, 4);
+        assert_eq!(read64(base, CMD_TAIL), 80);
+        assert_eq!(unsafe { ring.add(8).read_volatile() }, CMD_INVAL_ALL << 60);
+        assert_eq!(unsafe { ring.add(10).read_volatile() }, completion_word);
+        commands.completion_epoch = u64::MAX; // Private exhaustion probe.
+        assert_eq!(commands.flush_iotlb(), Err(Error::HardwareTimeout));
+        assert_eq!(commands.cmd_tail, 80);
+        assert_eq!(commands.completion_epoch, u64::MAX);
+    } // Private command authority ends before backing cancellation.
+    tables.cancel_unpublished().unwrap();
+    crate::logln!(
+        "[amdvi command owner] private timeout state, stale epoch, full-ring and exhaustion \
+         rejection preserved"
+    );
 }
 
 /// Guarded abandonment probe; does not initialize or publish hardware.

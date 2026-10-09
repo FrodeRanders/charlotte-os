@@ -7,7 +7,10 @@ use core::sync::atomic::{
 };
 
 use super::*;
-use crate::device::detached_domain::DetachedDomain;
+use crate::device::detached_domain::{
+    DetachedDomain,
+    Maintenance,
+};
 
 static DROPS: AtomicUsize = AtomicUsize::new(0);
 struct Metadata {
@@ -42,10 +45,13 @@ pub(super) fn run() {
     // Preserve the containing allocation, not just the table's own fallback.
     let mut slot = Some(payload(1));
     let metadata = slot.as_ref().unwrap().metadata.as_ptr();
-    let owner = DetachedDomain::new(slot.take().unwrap());
-    assert!(slot.is_none());
+    let mut commands = Some(alloc::vec![Metadata {
+        _allocation: 0x434f_4d4d_414e_4453
+    }]);
+    let owner = Maintenance::new(slot.take().unwrap(), commands.take().unwrap());
+    assert!(slot.is_none() && commands.is_none());
     preparation_tests::drop_under_guards(|| drop(owner));
-    assert!(slot.is_none());
+    assert!(slot.is_none() && commands.is_none());
     assert_eq!(DROPS.load(Ordering::Relaxed), drops);
     assert_eq!(used(), (baseline.0 + 1, baseline.1 + 1));
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free - 1);

@@ -78,13 +78,16 @@ pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
     }
 }
 
-pub(super) fn destroy_domain_with(
+pub(super) fn destroy_domain_at(
     domain_id: u64,
+    before_maintenance: impl FnOnce(),
     after_detach: impl FnOnce(),
 ) -> Result<(), Error> {
     match detect()? {
-        Backend::Vtd => super::vt_d::destroy_domain_with(domain_id, after_detach),
-        Backend::AmdVi => super::amd_vi::destroy_domain_with(domain_id, after_detach),
+        Backend::Vtd => super::vt_d::destroy_domain_at(domain_id, before_maintenance, after_detach),
+        Backend::AmdVi => {
+            super::amd_vi::destroy_domain_at(domain_id, before_maintenance, after_detach)
+        }
     }
 }
 
@@ -134,4 +137,10 @@ pub(super) fn test_with_backend_locked(action: impl FnOnce()) {
 pub(super) fn test_assert_backend_available() {
     super::vt_d::test_assert_backend_available();
     super::amd_vi::test_assert_backend_available();
+}
+
+/// Both compiled command engines use private RAM registers, never hardware.
+pub(super) fn test_command_engines() {
+    super::vt_d::test_command_engine();
+    super::amd_vi::test_command_engine();
 }
