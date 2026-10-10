@@ -454,6 +454,9 @@ fn learn_peer(
     tick_ms: u64,
     ttl_ms: u64,
 ) {
+    if !disco::peer_learning_admitted(peers.len(), peers.contains_key(&mac)) {
+        return;
+    }
     peers.insert(
         mac,
         DiscoveredPeer {
@@ -495,6 +498,16 @@ fn handle_frame(
 ) {
     if let Some((_version, flags, source_mac, frame_cluster_id)) = parse_disco_frame(frame) {
         DIAG_DECODED.fetch_add(1, Ordering::Relaxed);
+        // The advertised identity must match the frame's real Ethernet source,
+        // so one host cannot populate the table with many invented MACs.
+        let Some(ethernet_source) =
+            frame.get(6..12).and_then(|bytes| <[u8; 6]>::try_from(bytes).ok())
+        else {
+            return;
+        };
+        if source_mac != ethernet_source {
+            return;
+        }
         if frame_cluster_id == *cluster_id && source_mac != local_mac {
             let payload = &frame[FRAME_HEADER_SIZE..];
             if let Some((peer_id, service_name, cluster_block)) = parse_extended_payload(payload) {

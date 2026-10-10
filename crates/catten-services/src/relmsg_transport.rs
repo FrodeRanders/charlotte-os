@@ -65,6 +65,11 @@ pub const TAG_JOIN_REPLY: u8 = 8;
 /// response from permanently fencing all later replication to that peer.
 const APPEND_RESPONSE_TIMEOUT_MS: u64 = 1_000;
 
+/// Maximum distinct MAC routes learned from discovery or membership. The
+/// cluster is far smaller; the bound keeps a hostile L2 peer from growing the
+/// route table without limit by cycling invented node ids.
+pub const MAX_PEER_ROUTES: usize = 64;
+
 /// Encode the body of a join request: `[id_len][id][service_name:8 LE]`.
 ///
 /// [`RelmsgRaftTransport::send_message`] owns the outer message tag, just as
@@ -203,7 +208,12 @@ impl RelmsgRaftTransport {
     }
 
     pub fn add_peer(&self, peer_id: &str, mac: [u8; 6]) {
-        self.peer_macs.lock().insert(peer_id.to_string(), mac);
+        let mut routes = self.peer_macs.lock();
+        // Discovery feeds this table. A hostile L2 peer can invent identities;
+        // refuse new routes past the bound while still refreshing known ones.
+        if routes.contains_key(peer_id) || routes.len() < MAX_PEER_ROUTES {
+            routes.insert(peer_id.to_string(), mac);
+        }
     }
 
     pub fn remove_peer(&self, peer_id: &str) {
@@ -718,5 +728,29 @@ mod tests {
                 .decode_inbound_parts(&[0x02, 0, 0, 0, 0, 9], TAG_VOTE_REQUEST, &payload)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn learned_routes_are_bounded_and_refresh_in_place() {
+        let transport = RelmsgRaftTransport::default();
+        for index in 0..MAX_PEER_ROUTES {
+            let mut mac = [0u8; 6];
+            mac[0] = 0x02;
+            mac[4] = (index >> 8) as u8;
+            mac[5] = index as u8;
+            transport.add_peer(&alloc::format!("n{index}"), mac);
+        }
+        assert_eq!(transport.peer_count(), MAX_PEER_ROUTES);
+        // A new identity is refused at the cap...
+        transport.add_peer("overflow", [0x02, 0, 0, 0, 0xff, 0xff]);
+        assert_eq!(transport.peer_count(), MAX_PEER_ROUTES);
+        assert!(!transport.has_peer("overflow"));
+        // ...while an existing route still refreshes.
+        let mut moved = [0u8; 6];
+        moved[0] = 0x02;
+        moved[5] = 0xaa;
+        transport.add_peer("n0", moved);
+        assert_eq!(transport.peer_count(), MAX_PEER_ROUTES);
+        assert_eq!(transport.mac_for_peer("n0"), Some(moved));
     }
 }

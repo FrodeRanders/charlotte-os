@@ -10,6 +10,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [2026-10-10 renewed-audit remediation (SEC-36–38)](audits/2026-10-10-security-audit-remediation-2.md)
 - [2026-10-10 renewed-audit remediation (SEC-31–35)](audits/2026-10-10-security-audit-remediation.md)
 - [2026-10-10 renewed security audit (SEC-31–38)](audits/2026-10-10-security-audit.md)
 - [2026-10-10 mailbox word-ring backing admission](audits/2026-10-10-security-mailbox-backing-admission.md)

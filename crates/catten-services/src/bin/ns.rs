@@ -85,6 +85,9 @@ enum PendingLookup {
     Legacy {
         reply: u64,
         access_key: u64,
+        /// Kernel-authenticated caller identity when available, retained so a
+        /// deferred denial of a policy-published registration can be audited.
+        actor: Option<DomainIdentity>,
     },
     Authorized {
         reply: u64,
@@ -580,8 +583,11 @@ fn register(
             PendingLookup::Legacy {
                 reply,
                 access_key: caller_key,
+                actor,
             } => {
-                if access_key != 0 && access_key != caller_key {
+                if authorized {
+                    deny_policy_published(policy, audit, &key, actor, reply);
+                } else if access_key != 0 && access_key != caller_key {
                     unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
                 } else {
                     reply_connection_or_error(reply, connection, generation);
@@ -614,15 +620,52 @@ fn register(
     generation
 }
 
+/// The kernel-authenticated caller identity for audit, when the envelope
+/// supplies a valid asid/generation pair.
+fn legacy_actor(message: &IpcMessage) -> Option<DomainIdentity> {
+    DomainIdentity::new(message.sender, message.sender_generation)
+}
+
+/// A legacy opcode may not resolve a registration published through the
+/// policy-mediated opcode. The denial is audited when the caller identity is
+/// available; legacy lookups remain outside the authorization boundary.
+fn deny_policy_published(
+    policy: &PolicyStore,
+    audit: &mut AuditLog,
+    service: &[u8],
+    actor: Option<DomainIdentity>,
+    reply: u64,
+) {
+    if let Some(caller) = actor {
+        record_denial(
+            policy,
+            audit,
+            caller,
+            service,
+            AuthorizationRights::SEND | AuthorizationRights::CALL,
+            AuthorizationError::RightsDenied,
+        );
+    }
+    unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
+}
+
+#[allow(clippy::too_many_arguments)]
 fn lookup_or_defer(
+    policy: &PolicyStore,
+    audit: &mut AuditLog,
     registry: &Registry,
     waitlist: &mut Waitlist,
     key: &[u8],
     reply: u64,
     caller_key: u64,
+    actor: Option<DomainIdentity>,
 ) {
     match registry.get(key) {
         Some(registration) if registration.connection != 0 => {
+            if registration.authorized {
+                deny_policy_published(policy, audit, key, actor, reply);
+                return;
+            }
             if registration.access_key != 0 && registration.access_key != caller_key {
                 unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
                 return;
@@ -641,6 +684,7 @@ fn lookup_or_defer(
                     PendingLookup::Legacy {
                         reply,
                         access_key: caller_key,
+                        actor,
                     },
                     &RegistryCatalog(registry),
                 );
@@ -649,8 +693,18 @@ fn lookup_or_defer(
     }
 }
 
-fn try_lookup(registry: &Registry, key: &[u8], reply: u64) {
+fn try_lookup(
+    policy: &PolicyStore,
+    audit: &mut AuditLog,
+    registry: &Registry,
+    key: &[u8],
+    reply: u64,
+    actor: Option<DomainIdentity>,
+) {
     match registry.get(key) {
+        Some(registration) if registration.connection != 0 && registration.authorized => {
+            deny_policy_published(policy, audit, key, actor, reply);
+        }
         Some(registration) if registration.connection != 0 && registration.access_key == 0 => {
             reply_connection_or_error(reply, registration.connection, registration.generation);
         }
@@ -788,11 +842,14 @@ fn main(ctx: Context) -> ! {
                     continue;
                 }
                 lookup_or_defer(
+                    &policy,
+                    &mut audit,
                     &registry,
                     &mut waitlist,
                     &scalar_key(message.arg0),
                     message.reply,
                     0,
+                    legacy_actor(&message),
                 );
             }
             ns::OP_UNREGISTER => {
@@ -866,7 +923,14 @@ fn main(ctx: Context) -> ! {
             }
             ns::OP_TRY_LOOKUP => {
                 if message.reply != 0 {
-                    try_lookup(&registry, &scalar_key(message.arg0), message.reply);
+                    try_lookup(
+                        &policy,
+                        &mut audit,
+                        &registry,
+                        &scalar_key(message.arg0),
+                        message.reply,
+                        legacy_actor(&message),
+                    );
                 }
             }
             ns::OP_LOOKUP_KEYED => {
@@ -875,11 +939,14 @@ fn main(ctx: Context) -> ! {
                 }
                 let caller_key = unsafe { ns::read_access_key(message.memory) };
                 lookup_or_defer(
+                    &policy,
+                    &mut audit,
                     &registry,
                     &mut waitlist,
                     &scalar_key(message.arg0),
                     message.reply,
                     caller_key,
+                    legacy_actor(&message),
                 );
             }
             ns::OP_LOOKUP_NAMED => {
@@ -888,7 +955,16 @@ fn main(ctx: Context) -> ! {
                     continue;
                 }
                 match key {
-                    Some(key) => lookup_or_defer(&registry, &mut waitlist, &key, message.reply, 0),
+                    Some(key) => lookup_or_defer(
+                        &policy,
+                        &mut audit,
+                        &registry,
+                        &mut waitlist,
+                        &key,
+                        message.reply,
+                        0,
+                        legacy_actor(&message),
+                    ),
                     None => unsafe {
                         ipc_reply(message.reply, ns::ERR_INVALID);
                     },
@@ -898,7 +974,14 @@ fn main(ctx: Context) -> ! {
                 let key = read_named_key(&message);
                 if message.reply != 0 {
                     match key {
-                        Some(key) => try_lookup(&registry, &key, message.reply),
+                        Some(key) => try_lookup(
+                            &policy,
+                            &mut audit,
+                            &registry,
+                            &key,
+                            message.reply,
+                            legacy_actor(&message),
+                        ),
                         None => unsafe {
                             ipc_reply(message.reply, ns::ERR_INVALID);
                         },

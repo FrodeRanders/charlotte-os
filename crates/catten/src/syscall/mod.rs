@@ -2066,6 +2066,13 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
             frame.regs[0] = 0;
             return;
         };
+        // Keep the upgrade image under the same artifact ceiling as the
+        // deployment gates; the snapshot allocation must stay bounded.
+        if size == 0 || size > charlotte_launch::MAX_ARTIFACT_ELF_SIZE {
+            let _ = crate::memory::object::close_cap(caller_asid, elf_cap);
+            frame.regs[0] = 0;
+            return;
+        }
         persistent_elf = match crate::memory::object::snapshot_bytes(caller_asid, elf_cap, size) {
             Ok(image) => image,
             Err(_) => {

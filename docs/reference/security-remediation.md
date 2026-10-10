@@ -9,11 +9,11 @@ not a current backlog.
 
 | State | Findings | Meaning |
 | --- | --- | --- |
-| Corrected in the documented scope | SEC-01, 02, 03, 05, 11, 13, 16, 17, 19–31, 33–35 | The identified defect has a correction and recorded validation. This is not a claim of complete subsystem security. |
+| Corrected in the documented scope | SEC-01, 02, 03, 05, 11, 13, 16, 17, 19–31, 33–38 | The identified defect has a correction and recorded validation. This is not a claim of complete subsystem security. |
 | Partly corrected or mitigated | SEC-04, 06, 07, 14, 15, 18, 32 | Specific paths are strengthened; the broader finding still has required work. |
-| Open | SEC-08, 09, 10, 12, 36, 37, 38 | The required security boundary is not implemented, or the renewed audit's new finding has no correction yet. |
+| Open | SEC-08, 09, 10, 12 | The required security boundary is not implemented. |
 
-There are **38 numbered findings: 24 corrected, seven partial and seven open**.
+There are **38 numbered findings: 27 corrected, seven partial and four open**.
 The earlier SEC-01–25 accounting was 15 corrected, six partial and four open;
 it excluded the five additional, corrected findings SEC-26–30. Finding counts
 measure bookkeeping, not percentage of effort or production readiness.
@@ -23,6 +23,7 @@ The [first audit](../reports/audits/2026-10-03-security-audit.md),
 [SEC-23–25 follow-up](../reports/audits/2026-10-05-security-follow-up.md),
 [2026-10-10 renewed audit](../reports/audits/2026-10-10-security-audit.md),
 [SEC-31–35 remediation](../reports/audits/2026-10-10-security-audit-remediation.md),
+[SEC-36–38 remediation](../reports/audits/2026-10-10-security-audit-remediation-2.md),
 and [report index](../reports/README.md) retain the evidence. This page gives
 the remaining acceptance criteria, so a completed narrow fix need not reopen
 an unbounded audit loop.
@@ -30,19 +31,16 @@ an unbounded audit loop.
 ## SEC-31–38: renewed-audit findings
 
 The [2026-10-10 renewed audit](../reports/audits/2026-10-10-security-audit.md)
-confirmed eight new source-confirmed findings. SEC-31, SEC-33, SEC-34 and
-SEC-35 are corrected in the
-[remediation report](../reports/audits/2026-10-10-security-audit-remediation.md);
-SEC-32 is partly corrected (the abort is fixed, retained receive backing
-remains SEC-07 work). The findings below remain open or partial and are
-tracked here with their required acceptance work.
+confirmed eight new source-confirmed findings. SEC-31 and SEC-33–38 are
+corrected in the
+[first](../reports/audits/2026-10-10-security-audit-remediation.md) and
+[second](../reports/audits/2026-10-10-security-audit-remediation-2.md)
+remediation reports; SEC-32 is partly corrected (the abort is fixed, retained
+receive backing remains SEC-07 work) and is the only one tracked below.
 
 | ID | State | Finding | Acceptance direction |
 | --- | --- | --- | --- |
 | SEC-32 | Partial | Transmit-allocation failure no longer aborts TCP/IP, but a client retaining moved receive objects can still starve its transmit budget | Account for moved receive backing across domains (SEC-07 R7-3) or bound per-owner retention; stress test sustained retention. |
-| SEC-36 | Open | Discovery peer table is unbounded and keyed by an attacker-chosen MAC | Cap discovery/transport peer state and per-tick churn; sustained distinct-MAC frames must not exhaust the service. |
-| SEC-37 | Open | Legacy name-service lookup resolves policy-published registrations without a decision | Deny legacy resolution of `authorized` registrations or route it through the policy engine; audit the outcome. |
-| SEC-38 | Open | `SPAWN_UPGRADE` snapshot length is not bounded by the artifact ceiling | Enforce `MAX_ARTIFACT_ELF_SIZE` and use fallible allocation; oversized objects reject without a large kernel allocation. |
 
 ## SEC-07: bounded resource admission
 

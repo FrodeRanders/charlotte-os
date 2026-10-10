@@ -544,7 +544,10 @@ pub(crate) fn snapshot_bytes(
     if len == 0 || len > object.frames.len().saturating_mul(PAGE_SIZE) {
         return Err(MemoryObjectError::InvalidLength);
     }
-    let mut bytes = Vec::with_capacity(len);
+    // Snapshot allocation is caller-sized; prepare it fallibly so a rejected
+    // or oversized request cannot abort the kernel under heap pressure.
+    let mut bytes = Vec::new();
+    bytes.try_reserve_exact(len).map_err(|_| MemoryObjectError::FrameAllocFailed)?;
     for frame in &object.frames {
         let remaining = len - bytes.len();
         if remaining == 0 {

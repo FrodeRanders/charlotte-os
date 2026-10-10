@@ -1556,6 +1556,32 @@ pub mod disco {
     pub const PROBE_COUNT: usize = 3;
     pub const PROBE_INTERVAL_MS: u64 = 200;
     pub const PEER_TTL_MS: u64 = 30_000;
+
+    /// Maximum live discovered peers. The cluster is far smaller; the bound
+    /// keeps an unauthenticated L2 peer from growing the discovery table
+    /// without limit by advertising fresh MACs.
+    pub const MAX_DISCOVERED_PEERS: usize = 64;
+
+    /// Whether a learned peer may be inserted or refreshed. Known MACs refresh
+    /// in place; new MACs are admitted only below the bound.
+    pub const fn peer_learning_admitted(current: usize, known: bool) -> bool {
+        known || current < MAX_DISCOVERED_PEERS
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn peer_learning_refuses_new_macs_at_the_bound() {
+            assert!(peer_learning_admitted(0, false));
+            assert!(peer_learning_admitted(MAX_DISCOVERED_PEERS - 1, false));
+            assert!(!peer_learning_admitted(MAX_DISCOVERED_PEERS, false));
+            assert!(!peer_learning_admitted(MAX_DISCOVERED_PEERS + 1, false));
+            // Known peers can always refresh, even at capacity.
+            assert!(peer_learning_admitted(MAX_DISCOVERED_PEERS, true));
+        }
+    }
 }
 
 /// Distributed name service (`charlotte-protocol-dns` v1).
