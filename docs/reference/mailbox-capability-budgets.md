@@ -54,9 +54,10 @@ existing `AdmittedMap` nodes. A staged close can drain this operation while
 rejecting its publication. Existing receiver lookup needs no fresh storage.
 Unused preparation and ordinary cancellation finish after local guards leave,
 with the root completed last. No payload insertion can allocate after authority
-publication; the old lifecycle-only allocator helper has been removed. Ordinary
-send/receive does not take that lifecycle guard. Opens across domains now
-share this short metadata critical section; no throughput result is claimed.
+publication; the old lifecycle-only allocator helper has been removed. Word
+send/receive now also retain an exact root and use lifecycle before their shared
+queue-registry borrow to validate identity, retirement and staged closing. No
+throughput result is claimed.
 
 The namespace stores its exact handle and owns a fresh reference-counted
 budget. Teardown retires that budget before releasing entries. A captured old
@@ -71,16 +72,21 @@ budget account allocation are now fallible.
 `PreparingMailbox` and `RetiredMailbox` retain all fields on abandonment without
 registry/counter/allocator access or logging. Retained charges and roots are
 terminal retention, with no retry adapter. Empty namespace/control-block bytes
-are outside the count ceilings; legacy queue BTreeMap allocation/destruction
-remains separate. Final-root mailbox teardown now detaches the complete admitted
-namespace and legacy queue payload into its existing closing transaction, then
-moves them with the unified authority namespace into `RetiredAddressSpace`.
+are outside the count ceilings. Final-root mailbox teardown now detaches the
+complete admitted namespace and queue node/backing into its existing closing
+transaction, then moves them with the unified authority namespace into `RetiredAddressSpace`.
 Failed root invalidation retains both original record charges and queue backing.
 Confirmed invalidation explicitly releases payload and authority metadata outside
 local lifecycle/mailbox/capability guards, before physical root/slot completion.
-There is no snapshot, independent retry or cleanup in fallback. Legacy queue
-BTreeMap node removal still deallocates under its registry/lifecycle; queue payload
-release is qualified separately. Raw serialized teardown is confined to boot
+There is no snapshot, independent retry or cleanup in fallback. The word-queue
+namespace now uses the same admitted map: prepare its node fallibly and its queue
+backing outside local guards, then revalidate and relink. A competing creator
+leaves unused storage with its exact operation until post-guard completion, root
+last. Final teardown detaches the complete node into the existing root receipt,
+without map-node deallocation under the registry. Its captured generation fences
+late send/receive against successors and staged close. The concurrent queue and
+its Vec/Arc backing still use infallible construction; full queue-byte, principal
+and progress admission remains open. Raw serialized teardown is confined to boot
 fixtures. See the [final-metadata evidence](../reports/audits/2026-10-10-security-root-metadata-retirement.md).
 
 ## Verification
@@ -106,6 +112,16 @@ retains two exact roots, two mailbox charges and two shared authority charges
 (including a detached record), plus their nodes/control blocks and CPU-root
 backing. It creates no extra mailbox queues or data frames. The
 [publication evidence](../reports/audits/2026-10-10-security-mailbox-publication.md) records failed runs separately from repeats.
+
+Additional [word-queue fixtures](../reports/audits/2026-10-10-security-mailbox-queue-storage.md)
+reject node preparation before registry mutation, preserve established sends
+without allocation, retain losing creators through post-guard completion, and
+verify two 256-word FIFO/backpressure/wrap rounds. Heap-held publication and
+actual final metadata detach qualify allocation-free relinking. Retired, staged
+and stale roots reject; successor content stays intact. Guarded abandonment
+retains one additional root lease, unused admitted node and 256-word queue per
+LP, without data frames or record charges. This is terminal retention, not
+retry custody or real OOM/concurrency qualification.
 
 ## Shared namespace admission
 

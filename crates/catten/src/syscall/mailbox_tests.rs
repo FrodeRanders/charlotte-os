@@ -113,6 +113,7 @@ pub(crate) fn test_admission() {
     test_generation_fence();
     test_shared_admission();
     mailbox_publication::tests::run();
+    mailbox_queue::tests::run();
     logln!("[mailbox] record quota, churn, rollback, retirement and generation fencing passed");
 }
 

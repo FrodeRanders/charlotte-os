@@ -1231,6 +1231,22 @@ device-authority follow-up above qualifies their local unified boundary. Other
 callers and backend metadata remain open. See the
 [close-claim evidence](../reports/audits/2026-10-09-security-dma-close-claim.md).
 
+### Word-queue namespace storage
+
+`mailbox_queue::tests` drives actual node-preparation rejection, competing
+creators and two rounds of 256-word FIFO/full rejection/wrap. Established sends
+leave the next rejection pending, proving no new queue/node preparation.
+Heap-held publication and actual final metadata detachment must not allocate or
+destroy nodes. Retired, staged and stale captured roots reject; a successor's
+queued word survives. An older operation completes after staged close so the
+same closing owner can finish. Guarded abandonment retains one extra exact root
+lease, unused admitted node and 256-word queue per LP; no record charges/data
+frames are created. Entry probes check local lifecycle, mailbox registries,
+CPU tables and physical/heap/capability guards with original IRQ state. Queue
+construction remains infallible; fixtures do not qualify real OOM, cross-LP
+races or byte/principal/progress admission. See the
+[queue-storage report](../reports/audits/2026-10-10-security-mailbox-queue-storage.md).
+
 ### Final-root namespace metadata
 
 The root recovery fixtures attach two mailbox grants, an observer grant, one
@@ -1245,7 +1261,7 @@ completion before the partial owning walk and terminal no-retry afterwards;
 it adds no new failed-root/frame episode. Instrumented release entries verify
 local lifecycle/mailbox/queue/CPU-table/physical/heap/capability availability with
 original IRQ state. Serialized injection does not qualify unrelated masks,
-legacy queue map node removal or integrated pressure. See the
+integrated pressure. Queue node storage is qualified by the follow-up below. See the
 [final-metadata report](../reports/audits/2026-10-10-security-root-metadata-retirement.md).
 
 ### Mailbox publication and explicit close metadata
@@ -1261,7 +1277,8 @@ metadata and CPU-root backing, without creating queues or new data frames.
 Allocation/disposal entry probes check lifecycle, both mailbox registries, CPU
 tables, physical/heap allocators and shared capability availability with original
 IRQ state. These are serialized fixtures, not cross-LP pressure or physical
-recovery evidence. Final-root mailbox teardown remains under lifecycle. See the
+recovery evidence. Final-root release is qualified by the separate metadata and
+queue follow-ups. See the
 [mailbox report](../reports/audits/2026-10-10-security-mailbox-publication.md).
 
 ### DMA mapping and walker metadata

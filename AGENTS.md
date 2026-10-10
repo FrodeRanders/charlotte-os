@@ -125,8 +125,15 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   explicitly after confirmed invalidation and local guard exit, before root
   backing/slot completion; abandonment retains every field. Root recovery may
   retain only this complete owner, with no separate metadata ticket or replay.
-  Legacy queue BTreeMap allocation/node removal, completion teardown and other
-  final bookkeeping remain separate contexts. Scalar mailbox teardown is a
+  Word-queue operations retain their captured root before registry access.
+  Prepare admitted namespace nodes and queue backing outside lifecycle/queue
+  guards; revalidate generation, sponsorship and closing before relinking.
+  Established queues use shared registry borrows without fresh storage. Carry
+  losing preparation through post-guard disposal, root last. Final teardown
+  retains the complete queue node in the same root receipt; Drop retains all
+  fields. The existing queue constructor remains infallible, and queue-byte/
+  principal/progress admission, completion teardown and other final bookkeeping
+  remain separate contexts. Scalar mailbox teardown is a
   serialized boot-fixture adapter, never a production close path.
   IPC calls use `PreparedCall`/`PreparedConnection` to own metadata and fresh
   authority alongside their attachments. Compose reservations through

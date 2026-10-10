@@ -31,9 +31,12 @@ scratch/completion and accounting metadata removal retain lifecycle. Mailbox
 payload and queue backing detach into `ClosingAddressSpace`, followed by the
 unified authority namespace; their charged nodes are not destroyed here. The
 address space then detaches from the table into `RetiredAddressSpace` with those
-same fields, without returning its ID to the free-slot list. Legacy queue BTreeMap
-node removal still deallocates under its registry/lifecycle; only its payload
-backing release is qualified by this handoff.
+same fields, without returning its ID to the free-slot list. The word-queue
+namespace now also uses an admitted node with its captured generation: final
+close preflights identity and detaches the complete node without destruction.
+The root receipt releases its node and queue backing together after confirmed
+invalidation. Queue construction and byte admission remain separate; see the
+[queue-storage evidence](../reports/audits/2026-10-10-security-mailbox-queue-storage.md).
 
 Device cleanup can reject detachment, invalidation, scratch completion or DMA
 teardown with `DeviceCleanupFailed`. It retains unfinished device records and

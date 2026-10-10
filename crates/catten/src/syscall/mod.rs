@@ -18,10 +18,9 @@
 //! `ESR_EL1[15:0]` (the ISS field for SVC). This kernel uses that immediate as
 //! the syscall number.
 
-use alloc::collections::BTreeMap;
-
 mod mailbox_budget;
 mod mailbox_publication;
+mod mailbox_queue;
 pub(crate) mod mailbox_retirement;
 pub(crate) mod mailbox_tests;
 
@@ -1030,27 +1029,16 @@ use crate::cpu::multiprocessor::{
     shard_mailbox::ShardMailboxSet,
     spin::rwlock::RwLock,
 };
-static USER_MAILBOX: LazyLock<RwLock<BTreeMap<AddressSpaceId, ShardMailboxSet<u64>>>> =
-    LazyLock::new(|| RwLock::new(BTreeMap::new()));
+static USER_MAILBOX: LazyLock<
+    RwLock<mailbox_publication::Map<AddressSpaceId, mailbox_queue::Namespace>>,
+> = LazyLock::new(|| RwLock::new(mailbox_publication::Map::new()));
 
 fn user_mailbox_send(asid: AddressSpaceId, target: LpId, message: u64) -> Result<(), u64> {
-    if target >= get_lp_count() {
-        return Err(message);
-    }
-    // Established domains use a shared namespace borrow; sending to their
-    // lock-free queues must not require a global exclusive map lock.
-    if let Some(mailbox) = USER_MAILBOX.read().get(&asid) {
-        return mailbox.try_send_to(target, message);
-    }
-    USER_MAILBOX
-        .write()
-        .entry(asid)
-        .or_insert_with(|| ShardMailboxSet::new(256))
-        .try_send_to(target, message)
+    mailbox_queue::send(asid, target, message, capture_mailbox_identity(asid))
 }
 
 fn user_mailbox_receive(asid: AddressSpaceId) -> Option<u64> {
-    USER_MAILBOX.read().get(&asid)?.try_recv_for_current_lp()
+    mailbox_queue::receive(asid, capture_mailbox_identity(asid))
 }
 
 type MailboxCap = u64;
@@ -1095,8 +1083,10 @@ static USER_MAILBOX_CAPS: LazyLock<
 /// Serialized boot fixtures only. Production detaches both payload namespaces
 /// into its final root owner rather than releasing them beneath lifecycle.
 pub(crate) fn close_mailbox_address_space_for_test(asid: AddressSpaceId) {
-    let queue = USER_MAILBOX.write().remove(&asid);
-    drop(queue);
+    let queue = USER_MAILBOX.write().take(&asid);
+    if let Some(queue) = queue {
+        queue.release();
+    }
     let namespace = USER_MAILBOX_CAPS.write().take(&asid);
     if let Some(mut namespace) = namespace {
         let caps = &mut namespace.value_mut().1;

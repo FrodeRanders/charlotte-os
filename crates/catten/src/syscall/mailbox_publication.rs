@@ -162,7 +162,7 @@ impl PreparingMailbox {
     }
 }
 
-fn root(
+pub(super) fn root(
     asid: AddressSpaceId,
     captured: MailboxIdentity,
 ) -> Result<Option<AddressSpaceOperation>, Error> {
@@ -175,7 +175,7 @@ fn root(
         .transpose()
         .map_err(|_| Error::Retired)
 }
-fn validate(asid: AddressSpaceId, captured: MailboxIdentity) -> Result<(), Error> {
+pub(super) fn validate(asid: AddressSpaceId, captured: MailboxIdentity) -> Result<(), Error> {
     if captured.address_space != crate::memory::current_address_space_handle(asid)
         || captured.address_space.is_some_and(|handle| !crate::memory::budget::accepting(handle))
     {

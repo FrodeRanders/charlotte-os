@@ -244,9 +244,9 @@ payload nodes and budget in one exact-root owner before local lifecycle/mailbox
 guards. Explicit close retains both charged nodes through post-guard disposal,
 then releases its root; both fallbacks retain every field. Storage rejection,
 receiver reuse, heap-held relinking, ordinary cancellation, staged-close rejection
-and guarded complete-owner abandonment qualify this scope. Final-root mailbox
-teardown still holds lifecycle; legacy queue metadata, other authority callers,
-heap/principal admission and wider contexts remain open. SEC-07/18 and finding
+and guarded complete-owner abandonment qualify this scope. Final-root metadata
+release is qualified by the follow-ups below; queue backing admission, other
+authority callers, heap/principal admission and wider contexts remain open. SEC-07/18 and finding
 counts are unchanged.
 The [final-root metadata follow-up](../reports/audits/2026-10-10-security-root-metadata-retirement.md) now carries detached mailbox/queue
 payload and the complete unified authority namespace in the existing closing and
@@ -254,8 +254,17 @@ retired-root owners. Original charges survive final invalidation rejection and
 bounded custody; confirmed invalidation permits post-guard metadata release
 before the one-shot physical walk. Actual custody retry, stale generation,
 guarded attempt abandonment and existing partial physical rejection qualify
-this scope. Legacy queue map nodes, completion/bookkeeping, other authority
+this scope. Queue backing admission, completion/bookkeeping, other authority
 callers and broader context/admission remain open. SEC-07/18 counts are unchanged.
+The [word-queue storage follow-up](../reports/audits/2026-10-10-security-mailbox-queue-storage.md) now prepares admitted namespace nodes and queue backing outside local guards
+in an exact-root operation, revalidating captured identity before relinking.
+Established sends need no fresh storage. Losing creators retain unused fields
+until post-guard completion; final teardown retains the complete node in the
+existing root receipt. Node rejection, FIFO/backpressure/wrap, heap-held
+publication/final detach, retired/staged/stale-root rejection and guarded
+abandonment qualify this scope. Queue backing construction remains infallible;
+byte/principal/progress admission, completion/bookkeeping and other authority
+contexts remain open. SEC-07/18 and finding counts are unchanged.
 The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.

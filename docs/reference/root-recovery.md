@@ -28,7 +28,8 @@ retains the existing three fresh epoch-fenced rendezvous attempts. Rejection
 returns the same complete owner and retains its slot and charges.
 
 After confirmed invalidation, the same receipt explicitly releases mailbox
-payload/queue backing and the unified authority namespace outside local guards.
+payload, complete queue node and unified authority namespace outside local
+guards.
 These charges follow their actual metadata lifetime, with no separate retry
 owner. Then `RetiredEntry::release_value_with` explicitly runs the owning physical walk, then destroys the disarmed payload and returns its
 linear slot token. Both architecture walkers report rejected frames; they disarm
@@ -91,3 +92,10 @@ Retry limits and quarantine have no force-clear path. A stronger authenticated
 reset/reboot boundary and platform qualification are still required for any
 future reclamation of uncertain backing. **SEC-18 and R18-3 remain partial.**
 Execution evidence: [2026-10-08 recovery audit](../reports/audits/2026-10-08-security-root-recovery.md).
+
+Word queues now retain their captured generation in admitted namespace nodes.
+Those complete nodes follow the existing root receipt through failed invalidation
+and terminal abandonment; there is no independent queue ticket. Node detachment
+is allocation/destruction-free, while queue backing still has infallible
+construction and no byte budget. See the
+[queue-storage report](../reports/audits/2026-10-10-security-mailbox-queue-storage.md).

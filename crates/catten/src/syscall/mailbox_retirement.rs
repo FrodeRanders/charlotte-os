@@ -10,7 +10,7 @@ use crate::{
 
 struct Storage {
     namespace: Option<RetiredEntry<(AddressSpaceId, AsMailboxCaps)>>,
-    queue: Option<ShardMailboxSet<u64>>,
+    queue: Option<RetiredEntry<(AddressSpaceId, mailbox_queue::Namespace)>>,
 }
 /// Payload and its original charges remain together through final root
 /// invalidation. The root owns the unified authority namespace alongside this.
@@ -40,6 +40,10 @@ pub(crate) fn detach(
     }));
     {
         let mut caps = USER_MAILBOX_CAPS.write();
+        let mut queues = USER_MAILBOX.write();
+        if queues.get(&handle.id()).is_some_and(|queue| queue.address_space != Some(handle)) {
+            return Err(mailbox_budget::Error::Retired);
+        }
         if let Some(namespace) = caps.get(&handle.id()) {
             if namespace.address_space != Some(handle) {
                 return Err(mailbox_budget::Error::Retired);
@@ -47,10 +51,8 @@ pub(crate) fn detach(
             namespace.budget.retire();
         }
         owner.0.namespace = caps.take(&handle.id());
+        owner.0.queue = queues.take(&handle.id());
     }
-    // Legacy BTreeMap node removal still deallocates under its registry. Only
-    // queue payload backing is qualified here; admission/map storage is separate.
-    owner.0.queue = USER_MAILBOX.write().remove(&handle.id());
     Ok(owner)
 }
 impl RetiredMailboxes {
@@ -65,7 +67,9 @@ impl RetiredMailboxes {
             }
             namespace.release();
         }
-        drop(self.0.queue.take());
+        if let Some(queue) = self.0.queue.take() {
+            queue.release();
+        }
     }
 }
 
@@ -90,7 +94,10 @@ pub(crate) mod tests {
     }
     pub(crate) fn take_fixture_word(owner: &RetiredMailboxes) {
         assert_eq!(owner.0.namespace.as_ref().unwrap().value().1.endpoints.iter().count(), 2);
-        assert_eq!(owner.0.queue.as_ref().unwrap().try_recv_for_current_lp(), Some(WORD));
+        assert_eq!(
+            owner.0.queue.as_ref().unwrap().value().1.mailboxes.try_recv_for_current_lp(),
+            Some(WORD)
+        );
     }
     pub(crate) fn assert_guards_available() {
         let deadline = crate::self_test::results::Deadline::after_millis(1000);
