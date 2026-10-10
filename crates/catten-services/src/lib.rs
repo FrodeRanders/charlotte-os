@@ -1136,7 +1136,20 @@ pub mod socket {
             let Some(id) = self.id.take() else {
                 return Ok(());
             };
-            let call = match self.service.call(OP_CLOSE, id) {
+            // Retry only rejected admission, never an accepted close. Keep
+            // the remote owner through the total, bounded queue-pressure wait.
+            let deadline = super::deadline::Deadline::after(1_000);
+            let call = loop {
+                match self.service.call(OP_CLOSE, id) {
+                    Err(IpcError::Status(catten_syscall::ipc_status::QUEUE_FULL))
+                        if !deadline.expired() =>
+                    {
+                        super::sleep_ms(5)
+                    }
+                    result => break result,
+                }
+            };
+            let call = match call {
                 Ok(call) => call,
                 Err(error) => {
                     // Submission did not transfer the request. Retain the ID

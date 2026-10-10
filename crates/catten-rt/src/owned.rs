@@ -167,8 +167,8 @@ mod kernel {
         catten_syscall::ipc_recv_block_authenticated(endpoint)
     }
 
-    pub fn ipc_scalar_call(connection: u64, opcode: u32, arg0: u64) -> u64 {
-        catten_syscall::ipc_scalar_call(connection, opcode, arg0)
+    pub fn ipc_scalar_call_checked(connection: u64, opcode: u32, arg0: u64) -> (u64, u64) {
+        catten_syscall::ipc_scalar_call_checked(connection, opcode, arg0)
     }
 
     pub fn ipc_scalar_send_move(connection: u64, opcode: u32, arg0: u64, memory: u64) -> u64 {
@@ -360,6 +360,7 @@ mod kernel {
         pub wait_timeout: VecDeque<(u64, u64)>,
         pub ipc_send: u64,
         pub ipc_call: u64,
+        pub ipc_call_status: u64,
         pub ipc_endpoint: u64,
         pub ipc_connection: u64,
         pub ipc_bind: u64,
@@ -397,6 +398,7 @@ mod kernel {
                 wait_timeout: VecDeque::new(),
                 ipc_send: catten_syscall::ipc_status::OK,
                 ipc_call: 30,
+                ipc_call_status: catten_syscall::ipc_status::OK,
                 ipc_endpoint: 40,
                 ipc_connection: 41,
                 ipc_bind: catten_syscall::ipc_status::OK,
@@ -613,8 +615,14 @@ mod kernel {
         ipc_recv(endpoint)
     }
 
-    pub fn ipc_scalar_call(_connection: u64, _opcode: u32, _arg0: u64) -> u64 {
-        with_state(|state| state.ipc_call)
+    pub fn ipc_scalar_call_checked(_connection: u64, _opcode: u32, _arg0: u64) -> (u64, u64) {
+        with_state(|state| {
+            if state.ipc_call_status == catten_syscall::ipc_status::OK {
+                (state.ipc_call, state.ipc_call_status)
+            } else {
+                (0, state.ipc_call_status)
+            }
+        })
     }
 
     pub fn ipc_scalar_send_move(_connection: u64, _opcode: u32, _arg0: u64, _memory: u64) -> u64 {
@@ -1315,6 +1323,31 @@ mod tests {
         drop(connection);
         drop(endpoint);
         assert_eq!(kernel::events(), [kernel::Event::IpcClose(41), kernel::Event::IpcClose(40)]);
+    }
+
+    #[test]
+    fn scalar_admission_rejection_keeps_connection_without_a_pending_owner() {
+        let _guard = setup();
+        let endpoint = Endpoint::create(1, 1, 4).expect("endpoint creation");
+        let connection = endpoint.connect(IpcRights::CALL).expect("connection creation");
+        for status in [
+            catten_syscall::ipc_status::QUEUE_FULL,
+            catten_syscall::ipc_status::ENDPOINT_CLOSED,
+            catten_syscall::ipc_status::RESOURCE_LIMIT,
+        ] {
+            kernel::update(|state| state.ipc_call_status = status);
+            assert_eq!(connection.as_ref().call(5, 17).unwrap_err(), IpcError::Status(status));
+            assert_eq!(connection.call(5, 17).unwrap_err(), IpcError::Status(status));
+            assert!(kernel::events().is_empty());
+        }
+        kernel::update(|state| state.ipc_call_status = catten_syscall::ipc_status::OK);
+        drop(connection.call(5, 17).expect("same connection admits after pressure"));
+        drop(connection);
+        drop(endpoint);
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::IpcClose(30), kernel::Event::IpcClose(41), kernel::Event::IpcClose(40),]
+        );
     }
 
     #[test]

@@ -234,6 +234,15 @@ Incoming buffers, pending block calls, mappings, and reply authorities remain
 `OwnedMemory`, `PendingCall`, `MappedMemory`, and `ReplyToken` throughout, so a
 failed mapping or IPC submission cannot bypass cleanup.
 
+Scalar `Connection::call` and `ConnectionRef::call` expose rejected admission
+as `IpcError::Status`. `QUEUE_FULL` creates no pending owner: retain the same
+protocol owner and retry within the operation's policy, checking shutdown.
+Do not abandon an activated remote socket and assume a rejected best-effort
+close releases it. Once submission succeeds, keep the resulting `PendingCall`
+through observation/cancellation; an observation error does not authorize
+replaying its request. `OwnedSocket` bounds close-submission backpressure with a
+total deadline; indefinite saturation still requires owner-domain reclamation.
+
 ## Raw boundary rules
 
 Raw adoption is occasionally necessary at a launch or hardware ABI boundary:

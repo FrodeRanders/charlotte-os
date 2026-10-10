@@ -560,7 +560,11 @@ impl<'connection> ConnectionRef<'connection> {
     }
 
     pub fn call(self, opcode: u32, arg0: u64) -> Result<PendingCall<'static>, IpcError> {
-        PendingCall::from_kernel(kernel::ipc_scalar_call(self.cap, opcode, arg0))
+        let (call, status) = kernel::ipc_scalar_call_checked(self.cap, opcode, arg0);
+        if status != catten_syscall::ipc_status::OK {
+            return Err(IpcError::Status(status));
+        }
+        PendingCall::from_kernel(call)
     }
 
     pub fn call_move(
@@ -728,7 +732,7 @@ impl Connection {
     }
 
     pub fn call(&self, opcode: u32, arg0: u64) -> Result<PendingCall<'static>, IpcError> {
-        PendingCall::from_kernel(kernel::ipc_scalar_call(self.raw_handle(), opcode, arg0))
+        self.as_ref().call(opcode, arg0)
     }
 
     pub fn send_move(

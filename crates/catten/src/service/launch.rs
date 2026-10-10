@@ -701,7 +701,11 @@ fn launch_network_appliance_with_services_mode(
         crate::service::store::service_elf(b"httpd").expect("[launch] httpd.elf"),
         ns,
         ConnectionRights::CALL,
-        &[],
+        &[ManifestEntry {
+            key: charlotte_launch::httpd_status::TRACE_KEY,
+            flags: 0,
+            value: ManifestValue::Unsigned(u64::from(cfg!(feature = "http_net_test"))),
+        }],
     );
     const NTP_IP_KEY: u64 = charlotte_launch::manifest_key(b"ntp_ip");
     const PERSIST_KEY: u64 = charlotte_launch::manifest_key(b"persist");

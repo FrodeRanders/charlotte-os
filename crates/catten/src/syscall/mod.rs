@@ -1442,7 +1442,16 @@ fn sys_ipc_scalar_call(frame: &mut TrapFrame) {
     let connection = frame.regs[1];
     let opcode = frame.regs[2] as u32;
     let arg0 = frame.regs[3];
-    frame.regs[0] = ipc::scalar_call(asid, connection, opcode, arg0).unwrap_or(0);
+    match ipc::scalar_call(asid, connection, opcode, arg0) {
+        Ok(call) => {
+            frame.regs[0] = call;
+            frame.regs[1] = 0;
+        }
+        Err(error) => {
+            frame.regs[0] = 0;
+            frame.regs[1] = ipc_status(error);
+        }
+    }
 }
 
 fn sys_ipc_recv(frame: &mut TrapFrame) {

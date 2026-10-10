@@ -47,10 +47,12 @@ remediation reports. The [caller-buffer follow-up](../reports/audits/2026-10-10-
 also corrects SEC-32 in the receive/status scope: clients provide reply backing,
 and retaining it consumes the original caller budget rather than TCP/IP's.
 Aggregate principal/heap admission and broad pressure remain SEC-07 work.
-The follow-up preserves repeated combined security/HTTP host timeouts even
-though its kernel probes pass. Isolated HTTP and paired TCP pass; the combined
-progress failure remains SEC-06/R7-4/R7-5 qualification work with no established
-cause.
+The caller-buffer report preserves repeated combined security/HTTP host
+failures. The [HTTP progress follow-up](../reports/audits/2026-10-10-security-http-progress.md)
+identifies listener abandonment on queue-full call admission and corrects it
+while retaining the same socket owner. Combined kernel and host checks now
+pass within their existing limits. Broader SEC-06 flood fairness and SEC-07
+R7-4/R7-5 qualification remain open.
 
 | ID | State | Finding | Acceptance direction |
 | --- | --- | --- | --- |

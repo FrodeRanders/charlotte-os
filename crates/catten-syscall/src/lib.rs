@@ -414,7 +414,6 @@ unsafe fn svc3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             18 => asm!("svc #18", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             19 => asm!("svc #19", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             20 => asm!("svc #20", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
-            21 => asm!("svc #21", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             23 => asm!("svc #23", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             25 => asm!("svc #25", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             26 => asm!("svc #26", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
@@ -967,6 +966,7 @@ unsafe fn svc3_x1(imm: SyscallNumber, arg1: u64, arg2: u64, _arg3: u64) -> (u64,
             10 => asm!("svc #10", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             11 => asm!("svc #11", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             16 => asm!("svc #16", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
+            21 => asm!("svc #21", lateout("x0") ret, inlateout("x1") arg1 => x1_out, in("x2") arg2, in("x3") _arg3, options(nostack, nomem, preserves_flags)),
             24 => asm!("svc #24", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             42 => asm!("svc #42", lateout("x0") ret, inlateout("x1") arg1 => x1_out, in("x2") arg2, in("x3") _arg3, options(nostack, nomem, preserves_flags)),
              47 => asm!("svc #47", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
@@ -1702,10 +1702,20 @@ pub fn ipc_scalar_send(connection: u64, opcode: u32, arg0: u64) -> u64 {
     unsafe { svc3(SyscallNumber::IpcScalarSend, connection, opcode as u64, arg0) }
 }
 
-/// Call through a connection. Returns pending-call cap, or 0 on error.
+/// Submit a scalar call, returning its capability and admission status.
+/// A rejected submission creates no pending call and may be retried for
+/// `ipc_status::QUEUE_FULL`; accepted calls must not be submitted again.
+#[inline(always)]
+pub fn ipc_scalar_call_checked(connection: u64, opcode: u32, arg0: u64) -> (u64, u64) {
+    unsafe { svc3_x1(SyscallNumber::IpcScalarCall, connection, opcode as u64, arg0) }
+}
+
+/// Raw adapter returning the pending-call capability, or zero on rejection.
+/// Capture the secondary status even when discarded: the kernel overwrites
+/// x1/rdi, so assembly must not declare the input register preserved.
 #[inline(always)]
 pub fn ipc_scalar_call(connection: u64, opcode: u32, arg0: u64) -> u64 {
-    unsafe { svc3(SyscallNumber::IpcScalarCall, connection, opcode as u64, arg0) }
+    ipc_scalar_call_checked(connection, opcode, arg0).0
 }
 
 /// Receive a scalar endpoint IPC message.

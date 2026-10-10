@@ -886,6 +886,14 @@ Run the x86 guest with `scripts/run-x86_64.sh --no-network --instance NAME
 entry snapshot and two scoped TCP/IP CALL pressure clients, verifies at least
 one second of real protocol-clock progress and advancing reactor cycles, then
 retires the pressure clients before the existing scoped authorization checks.
+With `--security-test --http-test --dhcp-test`, the signed HTTP service's launch manifest
+also enables listener/request phase traces. An `accept admission=Status(1)`
+marker means queue-full rejection before call publication; repeated markers
+must retain the same listener ID until acceptance. The host still requires
+metrics, EOF recovery, abortive-close recovery, idle-client timeout and both
+node/cluster JSON checks within its existing limits. See the
+[HTTP progress report](../reports/audits/2026-10-10-security-http-progress.md)
+for the original acknowledged-but-unserved requests and the correction.
 Host adapter tests cover saturated count/byte limits, sustained refill,
 drain/reuse and delayed/frequent clock samples. A deliberate physical packet
 flood and NIC fault recovery are separate validation work.

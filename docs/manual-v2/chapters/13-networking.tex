@@ -235,6 +235,16 @@ identified receive-retention starvation path without claiming aggregate
 principal/heap admission or complete hostile-network fairness. See
 \repofile|docs/reports/audits/2026-10-10-security-tcpip-caller-buffers.md|.
 
+Scalar-call admission exposes exact IPC errors. HTTP retains its existing
+\texttt{OwnedSocket} listener through \texttt{QUEUE\_FULL} rejection and
+checks shutdown between retries. Accepted calls are observed once. Socket
+close bounds queue-full submission retries to one 1000~ms deadline before its
+existing best-effort fallback; request deadlines and queue capacity remain
+unchanged. The HTTP test profile enables phase traces. Failed packet captures
+and scoped pressure validation are recorded in
+\repofile|docs/reports/audits/2026-10-10-security-http-progress.md|;
+broader flood fairness remains open.
+
 The service allocates its smoltcp socket table once at launch. Its launch
 manifest supplies bounded \texttt{sockslot}, \texttt{sockquot}, and
 \texttt{bufquot} policy values; the defaults are 64 total slots, 64 sockets per

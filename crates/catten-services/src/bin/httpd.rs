@@ -48,7 +48,13 @@
 extern crate alloc;
 
 use alloc::string::String;
-use core::fmt::Write as _;
+use core::{
+    fmt::Write as _,
+    sync::atomic::{
+        AtomicBool,
+        Ordering,
+    },
+};
 
 use catten_rt::{
     Context,
@@ -93,6 +99,13 @@ use charlotte_protocol_msg::unpack_mac;
 use charlotte_protocol_net::decode_status;
 
 const HTTP_PORT: u16 = 80;
+static TRACE_PHASES: AtomicBool = AtomicBool::new(false);
+
+fn trace_phase(phase: &str) {
+    if TRACE_PHASES.load(Ordering::Relaxed) {
+        catten_rt::logln!("[http] phase={phase}");
+    }
+}
 const ACCEPT_POLL_MS: u64 = 50;
 const SENTINEL: u32 = 0x4854_5450; // "HTTP"
 /// Cap on rendered thread rows. Set above the steady-state thread count so
@@ -1097,6 +1110,7 @@ fn build_json(
     // The observe snapshot doubles as the wall-clock source: uptime, inter-
     // request interval, and per-counter rates all derive from its monotonic
     // counter and frequency.
+    trace_phase("observe");
     let report = services.observe_conn.as_ref().and_then(|conn| thread_report(conn.as_ref()));
     let (freq_hz, mono_ticks) = report.as_ref().map_or((0, 0), |r| (r.freq_hz, r.mono_ticks));
     let uptime_ms = mono_ticks.saturating_mul(1000).checked_div(freq_hz).unwrap_or(0);
@@ -1107,6 +1121,7 @@ fn build_json(
     };
 
     // node + tcpip (both mandatory at startup).
+    trace_phase("tcpip");
     let status = socket::buffered_call(services.tcp_conn.as_ref(), socket::OP_STATUS, 0)
         .ok()
         .and_then(|call| call.wait().ok())
@@ -1224,10 +1239,12 @@ fn build_json(
     );
 
     // name service: registered-services catalog.
+    trace_phase("ns");
     render_ns(&mut s, services.ns_conn);
     s.push(',');
 
     // frouter counters.
+    trace_phase("frouter");
     if let Some(frouter_conn) = services.frouter_conn.as_ref() {
         if let Some(w) =
             read_words(frouter_conn.as_ref(), frouter::OP_STATUS, 0, frouter::STATUS_WORDS)
@@ -1293,6 +1310,7 @@ fn build_json(
     }
 
     // dns: Raft state/term + replicated catalog + cluster posture.
+    trace_phase("dns");
     if let Some(dns_conn) = services.dns_conn.as_ref() {
         render_dns(&mut s, dns_conn.as_ref());
         s.push(',');
@@ -1301,6 +1319,7 @@ fn build_json(
     }
 
     // disco: probe-traffic counters + live peer table.
+    trace_phase("disco");
     if let Some(disco_conn) = services.disco_conn.as_ref() {
         render_disco(&mut s, disco_conn.as_ref());
     } else {
@@ -1308,6 +1327,7 @@ fn build_json(
     }
 
     // relmsg: transport counters + delivery/retransmit diagnostics.
+    trace_phase("relmsg");
     if let Some(relmsg_conn) = services.relmsg_conn.as_ref() {
         render_relmsg(&mut s, relmsg_conn.as_ref());
     } else {
@@ -1323,6 +1343,7 @@ fn build_json(
     }
 
     // observe: bounded resource history from the same service.
+    trace_phase("history");
     match services.observe_conn.as_ref().and_then(|conn| history_report(conn.as_ref())) {
         Some(history) => {
             render_history(&mut s, &history);
@@ -1396,6 +1417,7 @@ fn new_listener<'connection>(
     let mut mapping = port.map_writable().map_err(|_| ())?;
     mapping.as_mut_slice()[..2].copy_from_slice(&HTTP_PORT.to_le_bytes());
     let port = mapping.unmap().map_err(|_| ())?;
+    trace_phase("listen");
     let listen = tcp
         .call_move(socket::OP_LISTEN, socket.id(), port)
         .map_err(|_| ())?
@@ -1408,6 +1430,13 @@ fn new_listener<'connection>(
 }
 
 fn serve(ctx: &Context) -> ShutdownRequest {
+    TRACE_PHASES.store(
+        matches!(
+            ctx.manifest_value(status::TRACE_KEY),
+            Some(catten_rt::ManifestValue::Unsigned(1))
+        ),
+        Ordering::Relaxed,
+    );
     config::write::<u32>(status::STAGE, 1);
     let ns_conn = ctx.bootstrap_connection().unwrap_or_else(|| fail(0xe001));
     let (_, net_conn) =
@@ -1463,6 +1492,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         }
         // Fresh socket + listener per connection (smoltcp's listening socket
         // becomes the established connection, then returns to Closed).
+        trace_phase("listener");
         let socket = match new_listener(services.tcp_conn.as_ref()) {
             Ok(socket) => socket,
             Err(()) => {
@@ -1473,15 +1503,40 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
         // Poll for a connection indefinitely: this is a long-lived keyhole
         // server, so an idle listener must stay alive rather than abort.
+        trace_phase("accept");
         loop {
             if let Some(request) = ctx.lifecycle().shutdown_requested() {
                 return request;
             }
-            let result =
-                match socket.call(socket::OP_ACCEPT, socket.id()).and_then(|call| call.wait()) {
-                    Ok(result) => result.result,
-                    Err(_) => continue 'connections,
-                };
+            let call = match socket.call(socket::OP_ACCEPT, socket.id()) {
+                Ok(call) => call,
+                Err(error) => {
+                    if TRACE_PHASES.load(Ordering::Relaxed) {
+                        catten_rt::logln!(
+                            "[http] accept admission={error:?} socket={}",
+                            socket.id()
+                        );
+                    }
+                    if error
+                        == catten_rt::owned::IpcError::Status(
+                            catten_syscall::ipc_status::QUEUE_FULL,
+                        )
+                    {
+                        // No call was published. Keep this exact listener:
+                        // abandoning it can leave a live remote socket
+                        // accepting traffic while its replacement waits.
+                        sleep_ms(ACCEPT_POLL_MS);
+                        continue;
+                    }
+                    continue 'connections;
+                }
+            };
+            // Admission succeeded: an error observing this call cannot
+            // authorize replay of its request.
+            let result = match call.wait() {
+                Ok(result) => result.result,
+                Err(_) => continue 'connections,
+            };
             if result == 0 {
                 break;
             }
@@ -1493,6 +1548,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
         // Read whatever request arrived (the response is hardcoded state, so
         // even a partial request is fine).
+        trace_phase("receive");
         let deadline = catten_services::deadline::Deadline::after(5_000);
         let chunk = loop {
             if let Some(request) = ctx.lifecycle().shutdown_requested() {
@@ -1509,6 +1565,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
         };
         let (memory, len) = chunk.into_parts();
+        trace_phase("received");
         let mapping = match memory.map_read_only() {
             Ok(mapping) => mapping,
             Err(_) => continue 'connections,
@@ -1559,6 +1616,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             ("HTTP/1.1 404 Not Found", "text/plain; charset=utf-8", String::from("not found"))
         };
         catten_syscall::el0_log(0x4854_5444, 1);
+        trace_phase("send");
         let mut response = String::new();
         response.push_str(status_line);
         response.push_str("\r\nContent-Type: ");

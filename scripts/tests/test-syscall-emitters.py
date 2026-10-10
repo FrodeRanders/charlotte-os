@@ -30,7 +30,7 @@ def parse_declared_numbers(text):
 
 def parse_emitters(text):
     emitters = {}
-    for function_match in re.finditer(r"unsafe fn (svc\d+)\s*\(", text):
+    for function_match in re.finditer(r"unsafe fn (svc\d+(?:_x\d)?)\s*\(", text):
         name = function_match.group(1)
         line_start = text.rfind("\n", 0, function_match.start()) + 1
         prefix = text[max(0, line_start - 240) : function_match.start()]
@@ -51,7 +51,7 @@ def parse_emitters(text):
                     break
         body = text[brace : end + 1]
         arms = set()
-        for arm_number, svc_number in re.findall(r"(\d+)\s*=>\s*asm!\(\"svc #(\d+)\"", body):
+        for arm_number, svc_number in re.findall(r'(\d+)\s*=>\s*asm!\([^\n]*?"svc #(\d+)"', body):
             if arm_number != svc_number:
                 raise SystemExit(
                     f"error: {name} arm {arm_number} emits svc #{svc_number}"
@@ -64,7 +64,7 @@ def parse_emitters(text):
 
 def parse_calls(text):
     calls = []
-    for call in re.finditer(r"(svc\d+)\(\s*SyscallNumber::(\w+)", text):
+    for call in re.finditer(r"(svc\d+(?:_x\d)?)\(\s*SyscallNumber::(\w+)", text):
         calls.append((call.group(1), call.group(2)))
     return calls
 

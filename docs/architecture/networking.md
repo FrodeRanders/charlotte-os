@@ -691,7 +691,7 @@ Native software does not.
 > as one more frouter consumer — consistent with "TCP/IP is an
 > interoperability service", not the native model. The `httpd` keyhole
 > serves observable state over it. Both are ordinary boot services;
-> `--http-test` only adds host forwarding and response validation.
+> `--http-test` adds host forwarding, response validation and opt-in phase traces.
 > Receive and status calls move one writable 4096-byte caller-supplied memory
 > object into TCP/IP and return that same backing with the reply. Retention
 > stays charged to its original allocating generation; TCP/IP never allocates
@@ -700,6 +700,14 @@ Native software does not.
 > ends mapping access before cancellation/reply. See the
 > [caller-buffer audit follow-up](../reports/audits/2026-10-10-security-tcpip-caller-buffers.md)
 > for limits and execution evidence.
+> Scalar-call admission reports exact IPC errors. HTTP keeps its existing
+> `OwnedSocket` listener on `QUEUE_FULL` and checks shutdown between retries;
+> an accepted call is observed once. Socket close bounds queue-full submission
+> retries to one 1000 ms deadline before the existing best-effort fallback.
+> Request deadlines and queue capacity are unchanged. The
+> [HTTP progress follow-up](../reports/audits/2026-10-10-security-http-progress.md)
+> records the previously acknowledged-but-unserved requests and scoped pressure
+> validation; broader flood fairness remains open.
 
 ---
 
