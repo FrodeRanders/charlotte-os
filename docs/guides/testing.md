@@ -1231,6 +1231,22 @@ device-authority follow-up above qualifies their local unified boundary. Other
 callers and backend metadata remain open. See the
 [close-claim evidence](../reports/audits/2026-10-09-security-dma-close-claim.md).
 
+### Mailbox publication and explicit close metadata
+
+`mailbox_publication::tests` rejects namespace node, endpoint node, budget and
+shared authority-record preparation before charges/serials change. Receiver reuse
+bypasses fresh storage. Real dispatch quota/churn/generation tests remain in
+`mailbox_tests`. Heap-held publication/detach and post-guard completion qualify
+admitted nodes, while staged root close rejects publication and drains after
+ordinary rollback. Unstarted staged cancellation refunds both charges. Guarded
+abandonment retains two roots and two original mailbox/shared charges each, plus
+metadata and CPU-root backing, without creating queues or new data frames.
+Allocation/disposal entry probes check lifecycle, both mailbox registries, CPU
+tables, physical/heap allocators and shared capability availability with original
+IRQ state. These are serialized fixtures, not cross-LP pressure or physical
+recovery evidence. Final-root mailbox teardown remains under lifecycle. See the
+[mailbox report](../reports/audits/2026-10-10-security-mailbox-publication.md).
+
 ### DMA mapping and walker metadata
 
 Metadata adapters reject mapping-node preparation before publication and require

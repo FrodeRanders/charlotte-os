@@ -111,6 +111,15 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   contexts remain separate qualification work.
   The scalar restoration API is removed. See
   `docs/reference/capability-admission.md` for the current enforcement scope.
+  Mailbox publication uses `PreparingMailbox` to retain the exact root,
+  namespace/endpoint nodes, budget and unified authority preparation before
+  lifecycle/mailbox guards. Revalidate captured generation, retirement and
+  closing state before allocation-free publication. Existing receiver reuse
+  needs no fresh storage. Explicit close carries payload and authority in
+  `RetiredMailbox` until post-guard release, completing the root last. Both
+  fallbacks retain every field without cleanup; neither is a retry owner.
+  Final-root mailbox teardown still has an enclosing lifecycle context and
+  legacy mailbox queues remain separate admission/destruction work.
   IPC calls use `PreparedCall`/`PreparedConnection` to own metadata and fresh
   authority alongside their attachments. Compose reservations through
   `commit_undelivered_transfers_with_authority` while retaining every affected
@@ -150,7 +159,7 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   owner after confirmed backend cleanup. Dispose both metadata owners before
   completing the root, outside local lifecycle/device guards. Failure or
   abandonment retains the original charge and complete claim; never finish an
-  uncertain close or retry a started one. IOMMU backend registry storage and
+  uncertain close or retry a started one. Broader IOMMU ledger/heap metadata and
   other unified authority callers remain separate boundaries. Release
   lifecycle after exact root/reservation admission; revalidate the captured root
   generation and closing state under lifecycle before capability publication. DMA

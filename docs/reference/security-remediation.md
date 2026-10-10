@@ -239,6 +239,15 @@ authority, table or data-frame retention. Heap-held adapters and real node
 rejection/context probes qualify the local storage boundary. Table ledgers,
 other authority callers, broader heap/principal admission, enclosing contexts,
 concurrency and custody remain open. SEC-07/18 and finding counts are unchanged.
+The [mailbox publication-context follow-up](../reports/audits/2026-10-10-security-mailbox-publication.md) now prepares shared authority,
+payload nodes and budget in one exact-root owner before local lifecycle/mailbox
+guards. Explicit close retains both charged nodes through post-guard disposal,
+then releases its root; both fallbacks retain every field. Storage rejection,
+receiver reuse, heap-held relinking, ordinary cancellation, staged-close rejection
+and guarded complete-owner abandonment qualify this scope. Final-root mailbox
+teardown still holds lifecycle; legacy queue metadata, other authority callers,
+heap/principal admission and wider contexts remain open. SEC-07/18 and finding
+counts are unchanged.
 The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.

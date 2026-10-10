@@ -32,8 +32,10 @@ An existing per-LP receiver is returned even when the namespace is full,
 because that lookup creates no new record. It is the **same capability**, not
 a second independently owned resource. Applications need one canonical
 receiver owner per LP; repeated lookup is not permission to adopt the same
-handle twice. Closing an entry removes its unified authority and drops its
-owning charge, making capacity reusable. Repeated open/close does not retain
+handle twice. Explicit close detaches its payload and unified authority into
+`RetiredMailbox`.
+Post-guard completion releases both original charged nodes and then its exact
+root, making capacity reusable. Repeated open/close does not retain
 record charges.
 
 These limits concern handle records. Mailbox words still use the separate
@@ -43,10 +45,16 @@ admission, bandwidth control or cross-domain IPC authority.
 
 ## Retirement and generation fencing
 
-Mailbox opens capture their domain identity, then take
-`ADDRESS_SPACE_LIFECYCLE → USER_MAILBOX_CAPS` to validate and publish. The
-lifecycle guard serializes the entire open with production retirement/reuse;
-an `accepting()` snapshot alone would leave a publication window. Ordinary
+Mailbox opens capture their domain identity and retain an exact
+`AddressSpaceOperation`. `PreparingMailbox` fallibly prepares namespace/endpoint
+nodes, an unused namespace budget and shared `PreparedReservation` before
+`ADDRESS_SPACE_LIFECYCLE → USER_MAILBOX_CAPS`. Publication revalidates generation,
+retirement and closing state, reserves both original charges and only relinks
+existing `AdmittedMap` nodes. A staged close can drain this operation while
+rejecting its publication. Existing receiver lookup needs no fresh storage.
+Unused preparation and ordinary cancellation finish after local guards leave,
+with the root completed last. No payload insertion can allocate after authority
+publication; the old lifecycle-only allocator helper has been removed. Ordinary
 send/receive does not take that lifecycle guard. Opens across domains now
 share this short metadata critical section; no throughput result is claimed.
 
@@ -58,9 +66,16 @@ account, never a replacement. Kernel-API pseudo-domain fixtures retain their
 existing `None` identity convention; production user domains have real handles.
 
 Budget locks follow registry, domain counter, then node counter. Charge Drop
-enters only those independent counters. The budget account allocation is
-fallible; BTreeMap backing allocation and empty namespace/control-block memory
-are not fully charged or allocation-failure-safe by these count limits.
+enters only those independent counters. Namespace/endpoint storage and the
+budget account allocation are now fallible.
+`PreparingMailbox` and `RetiredMailbox` retain all fields on abandonment without
+registry/counter/allocator access or logging. Retained charges and roots are
+terminal retention, with no retry adapter. Empty namespace/control-block bytes
+are outside the count ceilings; legacy queue BTreeMap allocation/destruction
+remains separate. Final-root mailbox teardown detaches the complete admitted
+namespace and releases entries without a snapshot after its local capability
+registry leaves, but still runs beneath the enclosing lifecycle guard. This is
+an explicit remaining context qualification, not a post-lifecycle proof.
 
 ## Verification
 
@@ -75,6 +90,16 @@ Ordinary/node saturation and platform reserve are checked with isolated
 production counter code, not thousands of live allocations or mutation of the
 shared node pool. This is kernel dispatch testing, not a new real-EL0 quota
 probe or exhaustive concurrent-retirement exploration.
+
+Additional serialized fixtures reject namespace node, endpoint node, budget
+and shared record preparation before charge/serial mutation. Heap-held publication
+and detachment prove those operations only relink admitted storage. Explicit
+staged cancellation refunds both charges after guards; staged root close rejects
+publication, then completes once the operation releases. Guarded abandonment
+retains two exact roots, two mailbox charges and two shared authority charges
+(including a detached record), plus their nodes/control blocks and CPU-root
+backing. It creates no extra mailbox queues or data frames. The
+[publication evidence](../reports/audits/2026-10-10-security-mailbox-publication.md) records failed runs separately from repeats.
 
 ## Shared namespace admission
 

@@ -32,7 +32,8 @@ typed hardware obligation remains in its enclosing grant. Publication under
 owning nodes for post-guard destruction. Unused preparation/abandonment cannot
 implicitly deallocate below unknown guards. This is payload storage admission,
 not a general byte/principal heap budget. The unified namespace node now
-shares the same `AdmittedMap`; individual authority records remain separate. See the
+shares the same `AdmittedMap`; individual authority records now use it too,
+with their outer caller contexts qualified separately below. See the
 [device-storage evidence](../reports/audits/2026-10-09-security-device-registry-storage.md).
 
 ## Record ownership and publication
@@ -269,6 +270,15 @@ closing-root receipt. All explicitly release metadata after their local guards
 and complete root ownership last. This qualifies these device adapters, not all
 other authority callers or enclosing syscall masks. See the
 [device-authority evidence](../reports/audits/2026-10-09-security-device-authority-context.md).
+
+Mailbox publication now uses that same shared authority preparation inside
+`PreparingMailbox`, alongside its exact root and fallibly admitted payload nodes
+and budget. Publication revalidates the captured root/closing policy before
+charging or relinking. Explicit `RetiredMailbox` close carries both charged nodes
+through post-lifecycle/mailbox-guard disposal, then completes its root. Both
+fallbacks retain every field without invoking active reservation cleanup.
+Final-root mailbox teardown, legacy queue metadata and other authority callers
+remain separate; see the [mailbox-context evidence](../reports/audits/2026-10-10-security-mailbox-publication.md).
 
 ## Verification
 

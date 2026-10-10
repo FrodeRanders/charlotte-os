@@ -112,6 +112,7 @@ pub(crate) fn test_admission() {
     crate::capability::close_address_space(CLIENT);
     test_generation_fence();
     test_shared_admission();
+    mailbox_publication::tests::run();
     logln!("[mailbox] record quota, churn, rollback, retirement and generation fencing passed");
 }
 

@@ -219,14 +219,6 @@ pub(crate) fn reserve(
     reserve_in_lifecycle(owner, kind, &lifecycle)
 }
 
-pub(crate) fn try_allocate_in_lifecycle(
-    owner: AddressSpaceId,
-    kind: ObjectKind,
-    lifecycle: &LifecycleGuard<'_>,
-) -> Result<ObjectCapability, AllocationError> {
-    reserve_in_lifecycle(owner, kind, lifecycle)?.publish()
-}
-
 pub(crate) fn reserve_in_lifecycle(
     owner: AddressSpaceId,
     kind: ObjectKind,
