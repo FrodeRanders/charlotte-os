@@ -43,13 +43,14 @@ pub(in crate::memory::thread_stack) fn run() {
     growth_and_drop();
     pressure();
     confirmed_constructor_failure();
+    transient_invalidation_retries_before_failure();
     retained_failures();
     preparation_tests::run();
     crate::logln!(
         "[stack backing admission] maximum user/kernel reservation, growth/collision/retry, \
-         explicit success refund, rejection before allocation and platform progress passed; six \
-         failed/abandoned owners retain original roots/slots/reservations (20 data frames \
-         retained)"
+         explicit success refund, rejection before allocation, transient-invalidation \
+         re-confirmation and platform progress passed; six failed/abandoned owners retain \
+         original roots/slots/reservations (20 data frames retained)"
     );
 }
 
@@ -187,6 +188,35 @@ fn confirmed_constructor_failure() {
     memory::close_user_address_space_handle(handle).unwrap();
 }
 
+fn transient_invalidation_retries_before_failure() {
+    let used = budget::used();
+    let handle = domain(1, false);
+    let mut stacks = Stacks::user(handle, 1).unwrap();
+    let baseline = free();
+    let mut attempts = 0;
+    assert!(
+        stacks
+            .release_with(
+                |user| retire_user_with(
+                    user,
+                    |_, _, _| {
+                        attempts += 1;
+                        attempts == USER_INVALIDATION_ATTEMPTS
+                    },
+                    |frame| PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame),
+                ),
+                stack_allocator::deallocate_stack,
+            )
+            .is_ok()
+    );
+    assert_eq!(attempts, USER_INVALIDATION_ATTEMPTS);
+    drop(stacks);
+    assert_eq!(free(), baseline + 17);
+    assert_eq!(budget::used(), used);
+    assert_eq!(slots(handle), 0);
+    memory::close_user_address_space_handle(handle).unwrap();
+}
+
 fn retained_failures() {
     let progress = retirement_progress();
     for kind in 0..6 {
@@ -291,18 +321,23 @@ fn retained_failures() {
             _ => {
                 let mut stacks = user_only(handle);
                 initial_free = free();
+                let mut invalidation_attempts = 0;
                 assert!(
                     stacks
                         .release_with(
                             |user| retire_user_with(
                                 user,
-                                |_, _, _| false,
+                                |_, _, _| {
+                                    invalidation_attempts += 1;
+                                    false
+                                },
                                 |_| panic!("failed invalidation released stack backing")
                             ),
                             stack_allocator::deallocate_stack,
                         )
                         .is_err()
                 );
+                assert_eq!(invalidation_attempts, USER_INVALIDATION_ATTEMPTS);
                 drop(stacks);
                 assert_eq!(free(), initial_free);
             }

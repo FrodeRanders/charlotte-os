@@ -72,12 +72,16 @@ completes its unused preparation explicitly and leaves the parent usable.
 
 This is terminal retention, not a deferred retry owner or reclamation API.
 Published pair release is now explicit and arms a one-shot phase fence before
-any physical work. Stack/context field destruction only retains backing and
-admission; it never enters allocator/table/pool guards or logging. Both
-architectures use pinned IRQ-enabled reapers. Failed pairs retain their entire
-thread/context in the original retirement node and cannot be retried by later
-scans. Ordinary constructor/publication/submission rejection explicitly releases
-a never-admitted pair after local serialization leaves.
+any physical work. User-translation invalidation is re-confirmed with a bounded
+number of fresh rendezvous attempts before the pair is declared failed; no
+frame is released until invalidation succeeds, so a transient rendezvous miss
+cannot leave a partially detached pair, and each attempt uses a fresh epoch
+that cannot count stale acknowledgements. Stack/context field destruction only
+retains backing and admission; it never enters allocator/table/pool guards or
+logging. Both architectures use pinned IRQ-enabled reapers. Failed pairs retain
+their entire thread/context in the original retirement node and cannot be
+retried by later scans. Ordinary constructor/publication/submission rejection
+explicitly releases a never-admitted pair after local serialization leaves.
 Growth's production `grow_current_user_stack` keeps the master thread-table
 write guard through the operation, including ordinary rollback. Outer constructor/syscall masks and general thread metadata fallback
 remain [C16/C17/G1/G2](cleanup-recovery.md).
@@ -142,8 +146,12 @@ cannot identify a particular operation or authorize retry/refund. They describe
 the user half, not completion of the kernel/user pair. The user-isolation
 fixture logs before/after snapshots and its exact root identity only when its
 existing retirement deadline expires, after subsystem guards leave. The prior
-Intel timeout remains unresolved; this adds evidence, not a recovery bypass.
-See the [follow-up report](../reports/audits/2026-10-09-security-table-abandonment.md).
+Intel/AMD timeout was not reproduced in a fresh 19-run sequential plus
+three-way concurrent stress sweep; the only identified transient failure class
+(invalidation rendezvous) now gets bounded pre-release re-confirmation, while
+deterministic rejections still retain terminally. See the
+[timeout investigation](../reports/audits/2026-10-10-security-user-stack-lease-timeout.md)
+and the [earlier follow-up](../reports/audits/2026-10-09-security-table-abandonment.md).
 
 See the [audit record](../reports/audits/2026-10-07-security-stack-admission.md)
 for QEMU evidence. This establishes runtime stack capacity admission, not

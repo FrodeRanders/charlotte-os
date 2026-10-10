@@ -270,6 +270,13 @@ impl Stacks {
 // No physical destructor. Implicit slot/charge destruction retains their
 // original admission, and scalar mapped ranges are never re-adopted by address.
 
+/// Bounded re-confirmation attempts for user-translation invalidation before
+/// any backing is physically released. A transient rendezvous miss (busy or
+/// timeout under load) must not permanently retain the stack pair: no frame
+/// has been released yet, and each attempt is a fresh rendezvous that cannot
+/// count stale acknowledgements.
+const USER_INVALIDATION_ATTEMPTS: usize = 3;
+
 fn retire_user(stack: &mut UserStack) -> bool {
     retire_user_with(
         stack,
@@ -282,7 +289,7 @@ fn retire_user(stack: &mut UserStack) -> bool {
 
 fn retire_user_with(
     stack: &mut UserStack,
-    invalidate: impl FnOnce(VAddr, usize, AddressSpaceHandle) -> bool,
+    mut invalidate: impl FnMut(VAddr, usize, AddressSpaceHandle) -> bool,
     mut release: impl FnMut(crate::memory::PAddr) -> Result<(), crate::memory::physical::Error>,
 ) -> bool {
     RETIREMENT_PROGRESS[STARTED].fetch_add(1, Ordering::Relaxed);
@@ -310,7 +317,14 @@ fn retire_user_with(
     if !ok {
         RETIREMENT_PROGRESS[DETACH_REJECTED].fetch_add(1, Ordering::Relaxed);
     }
-    if !invalidate(VAddr::from(low), stack.committed_pages, handle) {
+    let mut invalidated = false;
+    for _ in 0..USER_INVALIDATION_ATTEMPTS {
+        if invalidate(VAddr::from(low), stack.committed_pages, handle) {
+            invalidated = true;
+            break;
+        }
+    }
+    if !invalidated {
         RETIREMENT_PROGRESS[INVALIDATION_REJECTED].fetch_add(1, Ordering::Relaxed);
         return false;
     }

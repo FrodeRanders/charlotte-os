@@ -10,6 +10,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [2026-10-10 intermittent user-stack lease timeout investigation](audits/2026-10-10-security-user-stack-lease-timeout.md)
 - [2026-10-10 live-upgrade IOMMU boot initialization regression](audits/2026-10-10-security-live-upgrade-iommu-init.md)
 - [2026-10-10 renewed-audit remediation (SEC-36–38)](audits/2026-10-10-security-audit-remediation-2.md)
 - [2026-10-10 renewed-audit remediation (SEC-31–35)](audits/2026-10-10-security-audit-remediation.md)
