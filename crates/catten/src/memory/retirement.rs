@@ -24,6 +24,8 @@ pub(crate) struct ClosingAddressSpace {
     devices_closed: bool,
     ipc_closed: bool,
     memory_closed: bool,
+    mailboxes: Option<crate::syscall::mailbox_retirement::RetiredMailboxes>,
+    authority: Option<crate::capability::RetiredNamespace>,
 }
 
 #[must_use]
@@ -78,6 +80,8 @@ impl ClosingAddressSpace {
             devices_closed: false,
             ipc_closed: false,
             memory_closed: false,
+            mailboxes: None,
+            authority: None,
         })
     }
 
@@ -181,8 +185,27 @@ impl ClosingAddressSpace {
             }
             table.seal_close(&self.slot).map_err(close_error)?;
         }
-        super::finish_user_address_space_cleanup(self.handle, self.slot)
-            .map(RetirementProgress::Ready)
+        // The closing transaction continues to own every detached field before
+        // final slot extraction. Interruption cannot run metadata destructors.
+        super::finish_user_address_space_cleanup(self.handle);
+        self.mailboxes = Some(
+            crate::syscall::mailbox_retirement::detach(self.handle, &_lifecycle)
+                .expect("sealed root lost its exact mailbox namespace"),
+        );
+        self.authority = Some(
+            crate::capability::detach_address_space(self.handle, &_lifecycle)
+                .expect("sealed root lost its retired capability namespace"),
+        );
+        let entry = ADDRESS_SPACE_TABLE
+            .lock()
+            .retire_closing(self.slot)
+            .expect("preflighted address-space retirement lost its serialized slot");
+        Ok(RetirementProgress::Ready(RetiredAddressSpace::new(
+            self.handle,
+            entry,
+            self.mailboxes.take().unwrap(),
+            self.authority.take().unwrap(),
+        )))
     }
 
     /// Establish logical admission/DMA fences once, after older leases drain.
@@ -278,13 +301,22 @@ fn close_error(error: Error) -> AddressSpaceCloseError {
 pub(crate) struct RetiredAddressSpace {
     handle: AddressSpaceHandle,
     entry: RetiredEntry<AddressSpace>,
+    mailboxes: Option<crate::syscall::mailbox_retirement::RetiredMailboxes>,
+    authority: Option<crate::capability::RetiredNamespace>,
 }
 
 impl RetiredAddressSpace {
-    pub(super) fn new(handle: AddressSpaceHandle, entry: RetiredEntry<AddressSpace>) -> Self {
+    pub(super) fn new(
+        handle: AddressSpaceHandle,
+        entry: RetiredEntry<AddressSpace>,
+        mailboxes: crate::syscall::mailbox_retirement::RetiredMailboxes,
+        authority: crate::capability::RetiredNamespace,
+    ) -> Self {
         Self {
             handle,
             entry,
+            mailboxes: Some(mailboxes),
+            authority: Some(authority),
         }
     }
 
@@ -335,13 +367,18 @@ impl RetiredAddressSpace {
 
     #[allow(clippy::result_large_err)] // The exact inline root owner survives invalidation rejection.
     fn release_retry_with_physical(
-        self,
+        mut self,
         invalidate: impl FnOnce(&AddressSpace, AddressSpaceHandle) -> bool,
         deallocate: &mut dyn FnMut(super::PAddr) -> Result<(), super::physical::Error>,
     ) -> Result<usize, Self> {
         if !invalidate(self.entry.value(), self.handle) {
             return Err(self);
         }
+        // The exact receipt has confirmed final quiescence and left lifecycle,
+        // subsystem and recovery guards. Release original metadata once, before
+        // root backing/slot completion; a rejected barrier retains all fields.
+        self.mailboxes.take().unwrap().release();
+        self.authority.take().unwrap().release();
         // Quiescence precedes all root/data/table destruction and account
         // refunds. No masking guard is held during AddressSpace::drop.
         let (slot, failed) =
@@ -381,5 +418,6 @@ fn invalidate(space: &AddressSpace, handle: AddressSpaceHandle) -> bool {
     }
 }
 
+pub(crate) mod metadata_tests;
 pub(crate) mod recovery;
 pub(crate) mod tests;

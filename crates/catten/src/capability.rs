@@ -686,6 +686,38 @@ pub fn close_address_space(owner: AddressSpaceId) {
     }
 }
 
+/// Complete detached authority storage stays with the exact final root owner.
+/// Its original charged nodes are released only by explicit post-guard work.
+#[must_use]
+pub(crate) struct RetiredNamespace(
+    crate::klib::collections::retirement_list::RetiredEntry<(
+        AddressSpaceId,
+        AddressSpaceCapabilities,
+    )>,
+);
+
+/// Final root cleanup holds lifecycle and has already fenced sponsorship.
+/// A stale generation cannot extract a successor's namespace. Detachment only
+/// relinks admitted storage; it neither destroys fields nor refunds records.
+pub(crate) fn detach_address_space(
+    handle: crate::memory::AddressSpaceHandle,
+    _lifecycle: &LifecycleGuard<'_>,
+) -> Option<RetiredNamespace> {
+    let mut tables = CAPABILITIES.lock();
+    let namespace = tables.get(&handle.id())?;
+    if namespace.address_space != Some(handle) || namespace.budget.accepting() {
+        return None;
+    }
+    tables.take(&handle.id()).map(RetiredNamespace)
+}
+
+impl RetiredNamespace {
+    pub(crate) fn release(self) {
+        crate::memory::retirement::metadata_tests::boundary(true);
+        release_namespace(self.0);
+    }
+}
+
 fn release_namespace(
     mut namespace: crate::klib::collections::retirement_list::RetiredEntry<(
         AddressSpaceId,

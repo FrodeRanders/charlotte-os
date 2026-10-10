@@ -513,16 +513,10 @@ fn begin_user_address_space_cleanup(handle: AddressSpaceHandle) {
 
 // Caller retains lifecycle, has drained cleanup leases and sealed admission.
 // IPC loan cleanup and namespace removal have already completed outside locks.
-fn finish_user_address_space_cleanup(
-    handle: AddressSpaceHandle,
-    closing: crate::klib::collections::id_table::ClosingSlot,
-) -> Result<retirement::RetiredAddressSpace, AddressSpaceCloseError> {
+fn finish_user_address_space_cleanup(handle: AddressSpaceHandle) {
     let asid = handle.id();
-
     object::close_scratch_address_space(asid);
     crate::completion::close_address_space(asid);
-    crate::syscall::close_mailbox_address_space(asid);
-    crate::capability::close_address_space(asid);
 
     // Retain this generation's stack high-water mark and heap peak for the
     // service principal before the authority and accounting entries
@@ -549,14 +543,6 @@ fn finish_user_address_space_cleanup(
 
     DOMAIN_LIMITS.lock().remove(&asid);
     usage::unregister_domain(asid);
-
-    let entry = {
-        let mut table = ADDRESS_SPACE_TABLE.lock();
-        table
-            .retire_closing(closing)
-            .expect("preflighted address-space retirement lost its serialized slot")
-    };
-    Ok(retirement::RetiredAddressSpace::new(handle, entry))
 }
 /// The starting virtual address of the higher half direct mapping region created by the bootloader.
 /// This should be remapped by the VMM during BSP init to be placed at the address specified by the

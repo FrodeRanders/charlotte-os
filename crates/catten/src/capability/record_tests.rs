@@ -73,6 +73,12 @@ pub(crate) fn finish_real() {
 fn account(root: memory::AddressSpaceHandle) -> Arc<budget::DomainBudget> {
     CAPABILITIES.lock().get(&root.id()).unwrap().budget.clone()
 }
+/// Snapshot the exact test account before namespace detachment/reuse. The
+/// returned observation never looks up the numeric ASID or conveys authority.
+pub(crate) fn captured_account_used(root: memory::AddressSpaceHandle) -> impl Fn() -> usize {
+    let captured = account(root);
+    move || captured.used()
+}
 const KINDS: [ObjectKind; 6] = [
     ObjectKind::Ipc,
     ObjectKind::Memory,

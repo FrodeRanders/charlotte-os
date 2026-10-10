@@ -118,8 +118,16 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   needs no fresh storage. Explicit close carries payload and authority in
   `RetiredMailbox` until post-guard release, completing the root last. Both
   fallbacks retain every field without cleanup; neither is a retry owner.
-  Final-root mailbox teardown still has an enclosing lifecycle context and
-  legacy mailbox queues remain separate admission/destruction work.
+  Final close detaches mailbox payload/queue backing and the unified authority
+  namespace into the existing `ClosingAddressSpace` before root extraction,
+  then transfers all of them into `RetiredAddressSpace`. Failed final invalidation
+  retains original charges and metadata in that complete receipt. Release them
+  explicitly after confirmed invalidation and local guard exit, before root
+  backing/slot completion; abandonment retains every field. Root recovery may
+  retain only this complete owner, with no separate metadata ticket or replay.
+  Legacy queue BTreeMap allocation/node removal, completion teardown and other
+  final bookkeeping remain separate contexts. Scalar mailbox teardown is a
+  serialized boot-fixture adapter, never a production close path.
   IPC calls use `PreparedCall`/`PreparedConnection` to own metadata and fresh
   authority alongside their attachments. Compose reservations through
   `commit_undelivered_transfers_with_authority` while retaining every affected

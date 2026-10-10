@@ -248,6 +248,14 @@ and guarded complete-owner abandonment qualify this scope. Final-root mailbox
 teardown still holds lifecycle; legacy queue metadata, other authority callers,
 heap/principal admission and wider contexts remain open. SEC-07/18 and finding
 counts are unchanged.
+The [final-root metadata follow-up](../reports/audits/2026-10-10-security-root-metadata-retirement.md) now carries detached mailbox/queue
+payload and the complete unified authority namespace in the existing closing and
+retired-root owners. Original charges survive final invalidation rejection and
+bounded custody; confirmed invalidation permits post-guard metadata release
+before the one-shot physical walk. Actual custody retry, stale generation,
+guarded attempt abandonment and existing partial physical rejection qualify
+this scope. Legacy queue map nodes, completion/bookkeeping, other authority
+callers and broader context/admission remain open. SEC-07/18 counts are unchanged.
 The earlier Intel user-stack lease timeout reproduced during the initial
 IOMMU follow-up run and remains unresolved. Exact staged-node outcome snapshots
 and independent atomic user-retirement/x86 shootdown observations improve evidence. Fresh-run success does not close C16/G1/G2/G7 or SEC-18.

@@ -277,8 +277,14 @@ and budget. Publication revalidates the captured root/closing policy before
 charging or relinking. Explicit `RetiredMailbox` close carries both charged nodes
 through post-lifecycle/mailbox-guard disposal, then completes its root. Both
 fallbacks retain every field without invoking active reservation cleanup.
-Final-root mailbox teardown, legacy queue metadata and other authority callers
-remain separate; see the [mailbox-context evidence](../reports/audits/2026-10-10-security-mailbox-publication.md).
+Final-root metadata now joins `ClosingAddressSpace` before extraction and then
+`RetiredAddressSpace`: the admitted mailbox payload, queue backing and exact
+`RetiredNamespace` stay charged through failed final invalidation. Confirmed
+invalidation permits explicit post-lifecycle/registry release before root backing
+and slot completion. The existing bounded root registry retains that complete
+owner; no separate metadata retry is allowed. Legacy queue map nodes,
+completion/accounting teardown and other authority callers remain separate; see
+the [final-root evidence](../reports/audits/2026-10-10-security-root-metadata-retirement.md) and [mailbox-context evidence](../reports/audits/2026-10-10-security-mailbox-publication.md).
 
 ## Verification
 

@@ -3,7 +3,8 @@
 `memory::retirement::recovery` retains **complete detached user roots** rejected
 by final invalidation, after device/IPC/memory namespace cleanup and cleanup-lease
 sealing have completed. It owns each `RetiredAddressSpace`, including its exact
-software slot, hardware tag, private hierarchy and original backing accounts.
+software slot, hardware tag, private hierarchy, original backing accounts and
+detached mailbox/queue/authority metadata with its original record charges.
 No admission can reconstruct an owner from an ASID, frame address or diagnostic.
 
 ## Admission and explicit retry
@@ -26,8 +27,10 @@ There are at most two explicit attempts per receipt. Each production x86 attempt
 retains the existing three fresh epoch-fenced rendezvous attempts. Rejection
 returns the same complete owner and retains its slot and charges.
 
-After confirmed invalidation, `RetiredEntry::release_value_with` explicitly runs
-the owning physical walk, then destroys the disarmed payload and returns its
+After confirmed invalidation, the same receipt explicitly releases mailbox
+payload/queue backing and the unified authority namespace outside local guards.
+These charges follow their actual metadata lifetime, with no separate retry
+owner. Then `RetiredEntry::release_value_with` explicitly runs the owning physical walk, then destroys the disarmed payload and returns its
 linear slot token. Both architecture walkers report rejected frames; they disarm
 before physical release and retain whole original charges on failure. Confirmed
 invalidation permits software slot/hardware tag completion even on a physical
@@ -55,7 +58,11 @@ publishing reusable history, so an old attempt cannot mark a successor slot.
 Diagnostic page counts describe the original captured accounts, not live refunds.
 Recovered confirms this final root walk and slot completion; previously quarantined
 provisional pages still consume their original charges and are not reclaimed by
-this registry. These counts exclude quarantine outside registered final-root retry.
+this registry. These counts exclude quarantine outside registered final-root retry and do not
+report retained queue bytes or authority/family metadata charges. Complete owner
+custody now retains those fields despite this diagnostic limitation. Serialized
+failure/retry and guarded attempt abandonment qualify that handoff; see the
+[final-metadata report](../reports/audits/2026-10-10-security-root-metadata-retirement.md).
 
 A bounded kernel snapshot copies at most eight records. Thread-statistics wire
 version 8 additionally exposes six aggregate state counts, rejected admissions

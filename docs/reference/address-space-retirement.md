@@ -4,7 +4,10 @@ An address-space handle identifies one software slot generation. Closing that
 lifetime now separates logical resource cleanup from final translation-tree
 destruction. `RetiredAddressSpace` owns the detached private hierarchy, its
 heap/image accounts and a lease on the software slot until invalidation and
-physical destruction have completed.
+physical destruction have completed. It also owns the detached mailbox payload,
+legacy queue backing and unified authority namespace with their original charges.
+Final metadata release leaves lifecycle/subsystem guards and follows confirmed
+root invalidation, before root backing and slot completion.
 
 ## Owned cleanup and root retirement
 
@@ -24,8 +27,13 @@ records and invalidating outside lifecycle. A preparing backing pin keeps the
 records visible until peer admission completes. Unmapped authority also waits for
 live revocation/transfer and DMA/copy fences. Only confirmed memory completion and
 zero leases permit cleanup sealing. High-water accounting and remaining
-namespace metadata removal retain lifecycle. The address space is detached from the
-table into the owning receipt, without returning its ID to the free-slot list.
+scratch/completion and accounting metadata removal retain lifecycle. Mailbox
+payload and queue backing detach into `ClosingAddressSpace`, followed by the
+unified authority namespace; their charged nodes are not destroyed here. The
+address space then detaches from the table into `RetiredAddressSpace` with those
+same fields, without returning its ID to the free-slot list. Legacy queue BTreeMap
+node removal still deallocates under its registry/lifecycle; only its payload
+backing release is qualified by this handoff.
 
 Device cleanup can reject detachment, invalidation, scratch completion or DMA
 teardown with `DeviceCleanupFailed`. It retains unfinished device records and
@@ -41,8 +49,8 @@ there is no retry or force-clear recovery API. The supervisor propagates/caches
 this terminal teardown error rather than treating it as successful reclamation.
 
 The lifecycle and table guards are then gone. The detached owner invalidates
-using its captured translation identity, tears down the private tree and
-backing, forgets the exact object-budget sponsor, and finally completes its
+using its captured translation identity, explicitly releases its detached
+mailbox/queue/authority metadata, tears down the private tree and backing, forgets the exact object-budget sponsor, and finally completes its
 software-slot lease. The slot becomes available only at that last step. A
 replacement receives a new software generation. Lookups, heap commitment and
 repeated close cannot act on a detached entry; registration cannot reuse its
@@ -144,7 +152,12 @@ and unpublished copy/vector rollback now release backing outside IPC. See
 [live address-space operations](live-address-space-operations.md).
 
 Failed final invalidation retains the whole hierarchy, physical backing,
-hardware tag, software slot and backing accounts. Production final invalidation
+hardware tag, software slot, backing accounts and detached metadata/record charges.
+On confirmed invalidation, explicit mailbox/queue release and then unified
+namespace draining finish outside local guards, without a teardown snapshot;
+only then may the existing one-shot physical walk start. Metadata abandonment
+retains fields without allocator/counter work. See the
+[final-metadata evidence](../reports/audits/2026-10-10-security-root-metadata-retirement.md). Production final invalidation
 makes up to three fresh x86 rendezvous attempts, then transfers its complete
 owner into a [bounded final-root recovery registry](root-recovery.md). Capacity
 rejection returns ownership and quarantines outside the registry hold. A trusted

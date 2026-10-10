@@ -72,10 +72,16 @@ budget account allocation are now fallible.
 registry/counter/allocator access or logging. Retained charges and roots are
 terminal retention, with no retry adapter. Empty namespace/control-block bytes
 are outside the count ceilings; legacy queue BTreeMap allocation/destruction
-remains separate. Final-root mailbox teardown detaches the complete admitted
-namespace and releases entries without a snapshot after its local capability
-registry leaves, but still runs beneath the enclosing lifecycle guard. This is
-an explicit remaining context qualification, not a post-lifecycle proof.
+remains separate. Final-root mailbox teardown now detaches the complete admitted
+namespace and legacy queue payload into its existing closing transaction, then
+moves them with the unified authority namespace into `RetiredAddressSpace`.
+Failed root invalidation retains both original record charges and queue backing.
+Confirmed invalidation explicitly releases payload and authority metadata outside
+local lifecycle/mailbox/capability guards, before physical root/slot completion.
+There is no snapshot, independent retry or cleanup in fallback. Legacy queue
+BTreeMap node removal still deallocates under its registry/lifecycle; queue payload
+release is qualified separately. Raw serialized teardown is confined to boot
+fixtures. See the [final-metadata evidence](../reports/audits/2026-10-10-security-root-metadata-retirement.md).
 
 ## Verification
 

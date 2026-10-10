@@ -233,12 +233,12 @@ pub fn test_syscall_dispatch() {
         syscall::syscall_dispatch(&mut f, call_no::MAILBOX_SEND_CAP);
         assert_eq!(f.regs[0], 2, "closed sender caps must be invalid");
     }
-    syscall::close_mailbox_address_space(asid);
+    syscall::close_mailbox_address_space_for_test(asid);
     {
         let mut send = synthetic_trap_frame_in(asid, 0, 0, 0x7777, 0);
         syscall::syscall_dispatch(&mut send, call_no::MAILBOX_SEND);
         assert_eq!(send.regs[0], 0);
-        syscall::close_mailbox_address_space(asid);
+        syscall::close_mailbox_address_space_for_test(asid);
         let mut receive = synthetic_trap_frame_in(asid, 0, 0, 0, 0);
         syscall::syscall_dispatch(&mut receive, call_no::MAILBOX_RECV);
         assert_eq!(receive.regs[1], 1, "teardown must discard legacy words before ASID reuse");

@@ -22,6 +22,7 @@ use alloc::collections::BTreeMap;
 
 mod mailbox_budget;
 mod mailbox_publication;
+pub(crate) mod mailbox_retirement;
 pub(crate) mod mailbox_tests;
 
 pub use catten_syscall::SyscallNumber;
@@ -1091,9 +1092,9 @@ static USER_MAILBOX_CAPS: LazyLock<
     RwLock<mailbox_publication::Map<AddressSpaceId, AsMailboxCaps>>,
 > = LazyLock::new(|| RwLock::new(mailbox_publication::Map::new()));
 
-pub fn close_mailbox_address_space(asid: AddressSpaceId) {
-    // Final root teardown still owns lifecycle. This adapter only leaves its
-    // local mailbox guards; the containing cleanup context remains unqualified.
+/// Serialized boot fixtures only. Production detaches both payload namespaces
+/// into its final root owner rather than releasing them beneath lifecycle.
+pub(crate) fn close_mailbox_address_space_for_test(asid: AddressSpaceId) {
     let queue = USER_MAILBOX.write().remove(&asid);
     drop(queue);
     let namespace = USER_MAILBOX_CAPS.write().take(&asid);

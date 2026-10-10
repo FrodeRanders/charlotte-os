@@ -87,7 +87,7 @@ pub(crate) fn test_admission() {
     assert_eq!(budget.used(), 1, "failed mint must refund staged admission");
     assert!(crate::capability::contains(CLIENT, survivor, crate::capability::ObjectKind::Mailbox));
     close(CLIENT, survivor);
-    close_mailbox_address_space(CLIENT);
+    close_mailbox_address_space_for_test(CLIENT);
     assert_eq!(budget.used(), 0);
     assert!(matches!(mailbox_budget::reserve(&budget, false), Err(Error::Retired)));
     crate::capability::close_address_space(CLIENT);
@@ -97,7 +97,7 @@ pub(crate) fn test_admission() {
     let old_cap = sender(CLIENT);
     let old = account(CLIENT);
     let staged = mailbox_budget::reserve(&old, false).unwrap();
-    close_mailbox_address_space(CLIENT);
+    close_mailbox_address_space_for_test(CLIENT);
     assert_eq!(old.used(), 1);
     crate::capability::close_address_space(CLIENT);
     let new_cap = sender(CLIENT);
@@ -108,7 +108,7 @@ pub(crate) fn test_admission() {
     assert_eq!(old.used(), 0);
     assert_eq!(new.used(), 1);
     close(CLIENT, new_cap);
-    close_mailbox_address_space(CLIENT);
+    close_mailbox_address_space_for_test(CLIENT);
     crate::capability::close_address_space(CLIENT);
     test_generation_fence();
     test_shared_admission();
@@ -128,7 +128,7 @@ fn test_shared_admission() {
     assert_eq!(local.used(), 1);
     close(OWNER, cap);
     assert_eq!(local.used(), 0);
-    close_mailbox_address_space(OWNER);
+    close_mailbox_address_space_for_test(OWNER);
     crate::capability::close_address_space(OWNER);
 }
 
@@ -146,7 +146,7 @@ fn test_generation_fence() {
     memory::budget::retire(old);
     assert_eq!(open_mailbox_endpoint(old.id(), Some(0), captured), Err(Error::Retired));
     assert_eq!(old_budget.used(), 1);
-    close_mailbox_address_space(old.id());
+    close_mailbox_address_space_for_test(old.id());
     assert_eq!(open_mailbox_endpoint(old.id(), None, captured), Err(Error::Retired));
     assert!(!USER_MAILBOX_CAPS.read().contains_key(&old.id()));
     memory::close_user_address_space_handle(old).unwrap();

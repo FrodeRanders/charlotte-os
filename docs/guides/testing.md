@@ -1231,6 +1231,23 @@ device-authority follow-up above qualifies their local unified boundary. Other
 callers and backend metadata remain open. See the
 [close-claim evidence](../reports/audits/2026-10-09-security-dma-close-claim.md).
 
+### Final-root namespace metadata
+
+The root recovery fixtures attach two mailbox grants, an observer grant, one
+heap page and legacy queue words before real final detachment. Rejected final
+invalidation must retain the queue and both original record accounts in existing
+bounded custody. A successful retry checks post-guard metadata release before
+physical callbacks, then exact ASID reuse and stale-detachment rejection.
+Guarded actual-attempt abandonment retains the whole root/slot, queue backing,
+two family and three shared charges plus the heap/table backing. The existing
+physical-rejection fixture now also carries those records, requiring metadata
+completion before the partial owning walk and terminal no-retry afterwards;
+it adds no new failed-root/frame episode. Instrumented release entries verify
+local lifecycle/mailbox/queue/CPU-table/physical/heap/capability availability with
+original IRQ state. Serialized injection does not qualify unrelated masks,
+legacy queue map node removal or integrated pressure. See the
+[final-metadata report](../reports/audits/2026-10-10-security-root-metadata-retirement.md).
+
 ### Mailbox publication and explicit close metadata
 
 `mailbox_publication::tests` rejects namespace node, endpoint node, budget and

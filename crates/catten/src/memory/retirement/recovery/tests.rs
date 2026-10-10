@@ -25,6 +25,7 @@ fn status(registry: &Registry, ticket: Ticket) -> Status {
 }
 
 pub(crate) fn run() {
+    test_namespace_metadata();
     test_retry_and_reuse();
     test_limits_and_abandonment();
     test_serial_exhaustion();
@@ -38,6 +39,121 @@ pub(crate) fn run() {
     crate::logln!(
         "[root recovery registry] bounded custody, exact tickets, unlocked retry, attempt/slot \
          limits, abandonment and terminal physical rejection passed"
+    );
+}
+
+fn test_namespace_metadata() {
+    use crate::syscall::mailbox_retirement::{
+        self,
+        tests as mailbox,
+    };
+    let before = backing_budget::test_used_pages(Kind::Heap);
+    let handle = loader::create_user_address_space_handle();
+    assert!(memory::commit_user_heap_page_handle(handle, charlotte_launch::HEAP_VADDR));
+    let family_used = mailbox::populate(handle);
+    let authority_used = crate::capability::record_tests::captured_account_used(handle);
+    assert_eq!(family_used(), 2);
+    assert_eq!(authority_used(), 3);
+    let owner = super::super::tests::stage(handle);
+    mailbox::assert_hidden(handle);
+    assert_eq!(family_used(), 2);
+    assert_eq!(authority_used(), 3);
+    let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let registry = Registry::new();
+    let ticket =
+        registry.retain(owner).unwrap_or_else(|_| panic!("metadata fixture admission failed"));
+    let result = registry
+        .retry_with(
+            ticket,
+            |_, captured| {
+                assert_eq!(captured, handle);
+                assert!(registry.inner.try_lock().is_some());
+                assert_eq!(family_used(), 2);
+                assert_eq!(authority_used(), 3);
+                false
+            },
+            &mut |_| panic!("rejected final barrier started physical release"),
+        )
+        .unwrap();
+    assert_eq!(result.state, State::AwaitingRetry);
+    assert_eq!(family_used(), 2);
+    assert_eq!(authority_used(), 3);
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+    {
+        let inner = registry.inner.lock();
+        let owner = inner.slots[ticket.index].owner.as_ref().unwrap();
+        mailbox::take_fixture_word(owner.mailboxes.as_ref().unwrap());
+    }
+    // Metadata release is part of this exact root's confirmed one-shot phase.
+    // A physical callback observes both original record accounts already empty.
+    super::super::metadata_tests::begin();
+    let result = registry
+        .retry_with(ticket, super::super::invalidate, &mut |frame| {
+            assert!(registry.inner.try_lock().is_some());
+            assert_eq!(family_used(), 0);
+            assert_eq!(authority_used(), 0);
+            release(frame)
+        })
+        .unwrap();
+    assert_eq!(result.state, State::Recovered);
+    assert_eq!(backing_budget::test_used_pages(Kind::Heap), before);
+    let successor = loader::create_user_address_space_handle();
+    assert_eq!(successor.id(), handle.id());
+    assert_ne!(successor, handle);
+    let successor_family = mailbox::populate(successor);
+    let successor_authority = crate::capability::record_tests::captured_account_used(successor);
+    {
+        let lifecycle = memory::ADDRESS_SPACE_LIFECYCLE.lock();
+        assert!(crate::capability::detach_address_space(handle, &lifecycle).is_none());
+        assert!(mailbox_retirement::detach(handle, &lifecycle).is_err());
+    }
+    assert_eq!(registry.claim(ticket).err(), Some(RetryError::Terminal));
+    assert_eq!(successor_family(), 2);
+    assert_eq!(successor_authority(), 3);
+    assert_eq!(family_used(), 0);
+    assert_eq!(authority_used(), 0);
+    memory::close_user_address_space_handle(successor).unwrap();
+    assert_eq!(successor_family(), 0);
+    assert_eq!(successor_authority(), 0);
+    super::super::metadata_tests::finish();
+
+    // Actual bounded custody attempt abandonment retains the complete root,
+    // both payloads and all original charges below every relevant local guard.
+    let handle = loader::create_user_address_space_handle();
+    assert!(memory::commit_user_heap_page_handle(handle, charlotte_launch::HEAP_VADDR));
+    let family_used = mailbox::populate(handle);
+    let authority_used = crate::capability::record_tests::captured_account_used(handle);
+    let owner = super::super::tests::stage(handle);
+    let ticket =
+        registry.retain(owner).unwrap_or_else(|_| panic!("completed custody slot not reusable"));
+    let attempt = registry.claim(ticket).unwrap();
+    let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    {
+        let _registry = registry.inner.lock();
+        let _lifecycle = memory::ADDRESS_SPACE_LIFECYCLE.lock();
+        let _table = memory::ADDRESS_SPACE_TABLE.lock();
+        let _kernel = memory::KERNEL_AS.lock();
+        let _physical = PHYSICAL_FRAME_ALLOCATOR.lock();
+        let _heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
+        mailbox::under_registry_guards(|| drop(attempt));
+    }
+    assert_eq!(status(&registry, ticket).state, State::Abandoned);
+    assert_eq!(registry.claim(ticket).err(), Some(RetryError::Terminal));
+    assert_eq!(family_used(), 2);
+    assert_eq!(authority_used(), 3);
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+    assert_eq!(backing_budget::test_used_pages(Kind::Heap), before + 1);
+    mailbox::assert_hidden(handle);
+    assert_eq!(memory::current_address_space_handle(handle.id()), None);
+    let other = loader::create_user_address_space_handle();
+    assert_ne!(other.id(), handle.id());
+    memory::close_user_address_space_handle(other).unwrap();
+    crate::logln!(
+        "[root metadata ownership] rejected barrier retains mailbox words and original charges; \
+         confirmed custody retry releases metadata post-guard before root backing; stale \
+         extraction preserves reused generation; guarded attempt abandonment retains one complete \
+         root/slot, two mailbox charges, three shared authority charges, one heap page and queue \
+         backing"
     );
 }
 
@@ -174,13 +290,21 @@ fn test_serial_exhaustion() {
 fn test_physical_rejection() {
     let registry = Registry::new();
     let before = backing_budget::test_used_pages(Kind::Heap);
-    let owner = root();
-    let handle = owner.handle;
+    let handle = loader::create_user_address_space_handle();
+    assert!(memory::commit_user_heap_page_handle(handle, charlotte_launch::HEAP_VADDR));
+    let family_used = crate::syscall::mailbox_retirement::tests::populate(handle);
+    let authority_used = crate::capability::record_tests::captured_account_used(handle);
+    let owner = super::super::tests::stage(handle);
+    assert_eq!(family_used(), 2);
+    assert_eq!(authority_used(), 3);
+    super::super::metadata_tests::begin();
     let ticket = registry.retain(owner).unwrap_or_else(|_| panic!("admission"));
     let mut calls = 0;
     let result = registry
         .retry_with(ticket, super::super::invalidate, &mut |frame| {
             calls += 1;
+            assert_eq!(family_used(), 0);
+            assert_eq!(authority_used(), 0);
             assert!(registry.inner.try_lock().is_some());
             if calls == 1 {
                 Err(physical::Error::CannotDeallocateUnallocatedFrame)
@@ -189,10 +313,13 @@ fn test_physical_rejection() {
             }
         })
         .unwrap();
+    super::super::metadata_tests::finish();
     assert!(calls > 1, "fault did not exercise a partial owning walk");
     assert_eq!(result.state, State::Quarantined);
     assert_eq!(result.rejected_frames, 1);
     assert_eq!(registry.claim(ticket).err(), Some(RetryError::Terminal));
+    assert_eq!(family_used(), 0);
+    assert_eq!(authority_used(), 0);
     assert_eq!(backing_budget::test_used_pages(Kind::Heap), before + 1);
     // Confirmed invalidation permits slot reuse; rejected backing remains
     // charged and can never be walked again through this terminal receipt.
