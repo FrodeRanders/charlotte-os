@@ -51,12 +51,16 @@ fn test_namespace_metadata() {
     let handle = loader::create_user_address_space_handle();
     assert!(memory::commit_user_heap_page_handle(handle, charlotte_launch::HEAP_VADDR));
     let family_used = mailbox::populate(handle);
+    let queue_used = mailbox::captured_queue_used(handle);
+    assert_eq!(queue_used(), mailbox::queue_amount());
     let authority_used = crate::capability::record_tests::captured_account_used(handle);
     assert_eq!(family_used(), 2);
+    assert_eq!(queue_used(), mailbox::queue_amount());
     assert_eq!(authority_used(), 3);
     let owner = super::super::tests::stage(handle);
     mailbox::assert_hidden(handle);
     assert_eq!(family_used(), 2);
+    assert_eq!(queue_used(), mailbox::queue_amount());
     assert_eq!(authority_used(), 3);
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let registry = Registry::new();
@@ -69,6 +73,7 @@ fn test_namespace_metadata() {
                 assert_eq!(captured, handle);
                 assert!(registry.inner.try_lock().is_some());
                 assert_eq!(family_used(), 2);
+                assert_eq!(queue_used(), mailbox::queue_amount());
                 assert_eq!(authority_used(), 3);
                 false
             },
@@ -77,6 +82,7 @@ fn test_namespace_metadata() {
         .unwrap();
     assert_eq!(result.state, State::AwaitingRetry);
     assert_eq!(family_used(), 2);
+    assert_eq!(queue_used(), mailbox::queue_amount());
     assert_eq!(authority_used(), 3);
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
     {
@@ -91,6 +97,7 @@ fn test_namespace_metadata() {
         .retry_with(ticket, super::super::invalidate, &mut |frame| {
             assert!(registry.inner.try_lock().is_some());
             assert_eq!(family_used(), 0);
+            assert_eq!(queue_used(), [0, 0]);
             assert_eq!(authority_used(), 0);
             release(frame)
         })
@@ -101,6 +108,7 @@ fn test_namespace_metadata() {
     assert_eq!(successor.id(), handle.id());
     assert_ne!(successor, handle);
     let successor_family = mailbox::populate(successor);
+    let successor_queue = mailbox::captured_queue_used(successor);
     let successor_authority = crate::capability::record_tests::captured_account_used(successor);
     {
         let lifecycle = memory::ADDRESS_SPACE_LIFECYCLE.lock();
@@ -109,11 +117,14 @@ fn test_namespace_metadata() {
     }
     assert_eq!(registry.claim(ticket).err(), Some(RetryError::Terminal));
     assert_eq!(successor_family(), 2);
+    assert_eq!(successor_queue(), mailbox::queue_amount());
     assert_eq!(successor_authority(), 3);
     assert_eq!(family_used(), 0);
+    assert_eq!(queue_used(), [0, 0]);
     assert_eq!(authority_used(), 0);
     memory::close_user_address_space_handle(successor).unwrap();
     assert_eq!(successor_family(), 0);
+    assert_eq!(successor_queue(), [0, 0]);
     assert_eq!(successor_authority(), 0);
     super::super::metadata_tests::finish();
 
@@ -122,6 +133,8 @@ fn test_namespace_metadata() {
     let handle = loader::create_user_address_space_handle();
     assert!(memory::commit_user_heap_page_handle(handle, charlotte_launch::HEAP_VADDR));
     let family_used = mailbox::populate(handle);
+    let queue_used = mailbox::captured_queue_used(handle);
+    assert_eq!(queue_used(), mailbox::queue_amount());
     let authority_used = crate::capability::record_tests::captured_account_used(handle);
     let owner = super::super::tests::stage(handle);
     let ticket =
@@ -140,6 +153,7 @@ fn test_namespace_metadata() {
     assert_eq!(status(&registry, ticket).state, State::Abandoned);
     assert_eq!(registry.claim(ticket).err(), Some(RetryError::Terminal));
     assert_eq!(family_used(), 2);
+    assert_eq!(queue_used(), mailbox::queue_amount());
     assert_eq!(authority_used(), 3);
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
     assert_eq!(backing_budget::test_used_pages(Kind::Heap), before + 1);
@@ -293,9 +307,11 @@ fn test_physical_rejection() {
     let handle = loader::create_user_address_space_handle();
     assert!(memory::commit_user_heap_page_handle(handle, charlotte_launch::HEAP_VADDR));
     let family_used = crate::syscall::mailbox_retirement::tests::populate(handle);
+    let queue_used = crate::syscall::mailbox_retirement::tests::captured_queue_used(handle);
     let authority_used = crate::capability::record_tests::captured_account_used(handle);
     let owner = super::super::tests::stage(handle);
     assert_eq!(family_used(), 2);
+    assert_eq!(queue_used(), crate::syscall::mailbox_retirement::tests::queue_amount());
     assert_eq!(authority_used(), 3);
     super::super::metadata_tests::begin();
     let ticket = registry.retain(owner).unwrap_or_else(|_| panic!("admission"));
@@ -304,6 +320,7 @@ fn test_physical_rejection() {
         .retry_with(ticket, super::super::invalidate, &mut |frame| {
             calls += 1;
             assert_eq!(family_used(), 0);
+            assert_eq!(queue_used(), [0, 0]);
             assert_eq!(authority_used(), 0);
             assert!(registry.inner.try_lock().is_some());
             if calls == 1 {
@@ -319,6 +336,7 @@ fn test_physical_rejection() {
     assert_eq!(result.rejected_frames, 1);
     assert_eq!(registry.claim(ticket).err(), Some(RetryError::Terminal));
     assert_eq!(family_used(), 0);
+    assert_eq!(queue_used(), [0, 0]);
     assert_eq!(authority_used(), 0);
     assert_eq!(backing_budget::test_used_pages(Kind::Heap), before + 1);
     // Confirmed invalidation permits slot reuse; rejected backing remains

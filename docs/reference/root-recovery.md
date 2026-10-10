@@ -96,6 +96,12 @@ Execution evidence: [2026-10-08 recovery audit](../reports/audits/2026-10-08-sec
 Word queues now retain their captured generation in admitted namespace nodes.
 Those complete nodes follow the existing root receipt through failed invalidation
 and terminal abandonment; there is no independent queue ticket. Node detachment
-is allocation/destruction-free, while queue backing still has infallible
-construction and no byte budget. See the
+is allocation/destruction-free. Its fixed word-ring backing now carries original
+queue-set/requested-byte admission in the same family account, retained through
+failed invalidation/abandonment and refunded after confirmed ring deallocation.
+Metadata/principal/aggregate heap budgets remain separate. See the
 [queue-storage report](../reports/audits/2026-10-10-security-mailbox-queue-storage.md).
+
+The [backing-admission report](../reports/audits/2026-10-10-security-mailbox-backing-admission.md)
+adds captured queue-charge checks to the existing real custody/physical-rejection
+fixtures, without an independent ticket or additional quarantined roots.

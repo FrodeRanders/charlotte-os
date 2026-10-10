@@ -1231,6 +1231,24 @@ device-authority follow-up above qualifies their local unified boundary. Other
 callers and backend metadata remain open. See the
 [close-claim evidence](../reports/audits/2026-10-09-security-dma-close-claim.md).
 
+### Word-ring backing admission
+
+`mailbox_queue::tests` adds injected backing rejection with captured account/node
+refund checks, checked layout overflow and actual Vec capacity-overflow rejection.
+Two prepared creators share one exact family ceiling; a third rejects without
+mutation. Established delivery consumes no new admission. Final detachment keeps
+the backing charge until explicit release, and successor/staged/guarded-abandoned
+operations preserve exact accounts and original ordinary classification. Isolated
+production counters distinguish node byte/set exhaustion and platform progress
+reserve without allocating megabytes or changing live counters. Existing custody
+fixtures also assert queue charges through failed invalidation, confirmed retry,
+old/successor separation, actual-attempt abandonment and partial physical
+rejection. Existing 256-word FIFO/full/wrap and syscall ABI tests exercise fixed
+per-LP rings. No new retained root/queue/frame episode is introduced. Requested
+ring bytes exclude allocator overhead and namespace/account metadata; real OOM,
+cross-LP pressure, principal and aggregate heap budgets remain separate. See the
+[backing-admission report](../reports/audits/2026-10-10-security-mailbox-backing-admission.md).
+
 ### Word-queue namespace storage
 
 `mailbox_queue::tests` drives actual node-preparation rejection, competing
@@ -1243,8 +1261,9 @@ same closing owner can finish. Guarded abandonment retains one extra exact root
 lease, unused admitted node and 256-word queue per LP; no record charges/data
 frames are created. Entry probes check local lifecycle, mailbox registries,
 CPU tables and physical/heap/capability guards with original IRQ state. Queue
-construction remains infallible; fixtures do not qualify real OOM, cross-LP
-races or byte/principal/progress admission. See the
+construction is now fallible and charged by the backing follow-up below;
+fixtures do not qualify real OOM, cross-LP races or principal/aggregate heap
+admission. See the
 [queue-storage report](../reports/audits/2026-10-10-security-mailbox-queue-storage.md).
 
 ### Final-root namespace metadata

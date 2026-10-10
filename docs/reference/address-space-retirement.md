@@ -35,7 +35,10 @@ same fields, without returning its ID to the free-slot list. The word-queue
 namespace now also uses an admitted node with its captured generation: final
 close preflights identity and detaches the complete node without destruction.
 The root receipt releases its node and queue backing together after confirmed
-invalidation. Queue construction and byte admission remain separate; see the
+invalidation. The fixed word rings now retain their original set/requested-byte
+charge through this same owner and refund only after backing deallocation;
+namespace/account metadata and principal/heap admission remain separate. See the
+[backing-admission evidence](../reports/audits/2026-10-10-security-mailbox-backing-admission.md) and
 [queue-storage evidence](../reports/audits/2026-10-10-security-mailbox-queue-storage.md).
 
 Device cleanup can reject detachment, invalidation, scratch completion or DMA

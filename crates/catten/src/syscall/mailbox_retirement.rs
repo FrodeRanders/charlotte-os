@@ -88,6 +88,13 @@ pub(crate) mod tests {
         let budget = USER_MAILBOX_CAPS.read().get(&handle.id()).unwrap().budget.clone();
         move || budget.used()
     }
+    pub(crate) fn captured_queue_used(handle: AddressSpaceHandle) -> impl Fn() -> [u64; 2] {
+        let budget = USER_MAILBOX_CAPS.read().get(&handle.id()).unwrap().budget.clone();
+        move || budget.queue_used()
+    }
+    pub(crate) fn queue_amount() -> [u64; 2] {
+        [1, mailbox_words::Words::backing_bytes().unwrap() as u64]
+    }
     pub(crate) fn assert_hidden(handle: AddressSpaceHandle) {
         assert!(!USER_MAILBOX_CAPS.read().contains_key(&handle.id()));
         assert!(!USER_MAILBOX.read().contains_key(&handle.id()));

@@ -23,6 +23,7 @@ mod mailbox_publication;
 mod mailbox_queue;
 pub(crate) mod mailbox_retirement;
 pub(crate) mod mailbox_tests;
+mod mailbox_words;
 
 pub use catten_syscall::SyscallNumber;
 
@@ -1026,7 +1027,6 @@ use spin::LazyLock;
 /// and capability APIs use this namespace; neither can address another domain.
 use crate::cpu::multiprocessor::{
     get_lp_count,
-    shard_mailbox::ShardMailboxSet,
     spin::rwlock::RwLock,
 };
 static USER_MAILBOX: LazyLock<

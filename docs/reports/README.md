@@ -10,6 +10,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [2026-10-10 mailbox word-ring backing admission](audits/2026-10-10-security-mailbox-backing-admission.md)
 - [2026-10-10 mailbox word-queue storage](audits/2026-10-10-security-mailbox-queue-storage.md)
 - [2026-10-10 final-root mailbox and authority metadata retirement (SEC-07/18)](audits/2026-10-10-security-root-metadata-retirement.md)
 - [2026-10-10 mailbox publication and explicit close contexts (SEC-07/18)](audits/2026-10-10-security-mailbox-publication.md)

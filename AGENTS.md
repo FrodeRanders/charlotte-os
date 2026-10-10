@@ -131,9 +131,15 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   Established queues use shared registry borrows without fresh storage. Carry
   losing preparation through post-guard disposal, root last. Final teardown
   retains the complete queue node in the same root receipt; Drop retains all
-  fields. The existing queue constructor remains infallible, and queue-byte/
-  principal/progress admission, completion teardown and other final bookkeeping
-  remain separate contexts. Scalar mailbox teardown is a
+  fields. Legacy and capability word callers share that exact mailbox family
+  account; prepare any missing admitted account namespace outside guards and
+  relink after captured validation. Reserve queue sets/requested ring bytes
+  before fallible backing allocation, with captured platform classification.
+  Retain the charge through actual ring deallocation, failed invalidation and
+  terminal abandonment. Fixed word rings use short IRQ-state-preserving LP
+  mutex holds, released before IPI notification. Namespace/account metadata,
+  principal/aggregate heap admission, completion teardown and other final
+  bookkeeping remain separate contexts. Scalar mailbox teardown is a
   serialized boot-fixture adapter, never a production close path.
   IPC calls use `PreparedCall`/`PreparedConnection` to own metadata and fresh
   authority alongside their attachments. Compose reservations through

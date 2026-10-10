@@ -40,8 +40,23 @@ record charges.
 
 These limits concern handle records. Mailbox words still use the separate
 256-entry queue per LP. Legacy word send/receive does not mint a capability
-and is not charged by this record budget. This is not queue-backing memory
-admission, bandwidth control or cross-domain IPC authority.
+and is not charged by this record budget. Word-ring backing has its own
+independent dimensions in the same captured family account:
+
+| Scope | Prepared/live queue sets | Requested ring backing bytes |
+| --- | ---: | ---: |
+| One exact domain generation | 2 | 1 MiB |
+| Node total | 1,024 | 8 MiB |
+| Ordinary domains on the node | 768 | 6 MiB |
+
+Both dimensions must admit before allocation. The remaining 256 sets / 2 MiB
+are a shared platform progress reserve. A published queue and every competing
+preparation consume this same account; legacy words cannot create separate
+quotas. Classification comes from the captured kernel designation, and existing
+charges never change after promotion. These are requested allocation bytes;
+allocator overhead, namespace/account nodes and aggregate principal/heap budgets
+remain outside them. They do not implement bandwidth control or cross-domain IPC
+authority.
 
 ## Retirement and generation fencing
 
@@ -84,10 +99,16 @@ backing outside local guards, then revalidate and relink. A competing creator
 leaves unused storage with its exact operation until post-guard completion, root
 last. Final teardown detaches the complete node into the existing root receipt,
 without map-node deallocation under the registry. Its captured generation fences
-late send/receive against successors and staged close. The concurrent queue and
-its Vec/Arc backing still use infallible construction; full queue-byte, principal
-and progress admission remains open. Raw serialized teardown is confined to boot
-fixtures. See the [final-metadata evidence](../reports/audits/2026-10-10-security-root-metadata-retirement.md).
+late send/receive against successors and staged close. The word API now uses
+fixed 256-word rings behind existing IRQ-state-preserving per-LP mutexes. A single Vec is fallibly prepared with exact
+capacity; requested layout bytes and one queue set are reserved first. No queue
+Arc/Weak escapes. Ring allocation drops before its original charge; complete
+preparation/root fallback retains both. A missing family account is prepared
+fallibly outside guards and relinked before backing admission, leaving an empty
+owned namespace after ordinary backing rejection. An exact shared account
+prevents competing creators or legacy/capability paths from splitting quotas.
+Principal, metadata and aggregate heap admission remain open. Raw serialized
+teardown is confined to boot fixtures. See the [final-metadata evidence](../reports/audits/2026-10-10-security-root-metadata-retirement.md).
 
 ## Verification
 
@@ -121,7 +142,14 @@ actual final metadata detach qualify allocation-free relinking. Retired, staged
 and stale roots reject; successor content stays intact. Guarded abandonment
 retains one additional root lease, unused admitted node and 256-word queue per
 LP, without data frames or record charges. This is terminal retention, not
-retry custody or real OOM/concurrency qualification.
+retry custody or real OOM/concurrency qualification. The
+[backing-admission follow-up](../reports/audits/2026-10-10-security-mailbox-backing-admission.md)
+adds backing rejection and layout overflow, actual shared generation ceilings,
+isolated node byte/set saturation and platform reserve, post-detach refunds,
+and queue charges in real root custody retry/abandonment/physical rejection.
+Existing FIFO/wrap/ABI checks now exercise fixed rings. No extra retained root,
+queue or data frame is introduced; previously retained queue owners keep their
+new original backing charge.
 
 ## Shared namespace admission
 

@@ -13,9 +13,13 @@ use crate::{
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 static IRQ: AtomicBool = AtomicBool::new(false);
+static BACKING_REJECT: AtomicBool = AtomicBool::new(false);
 static REJECT: AtomicBool = AtomicBool::new(false);
 static PREPARED: AtomicUsize = AtomicUsize::new(0);
 static FINISHED: AtomicUsize = AtomicUsize::new(0);
+pub(super) fn reject_backing() -> bool {
+    BACKING_REJECT.swap(false, Ordering::AcqRel)
+}
 pub(super) fn reject() -> bool {
     REJECT.swap(false, Ordering::AcqRel)
 }
@@ -46,10 +50,24 @@ pub(in crate::syscall) fn run() {
     IRQ.store(crate::cpu::isa::lp::ops::get_int_state(), Ordering::Release);
     let root = loader::create_user_address_space_handle();
     let captured = capture_mailbox_identity(root.id());
+    let bytes = mailbox_words::Words::backing_bytes().unwrap() as u64;
+    let baseline = mailbox_budget::queue_node_used();
+    assert_eq!(mailbox_words::Words::backing_bytes_for(usize::MAX), Err(Error::ResourceLimit));
+    assert!(matches!(mailbox_words::Words::prepare(usize::MAX), Err(Error::AllocationFailed)));
     REJECT.store(true, Ordering::Release);
     assert_eq!(send(root.id(), get_lp_count(), 7, captured), Err(7));
     assert!(REJECT.load(Ordering::Acquire), "invalid target allocated storage");
     assert_eq!(send(root.id(), get_lp_id(), 7, captured), Err(7));
+    assert!(!USER_MAILBOX.read().contains_key(&root.id()));
+    BACKING_REJECT.store(true, Ordering::Release);
+    assert_eq!(send(root.id(), get_lp_id(), 8, captured), Err(8));
+    let budget = USER_MAILBOX_CAPS.read().get(&root.id()).unwrap().budget.clone();
+    assert_eq!(budget.queue_used(), [0, 0]);
+    assert!(matches!(
+        mailbox_budget::reserve_queue(&budget, false, 1024 * 1024 + 1),
+        Err(Error::ResourceLimit)
+    ));
+    assert_eq!(mailbox_budget::queue_node_used(), baseline);
     assert!(!USER_MAILBOX.read().contains_key(&root.id()));
     // Both exact-root operations prepare before guards. A competing winner
     // neither replaces the first queue nor destroys unused storage under heap.
@@ -57,6 +75,11 @@ pub(in crate::syscall) fn run() {
     let mut second = Operation::new(root.id(), captured).unwrap();
     first.prepare().unwrap();
     second.prepare().unwrap();
+    assert_eq!(budget.queue_used(), [2, 2 * bytes]);
+    let mut third = Operation::new(root.id(), captured).unwrap();
+    assert_eq!(third.prepare(), Err(Error::ResourceLimit));
+    third.finish().unwrap();
+    assert_eq!(budget.queue_used(), [2, 2 * bytes]);
     {
         let heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
         assert_eq!(first.publish_send(get_lp_id(), 11), Ok(()));
@@ -65,6 +88,7 @@ pub(in crate::syscall) fn run() {
     }
     first.finish().unwrap();
     second.finish().unwrap();
+    assert_eq!(budget.queue_used(), [1, bytes]);
     REJECT.store(true, Ordering::Release);
     assert_eq!(send(root.id(), get_lp_id(), 13, captured), Ok(()));
     assert!(REJECT.swap(false, Ordering::AcqRel), "established send prepared storage");
@@ -97,7 +121,14 @@ pub(in crate::syscall) fn run() {
         drop(lifecycle);
         detached
     };
+    assert_eq!(budget.queue_used(), [1, bytes]);
+    assert!(matches!(
+        mailbox_budget::reserve_queue(&budget, true, bytes as usize),
+        Err(Error::Retired)
+    ));
     detached.release();
+    assert_eq!(budget.queue_used(), [0, 0]);
+    assert_eq!(mailbox_budget::queue_node_used(), baseline);
     memory::close_user_address_space_handle(root).unwrap();
     let successor = loader::create_user_address_space_handle();
     assert_eq!(successor.id(), root.id());
@@ -111,15 +142,30 @@ pub(in crate::syscall) fn run() {
     // new storage or deliver/pop queued words through its admission fence.
     let mut pending = Operation::new(successor.id(), current).unwrap();
     pending.prepare().unwrap();
+    let successor_budget = USER_MAILBOX_CAPS.read().get(&successor.id()).unwrap().budget.clone();
+    assert_eq!(successor_budget.queue_used(), [2, 2 * bytes]);
+    assert_eq!(budget.queue_used(), [0, 0]);
     assert_eq!(send(successor.id(), get_lp_id(), 23, current), Ok(()));
     let closing = memory::retirement::ClosingAddressSpace::begin(successor).unwrap();
     assert_eq!(pending.publish_send(get_lp_id(), 24), Err(24));
     assert_eq!(pending.receive(), None);
     assert_eq!(send(successor.id(), get_lp_id(), 25, current), Err(25));
     pending.finish().unwrap();
+    assert_eq!(successor_budget.queue_used(), [1, bytes]);
     assert!(matches!(closing.poll().unwrap(), memory::retirement::CloseProgress::Complete));
+    assert_eq!(successor_budget.queue_used(), [0, 0]);
+    assert_eq!(mailbox_budget::queue_node_used(), baseline);
+    mailbox_budget::test_queue_admission();
     abandoned();
     ACTIVE.store(false, Ordering::Release);
+    crate::logln!(
+        "[mailbox queue backing] {} requested bytes per {}-LP queue set; backing rejection \
+         refunds, shared per-generation ceiling rejects third preparation, final detach retains \
+         charge until release, successor and guarded abandonment preserve original ordinary \
+         classification",
+        bytes,
+        get_lp_count()
+    );
     crate::logln!(
         "[mailbox queue phases] {} preparation-entry and {} completion-entry boundaries outside \
          local lifecycle/mailbox/queue/table/physical/heap/capability guards; entry IRQ state \
@@ -137,6 +183,10 @@ fn abandoned() {
     let root = loader::create_user_address_space_handle();
     let mut operation = Operation::new(root.id(), capture_mailbox_identity(root.id())).unwrap();
     operation.prepare().unwrap();
+    let budget = operation.0.budget.as_ref().unwrap().clone();
+    let before = mailbox_budget::queue_node_used();
+    let used = budget.queue_used();
+    crate::capability::mark_platform(root);
     {
         let lifecycle = memory::ADDRESS_SPACE_LIFECYCLE.lock();
         let table = memory::ADDRESS_SPACE_TABLE.lock();
@@ -150,6 +200,8 @@ fn abandoned() {
         drop(table);
         drop(lifecycle);
     }
+    assert_eq!(budget.queue_used(), used);
+    assert_eq!(mailbox_budget::queue_node_used(), before);
     assert!(!USER_MAILBOX.read().contains_key(&root.id()));
     let closing = memory::retirement::ClosingAddressSpace::begin(root).unwrap();
     assert!(matches!(closing.poll().unwrap(), memory::retirement::CloseProgress::Pending(_)));

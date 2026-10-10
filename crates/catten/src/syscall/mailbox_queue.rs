@@ -12,7 +12,7 @@ use crate::{
 type Error = mailbox_budget::Error;
 pub(super) struct Namespace {
     pub(super) address_space: Option<AddressSpaceHandle>,
-    pub(super) mailboxes: ShardMailboxSet<u64>,
+    pub(super) mailboxes: mailbox_words::Words,
 }
 struct Resources {
     asid: AddressSpaceId,
@@ -20,6 +20,10 @@ struct Resources {
     root: Option<AddressSpaceOperation>,
     node: Option<PreparedEntry<(AddressSpaceId, Namespace)>>,
     queue: Option<Namespace>,
+    namespace_node: Option<PreparedEntry<(AddressSpaceId, AsMailboxCaps)>>,
+    namespace: Option<AsMailboxCaps>,
+    budget: Option<alloc::sync::Arc<mailbox_budget::DomainBudget>>,
+    charge: Option<mailbox_budget::QueueCharge>,
 }
 /// Abandonment retains even unused storage and its exact root. It is not retry
 /// custody. Ordinary completion disposes unused storage after local guards.
@@ -39,6 +43,10 @@ impl Operation {
             root: mailbox_publication::root(asid, captured)?,
             node: None,
             queue: None,
+            namespace_node: None,
+            namespace: None,
+            budget: None,
+            charge: None,
         })))
     }
 
@@ -47,14 +55,60 @@ impl Operation {
         if tests::reject() {
             return Err(Error::AllocationFailed);
         }
+        self.prepare_budget()?;
+        let platform = self.0.asid == crate::memory::KERNEL_ASID
+            || (self.0.captured.platform.is_some()
+                && self.0.captured.platform == self.0.captured.address_space);
+        let n = get_lp_count() as usize;
+        self.0.charge = Some(mailbox_budget::reserve_queue(
+            self.0.budget.as_ref().unwrap(),
+            platform,
+            mailbox_words::Words::backing_bytes_for(n)?,
+        )?);
         self.0.node = Some(PreparedEntry::try_new().map_err(|_| Error::AllocationFailed)?);
-        // concurrent-queue 2.5 has no fallible bounded constructor. Keep its
-        // allocation outside lifecycle/registry guards, owned by this complete
-        // operation. General queue-byte/OOM admission remains separate work.
+        if tests::reject_backing() {
+            return Err(Error::AllocationFailed);
+        }
+        let rings = mailbox_words::Words::prepare(n)?;
         self.0.queue = Some(Namespace {
             address_space: self.0.captured.address_space,
-            mailboxes: ShardMailboxSet::new(256),
+            mailboxes: mailbox_words::Words::new(rings, self.0.charge.take().unwrap()),
         });
+        Ok(())
+    }
+
+    fn prepare_budget(&mut self) -> Result<(), Error> {
+        {
+            let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+            mailbox_publication::validate(self.0.asid, self.0.captured)?;
+            if let Some(caps) = USER_MAILBOX_CAPS.read().get(&self.0.asid) {
+                if caps.address_space != self.0.captured.address_space {
+                    return Err(Error::Retired);
+                }
+                self.0.budget = Some(caps.budget.clone());
+                return Ok(());
+            }
+        }
+        // Legacy word callers share the same family account even without
+        // endpoint grants. Competing preparations cannot create separate quotas.
+        self.0.namespace_node =
+            Some(PreparedEntry::try_new().map_err(|_| Error::AllocationFailed)?);
+        self.0.namespace = Some(AsMailboxCaps::try_new(self.0.captured.address_space)?);
+        let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
+        mailbox_publication::validate(self.0.asid, self.0.captured)?;
+        let mut registry = USER_MAILBOX_CAPS.write();
+        if !registry.contains_key(&self.0.asid) {
+            registry.insert(
+                self.0.namespace_node.take().unwrap(),
+                self.0.asid,
+                self.0.namespace.take().unwrap(),
+            );
+        }
+        let caps = registry.get(&self.0.asid).unwrap();
+        if caps.address_space != self.0.captured.address_space {
+            return Err(Error::Retired);
+        }
+        self.0.budget = Some(caps.budget.clone());
         Ok(())
     }
 
@@ -107,6 +161,10 @@ impl Operation {
         tests::boundary(true);
         drop(self.0.queue.take());
         drop(self.0.node.take());
+        drop(self.0.charge.take());
+        drop(self.0.namespace.take());
+        drop(self.0.namespace_node.take());
+        drop(self.0.budget.take());
         if let Some(root) = self.0.root.take() {
             root.release().map_err(|_| Error::Retired)?;
         }
