@@ -14,6 +14,13 @@ not a current backlog.
 | Open | SEC-08, 09, 10 | The required security boundary is not implemented. |
 
 There are **38 numbered findings: 28 corrected, seven partial and three open**.
+The [2026-10-10 progress verification](../reports/audits/2026-10-10-security-progress-verification.md)
+temporarily returned SEC-12 to partial for metadata-read failure and automatic-ID
+aliasing. The [follow-up correction](../reports/audits/2026-10-10-security-object-store-follow-up.md)
+rejects metadata failure, retains one validated object snapshot and bounds
+collision-free creation. Host/guest regressions also exercise malformed and
+unauthorized policy rejection and live scope revocation. SEC-12 returns to
+corrected in that documented scope; historical reports preserve each checkpoint.
 The earlier SEC-01–25 accounting was 15 corrected, six partial and four open;
 it excluded the five additional, corrected findings SEC-26–30. Finding counts
 measure bookkeeping, not percentage of effort or production readiness.
@@ -316,7 +323,14 @@ This closes the identified self-request window without establishing it as the
 cause of those historical timeouts. The [executor-owner follow-up](../reports/audits/2026-10-09-security-abort-executor.md)
 now defers mutual/remote requests throughout an admitted sweep, including timer
 wait/wake, before root completion and executor release. Deterministic simultaneous
-faults and scheduled ordinary rejection cover that boundary. Broader retained
+faults and scheduled ordinary rejection cover that boundary. The
+[2026-10-10 progress verification](../reports/audits/2026-10-10-security-progress-verification.md#failed-amd-vi-abort-handoff-fixture)
+also records a fresh AMD-Vi panic in the handoff fixture's immediate lifecycle
+`try_lock` assertion. The [follow-up](../reports/audits/2026-10-10-security-object-store-follow-up.md)
+replaces immediate global availability with atomic current-LP ownership checks
+and tests deliberate remote contention, local ownership and IRQ preservation.
+The original holder/cause is unresolved; this qualifies the narrower probe
+without explaining historical lease timeouts. Broader retained
 kernel operations, outer caller qualification and historical timeout causation
 remain open; finding counts are unchanged.
 
@@ -352,7 +366,7 @@ missing boundaries.
 | 1 | **SEC-04:** Authenticate bootstrap policy and the executable boot chain from a protected platform root. Provision independent artifact, deployment and operational authorities and a distinct recipient key; exclude every development fixture. Keep the recipient private key behind a privileged custody boundary, with recovery/rotation rules and rollback-resistant policy state. Test substituted boot images/policies, role reuse, downgrade, enrollment and custody failure. Production must remain disabled until those tests pass. |
 | 2 | **SEC-08/10:** Enroll node/operator identities under that root, authenticate and encrypt node/control/data and management channels, authorize reads and writes, and bind messages to cluster, role, session and freshness. Test peer substitution, replay, revocation and reconnect/restart. A signed write payload does not authenticate the transport or a reader. |
 | 3 | **SEC-09:** Provide authenticated security-time provenance, bounded uncertainty/freshness and a fail-closed expiry policy after rollback, loss of synchronization and restart. Integrate it before claiming time-based credential/replay checks secure. SNTP and a nonzero timestamp do not satisfy this boundary. |
-| 4 | **SEC-12 (corrected in the documented scope):** Reserved artifact/executable objects reject mutation from every principal except the kernel and the signed `clusterctl` administration service ([report](../reports/audits/2026-10-10-security-object-store-reserved-namespace.md)); ordinary objects are owned by their persisted creating principal with owner-private reads and mutation ([report](../reports/audits/2026-10-10-security-object-store-ownership.md)); and an authenticated, persisted operator scope table delegates read/write rights over object-id ranges ([report](../reports/audits/2026-10-10-security-object-store-scope-policy.md)). Limits: policy authority is the signed `clusterctl` identity (operator enrollment is SEC-08/10), 64-entry bound, pre-ownership images must be recreated, and no listing opcode exists. |
+| 4 | **SEC-12 (corrected in the documented scope):** Reserved mutation policy, persisted ownership/private reads and operator scope grants are implemented ([reserved policy](../reports/audits/2026-10-10-security-object-store-reserved-namespace.md), [ownership](../reports/audits/2026-10-10-security-object-store-ownership.md), [scope policy](../reports/audits/2026-10-10-security-object-store-scope-policy.md)). The [follow-up](../reports/audits/2026-10-10-security-object-store-follow-up.md) rejects metadata-read failure before authorization/data access and preserves explicit IDs during bounded automatic creation, with targeted host/guest checks and policy rejection/revocation evidence. Limits: policy authority is the signed `clusterctl` identity (operator enrollment is SEC-08/10), 64-entry bound, pre-ownership/duplicate-ID images must be recreated, no listing opcode exists, and failed physical I/O/power-loss atomicity is not qualified. |
 | 5 | **SEC-06/14/15:** Finish management flood resistance/fairness, advisory/license and release-provenance enforcement, and the remaining secret-derived state/copy zeroization inventory. Retain the existing bounded-peer, pinned-build and temporary-buffer corrections. |
 
 The first SEC-04 prerequisite is now a

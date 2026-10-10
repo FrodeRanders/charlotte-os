@@ -1350,6 +1350,67 @@ pub mod objstore {
     pub const ERR_DENIED: i64 = 7;
     pub const EXECUTABLE_ECHO_ID: u64 = 0xffff_0000_0000_0001;
 
+    /// Automatic IDs are positive scalar replies, disjoint from high-range
+    /// stable service IDs and the reserved artifact/executable namespaces.
+    pub const MAX_AUTOMATIC_ID: u64 = i64::MAX as u64;
+
+    /// Choose an unused ID with bounded work. A directory with N slots can
+    /// contain at most N occupied candidates; N + 1 probes suffice when a
+    /// free slot exists. Explicit creation does not advance this counter.
+    pub fn next_automatic_id(
+        next: &mut u64,
+        attempts: usize,
+        mut occupied: impl FnMut(u64) -> bool,
+    ) -> Result<u64, i64> {
+        for candidate in ((*next).max(1)..=MAX_AUTOMATIC_ID).take(attempts) {
+            if !occupied(candidate) {
+                *next = candidate + 1;
+                return Ok(candidate);
+            }
+        }
+        Err(ERR_NO_SPACE)
+    }
+
+    /// Preserve explicit-ID existence errors even when the directory is full.
+    /// No automatic counter changes or candidate probes occur without a slot.
+    pub fn admit_create_id(
+        requested: Option<u64>,
+        next: &mut u64,
+        attempts: usize,
+        slot_available: bool,
+        mut occupied: impl FnMut(u64) -> bool,
+    ) -> Result<u64, i64> {
+        if let Some(id) = requested {
+            if id == 0 {
+                return Err(ERR_INVALID_ID);
+            }
+            if occupied(id) {
+                return Err(ERR_EXISTS);
+            }
+            return if slot_available {
+                Ok(id)
+            } else {
+                Err(ERR_NO_SPACE)
+            };
+        }
+        if !slot_available {
+            return Err(ERR_NO_SPACE);
+        }
+        next_automatic_id(next, attempts, occupied)
+    }
+
+    /// Resolve one existing locator/header. Only an absent locator is
+    /// NotFound; any header I/O or validation failure is an error. Return the
+    /// same snapshot for authorization and data/size processing, without retry.
+    pub fn resolve_header<E: Copy, H>(
+        entry: Option<E>,
+        read: impl FnOnce(E) -> Option<H>,
+    ) -> Result<(E, H), i64> {
+        let entry = entry.ok_or(ERR_NOT_FOUND)?;
+        let header = read(entry).ok_or(ERR_IO_ERROR)?;
+        Ok((entry, header))
+    }
+
     /// Kernel envelope principal for `KERNEL_ASID` senders
     /// (`ipc` sets it to 1; loaded user domains never use zero or one).
     const KERNEL_PRINCIPAL: u64 = 1;
@@ -1540,6 +1601,105 @@ pub mod objstore {
         }
         fn other() -> u64 {
             charlotte_launch::artifact_principal_id(b"echo")
+        }
+
+        #[test]
+        fn metadata_failure_never_becomes_public_ownership_or_retries() {
+            use core::cell::Cell;
+            let reads = Cell::new(0);
+            for _opcode in [OP_READ, OP_INFO] {
+                let snapshot = resolve_header(Some(42), |_| {
+                    reads.set(reads.get() + 1);
+                    None::<(u64, u32, u64)>
+                });
+                assert_eq!(snapshot, Err(ERR_IO_ERROR));
+            }
+            assert_eq!(reads.get(), 2);
+            let missing =
+                resolve_header(None::<u64>, |_| panic!("a missing locator must not read metadata"));
+            assert_eq!(missing, Err::<(u64, ()), _>(ERR_NOT_FOUND));
+            let (_, (owner, attributes, size)) =
+                resolve_header(Some(42), |_| Some((ordinary(), 0, 123))).unwrap();
+            assert_eq!(size, 123);
+            assert!(!may_read_scoped(42, owner, attributes, other(), false));
+            assert!(may_read_scoped(42, owner, attributes, ordinary(), false));
+            // A verified legacy header still has its documented read policy;
+            // it cannot be manufactured by a failed lookup.
+            let (_, (owner, attributes)) = resolve_header(Some(42), |_| Some((0, 0))).unwrap();
+            assert!(may_read_scoped(42, owner, attributes, other(), false));
+        }
+
+        #[test]
+        fn automatic_ids_preserve_explicit_foreign_objects_across_restart_and_delete() {
+            use alloc::collections::BTreeMap;
+            let mut owners = BTreeMap::from([(1, ordinary()), (2, ordinary())]);
+            let mut next = 1;
+            let chosen = next_automatic_id(&mut next, 4, |id| owners.contains_key(&id)).unwrap();
+            assert_eq!(chosen, 3);
+            assert_eq!(owners.insert(chosen, other()), None);
+            assert_eq!(owners.get(&1), Some(&ordinary()));
+            assert_eq!(owners.get(&2), Some(&ordinary()));
+            // Mount restores this persisted counter; a later explicit ID
+            // must still be skipped, and deleting an old ID cannot rewind it.
+            let mut restored_next = next;
+            owners.insert(4, ordinary());
+            owners.remove(&2);
+            let chosen =
+                next_automatic_id(&mut restored_next, 5, |id| owners.contains_key(&id)).unwrap();
+            assert_eq!(chosen, 5);
+            assert_eq!(owners.insert(chosen, other()), None);
+            assert_eq!(owners.get(&1), Some(&ordinary()));
+            assert_eq!(owners.get(&4), Some(&ordinary()));
+        }
+
+        #[test]
+        fn full_directory_preserves_existing_ids_and_rejects_without_advancing() {
+            let mut next = 1;
+            assert_eq!(
+                admit_create_id(Some(1), &mut next, 2, false, |id| id == 1),
+                Err(ERR_EXISTS)
+            );
+            assert_eq!(
+                admit_create_id(Some(0), &mut next, 2, false, |_| panic!("invalid ID")),
+                Err(ERR_INVALID_ID)
+            );
+            assert_eq!(
+                admit_create_id(Some(2), &mut next, 2, false, |id| id == 1),
+                Err(ERR_NO_SPACE)
+            );
+            assert_eq!(
+                admit_create_id(None, &mut next, 2, false, |_| panic!("no free slot")),
+                Err(ERR_NO_SPACE)
+            );
+            assert_eq!(next, 1);
+            assert_eq!(admit_create_id(None, &mut next, 2, true, |id| id == 1), Ok(2));
+            assert_eq!(next, 3);
+        }
+
+        #[test]
+        fn automatic_id_search_is_bounded_and_excludes_reserved_and_negative_replies() {
+            let mut next = 1;
+            let mut probes = 0;
+            assert_eq!(
+                next_automatic_id(&mut next, 3, |_| {
+                    probes += 1;
+                    true
+                }),
+                Err(ERR_NO_SPACE)
+            );
+            assert_eq!(probes, 3);
+            assert_eq!(next, 1);
+            next = MAX_AUTOMATIC_ID;
+            assert_eq!(next_automatic_id(&mut next, 2, |_| false), Ok(MAX_AUTOMATIC_ID));
+            assert_eq!(
+                next_automatic_id(&mut next, 2, |_| panic!("outside automatic range")),
+                Err(ERR_NO_SPACE)
+            );
+            next = EXECUTABLE_ECHO_ID;
+            assert_eq!(
+                next_automatic_id(&mut next, 2, |_| panic!("reserved range")),
+                Err(ERR_NO_SPACE)
+            );
         }
 
         #[test]

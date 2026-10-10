@@ -68,9 +68,13 @@ pub(super) fn before_self_handoff(
     }
     let (tid, generation) = caller.expect("faulting sweep did not defer its caller");
     let irq = crate::cpu::isa::lp::ops::get_int_state();
-    assert!(THREAD_PUBLICATION_GATE.try_lock().is_some());
-    assert!(memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
-    assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
+    // Other LPs legitimately use these global guards during this scheduled
+    // probe. An immediate try_lock cannot establish the caller's context.
+    use crate::cpu::multiprocessor::spin::mutex::owned_by_current_lp;
+    assert!(!owned_by_current_lp(&THREAD_PUBLICATION_GATE));
+    assert!(!owned_by_current_lp(&memory::ADDRESS_SPACE_LIFECYCLE));
+    assert!(!owned_by_current_lp(&ADDRESS_SPACE_TABLE));
+    assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
     {
         let table = MASTER_THREAD_TABLE.read();
         let thread = table.get(tid).unwrap();
@@ -252,6 +256,7 @@ pub(crate) fn finish_concurrent_handoff(handle: AddressSpaceHandle) {
 }
 
 pub(crate) fn verify_executor_rejection() {
+    verify_lock_ownership();
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     let identity = SYSTEM_SCHEDULER
         .read()
@@ -281,6 +286,74 @@ pub(crate) fn verify_executor_rejection() {
     crate::logln!(
         "[domain abort] scheduled root/publication rejection released executor ownership"
     );
+}
+
+static LOCK_PHASE: AtomicUsize = AtomicUsize::new(0);
+
+extern "C" fn hold_remote_lifecycle() {
+    let _guard = memory::ADDRESS_SPACE_LIFECYCLE.lock();
+    LOCK_PHASE.store(1, Ordering::Release);
+    let deadline = crate::self_test::results::Deadline::after_millis(5_000);
+    while LOCK_PHASE.load(Ordering::Acquire) == 1 {
+        deadline.assert_pending("remote lifecycle ownership observation");
+        core::hint::spin_loop();
+    }
+    drop(_guard);
+    LOCK_PHASE.store(3, Ordering::Release);
+}
+
+fn verify_lock_ownership() {
+    use crate::cpu::multiprocessor::spin::mutex::owned_by_current_lp;
+    let irq = crate::cpu::isa::lp::ops::get_int_state();
+    let local = crate::cpu::multiprocessor::spin::mutex::Mutex::new(());
+    assert!(!owned_by_current_lp(&local));
+    let guard = local.try_lock().unwrap();
+    assert!(owned_by_current_lp(&local));
+    drop(guard);
+    assert!(!owned_by_current_lp(&local));
+    assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
+    {
+        let guard = memory::ADDRESS_SPACE_LIFECYCLE.lock();
+        assert!(owned_by_current_lp(&memory::ADDRESS_SPACE_LIFECYCLE));
+        assert!(memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_none());
+        assert!(owned_by_current_lp(&memory::ADDRESS_SPACE_LIFECYCLE));
+        drop(guard);
+    }
+    assert!(!owned_by_current_lp(&memory::ADDRESS_SPACE_LIFECYCLE));
+    assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
+    let n = crate::cpu::multiprocessor::get_lp_count();
+    if n < 2 {
+        return;
+    }
+    assert_eq!(LOCK_PHASE.swap(0, Ordering::AcqRel), 0);
+    let peer = (crate::cpu::isa::lp::ops::get_lp_id() + 1) % n;
+    // Trusted boot fixture: one bounded kernel thread, no application resource
+    // or dynamically growing observer/registry is admitted by this probe.
+    let _tid =
+        crate::cpu::scheduler::spawn_thread_on_lp(memory::KERNEL_ASID, hold_remote_lifecycle, peer);
+    let deadline = crate::self_test::results::Deadline::after_millis(5_000);
+    while LOCK_PHASE.load(Ordering::Acquire) != 1 {
+        deadline.assert_pending("remote lifecycle owner entry");
+        crate::cpu::scheduler::yield_lp();
+    }
+    {
+        let _pin = LocalInterruptMask::new();
+        // Force the exact contention that made the old assertion fail while
+        // proving this LP does not hold an enclosing lifecycle guard.
+        assert!(memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_none());
+        assert!(!owned_by_current_lp(&memory::ADDRESS_SPACE_LIFECYCLE));
+        assert!(!crate::cpu::isa::lp::ops::get_int_state());
+        LOCK_PHASE.store(2, Ordering::Release);
+    }
+    while LOCK_PHASE.load(Ordering::Acquire) != 3 {
+        deadline.assert_pending("remote lifecycle owner exit");
+        crate::cpu::scheduler::yield_lp();
+    }
+    assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
+    crate::logln!(concat!(
+        "[domain abort] lifecycle ownership observation: local hold detected, ",
+        "remote contention accepted and caller IRQ state preserved"
+    ));
 }
 
 fn domain() -> AddressSpaceHandle {

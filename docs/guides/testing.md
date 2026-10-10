@@ -848,6 +848,16 @@ probe reports `checks=0xffff`. These checks supplement the 19 deferred tests.
 The final remediation evidence is linked from
 [the remediation report](../reports/audits/2026-10-05-security-remediation.md).
 
+The storage fixture on both architectures also checks explicit/automatic ID
+collision isolation, unauthorized and malformed scope replacement, and live
+read/info revocation on the original client connection. Repeat the AArch64
+security run with the same instance and `--reuse-storage` to check the persisted
+empty scope table before grants are reinstalled. Host tests cover metadata
+failure without retry, bounded ID search and full-directory admission. These
+checks do not inject physical NVMe failures or sudden power loss. See the
+[object-store follow-up](../reports/audits/2026-10-10-security-object-store-follow-up.md)
+for results and artifact hashes.
+
 ## User entry, x86 faults and TCP/IP pressure
 
 The normal EL0 verifier additionally runs `self_test::user_isolation::verify`.

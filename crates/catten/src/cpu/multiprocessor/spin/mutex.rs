@@ -1,5 +1,6 @@
 use core::sync::atomic::{
     AtomicBool,
+    AtomicU32,
     Ordering,
 };
 
@@ -7,6 +8,7 @@ use lock_api::RawMutex;
 
 use crate::cpu::isa::lp::ops::{
     get_int_state,
+    get_lp_id,
     mask_interrupts,
     unmask_interrupts,
 };
@@ -28,6 +30,10 @@ pub type Mutex<T> = lock_api::Mutex<MutexCore, T>;
 pub struct MutexCore {
     state: AtomicBool,
     saved_interrupt_flag: AtomicBool,
+    /// Observation only: owning guards mask IRQs and cannot migrate. This
+    /// identifies a caller's enclosing hold without mistaking remote-LP
+    /// contention for a recursive lock. It grants no access to guarded data.
+    owner_lp: AtomicU32,
 }
 
 impl MutexCore {
@@ -35,8 +41,20 @@ impl MutexCore {
         Self {
             state: AtomicBool::new(false),
             saved_interrupt_flag: AtomicBool::new(false),
+            owner_lp: AtomicU32::new(u32::MAX),
         }
     }
+
+    pub(crate) fn owned_by_current_lp(&self) -> bool {
+        let _pin = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
+        self.owner_lp.load(Ordering::Acquire) == get_lp_id()
+    }
+}
+
+pub(crate) fn owned_by_current_lp<T>(mutex: &Mutex<T>) -> bool {
+    // Only read the raw lock's atomic observation; do not change its state or
+    // access payload. lock_api keeps the raw reference valid for this borrow.
+    unsafe { mutex.raw() }.owned_by_current_lp()
 }
 
 impl Default for MutexCore {
@@ -60,6 +78,7 @@ unsafe impl RawMutex for MutexCore {
                 .is_ok()
             {
                 self.saved_interrupt_flag.store(int_state, Ordering::Release);
+                self.owner_lp.store(get_lp_id(), Ordering::Release);
                 return;
             }
 
@@ -76,6 +95,7 @@ unsafe impl RawMutex for MutexCore {
 
     unsafe fn unlock(&self) {
         let restore = self.saved_interrupt_flag.swap(false, Ordering::Relaxed);
+        self.owner_lp.store(u32::MAX, Ordering::Release);
         self.state.store(false, Ordering::Release);
         if restore {
             unmask_interrupts!();
@@ -89,6 +109,7 @@ unsafe impl RawMutex for MutexCore {
             self.state.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_ok();
         if acquired {
             self.saved_interrupt_flag.store(int_state, core::sync::atomic::Ordering::Release);
+            self.owner_lp.store(get_lp_id(), Ordering::Release);
         } else if int_state {
             unmask_interrupts!();
         }

@@ -307,6 +307,10 @@ extern "C" fn verify_el0_nvme() {
     const FOREIGN_OBJECT_ID: u64 = 0x7fff_ffff_ffff_ee00;
     crate::service::store::write_store_test_object(FOREIGN_OBJECT_ID, b"kernel ownership probe")
         .expect("[el0_nvme] stage foreign-ownership probe object");
+    // Explicit low ID intersects the fresh automatic counter. The ordinary
+    // client must allocate around it without replacing its kernel ownership.
+    crate::service::store::write_store_test_object(1, b"automatic ID collision probe")
+        .expect("[el0_nvme] stage automatic-ID collision probe");
     // Operator scope grant: the client may read (not mutate) this second
     // kernel-owned probe. Encoded table mirrors `objstore::ScopeTable`:
     // 16-byte header (`OSCP`, version 1, one entry) plus one 32-byte entry.
@@ -324,6 +328,12 @@ extern "C" fn verify_el0_nvme() {
     scope[40..44].copy_from_slice(&1u32.to_le_bytes()); // SCOPE_RIGHT_READ
     crate::service::store::apply_store_scope(&scope)
         .expect("[el0_nvme] apply read-only scope grant");
+    let mut malformed_scope = scope;
+    malformed_scope[0] ^= 1;
+    assert!(
+        crate::service::store::apply_store_scope(&malformed_scope).is_err(),
+        "[el0_nvme] malformed scope must preserve the earlier grant"
+    );
     let object_client = supervisor::spawn_with_name_service(
         crate::service::store::service_elf(b"objstore_client")
             .expect("[el0_nvme] objstore_client.elf"),
@@ -461,7 +471,27 @@ extern "C" fn verify_el0_nvme() {
         .expect("[nvme] object-client completion poll error")
         .expect("[nvme] object-client completion reply missing");
     assert!(completion.result >= 1, "[nvme] invalid object-client completion generation");
-    if let Some(connection) = completion.cap {
+    {
+        let connection = completion.cap.expect("[el0_nvme] missing revocation probe connection");
+        // Revoke while the same client and connection remain live. Persist a
+        // valid empty table, then require read/info denial from that principal.
+        let mut empty_scope = [0u8; 16];
+        empty_scope[0..4].copy_from_slice(&0x5043_534fu32.to_le_bytes());
+        empty_scope[4..6].copy_from_slice(&1u16.to_le_bytes());
+        crate::service::store::apply_store_scope(&empty_scope)
+            .expect("[el0_nvme] revoke client scope grant");
+        let call = crate::ipc::scalar_call(crate::memory::KERNEL_ASID, connection, 1, 0)
+            .expect("[el0_nvme] live scope revocation probe");
+        assert!(
+            crate::ipc::wait_reply_timeout(crate::memory::KERNEL_ASID, call, 30_000)
+                .expect("[el0_nvme] scope revocation wait")
+        );
+        let result = crate::ipc::poll_reply(crate::memory::KERNEL_ASID, call)
+            .expect("[el0_nvme] scope revocation poll")
+            .expect("[el0_nvme] scope revocation reply");
+        assert_eq!(result.result, 0, "[el0_nvme] live revocation must deny both operations");
+        crate::ipc::close_cap(crate::memory::KERNEL_ASID, call)
+            .expect("[el0_nvme] close scope revocation probe");
         crate::ipc::close_cap(crate::memory::KERNEL_ASID, connection)
             .expect("[nvme] close object-client completion connection");
     }

@@ -205,6 +205,28 @@ accidental corruption, but is not cryptographic authentication.
     \item \textbf{FLUSH}: flush the underlying block device.
 \end{itemize}
 
+\subsection{Object authority}
+
+The store authenticates each sender through the kernel IPC envelope and records
+the creating principal in the object header. Ordinary objects are private to
+that principal and the kernel, including across service replacement. Shared-read
+objects permit other authenticated readers while retaining owner-only mutation.
+Reserved artifact and executable namespaces are publicly readable but mutable
+only by the kernel and the signed \texttt{clusterctl} administration service.
+A persisted operator table admits at most 64 principal/range grants for read or
+write access; grants cannot extend the reserved mutation allowlist. Node/operator
+enrollment and management-channel authentication remain separate requirements.
+
+Authorization and data access consume one validated locator/header snapshot.
+Missing objects return NotFound; metadata I/O or validation failure returns an
+error rather than adopting public legacy ownership. Automatic creation searches
+for an unused positive scalar ID with a directory-sized bound, preserving
+explicitly created objects. Mount rejects duplicate live IDs. Objects predating
+ownership enforcement remain readable but kernel-mutable only; those storage
+images must be recreated before runtime services can mutate their state.
+See \repofile|docs/reference/security-remediation.md| for current disposition
+and validation limits.
+
 \subsection{The initial service-artifact store}
 
 The host build produces an architecture-qualified service bundle and blesses

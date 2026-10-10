@@ -10,6 +10,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [2026-10-10 object-store isolation fixes, policy revocation and mutex-context probes](audits/2026-10-10-security-object-store-follow-up.md)
+- [2026-10-10 commit progress verification and SEC-12 isolation follow-up](audits/2026-10-10-security-progress-verification.md)
 - [2026-10-10 object-store operator scope policy (SEC-12)](audits/2026-10-10-security-object-store-scope-policy.md)
 - [2026-10-10 object-store per-object ownership (SEC-12)](audits/2026-10-10-security-object-store-ownership.md)
 - [2026-10-10 object-store reserved-namespace authority (SEC-12)](audits/2026-10-10-security-object-store-reserved-namespace.md)

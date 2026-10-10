@@ -165,6 +165,15 @@ struct ObjectHeader {
     attributes: u32,
 }
 
+/// The service handles requests serially. Keep the validated locator/header
+/// together from authorization through data access; failed reads never adopt
+/// the legacy owner-zero policy or retry a different header.
+struct StoredObject {
+    index: u32,
+    entry: DirectoryEntry,
+    header: ObjectHeader,
+}
+
 struct BlockDev {
     conn: Connection,
     block_size: u32,
@@ -398,7 +407,11 @@ impl ObjStore {
                 return None;
             }
             self.directory.lock()[index] = entry;
-            cache.insert(entry.id, index as u32);
+            // Duplicate IDs would make ownership depend on directory order.
+            // Reject a disk produced by an earlier colliding allocator.
+            if cache.insert(entry.id, index as u32).is_some() {
+                return None;
+            }
             if entry.header_lba == 0 {
                 continue;
             }
@@ -426,17 +439,14 @@ impl ObjStore {
     }
 
     fn create(&mut self, requested: Option<u64>, owner: u64, attributes: u32) -> Result<u64, i64> {
-        let id = match requested {
-            Some(0) => return Err(objstore::ERR_INVALID_ID),
-            Some(id) if self.find_index(id).is_some() => return Err(objstore::ERR_EXISTS),
-            Some(id) => id,
-            None => {
-                let id = self.next_id;
-                self.next_id = self.next_id.checked_add(1).ok_or(objstore::ERR_NO_SPACE)?;
-                id
-            }
-        };
-        let index = self.find_free_directory().ok_or(objstore::ERR_NO_SPACE)?;
+        let slot = self.find_free_directory();
+        let mut next = self.next_id;
+        let attempts = self.directory.lock().len().saturating_add(1);
+        let id = objstore::admit_create_id(requested, &mut next, attempts, slot.is_some(), |id| {
+            self.find_index(id).is_some()
+        })?;
+        let index = slot.ok_or(objstore::ERR_NO_SPACE)?;
+        self.next_id = next;
         let generation = u64::from(
             self.read_directory(index).ok_or(objstore::ERR_IO_ERROR)?.generation.saturating_add(1),
         );
@@ -467,14 +477,12 @@ impl ObjStore {
         Ok(id)
     }
 
-    fn delete(&self, id: u64) -> i64 {
-        let Some(index) = self.find_index(id) else {
-            return objstore::ERR_NOT_FOUND;
-        };
-        let Some(entry) = self.read_directory(index) else {
-            return objstore::ERR_IO_ERROR;
-        };
-        let allocation = self.read_header(entry);
+    fn delete(&self, object: StoredObject) -> i64 {
+        let StoredObject {
+            index,
+            entry,
+            header,
+        } = object;
         let tombstone = DirectoryEntry {
             generation: entry.generation.saturating_add(1),
             ..DirectoryEntry::default()
@@ -482,20 +490,16 @@ impl ObjStore {
         if !self.write_directory(index, tombstone) || !self.dev.flush() {
             return objstore::ERR_IO_ERROR;
         }
-        self.index_cache.lock().remove(&id);
-        if let Some(header) = allocation {
-            self.free_object_allocation(entry.header_lba, header);
-            if !self.persist_bitmap() || !self.dev.flush() {
-                return objstore::ERR_IO_ERROR;
-            }
+        self.index_cache.lock().remove(&entry.id);
+        self.pending_sizes.lock().remove(&entry.id);
+        self.free_object_allocation(entry.header_lba, header);
+        if !self.persist_bitmap() || !self.dev.flush() {
+            return objstore::ERR_IO_ERROR;
         }
         objstore::ERR_OK
     }
 
-    fn set_size(&self, id: u64, size_memory: OwnedMemory) -> i64 {
-        if self.find_index(id).is_none() {
-            return objstore::ERR_NOT_FOUND;
-        }
+    fn set_size(&self, object: StoredObject, size_memory: OwnedMemory) -> i64 {
         let Ok(mapping) = size_memory.map_read_only() else {
             return objstore::ERR_IO_ERROR;
         };
@@ -506,20 +510,17 @@ impl ObjStore {
         let Ok(size) = u32::try_from(size) else {
             return objstore::ERR_TOO_LARGE;
         };
-        self.pending_sizes.lock().insert(id, size);
+        self.pending_sizes.lock().insert(object.entry.id, size);
         objstore::ERR_OK
     }
 
-    fn write(&self, id: u64, data_memory: OwnedMemory) -> i64 {
-        let Some(index) = self.find_index(id) else {
-            return objstore::ERR_NOT_FOUND;
-        };
-        let Some(old_entry) = self.read_directory(index) else {
-            return objstore::ERR_IO_ERROR;
-        };
-        let Some(old_header) = self.read_header(old_entry) else {
-            return objstore::ERR_IO_ERROR;
-        };
+    fn write(&self, object: StoredObject, data_memory: OwnedMemory) -> i64 {
+        let StoredObject {
+            index,
+            entry: old_entry,
+            header: old_header,
+        } = object;
+        let id = old_entry.id;
         let size = self.pending_sizes.lock().remove(&id).unwrap_or(PAGE_SIZE as u32);
         let Ok(data) = data_memory.map_read_only() else {
             return objstore::ERR_IO_ERROR;
@@ -590,19 +591,8 @@ impl ObjStore {
         objstore::ERR_OK
     }
 
-    fn read_and_reply(&self, id: u64, reply: ReplyToken) {
-        let Some(index) = self.find_index(id) else {
-            let _ = reply.reply(objstore::ERR_NOT_FOUND);
-            return;
-        };
-        let Some(entry) = self.read_directory(index) else {
-            let _ = reply.reply(objstore::ERR_IO_ERROR);
-            return;
-        };
-        let Some(header) = self.read_header(entry) else {
-            let _ = reply.reply(objstore::ERR_IO_ERROR);
-            return;
-        };
+    fn read_and_reply(&self, object: StoredObject, reply: ReplyToken) {
+        let header = object.header;
         let Ok(size) = usize::try_from(header.data_len) else {
             let _ = reply.reply(objstore::ERR_TOO_LARGE);
             return;
@@ -631,16 +621,16 @@ impl ObjStore {
         let _ = reply.reply_move(memory, size as i64);
     }
 
-    fn object_size(&self, id: u64) -> Option<u64> {
-        let entry = self.read_directory(self.find_index(id)?)?;
-        Some(self.read_header(entry)?.data_len)
-    }
-
-    /// Persisted owner principal and attribute bits for an existing object.
-    fn metadata(&self, id: u64) -> Option<(u64, u32)> {
-        let entry = self.read_directory(self.find_index(id)?)?;
-        let header = self.read_header(entry)?;
-        Some((header.owner, header.attributes))
+    fn resolve(&self, id: u64) -> Result<StoredObject, i64> {
+        let index = self.find_index(id).ok_or(objstore::ERR_NOT_FOUND)?;
+        let entry = self.read_directory(index).ok_or(objstore::ERR_IO_ERROR)?;
+        let (entry, header) =
+            objstore::resolve_header(Some(entry), |entry| self.read_header(entry))?;
+        Ok(StoredObject {
+            index,
+            entry,
+            header,
+        })
     }
 
     /// Read a small object entirely into memory, verifying its stored content
@@ -685,7 +675,10 @@ impl ObjStore {
             return objstore::ERR_IO_ERROR;
         };
         self.pending_sizes.lock().insert(objstore::SCOPE_OBJECT_ID, bytes.len() as u32);
-        self.write(objstore::SCOPE_OBJECT_ID, memory)
+        match self.resolve(objstore::SCOPE_OBJECT_ID) {
+            Ok(object) => self.write(object, memory),
+            Err(error) => error,
+        }
     }
 
     fn read_directory(&self, index: u32) -> Option<DirectoryEntry> {
@@ -1327,7 +1320,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     // table fails closed to no grants.
     let mut scope = match store.read_object_bytes(objstore::SCOPE_OBJECT_ID) {
         Some(bytes) => match objstore::ScopeTable::parse(&bytes) {
-            Some(table) => table,
+            Some(table) => {
+                catten_rt::logln!(
+                    "[objstore] persisted scope table restored ({} entries)",
+                    table.len()
+                );
+                table
+            }
             None => {
                 catten_rt::logln!("[objstore] persisted scope table malformed; denying all grants");
                 objstore::ScopeTable::default()
@@ -1398,12 +1397,39 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             // service, and ordinary objects are private to their creator.
             let id = message.arg0;
             let principal = message.sender_principal;
-            let (owner, attributes) = store.metadata(id).unwrap_or((0, 0));
+            let object = if matches!(
+                message.opcode,
+                objstore::OP_READ
+                    | objstore::OP_INFO
+                    | objstore::OP_DELETE
+                    | objstore::OP_SET_SIZE
+                    | objstore::OP_WRITE
+            ) {
+                match store.resolve(id) {
+                    Ok(object) => Some(object),
+                    Err(error) => {
+                        reply_scalar(message.reply.take(), error);
+                        continue;
+                    }
+                }
+            } else {
+                None
+            };
             let may_create = objstore::may_create(id, principal);
             let scope_read = scope.allows(principal, id, objstore::SCOPE_RIGHT_READ);
             let scope_write = scope.allows(principal, id, objstore::SCOPE_RIGHT_WRITE);
-            let may_mutate = objstore::may_mutate_scoped(id, owner, principal, scope_write);
-            let may_read = objstore::may_read_scoped(id, owner, attributes, principal, scope_read);
+            let may_mutate = object.as_ref().is_some_and(|object| {
+                objstore::may_mutate_scoped(id, object.header.owner, principal, scope_write)
+            });
+            let may_read = object.as_ref().is_some_and(|object| {
+                objstore::may_read_scoped(
+                    id,
+                    object.header.owner,
+                    object.header.attributes,
+                    principal,
+                    scope_read,
+                )
+            });
             match message.opcode {
                 objstore::OP_CREATE => {
                     let result = store.create(None, principal, 0).map(|id| id as i64).unwrap_or(0);
@@ -1430,7 +1456,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
                 objstore::OP_DELETE => {
                     let result = if may_mutate {
-                        store.delete(id)
+                        store.delete(object.unwrap())
                     } else {
                         objstore::ERR_DENIED
                     };
@@ -1443,7 +1469,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         message
                             .memory
                             .take()
-                            .map(|memory| store.set_size(id, memory))
+                            .map(|memory| store.set_size(object.unwrap(), memory))
                             .unwrap_or(objstore::ERR_IO_ERROR)
                     };
                     reply_scalar(message.reply.take(), result);
@@ -1455,7 +1481,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         message
                             .memory
                             .take()
-                            .map(|memory| store.write(id, memory))
+                            .map(|memory| store.write(object.unwrap(), memory))
                             .unwrap_or(objstore::ERR_IO_ERROR)
                     };
                     reply_scalar(message.reply.take(), result);
@@ -1463,7 +1489,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 objstore::OP_READ => {
                     if let Some(reply) = message.reply.take() {
                         if may_read {
-                            store.read_and_reply(id, reply);
+                            store.read_and_reply(object.unwrap(), reply);
                         } else {
                             let _ = reply.reply(objstore::ERR_DENIED);
                         }
@@ -1488,10 +1514,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     let result = if !may_read {
                         objstore::ERR_DENIED
                     } else {
-                        store
-                            .object_size(id)
-                            .and_then(|size| i64::try_from(size).ok())
-                            .unwrap_or(objstore::ERR_NOT_FOUND)
+                        i64::try_from(object.unwrap().header.data_len)
+                            .unwrap_or(objstore::ERR_TOO_LARGE)
                     };
                     reply_scalar(message.reply.take(), result);
                 }

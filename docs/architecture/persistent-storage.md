@@ -298,6 +298,16 @@ image must be recreated before its services can mutate their objects. See the
 and [scope-policy](../reports/audits/2026-10-10-security-object-store-scope-policy.md)
 remediation reports.
 
+The [isolation follow-up](../reports/audits/2026-10-10-security-object-store-follow-up.md)
+rejects metadata I/O/validation failure before authorization. One validated
+locator/header supplies both policy and read/info data; failure never adopts
+owner-zero compatibility. Automatic creation skips occupied IDs with at most
+directory-slot-count plus one probes and excludes high stable/reserved IDs.
+Mount rejects duplicate live IDs from older colliding stores. Negative guest
+checks cover mixed creation, unauthorized/malformed policy replacement and
+revocation through an existing connection. Failed-device-write/power-loss
+atomicity remains outside this evidence.
+
 Node ID, peer list, election timing, and storage policy remain supervisor-owned
 launch configuration. They are not copied into the Raft log. The durable store
 contains Raft protocol state and log/snapshot data, not the deployment
