@@ -302,6 +302,11 @@ extern "C" fn verify_el0_nvme() {
         crate::service::store::service_elf(b"echo").expect("[el0_nvme] echo.elf"),
     )
     .expect("[el0_nvme] stage persistent echo executable");
+    // Kernel-owned ordinary object proving cross-principal read/mutation
+    // denial; mirrors `objstore_client::FOREIGN_OBJECT_ID`.
+    const FOREIGN_OBJECT_ID: u64 = 0x7fff_ffff_ffff_ee00;
+    crate::service::store::write_store_test_object(FOREIGN_OBJECT_ID, b"kernel ownership probe")
+        .expect("[el0_nvme] stage foreign-ownership probe object");
     let object_client = supervisor::spawn_with_name_service(
         crate::service::store::service_elf(b"objstore_client")
             .expect("[el0_nvme] objstore_client.elf"),

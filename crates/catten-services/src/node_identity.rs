@@ -27,7 +27,7 @@ use alloc::{
 
 use crate::objstore_client::{
     connect as objstore_connect,
-    create_at as obj_create_at,
+    create_at_shared as obj_create_at,
     flush as obj_flush,
     read as obj_read,
     write as obj_write,

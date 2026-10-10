@@ -1321,6 +1321,10 @@ pub mod objstore {
     pub const OP_INFO: u32 = 7;
     pub const OP_CREATE_AT: u32 = 8;
     pub const OP_SET_SIZE: u32 = 9;
+    /// Like [`OP_CREATE_AT`], but marks the object shared-read: any domain
+    /// authenticated by the kernel may read it. Used for the node identity,
+    /// which discovery, DNS and the Raft fixture all need.
+    pub const OP_CREATE_AT_SHARED: u32 = 10;
 
     pub const ERR_OK: i64 = 0;
     pub const ERR_NOT_FOUND: i64 = 1;
@@ -1335,6 +1339,10 @@ pub mod objstore {
     /// Kernel envelope principal for `KERNEL_ASID` senders
     /// (`ipc` sets it to 1; loaded user domains never use zero or one).
     const KERNEL_PRINCIPAL: u64 = 1;
+
+    /// Object is readable by any domain authenticated by the kernel, not just
+    /// its owner. Set at creation and preserved across rewrites.
+    pub const ATTR_SHARED_READ: u32 = 1;
 
     /// Whether `id` names a reserved artifact or executable object. Both
     /// namespaces are partitioned top-down so ordinary objects can never
@@ -1351,11 +1359,34 @@ pub mod objstore {
             || principal == charlotte_launch::artifact_principal_id(b"clusterctl")
     }
 
-    /// Whether `principal` may create, overwrite, resize or delete `id`.
-    /// Ordinary objects keep the current store-wide behavior until per-object
-    /// ownership is provisioned.
-    pub fn mutation_allowed(id: u64, principal: u64) -> bool {
+    /// Whether `principal` may create `id`. Creation of a new ordinary object
+    /// is open; reserved artifact/executable IDs require a reserved mutator.
+    pub fn may_create(id: u64, principal: u64) -> bool {
         !is_reserved_object(id) || reserved_mutator(principal)
+    }
+
+    /// Whether `principal` may overwrite, resize or delete an existing `id`.
+    /// `owner` is the persisted creating principal (zero for objects staged
+    /// by the image tool or written before ownership enforcement). Ordinary
+    /// owned objects are mutable only by their owner or the kernel; unowned
+    /// legacy objects are immutable except to the kernel.
+    pub fn may_mutate(id: u64, owner: u64, principal: u64) -> bool {
+        if is_reserved_object(id) {
+            return reserved_mutator(principal);
+        }
+        principal == KERNEL_PRINCIPAL || (owner != 0 && owner == principal)
+    }
+
+    /// Whether `principal` may read `id` or query its size. Reserved objects
+    /// are public, shared-read objects admit every authenticated reader,
+    /// unowned legacy objects remain readable for compatibility, and owned
+    /// ordinary objects are private to their owner and the kernel.
+    pub fn may_read(id: u64, owner: u64, attributes: u32, principal: u64) -> bool {
+        is_reserved_object(id)
+            || attributes & ATTR_SHARED_READ != 0
+            || owner == 0
+            || owner == principal
+            || principal == KERNEL_PRINCIPAL
     }
 
     #[cfg(test)]
@@ -1367,6 +1398,9 @@ pub mod objstore {
         }
         fn ordinary() -> u64 {
             charlotte_launch::artifact_principal_id(b"greet")
+        }
+        fn other() -> u64 {
+            charlotte_launch::artifact_principal_id(b"echo")
         }
 
         #[test]
@@ -1382,13 +1416,37 @@ pub mod objstore {
 
         #[test]
         fn reserved_mutation_requires_kernel_or_administration() {
-            assert!(mutation_allowed(charlotte_launch::ARTIFACT_ID_TAG | 7, KERNEL_PRINCIPAL));
-            assert!(mutation_allowed(EXECUTABLE_ECHO_ID, clusterctl()));
-            assert!(!mutation_allowed(EXECUTABLE_ECHO_ID, ordinary()));
-            assert!(!mutation_allowed(EXECUTABLE_ECHO_ID, 0));
-            // Ordinary objects are unchanged for every caller.
-            assert!(mutation_allowed(0x7fff_ffff_ffff_ff00, ordinary()));
-            assert!(mutation_allowed(1, 0));
+            assert!(may_mutate(charlotte_launch::ARTIFACT_ID_TAG | 7, 0, KERNEL_PRINCIPAL));
+            assert!(may_mutate(EXECUTABLE_ECHO_ID, 0, clusterctl()));
+            assert!(!may_mutate(EXECUTABLE_ECHO_ID, 0, ordinary()));
+            assert!(!may_mutate(EXECUTABLE_ECHO_ID, 0, 0));
+            // Creation of ordinary IDs is open; reserved IDs are not.
+            assert!(may_create(42, ordinary()));
+            assert!(may_create(42, 0));
+            assert!(may_create(EXECUTABLE_ECHO_ID, clusterctl()));
+            assert!(!may_create(EXECUTABLE_ECHO_ID, ordinary()));
+        }
+
+        #[test]
+        fn owned_ordinary_objects_are_private_to_their_owner() {
+            assert!(may_mutate(42, ordinary(), ordinary()));
+            assert!(may_mutate(42, ordinary(), KERNEL_PRINCIPAL));
+            assert!(!may_mutate(42, ordinary(), other()));
+            assert!(!may_mutate(42, ordinary(), 0));
+            // Legacy unowned objects are readable but not mutable by anyone
+            // except the kernel.
+            assert!(may_read(42, 0, 0, other()));
+            assert!(!may_mutate(42, 0, other()));
+            assert!(may_mutate(42, 0, KERNEL_PRINCIPAL));
+        }
+
+        #[test]
+        fn reads_follow_owner_shared_and_reserved_policy() {
+            assert!(may_read(42, ordinary(), 0, ordinary()));
+            assert!(may_read(42, ordinary(), 0, KERNEL_PRINCIPAL));
+            assert!(!may_read(42, ordinary(), 0, other()));
+            assert!(may_read(42, ordinary(), ATTR_SHARED_READ, other()));
+            assert!(may_read(EXECUTABLE_ECHO_ID, ordinary(), 0, other()));
         }
     }
 }

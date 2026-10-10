@@ -38,7 +38,17 @@ pub(crate) fn connect(ns_conn: u64, wait_for_service: bool) -> Option<u64> {
 }
 
 pub(crate) fn create_at(obj_conn: u64, object_id: u64) -> bool {
-    let call = ipc_scalar_call(obj_conn, charlotte_protocol_objstore::OP_CREATE_AT, object_id);
+    create_with(obj_conn, charlotte_protocol_objstore::OP_CREATE_AT, object_id)
+}
+
+/// Like [`create_at`], but marks the object shared-read so other platform
+/// services (discovery, DNS, the Raft fixture) may read the node identity.
+pub(crate) fn create_at_shared(obj_conn: u64, object_id: u64) -> bool {
+    create_with(obj_conn, charlotte_protocol_objstore::OP_CREATE_AT_SHARED, object_id)
+}
+
+fn create_with(obj_conn: u64, opcode: u32, object_id: u64) -> bool {
+    let call = ipc_scalar_call(obj_conn, opcode, object_id);
     if call == 0 {
         return false;
     }

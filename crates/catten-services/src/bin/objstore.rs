@@ -157,6 +157,11 @@ struct ObjectHeader {
     extent_count: u16,
     extents: [Extent; MAX_EXTENTS],
     data_hash: u64,
+    /// Creating principal; zero for objects staged by the image tool or
+    /// written before ownership enforcement.
+    owner: u64,
+    /// `ATTR_*` policy bits (`objstore::ATTR_SHARED_READ`).
+    attributes: u32,
 }
 
 struct BlockDev {
@@ -419,7 +424,7 @@ impl ObjStore {
         self.persist_bitmap().then_some(())
     }
 
-    fn create(&mut self, requested: Option<u64>) -> Result<u64, i64> {
+    fn create(&mut self, requested: Option<u64>, owner: u64, attributes: u32) -> Result<u64, i64> {
         let id = match requested {
             Some(0) => return Err(objstore::ERR_INVALID_ID),
             Some(id) if self.find_index(id).is_some() => return Err(objstore::ERR_EXISTS),
@@ -435,7 +440,7 @@ impl ObjStore {
             self.read_directory(index).ok_or(objstore::ERR_IO_ERROR)?.generation.saturating_add(1),
         );
         let allocation = self.allocate_extent(1).ok_or(objstore::ERR_NO_SPACE)?;
-        let header = ObjectHeader::empty(id, generation, self.dev.block_size);
+        let header = ObjectHeader::empty(id, generation, self.dev.block_size, owner, attributes);
         if !self.write_header(allocation, header)
             || !self.persist_bitmap()
             || !self.dev.flush()
@@ -554,6 +559,9 @@ impl ObjStore {
             extent_count: extents.len() as u16,
             extents: extent_array,
             data_hash: hash,
+            // Ownership and sharing survive every rewrite.
+            owner: old_header.owner,
+            attributes: old_header.attributes,
         };
         if !self.write_header(header_lba, header)
             || !self.persist_bitmap()
@@ -625,6 +633,13 @@ impl ObjStore {
     fn object_size(&self, id: u64) -> Option<u64> {
         let entry = self.read_directory(self.find_index(id)?)?;
         Some(self.read_header(entry)?.data_len)
+    }
+
+    /// Persisted owner principal and attribute bits for an existing object.
+    fn metadata(&self, id: u64) -> Option<(u64, u32)> {
+        let entry = self.read_directory(self.find_index(id)?)?;
+        let header = self.read_header(entry)?;
+        Some((header.owner, header.attributes))
     }
 
     fn read_directory(&self, index: u32) -> Option<DirectoryEntry> {
@@ -941,7 +956,7 @@ impl ObjStore {
 }
 
 impl ObjectHeader {
-    fn empty(id: u64, generation: u64, block_size: u32) -> Self {
+    fn empty(id: u64, generation: u64, block_size: u32, owner: u64, attributes: u32) -> Self {
         Self {
             id,
             generation,
@@ -952,6 +967,8 @@ impl ObjectHeader {
             extent_count: 0,
             extents: [EMPTY_EXTENT; MAX_EXTENTS],
             data_hash: content_hash(&[]),
+            owner,
+            attributes,
         }
     }
 
@@ -1082,7 +1099,9 @@ fn encode_header(header: ObjectHeader, bytes: &mut [u8]) {
     put_u16(bytes, 56, header.extent_count);
     put_u16(bytes, 58, HASH_FNV1A64);
     put_u32(bytes, 60, header.header_blocks);
+    put_u64(bytes, 64, header.owner);
     put_u64(bytes, 80, header.data_hash);
+    put_u32(bytes, 88, header.attributes);
     for (index, extent) in header.extents().iter().enumerate() {
         let offset = EXTENTS_OFFSET + index * EXTENT_SIZE;
         put_u64(bytes, offset, extent.lba);
@@ -1131,6 +1150,8 @@ fn decode_header(bytes: &[u8]) -> Option<ObjectHeader> {
         extent_count,
         extents,
         data_hash: get_u64(bytes, 80)?,
+        owner: get_u64(bytes, 64)?,
+        attributes: get_u32(bytes, 88)?,
     })
 }
 
@@ -1270,59 +1291,80 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             else {
                 break;
             };
-            // Reserved artifact/executable objects are mutated only by the
-            // kernel and the deployment administration service. The sender
-            // principal is kernel-authenticated, never caller-supplied.
-            let mutation_allowed =
-                objstore::mutation_allowed(message.arg0, message.sender_principal);
+            // The sender principal is kernel-authenticated, never
+            // caller-supplied. Ownership and sharing are persisted in the
+            // object header; reserved artifact/executable objects are
+            // mutated only by the kernel and the deployment administration
+            // service, and ordinary objects are private to their creator.
+            let id = message.arg0;
+            let principal = message.sender_principal;
+            let (owner, attributes) = store.metadata(id).unwrap_or((0, 0));
+            let may_create = objstore::may_create(id, principal);
+            let may_mutate = objstore::may_mutate(id, owner, principal);
+            let may_read = objstore::may_read(id, owner, attributes, principal);
             match message.opcode {
                 objstore::OP_CREATE => {
-                    let result = store.create(None).map(|id| id as i64).unwrap_or(0);
+                    let result = store.create(None, principal, 0).map(|id| id as i64).unwrap_or(0);
                     reply_scalar(message.reply.take(), result);
                 }
                 objstore::OP_CREATE_AT => {
-                    let result = if mutation_allowed {
-                        store.create(Some(message.arg0)).map(|_| 0).unwrap_or_else(|e| e)
+                    let result = if may_create {
+                        store.create(Some(id), principal, 0).map(|_| 0).unwrap_or_else(|e| e)
+                    } else {
+                        objstore::ERR_DENIED
+                    };
+                    reply_scalar(message.reply.take(), result);
+                }
+                objstore::OP_CREATE_AT_SHARED => {
+                    let result = if may_create {
+                        store
+                            .create(Some(id), principal, objstore::ATTR_SHARED_READ)
+                            .map(|_| 0)
+                            .unwrap_or_else(|e| e)
                     } else {
                         objstore::ERR_DENIED
                     };
                     reply_scalar(message.reply.take(), result);
                 }
                 objstore::OP_DELETE => {
-                    let result = if mutation_allowed {
-                        store.delete(message.arg0)
+                    let result = if may_mutate {
+                        store.delete(id)
                     } else {
                         objstore::ERR_DENIED
                     };
                     reply_scalar(message.reply.take(), result);
                 }
                 objstore::OP_SET_SIZE => {
-                    let result = if !mutation_allowed {
+                    let result = if !may_mutate {
                         objstore::ERR_DENIED
                     } else {
                         message
                             .memory
                             .take()
-                            .map(|memory| store.set_size(message.arg0, memory))
+                            .map(|memory| store.set_size(id, memory))
                             .unwrap_or(objstore::ERR_IO_ERROR)
                     };
                     reply_scalar(message.reply.take(), result);
                 }
                 objstore::OP_WRITE => {
-                    let result = if !mutation_allowed {
+                    let result = if !may_mutate {
                         objstore::ERR_DENIED
                     } else {
                         message
                             .memory
                             .take()
-                            .map(|memory| store.write(message.arg0, memory))
+                            .map(|memory| store.write(id, memory))
                             .unwrap_or(objstore::ERR_IO_ERROR)
                     };
                     reply_scalar(message.reply.take(), result);
                 }
                 objstore::OP_READ => {
                     if let Some(reply) = message.reply.take() {
-                        store.read_and_reply(message.arg0, reply);
+                        if may_read {
+                            store.read_and_reply(id, reply);
+                        } else {
+                            let _ = reply.reply(objstore::ERR_DENIED);
+                        }
                     }
                 }
                 objstore::OP_RESIZE => {
@@ -1337,10 +1379,14 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     reply_scalar(message.reply.take(), result);
                 }
                 objstore::OP_INFO => {
-                    let result = store
-                        .object_size(message.arg0)
-                        .and_then(|size| i64::try_from(size).ok())
-                        .unwrap_or(objstore::ERR_NOT_FOUND);
+                    let result = if !may_read {
+                        objstore::ERR_DENIED
+                    } else {
+                        store
+                            .object_size(id)
+                            .and_then(|size| i64::try_from(size).ok())
+                            .unwrap_or(objstore::ERR_NOT_FOUND)
+                    };
                     reply_scalar(message.reply.take(), result);
                 }
                 _ => reply_scalar(message.reply.take(), -1),

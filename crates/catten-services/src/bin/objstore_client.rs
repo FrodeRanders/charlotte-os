@@ -24,6 +24,9 @@ use catten_syscall::{
 use charlotte_launch::objstore_client_status as status;
 
 const OBJECT_ID: u64 = 0x7fff_ffff_ffff_ff00;
+/// Kernel-owned ordinary object staged by the NVMe verifier before this
+/// client starts. Mirrors the kernel fixture constant.
+const FOREIGN_OBJECT_ID: u64 = 0x7fff_ffff_ffff_ee00;
 const BYTES: usize = 2 * 1024 * 1024 + 4096;
 const PAGES: usize = BYTES / 4096;
 
@@ -103,6 +106,22 @@ fn main(ctx: Context) -> ! {
         .map(|result| result.result);
     if denied != Ok(objstore::ERR_DENIED) {
         fail(0xdeaf);
+    }
+    // A foreign principal's ordinary object is neither readable nor mutable,
+    // while this client's own object above stayed readable and writable.
+    let foreign_read = connection
+        .call(objstore::OP_READ, FOREIGN_OBJECT_ID)
+        .and_then(|call| call.wait())
+        .map(|result| result.result);
+    if foreign_read != Ok(objstore::ERR_DENIED) {
+        fail(0xdeb8);
+    }
+    let foreign_delete = connection
+        .call(objstore::OP_DELETE, FOREIGN_OBJECT_ID)
+        .and_then(|call| call.wait())
+        .map(|result| result.result);
+    if foreign_delete != Ok(objstore::ERR_DENIED) {
+        fail(0xdeb9);
     }
     config::write::<u32>(status::ROUND_TRIP_BYTES, BYTES as u32);
     config::write::<u32>(status::STAGE, 0x900d);

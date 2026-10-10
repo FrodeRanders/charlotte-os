@@ -61,6 +61,12 @@ pub const OP_CREATE_AT: u32 = 8;
 /// an eight-byte little-endian length. A separate operation is used because
 /// object IDs occupy the complete scalar argument.
 pub const OP_SET_SIZE: u32 = 9;
+/// Create an object with `ATTR_SHARED_READ`: any domain authenticated by the
+/// kernel may read it. The creating principal remains the owner for mutation.
+pub const OP_CREATE_AT_SHARED: u32 = 10;
+
+/// Object attribute: readable by any authenticated domain, not just the owner.
+pub const ATTR_SHARED_READ: u32 = 1;
 
 pub const ERR_OK: i64 = 0;
 pub const ERR_NOT_FOUND: i64 = 1;

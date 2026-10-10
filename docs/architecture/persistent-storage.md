@@ -276,16 +276,23 @@ after process restart.
 
 ### 4.3 Object authority boundary
 
-The public `"obj"` connection carries no per-object authority by default.
-Mutation of the reserved artifact (`0xfffe…`) and executable (`0xffff…`)
-namespaces is accepted only from the kernel principal or the signed deployment
-administration service (`clusterctl`); every other caller, including one
-holding a store connection, receives `ERR_DENIED`. The kernel stages the
+Every object records its creating principal in the extensible header. An
+ordinary object is readable, resizable, overwriteable and deletable only by
+its owner (or the kernel); reserved artifact (`0xfffe…`) and executable
+(`0xffff…`) objects are public to read but mutated only by the kernel or the
+signed deployment administration service (`clusterctl`). The kernel stages the
 persistent echo executable with its own principal before the EL0 object client
-runs. Ordinary application objects remain store-wide until per-object
-ownership and read isolation are provisioned; reserved-object reads stay open
-because artifacts are public and independently signature-verified. See the
-[reserved-namespace remediation](../reports/audits/2026-10-10-security-object-store-reserved-namespace.md).
+runs, and the client proves a foreign principal's object is denied. Objects
+created with `ATTR_SHARED_READ` (the node identity shared by discovery, DNS
+and the Raft fixture) admit every authenticated reader while mutation still
+follows ownership. Raft persistent IDs live in a disjoint `0x8xxx`
+partition. Objects written before ownership enforcement remain readable but
+are immutable except to the kernel, so a pre-ownership image must be recreated
+before its services can mutate their objects. An operator-provisioned read
+delegation for application-to-application sharing does not exist yet. See the
+[reserved-namespace](../reports/audits/2026-10-10-security-object-store-reserved-namespace.md)
+and [ownership](../reports/audits/2026-10-10-security-object-store-ownership.md)
+remediation reports.
 
 Node ID, peer list, election timing, and storage policy remain supervisor-owned
 launch configuration. They are not copied into the Raft log. The durable store

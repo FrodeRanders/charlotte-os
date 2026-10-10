@@ -363,8 +363,18 @@ fn write_store_artifact(connection: u64, name: &[u8], image: &[u8]) -> Result<()
 /// the kernel stages this object with its own principal before the EL0 object
 /// client reads it back.
 pub fn write_store_executable(image: &[u8]) -> Result<(), &'static str> {
+    write_store_kernel_object(OBJ_EXECUTABLE_ECHO_ID, image)
+}
+
+/// Stage a kernel-owned ordinary object. The EL0 ownership fixture uses this
+/// to prove a foreign domain cannot read or delete another principal's object.
+pub fn write_store_test_object(object_id: u64, bytes: &[u8]) -> Result<(), &'static str> {
+    write_store_kernel_object(object_id, bytes)
+}
+
+fn write_store_kernel_object(object_id: u64, bytes: &[u8]) -> Result<(), &'static str> {
     let obj_conn = connect_objstore().ok_or("object-store connection unavailable")?;
-    write_store_object(obj_conn.raw(), OBJ_EXECUTABLE_ECHO_ID, image)?;
+    write_store_object(obj_conn.raw(), object_id, bytes)?;
     let result =
         scalar_result(obj_conn.raw(), OBJ_OP_FLUSH, 0).ok_or("object-store flush call failed")?;
     if result != OBJ_ERR_OK {

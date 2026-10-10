@@ -10,6 +10,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [2026-10-10 object-store per-object ownership (SEC-12)](audits/2026-10-10-security-object-store-ownership.md)
 - [2026-10-10 object-store reserved-namespace authority (SEC-12)](audits/2026-10-10-security-object-store-reserved-namespace.md)
 - [2026-10-10 intermittent user-stack lease timeout investigation](audits/2026-10-10-security-user-stack-lease-timeout.md)
 - [2026-10-10 live-upgrade IOMMU boot initialization regression](audits/2026-10-10-security-live-upgrade-iommu-init.md)

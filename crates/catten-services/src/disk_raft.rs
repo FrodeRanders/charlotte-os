@@ -62,8 +62,11 @@ struct ObjectIds {
 impl ObjectIds {
     fn new(namespace: u64) -> Self {
         // The high bit keeps stable service-owned IDs away from the object
-        // store's monotonically allocated low-numbered IDs.
-        let base = 0x8000_0000_0000_0000 | ((namespace & 0x1fff_ffff_ffff_ffff) << 2);
+        // store's monotonically allocated low-numbered IDs. The mask keeps
+        // all four sequential IDs inside the 0x8xxx partition, disjoint from
+        // the identity (0x9xxx), artifact (0xfffe…) and executable (0xffff…)
+        // namespaces.
+        let base = 0x8000_0000_0000_0000 | (namespace & 0x0fff_ffff_ffff_fffc);
         Self {
             state: base,
             snapshot_meta: base + 1,
