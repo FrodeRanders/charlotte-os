@@ -274,6 +274,19 @@ fence only after the admitted membership has been snapshotted. Volatile mode
 does not auto-join because it cannot safely suppress a singleton election
 after process restart.
 
+### 4.3 Object authority boundary
+
+The public `"obj"` connection carries no per-object authority by default.
+Mutation of the reserved artifact (`0xfffe…`) and executable (`0xffff…`)
+namespaces is accepted only from the kernel principal or the signed deployment
+administration service (`clusterctl`); every other caller, including one
+holding a store connection, receives `ERR_DENIED`. The kernel stages the
+persistent echo executable with its own principal before the EL0 object client
+runs. Ordinary application objects remain store-wide until per-object
+ownership and read isolation are provisioned; reserved-object reads stay open
+because artifacts are public and independently signature-verified. See the
+[reserved-namespace remediation](../reports/audits/2026-10-10-security-object-store-reserved-namespace.md).
+
 Node ID, peer list, election timing, and storage policy remain supervisor-owned
 launch configuration. They are not copied into the Raft log. The durable store
 contains Raft protocol state and log/snapshot data, not the deployment

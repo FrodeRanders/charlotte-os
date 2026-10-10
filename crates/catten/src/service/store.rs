@@ -32,6 +32,8 @@ const OBJ_OP_CREATE_AT: u32 = 8;
 const OBJ_OP_SET_SIZE: u32 = 9;
 const OBJ_ERR_OK: i64 = 0;
 const OBJ_ERR_EXISTS: i64 = 5;
+/// Mirrors `charlotte_protocol_objstore::EXECUTABLE_ECHO_ID`.
+const OBJ_EXECUTABLE_ECHO_ID: u64 = 0xffff_0000_0000_0001;
 
 // This is a loader resource bound, not an object-store format limit. Keep it
 // comfortably above the largest staged service while preventing corrupted or
@@ -336,8 +338,7 @@ fn move_bytes_result(connection: u64, opcode: u32, arg0: u64, bytes: &[u8]) -> O
     Some(reply.result)
 }
 
-fn write_store_artifact(connection: u64, name: &[u8], image: &[u8]) -> Result<(), &'static str> {
-    let object_id = charlotte_launch::artifact_object_id(name);
+fn write_store_object(connection: u64, object_id: u64, image: &[u8]) -> Result<(), &'static str> {
     let create = scalar_result(connection, OBJ_OP_CREATE_AT, object_id)
         .ok_or("object-store create call failed")?;
     if create != OBJ_ERR_OK && create != OBJ_ERR_EXISTS {
@@ -349,6 +350,25 @@ fn write_store_artifact(connection: u64, name: &[u8], image: &[u8]) -> Result<()
     }
     if move_bytes_result(connection, OBJ_OP_WRITE, object_id, image) != Some(OBJ_ERR_OK) {
         return Err("object-store write rejected");
+    }
+    Ok(())
+}
+
+fn write_store_artifact(connection: u64, name: &[u8], image: &[u8]) -> Result<(), &'static str> {
+    write_store_object(connection, charlotte_launch::artifact_object_id(name), image)
+}
+
+/// Test/administrative staging of the persistent echo executable. The public
+/// store connection denies reserved-namespace mutation to ordinary domains;
+/// the kernel stages this object with its own principal before the EL0 object
+/// client reads it back.
+pub fn write_store_executable(image: &[u8]) -> Result<(), &'static str> {
+    let obj_conn = connect_objstore().ok_or("object-store connection unavailable")?;
+    write_store_object(obj_conn.raw(), OBJ_EXECUTABLE_ECHO_ID, image)?;
+    let result =
+        scalar_result(obj_conn.raw(), OBJ_OP_FLUSH, 0).ok_or("object-store flush call failed")?;
+    if result != OBJ_ERR_OK {
+        return Err("object-store flush rejected");
     }
     Ok(())
 }

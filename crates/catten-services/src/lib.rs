@@ -1329,7 +1329,68 @@ pub mod objstore {
     pub const ERR_IO_ERROR: i64 = 4;
     pub const ERR_EXISTS: i64 = 5;
     pub const ERR_TOO_LARGE: i64 = 6;
+    pub const ERR_DENIED: i64 = 7;
     pub const EXECUTABLE_ECHO_ID: u64 = 0xffff_0000_0000_0001;
+
+    /// Kernel envelope principal for `KERNEL_ASID` senders
+    /// (`ipc` sets it to 1; loaded user domains never use zero or one).
+    const KERNEL_PRINCIPAL: u64 = 1;
+
+    /// Whether `id` names a reserved artifact or executable object. Both
+    /// namespaces are partitioned top-down so ordinary objects can never
+    /// collide with them.
+    pub const fn is_reserved_object(id: u64) -> bool {
+        id >> 48 >= 0xfffe
+    }
+
+    /// Reserved objects are mutated only by the kernel (seeding and tests)
+    /// and the deployment administration service; every other principal is
+    /// denied even though it may hold a store connection.
+    pub fn reserved_mutator(principal: u64) -> bool {
+        principal == KERNEL_PRINCIPAL
+            || principal == charlotte_launch::artifact_principal_id(b"clusterctl")
+    }
+
+    /// Whether `principal` may create, overwrite, resize or delete `id`.
+    /// Ordinary objects keep the current store-wide behavior until per-object
+    /// ownership is provisioned.
+    pub fn mutation_allowed(id: u64, principal: u64) -> bool {
+        !is_reserved_object(id) || reserved_mutator(principal)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn clusterctl() -> u64 {
+            charlotte_launch::artifact_principal_id(b"clusterctl")
+        }
+        fn ordinary() -> u64 {
+            charlotte_launch::artifact_principal_id(b"greet")
+        }
+
+        #[test]
+        fn reserved_namespaces_cover_artifacts_and_executables_only() {
+            assert!(is_reserved_object(charlotte_launch::ARTIFACT_ID_TAG | 1));
+            assert!(is_reserved_object(EXECUTABLE_ECHO_ID));
+            assert!(is_reserved_object(0xffff_ffff_ffff_ffff));
+            assert!(!is_reserved_object(0));
+            assert!(!is_reserved_object(1));
+            assert!(!is_reserved_object(0xfffd_ffff_ffff_ffff));
+            assert!(!is_reserved_object(0x7fff_ffff_ffff_ff00));
+        }
+
+        #[test]
+        fn reserved_mutation_requires_kernel_or_administration() {
+            assert!(mutation_allowed(charlotte_launch::ARTIFACT_ID_TAG | 7, KERNEL_PRINCIPAL));
+            assert!(mutation_allowed(EXECUTABLE_ECHO_ID, clusterctl()));
+            assert!(!mutation_allowed(EXECUTABLE_ECHO_ID, ordinary()));
+            assert!(!mutation_allowed(EXECUTABLE_ECHO_ID, 0));
+            // Ordinary objects are unchanged for every caller.
+            assert!(mutation_allowed(0x7fff_ffff_ffff_ff00, ordinary()));
+            assert!(mutation_allowed(1, 0));
+        }
+    }
 }
 
 /// Native filesystem protocol (`charlotte-protocol-fs` v1).

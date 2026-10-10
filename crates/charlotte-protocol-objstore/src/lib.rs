@@ -69,6 +69,10 @@ pub const ERR_INVALID_ID: i64 = 3;
 pub const ERR_IO_ERROR: i64 = 4;
 pub const ERR_EXISTS: i64 = 5;
 pub const ERR_TOO_LARGE: i64 = 6;
+/// The caller is not authorized to mutate this object. Reserved artifact and
+/// executable objects are mutated only by the kernel and the deployment
+/// administration service.
+pub const ERR_DENIED: i64 = 7;
 
 /// Well-known object containing the installed AArch64 `echo` service ELF.
 ///

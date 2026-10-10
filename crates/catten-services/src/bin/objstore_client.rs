@@ -26,7 +26,6 @@ use charlotte_launch::objstore_client_status as status;
 const OBJECT_ID: u64 = 0x7fff_ffff_ffff_ff00;
 const BYTES: usize = 2 * 1024 * 1024 + 4096;
 const PAGES: usize = BYTES / 4096;
-const ELF_SIZE_KEY: u64 = charlotte_launch::manifest_key(b"elf_size");
 
 fn fail(code: u32) -> ! {
     config::write::<u32>(status::STAGE, code);
@@ -94,50 +93,16 @@ fn main(ctx: Context) -> ! {
             fail(0xdeae);
         }
     }
-    let elf_cap = ctx.handoff_state_cap();
-    if elf_cap != 0 {
-        let Some(catten_rt::ManifestValue::Unsigned(elf_size)) = ctx.manifest_value(ELF_SIZE_KEY)
-        else {
-            fail(0xdeaf);
-        };
-        let created = connection
-            .call(objstore::OP_CREATE_AT, objstore::EXECUTABLE_ECHO_ID)
-            .and_then(|call| call.wait())
-            .unwrap_or_else(|_| fail(0xdeb0))
-            .result;
-        if created != objstore::ERR_OK && created != objstore::ERR_EXISTS {
-            fail(0xdeb1);
-        }
-        let size_memory = OwnedMemory::allocate(1).unwrap_or_else(|_| fail(0xdeb2));
-        let mut size_mapping = size_memory.map_writable().unwrap_or_else(|_| fail(0xdeb2));
-        size_mapping.as_mut_slice()[..8].copy_from_slice(&elf_size.to_le_bytes());
-        let size_memory = size_mapping.unmap().unwrap_or_else(|_| fail(0xdeb2));
-        let set_size = connection
-            .call_borrow_read(objstore::OP_SET_SIZE, objstore::EXECUTABLE_ECHO_ID, &size_memory)
-            .and_then(|call| call.wait())
-            .map(|result| result.result);
-        if set_size != Ok(objstore::ERR_OK) {
-            fail(0xdeb3);
-        }
-        // The handoff-state memory is transferred exactly once to the object
-        // store. This is the launch ABI boundary where raw adoption is needed.
-        let elf_memory = unsafe { OwnedMemory::from_raw(elf_cap) }.unwrap_or_else(|_| fail(0xdeb4));
-        let write = connection
-            .call_move(objstore::OP_WRITE, objstore::EXECUTABLE_ECHO_ID, elf_memory)
-            .map_err(|(_, error)| error)
-            .and_then(|call| call.wait())
-            .map(|result| result.result);
-        if write != Ok(objstore::ERR_OK) {
-            fail(0xdeb4);
-        }
-        let flush = connection
-            .call(objstore::OP_FLUSH, 0)
-            .and_then(|call| call.wait())
-            .map(|result| result.result);
-        if flush != Ok(objstore::ERR_OK) {
-            fail(0xdeb5);
-        }
-        config::write::<u32>(status::ELF_SIZE, elf_size as u32);
+    // Reserved artifact/executable mutation is denied to this ordinary client
+    // and performed by the kernel before this client starts. Verify the
+    // denial here so the stored executable cannot be tampered with by an
+    // application holding a store connection.
+    let denied = connection
+        .call(objstore::OP_DELETE, objstore::EXECUTABLE_ECHO_ID)
+        .and_then(|call| call.wait())
+        .map(|result| result.result);
+    if denied != Ok(objstore::ERR_DENIED) {
+        fail(0xdeaf);
     }
     config::write::<u32>(status::ROUND_TRIP_BYTES, BYTES as u32);
     config::write::<u32>(status::STAGE, 0x900d);

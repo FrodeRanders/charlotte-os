@@ -47,7 +47,6 @@ use crate::{
     },
 };
 
-const ELF_SIZE_KEY: u64 = charlotte_launch::manifest_key(b"elf_size");
 const OBJSTORE_TEST_DONE_NAME: u64 = u64::from_le_bytes(*b"objdone\0");
 /// `objstore::NAME` from the object-store protocol (`name(b"obj")`), used for
 /// the deferred registration lookup below.
@@ -296,12 +295,18 @@ extern "C" fn verify_el0_nvme() {
         OBJSTORE_TEST_DONE_NAME,
     )
     .expect("[nvme] object-client completion lookup");
-    let object_client = supervisor::spawn_with_name_service_and_data(
+    // The reserved executable namespace is kernel-staged; the EL0 client only
+    // exercises the ordinary persistent-object round trip. This mirrors the
+    // real trust boundary where an ordinary domain cannot mutate executables.
+    crate::service::store::write_store_executable(
+        crate::service::store::service_elf(b"echo").expect("[el0_nvme] echo.elf"),
+    )
+    .expect("[el0_nvme] stage persistent echo executable");
+    let object_client = supervisor::spawn_with_name_service(
         crate::service::store::service_elf(b"objstore_client")
             .expect("[el0_nvme] objstore_client.elf"),
         &ns,
-        crate::service::store::service_elf(b"echo").expect("[el0_nvme] echo.elf"),
-        ELF_SIZE_KEY,
+        ConnectionRights::CALL,
     );
     let object_cfg: *const u8 = {
         let base: *mut u8 = object_client.status_frame.into();
@@ -322,7 +327,7 @@ extern "C" fn verify_el0_nvme() {
         };
         logln!(
             "[nvme] object-client timeout diagnostics: asid={} tid={} generation={} stage={:#x} \
-             round_trip_bytes={} elf_size={} threads={:?}",
+             round_trip_bytes={} threads={:?}",
             object_client.asid,
             object_client.tid,
             object_client.generation,
@@ -336,12 +341,6 @@ extern "C" fn verify_el0_nvme() {
                 crate::self_test::status_u32(
                     object_cfg,
                     charlotte_launch::objstore_client_status::ROUND_TRIP_BYTES,
-                )
-            },
-            unsafe {
-                crate::self_test::status_u32(
-                    object_cfg,
-                    charlotte_launch::objstore_client_status::ELF_SIZE,
                 )
             },
             object_threads
@@ -471,15 +470,6 @@ extern "C" fn verify_el0_nvme() {
             )
         },
         2 * 1024 * 1024 + 4096
-    );
-    assert_eq!(
-        unsafe {
-            crate::self_test::status_u32(
-                object_cfg,
-                charlotte_launch::objstore_client_status::ELF_SIZE,
-            )
-        },
-        crate::service::store::service_elf(b"echo").expect("[el0_nvme] echo.elf").len() as u32
     );
     logln!("[nvme] 2 MiB + 4 KiB persistent object round trip verified.");
     // The completion service reports that the client finished its work, not

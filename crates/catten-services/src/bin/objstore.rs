@@ -1266,37 +1266,58 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
         loop {
             let Some(mut message) =
-                endpoint.try_receive().unwrap_or_else(|_| catten_rt::domain_abort())
+                endpoint.try_receive_authenticated().unwrap_or_else(|_| catten_rt::domain_abort())
             else {
                 break;
             };
+            // Reserved artifact/executable objects are mutated only by the
+            // kernel and the deployment administration service. The sender
+            // principal is kernel-authenticated, never caller-supplied.
+            let mutation_allowed =
+                objstore::mutation_allowed(message.arg0, message.sender_principal);
             match message.opcode {
                 objstore::OP_CREATE => {
                     let result = store.create(None).map(|id| id as i64).unwrap_or(0);
                     reply_scalar(message.reply.take(), result);
                 }
                 objstore::OP_CREATE_AT => {
-                    let result = store.create(Some(message.arg0)).map(|_| 0).unwrap_or_else(|e| e);
+                    let result = if mutation_allowed {
+                        store.create(Some(message.arg0)).map(|_| 0).unwrap_or_else(|e| e)
+                    } else {
+                        objstore::ERR_DENIED
+                    };
                     reply_scalar(message.reply.take(), result);
                 }
                 objstore::OP_DELETE => {
-                    let result = store.delete(message.arg0);
+                    let result = if mutation_allowed {
+                        store.delete(message.arg0)
+                    } else {
+                        objstore::ERR_DENIED
+                    };
                     reply_scalar(message.reply.take(), result);
                 }
                 objstore::OP_SET_SIZE => {
-                    let result = message
-                        .memory
-                        .take()
-                        .map(|memory| store.set_size(message.arg0, memory))
-                        .unwrap_or(objstore::ERR_IO_ERROR);
+                    let result = if !mutation_allowed {
+                        objstore::ERR_DENIED
+                    } else {
+                        message
+                            .memory
+                            .take()
+                            .map(|memory| store.set_size(message.arg0, memory))
+                            .unwrap_or(objstore::ERR_IO_ERROR)
+                    };
                     reply_scalar(message.reply.take(), result);
                 }
                 objstore::OP_WRITE => {
-                    let result = message
-                        .memory
-                        .take()
-                        .map(|memory| store.write(message.arg0, memory))
-                        .unwrap_or(objstore::ERR_IO_ERROR);
+                    let result = if !mutation_allowed {
+                        objstore::ERR_DENIED
+                    } else {
+                        message
+                            .memory
+                            .take()
+                            .map(|memory| store.write(message.arg0, memory))
+                            .unwrap_or(objstore::ERR_IO_ERROR)
+                    };
                     reply_scalar(message.reply.take(), result);
                 }
                 objstore::OP_READ => {
