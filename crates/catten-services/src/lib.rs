@@ -1415,6 +1415,96 @@ pub mod relmsg {
     pub const MAX_RETRY_DELAY_TICKS: u32 = 25;
 }
 
+/// Receive-side reassembly for the reliable message layer.
+///
+/// The advertised total is remote-controlled, so admission precedes any state
+/// creation or allocation, and assembly only ever sees an admitted total.
+pub mod relmsg_reassembly {
+    use alloc::{
+        collections::BTreeMap,
+        vec::Vec,
+    };
+
+    #[derive(Debug)]
+    pub struct Reassembly {
+        pub seq: u32,
+        /// Fragment offset -> payload bytes, deduplicated by offset.
+        pub fragments: BTreeMap<usize, Vec<u8>>,
+        pub buffered_bytes: usize,
+        /// Total message length advertised consistently by every fragment.
+        pub total: usize,
+    }
+
+    impl Reassembly {
+        pub fn new(seq: u32, total: usize) -> Self {
+            Self {
+                seq,
+                fragments: BTreeMap::new(),
+                buffered_bytes: 0,
+                total,
+            }
+        }
+    }
+
+    /// Whether a fragment may create or update reassembly state. The fragment
+    /// must lie inside an advertised total that is within `max`.
+    pub fn fragment_within_ceiling(
+        total: usize,
+        offset: usize,
+        payload_len: usize,
+        max: usize,
+    ) -> bool {
+        total <= max && offset.checked_add(payload_len).is_some_and(|end| end <= total)
+    }
+
+    /// Assemble the buffered fragments into one contiguous message, or `None`
+    /// if a fragment is missing or the assembly cannot be reserved. `total`
+    /// must have been admitted with [`fragment_within_ceiling`].
+    pub fn assemble(reassembly: &Reassembly, max: usize) -> Option<Vec<u8>> {
+        let total = reassembly.total;
+        if total > max {
+            return None;
+        }
+        let mut out = Vec::new();
+        out.try_reserve_exact(total).ok()?;
+        let mut offset = 0usize;
+        while offset < total {
+            let bytes = reassembly.fragments.get(&offset)?;
+            out.extend_from_slice(bytes);
+            offset += bytes.len();
+        }
+        (offset == total).then_some(out)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        const MAX: usize = super::super::relmsg::MAX_MSG;
+
+        #[test]
+        fn oversized_totals_are_never_admitted() {
+            assert!(!fragment_within_ceiling(u32::MAX as usize, 0, 1, MAX));
+            assert!(!fragment_within_ceiling(MAX + 1, 0, 1, MAX));
+            assert!(!fragment_within_ceiling(16, 8, 9, MAX));
+            assert!(fragment_within_ceiling(MAX, 0, 1, MAX));
+            assert!(fragment_within_ceiling(16, 8, 8, MAX));
+        }
+
+        #[test]
+        fn assembly_requires_an_admitted_total_and_every_fragment() {
+            let mut reassembly = Reassembly::new(1, 4);
+            reassembly.fragments.insert(0, alloc::vec![1, 2]);
+            reassembly.fragments.insert(2, alloc::vec![3, 4]);
+            assert_eq!(assemble(&reassembly, 4), Some(alloc::vec![1, 2, 3, 4]));
+            reassembly.fragments.remove(&2);
+            assert_eq!(assemble(&reassembly, 4), None);
+            let oversized = Reassembly::new(1, 0xffff_ffff);
+            assert_eq!(assemble(&oversized, MAX), None);
+        }
+    }
+}
+
 /// Cluster discovery protocol (`charlotte-protocol-disco` v1).
 ///
 /// Nodes broadcast probes on EtherType `0x88B6`; peers reply with unicast

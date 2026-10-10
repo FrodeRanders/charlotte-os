@@ -207,7 +207,8 @@ pub(crate) fn run() {
             crate::service::supervisor::ServiceLimits {
                 user_stack_size: 4096,
                 max_threads: 1
-            }
+            },
+            false
         )
         .is_err()
     );

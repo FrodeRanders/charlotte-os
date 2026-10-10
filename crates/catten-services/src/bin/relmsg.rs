@@ -5,10 +5,7 @@
 extern crate alloc;
 
 use alloc::{
-    collections::{
-        BTreeMap,
-        VecDeque,
-    },
+    collections::VecDeque,
     vec::Vec,
 };
 use core::sync::atomic::{
@@ -25,6 +22,11 @@ use catten_services::{
     net,
     ns,
     relmsg,
+    relmsg_reassembly::{
+        Reassembly,
+        assemble,
+        fragment_within_ceiling,
+    },
     wait_for_registered_name_or_shutdown_owned,
     wait_reply,
 };
@@ -97,32 +99,6 @@ struct Outbound {
     frames: Vec<Vec<u8>>,
     retries: u32,
     ticks_until_retry: u32,
-}
-
-/// In-progress reassembly of a fragmented inbound message. Fragments may
-/// arrive in any order; they are buffered by offset and assembled once the
-/// last fragment (no `FLAG_MORE`) is present.
-struct Reassembly {
-    seq: u32,
-    /// Fragment offset -> payload bytes, deduplicated by offset.
-    fragments: BTreeMap<usize, Vec<u8>>,
-    buffered_bytes: usize,
-    /// Total message length advertised consistently by every fragment.
-    total: usize,
-}
-
-/// Assemble the buffered fragments into one contiguous message, or `None` if
-/// a fragment is still missing (a gap from offset 0 to `total`).
-fn try_assemble(reassembly: &Reassembly) -> Option<Vec<u8>> {
-    let total = reassembly.total;
-    let mut out = Vec::with_capacity(total);
-    let mut offset = 0usize;
-    while offset < total {
-        let bytes = reassembly.fragments.get(&offset)?;
-        out.extend_from_slice(bytes);
-        offset += bytes.len();
-    }
-    (offset == total).then_some(out)
 }
 
 struct Peer {
@@ -376,57 +352,67 @@ fn process_frame(
                 peers[index].next_rx_seq = peers[index].next_rx_seq.wrapping_add(1).max(1);
             }
         } else {
-            // Fragment of the expected message: buffer it by offset (any
-            // arrival order) and assemble once the last fragment is present.
-            let globally_buffered = peers
-                .iter()
-                .filter_map(|peer| peer.reassembling.as_ref())
-                .map(|reassembly| reassembly.buffered_bytes)
-                .sum::<usize>();
-            if peers[index].reassembling.as_ref().is_none_or(|ra| ra.seq != seq) {
-                peers[index].reassembling = Some(Reassembly {
-                    seq,
-                    fragments: BTreeMap::new(),
-                    buffered_bytes: 0,
-                    total: total_message_len,
-                });
-            }
-            let peer = &mut peers[index];
-            let within_ceiling = total_message_len <= relmsg::MAX_MSG
-                && frag_offset.checked_add(payload_len).is_some_and(|end| end <= total_message_len);
-            if within_ceiling && let Some(ra) = peer.reassembling.as_mut() {
-                if ra.total != total_message_len {
+            // Fragment of the expected message: validate the advertised total
+            // before creating or updating any reassembly state. This field is
+            // remote-controlled; the assembler must never allocate from an
+            // unadmitted value.
+            let within_ceiling = fragment_within_ceiling(
+                total_message_len,
+                frag_offset,
+                payload_len,
+                relmsg::MAX_MSG,
+            );
+            if within_ceiling {
+                // Buffer fragments by offset (any arrival order) and assemble
+                // once the last fragment is present.
+                let globally_buffered = peers
+                    .iter()
+                    .filter_map(|peer| peer.reassembling.as_ref())
+                    .map(|reassembly| reassembly.buffered_bytes)
+                    .sum::<usize>();
+                if peers[index].reassembling.as_ref().is_none_or(|ra| ra.seq != seq) {
+                    peers[index].reassembling = Some(Reassembly::new(seq, total_message_len));
+                }
+                let peer = &mut peers[index];
+                if let Some(ra) = peer.reassembling.as_mut() {
+                    if ra.total != total_message_len {
+                        peer.reassembling = None;
+                        return;
+                    }
+                    let is_new = !ra.fragments.contains_key(&frag_offset);
+                    if is_new && ra.fragments.len() >= MAX_REASSEMBLY_FRAGMENTS {
+                        return;
+                    }
+                    if is_new
+                        && globally_buffered.saturating_add(payload_len) > MAX_REASSEMBLY_BYTES
+                    {
+                        return;
+                    }
+                    let replaced = ra.fragments.insert(frag_offset, payload.to_vec());
+                    ra.buffered_bytes = ra
+                        .buffered_bytes
+                        .saturating_sub(replaced.as_ref().map_or(0, Vec::len))
+                        .saturating_add(payload_len);
+                    if ra.buffered_bytes > relmsg::MAX_MSG {
+                        peer.reassembling = None;
+                        return;
+                    }
+                }
+                // Assemble and deliver if every fragment is now present. On a
+                // delivery failure, drop the reassembly state; the sender
+                // retransmits and reassembly restarts (next_rx_seq did not
+                // advance).
+                let assembled = peer
+                    .reassembling
+                    .as_ref()
+                    .and_then(|reassembly| assemble(reassembly, relmsg::MAX_MSG));
+                if let Some(message_bytes) = assembled {
+                    if queue_received(received, source, &message_bytes) {
+                        DIAG_RECEIVED.fetch_add(1, Ordering::Relaxed);
+                        peer.next_rx_seq = peer.next_rx_seq.wrapping_add(1).max(1);
+                    }
                     peer.reassembling = None;
-                    return;
                 }
-                let is_new = !ra.fragments.contains_key(&frag_offset);
-                if is_new && ra.fragments.len() >= MAX_REASSEMBLY_FRAGMENTS {
-                    return;
-                }
-                if is_new && globally_buffered.saturating_add(payload_len) > MAX_REASSEMBLY_BYTES {
-                    return;
-                }
-                let replaced = ra.fragments.insert(frag_offset, payload.to_vec());
-                ra.buffered_bytes = ra
-                    .buffered_bytes
-                    .saturating_sub(replaced.as_ref().map_or(0, Vec::len))
-                    .saturating_add(payload_len);
-                if ra.buffered_bytes > relmsg::MAX_MSG {
-                    peer.reassembling = None;
-                    return;
-                }
-            }
-            // Assemble and deliver if every fragment is now present. On a
-            // delivery failure, drop the reassembly state; the sender
-            // retransmits and reassembly restarts (next_rx_seq did not
-            // advance).
-            let assembled = peer.reassembling.as_ref().and_then(try_assemble);
-            if let Some(message_bytes) = assembled {
-                if queue_received(received, source, &message_bytes) {
-                    DIAG_RECEIVED.fetch_add(1, Ordering::Relaxed);
-                    peer.next_rx_seq = peer.next_rx_seq.wrapping_add(1).max(1);
-                }
-                peer.reassembling = None;
             }
         }
     }

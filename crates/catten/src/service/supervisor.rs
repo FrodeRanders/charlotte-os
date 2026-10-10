@@ -331,14 +331,13 @@ const BOOT_SETTLE_MS: u64 = 3_000;
 pub(crate) fn try_start_domain_with_limits(
     loaded: loader::LoadedDomain,
     limits: ServiceLimits,
+    platform: bool,
 ) -> Result<ServiceDomain, ProfileLaunchError> {
     let transaction = DomainLaunchTransaction::new(loaded);
     let loaded = transaction.loaded();
-    // Only the supervisor's ambient platform launch path receives progress
-    // reserve. Scoped applications already have an immutable descriptor.
-    if crate::memory::domain_authority(loaded.asid)
-        .is_some_and(|authority| authority.launch_descriptor_digest.is_none())
-    {
+    // Only an explicitly trusted ambient launch path receives the platform
+    // progress reserve; the classification never follows descriptor absence.
+    if platform {
         crate::memory::budget::mark_platform(loaded.address_space);
     }
     if limits.user_stack_size == 0 || !limits.user_stack_size.is_multiple_of(loader::PAGE_SIZE) {
@@ -395,7 +394,19 @@ pub(crate) fn start_domain_with_limits(
     loaded: loader::LoadedDomain,
     limits: ServiceLimits,
 ) -> ServiceDomain {
-    try_start_domain_with_limits(loaded, limits).expect("mandatory service launch failed")
+    try_start_domain_with_limits(loaded, limits, true).expect("mandatory service launch failed")
+}
+
+/// Start an upgrade replacement while preserving the target service's
+/// existing platform classification. An ordinary deployed service cannot
+/// promote itself by replacing itself.
+pub(crate) fn try_start_upgrade_domain_with_limits(
+    loaded: loader::LoadedDomain,
+    limits: ServiceLimits,
+    old_asid: AddressSpaceId,
+) -> Result<ServiceDomain, ProfileLaunchError> {
+    let platform = crate::memory::budget::platform_identity(old_asid).is_some();
+    try_start_domain_with_limits(loaded, limits, platform)
 }
 
 pub(crate) fn start_domain(loaded: loader::LoadedDomain) -> ServiceDomain {
@@ -812,7 +823,7 @@ pub fn try_spawn_with_read_only_profile_and_limits(
     bootstrap::write_bootstrap_cap(transaction.loaded().config_frame, connection);
     bootstrap::write_profile_cap(transaction.loaded().config_frame, target, metadata);
     bootstrap::write_manifest(transaction.loaded().config_frame, &[]);
-    try_start_domain_with_limits(transaction.finish(), limits)
+    try_start_domain_with_limits(transaction.finish(), limits, true)
 }
 
 /// Launch a signed application with no name-service capability. Its bootstrap
@@ -911,7 +922,7 @@ fn try_spawn_deployment_with_manifest(
     bootstrap::write_bootstrap_cap(transaction.loaded().config_frame, connection);
     bootstrap::write_profile_cap(transaction.loaded().config_frame, target, profile_metadata);
     bootstrap::write_manifest(transaction.loaded().config_frame, manifest);
-    try_start_domain_with_limits(transaction.finish(), limits)
+    try_start_domain_with_limits(transaction.finish(), limits, false)
 }
 
 /// Start the node observability service and delegate the unique
@@ -1033,7 +1044,7 @@ impl PreparingObserver {
         bootstrap::write_system_observer_cap(self.domain.loaded().config_frame, self.observer);
         bootstrap::write_manifest(self.domain.loaded().config_frame, &[]);
         let limits = adaptive_service_limits(self.domain.loaded().address_space);
-        try_start_domain_with_limits(self.domain.finish(), limits)
+        try_start_domain_with_limits(self.domain.finish(), limits, true)
             .map_err(ObserverLaunchError::Thread)
     }
 }
@@ -1379,7 +1390,8 @@ pub fn try_spawn_upgrade(
         delegated_ep.unwrap_or(0),
     );
     let limits = adaptive_service_limits(loaded.address_space);
-    try_start_domain_with_limits(loaded, limits).map_err(UpgradeSpawnError::Thread)
+    try_start_upgrade_domain_with_limits(loaded, limits, old_asid)
+        .map_err(UpgradeSpawnError::Thread)
 }
 
 /// Return the embedded ELF image for a given upgrade selector.

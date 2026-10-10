@@ -2043,7 +2043,7 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
         frame.regs[0] = 0;
         return;
     }
-    let _old_service_asid =
+    let old_service_asid =
         match crate::ipc::connection_endpoint_owner(caller_asid, target_connection) {
             Ok(asid) => asid,
             Err(_) => {
@@ -2143,7 +2143,13 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
     // Preparation failure tears down the unstarted replacement namespace.
     let new_asid = loaded.asid;
     let limits = crate::service::supervisor::adaptive_service_limits(loaded.address_space);
-    if crate::service::supervisor::try_start_domain_with_limits(loaded, limits).is_err() {
+    if crate::service::supervisor::try_start_upgrade_domain_with_limits(
+        loaded,
+        limits,
+        old_service_asid,
+    )
+    .is_err()
+    {
         frame.regs[0] = 0;
         return;
     }
@@ -2235,7 +2241,18 @@ fn sys_spawn_artifact(frame: &mut TrapFrame) {
     };
     crate::service::bootstrap::write_bootstrap_cap(loaded.config_frame, bootstrap);
     crate::service::bootstrap::write_manifest(loaded.config_frame, &[]);
-    let domain = crate::service::supervisor::start_domain(loaded);
+    // This is a runtime deployment, not a mandatory boot launch: an admission
+    // failure must reject the request and roll the unstarted domain back, not
+    // panic the kernel. Deployed artifacts remain ordinary-classified.
+    let limits = crate::service::supervisor::adaptive_service_limits(loaded.address_space);
+    let domain =
+        match crate::service::supervisor::try_start_domain_with_limits(loaded, limits, false) {
+            Ok(domain) => domain,
+            Err(_) => {
+                frame.regs[0] = 0;
+                return;
+            }
+        };
     crate::service::supervisor::DEPLOYED_DOMAINS.lock().push(
         crate::service::supervisor::DeployedDomain {
             principal: charlotte_launch::artifact_principal_id(&name_bytes[..name_len]),

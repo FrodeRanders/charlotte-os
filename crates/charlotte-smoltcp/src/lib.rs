@@ -39,6 +39,7 @@ use catten_syscall::{
     memory_alloc,
     memory_close,
     memory_map,
+    memory_map_any,
     memory_unmap,
 };
 use charlotte_protocol_net::OP_SEND;
@@ -90,6 +91,10 @@ impl ReactorClock {
 }
 
 const TX_SCRATCH: usize = 0x0000_0000_00c0_1000;
+/// One page bounds every frame the adapter can be asked to build. The
+/// advertised IP MTU is clamped so smoltcp cannot request more than this.
+const TX_SCRATCH_BYTES: usize = 4096;
+const ETHERNET_HEADER_LEN: usize = 14;
 
 pub struct CharlotteEthDevice {
     /// Connection capability to the NIC driver endpoint.
@@ -99,6 +104,12 @@ pub struct CharlotteEthDevice {
     /// frouter) awaiting consumption by smoltcp.
     rx: VecDeque<alloc::vec::Vec<u8>>,
     rx_bytes: usize,
+    /// Persistent mapped frame buffer. Reserving it before handing out a TX
+    /// token keeps the smoltcp token contract satisfiable when the service's
+    /// object budget is exhausted; the page is retained for the device
+    /// lifetime and released by `Drop`.
+    tx_scratch: Option<u64>,
+    allocate_tx: fn() -> Option<u64>,
 }
 
 pub struct CharlotteRx {
@@ -114,12 +125,42 @@ impl CharlotteEthDevice {
     /// Create a new adapter.  `conn` is a connection cap to the NIC driver
     /// endpoint; `mtu` comes from `OP_STATUS`.
     pub fn new(conn: u64, mtu: usize) -> Self {
+        Self::with_tx_allocator(conn, mtu, reserve_tx_scratch)
+    }
+
+    pub(crate) fn with_tx_allocator(
+        conn: u64,
+        mtu: usize,
+        allocate_tx: fn() -> Option<u64>,
+    ) -> Self {
         Self {
             conn,
             mtu,
             rx: VecDeque::new(),
             rx_bytes: 0,
+            tx_scratch: None,
+            allocate_tx,
         }
+    }
+
+    /// Reserve the persistent TX page on first use. A token is only handed to
+    /// smoltcp once the buffer backing its closure exists; otherwise the frame
+    /// is dropped (transmit) or left queued (receive) without panicking.
+    fn ensure_tx_scratch(&mut self) -> bool {
+        if self.tx_scratch.is_some() {
+            return true;
+        }
+        let Some(cap) = (self.allocate_tx)() else {
+            return false;
+        };
+        self.tx_scratch = Some(cap);
+        true
+    }
+
+    fn take_rx(&mut self) -> Option<alloc::vec::Vec<u8>> {
+        let frame = self.rx.pop_front()?;
+        self.rx_bytes -= frame.len();
+        Some(frame)
     }
 
     /// Push a received frame (delivered by the frouter through the service's
@@ -172,8 +213,15 @@ impl Device for CharlotteEthDevice {
         Self: 'a;
 
     fn receive(&mut self, _now: Instant) -> Option<(Self::RxToken<'_>, Self::TxToken<'_>)> {
-        let frame = self.rx.pop_front()?;
-        self.rx_bytes -= frame.len();
+        if self.rx.is_empty() {
+            return None;
+        }
+        if !self.ensure_tx_scratch() {
+            // Keep the frame queued; smoltcp will retry on its next poll. An
+            // empty-buffer token would violate the closure contract.
+            return None;
+        }
+        let frame = self.take_rx()?;
         Some((
             CharlotteRx {
                 frame,
@@ -185,6 +233,9 @@ impl Device for CharlotteEthDevice {
     }
 
     fn transmit(&mut self, _now: Instant) -> Option<Self::TxToken<'_>> {
+        if !self.ensure_tx_scratch() {
+            return None;
+        }
         Some(CharlotteTx {
             conn: self.conn,
         })
@@ -192,10 +243,34 @@ impl Device for CharlotteEthDevice {
 
     fn capabilities(&self) -> DeviceCapabilities {
         let mut caps = DeviceCapabilities::default();
-        caps.max_transmission_unit = self.mtu;
+        caps.max_transmission_unit = self.mtu.min(TX_SCRATCH_BYTES - ETHERNET_HEADER_LEN);
         caps.medium = smoltcp::phy::Medium::Ethernet;
         caps
     }
+}
+
+impl Drop for CharlotteEthDevice {
+    fn drop(&mut self) {
+        if let Some(cap) = self.tx_scratch.take() {
+            let _ = memory_unmap(cap);
+            memory_close(cap);
+        }
+    }
+}
+
+/// Reserve the adapter's TX page and map it at [`TX_SCRATCH`]. The mapping
+/// persists for the device lifetime so a token can never be handed out
+/// without backing for its closure.
+fn reserve_tx_scratch() -> Option<u64> {
+    let cap = memory_alloc(1);
+    if cap == 0 {
+        return None;
+    }
+    if memory_map(cap, TX_SCRATCH, true) != 0 {
+        memory_close(cap);
+        return None;
+    }
+    Some(cap)
 }
 
 impl RxToken for CharlotteRx {
@@ -212,22 +287,32 @@ impl TxToken for CharlotteTx {
     where
         F: FnOnce(&mut [u8]) -> R,
     {
-        if len > 4096 {
-            let mut empty = [0u8; 0];
-            return f(&mut empty);
-        }
-        let cap = memory_alloc(1);
-        if cap == 0 {
-            let mut empty = [0u8; 0];
-            return f(&mut empty[..]);
-        }
-        if memory_map(cap, TX_SCRATCH, true) != 0 {
-            memory_close(cap);
-            let mut empty = [0u8; 0];
-            return f(&mut empty[..]);
-        }
+        debug_assert!(
+            len <= TX_SCRATCH_BYTES,
+            "smoltcp requested {} bytes; the MTU clamp must keep frames within one page",
+            len
+        );
+        // The device reserved the mapped page before handing out this token.
+        // Clamping here keeps a broken MTU contract from becoming an
+        // out-of-bounds write; the advertised MTU makes it unreachable.
+        let len = len.min(TX_SCRATCH_BYTES);
         let buf = unsafe { core::slice::from_raw_parts_mut(TX_SCRATCH as *mut u8, len) };
         let result = f(buf);
+        // The driver receives the frame as a moved object. Allocation or
+        // mapping failure drops this frame without violating the closure
+        // contract or stopping the service.
+        let cap = memory_alloc(1);
+        if cap == 0 {
+            return result;
+        }
+        let (status, vaddr) = memory_map_any(cap, true);
+        if status != 0 {
+            memory_close(cap);
+            return result;
+        }
+        unsafe {
+            core::ptr::copy_nonoverlapping(TX_SCRATCH as *const u8, vaddr as *mut u8, len);
+        }
         memory_unmap(cap);
         let call = ipc_scalar_call_move(self.conn, OP_SEND, len as u64, cap);
         if call == 0 {
@@ -250,9 +335,17 @@ mod tests {
 
     use super::CharlotteEthDevice;
 
+    fn device_with_scratch(conn: u64, mtu: usize) -> CharlotteEthDevice {
+        let mut device = CharlotteEthDevice::with_tx_allocator(conn, mtu, || None);
+        // Synthetic reservation: the host fixture cannot execute the raw
+        // mapping syscalls, but the token path only checks presence.
+        device.tx_scratch = Some(0);
+        device
+    }
+
     #[test]
     fn rx_queue_bounds_and_order() {
-        let mut device = CharlotteEthDevice::new(0, 1500);
+        let mut device = device_with_scratch(0, 1500);
         let now = smoltcp::time::Instant::from_millis(0);
         assert_eq!(device.rx_len(), 0);
         assert!(device.receive(now).is_none());
@@ -269,11 +362,11 @@ mod tests {
             assert_eq!(frame[0], 1);
         });
         assert_eq!(device.rx_len(), 1);
+        device.tx_scratch = None;
     }
 
     #[test]
     fn sustained_ingress_keeps_count_and_byte_bounds_and_recovers_capacity() {
-        let now = smoltcp::time::Instant::from_millis(0);
         for size in [64, 4096] {
             let mut device = CharlotteEthDevice::new(0, 1500);
             let frame = alloc::vec![0x55; size];
@@ -287,16 +380,46 @@ mod tests {
             assert_eq!(device.rx_len(), capacity);
             assert_eq!(device.rx_bytes, capacity * size);
             for _ in 0..4096 {
-                device.receive(now).unwrap();
+                device.take_rx().unwrap();
                 assert!(device.push_rx(&frame));
                 assert!(!device.push_rx(&frame));
             }
             for _ in 0..capacity {
-                device.receive(now).unwrap();
+                device.take_rx().unwrap();
             }
             assert_eq!(device.rx_bytes, 0);
             assert!(device.push_rx(&frame));
         }
+    }
+
+    #[test]
+    fn missing_tx_scratch_applies_backpressure_without_a_token() {
+        let now = smoltcp::time::Instant::from_millis(0);
+        let mut device = CharlotteEthDevice::with_tx_allocator(0, 1500, || None);
+        device.push_rx(&alloc::vec![7u8; 64]);
+        // No reservation means no token: the frame stays queued and no
+        // zero-length buffer can reach a smoltcp closure.
+        assert!(device.receive(now).is_none());
+        assert!(device.transmit(now).is_none());
+        assert_eq!(device.rx_len(), 1);
+        assert_eq!(device.rx_bytes, 64);
+        // Once the reservation succeeds the queued frame is handed over.
+        device.tx_scratch = Some(0);
+        let (rx, tx) = device.receive(now).unwrap();
+        rx.consume(|frame| assert_eq!(frame.len(), 64));
+        drop(tx);
+        device.tx_scratch = None;
+    }
+
+    #[test]
+    fn advertised_mtu_never_exceeds_the_reserved_frame() {
+        let oversized = CharlotteEthDevice::with_tx_allocator(0, 9000, || None);
+        assert_eq!(
+            oversized.capabilities().max_transmission_unit,
+            super::TX_SCRATCH_BYTES - super::ETHERNET_HEADER_LEN
+        );
+        let ordinary = CharlotteEthDevice::with_tx_allocator(0, 1500, || None);
+        assert_eq!(ordinary.capabilities().max_transmission_unit, 1500);
     }
 
     #[test]
