@@ -64,9 +64,31 @@ pub const OP_SET_SIZE: u32 = 9;
 /// Create an object with `ATTR_SHARED_READ`: any domain authenticated by the
 /// kernel may read it. The creating principal remains the owner for mutation.
 pub const OP_CREATE_AT_SHARED: u32 = 10;
+/// Install an operator scope table. The attached read-only memory object
+/// holds the encoded table (see [`SCOPE_HEADER_LEN`]/[`SCOPE_ENTRY_LEN`]);
+/// only the kernel and the signed administration service may apply it.
+/// The table is persisted and re-applied at mount.
+pub const OP_APPLY_SCOPE: u32 = 11;
 
 /// Object attribute: readable by any authenticated domain, not just the owner.
 pub const ATTR_SHARED_READ: u32 = 1;
+
+/// Reserved object holding the persisted scope table.
+pub const SCOPE_OBJECT_ID: u64 = 0xffff_0000_0000_0002;
+
+/// Scope grant bit: read and size query.
+pub const SCOPE_RIGHT_READ: u32 = 1;
+/// Scope grant bit: resize, overwrite and delete.
+pub const SCOPE_RIGHT_WRITE: u32 = 2;
+/// Encoded table header:
+/// `magic:u32 | version:u16 | entry_count:u16 | reserved:u64`.
+pub const SCOPE_MAGIC: u32 = 0x5043_534f; // "OSCP" LE
+pub const SCOPE_VERSION: u16 = 1;
+pub const SCOPE_HEADER_LEN: usize = 16;
+/// Encoded entry: `principal:u64 | first:u64 | last:u64 | rights:u32 | reserved:u32`.
+pub const SCOPE_ENTRY_LEN: usize = 32;
+pub const SCOPE_MAX_ENTRIES: usize = 64;
+pub const SCOPE_MAX_LEN: usize = SCOPE_HEADER_LEN + SCOPE_MAX_ENTRIES * SCOPE_ENTRY_LEN;
 
 pub const ERR_OK: i64 = 0;
 pub const ERR_NOT_FOUND: i64 = 1;

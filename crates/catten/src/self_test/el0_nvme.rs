@@ -307,6 +307,23 @@ extern "C" fn verify_el0_nvme() {
     const FOREIGN_OBJECT_ID: u64 = 0x7fff_ffff_ffff_ee00;
     crate::service::store::write_store_test_object(FOREIGN_OBJECT_ID, b"kernel ownership probe")
         .expect("[el0_nvme] stage foreign-ownership probe object");
+    // Operator scope grant: the client may read (not mutate) this second
+    // kernel-owned probe. Encoded table mirrors `objstore::ScopeTable`:
+    // 16-byte header (`OSCP`, version 1, one entry) plus one 32-byte entry.
+    const GRANTED_OBJECT_ID: u64 = 0x7fff_ffff_ffff_ee01;
+    crate::service::store::write_store_test_object(GRANTED_OBJECT_ID, b"scoped probe")
+        .expect("[el0_nvme] stage scope-granted probe object");
+    let client_principal = charlotte_launch::artifact_principal_id(b"objstore_client");
+    let mut scope = [0u8; 48];
+    scope[0..4].copy_from_slice(&0x5043_534fu32.to_le_bytes()); // "OSCP"
+    scope[4..6].copy_from_slice(&1u16.to_le_bytes());
+    scope[6..8].copy_from_slice(&1u16.to_le_bytes());
+    scope[16..24].copy_from_slice(&client_principal.to_le_bytes());
+    scope[24..32].copy_from_slice(&GRANTED_OBJECT_ID.to_le_bytes());
+    scope[32..40].copy_from_slice(&GRANTED_OBJECT_ID.to_le_bytes());
+    scope[40..44].copy_from_slice(&1u32.to_le_bytes()); // SCOPE_RIGHT_READ
+    crate::service::store::apply_store_scope(&scope)
+        .expect("[el0_nvme] apply read-only scope grant");
     let object_client = supervisor::spawn_with_name_service(
         crate::service::store::service_elf(b"objstore_client")
             .expect("[el0_nvme] objstore_client.elf"),

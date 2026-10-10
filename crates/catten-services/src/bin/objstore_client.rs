@@ -27,6 +27,10 @@ const OBJECT_ID: u64 = 0x7fff_ffff_ffff_ff00;
 /// Kernel-owned ordinary object staged by the NVMe verifier before this
 /// client starts. Mirrors the kernel fixture constant.
 const FOREIGN_OBJECT_ID: u64 = 0x7fff_ffff_ffff_ee00;
+/// Kernel-owned ordinary object granted to this client read-only through the
+/// operator scope table. Mirrors the kernel fixture constant.
+const GRANTED_OBJECT_ID: u64 = 0x7fff_ffff_ffff_ee01;
+const GRANTED_PROBE: &[u8] = b"scoped probe";
 const BYTES: usize = 2 * 1024 * 1024 + 4096;
 const PAGES: usize = BYTES / 4096;
 
@@ -122,6 +126,28 @@ fn main(ctx: Context) -> ! {
         .map(|result| result.result);
     if foreign_delete != Ok(objstore::ERR_DENIED) {
         fail(0xdeb9);
+    }
+    // Operator scope grants read-only access to the second kernel probe:
+    // reading succeeds with the exact bytes while delete stays denied.
+    let granted = connection
+        .call(objstore::OP_READ, GRANTED_OBJECT_ID)
+        .and_then(|call| call.wait())
+        .unwrap_or_else(|_| fail(0xdeba));
+    if granted.result != GRANTED_PROBE.len() as i64 {
+        fail(0xdebb);
+    }
+    let granted_memory = granted.memory.unwrap_or_else(|| fail(0xdebe));
+    let granted_mapping = granted_memory.map_read_only().unwrap_or_else(|_| fail(0xdebe));
+    if granted_mapping.as_slice().get(..GRANTED_PROBE.len()) != Some(GRANTED_PROBE) {
+        fail(0xdebe);
+    }
+    drop(granted_mapping);
+    let granted_delete = connection
+        .call(objstore::OP_DELETE, GRANTED_OBJECT_ID)
+        .and_then(|call| call.wait())
+        .map(|result| result.result);
+    if granted_delete != Ok(objstore::ERR_DENIED) {
+        fail(0xdebf);
     }
     config::write::<u32>(status::ROUND_TRIP_BYTES, BYTES as u32);
     config::write::<u32>(status::STAGE, 0x900d);

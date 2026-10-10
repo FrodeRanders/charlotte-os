@@ -27,6 +27,7 @@ use catten_rt::{
         Connection,
         ConnectionRef,
         Endpoint,
+        IncomingMessage,
         OwnedMemory,
         ReplyToken,
     },
@@ -642,6 +643,51 @@ impl ObjStore {
         Some((header.owner, header.attributes))
     }
 
+    /// Read a small object entirely into memory, verifying its stored content
+    /// hash. The caller bounds `id`/size to the scope table.
+    fn read_object_bytes(&self, id: u64) -> Option<Vec<u8>> {
+        let entry = self.read_directory(self.find_index(id)?)?;
+        let header = self.read_header(entry)?;
+        let size = usize::try_from(header.data_len).ok()?;
+        if size == 0 || size > objstore::SCOPE_MAX_LEN {
+            return None;
+        }
+        let mut bytes = vec![0u8; size];
+        if !self.read_object(&mut bytes, header.extents())
+            || content_hash(&bytes) != header.data_hash
+        {
+            return None;
+        }
+        Some(bytes)
+    }
+
+    /// Persist an accepted scope table as the reserved scope object. The
+    /// caller updates its in-memory table only after this succeeds.
+    fn install_scope(&mut self, bytes: &[u8], principal: u64) -> i64 {
+        if bytes.len() > objstore::SCOPE_MAX_LEN {
+            return objstore::ERR_TOO_LARGE;
+        }
+        if self.find_index(objstore::SCOPE_OBJECT_ID).is_none()
+            && let Err(error) = self.create(Some(objstore::SCOPE_OBJECT_ID), principal, 0)
+            && error != objstore::ERR_EXISTS
+        {
+            return error;
+        }
+        let pages = bytes.len().max(1).div_ceil(PAGE_SIZE);
+        let Ok(memory) = OwnedMemory::allocate(pages) else {
+            return objstore::ERR_IO_ERROR;
+        };
+        let Ok(mut mapping) = memory.map_writable() else {
+            return objstore::ERR_IO_ERROR;
+        };
+        mapping.as_mut_slice()[..bytes.len()].copy_from_slice(bytes);
+        let Ok(memory) = mapping.unmap() else {
+            return objstore::ERR_IO_ERROR;
+        };
+        self.pending_sizes.lock().insert(objstore::SCOPE_OBJECT_ID, bytes.len() as u32);
+        self.write(objstore::SCOPE_OBJECT_ID, memory)
+    }
+
     fn read_directory(&self, index: u32) -> Option<DirectoryEntry> {
         self.directory.lock().get(index as usize).copied()
     }
@@ -1226,6 +1272,48 @@ fn reply_scalar(reply: Option<ReplyToken>, result: i64) {
     }
 }
 
+/// Install an operator scope table. Only the kernel and the signed
+/// administration service may change policy; a malformed table is rejected
+/// and leaves the previous table in force.
+fn apply_scope(
+    store: &mut ObjStore,
+    scope: &mut objstore::ScopeTable,
+    message: &mut IncomingMessage,
+    principal: u64,
+) -> i64 {
+    if !objstore::reserved_mutator(principal) {
+        return objstore::ERR_DENIED;
+    }
+    let Ok(length) = usize::try_from(message.arg0) else {
+        return objstore::ERR_TOO_LARGE;
+    };
+    if !(objstore::SCOPE_HEADER_LEN..=objstore::SCOPE_MAX_LEN).contains(&length) {
+        return objstore::ERR_TOO_LARGE;
+    }
+    let Some(memory) = message.memory.take() else {
+        return objstore::ERR_IO_ERROR;
+    };
+    let parsed = {
+        let Ok(mapping) = memory.map_read_only() else {
+            return objstore::ERR_IO_ERROR;
+        };
+        let Some(bytes) = mapping.as_slice().get(..length) else {
+            return objstore::ERR_IO_ERROR;
+        };
+        objstore::ScopeTable::parse(bytes)
+    };
+    let Some(parsed) = parsed else {
+        return objstore::ERR_INVALID_ID;
+    };
+    let persisted = parsed.encode();
+    let result = store.install_scope(&persisted, principal);
+    if result == objstore::ERR_OK {
+        *scope = parsed;
+        catten_rt::logln!("[objstore] operator scope table applied ({} entries)", scope.len());
+    }
+    result
+}
+
 fn serve(ctx: &Context) -> ShutdownRequest {
     let ns_connection = ctx.bootstrap_connection().unwrap_or_else(|| catten_rt::domain_abort());
     diag_stage(1);
@@ -1235,6 +1323,18 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(status::TOTAL_BLOCKS, dev.total_blocks);
     let mut store = ObjStore::mount(dev).unwrap_or_else(|| catten_rt::domain_abort());
     diag_stage(3);
+    // Re-apply the persisted operator scope table. A malformed or missing
+    // table fails closed to no grants.
+    let mut scope = match store.read_object_bytes(objstore::SCOPE_OBJECT_ID) {
+        Some(bytes) => match objstore::ScopeTable::parse(&bytes) {
+            Some(table) => table,
+            None => {
+                catten_rt::logln!("[objstore] persisted scope table malformed; denying all grants");
+                objstore::ScopeTable::default()
+            }
+        },
+        None => objstore::ScopeTable::default(),
+    };
 
     let endpoint =
         Endpoint::create(objstore::INTERFACE, objstore::VERSION, 64).unwrap_or_else(|_| {
@@ -1300,8 +1400,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             let principal = message.sender_principal;
             let (owner, attributes) = store.metadata(id).unwrap_or((0, 0));
             let may_create = objstore::may_create(id, principal);
-            let may_mutate = objstore::may_mutate(id, owner, principal);
-            let may_read = objstore::may_read(id, owner, attributes, principal);
+            let scope_read = scope.allows(principal, id, objstore::SCOPE_RIGHT_READ);
+            let scope_write = scope.allows(principal, id, objstore::SCOPE_RIGHT_WRITE);
+            let may_mutate = objstore::may_mutate_scoped(id, owner, principal, scope_write);
+            let may_read = objstore::may_read_scoped(id, owner, attributes, principal, scope_read);
             match message.opcode {
                 objstore::OP_CREATE => {
                     let result = store.create(None, principal, 0).map(|id| id as i64).unwrap_or(0);
@@ -1366,6 +1468,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             let _ = reply.reply(objstore::ERR_DENIED);
                         }
                     }
+                }
+                objstore::OP_APPLY_SCOPE => {
+                    let result = apply_scope(&mut store, &mut scope, &mut message, principal);
+                    reply_scalar(message.reply.take(), result);
                 }
                 objstore::OP_RESIZE => {
                     reply_scalar(message.reply.take(), objstore::ERR_IO_ERROR);

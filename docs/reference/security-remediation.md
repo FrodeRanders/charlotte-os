@@ -9,11 +9,11 @@ not a current backlog.
 
 | State | Findings | Meaning |
 | --- | --- | --- |
-| Corrected in the documented scope | SEC-01, 02, 03, 05, 11, 13, 16, 17, 19–31, 33–38 | The identified defect has a correction and recorded validation. This is not a claim of complete subsystem security. |
-| Partly corrected or mitigated | SEC-04, 06, 07, 12, 14, 15, 18, 32 | Specific paths are strengthened; the broader finding still has required work. |
+| Corrected in the documented scope | SEC-01, 02, 03, 05, 11, 12, 13, 16, 17, 19–31, 33–38 | The identified defect has a correction and recorded validation. This is not a claim of complete subsystem security. |
+| Partly corrected or mitigated | SEC-04, 06, 07, 14, 15, 18, 32 | Specific paths are strengthened; the broader finding still has required work. |
 | Open | SEC-08, 09, 10 | The required security boundary is not implemented. |
 
-There are **38 numbered findings: 27 corrected, eight partial and three open**.
+There are **38 numbered findings: 28 corrected, seven partial and three open**.
 The earlier SEC-01–25 accounting was 15 corrected, six partial and four open;
 it excluded the five additional, corrected findings SEC-26–30. Finding counts
 measure bookkeeping, not percentage of effort or production readiness.
@@ -352,7 +352,7 @@ missing boundaries.
 | 1 | **SEC-04:** Authenticate bootstrap policy and the executable boot chain from a protected platform root. Provision independent artifact, deployment and operational authorities and a distinct recipient key; exclude every development fixture. Keep the recipient private key behind a privileged custody boundary, with recovery/rotation rules and rollback-resistant policy state. Test substituted boot images/policies, role reuse, downgrade, enrollment and custody failure. Production must remain disabled until those tests pass. |
 | 2 | **SEC-08/10:** Enroll node/operator identities under that root, authenticate and encrypt node/control/data and management channels, authorize reads and writes, and bind messages to cluster, role, session and freshness. Test peer substitution, replay, revocation and reconnect/restart. A signed write payload does not authenticate the transport or a reader. |
 | 3 | **SEC-09:** Provide authenticated security-time provenance, bounded uncertainty/freshness and a fail-closed expiry policy after rollback, loss of synchronization and restart. Integrate it before claiming time-based credential/replay checks secure. SNTP and a nonzero timestamp do not satisfy this boundary. |
-| 4 | **SEC-12 (partly corrected):** Reserved artifact/executable objects reject mutation from every principal except the kernel and the signed `clusterctl` administration service ([report](../reports/audits/2026-10-10-security-object-store-reserved-namespace.md)), and ordinary objects are owned by their persisted creating principal with owner-private reads and mutation ([report](../reports/audits/2026-10-10-security-object-store-ownership.md)), including `ATTR_SHARED_READ` for the multi-service node identity and a disjoint Raft ID partition. Remaining: an operator-provisioned read/scope policy, scoped connection delegation, legacy-unowned image recreation, and any future listing opcode. |
+| 4 | **SEC-12 (corrected in the documented scope):** Reserved artifact/executable objects reject mutation from every principal except the kernel and the signed `clusterctl` administration service ([report](../reports/audits/2026-10-10-security-object-store-reserved-namespace.md)); ordinary objects are owned by their persisted creating principal with owner-private reads and mutation ([report](../reports/audits/2026-10-10-security-object-store-ownership.md)); and an authenticated, persisted operator scope table delegates read/write rights over object-id ranges ([report](../reports/audits/2026-10-10-security-object-store-scope-policy.md)). Limits: policy authority is the signed `clusterctl` identity (operator enrollment is SEC-08/10), 64-entry bound, pre-ownership images must be recreated, and no listing opcode exists. |
 | 5 | **SEC-06/14/15:** Finish management flood resistance/fairness, advisory/license and release-provenance enforcement, and the remaining secret-derived state/copy zeroization inventory. Retain the existing bounded-peer, pinned-build and temporary-buffer corrections. |
 
 The first SEC-04 prerequisite is now a

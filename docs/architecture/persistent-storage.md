@@ -286,12 +286,16 @@ runs, and the client proves a foreign principal's object is denied. Objects
 created with `ATTR_SHARED_READ` (the node identity shared by discovery, DNS
 and the Raft fixture) admit every authenticated reader while mutation still
 follows ownership. Raft persistent IDs live in a disjoint `0x8xxx`
-partition. Objects written before ownership enforcement remain readable but
-are immutable except to the kernel, so a pre-ownership image must be recreated
-before its services can mutate their objects. An operator-provisioned read
-delegation for application-to-application sharing does not exist yet. See the
-[reserved-namespace](../reports/audits/2026-10-10-security-object-store-reserved-namespace.md)
-and [ownership](../reports/audits/2026-10-10-security-object-store-ownership.md)
+partition. An authenticated operator scope table (applied by the kernel or the
+signed `clusterctl` service through `OP_APPLY_SCOPE`, persisted in a reserved
+object and re-applied at mount) can additionally grant read or write rights
+over object-id ranges to a principal; grants never extend the reserved
+artifact/executable allowlist. Objects written before ownership enforcement
+remain readable but are immutable except to the kernel, so a pre-ownership
+image must be recreated before its services can mutate their objects. See the
+[reserved-namespace](../reports/audits/2026-10-10-security-object-store-reserved-namespace.md),
+[ownership](../reports/audits/2026-10-10-security-object-store-ownership.md)
+and [scope-policy](../reports/audits/2026-10-10-security-object-store-scope-policy.md)
 remediation reports.
 
 Node ID, peer list, election timing, and storage policy remain supervisor-owned

@@ -1325,6 +1325,20 @@ pub mod objstore {
     /// authenticated by the kernel may read it. Used for the node identity,
     /// which discovery, DNS and the Raft fixture all need.
     pub const OP_CREATE_AT_SHARED: u32 = 10;
+    /// Install an operator scope table (mirrors the protocol constant).
+    pub const OP_APPLY_SCOPE: u32 = 11;
+
+    /// Reserved object holding the persisted operator scope table.
+    pub const SCOPE_OBJECT_ID: u64 = 0xffff_0000_0000_0002;
+    /// Scope grant bits.
+    pub const SCOPE_RIGHT_READ: u32 = 1;
+    pub const SCOPE_RIGHT_WRITE: u32 = 2;
+    pub const SCOPE_MAGIC: u32 = 0x5043_534f; // "OSCP" LE
+    pub const SCOPE_VERSION: u16 = 1;
+    pub const SCOPE_HEADER_LEN: usize = 16;
+    pub const SCOPE_ENTRY_LEN: usize = 32;
+    pub const SCOPE_MAX_ENTRIES: usize = 64;
+    pub const SCOPE_MAX_LEN: usize = SCOPE_HEADER_LEN + SCOPE_MAX_ENTRIES * SCOPE_ENTRY_LEN;
 
     pub const ERR_OK: i64 = 0;
     pub const ERR_NOT_FOUND: i64 = 1;
@@ -1389,6 +1403,131 @@ pub mod objstore {
             || principal == KERNEL_PRINCIPAL
     }
 
+    /// As [`may_mutate`], but an operator scope write grant also authorizes an
+    /// ordinary object. Scope grants never extend the reserved allowlist.
+    pub fn may_mutate_scoped(id: u64, owner: u64, principal: u64, scope_write: bool) -> bool {
+        may_mutate(id, owner, principal) || (!is_reserved_object(id) && scope_write)
+    }
+
+    /// As [`may_read`], with an operator scope read grant.
+    pub fn may_read_scoped(
+        id: u64,
+        owner: u64,
+        attributes: u32,
+        principal: u64,
+        scope_read: bool,
+    ) -> bool {
+        may_read(id, owner, attributes, principal) || scope_read
+    }
+
+    /// One operator scope grant: `principal` may exercise `rights`
+    /// (read/write bits) over the inclusive object-id range `first..=last`.
+    #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+    pub struct ScopeEntry {
+        pub principal: u64,
+        pub first: u64,
+        pub last: u64,
+        pub rights: u32,
+    }
+
+    /// Bounded operator scope table. Applied by the kernel or the signed
+    /// administration service through `OP_APPLY_SCOPE`; the raw bytes are
+    /// persisted in a reserved object and re-applied at mount.
+    #[derive(Clone, Debug)]
+    pub struct ScopeTable {
+        entries: [ScopeEntry; SCOPE_MAX_ENTRIES],
+        len: usize,
+    }
+
+    impl Default for ScopeTable {
+        fn default() -> Self {
+            Self {
+                entries: [ScopeEntry::default(); SCOPE_MAX_ENTRIES],
+                len: 0,
+            }
+        }
+    }
+
+    impl ScopeTable {
+        pub fn len(&self) -> usize {
+            self.len
+        }
+
+        pub fn is_empty(&self) -> bool {
+            self.len == 0
+        }
+
+        /// Strict decoder for the persisted or attached wire table. Rejects a
+        /// bad magic, version, reserved padding, over-count, truncated or
+        /// padded length, zero principal, inverted range or unknown right.
+        pub fn parse(bytes: &[u8]) -> Option<Self> {
+            if bytes.len() < SCOPE_HEADER_LEN || bytes.len() > SCOPE_MAX_LEN {
+                return None;
+            }
+            let magic = u32::from_le_bytes(bytes.get(0..4)?.try_into().ok()?);
+            let version = u16::from_le_bytes(bytes.get(4..6)?.try_into().ok()?);
+            let count = u16::from_le_bytes(bytes.get(6..8)?.try_into().ok()?) as usize;
+            let reserved = u64::from_le_bytes(bytes.get(8..16)?.try_into().ok()?);
+            if magic != SCOPE_MAGIC
+                || version != SCOPE_VERSION
+                || reserved != 0
+                || count > SCOPE_MAX_ENTRIES
+                || bytes.len() != SCOPE_HEADER_LEN + count * SCOPE_ENTRY_LEN
+            {
+                return None;
+            }
+            let mut table = Self::default();
+            for index in 0..count {
+                let offset = SCOPE_HEADER_LEN + index * SCOPE_ENTRY_LEN;
+                let spin = bytes.get(offset..offset + SCOPE_ENTRY_LEN)?;
+                let entry = ScopeEntry {
+                    principal: u64::from_le_bytes(spin.get(0..8)?.try_into().ok()?),
+                    first: u64::from_le_bytes(spin.get(8..16)?.try_into().ok()?),
+                    last: u64::from_le_bytes(spin.get(16..24)?.try_into().ok()?),
+                    rights: u32::from_le_bytes(spin.get(24..28)?.try_into().ok()?),
+                };
+                let tail = u32::from_le_bytes(spin.get(28..32)?.try_into().ok()?);
+                if entry.principal == 0
+                    || entry.first > entry.last
+                    || entry.rights == 0
+                    || entry.rights & !(SCOPE_RIGHT_READ | SCOPE_RIGHT_WRITE) != 0
+                    || tail != 0
+                {
+                    return None;
+                }
+                table.entries[index] = entry;
+            }
+            table.len = count;
+            Some(table)
+        }
+
+        /// Canonical encoding of the applied table (used by fixtures and by
+        /// the store when persisting an accepted table).
+        pub fn encode(&self) -> alloc::vec::Vec<u8> {
+            let mut bytes = alloc::vec![0u8; SCOPE_HEADER_LEN + self.len * SCOPE_ENTRY_LEN];
+            bytes[0..4].copy_from_slice(&SCOPE_MAGIC.to_le_bytes());
+            bytes[4..6].copy_from_slice(&SCOPE_VERSION.to_le_bytes());
+            bytes[6..8].copy_from_slice(&(self.len as u16).to_le_bytes());
+            for (index, entry) in self.entries[..self.len].iter().enumerate() {
+                let offset = SCOPE_HEADER_LEN + index * SCOPE_ENTRY_LEN;
+                bytes[offset..offset + 8].copy_from_slice(&entry.principal.to_le_bytes());
+                bytes[offset + 8..offset + 16].copy_from_slice(&entry.first.to_le_bytes());
+                bytes[offset + 16..offset + 24].copy_from_slice(&entry.last.to_le_bytes());
+                bytes[offset + 24..offset + 28].copy_from_slice(&entry.rights.to_le_bytes());
+            }
+            bytes
+        }
+
+        pub fn allows(&self, principal: u64, id: u64, right: u32) -> bool {
+            self.entries[..self.len].iter().any(|entry| {
+                entry.principal == principal
+                    && entry.first <= id
+                    && id <= entry.last
+                    && entry.rights & right != 0
+            })
+        }
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -1447,6 +1586,76 @@ pub mod objstore {
             assert!(!may_read(42, ordinary(), 0, other()));
             assert!(may_read(42, ordinary(), ATTR_SHARED_READ, other()));
             assert!(may_read(EXECUTABLE_ECHO_ID, ordinary(), 0, other()));
+        }
+
+        fn encoded_table(entries: &[(u64, u64, u64, u32)]) -> alloc::vec::Vec<u8> {
+            let mut bytes = alloc::vec![0u8; SCOPE_HEADER_LEN + entries.len() * SCOPE_ENTRY_LEN];
+            bytes[0..4].copy_from_slice(&SCOPE_MAGIC.to_le_bytes());
+            bytes[4..6].copy_from_slice(&SCOPE_VERSION.to_le_bytes());
+            bytes[6..8].copy_from_slice(&(entries.len() as u16).to_le_bytes());
+            for (index, (principal, first, last, rights)) in entries.iter().enumerate() {
+                let offset = SCOPE_HEADER_LEN + index * SCOPE_ENTRY_LEN;
+                bytes[offset..offset + 8].copy_from_slice(&principal.to_le_bytes());
+                bytes[offset + 8..offset + 16].copy_from_slice(&first.to_le_bytes());
+                bytes[offset + 16..offset + 24].copy_from_slice(&last.to_le_bytes());
+                bytes[offset + 24..offset + 28].copy_from_slice(&rights.to_le_bytes());
+            }
+            bytes
+        }
+
+        #[test]
+        fn scope_table_grants_rights_within_inclusive_ranges() {
+            let bytes = encoded_table(&[
+                (ordinary(), 100, 199, SCOPE_RIGHT_READ),
+                (other(), 100, 199, SCOPE_RIGHT_READ | SCOPE_RIGHT_WRITE),
+            ]);
+            let table = ScopeTable::parse(&bytes).unwrap();
+            assert_eq!(table.len(), 2);
+            assert!(table.allows(ordinary(), 100, SCOPE_RIGHT_READ));
+            assert!(table.allows(ordinary(), 199, SCOPE_RIGHT_READ));
+            assert!(!table.allows(ordinary(), 99, SCOPE_RIGHT_READ));
+            assert!(!table.allows(ordinary(), 200, SCOPE_RIGHT_READ));
+            assert!(!table.allows(ordinary(), 100, SCOPE_RIGHT_WRITE));
+            assert!(table.allows(other(), 150, SCOPE_RIGHT_WRITE));
+            assert!(!table.allows(other(), 150, 8));
+            assert_eq!(table.encode(), bytes);
+        }
+
+        #[test]
+        fn scope_table_rejects_malformed_tables() {
+            let valid = encoded_table(&[(ordinary(), 1, 2, SCOPE_RIGHT_READ)]);
+            assert!(ScopeTable::parse(&valid).is_some());
+            let mut bad_magic = valid.clone();
+            bad_magic[0] ^= 0xff;
+            assert!(ScopeTable::parse(&bad_magic).is_none());
+            let mut bad_version = valid.clone();
+            bad_version[4] = 2;
+            assert!(ScopeTable::parse(&bad_version).is_none());
+            let mut bad_padding = valid.clone();
+            bad_padding[8] = 1;
+            assert!(ScopeTable::parse(&bad_padding).is_none());
+            assert!(ScopeTable::parse(&valid[..valid.len() - 1]).is_none());
+            let mut zero_principal = valid.clone();
+            zero_principal[SCOPE_HEADER_LEN..SCOPE_HEADER_LEN + 8].fill(0);
+            assert!(ScopeTable::parse(&zero_principal).is_none());
+            let mut inverted = valid.clone();
+            inverted[SCOPE_HEADER_LEN + 8..SCOPE_HEADER_LEN + 16].fill(9);
+            assert!(ScopeTable::parse(&inverted).is_none());
+            let mut unknown_right = valid.clone();
+            unknown_right[SCOPE_HEADER_LEN + 24] = 4;
+            assert!(ScopeTable::parse(&unknown_right).is_none());
+            let mut entry_tail = valid;
+            entry_tail[SCOPE_HEADER_LEN + 28] = 1;
+            assert!(ScopeTable::parse(&entry_tail).is_none());
+        }
+
+        #[test]
+        fn scope_grants_never_extend_the_reserved_allowlist() {
+            assert!(may_mutate_scoped(42, ordinary(), other(), true));
+            assert!(may_mutate_scoped(42, ordinary(), other(), false) == false);
+            assert!(!may_mutate_scoped(EXECUTABLE_ECHO_ID, 0, other(), true));
+            assert!(may_read_scoped(42, ordinary(), 0, other(), true));
+            assert!(!may_read_scoped(42, ordinary(), 0, other(), false));
         }
     }
 }

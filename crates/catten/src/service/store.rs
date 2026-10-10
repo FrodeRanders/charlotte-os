@@ -30,6 +30,7 @@ const OBJ_OP_WRITE: u32 = 3;
 const OBJ_OP_FLUSH: u32 = 6;
 const OBJ_OP_CREATE_AT: u32 = 8;
 const OBJ_OP_SET_SIZE: u32 = 9;
+const OBJ_OP_APPLY_SCOPE: u32 = 11;
 const OBJ_ERR_OK: i64 = 0;
 const OBJ_ERR_EXISTS: i64 = 5;
 /// Mirrors `charlotte_protocol_objstore::EXECUTABLE_ECHO_ID`.
@@ -370,6 +371,19 @@ pub fn write_store_executable(image: &[u8]) -> Result<(), &'static str> {
 /// to prove a foreign domain cannot read or delete another principal's object.
 pub fn write_store_test_object(object_id: u64, bytes: &[u8]) -> Result<(), &'static str> {
     write_store_kernel_object(object_id, bytes)
+}
+
+/// Install an operator scope table from the kernel. `arg0` carries the exact
+/// encoded length; the bytes are moved to the store, which validates and
+/// persists them before applying.
+pub fn apply_store_scope(bytes: &[u8]) -> Result<(), &'static str> {
+    let obj_conn = connect_objstore().ok_or("object-store connection unavailable")?;
+    let result = move_bytes_result(obj_conn.raw(), OBJ_OP_APPLY_SCOPE, bytes.len() as u64, bytes)
+        .ok_or("object-store scope call failed")?;
+    if result != OBJ_ERR_OK {
+        return Err("object-store scope rejected");
+    }
+    Ok(())
 }
 
 fn write_store_kernel_object(object_id: u64, bytes: &[u8]) -> Result<(), &'static str> {
