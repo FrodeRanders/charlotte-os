@@ -1,4 +1,6 @@
 //! Real EL0 scoped applications, configured roots and adversarial grant IPC.
+use alloc::vec::Vec;
+
 use charlotte_launch::security_probe_status as status;
 
 use crate::{
@@ -146,6 +148,170 @@ pub fn test_el0_security() {
     crate::self_test::results::spawn_verifier(crate::self_test::results::TestId::Security, verify);
 }
 
+fn verify_legacy_lookup_denial() {
+    // Serialized kernel fixture adapter: an ordinary live namespace issues
+    // each legacy wire opcode against the already policy-published application.
+    let caller = crate::service::loader::create_user_address_space();
+    let ns = supervisor::node_name_service();
+    let connection = crate::ipc::connection_delegate(
+        ns.domain.asid,
+        ns.endpoint_cap,
+        caller,
+        crate::ipc::ConnectionRights::CALL,
+    )
+    .expect("legacy lookup fixture connection");
+    for opcode in [2, 6, 7, 4, 16] {
+        let call = if matches!(opcode, 4 | 16) {
+            let memory = crate::memory::object::allocate_with_bytes(caller, b"secavail")
+                .expect("legacy named lookup fixture memory");
+            crate::ipc::scalar_call_with_memory_move(caller, connection, opcode, 8, memory)
+        } else {
+            crate::ipc::scalar_call(caller, connection, opcode, u64::from_le_bytes(*b"secavail"))
+        }
+        .expect("legacy lookup fixture call");
+        assert!(
+            crate::ipc::wait_reply_timeout(caller, call, 5_000)
+                .expect("legacy lookup fixture wait")
+        );
+        let result = crate::ipc::poll_reply(caller, call).unwrap().unwrap();
+        assert_eq!(result.result, -4, "legacy opcode {opcode} bypassed policy publication");
+        assert!(result.cap.is_none() && result.memory.is_none());
+        crate::ipc::close_cap(caller, call).expect("legacy lookup fixture completion");
+    }
+    crate::self_test::close_test_address_space(caller).expect("legacy lookup fixture cleanup");
+    logln!(
+        "[security] all five legacy lookup opcodes denied policy-published secavail without \
+         authority"
+    );
+}
+
+fn verify_caller_buffers(
+    ns: &supervisor::NameServiceHandle,
+    root: crate::memory::AddressSpaceHandle,
+) -> u64 {
+    use crate::ipc;
+    const NS_OP_LOOKUP: u32 = 2;
+    const TCPIP_NAME: u64 = u64::from_le_bytes(*b"tcpip\0\0\0");
+    const SOCKET_OP_STATUS: u32 = 10;
+    const STATUS_WORDS: usize = 5;
+    // Kernel fixture adapter, ordinary exact namespace with a deliberately
+    // small memory-object ceiling. Returned pages remain owned here.
+    let caller = root.id();
+    let baseline = crate::memory::budget::used(root);
+    crate::memory::budget::set_limit(
+        root,
+        crate::memory::budget::Amount {
+            pages: baseline.pages + 32,
+            objects: baseline.objects + 32,
+        },
+    )
+    .unwrap();
+    let connection = ipc::connection_delegate(
+        ns.domain.asid,
+        ns.endpoint_cap,
+        caller,
+        ipc::ConnectionRights::CALL,
+    )
+    .unwrap();
+    let lookup = ipc::scalar_call(caller, connection, NS_OP_LOOKUP, TCPIP_NAME).unwrap();
+    let wait = |call| {
+        assert!(ipc::wait_reply_timeout(caller, call, 5_000).unwrap());
+        let result = ipc::poll_reply(caller, call).unwrap().unwrap();
+        ipc::close_cap(caller, call).unwrap();
+        result
+    };
+    let tcpip = wait(lookup).cap.unwrap();
+    let socket_result = wait(ipc::scalar_call(caller, tcpip, 1, 2).unwrap()).result;
+    assert!(socket_result > 0, "authenticated ordinary fixture socket rejected: {socket_result}");
+    let socket = socket_result as u64;
+    for opcode in [7, SOCKET_OP_STATUS] {
+        let result = wait(ipc::scalar_call(caller, tcpip, opcode, socket).unwrap());
+        assert_eq!(result.result, -7, "unbuffered reply must reject");
+        assert!(result.memory.is_none());
+        let memory = crate::memory::object::allocate(caller, 2).unwrap();
+        let result =
+            wait(ipc::scalar_call_with_memory_move(caller, tcpip, opcode, socket, memory).unwrap());
+        assert_eq!(result.result, -7, "oversized reply buffer must reject");
+        assert!(result.memory.is_none());
+        assert_eq!(crate::memory::budget::used(root).pages, baseline.pages);
+    }
+    let buffer = crate::memory::object::allocate(caller, 1).unwrap();
+    let receive = ipc::scalar_call_with_memory_move(caller, tcpip, 7, socket, buffer).unwrap();
+    assert_eq!(wait(ipc::scalar_call(caller, tcpip, 11, socket).unwrap()).result, 0);
+    let cancelled = wait(receive);
+    assert_eq!(cancelled.result, -5);
+    assert!(cancelled.memory.is_none());
+    assert_eq!(crate::memory::budget::used(root).pages, baseline.pages);
+    let readonly = crate::memory::object::allocate(caller, 1).unwrap();
+    let rejected = wait(
+        ipc::scalar_call_with_memory_borrow_read(caller, tcpip, SOCKET_OP_STATUS, 0, readonly)
+            .unwrap(),
+    );
+    assert_eq!(rejected.result, -5, "read-only buffer mapping must reject");
+    assert!(rejected.memory.is_none());
+    crate::memory::object::write_bytes(caller, readonly, &[1]).unwrap();
+    crate::memory::object::close_cap(caller, readonly).unwrap();
+    assert_eq!(crate::memory::budget::used(root).pages, baseline.pages);
+    assert_eq!(wait(ipc::scalar_call(caller, tcpip, 8, socket).unwrap()).result, 0);
+    let mut retained = Vec::new();
+    for count in 1..=32 {
+        let buffer = crate::memory::object::allocate(caller, 1).unwrap();
+        let result = wait(
+            ipc::scalar_call_with_memory_move(caller, tcpip, SOCKET_OP_STATUS, 0, buffer).unwrap(),
+        );
+        assert!(result.result >= (STATUS_WORDS * 4) as i64);
+        retained.push(result.memory.expect("caller buffer must return"));
+        assert_eq!(crate::memory::budget::used(root).pages, baseline.pages + count);
+    }
+    assert!(crate::memory::object::allocate(caller, 1).is_err());
+    assert_eq!(crate::memory::budget::used(root).pages, baseline.pages + 32);
+    // A saturated ordinary owner cannot prevent a different sponsor's
+    // status operation from making progress while all 32 pages stay live.
+    let kernel_ns = ipc::connection_delegate(
+        ns.domain.asid,
+        ns.endpoint_cap,
+        crate::memory::KERNEL_ASID,
+        ipc::ConnectionRights::CALL,
+    )
+    .unwrap();
+    let lookup =
+        ipc::scalar_call(crate::memory::KERNEL_ASID, kernel_ns, NS_OP_LOOKUP, TCPIP_NAME).unwrap();
+    assert!(ipc::wait_reply_timeout(crate::memory::KERNEL_ASID, lookup, 5_000).unwrap());
+    let kernel_tcpip =
+        ipc::poll_reply(crate::memory::KERNEL_ASID, lookup).unwrap().unwrap().cap.unwrap();
+    ipc::close_cap(crate::memory::KERNEL_ASID, lookup).unwrap();
+    let memory = crate::memory::object::allocate(crate::memory::KERNEL_ASID, 1).unwrap();
+    let status = ipc::scalar_call_with_memory_move(
+        crate::memory::KERNEL_ASID,
+        kernel_tcpip,
+        SOCKET_OP_STATUS,
+        0,
+        memory,
+    )
+    .unwrap();
+    assert!(ipc::wait_reply_timeout(crate::memory::KERNEL_ASID, status, 5_000).unwrap());
+    let result = ipc::poll_reply(crate::memory::KERNEL_ASID, status).unwrap().unwrap();
+    assert!(result.result >= (STATUS_WORDS * 4) as i64);
+    crate::memory::object::close_cap(crate::memory::KERNEL_ASID, result.memory.unwrap()).unwrap();
+    ipc::close_cap(crate::memory::KERNEL_ASID, status).unwrap();
+    ipc::close_cap(crate::memory::KERNEL_ASID, kernel_tcpip).unwrap();
+    ipc::close_cap(crate::memory::KERNEL_ASID, kernel_ns).unwrap();
+    let external =
+        crate::memory::object::move_to(caller, retained.pop().unwrap(), crate::memory::KERNEL_ASID)
+            .unwrap();
+    for memory in retained {
+        crate::memory::object::close_cap(caller, memory).unwrap();
+    }
+    assert_eq!(crate::memory::budget::used(root).pages, baseline.pages + 1);
+    ipc::close_cap(caller, tcpip).unwrap();
+    ipc::close_cap(caller, connection).unwrap();
+    logln!(
+        "[tcpip] caller reply backing: missing/oversized/read-only rejected, receive cancellation \
+         refunded, 32 retained pages charged to caller, independent status progressed"
+    );
+    external
+}
+
 extern "C" fn verify() {
     assert!(
         crate::service::launch::steady_state().appliance.is_some(),
@@ -229,6 +395,9 @@ extern "C" fn verify() {
             "adversarial application grant checks",
         );
         assert_eq!(word(probe.get(), status::CHECKS), status::EXPECTED_CHECKS);
+        verify_legacy_lookup_denial();
+        let retained_buffer =
+            verify_caller_buffers(&supervisor::node_name_service(), probe.get().address_space);
         let base: *const u8 = probe.get().status_frame.into();
         let generation = unsafe {
             core::ptr::read_volatile(base.add(status::PUBLICATION_GENERATION).cast::<u64>())
@@ -243,6 +412,22 @@ extern "C" fn verify() {
             &digest
         ));
         probe.stop();
+        assert_eq!(
+            crate::memory::budget::used(retired).pages,
+            1,
+            "closing original sponsor cannot refund retained backing"
+        );
+        let successor = crate::service::loader::create_user_address_space();
+        let successor_root = crate::memory::current_address_space_handle(successor).unwrap();
+        assert_eq!(crate::memory::budget::used(successor_root).pages, 0);
+        crate::memory::object::close_cap(crate::memory::KERNEL_ASID, retained_buffer).unwrap();
+        assert_eq!(crate::memory::budget::used(retired).pages, 0);
+        assert_eq!(crate::memory::budget::used(successor_root).pages, 0);
+        crate::self_test::close_test_address_space(successor).unwrap();
+        logln!(
+            "[tcpip] original sponsor close retained reply charge; physical release refunded \
+             original account and left successor unaffected"
+        );
         previous_domain = Some(retired);
         assert!(!crate::memory::launch_descriptor_matches(
             retired.id(),

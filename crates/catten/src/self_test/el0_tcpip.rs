@@ -1,8 +1,7 @@
 //! Self-test: TCP/IP over the smoltcp userspace adapter.
 //!
-//! Spawns the `tcpip` service (which becomes a frouter consumer for IPv4/ARP
-//! frames and serves the socket API) and a `tcpclient` smoke program on each
-//! guest. The client is self-configuring from its NIC MAC: the node with an
+//! Observes the steady-state `tcpip` service and spawns a `tcpclient` smoke
+//! program on each guest. The client is self-configuring from its NIC MAC: the node with an
 //! even last MAC octet listens and echoes, the other connects and sends; the
 //! exchange proves ARP resolution, the TCP handshake, and data flow across
 //! the two-node stream LAN.
@@ -55,12 +54,14 @@ mod inner {
 
         let ns = unsafe { TCPIP_NS.as_ref() }.expect("[tcpip] test state missing");
 
-        let tcpip = spawn_binary(
-            crate::service::store::service_elf(b"tcpip").expect("[el0_tcpip] tcpip.elf"),
-            ns,
-            &[],
-        );
-        logln!("[tcpip] service spawned (asid={})", tcpip.asid);
+        // The steady-state launcher owns the one registered TCP/IP inspector.
+        // A second instance would collide in naming/router registration and
+        // replace the first instance's trusted inspection identity.
+        let tcpip = crate::service::launch::steady_state()
+            .appliance
+            .expect("[tcpip] steady-state network appliance")
+            .tcpip;
+        logln!("[tcpip] observing steady-state service (asid={})", tcpip.asid);
         let tcpip_cfg: *const u8 = {
             let base: *mut u8 = tcpip.status_frame.into();
             base

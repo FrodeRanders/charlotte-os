@@ -54,7 +54,6 @@ use catten_rt::{
         Connection,
         ConnectionRef,
         Endpoint,
-        OwnedMemory,
         PendingCall,
         ReplyToken,
     },
@@ -72,9 +71,7 @@ use catten_syscall::{
     cq_wait_timeout,
     ipc_recv_authenticated,
     ipc_reply,
-    ipc_reply_move,
     ipc_status,
-    memory_alloc,
     memory_close,
     memory_map_any,
     memory_unmap,
@@ -574,7 +571,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             let socket_count = state.sockets.len();
             for entry in state.sockets.values_mut() {
                 if let Some(token) = entry.recv_pending.take() {
-                    let _ = token.reply(0);
+                    token.reply(0);
                 }
                 match entry.kind {
                     SocketKind::Tcp => sockets.get_mut::<TcpSocket>(entry.handle).abort(),
@@ -766,40 +763,83 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             if !can_recv {
                 continue;
             }
-            let Ok(memory) = OwnedMemory::allocate(1) else {
-                continue;
-            };
-            let Ok(mut mapping) = memory.map_writable() else {
-                continue;
-            };
-            let buf = mapping.as_mut_slice();
-            let received = match entry.kind {
-                SocketKind::Tcp => sockets
-                    .get_mut::<TcpSocket>(entry.handle)
-                    .recv_slice(buf)
-                    .ok()
-                    .map(|len| (len, true)),
-                SocketKind::Udp => sockets
-                    .get_mut::<UdpSocket>(entry.handle)
-                    .recv_slice(buf)
-                    .ok()
-                    .map(|(len, metadata)| (len, entry.udp_remote == Some(metadata.endpoint))),
-            };
-            if let Some((len, true)) = received {
-                let Ok(memory) = mapping.unmap() else {
-                    continue;
-                };
-                let reply = entry.recv_pending.take().expect("checked pending receive");
-                if len > 0 {
-                    let _ = reply.reply_move(memory, len as i64);
-                } else {
-                    let _ = reply.reply(0);
-                }
+            let receive = entry.recv_pending.as_mut().unwrap();
+            let received = receive.fill(|buf| match entry.kind {
+                SocketKind::Tcp => sockets.get_mut::<TcpSocket>(entry.handle).recv_slice(buf).ok(),
+                SocketKind::Udp => sockets.get_mut::<UdpSocket>(entry.handle).recv().ok().and_then(
+                    |(data, metadata)| {
+                        if entry.udp_remote != Some(metadata.endpoint) || data.len() > buf.len() {
+                            return None;
+                        }
+                        buf[..data.len()].copy_from_slice(data);
+                        Some(data.len())
+                    },
+                ),
+            });
+            match received {
+                Ok(Some(len)) => entry.recv_pending.take().unwrap().reply(len as i64),
+                Ok(None) => {}
+                Err(_) => entry.recv_pending.take().unwrap().reply(socket::ERR_WOULD_BLOCK),
             }
         }
 
         for _ in 0..MAX_IPC_REQUESTS_PER_CYCLE {
             let msg = ipc_recv_authenticated(endpoint.as_raw());
+            if msg.is_ok()
+                && msg.reply != 0
+                && matches!(msg.opcode, socket::OP_RECV | socket::OP_STATUS)
+            {
+                // Raw authenticated-receive ABI boundary: transfer every
+                // attachment and reply exactly once into the operation owner.
+                let Ok(Some(request)) =
+                    (unsafe { catten_rt::owned::IncomingMessage::from_raw(msg) })
+                else {
+                    continue;
+                };
+                let owner = SocketOwner::from_message(&msg);
+                let mut receive = catten_services::socket_state::PendingReceive::new(request);
+                if !receive.valid_buffer() {
+                    receive.reply(socket::ERR_BAD_OPCODE);
+                    continue;
+                }
+                if msg.opcode == socket::OP_RECV {
+                    let Some(entry) = state.owned_entry_mut(msg.arg0, owner) else {
+                        receive.reply(socket::ERR_BAD_SOCKET);
+                        continue;
+                    };
+                    if entry.recv_pending.is_some() {
+                        receive.reply(socket::ERR_WOULD_BLOCK);
+                    } else {
+                        entry.recv_pending = Some(receive);
+                    }
+                } else {
+                    let octets = local_ip.octets();
+                    let words = [
+                        u32::from_be_bytes(octets),
+                        rx_total,
+                        tx_ok,
+                        state.sockets.len() as u32,
+                        socket::STATUS_MAGIC,
+                        tx_err,
+                        dhcp_mode,
+                        gateway_ip,
+                        mtu as u32,
+                        socket_slots as u32,
+                        sockets_per_principal as u32,
+                        buffer_bytes_per_principal as u32,
+                        requested_socket_slots as u32,
+                    ];
+                    let result = receive.fill(|bytes| {
+                        for (word, destination) in words.iter().zip(bytes.as_chunks_mut::<4>().0) {
+                            destination.copy_from_slice(&word.to_le_bytes());
+                        }
+                        Some(words.len() * 4)
+                    });
+                    receive
+                        .reply(result.ok().flatten().map_or(socket::ERR_WOULD_BLOCK, |n| n as i64));
+                }
+                continue;
+            }
             let _attachments = catten_services::RequestAttachments::new(msg.memory, msg.connection);
             if msg.status == ipc_status::NO_MESSAGE {
                 break;
@@ -1211,25 +1251,6 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     ipc_reply(msg.reply, result);
                 }
 
-                socket::OP_RECV => {
-                    if msg.memory != 0 {
-                        memory_close(msg.memory);
-                    }
-                    let entry = match state.owned_entry_mut(msg.arg0, owner) {
-                        Some(e) => e,
-                        None => {
-                            ipc_reply(msg.reply, socket::ERR_BAD_SOCKET);
-                            continue;
-                        }
-                    };
-                    if entry.recv_pending.is_some() {
-                        ipc_reply(msg.reply, socket::ERR_WOULD_BLOCK);
-                    } else {
-                        // ABI boundary: deferred reply moves into the socket operation owner.
-                        entry.recv_pending = unsafe { ReplyToken::from_raw(msg.reply) }.ok();
-                    }
-                }
-
                 socket::OP_CANCEL_RECV => {
                     if msg.memory != 0 {
                         memory_close(msg.memory);
@@ -1242,7 +1263,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         }
                     };
                     if let Some(token) = entry.recv_pending.take() {
-                        let _ = token.reply(socket::ERR_WOULD_BLOCK);
+                        token.reply(socket::ERR_WOULD_BLOCK);
                     }
                     ipc_reply(msg.reply, 0);
                 }
@@ -1259,7 +1280,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         continue;
                     };
                     if let Some(token) = entry.recv_pending.take() {
-                        let _ = token.reply(0);
+                        token.reply(0);
                     }
                     entry.closing = true;
                     entry.close_started_ms = Some(ticks);
@@ -1325,50 +1346,6 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             socket::ERR_WOULD_BLOCK
                         },
                     );
-                }
-
-                socket::OP_STATUS => {
-                    if msg.memory != 0 {
-                        memory_close(msg.memory);
-                    }
-                    // Move a page with the packed TcpipStatus snapshot so the
-                    // httpd keyhole can render live service counters.
-                    let cap = memory_alloc(1);
-                    if cap == 0 {
-                        ipc_reply(msg.reply, socket::ERR_WOULD_BLOCK);
-                        continue;
-                    }
-                    let (scratch_vaddr_map_status, scratch_vaddr_vaddr) = memory_map_any(cap, true);
-                    if scratch_vaddr_map_status != 0 {
-                        memory_close(cap);
-                        ipc_reply(msg.reply, socket::ERR_WOULD_BLOCK);
-                        continue;
-                    }
-                    let octets = local_ip.octets();
-                    let words = [
-                        u32::from_be_bytes([octets[0], octets[1], octets[2], octets[3]]),
-                        rx_total,
-                        tx_ok,
-                        state.sockets.len() as u32,
-                        socket::STATUS_MAGIC,
-                        tx_err,
-                        dhcp_mode,
-                        gateway_ip,
-                        mtu as u32,
-                        socket_slots as u32,
-                        sockets_per_principal as u32,
-                        buffer_bytes_per_principal as u32,
-                        requested_socket_slots as u32,
-                    ];
-                    unsafe {
-                        core::ptr::copy_nonoverlapping(
-                            words.as_ptr(),
-                            scratch_vaddr_vaddr as *mut u32,
-                            words.len(),
-                        );
-                    }
-                    memory_unmap(cap);
-                    ipc_reply_move(msg.reply, cap, (words.len() * 4) as i64);
                 }
 
                 socket::OP_CONNECTION_STATE => {

@@ -1034,6 +1034,18 @@ pub struct IncomingMessage {
 }
 
 impl IncomingMessage {
+    /// Adopt one successful raw receive at a runtime/protocol adapter boundary.
+    ///
+    /// # Safety
+    /// Every capability in `message` must have transferred exactly once from
+    /// the receive ABI. No raw call or other owner may use or release them
+    /// after this adoption, including on a validation error.
+    pub unsafe fn from_raw(
+        message: catten_syscall::IpcMessage,
+    ) -> Result<Option<Self>, ReceiveError> {
+        Self::from_kernel(message)
+    }
+
     fn from_kernel(message: catten_syscall::IpcMessage) -> Result<Option<Self>, ReceiveError> {
         if message.status == catten_syscall::ipc_status::NO_MESSAGE
             || message.status == catten_syscall::ipc_status::PENDING

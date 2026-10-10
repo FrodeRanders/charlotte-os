@@ -1,7 +1,12 @@
 //! Socket records own deferred reply authority and remote-resource metadata.
 use alloc::collections::BTreeMap;
 
-use catten_rt::owned::ReplyToken;
+use catten_rt::owned::{
+    IncomingMessage,
+    MappedMemory,
+    MemoryError,
+    Writable,
+};
 use smoltcp::{
     iface::SocketSet,
     socket::{
@@ -33,7 +38,7 @@ pub struct SocketEntry {
     /// UDP has no connected state in smoltcp. The service remembers the peer
     /// selected by `OP_CONNECT` and filters received datagrams to it.
     pub udp_remote: Option<IpEndpoint>,
-    pub recv_pending: Option<ReplyToken>,
+    pub recv_pending: Option<PendingReceive>,
     /// Set by `OP_CLOSE`: the socket was gracefully closed and may be swept
     /// from the set once it reaches a final state.
     pub closing: bool,
@@ -41,6 +46,74 @@ pub struct SocketEntry {
     /// bound how long a peer that never completes the FIN handshake can hold
     /// the owner's socket quota.
     pub close_started_ms: Option<u64>,
+}
+
+/// Own the complete receive transaction, including caller-sponsored backing,
+/// transient mapping and reply/loan authority. No service page is allocated.
+pub struct PendingReceive {
+    request: IncomingMessage,
+    mapping: Option<MappedMemory<Writable>>,
+}
+
+impl PendingReceive {
+    pub fn new(request: IncomingMessage) -> Self {
+        Self {
+            request,
+            mapping: None,
+        }
+    }
+
+    pub fn valid_buffer(&self) -> bool {
+        self.request
+            .memory
+            .as_ref()
+            .is_some_and(|memory| memory.len() == crate::socket::REPLY_BUFFER_BYTES)
+    }
+
+    pub fn fill(
+        &mut self,
+        read: impl FnOnce(&mut [u8]) -> Option<usize>,
+    ) -> Result<Option<usize>, MemoryError> {
+        let memory = self.request.memory.take().expect("validated receive buffer");
+        match memory.map_writable() {
+            Ok(mapping) => self.mapping = Some(mapping),
+            Err((memory, error)) => {
+                self.request.memory = Some(memory);
+                return Err(error);
+            }
+        }
+        let result = read(self.mapping.as_mut().unwrap().as_mut_slice());
+        match self.mapping.take().unwrap().unmap() {
+            Ok(memory) => self.request.memory = Some(memory),
+            Err((mapping, error)) => {
+                self.mapping = Some(mapping);
+                return Err(error);
+            }
+        }
+        Ok(result)
+    }
+
+    pub fn reply(mut self, result: i64) {
+        // End local access before any reply can release the caller's loan.
+        drop(self.mapping.take());
+        let memory = self.request.memory.take();
+        if let Some(reply) = self.request.reply.take() {
+            if result > 0 {
+                let _ = reply.reply_move(memory.expect("filled receive buffer"), result);
+            } else {
+                drop(memory);
+                let _ = reply.reply(result);
+            }
+        }
+    }
+}
+
+impl Drop for PendingReceive {
+    fn drop(&mut self) {
+        // Mapping destruction precedes reply/borrow cancellation even when
+        // fill/unmap failed or a pending socket is reclaimed.
+        drop(self.mapping.take());
+    }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]

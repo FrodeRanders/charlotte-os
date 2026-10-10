@@ -9,11 +9,11 @@ not a current backlog.
 
 | State | Findings | Meaning |
 | --- | --- | --- |
-| Corrected in the documented scope | SEC-01, 02, 03, 05, 11, 12, 13, 16, 17, 19–31, 33–38 | The identified defect has a correction and recorded validation. This is not a claim of complete subsystem security. |
-| Partly corrected or mitigated | SEC-04, 06, 07, 14, 15, 18, 32 | Specific paths are strengthened; the broader finding still has required work. |
+| Corrected in the documented scope | SEC-01, 02, 03, 05, 11, 12, 13, 16, 17, 19–38 | The identified defect has a correction and recorded validation. This is not a claim of complete subsystem security. |
+| Partly corrected or mitigated | SEC-04, 06, 07, 14, 15, 18 | Specific paths are strengthened; the broader finding still has required work. |
 | Open | SEC-08, 09, 10 | The required security boundary is not implemented. |
 
-There are **38 numbered findings: 28 corrected, seven partial and three open**.
+There are **38 numbered findings: 29 corrected, six partial and three open**.
 The [2026-10-10 progress verification](../reports/audits/2026-10-10-security-progress-verification.md)
 temporarily returned SEC-12 to partial for metadata-read failure and automatic-ID
 aliasing. The [follow-up correction](../reports/audits/2026-10-10-security-object-store-follow-up.md)
@@ -43,12 +43,18 @@ confirmed eight new source-confirmed findings. SEC-31 and SEC-33–38 are
 corrected in the
 [first](../reports/audits/2026-10-10-security-audit-remediation.md) and
 [second](../reports/audits/2026-10-10-security-audit-remediation-2.md)
-remediation reports; SEC-32 is partly corrected (the abort is fixed, retained
-receive backing remains SEC-07 work) and is the only one tracked below.
+remediation reports. The [caller-buffer follow-up](../reports/audits/2026-10-10-security-tcpip-caller-buffers.md)
+also corrects SEC-32 in the receive/status scope: clients provide reply backing,
+and retaining it consumes the original caller budget rather than TCP/IP's.
+Aggregate principal/heap admission and broad pressure remain SEC-07 work.
+The follow-up preserves repeated combined security/HTTP host timeouts even
+though its kernel probes pass. Isolated HTTP and paired TCP pass; the combined
+progress failure remains SEC-06/R7-4/R7-5 qualification work with no established
+cause.
 
 | ID | State | Finding | Acceptance direction |
 | --- | --- | --- | --- |
-| SEC-32 | Partial | Transmit-allocation failure no longer aborts TCP/IP, but a client retaining moved receive objects can still starve its transmit budget | Account for moved receive backing across domains (SEC-07 R7-3) or bound per-owner retention; stress test sustained retention. |
+| SEC-32 | Corrected in documented scope | Receive and status requests move a caller-supplied page, which returns with the data; TCP/IP allocates no reply backing for these paths. | Caller-ceiling saturation, cancellation/mapping rejection, retained-charge lifecycle and bidirectional TCP retention are covered in the [follow-up](../reports/audits/2026-10-10-security-tcpip-caller-buffers.md). Broader heap/aggregate admission remains R7-3/R7-5. |
 
 ## SEC-07: bounded resource admission
 

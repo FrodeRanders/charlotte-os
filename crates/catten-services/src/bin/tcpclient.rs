@@ -139,7 +139,7 @@ fn wait_for_ingress_members(ns_conn: ConnectionRef<'_>, expected: u32) -> Option
 }
 
 fn receive_http(socket: &socket::OwnedSocket<'_>) -> bool {
-    let Ok(mut receive) = socket.call(socket::OP_RECV, socket.id()) else {
+    let Ok(mut receive) = socket.receive_call() else {
         return false;
     };
     for _ in 0..50 {
@@ -303,6 +303,7 @@ fn main(ctx: Context) -> ! {
         .unwrap_or_else(|_| fail(0xe005));
     config::write::<u32>(status::STAGE, 6);
 
+    let mut retained = Vec::new();
     if is_server {
         // ---- Server: listen, accept, receive, echo. ----
         let port_memory = OwnedMemory::allocate(1).unwrap_or_else(|_| fail(0xe007));
@@ -342,26 +343,29 @@ fn main(ctx: Context) -> ! {
         }
         config::write::<u32>(status::STAGE, 8);
 
-        let recv = socket
-            .call(socket::OP_RECV, socket.id())
-            .unwrap_or_else(|_| fail(0xe00d))
-            .wait()
-            .unwrap_or_else(|_| fail(0xe00e));
-        if recv.result as usize != PAYLOAD.len() {
-            fail(0xe00e);
-        }
-        let memory = recv.memory.unwrap_or_else(|| fail(0xe00e));
-        let mapping = memory.map_read_only().unwrap_or_else(|_| fail(0xe00f));
-        let matches = &mapping.as_slice()[..PAYLOAD.len()] == PAYLOAD;
-        if !matches {
-            fail(0xe010);
-        }
-        config::write::<u32>(status::STAGE, 9);
+        for _ in 0..32 {
+            let recv = socket
+                .receive_call()
+                .unwrap_or_else(|_| fail(0xe00d))
+                .wait()
+                .unwrap_or_else(|_| fail(0xe00e));
+            if recv.result as usize != PAYLOAD.len() {
+                fail(0xe00e);
+            }
+            let memory = recv.memory.unwrap_or_else(|| fail(0xe00e));
+            let mapping = memory.map_read_only().unwrap_or_else(|_| fail(0xe00f));
+            let matches = &mapping.as_slice()[..PAYLOAD.len()] == PAYLOAD;
+            if !matches {
+                fail(0xe010);
+            }
+            retained.push(mapping.unmap().unwrap_or_else(|_| fail(0xe025)));
+            config::write::<u32>(status::STAGE, 9);
 
-        if !send_payload(tcp_conn.as_ref(), &socket, PAYLOAD) {
-            fail(0xe013);
+            if !send_payload(tcp_conn.as_ref(), &socket, PAYLOAD) {
+                fail(0xe013);
+            }
+            config::write::<u32>(status::STAGE, 10);
         }
-        config::write::<u32>(status::STAGE, 10);
     } else {
         // ---- Client: connect, send, receive echo. ----
         let address_memory = OwnedMemory::allocate(1).unwrap_or_else(|_| fail(0xe014));
@@ -381,29 +385,38 @@ fn main(ctx: Context) -> ! {
         }
         config::write::<u32>(status::STAGE, 7);
 
-        if !send_payload(tcp_conn.as_ref(), &socket, PAYLOAD) {
-            fail(0xe018);
-        }
-        config::write::<u32>(status::STAGE, 8);
+        for _ in 0..32 {
+            if !send_payload(tcp_conn.as_ref(), &socket, PAYLOAD) {
+                fail(0xe018);
+            }
+            config::write::<u32>(status::STAGE, 8);
 
-        let recv = socket
-            .call(socket::OP_RECV, socket.id())
-            .unwrap_or_else(|_| fail(0xe01a))
-            .wait()
-            .unwrap_or_else(|_| fail(0xe01b));
-        if recv.result as usize != PAYLOAD.len() {
-            fail(0xe01b);
+            let recv = socket
+                .receive_call()
+                .unwrap_or_else(|_| fail(0xe01a))
+                .wait()
+                .unwrap_or_else(|_| fail(0xe01b));
+            if recv.result as usize != PAYLOAD.len() {
+                fail(0xe01b);
+            }
+            let memory = recv.memory.unwrap_or_else(|| fail(0xe01b));
+            let mapping = memory.map_read_only().unwrap_or_else(|_| fail(0xe01c));
+            let matches = &mapping.as_slice()[..PAYLOAD.len()] == PAYLOAD;
+            if !matches {
+                fail(0xe01d);
+            }
+            retained.push(mapping.unmap().unwrap_or_else(|_| fail(0xe025)));
+            config::write::<u32>(status::STAGE, 9);
         }
-        let memory = recv.memory.unwrap_or_else(|| fail(0xe01b));
-        let mapping = memory.map_read_only().unwrap_or_else(|_| fail(0xe01c));
-        let matches = &mapping.as_slice()[..PAYLOAD.len()] == PAYLOAD;
-        if !matches {
-            fail(0xe01d);
-        }
-        config::write::<u32>(status::STAGE, 9);
     }
 
+    assert_eq!(retained.len(), 32);
+    catten_rt::logln!(
+        "[tcpclient] 32 caller-sponsored TCP receive buffers retained while bidirectional traffic \
+         progressed"
+    );
     let _ = socket.close();
+    drop(retained);
 
     config::write::<u32>(status::LOCAL_IP, u32::from_be_bytes([10, 0, 0, local_octet]));
     config::write::<u32>(status::STAGE, SENTINEL);

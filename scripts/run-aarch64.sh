@@ -780,14 +780,18 @@ else
         else
             unset CATTEN_CLUSTER_SERVICE_NAME
         fi
-        if [ "$NET_BACKEND" != "user" ]; then
-            export CATTEN_CLUSTER_STATIC_NETWORK=1
-        fi
     else
         unset CATTEN_CLUSTER_SERVICES
         unset CATTEN_CLUSTER_VIP
         unset CATTEN_CLUSTER_TCP_PORT
         unset CATTEN_CLUSTER_SERVICE_NAME
+    fi
+    # Raw Ethernet peers have no DHCP server. This applies to the steady-state
+    # appliance even when the fixture does not configure a cluster VIP.
+    if [ "$NET_BACKEND" != "user" ]; then
+        export CATTEN_CLUSTER_STATIC_NETWORK=1
+    else
+        unset CATTEN_CLUSTER_STATIC_NETWORK
     fi
     cargo build --locked --package catten --target "$TARGET_SPEC" \
         --no-default-features --features "$FEATURES" $RELEASE_FLAG

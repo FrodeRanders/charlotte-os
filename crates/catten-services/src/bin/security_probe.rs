@@ -33,7 +33,7 @@ use charlotte_launch::{
     security_probe_status as status,
 };
 
-const AVAILABLE: &[u8] = b"security.available";
+const AVAILABLE: &[u8] = b"secavail";
 const MISSING: &[u8] = b"security.missing";
 const SILENT: &[u8] = b"security.silent";
 const PING: u32 = 0x5ec;

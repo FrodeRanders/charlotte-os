@@ -309,6 +309,19 @@ fn process_frame(
     if destination != local_mac || source == local_mac {
         return;
     }
+    // Reject invalid fragments before peer admission or session replacement:
+    // a new SYN must not discard an existing assembly on an unadmitted total.
+    if flags & FLAG_ACK == 0
+        && flags & FLAG_FRAG != 0
+        && !fragment_within_ceiling(
+            total_message_len as usize,
+            frag_offset as usize,
+            payload_len as usize,
+            relmsg::MAX_MSG,
+        )
+    {
+        return;
+    }
     let Some(index) = peer_index(peers, source, local_session) else {
         return;
     };
@@ -791,7 +804,64 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 }
 
 fn main(ctx: Context) -> ! {
+    if matches!(
+        ctx.manifest_value(charlotte_launch::relmsg_status::AUDIT_PROBE_KEY),
+        Some(catten_rt::ManifestValue::Unsigned(1))
+    ) {
+        verify_fragment_rejection();
+    }
     serve(&ctx).complete()
+}
+
+fn verify_fragment_rejection() {
+    // Trusted opt-in fixture; run the actual frame handler with a private,
+    // bounded peer/queue. Rejected frames must never reach the driver ABI.
+    let local = [2, 0, 0, 0, 0, 1];
+    let remote = [2, 0, 0, 0, 0, 2];
+    let session = initial_wire_session(1).unwrap();
+    let successor = next_wire_session(session).unwrap();
+    let mut peers = Vec::new();
+    let mut received = VecDeque::new();
+    let mut peer = Peer::new(remote, session);
+    peer.remote_session = Some(session);
+    let mut assembly = Reassembly::new(1, 4);
+    assembly.fragments.insert(0, alloc::vec![1, 2]);
+    assembly.buffered_bytes = 2;
+    peer.reassembling = Some(assembly);
+    peers.push(peer);
+    for total in [relmsg::MAX_MSG as u32 + 1, u32::MAX] {
+        let frame = make_frame(
+            FrameHeader {
+                destination: local,
+                source: remote,
+                message: MessageHeader {
+                    session: successor,
+                    sequence: 1,
+                    acknowledgment: 0,
+                    fragment_offset: 0,
+                    total_message_len: total,
+                    payload_len: 1,
+                    flags: FLAG_SYN | FLAG_FRAG | FLAG_MORE,
+                },
+            },
+            &[3],
+        );
+        process_frame(0, local, session, &frame, &mut peers, &mut received);
+        assert_eq!(peers.len(), 1);
+        assert_eq!(peers[0].remote_session, Some(session));
+        let assembly = peers[0].reassembling.as_ref().unwrap();
+        assert_eq!(assembly.total, 4);
+        assert_eq!(assembly.buffered_bytes, 2);
+        assert_eq!(assembly.fragments.get(&0).unwrap().as_slice(), &[1, 2]);
+        assert!(received.is_empty());
+        let mut empty = Vec::new();
+        process_frame(0, local, session, &frame, &mut empty, &mut received);
+        assert!(empty.is_empty());
+    }
+    catten_rt::logln!(
+        "[relmsg] over-ceiling SYN fragments rejected before peer/session admission; existing \
+         assembly preserved"
+    );
 }
 
 catten_rt::entry!(main);

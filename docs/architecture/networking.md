@@ -692,6 +692,14 @@ Native software does not.
 > interoperability service", not the native model. The `httpd` keyhole
 > serves observable state over it. Both are ordinary boot services;
 > `--http-test` only adds host forwarding and response validation.
+> Receive and status calls move one writable 4096-byte caller-supplied memory
+> object into TCP/IP and return that same backing with the reply. Retention
+> stays charged to its original allocating generation; TCP/IP never allocates
+> reply pages for these operations. Missing or oversized buffers reject. The
+> pending receive owns the request, buffer and transient mapping together, and
+> ends mapping access before cancellation/reply. See the
+> [caller-buffer audit follow-up](../reports/audits/2026-10-10-security-tcpip-caller-buffers.md)
+> for limits and execution evidence.
 
 ---
 

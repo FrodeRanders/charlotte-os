@@ -224,6 +224,17 @@ The stack uses smoltcp 0.13. It runs in a userspace service registered as
 \texttt{OP\_RECV}, and \texttt{OP\_CLOSE}). Software that requires
 TCP/IP connects to this service.
 
+\texttt{OP\_RECV} and \texttt{OP\_STATUS} require one writable 4096-byte
+caller-supplied memory object moved into the call. The reply returns that same
+backing; retained pages remain charged to the original allocating generation,
+including after a move or that sponsor's root closes. These paths allocate no
+TCP/IP-sponsored reply pages and reject missing or oversized buffers. An owning
+pending receive retains the request, buffer and transient mapping together;
+local mapping access ends before reply or cancellation. This removes the
+identified receive-retention starvation path without claiming aggregate
+principal/heap admission or complete hostile-network fairness. See
+\repofile|docs/reports/audits/2026-10-10-security-tcpip-caller-buffers.md|.
+
 The service allocates its smoltcp socket table once at launch. Its launch
 manifest supplies bounded \texttt{sockslot}, \texttt{sockquot}, and
 \texttt{bufquot} policy values; the defaults are 64 total slots, 64 sockets per

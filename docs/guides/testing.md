@@ -858,6 +858,19 @@ checks do not inject physical NVMe failures or sudden power loss. See the
 [object-store follow-up](../reports/audits/2026-10-10-security-object-store-follow-up.md)
 for results and artifact hashes.
 
+The security guest also checks all five legacy name lookups against policy
+publication and rejected zero-size/oversized upgrades. Its trusted relmsg fixture runs
+over-ceiling SYN frames through the real handler before network admission.
+After its socket flood drains, the security verifier saturates a live ordinary
+application's ceiling of 32 pages above its baseline,
+checks missing/oversized/read-only reply buffers, receive cancellation and
+retained charges after sponsor close, and verifies another sponsor progresses.
+Two guests with `--tcpip-test --net-listen PORT` /
+`--tcpip-test --net-connect HOST:PORT` retain 32 receive pages each while
+exchanging data. All receive/status callers must move a writable page into
+the request; scalar-only calls reject. See the
+[caller-buffer report](../reports/audits/2026-10-10-security-tcpip-caller-buffers.md).
+
 ## User entry, x86 faults and TCP/IP pressure
 
 The normal EL0 verifier additionally runs `self_test::user_isolation::verify`.

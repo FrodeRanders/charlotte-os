@@ -137,6 +137,7 @@ pub(crate) fn verify_persistent_upgrade(name_service: &NameServiceHandle) {
         .expect("persistent manager lookup");
     let manager_reply = wait_reply_k2(client_asid, manager_lookup, "persistent manager reply");
     let manager = manager_reply.cap.expect("persistent manager connection");
+    verify_rejected_upgrade_sizes(name_service);
     let upgrade =
         ipc::scalar_call(client_asid, manager, 1, NAME_ECHO).expect("persistent manager upgrade");
     let ns_status: *const u8 = {
@@ -168,6 +169,47 @@ pub(crate) fn verify_persistent_upgrade(name_service: &NameServiceHandle) {
     crate::self_test::close_test_address_space(client_asid)
         .expect("[service] persistent-upgrade client cleanup failed");
     logln!("[service] persistent NVMe ELF reload verified.");
+}
+
+fn verify_rejected_upgrade_sizes(ns: &NameServiceHandle) {
+    // Direct syscall-dispatch fixture with the exact authorized manager.
+    // Neither its authority nor boot policy is replaced for this probe.
+    let manager =
+        supervisor::LIVE_UPGRADE_MANAGER_ASID.lock().expect("oversized upgrade fixture manager");
+    let target = ipc::connection_delegate(
+        ns.domain.asid,
+        ns.endpoint_cap,
+        manager.id(),
+        ConnectionRights::CALL,
+    )
+    .expect("oversized upgrade fixture target");
+    for length in [0, charlotte_launch::MAX_ARTIFACT_ELF_SIZE + 1] {
+        let memory = crate::memory::object::allocate(manager.id(), length.div_ceil(4096).max(1))
+            .expect("oversized upgrade fixture backing");
+        let mut frame = crate::syscall::TrapFrame {
+            regs: [0; 19],
+            elr_el1: 0,
+            spsr_el1: 0,
+            sp_el0: 0,
+            lp_id: crate::cpu::isa::lp::ops::get_lp_id(),
+            asid: manager.id(),
+        };
+        frame.regs[1] = memory;
+        frame.regs[2] = length as u64;
+        frame.regs[4] = target;
+        crate::syscall::syscall_dispatch(&mut frame, crate::syscall::call_no::SPAWN_UPGRADE);
+        assert_eq!(frame.regs[0], 0, "upgrade size {length} must reject");
+        assert!(
+            crate::memory::object::info(manager.id(), memory).is_err(),
+            "rejected input capability must be consumed"
+        );
+    }
+    assert!(crate::memory::address_space_handle_is_current(manager));
+    ipc::close_cap(manager.id(), target).expect("oversized upgrade fixture target close");
+    logln!(
+        "[service] zero-size and oversized upgrades rejected and input backing released; \
+         authorized manager remains live"
+    );
 }
 
 /// Block on a pending call created through the direct kernel API until the

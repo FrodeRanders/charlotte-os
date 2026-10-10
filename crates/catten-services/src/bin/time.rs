@@ -312,7 +312,7 @@ fn ticks_after(clock: MonoClock, seconds: u64) -> u64 {
 }
 
 fn tcpip_has_ipv4(tcp_conn: ConnectionRef<'_>) -> bool {
-    let Ok(call) = tcp_conn.call(socket::OP_STATUS, 0) else {
+    let Ok(call) = socket::buffered_call(tcp_conn, socket::OP_STATUS, 0) else {
         return false;
     };
     let Ok(result) = call.wait() else {
@@ -523,7 +523,7 @@ fn start_attempt<'connection>(
     }
     config::write::<u32>(status::NTP_SETUP_PHASE, 0);
     config::write::<u32>(status::NTP_SETUP_STATUS, 0);
-    let recv_call = tcp_conn.call(socket::OP_RECV, socket.id()).ok()?;
+    let recv_call = socket.receive_call().ok()?;
     Some(Attempt {
         recv_call,
         _socket: socket,

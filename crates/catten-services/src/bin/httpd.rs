@@ -1107,7 +1107,24 @@ fn build_json(
     };
 
     // node + tcpip (both mandatory at startup).
-    let status = read_words(services.tcp_conn.as_ref(), socket::OP_STATUS, 0, socket::STATUS_WORDS);
+    let status = socket::buffered_call(services.tcp_conn.as_ref(), socket::OP_STATUS, 0)
+        .ok()
+        .and_then(|call| call.wait().ok())
+        .and_then(|result| {
+            if result.result != (socket::STATUS_WORDS * 4) as i64 {
+                return None;
+            }
+            let mapping = result.memory?.map_read_only().ok()?;
+            Some(
+                mapping.as_slice()[..socket::STATUS_WORDS * 4]
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .copied()
+                    .map(u32::from_le_bytes)
+                    .collect::<alloc::vec::Vec<_>>(),
+            )
+        });
     let ip = status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_IP as usize]);
     let rx = status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_RX_FRAMES as usize]);
     let tx = status.as_ref().map_or(0, |w| w[socket::STATUS_OFFSET_TX_SENDS as usize]);

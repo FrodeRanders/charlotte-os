@@ -787,12 +787,27 @@ pub mod socket {
     pub const OP_LISTEN: u32 = 4;
     pub const OP_ACCEPT: u32 = 5;
     pub const OP_SEND: u32 = 6;
+    /// Move one writable `REPLY_BUFFER_BYTES` buffer into the call. Reply
+    /// returns that buffer with the byte count, or a scalar error/EOF. The
+    /// original allocating principal remains its backing sponsor.
     pub const OP_RECV: u32 = 7;
     pub const OP_CLOSE: u32 = 8;
     pub const OP_FRAME: u32 = 9;
-    /// Reply moves a page holding the packed `TcpipStatus` snapshot
-    /// (`crate::socket::STATUS_*` layout).
+    /// Move one writable `REPLY_BUFFER_BYTES` buffer into the call. Reply
+    /// returns it holding the packed `STATUS_*` snapshot.
     pub const OP_STATUS: u32 = 10;
+    pub const REPLY_BUFFER_BYTES: usize = 4096;
+
+    /// Receive/status never allocate service-sponsored reply backing. The
+    /// caller moves its own buffer; submission rejection returns its owner.
+    pub fn buffered_call(
+        service: ConnectionRef<'_>,
+        opcode: u32,
+        arg0: u64,
+    ) -> Result<PendingCall<'static>, SocketError> {
+        let memory = OwnedMemory::allocate(1).map_err(SocketError::Memory)?;
+        service.call_move(opcode, arg0, memory).map_err(|(_, error)| SocketError::Ipc(error))
+    }
     /// Cancel this socket's deferred `OP_RECV`, if any. The receive call is
     /// completed with `ERR_WOULD_BLOCK` before this request is acknowledged,
     /// allowing a bounded client wait to release the server-side reply slot
@@ -1045,9 +1060,14 @@ pub mod socket {
             Err(SocketError::RetryExhausted)
         }
 
-        /// Wait for and own one receive page from tcpip.
+        /// Submit a receive using this caller's backing, without waiting.
+        pub fn receive_call(&self) -> Result<PendingCall<'static>, SocketError> {
+            buffered_call(self.service, OP_RECV, self.id())
+        }
+
+        /// Wait for and own the receive page supplied by this caller.
         pub fn receive(&self) -> Result<Option<ReceivedChunk>, SocketError> {
-            let result = self.service.call(OP_RECV, self.id())?.wait().map_err(SocketError::Ipc)?;
+            let result = self.receive_call()?.wait().map_err(SocketError::Ipc)?;
             Self::decode_receive(result)
         }
 
@@ -1059,7 +1079,7 @@ pub mod socket {
             attempts: usize,
             retry_ms: u64,
         ) -> Result<Option<ReceivedChunk>, SocketError> {
-            let mut pending = self.service.call(OP_RECV, self.id())?;
+            let mut pending = self.receive_call()?;
             for _ in 0..attempts {
                 if let Some(result) = pending.poll().map_err(SocketError::Ipc)? {
                     return Self::decode_receive(result);

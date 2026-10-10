@@ -71,8 +71,20 @@ mod inner {
 
     /// Query `socket::OP_STATUS` and decode the packed u32 word snapshot.
     fn status_snapshot(tcpip_conn: u64) -> Option<Vec<u32>> {
-        let call =
-            ipc::scalar_call(crate::memory::KERNEL_ASID, tcpip_conn, SOCKET_OP_STATUS, 0).ok()?;
+        let buffer = crate::memory::object::allocate(crate::memory::KERNEL_ASID, 1).ok()?;
+        let call = match ipc::scalar_call_with_memory_move(
+            crate::memory::KERNEL_ASID,
+            tcpip_conn,
+            SOCKET_OP_STATUS,
+            0,
+            buffer,
+        ) {
+            Ok(call) => call,
+            Err(_) => {
+                let _ = crate::memory::object::close_cap(crate::memory::KERNEL_ASID, buffer);
+                return None;
+            }
+        };
         if ipc::wait_reply(crate::memory::KERNEL_ASID, call).is_err() {
             let _ = ipc::close_cap(crate::memory::KERNEL_ASID, call);
             return None;

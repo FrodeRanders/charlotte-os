@@ -263,6 +263,9 @@ pub mod disco_status {
 
 /// Reliable-message diagnostic status-page byte offsets.
 pub mod relmsg_status {
+    /// Trusted fixture switch; defining the packed key as a constant checks
+    /// the eight-byte manifest limit during compilation.
+    pub const AUDIT_PROBE_KEY: u64 = super::manifest_key(b"audit");
     pub const STAGE: usize = 0;
     pub const LAST_OPCODE: usize = 4;
     pub const HANDLED: usize = 8;

@@ -527,7 +527,11 @@ fn launch_node_cluster_with_services(
         crate::service::store::service_elf(b"relmsg").expect("[launch] relmsg.elf"),
         ns,
         ConnectionRights::CALL,
-        &[],
+        &[ManifestEntry {
+            key: charlotte_launch::relmsg_status::AUDIT_PROBE_KEY,
+            flags: 0,
+            value: ManifestValue::Unsigned(u64::from(cfg!(feature = "security_test"))),
+        }],
     );
     let base_manifest = [
         ManifestEntry {

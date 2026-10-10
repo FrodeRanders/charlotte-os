@@ -356,7 +356,7 @@ fn tls_unix_seconds(connection: ConnectionRef<'_>) -> Option<u64> {
 }
 
 fn tcpip_has_ipv4(connection: ConnectionRef<'_>) -> bool {
-    let Ok(call) = connection.call(socket::OP_STATUS, 0) else {
+    let Ok(call) = socket::buffered_call(connection, socket::OP_STATUS, 0) else {
         return false;
     };
     let Ok(result) = call.wait() else {
