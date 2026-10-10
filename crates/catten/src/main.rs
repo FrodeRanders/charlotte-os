@@ -223,12 +223,12 @@ pub extern "C" fn bsp_main() -> ! {
             observer.tid
         );
     }
-    #[cfg(all(
-        target_arch = "aarch64",
-        not(feature = "hvf_compat"),
-        not(feature = "live_upgrade_test")
-    ))]
+    #[cfg(all(target_arch = "aarch64", not(feature = "hvf_compat")))]
     {
+        // Boot owns the only legal initialization of a vacant unit; ordinary
+        // device operations never initialize hardware beneath their callers'
+        // guards. The focused live-upgrade build needs the installed unit for
+        // its storage and recovery fixtures, so it initializes here too.
         crate::device::smmu::test_initialization();
         match crate::device::smmu::initialize_early() {
             Ok(()) => logln!("[smmu] early initialization complete."),
@@ -238,12 +238,10 @@ pub extern "C" fn bsp_main() -> ! {
             Err(error) => panic!("[smmu] early initialization failed: {:?}", error),
         }
     }
-    #[cfg(all(
-        target_arch = "x86_64",
-        not(feature = "hvf_compat"),
-        not(feature = "live_upgrade_test")
-    ))]
+    #[cfg(all(target_arch = "x86_64", not(feature = "hvf_compat")))]
     {
+        // Same boot-claim rule as AArch64: the focused live-upgrade build
+        // initializes the unit before its storage and recovery fixtures.
         crate::device::iommu::test_initialization();
         match crate::device::iommu::initialize_early() {
             Ok(()) => logln!("[iommu] early initialization complete."),

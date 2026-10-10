@@ -24,6 +24,7 @@ The [first audit](../reports/audits/2026-10-03-security-audit.md),
 [2026-10-10 renewed audit](../reports/audits/2026-10-10-security-audit.md),
 [SEC-31–35 remediation](../reports/audits/2026-10-10-security-audit-remediation.md),
 [SEC-36–38 remediation](../reports/audits/2026-10-10-security-audit-remediation-2.md),
+the [live-upgrade IOMMU initialization fix](../reports/audits/2026-10-10-security-live-upgrade-iommu-init.md),
 and [report index](../reports/README.md) retain the evidence. This page gives
 the remaining acceptance criteria, so a completed narrow fix need not reopen
 an unbounded audit loop.
