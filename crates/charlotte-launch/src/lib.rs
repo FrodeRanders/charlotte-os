@@ -409,6 +409,10 @@ pub mod tcpclient_status {
     pub const ERROR: usize = 8;
 }
 
+pub mod deployd_status {
+    pub const TRACE_KEY: u64 = super::manifest_key(b"trace");
+}
+
 pub mod httpd_status {
     pub const TRACE_KEY: u64 = super::manifest_key(b"trace");
     pub const STAGE: usize = 0;

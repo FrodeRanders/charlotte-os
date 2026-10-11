@@ -658,10 +658,16 @@ if [ -n "$TIMEOUT" ]; then
             && grep -Fq "httpd is listening" "$LOG"; then
             HTTP_PROBED=1
             echo ">>> Probing guest node and cluster keyholes through port ${HTTP_HOST_PORT} ..."
+            DEPLOY_LIVENESS_OK=0
+            if python3 "${ROOT_DIR}/scripts/tests/test-deployment-http-liveness.py" \
+                --port "$DEPLOY_HOST_PORT" --ready-log "$LOG"; then
+                DEPLOY_LIVENESS_OK=1
+            fi
             for _ in 1 2 3 4 5 6 7 8; do
                 HTTP_BODY="$(curl -fsS --max-time 5 http://127.0.0.1:${HTTP_HOST_PORT}/metrics 2>&1 || true)"
                 HTTP_CLUSTER_BODY="$(curl -fsS --max-time 5 http://127.0.0.1:${HTTP_HOST_PORT}/cluster/metrics 2>&1 || true)"
-                if printf '%s' "$HTTP_BODY" | grep -Fq '"http":{"requests":' \
+                if [ "$DEPLOY_LIVENESS_OK" = "1" ] \
+                    && printf '%s' "$HTTP_BODY" | grep -Fq '"http":{"requests":' \
                     && printf '%s' "$HTTP_CLUSTER_BODY" | python3 -c \
                         'import json,sys; d=json.load(sys.stdin); assert d["schema"] == "charlotte.cluster.v1" and d["fresh_committed"] and d["raft"]["served_by"]'; then
                     HTTP_PROBE_OK=1

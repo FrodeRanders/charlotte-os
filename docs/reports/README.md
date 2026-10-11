@@ -10,6 +10,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [Deployment ingress and scoped publication progress](audits/2026-10-11-security-deployment-ingress.md) — Connection-local setup/accept failure, fallible parser backing, ownership-preserving identity publication and deployment HTTP recovery probes.
 - [HTTP listener progress under security queue pressure](audits/2026-10-10-security-http-progress.md) — Failed packet/phase captures, exact admission errors and listener-preserving retries.
 - [TCP/IP caller buffers and negative audit probes](audits/2026-10-10-security-tcpip-caller-buffers.md) — Receive/status sponsorship, retention and lifecycle evidence; legacy lookup, upgrade and fragment rejection.
 - [2026-10-10 object-store isolation fixes, policy revocation and mutex-context probes](audits/2026-10-10-security-object-store-follow-up.md)

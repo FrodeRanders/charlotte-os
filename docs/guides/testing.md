@@ -335,11 +335,12 @@ not exercise the complete S3/Raft release pipeline with independent roots, or
 establish production key custody.
 
 The HTTP verifier also runs EOF and idle-client availability probes before the
-node/cluster JSON checks. Use an isolated instance and unused forwarded ports:
+node/cluster JSON checks, and deployment-ingress rejection/recovery probes.
+Use an isolated instance and unused forwarded ports:
 
 ```sh
 CATTEN_HTTP_HOST_PORT=18080 CATTEN_DEPLOY_HOST_PORT=17444 \
-  scripts/run-aarch64.sh --http-test --instance security-http --fresh-storage --timeout 75
+  scripts/run-aarch64.sh --http-test --instance security-http --fresh-storage --timeout 180
 ```
 
 `scripts/tests/test-http-keyhole-liveness.py` checks EOF and abortive peer-close
@@ -348,6 +349,16 @@ requests are attempted. Transport retries are bounded and spaced to span that
 idle budget. The
 five-second request deadline bounds this serial listener's per-client delay;
 it does not establish resilience against a sustained connection flood.
+
+Both architecture runners require `test-deployment-http-liveness.py` under
+`--http-test`. It checks framing and invalid descriptor rejection, EOF,
+abortive-close and idle-peer recovery, plus a trickled incomplete body against
+the deployment adapter's unchanged thirty-second total deadline. Every case
+ends with a healthy status control. The selected 180-second runner window
+accommodates both serial probes; it does not extend guest request deadlines.
+The deployment probe has its own 120-second total host budget. See the
+[deployment ingress audit evidence](../reports/audits/2026-10-11-security-deployment-ingress.md)
+for captured failures, artifact hashes and the limits of these controls.
 
 ![Ordinary boot and optional test validators](../manual-v2/figures/boot-and-testing.svg)
 
@@ -386,7 +397,11 @@ test-only support. See
 release path. The host uploads the signed `greet` ELF to RustFS, signs and
 wraps its `CDEPLOY5` descriptor in a signed `CRELEASE` envelope, atomically
 admits the release, and waits on the management API until the exact desired
-generation owns the active service name on its assigned node.
+generation owns the active service name on its assigned node. Scoped readiness
+uses the read-only namespace publication-generation query; it does not acquire
+invocation authority through a legacy lookup. The security profile also checks
+exact live query generations, no returned capabilities, continued legacy denial
+and rejection after endpoint retirement.
 
 The two-guest `--deploy-test` exercises the runtime retirement paths. It moves
 the lifecycle-aware `greet` domain between nodes and requires an acknowledged

@@ -834,10 +834,7 @@ fn operations_bundle_notify(args: &[String]) -> Result<()> {
         .write_all(header.as_bytes())
         .and_then(|()| stream.write_all(&bytes))
         .map_err(|error| format!("send operational bundle: {error}"))?;
-    let mut response = String::new();
-    stream
-        .take(8192)
-        .read_to_string(&mut response)
+    let response = read_http_response(&mut stream)
         .map_err(|error| format!("read operational admission response: {error}"))?;
     let status = response.lines().next().unwrap_or_default();
     if !status.starts_with("HTTP/1.1 202 ") {
@@ -1300,10 +1297,7 @@ fn shutdown_notify(args: &[String]) -> Result<()> {
         .write_all(header.as_bytes())
         .and_then(|()| stream.write_all(&bytes))
         .map_err(|error| format!("send shutdown notification: {error}"))?;
-    let mut response = String::new();
-    stream
-        .take(8192)
-        .read_to_string(&mut response)
+    let response = read_http_response(&mut stream)
         .map_err(|error| format!("read shutdown response: {error}"))?;
     if !response.lines().next().unwrap_or_default().starts_with("HTTP/1.1 202 ") {
         return Err(format!("shutdown notification failed: {}", response.trim()));
@@ -1466,10 +1460,7 @@ fn ingress_policy_notify(args: &[String]) -> Result<()> {
         .write_all(header.as_bytes())
         .and_then(|()| stream.write_all(&bytes))
         .map_err(|error| format!("send ingress-policy notification: {error}"))?;
-    let mut response = String::new();
-    stream
-        .take(8192)
-        .read_to_string(&mut response)
+    let response = read_http_response(&mut stream)
         .map_err(|error| format!("read ingress-policy response: {error}"))?;
     if !response.lines().next().unwrap_or_default().starts_with("HTTP/1.1 202 ") {
         return Err(format!("ingress-policy notification failed: {}", response.trim()));
@@ -1491,10 +1482,7 @@ fn ingress_policy_status(args: &[String]) -> Result<()> {
     stream
         .write_all(request.as_bytes())
         .map_err(|error| format!("query ingress-policy status: {error}"))?;
-    let mut response = String::new();
-    stream
-        .take(8192)
-        .read_to_string(&mut response)
+    let response = read_http_response(&mut stream)
         .map_err(|error| format!("read ingress-policy status: {error}"))?;
     if !response.lines().next().unwrap_or_default().starts_with("HTTP/1.1 200 ") {
         return Err(format!("ingress-policy status failed: {}", response.trim()));
@@ -1527,6 +1515,89 @@ fn node_key(args: &[String]) -> Result<()> {
     Ok(())
 }
 
+const HTTP_RESPONSE_LIMIT: usize = 8192;
+
+/// Observe one complete bounded response, without requiring transport EOF.
+fn read_framed_http_response(
+    mut read: impl FnMut(&mut [u8]) -> std::io::Result<usize>,
+) -> Result<String> {
+    let mut bytes = Vec::new();
+    let mut total = None;
+    loop {
+        if let Some(length) = total.filter(|length| bytes.len() >= *length) {
+            bytes.truncate(length);
+            return String::from_utf8(bytes).map_err(|_| "response is not UTF-8".to_owned());
+        }
+        let remaining = HTTP_RESPONSE_LIMIT - bytes.len();
+        if remaining == 0 {
+            return Err("response exceeds 8192 bytes".to_owned());
+        }
+        let mut chunk = [0u8; 1024];
+        let count = match read(&mut chunk[..remaining.min(1024)]) {
+            Ok(0) => return Err("response ended before its declared body completed".to_owned()),
+            Ok(count) => count,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error.to_string()),
+        };
+        bytes.extend_from_slice(&chunk[..count]);
+        let header_end = if total.is_none() {
+            bytes.windows(4).position(|window| window == b"\r\n\r\n")
+        } else {
+            None
+        };
+        if let Some(offset) = header_end {
+            let end = offset + 4;
+            let header = core::str::from_utf8(&bytes[..offset])
+                .map_err(|_| "response header is not UTF-8".to_owned())?;
+            let mut body_len = None;
+            for line in header.split("\r\n").skip(1) {
+                let (name, value) =
+                    line.split_once(':').ok_or_else(|| "malformed response header".to_owned())?;
+                if name.eq_ignore_ascii_case("transfer-encoding") {
+                    return Err("unsupported response transfer encoding".to_owned());
+                }
+                if name.eq_ignore_ascii_case("content-length") {
+                    let value = value.trim();
+                    if body_len.is_some()
+                        || value.is_empty()
+                        || !value.bytes().all(|byte| byte.is_ascii_digit())
+                    {
+                        return Err("ambiguous response content length".to_owned());
+                    }
+                    body_len = Some(
+                        value
+                            .parse::<usize>()
+                            .map_err(|_| "response length overflow".to_owned())?,
+                    );
+                }
+            }
+            let length = end
+                .checked_add(body_len.ok_or_else(|| "response lacks content length".to_owned())?)
+                .filter(|length| *length <= HTTP_RESPONSE_LIMIT)
+                .ok_or_else(|| "response exceeds 8192 bytes".to_owned())?;
+            total = Some(length);
+        }
+    }
+}
+
+fn read_http_response(stream: &mut TcpStream) -> Result<String> {
+    let budget = stream
+        .read_timeout()
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "response requires a read timeout".to_owned())?;
+    let deadline = Instant::now() + budget;
+    read_framed_http_response(|bytes| {
+        let remaining = deadline
+            .checked_duration_since(Instant::now())
+            .filter(|remaining| !remaining.is_zero())
+            .ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::TimedOut, "response deadline")
+            })?;
+        stream.set_read_timeout(Some(remaining))?;
+        stream.read(bytes)
+    })
+}
+
 fn deployment_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<String> {
     deployment::decode(bytes).ok_or_else(|| "deployment descriptor is malformed".to_owned())?;
     let mut stream = TcpStream::connect(endpoint)
@@ -1546,10 +1617,7 @@ fn deployment_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<String> {
         .write_all(header.as_bytes())
         .and_then(|()| stream.write_all(bytes))
         .map_err(|error| format!("send deployment notification: {error}"))?;
-    let mut response = String::new();
-    stream
-        .take(8192)
-        .read_to_string(&mut response)
+    let response = read_http_response(&mut stream)
         .map_err(|error| format!("read deployment response: {error}"))?;
     let status = response.lines().next().unwrap_or_default();
     if !status.starts_with("HTTP/1.1 202 ") {
@@ -1577,10 +1645,7 @@ fn release_notify_bytes(bytes: &[u8], endpoint: &str) -> Result<String> {
         .write_all(header.as_bytes())
         .and_then(|()| stream.write_all(bytes))
         .map_err(|error| format!("send release notification: {error}"))?;
-    let mut response = String::new();
-    stream
-        .take(8192)
-        .read_to_string(&mut response)
+    let response = read_http_response(&mut stream)
         .map_err(|error| format!("read release response: {error}"))?;
     let status = response.lines().next().unwrap_or_default();
     if !status.starts_with("HTTP/1.1 202 ") {
@@ -1636,10 +1701,7 @@ fn deployment_status_once(artifact_name: &str, endpoint: &str) -> Result<(String
     stream
         .write_all(request.as_bytes())
         .map_err(|error| format!("send deployment status request: {error}"))?;
-    let mut response = String::new();
-    stream
-        .take(8192)
-        .read_to_string(&mut response)
+    let response = read_http_response(&mut stream)
         .map_err(|error| format!("read deployment status response: {error}"))?;
     let status = response.lines().next().unwrap_or_default().to_owned();
     let body = response.split("\r\n\r\n").nth(1).unwrap_or_default().trim().to_owned();
@@ -2003,6 +2065,74 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn complete_response_returns_before_peer_reset() {
+        let response = b"HTTP/1.1 202 Accepted\r\nContent-Length: 2\r\n\r\n{}";
+        let mut reads = 0;
+        let parsed = read_framed_http_response(|buffer| {
+            reads += 1;
+            assert_eq!(reads, 1, "must finish before the peer's subsequent reset");
+            buffer[..response.len()].copy_from_slice(response);
+            Ok(response.len())
+        })
+        .unwrap();
+        assert_eq!(parsed.as_bytes(), response);
+    }
+
+    #[test]
+    fn fragmented_response_preserves_header_and_exact_body() {
+        let response = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}";
+        let mut cursor = std::io::Cursor::new(response);
+        let parsed = read_framed_http_response(|buffer| cursor.read(&mut buffer[..1])).unwrap();
+        assert_eq!(parsed.as_bytes(), response);
+    }
+
+    #[test]
+    fn incomplete_response_rejects_eof_and_transport_error() {
+        for reset in [false, true] {
+            let mut first = true;
+            assert!(read_framed_http_response(|buffer| {
+                if first {
+                    first = false;
+                    let prefix = b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{";
+                    buffer[..prefix.len()].copy_from_slice(prefix);
+                    Ok(prefix.len())
+                } else if reset {
+                    Err(std::io::ErrorKind::ConnectionReset.into())
+                } else {
+                    Ok(0)
+                }
+            })
+            .is_err());
+        }
+    }
+
+    #[test]
+    fn ambiguous_missing_and_oversized_response_lengths_reject() {
+        for headers in [
+            "Content-Length: 2\r\nContent-Length: 2",
+            "Content-Length: 2\r\nTransfer-Encoding: chunked",
+            "Content-Length: 2 junk",
+            "Content-Length: 99999999999999999999999999999999999",
+            "Content-Length: 8192",
+            "Content-Type: application/json",
+        ] {
+            let response = format!("HTTP/1.1 200 OK\r\n{headers}\r\n\r\n{{}}");
+            let mut cursor = std::io::Cursor::new(response);
+            assert!(read_framed_http_response(|buffer| cursor.read(buffer)).is_err());
+        }
+    }
+
+    #[test]
+    fn non_utf8_response_and_unterminated_oversized_header_reject() {
+        let mut response = b"HTTP/1.1 200 OK\r\nContent-Length: 1\r\n\r\n".to_vec();
+        response.push(0xff);
+        for response in [response, vec![b'x'; HTTP_RESPONSE_LIMIT]] {
+            let mut cursor = std::io::Cursor::new(response);
+            assert!(read_framed_http_response(|buffer| cursor.read(buffer)).is_err());
+        }
+    }
 
     #[cfg(unix)]
     struct TestDirectory(std::path::PathBuf);

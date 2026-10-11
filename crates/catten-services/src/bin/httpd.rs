@@ -63,7 +63,6 @@ use catten_rt::{
     owned::{
         Connection,
         ConnectionRef,
-        OwnedMemory,
     },
 };
 use catten_services::{
@@ -1413,19 +1412,8 @@ fn new_listener<'connection>(
     tcp: ConnectionRef<'connection>,
 ) -> Result<socket::OwnedSocket<'connection>, ()> {
     let socket = socket::OwnedSocket::open(tcp, socket::DOMAIN_TCP).map_err(|_| ())?;
-    let port = OwnedMemory::allocate(1).map_err(|_| ())?;
-    let mut mapping = port.map_writable().map_err(|_| ())?;
-    mapping.as_mut_slice()[..2].copy_from_slice(&HTTP_PORT.to_le_bytes());
-    let port = mapping.unmap().map_err(|_| ())?;
     trace_phase("listen");
-    let listen = tcp
-        .call_move(socket::OP_LISTEN, socket.id(), port)
-        .map_err(|_| ())?
-        .wait()
-        .map_err(|_| ())?;
-    if listen.result != 0 {
-        return Err(());
-    }
+    socket.listen(HTTP_PORT).map_err(|_| ())?;
     Ok(socket)
 }
 

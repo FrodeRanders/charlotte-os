@@ -245,6 +245,19 @@ and scoped pressure validation are recorded in
 \repofile|docs/reports/audits/2026-10-10-security-http-progress.md|;
 broader flood fairness remains open.
 
+Deployment ingress shares owned listener preparation and retains its listener
+through queue-full accept rejection. Bounded request storage grows fallibly;
+completed POST bodies transfer their backing without a second body allocation.
+Static 400/503 responses handle framing/allocation rejection. Its five-second
+header and thirty-second total deadlines remain unchanged. Shared node-identity
+initialization writes only after exact successful object creation; a losing
+creator waits for complete owner publication without weakening shared-read
+ownership. Scoped readiness observes namespace generation metadata without
+receiving invocation authority; legacy lookups remain denied. The bootstrap
+catalogue admits a bounded 32 KiB verification stack through its existing
+account. Signed release/readiness validation and retained failed runs are in
+\repofile|docs/reports/audits/2026-10-11-security-deployment-ingress.md|.
+
 The service allocates its smoltcp socket table once at launch. Its launch
 manifest supplies bounded \texttt{sockslot}, \texttt{sockquot}, and
 \texttt{bufquot} policy values; the defaults are 64 total slots, 64 sockets per

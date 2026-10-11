@@ -1326,6 +1326,28 @@ mod tests {
     }
 
     #[test]
+    fn borrowed_connection_watch_owns_only_its_completion() {
+        let _guard = setup();
+        let connection = unsafe { Connection::from_raw(41) }.unwrap();
+        drop(connection.as_ref().watch_closed().unwrap());
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::CompletionCancel(20),
+                kernel::Event::CompletionWait(20),
+                kernel::Event::CompletionClose(20),
+            ]
+        );
+        kernel::update(|state| state.connection_watch = catten_syscall::COMPLETION_SUBMIT_FAILED);
+        assert_eq!(
+            connection.as_ref().watch_closed().unwrap_err(),
+            crate::owned::CompletionError::SubmissionFailed
+        );
+        drop(connection);
+        assert_eq!(kernel::events().last(), Some(&kernel::Event::IpcClose(41)));
+    }
+
+    #[test]
     fn scalar_admission_rejection_keeps_connection_without_a_pending_owner() {
         let _guard = setup();
         let endpoint = Endpoint::create(1, 1, 4).expect("endpoint creation");

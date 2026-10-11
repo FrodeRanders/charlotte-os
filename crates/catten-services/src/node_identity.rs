@@ -19,19 +19,205 @@
 //! ..+4    name length (u32 LE)
 //! ..      name bytes
 //! ```
-use alloc::{
-    format,
-    vec,
-    vec::Vec,
+use alloc::vec::Vec;
+
+use catten_rt::owned::{
+    Connection,
+    ConnectionRef,
+    IpcError,
+    OwnedMemory,
+    PendingCall,
 };
 
-use crate::objstore_client::{
-    connect as objstore_connect,
-    create_at_shared as obj_create_at,
-    flush as obj_flush,
-    read as obj_read,
-    write as obj_write,
+use crate::{
+    deadline::Deadline,
+    objstore,
+    sleep_ms,
 };
+
+const PUBLICATION_WAIT_MS: u64 = 10_000;
+const MAX_IDENTITY_BYTES: usize = 4096;
+
+trait IdentityStore {
+    fn read(&self, object: u64) -> Option<Option<Vec<u8>>>;
+    fn create_shared(&self, object: u64) -> Option<bool>;
+    fn write(&self, object: u64, bytes: &[u8]) -> Option<()>;
+    fn flush(&self) -> Option<()>;
+}
+
+/// The connection and total admission deadline belong to this transaction.
+/// Persistent object IDs are durable names, not resources deleted on Drop.
+struct Store {
+    connection: Connection,
+    deadline: Deadline,
+}
+
+impl Store {
+    fn call(&self, opcode: u32, object: u64) -> Option<PendingCall<'static>> {
+        loop {
+            match self.connection.call(opcode, object) {
+                Ok(call) => return Some(call),
+                Err(IpcError::Status(catten_syscall::ipc_status::QUEUE_FULL))
+                    if !self.deadline.expired() =>
+                {
+                    sleep_ms(10)
+                }
+                Err(_) => return None,
+            }
+        }
+    }
+
+    fn call_move(
+        &self,
+        opcode: u32,
+        object: u64,
+        mut memory: OwnedMemory,
+    ) -> Option<PendingCall<'static>> {
+        loop {
+            match self.connection.call_move(opcode, object, memory) {
+                Ok(call) => return Some(call),
+                Err((returned, error)) => {
+                    // The move was rejected before publication. Keep its exact
+                    // returned owner; the move ABI still has opaque rejection.
+                    memory = returned;
+                    if error != IpcError::CreationFailed || self.deadline.expired() {
+                        return None;
+                    }
+                    sleep_ms(10);
+                }
+            }
+        }
+    }
+}
+
+impl IdentityStore for Store {
+    fn read(&self, object: u64) -> Option<Option<Vec<u8>>> {
+        let result = self.call(objstore::OP_READ, object)?.wait().ok()?;
+        if result.result == objstore::ERR_NOT_FOUND && result.memory.is_none() {
+            return Some(None);
+        }
+        let length = usize::try_from(result.result).ok()?;
+        if length > MAX_IDENTITY_BYTES {
+            return None;
+        }
+        let memory = result.memory?;
+        if length > memory.len() {
+            return None;
+        }
+        let mapping = memory.map_read_only().ok()?;
+        Some(Some(copy_bytes(&mapping.as_slice()[..length])?))
+    }
+
+    fn create_shared(&self, object: u64) -> Option<bool> {
+        match self.call(objstore::OP_CREATE_AT_SHARED, object)?.wait().ok()?.result {
+            objstore::ERR_OK => Some(true),
+            objstore::ERR_EXISTS => {
+                catten_rt::logln!("[identity] shared creation lost; waiting for owner publication");
+                Some(false)
+            }
+            _ => None,
+        }
+    }
+
+    fn write(&self, object: u64, bytes: &[u8]) -> Option<()> {
+        let size = OwnedMemory::allocate(1).ok()?;
+        let mut mapping = size.map_writable().ok()?;
+        mapping.as_mut_slice()[..8].copy_from_slice(&(bytes.len() as u64).to_le_bytes());
+        let size = mapping.unmap().ok()?;
+        if self.call_move(objstore::OP_SET_SIZE, object, size)?.wait().ok()?.result
+            != objstore::ERR_OK
+        {
+            return None;
+        }
+        let memory = OwnedMemory::allocate(bytes.len().max(1).div_ceil(4096)).ok()?;
+        let mut mapping = memory.map_writable().ok()?;
+        mapping.as_mut_slice()[..bytes.len()].copy_from_slice(bytes);
+        let memory = mapping.unmap().ok()?;
+        (self.call_move(objstore::OP_WRITE, object, memory)?.wait().ok()?.result
+            == objstore::ERR_OK)
+            .then_some(())
+    }
+
+    fn flush(&self) -> Option<()> {
+        (self.call(objstore::OP_FLUSH, 0)?.wait().ok()?.result == objstore::ERR_OK).then_some(())
+    }
+}
+
+fn copy_bytes(bytes: &[u8]) -> Option<Vec<u8>> {
+    let mut owned = Vec::new();
+    owned.try_reserve_exact(bytes.len()).ok()?;
+    owned.extend_from_slice(bytes);
+    Some(owned)
+}
+
+fn encoded(mnemonic: &[u8], mac: [u8; 6]) -> Option<Vec<u8>> {
+    core::str::from_utf8(mnemonic).ok()?;
+    let name_len = mnemonic.len().checked_add(9)?;
+    let length = 16usize.checked_add(mnemonic.len())?.checked_add(name_len)?;
+    if length > MAX_IDENTITY_BYTES {
+        return None;
+    }
+    let mut blob = Vec::new();
+    blob.try_reserve_exact(length).ok()?;
+    blob.resize(length, 0);
+    blob[..8].copy_from_slice(&IDENTITY_MAGIC.to_le_bytes());
+    blob[8..12].copy_from_slice(&u32::try_from(mnemonic.len()).ok()?.to_le_bytes());
+    blob[12..12 + mnemonic.len()].copy_from_slice(mnemonic);
+    let offset = 12 + mnemonic.len();
+    blob[offset..offset + 4].copy_from_slice(&u32::try_from(name_len).ok()?.to_le_bytes());
+    let name = &mut blob[offset + 4..];
+    name[..mnemonic.len()].copy_from_slice(mnemonic);
+    name[mnemonic.len()] = b':';
+    let token = fnv1a(&mac) as u32;
+    for digit in 0..8 {
+        name[mnemonic.len() + 1 + digit] =
+            b"0123456789abcdef"[((token >> (28 - digit * 4)) & 15) as usize];
+    }
+    Some(blob)
+}
+
+fn load_from(
+    store: &impl IdentityStore,
+    mnemonic: &[u8],
+    mac: Option<[u8; 6]>,
+    mut wait: impl FnMut() -> bool,
+) -> Option<NodeIdentity> {
+    if mnemonic.is_empty() {
+        return None;
+    }
+    let object = stable_object_id(fnv1a(mnemonic));
+    let initial = store.read(object)?;
+    if let Some(bytes) = &initial
+        && !bytes.is_empty()
+        && let Some(identity) = decode(bytes)
+    {
+        return (identity.mnemonic == mnemonic).then_some(identity);
+    }
+    if initial.is_none() {
+        let blob = encoded(mnemonic, mac?)?;
+        if store.create_shared(object)? {
+            // Only exact successful creation authorizes this writer. Existing
+            // shared-read state is never permission to overwrite its owner.
+            store.write(object, &blob)?;
+            store.flush()?;
+            return decode(&blob);
+        }
+    }
+    while wait() {
+        if let Some(bytes) = store.read(object)?
+            && !bytes.is_empty()
+        {
+            // SET_SIZE can expose zero-filled storage before the creator's
+            // atomic write. A creation loser waits for a complete encoding,
+            // never repairs or overwrites the other owner's preparation.
+            if let Some(identity) = decode(&bytes) {
+                return (identity.mnemonic == mnemonic).then_some(identity);
+            }
+        }
+    }
+    None
+}
+
 const IDENTITY_MAGIC: u64 = 0x4e4f_4445_4944_524f; // "NODEIDRO"
 /// Stable high-range object id for the identity blob (out of the low range
 /// the object store hands out monotonically).
@@ -52,59 +238,27 @@ impl NodeIdentity {
     /// `mac` is required only on first boot, when no identity has been
     /// persisted yet. Returns `None` when the object store is unavailable, the
     /// persisted identity is malformed, or no MAC is available to derive a
-    /// fresh identity.
-    pub fn load_or_create(ns_conn: u64, mnemonic: &[u8], mac: Option<[u8; 6]>) -> Option<Self> {
-        if mnemonic.is_empty() {
-            return None;
-        }
-        let Some(obj_conn) = objstore_connect(ns_conn, true) else {
-            catten_rt::logln!("[identity] object-store connect failed");
-            return None;
+    /// fresh identity. Only successful creation authorizes a write. A shared
+    /// creation loser waits for complete owner publication within ten seconds
+    /// of connecting; name lookup and an already accepted RPC are not bounded
+    /// by that admission deadline. Existing corrupt state is never overwritten.
+    pub fn load_or_create(
+        ns_connection: ConnectionRef<'_>,
+        mnemonic: &[u8],
+        mac: Option<[u8; 6]>,
+    ) -> Option<Self> {
+        let (_, connection) = crate::wait_for_registered_name_owned(ns_connection, objstore::NAME)?;
+        let store = Store {
+            connection,
+            deadline: Deadline::after(PUBLICATION_WAIT_MS),
         };
-        let namespace = fnv1a(mnemonic);
-        let object = stable_object_id(namespace);
-        let existing = match obj_read(obj_conn, object) {
-            Ok(existing) => existing,
-            Err(()) => {
-                catten_rt::logln!("[identity] object read failed");
-                return None;
+        load_from(&store, mnemonic, mac, || {
+            if store.deadline.expired() {
+                false
+            } else {
+                sleep_ms(10);
+                true
             }
-        };
-        if let Some(bytes) = existing
-            && let Some(identity) = decode(&bytes)
-        {
-            return Some(identity);
-        }
-
-        let mac = mac?;
-        let token = fnv1a(&mac);
-        let name = format!(
-            "{}:{:08x}",
-            core::str::from_utf8(mnemonic).unwrap_or("node"),
-            token & 0xffff_ffff
-        )
-        .into_bytes();
-
-        let mut blob = vec![0u8; 16 + mnemonic.len() + name.len()];
-        blob[0..8].copy_from_slice(&IDENTITY_MAGIC.to_le_bytes());
-        blob[8..12].copy_from_slice(&(mnemonic.len() as u32).to_le_bytes());
-        blob[12..12 + mnemonic.len()].copy_from_slice(mnemonic);
-        let name_off = 12 + mnemonic.len();
-        blob[name_off..name_off + 4].copy_from_slice(&(name.len() as u32).to_le_bytes());
-        blob[name_off + 4..].copy_from_slice(&name);
-
-        let _ = obj_create_at(obj_conn, object);
-        if !obj_write(obj_conn, object, &blob) {
-            catten_rt::logln!("[identity] object write failed");
-            return None;
-        }
-        if !obj_flush(obj_conn) {
-            catten_rt::logln!("[identity] object flush failed");
-            return None;
-        }
-        Some(NodeIdentity {
-            mnemonic: mnemonic.to_vec(),
-            name,
         })
     }
 
@@ -122,26 +276,35 @@ fn stable_object_id(namespace: u64) -> u64 {
 }
 
 fn decode(bytes: &[u8]) -> Option<NodeIdentity> {
-    if bytes.len() < 16 {
+    if !(16..=MAX_IDENTITY_BYTES).contains(&bytes.len()) {
         return None;
     }
     if u64::from_le_bytes(bytes[0..8].try_into().ok()?) != IDENTITY_MAGIC {
         return None;
     }
     let mnemonic_len = u32::from_le_bytes(bytes[8..12].try_into().ok()?) as usize;
-    let name_len_off = 12 + mnemonic_len;
-    if name_len_off + 4 > bytes.len() {
+    let name_len_off = 12usize.checked_add(mnemonic_len)?;
+    if name_len_off.checked_add(4)? > bytes.len() {
         return None;
     }
     let name_len =
         u32::from_le_bytes(bytes[name_len_off..name_len_off + 4].try_into().ok()?) as usize;
     let name_off = name_len_off + 4;
-    if name_off + name_len > bytes.len() || mnemonic_len == 0 || name_len == 0 {
+    if name_off.checked_add(name_len)? != bytes.len() || mnemonic_len == 0 || name_len == 0 {
+        return None;
+    }
+    let mnemonic = &bytes[12..name_len_off];
+    let name = &bytes[name_off..];
+    if name.len() != mnemonic.len().checked_add(9)?
+        || !name.starts_with(mnemonic)
+        || name.get(mnemonic.len()) != Some(&b':')
+        || key_from_name(name).is_none()
+    {
         return None;
     }
     Some(NodeIdentity {
-        mnemonic: bytes[12..name_len_off].to_vec(),
-        name: bytes[name_off..name_off + name_len].to_vec(),
+        mnemonic: copy_bytes(&bytes[12..name_len_off])?,
+        name: copy_bytes(&bytes[name_off..name_off + name_len])?,
     })
 }
 
@@ -179,4 +342,120 @@ pub fn key_from_name(name: &[u8]) -> Option<u64> {
     })
 }
 
-// Object-store helpers live in `crate::objstore_client`.
+#[cfg(test)]
+mod tests {
+    use alloc::{
+        collections::VecDeque,
+        vec,
+    };
+    use core::cell::{
+        Cell,
+        RefCell,
+    };
+
+    use super::*;
+
+    struct ScriptedStore {
+        reads: RefCell<VecDeque<Option<Vec<u8>>>>,
+        created: bool,
+        write_ok: bool,
+        creates: Cell<usize>,
+        writes: Cell<usize>,
+        flushes: Cell<usize>,
+    }
+
+    impl ScriptedStore {
+        fn new(reads: Vec<Option<Vec<u8>>>, created: bool) -> Self {
+            Self {
+                reads: RefCell::new(reads.into()),
+                created,
+                write_ok: true,
+                creates: Cell::new(0),
+                writes: Cell::new(0),
+                flushes: Cell::new(0),
+            }
+        }
+    }
+    impl IdentityStore for ScriptedStore {
+        fn read(&self, _: u64) -> Option<Option<Vec<u8>>> {
+            self.reads.borrow_mut().pop_front()
+        }
+
+        fn create_shared(&self, _: u64) -> Option<bool> {
+            self.creates.set(self.creates.get() + 1);
+            Some(self.created)
+        }
+
+        fn write(&self, _: u64, bytes: &[u8]) -> Option<()> {
+            assert!(self.created, "foreign creation is never a write grant");
+            assert!(decode(bytes).is_some());
+            self.writes.set(self.writes.get() + 1);
+            self.write_ok.then_some(())
+        }
+
+        fn flush(&self) -> Option<()> {
+            self.flushes.set(self.flushes.get() + 1);
+            Some(())
+        }
+    }
+
+    #[test]
+    fn creation_loser_waits_for_canonical_owner_without_writing() {
+        let published = encoded(b"charlotte", [1; 6]).unwrap();
+        let store = ScriptedStore::new(
+            vec![None, Some(Vec::new()), Some(vec![0; published.len()]), Some(published.clone())],
+            false,
+        );
+        let mut waits = 0;
+        let identity = load_from(&store, b"charlotte", Some([2; 6]), || {
+            waits += 1;
+            waits <= 3
+        })
+        .unwrap();
+        assert_eq!(identity.name, decode(&published).unwrap().name);
+        assert_eq!((store.creates.get(), store.writes.get(), store.flushes.get()), (1, 0, 0));
+        assert_eq!(waits, 3);
+        let store = ScriptedStore::new(
+            vec![Some(vec![0; published.len()]), Some(published.clone())],
+            false,
+        );
+        assert_eq!(
+            load_from(&store, b"charlotte", None, || true).unwrap().name,
+            decode(&published).unwrap().name
+        );
+        assert_eq!((store.creates.get(), store.writes.get(), store.flushes.get()), (0, 0, 0));
+    }
+
+    #[test]
+    fn only_successful_creation_writes_and_flushes_once() {
+        let store = ScriptedStore::new(vec![None], true);
+        let identity =
+            load_from(&store, b"charlotte", Some([3; 6]), || panic!("creator must not wait"))
+                .unwrap();
+        assert_eq!(identity.name, decode(&encoded(b"charlotte", [3; 6]).unwrap()).unwrap().name);
+        assert_eq!((store.creates.get(), store.writes.get(), store.flushes.get()), (1, 1, 1));
+        let mut store = ScriptedStore::new(vec![None], true);
+        store.write_ok = false;
+        assert!(
+            load_from(&store, b"charlotte", Some([3; 6]), || panic!(
+                "failed published writer must not retry"
+            ))
+            .is_none()
+        );
+        assert_eq!((store.creates.get(), store.writes.get(), store.flushes.get()), (1, 1, 0));
+    }
+
+    #[test]
+    fn corrupt_foreign_and_unfinished_publication_are_not_overwritten() {
+        let mut corrupt = encoded(b"charlotte", [1; 6]).unwrap();
+        corrupt[0] ^= 1;
+        for initial in [corrupt, encoded(b"other", [1; 6]).unwrap(), Vec::new()] {
+            let store = ScriptedStore::new(vec![Some(initial)], false);
+            assert!(load_from(&store, b"charlotte", Some([2; 6]), || false).is_none());
+            assert_eq!((store.creates.get(), store.writes.get(), store.flushes.get()), (0, 0, 0));
+        }
+        let store = ScriptedStore::new(vec![None], false);
+        assert!(load_from(&store, b"charlotte", None, || false).is_none());
+        assert_eq!(store.creates.get(), 0);
+    }
+}

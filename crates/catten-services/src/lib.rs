@@ -24,6 +24,7 @@ pub use charlotte_protocol_s3 as s3;
 pub use charlotte_protocol_time as time;
 
 pub mod deadline;
+pub mod deployment_http;
 /// Owned application-side wrapper for the capability-grant controller.
 pub mod grant_client;
 /// Owned application-side wrappers for the Kafka service protocol.
@@ -276,6 +277,12 @@ pub mod ns {
     /// Immediate equivalent of [`OP_LOOKUP_FOR_GRANT`], with identical
     /// authorization but no retained waitlist entry when the name is absent.
     pub const OP_TRY_LOOKUP_FOR_GRANT: u32 = 17;
+
+    /// Read the live publication generation, without minting any connection
+    /// or changing policy. With no memory, arg0 is a packed short name; with
+    /// copied memory, arg0 is the full name length. Missing/dead names reject.
+    /// This is naming metadata, like OP_STATUS, not application authority.
+    pub const OP_PUBLICATION_GENERATION: u32 = 18;
 
     pub const STATUS_OFFSET_MAGIC: u32 = 0;
     pub const STATUS_OFFSET_REGISTERED: u32 = 1;
@@ -1012,6 +1019,29 @@ pub mod socket {
 
         pub fn bind_ipv4(&self, address: [u8; 4], port: u16) -> Result<(), SocketError> {
             self.local_ipv4_operation(OP_BIND_IPV4, address, port)
+        }
+
+        /// Listen on any local address using the port-only protocol operation.
+        /// This borrows the socket owner through setup and consumes its moved
+        /// request backing exactly once; rejection leaves the socket owned.
+        pub fn listen(&self, port: u16) -> Result<(), SocketError> {
+            let memory = OwnedMemory::allocate(1).map_err(SocketError::Memory)?;
+            let mut mapping =
+                memory.map_writable().map_err(|(_, error)| SocketError::Memory(error))?;
+            mapping.as_mut_slice()[..2].copy_from_slice(&port.to_le_bytes());
+            let memory = mapping.unmap().map_err(|(_, error)| SocketError::Memory(error))?;
+            let result = self
+                .service
+                .call_move(OP_LISTEN, self.id(), memory)
+                .map_err(|(_, error)| SocketError::Ipc(error))?
+                .wait()
+                .map_err(SocketError::Ipc)?
+                .result;
+            if result == 0 {
+                Ok(())
+            } else {
+                Err(SocketError::Service(result))
+            }
         }
 
         pub fn listen_ipv4(&self, address: [u8; 4], port: u16) -> Result<(), SocketError> {
@@ -2919,6 +2949,31 @@ pub fn try_registered_name_bytes_owned(
         .ok()?;
     let connection = result.connection?;
     (result.result >= 1).then_some((result.result, connection))
+}
+
+/// Observe a live publication without acquiring invocation authority. This
+/// also works for policy-published names that reject every legacy lookup.
+pub fn publication_generation_owned(
+    names: catten_rt::owned::ConnectionRef<'_>,
+    service_name: &[u8],
+) -> Option<u64> {
+    if service_name.is_empty() || service_name.len() > MAX_NAME_LEN {
+        return None;
+    }
+    let result = if service_name.len() <= 8 {
+        names.call(ns::OP_PUBLICATION_GENERATION, name(service_name)).ok()?.wait().ok()?
+    } else {
+        let staged = stage_name_owned(service_name)?;
+        names
+            .call_copy(ns::OP_PUBLICATION_GENERATION, service_name.len() as u64, &staged)
+            .ok()?
+            .wait()
+            .ok()?
+    };
+    if result.connection.is_some() || result.memory.is_some() || result.result < 1 {
+        return None;
+    }
+    u64::try_from(result.result).ok()
 }
 
 /// Wait for the local boot-ready marker using ownership-aware IPC.

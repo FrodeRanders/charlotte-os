@@ -49,6 +49,19 @@ checks an exact `publish` grant, and registers only client `SEND`/`CALL` rights
 with the name service. A scoped service can therefore become discoverable
 without gaining ambient lookup or registration authority.
 
+## Publication observation
+
+Deployment readiness uses the namespace `OP_PUBLICATION_GENERATION` metadata
+operation, rather than a legacy lookup of a policy-published application. It
+returns only the live registry generation, after a temporary endpoint-close
+watch check; it returns no connection or memory and changes no policy. The
+agent and catalogue borrow their launch naming authority. Missing, closed or
+rejected observations leave readiness unpublished. Legacy lookup remains denied
+for these registrations. The observation is a snapshot, not a root lease;
+scoped domain retirement remains with the owning agent. See the
+[deployment ingress evidence](../reports/audits/2026-10-11-security-deployment-ingress.md)
+for the failed signed fixtures, query controls and remaining lifetime limits.
+
 ## Bounded asynchronous admission
 
 The controller keeps each incoming message and name-service `PendingCall` in

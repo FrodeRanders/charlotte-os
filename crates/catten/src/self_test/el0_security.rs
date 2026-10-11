@@ -148,7 +148,7 @@ pub fn test_el0_security() {
     crate::self_test::results::spawn_verifier(crate::self_test::results::TestId::Security, verify);
 }
 
-fn verify_legacy_lookup_denial() {
+fn verify_publication_and_lookup_boundary(expected: Option<u64>) {
     // Serialized kernel fixture adapter: an ordinary live namespace issues
     // each legacy wire opcode against the already policy-published application.
     let caller = crate::service::loader::create_user_address_space();
@@ -160,6 +160,39 @@ fn verify_legacy_lookup_denial() {
         crate::ipc::ConnectionRights::CALL,
     )
     .expect("legacy lookup fixture connection");
+    // Public naming metadata is observable without any invocation capability.
+    // This must not turn the policy-published entry into a legacy grant below.
+    for named in [false, true] {
+        let call = if named {
+            let memory = crate::memory::object::allocate_with_bytes(caller, b"secavail")
+                .expect("publication query fixture memory");
+            crate::ipc::scalar_call_with_memory_move(caller, connection, 18, 8, memory)
+        } else {
+            crate::ipc::scalar_call(caller, connection, 18, u64::from_le_bytes(*b"secavail"))
+        }
+        .expect("publication query fixture call");
+        assert!(crate::ipc::wait_reply_timeout(caller, call, 5_000).unwrap());
+        let result = crate::ipc::poll_reply(caller, call).unwrap().unwrap();
+        assert_eq!(
+            result.result,
+            expected.map_or(-1, |generation| generation as i64),
+            "publication observation must match its exact live generation or reject a dead \
+             endpoint"
+        );
+        assert!(
+            result.cap.is_none() && result.memory.is_none(),
+            "metadata cannot convey authority"
+        );
+        crate::ipc::close_cap(caller, call).unwrap();
+    }
+    if expected.is_none() {
+        crate::self_test::close_test_address_space(caller).unwrap();
+        logln!(
+            "[security] short/named publication queries rejected the retired endpoint without \
+             authority"
+        );
+        return;
+    }
     for opcode in [2, 6, 7, 4, 16] {
         let call = if matches!(opcode, 4 | 16) {
             let memory = crate::memory::object::allocate_with_bytes(caller, b"secavail")
@@ -180,8 +213,8 @@ fn verify_legacy_lookup_denial() {
     }
     crate::self_test::close_test_address_space(caller).expect("legacy lookup fixture cleanup");
     logln!(
-        "[security] all five legacy lookup opcodes denied policy-published secavail without \
-         authority"
+        "[security] short/named publication queries returned scalar metadata only; all five \
+         legacy lookup opcodes denied policy-published secavail without authority"
     );
 }
 
@@ -395,7 +428,6 @@ extern "C" fn verify() {
             "adversarial application grant checks",
         );
         assert_eq!(word(probe.get(), status::CHECKS), status::EXPECTED_CHECKS);
-        verify_legacy_lookup_denial();
         let retained_buffer =
             verify_caller_buffers(&supervisor::node_name_service(), probe.get().address_space);
         let base: *const u8 = probe.get().status_frame.into();
@@ -403,6 +435,7 @@ extern "C" fn verify() {
             core::ptr::read_volatile(base.add(status::PUBLICATION_GENERATION).cast::<u64>())
         };
         assert!(generation > previous_generation, "republication must advance service generation");
+        verify_publication_and_lookup_boundary(Some(generation));
         previous_generation = generation;
         let retired = probe.get().address_space;
         let digest = charlotte_launch::sha256::digest(POLICY);
@@ -412,6 +445,7 @@ extern "C" fn verify() {
             &digest
         ));
         probe.stop();
+        verify_publication_and_lookup_boundary(None);
         assert_eq!(
             crate::memory::budget::used(retired).pages,
             1,

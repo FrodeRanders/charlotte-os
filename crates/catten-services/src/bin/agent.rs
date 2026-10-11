@@ -37,6 +37,7 @@ use catten_services::{
     net,
     node_identity,
     objstore,
+    publication_generation_owned,
     s3_client::Client as S3Client,
     sleep_ms,
     sleep_ms_or_shutdown,
@@ -666,7 +667,7 @@ fn publish_if_ready(
     dns_connection: ConnectionRef<'_>,
     active: &mut ActiveDeployment,
 ) {
-    if active.published || try_registered_name_bytes_owned(names, &active.name).is_none() {
+    if active.published || publication_generation_owned(names, &active.name).is_none() {
         return;
     }
     let mut request = Vec::with_capacity(8 + active.name.len());

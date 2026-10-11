@@ -80,6 +80,58 @@ struct Registration {
 
 type Registry = BTreeMap<Vec<u8>, Registration>;
 
+fn publication_generation(
+    registry: &Registry,
+    query: &mut catten_rt::owned::IncomingMessage,
+) -> i64 {
+    if query.connection.is_some() {
+        return ns::ERR_INVALID;
+    }
+    let packed = query.arg0.to_le_bytes();
+    let mapping;
+    let key = if let Some(memory) = query.memory.take() {
+        let Ok(len) = usize::try_from(query.arg0) else {
+            return ns::ERR_INVALID;
+        };
+        if len == 0 || len > MAX_NAME_LEN {
+            return ns::ERR_INVALID;
+        }
+        mapping = match memory.map_read_only() {
+            Ok(mapping) => mapping,
+            Err(_) => return ns::ERR_INVALID,
+        };
+        let Some(key) = mapping.as_slice().get(..len) else {
+            return ns::ERR_INVALID;
+        };
+        key
+    } else {
+        let len = packed.iter().rposition(|byte| *byte != 0).map_or(0, |index| index + 1);
+        if len == 0 {
+            return ns::ERR_INVALID;
+        }
+        &packed[..len]
+    };
+    let Some(registration) = registry.get(key).filter(|entry| entry.connection != 0) else {
+        return ns::ERR_NOT_FOUND;
+    };
+    // Borrow at this legacy registry/ABI adapter boundary. The single-threaded
+    // registry cannot close or replace its raw source during this exact borrow;
+    // only the temporary typed completion is owned here. No connection is minted.
+    let Ok(connection) =
+        (unsafe { catten_rt::owned::ConnectionRef::from_raw(registration.connection) })
+    else {
+        return ns::ERR_INVALID;
+    };
+    let Ok(mut watch) = connection.watch_closed() else {
+        return ns::ERR_INVALID;
+    };
+    match watch.poll() {
+        Ok(None) => registration.generation,
+        Ok(Some(_)) => ns::ERR_NOT_FOUND,
+        Err(_) => ns::ERR_INVALID,
+    }
+}
+
 #[derive(Debug)]
 enum PendingLookup {
     Legacy {
@@ -1202,6 +1254,19 @@ fn main(ctx: Context) -> ! {
                     _ => unsafe {
                         ipc_reply(message.reply, ns::ERR_ACCESS_DENIED);
                     },
+                }
+            }
+            ns::OP_PUBLICATION_GENERATION => {
+                // This branch adopts each successful receive exactly once at
+                // the raw service ABI boundary; no scalar cleanup follows it.
+                let Ok(Some(mut query)) =
+                    (unsafe { catten_rt::owned::IncomingMessage::from_raw(message) })
+                else {
+                    continue;
+                };
+                let result = publication_generation(&registry, &mut query);
+                if let Some(reply) = query.reply.take() {
+                    let _ = reply.reply(result);
                 }
             }
             ns::OP_STATUS => {

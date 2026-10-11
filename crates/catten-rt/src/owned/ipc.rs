@@ -550,6 +550,12 @@ impl<'connection> ConnectionRef<'connection> {
         self.cap
     }
 
+    /// Observe endpoint death without adopting or closing the borrowed source.
+    /// Dropping the returned completion cancels only this watch.
+    pub fn watch_closed(self) -> Result<Completion, CompletionError> {
+        Completion::from_kernel(kernel::ipc_connection_watch_closed(self.cap))
+    }
+
     pub fn send(self, opcode: u32, arg0: u64) -> Result<(), IpcError> {
         let status = kernel::ipc_scalar_send(self.cap, opcode, arg0);
         if status == catten_syscall::ipc_status::OK {
@@ -892,7 +898,7 @@ impl Connection {
     /// without closing this connection or waiting for the endpoint to die.
     /// Bounded registration/submission capacity can reject a new watch.
     pub fn watch_closed(&self) -> Result<Completion, CompletionError> {
-        Completion::from_kernel(kernel::ipc_connection_watch_closed(self.raw_handle()))
+        self.as_ref().watch_closed()
     }
 
     pub fn into_raw(mut self) -> u64 {

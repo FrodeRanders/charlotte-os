@@ -708,6 +708,19 @@ Native software does not.
 > [HTTP progress follow-up](../reports/audits/2026-10-10-security-http-progress.md)
 > records the previously acknowledged-but-unserved requests and scoped pressure
 > validation; broader flood fairness remains open.
+> Deployment ingress uses the same owned listener preparation and retains its
+> listener through queue-full accept rejection. Its bounded request storage
+> grows fallibly and transfers completed POST backing without a second body
+> allocation. Framing/allocation rejection has static 400/503 responses;
+> the existing five-second header and thirty-second total deadlines remain.
+> Shared node-identity initialization writes only after exact successful
+> object creation; a losing creator waits for complete owner publication without
+> weakening shared-read ownership. Scoped readiness observes namespace generation
+> metadata without receiving invocation authority; legacy lookups stay denied.
+> The bootstrap catalogue admits a bounded 32 KiB verification stack through its
+> existing account. Signed upload/release/pull/launch/readiness and separate
+> failed-run evidence are in the
+> [deployment ingress follow-up](../reports/audits/2026-10-11-security-deployment-ingress.md).
 
 ---
 

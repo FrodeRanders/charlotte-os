@@ -16,8 +16,8 @@
 extern crate alloc;
 
 use alloc::{
+    borrow::Cow,
     format,
-    vec::Vec,
 };
 
 use catten_rt::{
@@ -27,6 +27,11 @@ use catten_rt::{
 };
 use catten_services::{
     clusterctl,
+    deployment_http::{
+        Error as RequestError,
+        Request,
+        RequestBuffer,
+    },
     name_catalog,
     sleep_ms,
     socket,
@@ -35,197 +40,49 @@ use catten_services::{
 };
 use catten_syscall::thread_exit;
 
-const HEADER_LIMIT: usize = 1024;
 const ACCEPT_RETRY_MS: u64 = 50;
 const RECEIVE_RETRY_MS: u64 = 100;
 
-enum Request {
-    Notify(Vec<u8>),
-    Release(Vec<u8>),
-    Operations(Vec<u8>),
-    Shutdown(Vec<u8>),
-    IngressPolicy(Vec<u8>),
-    IngressPolicyStatus,
-    Status(Vec<u8>),
-}
+const BAD_REQUEST_RESPONSE: &str = concat!(
+    "HTTP/1.1 400 Bad Request\r\n",
+    "Content-Type: application/json\r\nContent-Length: 30\r\nConnection: close\r\n\r\n",
+    "{\"error\":\"malformed request\"}\n",
+);
+
+const ALLOCATION_FAILURE_RESPONSE: &str = concat!(
+    "HTTP/1.1 503 Service Unavailable\r\n",
+    "Content-Type: application/json\r\nContent-Length: 30\r\nConnection: close\r\n\r\n",
+    "{\"error\":\"allocation failed\"}\n",
+);
 
 fn fail() -> ! {
     unsafe { thread_exit() }
 }
 
-fn header_end(bytes: &[u8]) -> Option<usize> {
-    bytes.windows(4).position(|window| window == b"\r\n\r\n").map(|offset| offset + 4)
-}
-
-fn content_length(headers: &[u8]) -> Option<usize> {
-    for raw_line in headers.split(|byte| *byte == b'\n').skip(1) {
-        let line = raw_line.strip_suffix(b"\r").unwrap_or(raw_line);
-        let colon = line.iter().position(|byte| *byte == b':')?;
-        if line[..colon].eq_ignore_ascii_case(b"content-length") {
-            let value = line[colon + 1..]
-                .iter()
-                .copied()
-                .skip_while(|byte| byte.is_ascii_whitespace())
-                .take_while(|byte| !byte.is_ascii_whitespace());
-            let mut length = 0usize;
-            let mut digits = 0usize;
-            for byte in value {
-                if !byte.is_ascii_digit() {
-                    return None;
-                }
-                length = length.checked_mul(10)?.checked_add(usize::from(byte - b'0'))?;
-                digits += 1;
-            }
-            return (digits > 0).then_some(length);
-        }
-    }
-    None
-}
-
-fn hex_digit(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
-}
-
-fn decode_path_name(path: &[u8]) -> Option<Vec<u8>> {
-    let prefix = clusterctl::NOTIFY_PATH;
-    if !path.starts_with(prefix) || path.get(prefix.len()) != Some(&b'/') {
-        return None;
-    }
-    let encoded = path.get(prefix.len() + 1..)?;
-    let mut name = Vec::with_capacity(encoded.len());
-    let mut index = 0;
-    while index < encoded.len() {
-        let byte = encoded[index];
-        if byte == b'%' {
-            let high = hex_digit(*encoded.get(index + 1)?)?;
-            let low = hex_digit(*encoded.get(index + 2)?)?;
-            name.push((high << 4) | low);
-            index += 3;
-        } else {
-            name.push(byte);
-            index += 1;
-        }
-    }
-    (charlotte_launch::deployment::valid_artifact_name(&name)).then_some(name)
-}
-
-fn complete_request(request: &[u8]) -> Result<Option<Request>, ()> {
-    let Some(body_start) = header_end(request) else {
-        return if request.len() <= HEADER_LIMIT {
-            Ok(None)
-        } else {
-            Err(())
-        };
-    };
-    if body_start > HEADER_LIMIT {
-        return Err(());
-    }
-    let request_line_end = request.iter().position(|byte| *byte == b'\r').ok_or(())?;
-    let request_line = request.get(..request_line_end).ok_or(())?;
-    let mut words = request_line.split(|byte| *byte == b' ');
-    let method = words.next().ok_or(())?;
-    let path = words.next().ok_or(())?;
-    if !words.next().is_some_and(|version| version.starts_with(b"HTTP/1."))
-        || words.next().is_some()
-    {
-        return Err(());
-    }
-    if method == b"GET" {
-        if path == clusterctl::INGRESS_POLICY_PATH {
-            return Ok(Some(Request::IngressPolicyStatus));
-        }
-        return decode_path_name(path).map(Request::Status).map(Some).ok_or(());
-    }
-    if method != b"POST" {
-        return Err(());
-    }
-    let (minimum, maximum) = match path {
-        clusterctl::NOTIFY_PATH => (
-            charlotte_launch::deployment::MIN_HEADER_LEN,
-            charlotte_launch::deployment::MAX_DESCRIPTOR_LEN,
-        ),
-        clusterctl::RELEASE_PATH => {
-            (charlotte_launch::release::HEADER_LEN, charlotte_launch::release::MAX_RELEASE_LEN)
-        }
-        clusterctl::OPERATIONS_PATH => (
-            charlotte_launch::operations_bundle::HEADER_LEN,
-            charlotte_launch::operations_bundle::MAX_BUNDLE_LEN,
-        ),
-        clusterctl::SHUTDOWN_PATH => {
-            (charlotte_launch::shutdown::ENCODED_LEN, charlotte_launch::shutdown::ENCODED_LEN)
-        }
-        clusterctl::INGRESS_POLICY_PATH => (
-            charlotte_launch::ingress_policy::HEADER_LEN,
-            charlotte_launch::ingress_policy::MAX_ENCODED_LEN,
-        ),
-        _ => return Err(()),
-    };
-    let length = content_length(&request[..body_start]).ok_or(())?;
-    if !(minimum..=maximum).contains(&length) {
-        return Err(());
-    }
-    let end = body_start.checked_add(length).ok_or(())?;
-    if request.len() < end {
-        Ok(None)
-    } else {
-        request
-            .get(body_start..end)
-            .map(|body| {
-                Some(
-                    if path == clusterctl::RELEASE_PATH {
-                        Request::Release(body.to_vec())
-                    } else if path == clusterctl::OPERATIONS_PATH {
-                        Request::Operations(body.to_vec())
-                    } else if path == clusterctl::SHUTDOWN_PATH {
-                        Request::Shutdown(body.to_vec())
-                    } else if path == clusterctl::INGRESS_POLICY_PATH {
-                        Request::IngressPolicy(body.to_vec())
-                    } else {
-                        Request::Notify(body.to_vec())
-                    },
-                )
-            })
-            .ok_or(())
-    }
-}
-
 fn receive_request(
     ctx: &Context,
     socket: &socket::OwnedSocket<'_>,
-) -> Result<Result<Request, ShutdownRequest>, ()> {
-    let mut request = Vec::new();
+) -> Result<Result<Request, ShutdownRequest>, RequestError> {
+    let mut request = RequestBuffer::default();
     let deadline = catten_services::deadline::Deadline::after(30_000);
     let header_deadline = catten_services::deadline::Deadline::after(5_000);
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
             return Ok(Err(request));
         }
-        if deadline.expired()
-            || (!request.windows(4).any(|bytes| bytes == b"\r\n\r\n") && header_deadline.expired())
-        {
-            return Err(());
+        if deadline.expired() || (!request.has_header() && header_deadline.expired()) {
+            return Err(RequestError::Malformed);
         }
         let chunk = match socket.receive_timeout(1, RECEIVE_RETRY_MS) {
             Ok(Some(chunk)) => chunk,
-            Ok(None) => return Err(()),
+            Ok(None) => return Err(RequestError::Malformed),
             Err(socket::SocketError::RetryExhausted) => continue,
-            Err(_) => return Err(()),
+            Err(_) => return Err(RequestError::Malformed),
         };
         let (memory, len) = chunk.into_parts();
-        let mapping = memory.map_read_only().map_err(|_| ())?;
-        let bytes = mapping.as_slice().get(..len).ok_or(())?;
-        if request.len().saturating_add(bytes.len())
-            > HEADER_LIMIT + charlotte_launch::operations_bundle::MAX_BUNDLE_LEN
-        {
-            return Err(());
-        }
-        request.extend_from_slice(bytes);
-        if let Some(request) = complete_request(&request)? {
+        let mapping = memory.map_read_only().map_err(|_| RequestError::AllocationFailed)?;
+        let bytes = mapping.as_slice().get(..len).ok_or(RequestError::Malformed)?;
+        if let Some(request) = request.push(bytes)? {
             return Ok(Ok(request));
         }
     }
@@ -423,28 +280,27 @@ fn query_ingress_policy(
     ))
 }
 
-fn response(result: Result<i64, ()>) -> alloc::string::String {
+fn response(result: i64) -> alloc::string::String {
     let (status, body) = match result {
-        Ok(generation) if generation > 0 => {
+        generation if generation > 0 => {
             ("202 Accepted", format!("{{\"generation\":{generation}}}\n"))
         }
-        Ok(clusterctl::ERR_UNTRUSTED_DESCRIPTOR) => {
+        clusterctl::ERR_UNTRUSTED_DESCRIPTOR => {
             ("403 Forbidden", format!("{{\"error\":{}}}\n", clusterctl::ERR_UNTRUSTED_DESCRIPTOR))
         }
-        Ok(clusterctl::ERR_STALE_DESCRIPTOR | clusterctl::ERR_CONFLICTING_DESCRIPTOR) => {
-            ("409 Conflict", format!("{{\"error\":{}}}\n", result.unwrap_or_default()))
+        clusterctl::ERR_STALE_DESCRIPTOR | clusterctl::ERR_CONFLICTING_DESCRIPTOR => {
+            ("409 Conflict", format!("{{\"error\":{}}}\n", result))
         }
-        Ok(clusterctl::ERR_EXPIRED_OPERATION) => {
+        clusterctl::ERR_EXPIRED_OPERATION => {
             ("409 Conflict", format!("{{\"error\":{}}}\n", clusterctl::ERR_EXPIRED_OPERATION))
         }
-        Ok(clusterctl::ERR_OUTSIDE_VALIDITY) => {
+        clusterctl::ERR_OUTSIDE_VALIDITY => {
             ("409 Conflict", format!("{{\"error\":{}}}\n", clusterctl::ERR_OUTSIDE_VALIDITY))
         }
-        Ok(clusterctl::ERR_UNSATISFIABLE_PLACEMENT) => {
+        clusterctl::ERR_UNSATISFIABLE_PLACEMENT => {
             ("409 Conflict", format!("{{\"error\":{}}}\n", clusterctl::ERR_UNSATISFIABLE_PLACEMENT))
         }
-        Ok(code) => ("503 Service Unavailable", format!("{{\"error\":{code}}}\n")),
-        Err(()) => ("400 Bad Request", "{\"error\":\"malformed request\"}\n".into()),
+        code => ("503 Service Unavailable", format!("{{\"error\":{code}}}\n")),
     };
     format!(
         "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: \
@@ -502,6 +358,15 @@ fn rollout_response(result: Result<clusterctl::RolloutStatus, i64>) -> alloc::st
     )
 }
 
+fn new_listener(
+    tcp: catten_rt::owned::ConnectionRef<'_>,
+) -> Result<socket::OwnedSocket<'_>, socket::SocketError> {
+    let socket =
+        socket::OwnedSocket::open(tcp, socket::DOMAIN_TCP).map_err(socket::SocketError::Ipc)?;
+    socket.listen(clusterctl::NOTIFY_PORT)?;
+    Ok(socket)
+}
+
 fn serve(ctx: &Context) -> ShutdownRequest {
     let names = ctx.bootstrap_connection().unwrap_or_else(|| fail());
     let (_, tcp) = match wait_for_registered_name_or_shutdown_owned(ctx, names, socket::NAME) {
@@ -517,68 +382,91 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         return request;
     }
 
-    loop {
+    let trace = matches!(
+        ctx.manifest_value(charlotte_launch::deployd_status::TRACE_KEY),
+        Some(catten_rt::ManifestValue::Unsigned(1))
+    );
+    let mut announced = false;
+    'connections: loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
             return request;
         }
-        let socket =
-            socket::OwnedSocket::open(tcp.as_ref(), socket::DOMAIN_TCP).unwrap_or_else(|_| fail());
-        let port = OwnedMemory::allocate(1).unwrap_or_else(|_| fail());
-        let mut mapping = port.map_writable().unwrap_or_else(|_| fail());
-        mapping.as_mut_slice()[..2].copy_from_slice(&clusterctl::NOTIFY_PORT.to_le_bytes());
-        let port = mapping.unmap().unwrap_or_else(|_| fail());
-        let listen = tcp
-            .as_ref()
-            .call_move(socket::OP_LISTEN, socket.id(), port)
-            .unwrap_or_else(|_| fail())
-            .wait()
-            .unwrap_or_else(|_| fail());
-        if listen.result != 0 {
-            fail();
+        let socket = match new_listener(tcp.as_ref()) {
+            Ok(socket) => socket,
+            Err(error) => {
+                if trace {
+                    catten_rt::logln!("[deployd] listener rejected: {error:?}");
+                }
+                sleep_ms(ACCEPT_RETRY_MS);
+                continue;
+            }
+        };
+        if !announced {
+            catten_rt::logln!("[deployd] listening port={}", clusterctl::NOTIFY_PORT);
+            announced = true;
         }
         loop {
             if let Some(request) = ctx.lifecycle().shutdown_requested() {
                 return request;
             }
-            let accepted = socket
-                .call(socket::OP_ACCEPT, socket.id())
-                .unwrap_or_else(|_| fail())
-                .wait()
-                .unwrap_or_else(|_| fail())
-                .result;
+            let call = match socket.call(socket::OP_ACCEPT, socket.id()) {
+                Ok(call) => call,
+                Err(error) => {
+                    if trace {
+                        catten_rt::logln!(
+                            "[deployd] accept admission={error:?} socket={}",
+                            socket.id()
+                        );
+                    }
+                    if error
+                        == catten_rt::owned::IpcError::Status(
+                            catten_syscall::ipc_status::QUEUE_FULL,
+                        )
+                    {
+                        sleep_ms(ACCEPT_RETRY_MS);
+                        continue;
+                    }
+                    continue 'connections;
+                }
+            };
+            let accepted = match call.wait() {
+                Ok(reply) => reply.result,
+                Err(_) => continue 'connections,
+            };
             if accepted == 0 {
                 break;
             }
             if accepted != socket::ERR_WOULD_BLOCK {
-                fail();
+                continue 'connections;
             }
             sleep_ms(ACCEPT_RETRY_MS);
         }
 
-        let reply = match receive_request(ctx, &socket) {
+        let reply: Cow<'static, str> = match receive_request(ctx, &socket) {
             Ok(Err(request)) => return request,
             Ok(Ok(Request::Notify(descriptor))) => {
-                response(Ok(notify_cluster(controller.as_ref(), &descriptor)))
+                Cow::Owned(response(notify_cluster(controller.as_ref(), &descriptor)))
             }
             Ok(Ok(Request::Release(envelope))) => {
-                response(Ok(notify_release(controller.as_ref(), &envelope)))
+                Cow::Owned(response(notify_release(controller.as_ref(), &envelope)))
             }
             Ok(Ok(Request::Operations(bundle))) => {
-                response(Ok(notify_operations(controller.as_ref(), &bundle)))
+                Cow::Owned(response(notify_operations(controller.as_ref(), &bundle)))
             }
             Ok(Ok(Request::Shutdown(envelope))) => {
-                response(Ok(notify_shutdown(controller.as_ref(), &envelope)))
+                Cow::Owned(response(notify_shutdown(controller.as_ref(), &envelope)))
             }
             Ok(Ok(Request::IngressPolicy(envelope))) => {
-                response(Ok(notify_ingress_policy(controller.as_ref(), &envelope)))
+                Cow::Owned(response(notify_ingress_policy(controller.as_ref(), &envelope)))
             }
             Ok(Ok(Request::IngressPolicyStatus)) => {
-                status_response(query_ingress_policy(controller.as_ref()))
+                Cow::Owned(status_response(query_ingress_policy(controller.as_ref())))
             }
             Ok(Ok(Request::Status(name))) => {
-                rollout_response(query_rollout(controller.as_ref(), &name))
+                Cow::Owned(rollout_response(query_rollout(controller.as_ref(), &name)))
             }
-            Err(()) => response(Err(())),
+            Err(RequestError::AllocationFailed) => Cow::Borrowed(ALLOCATION_FAILURE_RESPONSE),
+            Err(_) => Cow::Borrowed(BAD_REQUEST_RESPONSE),
         };
         let _ = socket.send_all(reply.as_bytes(), 1000, 5);
         let _ = socket.close();

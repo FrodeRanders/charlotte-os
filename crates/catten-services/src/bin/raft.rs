@@ -395,10 +395,8 @@ fn main(ctx: Context) -> ! {
         Some(ManifestValue::Unsigned(value)) if value != 0
     );
 
-    let ns_conn = match ctx.bootstrap_cap() {
-        Some(cap) => cap,
-        None => fatal(1),
-    };
+    let names = ctx.bootstrap_connection().unwrap_or_else(|| fatal(1));
+    let ns_conn = names.as_raw();
     config::write::<u32>(status::STAGE, 2);
 
     // The node id is the raft identity other nodes use to reach this node
@@ -421,7 +419,7 @@ fn main(ctx: Context) -> ! {
             let mut identity_retries = 120u32;
             loop {
                 if let Some(identity) = catten_services::node_identity::NodeIdentity::load_or_create(
-                    ns_conn, cluster_id, None,
+                    names, cluster_id, None,
                 ) {
                     break identity.name_str().to_string();
                 }

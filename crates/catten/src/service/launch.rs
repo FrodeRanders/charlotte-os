@@ -561,7 +561,11 @@ fn launch_node_cluster_with_services(
             value: ManifestValue::Bytes(&encoded_services),
         },
     ];
-    let dns = crate::service::supervisor::spawn_with_manifest(
+    // The catalogue verifies signed deployment/release entries on its Raft
+    // call chain. The ordinary 16 KiB bootstrap stack crosses its guard in
+    // Ed25519 verification; admit a bounded 32 KiB stack through the same
+    // per-domain stack account, without changing signed deployment limits.
+    let dns = crate::service::supervisor::spawn_with_manifest_and_limits(
         crate::service::store::service_elf(b"dns").expect("[launch] dns.elf"),
         ns,
         ConnectionRights::CALL,
@@ -570,6 +574,7 @@ fn launch_node_cluster_with_services(
         } else {
             &service_manifest
         },
+        ServiceLimits::default().with_user_stack_size(32 * 1024),
     );
     logln!(
         "[launch] cluster services spawned: disco={} relmsg={} dns={} (single Raft owner)",
@@ -782,7 +787,11 @@ fn launch_deployment_plane(
         crate::service::store::service_elf(b"deployd").expect("[launch] deployd.elf"),
         ns,
         ConnectionRights::CALL,
-        &[],
+        &[ManifestEntry {
+            key: charlotte_launch::deployd_status::TRACE_KEY,
+            flags: 0,
+            value: ManifestValue::Unsigned(u64::from(cfg!(feature = "http_net_test"))),
+        }],
     );
     logln!(
         "[launch] deployment plane spawned: clusterctl={} agent={} ingress={} port={}",

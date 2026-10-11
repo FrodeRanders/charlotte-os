@@ -292,7 +292,12 @@ fn fatal(stage: u64) -> ! {
 /// Resolve the local name-service registration for `name`: either the
 /// caller-attached connection or the local registration looked up by name.
 /// Returns `(connection, local_generation)`.
-fn local_publication(ns_conn: u64, attached_connection: u64, name: &[u8]) -> Option<(u64, u64)> {
+fn local_publication(
+    names: ConnectionRef<'_>,
+    attached_connection: u64,
+    name: &[u8],
+) -> Option<(u64, u64)> {
+    let ns_conn = names.as_raw();
     if attached_connection != 0 {
         return Some((attached_connection, 0));
     }
@@ -314,7 +319,7 @@ fn local_publication(ns_conn: u64, attached_connection: u64, name: &[u8]) -> Opt
 #[allow(clippy::too_many_arguments)]
 fn register_name(
     node: &mut RaftNode,
-    ns_conn: u64,
+    names: ConnectionRef<'_>,
     transport: &RelmsgRaftTransport,
     pending_registers: &mut alloc::vec::Vec<PendingRegistration>,
     node_name: &[u8],
@@ -322,6 +327,18 @@ fn register_name(
     name: alloc::vec::Vec<u8>,
     deployment_generation: u64,
 ) -> Option<i64> {
+    // Scoped applications are policy-published: legacy lookup must reject
+    // them. Observe their actual publication before any Raft mutation, without
+    // acquiring invocation authority or altering legacy watch ownership.
+    // Their complete domain/retirement owner remains with the deployment agent.
+    let observed = if !name.is_empty() && deployment_generation != 0 && message.connection == 0 {
+        let Some(generation) = catten_services::publication_generation_owned(names, &name) else {
+            return Some(dns::ERR_NOT_FOUND);
+        };
+        Some((0, generation))
+    } else {
+        None
+    };
     if name.is_empty() {
         Some(dns::ERR_TOO_LARGE)
     } else if node.state != NodeState::Leader {
@@ -330,7 +347,7 @@ fn register_name(
         // relay a register request to the leader, which commits the entry
         // naming this node as the owner. The reply is deferred until the
         // leader acknowledges (see rregister replies below).
-        match local_publication(ns_conn, message.connection, &name) {
+        match observed.or_else(|| local_publication(names, message.connection, &name)) {
             None => Some(dns::ERR_TOO_LARGE),
             Some((connection, local_generation)) => match node.known_leader_id.clone() {
                 Some(leader) if transport.has_peer(&leader) => {
@@ -372,8 +389,9 @@ fn register_name(
         };
         match node.submit_command(command, node.millis()) {
             Ok(index) => {
-                let (connection, existing_local_generation) =
-                    local_publication(ns_conn, message.connection, &name).unwrap_or((0, 0));
+                let (connection, existing_local_generation) = observed
+                    .or_else(|| local_publication(names, message.connection, &name))
+                    .unwrap_or((0, 0));
                 pending_registers.push(PendingRegistration::Prepare {
                     term: node.current_term,
                     log_index: index,
@@ -1608,7 +1626,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     if link == 0 {
         fatal(5);
     }
-    let identity = match NodeIdentity::load_or_create(ns_conn, &mnemonic, Some(local_mac)) {
+    let identity = match NodeIdentity::load_or_create(names, &mnemonic, Some(local_mac)) {
         Some(identity) => identity,
         None => fatal(6),
     };
@@ -3158,7 +3176,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     let name = packed_name(message.arg0);
                     if let Some(result) = register_name(
                         &mut node,
-                        ns_conn,
+                        names,
                         &transport,
                         &mut pending_registers,
                         &node_name,
@@ -3175,7 +3193,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     if let Some(name) = read_named_bytes(&message) {
                         if let Some(result) = register_name(
                             &mut node,
-                            ns_conn,
+                            names,
                             &transport,
                             &mut pending_registers,
                             &node_name,
@@ -3197,7 +3215,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     {
                         if let Some(result) = register_name(
                             &mut node,
-                            ns_conn,
+                            names,
                             &transport,
                             &mut pending_registers,
                             &node_name,

@@ -1084,6 +1084,10 @@ if [ -n "$TIMEOUT" ]; then
                 --port "$HTTP_HOST_PORT" --ready-log "$LOG" --wait-seconds 1; then
                 HTTP_LIVENESS_OK=1
             fi
+            if ! python3 "${ROOT_DIR}/scripts/tests/test-deployment-http-liveness.py" \
+                --port "$DEPLOY_HOST_PORT" --ready-log "$LOG"; then
+                HTTP_LIVENESS_OK=0
+            fi
             for _ in 1 2 3 4 5 6 7 8; do
                 HTTP_BODY="$(curl -fsS --max-time 5 "http://127.0.0.1:${HTTP_HOST_PORT}/metrics" 2>&1 || true)"
                 HTTP_CLUSTER_BODY="$(curl -fsS --max-time 5 "http://127.0.0.1:${HTTP_HOST_PORT}/cluster/metrics" 2>&1 || true)"

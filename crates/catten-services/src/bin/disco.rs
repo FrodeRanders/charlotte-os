@@ -585,7 +585,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     // the cluster mnemonic, so every node on the segment carries the same
     // stable identity in its probes.
     let node_id = match catten_services::node_identity::NodeIdentity::load_or_create(
-        ns_conn,
+        names,
         &mnemonic,
         Some(local_mac),
     ) {

@@ -58,6 +58,22 @@ R7-4/R7-5 qualification remain open.
 | --- | --- | --- | --- |
 | SEC-32 | Corrected in documented scope | Receive and status requests move a caller-supplied page, which returns with the data; TCP/IP allocates no reply backing for these paths. | Caller-ceiling saturation, cancellation/mapping rejection, retained-charge lifecycle and bidirectional TCP retention are covered in the [follow-up](../reports/audits/2026-10-10-security-tcpip-caller-buffers.md). Broader heap/aggregate admission remains R7-3/R7-5. |
 
+## SEC-06: management progress
+
+The [HTTP listener correction](../reports/audits/2026-10-10-security-http-progress.md)
+retains listeners through queue-full admission. The
+[deployment ingress follow-up](../reports/audits/2026-10-11-security-deployment-ingress.md)
+extends connection-local rejection to deployment setup/accept and makes its
+pre-authentication parser allocation fallible without a second body copy.
+Both endpoints have total request budgets; deployment remains serial. The same follow-up corrects shared identity creation ownership, the catalogue verification stack budget and scoped readiness observation. The read-only namespace query returns a live publication generation without granting invocation authority; legacy lookup stays denied. Final signed upload/release/pull/verification/launch/readiness passes. Earlier failed signed runs and intermittent AMD frame-router startup remain recorded separately; a passing repeat does not resolve that intermittence.
+
+Remaining acceptance requires bounded concurrent admission and progress for
+healthy clients while hostile clients occupy slots, bounded controller/RPC
+completion, and sustained connection/packet flood, NIC failure and lifecycle
+shutdown evidence on supported targets. Signatures checked after receipt do
+not protect listener availability. Passing deadline/rejection probes do not
+complete these fairness gates or SEC-07's essential-service pressure matrix.
+
 ## SEC-07: bounded resource admission
 
 Implemented owners now cover capabilities, memory objects, heap/image frames,
