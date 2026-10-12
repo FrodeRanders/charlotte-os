@@ -222,13 +222,31 @@ fn test_grant_abandonment() {
         drop_grant_under_guards(prepared);
         assert_retained_root(root);
     }
-    let (root, prepared) = prepare_fixture(true, true);
+    let (root, mut prepared) = prepare_fixture(true, true);
+    // The exact empty fixture owner has no registered hardware domain. Absence
+    // cannot substitute for the new prepared path's completion receipt.
+    assert!(matches!(
+        dma::destroy_created_domain(&mut prepared.resources.creation),
+        Err(dma::Error::UnknownDomain | dma::Error::Unsupported)
+    ));
+    assert_eq!(prepared.resources.creation.id, Some(u64::MAX));
+    assert_eq!(used(root.id()), 1);
     EXPECTED_IRQ.store(crate::cpu::isa::lp::ops::get_int_state(), Ordering::Relaxed);
-    let before = DESTROYS.load(Ordering::Relaxed);
+    use domain_creation::tests::readiness::{
+        REJECTED_CALLS,
+        finish_rejected_source,
+        reject_cancellation,
+    };
+    prepared.resources.creation.wait_platform = Some(prepared.resources.admission.platform());
+    prepared.resources.destroy = DmaDestruction::Prepared(reject_cancellation);
+    let before = REJECTED_CALLS.load(Ordering::Relaxed);
     let prepared = prepared.cancel_unpublished().err().unwrap();
-    assert_eq!(DESTROYS.load(Ordering::Relaxed), before + 1);
+    assert_eq!(REJECTED_CALLS.load(Ordering::Relaxed), before + 1);
     let prepared = prepared.cancel_unpublished().err().unwrap();
-    assert_eq!(DESTROYS.load(Ordering::Relaxed), before + 1);
+    assert_eq!(REJECTED_CALLS.load(Ordering::Relaxed), before + 1);
+    finish_rejected_source();
+    assert!(prepared.resources.creation.interest.as_ref().unwrap().completed());
+    assert_retained_root(root);
     drop_grant_under_guards(prepared);
     assert_retained_root(root);
     // Explicit cancellation of an ordinary unused reservation refunds and

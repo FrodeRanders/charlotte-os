@@ -369,7 +369,26 @@ struct PreparedDmaDomain {
 struct DmaGrantResources {
     admission: GrantAdmission,
     creation: DmaCreation,
-    destroy: fn(u64) -> Result<(), dma::Error>,
+    destroy: DmaDestruction,
+}
+
+/// Serialized adapters take a fixture ID; scheduled production cancellation
+/// borrows the existing armed creation through pre-destruction admission.
+#[derive(Clone, Copy)]
+enum DmaDestruction {
+    Immediate(fn(u64) -> Result<(), dma::Error>),
+    Prepared(fn(&mut DmaCreation) -> Result<(), dma::Error>),
+}
+
+impl DmaDestruction {
+    fn run(self, creation: &mut DmaCreation) -> Result<(), dma::Error> {
+        match self {
+            Self::Immediate(destroy) => {
+                destroy(creation.id.expect("DMA destruction without owner"))
+            }
+            Self::Prepared(destroy) => destroy(creation),
+        }
+    }
 }
 
 /// Borrowed from the complete grant preparation, never returned as a scalar
@@ -455,6 +474,13 @@ impl PreparedDmaDomain {
         owner: AddressSpaceId,
         destroy: fn(u64) -> Result<(), dma::Error>,
     ) -> Result<Self, DeviceError> {
+        Self::new_with_destruction(owner, DmaDestruction::Immediate(destroy))
+    }
+
+    fn new_with_destruction(
+        owner: AddressSpaceId,
+        destroy: DmaDestruction,
+    ) -> Result<Self, DeviceError> {
         Ok(Self {
             resources: core::mem::ManuallyDrop::new(DmaGrantResources {
                 admission: GrantAdmission::new(owner)?,
@@ -488,8 +514,8 @@ impl PreparedDmaDomain {
         if cancel_private(&mut self.resources.creation).is_err() {
             return Err(self);
         }
-        if let Some(id) = self.resources.creation.id {
-            if (self.resources.destroy)(id).is_err() {
+        if self.resources.creation.id.is_some() {
+            if self.resources.destroy.run(&mut self.resources.creation).is_err() {
                 return Err(self);
             }
             self.resources.creation.id = None;
@@ -867,11 +893,11 @@ pub(crate) fn grant_dma_domain_wait(
     requester_id: u32,
     msi_address: Option<u64>,
 ) -> Result<DeviceCap, DeviceError> {
-    grant_dma_domain_with_policy(
+    grant_dma_domain_with_destruction(
         owner,
         true,
         |creation| create_dma_domain(owner, requester_id, msi_address, creation),
-        dma::destroy_domain,
+        DmaDestruction::Prepared(dma::destroy_created_domain),
     )
 }
 
@@ -975,7 +1001,16 @@ fn grant_dma_domain_with_policy(
     create: impl FnOnce(&mut DmaCreation) -> Result<(), DeviceError>,
     destroy: fn(u64) -> Result<(), dma::Error>,
 ) -> Result<DeviceCap, DeviceError> {
-    let mut prepared = PreparedDmaDomain::new(owner, destroy)?;
+    grant_dma_domain_with_destruction(owner, wait, create, DmaDestruction::Immediate(destroy))
+}
+
+fn grant_dma_domain_with_destruction(
+    owner: AddressSpaceId,
+    wait: bool,
+    create: impl FnOnce(&mut DmaCreation) -> Result<(), DeviceError>,
+    destroy: DmaDestruction,
+) -> Result<DeviceCap, DeviceError> {
+    let mut prepared = PreparedDmaDomain::new_with_destruction(owner, destroy)?;
     if wait {
         prepared.resources.creation.wait_platform = Some(prepared.resources.admission.platform());
     }

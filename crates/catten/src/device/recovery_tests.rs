@@ -657,8 +657,9 @@ pub(crate) fn run() {
     let charged = dma_tables::used();
     assert_eq!(
         domain_creation::tests::with_real(root, None, requester, || {
-            grant_dma_domain_with_backend(
+            grant_dma_domain_with_destruction(
                 root.id(),
+                false, // Serialized fixture; unexpected contention must reject.
                 |creation| {
                     create_dma_domain(root.id(), requester, None, creation)?;
                     let owner =
@@ -672,7 +673,7 @@ pub(crate) fn run() {
                     assert!(AddressSpaceOperation::acquire(root).is_err());
                     Ok(())
                 },
-                destroy_failed_creation,
+                DmaDestruction::Prepared(dma::destroy_created_domain),
             )
         }),
         Err(DeviceError::AddressSpaceClosing)

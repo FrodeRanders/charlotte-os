@@ -1,5 +1,5 @@
 //! Serialized QEMU probes and synthetic complete-unit/grant retention.
-mod readiness;
+pub(in crate::device) mod readiness;
 use core::sync::atomic::{
     AtomicBool,
     AtomicU32,

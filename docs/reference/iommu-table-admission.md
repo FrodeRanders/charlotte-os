@@ -404,3 +404,15 @@ cause remains terminal. Existing runtime DMA owners record progress before
 kernel entry and do not repeat ambiguous unmap from finish/Drop. Pin quarantine,
 original charges and actual retirement completion remain unchanged. This adds
 no readiness wait or hardware/physical retry owner.
+
+[Grant cancellation readiness](../reports/audits/2026-10-12-dma-grant-cancellation-readiness.md)
+now shares the existing slot admission helper with fresh creation. A consuming
+rollback borrows its original armed creation/root/reservation/reset before one
+destruction claim; it never reenters creation or repeats cleanup after a hardware
+or physical error. Admission requires an available engine and no detached cells.
+Under that same hold, the recorded domain must exist with published, unfrozen
+tables before descriptor detachment. The existing exact-domain/engine retirement
+body then supplies actual completion, outside backend serialization, before
+original metadata/reset/root release. Masked/nonscheduled or rejected waiting
+retains the entire rollback-started owner without retry. Public DMA operation
+and whole-domain teardown readiness remain separate contexts.

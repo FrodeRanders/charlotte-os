@@ -26,104 +26,54 @@ impl<'slot, 'grant, T> Preparing<'slot, 'grant, T> {
         grant: &'grant mut DmaCreation,
         ready: impl Fn(&T) -> bool,
     ) -> Result<Self, Error> {
-        Self::begin_with(
+        if grant.is_armed() {
+            return Err(Error::OperationInFlight);
+        }
+        let unit = readiness::admit(slot, grant, ready, |slot| {
+            let UnitState::Installed(unit) =
+                core::mem::replace(&mut slot.state, UnitState::Claimed)
+            else {
+                unreachable!("validated installed creation unit");
+            };
+            Ok(DetachedDomain::new(unit))
+        })?;
+        Ok(Self {
             slot,
+            unit,
             grant,
-            ready,
-            |interest| {
-                // Never restore/enable IRQs beneath an unknown caller mask.
-                if !crate::cpu::isa::lp::ops::get_int_state() {
-                    return Err(Error::WaitRegistrationFailed);
-                }
-                crate::cpu::scheduler::try_park_until(
-                    interest,
-                    crate::cpu::scheduler::threads::MigrationConstraint::GeneralWait,
-                    || interest.completed(),
-                )
-                .map_err(|_| Error::WaitRegistrationFailed)
-            },
-            |platform| {
-                if !crate::cpu::isa::lp::ops::get_int_state()
-                    || crate::cpu::scheduler::system_scheduler::get_thread_id().is_none()
-                {
-                    return Err(Error::WaitRegistrationFailed);
-                }
-                readiness::Source::prepare(platform)
-            },
-        )
+        })
     }
 
     fn begin_with(
         slot: &'slot Mutex<UnitSlot<T>>,
         grant: &'grant mut DmaCreation,
         ready: impl Fn(&T) -> bool,
-        mut wait: impl FnMut(&readiness::Interest) -> Result<(), Error>,
-        mut prepare: impl FnMut(bool) -> Result<readiness::Source, Error>,
+        wait: impl FnMut(&readiness::Interest) -> Result<(), Error>,
+        prepare: impl FnMut(bool) -> Result<readiness::Source, Error>,
     ) -> Result<Self, Error> {
         if grant.is_armed() {
             return Err(Error::OperationInFlight);
         }
-        loop {
-            let mut state = slot.lock();
-            let available = match &state.state {
-                UnitState::Vacant => return Err(Error::Unsupported),
-                UnitState::Claimed => false,
-                UnitState::Installed(unit) => ready(unit),
-            };
-            if available {
-                // No allocation or fallible work between extraction and the
-                // complete retaining owner. Work is run once, after admission.
+        let unit = readiness::admit_with(
+            slot,
+            grant,
+            ready,
+            |slot| {
                 let UnitState::Installed(unit) =
-                    core::mem::replace(&mut state.state, UnitState::Claimed)
+                    core::mem::replace(&mut slot.state, UnitState::Claimed)
                 else {
                     unreachable!("validated installed creation unit");
                 };
-                let unit = DetachedDomain::new(unit);
-                drop(state);
-                drop(grant.interest.take());
-                return Ok(Self {
-                    slot,
-                    unit,
-                    grant,
-                });
-            }
-            let platform = grant.wait_platform.ok_or(Error::OperationInFlight)?;
-            let interest = state.readiness.as_ref().map(readiness::Source::interest);
-            drop(state);
-            if let Some(interest) = interest {
-                *grant.interest = Some(interest);
-            } else {
-                // Both allocations precede backend serialization. A producer
-                // or another waiter may win before exact slot revalidation.
-                let mut prepared = Some(prepare(platform)?);
-                let mut state = slot.lock();
-                let busy = match &state.state {
-                    UnitState::Claimed => true,
-                    UnitState::Installed(unit) => !ready(unit),
-                    UnitState::Vacant => false,
-                };
-                let interest = if busy {
-                    if state.readiness.is_none() {
-                        state.readiness = prepared.take();
-                    }
-                    Some(state.readiness.as_ref().unwrap().interest())
-                } else {
-                    None
-                };
-                drop(state);
-                if let Some(unused) = prepared {
-                    unused.cancel();
-                }
-                let Some(interest) = interest else {
-                    continue;
-                };
-                *grant.interest = Some(interest);
-            }
-            wait(grant.interest.as_ref().unwrap())?;
-            drop(grant.interest.take());
-            // A notification is availability, not ownership. Recheck the
-            // current slot; another operation may have claimed it first.
-        }
+                Ok(DetachedDomain::new(unit))
+            },
+            wait,
+            prepare,
+        )?;
+        Ok(Self {
+            slot,
+            unit,
+            grant,
+        })
     }
 
     fn restore(self, ready: impl FnOnce(&T) -> bool) {

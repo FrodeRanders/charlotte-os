@@ -95,9 +95,17 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   list disposal use producer-LP deferred delivery after local guards leave.
   Reject masked/nonscheduled waiting and waiter admission failure explicitly;
   serialized/reentrant fixtures use the rejecting grant path. Work runs once
-  after admission: never wait/replay an armed creation or recover an abandoned
-  unit claim. Source and transient-interest fallback retain their allocations;
-  readiness grants no hardware or physical cleanup authority.
+  after admission: never reenter creation with an armed owner or recover an
+  abandoned unit claim. Consuming grant cancellation may borrow that same owner
+  to wait only before its first destruction claim/descriptor detach. Keep the
+  rollback-started fence through admission failure, wake and one destruction;
+  rejection/interruption retains the complete grant and cannot be retried.
+  Revalidate its recorded domain and published, unfrozen backing under the same
+  backend hold as extraction; absence is not completion. Shared admission runs
+  its claim callback once and returns a retaining owner before guard exit.
+  Source and transient-interest fallback retain their allocations; readiness
+  grants no hardware or physical cleanup authority. Serialized fixture adapters
+  retain rejecting admission; public DMA operations remain separate contexts.
 - DMA unmap distinguishes backend admission rejection from completion failure.
   Only `OPERATION_IN_FLIGHT` from before actual domain/engine claim permits
   another unmap submission. Keep typed admission/completion errors through the

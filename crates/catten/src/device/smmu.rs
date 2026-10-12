@@ -874,20 +874,57 @@ pub(super) fn destroy_domain_at(
     before_maintenance: impl FnOnce(),
     after_detach: impl FnOnce(),
 ) -> Result<(), Error> {
-    let maintenance = with_smmu(|smmu| {
-        let Some(slot) = smmu.domains.get_mut(&domain_id) else {
-            return Ok(None);
-        };
-        let domain = slot.as_mut().ok_or(Error::UnknownDomain)?;
-        domain.retiring = true;
-        let sid = domain.sid;
-        // Publish the rejecting descriptor under registry serialization. No
-        // configuration wait or table release may occur until this guard leaves.
-        smmu.publish_ste(sid, None)?;
-        let domain = smmu.domains.get_mut(&domain_id).unwrap().take().unwrap();
-        let commands = smmu.commands.take().expect("admitted command engine");
-        Ok(Some(super::detached_domain::Maintenance::new(domain, commands)))
-    })?;
+    let maintenance = with_smmu(|smmu| claim_retirement(smmu, domain_id))?;
+    finish_retirement(domain_id, maintenance, before_maintenance, after_detach)
+}
+
+fn claim_retirement(
+    smmu: &mut Smmu,
+    domain_id: u64,
+) -> Result<Option<super::detached_domain::Maintenance<Domain, Commands>>, Error> {
+    let Some(slot) = smmu.domains.get_mut(&domain_id) else {
+        return Ok(None);
+    };
+    let domain = slot.as_mut().ok_or(Error::UnknownDomain)?;
+    domain.retiring = true;
+    let sid = domain.sid;
+    // Publish the rejecting descriptor under registry serialization. No
+    // configuration wait or table release may occur until this guard leaves.
+    smmu.publish_ste(sid, None)?;
+    let domain = smmu.domains.get_mut(&domain_id).unwrap().take().unwrap();
+    let commands = smmu.commands.take().expect("admitted command engine");
+    Ok(Some(super::detached_domain::Maintenance::new(domain, commands)))
+}
+
+/// One consuming grant cancellation, before its first descriptor detach. The
+/// containing preparation retains its exact root/reservation/reset through wait.
+pub(crate) fn destroy_created_domain(creation: &mut super::DmaCreation) -> Result<(), Error> {
+    let id = creation.id.expect("created-domain cleanup without owner");
+    let maintenance = super::domain_creation::readiness::admit(
+        &SMMU,
+        creation,
+        |smmu| smmu.commands.is_some() && smmu.domains.values().all(Option::is_some),
+        |slot| {
+            let smmu = slot.installed()?;
+            let domain =
+                smmu.domains.get(&id).and_then(Option::as_ref).ok_or(Error::UnknownDomain)?;
+            // Missing or frozen backing is no completion proof and cannot be
+            // retried through an available command engine.
+            if !domain.tables.is_published() {
+                return Err(Error::MapFailed);
+            }
+            claim_retirement(smmu, id)
+        },
+    )?;
+    finish_retirement(id, maintenance, || {}, || {})
+}
+
+fn finish_retirement(
+    domain_id: u64,
+    maintenance: Option<super::detached_domain::Maintenance<Domain, Commands>>,
+    before_maintenance: impl FnOnce(),
+    after_detach: impl FnOnce(),
+) -> Result<(), Error> {
     let Some(mut owner) = maintenance else {
         return Ok(());
     };

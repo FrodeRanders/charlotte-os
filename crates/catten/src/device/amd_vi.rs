@@ -714,20 +714,57 @@ pub(super) fn destroy_domain_at(
     before_maintenance: impl FnOnce(),
     after_detach: impl FnOnce(),
 ) -> Result<(), Error> {
-    let maintenance = with_unit(|unit| {
-        let Some(slot) = unit.domains.get_mut(&domain_id) else {
-            return Ok(None);
-        };
-        let domain = slot.as_mut().ok_or(Error::UnknownDomain)?;
-        domain.retiring = true;
-        let source_id = domain.source_id;
-        // Publish the rejecting descriptor under registry serialization. No
-        // configuration wait or table release may occur until this guard leaves.
-        unit.write_dte(source_id, PAddr::from(0u64), false);
-        let domain = unit.domains.get_mut(&domain_id).unwrap().take().unwrap();
-        let commands = unit.commands.take().expect("admitted command engine");
-        Ok(Some(super::detached_domain::Maintenance::new(domain, commands)))
-    })?;
+    let maintenance = with_unit(|unit| claim_retirement(unit, domain_id))?;
+    finish_retirement(domain_id, maintenance, before_maintenance, after_detach)
+}
+
+fn claim_retirement(
+    unit: &mut Unit,
+    domain_id: u64,
+) -> Result<Option<super::detached_domain::Maintenance<Domain, Commands>>, Error> {
+    let Some(slot) = unit.domains.get_mut(&domain_id) else {
+        return Ok(None);
+    };
+    let domain = slot.as_mut().ok_or(Error::UnknownDomain)?;
+    domain.retiring = true;
+    let source_id = domain.source_id;
+    // Publish the rejecting descriptor under registry serialization. No
+    // configuration wait or table release may occur until this guard leaves.
+    unit.write_dte(source_id, PAddr::from(0u64), false);
+    let domain = unit.domains.get_mut(&domain_id).unwrap().take().unwrap();
+    let commands = unit.commands.take().expect("admitted command engine");
+    Ok(Some(super::detached_domain::Maintenance::new(domain, commands)))
+}
+
+/// One consuming grant cancellation, before its first descriptor detach. The
+/// containing preparation retains its exact root/reservation/reset through wait.
+pub(crate) fn destroy_created_domain(creation: &mut super::DmaCreation) -> Result<(), Error> {
+    let id = creation.id.expect("created-domain cleanup without owner");
+    let maintenance = super::domain_creation::readiness::admit(
+        &UNIT,
+        creation,
+        |unit| unit.commands.is_some() && unit.domains.values().all(Option::is_some),
+        |slot| {
+            let unit = slot.installed()?;
+            let domain =
+                unit.domains.get(&id).and_then(Option::as_ref).ok_or(Error::UnknownDomain)?;
+            // Missing or frozen backing is no completion proof and cannot be
+            // retried through an available command engine.
+            if !domain.tables.is_published() {
+                return Err(Error::MapFailed);
+            }
+            claim_retirement(unit, id)
+        },
+    )?;
+    finish_retirement(id, maintenance, || {}, || {})
+}
+
+fn finish_retirement(
+    domain_id: u64,
+    maintenance: Option<super::detached_domain::Maintenance<Domain, Commands>>,
+    before_maintenance: impl FnOnce(),
+    after_detach: impl FnOnce(),
+) -> Result<(), Error> {
     let Some(mut owner) = maintenance else {
         return Ok(());
     };

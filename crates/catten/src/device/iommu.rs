@@ -125,6 +125,13 @@ pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {
     }
 }
 
+pub(crate) fn destroy_created_domain(creation: &mut super::DmaCreation) -> Result<(), Error> {
+    match detect()? {
+        Backend::Vtd => super::vt_d::destroy_created_domain(creation),
+        Backend::AmdVi => super::amd_vi::destroy_created_domain(creation),
+    }
+}
+
 pub(super) fn destroy_domain_at(
     domain_id: u64,
     before_maintenance: impl FnOnce(),
