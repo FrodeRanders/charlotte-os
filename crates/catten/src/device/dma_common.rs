@@ -17,6 +17,7 @@ pub enum Error {
     UnknownMapping,
     HardwareTimeout,
     OperationInFlight,
+    WaitRegistrationFailed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

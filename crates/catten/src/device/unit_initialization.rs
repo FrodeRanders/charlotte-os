@@ -15,6 +15,40 @@ pub(super) enum UnitState<T> {
     Installed(T),
 }
 
+/// Readiness belongs to this existing fixed slot. It cannot replace, recover
+/// or force-clear its complete installed/claimed owner.
+pub(super) struct UnitSlot<T> {
+    pub(super) state: UnitState<T>,
+    pub(super) readiness: Option<super::domain_creation::readiness::Source>,
+}
+
+impl<T> UnitSlot<T> {
+    pub(super) const fn new(state: UnitState<T>) -> Self {
+        Self {
+            state,
+            readiness: None,
+        }
+    }
+
+    pub(super) fn installed(&mut self) -> Result<&mut T, Error> {
+        self.state.installed()
+    }
+
+    pub(super) fn signal_if(&mut self, ready: impl FnOnce(&T) -> bool) {
+        if matches!(&self.state, UnitState::Installed(unit) if ready(unit)) {
+            self.signal();
+        }
+    }
+
+    fn signal(&mut self) {
+        if let Some(source) = self.readiness.take() {
+            // Detached notifications and list disposal run on the producer LP
+            // after this backend hold leaves. No callbacks or frees here.
+            source.finish();
+        }
+    }
+}
+
 impl<T> UnitState<T> {
     pub(super) fn installed(&mut self) -> Result<&mut T, Error> {
         match self {
@@ -67,7 +101,7 @@ impl<T> Rejected<T> {
 /// allocation. Its payload's implicit field destruction is also inert.
 #[must_use]
 struct Claim<'a, T> {
-    slot: &'a Mutex<UnitState<T>>,
+    slot: &'a Mutex<UnitSlot<T>>,
     owner: Option<DetachedDomain<T>>,
 }
 
@@ -84,27 +118,29 @@ impl<T: UnitBacking> Claim<'_, T> {
             drop(self.owner.take().unwrap().into_inner());
         }
         let mut slot = self.slot.lock();
-        assert!(matches!(*slot, UnitState::Claimed));
-        *slot = UnitState::Vacant;
+        assert!(matches!(slot.state, UnitState::Claimed));
+        slot.state = UnitState::Vacant;
+        slot.signal(); // Wake recheck to the terminal Unsupported result.
     }
 
     fn install(mut self) {
         tests::probe();
         assert!(self.owner.as_mut().unwrap().value_mut().tables().is_published());
         let mut slot = self.slot.lock();
-        assert!(matches!(*slot, UnitState::Claimed));
-        *slot = UnitState::Installed(self.owner.take().unwrap().into_inner());
+        assert!(matches!(slot.state, UnitState::Claimed));
+        slot.state = UnitState::Installed(self.owner.take().unwrap().into_inner());
+        slot.signal();
     }
 }
 
 pub(super) fn initialize<T: UnitBacking>(
-    slot: &Mutex<UnitState<T>>,
+    slot: &Mutex<UnitSlot<T>>,
     prepare: impl FnOnce() -> Result<DetachedDomain<T>, Rejected<T>>,
     ready: impl FnOnce(&T) -> bool,
 ) -> Result<(), Error> {
     {
         let mut state = slot.lock();
-        match &*state {
+        match &state.state {
             UnitState::Installed(unit) => {
                 return if ready(unit) {
                     Ok(())
@@ -113,7 +149,7 @@ pub(super) fn initialize<T: UnitBacking>(
                 };
             }
             UnitState::Claimed => return Err(Error::OperationInFlight),
-            UnitState::Vacant => *state = UnitState::Claimed,
+            UnitState::Vacant => state.state = UnitState::Claimed,
         }
     }
     let mut claim = Claim {

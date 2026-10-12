@@ -62,12 +62,12 @@ pub(in crate::device) fn publication_boundary() {
 }
 
 pub(in crate::device) fn test_real<T: UnitBacking>(
-    slot: &Mutex<UnitState<T>>,
+    slot: &Mutex<UnitSlot<T>>,
     prepare: fn() -> Result<DetachedDomain<T>, Rejected<T>>,
     prefixes: usize,
     waits: usize,
 ) {
-    assert!(matches!(*slot.lock(), UnitState::Vacant));
+    assert!(matches!(slot.lock().state, UnitState::Vacant));
     let baseline = crate::device::dma_tables::used();
     ENTRY_IRQ.store(crate::cpu::isa::lp::ops::get_int_state(), Ordering::Relaxed);
     PROBING.store(true, Ordering::Release);
@@ -94,13 +94,13 @@ pub(in crate::device) fn test_real<T: UnitBacking>(
         assert_eq!(PROBES.load(Ordering::Relaxed), 3);
         assert_eq!(WAITS.load(Ordering::Relaxed), 0);
         assert_eq!(PUBLICATIONS.load(Ordering::Relaxed), 0);
-        assert!(matches!(*slot.lock(), UnitState::Vacant));
+        assert!(matches!(slot.lock().state, UnitState::Vacant));
         assert_eq!(crate::device::dma_tables::used(), baseline);
     }
     initialize(slot, prepare, |_| true).unwrap();
     assert_eq!(WAITS.load(Ordering::Relaxed), waits);
     assert_eq!(PUBLICATIONS.load(Ordering::Relaxed), 1);
-    assert!(matches!(*slot.lock(), UnitState::Installed(_)));
+    assert!(matches!(slot.lock().state, UnitState::Installed(_)));
     initialize(slot, || panic!("installed unit was initialized twice"), |_| true).unwrap();
     PROBING.store(false, Ordering::Release);
     crate::logln!(
@@ -138,8 +138,8 @@ fn payload(pages: usize) -> DetachedDomain<Payload> {
     }
     owner
 }
-fn fenced(slot: &Mutex<UnitState<Payload>>) {
-    assert!(matches!(*slot.lock(), UnitState::Claimed));
+fn fenced(slot: &Mutex<UnitSlot<Payload>>) {
+    assert!(matches!(slot.lock().state, UnitState::Claimed));
     assert_eq!(slot.lock().installed().err(), Some(Error::OperationInFlight));
     assert_eq!(
         initialize(slot, || panic!("fenced initialization retried"), |_| true),
@@ -151,13 +151,13 @@ pub(super) fn run() {
     let baseline = super::super::dma_tables::used();
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let drops = DROPS.load(Ordering::Relaxed);
-    let slot = Mutex::new(UnitState::<Payload>::Vacant);
+    let slot = Mutex::new(UnitSlot::new(UnitState::<Payload>::Vacant));
     assert_eq!(slot.lock().installed().err(), Some(Error::Unsupported));
     assert_eq!(
         initialize(&slot, || Err(Rejected::before_backing(Error::Unsupported)), |_| true),
         Err(Error::Unsupported)
     );
-    assert!(matches!(*slot.lock(), UnitState::Vacant));
+    assert!(matches!(slot.lock().state, UnitState::Vacant));
     assert_eq!(
         initialize(
             &slot,
@@ -169,13 +169,13 @@ pub(super) fn run() {
         ),
         Err(Error::MapFailed)
     );
-    assert!(matches!(*slot.lock(), UnitState::Vacant));
+    assert!(matches!(slot.lock().state, UnitState::Vacant));
     assert_eq!(DROPS.load(Ordering::Relaxed), drops + 1);
     assert_eq!(super::super::dma_tables::used(), baseline);
 
     // An abandoned empty claim cannot be reopened merely because no backing
     // was allocated. Hold its own slot as well as the existing global guards.
-    let empty = Mutex::new(UnitState::<Payload>::Claimed);
+    let empty = Mutex::new(UnitSlot::new(UnitState::<Payload>::Claimed));
     let claim = Claim {
         slot: &empty,
         owner: None,
@@ -186,7 +186,7 @@ pub(super) fn run() {
     });
     fenced(&empty);
 
-    let abandoned = Mutex::new(UnitState::Claimed);
+    let abandoned = Mutex::new(UnitSlot::new(UnitState::Claimed));
     let claim = Claim {
         slot: &abandoned,
         owner: Some(payload(1)),
@@ -198,7 +198,7 @@ pub(super) fn run() {
     fenced(&abandoned);
     assert_eq!(DROPS.load(Ordering::Relaxed), drops + 1);
 
-    let failed = Mutex::new(UnitState::Claimed);
+    let failed = Mutex::new(UnitSlot::new(UnitState::Claimed));
     let claim = Claim {
         slot: &failed,
         owner: Some(payload(2)),
@@ -219,7 +219,7 @@ pub(super) fn run() {
 
     // A started control write can be uncertain even before a new base was
     // published. Private backing alone is not permission to reopen the unit.
-    let uncertain = Mutex::new(UnitState::Vacant);
+    let uncertain = Mutex::new(UnitSlot::new(UnitState::Vacant));
     assert_eq!(
         initialize(
             &uncertain,
@@ -231,7 +231,7 @@ pub(super) fn run() {
     fenced(&uncertain);
     assert_eq!(DROPS.load(Ordering::Relaxed), drops + 1);
 
-    let published = Mutex::new(UnitState::Vacant);
+    let published = Mutex::new(UnitSlot::new(UnitState::Vacant));
     let mut owner = payload(1);
     owner.value_mut().tables.publish(); // Synthetic state, no hardware descriptor.
     assert_eq!(

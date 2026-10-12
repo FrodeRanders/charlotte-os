@@ -14,6 +14,14 @@ pub(super) struct Resources {
     authority: Option<crate::capability::PreparedReservation>,
 }
 impl GrantAdmission {
+    pub(super) fn platform(&self) -> bool {
+        self.resources.owner == crate::memory::KERNEL_ASID
+            || self.resources.address_space.as_ref().is_some_and(|root| {
+                crate::memory::budget::platform_identity(self.resources.owner)
+                    == Some(root.handle())
+            })
+    }
+
     pub(super) fn new(owner: AddressSpaceId) -> Result<Self, DeviceError> {
         let address_space = if owner == crate::memory::KERNEL_ASID {
             None

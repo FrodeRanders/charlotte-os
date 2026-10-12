@@ -363,7 +363,7 @@ then completes that lease after thread publication. Complete fallback retention
 performs no hardware, allocator, callback or root cleanup. This prevents a
 sibling's active mapping/maintenance owner from racing later boot grant admission.
 It adds no wait, retry, exceptional registry or change to hardware activation.
-Independent/dynamic creation retains its busy rejection policy.
+Serialized/reentrant creation retains its busy rejection policy. Scheduled driver preparation now uses the explicit availability wait described below.
 ARM embeds the signed RNG/NIC hardware images alongside storage bootstrap
 images; preparing the batch must not depend on the object store that its own
 unstarted storage driver would serve. Other logical images remain store-backed.
@@ -379,3 +379,19 @@ authority usage. See [startup evidence](../reports/audits/2026-10-12-dma-startup
 The earlier collapsed Intel DmaUnavailable capture remains causally unresolved;
 passing repeats and narrowed reachable failure classes do not identify its
 historical interleaving or qualify general dynamic progress.
+
+Scheduled driver grant preparation also has an explicit
+[unit availability wait](../reports/audits/2026-10-12-dma-unit-readiness.md).
+Its original complete grant owns the root/reservation and transient interest;
+charged source/disposal preparation precedes backend serialization and captures
+that exact root's platform classification. Readiness belongs to the existing
+fixed unit slot and requires both the actual command engine and all domain cells.
+Returning the engine while physical domain finalization still owns an empty cell
+does not signal. Production registration touches only the independent list;
+notifications and list disposal use producer-LP deferred delivery. Wake requires
+fresh admission revalidation, then hardware work runs once. Masked/nonscheduled
+or rejected admission fails explicitly; serialized/reentrant fixtures retain
+the rejecting path. Abandonment retains source/interest and never fabricates
+availability. This is no hardware completion, cancellation guarantee or retry
+owner; public map/unmap/close contention and indefinitely claimed units remain
+separate progress boundaries.

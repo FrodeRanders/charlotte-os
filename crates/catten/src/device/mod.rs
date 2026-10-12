@@ -55,6 +55,10 @@ pub(crate) mod recovery_tests;
 pub(crate) mod retirement;
 mod unit_initialization;
 
+pub(crate) fn test_scheduled_creation_readiness() {
+    domain_creation::tests::scheduled();
+}
+
 static REJECT_RETIREMENT: core::sync::atomic::AtomicBool =
     core::sync::atomic::AtomicBool::new(false);
 
@@ -375,6 +379,10 @@ struct DmaGrantResources {
 /// No implicit cleanup, copying or address-based re-adoption is available.
 #[must_use]
 pub(crate) struct DmaCreation {
+    // Capture from the containing exact-root admission before backend access.
+    // Interest is metadata, not an armed hardware/rollback obligation.
+    wait_platform: Option<bool>,
+    interest: core::mem::ManuallyDrop<Option<domain_creation::readiness::Interest>>,
     failure: Option<creation_failure::Failure>,
     id: Option<u64>,
     metadata: Option<backend_registry::Preparing>,
@@ -389,6 +397,8 @@ pub(crate) struct DmaCreation {
 impl DmaCreation {
     fn new() -> Self {
         Self {
+            wait_platform: None,
+            interest: core::mem::ManuallyDrop::new(None),
             failure: None,
             id: None,
             metadata: None,
@@ -428,6 +438,7 @@ impl DmaCreation {
 
     fn finish_metadata(&mut self) {
         assert!(self.id.is_none() && self.private.is_none() && self.reset.is_none());
+        drop(self.interest.take());
         if let Some(metadata) = self.metadata.take() {
             metadata.finish();
         }
@@ -849,6 +860,21 @@ pub fn grant_dma_domain(
     )
 }
 
+/// Scheduled driver preparation may wait for unit availability while retaining
+/// its original root/reservation. This never retries started hardware work.
+pub(crate) fn grant_dma_domain_wait(
+    owner: AddressSpaceId,
+    requester_id: u32,
+    msi_address: Option<u64>,
+) -> Result<DeviceCap, DeviceError> {
+    grant_dma_domain_with_policy(
+        owner,
+        true,
+        |creation| create_dma_domain(owner, requester_id, msi_address, creation),
+        dma::destroy_domain,
+    )
+}
+
 fn create_dma_domain(
     owner: AddressSpaceId,
     requester_id: u32,
@@ -940,7 +966,19 @@ fn grant_dma_domain_with_backend(
     create: impl FnOnce(&mut DmaCreation) -> Result<(), DeviceError>,
     destroy: fn(u64) -> Result<(), dma::Error>,
 ) -> Result<DeviceCap, DeviceError> {
+    grant_dma_domain_with_policy(owner, false, create, destroy)
+}
+
+fn grant_dma_domain_with_policy(
+    owner: AddressSpaceId,
+    wait: bool,
+    create: impl FnOnce(&mut DmaCreation) -> Result<(), DeviceError>,
+    destroy: fn(u64) -> Result<(), dma::Error>,
+) -> Result<DeviceCap, DeviceError> {
     let mut prepared = PreparedDmaDomain::new(owner, destroy)?;
+    if wait {
+        prepared.resources.creation.wait_platform = Some(prepared.resources.admission.platform());
+    }
     let result = (|| {
         // The operation prevents root reuse; lifecycle precedes all subsystem
         // guards and captures the reservation's matching namespace identity.

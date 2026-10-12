@@ -27,6 +27,7 @@ use super::{
         self,
         Rejected,
         UnitBacking,
+        UnitSlot,
         UnitState,
     },
 };
@@ -120,6 +121,7 @@ pub enum Error {
     UnknownMapping,
     HardwareTimeout,
     OperationInFlight,
+    WaitRegistrationFailed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -177,7 +179,8 @@ impl UnitBacking for Smmu {
     }
 }
 
-static SMMU: LazyLock<Mutex<UnitState<Smmu>>> = LazyLock::new(|| Mutex::new(UnitState::Vacant));
+static SMMU: LazyLock<Mutex<UnitSlot<Smmu>>> =
+    LazyLock::new(|| Mutex::new(UnitSlot::new(UnitState::Vacant)));
 
 fn read32(base: usize, offset: usize) -> u32 {
     unsafe { ptr::read_volatile((base + offset) as *const u32) }
@@ -596,7 +599,9 @@ fn with_smmu<R>(f: impl FnOnce(&mut Smmu) -> Result<R, Error>) -> Result<R, Erro
 // No initialization, waiting or physical cleanup occurs under this hold.
 fn with_registered<R>(f: impl FnOnce(&mut Smmu) -> Result<R, Error>) -> Result<R, Error> {
     let mut guard = SMMU.lock();
-    f(guard.installed()?)
+    let result = f(guard.installed()?);
+    guard.signal_if(|smmu| smmu.commands.is_some() && smmu.domains.values().all(Option::is_some));
+    result
 }
 
 /// Initialize the platform SMMU before driver domains begin competing for

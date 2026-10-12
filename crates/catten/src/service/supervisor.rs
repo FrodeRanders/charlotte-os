@@ -1230,14 +1230,15 @@ pub(crate) fn prepare_driver_with_name_service(
     bootstrap::write_mmio_cap(loaded.config_frame, mmio);
     bootstrap::write_irq_cap(loaded.config_frame, irq);
     if let Some(requester_id) = grant.dma_requester_id {
-        let dma = crate::device::grant_dma_domain(loaded.asid, requester_id, grant.dma_msi_address)
-            .unwrap_or_else(|error| {
-                panic!(
-                    "[supervisor] DMA-domain grant failed: {error:?} (root={:?}, \
-                     requester={requester_id:#x})",
-                    loaded.address_space
-                )
-            });
+        let dma =
+            crate::device::grant_dma_domain_wait(loaded.asid, requester_id, grant.dma_msi_address)
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "[supervisor] DMA-domain grant failed: {error:?} (root={:?}, \
+                         requester={requester_id:#x})",
+                        loaded.address_space
+                    )
+                });
         bootstrap::write_dma_domain_cap(loaded.config_frame, dma);
     }
     prepared
@@ -1265,7 +1266,7 @@ pub(crate) fn prepare_polling_driver_with_name_service(
     let mmio = crate::device::grant_mmio(loaded.asid, grant.mmio_phys_base, grant.mmio_pages)
         .expect("[supervisor] polling-driver MMIO grant failed");
     bootstrap::write_mmio_cap(loaded.config_frame, mmio);
-    let dma = crate::device::grant_dma_domain(loaded.asid, grant.dma_requester_id, None)
+    let dma = crate::device::grant_dma_domain_wait(loaded.asid, grant.dma_requester_id, None)
         .expect("[supervisor] polling-driver DMA-domain grant failed");
     bootstrap::write_dma_domain_cap(loaded.config_frame, dma);
     prepared

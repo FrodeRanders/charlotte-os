@@ -1,10 +1,13 @@
 //! Serialized QEMU probes and synthetic complete-unit/grant retention.
+mod readiness;
 use core::sync::atomic::{
     AtomicBool,
     AtomicU32,
     AtomicUsize,
     Ordering,
 };
+
+pub(in crate::device) use readiness::scheduled;
 
 use super::*;
 use crate::{
@@ -148,12 +151,13 @@ fn payload() -> Payload {
 
 #[allow(clippy::drop_non_drop)] // Exercise the grant's implicit ManuallyDrop fallback under guards.
 pub(super) fn run() {
-    let slot = Mutex::new(UnitState::Installed(payload()));
+    readiness::serialized();
+    let slot = Mutex::new(UnitSlot::new(UnitState::Installed(payload())));
     let mut grant = DmaCreation::new();
     for fails in [false, true] {
         assert_eq!(
             prepare(&slot, &mut grant, ready, |unit, _| {
-                assert!(matches!(*slot.lock(), UnitState::Claimed));
+                assert!(matches!(slot.lock().state, UnitState::Claimed));
                 assert_eq!(slot.lock().installed().err(), Some(Error::OperationInFlight));
                 assert!(Preparing::begin(&slot, &mut DmaCreation::new(), ready).is_err());
                 unit.commands.as_mut().unwrap().push(0xbeef);
@@ -230,11 +234,17 @@ pub(super) fn run() {
         }),
     );
     value._sources.insert(0x1234, 1);
-    let slot = Mutex::new(UnitState::Installed(value));
+    let slot = Mutex::new(UnitSlot::new(UnitState::Installed(value)));
+    let lists = crate::klib::observer::list_budget::node_used();
+    let source = super::readiness::Source::prepare(false).unwrap();
+    let interest = source.interest();
+    let retained = source.interest();
+    slot.lock().readiness = Some(source);
     let drops = DROPS.load(Ordering::Relaxed);
     dma_tables::test_drop_under_guards(|| {
         crate::capability::admission_tests::test_with_registry_locked(|| {
             let owner = Preparing::begin(&slot, &mut grant.resources.creation, ready).unwrap();
+            *owner.grant.interest = Some(interest);
             let _slot = slot.lock();
             let _devices = DEVICES.lock();
             drop(owner);
@@ -243,7 +253,9 @@ pub(super) fn run() {
     });
     assert_eq!(DROPS.load(Ordering::Relaxed), drops);
     assert_eq!(dma_tables::used(), (baseline.0 + 2, baseline.1 + 1));
-    assert!(matches!(*slot.lock(), UnitState::Claimed));
+    assert!(matches!(slot.lock().state, UnitState::Claimed));
+    assert!(!retained.completed(), "abandonment must not fabricate availability");
+    assert_eq!(crate::klib::observer::list_budget::node_used(), (lists.0 + 1, lists.1 + 1));
     assert_eq!(
         memory::close_user_address_space_handle(root),
         Err(memory::AddressSpaceCloseError::OperationsInFlight)

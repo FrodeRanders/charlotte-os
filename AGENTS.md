@@ -86,6 +86,18 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   not generate readiness or permit physical retry. Serialized namespace/fixture
   close returns Pending on an unexpected claim; it must not spin or admit a
   fresh live root beneath lifecycle.
+- Scheduled DMA grant preparation may wait on the existing fixed IOMMU unit
+  slot while retaining its original `PreparedDmaDomain` root and reservation.
+  Admit charged source/disposal storage outside backend guards, using the exact
+  captured root classification. Register only against the independent list;
+  recheck and claim the unit after wake. An available command engine with a
+  detached domain cell is not creation readiness. Restore notifications and
+  list disposal use producer-LP deferred delivery after local guards leave.
+  Reject masked/nonscheduled waiting and waiter admission failure explicitly;
+  serialized/reentrant fixtures use the rejecting grant path. Work runs once
+  after admission: never wait/replay an armed creation or recover an abandoned
+  unit claim. Source and transient-interest fallback retain their allocations;
+  readiness grants no hardware or physical cleanup authority.
 - Services processing several sources must wait on all relevant interests.
   Use `PendingCall::bind_cq` with endpoint interests on one CQ and
   `cq_wait_checked` for the earliest remaining operation deadline (or an

@@ -35,6 +35,7 @@ use super::{
         self,
         Rejected,
         UnitBacking,
+        UnitSlot,
         UnitState,
     },
 };
@@ -355,7 +356,8 @@ impl UnitBacking for Unit {
     }
 }
 
-static UNIT: LazyLock<Mutex<UnitState<Unit>>> = LazyLock::new(|| Mutex::new(UnitState::Vacant));
+static UNIT: LazyLock<Mutex<UnitSlot<Unit>>> =
+    LazyLock::new(|| Mutex::new(UnitSlot::new(UnitState::Vacant)));
 static IRQ_MMIO: AtomicUsize = AtomicUsize::new(0);
 static FAULT_COUNT: AtomicU64 = AtomicU64::new(0);
 static FAULT_INTID: AtomicU32 = AtomicU32::new(u32::MAX);
@@ -546,7 +548,9 @@ fn with_unit<R>(f: impl FnOnce(&mut Unit) -> Result<R, Error>) -> Result<R, Erro
 // No initialization, waiting or physical cleanup occurs under this hold.
 fn with_registered<R>(f: impl FnOnce(&mut Unit) -> Result<R, Error>) -> Result<R, Error> {
     let mut guard = UNIT.lock();
-    f(guard.installed()?)
+    let result = f(guard.installed()?);
+    guard.signal_if(|unit| unit.commands.is_some() && unit.domains.values().all(Option::is_some));
+    result
 }
 
 /// Initialize the platform DMA remapping unit before driver domains begin

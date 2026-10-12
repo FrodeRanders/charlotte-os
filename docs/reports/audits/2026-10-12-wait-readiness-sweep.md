@@ -47,6 +47,14 @@ publication signals default-CQ work. The table above records the original
 reviewed-head findings; cleanup/reaper/shootdown and the other protocol/driver
 notification gaps remain open.
 
+The [DMA unit readiness follow-up](2026-10-12-dma-unit-readiness.md) also adds
+an event-only admission wait for scheduled driver grants on the existing IOMMU
+unit slot. It retains the complete grant/root/reservation, rechecks availability,
+and never repeats started hardware work. Engine return before physical domain
+finalization remains nonready. This adds the missing admission producer contract;
+bounded hardware polling, public map/unmap/close contention and indefinite
+retained claims keep their separate limits.
+
 ## Validation and reproducible evidence
 
 Both complete signed service bundles were built before guest execution using `scripts/build-catten-services.sh --embed` and `scripts/build-catten-services-x86_64.sh`. All four guest runs exit 0:

@@ -331,6 +331,7 @@ extern "C" fn cq_driver() {
     completion::exit_tests::test_scheduled_cleanup();
     completion::callback_tests::test_scheduled_cleanup();
     crate::memory::object::test_scheduled_transfer_close();
+    crate::device::test_scheduled_creation_readiness();
     ipc::claim_wait::tests::scheduled();
 
     logln!(
