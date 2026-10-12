@@ -579,6 +579,13 @@ the corrected RPC polling paths, and the remaining notification gaps.
   the exact stack pair and runs after local guards, before retirement-node
   destruction. Outer constructor/syscall masks and growth guards still require
   qualification; this is terminal retention, never a physical retry owner.
+  Per-LP reapers park on an owned retirement-head waiter, with a durable
+  post-registration readiness recheck. Staging only publishes its coalesced
+  atomic wake; dispatch detached callbacks after producer/scheduler guards
+  leave, preserving IRQ state. Idle/yield and post-switch boundaries deliver
+  that wake. Started/failed pairs are not productive readiness and must not
+  cause timer polling or physical retry. The 10 ms reaper backoff is confined
+  to recorded waiter-admission rejection, never ordinary idle waiting.
 - IOMMU backing uses `device::dma_tables::Tables` for domain roots/intermediates,
   SMMU descriptors and shared unit tables/queues/completion cells. Reserve actual
   pages before physical allocation, retain an exclusive owner through zeroing

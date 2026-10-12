@@ -176,7 +176,13 @@ confirmed stack-pair release, with its retirement node retained until return.
 Guarded kernel/user abandonment retains the exact user root and original
 admission. Outer ordinary caller masks, explicit callback contexts, backend
 contexts, growth's enclosing thread-table guard and the complete call-chain
-inventory remain required; C16/G1 and SEC-18 remain open.
+inventory remain required; C16/G1 and SEC-18 remain open. The
+[reaper readiness follow-up](../reports/audits/2026-10-12-reaper-readiness.md)
+now replaces the per-LP one-millisecond idle poll with an owned event-only
+retirement-head subscription and deferred post-guard notification. Failed pairs
+are nonready; recorded wait-admission rejection alone uses a 10 ms backoff.
+This changes no physical completion or retry rule, and broader admission
+pressure/progress remains G7.
 The [IOMMU preparation follow-up](../reports/audits/2026-10-09-security-iommu-preparation-abandonment.md)
 also removes physical/pool cleanup and implicit ledger heap deallocation from
 C15 fallback. Private construction and ordinary metadata/allocator rejection use

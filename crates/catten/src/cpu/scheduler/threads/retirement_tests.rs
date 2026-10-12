@@ -148,11 +148,94 @@ pub(crate) fn run() {
     drop((observer_a, observer_b, observer_c, token_a, token_b, token_c));
     completion::close_address_space(asid);
     crate::capability::close_address_space(asid);
+    readiness(lp, other_lp);
     terminal_pair_retention(lp);
+    assert!(!reaper_work_ready(lp, current_stack_pointer()));
     abandoned_payloads();
     crate::logln!(
         "[thread retirement] node/context-storage rejection, masked entry, same-LP/current-stack \
          retention, unlocked callbacks and physical stack recovery passed"
+    );
+}
+
+fn readiness(lp: LpId, other_lp: LpId) {
+    use crate::klib::observer::{
+        WaitSponsor,
+        registration::RegistrationError,
+    };
+    drain_reaper_wakes();
+    assert!(!reaper_work_ready(lp, current_stack_pointer()));
+    let sponsor = WaitSponsor::new(true);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let count = calls.clone();
+    let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+        assert!(MASTER_THREAD_TABLE.try_write().is_some());
+        assert!(DEAD_THREADS.try_write().is_some());
+        assert!(crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER.try_write().is_some());
+        count.fetch_add(1, Ordering::Relaxed);
+    });
+    let source = &REAPER_WORK[lp as usize].waiters;
+    let other = &REAPER_WORK[other_lp as usize].waiters;
+    let token = source.register(Arc::downgrade(&observer), &sponsor).unwrap();
+    let unrelated = other.register(Arc::downgrade(&observer), &sponsor).unwrap();
+    let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let first = Thread::new(KERNEL_ASID, unused_entry);
+    let second = Thread::new(KERNEL_ASID, unused_entry);
+    {
+        let _system = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER.write();
+        let _table = MASTER_THREAD_TABLE.write();
+        stage_dead_thread(lp, usize::MAX - 4, first);
+        stage_dead_thread(lp, usize::MAX - 5, second);
+        assert_eq!(calls.load(Ordering::Relaxed), 0);
+    }
+    assert!(reaper_work_ready(lp, current_stack_pointer()));
+    drain_reaper_wakes();
+    assert_eq!(calls.load(Ordering::Relaxed), 1, "staging coalesces without a wrong-LP wake");
+    assert_eq!(source.registered(), 0);
+    assert_eq!(other.registered(), 1);
+    drop((token, unrelated));
+    assert_eq!(sponsor.used(), 0);
+    // Publication and its wake can precede registration: the durable exact
+    // head remains ready for the scheduler's post-registration recheck.
+    let late = source.register(Arc::downgrade(&observer), &sponsor).unwrap();
+    assert!(reaper_work_ready(lp, current_stack_pointer()));
+    drop(late);
+    assert_eq!(source.registered(), 0);
+    reap_dead_threads_with(lp, current_stack_pointer());
+    assert!(!reaper_work_ready(lp, current_stack_pointer()));
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+
+    // Full source rejection leaves the never-admitted fixture runnable and
+    // refunds its attempted registration, with no timer/watchdog or cleanup.
+    let mut full = Vec::new();
+    for _ in 0..crate::klib::observer::waiter_budget::SOURCE_LIMIT {
+        full.push(source.register(Arc::downgrade(&observer), &sponsor).unwrap());
+    }
+    assert_eq!(
+        source.register(Arc::downgrade(&observer), &sponsor).unwrap_err(),
+        RegistrationError::ResourceLimit
+    );
+    let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let thread = Thread::new(KERNEL_ASID, unused_entry);
+    let used = thread.wait_sponsor.used();
+    let tid = crate::cpu::scheduler::system_scheduler::publish_thread(thread).unwrap();
+    assert!(matches!(
+        crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+            .read()
+            .block_thread_with_constraint_generation(tid, source, MigrationConstraint::GeneralWait),
+        Err(crate::cpu::scheduler::system_scheduler::Error::WaitRegistrationFailed)
+    ));
+    let thread = MASTER_THREAD_TABLE.write().take_element(tid).unwrap();
+    assert!(matches!(thread.state, ThreadState::NeedsLpAssignment));
+    assert_eq!(thread.wait_sponsor.used(), used);
+    thread.release_unstarted().unwrap();
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+    drop(full);
+    assert_eq!(source.registered(), 0);
+    assert_eq!(sponsor.used(), 0);
+    crate::logln!(
+        "[reaper readiness] guarded staging, coalesced exact-LP wake, late registration recheck, \
+         full-source rejection and original frame recovery passed"
     );
 }
 

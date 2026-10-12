@@ -300,6 +300,7 @@ fn cond_yield_lp_impl() {
         }
     }
     crate::cpu::scheduler::threads::retire_requested_threads();
+    crate::cpu::scheduler::threads::drain_reaper_wakes();
     // Physical reaping runs on pinned IRQ-enabled workers, outside IRQ tails.
     crate::cpu::scheduler::maybe_sample_rebalance();
     // Preserve the caller's interrupt state. In particular, a synchronous
@@ -595,6 +596,7 @@ pub extern "C" fn lp_idle_loop() {
         // context switch pending, honoured by the IRQ-tail `cond_yield_lp`
         // after the `wfi` returns on the next interrupt.
         crate::device::drain_deferred_wakes();
+        crate::cpu::scheduler::threads::drain_reaper_wakes();
         // A deferred wake may select this same idle LP. Same-LP admission does
         // not need an IPI, so honour its pending switch before sleeping.
         // Reconcile the software timer queue with the hardware comparator as

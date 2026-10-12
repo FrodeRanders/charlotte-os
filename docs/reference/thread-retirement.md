@@ -51,6 +51,32 @@ Arm also defers while the assembly `on_cpu` ownership flag is nonzero. x86's
 ownership predicate remains a stub and runtime migration remains disabled
 there. LP assignment alone never authorizes releasing the executing stack.
 
+Idle workers now park on an owned, fallibly admitted waiter for their fixed LP
+retirement head, with no timer/watchdog. Staging publishes a coalesced atomic
+wake after linking the complete node. It cannot invoke callbacks under an
+outer scheduler guard. Yield, idle and post-switch boundaries claim pending
+wakes and deliver detached notifications after local guards leave, preserving
+IRQ state. The fixed readiness array carries no thread payload or recovery
+authority; the existing retirement heads remain the sole custody.
+
+The post-registration check reads the durable exact head and repeats the
+off-stack/Arm ownership and unstarted-pair predicates. Publication before
+registration or notification is therefore not lost; the owned waker captures
+the worker generation. Readiness is a hint, never stack quiescence or cleanup
+completion. Failed/started pairs are excluded, so a terminal retained node does
+not keep a worker runnable or cause periodic rescans. Previously executing
+production contexts are staged after their owner LP's context-switch handshake;
+immediate removal qualifies a nonexecuting context under scheduler serialization.
+Fixtures may synthesize active ownership but cannot authorize a production
+remote reap.
+
+Rejected waiter admission remains a distinct outcome. It increments
+`REAPER_WAIT_ADMISSION_FAILURES` and backs off for 10 ms before retrying
+admission. The existing void sleep API preserves that interval via cooperative
+fallback if timer admission also rejects. This is pressure backoff, not the
+ordinary readiness path or a physical retry; admission-capacity notifications
+and integrated pressure/progress qualification remain separate work.
+
 Detached lists reverse their prepend order to preserve prior insertion-order
 notification. Filtering and reinsertion move existing nodes iteratively,
 without allocation or recursive destruction. The node retains its complete thread/context while explicit retirement notifies
@@ -173,6 +199,15 @@ and availability of those four guards before ordinary metadata destruction.
 These fixtures intentionally retain two complete payloads and the user root;
 they do not measure all heap deallocations or prove arbitrary caller contexts.
 
+Readiness fixtures additionally stage two owners while scheduler/master-table
+guards are held, require deferred callbacks to find those guards and the
+retirement guard available, check one coalesced wake with an unrelated LP's
+subscription retained, and exercise publication before late registration.
+Full-source rejection leaves a never-admitted target unblocked and restores its
+original waiter charge. Explicit release recovers the original stack frames;
+a failed pair remains nonready and fenced. Existing scheduled exit/remote-abort
+tests exercise the production worker after the new event-only wait.
+
 The node is allocated from the global heap and adds one thread-sized allocation
 per live/deferred owner. There is no independent node-byte admission pool.
 General heap/metadata/principal accounting remains SEC-07 work. Scheduler
@@ -184,6 +219,7 @@ no failed-pair retry owner, shared custody adapter or abandoned-owner recovery.
 
 Evidence: [thread retirement audit](../reports/audits/2026-10-07-security-thread-retirement.md).
 Complete-payload fallback evidence: [thread metadata retention](../reports/audits/2026-10-12-thread-metadata-retention.md).
+Readiness evidence: [event-driven LP reapers](../reports/audits/2026-10-12-reaper-readiness.md).
 Whole-domain evidence: [domain thread abort audit](../reports/audits/2026-10-07-security-domain-thread-abort.md).
 
 Self-handoff evidence: [root-operation completion before caller retirement](../reports/audits/2026-10-09-security-abort-handoff.md).

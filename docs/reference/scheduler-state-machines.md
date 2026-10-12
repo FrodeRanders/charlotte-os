@@ -43,9 +43,10 @@ Any live state ── abort_thread_generation(tid, generation)
 | T7 | When the wake source does not exist before `block_thread()` (for example `sleep()`), publishing `Blocked` and installing that wake source form one local non-preemptible transaction. |
 | T7a | Timed waits mask local IRQs through `Blocked` publication, watchdog enqueue and the condition recheck. The local mask restores the entry state on rejection and is dropped before yielding; an external observable may never notify. |
 | T8 | Delayed cancellation and cleanup carry `(tid, generation)`; a stale request cannot retire a newer thread that reused the numeric TID. |
-| T9 | Domain quiescence requires an unchanged retirement epoch across the live/staged table snapshots and no retirement in flight. The reaper retains its retirement guard while threads are held in its local vector, through deferred reinsertion and final resource release. |
+| T9 | Domain quiescence requires an unchanged retirement epoch across the live/staged table snapshots and no retirement in flight. The reaper retains its retirement guard while threads are held in its owning detached nodes, through deferred reinsertion and final resource release. |
 | T10 | Fallible waiter admission precedes queue removal and `Blocked` publication. Failure leaves state, queue membership and constraints unchanged; an immediate-ready outcome does not park. |
 | T11 | Ready admission cancels an owned completion/CQ/IPC registration even if another strong Waker survives. Reaping a Blocked thread cancels it as well; detached batches retain their own admission until released. |
+| T12 | A pinned reaper parks on an owned LP-head subscription with a durable post-registration readiness recheck. Staging publishes only a deferred atomic wake under outer scheduler ownership; detached callbacks follow producer/local scheduler guard exit, preserving IRQ state. Failed/started pairs are nonready. Readiness never replaces the off-stack/Arm ownership and one-shot physical-release checks. Only rejected waiter admission uses the recorded 10 ms backoff. |
 
 ### Lock order for transitions
 

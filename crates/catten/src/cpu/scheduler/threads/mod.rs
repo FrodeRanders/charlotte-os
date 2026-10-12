@@ -66,7 +66,10 @@ use crate::{
                 RetirementList,
             },
         },
-        observer::Observer,
+        observer::{
+            Observer,
+            waiter_source::WaiterSource,
+        },
         statistics::{
             RunningStatistics,
             StatisticsSnapshot,
@@ -116,6 +119,52 @@ static DEAD_THREADS: RwLock<
 > = RwLock::new(
     [const { RetirementList::new() }; crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS],
 );
+
+/// Readiness for the existing fixed LP heads, never payload custody. Staging
+/// may hold an outer scheduler guard: publish only an atomic hint there and
+/// deliver detached callbacks at the guard-free scheduler/idle boundary.
+struct ReaperWork {
+    waiters: WaiterSource,
+    pending: AtomicBool,
+}
+
+impl ReaperWork {
+    const fn new() -> Self {
+        Self {
+            waiters: WaiterSource::new(),
+            pending: AtomicBool::new(false),
+        }
+    }
+}
+
+static REAPER_WORK: [ReaperWork; crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS] =
+    [const { ReaperWork::new() }; crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS];
+
+/// Wait-admission rejection, not idle polling or a physical retry. The void
+/// sleep API preserves this backoff even if its timer admission also rejects.
+const REAPER_ADMISSION_BACKOFF_MILLIS: u64 = 10;
+#[unsafe(no_mangle)]
+pub static REAPER_WAIT_ADMISSION_FAILURES: AtomicU64 = AtomicU64::new(0);
+
+fn reaper_work_ready(lp: LpId, current_sp: usize) -> bool {
+    DEAD_THREADS.read()[lp as usize].iter().any(|thread| can_reap(thread, current_sp))
+}
+
+fn can_reap(thread: &Thread, current_sp: usize) -> bool {
+    !thread.context.stack_retirement_started()
+        && !thread.context.kernel_stack_contains(current_sp)
+        && !thread.context.is_on_cpu()
+}
+
+/// No producer/subsystem guard may survive into these scheduler callbacks.
+/// IRQ state is preserved. Physical cleanup remains on the pinned worker.
+pub(crate) fn drain_reaper_wakes() {
+    for work in &REAPER_WORK {
+        if work.pending.load(Ordering::Acquire) && work.pending.swap(false, Ordering::AcqRel) {
+            work.waiters.drain().notify();
+        }
+    }
+}
 
 pub(crate) fn has_staged_asid(asid: AddressSpaceId) -> bool {
     DEAD_THREADS.read().iter().flat_map(RetirementList::iter).any(|thread| thread.asid == asid)
@@ -198,6 +247,7 @@ pub fn stage_dead_thread(lp: LpId, tid: ThreadId, mut thread: Thread) {
     thread.trace_lifecycle(crate::debug_trace::THREAD_LIFECYCLE_STAGE, current_stack_pointer());
     let storage = thread.retirement.take().expect("thread retirement storage missing");
     DEAD_THREADS.write()[lp as usize].push(storage.publish(thread));
+    REAPER_WORK[lp as usize].pending.store(true, Ordering::Release);
 }
 
 /// Complete abort requests after the owning LP has selected another
@@ -239,9 +289,22 @@ pub fn retire_requested_threads() {
 /// Install one pinned worker per LP for explicit stack-pair retirement.
 pub(crate) fn start_reapers() {
     extern "C" fn reap() {
+        let lp = crate::cpu::isa::lp::ops::get_lp_id();
         loop {
             reap_dead_threads();
-            crate::cpu::scheduler::sleep_millis(1);
+            // Failed/started pairs stay owned but are not productive readiness.
+            // Register first, then recheck the exact head to close the window
+            // where staging and its deferred notification precede registration.
+            if crate::cpu::scheduler::try_park_until(
+                &REAPER_WORK[lp as usize].waiters,
+                MigrationConstraint::GeneralWait,
+                || reaper_work_ready(lp, current_stack_pointer()),
+            )
+            .is_err()
+            {
+                REAPER_WAIT_ADMISSION_FAILURES.fetch_add(1, Ordering::Relaxed);
+                crate::cpu::scheduler::sleep_millis(REAPER_ADMISSION_BACKOFF_MILLIS);
+            }
         }
     }
     // A switch to this same-LP worker proves the dying context is off-CPU.
@@ -321,8 +384,7 @@ fn reap_dead_threads_releasing_with(
         // switch_ctx returns through the incoming context's older yield call.
         // Retain the actual executing stack, even on its owning LP. ARM also
         // supplies the assembly ownership handshake; x86 migration stays off.
-        let in_use = thread.context.kernel_stack_contains(current_sp) || thread.context.is_on_cpu();
-        let retained = in_use || thread.context.stack_retirement_started();
+        let retained = !can_reap(thread, current_sp);
         let phase = if retained {
             crate::debug_trace::THREAD_LIFECYCLE_REAP_DEFER
         } else {

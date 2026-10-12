@@ -247,6 +247,7 @@ pub fn yield_lp() {
     // cooperative yield across every LP) makes a driver blocked in `CQ_WAIT`
     // promptly runnable without the interrupt handler ever taking a lock.
     crate::device::drain_deferred_wakes();
+    threads::drain_reaper_wakes();
     if SCHED_TRACE {
         let sched = SYSTEM_SCHEDULER.read();
         let lsched = sched.get_lp_scheduler().lock();

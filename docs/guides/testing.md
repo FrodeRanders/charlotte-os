@@ -552,8 +552,9 @@ and preserve existing registrations and IRQ state. Repeated one-millisecond
 real timeouts still cancel unused subscriptions. ARM's signed pressure probes
 execute timed publication and scalar/moved RPC waits from EL0; ordinary x86 and
 shutdown profiles exercise successful grant/publication waits. These checks do
-not qualify the retained cleanup/reaper/shootdown notification gaps or measure
-CPU savings across all services.
+not qualify the retained cleanup/shootdown notification gaps or measure CPU
+savings across all services. The separate reaper-readiness fixtures below
+qualify that LP-head notification path.
 
 `--kafka-test --timeout 300` similarly adds a disposable three-broker Apache
 Kafka KRaft cluster with ephemeral verified TLS listeners and an in-guest verifier.
@@ -895,6 +896,16 @@ before explicit metadata disposal after confirmed pair release. These probes
 retain two complete thread payloads and a user root intentionally, and do not
 provide a retry or kernel-unwind proof. See the
 [metadata-retention report](../reports/audits/2026-10-12-thread-metadata-retention.md).
+
+Retirement-head readiness fixtures check deferred callbacks after guarded
+staging, exact-LP isolation, coalesced publication and the late-registration
+readiness recheck. Saturating the source rejects a never-admitted target without
+blocking it or retaining its attempted waiter charge; explicit rejection
+cleanup recovers its stack frames. A terminal failed pair is excluded from
+productive readiness. Scheduled exit-watch/remote-abort tests still run against
+the production pinned workers, whose ordinary idle wait has no timer. Admission
+rejection alone uses the recorded 10 ms backoff. See
+[reaper readiness](../reports/audits/2026-10-12-reaper-readiness.md).
 
 Whole-domain abort fixtures also check the inline root fence, rejection of an
 already-prepared thread, repeated late preparation, callback guard availability,

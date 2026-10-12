@@ -201,6 +201,14 @@ never recovery authority. Failed or abandoned physical retirement remains
 terminal; outer constructor/syscall masks and stack-growth guards still need
 separate qualification. See \repofile|docs/reference/thread-retirement.md|.
 
+Each pinned reaper waits on its LP retirement head instead of polling a timer.
+Staging publishes an atomic wake; scheduler and idle boundaries deliver its
+detached callbacks after guards leave. An owned generation-bound subscription
+and a durable readiness recheck prevent lost publication. Failed stack pairs
+remain fenced and do not keep the worker runnable. Only rejected waiter
+admission uses the recorded 10\,ms backoff; readiness does not prove quiescence
+or authorize physical retry.
+
 \section{Synchronization and lock ordering}
 
 Shared kernel state is synchronized by a small, deliberate set of primitives.

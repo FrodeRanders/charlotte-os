@@ -387,6 +387,7 @@ pub extern "C" fn cond_yield_lp() {
         switch_ctx(curr_rsp0_ptr, next_rsp0_ptr);
     }
     crate::cpu::scheduler::threads::retire_requested_threads();
+    crate::cpu::scheduler::threads::drain_reaper_wakes();
     // Physical reaping belongs to the LP's scheduled reaper. An IRQ tail must
     // not synchronously wait on a shootdown owned by its interrupted thread.
     crate::cpu::scheduler::maybe_sample_rebalance();
@@ -550,6 +551,7 @@ pub extern "C" fn lp_idle_loop() {
         // shard blocked in `CQ_WAIT` is released even when its LP has nothing
         // else to run.
         crate::device::drain_deferred_wakes();
+        crate::cpu::scheduler::threads::drain_reaper_wakes();
         // A deferred wake may select this same idle LP. Same-LP admission does
         // not need an IPI, so honour its pending switch before sleeping.
         // Reconcile the software timer queue with the hardware comparator so

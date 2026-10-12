@@ -10,6 +10,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [Event-driven LP reapers (SEC-18 / C16)](audits/2026-10-12-reaper-readiness.md) — Owned retirement-head waits and deferred exact-LP wakes replace one-millisecond idle polling.
 - [Pending reply CQ readiness](audits/2026-10-12-reply-cq-readiness.md) — Owning reply interests, exact CQ identity and lifecycle notification for multi-source controllers.
 - [Thread metadata retention (SEC-18 / C16 / G1)](audits/2026-10-12-thread-metadata-retention.md) — Complete guarded fallback retention and explicit metadata disposal after confirmed stack-pair release.
 - [Weekly wait/readiness sweep](audits/2026-10-12-wait-readiness-sweep.md) — Reply polling replaced by owned timed readiness waits; remaining cleanup, reaper and shootdown notification gaps documented.
