@@ -65,10 +65,7 @@ use catten_services::{
     socket,
     wait_for_registered_name_owned,
 };
-use catten_syscall::{
-    IpcRights,
-    thread_exit,
-};
+use catten_syscall::thread_exit;
 use charlotte_launch::frouter_status as status;
 use charlotte_protocol_disco::DISCO_ETHERTYPE;
 use charlotte_protocol_msg::MSG_ETHERTYPE;
@@ -596,17 +593,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     // look us up and query our live counters.
     let endpoint =
         Endpoint::create(frouter::INTERFACE, frouter::VERSION, 8).unwrap_or_else(|_| fail());
-    let registration = ns_conn
-        .call_connection(
-            ns::OP_REGISTER,
-            frouter::NAME,
-            &endpoint,
-            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-        )
-        .unwrap_or_else(|_| fail())
-        .wait()
-        .unwrap_or_else(|_| fail());
-    if registration.result < 1 {
+    if let Err(error) = catten_services::publication::register(ns_conn, frouter::NAME, &endpoint) {
+        catten_rt::logln!("[frouter] registration failed: {error:?}");
         fail();
     }
     endpoint.bind_completion_queue(0).unwrap_or_else(|_| fail());

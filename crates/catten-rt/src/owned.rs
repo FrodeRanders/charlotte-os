@@ -201,14 +201,16 @@ mod kernel {
         catten_syscall::ipc_scalar_call_copy(connection, opcode, arg0, memory)
     }
 
-    pub fn ipc_scalar_call_connection(
+    pub fn ipc_scalar_call_connection_checked(
         connection: u64,
         opcode: u32,
         arg0: u64,
         endpoint: u64,
         rights: IpcRights,
-    ) -> u64 {
-        catten_syscall::ipc_scalar_call_connection(connection, opcode, arg0, endpoint, rights)
+    ) -> (u64, u64) {
+        catten_syscall::ipc_scalar_call_connection_checked(
+            connection, opcode, arg0, endpoint, rights,
+        )
     }
 
     pub fn ipc_scalar_call_connection_copy(
@@ -655,14 +657,14 @@ mod kernel {
         with_state(|state| state.ipc_call)
     }
 
-    pub fn ipc_scalar_call_connection(
+    pub fn ipc_scalar_call_connection_checked(
         _connection: u64,
         _opcode: u32,
         _arg0: u64,
         _endpoint: u64,
         _rights: IpcRights,
-    ) -> u64 {
-        with_state(|state| state.ipc_call)
+    ) -> (u64, u64) {
+        with_state(|state| (state.ipc_call, state.ipc_call_status))
     }
 
     pub fn ipc_scalar_call_connection_copy(
@@ -1323,6 +1325,59 @@ mod tests {
         drop(connection);
         drop(endpoint);
         assert_eq!(kernel::events(), [kernel::Event::IpcClose(41), kernel::Event::IpcClose(40)]);
+    }
+
+    #[test]
+    fn delegated_admission_rejection_preserves_both_sources() {
+        let _guard = setup();
+        let endpoint = Endpoint::create(1, 1, 4).unwrap();
+        let connection = endpoint.connect(IpcRights::CALL).unwrap();
+        for status in [
+            catten_syscall::ipc_status::QUEUE_FULL,
+            catten_syscall::ipc_status::ENDPOINT_CLOSED,
+            catten_syscall::ipc_status::RESOURCE_LIMIT,
+        ] {
+            kernel::update(|state| {
+                state.ipc_call = 0;
+                state.ipc_call_status = status;
+            });
+            assert_eq!(
+                connection.call_connection(1, 2, &endpoint, IpcRights::CALL).unwrap_err(),
+                IpcError::Status(status)
+            );
+            assert_eq!(
+                connection.as_ref().call_connection(1, 2, &endpoint, IpcRights::CALL).unwrap_err(),
+                IpcError::Status(status)
+            );
+            assert!(kernel::events().is_empty());
+        }
+        kernel::update(|state| {
+            state.ipc_call = 30;
+            state.ipc_call_status = catten_syscall::ipc_status::OK;
+        });
+        drop(connection.as_ref().call_connection(1, 2, &endpoint, IpcRights::CALL).unwrap());
+        drop(connection);
+        drop(endpoint);
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::IpcClose(30), kernel::Event::IpcClose(41), kernel::Event::IpcClose(40)]
+        );
+    }
+
+    #[test]
+    fn explicit_endpoint_close_retains_rejected_owner() {
+        // This mock rejects before cleanup starts. The production NIC instead
+        // parks with every rejected/uncertain endpoint owner and never retries.
+        let _guard = setup();
+        let endpoint = Endpoint::create(1, 1, 4).unwrap();
+        kernel::update(|state| {
+            state.ipc_close.push_back(catten_syscall::ipc_status::RESOURCE_LIMIT)
+        });
+        let (endpoint, error) = endpoint.close().unwrap_err();
+        assert_eq!(error, IpcError::Status(catten_syscall::ipc_status::RESOURCE_LIMIT));
+        assert_eq!(kernel::events(), [kernel::Event::IpcClose(40)]);
+        endpoint.close().unwrap();
+        assert_eq!(kernel::events(), [kernel::Event::IpcClose(40), kernel::Event::IpcClose(40)]);
     }
 
     #[test]

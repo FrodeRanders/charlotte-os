@@ -21,16 +21,15 @@ use catten_rt::{
     Context,
     ShutdownRequest,
     config,
+    owned::Endpoint,
 };
 use catten_services::{
     net,
-    ns,
+    publication,
     virtio,
-    wait_reply,
 };
 use catten_syscall::{
     DmaDirection,
-    IpcRights,
     cq_wait_timeout,
     device_irq_ack,
     device_irq_bind_cq,
@@ -38,12 +37,9 @@ use catten_syscall::{
     device_mmio_unmap,
     dma_map,
     ipc_close,
-    ipc_endpoint_bind_cq,
-    ipc_endpoint_create,
     ipc_recv,
     ipc_reply,
     ipc_reply_move,
-    ipc_scalar_call_connection,
     ipc_status,
     memory_alloc,
     memory_close,
@@ -150,10 +146,12 @@ unsafe fn alloc_dma(
 ) -> (u64, u64, u32, usize) {
     let cap = memory_alloc(pages);
     if cap == 0 {
+        record_startup_failure(status::StartupError::DmaAllocation, pages as u64);
         return (0, 0, 0, 0);
     }
     let (map_status, vaddr) = memory_map_any(cap, true);
     if map_status != 0 {
+        record_startup_failure(status::StartupError::DmaCpuMap, map_status);
         memory_close(cap);
         return (0, 0, 0, 0);
     }
@@ -161,6 +159,7 @@ unsafe fn alloc_dma(
     // descriptor protocol and remains mapped and pinned until queue teardown.
     let iova = unsafe { dma_map(dma_domain, cap, direction) };
     if iova == 0 {
+        record_startup_failure(status::StartupError::DmaDomainMap, pages as u64);
         memory_unmap(cap);
         memory_close(cap);
         return (0, 0, 0, 0);
@@ -331,29 +330,47 @@ unsafe fn drain_tx(
     }
 }
 
+fn record_startup_failure(error: status::StartupError, detail: u64) {
+    if unsafe { config::read::<u32>(status::STARTUP_ERROR) } == 0 {
+        config::write::<u64>(status::STARTUP_DETAIL, detail);
+        config::write_u32_release(status::STARTUP_ERROR, error as u32);
+        catten_rt::logln!(
+            "[net] startup rejected stage={} error={error:?} detail={detail:#x}",
+            unsafe { config::read::<u32>(status::STAGE) }
+        );
+    }
+}
+
+fn startup_failed(error: status::StartupError, detail: u64) -> ! {
+    record_startup_failure(error, detail);
+    // Preserve terminal driver/domain teardown. Diagnosis does not restart
+    // hardware or replay any armed DMA initialization/cleanup.
+    unsafe { thread_exit() }
+}
+
 fn serve(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(status::STAGE, 1);
-    let ns_conn = match ctx.bootstrap_cap() {
+    let ns_conn = match ctx.bootstrap_connection() {
         Some(c) => c,
-        None => unsafe { thread_exit() },
+        None => startup_failed(status::StartupError::MissingNames, 0),
     };
     let mmio_cap = match ctx.mmio_cap() {
         Some(c) => c,
-        None => unsafe { thread_exit() },
+        None => startup_failed(status::StartupError::MissingMmio, 0),
     };
     let irq_cap = match ctx.irq_cap() {
         Some(c) => c,
-        None => unsafe { thread_exit() },
+        None => startup_failed(status::StartupError::MissingInterrupt, 0),
     };
     let dma_domain = match config::dma_domain_cap() {
         Some(c) => c,
-        None => unsafe { thread_exit() },
+        None => startup_failed(status::StartupError::MissingDma, 0),
     };
     config::write::<u32>(status::STAGE, 2);
     let (mmio_map_status, vaddr_bar0) = device_mmio_map_any(mmio_cap, true);
     if mmio_map_status != 0 {
         catten_syscall::el0_log(0x4e45_5454, 0x4d4d_494f | mmio_map_status);
-        unsafe { thread_exit() };
+        startup_failed(status::StartupError::MmioMap, mmio_map_status);
     }
     MMIO_BASE.store(vaddr_bar0, core::sync::atomic::Ordering::Relaxed);
     config::write::<u32>(status::STAGE, 3);
@@ -376,7 +393,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let rx_header_size = VIRTIO_NET_RX_HEADER_SIZE;
     let required_hi = virtio::FEATURE_VERSION_1 | virtio::FEATURE_ACCESS_PLATFORM;
     if device_features_hi & required_hi != required_hi {
-        unsafe { thread_exit() };
+        startup_failed(status::StartupError::RequiredFeatures, u64::from(device_features_hi));
     }
     unsafe {
         w32(bar0 + virtio::M_DRIVER_FEATURE_SELECT, 0);
@@ -390,8 +407,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             virtio::STATUS_ACKNOWLEDGE | virtio::STATUS_DRIVER | virtio::STATUS_FEATURES_OK,
         )
     };
-    if unsafe { r8(bar0 + virtio::M_DEVICE_STATUS) & virtio::STATUS_FEATURES_OK == 0 } {
-        unsafe { thread_exit() };
+    let device_status = unsafe { r8(bar0 + virtio::M_DEVICE_STATUS) };
+    if device_status & virtio::STATUS_FEATURES_OK == 0 {
+        startup_failed(status::StartupError::FeatureAcceptance, u64::from(device_status));
     }
 
     // Read MAC.
@@ -407,7 +425,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let rx_qsz = unsafe { select_vq(bar0, virtio::VIRTQ_RX) };
     let tx_qsz = unsafe { select_vq(bar0, virtio::VIRTQ_TX) };
     if rx_qsz == 0 || tx_qsz == 0 || rx_qsz > MAX_QUEUE_SIZE || tx_qsz > MAX_QUEUE_SIZE {
-        unsafe { thread_exit() };
+        startup_failed(
+            status::StartupError::QueueSize,
+            u64::from(rx_qsz) | (u64::from(tx_qsz) << 16),
+        );
     }
     let (rx_cap, rx_ring_iova, _, rx_desc_vaddr) =
         unsafe { alloc_dma(dma_domain, vring_pages(rx_qsz), DmaDirection::Bidirectional) };
@@ -420,7 +441,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let (tx_buf_cap, tx_buf_iova, _, tx_buf_vaddr) =
         unsafe { alloc_dma(dma_domain, tx_buffer_pages, DmaDirection::DeviceRead) };
     if rx_cap == 0 || tx_cap == 0 || rx_buf_cap == 0 || tx_buf_cap == 0 {
-        unsafe { thread_exit() };
+        startup_failed(status::StartupError::DmaPreparation, 0);
     }
     unsafe { zero_vq(rx_desc_vaddr, rx_qsz) };
     unsafe { zero_vq(tx_desc_vaddr, tx_qsz) };
@@ -474,31 +495,36 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     config::write::<u32>(status::STAGE, 6);
 
     // --- Register endpoint --------------------------------------------------
-    let ep = ipc_endpoint_create(net::INTERFACE, net::VERSION, 8);
-    if ep == 0 {
-        unsafe { thread_exit() };
-    }
-    let reg = ipc_scalar_call_connection(
-        ns_conn,
-        ns::OP_REGISTER,
-        net::NAME,
-        ep,
-        IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-    );
-    if reg == 0 {
-        unsafe { thread_exit() };
-    }
-    let (generation, _) = unsafe { wait_reply(reg) };
-    if generation < 1 {
-        unsafe { thread_exit() };
+    let endpoint = Endpoint::create(net::INTERFACE, net::VERSION, 8)
+        .unwrap_or_else(|_| startup_failed(status::StartupError::EndpointCreation, 0));
+    if let Err(error) = publication::register(ns_conn, net::NAME, &endpoint) {
+        catten_rt::logln!("[net] registration failed: {error:?}");
+        let (kind, detail) = match error {
+            publication::Error::Admission(catten_rt::owned::IpcError::Status(code)) => {
+                (status::StartupError::RegistrationAdmission, code)
+            }
+            publication::Error::Admission(_) => {
+                (status::StartupError::RegistrationAdmission, u64::MAX)
+            }
+            publication::Error::Rejected(code) => {
+                (status::StartupError::RegistrationObservation, code as u64)
+            }
+            _ => (status::StartupError::RegistrationObservation, u64::MAX),
+        };
+        startup_failed(kind, detail);
     }
     config::write::<u32>(status::STAGE, 7);
-
-    if ipc_endpoint_bind_cq(ep, 0) != 0 {
-        unsafe { thread_exit() };
+    if let Err(error) = endpoint.bind_completion_queue(0) {
+        let detail = if let catten_rt::owned::IpcError::Status(code) = error {
+            code
+        } else {
+            u64::MAX
+        };
+        startup_failed(status::StartupError::EndpointCq, detail);
     }
-    if device_irq_bind_cq(irq_cap, 0) != 0 {
-        unsafe { thread_exit() };
+    let interrupt_status = device_irq_bind_cq(irq_cap, 0);
+    if interrupt_status != 0 {
+        startup_failed(status::StartupError::InterruptCq, interrupt_status);
     }
     config::write::<u32>(status::STAGE, 8);
 
@@ -512,7 +538,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
-            let endpoint_closed = ipc_close(ep) == ipc_status::OK;
+            // Consume only a confirmed close. A rejected/uncertain owner is
+            // retained in the terminal park below, never retried or dropped.
+            let (endpoint_closed, _retained_endpoint) = match endpoint.close() {
+                Ok(()) => (true, None),
+                Err((endpoint, _)) => (false, Some(endpoint)),
+            };
             if pending_recv != 0 {
                 ipc_close(pending_recv);
             }
@@ -596,7 +627,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
         // --- endpoint messages ---------------------------------------------
         loop {
-            let m = ipc_recv(ep);
+            // The existing DMA-ring/deferred-frame protocol adapter borrows
+            // the endpoint; its owning capability never becomes a scalar.
+            let m = ipc_recv(endpoint.as_raw());
             let _attachments = catten_services::RequestAttachments::new(m.memory, m.connection);
             if m.status == ipc_status::NO_MESSAGE {
                 break;

@@ -258,6 +258,13 @@ catalogue admits a bounded 32 KiB verification stack through its existing
 account. Signed release/readiness validation and retained failed runs are in
 \repofile|docs/reports/audits/2026-10-11-security-deployment-ingress.md|.
 
+NIC and frame-router publication retain the same owned endpoint through
+delegated queue-full rejection with a 1000 ms submission retry budget. Accepted
+calls are observed once. NIC startup publishes its first failure category/detail;
+the earlier AMD exit remains unattributed. Explicit NIC endpoint close returns
+any rejected owner for terminal retention. See
+\repofile|docs/reports/audits/2026-10-12-security-network-publication.md|.
+
 The service allocates its smoltcp socket table once at launch. Its launch
 manifest supplies bounded \texttt{sockslot}, \texttt{sockquot}, and
 \texttt{bufquot} policy values; the defaults are 64 total slots, 64 sockets per

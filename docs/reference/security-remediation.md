@@ -67,6 +67,12 @@ extends connection-local rejection to deployment setup/accept and makes its
 pre-authentication parser allocation fallible without a second body copy.
 Both endpoints have total request budgets; deployment remains serial. The same follow-up corrects shared identity creation ownership, the catalogue verification stack budget and scoped readiness observation. The read-only namespace query returns a live publication generation without granting invocation authority; legacy lookup stays denied. Final signed upload/release/pull/verification/launch/readiness passes. Earlier failed signed runs and intermittent AMD frame-router startup remain recorded separately; a passing repeat does not resolve that intermittence.
 
+The [network publication follow-up](../reports/audits/2026-10-12-security-network-publication.md)
+adds first-failure NIC startup diagnostics and corrects source-confirmed terminal
+registration on delegated queue-full rejection. Admission retains the same
+endpoint; accepted calls are observed once. The historical AMD exit remains
+unattributed despite passing diagnostic repeats.
+
 Remaining acceptance requires bounded concurrent admission and progress for
 healthy clients while hostile clients occupy slots, bounded controller/RPC
 completion, and sustained connection/packet flood, NIC failure and lifecycle

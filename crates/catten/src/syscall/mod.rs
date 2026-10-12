@@ -1610,9 +1610,16 @@ fn sys_ipc_scalar_call_connection(frame: &mut TrapFrame) {
     let arg0 = frame.regs[3];
     let delegate = frame.regs[4];
     let rights = ipc::ConnectionRights::from_bits(frame.regs[5] as u32);
-    frame.regs[0] =
-        ipc::scalar_call_with_connection(asid, connection, opcode, arg0, delegate, rights)
-            .unwrap_or(0);
+    match ipc::scalar_call_with_connection(asid, connection, opcode, arg0, delegate, rights) {
+        Ok(cap) => {
+            frame.regs[0] = cap;
+            frame.regs[1] = 0;
+        }
+        Err(error) => {
+            frame.regs[0] = 0;
+            frame.regs[1] = ipc_status(error);
+        }
+    }
 }
 
 fn sys_ipc_scalar_call_connection_copy(frame: &mut TrapFrame) {

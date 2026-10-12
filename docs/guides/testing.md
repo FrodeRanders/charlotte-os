@@ -356,7 +356,13 @@ abortive-close and idle-peer recovery, plus a trickled incomplete body against
 the deployment adapter's unchanged thirty-second total deadline. Every case
 ends with a healthy status control. The selected 180-second runner window
 accommodates both serial probes; it does not extend guest request deadlines.
-The deployment probe has its own 120-second total host budget. See the
+The deployment probe has its own 120-second total host budget.
+The kernel syscall fixture also forces delegated queue-full rejection, drains
+the original queue and verifies one successful grant/reply through the same
+sources. NIC startup failures log their first stage/category/detail, so a
+frame-router stage-1 timeout should be investigated upstream at NIC startup;
+passing repeats alone do not assign its cause. See the
+[network publication evidence](../reports/audits/2026-10-12-security-network-publication.md). See the
 [deployment ingress audit evidence](../reports/audits/2026-10-11-security-deployment-ingress.md)
 for captured failures, artifact hashes and the limits of these controls.
 

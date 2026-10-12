@@ -721,6 +721,12 @@ Native software does not.
 > existing account. Signed upload/release/pull/launch/readiness and separate
 > failed-run evidence are in the
 > [deployment ingress follow-up](../reports/audits/2026-10-11-security-deployment-ingress.md).
+> NIC and frame-router publication now retains the same owned endpoint through
+> delegated queue-full rejection, with a 1000 ms submission retry budget.
+> Accepted calls are observed once. NIC startup publishes its first failure
+> category/detail; the earlier AMD exit remains unattributed. Explicit NIC
+> endpoint close returns any rejected owner for terminal retention. See the
+> [network publication evidence](../reports/audits/2026-10-12-security-network-publication.md).
 
 ---
 

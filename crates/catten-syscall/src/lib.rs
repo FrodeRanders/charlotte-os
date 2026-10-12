@@ -2087,6 +2087,69 @@ pub fn ipc_scalar_call_copy(connection: u64, opcode: u32, arg0: u64, memory: u64
     unsafe { svc4(SyscallNumber::IpcScalarCallCopy, connection, opcode as u64, arg0, memory) }
 }
 
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+unsafe fn svc5_x1(imm: SyscallNumber, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> (u64, u64) {
+    let ret: u64;
+    let status: u64;
+    unsafe {
+        match imm as u16 {
+            // IPC may publish mapped CQ state, including for a same-domain
+            // recipient. Keep memory effects as well as secondary output.
+            39 => asm!("svc #39", lateout("x0") ret, inlateout("x1") a1 => status, in("x2") a2, in("x3") a3, in("x4") a4, in("x5") a5, options(nostack, preserves_flags)),
+            _ => panic!("syscall {:?} has no svc5_x1 emitter", imm),
+        }
+    }
+    (ret, status)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+unsafe fn svc5_x1(imm: SyscallNumber, a1: u64, a2: u64, a3: u64, a4: u64, a5: u64) -> (u64, u64) {
+    let ret: u64;
+    let status: u64;
+    unsafe {
+        asm!("syscall", inlateout("rax") imm as u64 => ret, inlateout("rdi") a1 => status,
+        in("rsi") a2, in("rdx") a3, in("r10") a4, in("r8") a5,
+        lateout("rcx") _, lateout("r11") _, options(preserves_flags));
+    }
+    (ret, status)
+}
+
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+#[inline(always)]
+unsafe fn svc5_x1(
+    _imm: SyscallNumber,
+    _a1: u64,
+    _a2: u64,
+    _a3: u64,
+    _a4: u64,
+    _a5: u64,
+) -> (u64, u64) {
+    (0, 0)
+}
+
+/// Delegated call admission returns a pending capability and exact IPC status.
+#[inline(always)]
+pub fn ipc_scalar_call_connection_checked(
+    connection: u64,
+    opcode: u32,
+    arg0: u64,
+    delegate: u64,
+    rights: IpcRights,
+) -> (u64, IpcStatusCode) {
+    unsafe {
+        svc5_x1(
+            SyscallNumber::IpcScalarCallConnection,
+            connection,
+            opcode as u64,
+            arg0,
+            delegate,
+            rights.bits() as u64,
+        )
+    }
+}
+
 /// Call through a connection carrying a delegated connection capability.
 ///
 /// `delegate` must be an endpoint cap or a re-delegable connection cap owned
@@ -2101,16 +2164,7 @@ pub fn ipc_scalar_call_connection(
     delegate: u64,
     rights: IpcRights,
 ) -> u64 {
-    unsafe {
-        svc5(
-            SyscallNumber::IpcScalarCallConnection,
-            connection,
-            opcode as u64,
-            arg0,
-            delegate,
-            rights.bits() as u64,
-        )
-    }
+    ipc_scalar_call_connection_checked(connection, opcode, arg0, delegate, rights).0
 }
 
 /// Call through a connection carrying both a delegated connection capability

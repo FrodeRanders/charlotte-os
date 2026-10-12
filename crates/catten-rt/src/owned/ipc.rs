@@ -362,6 +362,17 @@ impl Endpoint {
         Ok((capacity as usize, depth as usize, high_water as usize))
     }
 
+    /// Close explicitly. Rejection returns the exact owner; callers must retain
+    /// it after uncertain cleanup rather than replay a started close.
+    pub fn close(mut self) -> Result<(), (Self, IpcError)> {
+        let status = kernel::ipc_close(self.raw_handle());
+        if status != catten_syscall::ipc_status::OK {
+            return Err((self, IpcError::Status(status)));
+        }
+        self.cap.take();
+        Ok(())
+    }
+
     pub fn into_raw(mut self) -> u64 {
         self.cap.take().expect("endpoint capability already consumed")
     }
@@ -636,13 +647,17 @@ impl<'connection> ConnectionRef<'connection> {
         endpoint: &Endpoint,
         rights: IpcRights,
     ) -> Result<PendingCall<'static>, IpcError> {
-        PendingCall::from_kernel(kernel::ipc_scalar_call_connection(
+        let (call, status) = kernel::ipc_scalar_call_connection_checked(
             self.cap,
             opcode,
             arg0,
             endpoint.raw_handle(),
             rights,
-        ))
+        );
+        if status != catten_syscall::ipc_status::OK {
+            return Err(IpcError::Status(status));
+        }
+        PendingCall::from_kernel(call)
     }
 
     pub fn call_connection_copy(
@@ -823,13 +838,17 @@ impl Connection {
         endpoint: &Endpoint,
         rights: IpcRights,
     ) -> Result<PendingCall<'static>, IpcError> {
-        PendingCall::from_kernel(kernel::ipc_scalar_call_connection(
+        let (call, status) = kernel::ipc_scalar_call_connection_checked(
             self.raw_handle(),
             opcode,
             arg0,
             endpoint.raw_handle(),
             rights,
-        ))
+        );
+        if status != catten_syscall::ipc_status::OK {
+            return Err(IpcError::Status(status));
+        }
+        PendingCall::from_kernel(call)
     }
 
     /// Call while delegating a connection and copying a memory object.

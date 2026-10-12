@@ -361,6 +361,52 @@ pub fn test_syscall_dispatch() {
         syscall::syscall_dispatch(&mut f, call_no::IPC_SCALAR_CALL);
         assert_eq!(f.regs[0], 0, "send-only delegated connection must not authorize calls");
     }
+    // Serialized ABI fixture: fill the exact four-slot endpoint, then retry
+    // delegated admission through the same original connection/endpoint.
+    for tag in 0..4 {
+        let mut f = synthetic_trap_frame_in(asid, 0, connection, 20, tag);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_SCALAR_SEND);
+        assert_eq!(f.regs[0], 0);
+    }
+    let mut rejected = synthetic_trap_frame_in(asid, 0, connection, 21, 0);
+    rejected.regs[4] = endpoint;
+    rejected.regs[5] = crate::ipc::ConnectionRights::SEND.bits() as u64;
+    syscall::syscall_dispatch(&mut rejected, call_no::IPC_SCALAR_CALL_CONNECTION);
+    assert_eq!(rejected.regs[0], 0, "rejection creates no pending owner");
+    assert_eq!(rejected.regs[1], catten_syscall::ipc_status::QUEUE_FULL);
+    for _ in 0..4 {
+        let mut f = synthetic_trap_frame_in(asid, 0, endpoint, 0, 0);
+        syscall::syscall_dispatch(&mut f, call_no::IPC_RECV);
+        assert_eq!(f.regs[0], 0);
+        assert_eq!(f.regs[1], 20, "rejected delegation must not publish an extra message");
+        assert_eq!(f.regs[8], 0, "original queued messages carry no grant");
+    }
+    let mut accepted = synthetic_trap_frame_in(asid, 0, connection, 21, 0);
+    accepted.regs[4] = endpoint;
+    accepted.regs[5] = crate::ipc::ConnectionRights::SEND.bits() as u64;
+    syscall::syscall_dispatch(&mut accepted, call_no::IPC_SCALAR_CALL_CONNECTION);
+    assert_ne!(accepted.regs[0], 0);
+    assert_eq!(accepted.regs[1], catten_syscall::ipc_status::OK);
+    let accepted_call = accepted.regs[0];
+    let mut received = synthetic_trap_frame_in(asid, 0, endpoint, 0, 0);
+    syscall::syscall_dispatch(&mut received, call_no::IPC_RECV);
+    assert_eq!(received.regs[0], 0);
+    assert_eq!(received.regs[1], 21);
+    assert_ne!(received.regs[8], 0, "the accepted retry publishes its one grant");
+    let received_grant = received.regs[8];
+    let mut reply = synthetic_trap_frame_in(asid, 0, received.regs[3], 9, 0);
+    syscall::syscall_dispatch(&mut reply, call_no::IPC_REPLY);
+    assert_eq!(reply.regs[0], 0);
+    let mut observed = synthetic_trap_frame_in(asid, 0, accepted_call, 0, 0);
+    syscall::syscall_dispatch(&mut observed, call_no::IPC_REPLY_POLL);
+    assert_eq!(observed.regs[0], 0);
+    assert_eq!(observed.regs[1], 9);
+    crate::ipc::close_cap(asid, received_grant).unwrap();
+    crate::ipc::close_cap(asid, accepted_call).unwrap();
+    logln!(
+        "[syscall] delegated queue-full admission returned exact status; same-source retry \
+         published one grant and completed once"
+    );
     for cap in [delegated_connection, delegated_call, call, connection, endpoint] {
         let mut f = synthetic_trap_frame_in(asid, 0, cap, 0, 0);
         syscall::syscall_dispatch(&mut f, call_no::IPC_CLOSE);

@@ -298,6 +298,31 @@ pub mod net_status {
     pub const LAST_RX_DESCRIPTOR_STATUS: usize = 60;
     pub const LAST_RX_DESCRIPTOR_ERRORS: usize = 61;
     pub const LAST_RX_DESCRIPTOR_LENGTH: usize = 62;
+    /// First startup rejection, published after its u64 diagnostic detail.
+    pub const STARTUP_ERROR: usize = 64;
+    pub const STARTUP_DETAIL: usize = 72;
+
+    #[repr(u32)]
+    #[derive(Clone, Copy, Debug)]
+    pub enum StartupError {
+        MissingNames = 1,
+        MissingMmio = 2,
+        MissingInterrupt = 3,
+        MissingDma = 4,
+        MmioMap = 5,
+        RequiredFeatures = 6,
+        FeatureAcceptance = 7,
+        QueueSize = 8,
+        DmaAllocation = 9,
+        DmaCpuMap = 10,
+        DmaDomainMap = 11,
+        DmaPreparation = 12,
+        EndpointCreation = 13,
+        RegistrationAdmission = 14,
+        RegistrationObservation = 15,
+        EndpointCq = 16,
+        InterruptCq = 17,
+    }
 }
 
 /// Generic Raft fixture status-page byte offsets.

@@ -29,6 +29,7 @@ pub mod deployment_http;
 pub mod grant_client;
 /// Owned application-side wrappers for the Kafka service protocol.
 pub mod kafka_client;
+pub mod publication;
 /// Owned application-side wrappers for the S3 service protocol.
 pub mod s3_client;
 /// Verified, owned TLS client transport shared by network services.
