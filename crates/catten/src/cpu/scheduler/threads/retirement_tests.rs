@@ -85,6 +85,8 @@ pub(crate) fn run() {
     ] = owners.try_into().unwrap_or_else(|_| panic!("fixture owner count"));
     let retained_sp = first.context.kernel_stack_bounds().0;
     let retained_generation = first.generation;
+    METADATA_PROBE_GENERATION.store(retained_generation, Ordering::Release);
+    let disposal_before = METADATA_PROBE_HITS.load(Ordering::Relaxed);
     let other_generation = third.generation;
     let lp = crate::cpu::isa::lp::ops::get_lp_id();
     // An independent inline head also exists on single-LP boots. No context
@@ -135,6 +137,8 @@ pub(crate) fn run() {
     // changes; this does not authorize production cross-LP physical reaping.
     reap_dead_threads_with(other_lp, current_stack_pointer());
     assert_eq!(calls.load(Ordering::Relaxed), 3);
+    assert_eq!(METADATA_PROBE_HITS.load(Ordering::Relaxed), disposal_before + 1);
+    METADATA_PROBE_GENERATION.store(0, Ordering::Release);
     assert!(!has_staged_generation(other_generation));
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
     assert!(!retirement_in_flight());
@@ -145,6 +149,7 @@ pub(crate) fn run() {
     completion::close_address_space(asid);
     crate::capability::close_address_space(asid);
     terminal_pair_retention(lp);
+    abandoned_payloads();
     crate::logln!(
         "[thread retirement] node/context-storage rejection, masked entry, same-LP/current-stack \
          retention, unlocked callbacks and physical stack recovery passed"
@@ -199,5 +204,91 @@ fn terminal_pair_retention(lp: LpId) {
     crate::logln!(
         "[published stack retirement] failed pair/node retained through two scans; no physical \
          retry"
+    );
+}
+
+static METADATA_PROBE_GENERATION: AtomicU64 = AtomicU64::new(0);
+static METADATA_PROBE_HITS: AtomicUsize = AtomicUsize::new(0);
+
+pub(super) fn before_metadata_disposal(thread: &Thread) {
+    // Only the serialized boot fixture selects a lifetime. Concurrent holds
+    // by other LPs must never make normal production disposal fail this probe.
+    if METADATA_PROBE_GENERATION.load(Ordering::Acquire) != thread.generation {
+        return;
+    }
+    assert!(thread.retirement_metadata_completed && thread.stacks_retired);
+    assert!(DEAD_THREADS.try_write().is_some());
+    assert!(MASTER_THREAD_TABLE.try_write().is_some());
+    assert!(crate::memory::ADDRESS_SPACE_TABLE.try_lock().is_some());
+    assert!(PHYSICAL_FRAME_ALLOCATOR.try_lock().is_some());
+    METADATA_PROBE_HITS.fetch_add(1, Ordering::Relaxed);
+}
+
+fn abandoned_payloads() {
+    use crate::klib::observer::{
+        WaitSponsor,
+        waiter_source::WaiterSource,
+    };
+    let asid = 0xc0ae_d007;
+    completion::open_address_space(asid, 4);
+    let watches = completion::watch_admission(asid).unwrap();
+    let root = crate::service::loader::create_user_address_space_handle();
+    let abandoned_before = ABANDONED_THREAD_PAYLOADS.load(Ordering::Relaxed);
+    for owner in [KERNEL_ASID, root.id()] {
+        let mut thread = Thread::new(owner, unused_entry);
+        let source = WaiterSource::new();
+        let sponsor = WaitSponsor::new(false);
+        let waker = Arc::new(Waker::new(usize::MAX, thread.generation));
+        let registration =
+            source.register(Arc::downgrade(&waker) as Weak<dyn Observer>, &sponsor).unwrap();
+        waker.set_registration(registration);
+        thread.state = ThreadState::Blocked(waker);
+        let hits = Arc::new(AtomicUsize::new(0));
+        let count = hits.clone();
+        let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+            count.fetch_add(1, Ordering::Relaxed);
+            panic!("abandoned thread fabricated an exit callback");
+        });
+        let token = thread
+            .try_observe_exit(
+                Arc::downgrade(&observer),
+                completion::watch_budget::reserve(&watches, true).unwrap(),
+            )
+            .unwrap();
+        let usage_before = crate::memory::usage::domain_usage(owner);
+        {
+            // Hold the exact local boundaries that fallback must not enter.
+            // This thread was never admitted/executing and owns all its fields.
+            let _table = MASTER_THREAD_TABLE.write();
+            let _dead = DEAD_THREADS.write();
+            let _spaces = crate::memory::ADDRESS_SPACE_TABLE.lock();
+            let allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+            let free_before = allocator.free_frames();
+            drop(thread);
+            assert_eq!(allocator.free_frames(), free_before);
+        }
+        assert_eq!(hits.load(Ordering::Relaxed), 0);
+        assert_eq!(source.registered(), 1);
+        assert_eq!(sponsor.used(), 1);
+        assert_eq!(watches.used(), 1);
+        assert_eq!(crate::memory::usage::domain_usage(owner), usage_before);
+        // External watch/source cancellation is separate from the abandoned
+        // payload. It cannot recover/adopt its context, stack or root lease.
+        drop(token);
+        assert_eq!(watches.used(), 0);
+        drop(source);
+        assert_eq!(sponsor.used(), 0);
+    }
+    assert_eq!(ABANDONED_THREAD_PAYLOADS.load(Ordering::Relaxed), abandoned_before + 2);
+    assert_eq!(crate::memory::usage::domain_usage(root.id()).unwrap().threads, 1);
+    assert_eq!(
+        crate::memory::close_user_address_space_handle(root),
+        Err(crate::memory::AddressSpaceCloseError::OperationsInFlight)
+    );
+    completion::close_address_space(asid);
+    crate::logln!(
+        "[thread metadata retention] kernel/user payload Drop under \
+         table/retirement/root/allocator guards: no exit, waiter cancellation, usage refund or \
+         frame return; exact user root remains busy"
     );
 }

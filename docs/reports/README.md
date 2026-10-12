@@ -11,6 +11,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
 - [Pending reply CQ readiness](audits/2026-10-12-reply-cq-readiness.md) — Owning reply interests, exact CQ identity and lifecycle notification for multi-source controllers.
+- [Thread metadata retention (SEC-18 / C16 / G1)](audits/2026-10-12-thread-metadata-retention.md) — Complete guarded fallback retention and explicit metadata disposal after confirmed stack-pair release.
 - [Weekly wait/readiness sweep](audits/2026-10-12-wait-readiness-sweep.md) — Reply polling replaced by owned timed readiness waits; remaining cleanup, reaper and shootdown notification gaps documented.
 - [Object-store readiness and unreadable mount metadata](audits/2026-10-12-security-object-store-readiness.md) — Explicit serving state, immutable first-I/O diagnostics and fail-closed metadata read policy; historical Intel failure retained.
 - [Deployment controller RPC deadlines](audits/2026-10-12-security-controller-deadlines.md) — Seven bounded ingress RPCs, scalar/moved cancellation and original-sponsor page/queue recovery under pressure.

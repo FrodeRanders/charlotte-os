@@ -571,7 +571,14 @@ the corrected RPC polling paths, and the remaining notification gaps.
   retirement nodes and subsequent scans must not retry. Context storage is
   admitted before generation/backing; ordinary publication/submission rejection
   releases never-admitted stacks after local serialization leaves. Preserve
-  outer masks; general thread metadata fallback remains separately qualified.
+  outer masks. `Thread` fallback retains its complete `ManuallyDrop` payload,
+  including context, waiter state, exit subscriptions, sponsors, retirement node
+  and exact stack/root admission; it only records an atomic diagnostic. Never
+  invoke callbacks, cancel waits, refund usage or destroy metadata from that
+  fallback. Explicit consuming metadata disposal requires confirmed release of
+  the exact stack pair and runs after local guards, before retirement-node
+  destruction. Outer constructor/syscall masks and growth guards still require
+  qualification; this is terminal retention, never a physical retry owner.
 - IOMMU backing uses `device::dma_tables::Tables` for domain roots/intermediates,
   SMMU descriptors and shared unit tables/queues/completion cells. Reserve actual
   pages before physical allocation, retain an exclusive owner through zeroing

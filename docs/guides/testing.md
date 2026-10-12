@@ -885,6 +885,17 @@ before switching and completion afterward. Existing real remote-abort verifiers
 still run. See
 [thread retirement](../reference/thread-retirement.md) for fixture limits.
 
+Two further host tests check typed payload disposal before node deallocation
+and retention of the exact node when disposal is interrupted. Guest fixtures
+drop never-admitted kernel/user thread payloads under simultaneous scheduler,
+retirement, address-space and physical-allocator guards. They require no exit
+callback, waiter cancellation, usage refund or frame return; the exact user root
+must remain busy. A selected-generation success probe checks guard availability
+before explicit metadata disposal after confirmed pair release. These probes
+retain two complete thread payloads and a user root intentionally, and do not
+provide a retry or kernel-unwind proof. See the
+[metadata-retention report](../reports/audits/2026-10-12-thread-metadata-retention.md).
+
 Whole-domain abort fixtures also check the inline root fence, rejection of an
 already-prepared thread, repeated late preparation, callback guard availability,
 TID replacement between capture and claim, ASID reuse and final root/frame

@@ -191,6 +191,16 @@ exited thread consequently cannot abort a newer thread that reused the same
 numeric identifier. The scheduler-lifecycle boot test exercises stale wake
 rejection and remote owner-LP retirement.
 
+Deferred retirement owns the complete thread in its prepared node until the
+owner LP is off that stack and explicit stack-pair release succeeds. Only then
+does consuming metadata disposal destroy the context and release the node.
+\texttt{Thread} fallback retains its complete \texttt{ManuallyDrop} payload:
+it cannot publish exit, cancel waits, refund usage or invoke field destructors
+under an unknown guard. An atomic abandonment counter supplies diagnostics,
+never recovery authority. Failed or abandoned physical retirement remains
+terminal; outer constructor/syscall masks and stack-growth guards still need
+separate qualification. See \repofile|docs/reference/thread-retirement.md|.
+
 \section{Synchronization and lock ordering}
 
 Shared kernel state is synchronized by a small, deliberate set of primitives.

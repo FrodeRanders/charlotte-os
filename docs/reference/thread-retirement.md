@@ -60,9 +60,21 @@ release arms its one-shot fence before detachment/callbacks; any rejection or
 interruption is terminal. It retains the original maximum reservation/root/slot
 even when one range was released. A failed pair is reinserted in its existing
 node and future scans skip physical work; it is never reported as reaped. Only
-confirmed pair completion permits explicit node destruction. No physical work
-occurs for stack backing in implicit thread/context/stack field destruction; general metadata
-fallback in `Thread::drop` is still a separate context boundary.
+confirmed pair completion permits explicit metadata and node destruction.
+`Thread` holds its complete inline payload in `ManuallyDrop`. Its fallback only
+increments `ABANDONED_THREAD_PAYLOADS`; it retains the context Box, stack/root
+owners, waiter/waker state, exit subscriptions, sponsors and unused retirement
+node without callbacks, cancellation, usage refund, heap/physical cleanup,
+guards or logging. The counter records no address or recovery authority.
+
+Consuming `dispose_retired` requires both completed metadata notification and
+confirmed release of this exact stack pair. It disarms its fallback before
+destroying the payload. `RetiredEntry::release_with` keeps the node owned until
+that typed disposal returns; interrupted disposal retains the node. Ordinary
+never-admitted rejection uses the same consuming disposal after successful
+pair release. There is no second payload destruction or physical retry after
+disposal starts. This does not qualify every outer constructor/syscall context
+or arbitrary callbacks during explicit notification.
 
 A published `RetiredEntry` or list destructor retains its entire node/chain
 without entering callbacks, allocator, logger or physical cleanup. Only explicit
@@ -125,11 +137,14 @@ the current caller's numeric ASID at its entry boundary.
 
 ## Evidence and limits
 
-Four standalone host tests cover preparation rejection, unused preparation
+Standalone host tests cover preparation rejection, unused preparation
 release, ownership/identity across heads, explicit release and abandonment.
 A current-test-thread allocation tracer observes zero allocations/reallocations
 during staging, detachment, reversal, filtering, reinsertion and explicit release
 of 1,024 prepared payloads. This excludes arbitrary callback allocation.
+Two additional tests verify payload disposal before node deallocation and node
+retention when the typed disposal is interrupted; the latter uses host unwind
+with a deliberately retaining fixture payload, not kernel panic recovery.
 
 Guest fixtures reject both retirement-node and context-storage preparation
 64 times each before generation/physical mutation,
@@ -147,15 +162,28 @@ handle/context and abort request before switching, never resumes it, and
 ultimately completes the watched exit. Fast natural-return workers separately
 exercise the normal trampoline's exit path.
 
+Guarded abandonment fixtures drop complete never-admitted kernel and user
+threads while holding the master thread table, retirement table, address-space
+table and physical allocator. Exit callbacks must remain uncalled, waiter and
+watch charges remain live, usage and free-frame counts remain unchanged, and
+the exact user root rejects close with `OperationsInFlight`. External source
+and watch cancellation is checked separately; it cannot recover the abandoned
+thread. A selected-generation disposal probe checks completed pair ownership
+and availability of those four guards before ordinary metadata destruction.
+These fixtures intentionally retain two complete payloads and the user root;
+they do not measure all heap deallocations or prove arbitrary caller contexts.
+
 The node is allocated from the global heap and adds one thread-sized allocation
 per live/deferred owner. There is no independent node-byte admission pool.
 General heap/metadata/principal accounting remains SEC-07 work. Scheduler
 run-queue/migration allocation and other subsystem metadata remain separate
-allocation paths. General callback/metadata fallback and outer construction/submission masks
-remain unqualified; full SEC-18 lock/quiescence safety is not claimed. There is
+allocation paths. Outer construction/submission masks, growth's containing
+thread-table guard and arbitrary explicit callback contexts remain unqualified;
+full SEC-18 lock/quiescence safety is not claimed. There is
 no failed-pair retry owner, shared custody adapter or abandoned-owner recovery.
 
 Evidence: [thread retirement audit](../reports/audits/2026-10-07-security-thread-retirement.md).
+Complete-payload fallback evidence: [thread metadata retention](../reports/audits/2026-10-12-thread-metadata-retention.md).
 Whole-domain evidence: [domain thread abort audit](../reports/audits/2026-10-07-security-domain-thread-abort.md).
 
 Self-handoff evidence: [root-operation completion before caller retirement](../reports/audits/2026-10-09-security-abort-handoff.md).

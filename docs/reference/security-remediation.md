@@ -169,9 +169,14 @@ fallback, while retaining explicit ordinary cancellation. The
 removes physical stack/context destruction, adds Arm pinned IRQ-enabled reaping
 and retains failed complete pairs in their existing nodes without retry. Ordinary
 rejection runs explicit cleanup after local guards; context metadata allocation
-precedes generation/backing. General thread metadata fallback, outer ordinary
-caller masks, backend contexts, growth's enclosing thread-table guard and the
-complete call-chain inventory remain required.
+precedes generation/backing. The [complete thread metadata follow-up](../reports/audits/2026-10-12-thread-metadata-retention.md)
+now also removes callbacks, wait cancellation, usage refund and implicit field
+destruction from `Thread` fallback. Explicit consuming metadata disposal follows
+confirmed stack-pair release, with its retirement node retained until return.
+Guarded kernel/user abandonment retains the exact user root and original
+admission. Outer ordinary caller masks, explicit callback contexts, backend
+contexts, growth's enclosing thread-table guard and the complete call-chain
+inventory remain required; C16/G1 and SEC-18 remain open.
 The [IOMMU preparation follow-up](../reports/audits/2026-10-09-security-iommu-preparation-abandonment.md)
 also removes physical/pool cleanup and implicit ledger heap deallocation from
 C15 fallback. Private construction and ordinary metadata/allocator rejection use

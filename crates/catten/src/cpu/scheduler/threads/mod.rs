@@ -35,7 +35,10 @@ use alloc::{
     vec::Vec,
 };
 use core::{
-    mem::offset_of,
+    mem::{
+        ManuallyDrop,
+        offset_of,
+    },
     sync::atomic::{
         AtomicBool,
         AtomicU64,
@@ -330,7 +333,7 @@ fn reap_dead_threads_releasing_with(
             batch.deferred.push(entry);
         } else {
             match release(entry.value_mut()) {
-                Ok(()) => entry.release(),
+                Ok(()) => entry.release_with(Thread::dispose_retired),
                 Err(error) => {
                     // Diagnostic outcome stays with the complete admitted owner.
                     // Its phase fence forbids retry, independent of this value.
@@ -448,8 +451,18 @@ pub struct ThreadStatisticsSnapshot {
     pub stack_used_pages: u64,
 }
 
+/// Linear thread owner. Only explicit disposal after confirmed stack release
+/// destroys its payload; abandonment retains every field without callbacks.
 #[derive(Debug)]
 pub struct Thread {
+    payload: ManuallyDrop<ThreadPayload>,
+    metadata_disposal_started: bool,
+}
+
+// Public only as the target of Thread's field-borrow interface. Its private
+// custody fields prevent constructing or disposing it outside this module.
+#[derive(Debug)]
+pub struct ThreadPayload {
     /// Boxed so the context (and therefore its `saved_sp`/`rsp_cpl0` field) has
     /// a **stable heap address**. `cond_yield_lp` captures a raw pointer to that
     /// field under lock and dereferences it lock-free inside `switch_ctx`; if the
@@ -501,10 +514,31 @@ pub struct Thread {
     // thread has None here: its containing node owns the whole payload.
     retirement: Option<PreparedEntry<Thread>>,
     retirement_metadata_completed: bool,
+    stacks_retired: bool,
     stack_retirement_error: Option<crate::memory::thread_stack::RetirementError>,
 }
 
-pub const THREAD_CTX_OFFSET: usize = offset_of!(Thread, context);
+impl core::ops::Deref for Thread {
+    type Target = ThreadPayload;
+
+    fn deref(&self) -> &Self::Target {
+        &self.payload
+    }
+}
+
+impl core::ops::DerefMut for Thread {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.payload
+    }
+}
+
+pub const THREAD_CTX_OFFSET: usize =
+    offset_of!(Thread, payload) + offset_of!(ThreadPayload, context);
+
+/// Atomic observations only: abandoned complete thread payloads. No address
+/// or retry authority is recorded, and no field cleanup runs in fallback.
+#[unsafe(no_mangle)]
+pub static ABANDONED_THREAD_PAYLOADS: AtomicU64 = AtomicU64::new(0);
 
 impl Thread {
     pub fn new(asid: AddressSpaceId, entry_point: extern "C" fn()) -> Self {
@@ -582,29 +616,33 @@ impl Thread {
             );
         }
         Ok(Thread {
-            context,
-            asid,
-            address_space,
-            generation,
-            wait_sponsor: crate::memory::budget::waiter_sponsor(asid),
-            timer_sponsor: crate::memory::budget::timer_sponsor(asid),
-            state: ThreadState::NeedsLpAssignment,
-            affinity_lp: None,
-            pinned_lp: None,
-            migration_safe: false,
-            migration_constraints: 0,
-            runtime_ticks: RunningStatistics::new(),
-            dispatch_count: 0,
-            last_dispatch_tick: None,
-            abort_requested: AtomicBool::new(false),
-            abort_executor_lp: AtomicUsize::new(usize::MAX),
-            abort_owner_lp: AtomicUsize::new(usize::MAX),
-            retired_tid: None,
-            reap_lp: None,
-            exit_observers: exit_source::ExitSource::new(),
-            retirement: Some(retirement),
-            retirement_metadata_completed: false,
-            stack_retirement_error: None,
+            payload: ManuallyDrop::new(ThreadPayload {
+                context,
+                asid,
+                address_space,
+                generation,
+                wait_sponsor: crate::memory::budget::waiter_sponsor(asid),
+                timer_sponsor: crate::memory::budget::timer_sponsor(asid),
+                state: ThreadState::NeedsLpAssignment,
+                affinity_lp: None,
+                pinned_lp: None,
+                migration_safe: false,
+                migration_constraints: 0,
+                runtime_ticks: RunningStatistics::new(),
+                dispatch_count: 0,
+                last_dispatch_tick: None,
+                abort_requested: AtomicBool::new(false),
+                abort_executor_lp: AtomicUsize::new(usize::MAX),
+                abort_owner_lp: AtomicUsize::new(usize::MAX),
+                retired_tid: None,
+                reap_lp: None,
+                exit_observers: exit_source::ExitSource::new(),
+                retirement: Some(retirement),
+                retirement_metadata_completed: false,
+                stacks_retired: false,
+                stack_retirement_error: None,
+            }),
+            metadata_disposal_started: false,
         })
     }
 
@@ -801,7 +839,24 @@ impl Thread {
             crate::debug_trace::THREAD_LIFECYCLE_STACK_DEALLOCATE,
             current_stack_pointer(),
         );
-        self.context.release_stacks()
+        self.context.release_stacks()?;
+        self.stacks_retired = true;
+        Ok(())
+    }
+
+    /// Consume metadata only after this exact stack pair completed. The
+    /// surrounding reaper/unstarted rejection has left all local guards.
+    /// Arm before field destruction: abandonment cannot invoke a second
+    /// payload destructor or revisit already-returned physical stack addresses.
+    fn dispose_retired(mut self) {
+        assert!(self.retirement_metadata_completed && self.stacks_retired);
+        self.metadata_disposal_started = true;
+        retirement_tests::before_metadata_disposal(&self);
+        // SAFETY: sole Thread owner; the consuming method cannot use the
+        // payload again. Thread::drop never touches a disarmed payload.
+        unsafe {
+            ManuallyDrop::drop(&mut self.payload);
+        }
     }
 
     /// Ordinary rejection of a context that was never scheduler-admitted.
@@ -815,14 +870,18 @@ impl Thread {
         {
             return Err(self);
         }
+        self.dispose_retired();
         Ok(())
     }
 }
 
 impl Drop for Thread {
     fn drop(&mut self) {
-        // No stack release here or in implicit context/stack field destruction.
-        // Exit/wait metadata fallback remains a separate caller-context boundary.
-        self.finish_retirement_metadata();
+        if !self.metadata_disposal_started {
+            ABANDONED_THREAD_PAYLOADS.fetch_add(1, Ordering::Relaxed);
+        }
+        // ManuallyDrop retains the context allocation, exact stack/root owners,
+        // waiter/waker state, exit subscriptions, sponsors and retirement node.
+        // No callbacks, accounting, allocator/pool/table guard or logger here.
     }
 }

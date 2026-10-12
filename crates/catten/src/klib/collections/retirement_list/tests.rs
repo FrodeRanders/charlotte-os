@@ -21,6 +21,8 @@ std::thread_local! {
     static TRACK: Cell<bool> = const { Cell::new(false) };
     static ALLOCATIONS: Cell<usize> = const { Cell::new(0) };
     static DEALLOCATIONS: Cell<usize> = const { Cell::new(0) };
+    static DISPOSAL_NODE: Cell<usize> = const { Cell::new(0) };
+    static DISPOSAL_NODE_FREES: Cell<usize> = const { Cell::new(0) };
 }
 
 struct TracedAllocator;
@@ -52,6 +54,9 @@ unsafe impl GlobalAlloc for TracedAllocator {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        if DISPOSAL_NODE.try_with(|target| target.get() == ptr as usize).unwrap_or(false) {
+            let _ = DISPOSAL_NODE_FREES.try_with(|count| count.set(count.get() + 1));
+        }
         if TRACK.try_with(Cell::get).unwrap_or(false) {
             let _ = DEALLOCATIONS.try_with(|n| n.set(n.get() + 1));
         }
@@ -255,4 +260,41 @@ fn admitted_map_abandonment_retains_owning_payloads_without_allocator_work() {
     without_allocation(|| drop(map));
     assert_eq!(DEALLOCATIONS.with(Cell::get), 0);
     assert_eq!(drops.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn explicit_payload_disposal_precedes_node_deallocation() {
+    let drops = Arc::new(AtomicUsize::new(0));
+    let entry = PreparedEntry::try_new().unwrap().publish(Tracked(7, drops.clone()));
+    DEALLOCATIONS.with(|n| n.set(0));
+    without_allocation(|| {
+        entry.release_with(|value| {
+            assert_eq!(DEALLOCATIONS.with(Cell::get), 0);
+            assert_eq!(value.0, 7);
+            drop(value);
+        })
+    });
+    assert_eq!(drops.load(Ordering::Relaxed), 1);
+    assert_eq!(DEALLOCATIONS.with(Cell::get), 1);
+}
+
+#[test]
+fn interrupted_explicit_disposal_retains_its_node() {
+    let drops = Arc::new(AtomicUsize::new(0));
+    let entry = PreparedEntry::try_new().unwrap().publish(Tracked(7, drops.clone()));
+    DISPOSAL_NODE
+        .with(|target| target.set(&**entry.0.as_ref().unwrap() as *const Node<Tracked> as usize));
+    DISPOSAL_NODE_FREES.with(|count| count.set(0));
+    let interrupted = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        entry.release_with(|value| {
+            // This fixture owner deliberately retains its payload on abort;
+            // the generic node owner must not deallocate underneath it.
+            core::mem::forget(value);
+            std::panic::panic_any(());
+        });
+    }));
+    assert!(interrupted.is_err());
+    assert_eq!(drops.load(Ordering::Relaxed), 0);
+    assert_eq!(DISPOSAL_NODE_FREES.with(Cell::get), 0);
+    DISPOSAL_NODE.with(|target| target.set(0));
 }

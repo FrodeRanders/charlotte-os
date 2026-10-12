@@ -67,6 +67,15 @@ impl<T> RetiredEntry<T> {
     pub(crate) fn release(self) {
         drop(self.into_node());
     }
+
+    /// Transfer the complete typed payload into its explicit disposal while
+    /// retaining this node until that disposal returns. On interruption the
+    /// node remains retained; the payload's owner defines its own fallback.
+    pub(crate) fn release_with(mut self, dispose: impl FnOnce(T)) {
+        let value = self.0.as_mut().unwrap().value.take().unwrap();
+        dispose(value);
+        drop(self.into_node());
+    }
 }
 
 impl<T> Drop for RetiredEntry<T> {
