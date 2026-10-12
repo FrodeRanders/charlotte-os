@@ -32,17 +32,12 @@ impl Error {
 }
 
 fn observe(mut pending: PendingCall<'_>, deadline: &Deadline) -> Result<CallResult, Error> {
-    loop {
-        if deadline.expired() {
-            // Drop cancels the exact pending owner. Timeout does not prove a
-            // receiver failed to commit; no accepted request is replayed.
-            return Err(Error::Timeout);
-        }
-        if let Some(reply) = pending.poll().map_err(Error::Observation)? {
-            return Ok(reply);
-        }
-        crate::sleep_ms(5);
+    // Drop cancels the exact pending owner on timeout or wait rejection.
+    // Neither outcome establishes whether the receiver committed; never replay.
+    if deadline.expired() {
+        return Err(Error::Timeout);
     }
+    pending.wait_timeout(deadline.remaining_ms()).map_err(Error::Observation)?.ok_or(Error::Timeout)
 }
 
 /// Submit once and observe within one deadline, starting before submission.

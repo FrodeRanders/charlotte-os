@@ -51,6 +51,44 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
 - For ownership changes, test success, submission failure, mapping failure,
   cancellation/drop, and returned-capability cleanup where practical.
 
+## Waiting and readiness
+
+- Prefer registering interest in the exact resource and blocking until its
+  readiness transition over repeated `poll`, `yield_lp`, `spin_loop`, or short
+  timer sleeps. Yielding keeps a thread runnable; sleeping between polls is
+  timer-driven polling, not resource readiness registration.
+- Use `PendingCall::wait` or `PendingCall::wait_timeout` for a single accepted
+  RPC, and owned completion/endpoint/CQ waits where their producers actually
+  signal readiness. Carry one monotonic deadline through the operation;
+  retries and unrelated notifications must not restart its budget. Timeout and
+  waiter/watchdog admission rejection are distinct outcomes, neither proving
+  completion, quiescence, or permission to replay an accepted request.
+- Keep the pending owner and every memory borrow through timeout or rejected
+  waiter admission. End a borrow only after confirmed completion/cancellation;
+  use the existing owned close/Drop policy, including domain abort on rejected
+  loan cleanup. Readiness alone does not adopt returned capabilities.
+- Kernel waits must register an owned, fallibly admitted subscription against
+  captured identity/generation, recheck readiness to close the lost-wakeup
+  window, release subsystem/lifecycle guards before parking, and cancel unused
+  source/watchdog registrations on wake. Notify after releasing producer guards.
+  Preserve the enclosing IRQ policy; never enable interrupts beneath an unknown
+  mask merely to permit blocking.
+- Services processing several sources must wait on all relevant interests.
+  Do not block on one reply if that service must receive/process other work to
+  produce it. Do not replace reply polling with a CQ wait unless reply readiness
+  is wired to that CQ. Add the missing notification contract rather than an
+  unrelated wake source or a new per-instance registry.
+- Bounded hardware status polling, short low-level lock acquisition, deliberate
+  fault fixtures, and admission/protocol backoff without a notification surface
+  need a concrete reason and bound or terminal policy. These are not a blanket
+  exemption for routine resource waits. Record missing readiness notifications
+  as audit gaps; do not claim a polling path is event-driven. Cleanup waits must
+  retain their complete existing owners and update the applicable row in
+  `docs/reference/cleanup-recovery.md`.
+
+See `docs/reports/audits/2026-10-12-wait-readiness-sweep.md` for the weekly sweep,
+the corrected RPC polling paths, and the remaining notification gaps.
+
 ## Audit evidence
 
 - Keep published audit reports self-contained. Record concise results, artifact

@@ -1,0 +1,2192 @@
+{
+  "baseline": "6d458d7de093e4cb19b2efe0e2772de92365289a",
+  "reviewed_head": "c5e2ecbc",
+  "line_numbers": "At reviewed_head, before remediation. Added diff lines only; comments/imports deliberately included.",
+  "expression": "spin_loop|yield_lp|yield_now|sleep_ms|\\.poll\\(|spin_reply|poll_reply|while|loop",
+  "candidates": [
+    {
+      "file": "crates/catten-rt/src/owned/ipc.rs",
+      "line": 1248,
+      "code": "// Returning (or unwinding) would end the Rust borrow while foreign CPU",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten-services/src/bin/deployd.rs",
+      "line": 376,
+      "code": "'connections: loop {",
+      "classification": "backoff-missing-subscription",
+      "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
+    },
+    {
+      "file": "crates/catten-services/src/bin/deployd.rs",
+      "line": 386,
+      "code": "sleep_ms(ACCEPT_RETRY_MS);",
+      "classification": "backoff-missing-subscription",
+      "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
+    },
+    {
+      "file": "crates/catten-services/src/bin/deployd.rs",
+      "line": 412,
+      "code": "sleep_ms(ACCEPT_RETRY_MS);",
+      "classification": "backoff-missing-subscription",
+      "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
+    },
+    {
+      "file": "crates/catten-services/src/bin/httpd.rs",
+      "line": 1515,
+      "code": "// accepting traffic while its replacement waits.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten-services/src/bin/httpd.rs",
+      "line": 1516,
+      "code": "sleep_ms(ACCEPT_POLL_MS);",
+      "classification": "backoff-missing-subscription",
+      "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
+    },
+    {
+      "file": "crates/catten-services/src/bin/ns.rs",
+      "line": 128,
+      "code": "match watch.poll() {",
+      "classification": "single-readiness-check",
+      "reason": "One closure-watch poll qualifies one lookup; no polling wait loop."
+    },
+    {
+      "file": "crates/catten-services/src/bin/objstore_client.rs",
+      "line": 152,
+      "code": "// while this client's own object above stayed readable and writable.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten-services/src/bin/objstore_client.rs",
+      "line": 168,
+      "code": "// reading succeeds with the exact bytes while delete stays denied.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten-services/src/bin/objstore_client.rs",
+      "line": 211,
+      "code": "loop {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten-services/src/bin/security_probe.rs",
+      "line": 133,
+      "code": "loop {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten-services/src/bin/security_probe.rs",
+      "line": 433,
+      "code": "loop {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten-services/src/bin/security_probe.rs",
+      "line": 456,
+      "code": "sleep_ms(5);",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten-services/src/bin/tcpclient.rs",
+      "line": 415,
+      "code": "\"[tcpclient] 32 caller-sponsored TCP receive buffers retained while bidirectional traffic \\",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten-services/src/clusterctl_client.rs",
+      "line": 35,
+      "code": "loop {",
+      "classification": "fixed-reply-wait",
+      "reason": "Replaced timer-driven reply polling with owned, event-driven timed wait in this change."
+    },
+    {
+      "file": "crates/catten-services/src/clusterctl_client.rs",
+      "line": 41,
+      "code": "if let Some(reply) = pending.poll().map_err(Error::Observation)? {",
+      "classification": "fixed-reply-wait",
+      "reason": "Replaced timer-driven reply polling with owned, event-driven timed wait in this change."
+    },
+    {
+      "file": "crates/catten-services/src/clusterctl_client.rs",
+      "line": 44,
+      "code": "crate::sleep_ms(5);",
+      "classification": "fixed-reply-wait",
+      "reason": "Replaced timer-driven reply polling with owned, event-driven timed wait in this change."
+    },
+    {
+      "file": "crates/catten-services/src/deployment_http.rs",
+      "line": 174,
+      "code": "while index < encoded.len() {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten-services/src/lib.rs",
+      "line": 1175,
+      "code": "let call = loop {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten-services/src/lib.rs",
+      "line": 1180,
+      "code": "super::sleep_ms(5)",
+      "classification": "backoff-missing-subscription",
+      "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
+    },
+    {
+      "file": "crates/catten-services/src/lib.rs",
+      "line": 2025,
+      "code": "while offset < total {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten-services/src/node_identity.rs",
+      "line": 35,
+      "code": "sleep_ms,",
+      "classification": "non-executable",
+      "reason": "Import."
+    },
+    {
+      "file": "crates/catten-services/src/node_identity.rs",
+      "line": 57,
+      "code": "loop {",
+      "classification": "backoff-missing-subscription",
+      "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
+    },
+    {
+      "file": "crates/catten-services/src/node_identity.rs",
+      "line": 63,
+      "code": "sleep_ms(10)",
+      "classification": "backoff-missing-subscription",
+      "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
+    },
+    {
+      "file": "crates/catten-services/src/node_identity.rs",
+      "line": 76,
+      "code": "loop {",
+      "classification": "backoff-missing-subscription",
+      "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
+    },
+    {
+      "file": "crates/catten-services/src/node_identity.rs",
+      "line": 86,
+      "code": "sleep_ms(10);",
+      "classification": "backoff-missing-subscription",
+      "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
+    },
+    {
+      "file": "crates/catten-services/src/node_identity.rs",
+      "line": 206,
+      "code": "while wait() {",
+      "classification": "backoff-missing-subscription",
+      "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
+    },
+    {
+      "file": "crates/catten-services/src/node_identity.rs",
+      "line": 259,
+      "code": "sleep_ms(10);",
+      "classification": "backoff-missing-subscription",
+      "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
+    },
+    {
+      "file": "crates/catten-services/src/publication.rs",
+      "line": 12,
+      "code": "sleep_ms,",
+      "classification": "non-executable",
+      "reason": "Import."
+    },
+    {
+      "file": "crates/catten-services/src/publication.rs",
+      "line": 33,
+      "code": "loop {",
+      "classification": "backoff-missing-subscription",
+      "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
+    },
+    {
+      "file": "crates/catten-services/src/publication.rs",
+      "line": 69,
+      "code": "sleep_ms(RETRY_PAUSE_MS);",
+      "classification": "backoff-missing-subscription",
+      "reason": "Queue-capacity or object-content transition has no subscription protocol; bounded admission backoff remains. Accepted calls are not replayed."
+    },
+    {
+      "file": "crates/catten-services/src/publication.rs",
+      "line": 74,
+      "code": "let reply = loop {",
+      "classification": "fixed-reply-wait",
+      "reason": "Replaced timer-driven reply polling with owned, event-driven timed wait in this change."
+    },
+    {
+      "file": "crates/catten-services/src/publication.rs",
+      "line": 78,
+      "code": "if let Some(reply) = call.poll().map_err(Error::Observation)? {",
+      "classification": "fixed-reply-wait",
+      "reason": "Replaced timer-driven reply polling with owned, event-driven timed wait in this change."
+    },
+    {
+      "file": "crates/catten-services/src/publication.rs",
+      "line": 81,
+      "code": "sleep_ms(RETRY_PAUSE_MS);",
+      "classification": "fixed-reply-wait",
+      "reason": "Replaced timer-driven reply polling with owned, event-driven timed wait in this change."
+    },
+    {
+      "file": "crates/catten-services/src/relmsg_transport.rs",
+      "line": 213,
+      "code": "// refuse new routes past the bound while still refreshing known ones.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten-services/src/relmsg_transport.rs",
+      "line": 748,
+      "code": "// ...while an existing route still refreshes.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten-services/src/socket_state.rs",
+      "line": 133,
+      "code": "loop {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/capability.rs",
+      "line": 227,
+      "code": "// No address-space or memory-ledger lookup while CAPABILITIES is owned.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/capability.rs",
+      "line": 729,
+      "code": "while let Some((&cap, _)) = namespace.value().1.objects.first_key_value() {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/capability/admission_tests.rs",
+      "line": 181,
+      "code": "loop {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/capability/namespace_tests.rs",
+      "line": 75,
+      "code": "// even while the actual allocator is held. Preserve the complete node.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/capability/record_tests.rs",
+      "line": 54,
+      "code": "while !probe() {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/capability/record_tests.rs",
+      "line": 56,
+      "code": "core::hint::spin_loop();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/completion/exit_tests.rs",
+      "line": 305,
+      "code": "scheduler::yield_lp();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/completion/timer_tests.rs",
+      "line": 105,
+      "code": "// the same remaining slot while unrelated pending work stays live.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/cpu/isa/x86_64/interrupts/fixed/ipis/mod.rs",
+      "line": 68,
+      "code": "// newer request merely because that request appeared while it was flushing.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/cpu/isa/x86_64/interrupts/fixed/ipis/mod.rs",
+      "line": 122,
+      "code": "let attempt = loop {",
+      "classification": "gap-resource-wait",
+      "reason": "Bounded runnable wait for shootdown coordinator admission; no available-coordinator subscription."
+    },
+    {
+      "file": "crates/catten/src/cpu/isa/x86_64/interrupts/fixed/ipis/mod.rs",
+      "line": 132,
+      "code": "crate::cpu::scheduler::yield_lp();",
+      "classification": "gap-resource-wait",
+      "reason": "Bounded runnable wait for shootdown coordinator admission; no available-coordinator subscription."
+    },
+    {
+      "file": "crates/catten/src/cpu/isa/x86_64/interrupts/fixed/ipis/mod.rs",
+      "line": 148,
+      "code": "while !attempt.completed(acks) {",
+      "classification": "gap-shootdown-ack",
+      "reason": "Bounded atomic acknowledgement polling; phase is unchanged conceptually but modified in the week. Needs epoch-bound notification qualification."
+    },
+    {
+      "file": "crates/catten/src/cpu/isa/x86_64/lp/ops.rs",
+      "line": 420,
+      "code": "\"mov ecx, 0xc0000102\", // hidden user GS while kernel GS is active",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/cpu/isa/x86_64/lp/thread_context.rs",
+      "line": 146,
+      "code": "/// Eagerly owned x87/MMX/SSE state. AVX is unavailable while OSXSAVE is",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/mod.rs",
+      "line": 299,
+      "code": "loop {",
+      "classification": "terminal-retention",
+      "reason": "Terminal continuation retains a failed/abandoned owner; not a resource-readiness wait. Other shutdown drain loops are documented separately."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/mod.rs",
+      "line": 300,
+      "code": "yield_lp();",
+      "classification": "terminal-retention",
+      "reason": "Terminal continuation retains a failed/abandoned owner; not a resource-readiness wait. Other shutdown drain loops are documented separately."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/system_scheduler/domain_abort/tests.rs",
+      "line": 110,
+      "code": "crate::cpu::scheduler::yield_lp();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/system_scheduler/domain_abort/tests.rs",
+      "line": 180,
+      "code": "while counter.load(Ordering::Acquire) != 2 {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/system_scheduler/domain_abort/tests.rs",
+      "line": 182,
+      "code": "crate::cpu::scheduler::yield_lp();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/system_scheduler/domain_abort/tests.rs",
+      "line": 213,
+      "code": "crate::cpu::scheduler::yield_lp();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/system_scheduler/domain_abort/tests.rs",
+      "line": 297,
+      "code": "while LOCK_PHASE.load(Ordering::Acquire) == 1 {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/system_scheduler/domain_abort/tests.rs",
+      "line": 299,
+      "code": "core::hint::spin_loop();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/system_scheduler/domain_abort/tests.rs",
+      "line": 335,
+      "code": "while LOCK_PHASE.load(Ordering::Acquire) != 1 {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/system_scheduler/domain_abort/tests.rs",
+      "line": 337,
+      "code": "crate::cpu::scheduler::yield_lp();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/system_scheduler/domain_abort/tests.rs",
+      "line": 348,
+      "code": "while LOCK_PHASE.load(Ordering::Acquire) != 3 {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/system_scheduler/domain_abort/tests.rs",
+      "line": 350,
+      "code": "crate::cpu::scheduler::yield_lp();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/system_scheduler/domain_abort/tests.rs",
+      "line": 549,
+      "code": "assert!(matches!(closing.poll().unwrap(), memory::retirement::CloseProgress::Complete));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/system_scheduler/mod.rs",
+      "line": 104,
+      "code": "/// No map or per-abort storage is created while teardown is in progress.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/threads/mod.rs",
+      "line": 103,
+      "code": "/// stack during explicit pair release while it is still executing on it, so",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/threads/mod.rs",
+      "line": 239,
+      "code": "loop {",
+      "classification": "gap-timer-poll",
+      "reason": "Short timer polling of reaper work or operation/domain drain; no matching resource transition registration."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/threads/mod.rs",
+      "line": 316,
+      "code": "while let Some(mut entry) = batch.threads.pop() {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/threads/mod.rs",
+      "line": 346,
+      "code": "while let Some(entry) = batch.deferred.pop() {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/threads/mod.rs",
+      "line": 782,
+      "code": "// Metadata and callbacks run once, while the stack's exact root lease",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/cpu/scheduler/threads/retirement_tests.rs",
+      "line": 162,
+      "code": "// Inject one per-call physical rejection while the reaper still owns the",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/device/backend_registry.rs",
+      "line": 1,
+      "code": "//! Shared admitted storage, while typed backends keep hardware completion proofs.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/device/backend_registry/tests.rs",
+      "line": 29,
+      "code": "while !probe() {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device/backend_registry/tests.rs",
+      "line": 31,
+      "code": "core::hint::spin_loop();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device/close/tests.rs",
+      "line": 56,
+      "code": "let closing = match ClosingAddressSpace::begin(root).unwrap().poll().unwrap() {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device/close/tests.rs",
+      "line": 64,
+      "code": "assert!(matches!(closing.poll().unwrap(), CloseProgress::Complete));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device/detached_domain.rs",
+      "line": 1,
+      "code": "//! Detached ownership, while the original admitted registry slot stays",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/device/dma_tables/tests/detached_tests.rs",
+      "line": 78,
+      "code": "// Restore while allocators/registries are held: no reinsertion allocation.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/device/domain_creation/tests.rs",
+      "line": 25,
+      "code": "while !probe() {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device/domain_creation/tests.rs",
+      "line": 27,
+      "code": "core::hint::spin_loop();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device/mapping/tests.rs",
+      "line": 127,
+      "code": "closing = Some(match ClosingAddressSpace::begin(root).unwrap().poll().unwrap() {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device/mapping/tests.rs",
+      "line": 142,
+      "code": "assert!(matches!(closing.unwrap().poll().unwrap(), CloseProgress::Complete));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device/mapping_storage.rs",
+      "line": 139,
+      "code": "while let Some((&iova, _)) = self.live.first_key_value() {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/device/mapping_storage.rs",
+      "line": 142,
+      "code": "while let Some(record) = self.quarantined.pop() {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/device/mapping_storage.rs",
+      "line": 197,
+      "code": "while let Some((&key, _)) = self.tables.first_key_value() {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/device/mod.rs",
+      "line": 217,
+      "code": "/// in-flight bit set, so close cannot consume the mapping record while a TLB",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/device/mod.rs",
+      "line": 294,
+      "code": "\"[device] close must preserve an MMIO capability while an operation owns it\"",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/device/recovery_tests.rs",
+      "line": 18,
+      "code": "while !available() {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device/recovery_tests.rs",
+      "line": 21,
+      "code": "core::hint::spin_loop();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device/recovery_tests.rs",
+      "line": 265,
+      "code": "while unsafe { core::ptr::read_volatile(registers.add(0x1c).cast::<u32>()) } & 1 == 0 {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device/recovery_tests.rs",
+      "line": 267,
+      "code": "core::hint::spin_loop();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device/recovery_tests.rs",
+      "line": 621,
+      "code": "// Close can stage while an older creation lease owns reset/configuration.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/device/recovery_tests.rs",
+      "line": 635,
+      "code": "closing = Some(match owner.poll().unwrap() {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device/recovery_tests.rs",
+      "line": 653,
+      "code": "closing.take().unwrap().poll().unwrap(),",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device/registry/tests.rs",
+      "line": 21,
+      "code": "while !probe() {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device/registry/tests.rs",
+      "line": 23,
+      "code": "core::hint::spin_loop();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device/retirement.rs",
+      "line": 100,
+      "code": "while let Some((cap, object)) = self.objects.as_ref().and_then(|entry| {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/device/retirement/tests.rs",
+      "line": 122,
+      "code": "assert!(matches!(closing.poll().unwrap(), CloseProgress::Complete));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device/retirement/tests.rs",
+      "line": 236,
+      "code": "assert_eq!(closing.poll().err(), Some(AddressSpaceCloseError::DeviceCleanupFailed));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device/vt_d.rs",
+      "line": 321,
+      "code": "core::hint::spin_loop();",
+      "classification": "hardware-status-poll",
+      "reason": "Bounded MMIO command/reset completion; no implemented completion interrupt subscription. Enclosing IRQ policy still requires qualification."
+    },
+    {
+      "file": "crates/catten/src/device_management/drivers/busses/pci_express/topology/reset.rs",
+      "line": 69,
+      "code": "/// capability publication, while device serialization excludes MMIO access.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/device_management/drivers/busses/pci_express/topology/reset.rs",
+      "line": 178,
+      "code": "loop {",
+      "classification": "hardware-status-poll",
+      "reason": "Bounded MMIO command/reset completion; no implemented completion interrupt subscription. Enclosing IRQ policy still requires qualification."
+    },
+    {
+      "file": "crates/catten/src/device_management/drivers/busses/pci_express/topology/reset.rs",
+      "line": 186,
+      "code": "core::hint::spin_loop();",
+      "classification": "hardware-status-poll",
+      "reason": "Bounded MMIO command/reset completion; no implemented completion interrupt subscription. Enclosing IRQ policy still requires qualification."
+    },
+    {
+      "file": "crates/catten/src/device_management/drivers/busses/pci_express/topology/reset.rs",
+      "line": 321,
+      "code": "while index < 6 {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/device_management/drivers/busses/pci_express/topology/reset/tests.rs",
+      "line": 29,
+      "code": "while !probe() {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device_management/drivers/busses/pci_express/topology/reset/tests.rs",
+      "line": 31,
+      "code": "core::hint::spin_loop();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device_management/drivers/busses/pci_express/topology/reset/tests.rs",
+      "line": 35,
+      "code": "let config = loop {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device_management/drivers/busses/pci_express/topology/reset/tests.rs",
+      "line": 43,
+      "code": "core::hint::spin_loop();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device_management/drivers/busses/pci_express/topology/reset/tests.rs",
+      "line": 50,
+      "code": "while !crate::device::test_reset_devices_available() {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device_management/drivers/busses/pci_express/topology/reset/tests.rs",
+      "line": 55,
+      "code": "core::hint::spin_loop();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/device_management/drivers/busses/pci_express/topology/reset/tests.rs",
+      "line": 165,
+      "code": "// Change only an unused BAR's type flags while range admission runs.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation.rs",
+      "line": 348,
+      "code": "while let Some((_, loan)) = self.loans.pop() {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation.rs",
+      "line": 376,
+      "code": "while let Some((borrow, loan)) = self.loans.pop() {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation.rs",
+      "line": 391,
+      "code": "// result is published while a loan's cleanup is uncertain.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation.rs",
+      "line": 424,
+      "code": "// was consumed while receive could not yet dequeue it.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 67,
+      "code": "// while delivered cancellation leaves it with the server.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 189,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 222,
+      "code": "poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap().result,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 238,
+      "code": "poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap().result,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 266,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 269,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 346,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 356,
+      "code": "assert!(matches!(caller.poll().unwrap(), CloseProgress::Complete));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 357,
+      "code": "assert!(matches!(server.poll().unwrap(), CloseProgress::Complete));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 364,
+      "code": "let CloseProgress::Pending(closing) = closing.poll().unwrap() else {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 368,
+      "code": "assert!(matches!(closing.poll().unwrap(), CloseProgress::Complete));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 390,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 428,
+      "code": "ClosingAddressSpace::begin(fixture.server).unwrap().poll().err(),",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 431,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 441,
+      "code": "poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap().result,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 666,
+      "code": "poll_reply(pending.caller.id(), pending.call).unwrap().unwrap().result,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 680,
+      "code": "poll_reply(fixture.server.id(), scalar_call).unwrap().unwrap().result,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 684,
+      "code": "poll_reply(fixture.caller.id(), attached_call).unwrap().unwrap().result,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 698,
+      "code": "let CloseProgress::Pending(closing) = closing.poll().unwrap() else {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 707,
+      "code": "assert!(matches!(closing.poll().unwrap(), CloseProgress::Complete));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 709,
+      "code": "poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap().result,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 736,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Err(IpcError::UnknownCapability));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 756,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 796,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 797,
+      "code": "assert!(matches!(caller.poll().unwrap(), CloseProgress::Complete));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 827,
+      "code": "poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap().result,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 830,
+      "code": "assert_eq!(poll_reply(other.caller.id(), other.call), Ok(None));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 877,
+      "code": "poll_reply(pending.caller.id(), pending.call).unwrap().unwrap().result,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 896,
+      "code": "poll_reply(caller.caller.id(), caller.call).unwrap().unwrap().result,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 961,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 983,
+      "code": "poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap().result,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 1046,
+      "code": "let CloseProgress::Pending(pending) = peer.take().unwrap().poll().unwrap()",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 1051,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 1063,
+      "code": "assert!(matches!(peer.take().unwrap().poll().unwrap(), CloseProgress::Complete));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 1158,
+      "code": "let CloseProgress::Pending(owner) = owner.poll().unwrap() else {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 1163,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 1190,
+      "code": "poll_reply(KERNEL_ASID, fixture.call).unwrap().unwrap().result,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/cancellation/tests.rs",
+      "line": 1271,
+      "code": "poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap().result,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/delivery_tests.rs",
+      "line": 179,
+      "code": "poll_reply(fixture.caller.id(), pending).unwrap().unwrap().result,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/delivery_tests.rs",
+      "line": 263,
+      "code": "poll_reply(fixture.caller.id(), pending).unwrap().unwrap().memory,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/delivery_tests/connection.rs",
+      "line": 163,
+      "code": "poll_reply(fixture.caller.id(), call).unwrap().unwrap().result,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/delivery_tests/connection.rs",
+      "line": 202,
+      "code": "let result = poll_reply(fixture.caller.id(), call).unwrap().unwrap();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/delivery_tests/connection.rs",
+      "line": 204,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), call), Ok(Some(result)));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/delivery_tests/connection.rs",
+      "line": 209,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), call), Ok(Some(result)));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/endpoint_close.rs",
+      "line": 1,
+      "code": "//! Explicit endpoint retirement retains its server root while queued calls",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/ipc/endpoint_close.rs",
+      "line": 126,
+      "code": "// A reader may have parked while our claim hid a readable front.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/ipc/endpoint_close.rs",
+      "line": 162,
+      "code": "loop {",
+      "classification": "gap-resource-wait",
+      "reason": "Runnable yield/recheck of cleanup claim, transfer fence or pin; exact release notification remains missing."
+    },
+    {
+      "file": "crates/catten/src/ipc/endpoint_close.rs",
+      "line": 239,
+      "code": ".finish_with(LoanRevocation::finish, crate::cpu::scheduler::yield_lp)",
+      "classification": "gap-resource-wait",
+      "reason": "Runnable yield/recheck of cleanup claim, transfer fence or pin; exact release notification remains missing."
+    },
+    {
+      "file": "crates/catten/src/ipc/mod.rs",
+      "line": 719,
+      "code": "while let Some(id) = self.caps.get(&asid).and_then(|caps| {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/ipc/mod.rs",
+      "line": 1851,
+      "code": "while let Some(borrow) = ipc.reply_tokens.get(&token_id).unwrap().borrows.last().copied() {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/ipc/mod.rs",
+      "line": 2063,
+      "code": "close_cap_with_wait(asid, cap, crate::cpu::scheduler::yield_lp)",
+      "classification": "gap-resource-wait",
+      "reason": "Runnable yield/recheck of cleanup claim, transfer fence or pin; exact release notification remains missing."
+    },
+    {
+      "file": "crates/catten/src/ipc/mod.rs",
+      "line": 2077,
+      "code": "close_cap_in_mode(asid, cap, false, crate::cpu::scheduler::yield_lp)",
+      "classification": "gap-resource-wait",
+      "reason": "Runnable yield/recheck of cleanup claim, transfer fence or pin; exact release notification remains missing."
+    },
+    {
+      "file": "crates/catten/src/ipc/mod.rs",
+      "line": 2112,
+      "code": "let mut ipc = loop {",
+      "classification": "gap-resource-wait",
+      "reason": "Runnable yield/recheck of cleanup claim, transfer fence or pin; exact release notification remains missing."
+    },
+    {
+      "file": "crates/catten/src/ipc/mod.rs",
+      "line": 2326,
+      "code": "loop {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/ipc/mod.rs",
+      "line": 2351,
+      "code": "loop {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/ipc/mod.rs",
+      "line": 2360,
+      "code": "while let Some(endpoint) = ipc.endpoints.iter().find_map(|(&id, endpoint)| {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/ipc/mod.rs",
+      "line": 2381,
+      "code": "while let Some(borrow) =",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/ipc/mod.rs",
+      "line": 2409,
+      "code": "loop {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/ipc/mod.rs",
+      "line": 2429,
+      "code": "loop {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/ipc/mod.rs",
+      "line": 2482,
+      "code": "while let Some((token, server)) = ipc",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/ipc/namespace_close.rs",
+      "line": 42,
+      "code": "loop {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/ipc/record_tests/shared_admission.rs",
+      "line": 62,
+      "code": "assert_eq!(poll_reply(self.client.id(), call).unwrap(), None);",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/record_tests/shared_admission.rs",
+      "line": 176,
+      "code": "assert_eq!(poll_reply(f.client.id(), call).unwrap().unwrap().result, 99);",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/record_tests/shared_admission.rs",
+      "line": 437,
+      "code": "assert_eq!(poll_reply(f.client.id(), call).unwrap(), None);",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/record_tests/shared_admission.rs",
+      "line": 441,
+      "code": "let returned = poll_reply(f.client.id(), call).unwrap().unwrap().cap.unwrap();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/record_tests/shared_admission.rs",
+      "line": 533,
+      "code": "assert_eq!(poll_reply(fresh.id(), call).unwrap().unwrap().result, 42);",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply.rs",
+      "line": 173,
+      "code": "while let Some((_, loan)) = self.loans.pop() {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply.rs",
+      "line": 202,
+      "code": "while let Some((borrow, loan)) = self.loans.pop() {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests.rs",
+      "line": 143,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap().result, 42);",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests.rs",
+      "line": 192,
+      "code": "assert!(matches!(closing.poll().unwrap(), CloseProgress::Complete));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests.rs",
+      "line": 205,
+      "code": "let CloseProgress::Pending(closing) = closing.poll().unwrap() else {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests.rs",
+      "line": 209,
+      "code": "assert!(matches!(closing.poll().unwrap(), CloseProgress::Complete));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests.rs",
+      "line": 240,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests/connection_tests.rs",
+      "line": 65,
+      "code": "let result = poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests/connection_tests.rs",
+      "line": 155,
+      "code": "let result = poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap().cap.unwrap();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests/connection_tests.rs",
+      "line": 171,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests/connection_tests.rs",
+      "line": 193,
+      "code": "assert!(poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap().cap.is_some());",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests/connection_tests.rs",
+      "line": 218,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests/connection_tests.rs",
+      "line": 233,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap().result, 42);",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests/connection_tests.rs",
+      "line": 298,
+      "code": "assert_eq!(poll_reply(fixture.server.id(), prior).unwrap().unwrap().cap, Some(source));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests/connection_tests.rs",
+      "line": 308,
+      "code": "assert!(poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap().cap.is_some());",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests/memory_tests.rs",
+      "line": 83,
+      "code": "poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap().memory,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests/memory_tests.rs",
+      "line": 136,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests/memory_tests.rs",
+      "line": 179,
+      "code": "let returned = poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap().memory.unwrap();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests/memory_tests.rs",
+      "line": 234,
+      "code": "poll_reply(fixture.server.id(), prior).unwrap().unwrap().memory,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests/memory_tests.rs",
+      "line": 260,
+      "code": "let CloseProgress::Pending(closing) = closing.poll().unwrap() else {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests/memory_tests.rs",
+      "line": 264,
+      "code": "let result = poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests/memory_tests.rs",
+      "line": 266,
+      "code": "assert!(matches!(closing.poll().unwrap(), CloseProgress::Complete));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests/memory_tests.rs",
+      "line": 284,
+      "code": "assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/reply/tests/memory_tests.rs",
+      "line": 291,
+      "code": "let result = poll_reply(fixture.caller.id(), fixture.call).unwrap().unwrap();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/waiter_tests.rs",
+      "line": 360,
+      "code": "loop {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/ipc/waiter_tests.rs",
+      "line": 366,
+      "code": "crate::cpu::scheduler::yield_lp();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/klib/collections/id_table.rs",
+      "line": 261,
+      "code": "/// A closing owner may retain a peer while draining shared resources. This",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/klib/collections/id_table.rs",
+      "line": 343,
+      "code": "// Any slots added while unlocked prepared their return storage too.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/klib/collections/id_table/tests.rs",
+      "line": 18,
+      "code": "while table.list.len() < capacity {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/klib/collections/id_table/tests.rs",
+      "line": 470,
+      "code": "// preflighted completion storage while an owner is detached.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/klib/collections/retirement_list.rs",
+      "line": 110,
+      "code": "while let Some(entry) = self.pop() {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/klib/collections/retirement_list.rs",
+      "line": 132,
+      "code": "while link.as_ref().is_some_and(|node| !before(node.value.as_ref().unwrap())) {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/klib/collections/retirement_list.rs",
+      "line": 147,
+      "code": "while let Some(node) = link.as_ref() {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/klib/collections/retirement_list/tests.rs",
+      "line": 112,
+      "code": "while let Some(entry) = detached.pop() {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/klib/collections/retirement_list/tests.rs",
+      "line": 123,
+      "code": "while let Some(entry) = deferred.pop() {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/klib/collections/retirement_list/tests.rs",
+      "line": 128,
+      "code": "while let Some(entry) = queue.pop() {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/klib/observer/registration/list_tests.rs",
+      "line": 89,
+      "code": "while let Ok(charge) = list_budget::reserve(false) {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/klib/observer/registration/list_tests.rs",
+      "line": 131,
+      "code": "while let Ok(charge) = list_budget::reserve(true) {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/memory/budget.rs",
+      "line": 219,
+      "code": "// Never enter the shared capability registry while holding the memory",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/memory/object.rs",
+      "line": 136,
+      "code": "while !self.frames.is_empty() {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/memory/object.rs",
+      "line": 806,
+      "code": "/// Install a mapping while the caller owns an exact address-space operation.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/memory/object.rs",
+      "line": 1644,
+      "code": "close_cap_with_wait(asid, cap, crate::cpu::scheduler::yield_lp)",
+      "classification": "gap-resource-wait",
+      "reason": "Runnable yield/recheck of cleanup claim, transfer fence or pin; exact release notification remains missing."
+    },
+    {
+      "file": "crates/catten/src/memory/object.rs",
+      "line": 1648,
+      "code": "/// must not hold IPC/lifecycle/registry guards while a transfer can be live.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/memory/object.rs",
+      "line": 1654,
+      "code": "let registry = loop {",
+      "classification": "gap-resource-wait",
+      "reason": "Runnable yield/recheck of cleanup claim, transfer fence or pin; exact release notification remains missing."
+    },
+    {
+      "file": "crates/catten/src/memory/object.rs",
+      "line": 2041,
+      "code": "loop {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/memory/object/namespace_close.rs",
+      "line": 53,
+      "code": "loop {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/memory/object/namespace_close.rs",
+      "line": 101,
+      "code": "loop {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/memory/object/namespace_close.rs",
+      "line": 181,
+      "code": "loop {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/memory/object/namespace_close/tests.rs",
+      "line": 104,
+      "code": "assert!(matches!(peer.take().unwrap().poll().unwrap(), CloseProgress::Complete));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/memory/object/namespace_close/tests.rs",
+      "line": 119,
+      "code": "let CloseProgress::Pending(closing) = closing.poll().unwrap() else {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/memory/object/namespace_close/tests.rs",
+      "line": 125,
+      "code": "assert!(matches!(closing.poll().unwrap(), CloseProgress::Complete));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/memory/object/revocation.rs",
+      "line": 106,
+      "code": "// A peer may retire this loan while the borrower's device owner is",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/memory/object/revocation/tests.rs",
+      "line": 183,
+      "code": "let CloseProgress::Pending(closing) = closing.poll().unwrap() else {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/memory/object/revocation/tests.rs",
+      "line": 184,
+      "code": "panic!(\"closing reclaimed borrower while revocation held its root\");",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/memory/object/revocation/tests.rs",
+      "line": 193,
+      "code": "assert!(matches!(closing.poll().unwrap(), CloseProgress::Complete));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/memory/object/revocation/tests.rs",
+      "line": 210,
+      "code": "assert!(matches!(closing.poll().unwrap(), CloseProgress::Complete));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/memory/retirement.rs",
+      "line": 17,
+      "code": "/// A staged close owns the operation-admission fence while older leases drain.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/memory/retirement.rs",
+      "line": 277,
+      "code": "loop {",
+      "classification": "gap-timer-poll",
+      "reason": "Short timer polling of reaper work or operation/domain drain; no matching resource transition registration."
+    },
+    {
+      "file": "crates/catten/src/memory/retirement.rs",
+      "line": 278,
+      "code": "match self.poll()? {",
+      "classification": "gap-timer-poll",
+      "reason": "Short timer polling of reaper work or operation/domain drain; no matching resource transition registration."
+    },
+    {
+      "file": "crates/catten/src/memory/retirement/metadata_tests.rs",
+      "line": 16,
+      "code": "while !probe() {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/memory/retirement/metadata_tests.rs",
+      "line": 18,
+      "code": "core::hint::spin_loop();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/memory/retirement/tests.rs",
+      "line": 93,
+      "code": "let CloseProgress::Pending(closing) = closing.poll().unwrap() else {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/memory/thread_stack/stacks.rs",
+      "line": 166,
+      "code": "while mapped_low > page {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/self_test/el0_nvme.rs",
+      "line": 482,
+      "code": "// Revoke while the same client and connection remain live. Persist a",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/self_test/el0_nvme.rs",
+      "line": 495,
+      "code": "let result = crate::ipc::poll_reply(crate::memory::KERNEL_ASID, call)",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/self_test/el0_security.rs",
+      "line": 175,
+      "code": "let result = crate::ipc::poll_reply(caller, call).unwrap().unwrap();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/self_test/el0_security.rs",
+      "line": 209,
+      "code": "let result = crate::ipc::poll_reply(caller, call).unwrap().unwrap();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/self_test/el0_security.rs",
+      "line": 252,
+      "code": "let result = ipc::poll_reply(caller, call).unwrap().unwrap();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/self_test/el0_security.rs",
+      "line": 302,
+      "code": "// status operation from making progress while all 32 pages stay live.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/self_test/el0_security.rs",
+      "line": 314,
+      "code": "ipc::poll_reply(crate::memory::KERNEL_ASID, lookup).unwrap().unwrap().cap.unwrap();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/self_test/el0_security.rs",
+      "line": 326,
+      "code": "let result = ipc::poll_reply(crate::memory::KERNEL_ASID, status).unwrap().unwrap();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/self_test/el0_security.rs",
+      "line": 400,
+      "code": "while tcpip_word(charlotte_launch::tcpip_status::MONOTONIC_MS) < start_ms.saturating_add(1_000)",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/self_test/el0_shutdown.rs",
+      "line": 320,
+      "code": "coordinator.poll(),",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/self_test/el0_shutdown.rs",
+      "line": 394,
+      "code": "devices.poll(),",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/self_test/ipc.rs",
+      "line": 1717,
+      "code": "assert_eq!(ipc::poll_reply(client, call).unwrap(), None);",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/self_test/ipc.rs",
+      "line": 1723,
+      "code": "let value = ipc::poll_reply(client, call).unwrap().unwrap();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/self_test/ipc/vector.rs",
+      "line": 188,
+      "code": "ipc::poll_reply(round.client, call).unwrap().unwrap().result,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/self_test/ipc/vector.rs",
+      "line": 207,
+      "code": "assert_eq!(ipc::poll_reply(round.client, call).unwrap().unwrap().result, 42);",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/self_test/ipc/vector.rs",
+      "line": 216,
+      "code": "ipc::poll_reply(round.client, call).unwrap().unwrap().result,",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/self_test/user_isolation.rs",
+      "line": 114,
+      "code": "while self.word(offset) != sentinel {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/self_test/user_isolation.rs",
+      "line": 116,
+      "code": "scheduler::yield_lp();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/self_test/user_isolation.rs",
+      "line": 123,
+      "code": "loop {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/self_test/user_isolation.rs",
+      "line": 132,
+      "code": "scheduler::yield_lp();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/self_test/user_isolation.rs",
+      "line": 134,
+      "code": "loop {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/self_test/user_isolation.rs",
+      "line": 172,
+      "code": "scheduler::yield_lp();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/service/bootstrap/tests.rs",
+      "line": 91,
+      "code": "let closing = match closing.poll().unwrap() {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/service/bootstrap/tests.rs",
+      "line": 96,
+      "code": "assert!(matches!(closing.poll().unwrap(), CloseProgress::Complete));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/service/loader.rs",
+      "line": 513,
+      "code": "/// Load an ordinary domain while reporting signature, backing, mapping,",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/service/shutdown.rs",
+      "line": 327,
+      "code": "match retirement.teardown.as_mut().unwrap().poll() {",
+      "classification": "nonblocking-progress",
+      "reason": "One progress step returns Pending to its enclosing controller; controller notification gaps remain in the report."
+    },
+    {
+      "file": "crates/catten/src/service/shutdown.rs",
+      "line": 488,
+      "code": "match device.teardown.as_mut().unwrap().poll() {",
+      "classification": "nonblocking-progress",
+      "reason": "One progress step returns Pending to its enclosing controller; controller notification gaps remain in the report."
+    },
+    {
+      "file": "crates/catten/src/service/shutdown.rs",
+      "line": 667,
+      "code": "loop {",
+      "classification": "terminal-retention",
+      "reason": "Terminal continuation retains a failed/abandoned owner; not a resource-readiness wait. Other shutdown drain loops are documented separately."
+    },
+    {
+      "file": "crates/catten/src/service/shutdown.rs",
+      "line": 668,
+      "code": "crate::cpu::scheduler::yield_lp();",
+      "classification": "terminal-retention",
+      "reason": "Terminal continuation retains a failed/abandoned owner; not a resource-readiness wait. Other shutdown drain loops are documented separately."
+    },
+    {
+      "file": "crates/catten/src/service/shutdown.rs",
+      "line": 712,
+      "code": "loop {",
+      "classification": "terminal-retention",
+      "reason": "Terminal continuation retains a failed/abandoned owner; not a resource-readiness wait. Other shutdown drain loops are documented separately."
+    },
+    {
+      "file": "crates/catten/src/service/shutdown.rs",
+      "line": 713,
+      "code": "crate::cpu::scheduler::yield_lp();",
+      "classification": "terminal-retention",
+      "reason": "Terminal continuation retains a failed/abandoned owner; not a resource-readiness wait. Other shutdown drain loops are documented separately."
+    },
+    {
+      "file": "crates/catten/src/service/shutdown/tests.rs",
+      "line": 12,
+      "code": "node.poll(),",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/service/shutdown/tests.rs",
+      "line": 76,
+      "code": "node.poll(),",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/service/shutdown/tests.rs",
+      "line": 93,
+      "code": "devices.poll(),",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/service/shutdown/tests.rs",
+      "line": 120,
+      "code": "coordinator.poll()",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/service/shutdown/tests.rs",
+      "line": 141,
+      "code": "node.poll(),",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/service/shutdown/tests.rs",
+      "line": 161,
+      "code": "devices.poll(),",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/service/supervisor.rs",
+      "line": 400,
+      "code": "/// Start an upgrade replacement while preserving the target service's",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/service/supervisor.rs",
+      "line": 1301,
+      "code": "while !retirement.poll()? {",
+      "classification": "gap-timer-poll",
+      "reason": "Short timer polling of reaper work or operation/domain drain; no matching resource transition registration."
+    },
+    {
+      "file": "crates/catten/src/service/supervisor/retirement.rs",
+      "line": 105,
+      "code": "match closing.poll().map_err(DomainTeardownError::AddressSpace)? {",
+      "classification": "nonblocking-progress",
+      "reason": "One progress step returns Pending to its enclosing controller; controller notification gaps remain in the report."
+    },
+    {
+      "file": "crates/catten/src/service/supervisor/retirement.rs",
+      "line": 124,
+      "code": "/// A registry entry stays admitted while a poll temporarily borrows its owner.",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/service/supervisor/retirement/tests.rs",
+      "line": 55,
+      "code": "assert_eq!(owner.poll(), Ok(false));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/service/supervisor/retirement/tests.rs",
+      "line": 63,
+      "code": "assert_eq!(owner.poll(), Ok(false));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/service/supervisor/retirement/tests.rs",
+      "line": 65,
+      "code": "assert_eq!(owner.poll(), Ok(true));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/service/supervisor/retirement/tests.rs",
+      "line": 71,
+      "code": "assert_eq!(owner.poll(), Ok(true));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/service/supervisor/retirement/tests.rs",
+      "line": 153,
+      "code": "owner.poll(),",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/service/supervisor/retirement/tests.rs",
+      "line": 157,
+      "code": "owner.poll(),",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/syscall/mailbox_publication_tests.rs",
+      "line": 23,
+      "code": "while !probe() {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/syscall/mailbox_publication_tests.rs",
+      "line": 25,
+      "code": "core::hint::spin_loop();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/syscall/mailbox_publication_tests.rs",
+      "line": 162,
+      "code": "match closing.poll().unwrap() {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/syscall/mailbox_publication_tests.rs",
+      "line": 215,
+      "code": "matches!(closing.poll().unwrap(), memory::retirement::CloseProgress::Pending(_)),",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/syscall/mailbox_queue_tests.rs",
+      "line": 33,
+      "code": "while memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_none()",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "crates/catten/src/syscall/mailbox_queue_tests.rs",
+      "line": 39,
+      "code": "core::hint::spin_loop();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/syscall/mailbox_queue_tests.rs",
+      "line": 155,
+      "code": "assert!(matches!(closing.poll().unwrap(), memory::retirement::CloseProgress::Complete));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/syscall/mailbox_queue_tests.rs",
+      "line": 207,
+      "code": "assert!(matches!(closing.poll().unwrap(), memory::retirement::CloseProgress::Pending(_)));",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/syscall/mailbox_retirement.rs",
+      "line": 63,
+      "code": "while let Some(cap) = caps.endpoints.first_key_value().map(|(cap, _)| *cap) {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/syscall/mailbox_retirement.rs",
+      "line": 111,
+      "code": "while USER_MAILBOX_CAPS.try_write().is_none() || USER_MAILBOX.try_write().is_none() {",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/syscall/mailbox_retirement.rs",
+      "line": 113,
+      "code": "core::hint::spin_loop();",
+      "classification": "fixture",
+      "reason": "Controlled validation/fault fixture; not a production readiness guarantee."
+    },
+    {
+      "file": "crates/catten/src/syscall/mod.rs",
+      "line": 1094,
+      "code": "while let Some(cap) = caps.endpoints.first_key_value().map(|(cap, _)| *cap) {",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/syscall/mod.rs",
+      "line": 2752,
+      "code": "let result = teardown.poll();",
+      "classification": "productive",
+      "reason": "Finite parsing, traversal or consuming work; not waiting for another producer."
+    },
+    {
+      "file": "crates/catten/src/timers/queue.rs",
+      "line": 104,
+      "code": "// Moving out frees the Box while the outside admission remains live;",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "scripts/run-secure-boot-test.py",
+      "line": 105,
+      "code": "while time.monotonic() < deadline:",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "scripts/run-secure-boot-test.py",
+      "line": 108,
+      "code": "if child.poll() is not None:",
+      "classification": "host-fixture-poll",
+      "reason": "200ms sleep plus bounded serial-file/process supervision; fixture reaps its own VM."
+    },
+    {
+      "file": "scripts/run-secure-boot-test.py",
+      "line": 115,
+      "code": "if child.poll() is None:",
+      "classification": "host-fixture-poll",
+      "reason": "200ms sleep plus bounded serial-file/process supervision; fixture reaps its own VM."
+    },
+    {
+      "file": "scripts/tests/test-deployment-http-liveness.py",
+      "line": 29,
+      "code": "while True:",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "scripts/tests/test-deployment-http-liveness.py",
+      "line": 89,
+      "code": "while not first:",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "scripts/tests/test-deployment-http-liveness.py",
+      "line": 132,
+      "code": "while not args.ready_log.exists() or \"[deployd] listening port=\" not in args.ready_log.read_text():",
+      "classification": "non-executable",
+      "reason": "Comment or literal matched the broad inventory expression."
+    },
+    {
+      "file": "tools/cluster-sign/src/main.rs",
+      "line": 1526,
+      "code": "loop {",
+      "classification": "blocking-host-io",
+      "reason": "Loop performs blocking bounded stream reads and handles EINTR/EOF; not userspace busy polling."
+    }
+  ]
+}

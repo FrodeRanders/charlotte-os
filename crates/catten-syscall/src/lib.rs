@@ -157,6 +157,7 @@ define_syscall_numbers!(
     (LaunchDescriptorMatches, 83),
     (IsFrameRouter, 84),
     (SocketOwnerStatus, 85),
+    (IpcReplyWaitTimeout, 86),
 );
 
 /// Supervisor-assigned roles carried in the kernel-authenticated IPC sender
@@ -987,7 +988,7 @@ unsafe fn svc3_x2(imm: SyscallNumber, arg1: u64, arg2: u64, _arg3: u64) -> (u64,
     unsafe {
         match imm as u16 {
             24 => asm!("mov x1, x4", "svc #24", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x4") arg1, options(nostack, nomem, preserves_flags)),
-            54 => asm!("mov x1, x4", "svc #54", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x4") arg1, options(nostack, nomem, preserves_flags)),
+            54 => asm!("mov x1, x4", "svc #54", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x4") arg1, options(nostack, preserves_flags)),
             66 => asm!("svc #66", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             67 => asm!("svc #67", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             81 => asm!("svc #81", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
@@ -1000,7 +1001,7 @@ unsafe fn svc3_x2(imm: SyscallNumber, arg1: u64, arg2: u64, _arg3: u64) -> (u64,
 
 #[cfg(target_arch = "aarch64")]
 #[inline(always)]
-unsafe fn svc3_x3(imm: SyscallNumber, arg1: u64, _arg2: u64, _arg3: u64) -> (u64, u64, u64, u64) {
+unsafe fn svc3_x3(imm: SyscallNumber, arg1: u64, arg2: u64, _arg3: u64) -> (u64, u64, u64, u64) {
     let ret: u64;
     let x1_out: u64;
     let x2_out: u64;
@@ -1008,8 +1009,9 @@ unsafe fn svc3_x3(imm: SyscallNumber, arg1: u64, _arg2: u64, _arg3: u64) -> (u64
     unsafe {
         match imm as u16 {
             24 => asm!("mov x1, x4", "svc #24", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, lateout("x3") x3_out, in("x4") arg1, options(nostack, nomem, preserves_flags)),
-            54 => asm!("mov x1, x4", "svc #54", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, lateout("x3") x3_out, in("x4") arg1, options(nostack, nomem, preserves_flags)),
+            54 => asm!("mov x1, x4", "svc #54", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, lateout("x3") x3_out, in("x4") arg1, options(nostack, preserves_flags)),
             70 => asm!("svc #70", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, lateout("x3") x3_out, options(nostack, nomem, preserves_flags)),
+            86 => asm!("mov x1, x4", "mov x2, x5", "svc #86", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, lateout("x3") x3_out, in("x4") arg1, in("x5") arg2, options(nostack, preserves_flags)),
             _ => panic!("syscall {:?} has no svc3_x3 emitter", imm),
         }
     }
@@ -1780,6 +1782,14 @@ pub fn ipc_reply_wait(call: u64) -> (u64, u64, u64) {
 #[inline(always)]
 pub fn ipc_reply_wait_with_memory(call: u64) -> (u64, u64, u64, u64) {
     unsafe { svc3_x3(SyscallNumber::IpcReplyWait, call, 0, 0) }
+}
+
+/// Wait for reply readiness with a deadline, then observe its attachments.
+/// Status 1 is timeout; RESOURCE_LIMIT means wait admission was rejected.
+/// Both retain the pending capability. No accepted request is replayed.
+#[inline(always)]
+pub fn ipc_reply_wait_timeout_with_memory(call: u64, timeout_ms: u64) -> (u64, u64, u64, u64) {
+    unsafe { svc3_x3(SyscallNumber::IpcReplyWaitTimeout, call, timeout_ms, 0) }
 }
 
 /// Close an IPC capability. Pending-call/reply close revokes every live loan

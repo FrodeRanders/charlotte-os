@@ -70,16 +70,10 @@ pub fn register(names: ConnectionRef<'_>, name: u64, endpoint: &Endpoint) -> Res
         },
     )
     .map_err(Error::Admission)?;
-    let observation = Deadline::after(OBSERVATION_BUDGET_MS);
-    let reply = loop {
-        if observation.expired() {
-            return Err(Error::ObservationTimeout);
-        }
-        if let Some(reply) = call.poll().map_err(Error::Observation)? {
-            break reply;
-        }
-        sleep_ms(RETRY_PAUSE_MS);
-    };
+    let reply = call
+        .wait_timeout(OBSERVATION_BUDGET_MS)
+        .map_err(Error::Observation)?
+        .ok_or(Error::ObservationTimeout)?;
     if reply.connection.is_some() || reply.memory.is_some() {
         return Err(Error::InvalidReply);
     }

@@ -260,7 +260,9 @@ pub(crate) fn test_scheduled_cleanup() {
     let sponsor = WaitSponsor::new(false);
     let observer: Arc<dyn Observer> = CallOnNotify::new(|| {});
     let tid = get_thread_id().unwrap();
-    for source in [&source as &dyn Observable, &call_source as &dyn Observable] {
+    for (index, source) in
+        [&source as &dyn Observable, &call_source as &dyn Observable].into_iter().enumerate()
+    {
         let mut tokens = Vec::new();
         for _ in 0..waiter_budget::SOURCE_LIMIT {
             tokens.push(source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
@@ -275,6 +277,14 @@ pub(crate) fn test_scheduled_cleanup() {
         assert!(matches!(thread.state, ThreadState::Running(_)));
         assert_eq!(thread.migration_constraints, constraints);
         drop(table);
+        if index == 1 {
+            assert_eq!(wait_reply_timeout(CLIENT, call_cap, 10_000), Err(IpcError::ResourceLimit));
+            assert!(poll_reply(CLIENT, call_cap).unwrap().is_none());
+            assert_eq!(
+                IPC.read().pending_calls[&call].observers.registered(),
+                waiter_budget::SOURCE_LIMIT
+            );
+        }
         assert!(!crate::cpu::scheduler::block_until(source, 1, || false));
         assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), interrupts_before);
         drop(tokens);

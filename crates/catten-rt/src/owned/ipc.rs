@@ -1228,6 +1228,18 @@ impl PendingCall<'_> {
         self.finish(status, result, connection, memory)
     }
 
+    /// Register reply interest and park until readiness or timeout. Timeout
+    /// and waiter admission failure retain this owner and any memory borrow.
+    /// A ready result transfers its returned owners exactly once.
+    pub fn wait_timeout(&mut self, timeout_ms: u64) -> Result<Option<CallResult>, IpcError> {
+        let (status, result, connection, memory) =
+            kernel::ipc_reply_wait_timeout_with_memory(self.raw_handle(), timeout_ms);
+        if status == catten_syscall::ipc_status::RESOURCE_LIMIT {
+            return Err(IpcError::Status(status));
+        }
+        self.finish(status, result, connection, memory)
+    }
+
     pub fn wait(mut self) -> Result<CallResult, IpcError> {
         let (status, result, connection, memory) =
             kernel::ipc_reply_wait_with_memory(self.raw_handle());

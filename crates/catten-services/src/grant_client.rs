@@ -66,15 +66,13 @@ fn acquire_once(
     let mut pending = controller
         .call_move(grant::OP_ACQUIRE, len as u64, request)
         .map_err(|(_, error)| Error::Ipc(error))?;
-    let reply = loop {
-        if deadline.expired() {
-            return Err(Error::Service(grant::ERR_UNAVAILABLE));
-        }
-        if let Some(reply) = pending.poll().map_err(Error::Ipc)? {
-            break reply;
-        }
-        crate::sleep_ms(5);
-    };
+    if deadline.expired() {
+        return Err(Error::Service(grant::ERR_UNAVAILABLE));
+    }
+    let reply = pending
+        .wait_timeout(deadline.remaining_ms())
+        .map_err(Error::Ipc)?
+        .ok_or(Error::Service(grant::ERR_UNAVAILABLE))?;
     if reply.result < 0 {
         return Err(Error::Service(reply.result));
     }
@@ -116,15 +114,13 @@ pub fn publish(
             &request,
         )
         .map_err(Error::Ipc)?;
-    let reply = loop {
-        if deadline.expired() {
-            return Err(Error::Service(grant::ERR_UNAVAILABLE));
-        }
-        if let Some(reply) = pending.poll().map_err(Error::Ipc)? {
-            break reply;
-        }
-        crate::sleep_ms(5);
-    };
+    if deadline.expired() {
+        return Err(Error::Service(grant::ERR_UNAVAILABLE));
+    }
+    let reply = pending
+        .wait_timeout(deadline.remaining_ms())
+        .map_err(Error::Ipc)?
+        .ok_or(Error::Service(grant::ERR_UNAVAILABLE))?;
     if reply.result < 1 {
         Err(Error::Service(reply.result))
     } else if reply.connection.is_some() || reply.memory.is_some() {

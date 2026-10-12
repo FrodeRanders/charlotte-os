@@ -529,6 +529,20 @@ Intel disks, AMD, signed ARM management and cooperative shutdown execution are
 recorded in the
 [object-store readiness evidence](../reports/audits/2026-10-12-security-object-store-readiness.md).
 
+The [weekly readiness sweep](../reports/audits/2026-10-12-wait-readiness-sweep.md)
+compares the previous week's added loops with existing wait surfaces.
+Single-reply userspace deadlines use `PendingCall::wait_timeout` / syscall 86,
+which registers the pending-call observable and an owned watchdog. Host tests
+cover timeout, rejected wait admission, preserved borrows, returned owners and
+cancellation. Kernel waiter fixtures force source saturation before a ten-second
+wait: rejection must report `ResourceLimit` immediately, leave the call pending,
+and preserve existing registrations and IRQ state. Repeated one-millisecond
+real timeouts still cancel unused subscriptions. ARM's signed pressure probes
+execute timed publication and scalar/moved RPC waits from EL0; ordinary x86 and
+shutdown profiles exercise successful grant/publication waits. These checks do
+not qualify the retained cleanup/reaper/shootdown notification gaps or measure
+CPU savings across all services.
+
 `--kafka-test --timeout 300` similarly adds a disposable three-broker Apache
 Kafka KRaft cluster with ephemeral verified TLS listeners and an in-guest verifier.
 The verifier covers the TLS handshake, idempotent production, bounded

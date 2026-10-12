@@ -315,6 +315,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::IpcReply => sys_ipc_reply(frame),
         SyscallNumber::IpcReplyPoll => sys_ipc_reply_poll(frame),
         SyscallNumber::IpcReplyWait => sys_ipc_reply_wait(frame),
+        SyscallNumber::IpcReplyWaitTimeout => sys_ipc_reply_wait_timeout(frame),
         SyscallNumber::IpcClose => sys_ipc_close(frame),
         SyscallNumber::IpcReplyConnection => sys_ipc_reply_connection(frame),
         SyscallNumber::IpcRecvBlock => sys_ipc_recv_block(frame),
@@ -1575,6 +1576,20 @@ fn sys_ipc_reply_wait(frame: &mut TrapFrame) {
         return;
     }
     sys_ipc_reply_poll(frame);
+}
+
+fn sys_ipc_reply_wait_timeout(frame: &mut TrapFrame) {
+    match ipc::wait_reply_timeout(caller_asid(frame), frame.regs[1], frame.regs[2]) {
+        Ok(true) => sys_ipc_reply_poll(frame),
+        result => {
+            frame.regs[0] = match result {
+                Ok(false) => 1,
+                Err(error) => ipc_status(error),
+                Ok(true) => unreachable!(),
+            };
+            frame.regs[1..4].fill(0);
+        }
+    }
 }
 
 fn sys_ipc_close(frame: &mut TrapFrame) {

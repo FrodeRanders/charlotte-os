@@ -429,6 +429,18 @@ pub fn block_until(
     timeout_ms: u64,
     condition: impl Fn() -> bool,
 ) -> bool {
+    try_block_until(observable, timeout_ms, condition).unwrap_or(false)
+}
+
+/// Timed readiness registration with explicit admission rejection. An error
+/// leaves the thread runnable, without an installed source/watchdog waiter;
+/// it is not a timeout or evidence that the resource completed.
+/// `condition` has the same non-parking requirement as [`block_until`].
+pub fn try_block_until(
+    observable: &dyn Observable,
+    timeout_ms: u64,
+    condition: impl Fn() -> bool,
+) -> Result<bool, system_scheduler::Error> {
     struct BlockTimeoutWake {
         tid: ThreadId,
         generation: threads::ThreadGeneration,
@@ -442,33 +454,41 @@ pub fn block_until(
     let deadline = monotonic_millis().saturating_add(timeout_ms);
     loop {
         if condition() {
-            return true;
+            return Ok(true);
         }
         let now = monotonic_millis();
         if now >= deadline {
-            return false;
+            return Ok(false);
         }
         let tid = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid();
         let Some(tid) = tid else {
-            return condition();
+            return condition()
+                .then_some(true)
+                .ok_or(system_scheduler::Error::WaitRegistrationFailed);
         };
         // Do not let a quantum switch out a newly Blocked thread before its
         // watchdog is queued. Early rejection restores IRQ state through Drop.
         let setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
         let Some((expected_generation, sponsor)) = crate::timers::thread_timer_context(tid) else {
-            return condition();
+            return condition()
+                .then_some(true)
+                .ok_or(system_scheduler::Error::WaitRegistrationFailed);
         };
         let Ok(timeout_obs) = alloc::sync::Arc::try_new(BlockTimeoutWake {
             tid,
             generation: expected_generation,
         }) else {
-            return condition();
+            return condition()
+                .then_some(true)
+                .ok_or(system_scheduler::Error::WaitRegistrationFailed);
         };
         let remaining = deadline.saturating_sub(now).max(1);
         let Ok((timer_event, timeout_handle)) =
             crate::timers::prepare_watchdog(ExtDuration::from_millis(remaining as u128), &sponsor)
         else {
-            return condition();
+            return condition()
+                .then_some(true)
+                .ok_or(system_scheduler::Error::WaitRegistrationFailed);
         };
         timer_event
             .event()
@@ -479,7 +499,11 @@ pub fn block_until(
             threads::MigrationConstraint::GeneralWait,
         ) {
             Ok(generation) => generation,
-            Err(_) => return condition(),
+            Err(_) => {
+                return condition()
+                    .then_some(true)
+                    .ok_or(system_scheduler::Error::WaitRegistrationFailed);
+            }
         };
 
         // Watchdog: re-admit the thread when the absolute deadline expires

@@ -251,6 +251,10 @@ mod kernel {
         catten_syscall::ipc_reply_wait_with_memory(call)
     }
 
+    pub fn ipc_reply_wait_timeout_with_memory(call: u64, timeout_ms: u64) -> (u64, u64, u64, u64) {
+        catten_syscall::ipc_reply_wait_timeout_with_memory(call, timeout_ms)
+    }
+
     pub fn ipc_reply(reply: u64, result: i64) -> u64 {
         catten_syscall::ipc_reply(reply, result)
     }
@@ -343,6 +347,7 @@ mod kernel {
         CompletionWait(u64),
         CompletionClose(u64),
         IpcClose(u64),
+        IpcWaitTimeout(u64, u64),
         AbortFailedIpcClose,
         RetireArtifact(u64),
         RetireArtifactForNodeShutdown(u64, u64),
@@ -713,6 +718,13 @@ mod kernel {
     pub fn ipc_reply_wait_with_memory(_call: u64) -> (u64, u64, u64, u64) {
         with_state(|state| {
             state.ipc_reply.pop_front().unwrap_or((catten_syscall::ipc_status::OK, 0, 0, 0))
+        })
+    }
+
+    pub fn ipc_reply_wait_timeout_with_memory(call: u64, timeout_ms: u64) -> (u64, u64, u64, u64) {
+        with_state(|state| {
+            state.events.push(Event::IpcWaitTimeout(call, timeout_ms));
+            state.ipc_reply.pop_front().unwrap_or((1, 0, 0, 0))
         })
     }
 
@@ -1191,6 +1203,70 @@ mod tests {
         );
         drop(memory);
         drop(connection);
+    }
+
+    #[test]
+    fn timed_reply_wait_preserves_loan_on_timeout_and_admission_rejection() {
+        let _guard = setup();
+        let connection = unsafe { Connection::from_raw(40) }.unwrap();
+        let memory = unsafe { OwnedMemory::from_raw(41) }.unwrap();
+        kernel::update(|state| {
+            state.ipc_reply = VecDeque::from([
+                (1, 0, 0, 0),
+                (catten_syscall::ipc_status::RESOURCE_LIMIT, 0, 0, 0),
+                (0, 42, 50, 51),
+            ]);
+        });
+        let mut pending = connection.call_borrow_read(1, 0, &memory).unwrap();
+        assert!(pending.wait_timeout(3).unwrap().is_none());
+        assert_eq!(
+            pending.wait_timeout(4).unwrap_err(),
+            IpcError::Status(catten_syscall::ipc_status::RESOURCE_LIMIT)
+        );
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::IpcWaitTimeout(30, 3), kernel::Event::IpcWaitTimeout(30, 4)]
+        );
+        let reply = pending.wait_timeout(5).unwrap().unwrap();
+        assert_eq!(reply.result, 42);
+        drop(reply);
+        drop(pending);
+        drop(memory);
+        drop(connection);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::IpcWaitTimeout(30, 3),
+                kernel::Event::IpcWaitTimeout(30, 4),
+                kernel::Event::IpcWaitTimeout(30, 5),
+                kernel::Event::IpcClose(30),
+                kernel::Event::IpcClose(50),
+                kernel::Event::MemoryClose(51),
+                kernel::Event::MemoryClose(41),
+                kernel::Event::IpcClose(40),
+            ]
+        );
+    }
+
+    #[test]
+    fn abandoned_timed_reply_wait_cancels_exact_pending_owner() {
+        let _guard = setup();
+        let connection = unsafe { Connection::from_raw(40) }.unwrap();
+        let memory = unsafe { OwnedMemory::from_raw(41) }.unwrap();
+        let mut pending = connection.call_borrow_read(1, 0, &memory).unwrap();
+        assert!(pending.wait_timeout(7).unwrap().is_none());
+        drop(pending);
+        drop(memory);
+        drop(connection);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::IpcWaitTimeout(30, 7),
+                kernel::Event::IpcClose(30),
+                kernel::Event::MemoryClose(41),
+                kernel::Event::IpcClose(40)
+            ]
+        );
     }
 
     #[test]

@@ -78,9 +78,11 @@ impl Store {
                 Ok(call) => return Some(call),
                 Err((returned, error)) => {
                     // The move was rejected before publication. Keep its exact
-                    // returned owner; the move ABI still has opaque rejection.
+                    // returned owner; retry only exact queue-capacity rejection.
                     memory = returned;
-                    if error != IpcError::CreationFailed || self.deadline.expired() {
+                    if error != IpcError::Status(catten_syscall::ipc_status::QUEUE_FULL)
+                        || self.deadline.expired()
+                    {
                         return None;
                     }
                     sleep_ms(10);
