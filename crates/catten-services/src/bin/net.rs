@@ -157,13 +157,18 @@ unsafe fn alloc_dma(
     }
     // SAFETY: queue memory is accessed only through this driver's volatile
     // descriptor protocol and remains mapped and pinned until queue teardown.
-    let iova = unsafe { dma_map(dma_domain, cap, direction) };
-    if iova == 0 {
-        record_startup_failure(status::StartupError::DmaDomainMap, pages as u64);
-        memory_unmap(cap);
-        memory_close(cap);
-        return (0, 0, 0, 0);
-    }
+    let iova = match unsafe { dma_map(dma_domain, cap, direction) } {
+        Ok(iova) => iova,
+        Err(error) => {
+            catten_rt::logln!(
+                "[net] DMA map rejected pages={pages} direction={direction:?} {error:?}"
+            );
+            record_startup_failure(status::StartupError::DmaDomainMap, error.detail());
+            memory_unmap(cap);
+            memory_close(cap);
+            return (0, 0, 0, 0);
+        }
+    };
     let pfn = (iova >> 12) as u32;
     (cap, iova, pfn, vaddr)
 }

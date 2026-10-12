@@ -116,6 +116,16 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   teardown does not discharge an uncertain kernel DMA pin or its original
   backing charge. Add readiness only with a real producer contract; do not
   replace this distinction with an unmap polling/retry loop.
+- DMA map/map-exclusive return per-call status, IOVA and diagnostic stage/cause.
+  Preserve backend rejection through the exact public root/capability owner;
+  never replace it with a zero address or global last-error state in diagnosis.
+  Backend diagnostics include pre-claim admission and started maintenance, so
+  neither a busy cause nor an error proves rollback or authorizes map replay.
+  A failed shared-DMA preparation must retain its existing CPU mapping behind
+  `FailedSharedDmaMemory`, without slices or pointers. Explicit CPU unmap and
+  best-effort local Drop do not discharge uncertain kernel pins/backing charges.
+  Public readiness still needs an owned operation and qualified caller IRQ
+  context; never add polling or enable IRQs beneath an unknown mask.
 - Services processing several sources must wait on all relevant interests.
   Use `PendingCall::bind_cq` with endpoint interests on one CQ and
   `cq_wait_checked` for the earliest remaining operation deadline (or an

@@ -46,6 +46,7 @@ mod detached_domain;
 mod dma_tables;
 mod domain_creation;
 mod mapping;
+pub(crate) use mapping::MapError;
 mod mapping_storage;
 mod private_domain;
 mod publication;
@@ -1083,31 +1084,30 @@ pub fn dma_map(
     direction: u32,
 ) -> Result<u64, DeviceError> {
     dma_map_with_ownership(asid, domain_cap, memory_cap, direction, false)
+        .map_err(mapping::MapError::status)
 }
 
 /// Map memory for exclusive device ownership. The memory object must have no
 /// CPU mappings, active lends, or other DMA pins, and the kernel rejects all
 /// new CPU mappings and lends until the IOMMU mapping is removed.
-pub fn dma_map_exclusive(
+pub(crate) fn dma_map_exclusive(
     asid: AddressSpaceId,
     domain_cap: DeviceCap,
     memory_cap: u64,
     direction: u32,
-) -> Result<u64, DeviceError> {
+) -> Result<u64, mapping::MapError> {
     dma_map_with_ownership(asid, domain_cap, memory_cap, direction, true)
 }
 
-fn dma_map_with_ownership(
+pub(crate) fn dma_map_with_ownership(
     asid: AddressSpaceId,
     domain_cap: DeviceCap,
     memory_cap: u64,
     direction: u32,
     exclusive: bool,
-) -> Result<u64, DeviceError> {
-    let direction = dma::Direction::from_bits(direction).map_err(|_| DeviceError::DmaInvalid)?;
-    mapping::with_operation(asid, domain_cap, |id| {
-        dma::map(id, asid, memory_cap, direction, exclusive)
-    })
+) -> Result<u64, mapping::MapError> {
+    let direction = dma::Direction::from_bits(direction).map_err(mapping::MapError::Validation)?;
+    mapping::map_with(asid, domain_cap, |id| dma::map(id, asid, memory_cap, direction, exclusive))
 }
 
 pub fn dma_unmap(

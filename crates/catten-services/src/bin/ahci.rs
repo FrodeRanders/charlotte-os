@@ -118,7 +118,8 @@ fn alloc_dma_buffer(bytes: usize) -> Option<QueueMemory> {
         return None;
     }
     let iova =
-        unsafe { dma_map(DMA_DOMAIN.load(Ordering::Acquire), cap, DmaDirection::Bidirectional) };
+        unsafe { dma_map(DMA_DOMAIN.load(Ordering::Acquire), cap, DmaDirection::Bidirectional) }
+            .unwrap_or(0);
     if iova == 0 {
         memory_unmap(cap);
         memory_close(cap);
@@ -543,7 +544,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     continue;
                 }
                 let iova =
-                    unsafe { dma_map(dma_domain, message.memory, DmaDirection::DeviceWrite) };
+                    unsafe { dma_map(dma_domain, message.memory, DmaDirection::DeviceWrite) }
+                        .unwrap_or(0);
                 if iova == 0 {
                     ipc_reply(message.reply, block::ERR_IO_ERROR);
                     continue;
@@ -588,7 +590,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     ipc_reply(message.reply, block::ERR_INVALID_RANGE);
                     continue;
                 }
-                let iova = unsafe { dma_map(dma_domain, message.memory, DmaDirection::DeviceRead) };
+                let iova = unsafe { dma_map(dma_domain, message.memory, DmaDirection::DeviceRead) }
+                    .unwrap_or(0);
                 if iova == 0 {
                     ipc_reply(message.reply, block::ERR_IO_ERROR);
                     continue;

@@ -484,3 +484,12 @@ under disposable test authority. Boot requires the exact installed test state,
 rejecting stale/conflicting/uninstalled policies before publication. This is
 execution evidence for that test chain; production enrollment, persistent
 anti-rollback state, non-fixture platform-service roots and custody remain open.
+
+The [DMA-map failure ownership follow-up](../reports/audits/2026-10-12-dma-map-failure-ownership.md)
+continues C13/C18 and G2/G3/G7: per-call diagnostics retain map rejection rather
+than collapsing it to zero, and failed shared-DMA setup retains its existing CPU
+mapping without safe Rust access. Diagnostics and CPU unmap do not prove DMA
+rollback or authorize retry. Public-operation readiness/IRQ qualification,
+historical AMD causality, the retained Intel scheduled-close/ingress failure and
+broader cleanup acceptance remain open. SEC-18 remains partial; finding counts
+are unchanged.

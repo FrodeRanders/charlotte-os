@@ -1371,18 +1371,41 @@ fn sys_memory_get_phys_page(frame: &mut TrapFrame) {
     frame.regs[0] = object::get_phys_page(asid, cap, page_index);
 }
 
+fn dma_map_return(frame: &mut TrapFrame, result: Result<u64, crate::device::MapError>) {
+    match result {
+        Ok(iova) => {
+            frame.regs[0] = catten_syscall::device_status::OK;
+            frame.regs[1] = iova;
+            frame.regs[2] = 0;
+        }
+        Err(error) => {
+            let diagnostic = error.diagnostic();
+            frame.regs[0] = device_status(error.status());
+            frame.regs[1] = 0;
+            frame.regs[2] = diagnostic;
+        }
+    }
+}
+
 fn sys_dma_map(frame: &mut TrapFrame) {
-    let asid = caller_asid(frame);
-    frame.regs[0] =
-        crate::device::dma_map(asid, frame.regs[1], frame.regs[2], frame.regs[3] as u32)
-            .unwrap_or(0);
+    let result = crate::device::dma_map_with_ownership(
+        caller_asid(frame),
+        frame.regs[1],
+        frame.regs[2],
+        frame.regs[3] as u32,
+        false,
+    );
+    dma_map_return(frame, result);
 }
 
 fn sys_dma_map_exclusive(frame: &mut TrapFrame) {
-    let asid = caller_asid(frame);
-    frame.regs[0] =
-        crate::device::dma_map_exclusive(asid, frame.regs[1], frame.regs[2], frame.regs[3] as u32)
-            .unwrap_or(0);
+    let result = crate::device::dma_map_exclusive(
+        caller_asid(frame),
+        frame.regs[1],
+        frame.regs[2],
+        frame.regs[3] as u32,
+    );
+    dma_map_return(frame, result);
 }
 
 fn sys_dma_unmap(frame: &mut TrapFrame) {

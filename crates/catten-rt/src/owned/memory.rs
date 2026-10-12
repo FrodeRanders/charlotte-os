@@ -9,7 +9,7 @@ pub enum MemoryError {
     AllocationFailed,
     InvalidCapability,
     MemoryStatus(u64),
-    DmaMapFailed,
+    DmaMap(catten_syscall::DmaMapError),
     DmaStatus(u64),
 }
 
@@ -166,10 +166,11 @@ impl OwnedMemory {
         domain: &DmaDomain,
         direction: DmaDirection,
     ) -> Result<DmaTransfer<'_>, (Self, MemoryError)> {
-        let iova = kernel::dma_map_exclusive(domain.raw_handle(), self.raw_handle(), direction);
-        if iova == 0 {
-            return Err((self, MemoryError::DmaMapFailed));
-        }
+        let iova =
+            match kernel::dma_map_exclusive(domain.raw_handle(), self.raw_handle(), direction) {
+                Ok(iova) => iova,
+                Err(error) => return Err((self, MemoryError::DmaMap(error))),
+            };
         Ok(DmaTransfer {
             domain,
             memory: Some(self),
@@ -195,13 +196,17 @@ impl OwnedMemory {
                 error,
             })?;
         let memory = mapping.memory.as_ref().expect("mapped memory already consumed");
-        let iova = kernel::dma_map(domain.raw_handle(), memory.raw_handle(), direction);
-        if iova == 0 {
-            return Err(SharedDmaMapError::Mapped {
-                mapping,
-                error: MemoryError::DmaMapFailed,
-            });
-        }
+        let iova = match kernel::dma_map(domain.raw_handle(), memory.raw_handle(), direction) {
+            Ok(iova) => iova,
+            Err(error) => {
+                return Err(SharedDmaMapError::Mapped {
+                    mapping: FailedSharedDmaMemory {
+                        mapping,
+                    },
+                    error: MemoryError::DmaMap(error),
+                });
+            }
+        };
         let base = mapping.base;
         let memory = mapping.memory.take().expect("mapped memory already consumed");
         Ok(SharedDmaMemory {
@@ -226,8 +231,9 @@ impl OwnedMemory {
     }
 }
 
-/// A shared-DMA setup failure that preserves the memory's exact ownership
-/// state, including a still-live CPU mapping when DMA admission failed.
+/// A shared-DMA setup failure that preserves the exact memory owner.
+/// A backend rejection can retain uncertain DMA pins; its existing CPU mapping
+/// must not expose Rust references, even though DMA setup returned an error.
 #[derive(Debug)]
 pub enum SharedDmaMapError {
     Unmapped {
@@ -235,9 +241,38 @@ pub enum SharedDmaMapError {
         error: MemoryError,
     },
     Mapped {
-        mapping: MappedMemory<Writable>,
+        mapping: FailedSharedDmaMemory,
         error: MemoryError,
     },
+}
+
+/// Retains a failed shared-DMA preparation without exposing CPU access.
+/// Explicit CPU unmap does not prove DMA rollback: kernel pins still fence
+/// subsequent mapping, lending and release of uncertain device backing.
+///
+/// ```compile_fail
+/// use catten_rt::owned::FailedSharedDmaMemory;
+/// fn cpu_access(mut failed: FailedSharedDmaMemory) {
+///     let _ = failed.as_mut_slice();
+/// }
+/// ```
+#[derive(Debug)]
+#[must_use]
+pub struct FailedSharedDmaMemory {
+    mapping: MappedMemory<Writable>,
+}
+
+impl FailedSharedDmaMemory {
+    pub fn unmap(self) -> Result<OwnedMemory, (Self, MemoryError)> {
+        self.mapping.unmap().map_err(|(mapping, error)| {
+            (
+                Self {
+                    mapping,
+                },
+                error,
+            )
+        })
+    }
 }
 
 impl SharedDmaMapError {

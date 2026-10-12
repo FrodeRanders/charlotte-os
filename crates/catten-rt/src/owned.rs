@@ -61,11 +61,19 @@ mod kernel {
         catten_syscall::memory_close(cap)
     }
 
-    pub fn dma_map_exclusive(domain: u64, memory: u64, direction: DmaDirection) -> u64 {
+    pub fn dma_map_exclusive(
+        domain: u64,
+        memory: u64,
+        direction: DmaDirection,
+    ) -> Result<u64, catten_syscall::DmaMapError> {
         catten_syscall::dma_map_exclusive(domain, memory, direction)
     }
 
-    pub fn dma_map(domain: u64, memory: u64, direction: DmaDirection) -> u64 {
+    pub fn dma_map(
+        domain: u64,
+        memory: u64,
+        direction: DmaDirection,
+    ) -> Result<u64, catten_syscall::DmaMapError> {
         // SAFETY: the owning caller keeps both capabilities live and pairs a
         // successful mapping with `dma_unmap` before releasing either one.
         unsafe { catten_syscall::dma_map(domain, memory, direction) }
@@ -366,7 +374,7 @@ mod kernel {
         pub memory_map_any: (u64, usize),
         pub memory_unmap: VecDeque<u64>,
         pub memory_close: VecDeque<u64>,
-        pub dma_map: u64,
+        pub dma_map: Result<u64, catten_syscall::DmaMapError>,
         pub dma_unmap: VecDeque<u64>,
         pub dma_unmap_panic: bool,
         pub device_map: (u64, usize),
@@ -405,7 +413,7 @@ mod kernel {
                 memory_map_any: (catten_syscall::memory_status::OK, 0x1000),
                 memory_unmap: VecDeque::new(),
                 memory_close: VecDeque::new(),
-                dma_map: 0x2000,
+                dma_map: Ok(0x2000),
                 dma_unmap: VecDeque::new(),
                 dma_unmap_panic: false,
                 device_map: (catten_syscall::device_status::OK, 0x3000),
@@ -501,11 +509,19 @@ mod kernel {
         })
     }
 
-    pub fn dma_map_exclusive(_domain: u64, _memory: u64, _direction: DmaDirection) -> u64 {
+    pub fn dma_map_exclusive(
+        _domain: u64,
+        _memory: u64,
+        _direction: DmaDirection,
+    ) -> Result<u64, catten_syscall::DmaMapError> {
         with_state(|state| state.dma_map)
     }
 
-    pub fn dma_map(_domain: u64, _memory: u64, _direction: DmaDirection) -> u64 {
+    pub fn dma_map(
+        _domain: u64,
+        _memory: u64,
+        _direction: DmaDirection,
+    ) -> Result<u64, catten_syscall::DmaMapError> {
         with_state(|state| state.dma_map)
     }
 
@@ -852,6 +868,7 @@ mod tests {
         OwnedMemory,
         ReadOperation,
         ReplyToken,
+        SharedDmaMapError,
         kernel,
         launch_operational_connector,
         request_node_shutdown,
@@ -1088,18 +1105,92 @@ mod tests {
     #[test]
     fn shared_dma_mapping_failure_restores_memory_owner() {
         let _guard = setup();
-        kernel::update(|state| state.dma_map = 0);
+        kernel::update(|state| {
+            state.dma_map = Err(catten_syscall::DmaMapError {
+                status: catten_syscall::device_status::DMA_INVALID,
+                phase: catten_syscall::dma_map_phase::BACKEND,
+                cause: catten_syscall::dma_map_cause::HARDWARE_TIMEOUT,
+            })
+        });
         let memory = OwnedMemory::allocate(1).expect("memory allocation");
         let domain = unsafe { DmaDomain::from_raw(7) };
         let error = memory
             .map_shared_dma(&domain, DmaDirection::DeviceWrite)
             .expect_err("DMA mapping must fail");
-        assert_eq!(error.error(), MemoryError::DmaMapFailed);
+        assert_eq!(
+            error.error(),
+            MemoryError::DmaMap(catten_syscall::DmaMapError {
+                status: catten_syscall::device_status::DMA_INVALID,
+                phase: catten_syscall::dma_map_phase::BACKEND,
+                cause: catten_syscall::dma_map_cause::HARDWARE_TIMEOUT
+            })
+        );
         drop(error);
         assert_eq!(
             kernel::events(),
             [kernel::Event::MemoryUnmap(10), kernel::Event::MemoryClose(10)]
         );
+    }
+
+    #[test]
+    fn failed_shared_dma_cpu_unmap_rejection_returns_restricted_owner() {
+        let _guard = setup();
+        let failure = catten_syscall::DmaMapError {
+            status: catten_syscall::device_status::DMA_INVALID,
+            phase: catten_syscall::dma_map_phase::BACKEND,
+            cause: catten_syscall::dma_map_cause::MAP_FAILED,
+        };
+        kernel::update(|state| {
+            state.dma_map = Err(failure);
+            state.memory_unmap = VecDeque::from([
+                catten_syscall::memory_status::UNMAP_FAILED,
+                catten_syscall::memory_status::OK,
+            ]);
+        });
+        let domain = unsafe { DmaDomain::from_raw(7) };
+        let error = OwnedMemory::allocate(1)
+            .unwrap()
+            .map_shared_dma(&domain, DmaDirection::DeviceWrite)
+            .unwrap_err();
+        assert_eq!(error.error(), MemoryError::DmaMap(failure));
+        let SharedDmaMapError::Mapped {
+            mapping,
+            ..
+        } = error
+        else {
+            panic!("must retain CPU mapping");
+        };
+        let (mapping, error) = mapping.unmap().unwrap_err();
+        assert_eq!(error, MemoryError::MemoryStatus(catten_syscall::memory_status::UNMAP_FAILED));
+        drop(mapping.unmap().unwrap());
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::MemoryUnmap(10),
+                kernel::Event::MemoryUnmap(10),
+                kernel::Event::MemoryClose(10)
+            ]
+        );
+    }
+
+    #[test]
+    fn exclusive_dma_map_failure_preserves_original_diagnostic_and_memory() {
+        let _guard = setup();
+        let failure = catten_syscall::DmaMapError {
+            status: catten_syscall::device_status::DMA_INVALID,
+            phase: catten_syscall::dma_map_phase::BACKEND,
+            cause: catten_syscall::dma_map_cause::MEMORY,
+        };
+        kernel::update(|state| state.dma_map = Err(failure));
+        let domain = unsafe { DmaDomain::from_raw(7) };
+        let (memory, error) = OwnedMemory::allocate(1)
+            .unwrap()
+            .begin_dma(&domain, DmaDirection::DeviceRead)
+            .unwrap_err();
+        assert_eq!(error, MemoryError::DmaMap(failure));
+        assert_eq!(memory.raw_handle(), 10);
+        drop(memory);
+        assert_eq!(kernel::events(), [kernel::Event::MemoryClose(10)]);
     }
 
     #[test]

@@ -194,7 +194,7 @@ unsafe fn alloc_dma(dma_domain: u64, pages: usize, direction: DmaDirection) -> (
         memory_close(cap);
         return (0, 0, 0);
     }
-    let iova = unsafe { dma_map(dma_domain, cap, direction) };
+    let iova = unsafe { dma_map(dma_domain, cap, direction) }.unwrap_or(0);
     if iova == 0 {
         memory_unmap(cap);
         memory_close(cap);

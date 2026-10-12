@@ -7,7 +7,7 @@ description = "Typed no_std wrappers for the CharlotteOS (catten) syscall ABI"
 [lib]
 name = "catten_syscall"
 path = "src/lib.rs"
-test = false
+test = true
 bench = false
 
 [dependencies]

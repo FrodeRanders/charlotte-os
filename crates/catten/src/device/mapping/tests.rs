@@ -35,11 +35,86 @@ struct Payload {
 pub(super) fn run() {
     let root = crate::service::loader::create_user_address_space_handle();
     let cap = grant(root);
+    use catten_syscall::{
+        DmaMapError,
+        device_status as status,
+        dma_map_cause as cause,
+        dma_map_phase as phase,
+    };
+    for exclusive in [false, true] {
+        for (target, direction, expected) in [
+            (
+                cap,
+                0,
+                DmaMapError {
+                    status: status::DMA_INVALID,
+                    phase: phase::VALIDATION,
+                    cause: cause::INVALID_DIRECTION,
+                },
+            ),
+            (
+                u64::MAX,
+                3,
+                DmaMapError {
+                    status: status::UNKNOWN_CAPABILITY,
+                    phase: phase::ADMISSION,
+                    cause: cause::NONE,
+                },
+            ),
+            (
+                cap,
+                3,
+                DmaMapError {
+                    status: status::DMA_INVALID,
+                    phase: phase::BACKEND,
+                    cause: cause::MEMORY,
+                },
+            ),
+        ] {
+            crate::self_test::syscall::test_dma_map_status(
+                root.id(),
+                target,
+                u64::MAX,
+                direction,
+                exclusive,
+                expected,
+            );
+        }
+    }
+    for error in [dma::Error::OperationInFlight, dma::Error::HardwareTimeout, dma::Error::MapFailed]
+    {
+        let mut attempts = 0;
+        assert_eq!(
+            map_with(root.id(), cap, |_| {
+                attempts += 1;
+                Err(error)
+            }),
+            Err(MapError::Backend(error))
+        );
+        assert_eq!(attempts, 1);
+        // In particular, a backend busy-looking rejection remains diagnostic,
+        // without adopting the unmap ABI's pre-work retry contract.
+        assert_eq!(MapError::Backend(error).status(), DeviceError::DmaInvalid);
+    }
     for fails in [false, true] {
         let result = with_operation(root.id(), cap, |id| {
             assert_eq!(id, u64::MAX);
             assert_eq!(close_cap(root.id(), cap), Err(DeviceError::OperationInFlight));
             assert_eq!(dma_unmap(root.id(), cap, 0), Err(DeviceError::OperationInFlight));
+            for exclusive in [false, true] {
+                crate::self_test::syscall::test_dma_map_status(
+                    root.id(),
+                    cap,
+                    u64::MAX,
+                    3,
+                    exclusive,
+                    DmaMapError {
+                        status: status::OPERATION_IN_FLIGHT,
+                        phase: phase::ADMISSION,
+                        cause: cause::NONE,
+                    },
+                );
+            }
             crate::self_test::syscall::test_dma_unmap_status(
                 root.id(),
                 cap,

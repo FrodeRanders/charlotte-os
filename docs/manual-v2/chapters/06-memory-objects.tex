@@ -412,6 +412,14 @@ For shared coherent memory, confirmed DMA completion is retained across a later
 CPU-unmap failure. Best-effort local teardown does not release uncertain kernel
 DMA pins or their backing charges.
 
+Both DMA-map syscall forms return status, IOVA and a per-call diagnostic
+stage/cause. Backend rejection includes admission and started maintenance;
+it does not prove rollback or authorize retry. A shared-DMA setup failure
+retains its existing CPU mapping in \texttt{FailedSharedDmaMemory}, which exposes
+no slices or pointers. Its consuming CPU-unmap operation cannot discharge an
+uncertain kernel DMA pin or authorize backing reuse.
+
+
 
 \section{Transfer guarantees and limits}
 

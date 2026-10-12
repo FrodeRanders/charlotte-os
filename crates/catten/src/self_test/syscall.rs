@@ -84,6 +84,32 @@ fn create_syscall_test_address_space(label: &str) -> crate::memory::AddressSpace
     asid
 }
 
+pub(crate) fn test_dma_map_status(
+    asid: crate::memory::AddressSpaceId,
+    cap: u64,
+    memory: u64,
+    direction: u64,
+    exclusive: bool,
+    expected: catten_syscall::DmaMapError,
+) {
+    let mut frame = synthetic_trap_frame_in(asid, 0, cap, memory, direction);
+    syscall::syscall_dispatch(
+        &mut frame,
+        if exclusive {
+            call_no::DMA_MAP_EXCLUSIVE
+        } else {
+            call_no::DMA_MAP
+        },
+    );
+    assert_eq!(frame.regs[0], expected.status, "DMA map rejection status");
+    assert_eq!(frame.regs[1], 0, "rejected map must not expose an IOVA");
+    assert_eq!(
+        frame.regs[2],
+        expected.phase | (expected.cause << 8),
+        "DMA map rejection cause/stage"
+    );
+}
+
 pub(crate) fn test_dma_unmap_status(
     asid: crate::memory::AddressSpaceId,
     cap: u64,

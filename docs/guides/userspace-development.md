@@ -125,7 +125,14 @@ best-effort `Drop` fallback for TCP/IP socket IDs.
 The raw `catten-syscall` functions remain available at runtime and narrowly
 documented driver boundaries, not as a service-development convenience.
 Coherent `dma_map` is explicitly unsafe because the driver must
-synchronize CPU references and device access itself. Once a raw capability is
+synchronize CPU references and device access itself. Both DMA-map forms return
+`Result<u64, DmaMapError>` with the original per-call status, stage and backend
+cause. A backend rejection can follow partial publication and uncertain
+rollback; diagnostics grant no retry permission. `map_shared_dma` therefore
+returns a `FailedSharedDmaMemory` owner on DMA failure, retaining the existing
+CPU mapping without exposing Rust references or pointers. Its consuming `unmap`
+can return the memory capability after CPU unmap; uncertain kernel pins still
+fence new mappings, lending and physical release. Once a raw capability is
 adopted with `OwnedMemory::from_raw`, it must not be used independently or
 adopted a second time.
 

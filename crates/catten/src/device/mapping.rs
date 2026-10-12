@@ -35,6 +35,54 @@ impl UnmapError {
     }
 }
 
+/// Per-return diagnostics only. Backend rejection includes both pre-claim
+/// admission and started maintenance; it never authorizes map replay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MapError {
+    Validation(dma::Error),
+    Admission(DeviceError),
+    Backend(dma::Error),
+    Completion(DeviceError),
+}
+
+impl MapError {
+    pub(crate) fn diagnostic(self) -> u64 {
+        use catten_syscall::{
+            dma_map_cause as cause,
+            dma_map_phase as phase,
+        };
+        let backend_cause = |error| match error {
+            dma::Error::Unsupported => cause::UNSUPPORTED,
+            dma::Error::InvalidStream => cause::INVALID_STREAM,
+            dma::Error::StreamInUse => cause::STREAM_IN_USE,
+            dma::Error::InvalidDirection => cause::INVALID_DIRECTION,
+            dma::Error::Memory => cause::MEMORY,
+            dma::Error::OutOfIova => cause::OUT_OF_IOVA,
+            dma::Error::MapFailed => cause::MAP_FAILED,
+            dma::Error::AlreadyMapped => cause::ALREADY_MAPPED,
+            dma::Error::UnknownDomain => cause::UNKNOWN_DOMAIN,
+            dma::Error::UnknownMapping => cause::UNKNOWN_MAPPING,
+            dma::Error::HardwareTimeout => cause::HARDWARE_TIMEOUT,
+            dma::Error::OperationInFlight => cause::OPERATION_IN_FLIGHT,
+            dma::Error::WaitRegistrationFailed => cause::WAIT_REGISTRATION_FAILED,
+        };
+        let (stage, reason) = match self {
+            Self::Validation(error) => (phase::VALIDATION, backend_cause(error)),
+            Self::Admission(_) => (phase::ADMISSION, cause::NONE),
+            Self::Backend(error) => (phase::BACKEND, backend_cause(error)),
+            Self::Completion(_) => (phase::COMPLETION, cause::NONE),
+        };
+        stage | (reason << 8)
+    }
+
+    pub(crate) fn status(self) -> DeviceError {
+        match self {
+            Self::Admission(error) | Self::Completion(error) => error,
+            Self::Validation(_) | Self::Backend(_) => DeviceError::DmaInvalid,
+        }
+    }
+}
+
 #[must_use]
 pub(super) struct MappingMaintenance<D, C> {
     pub(super) held: Maintenance<D, C>,
@@ -212,6 +260,22 @@ pub(super) fn with_operation<T>(
     // uncertain data pins retained there. Abandonment never reaches completion.
     operation.complete()?;
     result
+}
+
+pub(super) fn map_with(
+    asid: AddressSpaceId,
+    cap: DeviceCap,
+    work: impl FnOnce(u64) -> Result<u64, dma::Error>,
+) -> Result<u64, MapError> {
+    let operation = DmaOperation::begin(asid, cap).map_err(MapError::Admission)?;
+    let result = work(operation.id).map_err(MapError::Backend);
+    // Preserve the backend rejection even if finishing the public lease also
+    // fails. Neither diagnostic is a cleanup receipt or permission to retry.
+    let completion = operation.complete().map_err(MapError::Completion);
+    match result {
+        Err(error) => Err(error),
+        Ok(iova) => completion.map(|()| iova),
+    }
 }
 
 pub(super) fn unmap_with(

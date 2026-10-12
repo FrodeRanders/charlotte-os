@@ -197,7 +197,8 @@ fn alloc_queue_memory(entries: usize, entry_size: usize) -> Option<QueueMemory> 
     // SAFETY: admin/I/O queue fields use volatile device-ring access and the
     // allocation remains pinned until the queue is dismantled.
     let iova =
-        unsafe { dma_map(DMA_DOMAIN.load(Ordering::Acquire), cap, DmaDirection::Bidirectional) };
+        unsafe { dma_map(DMA_DOMAIN.load(Ordering::Acquire), cap, DmaDirection::Bidirectional) }
+            .unwrap_or(0);
     if iova == 0 {
         memory_unmap(cap);
         memory_close(cap);
@@ -357,7 +358,8 @@ fn prepare_prps(memory: u64, bytes: u64, direction: DmaDirection) -> Option<Prps
     }
     // SAFETY: the request owns this buffer until its NVMe completion is
     // observed; PRP teardown synchronously removes the DMA mapping afterward.
-    let first = unsafe { dma_map(DMA_DOMAIN.load(Ordering::Acquire), memory, direction) };
+    let first =
+        unsafe { dma_map(DMA_DOMAIN.load(Ordering::Acquire), memory, direction) }.unwrap_or(0);
     if first == 0 {
         return None;
     }

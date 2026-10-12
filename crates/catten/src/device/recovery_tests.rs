@@ -601,7 +601,18 @@ pub(crate) fn run() {
     object::close_cap(successor.id(), memory).unwrap();
     let held = object::allocate(successor.id(), 2).unwrap();
     REJECT_MAP_ROLLBACK.store(true, Ordering::Release);
-    assert_eq!(dma_map(successor.id(), domain, held, 3), Err(DeviceError::DmaInvalid));
+    crate::self_test::syscall::test_dma_map_status(
+        successor.id(),
+        domain,
+        held,
+        3,
+        false,
+        catten_syscall::DmaMapError {
+            status: catten_syscall::device_status::DMA_INVALID,
+            phase: catten_syscall::dma_map_phase::BACKEND,
+            cause: catten_syscall::dma_map_cause::MAP_FAILED,
+        },
+    );
     assert!(!REJECT_MAP_ROLLBACK.load(Ordering::Acquire));
     assert_eq!(dma_tables::used(), charged);
     assert_eq!(

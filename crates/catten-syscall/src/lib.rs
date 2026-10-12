@@ -993,6 +993,8 @@ unsafe fn svc3_x2(imm: SyscallNumber, arg1: u64, arg2: u64, _arg3: u64) -> (u64,
         match imm as u16 {
             24 => asm!("mov x1, x4", "svc #24", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x4") arg1, options(nostack, nomem, preserves_flags)),
             54 => asm!("mov x1, x4", "svc #54", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x4") arg1, options(nostack, preserves_flags)),
+            57 => asm!("svc #57", lateout("x0") ret, inlateout("x1") arg1 => x1_out, inlateout("x2") arg2 => x2_out, in("x3") _arg3, options(nostack, preserves_flags)),
+            69 => asm!("svc #69", lateout("x0") ret, inlateout("x1") arg1 => x1_out, inlateout("x2") arg2 => x2_out, in("x3") _arg3, options(nostack, preserves_flags)),
             66 => asm!("svc #66", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             67 => asm!("svc #67", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             81 => asm!("svc #81", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
@@ -1921,6 +1923,61 @@ pub enum DmaDirection {
     Bidirectional = 3,
 }
 
+/// DMA-map diagnostic stages. BACKEND includes admission and maintenance;
+/// none of these diagnostics authorizes retry or proves rollback completion.
+pub mod dma_map_phase {
+    pub const VALIDATION: u64 = 1;
+    pub const ADMISSION: u64 = 2;
+    pub const BACKEND: u64 = 3;
+    pub const COMPLETION: u64 = 4;
+}
+
+/// Backend rejection categories, shared by all IOMMU implementations.
+pub mod dma_map_cause {
+    pub const NONE: u64 = 0;
+    pub const UNSUPPORTED: u64 = 1;
+    pub const INVALID_STREAM: u64 = 2;
+    pub const STREAM_IN_USE: u64 = 3;
+    pub const INVALID_DIRECTION: u64 = 4;
+    pub const MEMORY: u64 = 5;
+    pub const OUT_OF_IOVA: u64 = 6;
+    pub const MAP_FAILED: u64 = 7;
+    pub const ALREADY_MAPPED: u64 = 8;
+    pub const UNKNOWN_DOMAIN: u64 = 9;
+    pub const UNKNOWN_MAPPING: u64 = 10;
+    pub const HARDWARE_TIMEOUT: u64 = 11;
+    pub const OPERATION_IN_FLIGHT: u64 = 12;
+    pub const WAIT_REGISTRATION_FAILED: u64 = 13;
+}
+
+/// Original per-call map rejection, without global last-error state.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DmaMapError {
+    pub status: DeviceStatusCode,
+    pub phase: u64,
+    pub cause: u64,
+}
+
+impl DmaMapError {
+    /// Compact driver diagnostic: status in bits 0..7, phase in 8..15,
+    /// backend cause in 16..23. This is evidence, not retry authority.
+    pub const fn detail(self) -> u64 {
+        self.status | (self.phase << 8) | (self.cause << 16)
+    }
+
+    fn from_return(status: u64, iova: u64, diagnostic: u64) -> Result<u64, Self> {
+        if status == device_status::OK {
+            Ok(iova)
+        } else {
+            Err(Self {
+                status,
+                phase: diagnostic & 0xff,
+                cause: diagnostic >> 8,
+            })
+        }
+    }
+}
+
 /// Pin `memory` into `domain` and return its base I/O virtual address for a
 /// driver-managed coherent-sharing protocol.
 ///
@@ -1930,8 +1987,14 @@ pub enum DmaDirection {
 /// memory capability and its backing pages must remain valid until
 /// [`dma_unmap`] succeeds. Prefer [`dma_map_exclusive`] for ordinary buffers.
 #[inline(always)]
-pub unsafe fn dma_map(domain: u64, memory: u64, direction: DmaDirection) -> u64 {
-    unsafe { svc3(SyscallNumber::DmaMap, domain, memory, direction as u64) }
+pub unsafe fn dma_map(
+    domain: u64,
+    memory: u64,
+    direction: DmaDirection,
+) -> Result<u64, DmaMapError> {
+    let (status, iova, diagnostic) =
+        unsafe { svc3_x2(SyscallNumber::DmaMap, domain, memory, direction as u64) };
+    DmaMapError::from_return(status, iova, diagnostic)
 }
 
 /// Transfer an unmapped memory object exclusively to `domain`.
@@ -1939,8 +2002,14 @@ pub unsafe fn dma_map(domain: u64, memory: u64, direction: DmaDirection) -> u64 
 /// Unlike [`dma_map`], the kernel rejects this operation if any CPU mapping,
 /// lend, or DMA pin exists and prevents new mappings/lends until `dma_unmap`.
 #[inline(always)]
-pub fn dma_map_exclusive(domain: u64, memory: u64, direction: DmaDirection) -> u64 {
-    unsafe { svc3(SyscallNumber::DmaMapExclusive, domain, memory, direction as u64) }
+pub fn dma_map_exclusive(
+    domain: u64,
+    memory: u64,
+    direction: DmaDirection,
+) -> Result<u64, DmaMapError> {
+    let (status, iova, diagnostic) =
+        unsafe { svc3_x2(SyscallNumber::DmaMapExclusive, domain, memory, direction as u64) };
+    DmaMapError::from_return(status, iova, diagnostic)
 }
 
 /// Remove an IOVA mapping, synchronously invalidate the IOTLB, and unpin it.
@@ -2591,4 +2660,24 @@ pub fn monotonic_clock() -> (u64, u64) {
 pub fn random_u64() -> Option<u64> {
     let (ok, value) = unsafe { svc3_x1(SyscallNumber::RandomU64, 0, 0, 0) };
     (ok == 1).then_some(value)
+}
+
+#[cfg(test)]
+mod dma_map_tests {
+    use super::*;
+
+    #[test]
+    fn map_return_decoding_preserves_status_cause_and_success_iova() {
+        assert_eq!(DmaMapError::from_return(device_status::OK, 0x1000_0000, 0), Ok(0x1000_0000));
+        let error = DmaMapError {
+            status: device_status::DMA_INVALID,
+            phase: dma_map_phase::BACKEND,
+            cause: dma_map_cause::HARDWARE_TIMEOUT,
+        };
+        assert_eq!(
+            DmaMapError::from_return(error.status, 0, error.phase | (error.cause << 8)),
+            Err(error)
+        );
+        assert_eq!(error.detail(), 0x0b030e);
+    }
 }
