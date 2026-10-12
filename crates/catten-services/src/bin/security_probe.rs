@@ -24,6 +24,7 @@ use catten_services::{
     deadline::Deadline,
     grant,
     grant_client,
+    publication,
     sleep_ms,
     socket,
 };
@@ -329,6 +330,44 @@ fn main(ctx: Context) -> ! {
             && !outer_budget.expired(),
         15,
     );
+    // The platform publication helper must also bound *admission* to a full
+    // remote queue. Keep all eight original calls owned until rejection; the
+    // silent fixture never receives, so only cancellation can drain them.
+    let queued: [PendingCall<'_>; 8] = core::array::from_fn(|_| {
+        silent_connection.call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort())
+    });
+    let admission_budget = Deadline::after(2_000);
+    check(
+        matches!(
+            publication::register(silent_connection.as_ref(), 0, &endpoint),
+            Err(publication::Error::Admission(catten_rt::owned::IpcError::Status(
+                catten_syscall::ipc_status::QUEUE_FULL
+            )))
+        ) && !admission_budget.expired(),
+        49,
+    );
+    drop(queued);
+    // With that queue drained, one delegation is accepted but never answered.
+    // Timeout must cancel that owner without replay or consuming the source.
+    let observation_budget = Deadline::after(7_000);
+    check(
+        matches!(
+            publication::register(silent_connection.as_ref(), 0, &endpoint),
+            Err(publication::Error::ObservationTimeout)
+        ) && !observation_budget.expired()
+            && endpoint.status().is_ok(),
+        50,
+    );
+    // All eight slots must be available again: a leaked hidden delegation or
+    // replay would strand at least one slot in this never-receiving endpoint.
+    let recovered_queue: [PendingCall<'_>; 8] = core::array::from_fn(|_| {
+        silent_connection.call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort())
+    });
+    drop(recovered_queue);
+    catten_rt::logln!(concat!(
+        "[security] platform publication: full-queue deadline, ",
+        "silent-call cancellation and all eight slots recovered"
+    ));
     drop(silent_connection);
     checks |= 512;
 

@@ -13,12 +13,14 @@ use crate::{
 };
 
 pub const RETRY_BUDGET_MS: u64 = 1_000;
+pub const OBSERVATION_BUDGET_MS: u64 = 5_000;
 const RETRY_PAUSE_MS: u64 = 10;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Error {
     Admission(IpcError),
     Observation(IpcError),
+    ObservationTimeout,
     Rejected(i64),
     InvalidReply,
 }
@@ -38,11 +40,13 @@ fn submit<T>(
 }
 
 /// Borrow the same endpoint throughout admission and observation. Only an
-/// exact queue-full rejection retries; an accepted call is observed once.
+/// exact queue-full rejection retries. An accepted call is observed once,
+/// with a separate deadline. Timeout drops its pending owner to cancel; it
+/// cannot establish whether registration happened and never triggers replay.
 pub fn register(names: ConnectionRef<'_>, name: u64, endpoint: &Endpoint) -> Result<i64, Error> {
     let deadline = Deadline::after(RETRY_BUDGET_MS);
     let mut announced = false;
-    let call = submit(
+    let mut call = submit(
         || {
             names.call_connection(
                 ns::OP_REGISTER,
@@ -66,7 +70,16 @@ pub fn register(names: ConnectionRef<'_>, name: u64, endpoint: &Endpoint) -> Res
         },
     )
     .map_err(Error::Admission)?;
-    let reply = call.wait().map_err(Error::Observation)?;
+    let observation = Deadline::after(OBSERVATION_BUDGET_MS);
+    let reply = loop {
+        if observation.expired() {
+            return Err(Error::ObservationTimeout);
+        }
+        if let Some(reply) = call.poll().map_err(Error::Observation)? {
+            break reply;
+        }
+        sleep_ms(RETRY_PAUSE_MS);
+    };
     if reply.connection.is_some() || reply.memory.is_some() {
         return Err(Error::InvalidReply);
     }

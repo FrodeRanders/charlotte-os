@@ -20,7 +20,7 @@ use catten_rt::{
 };
 use catten_services::{
     net,
-    ns,
+    publication,
     relmsg,
     relmsg_reassembly::{
         Reassembly,
@@ -31,16 +31,12 @@ use catten_services::{
     wait_reply,
 };
 use catten_syscall::{
-    IpcRights,
     cq_read,
     cq_wait_timeout,
-    ipc_endpoint_bind_cq,
-    ipc_endpoint_create,
     ipc_recv,
     ipc_reply,
     ipc_reply_move,
     ipc_scalar_call,
-    ipc_scalar_call_connection,
     ipc_scalar_call_move,
     ipc_status,
     memory_alloc,
@@ -467,7 +463,6 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         Some(connection) => connection,
         None => unsafe { thread_exit() },
     };
-    let ns_conn = names.as_raw();
 
     let (_, net_connection) =
         match wait_for_registered_name_or_shutdown_owned(ctx, names, net::NAME) {
@@ -485,27 +480,16 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         unsafe { thread_exit() };
     }
     config::write::<u32>(status::STAGE, 2);
-    let ep = ipc_endpoint_create(relmsg::INTERFACE, relmsg::VERSION, 16);
-    if ep == 0 {
+    let endpoint = catten_rt::owned::Endpoint::create(relmsg::INTERFACE, relmsg::VERSION, 16)
+        .unwrap_or_else(|_| unsafe { thread_exit() });
+    if endpoint.bind_completion_queue(0).is_err() {
         unsafe { thread_exit() };
     }
-    if ipc_endpoint_bind_cq(ep, 0) != 0 {
-        unsafe { thread_exit() };
-    }
-    let registration = ipc_scalar_call_connection(
-        ns_conn,
-        ns::OP_REGISTER,
-        relmsg::NAME,
-        ep,
-        IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-    );
-    if registration == 0 {
-        unsafe { thread_exit() };
-    }
-    let (generation, _) = unsafe { wait_reply(registration) };
-    if generation < 1 {
-        unsafe { thread_exit() };
-    }
+    let generation =
+        publication::register(names, relmsg::NAME, &endpoint).unwrap_or_else(|error| {
+            catten_rt::logln!("[relmsg] registration rejected: {error:?}");
+            unsafe { thread_exit() }
+        });
     // Pack the service generation and retry epoch into disjoint namespaces.
     // Using the raw generation and incrementing it after an uncertain send
     // made generation N+1 collide with generation N's first retry session.
@@ -564,7 +548,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         deliver_received(&mut received, &mut pending_recv);
 
         config::write::<u32>(status::STAGE, 6);
-        let message = ipc_recv(ep);
+        // The legacy frame reactor borrows the serving endpoint; it never
+        // closes or adopts this handle. The endpoint owner spans the reactor.
+        let message = ipc_recv(endpoint.as_raw());
         let _attachments =
             catten_services::RequestAttachments::new(message.memory, message.connection);
         config::write::<u32>(status::STAGE, 7);

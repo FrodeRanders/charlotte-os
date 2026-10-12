@@ -73,6 +73,14 @@ registration on delegated queue-full rejection. Admission retains the same
 endpoint; accepted calls are observed once. The historical AMD exit remains
 unattributed despite passing diagnostic repeats.
 
+The [platform publication deadline follow-up](../reports/audits/2026-10-12-security-publication-deadlines.md)
+removes TCP/IP's unlimited retry of permanent registration rejection and applies
+the same endpoint-preserving admission policy to time, cluster control, reliable
+messaging and discovery. The shared helper now bounds accepted-call observation
+to five seconds and cancels through its pending owner without replay. This bounds
+these registration waits; dependency lookup, general controller RPC completion
+and cancellation syscall/remote scheduling progress remain separate boundaries.
+
 Remaining acceptance requires bounded concurrent admission and progress for
 healthy clients while hostile clients occupy slots, bounded controller/RPC
 completion, and sustained connection/packet flood, NIC failure and lifecycle

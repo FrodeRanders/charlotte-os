@@ -265,6 +265,14 @@ the earlier AMD exit remains unattributed. Explicit NIC endpoint close returns
 any rejected owner for terminal retention. See
 \repofile|docs/reports/audits/2026-10-12-security-network-publication.md|.
 
+TCP/IP, time, cluster control, reliable messaging and discovery share that
+admission policy. Accepted registration observation has a separate five-second
+deadline; timeout cancels the pending owner without replay and does not prove
+that remote publication never happened. Discovery and reliable messaging retain
+typed endpoint owners throughout their reactors. General dependency/controller
+progress remains separate. See
+\repofile|docs/reports/audits/2026-10-12-security-publication-deadlines.md|.
+
 The service allocates its smoltcp socket table once at launch. Its launch
 manifest supplies bounded \texttt{sockslot}, \texttt{sockquot}, and
 \texttt{bufquot} policy values; the defaults are 64 total slots, 64 sockets per

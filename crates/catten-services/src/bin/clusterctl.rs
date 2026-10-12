@@ -40,6 +40,7 @@ use catten_services::{
     name_catalog,
     ns,
     objstore,
+    publication,
     raft,
     wait_for_registered_name_or_shutdown_owned,
     wait_reply,
@@ -389,19 +390,10 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
         };
     let endpoint =
         Endpoint::create(clusterctl::INTERFACE, clusterctl::VERSION, 8).map_err(|_| 0xdea2u32)?;
-    let register = ns_connection
-        .call_connection(
-            ns::OP_REGISTER,
-            clusterctl::NAME,
-            &endpoint,
-            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-        )
-        .map_err(|_| 0xdea3u32)?
-        .wait()
-        .map_err(|_| 0xdea3u32)?;
-    if register.result < 1 {
-        return Err(0xdea3);
-    }
+    publication::register(ns_connection, clusterctl::NAME, &endpoint).map_err(|error| {
+        catten_rt::logln!("[clusterctl] registration rejected: {error:?}");
+        0xdea3u32
+    })?;
     endpoint.bind_completion_queue(0).map_err(|_| 0xdea4u32)?;
     config::write::<u32>(status::STAGE, STAGE_SERVING);
 

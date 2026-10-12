@@ -29,15 +29,14 @@ use catten_rt::{
     },
 };
 use catten_services::{
-    ns,
     objstore,
+    publication,
     socket,
     time,
     wait_for_local_ready_or_shutdown,
     wait_for_registered_name_owned,
 };
 use catten_syscall::{
-    IpcRights,
     cq_read,
     cq_wait_timeout,
     monotonic_clock,
@@ -902,17 +901,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     // Publish 'time' service (through its endpoint) with the 'name' service
     let endpoint =
         Endpoint::create(time::INTERFACE, time::VERSION, 32).unwrap_or_else(|_| fail(0xe006));
-    let registration = ns_conn
-        .call_connection(
-            ns::OP_REGISTER,
-            time::NAME,
-            &endpoint,
-            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-        )
-        .unwrap_or_else(|_| fail(0xe007));
-    if wait_scalar(registration).is_none_or(|(generation, _)| generation < 1)
-        || endpoint.bind_completion_queue(0).is_err()
-    {
+    publication::register(ns_conn, time::NAME, &endpoint).unwrap_or_else(|error| {
+        catten_rt::logln!("[time] registration rejected: {error:?}");
+        fail(0xe007)
+    });
+    if endpoint.bind_completion_queue(0).is_err() {
         fail(0xe007);
     }
     catten_rt::logln!(

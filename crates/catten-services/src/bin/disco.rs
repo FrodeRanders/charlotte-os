@@ -42,6 +42,7 @@ use catten_services::{
     disco,
     net,
     ns,
+    publication,
     raft,
     sleep_ms_or_shutdown,
     wait_for_local_ready_or_shutdown,
@@ -49,19 +50,15 @@ use catten_services::{
     wait_reply,
 };
 use catten_syscall::{
-    IpcRights,
     cq_read,
     cq_wait_timeout,
     ipc_close,
-    ipc_endpoint_bind_cq,
-    ipc_endpoint_create,
     ipc_recv,
     ipc_reply,
     ipc_reply_move,
     ipc_reply_poll,
     ipc_reply_poll_with_memory,
     ipc_scalar_call,
-    ipc_scalar_call_connection,
     ipc_scalar_call_move,
     ipc_status,
     memory_alloc,
@@ -597,30 +594,15 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     };
     config::write::<u32>(status::STAGE, 4);
 
-    let ep = ipc_endpoint_create(disco::INTERFACE, disco::VERSION, 8);
-    if ep == 0 {
+    let endpoint = catten_rt::owned::Endpoint::create(disco::INTERFACE, disco::VERSION, 8)
+        .unwrap_or_else(|_| unsafe { thread_exit() });
+    if endpoint.bind_completion_queue(0).is_err() {
         unsafe { thread_exit() };
     }
-    if ipc_endpoint_bind_cq(ep, 0) != 0 {
-        unsafe { thread_exit() };
-    }
-    let registration = ipc_scalar_call_connection(
-        ns_conn,
-        ns::OP_REGISTER,
-        disco::NAME,
-        ep,
-        IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-    );
-    if registration == 0 {
-        unsafe { thread_exit() };
-    }
-    let (reg_gen, registration_cap) = unsafe { wait_reply(registration) };
-    if registration_cap != 0 {
-        ipc_close(registration_cap);
-    }
-    if reg_gen < 1 {
-        unsafe { thread_exit() };
-    }
+    publication::register(names, disco::NAME, &endpoint).unwrap_or_else(|error| {
+        catten_rt::logln!("[disco] registration rejected: {error:?}");
+        unsafe { thread_exit() }
+    });
     config::write::<u32>(status::STAGE, 5);
     publish_diag();
 
@@ -678,7 +660,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // Process endpoint messages (non-blocking drain): control ops and
         // OP_FRAME ingress from the frouter.
         loop {
-            let message = ipc_recv(ep);
+            // The legacy discovery reactor borrows this serving endpoint;
+            // only the Rust owner closes it when the serving scope ends.
+            let message = ipc_recv(endpoint.as_raw());
             let _attachments =
                 catten_services::RequestAttachments::new(message.memory, message.connection);
             if message.status == ipc_status::ENDPOINT_CLOSED {

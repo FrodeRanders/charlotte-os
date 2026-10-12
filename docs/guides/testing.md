@@ -77,9 +77,19 @@ policy, undeclared services, excess rights and re-delegation of client authority
 Positive controls establish publication and ordinary calls. Missing targets and
 cancelled requests must not prevent acquisition of the available endpoint;
 a separately hosted silent endpoint tests the publication helper's deadline.
+The same remote endpoint also exercises the platform `publication::register`
+helper: eight owned calls fill its eight-slot queue, registration must return
+exact queue-full within a two-second outer fixture budget, and dropping the
+original calls permits a new delegation. That accepted silent registration must
+time out within seven outer seconds, cancel without replay, leave its source
+endpoint live, and permit all eight queue slots to be filled again. The selected
+helper budgets are one second for admission and five seconds for observation;
+the outer margins are fixture bounds, not extensions of those budgets. Both
+primary launches must pass these checks before setting existing result bit 512.
+See the [publication deadline evidence](../reports/audits/2026-10-12-security-publication-deadlines.md).
 
 The primary probe performs 384 cancelled requests in each of two launches. A
-concurrent probe submits at least 512 more. All fifteen result bits (`0x7fff`) must
+concurrent probe submits at least 512 more. All sixteen result bits (`0xffff`) must
 pass, publication generations must advance, and the retired descriptor must no
 longer attest. The ordinary boot suite, network verifier and security verifier
 register 19 tests in this configuration.
@@ -125,6 +135,13 @@ not refund the successor's account. Six host tests execute the kernel's actual
 charged allocator for lifetime, allocation-failure destruction order, clone
 admission and concurrent final weak release. See
 [completion-record budgets](../reference/completion-record-budgets.md).
+
+The sixteenth bit checks the descriptor's one-thread limit: an extra owned
+thread must reject while the domain keeps running. Foreign thread-exit
+observation (including a forged generation) and foreign socket-owner status
+also remain denied. This bit already exists in
+`security_probe_status::EXPECTED_CHECKS`; publication checks strengthen bit 512
+without changing that mask.
 
 Kernel-only CQ admission tests additionally exhaust queue counts and kernel
 backing bytes, check failed replacement preserves pending data and capabilities,
@@ -186,7 +203,7 @@ staged refund without damaging existing authority. Real domain handles test
 retirement and late publication after ASID reuse; a retained charge cannot
 credit the replacement. Isolated production counters check ordinary/node
 ceilings and the platform reserve. No extra real-EL0 quota probe was added;
-the scoped mask remains `0x7fff`. See
+the scoped mask remains `0xffff`. See
 [mailbox capability budgets](../reference/mailbox-capability-budgets.md).
 
 Shared capability-admission fixtures fill 4,096 actual entries across all six
@@ -200,7 +217,7 @@ when a slot is freed. An isolated counter test checks shared node/ordinary
 limits without filling the live pool. Every capability kind now has bounded
 allocation; the temporary bypass and its permissive fixture are removed. No extra EL0
 quota probe or atomic IPC-vector admission test is implied; the scoped mask
-remains `0x7fff`. See
+remains `0xffff`. See
 [shared capability admission](../reference/capability-admission.md).
 
 Device fixtures reject MMIO/IRQ/DMA grants at the shared ceiling, recover real
@@ -271,7 +288,7 @@ into `ADDRESS_SPACE_TABLE`. This initializes the same generation, limits,
 accounting and capability namespace as production domain creation. Adversarial
 IPC scenarios using pseudo-domain IDs allocate no unused real address spaces.
 
-Completion/CQ waiter tests keep the fifteen-bit scoped mask unchanged. Kernel
+Completion/CQ waiter tests keep the sixteen-bit scoped mask unchanged. Kernel
 tests cover source/domain/node admission and rollback, detached entries,
 promotion and ASID reuse; the scheduled CQ verifier checks Running/Ready/new
 rejection, wake/reap cleanup despite a retained Waker and 64 completion/CQ timeout cycles.

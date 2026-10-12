@@ -62,6 +62,7 @@ use catten_services::{
     dns,
     net,
     ns,
+    publication,
     socket,
     wait_for_local_ready_or_shutdown,
     wait_for_registered_name_owned,
@@ -433,27 +434,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
     let endpoint =
         Endpoint::create(socket::INTERFACE, socket::VERSION, 8).unwrap_or_else(|_| fail(0xe004));
-    let reg = loop {
-        if let Ok(call) = ns_connection.call_connection(
-            ns::OP_REGISTER,
-            socket::NAME,
-            &endpoint,
-            catten_syscall::IpcRights::SEND
-                | catten_syscall::IpcRights::CALL
-                | catten_syscall::IpcRights::MINT_CONNECTION,
-        ) {
-            break call;
-        }
-        // The name-service queue is shared by the booting service set. Yield
-        // through a timer when it is temporarily full; the endpoint and
-        // delegated connection remain owned by this process and are safe to
-        // submit again.
-        catten_services::sleep_ms(1);
-    };
-    let registration = reg.wait().unwrap_or_else(|_| fail(0xe005));
-    if registration.result < 1 {
-        fail(0xe005);
-    }
+    publication::register(ns_connection, socket::NAME, &endpoint).unwrap_or_else(|error| {
+        catten_rt::logln!("[tcpip] registration rejected: {error:?}");
+        fail(0xe005)
+    });
     endpoint.bind_completion_queue(0).unwrap_or_else(|_| fail(0xe006));
     config::write::<u32>(status::STAGE, 4);
 

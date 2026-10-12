@@ -727,6 +727,13 @@ Native software does not.
 > category/detail; the earlier AMD exit remains unattributed. Explicit NIC
 > endpoint close returns any rejected owner for terminal retention. See the
 > [network publication evidence](../reports/audits/2026-10-12-security-network-publication.md).
+> TCP/IP, time, cluster control, reliable messaging and discovery now use that
+> same admission policy. Accepted registration observation has a separate
+> five-second deadline; timeout cancels the pending owner without replay and
+> does not establish that remote publication never happened. Discovery and
+> reliable messaging retain typed endpoint owners throughout their reactors.
+> General dependency/controller progress remains separate. See the
+> [deadline follow-up](../reports/audits/2026-10-12-security-publication-deadlines.md).
 
 ---
 
