@@ -75,18 +75,18 @@ use charlotte_protocol_disco::{
     FLAG_PROBE,
     FLAG_RESPONSE,
     FRAME_HEADER_SIZE,
+    MAX_PEER_PAYLOAD_LEN,
+    PeerAdvertisement,
     PeerClusterInfo,
     ROLE_CANDIDATE,
     ROLE_FOLLOWER,
     ROLE_LEADER,
     ROLE_NO_CLUSTER,
-    ROLE_UNKNOWN,
     build_cluster_answer,
     build_disco_frame,
-    build_extended_payload,
+    build_peer_payload,
     cluster_answer_len,
     parse_disco_frame,
-    parse_extended_payload,
 };
 use charlotte_protocol_net::decode_status;
 
@@ -390,21 +390,26 @@ fn send_probe(
     service_name: u64,
     cluster: &ClusterInfo,
 ) {
-    let mut payload_buf = [0u8; 256];
-    let payload_len = build_extended_payload(
+    let mut payload_buf = [0u8; MAX_PEER_PAYLOAD_LEN];
+    let Some(payload_len) = build_peer_payload(
         &mut payload_buf,
-        node_id,
-        service_name,
-        cluster.role,
-        &cluster.raft_id,
-        &cluster.leader_id,
-    );
-    if payload_len == 0 {
+        PeerAdvertisement {
+            node_id,
+            service_name,
+            role: cluster.role,
+            raft_id: &cluster.raft_id,
+            leader_id: &cluster.leader_id,
+        },
+    ) else {
         return;
-    }
+    };
     let mut frame = alloc::vec![0u8; FRAME_HEADER_SIZE + payload_len];
     let mut header = [0u8; FRAME_HEADER_SIZE];
-    build_disco_frame(&mut header, BROADCAST_MAC, local_mac, FLAG_PROBE, cluster_id);
+    if build_disco_frame(&mut header, BROADCAST_MAC, local_mac, FLAG_PROBE, cluster_id, payload_len)
+        .is_none()
+    {
+        return;
+    }
     frame[..FRAME_HEADER_SIZE].copy_from_slice(&header);
     frame[FRAME_HEADER_SIZE..].copy_from_slice(&payload_buf[..payload_len]);
     send_raw_frame(net_conn, &frame);
@@ -419,21 +424,26 @@ fn send_response(
     service_name: u64,
     cluster: &ClusterInfo,
 ) {
-    let mut payload_buf = [0u8; 256];
-    let payload_len = build_extended_payload(
+    let mut payload_buf = [0u8; MAX_PEER_PAYLOAD_LEN];
+    let Some(payload_len) = build_peer_payload(
         &mut payload_buf,
-        node_id,
-        service_name,
-        cluster.role,
-        &cluster.raft_id,
-        &cluster.leader_id,
-    );
-    if payload_len == 0 {
+        PeerAdvertisement {
+            node_id,
+            service_name,
+            role: cluster.role,
+            raft_id: &cluster.raft_id,
+            leader_id: &cluster.leader_id,
+        },
+    ) else {
         return;
-    }
+    };
     let mut response = alloc::vec![0u8; FRAME_HEADER_SIZE + payload_len];
     let mut header = [0u8; FRAME_HEADER_SIZE];
-    build_disco_frame(&mut header, dst_mac, local_mac, FLAG_RESPONSE, cluster_id);
+    if build_disco_frame(&mut header, dst_mac, local_mac, FLAG_RESPONSE, cluster_id, payload_len)
+        .is_none()
+    {
+        return;
+    }
     response[..FRAME_HEADER_SIZE].copy_from_slice(&header);
     response[FRAME_HEADER_SIZE..].copy_from_slice(&payload_buf[..payload_len]);
     send_raw_frame(net_conn, &response);
@@ -493,46 +503,35 @@ fn handle_frame(
     tick_ms: u64,
     frame: &[u8],
 ) {
-    if let Some((_version, flags, source_mac, frame_cluster_id)) = parse_disco_frame(frame) {
-        DIAG_DECODED.fetch_add(1, Ordering::Relaxed);
-        // The advertised identity must match the frame's real Ethernet source,
-        // so one host cannot populate the table with many invented MACs.
-        let Some(ethernet_source) =
-            frame.get(6..12).and_then(|bytes| <[u8; 6]>::try_from(bytes).ok())
-        else {
-            return;
-        };
-        if source_mac != ethernet_source {
-            return;
-        }
-        if frame_cluster_id == *cluster_id && source_mac != local_mac {
-            let payload = &frame[FRAME_HEADER_SIZE..];
-            if let Some((peer_id, service_name, cluster_block)) = parse_extended_payload(payload) {
-                let (role, raft_id, leader_id) = cluster_block.unwrap_or((ROLE_UNKNOWN, &[], &[]));
-                learn_peer(
-                    peers,
-                    source_mac,
-                    peer_id,
-                    service_name,
-                    role,
-                    raft_id,
-                    leader_id,
-                    tick_ms,
-                    disco::PEER_TTL_MS,
-                );
-            }
-            if (flags & FLAG_PROBE) != 0 {
-                send_response(
-                    net_conn,
-                    source_mac,
-                    local_mac,
-                    cluster_id,
-                    node_id,
-                    own_service_name,
-                    cluster,
-                );
-            }
-        }
+    let Some(parsed) = parse_disco_frame(frame) else {
+        return;
+    };
+    DIAG_DECODED.fetch_add(1, Ordering::Relaxed);
+    if parsed.cluster_id != *cluster_id || parsed.source_mac == local_mac {
+        return;
+    }
+    let peer = parsed.peer;
+    learn_peer(
+        peers,
+        parsed.source_mac,
+        peer.node_id,
+        peer.service_name,
+        peer.role,
+        peer.raft_id,
+        peer.leader_id,
+        tick_ms,
+        disco::PEER_TTL_MS,
+    );
+    if parsed.flags == FLAG_PROBE {
+        send_response(
+            net_conn,
+            parsed.source_mac,
+            local_mac,
+            cluster_id,
+            node_id,
+            own_service_name,
+            cluster,
+        );
     }
 }
 

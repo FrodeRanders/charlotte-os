@@ -1004,6 +1004,13 @@ transport-layer identifiers — rather than IP addresses.
 
 ### Ethernet discovery and deterministic admission (current)
 
+Discovery probes and responses use one complete version-1 advertisement:
+node identity, service name, cluster role and Raft/leader IDs. The header
+declares its exact length; old zero-length headers and omitted/truncated
+cluster fields reject before peer learning or response. Ethernet padding
+cannot substitute for missing fields. All nodes must rebuild together; see
+the [wire contract](../reference/discovery-protocol.md).
+
 The operational DNS node starts as a durable singleton. Discovery supplies
 identity-to-MAC routes, and only the lexicographically larger fresh singleton
 applies to the smaller identity. The joiner persists its selected anchor before

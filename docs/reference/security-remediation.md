@@ -500,3 +500,12 @@ deadline expiry, and the syscall reparks on unrelated notifications through the
 shared deadline loop. Pending completion/buffer ownership remains intact. New
 exact-generation fixture diagnostics do not establish historical Intel causality
 or physical quiescence; SEC-18 remains partial and finding counts are unchanged.
+
+The [discovery simplification validation](../reports/audits/2026-10-13-protocol-simplification-discovery.md)
+again observed the completion-wait timer-sponsor equality failure: ARM reported
+4 versus baseline 3 at `self_test/cq_wait.rs:268:9`, followed by incomplete
+paired DNS progress. A fresh paired repeat with identical kernels passed
+20/0/0 on ARM and 18/0/0 on x86. The aggregate mismatch identifies no specific
+retained event and does not prove a production leak or its cause; the fixture's
+accounting/context qualification remains unresolved. The failed sample is
+retained separately, and no C16/C18 acceptance gate or finding count changes.

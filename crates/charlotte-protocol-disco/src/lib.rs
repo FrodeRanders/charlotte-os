@@ -14,31 +14,37 @@
 //! 14..16  Version = 1 (u16 BE)
 //! 16..18  Flags: bit 0 = PROBE, bit 1 = RESPONSE (u16 BE)
 //! 18..24  Source MAC duplicated (6 bytes)
-//! 24..26  Reserved (2 bytes, zero)
+//! 24..26  Peer advertisement length (u16 BE, excludes Ethernet padding)
 //! 26..42  Cluster ID (16 bytes)
-//! 42..    Payload (variable, only present in RESPONSE frames)
+//! 42..    Peer advertisement (variable, required in probes and responses)
 //! ```
 //!
-//! **Probe:** flags = PROBE. Sent to `ff:ff:ff:ff:ff:ff`. Payload is empty.
+//! **Probe:** flags = PROBE. Sent to `ff:ff:ff:ff:ff:ff`. Carries the sender's
+//! complete advertisement for passive peer learning.
 //!
-//! **Response:** flags = RESPONSE. Unicast to the probe's source MAC. Payload:
+//! **Response:** flags = RESPONSE. Unicast to the probe's source MAC.
+//! Both frame types carry the same complete advertisement:
 //! ```text
 //!  0..1   Node ID length (u8, up to 63)
 //!  1..N   Node ID (UTF-8 bytes)
 //!  N..N+8 Service name (u64 LE)
 //!  N+8    Cluster role (u8: 0 = not in a cluster, 1 = follower,
-//!         2 = candidate, 3 = leader, 0xff = unknown/legacy)
+//!         2 = candidate, 3 = leader)
 //!  +1     Own raft id length (u8)
 //!  ..     Own raft id (UTF-8 bytes)
 //!  +1     Known leader's raft id length (u8)
 //!  ..     Known leader's raft id (UTF-8 bytes)
 //! ```
 //!
-//! The trailing cluster block is optional: a legacy v1 responder omits it and
-//! the peer reports role `UNKNOWN`. The cluster block lets discovery answer
-//! "which node leads the cluster (if any)" so a joining node can contact the
-//! leader directly, or a follower/observer that redirects, or receive the
-//! honest "not in a cluster" answer.
+//! Cluster posture is mandatory. A node without a cluster uses role 0 and
+//! empty raft/leader IDs. Base-only and truncated advertisements reject; builders
+//! never fall back to an older grammar. Identifiers are UTF-8, node IDs have
+//! 1–63 bytes, raft/leader IDs have at most 255 bytes, and the complete payload
+//! has at most 256 bytes. The payload parser consumes exactly one record. Frame
+//! parsing additionally permits zero padding to Ethernet's 60-byte minimum.
+//! Discovery supplies routing hints, not authenticated identity or membership.
+//! The header length is required: retired zero-length headers reject. This
+//! prevents Ethernet padding from masquerading as omitted cluster fields.
 #![no_std]
 
 extern crate alloc;
@@ -54,7 +60,10 @@ pub const FRAME_HEADER_SIZE: usize = ETHERNET_HEADER_SIZE + DISCO_HEADER_SIZE; /
 
 pub const CLUSTER_ID_LEN: usize = 16;
 pub const MAX_NODE_ID_LEN: usize = 63;
-pub const MAX_SERVICE_NAME_LEN: usize = 8;
+pub const MAX_PEER_PAYLOAD_LEN: usize = 256;
+pub const MIN_PEER_PAYLOAD_LEN: usize = 13;
+/// Ethernet minimum excluding the four-byte FCS.
+pub const MIN_ETHERNET_FRAME_SIZE: usize = 60;
 
 pub const BROADCAST_MAC: [u8; 6] = [0xff; 6];
 
@@ -80,121 +89,124 @@ pub const ROLE_NO_CLUSTER: u8 = 0;
 pub const ROLE_FOLLOWER: u8 = 1;
 pub const ROLE_CANDIDATE: u8 = 2;
 pub const ROLE_LEADER: u8 = 3;
-/// A legacy peer whose response predates the cluster block.
-pub const ROLE_UNKNOWN: u8 = 0xff;
 
 /// Build a full discovery frame header (42 bytes: 14 Ethernet + 28 disco).
+/// Invalid flags or advertisement length reject without changing the buffer.
 pub fn build_disco_frame(
     buf: &mut [u8; FRAME_HEADER_SIZE],
     dst_mac: [u8; 6],
     src_mac: [u8; 6],
     flags: u16,
     cluster_id: &[u8; CLUSTER_ID_LEN],
-) {
+    payload_len: usize,
+) -> Option<()> {
+    if !matches!(flags, FLAG_PROBE | FLAG_RESPONSE)
+        || !(MIN_PEER_PAYLOAD_LEN..=MAX_PEER_PAYLOAD_LEN).contains(&payload_len)
+    {
+        return None;
+    }
     buf[..6].copy_from_slice(&dst_mac);
     buf[6..12].copy_from_slice(&src_mac);
     buf[12..14].copy_from_slice(&DISCO_ETHERTYPE.to_be_bytes());
     buf[14..16].copy_from_slice(&DISCO_VERSION.to_be_bytes());
     buf[16..18].copy_from_slice(&flags.to_be_bytes());
     buf[18..24].copy_from_slice(&src_mac);
-    buf[24..26].copy_from_slice(&[0, 0]);
+    buf[24..26].copy_from_slice(&(payload_len as u16).to_be_bytes());
     buf[26..42].copy_from_slice(cluster_id);
+    Some(())
 }
 
-/// Build a response payload into `buf`. Returns the number of bytes written.
-/// Returns 0 if `node_id` is empty or too long.
-pub fn build_response_payload(buf: &mut [u8; 256], node_id: &[u8], service_name: u64) -> usize {
-    if node_id.is_empty() || node_id.len() > MAX_NODE_ID_LEN {
-        return 0;
-    }
-    buf[0] = node_id.len() as u8;
-    let id_len = node_id.len();
-    buf[1..1 + id_len].copy_from_slice(node_id);
-    let name_bytes = service_name.to_le_bytes();
-    buf[1 + id_len..1 + id_len + 8].copy_from_slice(&name_bytes);
-    1 + id_len + 8
+/// Borrowed current advertisement carried by both probes and responses.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PeerAdvertisement<'a> {
+    pub node_id: &'a [u8],
+    pub service_name: u64,
+    pub role: u8,
+    pub raft_id: &'a [u8],
+    pub leader_id: &'a [u8],
 }
 
-/// Parse a response payload. Returns `None` if the payload is malformed.
-pub fn parse_response_payload(payload: &[u8]) -> Option<(&[u8], u64)> {
-    if payload.is_empty() {
+fn valid_role(role: u8) -> bool {
+    matches!(role, ROLE_NO_CLUSTER | ROLE_FOLLOWER | ROLE_CANDIDATE | ROLE_LEADER)
+}
+
+/// Build one complete advertisement. Rejection leaves the buffer unchanged;
+/// invalid identifiers, roles or an oversized payload never produce a prefix.
+pub fn build_peer_payload(
+    buf: &mut [u8; MAX_PEER_PAYLOAD_LEN],
+    peer: PeerAdvertisement<'_>,
+) -> Option<usize> {
+    if peer.node_id.is_empty()
+        || peer.node_id.len() > MAX_NODE_ID_LEN
+        || peer.raft_id.len() > u8::MAX as usize
+        || peer.leader_id.len() > u8::MAX as usize
+        || !valid_role(peer.role)
+        || core::str::from_utf8(peer.node_id).is_err()
+        || core::str::from_utf8(peer.raft_id).is_err()
+        || core::str::from_utf8(peer.leader_id).is_err()
+    {
         return None;
     }
-    let id_len = payload[0] as usize;
+    let len = 12 + peer.node_id.len() + peer.raft_id.len() + peer.leader_id.len();
+    if len > buf.len() {
+        return None;
+    }
+    buf[0] = peer.node_id.len() as u8;
+    let mut pos = 1;
+    buf[pos..pos + peer.node_id.len()].copy_from_slice(peer.node_id);
+    pos += peer.node_id.len();
+    buf[pos..pos + 8].copy_from_slice(&peer.service_name.to_le_bytes());
+    pos += 8;
+    buf[pos] = peer.role;
+    pos += 1;
+    buf[pos] = peer.raft_id.len() as u8;
+    pos += 1;
+    buf[pos..pos + peer.raft_id.len()].copy_from_slice(peer.raft_id);
+    pos += peer.raft_id.len();
+    buf[pos] = peer.leader_id.len() as u8;
+    pos += 1;
+    buf[pos..pos + peer.leader_id.len()].copy_from_slice(peer.leader_id);
+    Some(len)
+}
+
+/// Parse exactly one complete advertisement, without Ethernet padding.
+pub fn parse_peer_payload(payload: &[u8]) -> Option<PeerAdvertisement<'_>> {
+    let id_len = usize::from(*payload.first()?);
     if id_len == 0 || id_len > MAX_NODE_ID_LEN {
         return None;
     }
-    let total = 1 + id_len + 8;
-    if payload.len() < total {
+    let node_id = payload.get(1..1 + id_len)?;
+    let mut pos = 1 + id_len;
+    let service_name = u64::from_le_bytes(payload.get(pos..pos + 8)?.try_into().ok()?);
+    pos += 8;
+    let role = *payload.get(pos)?;
+    if !valid_role(role) {
         return None;
     }
-    let node_id = &payload[1..1 + id_len];
-    let service_name = u64::from_le_bytes(payload[1 + id_len..total].try_into().ok()?);
-    Some((node_id, service_name))
-}
-
-/// Build an extended response payload: the v1 `{node_id, service_name}`
-/// block plus the optional cluster block `{role, raft_id, leader_id}`.
-/// Returns the written length (the v1 length if the cluster block does not
-/// fit the 256-byte budget, so the frame stays parseable by legacy peers).
-pub fn build_extended_payload(
-    buf: &mut [u8; 256],
-    node_id: &[u8],
-    service_name: u64,
-    role: u8,
-    raft_id: &[u8],
-    leader_id: &[u8],
-) -> usize {
-    let base = build_response_payload(buf, node_id, service_name);
-    if base == 0 || raft_id.len() > 255 || leader_id.len() > 255 {
-        return base;
-    }
-    if buf.len() < base + 1 + 1 + raft_id.len() + 1 + leader_id.len() {
-        return base;
-    }
-    let mut pos = base;
-    buf[pos] = role;
     pos += 1;
-    buf[pos] = raft_id.len() as u8;
+    let raft_len = usize::from(*payload.get(pos)?);
     pos += 1;
-    buf[pos..pos + raft_id.len()].copy_from_slice(raft_id);
-    pos += raft_id.len();
-    buf[pos] = leader_id.len() as u8;
+    let raft_id = payload.get(pos..pos + raft_len)?;
+    pos += raft_len;
+    let leader_len = usize::from(*payload.get(pos)?);
     pos += 1;
-    buf[pos..pos + leader_id.len()].copy_from_slice(leader_id);
-    pos + leader_id.len()
-}
-
-/// The cluster block of an extended response payload:
-/// `(role, raft_id, leader_id)`.
-pub type ClusterBlock<'a> = (u8, &'a [u8], &'a [u8]);
-
-/// Parse an extended response payload into
-/// `(node_id, service_name, Option<ClusterBlock>)` where the cluster block
-/// is `None` for legacy v1 payloads.
-pub fn parse_extended_payload(payload: &[u8]) -> Option<(&[u8], u64, Option<ClusterBlock<'_>>)> {
-    let (node_id, service_name) = parse_response_payload(payload)?;
-    let base = 1 + node_id.len() + 8;
-    let rest = &payload[base..];
-    if rest.len() >= 2 {
-        let role = rest[0];
-        let raft_len = rest[1] as usize;
-        if rest.len() > 2 + raft_len {
-            let leader_len = rest[2 + raft_len] as usize;
-            if rest.len() >= 2 + raft_len + 1 + leader_len {
-                return Some((
-                    node_id,
-                    service_name,
-                    Some((
-                        role,
-                        &rest[2..2 + raft_len],
-                        &rest[3 + raft_len..3 + raft_len + leader_len],
-                    )),
-                ));
-            }
-        }
+    let leader_id = payload.get(pos..pos + leader_len)?;
+    pos += leader_len;
+    if pos != payload.len()
+        || pos > MAX_PEER_PAYLOAD_LEN
+        || core::str::from_utf8(node_id).is_err()
+        || core::str::from_utf8(raft_id).is_err()
+        || core::str::from_utf8(leader_id).is_err()
+    {
+        return None;
     }
-    Some((node_id, service_name, None))
+    Some(PeerAdvertisement {
+        node_id,
+        service_name,
+        role,
+        raft_id,
+        leader_id,
+    })
 }
 
 /// Return the exact packed `OP_CLUSTER_STATUS` size, or `None` when a count,
@@ -322,22 +334,50 @@ pub fn parse_cluster_answer(bytes: &[u8]) -> Option<ClusterAnswer<'_>> {
     Some((self_role, self_raft_id, self_leader_id, peers))
 }
 
-/// Parse a discovery frame header from a raw Ethernet frame. Returns
-/// `Some((version, flags, source_mac, cluster_id))` on success, or `None` if
-/// the frame is too short or has an unexpected EtherType.
-pub fn parse_disco_frame(frame: &[u8]) -> Option<(u16, u16, [u8; 6], [u8; CLUSTER_ID_LEN])> {
-    if frame.len() < FRAME_HEADER_SIZE {
+/// One validated current discovery frame. The advertisement borrows the frame.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DiscoveryFrame<'a> {
+    pub flags: u16,
+    pub source_mac: [u8; 6],
+    pub cluster_id: [u8; CLUSTER_ID_LEN],
+    pub peer: PeerAdvertisement<'a>,
+}
+
+/// Validate the header and complete advertisement before learning or responding.
+/// Accept only the current version, one known flag, an explicit length and a
+/// duplicated source matching Ethernet. Only zero padding to the Ethernet
+/// minimum may follow the record; extra or truncated payloads reject.
+pub fn parse_disco_frame(frame: &[u8]) -> Option<DiscoveryFrame<'_>> {
+    if frame.len() < FRAME_HEADER_SIZE
+        || u16::from_be_bytes(frame[12..14].try_into().ok()?) != DISCO_ETHERTYPE
+        || u16::from_be_bytes(frame[14..16].try_into().ok()?) != DISCO_VERSION
+        || frame[6..12] != frame[18..24]
+    {
         return None;
     }
-    let ethertype = u16::from_be_bytes([frame[12], frame[13]]);
-    if ethertype != DISCO_ETHERTYPE {
+    let flags = u16::from_be_bytes(frame[16..18].try_into().ok()?);
+    if !matches!(flags, FLAG_PROBE | FLAG_RESPONSE) {
         return None;
     }
-    let version = u16::from_be_bytes([frame[14], frame[15]]);
-    let flags = u16::from_be_bytes([frame[16], frame[17]]);
-    let source_mac: [u8; 6] = frame[18..24].try_into().ok()?;
-    let cluster_id: [u8; CLUSTER_ID_LEN] = frame[26..42].try_into().ok()?;
-    Some((version, flags, source_mac, cluster_id))
+    let payload_len = usize::from(u16::from_be_bytes(frame[24..26].try_into().ok()?));
+    if !(MIN_PEER_PAYLOAD_LEN..=MAX_PEER_PAYLOAD_LEN).contains(&payload_len) {
+        return None;
+    }
+    let record_end = FRAME_HEADER_SIZE + payload_len;
+    let peer = parse_peer_payload(frame.get(FRAME_HEADER_SIZE..record_end)?)?;
+    if frame.len() != record_end
+        && (frame.len() != MIN_ETHERNET_FRAME_SIZE
+            || record_end >= MIN_ETHERNET_FRAME_SIZE
+            || frame[record_end..].iter().any(|byte| *byte != 0))
+    {
+        return None;
+    }
+    Some(DiscoveryFrame {
+        flags,
+        source_mac: frame[18..24].try_into().ok()?,
+        cluster_id: frame[26..42].try_into().ok()?,
+        peer,
+    })
 }
 
 /// Parse the peer list returned by the disco service's `OP_LIST_PEERS`:
@@ -371,11 +411,231 @@ pub fn parse_peer_list(bytes: &[u8]) -> alloc::vec::Vec<([u8; 6], alloc::vec::Ve
 #[cfg(test)]
 mod tests {
     use super::{
+        BROADCAST_MAC,
+        DISCO_NAME,
+        FLAG_PROBE,
+        FLAG_RESPONSE,
+        FRAME_HEADER_SIZE,
+        MAX_PEER_PAYLOAD_LEN,
+        MIN_ETHERNET_FRAME_SIZE,
+        PeerAdvertisement,
         PeerClusterInfo,
+        ROLE_CANDIDATE,
+        ROLE_FOLLOWER,
         ROLE_LEADER,
+        ROLE_NO_CLUSTER,
         build_cluster_answer,
+        build_disco_frame,
+        build_peer_payload,
         parse_cluster_answer,
+        parse_disco_frame,
+        parse_peer_payload,
     };
+
+    fn peer() -> PeerAdvertisement<'static> {
+        PeerAdvertisement {
+            node_id: b"n1",
+            service_name: DISCO_NAME,
+            role: ROLE_LEADER,
+            raft_id: b"raft-n1",
+            leader_id: b"raft-n1",
+        }
+    }
+
+    fn frame(flags: u16, peer: PeerAdvertisement<'_>) -> alloc::vec::Vec<u8> {
+        let mut buf = [0; MAX_PEER_PAYLOAD_LEN];
+        let len = build_peer_payload(&mut buf, peer).unwrap();
+        let mut header = [0; FRAME_HEADER_SIZE];
+        build_disco_frame(&mut header, BROADCAST_MAC, [1; 6], flags, &[2; 16], len).unwrap();
+        let mut frame = header.to_vec();
+        frame.extend_from_slice(&buf[..len]);
+        frame
+    }
+
+    #[test]
+    fn complete_advertisements_round_trip_for_both_frame_types_and_all_roles() {
+        for role in [ROLE_NO_CLUSTER, ROLE_FOLLOWER, ROLE_CANDIDATE, ROLE_LEADER] {
+            let peer = PeerAdvertisement {
+                role,
+                ..peer()
+            };
+            let mut buf = [0; MAX_PEER_PAYLOAD_LEN];
+            let len = build_peer_payload(&mut buf, peer).unwrap();
+            assert_eq!(parse_peer_payload(&buf[..len]), Some(peer));
+            for flags in [FLAG_PROBE, FLAG_RESPONSE] {
+                let bytes = frame(flags, peer);
+                let parsed = parse_disco_frame(&bytes).unwrap();
+                assert_eq!(parsed.flags, flags);
+                assert_eq!(parsed.source_mac, [1; 6]);
+                assert_eq!(parsed.cluster_id, [2; 16]);
+                assert_eq!(parsed.peer, peer);
+            }
+        }
+    }
+
+    #[test]
+    fn base_only_truncated_and_extra_payloads_reject_without_role_fallback() {
+        let mut buf = [0; MAX_PEER_PAYLOAD_LEN];
+        let len = build_peer_payload(&mut buf, peer()).unwrap();
+        for end in 0..len {
+            assert!(parse_peer_payload(&buf[..end]).is_none(), "prefix {end}");
+        }
+        assert!(parse_peer_payload(&buf[..len + 1]).is_none());
+        let mut bytes = buf[..len].to_vec();
+        bytes[1 + peer().node_id.len() + 8] = 0xff;
+        assert!(parse_peer_payload(&bytes).is_none());
+        for offset in [1, 1 + peer().node_id.len() + 10, len - 1] {
+            let mut bytes = buf[..len].to_vec();
+            bytes[offset] = 0xff;
+            assert!(parse_peer_payload(&bytes).is_none(), "identifier offset {offset}");
+        }
+    }
+
+    #[test]
+    fn oversized_or_invalid_advertisements_never_publish_a_base_prefix() {
+        let id = [b'n'; 63];
+        let raft = [b'r'; 181];
+        let maximum = PeerAdvertisement {
+            node_id: &id,
+            raft_id: &raft,
+            leader_id: b"",
+            ..peer()
+        };
+        let mut buf = [0; MAX_PEER_PAYLOAD_LEN];
+        assert_eq!(build_peer_payload(&mut buf, maximum), Some(MAX_PEER_PAYLOAD_LEN));
+        assert_eq!(parse_peer_payload(&buf), Some(maximum));
+        let too_long = [b'x'; 256];
+        let bad_utf8 = [0xff];
+        for invalid in [
+            PeerAdvertisement {
+                node_id: b"",
+                ..peer()
+            },
+            PeerAdvertisement {
+                node_id: &too_long[..64],
+                ..peer()
+            },
+            PeerAdvertisement {
+                raft_id: &too_long,
+                ..peer()
+            },
+            PeerAdvertisement {
+                leader_id: &too_long,
+                ..peer()
+            },
+            PeerAdvertisement {
+                leader_id: b"x",
+                ..maximum
+            },
+            PeerAdvertisement {
+                role: 0xff,
+                ..peer()
+            },
+            PeerAdvertisement {
+                role: 4,
+                ..peer()
+            },
+            PeerAdvertisement {
+                node_id: &bad_utf8,
+                ..peer()
+            },
+            PeerAdvertisement {
+                raft_id: &bad_utf8,
+                ..peer()
+            },
+            PeerAdvertisement {
+                leader_id: &bad_utf8,
+                ..peer()
+            },
+        ] {
+            let mut buf = [0xa5; MAX_PEER_PAYLOAD_LEN];
+            assert_eq!(build_peer_payload(&mut buf, invalid), None);
+            assert_eq!(buf, [0xa5; MAX_PEER_PAYLOAD_LEN]);
+        }
+    }
+
+    #[test]
+    fn frame_rejects_retired_headers_invalid_flags_lengths_and_source_substitution() {
+        let canonical = frame(FLAG_PROBE, peer());
+        for end in 0..canonical.len() {
+            assert!(parse_disco_frame(&canonical[..end]).is_none());
+        }
+        for (offset, value) in
+            [(12, 0), (14, 1), (15, 0), (15, 2), (17, 0), (17, 3), (17, 4), (18, 3)]
+        {
+            let mut bytes = canonical.clone();
+            bytes[offset] = value;
+            assert!(parse_disco_frame(&bytes).is_none(), "header offset {offset} value {value}");
+        }
+        for len in [0, 12, MAX_PEER_PAYLOAD_LEN + 1, canonical.len() - FRAME_HEADER_SIZE - 1] {
+            let mut bytes = canonical.clone();
+            bytes[24..26].copy_from_slice(&(len as u16).to_be_bytes());
+            assert!(parse_disco_frame(&bytes).is_none());
+        }
+        let mut extra = canonical.clone();
+        extra.push(0);
+        assert!(parse_disco_frame(&extra).is_none());
+        for payload_len in [0, 12, 257] {
+            let mut header = [0xa5; FRAME_HEADER_SIZE];
+            assert_eq!(
+                build_disco_frame(
+                    &mut header,
+                    BROADCAST_MAC,
+                    [1; 6],
+                    FLAG_PROBE,
+                    &[2; 16],
+                    payload_len
+                ),
+                None
+            );
+            assert_eq!(header, [0xa5; FRAME_HEADER_SIZE]);
+        }
+        let mut header = [0xa5; FRAME_HEADER_SIZE];
+        assert_eq!(
+            build_disco_frame(
+                &mut header,
+                BROADCAST_MAC,
+                [1; 6],
+                FLAG_PROBE | FLAG_RESPONSE,
+                &[2; 16],
+                13
+            ),
+            None
+        );
+        assert_eq!(header, [0xa5; FRAME_HEADER_SIZE]);
+    }
+
+    #[test]
+    fn ethernet_padding_cannot_resurrect_a_retired_base_only_frame() {
+        let no_cluster = PeerAdvertisement {
+            role: ROLE_NO_CLUSTER,
+            raft_id: b"",
+            leader_id: b"",
+            ..peer()
+        };
+        for flags in [FLAG_PROBE, FLAG_RESPONSE] {
+            let bytes = frame(flags, no_cluster);
+            assert!(bytes.len() < MIN_ETHERNET_FRAME_SIZE);
+            assert_eq!(parse_disco_frame(&bytes).unwrap().peer, no_cluster);
+            let mut padded = bytes.clone();
+            padded.resize(MIN_ETHERNET_FRAME_SIZE, 0);
+            assert_eq!(parse_disco_frame(&padded).unwrap().peer, no_cluster);
+            let mut nonzero = padded.clone();
+            *nonzero.last_mut().unwrap() = 1;
+            assert!(parse_disco_frame(&nonzero).is_none());
+            assert!(parse_disco_frame(&padded[..MIN_ETHERNET_FRAME_SIZE - 1]).is_none());
+            padded.push(0);
+            assert!(parse_disco_frame(&padded).is_none());
+            // Old headers did not declare a payload length. Padding alone
+            // could otherwise look like a complete empty cluster block.
+            let mut retired = bytes.clone();
+            retired.truncate(FRAME_HEADER_SIZE + 1 + no_cluster.node_id.len() + 8);
+            retired[24..26].fill(0);
+            assert!(parse_disco_frame(&retired).is_none());
+            retired.resize(MIN_ETHERNET_FRAME_SIZE, 0);
+            assert!(parse_disco_frame(&retired).is_none());
+        }
+    }
 
     #[test]
     fn cluster_answer_rejects_short_buffers_without_panicking() {

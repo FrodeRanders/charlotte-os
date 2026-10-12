@@ -149,6 +149,13 @@ expresses the seed as a service name or capability rather than an IP address.
 
 \subsection{Ethernet discovery and deterministic admission (current)}
 
+Probes and responses carry one complete version-1 advertisement: node identity,
+service name, cluster role and Raft/leader IDs. Its header declares the exact
+payload length. Old zero-length headers and missing or truncated cluster
+fields reject before learning or response; Ethernet padding cannot synthesize
+them. All nodes must rebuild together. The current wire contract is documented
+in \path{docs/reference/discovery-protocol.md}.
+
 Nodes broadcast their durable identity on the local Ethernet segment. DNS
 records every discovered identity-to-MAC route in its relmsg transport. Among
 fresh singletons, only the lexicographically larger identity applies to the
