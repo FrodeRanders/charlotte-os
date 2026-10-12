@@ -13,6 +13,28 @@ pub(super) enum Phase {
     Unmap,
 }
 
+/// Only rejection before taking the actual domain/engine is admission.
+/// Errors after that boundary cannot authorize replay of an unmap attempt.
+pub(crate) enum UnmapError {
+    Admission(dma::Error),
+    Completion(dma::Error),
+}
+
+impl UnmapError {
+    pub(super) fn cause(self) -> dma::Error {
+        match self {
+            Self::Admission(error) | Self::Completion(error) => error,
+        }
+    }
+
+    fn status(self) -> DeviceError {
+        match self {
+            Self::Admission(dma::Error::OperationInFlight) => DeviceError::OperationInFlight,
+            _ => DeviceError::DmaInvalid,
+        }
+    }
+}
+
 #[must_use]
 pub(super) struct MappingMaintenance<D, C> {
     pub(super) held: Maintenance<D, C>,
@@ -189,6 +211,21 @@ pub(super) fn with_operation<T>(
     // Backend errors return only after exact domain/engine restoration, with
     // uncertain data pins retained there. Abandonment never reaches completion.
     operation.complete()?;
+    result
+}
+
+pub(super) fn unmap_with(
+    asid: AddressSpaceId,
+    cap: DeviceCap,
+    work: impl FnOnce(u64) -> Result<(), UnmapError>,
+) -> Result<(), DeviceError> {
+    let operation = DmaOperation::begin(asid, cap)?;
+    let result = work(operation.id).map_err(UnmapError::status);
+    // Completion rejection has already restored exact state and quarantined
+    // uncertain pins. Finishing the public claim grants no cleanup retry.
+    // A final claim/root-completion rejection is also after backend work;
+    // never let its own busy-looking error escape as pre-work admission.
+    operation.complete().map_err(|_| DeviceError::DmaInvalid)?;
     result
 }
 

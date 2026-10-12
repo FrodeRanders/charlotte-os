@@ -1631,6 +1631,10 @@ pub mod device_status {
     pub const ROUTE_GENERATION_EXHAUSTED: DeviceStatusCode = 16;
     pub const RESOURCE_LIMIT: DeviceStatusCode = 17;
     pub const NAMESPACE_RETIRED: DeviceStatusCode = 18;
+    pub const ADDRESS_SPACE_CLOSING: DeviceStatusCode = 19;
+    /// DMA unmap rejected before beginning backend work. Other device operations
+    /// retain their own contracts; this status never proves completion.
+    pub const OPERATION_IN_FLIGHT: DeviceStatusCode = 20;
 }
 
 /// Map an MMIO region capability into the caller's address space at
@@ -1940,6 +1944,8 @@ pub fn dma_map_exclusive(domain: u64, memory: u64, direction: DmaDirection) -> u
 }
 
 /// Remove an IOVA mapping, synchronously invalidate the IOTLB, and unpin it.
+/// Returns a device status. `OPERATION_IN_FLIGHT` rejects before backend work;
+/// other failures do not authorize another attempt at the same mapping.
 #[inline(always)]
 pub fn dma_unmap(domain: u64, iova: u64) -> DeviceStatusCode {
     unsafe { svc3(SyscallNumber::DmaUnmap, domain, iova, 0) }

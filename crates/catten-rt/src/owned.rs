@@ -368,6 +368,7 @@ mod kernel {
         pub memory_close: VecDeque<u64>,
         pub dma_map: u64,
         pub dma_unmap: VecDeque<u64>,
+        pub dma_unmap_panic: bool,
         pub device_map: (u64, usize),
         pub device_unmap: VecDeque<u64>,
         pub device_bind: u64,
@@ -406,6 +407,7 @@ mod kernel {
                 memory_close: VecDeque::new(),
                 dma_map: 0x2000,
                 dma_unmap: VecDeque::new(),
+                dma_unmap_panic: false,
                 device_map: (catten_syscall::device_status::OK, 0x3000),
                 device_unmap: VecDeque::new(),
                 device_bind: catten_syscall::device_status::OK,
@@ -508,10 +510,15 @@ mod kernel {
     }
 
     pub fn dma_unmap(domain: u64, iova: u64) -> u64 {
-        with_state(|state| {
+        let (status, panics) = with_state(|state| {
             state.events.push(Event::DmaUnmap(domain, iova));
-            state.dma_unmap.pop_front().unwrap_or(catten_syscall::device_status::OK)
-        })
+            (
+                state.dma_unmap.pop_front().unwrap_or(catten_syscall::device_status::OK),
+                state.dma_unmap_panic,
+            )
+        });
+        assert!(!panics, "injected DMA unmap interruption");
+        status
     }
 
     pub fn device_mmio_map_any(_cap: u64, _writable: bool) -> (u64, usize) {
@@ -884,11 +891,11 @@ mod tests {
     }
 
     #[test]
-    fn dma_finish_failure_preserves_exclusive_transfer() {
+    fn dma_finish_busy_preserves_exclusive_transfer() {
         let _guard = setup();
         kernel::update(|state| {
             state.dma_unmap = VecDeque::from([
-                catten_syscall::device_status::MAP_FAILED,
+                catten_syscall::device_status::OPERATION_IN_FLIGHT,
                 catten_syscall::device_status::OK,
             ]);
         });
@@ -896,7 +903,11 @@ mod tests {
         let memory = OwnedMemory::allocate(1).expect("memory allocation");
         let domain = unsafe { DmaDomain::from_raw(7) };
         let transfer = memory.begin_dma(&domain, DmaDirection::DeviceRead).expect("DMA transfer");
-        let (transfer, _) = transfer.finish().expect_err("first DMA unmap must fail");
+        let (transfer, error) = transfer.finish().expect_err("first DMA unmap must reject busy");
+        assert_eq!(
+            error,
+            MemoryError::DmaStatus(catten_syscall::device_status::OPERATION_IN_FLIGHT)
+        );
         let memory = transfer.finish().expect("retry must retain DMA ownership");
         drop(memory);
 
@@ -928,6 +939,150 @@ mod tests {
                 kernel::Event::MemoryClose(10),
             ]
         );
+    }
+
+    #[test]
+    fn dma_ambiguous_failure_never_resubmits_or_returns_cpu_ownership() {
+        let _guard = setup();
+        for status in [
+            catten_syscall::device_status::DMA_INVALID,
+            catten_syscall::device_status::UNKNOWN_CAPABILITY,
+            u64::MAX,
+        ] {
+            kernel::reset();
+            kernel::update(|state| {
+                state.dma_unmap = VecDeque::from([status, catten_syscall::device_status::OK])
+            });
+            let domain = unsafe { DmaDomain::from_raw(7) };
+            let transfer = OwnedMemory::allocate(1)
+                .unwrap()
+                .begin_dma(&domain, DmaDirection::DeviceWrite)
+                .unwrap();
+            let (transfer, error) = transfer.finish().unwrap_err();
+            assert_eq!(error, MemoryError::DmaStatus(status));
+            let (transfer, repeated) = transfer.finish().unwrap_err();
+            assert_eq!(repeated, error);
+            assert_eq!(kernel::events(), [kernel::Event::DmaUnmap(7, 0x2000)]);
+            drop(transfer);
+            assert_eq!(
+                kernel::events(),
+                [kernel::Event::DmaUnmap(7, 0x2000), kernel::Event::MemoryClose(10)]
+            );
+        }
+    }
+
+    #[test]
+    fn shared_dma_ambiguous_failure_never_resubmits() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.dma_unmap = VecDeque::from([
+                catten_syscall::device_status::DMA_INVALID,
+                catten_syscall::device_status::OK,
+            ])
+        });
+        let domain = unsafe { DmaDomain::from_raw(7) };
+        let shared = OwnedMemory::allocate(1)
+            .unwrap()
+            .map_shared_dma(&domain, DmaDirection::Bidirectional)
+            .unwrap();
+        let (shared, error) = shared.finish().unwrap_err();
+        let (shared, repeated) = shared.finish().unwrap_err();
+        assert_eq!(error, MemoryError::DmaStatus(catten_syscall::device_status::DMA_INVALID));
+        assert_eq!(repeated, error);
+        assert_eq!(kernel::events(), [kernel::Event::DmaUnmap(7, 0x2000)]);
+        drop(shared);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::DmaUnmap(7, 0x2000),
+                kernel::Event::MemoryUnmap(10),
+                kernel::Event::MemoryClose(10)
+            ]
+        );
+    }
+
+    #[test]
+    fn dma_drop_after_busy_rejection_attempts_unstarted_work_once() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.dma_unmap = VecDeque::from([
+                catten_syscall::device_status::OPERATION_IN_FLIGHT,
+                catten_syscall::device_status::DMA_INVALID,
+            ])
+        });
+        let domain = unsafe { DmaDomain::from_raw(7) };
+        let transfer =
+            OwnedMemory::allocate(1).unwrap().begin_dma(&domain, DmaDirection::DeviceRead).unwrap();
+        let (transfer, _) = transfer.finish().unwrap_err();
+        drop(transfer);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::DmaUnmap(7, 0x2000),
+                kernel::Event::DmaUnmap(7, 0x2000),
+                kernel::Event::MemoryClose(10)
+            ]
+        );
+    }
+
+    #[test]
+    fn shared_dma_busy_rejection_preserves_both_mappings() {
+        let _guard = setup();
+        kernel::update(|state| {
+            state.dma_unmap = VecDeque::from([
+                catten_syscall::device_status::OPERATION_IN_FLIGHT,
+                catten_syscall::device_status::OK,
+            ])
+        });
+        let domain = unsafe { DmaDomain::from_raw(7) };
+        let shared = OwnedMemory::allocate(1)
+            .unwrap()
+            .map_shared_dma(&domain, DmaDirection::Bidirectional)
+            .unwrap();
+        let (shared, _) = shared.finish().unwrap_err();
+        assert_eq!(kernel::events(), [kernel::Event::DmaUnmap(7, 0x2000)]);
+        drop(shared.finish().unwrap());
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::DmaUnmap(7, 0x2000),
+                kernel::Event::DmaUnmap(7, 0x2000),
+                kernel::Event::MemoryUnmap(10),
+                kernel::Event::MemoryClose(10)
+            ]
+        );
+    }
+
+    #[test]
+    fn interrupted_dma_unmap_is_armed_before_kernel_entry() {
+        let _guard = setup();
+        for shared in [false, true] {
+            kernel::reset();
+            kernel::update(|state| state.dma_unmap_panic = true);
+            let domain = unsafe { DmaDomain::from_raw(7) };
+            let memory = OwnedMemory::allocate(1).unwrap();
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                if shared {
+                    let _ = memory
+                        .map_shared_dma(&domain, DmaDirection::Bidirectional)
+                        .unwrap()
+                        .finish();
+                } else {
+                    let _ = memory.begin_dma(&domain, DmaDirection::DeviceRead).unwrap().finish();
+                }
+            }));
+            assert!(result.is_err());
+            let expected = if shared {
+                std::vec![
+                    kernel::Event::DmaUnmap(7, 0x2000),
+                    kernel::Event::MemoryUnmap(10),
+                    kernel::Event::MemoryClose(10)
+                ]
+            } else {
+                std::vec![kernel::Event::DmaUnmap(7, 0x2000), kernel::Event::MemoryClose(10)]
+            };
+            assert_eq!(kernel::events(), expected);
+        }
     }
 
     #[test]

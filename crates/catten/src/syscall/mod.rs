@@ -1387,7 +1387,8 @@ fn sys_dma_map_exclusive(frame: &mut TrapFrame) {
 
 fn sys_dma_unmap(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
-    frame.regs[0] = crate::device::dma_unmap(asid, frame.regs[1], frame.regs[2]).map_or(1, |()| 0);
+    frame.regs[0] = crate::device::dma_unmap(asid, frame.regs[1], frame.regs[2])
+        .map_or_else(device_status, |()| catten_syscall::device_status::OK);
 }
 
 fn sys_ipc_endpoint_create(frame: &mut TrapFrame) {

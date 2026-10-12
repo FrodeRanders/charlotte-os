@@ -35,10 +35,12 @@ each operation's transient owners promptly.
 | Remote TCP/IP socket | `socket::OwnedSocket` | Best-effort protocol close; `close(self)` reports errors |
 | Verified client TLS stream | `tls_client::OwnedTlsStream` | Drops TLS state, socket, and both record buffers in dependency order; `close(self)` reports shutdown errors |
 | Scoped application domain | `DeployedArtifact` | Fences retirement by signed artifact principal; `poll_retire` provides the signed cooperative window and `Drop` forces best-effort retirement |
-| MMIO/interrupt/DMA | `MmioRegion`, `Interrupt`, `DmaTransfer` | Reverses the exclusive device operation |
+| MMIO/interrupt | `MmioRegion`, `Interrupt` | Best-effort device teardown |
+| DMA memory | `DmaTransfer`, `SharedDmaMemory` | Unmaps once; only explicit pre-work busy rejection permits another submission. Uncertain kernel pins/backing remain retained. |
 
 All owning types are non-`Copy` and `#[must_use]`. Moving a value transfers
-ownership. Dropping it releases ownership.
+ownership. Dropping invokes the type's cleanup policy; uncertain cleanup can retain
+kernel resources.
 
 ## Memory and IPC example
 
@@ -351,3 +353,22 @@ Userspace continues to use `catten_rt::owned`, not these kernel tokens.
   boundary?
 - Are aborts safe because the kernel reclaims the protection domain, without
   relying on destructors running under `panic = abort`?
+
+## DMA unmap completion and rejection
+
+`DmaTransfer::finish` returns CPU-owned memory only after confirmed DMA unmap.
+`SharedDmaMemory::finish` additionally completes its CPU mapping teardown.
+Both return the same owning value on failure. An explicit
+`device_status::OPERATION_IN_FLIGHT` means the kernel rejected before actual
+backend domain/engine claim, so a later submission remains possible. This does
+not provide a readiness wait or justify a polling loop.
+
+Any other DMA error is conservatively terminal for that transfer's unmap.
+The owner records the original status and returns it again without issuing
+another kernel call; Drop also avoids repeating the uncertain DMA attempt.
+Progress is armed before kernel entry, including interrupted calls. A later
+CPU-unmap rejection after confirmed DMA completion does not repeat DMA unmap.
+Drop retains its existing best-effort CPU/memory capability cleanup policy;
+those requests cannot discharge an uncertain kernel DMA pin or release its
+backing. Existing domain retirement still requires actual hardware quiescence.
+See the [phase evidence](../reports/audits/2026-10-12-dma-unmap-phases.md).

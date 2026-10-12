@@ -84,6 +84,20 @@ fn create_syscall_test_address_space(label: &str) -> crate::memory::AddressSpace
     asid
 }
 
+pub(crate) fn test_dma_unmap_status(
+    asid: crate::memory::AddressSpaceId,
+    cap: u64,
+    iova: u64,
+    expected: u64,
+) {
+    let mut frame = synthetic_trap_frame_in(asid, 0, cap, iova, 0);
+    syscall::syscall_dispatch(&mut frame, call_no::DMA_UNMAP);
+    assert_eq!(
+        frame.regs[0], expected,
+        "DMA unmap register status must preserve its phase contract"
+    );
+}
+
 pub fn test_syscall_dispatch() {
     logln!("Testing syscall dispatch subsystem...");
     let asid = 0xcafe;

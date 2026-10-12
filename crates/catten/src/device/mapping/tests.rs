@@ -40,6 +40,12 @@ pub(super) fn run() {
             assert_eq!(id, u64::MAX);
             assert_eq!(close_cap(root.id(), cap), Err(DeviceError::OperationInFlight));
             assert_eq!(dma_unmap(root.id(), cap, 0), Err(DeviceError::OperationInFlight));
+            crate::self_test::syscall::test_dma_unmap_status(
+                root.id(),
+                cap,
+                0,
+                catten_syscall::device_status::OPERATION_IN_FLIGHT,
+            );
             assert_eq!(
                 crate::memory::close_user_address_space_handle(root),
                 Err(crate::memory::AddressSpaceCloseError::OperationsInFlight)
@@ -63,6 +69,46 @@ pub(super) fn run() {
         let devices = DEVICES.lock();
         &devices[&root.id()].caps[&cap] as *const DeviceObject
     };
+    crate::self_test::syscall::test_dma_unmap_status(
+        root.id(),
+        u64::MAX,
+        0,
+        catten_syscall::device_status::UNKNOWN_CAPABILITY,
+    );
+    crate::self_test::syscall::test_dma_unmap_status(
+        root.id(),
+        cap,
+        0,
+        catten_syscall::device_status::DMA_INVALID,
+    );
+    for (error, status) in [
+        (UnmapError::Admission(dma::Error::OperationInFlight), DeviceError::OperationInFlight),
+        (UnmapError::Completion(dma::Error::OperationInFlight), DeviceError::DmaInvalid),
+        (UnmapError::Completion(dma::Error::HardwareTimeout), DeviceError::DmaInvalid),
+        (UnmapError::Admission(dma::Error::Unsupported), DeviceError::DmaInvalid),
+    ] {
+        let mut attempts = 0;
+        assert_eq!(
+            unmap_with(root.id(), cap, |id| {
+                attempts += 1;
+                assert_eq!(id, u64::MAX);
+                assert_eq!(dma_unmap(root.id(), cap, 0), Err(DeviceError::OperationInFlight));
+                assert_eq!(
+                    crate::memory::close_user_address_space_handle(root),
+                    Err(crate::memory::AddressSpaceCloseError::OperationsInFlight)
+                );
+                Err(error)
+            }),
+            Err(status)
+        );
+        assert_eq!(attempts, 1);
+        assert_eq!(&DEVICES.lock()[&root.id()].caps[&cap] as *const DeviceObject, cell);
+    }
+    crate::logln!(
+        "[DMA unmap phase] only pre-work busy returns OperationInFlight; completion busy/timeout \
+         and other rejection remain DmaInvalid; exact public root/claim and original capability \
+         cell preserved"
+    );
     let charged = crate::capability::admission_tests::test_namespace_used(root.id());
     for error in [dma::Error::OperationInFlight, dma::Error::HardwareTimeout, dma::Error::MapFailed]
     {
@@ -149,6 +195,38 @@ pub(super) fn run() {
     let root = crate::service::loader::create_user_address_space_handle();
     let cap = grant(root);
     let memory = object::allocate(root.id(), 2).unwrap();
+    // Fault injection uses a second empty fixture capability on the same
+    // intentionally retained root, with no live threads or hardware domain.
+    // Lose only its public claim after work: completion must not report an
+    // admission-busy code. Its failed completion retains the exact root count.
+    let rejected = grant(root);
+    assert_eq!(
+        unmap_with(root.id(), rejected, |id| {
+            assert_eq!(id, u64::MAX);
+            let mut devices = DEVICES.lock();
+            let DeviceObject::DmaDomain {
+                operation_in_flight,
+                ..
+            } = lookup_mut(&mut devices, root.id(), rejected).unwrap()
+            else {
+                panic!("fixture DMA capability replaced");
+            };
+            *operation_in_flight = false; // Deliberately reject final claim completion.
+            Ok(())
+        }),
+        Err(DeviceError::DmaInvalid)
+    );
+    assert_eq!(
+        crate::memory::close_user_address_space_handle(root),
+        Err(crate::memory::AddressSpaceCloseError::OperationsInFlight)
+    );
+    // The empty fixture cap has no uncertain physical obligation. Its explicit
+    // adapter cleanup does not refund the abandoned operation count/root.
+    close_with(root.id(), rejected, || {}, destroy_fake).unwrap();
+    crate::logln!(
+        "[DMA unmap phase] final public-claim rejection remains terminal after work; failed \
+         completion retains its exact count in the existing abandonment fixture root"
+    );
     let operation = DmaOperation::begin(root.id(), cap).unwrap();
     let pin = object::pin_for_dma(root.id(), memory, true, true, false).unwrap();
     let baseline = crate::device::dma_tables::used();

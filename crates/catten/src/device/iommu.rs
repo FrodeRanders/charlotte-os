@@ -82,6 +82,13 @@ pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
     }
 }
 
+pub(crate) fn unmap_owned(domain_id: u64, iova: u64) -> Result<(), super::mapping::UnmapError> {
+    match detect().map_err(super::mapping::UnmapError::Admission)? {
+        Backend::Vtd => super::vt_d::unmap_owned(domain_id, iova),
+        Backend::AmdVi => super::amd_vi::unmap_owned(domain_id, iova),
+    }
+}
+
 pub(super) fn map_at(
     domain_id: u64,
     caller: crate::memory::AddressSpaceId,

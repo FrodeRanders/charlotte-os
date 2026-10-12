@@ -174,6 +174,7 @@ impl OwnedMemory {
             domain,
             memory: Some(self),
             iova,
+            unmap: DmaUnmap::Active,
         })
     }
 
@@ -208,7 +209,7 @@ impl OwnedMemory {
             memory: Some(memory),
             base,
             iova,
-            dma_active: true,
+            unmap: DmaUnmap::Active,
         })
     }
 
@@ -343,12 +344,48 @@ impl DmaDomain {
 }
 
 /// Memory exclusively owned by a device until [`finish`](Self::finish).
+/// Only an explicit pre-work busy rejection permits another unmap submission.
+/// An ambiguous failure retains this owner without resubmission or CPU return.
 #[must_use = "a DMA transfer must be finished before CPU access resumes"]
 #[derive(Debug)]
 pub struct DmaTransfer<'domain> {
     domain: &'domain DmaDomain,
     memory: Option<OwnedMemory>,
     iova: u64,
+    unmap: DmaUnmap,
+}
+
+/// Record progress before entering the kernel, including destructor fallback.
+/// The retained status is diagnostic; it never proves device quiescence.
+#[derive(Debug)]
+enum DmaUnmap {
+    Active,
+    Complete,
+    Retained(u64),
+}
+
+impl DmaUnmap {
+    fn finish(&mut self, domain: u64, iova: u64) -> Result<(), MemoryError> {
+        match self {
+            Self::Complete => return Ok(()),
+            Self::Retained(status) => return Err(MemoryError::DmaStatus(*status)),
+            Self::Active => {}
+        }
+        // A rejected/interrupted call cannot fall through to another attempt
+        // from Drop. Only the kernel's explicit unstarted status rearms it.
+        *self = Self::Retained(catten_syscall::device_status::DMA_INVALID);
+        let status = kernel::dma_unmap(domain, iova);
+        *self = match status {
+            catten_syscall::device_status::OK => Self::Complete,
+            catten_syscall::device_status::OPERATION_IN_FLIGHT => Self::Active,
+            other => Self::Retained(other),
+        };
+        if status == catten_syscall::device_status::OK {
+            Ok(())
+        } else {
+            Err(MemoryError::DmaStatus(status))
+        }
+    }
 }
 
 impl DmaTransfer<'_> {
@@ -357,9 +394,8 @@ impl DmaTransfer<'_> {
     }
 
     pub fn finish(mut self) -> Result<OwnedMemory, (Self, MemoryError)> {
-        let status = kernel::dma_unmap(self.domain.raw_handle(), self.iova);
-        if status != catten_syscall::device_status::OK {
-            return Err((self, MemoryError::DmaStatus(status)));
+        if let Err(error) = self.unmap.finish(self.domain.raw_handle(), self.iova) {
+            return Err((self, error));
         }
         Ok(self.memory.take().expect("DMA memory already consumed"))
     }
@@ -368,7 +404,7 @@ impl DmaTransfer<'_> {
 impl Drop for DmaTransfer<'_> {
     fn drop(&mut self) {
         if self.memory.is_some() {
-            let _ = kernel::dma_unmap(self.domain.raw_handle(), self.iova);
+            let _ = self.unmap.finish(self.domain.raw_handle(), self.iova);
         }
     }
 }
@@ -385,7 +421,7 @@ pub struct SharedDmaMemory<'domain> {
     memory: Option<OwnedMemory>,
     base: usize,
     iova: u64,
-    dma_active: bool,
+    unmap: DmaUnmap,
 }
 
 impl SharedDmaMemory<'_> {
@@ -438,12 +474,8 @@ impl SharedDmaMemory<'_> {
     }
 
     pub fn finish(mut self) -> Result<OwnedMemory, (Self, MemoryError)> {
-        if self.dma_active {
-            let status = kernel::dma_unmap(self.domain.raw_handle(), self.iova);
-            if status != catten_syscall::device_status::OK {
-                return Err((self, MemoryError::DmaStatus(status)));
-            }
-            self.dma_active = false;
+        if let Err(error) = self.unmap.finish(self.domain.raw_handle(), self.iova) {
+            return Err((self, error));
         }
         let memory = self.memory.as_ref().expect("shared DMA memory already consumed");
         let status = kernel::memory_unmap(memory.raw_handle());
@@ -457,9 +489,7 @@ impl SharedDmaMemory<'_> {
 impl Drop for SharedDmaMemory<'_> {
     fn drop(&mut self) {
         if let Some(memory) = self.memory.take() {
-            if self.dma_active {
-                let _ = kernel::dma_unmap(self.domain.raw_handle(), self.iova);
-            }
+            let _ = self.unmap.finish(self.domain.raw_handle(), self.iova);
             let _ = kernel::memory_unmap(memory.raw_handle());
             drop(memory);
         }

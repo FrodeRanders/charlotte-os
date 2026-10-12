@@ -92,6 +92,13 @@ fn mapping_unlocked(
 ) {
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
     dma::test_assert_backend_available();
+    assert!(
+        matches!(
+            dma::unmap_owned(id, 0),
+            Err(mapping::UnmapError::Admission(dma::Error::OperationInFlight))
+        ),
+        "detached engine must reject unmap before completion phase"
+    );
     assert_available(
         || crate::memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_some(),
         "mapping lifecycle availability",
@@ -613,7 +620,12 @@ pub(crate) fn run() {
     let address = dma_map(successor.id(), domain, held, 3).unwrap();
     let charged = dma_tables::used();
     REJECT_UNMAP_COMPLETION.store(true, Ordering::Release);
-    assert_eq!(dma_unmap(successor.id(), domain, address), Err(DeviceError::DmaInvalid));
+    crate::self_test::syscall::test_dma_unmap_status(
+        successor.id(),
+        domain,
+        address,
+        catten_syscall::device_status::DMA_INVALID,
+    );
     assert!(!REJECT_UNMAP_COMPLETION.load(Ordering::Acquire));
     assert_eq!(dma_tables::used(), charged);
     assert_eq!(

@@ -98,6 +98,16 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   after admission: never wait/replay an armed creation or recover an abandoned
   unit claim. Source and transient-interest fallback retain their allocations;
   readiness grants no hardware or physical cleanup authority.
+- DMA unmap distinguishes backend admission rejection from completion failure.
+  Only `OPERATION_IN_FLIGHT` from before actual domain/engine claim permits
+  another unmap submission. Keep typed admission/completion errors through the
+  kernel adapter and device status ABI; a later busy-looking error is terminal.
+  `DmaTransfer` and `SharedDmaMemory` record the attempt before kernel entry,
+  retain memory on ambiguous failure, and do not resubmit from `finish` or Drop.
+  Confirmed DMA completion survives later CPU-unmap failure. Best-effort local
+  teardown does not discharge an uncertain kernel DMA pin or its original
+  backing charge. Add readiness only with a real producer contract; do not
+  replace this distinction with an unmap polling/retry loop.
 - Services processing several sources must wait on all relevant interests.
   Use `PendingCall::bind_cq` with endpoint interests on one CQ and
   `cq_wait_checked` for the earliest remaining operation deadline (or an

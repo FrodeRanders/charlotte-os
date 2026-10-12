@@ -404,6 +404,15 @@ only the resulting \texttt{OwnedMemory} can create a \texttt{DmaTransfer}.
 The memory cannot be mapped or exposed as a Rust slice again until the
 transfer's \texttt{finish} method has synchronously removed the IOMMU mapping.
 
+A failed DMA unmap retains the Rust owner. Only an explicit
+\texttt{OPERATION\_IN\_FLIGHT} admission rejection permits another submission;
+other failures retain the original status without repeating DMA unmap from
+\texttt{finish} or \texttt{Drop}. The attempt is recorded before kernel entry.
+For shared coherent memory, confirmed DMA completion is retained across a later
+CPU-unmap failure. Best-effort local teardown does not release uncertain kernel
+DMA pins or their backing charges.
+
+
 \section{Transfer guarantees and limits}
 
 \begin{enumerate}

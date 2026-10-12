@@ -801,12 +801,24 @@ pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
     unmap_at(domain_id, iova, |_| {})
 }
 
+pub(crate) fn unmap_owned(domain_id: u64, iova: u64) -> Result<(), super::mapping::UnmapError> {
+    unmap_owned_at(domain_id, iova, |_| {})
+}
+
 pub(super) fn unmap_at(
     domain_id: u64,
     iova: u64,
-    mut before_completion: impl FnMut(super::mapping::Phase),
+    before_completion: impl FnMut(super::mapping::Phase),
 ) -> Result<(), Error> {
-    let held = claim_mapping(domain_id)?;
+    unmap_owned_at(domain_id, iova, before_completion).map_err(super::mapping::UnmapError::cause)
+}
+
+fn unmap_owned_at(
+    domain_id: u64,
+    iova: u64,
+    mut before_completion: impl FnMut(super::mapping::Phase),
+) -> Result<(), super::mapping::UnmapError> {
+    let held = claim_mapping(domain_id).map_err(super::mapping::UnmapError::Admission)?;
     let mut owner =
         super::mapping::MappingMaintenance::new(held, super::mapping::PendingPin::new(None));
     let result = match owner.held.domain.value_mut().clear_mapping(iova) {
@@ -829,7 +841,7 @@ pub(super) fn unmap_at(
         }
     };
     restore_mapping(domain_id, owner).release();
-    result
+    result.map_err(super::mapping::UnmapError::Completion)
 }
 
 pub fn destroy_domain(domain_id: u64) -> Result<(), Error> {

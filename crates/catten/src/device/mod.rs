@@ -1080,7 +1080,7 @@ pub fn dma_unmap(
     domain_cap: DeviceCap,
     iova: u64,
 ) -> Result<(), DeviceError> {
-    mapping::with_operation(asid, domain_cap, |id| dma::unmap(id, iova))
+    mapping::unmap_with(asid, domain_cap, |id| dma::unmap_owned(id, iova))
 }
 
 // ---- MMIO operations -------------------------------------------------------

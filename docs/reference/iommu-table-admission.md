@@ -395,3 +395,12 @@ the rejecting path. Abandonment retains source/interest and never fabricates
 availability. This is no hardware completion, cancellation guarantee or retry
 owner; public map/unmap/close contention and indefinitely claimed units remain
 separate progress boundaries.
+
+The [DMA unmap phase follow-up](../reports/audits/2026-10-12-dma-unmap-phases.md)
+now preserves typed backend admission versus completion errors through the
+public root/capability operation and register status. Only busy rejection before
+actual domain/engine claim permits another submission; a later busy-looking
+cause remains terminal. Existing runtime DMA owners record progress before
+kernel entry and do not repeat ambiguous unmap from finish/Drop. Pin quarantine,
+original charges and actual retirement completion remain unchanged. This adds
+no readiness wait or hardware/physical retry owner.
