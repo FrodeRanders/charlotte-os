@@ -118,7 +118,7 @@ pub fn test_el0_uart() {
         let ns_asid = name_service.domain.asid;
         logln!("[uart] using node name service (asid={})", ns_asid);
 
-        let driver = supervisor::spawn_driver_with_name_service(
+        let driver = supervisor::prepare_driver_with_name_service(
             crate::service::store::service_elf(b"uart").expect("[el0_uart] uart.elf"),
             &name_service,
             ConnectionRights::CALL,
@@ -129,7 +129,8 @@ pub fn test_el0_uart() {
                 dma_requester_id: None,
                 dma_msi_address: None,
             },
-        );
+        )
+        .start();
         let driver_config = driver.status_frame;
         let driver_asid = driver.asid;
         logln!("[uart] driver spawned (asid={}) with PL011 MMIO + IRQ grants", driver_asid);
@@ -359,7 +360,7 @@ extern "C" fn verify_el0_uart() {
     );
 
     // Restart: a fresh instance with freshly minted device grants.
-    let driver2 = supervisor::spawn_driver_with_name_service(
+    let driver2 = supervisor::prepare_driver_with_name_service(
         crate::service::store::service_elf(b"uart").expect("[el0_uart] uart.elf"),
         &state.name_service,
         ConnectionRights::CALL,
@@ -370,7 +371,8 @@ extern "C" fn verify_el0_uart() {
             dma_requester_id: None,
             dma_msi_address: None,
         },
-    );
+    )
+    .start();
     let driver2_asid = driver2.asid;
     logln!("[uart] driver restarted (asid={}) with fresh device grants", driver2_asid);
 

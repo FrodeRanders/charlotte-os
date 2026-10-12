@@ -6,6 +6,22 @@ use crate::{
     memory::object,
 };
 
+fn backend_failure(cause: dma::Error) -> DeviceError {
+    DeviceError::DmaCreationFailed(creation_failure::Failure {
+        stage: creation_failure::Stage::Backend,
+        cause: creation_failure::Cause::Backend(cause),
+        cleanup: creation_failure::Cleanup::Confirmed,
+    })
+}
+
+fn reset_admission_failure() -> DeviceError {
+    DeviceError::DmaCreationFailed(creation_failure::Failure {
+        stage: creation_failure::Stage::ResetAdmission,
+        cause: creation_failure::Cause::ResetRejected,
+        cleanup: creation_failure::Cleanup::Confirmed,
+    })
+}
+
 static CREATION_IRQ: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
 // Other LPs can legitimately use global allocators during this pre-driver
@@ -204,7 +220,10 @@ pub(crate) fn run() {
         let charges = dma_tables::used();
         let authority = crate::capability::admission_tests::test_namespace_used(owner.id());
         backend_registry::tests::reject_next(stage);
-        assert_eq!(grant_dma_domain(owner.id(), requester, None), Err(DeviceError::DmaUnavailable));
+        assert_eq!(
+            grant_dma_domain(owner.id(), requester, None),
+            Err(backend_failure(dma::Error::MapFailed))
+        );
         assert_eq!(dma::test_registry_snapshot(sid), before);
         assert_eq!(dma_tables::used(), charges);
         assert_eq!(crate::capability::admission_tests::test_namespace_used(owner.id()), authority);
@@ -217,7 +236,7 @@ pub(crate) fn run() {
     reset::tests::begin_real();
     let memory = object::allocate(owner.id(), 2).unwrap();
     let baseline = dma_tables::used().1;
-    let domain = domain_creation::tests::with_real(owner, Some(memory), || {
+    let domain = domain_creation::tests::with_real(owner, Some(memory), requester, || {
         grant_dma_domain(owner.id(), requester, None)
     })
     .unwrap();
@@ -432,14 +451,14 @@ pub(crate) fn run() {
     );
     assert_eq!(dma_tables::used().1, baseline);
     let successor = crate::service::loader::create_user_address_space_handle();
-    assert_eq!(grant_dma_domain(successor.id(), requester, None), Err(DeviceError::DmaUnavailable));
+    assert_eq!(grant_dma_domain(successor.id(), requester, None), Err(reset_admission_failure()));
     // Old register authority must disappear before reset can clear the source
     // fence. Root completion cannot precede its mapping invalidation.
     close_cap_with(owner.id(), mmio, || {
         assert_eq!(close_cap(owner.id(), mmio), Err(DeviceError::OperationInFlight));
         assert_eq!(
             grant_dma_domain(successor.id(), requester, None),
-            Err(DeviceError::DmaUnavailable)
+            Err(reset_admission_failure())
         );
         assert!(!crate::capability::contains(
             owner.id(),
@@ -455,7 +474,7 @@ pub(crate) fn run() {
         let caps = crate::capability::admission_tests::test_namespace_used(successor.id());
         assert_eq!(
             grant_dma_domain(successor.id(), requester, None),
-            Err(DeviceError::DmaUnavailable)
+            Err(backend_failure(dma::Error::MapFailed))
         );
         assert_eq!(crate::capability::admission_tests::test_namespace_used(successor.id()), caps);
     }
@@ -483,7 +502,7 @@ pub(crate) fn run() {
         }
         assert_eq!(
             grant_dma_domain(rejected.id(), requester, Some(0xfee0_0000)),
-            Err(DeviceError::DmaUnavailable)
+            Err(backend_failure(dma::Error::MapFailed))
         );
         PRIVATE_RELEASE_PROBE.store(false, Ordering::Release);
         assert_eq!(REJECT_PRIVATE_ALLOCATION.load(Ordering::Acquire), 0);
@@ -510,7 +529,7 @@ pub(crate) fn run() {
             |creation| create_dma_domain(rejected.id(), requester, None, creation),
             destroy_failed_creation,
         ),
-        Err(DeviceError::DmaUnavailable)
+        Err(backend_failure(dma::Error::HardwareTimeout))
     );
     assert!(!REJECT_CREATION.load(Ordering::Acquire));
     assert_eq!(dma_tables::used(), charges);
@@ -625,7 +644,7 @@ pub(crate) fn run() {
     let mut closing = None;
     let charged = dma_tables::used();
     assert_eq!(
-        domain_creation::tests::with_real(root, None, || {
+        domain_creation::tests::with_real(root, None, requester, || {
             grant_dma_domain_with_backend(
                 root.id(),
                 |creation| {

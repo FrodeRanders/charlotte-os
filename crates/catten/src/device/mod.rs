@@ -41,6 +41,7 @@ pub mod vt_d;
 pub(crate) mod admission_tests;
 mod backend_registry;
 mod close;
+pub mod creation_failure;
 mod detached_domain;
 mod dma_tables;
 mod domain_creation;
@@ -190,6 +191,8 @@ pub enum DeviceError {
     /// No fresh route lifetime can be minted without reusing an identity.
     RouteGenerationExhausted,
     DmaUnavailable,
+    /// Precise grant preparation cause plus its consuming cancellation outcome.
+    DmaCreationFailed(creation_failure::Failure),
     DmaInvalid,
     /// Shared capability admission or identity space is exhausted.
     ResourceLimit,
@@ -372,6 +375,7 @@ struct DmaGrantResources {
 /// No implicit cleanup, copying or address-based re-adoption is available.
 #[must_use]
 pub(crate) struct DmaCreation {
+    failure: Option<creation_failure::Failure>,
     id: Option<u64>,
     metadata: Option<backend_registry::Preparing>,
     private: Option<private_domain::PrivateDomain>,
@@ -385,6 +389,7 @@ pub(crate) struct DmaCreation {
 impl DmaCreation {
     fn new() -> Self {
         Self {
+            failure: None,
             id: None,
             metadata: None,
             private: None,
@@ -850,8 +855,14 @@ fn create_dma_domain(
     msi_address: Option<u64>,
     creation: &mut DmaCreation,
 ) -> Result<(), DeviceError> {
+    use creation_failure::{
+        Failure,
+        Stage,
+    };
+
     use crate::device_management::drivers::busses::pci_express::topology::reset;
-    let sid = dma::stream_id(requester_id).map_err(|_| DeviceError::DmaUnavailable)?;
+    let sid = dma::stream_id(requester_id)
+        .map_err(|error| DeviceError::DmaCreationFailed(Failure::backend(Stage::Stream, error)))?;
     // Device serialization admits the endpoint's exact logical config/BAR
     // claim. The containing grant retains it through backend completion and
     // capability publication; only explicit activation releases that fence.
@@ -864,16 +875,26 @@ fn create_dma_domain(
             reset::prepare_qemu_nvme(&crate::DEVICE_TOPOLOGY.pcie, requester_id, |base, bytes| {
                 reset_registers_available(&devices, owner, base, bytes)
             })
-            .map_err(|_| dma::Error::Unsupported)?;
+            .map_err(|_| {
+                creation.failure = Some(Failure::reset(Stage::ResetAdmission));
+                dma::Error::Unsupported
+            })?;
         assert!(creation.reset.is_none(), "reset claim replaced");
         creation.reset = Some(source);
         // The complete backend unit is claimed in its original slot, while
         // the enclosing grant owns its exact root/reservation. All local
         // lifecycle/backend/device/config holds leave controller polling.
         drop(devices);
-        creation.reset.as_mut().unwrap().reset().map_err(|_| dma::Error::Unsupported)
+        creation.reset.as_mut().unwrap().reset().map_err(|_| {
+            creation.failure = Some(Failure::reset(Stage::Reset));
+            dma::Error::Unsupported
+        })
     })
-    .map_err(|_| DeviceError::DmaUnavailable)?;
+    .map_err(|error| {
+        DeviceError::DmaCreationFailed(
+            creation.failure.take().unwrap_or_else(|| Failure::backend(Stage::Backend, error)),
+        )
+    })?;
     Ok(())
 }
 
@@ -950,8 +971,18 @@ fn grant_dma_domain_with_backend(
         Err(error) => {
             // Failed cleanup drops only the retaining containing owner. No
             // fresh ASID lookup, scalar restoration or destructor retry occurs.
-            let _ = prepared.cancel_unpublished();
-            Err(error)
+            let cleanup = if prepared.cancel_unpublished().is_ok() {
+                creation_failure::Cleanup::Confirmed
+            } else {
+                creation_failure::Cleanup::Retained
+            };
+            Err(match error {
+                DeviceError::DmaCreationFailed(mut failure) => {
+                    failure.cleanup = cleanup;
+                    DeviceError::DmaCreationFailed(failure)
+                }
+                other => other,
+            })
         }
     }
 }

@@ -2030,7 +2030,7 @@ fn device_status(error: crate::device::DeviceError) -> u64 {
         DeviceError::InterruptInUse => 10,
         DeviceError::InvalidAddressSpace => 11,
         DeviceError::InvalidRange => 12,
-        DeviceError::DmaUnavailable => 13,
+        DeviceError::DmaUnavailable | DeviceError::DmaCreationFailed(_) => 13,
         DeviceError::DmaInvalid => 14,
         DeviceError::UnmapFailed => 15,
         DeviceError::RouteGenerationExhausted => 16,

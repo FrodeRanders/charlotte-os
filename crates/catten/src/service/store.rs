@@ -2,7 +2,10 @@
 //! it loads.
 //!
 //! AArch64 embeds only the small set needed to reach naming, storage, UART,
-//! and observation; other services live in the object store on the boot disk.
+//! observation, and hardware-driver grant preparation; other services live in
+//! the object store on the boot disk. All boot hardware images must be available
+//! before storage threads start, otherwise preparing the driver batch would wait
+//! for the object store that its own unstarted storage driver must serve.
 //! The x86_64 parity suite currently embeds its complete tested service set and
 //! stages the same signed artifacts in the persistent object-store image. An
 //! image produced by `scripts/make-nvme-image.py` can be attached through NVMe,
@@ -62,6 +65,8 @@ macro_rules! bootstrap_elf {
 const BOOTSTRAP_ELFS: &[(&[u8], &[u8])] = &[
     bootstrap_elf!(b"ns", "ns"),
     bootstrap_elf!(b"nvme", "nvme"),
+    bootstrap_elf!(b"rng", "rng"),
+    bootstrap_elf!(b"net", "net"),
     bootstrap_elf!(b"objstore", "objstore"),
     bootstrap_elf!(b"uart", "uart"),
     // The system observer is started by the kernel itself during boot,

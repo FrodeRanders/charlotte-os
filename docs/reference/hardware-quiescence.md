@@ -204,6 +204,16 @@ unlocking but keeps a claimed descriptor visible to reset throughout invalidatio
 failure retains that descriptor and root without allocating a reinsertion.
 Reset cannot treat an unconfirmed invalidation as removed register authority.
 
+The boot driver batch now completes all storage/entropy/network grants before
+publishing any sibling driver thread. Each consuming `PreparedDriver` retains
+its loaded root and operation lease through grant preparation and start. This
+excludes sibling unit/engine contention during boot admission, while hardware
+activation still follows each exact capability's confirmed publication/reset.
+Creation errors preserve their stream/backend/reset cause and consuming rollback
+outcome; a retained preparation remains terminal under its existing policy.
+Dynamic busy admission still rejects and diagnostics authorize no replay. See
+[driver startup evidence](../reports/audits/2026-10-12-dma-startup-preparation.md).
+
 ## Evidence and limits
 
 Host epoch/command tests and the QEMU Intel VT-d, AMD-Vi and Arm SMMUv3 guests

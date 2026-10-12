@@ -1,6 +1,7 @@
 //! Serialized QEMU probes and synthetic complete-unit/grant retention.
 use core::sync::atomic::{
     AtomicBool,
+    AtomicU32,
     AtomicUsize,
     Ordering,
 };
@@ -16,6 +17,7 @@ use crate::{
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 static ROOT: Mutex<Option<memory::AddressSpaceHandle>> = Mutex::new(None);
+static REQUESTER: AtomicU32 = AtomicU32::new(0);
 static MEMORY: AtomicUsize = AtomicUsize::new(0);
 static IRQ: AtomicBool = AtomicBool::new(false);
 static COUNTS: [AtomicUsize; 4] = [const { AtomicUsize::new(0) }; 4];
@@ -55,6 +57,16 @@ pub(super) fn boundary(phase: Phase) {
     assert_eq!(dma::initialize_early(), Err(Error::OperationInFlight));
     assert_eq!(dma::destroy_domain(u64::MAX), Err(Error::OperationInFlight));
     assert_eq!(dma::unmap(u64::MAX, 0), Err(Error::OperationInFlight));
+    let authority = crate::capability::admission_tests::test_namespace_used(root.id());
+    assert_eq!(
+        grant_dma_domain(root.id(), REQUESTER.load(Ordering::Relaxed), None),
+        Err(DeviceError::DmaCreationFailed(creation_failure::Failure {
+            stage: creation_failure::Stage::Backend,
+            cause: creation_failure::Cause::Backend(Error::OperationInFlight),
+            cleanup: creation_failure::Cleanup::Confirmed,
+        }))
+    );
+    assert_eq!(crate::capability::admission_tests::test_namespace_used(root.id()), authority);
     assert_eq!(
         dma::create_domain_with_reset(u32::MAX, None, &mut DmaCreation::new(), |_, _| panic!(
             "creation claim reached reset"
@@ -74,11 +86,13 @@ pub(super) fn boundary(phase: Phase) {
 pub(in crate::device) fn with_real<T>(
     root: memory::AddressSpaceHandle,
     memory: Option<u64>,
+    requester: u32,
     work: impl FnOnce() -> T,
 ) -> T {
     assert!(!ACTIVE.load(Ordering::Acquire));
     *ROOT.lock() = Some(root);
     MEMORY.store(memory.unwrap_or(0) as usize, Ordering::Relaxed);
+    REQUESTER.store(requester, Ordering::Relaxed);
     IRQ.store(crate::cpu::isa::lp::ops::get_int_state(), Ordering::Relaxed);
     for counter in &COUNTS {
         counter.store(0, Ordering::Relaxed);

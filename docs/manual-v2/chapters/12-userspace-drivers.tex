@@ -95,6 +95,19 @@ release of source ownership. Exhausted binding identities fail closed rather
 than wrapping. These are storage and deferred-publication guarantees, not a
 proof of every cross-LP controller mask/rearm interleaving.
 
+Boot hardware launch separates grant preparation from thread start. The
+supervisor retains each loaded driver root and its exact operation lease in a
+consuming \texttt{PreparedDriver}. Storage, entropy and network grants finish
+before any sibling driver can submit DMA and own the shared IOMMU engine.
+ARM embeds signed RNG and NIC images in the hardware bootstrap set so batch
+preparation cannot wait for its own unstarted storage driver to serve the store.
+The owner starts its thread and then completes its lease; fallback retains all
+fields without physical cleanup. This ordering needs no polling or grant replay.
+Independent dynamic creation still rejects busy admission. Per-return creation
+errors preserve stream/backend/reset cause and confirmed or retained cancellation
+outcome, which supplies diagnostic evidence rather than retry authority. See
+\repofile|docs/reference/iommu-table-admission.md|.
+
 \section{The reference UART driver}
 
 The PL011 UART driver demonstrates the full lifecycle:

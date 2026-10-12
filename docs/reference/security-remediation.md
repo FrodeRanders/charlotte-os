@@ -198,10 +198,15 @@ stay fenced, abandoned claims retain their owners, and no physical retry or
 terminal call result is inferred. Namespace/lease drains and broader C07/C08/C09
 metadata/guard qualification remain open; SEC-18 is still partial.
 Its final-source Intel guest also stopped once at NIC DMA-domain creation with
-DmaUnavailable; the identical-artifact repeat passed. The adapter hides the
-underlying backend/reset error, and the capture establishes no cause. Production
-startup handling and failure diagnostics remain open; a passing repeat does not
-qualify reliable progress or authorize retry of uncertain creation.
+DmaUnavailable; the identical-artifact repeat passed. That historical capture
+establishes no backend cause. The
+[startup preparation follow-up](../reports/audits/2026-10-12-dma-startup-preparation.md)
+preserves typed stage/cause and consuming cancellation outcomes, and prepares
+all boot hardware grants before any sibling driver starts. Real claimed-unit
+rejection is now distinguished from other failure classes without authority
+mutation. General dynamic admission/readiness, historical causality and broader
+pressure remain open; diagnostics and passing guests authorize no uncertain
+creation retry.
 The [IOMMU preparation follow-up](../reports/audits/2026-10-09-security-iommu-preparation-abandonment.md)
 also removes physical/pool cleanup and implicit ledger heap deallocation from
 C15 fallback. Private construction and ordinary metadata/allocator rejection use

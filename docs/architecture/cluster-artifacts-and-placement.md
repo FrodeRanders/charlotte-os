@@ -286,8 +286,9 @@ authority.
 ## Initial block-device image
 
 `scripts/make-nvme-image.py` writes the blessed bundle into a version-3 object
-store. AArch64 embeds the small bootstrap set needed to reach the object store
-and reads other service bytes from it on first use. The x86 parity suite
+store. AArch64 embeds the bootstrap set needed to reach the object store and
+prepare all boot hardware drivers, including RNG/NIC, before storage starts.
+It reads other service bytes from the store on first use. The x86 parity suite
 currently embeds its complete tested service set and also stages the same
 signed artifacts in the persistent image. The historical script name does not
 restrict that image to NVMe: the x86 runner can attach it through NVMe, AHCI,

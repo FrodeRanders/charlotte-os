@@ -257,7 +257,11 @@ fn test_backend_creation_rejection() {
                     // this fake backend has installed its registered obligation
                     // before returning an error. The adapter must not lose it.
                     creation.record(u64::MAX);
-                    Err(DeviceError::DmaUnavailable)
+                    Err(DeviceError::DmaCreationFailed(creation_failure::Failure {
+                        stage: creation_failure::Stage::Backend,
+                        cause: creation_failure::Cause::Backend(dma::Error::HardwareTimeout),
+                        cleanup: creation_failure::Cleanup::NotAttempted,
+                    }))
                 },
                 if fails {
                     destroy_failed
@@ -265,7 +269,15 @@ fn test_backend_creation_rejection() {
                     destroy_ok
                 },
             ),
-            Err(DeviceError::DmaUnavailable)
+            Err(DeviceError::DmaCreationFailed(creation_failure::Failure {
+                stage: creation_failure::Stage::Backend,
+                cause: creation_failure::Cause::Backend(dma::Error::HardwareTimeout),
+                cleanup: if fails {
+                    creation_failure::Cleanup::Retained
+                } else {
+                    creation_failure::Cleanup::Confirmed
+                },
+            }))
         );
         assert_eq!(DESTROYS.load(Ordering::Relaxed), before + 1);
         assert!(!DEVICES.lock().contains_key(&root.id()));

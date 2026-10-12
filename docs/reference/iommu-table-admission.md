@@ -353,3 +353,29 @@ on AMD-Vi** and **37/28 on SMMUv3**; independent user-root backing is separate.
 Private state alone never permits replay of a started hardware control write.
 These boot probes preserve the outer IRQ mask and do not qualify concurrent
 initializer stress, outstanding I/O, real timeouts or platform MMIO rollback.
+
+## Boot driver creation ordering and failure evidence
+
+The trusted boot composition prepares storage, entropy and network driver roots
+and hardware grants before starting any of their threads. `PreparedDriver`
+retains each loaded root and its exact operation lease until consuming start,
+then completes that lease after thread publication. Complete fallback retention
+performs no hardware, allocator, callback or root cleanup. This prevents a
+sibling's active mapping/maintenance owner from racing later boot grant admission.
+It adds no wait, retry, exceptional registry or change to hardware activation.
+Independent/dynamic creation retains its busy rejection policy.
+ARM embeds the signed RNG/NIC hardware images alongside storage bootstrap
+images; preparing the batch must not depend on the object store that its own
+unstarted storage driver would serve. Other logical images remain store-backed.
+
+DMA creation now preserves stream/backend/reset stage and cause in the returned
+error. Explicit grant cancellation records Confirmed or Retained; the latter
+retains the original complete preparation and its charges without physical
+retry. Values are diagnostics, never custody, revocation receipts or replay
+permission. Existing failed-loan/backing/reset boundaries remain authoritative.
+Real creation-claim probes submit a second full grant against the owned unit and
+require Backend(OperationInFlight), confirmed cancellation and unchanged unified
+authority usage. See [startup evidence](../reports/audits/2026-10-12-dma-startup-preparation.md).
+The earlier collapsed Intel DmaUnavailable capture remains causally unresolved;
+passing repeats and narrowed reachable failure classes do not identify its
+historical interleaving or qualify general dynamic progress.

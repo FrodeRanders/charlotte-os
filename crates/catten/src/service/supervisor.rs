@@ -1154,21 +1154,60 @@ pub struct UpgradeGrant {
     pub endpoint_cap: CapabilityId,
 }
 
-/// Load and start a userspace driver domain (architecture doc Phase 8).
-///
-/// Like [`spawn_with_name_service`] the driver receives a bootstrap
-/// connection to the name service, but it additionally receives delegated
-/// device capabilities — an MMIO region and an interrupt — minted kernel-side
-/// and delivered through the config-page contract. The driver never names a
-/// physical address or interrupt vector; it only maps and binds the
-/// capabilities it is handed.
-pub fn spawn_driver_with_name_service(
+/// Unstarted platform driver with every grant installed in its exact root.
+/// Fallback retains the loaded root and lease without hardware or cleanup;
+/// bootstrap composition consumes this owner only after all drivers prepare.
+#[must_use]
+pub(crate) struct PreparedDriver(core::mem::ManuallyDrop<PreparedDriverPayload>);
+
+struct PreparedDriverPayload {
+    loaded: loader::LoadedDomain,
+    root: crate::memory::operation::AddressSpaceOperation,
+}
+
+impl PreparedDriver {
+    fn new(loaded: loader::LoadedDomain) -> Self {
+        let root = crate::memory::operation::AddressSpaceOperation::acquire(loaded.address_space)
+            .expect("driver preparation root admission failed");
+        Self(core::mem::ManuallyDrop::new(PreparedDriverPayload {
+            loaded,
+            root,
+        }))
+    }
+
+    pub(crate) fn assert_unstarted(&self) {
+        assert_eq!(self.0.root.handle(), self.0.loaded.address_space);
+        assert!(!crate::cpu::scheduler::system_scheduler::domain_has_live_threads(
+            self.0.root.handle()
+        ));
+        #[cfg(feature = "virtio_net_test")]
+        assert_eq!(
+            crate::memory::close_user_address_space_handle(self.0.root.handle()),
+            Err(crate::memory::AddressSpaceCloseError::OperationsInFlight),
+            "unstarted driver lost its exact root lease"
+        );
+    }
+
+    pub(crate) fn start(self) -> ServiceDomain {
+        self.assert_unstarted();
+        let payload = core::mem::ManuallyDrop::into_inner(self.0);
+        let domain = start_domain(payload.loaded);
+        payload.root.release().expect("driver start root completion failed");
+        domain
+    }
+}
+
+/// Prepare a driver with a bootstrap connection and delegated MMIO/IRQ/DMA.
+/// Start its consuming owner only after sibling hardware grants are prepared.
+pub(crate) fn prepare_driver_with_name_service(
     image: &[u8],
     name_service: &NameServiceHandle,
     rights: ConnectionRights,
     grant: DriverGrant,
-) -> ServiceDomain {
+) -> PreparedDriver {
     let loaded = loader::load_domain(image);
+    let prepared = PreparedDriver::new(loaded);
+    let loaded = &prepared.0.loaded;
     let connection = ipc::connection_delegate(
         name_service.domain.asid,
         name_service.endpoint_cap,
@@ -1192,20 +1231,28 @@ pub fn spawn_driver_with_name_service(
     bootstrap::write_irq_cap(loaded.config_frame, irq);
     if let Some(requester_id) = grant.dma_requester_id {
         let dma = crate::device::grant_dma_domain(loaded.asid, requester_id, grant.dma_msi_address)
-            .expect("[supervisor] DMA-domain grant failed");
+            .unwrap_or_else(|error| {
+                panic!(
+                    "[supervisor] DMA-domain grant failed: {error:?} (root={:?}, \
+                     requester={requester_id:#x})",
+                    loaded.address_space
+                )
+            });
         bootstrap::write_dma_domain_cap(loaded.config_frame, dma);
     }
-    start_domain(loaded)
+    prepared
 }
 
-/// Launch a polling device adapter with only MMIO and DMA authority.
-pub fn spawn_polling_driver_with_name_service(
+/// Prepare a polling device adapter with only MMIO and DMA authority.
+pub(crate) fn prepare_polling_driver_with_name_service(
     image: &[u8],
     name_service: &NameServiceHandle,
     rights: ConnectionRights,
     grant: PollingDriverGrant,
-) -> ServiceDomain {
+) -> PreparedDriver {
     let loaded = loader::load_domain(image);
+    let prepared = PreparedDriver::new(loaded);
+    let loaded = &prepared.0.loaded;
     let connection = ipc::connection_delegate(
         name_service.domain.asid,
         name_service.endpoint_cap,
@@ -1221,7 +1268,7 @@ pub fn spawn_polling_driver_with_name_service(
     let dma = crate::device::grant_dma_domain(loaded.asid, grant.dma_requester_id, None)
         .expect("[supervisor] polling-driver DMA-domain grant failed");
     bootstrap::write_dma_domain_cap(loaded.config_frame, dma);
-    start_domain(loaded)
+    prepared
 }
 
 /// Returns true once the domain's initial thread has exited and been reaped

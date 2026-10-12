@@ -141,6 +141,15 @@ the corrected RPC polling paths, and the remaining notification gaps.
   verifier's direct-successor acceptance is for installation and must not permit
   publication before state commit. Keep substituted boot inputs rejected before
   kernel entry or trust publication, with explicit execution evidence.
+- Boot hardware composition prepares all storage/entropy/network driver grants
+  before starting any sibling driver thread. Keep every boot hardware-driver
+  image in the signed bootstrap set; preparation cannot wait on the object
+  store served by its own unstarted storage driver. Use `PreparedDriver`
+  owner to retain the loaded root and exact operation lease through preparation
+  and thread publication; its fallback retains all fields without cleanup.
+  Dynamic creation still rejects busy unit/engine admission. Preserve DMA grant
+  errors as per-return stage/cause and confirmed-versus-retained cancellation
+  values; diagnostics are not custody or authority to retry uncertain creation.
 - Internal APIs and wire formats have no backward-compatibility requirement.
   Remove compatibility-only branches when a coherent replacement is ready;
   do not preserve an unsafe allocation path for older callers.

@@ -6,11 +6,11 @@
 //! handles so callers — including the optional validation layer — can observe
 //! stage words and status frames without re-spawning anything.
 //!
-//! The services depend on one another only through the name service's deferred
-//! lookups, so launch order is not a correctness requirement: a service whose
-//! dependency has not registered yet simply blocks on the lookup. Spawning is
-//! therefore pure launch; readiness waits and assertions belong to the test
-//! (or boot-progress) layer.
+//! Logical services use deferred name-service lookups, so their dependency
+//! publication need not follow launch order. Hardware grants form a separate
+//! preparation phase: install every boot driver's grants before starting any
+//! sibling that can own the shared IOMMU unit/engine. Readiness observations
+//! belong to the test or boot-progress layer.
 
 use alloc::vec::Vec;
 
@@ -28,6 +28,7 @@ use crate::{
             DriverGrant,
             NameServiceHandle,
             PollingDriverGrant,
+            PreparedDriver,
             ServiceDomain,
             ServiceLimits,
         },
@@ -340,6 +341,10 @@ pub struct SteadyState {
 /// DMA. Architectures with RNDR/RDRAND can still serve cryptographic callers
 /// through the kernel syscall when no paravirtualized device is present.
 pub fn launch_entropy(ns: &NameServiceHandle) -> Option<ServiceDomain> {
+    prepare_entropy(ns).map(PreparedDriver::start)
+}
+
+fn prepare_entropy(ns: &NameServiceHandle) -> Option<PreparedDriver> {
     let topology = &crate::device_management::topology::DEVICE_TOPOLOGY;
     let (bar, _irq, requester_id, _) =
         crate::device_management::drivers::busses::pci_express::topology::lookup_first_virtio_rng(
@@ -350,7 +355,7 @@ pub fn launch_entropy(ns: &NameServiceHandle) -> Option<ServiceDomain> {
         return None;
     }
     logln!("[launch] virtio-rng at BAR4={:#x} requester={:#x}", bar, requester_id);
-    Some(crate::service::supervisor::spawn_polling_driver_with_name_service(
+    Some(crate::service::supervisor::prepare_polling_driver_with_name_service(
         crate::service::store::service_elf(b"rng").expect("[launch] rng.elf"),
         ns,
         ConnectionRights::CALL,
@@ -402,6 +407,10 @@ pub(crate) fn test_publication_waiter_cleanup(sponsor: &crate::klib::observer::W
 /// no protected-DMA stream for the controller), so a boot plan can degrade to
 /// a storage-less node instead of faulting.
 pub fn launch_storage(ns: &NameServiceHandle) -> Option<StorageStack> {
+    prepare_storage(ns).map(|prepared| start_storage(prepared, ns))
+}
+
+fn prepare_storage(ns: &NameServiceHandle) -> Option<(PreparedDriver, &'static [u8])> {
     if !crate::device::msi_available() {
         logln!("[launch] SKIP storage: no supported MSI mechanism.");
         return None;
@@ -412,7 +421,7 @@ pub fn launch_storage(ns: &NameServiceHandle) -> Option<StorageStack> {
         logln!("[launch] SKIP storage: protected DMA unavailable.");
         return None;
     }
-    let driver = crate::service::supervisor::spawn_driver_with_name_service(
+    let driver = crate::service::supervisor::prepare_driver_with_name_service(
         crate::service::store::service_elf(driver_elf).expect("[launch] block driver elf"),
         ns,
         ConnectionRights::CALL,
@@ -424,16 +433,25 @@ pub fn launch_storage(ns: &NameServiceHandle) -> Option<StorageStack> {
             dma_msi_address: msi_address,
         },
     );
+    Some((driver, driver_elf))
+}
+
+fn start_storage(
+    prepared: (PreparedDriver, &'static [u8]),
+    ns: &NameServiceHandle,
+) -> StorageStack {
+    let (prepared, driver_elf) = prepared;
+    let driver = prepared.start();
     let objstore = crate::service::supervisor::spawn_with_name_service(
         crate::service::store::service_elf(b"objstore").expect("[launch] objstore.elf"),
         ns,
         ConnectionRights::CALL,
     );
-    Some(StorageStack {
+    StorageStack {
         driver,
         objstore,
         driver_elf,
-    })
+    }
 }
 
 /// Spawn the NIC driver for the first discovered Ethernet controller and the
@@ -458,9 +476,13 @@ pub fn launch_network_stack_with_services(
     ns: &NameServiceHandle,
     services: &[ClusterTcpService],
 ) -> Option<NetworkStack> {
+    prepare_network(ns).map(|prepared| start_network(prepared, ns, services))
+}
+
+fn prepare_network(ns: &NameServiceHandle) -> Option<(PreparedDriver, &'static [u8])> {
     let (driver_elf, mmio_base, mmio_pages, intid, requester_id, msi_address) =
         discover_network_controller()?;
-    let driver = crate::service::supervisor::spawn_driver_with_name_service(
+    let driver = crate::service::supervisor::prepare_driver_with_name_service(
         crate::service::store::service_elf(driver_elf).expect("[launch] network driver elf"),
         ns,
         ConnectionRights::CALL,
@@ -472,6 +494,16 @@ pub fn launch_network_stack_with_services(
             dma_msi_address: msi_address,
         },
     );
+    Some((driver, driver_elf))
+}
+
+fn start_network(
+    prepared: (PreparedDriver, &'static [u8]),
+    ns: &NameServiceHandle,
+    services: &[ClusterTcpService],
+) -> NetworkStack {
+    let (prepared, driver_elf) = prepared;
+    let driver = prepared.start();
     const INGRESS_SERVICES_KEY: u64 = charlotte_launch::manifest_key(b"vips");
     let encoded_services = encode_cluster_tcp_services(services);
     let frouter_manifest = [ManifestEntry {
@@ -490,11 +522,11 @@ pub fn launch_network_stack_with_services(
         },
     );
     crate::service::supervisor::register_frame_router(frouter.address_space);
-    Some(NetworkStack {
+    NetworkStack {
         driver,
         frouter,
         driver_elf,
-    })
+    }
 }
 
 /// Spawn cluster services with the boot-published policy also used by the
@@ -995,10 +1027,31 @@ pub(crate) fn launch_steady_state_with_trust(
     // Publish once, before any cluster/deployment consumer receives its
     // manifest. Production has no boot adapter yet and remains disabled.
     let boot_trust = prepared.publish(ns)?;
-    let storage = launch_storage(&ns);
-    let entropy = launch_entropy(&ns);
+    // Complete every hardware grant before any sibling driver can submit
+    // DMA and temporarily own the shared unit/engine. No replay or polling is
+    // needed for this boot batch; dynamic creation keeps its rejection policy.
+    let storage = prepare_storage(&ns);
+    let entropy = prepare_entropy(&ns);
+    let network = prepare_network(&ns);
+    for driver in storage
+        .as_ref()
+        .map(|(driver, _)| driver)
+        .into_iter()
+        .chain(entropy.as_ref())
+        .chain(network.as_ref().map(|(driver, _)| driver))
+    {
+        driver.assert_unstarted();
+    }
+    logln!(
+        "[launch] driver grant batch prepared before threads: storage={} entropy={} network={}",
+        storage.is_some(),
+        entropy.is_some(),
+        network.is_some()
+    );
+    let storage = storage.map(|prepared| start_storage(prepared, &ns));
+    let entropy = entropy.map(PreparedDriver::start);
     let cluster_services = configured_cluster_tcp_services();
-    let network = launch_network_stack_with_services(&ns, &cluster_services);
+    let network = network.map(|prepared| start_network(prepared, &ns, &cluster_services));
     let (cluster, appliance) = match network {
         Some(_) => (
             Some(launch_node_cluster_with_services(

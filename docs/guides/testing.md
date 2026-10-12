@@ -942,6 +942,19 @@ observer, preventing the handshake. The mask preserves the caller's IRQ state;
 this exception does not qualify production resource polling. The failed timeout
 and corrected matrix are retained in the IPC readiness report.
 
+DMA grant probes now require exact backend causes and Confirmed versus Retained
+consuming cancellation outcomes. Real unit-claim boundaries submit a competing
+full grant against the captured requester and require OperationInFlight without
+unified authority changes. Reset admission, private-prefix allocation and actual
+configuration rejection preserve their distinct diagnostics and existing charge
+checks. Boot composition asserts every prepared storage/entropy/network root has
+no live thread, and validation features require root close to return
+OperationsInFlight before start. The batch diagnostic precedes the first driver
+thread; consuming start completes its lease, with normal driver restart, root
+teardown and node shutdown still exercised. These qualify ordering and ownership,
+not general dynamic readiness or historical DMA startup causality. See
+[startup preparation evidence](../reports/audits/2026-10-12-dma-startup-preparation.md).
+
 Whole-domain abort fixtures also check the inline root fence, rejection of an
 already-prepared thread, repeated late preparation, callback guard availability,
 TID replacement between capture and claim, ASID reuse and final root/frame
