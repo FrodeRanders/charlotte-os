@@ -40,6 +40,18 @@ The normal network-and-storage service set starts `clusterctl`, `agent`, and
 `${CATTEN_DEPLOY_HOST_PORT:-8081}` to that port under the default user network,
 so the host tool defaults to `127.0.0.1:8081`.
 
+All seven deployment HTTP controls use the owned `clusterctl_client` adapter.
+Each controller RPC has one five-second deadline starting before submission;
+an accepted request is never replayed by the adapter. Timeout cancels its exact
+pending owner and returns HTTP `503` with `{"error":-22}`
+(`clusterctl::ERR_RPC_TIMEOUT`). The controller may already have received and
+committed a mutation: cancellation is not remote rollback. Observe the existing
+deployment/release state before deciding how to reconcile an uncertain outcome.
+The request parser's five-second header/thirty-second total input budgets are
+separate. Controller-internal waits, TCP/IP RPCs, response transmission and
+socket teardown still require their own progress qualification. See the
+[RPC deadline evidence](../reports/audits/2026-10-12-security-controller-deadlines.md).
+
 For the current demonstration service, the final signing steps resemble:
 
 ```text

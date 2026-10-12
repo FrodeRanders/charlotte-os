@@ -23,6 +23,7 @@ pub use charlotte_protocol_s3 as s3;
 /// UTC time-service protocol shared with applications.
 pub use charlotte_protocol_time as time;
 
+pub mod clusterctl_client;
 pub mod deadline;
 pub mod deployment_http;
 /// Owned application-side wrapper for the capability-grant controller.
@@ -2603,6 +2604,9 @@ pub mod clusterctl {
     /// Eligible nodes exist, but none can host the deployment's declared
     /// resource demand (currently its stack reservation and runtime pages).
     pub const ERR_INSUFFICIENT_CAPACITY: i64 = -21;
+    /// Local observation timed out. A received mutation may already have
+    /// committed; this error is not permission to replay it or undo authority.
+    pub const ERR_RPC_TIMEOUT: i64 = -22;
 }
 
 /// Remote-invocation wire protocol carried over the reliable message layer.

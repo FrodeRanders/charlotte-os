@@ -175,8 +175,13 @@ mod kernel {
         catten_syscall::ipc_scalar_send_move(connection, opcode, arg0, memory)
     }
 
-    pub fn ipc_scalar_call_move(connection: u64, opcode: u32, arg0: u64, memory: u64) -> u64 {
-        catten_syscall::ipc_scalar_call_move(connection, opcode, arg0, memory)
+    pub fn ipc_scalar_call_move_checked(
+        connection: u64,
+        opcode: u32,
+        arg0: u64,
+        memory: u64,
+    ) -> (u64, u64) {
+        catten_syscall::ipc_scalar_call_move_checked(connection, opcode, arg0, memory)
     }
 
     pub fn ipc_scalar_call_borrow_read(
@@ -631,8 +636,19 @@ mod kernel {
         with_state(|state| state.ipc_send_move)
     }
 
-    pub fn ipc_scalar_call_move(_connection: u64, _opcode: u32, _arg0: u64, _memory: u64) -> u64 {
-        with_state(|state| state.ipc_call_move)
+    pub fn ipc_scalar_call_move_checked(
+        _connection: u64,
+        _opcode: u32,
+        _arg0: u64,
+        _memory: u64,
+    ) -> (u64, u64) {
+        with_state(|state| {
+            if state.ipc_call_status == catten_syscall::ipc_status::OK {
+                (state.ipc_call_move, state.ipc_call_status)
+            } else {
+                (0, state.ipc_call_status)
+            }
+        })
     }
 
     pub fn ipc_scalar_call_borrow_read(
@@ -1325,6 +1341,50 @@ mod tests {
         drop(connection);
         drop(endpoint);
         assert_eq!(kernel::events(), [kernel::Event::IpcClose(41), kernel::Event::IpcClose(40)]);
+    }
+
+    #[test]
+    fn moved_admission_rejection_returns_exact_page_without_cleanup() {
+        let _guard = setup();
+        let endpoint = Endpoint::create(1, 1, 4).unwrap();
+        let connection = endpoint.connect(IpcRights::CALL).unwrap();
+        let mut memory = OwnedMemory::allocate(1).unwrap();
+        for status in [
+            catten_syscall::ipc_status::QUEUE_FULL,
+            catten_syscall::ipc_status::ENDPOINT_CLOSED,
+            catten_syscall::ipc_status::RESOURCE_LIMIT,
+        ] {
+            kernel::update(|state| state.ipc_call_status = status);
+            let (returned, error) = connection.call_move(1, 2, memory).unwrap_err();
+            assert_eq!((returned.cap, error), (Some(10), IpcError::Status(status)));
+            let (returned, error) = connection.as_ref().call_move(1, 2, returned).unwrap_err();
+            assert_eq!((returned.cap, error), (Some(10), IpcError::Status(status)));
+            memory = returned;
+            assert!(kernel::events().is_empty());
+        }
+        kernel::update(|state| state.ipc_call_status = catten_syscall::ipc_status::OK);
+        drop(connection.as_ref().call_move(1, 2, memory).unwrap());
+        drop(connection);
+        drop(endpoint);
+        // Accepted transfer consumes the local page owner. Cancellation owns
+        // its remote cleanup; the local wrapper must not close it again.
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::IpcClose(30), kernel::Event::IpcClose(41), kernel::Event::IpcClose(40)]
+        );
+    }
+
+    #[test]
+    fn rejected_moved_page_drop_releases_original_once() {
+        let _guard = setup();
+        let connection = unsafe { Connection::from_raw(41) }.unwrap();
+        let memory = OwnedMemory::allocate(1).unwrap();
+        kernel::update(|state| state.ipc_call_status = catten_syscall::ipc_status::QUEUE_FULL);
+        let (memory, error) = connection.call_move(1, 2, memory).unwrap_err();
+        assert_eq!(error, IpcError::Status(catten_syscall::ipc_status::QUEUE_FULL));
+        drop(memory);
+        drop(connection);
+        assert_eq!(kernel::events(), [kernel::Event::MemoryClose(10), kernel::Event::IpcClose(41)]);
     }
 
     #[test]

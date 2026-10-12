@@ -27,6 +27,7 @@ use catten_rt::{
 };
 use catten_services::{
     clusterctl,
+    clusterctl_client,
     deployment_http::{
         Error as RequestError,
         Request,
@@ -109,10 +110,8 @@ fn notify_cluster(controller: catten_rt::owned::ConnectionRef<'_>, descriptor: &
         Ok(memory) => memory,
         Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
     };
-    match controller.call_move(clusterctl::OP_NOTIFY, 0, memory) {
-        Ok(call) => call.wait().map_or(clusterctl::ERR_NOT_LEADER, |reply| reply.result),
-        Err((_memory, _error)) => clusterctl::ERR_NOT_LEADER,
-    }
+    clusterctl_client::call_move(controller, clusterctl::OP_NOTIFY, 0, memory)
+        .map_or_else(|error| error.code(), |reply| reply.result)
 }
 
 fn notify_release(controller: catten_rt::owned::ConnectionRef<'_>, envelope: &[u8]) -> i64 {
@@ -133,10 +132,8 @@ fn notify_release(controller: catten_rt::owned::ConnectionRef<'_>, envelope: &[u
         Ok(memory) => memory,
         Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
     };
-    match controller.call_move(clusterctl::OP_NOTIFY_RELEASE, 0, memory) {
-        Ok(call) => call.wait().map_or(clusterctl::ERR_NOT_LEADER, |reply| reply.result),
-        Err((_memory, _error)) => clusterctl::ERR_NOT_LEADER,
-    }
+    clusterctl_client::call_move(controller, clusterctl::OP_NOTIFY_RELEASE, 0, memory)
+        .map_or_else(|error| error.code(), |reply| reply.result)
 }
 
 fn notify_operations(controller: catten_rt::owned::ConnectionRef<'_>, bundle: &[u8]) -> i64 {
@@ -161,10 +158,8 @@ fn notify_operations(controller: catten_rt::owned::ConnectionRef<'_>, bundle: &[
         Ok(memory) => memory,
         Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
     };
-    match controller.call_move(clusterctl::OP_NOTIFY_OPERATIONS, 0, memory) {
-        Ok(call) => call.wait().map_or(clusterctl::ERR_NOT_LEADER, |reply| reply.result),
-        Err((_memory, _error)) => clusterctl::ERR_NOT_LEADER,
-    }
+    clusterctl_client::call_move(controller, clusterctl::OP_NOTIFY_OPERATIONS, 0, memory)
+        .map_or_else(|error| error.code(), |reply| reply.result)
 }
 
 fn notify_shutdown(controller: catten_rt::owned::ConnectionRef<'_>, envelope: &[u8]) -> i64 {
@@ -185,10 +180,8 @@ fn notify_shutdown(controller: catten_rt::owned::ConnectionRef<'_>, envelope: &[
         Ok(memory) => memory,
         Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
     };
-    match controller.call_move(clusterctl::OP_NOTIFY_SHUTDOWN, 0, memory) {
-        Ok(call) => call.wait().map_or(clusterctl::ERR_NOT_LEADER, |reply| reply.result),
-        Err((_memory, _error)) => clusterctl::ERR_NOT_LEADER,
-    }
+    clusterctl_client::call_move(controller, clusterctl::OP_NOTIFY_SHUTDOWN, 0, memory)
+        .map_or_else(|error| error.code(), |reply| reply.result)
 }
 
 fn notify_ingress_policy(controller: catten_rt::owned::ConnectionRef<'_>, envelope: &[u8]) -> i64 {
@@ -213,10 +206,8 @@ fn notify_ingress_policy(controller: catten_rt::owned::ConnectionRef<'_>, envelo
         Ok(memory) => memory,
         Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
     };
-    match controller.call_move(clusterctl::OP_NOTIFY_INGRESS_POLICY, 0, memory) {
-        Ok(call) => call.wait().map_or(clusterctl::ERR_NOT_LEADER, |reply| reply.result),
-        Err((_memory, _error)) => clusterctl::ERR_NOT_LEADER,
-    }
+    clusterctl_client::call_move(controller, clusterctl::OP_NOTIFY_INGRESS_POLICY, 0, memory)
+        .map_or_else(|error| error.code(), |reply| reply.result)
 }
 
 fn query_rollout(
@@ -227,11 +218,9 @@ fn query_rollout(
     let mut mapping = memory.map_writable().map_err(|_| clusterctl::ERR_UPLOAD_FAILED)?;
     mapping.as_mut_slice()[..name.len()].copy_from_slice(name);
     let memory = mapping.unmap().map_err(|_| clusterctl::ERR_UPLOAD_FAILED)?;
-    let reply = controller
-        .call_move(clusterctl::OP_ROLLOUT, name.len() as u64, memory)
-        .map_err(|_| clusterctl::ERR_NOT_LEADER)?
-        .wait()
-        .map_err(|_| clusterctl::ERR_NOT_LEADER)?;
+    let reply =
+        clusterctl_client::call_move(controller, clusterctl::OP_ROLLOUT, name.len() as u64, memory)
+            .map_err(|error| error.code())?;
     if reply.result < 0 {
         return Err(reply.result);
     }
@@ -252,11 +241,8 @@ fn query_rollout(
 fn query_ingress_policy(
     controller: catten_rt::owned::ConnectionRef<'_>,
 ) -> Result<alloc::string::String, i64> {
-    let reply = controller
-        .call(clusterctl::OP_INGRESS_POLICY_STATUS, 0)
-        .map_err(|_| clusterctl::ERR_NOT_LEADER)?
-        .wait()
-        .map_err(|_| clusterctl::ERR_NOT_LEADER)?;
+    let reply = clusterctl_client::call(controller, clusterctl::OP_INGRESS_POLICY_STATUS, 0)
+        .map_err(|error| error.code())?;
     if reply.result < 0 {
         return Err(reply.result);
     }

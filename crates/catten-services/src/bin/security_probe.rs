@@ -21,6 +21,7 @@ use catten_rt::{
     },
 };
 use catten_services::{
+    clusterctl_client,
     deadline::Deadline,
     grant,
     grant_client,
@@ -368,7 +369,14 @@ fn main(ctx: Context) -> ! {
         "[security] platform publication: full-queue deadline, ",
         "silent-call cancellation and all eight slots recovered"
     ));
-    drop(silent_connection);
+    let scalar_budget = Deadline::after(7_000);
+    check(
+        matches!(
+            clusterctl_client::call(silent_connection.as_ref(), PING, 0),
+            Err(clusterctl_client::Error::Timeout)
+        ) && !scalar_budget.expired(),
+        51,
+    );
     checks |= 512;
 
     // Many small, individually legal allocations must hit an aggregate cap
@@ -383,6 +391,74 @@ fn main(ctx: Context) -> ! {
         }
     }
     check((16..=1_024).contains(&allocations.len()) && OwnedMemory::allocate(1).is_err(), 18);
+    // At the original sponsor ceiling, rejection must return exactly one
+    // moved request's charge, and accepted timeout must do the same for an
+    // unreceived request. Retain every other page throughout both checks.
+    let full: [PendingCall<'_>; 8] = core::array::from_fn(|_| {
+        silent_connection.call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort())
+    });
+    let request = allocations.pop().unwrap_or_else(|| catten_rt::domain_abort());
+    check(
+        matches!(
+            clusterctl_client::call_move(silent_connection.as_ref(), PING, 0, request),
+            Err(clusterctl_client::Error::Admission(catten_rt::owned::IpcError::Status(
+                catten_syscall::ipc_status::QUEUE_FULL
+            )))
+        ),
+        52,
+    );
+    allocations.push(OwnedMemory::allocate(1).unwrap_or_else(|_| catten_rt::domain_abort()));
+    check(OwnedMemory::allocate(1).is_err(), 53);
+    drop(full);
+    let request = allocations.pop().unwrap_or_else(|| catten_rt::domain_abort());
+    let moved_budget = Deadline::after(7_000);
+    check(
+        matches!(
+            clusterctl_client::call_move(silent_connection.as_ref(), PING, 0, request),
+            Err(clusterctl_client::Error::Timeout)
+        ) && !moved_budget.expired(),
+        54,
+    );
+    allocations.push(OwnedMemory::allocate(1).unwrap_or_else(|_| catten_rt::domain_abort()));
+    check(OwnedMemory::allocate(1).is_err(), 55);
+    let recovered_rpc_queue: [PendingCall<'_>; 8] = core::array::from_fn(|_| {
+        silent_connection.call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort())
+    });
+    drop(recovered_rpc_queue);
+    drop(silent_connection);
+    // Healthy status returns the same caller-sponsored page. Temporary
+    // admission rejection may retry this read-only control, within its own
+    // outer budget; a timeout or accepted result is never replayed here.
+    let healthy_budget = Deadline::after(2_000);
+    loop {
+        check(!healthy_budget.expired(), 56);
+        let request = allocations.pop().unwrap_or_else(|| catten_rt::domain_abort());
+        let result = clusterctl_client::call_move(tcpip.as_ref(), socket::OP_STATUS, 0, request);
+        let accepted = match result {
+            Ok(reply) => {
+                check(reply.result > 0 && reply.memory.is_some() && reply.connection.is_none(), 57);
+                drop(reply);
+                true
+            }
+            Err(clusterctl_client::Error::Admission(catten_rt::owned::IpcError::Status(
+                catten_syscall::ipc_status::QUEUE_FULL,
+            ))) => false,
+            Err(_) => {
+                check(false, 58);
+                false
+            }
+        };
+        allocations.push(OwnedMemory::allocate(1).unwrap_or_else(|_| catten_rt::domain_abort()));
+        check(OwnedMemory::allocate(1).is_err(), 59);
+        if accepted {
+            break;
+        }
+        sleep_ms(5);
+    }
+    catten_rt::logln!(concat!(
+        "[security] controller RPC: scalar/move deadlines, eight queue slots, ",
+        "rejected/cancelled/returned page charges and healthy status passed"
+    ));
     check(
         wait(connection.call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort()), &endpoint)
             .result

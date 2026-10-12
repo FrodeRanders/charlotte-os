@@ -10,6 +10,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [Deployment controller RPC deadlines](audits/2026-10-12-security-controller-deadlines.md) — Seven bounded ingress RPCs, scalar/moved cancellation and original-sponsor page/queue recovery under pressure.
 - [Platform publication deadlines](audits/2026-10-12-security-publication-deadlines.md) — Bounded TCP/IP registration, five further owner-based startup paths, accepted-call cancellation and full-queue/silent-endpoint recovery evidence.
 - [Network endpoint publication under admission pressure](audits/2026-10-12-security-network-publication.md) — Retained AMD startup failure, NIC diagnostics, owned publication and exact delegated admission status.
 - [Deployment ingress and scoped publication progress](audits/2026-10-11-security-deployment-ingress.md) — Connection-local setup/accept failure, fallible parser backing, ownership-preserving identity publication and deployment HTTP recovery probes.

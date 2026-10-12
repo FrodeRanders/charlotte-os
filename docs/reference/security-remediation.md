@@ -81,6 +81,17 @@ to five seconds and cancels through its pending owner without replay. This bound
 these registration waits; dependency lookup, general controller RPC completion
 and cancellation syscall/remote scheduling progress remain separate boundaries.
 
+The [deployment controller deadline follow-up](../reports/audits/2026-10-12-security-controller-deadlines.md)
+bounds all seven deployment HTTP controls' controller admission/observation to
+one five-second policy deadline. Accepted mutations are not replayed; timeout
+cancels the exact pending owner and reports an uncertain outcome as a distinct
+503 error. This qualifies the ingress-side wait, not controller-internal
+blocking, concurrent healthy-client fairness or transport teardown progress.
+The same follow-up retains an Intel object-store/readiness panic (`0xd1`, block
+read failure) separately from a passing identical-artifact repeat. Its exact
+read result/rejection phase and startup-versus-serving classification remain
+unverified; the historical AMD NIC exit remains separately unattributed.
+
 Remaining acceptance requires bounded concurrent admission and progress for
 healthy clients while hostile clients occupy slots, bounded controller/RPC
 completion, and sustained connection/packet flood, NIC failure and lifecycle

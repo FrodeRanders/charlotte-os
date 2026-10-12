@@ -790,6 +790,15 @@ notifications are idempotent. QEMU's user network forwards host port 8081 by
 default; \texttt{cluster-sign deployment-notify} is the corresponding host
 client.
 
+All seven deployment HTTP controls use an owned controller client with one
+five-second RPC deadline starting before submission. An accepted request is
+never replayed by that adapter. Timeout cancels its exact pending owner and
+returns HTTP 503 with error code $-22$
+(\texttt{clusterctl::ERR\_RPC\_TIMEOUT}). A mutation may already have committed;
+cancellation is not remote rollback. The input parser, controller-internal
+waits, TCP/IP RPCs and socket teardown remain separate progress boundaries.
+See \repofile|docs/reports/audits/2026-10-12-security-controller-deadlines.md|.
+
 For a release made from several independently signed components,
 \texttt{cluster-sign deployment-apply} prevalidates all descriptor files,
 rejects duplicate artifact names, submits each descriptor, and waits for every

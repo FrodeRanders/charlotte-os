@@ -1655,8 +1655,16 @@ fn sys_ipc_scalar_call_move(frame: &mut TrapFrame) {
     let opcode = frame.regs[2] as u32;
     let arg0 = frame.regs[3];
     let memory = frame.regs[4];
-    frame.regs[0] =
-        ipc::scalar_call_with_memory_move(asid, connection, opcode, arg0, memory).unwrap_or(0);
+    match ipc::scalar_call_with_memory_move(asid, connection, opcode, arg0, memory) {
+        Ok(call) => {
+            frame.regs[0] = call;
+            frame.regs[1] = 0;
+        }
+        Err(error) => {
+            frame.regs[0] = 0;
+            frame.regs[1] = ipc_status(error);
+        }
+    }
 }
 
 fn sys_ipc_reply_move(frame: &mut TrapFrame) {

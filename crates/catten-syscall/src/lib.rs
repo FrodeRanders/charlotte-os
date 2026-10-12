@@ -461,7 +461,6 @@ unsafe fn svc4(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64, arg4: u64) -
         match imm as u16 {
             26 => asm!("svc #26", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             32 => asm!("svc #32", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
-            33 => asm!("svc #33", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             35 => asm!("svc #35", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             36 => asm!("svc #36", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
             37 => asm!("svc #37", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, options(nostack, nomem, preserves_flags)),
@@ -2052,7 +2051,52 @@ pub fn ipc_scalar_send_move(connection: u64, opcode: u32, arg0: u64, memory: u64
 /// Call through a connection and move a memory object to the receiver.
 #[inline(always)]
 pub fn ipc_scalar_call_move(connection: u64, opcode: u32, arg0: u64, memory: u64) -> u64 {
-    unsafe { svc4(SyscallNumber::IpcScalarCallMove, connection, opcode as u64, arg0, memory) }
+    ipc_scalar_call_move_checked(connection, opcode, arg0, memory).0
+}
+
+/// Moved-call admission returns a pending capability and exact IPC status.
+#[inline(always)]
+pub fn ipc_scalar_call_move_checked(
+    connection: u64,
+    opcode: u32,
+    arg0: u64,
+    memory: u64,
+) -> (u64, IpcStatusCode) {
+    unsafe { svc4_x1(SyscallNumber::IpcScalarCallMove, connection, opcode as u64, arg0, memory) }
+}
+
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+unsafe fn svc4_x1(imm: SyscallNumber, a1: u64, a2: u64, a3: u64, a4: u64) -> (u64, u64) {
+    let ret: u64;
+    let status: u64;
+    unsafe {
+        match imm as u16 {
+            // Moving memory and publishing CQ state have memory effects.
+            33 => asm!("svc #33", lateout("x0") ret, inlateout("x1") a1 => status, in("x2") a2, in("x3") a3, in("x4") a4, options(nostack, preserves_flags)),
+            _ => panic!("syscall {:?} has no svc4_x1 emitter", imm),
+        }
+    }
+    (ret, status)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+unsafe fn svc4_x1(imm: SyscallNumber, a1: u64, a2: u64, a3: u64, a4: u64) -> (u64, u64) {
+    let ret: u64;
+    let status: u64;
+    unsafe {
+        asm!("syscall", inlateout("rax") imm as u64 => ret, inlateout("rdi") a1 => status,
+        in("rsi") a2, in("rdx") a3, in("r10") a4,
+        lateout("rcx") _, lateout("r11") _, options(preserves_flags));
+    }
+    (ret, status)
+}
+
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+#[inline(always)]
+unsafe fn svc4_x1(_imm: SyscallNumber, _a1: u64, _a2: u64, _a3: u64, _a4: u64) -> (u64, u64) {
+    (0, 0)
 }
 
 /// Reply to a call and move a memory object back to the caller.

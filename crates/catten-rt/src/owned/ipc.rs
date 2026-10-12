@@ -590,7 +590,11 @@ impl<'connection> ConnectionRef<'connection> {
         arg0: u64,
         mut memory: OwnedMemory,
     ) -> Result<PendingCall<'static>, (OwnedMemory, IpcError)> {
-        let call = kernel::ipc_scalar_call_move(self.cap, opcode, arg0, memory.raw_handle());
+        let (call, status) =
+            kernel::ipc_scalar_call_move_checked(self.cap, opcode, arg0, memory.raw_handle());
+        if status != catten_syscall::ipc_status::OK {
+            return Err((memory, IpcError::Status(status)));
+        }
         if call == 0 {
             return Err((memory, IpcError::CreationFailed));
         }
@@ -777,8 +781,15 @@ impl Connection {
         arg0: u64,
         mut memory: OwnedMemory,
     ) -> Result<PendingCall<'static>, (OwnedMemory, IpcError)> {
-        let call =
-            kernel::ipc_scalar_call_move(self.raw_handle(), opcode, arg0, memory.raw_handle());
+        let (call, status) = kernel::ipc_scalar_call_move_checked(
+            self.raw_handle(),
+            opcode,
+            arg0,
+            memory.raw_handle(),
+        );
+        if status != catten_syscall::ipc_status::OK {
+            return Err((memory, IpcError::Status(status)));
+        }
         if call == 0 {
             return Err((memory, IpcError::CreationFailed));
         }

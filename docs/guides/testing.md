@@ -101,6 +101,24 @@ and calls its service again. Synchronous memory-object tests separately check
 page and object-count ceilings, transfer/rollback sponsorship, late unpin after
 retirement, and the platform progress pool.
 
+The signed probe also tests `clusterctl_client`, used by all seven deployment
+HTTP controls. A silent remote endpoint must produce scalar and moved-request
+timeouts within seven-second outer fixture budgets; the adapter's selected
+deadline remains five seconds from before submission. At a saturated caller
+memory ceiling, an eight-call queue forces exact queue-full rejection of a
+moved page. Rejection and later cancellation of an unreceived moved request
+must each make exactly one page allocatable while every other page stays held.
+Refilling all eight queue slots checks cancellation recovery. A healthy TCP/IP
+status reply returns its supplied page through the same client; dropping that
+reply must restore exactly one allocation too. Only rejected queue-full
+admission of this read-only control may retry; a two-second outer budget is
+checked before each attempt. Accepted observation retains its own five-second
+client deadline.
+These checks strengthen existing bits 512/1024 without changing `0xffff`.
+They test the shared RPC adapter, not a stalled production controller behind
+the HTTP listener or cancellation after a receiver begins a mutation. See the
+[controller deadline evidence](../reports/audits/2026-10-12-security-controller-deadlines.md).
+
 The twelfth bit fills completion-timer capacity with owned hour-long timers,
 drops the batch within five seconds, churns 64 additional hour-long timers and
 waits for a short timer after recovery. Synchronous timer-admission tests also
