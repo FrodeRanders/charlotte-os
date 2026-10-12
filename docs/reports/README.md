@@ -10,6 +10,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [Exact IPC close-claim readiness (SEC-18 / C07–C09)](audits/2026-10-12-ipc-close-readiness.md) — Retained-root and claim-epoch waits, rollback/failure notifications and owned endpoint-front readiness.
 - [Exact transfer-close readiness (SEC-18 / C18)](audits/2026-10-12-memory-close-readiness.md) — Retained-root waits, charged source disposal and shared producer-LP deferred waiter delivery.
 - [Event-driven LP reapers (SEC-18 / C16)](audits/2026-10-12-reaper-readiness.md) — Owned retirement-head waits and deferred exact-LP wakes replace one-millisecond idle polling.
 - [Pending reply CQ readiness](audits/2026-10-12-reply-cq-readiness.md) — Owning reply interests, exact CQ identity and lifecycle notification for multi-source controllers.

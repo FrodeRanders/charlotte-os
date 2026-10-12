@@ -53,11 +53,13 @@ fn source_close_wait() {
         close_cap_with_wait(fixture.server.id(), source, || {
             unlocked();
             assert!(IPC.read().cap(fixture.server.id(), source).is_ok());
-            operation
-                .take()
-                .unwrap()
-                .finish_with(42, |loan| loan.finish_observed(unlocked))
-                .unwrap();
+            claim_wait::tests::observe(fixture.server.id(), source, || {
+                operation
+                    .take()
+                    .unwrap()
+                    .finish_with(42, |loan| loan.finish_observed(unlocked))
+                    .unwrap();
+            });
             waits += 1;
         })
         .unwrap();
@@ -207,14 +209,16 @@ fn publication_failure() {
     )
     .unwrap();
     let destination = operation.connection.as_ref().unwrap().grant.authority.identity();
-    assert_eq!(
-        operation.finish_with_publication(
-            1,
-            |loan| loan.finish_observed(unlocked),
-            |_, _| Err(IpcError::MemoryTransferFailed)
-        ),
-        Err(IpcError::MemoryTransferFailed)
-    );
+    claim_wait::tests::observe(fixture.server.id(), source, || {
+        assert_eq!(
+            operation.finish_with_publication(
+                1,
+                |loan| loan.finish_observed(unlocked),
+                |_, _| Err(IpcError::MemoryTransferFailed)
+            ),
+            Err(IpcError::MemoryTransferFailed)
+        );
+    });
     assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));
     assert_eq!(sponsor.used(), records);
     assert_eq!(used(fixture.caller.id()), before);

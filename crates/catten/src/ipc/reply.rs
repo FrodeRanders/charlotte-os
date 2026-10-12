@@ -104,6 +104,10 @@ impl PreparedReply {
             {
                 return Err(IpcError::UnknownCapability);
             }
+            let epoch = ipc.reply_tokens[&token]
+                .claim_epoch
+                .checked_add(1)
+                .ok_or(IpcError::ResourceLimit)?;
             if let Some((source, requested)) = returned {
                 let (endpoint, rights) = mintable_endpoint(&ipc, server, source, requested)?;
                 // Ordinary lookup rejects undelivered sources. Delivered
@@ -156,6 +160,7 @@ impl PreparedReply {
             }
             // No fallible work remains before publishing this ownership claim.
             ipc.reply_tokens.get_mut(&token).unwrap().completing = true;
+            ipc.reply_tokens.get_mut(&token).unwrap().claim_epoch = epoch;
             ipc.reply_tokens.get_mut(&token).unwrap().connection_source =
                 operation.connection.as_ref().map(|connection| connection.source);
             Ok(())
@@ -240,9 +245,10 @@ impl PreparedReply {
         drop(self.memory.take());
         let returned_cap =
             self.connection.take().map(|connection| connection.grant.install(&mut ipc));
-        let token = ipc.reply_tokens.remove(&self.token).expect("claimed reply missing");
+        let mut token = ipc.reply_tokens.remove(&self.token).expect("claimed reply missing");
         assert!(token.completing && token.borrows.is_empty());
         assert_eq!(token.call, self.call);
+        claim_wait::finish(token.claim_interest.take());
         assert_eq!(ipc.caps[&self.server].address_space, self.identities[1].1);
         let call = ipc.pending_calls.get_mut(&self.call).expect("claimed call missing");
         assert_eq!(call.caller, self.identities[0].0);
@@ -283,6 +289,7 @@ impl PreparedReply {
         assert!(token.completing);
         token.connection_source = None;
         token.completing = false;
+        claim_wait::finish(token.claim_interest.take());
     }
 }
 

@@ -22,6 +22,7 @@ pub(super) struct PreparedEndpointClose {
     endpoint: EndpointId,
     handle: AddressSpaceHandle,
     namespace: Option<AddressSpaceOperation>,
+    interest: core::mem::ManuallyDrop<Option<claim_wait::Interest>>,
 }
 
 fn resolve(
@@ -72,13 +73,20 @@ impl PreparedEndpointClose {
             endpoint,
             handle,
             namespace,
+            interest: core::mem::ManuallyDrop::new(None),
         };
         let prepared = {
             let mut ipc = IPC.write();
             match resolve(&ipc, asid, cap) {
                 Ok(identity) if identity == (endpoint, handle) => {
-                    ipc.endpoints.get_mut(&endpoint).unwrap().closing = true;
-                    Ok(())
+                    let record = ipc.endpoints.get_mut(&endpoint).unwrap();
+                    if let Some(epoch) = record.claim_epoch.checked_add(1) {
+                        record.claim_epoch = epoch;
+                        record.closing = true;
+                        Ok(())
+                    } else {
+                        Err(IpcError::ResourceLimit)
+                    }
                 }
                 Ok(_) => Err(IpcError::Pending),
                 Err(error) => Err(error),
@@ -104,6 +112,7 @@ impl PreparedEndpointClose {
     }
 
     fn release_namespace(mut self) -> Result<(), IpcError> {
+        drop(self.interest.take());
         if let Some(namespace) = self.namespace.take() {
             namespace.release().map_err(|_| IpcError::UnknownCapability)?;
         }
@@ -122,6 +131,7 @@ impl PreparedEndpointClose {
                     ipc.endpoints.get_mut(&self.endpoint).expect("claimed endpoint missing");
                 assert!(endpoint.closing && !endpoint.closed);
                 endpoint.closing = false;
+                claim_wait::finish(endpoint.claim_interest.take());
             }
             // A reader may have parked while our claim hid a readable front.
             // Ordinary rejection must restore that readiness edge after unlock.
@@ -148,15 +158,22 @@ impl PreparedEndpointClose {
     pub(super) fn finish_with(
         self,
         finish: impl FnMut(LoanRevocation) -> Result<(), MemoryObjectError>,
-        wait: impl FnMut(),
+        mut wait: impl FnMut(),
     ) -> Result<(), IpcError> {
-        self.finish_with_cleanup(finish, wait, attachments::release_one)
+        self.finish_with_cleanup(
+            finish,
+            |_| {
+                wait();
+                Ok(())
+            },
+            attachments::release_one,
+        )
     }
 
     pub(super) fn finish_with_cleanup(
-        self,
+        mut self,
         mut finish: impl FnMut(LoanRevocation) -> Result<(), MemoryObjectError>,
-        mut wait: impl FnMut(),
+        mut wait: impl FnMut(&mut Self) -> Result<(), IpcError>,
         mut release: impl FnMut(crate::memory::object::RetiredMemory),
     ) -> Result<(), IpcError> {
         loop {
@@ -192,7 +209,9 @@ impl PreparedEndpointClose {
             let result = match cancellation::PreparedCancellation::prepare_endpoint_front(&self) {
                 Ok(call) => call.finish_with_cleanup(&mut finish, &mut release),
                 Err(IpcError::Pending) => {
-                    wait();
+                    if let Err(error) = wait(&mut self) {
+                        return self.reject(error);
+                    }
                     continue;
                 }
                 Err(error) => Err(error),
@@ -212,6 +231,7 @@ impl PreparedEndpointClose {
             assert!(endpoint.closing && !endpoint.closed && endpoint.queue.is_empty());
             endpoint.closed = true;
             endpoint.closing = false;
+            claim_wait::finish(endpoint.claim_interest.take());
             let observers = endpoint.readiness_observers.close();
             let watches = endpoint.close_observers.close();
             let cq_wake = endpoint.notify_cq.map(|cq| (endpoint.owner, cq));
@@ -234,7 +254,18 @@ impl PreparedEndpointClose {
     }
 }
 
+pub(super) fn wait_front(owner: &mut PreparedEndpointClose) -> Result<(), IpcError> {
+    *owner.interest = claim_wait::front_interest(owner)?;
+    if let Some(interest) = &*owner.interest {
+        interest.wait()?;
+    }
+    Ok(())
+}
+
 pub(super) fn close(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError> {
-    PreparedEndpointClose::prepare(asid, cap)?
-        .finish_with(LoanRevocation::finish, crate::cpu::scheduler::yield_lp)
+    PreparedEndpointClose::prepare(asid, cap)?.finish_with_cleanup(
+        LoanRevocation::finish,
+        wait_front,
+        attachments::release_one,
+    )
 }

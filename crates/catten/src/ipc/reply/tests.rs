@@ -83,6 +83,7 @@ fn unlocked() {
 
 pub(crate) fn run() {
     success_and_close_wait();
+    claim_episode_race();
     preparation_rollback();
     staged_close();
     connection_tests::run();
@@ -93,6 +94,37 @@ pub(crate) fn run() {
         "[IPC reply ownership] unlocked loan detach, competing reply/close, preparation rollback, \
          staged close, partial failure and abandonment passed; failed cleanup retains exact \
          closing roots and original backing charges"
+    );
+}
+
+fn claim_episode_race() {
+    let fixture = Fixture::new(1);
+    let source = object::allocate(fixture.server.id(), 1).unwrap();
+    let mut operation = Some(
+        PreparedReply::prepare_with_memory(fixture.server.id(), fixture.reply, source).unwrap(),
+    );
+    let mut successor = None;
+    claim_wait::tests::preparation_race(fixture.caller.id(), fixture.call, || {
+        assert_eq!(
+            operation.take().unwrap().finish_with_publication(
+                1,
+                |loan| loan.finish_observed(unlocked),
+                |_, _| Err(IpcError::ResourceLimit)
+            ),
+            Err(IpcError::ResourceLimit)
+        );
+        successor = Some(fixture.prepare());
+    });
+    assert!(
+        IPC.read()
+            .reply_tokens
+            .values()
+            .any(|token| token.completing && token.server == fixture.server.id())
+    );
+    successor.unwrap().finish(2).unwrap();
+    fixture.close();
+    crate::logln!(
+        "[IPC claim readiness] preparation rejects a successor episode on the same reply token"
     );
 }
 
@@ -123,11 +155,13 @@ fn success_and_close_wait() {
         let closed = close_cap_with_wait(asid, cap, || {
             unlocked();
             assert!(object::info(fixture.caller.id(), fixture.owners[0]).unwrap().lent);
-            operation
-                .take()
-                .unwrap()
-                .finish_with(42, |loan| loan.finish_observed(unlocked))
-                .unwrap();
+            claim_wait::tests::observe(asid, cap, || {
+                operation
+                    .take()
+                    .unwrap()
+                    .finish_with(42, |loan| loan.finish_observed(unlocked))
+                    .unwrap();
+            });
             waits += 1;
         });
         assert_eq!(waits, 1);
@@ -224,19 +258,21 @@ fn completion_failure() {
     .unwrap();
     let destination = operation.connection.as_ref().unwrap().grant.authority.identity();
     let mut finished = 0;
-    assert_eq!(
-        operation.finish_with(1, |loan| {
-            unlocked();
-            finished += 1;
-            if finished == 2 {
-                drop(loan); // Fault before detach: fence/pin survive uncertain cleanup.
-                Err(MemoryObjectError::UnmapFailed)
-            } else {
-                loan.finish_observed(unlocked)
-            }
-        }),
-        Err(IpcError::MemoryTransferFailed)
-    );
+    claim_wait::tests::observe(fixture.server.id(), source, || {
+        assert_eq!(
+            operation.finish_with(1, |loan| {
+                unlocked();
+                finished += 1;
+                if finished == 2 {
+                    drop(loan); // Fault before detach: fence/pin survive uncertain cleanup.
+                    Err(MemoryObjectError::UnmapFailed)
+                } else {
+                    loan.finish_observed(unlocked)
+                }
+            }),
+            Err(IpcError::MemoryTransferFailed)
+        );
+    });
     assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));
     assert_eq!(
         crate::capability::admission_tests::test_namespace_used(fixture.caller.id()),

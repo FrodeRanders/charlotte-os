@@ -327,17 +327,27 @@ fn verify_lock_ownership() {
     }
     assert_eq!(LOCK_PHASE.swap(0, Ordering::AcqRel), 0);
     let peer = (crate::cpu::isa::lp::ops::get_lp_id() + 1) % n;
+    // Prepare physical stack/context backing before the handshake mask. In
+    // particular, x86 kernel mapping preparation may require IRQ-enabled work.
+    let thread = Thread::new(memory::KERNEL_ASID, hold_remote_lifecycle);
+    // Deliberate bounded contention fixture: keep the observing LP executing
+    // until acknowledgement. Yield/preemption could run another local task
+    // that needs lifecycle while the remote holder waits for this observer,
+    // deadlocking the handshake. Mask before publication, not after phase 1.
+    let pin = LocalInterruptMask::new();
     // Trusted boot fixture: one bounded kernel thread, no application resource
     // or dynamically growing observer/registry is admitted by this probe.
-    let _tid =
-        crate::cpu::scheduler::spawn_thread_on_lp(memory::KERNEL_ASID, hold_remote_lifecycle, peer);
+    let tid = publish_thread(thread).expect("remote lifecycle fixture publication failed");
+    SYSTEM_SCHEDULER
+        .read()
+        .submit_to_lp(tid, peer)
+        .expect("remote lifecycle fixture submission failed");
     let deadline = crate::self_test::results::Deadline::after_millis(5_000);
     while LOCK_PHASE.load(Ordering::Acquire) != 1 {
         deadline.assert_pending("remote lifecycle owner entry");
-        crate::cpu::scheduler::yield_lp();
+        core::hint::spin_loop();
     }
     {
-        let _pin = LocalInterruptMask::new();
         // Force the exact contention that made the old assertion fail while
         // proving this LP does not hold an enclosing lifecycle guard.
         assert!(memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_none());
@@ -347,8 +357,9 @@ fn verify_lock_ownership() {
     }
     while LOCK_PHASE.load(Ordering::Acquire) != 3 {
         deadline.assert_pending("remote lifecycle owner exit");
-        crate::cpu::scheduler::yield_lp();
+        core::hint::spin_loop();
     }
+    drop(pin);
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
     crate::logln!(concat!(
         "[domain abort] lifecycle ownership observation: local hold detected, ",

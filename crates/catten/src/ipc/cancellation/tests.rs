@@ -197,11 +197,13 @@ fn success_and_wait() {
                         Err(AddressSpaceCloseError::OperationsInFlight)
                     );
                 }
-                operation
-                    .take()
-                    .unwrap()
-                    .finish_with(|loan| loan.finish_observed(unlocked))
-                    .unwrap();
+                claim_wait::tests::observe(asid, cap, || {
+                    operation
+                        .take()
+                        .unwrap()
+                        .finish_with(|loan| loan.finish_observed(unlocked))
+                        .unwrap();
+                });
                 waits += 1;
             }),
             Err(IpcError::UnknownCapability)
@@ -374,19 +376,21 @@ fn partial_failure() {
     let operation = PreparedCancellation::prepare(fixture.caller.id(), fixture.call).unwrap();
     let identity = operation.identity;
     let mut finished = 0;
-    assert_eq!(
-        operation.finish_with(|loan| {
-            unlocked();
-            finished += 1;
-            if finished == 2 {
-                drop(loan);
-                Err(MemoryObjectError::UnmapFailed)
-            } else {
-                loan.finish_observed(unlocked)
-            }
-        }),
-        Err(IpcError::MemoryTransferFailed)
-    );
+    claim_wait::tests::observe(fixture.caller.id(), fixture.call, || {
+        assert_eq!(
+            operation.finish_with(|loan| {
+                unlocked();
+                finished += 1;
+                if finished == 2 {
+                    drop(loan);
+                    Err(MemoryObjectError::UnmapFailed)
+                } else {
+                    loan.finish_observed(unlocked)
+                }
+            }),
+            Err(IpcError::MemoryTransferFailed)
+        );
+    });
     assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));
     assert_eq!(close_cap(fixture.caller.id(), fixture.call), Err(IpcError::MemoryTransferFailed));
     assert_eq!(receive(fixture.server.id(), fixture.endpoint), Err(IpcError::Pending));
@@ -749,10 +753,12 @@ fn owned_endpoint_rollback() {
     )
     .unwrap();
     let owner = PreparedEndpointClose::prepare(fixture.server.id(), fixture.endpoint).unwrap();
-    assert_eq!(
-        owner.finish_with(LoanRevocation::finish, || panic!("preparation failure waited")),
-        Err(IpcError::MemoryTransferFailed)
-    );
+    claim_wait::tests::observe(fixture.server.id(), fixture.endpoint, || {
+        assert_eq!(
+            owner.finish_with(LoanRevocation::finish, || panic!("preparation failure waited")),
+            Err(IpcError::MemoryTransferFailed)
+        );
+    });
     assert_eq!(poll_reply(fixture.caller.id(), fixture.call), Ok(None));
     assert!(
         endpoint_is_readable_or_closed(
@@ -1253,7 +1259,7 @@ fn owned_endpoint_backing_release() {
     owner
         .finish_with_cleanup(
             |loan| loan.finish_observed(unlocked),
-            || panic!("endpoint cleanup waited"),
+            |_| panic!("endpoint cleanup waited"),
             |owner| {
                 unlocked();
                 object::retirement_tests::assert_backing_release_unlocked();

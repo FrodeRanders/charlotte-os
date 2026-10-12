@@ -331,6 +331,7 @@ extern "C" fn cq_driver() {
     completion::exit_tests::test_scheduled_cleanup();
     completion::callback_tests::test_scheduled_cleanup();
     crate::memory::object::test_scheduled_transfer_close();
+    ipc::claim_wait::tests::scheduled();
 
     logln!(
         "[cq wait] SUCCESS: blocking CQ wait released by completion, by explicit wake, by a \

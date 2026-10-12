@@ -47,6 +47,7 @@ use crate::{
 mod attachments;
 pub(crate) mod budget;
 pub(crate) mod cancellation;
+pub(crate) mod claim_wait;
 pub(crate) mod delivery_tests;
 mod endpoint_close;
 pub(crate) mod namespace_close;
@@ -285,6 +286,8 @@ struct Endpoint {
     /// Owned explicit close fences queue use without reporting terminal closure.
     /// Abandonment retains this claim and the owner's exact root lease.
     closing: bool,
+    claim_interest: Option<claim_wait::Source>,
+    claim_epoch: u64,
     /// When bound, endpoint readiness is delivered to this completion queue
     /// of the owner as a coalesced wake (architecture doc §16.3: readiness is
     /// a notification, not a completion). Posted on the empty→nonempty queue
@@ -301,6 +304,8 @@ struct ReplyToken {
     call: PendingCallId,
     /// Exclusive reply/cancellation owner; Drop cannot force-clear this claim.
     completing: bool,
+    claim_interest: Option<claim_wait::Source>,
+    claim_epoch: u64,
     /// Cancellation reached uncertain physical cleanup; never deliver/reply it.
     cleanup_failed: bool,
     /// Borrowed minting authority protected by the in-flight reply claim.
@@ -532,6 +537,8 @@ impl PreparedCall {
                 server,
                 call,
                 completing: false,
+                claim_interest: None,
+                claim_epoch: 0,
                 cleanup_failed: false,
                 connection_source: None,
                 borrows: self.borrows,
@@ -791,6 +798,8 @@ pub fn endpoint_create(
             close_observers,
             closed: false,
             closing: false,
+            claim_interest: None,
+            claim_epoch: 0,
             notify_cq: None,
         },
     );
@@ -2149,28 +2158,33 @@ fn endpoint_referenced(ipc: &IpcRegistry, endpoint: EndpointId) -> bool {
 }
 
 pub fn close_cap(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError> {
-    close_cap_with_wait(asid, cap, crate::cpu::scheduler::yield_lp)
+    let mut owner = claim_wait::Wait::new();
+    let result = close_cap_in_mode(asid, cap, true, || owner.wait(asid, cap));
+    owner.finish(result)
 }
 
 fn close_cap_with_wait(
     asid: AddressSpaceId,
     cap: CapabilityId,
-    wait: impl FnMut(),
+    mut wait: impl FnMut(),
 ) -> Result<(), IpcError> {
-    close_cap_in_mode(asid, cap, true, wait)
+    close_cap_in_mode(asid, cap, true, || {
+        wait();
+        Ok(())
+    })
 }
 
 /// Root/fixture cleanup owns namespace retirement and has drained claims.
 /// It may consume hidden connection grants but must not acquire new live leases.
 fn close_cap_serialized(asid: AddressSpaceId, cap: CapabilityId) -> Result<(), IpcError> {
-    close_cap_in_mode(asid, cap, false, crate::cpu::scheduler::yield_lp)
+    close_cap_in_mode(asid, cap, false, || Err(IpcError::Pending))
 }
 
 fn close_cap_in_mode(
     asid: AddressSpaceId,
     cap: CapabilityId,
     detached: bool,
-    wait: impl FnMut(),
+    wait: impl FnMut() -> Result<(), IpcError>,
 ) -> Result<(), IpcError> {
     close_cap_in_mode_with_revoker(asid, cap, detached, wait, revoke_memory_borrow)
 }
@@ -2181,7 +2195,7 @@ fn close_cap_in_mode_with_revoker(
     asid: AddressSpaceId,
     cap: CapabilityId,
     detached: bool,
-    wait: impl FnMut(),
+    wait: impl FnMut() -> Result<(), IpcError>,
     revoke: impl FnMut(MemoryBorrow) -> Result<(), crate::memory::object::MemoryObjectError>,
 ) -> Result<(), IpcError> {
     close_cap_with_cleanup(asid, cap, detached, wait, revoke, attachments::release_one)
@@ -2191,7 +2205,7 @@ fn close_cap_with_cleanup(
     asid: AddressSpaceId,
     cap: CapabilityId,
     detached: bool,
-    mut wait: impl FnMut(),
+    mut wait: impl FnMut() -> Result<(), IpcError>,
     mut revoke: impl FnMut(MemoryBorrow) -> Result<(), crate::memory::object::MemoryObjectError>,
     mut release: impl FnMut(crate::memory::object::RetiredMemory),
 ) -> Result<(), IpcError> {
@@ -2205,37 +2219,7 @@ fn close_cap_with_cleanup(
         } else {
             ipc.cap_for_cleanup(asid, cap)?
         };
-        let busy = match payload {
-            Capability::PendingCall {
-                call,
-            } => ipc.reply_tokens.values().any(|token| token.call == call && token.completing),
-            Capability::ReplyToken {
-                token,
-            } => ipc.reply_tokens.get(&token).is_some_and(|token| token.completing),
-            Capability::Endpoint {
-                endpoint,
-                ..
-            } => {
-                ipc.endpoints.get(&endpoint).is_some_and(|endpoint| endpoint.closing)
-                    || ipc.reply_tokens.values().any(|token| {
-                        token.completing
-                            && token.server == asid
-                            && token.connection_source == Some(cap)
-                    })
-                    || ipc.endpoints.get(&endpoint).is_some_and(|endpoint| {
-                        endpoint.queue.iter().any(|message| {
-                            message.reply.is_some_and(|token| {
-                                ipc.reply_tokens.get(&token).is_some_and(|token| token.completing)
-                            })
-                        })
-                    })
-            }
-            Capability::Connection {
-                ..
-            } => ipc.reply_tokens.values().any(|token| {
-                token.completing && token.server == asid && token.connection_source == Some(cap)
-            }),
-        };
+        let busy = claim_wait::is_busy(&ipc, asid, cap, payload);
         if !busy {
             if detached && cancellation::has_loans(&ipc, asid, cap)? {
                 let endpoint = matches!(ipc.cap(asid, cap)?, Capability::Endpoint { .. });
@@ -2249,7 +2233,7 @@ fn close_cap_with_cleanup(
                 };
                 match result {
                     Err(IpcError::Pending) => {
-                        wait();
+                        wait()?;
                         continue;
                     }
                     result => return result,
@@ -2258,7 +2242,7 @@ fn close_cap_with_cleanup(
             break ipc;
         }
         drop(ipc);
-        wait();
+        wait()?;
     };
     // Preserve the close capability, queue and pending record until every loan
     // has confirmed cleanup. Partial success is recorded in place; a failed

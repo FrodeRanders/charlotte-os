@@ -219,6 +219,19 @@ rejection leaves authority and pins intact; ordinary loan, DMA, copy and mapping
 pin rejection retains its existing policy. Readiness supplies no hardware
 completion or physical retry authority.
 
+IPC close waits use the same event-only policy for reply/cancellation and
+endpoint-close claims. A contended close retains its exact root; source
+publication revalidates the capability and checked claim epoch after fallible
+preparation outside IPC. Rollback followed by another claim on the same token
+is a separate episode. Owned endpoint front waiting borrows its existing server
+lease and retains its interest with that owner. Completion, ordinary rejection
+and failure close the exact source through producer-LP deferred notification and
+metadata disposal. Rejected wait admission preserves authority and loan fences;
+abandonment supplies no wake or physical retry. The serialized namespace/fixture
+adapter returns Pending on an unexpected claim instead of parking beneath
+lifecycle. Namespace and operation-lease drains retain separate notification
+work. See \repofile|docs/reference/ipc-record-budgets.md|.
+
 \section{Synchronization and lock ordering}
 
 Shared kernel state is synchronized by a small, deliberate set of primitives.

@@ -80,6 +80,23 @@ returns Pending and endpoint close waits outside IPC. Bulk endpoint/domain
 cleanup still uses its separate serialized adapter; it cannot admit new live
 leases underneath lifecycle. See [mapping retirement](memory-object-retirement.md).
 
+Explicit close waits now retain their captured root and park on one active
+reply/cancellation or endpoint-close claim. Sources are prepared fallibly outside
+IPC, using the claim record's captured classification and checked epoch. A new
+claim on the same token after rollback cannot satisfy old preparation. Owned
+endpoint close retains its front interest with its existing server-root lease;
+it acquires no fresh server lease while claimed. Registration enters only the
+independent charged list, with a closed-source readiness recheck. Completion,
+ordinary rejection and cleanup failure queue exact source notifications and
+admitted disposal storage for producer-LP dispatch after guard exit. Failure
+still leaves uncertain loans fenced and no terminal call result. Abandonment
+retains the claim/root/source, without notification or physical retry. Rejected
+source/wait admission returns ResourceLimit without consuming authority. The
+serialized close adapter returns Pending on an unexpected claim, without parking
+or new live-root admission. Namespace drain notifications and general metadata
+allocation/destruction under IPC remain separate. See
+[claim readiness evidence](../reports/audits/2026-10-12-ipc-close-readiness.md).
+
 Namespace teardown fences record admission before collecting capabilities to
 drain. Receive and connection-publication paths reject a retiring recipient,
 preventing a late receiver token or delegated connection from escaping that

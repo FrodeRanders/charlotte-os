@@ -190,6 +190,18 @@ producer-LP deferred transport shares C16 delivery and disposes metadata only
 after producer/local guard exit. This changes no pin/loan rejection, physical
 receipt or retry policy. Initial scheduled-watch fixture failures are preserved
 separately from corrected runs; broad G1/G4/G7 and SEC-18 remain open.
+The [IPC claim-readiness follow-up](../reports/audits/2026-10-12-ipc-close-readiness.md)
+replaces explicit call/reply/source and owned endpoint-front yield waits with
+exact-root and claim-epoch subscriptions. Completion, rollback and failure wake
+only revalidation through the existing producer-LP transport. Uncertain loans
+stay fenced, abandoned claims retain their owners, and no physical retry or
+terminal call result is inferred. Namespace/lease drains and broader C07/C08/C09
+metadata/guard qualification remain open; SEC-18 is still partial.
+Its final-source Intel guest also stopped once at NIC DMA-domain creation with
+DmaUnavailable; the identical-artifact repeat passed. The adapter hides the
+underlying backend/reset error, and the capture establishes no cause. Production
+startup handling and failure diagnostics remain open; a passing repeat does not
+qualify reliable progress or authorize retry of uncertain creation.
 The [IOMMU preparation follow-up](../reports/audits/2026-10-09-security-iommu-preparation-abandonment.md)
 also removes physical/pool cleanup and implicit ledger heap deallocation from
 C15 fallback. Private construction and ordinary metadata/allocator rejection use

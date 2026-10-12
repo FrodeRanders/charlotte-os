@@ -204,7 +204,7 @@ fn resolve_namespace_token(
 }
 
 impl<'a> PreparedCancellation<'a> {
-    fn prepare(asid: AddressSpaceId, cap: CapabilityId) -> Result<Self, IpcError> {
+    pub(super) fn prepare(asid: AddressSpaceId, cap: CapabilityId) -> Result<Self, IpcError> {
         Self::prepare_with(asid, cap, None, resolve)
     }
 
@@ -302,6 +302,10 @@ impl<'a> PreparedCancellation<'a> {
             if resolve(&ipc, asid, cap)? != Some(identity) {
                 return Err(IpcError::Pending);
             }
+            let epoch = ipc.reply_tokens[&identity.token]
+                .claim_epoch
+                .checked_add(1)
+                .ok_or(IpcError::ResourceLimit)?;
             let borrows = &ipc.reply_tokens[&identity.token].borrows;
             if borrows.len() > CAP_VECTOR_MAX {
                 return Err(IpcError::ResourceLimit);
@@ -335,6 +339,7 @@ impl<'a> PreparedCancellation<'a> {
                 }
             }
             ipc.reply_tokens.get_mut(&identity.token).unwrap().completing = true;
+            ipc.reply_tokens.get_mut(&identity.token).unwrap().claim_epoch = epoch;
             Ok(())
         })();
         if let Err(error) = prepared {
@@ -385,6 +390,7 @@ impl<'a> PreparedCancellation<'a> {
                 assert!(token.completing);
                 token.completing = false;
                 token.cleanup_failed = true;
+                claim_wait::finish(token.claim_interest.take());
                 drop(ipc);
                 self.release_namespaces()?;
                 // Capability and pending record are NOT consumed; no terminal
@@ -408,9 +414,11 @@ impl<'a> PreparedCancellation<'a> {
             assert!(endpoint.closing && !endpoint.closed);
             assert_eq!(endpoint.queue.front().unwrap().reply, Some(identity.token));
         }
-        let token = ipc.reply_tokens.remove(&identity.token).expect("claimed cancellation missing");
+        let mut token =
+            ipc.reply_tokens.remove(&identity.token).expect("claimed cancellation missing");
         assert!(token.completing && token.borrows.is_empty());
         assert_eq!(token.call, identity.call);
+        claim_wait::finish(token.claim_interest.take());
         // A queued cancellation leaves the message in place until every loan
         // completes. Receive and endpoint-close must respect its claim.
         let queued = ipc.endpoints.values_mut().find_map(|endpoint| {

@@ -73,6 +73,19 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   source/watchdog registrations on wake. Notify after releasing producer guards.
   Preserve the enclosing IRQ policy; never enable interrupts beneath an unknown
   mask merely to permit blocking.
+- IPC close waits retain the exact root and subscribe to the active
+  reply/cancellation or endpoint-close claim, including its checked epoch.
+  A rollback followed by a new claim on the same token is a different episode.
+  Prepare charged source/disposal storage outside IPC; revalidate root,
+  capability, token/endpoint and epoch before relinking. Claim completion,
+  ordinary rejection and failure close that source through producer-LP deferred
+  delivery. Registration enters only its independent list under the scheduler.
+  Owned endpoint close borrows its existing server lease for a claimed front;
+  retain its transient interest with that owner. Wait admission rejection leaves
+  authority and uncertain loans intact. Abandoned claims remain fenced and do
+  not generate readiness or permit physical retry. Serialized namespace/fixture
+  close returns Pending on an unexpected claim; it must not spin or admit a
+  fresh live root beneath lifecycle.
 - Services processing several sources must wait on all relevant interests.
   Use `PendingCall::bind_cq` with endpoint interests on one CQ and
   `cq_wait_checked` for the earliest remaining operation deadline (or an

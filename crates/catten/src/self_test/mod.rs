@@ -305,6 +305,7 @@ pub fn run_synchronous_self_tests() {
     crate::ipc::delivery_tests::run();
     crate::ipc::reply::tests::run();
     crate::ipc::cancellation::tests::run();
+    crate::ipc::claim_wait::tests::serialized();
     ipc::test_close_watch_admission();
     crate::ipc::waiter_tests::test_source_admission();
     crate::ipc::waiter_tests::test_reply_cq_interest();

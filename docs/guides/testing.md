@@ -919,6 +919,29 @@ production close has no timer/poll fallback. The scheduled watch uses an opened
 private completion namespace. Failed initial fixture runs are retained in
 [the readiness report](../reports/audits/2026-10-12-memory-close-readiness.md).
 
+IPC claim-readiness fixtures exercise call/reply close, returned connection and
+endpoint source close, ordinary reply-publication rollback, loan cleanup failure,
+and endpoint-close rejection using their real preparation/completion owners.
+Callbacks require IPC, lifecycle and scheduler guard availability; late closed
+registration is immediately ready. Saturation, source/wait rejection and
+completion-before-relink require preserved authority and original list/waiter
+charge recovery. A rollback/reclaim race on the same token must reject the old
+epoch. Scheduled call and owned endpoint-front workers must be Blocked with an
+exact cancellation subscription before the parent completes it. Both roots
+remain busy until their owners finish, and final watched workers/roots close.
+One-millisecond sampling has a five-second fixture deadline; production claim
+waiting has no timer or yield fallback. See
+[IPC readiness evidence](../reports/audits/2026-10-12-ipc-close-readiness.md).
+
+The deliberate cross-LP lifecycle-contention fixture masks its observing LP
+after complete thread stack/context preparation and before publishing the remote
+lock holder, then uses deadline-bounded fixture-only
+spinning through acknowledgement and release. Yielding or preemption there can
+run another local task that blocks on lifecycle while the holder waits for the
+observer, preventing the handshake. The mask preserves the caller's IRQ state;
+this exception does not qualify production resource polling. The failed timeout
+and corrected matrix are retained in the IPC readiness report.
+
 Whole-domain abort fixtures also check the inline root fence, rejection of an
 already-prepared thread, repeated late preparation, callback guard availability,
 TID replacement between capture and claim, ASID reuse and final root/frame
