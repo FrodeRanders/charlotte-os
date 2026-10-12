@@ -66,6 +66,12 @@ blocking point in the shard's execution.
 
 Three event sources converge on this one wait point:
 
+Timed completion waits use one absolute-deadline loop for kernel and syscall
+callers. An unrelated wake rechecks readiness and reparks with the remaining
+budget. Admission rejection is distinct from timeout: both retain the pending
+operation and any buffer borrow. Neither permits releasing its resources or
+replaying an accepted operation.
+
 \subsection{Kernel completions (CQ entries)}
 
 When a submitted operation completes (timer expired, DMA finished, device

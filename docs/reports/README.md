@@ -10,6 +10,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [Timed completion outcomes (SEC-18 / C16, C18)](audits/2026-10-12-completion-wait-outcomes.md) — Explicit kernel wait admission errors, shared deadline loop and exact-generation close-fixture diagnostics.
 - [DMA-map failure ownership (SEC-18 / C13, C18)](audits/2026-10-12-dma-map-failure-ownership.md) — Per-call rejection diagnostics and restricted shared-DMA failure ownership.
 - [DMA startup preparation and typed failures (SEC-18 / C01, C15, C18)](audits/2026-10-12-dma-startup-preparation.md) — Boot-driver grant ordering, retained-root preparation and per-return cause/cancellation diagnostics.
 - [Exact IPC close-claim readiness (SEC-18 / C07–C09)](audits/2026-10-12-ipc-close-readiness.md) — Retained-root and claim-epoch waits, rollback/failure notifications and owned endpoint-front readiness.

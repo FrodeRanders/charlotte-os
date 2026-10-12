@@ -84,6 +84,16 @@ fn create_syscall_test_address_space(label: &str) -> crate::memory::AddressSpace
     asid
 }
 
+pub(crate) fn test_completion_wait_result(
+    asid: crate::memory::AddressSpaceId,
+    cap: u64,
+    timeout_ms: u64,
+) -> (u64, u64) {
+    let mut frame = synthetic_trap_frame_in(asid, 0, cap, timeout_ms, 0);
+    syscall::syscall_dispatch(&mut frame, call_no::COMPLETION_WAIT_TIMEOUT);
+    (frame.regs[0], frame.regs[1])
+}
+
 pub(crate) fn test_dma_map_status(
     asid: crate::memory::AddressSpaceId,
     cap: u64,

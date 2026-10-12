@@ -110,9 +110,12 @@ under the scheduler thread table. See
 [kernel callback ownership](../reference/completion-callback-budgets.md).
 
 For timed completion waits, `CompletionError::Status(WAIT_ADMISSION_FAILED)`
-means the operation is still live and its owner is retained. Retry or poll, or
-let Drop cancel and wait; do not release borrowed operation buffers on this
-error. Untimed completion waiting preserves terminal-state semantics even when
+means the operation is still live and its owner is retained. Keep the owner
+for a later wait, or let Drop cancel and wait; do not release borrowed operation
+buffers on this error. Kernel callers receive `CapError::WaitAdmissionFailed`; `Ok(false)`
+means deadline expiry. Kernel and syscall adapters share one absolute-deadline
+wait loop: an unrelated notification rechecks and reparks with the remaining
+budget. Untimed completion waiting preserves terminal-state semantics even when
 waiter admission is exhausted. See [scheduler waiter budgets](../reference/scheduler-waiter-budgets.md).
 
 Endpoint receive and pending-call reply waits share these generation-sponsored

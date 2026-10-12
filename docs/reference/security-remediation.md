@@ -493,3 +493,10 @@ rollback or authorize retry. Public-operation readiness/IRQ qualification,
 historical AMD causality, the retained Intel scheduled-close/ingress failure and
 broader cleanup acceptance remain open. SEC-18 remains partial; finding counts
 are unchanged.
+
+The [timed completion outcome correction](../reports/audits/2026-10-12-completion-wait-outcomes.md)
+continues C16/C18 and G2/G7: kernel callers distinguish admission rejection from
+deadline expiry, and the syscall reparks on unrelated notifications through the
+shared deadline loop. Pending completion/buffer ownership remains intact. New
+exact-generation fixture diagnostics do not establish historical Intel causality
+or physical quiescence; SEC-18 remains partial and finding counts are unchanged.

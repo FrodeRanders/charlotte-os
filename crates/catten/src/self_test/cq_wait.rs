@@ -191,7 +191,7 @@ fn test_scheduler_waiter_admission() {
     }
     drop(retained_waker);
 
-    let cap = completion::submit(CQW_ASID, OpCode::Nop, None).unwrap();
+    let cap = completion::submit(CQW_ASID, OpCode::Nop, Some(alloc::vec![0xa5; 32])).unwrap();
     for _ in 0..64 {
         assert!(!completion::wait_timeout(CQW_ASID, cap, 1).unwrap());
         assert_eq!(completion::waiter_count(CQW_ASID, cap), 0);
@@ -200,6 +200,76 @@ fn test_scheduler_waiter_admission() {
         assert_eq!(completion::wait_on_cq_checked(CQW_ASID, 2, Some(1)), Ok(false));
         assert_eq!(completion::cq_waiter_count(CQW_ASID, 2), 0);
     }
+    // Exercise both public adapters against the same retained completion.
+    // Admission rejection must leave its result, buffer and Running state alone.
+    let completion_source = completion::completion_of(CQW_ASID, cap).unwrap();
+    let sponsor = WaitSponsor::new(false);
+    let observer: alloc::sync::Arc<dyn Observer> = crate::klib::observer::CallOnNotify::new(|| {});
+    let tokens: alloc::vec::Vec<_> = (0..waiter_budget::SOURCE_LIMIT)
+        .map(|_| {
+            completion_source
+                .try_register_waiter(alloc::sync::Arc::downgrade(&observer), &sponsor)
+                .unwrap()
+        })
+        .collect();
+    let (_, timers) = crate::timers::thread_timer_context(current).unwrap();
+    // Do not compare the ambient timer account across fallible preparation:
+    // allocator contention may schedule, and older cancellations may reclaim.
+    assert_eq!(
+        completion::wait_timeout(CQW_ASID, cap, 10_000),
+        Err(completion::CapError::WaitAdmissionFailed)
+    );
+    assert_eq!(
+        crate::self_test::syscall::test_completion_wait_result(CQW_ASID, cap, 10_000),
+        (catten_syscall::completion_status::WAIT_ADMISSION_FAILED, 0)
+    );
+    assert_eq!(completion::waiter_count(CQW_ASID, cap), waiter_budget::SOURCE_LIMIT);
+    assert!(matches!(
+        MASTER_THREAD_TABLE.read().get(current).unwrap().state,
+        ThreadState::Running(_)
+    ));
+    assert_eq!(completion::state_of(CQW_ASID, cap), Ok(completion::OpStateKind::InFlight));
+    drop(tokens);
+    // All vector allocation precedes the non-parking counter probe.
+    let mut charges = alloc::vec::Vec::with_capacity(crate::timers::budget::MAX_DOMAIN_TIMERS);
+    {
+        // Saturation also guarantees rejection; keep old queue reclamation
+        // from changing this exact sponsor during the counter/charge probe.
+        let _setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
+        let timer_baseline = timers.used();
+        // Fill only this exact thread's scheduler sponsor, never node-wide
+        // timers or another thread's account. Charges are released below.
+        while let Ok(charge) = timers.reserve() {
+            charges.push(charge);
+        }
+        assert_eq!(timers.used(), crate::timers::budget::MAX_DOMAIN_TIMERS);
+        assert_eq!(completion::waiter_count(CQW_ASID, cap), 0);
+        assert_eq!(
+            completion::wait_timeout(CQW_ASID, cap, 10_000),
+            Err(completion::CapError::WaitAdmissionFailed)
+        );
+        assert_eq!(
+            crate::self_test::syscall::test_completion_wait_result(CQW_ASID, cap, 10_000),
+            (catten_syscall::completion_status::WAIT_ADMISSION_FAILED, 0)
+        );
+        assert_eq!(completion::wait_timeout(CQW_ASID, cap, 0), Ok(false));
+        assert_eq!(
+            crate::self_test::syscall::test_completion_wait_result(CQW_ASID, cap, 0),
+            (catten_syscall::completion_status::PENDING_OR_TIMEOUT, 0)
+        );
+        assert_eq!(completion::waiter_count(CQW_ASID, cap), 0);
+        assert_eq!(completion::state_of(CQW_ASID, cap), Ok(completion::OpStateKind::InFlight));
+        assert!(matches!(
+            MASTER_THREAD_TABLE.read().get(current).unwrap().state,
+            ThreadState::Running(_)
+        ));
+        charges.clear(); // Counter-only Drop; keep vector deallocation outside the mask.
+        assert!(completion::holds_buffer(CQW_ASID, cap).unwrap());
+        assert_eq!(timers.used(), timer_baseline);
+    }
+    drop(charges);
+    assert_eq!(sponsor.used(), 0);
+    drop(completion_source);
     let cq_source = completion::capture_cq_interest(CQW_ASID, 2).unwrap();
     let sponsor = WaitSponsor::new(false);
     let observer: alloc::sync::Arc<dyn Observer> = crate::klib::observer::CallOnNotify::new(|| {});
@@ -230,6 +300,95 @@ fn test_scheduler_waiter_admission() {
     logln!(
         "[waiters] SUCCESS: Running/Ready rejection is non-mutating; retained-Waker cancellation; \
          64 completion/CQ timeout cleanups"
+    );
+}
+
+// Private scheduled fixture state only. Parent owns the target completion and
+// both exact-generation exit subscriptions until each child has terminated.
+static TIMED_TARGET: crate::memory::Mutex<Option<(usize, u64, u64)>> =
+    crate::memory::Mutex::new(None);
+static TIMED_REPARKS: AtomicU32 = AtomicU32::new(0);
+
+extern "C" fn unrelated_wake_worker() {
+    use crate::cpu::scheduler::{
+        self,
+        system_scheduler::SYSTEM_SCHEDULER,
+        threads::{
+            MASTER_THREAD_TABLE,
+            ThreadState,
+        },
+    };
+    let (tid, generation, cap) = TIMED_TARGET.lock().take().unwrap();
+    let wait_for_block = || {
+        let deadline = crate::self_test::results::Deadline::after_millis(5_000);
+        loop {
+            let blocked = MASTER_THREAD_TABLE.read().get(tid).is_ok_and(|thread| {
+                thread.generation == generation && matches!(thread.state, ThreadState::Blocked(_))
+            });
+            if blocked && completion::waiter_count(CQW_ASID, cap) == 1 {
+                return;
+            }
+            deadline.assert_pending("timed completion waiter must register/repark");
+            scheduler::sleep_millis(1); // Bounded fixture observation, no production polling.
+        }
+    };
+    wait_for_block();
+    {
+        // Both fixture threads are pinned to this LP. Keep wake and cancelled
+        // registration observation atomic against a quantum/repark race.
+        let _setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
+        SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation).unwrap();
+        assert_eq!(completion::waiter_count(CQW_ASID, cap), 0);
+    }
+    wait_for_block();
+    TIMED_REPARKS.fetch_add(1, Ordering::Release);
+    completion::complete(CQW_ASID, cap, OpResult::Ok(42)).unwrap();
+}
+
+fn test_timed_completion_wakes() {
+    use crate::cpu::scheduler::{
+        self,
+        system_scheduler::get_thread_id,
+        threads::MASTER_THREAD_TABLE,
+    };
+    let tid = get_thread_id().unwrap();
+    let generation = MASTER_THREAD_TABLE.read().get(tid).unwrap().generation;
+    TIMED_REPARKS.store(0, Ordering::Release);
+    for syscall in [false, true] {
+        let cap = completion::submit(CQW_ASID, OpCode::Nop, Some(alloc::vec![0xa5; 32])).unwrap();
+        *TIMED_TARGET.lock() = Some((tid, generation, cap));
+        let mut worker_generation = 0;
+        let worker = scheduler::spawn_thread_after_publish(
+            KERNEL_ASID,
+            unrelated_wake_worker,
+            |_, captured| worker_generation = captured,
+        );
+        let exited = completion::observe_thread_exit_with_generation(
+            CQW_ASID,
+            worker,
+            Some(worker_generation),
+        )
+        .unwrap();
+        if syscall {
+            assert_eq!(
+                crate::self_test::syscall::test_completion_wait_result(CQW_ASID, cap, 5_000),
+                (catten_syscall::completion_status::READY, 42)
+            );
+        } else {
+            assert_eq!(completion::wait_timeout(CQW_ASID, cap, 5_000), Ok(true));
+            let result = completion::poll(CQW_ASID, cap).unwrap().unwrap();
+            assert_eq!(result.result, OpResult::Ok(42));
+            assert_eq!(result.buffer.unwrap(), alloc::vec![0xa5; 32]);
+        }
+        assert_eq!(completion::waiter_count(CQW_ASID, cap), 0);
+        completion::close(CQW_ASID, cap).unwrap();
+        assert_eq!(completion::wait_timeout(CQW_ASID, exited, 5_000), Ok(true));
+        completion::close(CQW_ASID, exited).unwrap();
+    }
+    assert_eq!(TIMED_REPARKS.load(Ordering::Acquire), 2);
+    logln!(
+        "[completion timed wait] kernel/dispatcher source and watchdog rejection preserve pending \
+         ownership; unrelated wakes repark before actual completion with the original deadline"
     );
 }
 
@@ -330,6 +489,7 @@ extern "C" fn cq_driver() {
     crate::timers::event_tests::test_scheduled_cleanup();
     completion::exit_tests::test_scheduled_cleanup();
     completion::callback_tests::test_scheduled_cleanup();
+    test_timed_completion_wakes();
     crate::memory::object::test_scheduled_transfer_close();
     crate::device::test_scheduled_creation_readiness();
     ipc::claim_wait::tests::scheduled();

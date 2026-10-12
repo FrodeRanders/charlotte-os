@@ -206,6 +206,8 @@ pub enum CapError {
     UnknownCap,
     /// The capability's operation has not reached a terminal completion yet.
     NotComplete,
+    /// Source, waiter or watchdog admission rejected without completing the operation.
+    WaitAdmissionFailed,
 }
 
 struct CompletionInner {
@@ -1795,8 +1797,9 @@ pub fn wait(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
 }
 
 /// Blocks the calling thread until `cap` reaches a terminal completion or
-/// `timeout_ms` elapses. Returns `true` if terminal, `false` on timeout or
-/// failed waiter admission. The capability remains live in the latter cases.
+/// `timeout_ms` elapses. Returns `true` if terminal, `false` only on deadline
+/// expiry, and `WaitAdmissionFailed` on waiter/watchdog rejection. Neither
+/// rejection nor timeout consumes the capability or its buffer.
 /// Event-driven like [`wait`], with a timer watchdog so a caller waiting on
 /// an event that never fires fails loudly instead of hanging silently.
 pub fn wait_timeout(
@@ -1808,11 +1811,12 @@ pub fn wait_timeout(
     if completion.is_terminal() {
         return Ok(true);
     }
-    Ok(crate::cpu::scheduler::block_until(
+    crate::cpu::scheduler::try_block_until(
         completion.as_ref() as &dyn Observable,
         timeout_ms,
         || completion.is_terminal(),
-    ))
+    )
+    .map_err(|_| CapError::WaitAdmissionFailed)
 }
 
 /// Requests cancellation of an in-flight operation. See [`CancelState`]. Any

@@ -1837,146 +1837,34 @@ fn recv_vec_into_frame(frame: &mut TrapFrame, authenticated: bool) {
 }
 
 fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
-    use alloc::sync::{
-        Arc,
-        Weak,
-    };
+    use catten_syscall::completion_status as status;
 
-    use crate::{
-        cpu::scheduler::{
-            system_scheduler::SYSTEM_SCHEDULER,
-            yield_lp,
-        },
-        klib::time::duration::ExtDuration,
+    use crate::completion::{
+        self,
+        CapError,
     };
 
     let asid = caller_asid(frame);
     let cap = frame.regs[1];
     let timeout_ms = frame.regs[2];
-
-    // Structure that wakes the blocked thread when signalled (by either the
-    // timer firing or the completion finishing).
-    struct TimeoutWake {
-        tid: crate::cpu::scheduler::threads::ThreadId,
-        generation: crate::cpu::scheduler::threads::ThreadGeneration,
-    }
-    impl crate::klib::observer::Observer for TimeoutWake {
-        fn notify(self: alloc::sync::Arc<Self>) {
-            let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(self.tid, self.generation);
-        }
-    }
-
-    // Fast path: completion already posted, or the capability is already
-    // known to be invalid. Do not enter scheduler code for a caller error.
-    match crate::completion::poll(asid, cap) {
-        Ok(Some(completed)) => {
-            frame.regs[0] = catten_syscall::completion_status::READY;
-            frame.regs[1] = crate::completion::cq::op_result_to_i64(completed.result) as u64;
-            return;
-        }
-        Ok(None) => {}
-        Err(_) => {
-            frame.regs[0] = catten_syscall::completion_status::INVALID_CAPABILITY;
-            frame.regs[1] = 0;
-            return;
-        }
-    }
-
-    let tid = SYSTEM_SCHEDULER
-        .read()
-        .get_lp_scheduler()
-        .lock()
-        .get_tid()
-        .expect("COMPLETION_WAIT_TIMEOUT: no running thread");
-
-    // Keep the object used for both registration and the lost-wake check.
-    // Looking it up twice would be harmless while this capability remains
-    // open, but one Arc makes the synchronization relationship explicit.
-    // An unknown capability is a caller error, not a kernel fault.
-    let completion = match crate::completion::completion_of(asid, cap) {
-        Ok(completion) => completion,
-        Err(_) => {
-            frame.regs[0] = catten_syscall::completion_status::INVALID_CAPABILITY;
-            frame.regs[1] = 0;
-            return;
-        }
+    // Share the exact retained completion, admission outcome, lost-wake check
+    // and absolute deadline loop with kernel callers. Unrelated notifications
+    // repark; they neither consume the result nor restart the timeout budget.
+    let result = completion::wait_timeout(asid, cap, timeout_ms);
+    frame.regs[1] = 0;
+    frame.regs[0] = match result {
+        Ok(true) => match completion::poll(asid, cap) {
+            Ok(Some(completed)) => {
+                frame.regs[1] = completion::cq::op_result_to_i64(completed.result) as u64;
+                status::READY
+            }
+            Ok(None) => status::PENDING_OR_TIMEOUT,
+            Err(_) => status::INVALID_CAPABILITY,
+        },
+        Ok(false) => status::PENDING_OR_TIMEOUT,
+        Err(CapError::WaitAdmissionFailed) => status::WAIT_ADMISSION_FAILED,
+        Err(_) => status::INVALID_CAPABILITY,
     };
-
-    // Block on the completion.
-    let setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
-    let prepared = (|| {
-        let (expected_generation, sponsor) = crate::timers::thread_timer_context(tid).ok_or(())?;
-        let timeout_obs = Arc::try_new(TimeoutWake {
-            tid,
-            generation: expected_generation,
-        })
-        .map_err(|_| ())?;
-        let (timer_event, timeout_handle) = crate::timers::prepare_watchdog(
-            ExtDuration::from_millis(timeout_ms as u128),
-            &sponsor,
-        )?;
-        timer_event.event().register_observer(
-            Arc::downgrade(&timeout_obs) as Weak<dyn crate::klib::observer::Observer>
-        );
-        Ok::<_, ()>((expected_generation, timeout_obs, timer_event, timeout_handle))
-    })();
-    let Ok((expected_generation, _timeout_obs, timer_event, timeout_handle)) = prepared else {
-        frame.regs[0] = catten_syscall::completion_status::WAIT_ADMISSION_FAILED;
-        frame.regs[1] = 0;
-        return;
-    };
-    let generation = match SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
-        tid,
-        completion.as_ref(),
-        crate::cpu::scheduler::threads::MigrationConstraint::GeneralWait,
-    ) {
-        Ok(generation) => generation,
-        Err(_) => {
-            frame.regs[0] = catten_syscall::completion_status::WAIT_ADMISSION_FAILED;
-            frame.regs[1] = 0;
-            return;
-        }
-    };
-
-    // Arm a timer that also wakes this thread (timeout path).
-    debug_assert_eq!(generation, expected_generation);
-    // SAFETY: TIMER_QUEUES is initialised by bsp_init before self-tests or
-    // any threads run.
-    timer_event.enqueue();
-
-    // Close the same lost-wake window as completion::wait(): the operation
-    // may have completed after the fast-path poll but before its observer was
-    // registered. In that case Completion::signal() saw no waiter, so make
-    // the now-blocked thread runnable before yielding. A later completion
-    // races safely with this idempotent generation-checked admission.
-    if completion.is_terminal() {
-        let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
-    }
-
-    drop(setup);
-    yield_lp();
-
-    // Completion may have won before the deadline. Cancel the watchdog so it
-    // cannot occupy the local timer queue or request a redundant reschedule.
-    let _ = crate::timers::cancel_event(timeout_handle);
-
-    // Woke up: check whether the completion or the timeout won.
-    match crate::completion::poll(asid, cap) {
-        Ok(Some(completed)) => {
-            // Write the result back: x0 = 0 (success), x1 = result code.
-            let code = crate::completion::cq::op_result_to_i64(completed.result);
-            frame.regs[0] = catten_syscall::completion_status::READY;
-            frame.regs[1] = code as u64;
-        }
-        Ok(None) => {
-            frame.regs[0] = catten_syscall::completion_status::PENDING_OR_TIMEOUT;
-            frame.regs[1] = 0;
-        }
-        Err(_) => {
-            frame.regs[0] = catten_syscall::completion_status::INVALID_CAPABILITY;
-            frame.regs[1] = 0;
-        }
-    }
 }
 
 fn sys_cq_wait(frame: &mut TrapFrame) {

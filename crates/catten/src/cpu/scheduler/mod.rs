@@ -482,10 +482,23 @@ pub(crate) fn try_block_until_with_constraint(
                 .then_some(true)
                 .ok_or(system_scheduler::Error::WaitRegistrationFailed);
         };
-        // Do not let a quantum switch out a newly Blocked thread before its
-        // watchdog is queued. Early rejection restores IRQ state through Drop.
-        let setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
+        // Capture the exact sponsor and prepare fallible metadata before the
+        // local park-publication mask. Allocator contention can schedule too;
+        // a LocalInterruptMask must not survive that preparation. Preserve any
+        // caller-owned mask instead of force-enabling IRQs here.
         let Some((expected_generation, sponsor)) = crate::timers::thread_timer_context(tid) else {
+            return condition()
+                .then_some(true)
+                .ok_or(system_scheduler::Error::WaitRegistrationFailed);
+        };
+        let remaining = deadline.saturating_sub(monotonic_millis());
+        if remaining == 0 {
+            return Ok(condition());
+        }
+        // Full watchdog admission rejects before allocating the observer.
+        let Ok((mut timer_event, timeout_handle)) =
+            crate::timers::prepare_watchdog(ExtDuration::from_millis(remaining as u128), &sponsor)
+        else {
             return condition()
                 .then_some(true)
                 .ok_or(system_scheduler::Error::WaitRegistrationFailed);
@@ -498,17 +511,18 @@ pub(crate) fn try_block_until_with_constraint(
                 .then_some(true)
                 .ok_or(system_scheduler::Error::WaitRegistrationFailed);
         };
-        let remaining = deadline.saturating_sub(now).max(1);
-        let Ok((timer_event, timeout_handle)) =
-            crate::timers::prepare_watchdog(ExtDuration::from_millis(remaining as u128), &sponsor)
-        else {
-            return condition()
-                .then_some(true)
-                .ok_or(system_scheduler::Error::WaitRegistrationFailed);
-        };
         timer_event
             .event()
             .register_observer(alloc::sync::Arc::downgrade(&timeout_obs) as Weak<dyn Observer>);
+        // Recompute after allocator/scheduler delay, retaining the original
+        // deadline. Unused preparation is disposed before taking this mask.
+        let remaining = deadline.saturating_sub(monotonic_millis());
+        if remaining == 0 {
+            return Ok(condition());
+        }
+        timer_event.event_mut().reset_after(ExtDuration::from_millis(remaining as u128));
+        // Only Blocked publication, recheck and watchdog enqueue belong here.
+        let setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
         let generation = match SYSTEM_SCHEDULER
             .read()
             .block_thread_with_constraint_generation(tid, observable, constraint)

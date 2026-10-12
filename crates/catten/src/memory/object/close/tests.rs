@@ -186,8 +186,9 @@ const SCHEDULED_CLIENT: AddressSpaceId = 0x5d06;
 
 extern "C" fn close_worker() {
     let (owner, cap) = SCHEDULED_TARGET.lock().take().unwrap();
+    SCHEDULED_RESULT.store(1, Ordering::Release); // Entered the close operation.
     close_cap(owner, cap).expect("scheduled memory close failed");
-    SCHEDULED_RESULT.store(1, Ordering::Release);
+    SCHEDULED_RESULT.store(2, Ordering::Release);
 }
 
 pub(crate) fn scheduled() {
@@ -228,8 +229,32 @@ pub(crate) fn scheduled() {
         Err(crate::memory::AddressSpaceCloseError::OperationsInFlight)
     );
     drop(transfer); // Rollback closes the exact source and queues its admitted wake.
-    assert!(crate::completion::wait_timeout(SCHEDULED_CLIENT, watched, 5_000).unwrap());
-    assert_eq!(SCHEDULED_RESULT.load(Ordering::Acquire), 1);
+    let result = crate::completion::wait_timeout(SCHEDULED_CLIENT, watched, 5_000);
+    if result != Ok(true) {
+        // Copied exact-generation observations, never completion/recovery
+        // authority. Release every inspected registry before logging/panic.
+        let state = {
+            let table = MASTER_THREAD_TABLE.read();
+            table.get(tid).ok().filter(|thread| thread.generation == generation).map(|thread| {
+                match thread.state {
+                    ThreadState::NeedsLpAssignment => "unassigned",
+                    ThreadState::Ready(_) => "ready",
+                    ThreadState::Running(_) => "running",
+                    ThreadState::Blocked(_) => "blocked",
+                }
+            })
+        };
+        let staged = crate::cpu::scheduler::threads::staged_retirement_snapshot(generation);
+        let completion = crate::completion::state_of(SCHEDULED_CLIENT, watched);
+        let phase = SCHEDULED_RESULT.load(Ordering::Acquire);
+        crate::logln!(
+            "[memory close readiness] rejected exit wait: result={result:?} tid={tid} \
+             generation={generation} worker_phase={phase} exact_state={state:?} staged={staged:?} \
+             completion={completion:?}"
+        );
+    }
+    assert_eq!(result, Ok(true), "scheduled close must observe exact exit within its deadline");
+    assert_eq!(SCHEDULED_RESULT.load(Ordering::Acquire), 2);
     crate::completion::close(SCHEDULED_CLIENT, watched).unwrap();
     crate::completion::close_address_space(SCHEDULED_CLIENT);
     crate::capability::close_address_space(SCHEDULED_CLIENT);

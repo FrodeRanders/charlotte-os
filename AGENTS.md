@@ -73,6 +73,18 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   source/watchdog registrations on wake. Notify after releasing producer guards.
   Preserve the enclosing IRQ policy; never enable interrupts beneath an unknown
   mask merely to permit blocking.
+- Kernel and syscall timed completion waits share the checked scheduler's
+  absolute-deadline loop. Kernel `WaitAdmissionFailed` and ABI
+  `WAIT_ADMISSION_FAILED` retain the pending completion/buffer; neither is a
+  timeout or a terminal result. Prepare watchdog/observer storage before the
+  wait's local park-publication mask, with the captured generation/sponsor;
+  full watchdog admission rejects before observer allocation. Recompute the
+  remaining budget after preparation. Preserve any caller-owned mask instead
+  of force-enabling IRQs. An unrelated wake must recheck and repark with the
+  remaining budget. Do not duplicate a one-wake syscall adapter or turn
+  admission rejection into `false`. Exact-generation exit/retirement snapshots
+  diagnose waits; absence, a worker-return marker or a wake is not quiescence
+  and cannot authorize root/stack/backing release.
 - IPC close waits retain the exact root and subscribe to the active
   reply/cancellation or endpoint-close claim, including its checked epoch.
   A rollback followed by a new claim on the same token is a different episode.
