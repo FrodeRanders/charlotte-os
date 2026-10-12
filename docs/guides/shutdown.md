@@ -59,8 +59,9 @@ RAII owners.
 Current tooling emits `CDEPLOY5`. Its `shutdown_grace_ms` field is signed with
 the artifact digest, placement, stack pages, thread quota, and grants. Valid
 values are zero through 300,000 milliseconds; zero requests immediate forced
-retirement. `CDEPLOY1` through `CDEPLOY3` remain readable and receive the
-5,000-millisecond compatibility default.
+retirement. Readers accept only `CDEPLOY5`; every descriptor supplies its
+explicit grace period, with no older-format defaults. Built-in launch policy
+may separately choose the 5,000-millisecond default.
 
 On the first `DeployedArtifact::poll_retire()` call, the kernel:
 

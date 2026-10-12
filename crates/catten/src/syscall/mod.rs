@@ -2277,7 +2277,7 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
         || descriptor_cap == 0
         || elf_size.is_none_or(|size| size == 0 || size > charlotte_launch::MAX_ARTIFACT_ELF_SIZE)
         || descriptor_size.is_none_or(|size| {
-            !(charlotte_launch::deployment::MIN_HEADER_LEN
+            !(charlotte_launch::deployment::HEADER_LEN
                 ..=charlotte_launch::deployment::MAX_DESCRIPTOR_LEN)
                 .contains(&size)
         })

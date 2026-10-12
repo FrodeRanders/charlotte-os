@@ -84,7 +84,7 @@ impl Route {
             shutdown,
         };
         match self {
-            Self::Notify => (deployment::MIN_HEADER_LEN, deployment::MAX_DESCRIPTOR_LEN),
+            Self::Notify => (deployment::HEADER_LEN, deployment::MAX_DESCRIPTOR_LEN),
             Self::Release => (release::HEADER_LEN, release::MAX_RELEASE_LEN),
             Self::Operations => (operations_bundle::HEADER_LEN, operations_bundle::MAX_BUNDLE_LEN),
             Self::Shutdown => (shutdown::ENCODED_LEN, shutdown::ENCODED_LEN),
@@ -281,6 +281,22 @@ mod tests {
         unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
             unsafe { System.dealloc(pointer, layout) }
         }
+    }
+
+    #[test]
+    fn deployment_framing_requires_current_header_floor() {
+        for length in [152, 154, 158, charlotte_launch::deployment::HEADER_LEN - 1] {
+            let header =
+                format!("POST /v1/deployments HTTP/1.1\r\nContent-Length: {length}\r\n\r\n");
+            assert_eq!(RequestBuffer::default().push(header.as_bytes()), Err(Error::TooLarge));
+        }
+        let length = charlotte_launch::deployment::HEADER_LEN;
+        let header = format!("POST /v1/deployments HTTP/1.1\r\nContent-Length: {length}\r\n\r\n");
+        let mut request = RequestBuffer::default();
+        assert_eq!(request.push(header.as_bytes()), Ok(None));
+        let body = vec![0; length];
+        assert_eq!(request.push(&body), Ok(Some(Request::Notify(body))));
+        // Framing only bounds the body; signature/grammar validation is later.
     }
 
     #[test]

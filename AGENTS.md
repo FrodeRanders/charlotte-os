@@ -205,6 +205,16 @@ the corrected RPC polling paths, and the remaining notification gaps.
 - Internal APIs and wire formats have no backward-compatibility requirement.
   Remove compatibility-only branches when a coherent replacement is ready;
   do not preserve an unsafe allocation path for older callers.
+  Protocol simplification covers magic/version tags, parsers, writers, SDKs,
+  fixtures and both Markdown/LaTeX living documentation together. Prefer one
+  current grammar and reject retired formats even when correctly signed; do
+  not fill absent fields with compatibility defaults. Remove old paths and
+  compile their callers before a separate optional magic/version rename. Never
+  reuse a retired magic while its old grammar remains accepted. Current format
+  numbers may stay unchanged; resetting everything to version 1 is not required.
+  Record batches and remaining candidates in `docs/reference/api-simplification.md`.
+  Preserve historical reports; hardware support and external protocol negotiation
+  are not internal backward-compatibility obligations.
 - New kernel capability publication uses `capability::Reservation`: reserve
   before payload/ownership mutation and publish under the subsystem's
   serialization. Retain the captured namespace identity, not just its ASID.

@@ -60,12 +60,12 @@ including generated adapter and language/runtime frames. Prefer heap-backed
 buffers for large or input-sized data. The current valid range is 1 through 64
 pages (4 KiB through 256 KiB), and the current thread-count range is 1 through
 64. The kernel enforces both values exactly and rejects invalid requests rather
-than clamping them. A thread publication beyond the quota fails closed by
-aborting that protection domain under the current spawn ABI. Built-in launches
-and legacy `CDEPLOY1` descriptors use four stack pages and 16 threads;
-`CDEPLOY2` preserves its signed stack value and receives the 16-thread
-compatibility default. Developers own the estimates, while the deployment
-signer and cluster admission retain the right to reject them.
+than clamping them. A quota-exceeding spawn returns `ThreadError::SpawnFailed`
+without aborting the caller. Built-in launches use four stack pages and 16
+threads by explicit platform policy. Signed deployment accepts only `CDEPLOY5`,
+with every resource value and placement carried in the descriptor. Developers
+own the estimates, while the deployment signer and cluster admission retain
+the right to reject them.
 
 The same developer-owned plan carries `shutdownGraceMillis`, because the
 component author knows how long in-flight work and remote teardown may need.

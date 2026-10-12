@@ -70,7 +70,7 @@ pub fn spawn_scoped_artifact(
 ) -> Result<u64, ArtifactLaunchError> {
     if artifact_len == 0
         || artifact_len > artifact.len()
-        || descriptor_len < charlotte_launch::deployment::MIN_HEADER_LEN
+        || descriptor_len < charlotte_launch::deployment::HEADER_LEN
         || descriptor_len > descriptor.len()
         || descriptor_len > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
     {

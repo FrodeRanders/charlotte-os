@@ -42,7 +42,7 @@ pub const INITIAL_USER_STACK_PAGES: usize = 1;
 /// The bootstrap thread counts toward this limit.
 pub const DEFAULT_USER_MAX_THREADS: usize = 16;
 pub const MAX_USER_THREADS: usize = 64;
-/// Default cooperative shutdown window for legacy deployment descriptors.
+/// Default cooperative shutdown window chosen by built-in launch policy.
 pub const DEFAULT_SHUTDOWN_GRACE_MS: u32 = 5_000;
 /// Largest cooperative shutdown window accepted from signed deployment
 /// policy. A non-cooperating application is forcibly retired afterwards.

@@ -50,15 +50,12 @@ created in the protected domain. The platform currently accepts 1 through 64
 pages (4 KiB through 256 KiB) per thread. It rejects zero, an excessive value,
 or a non-canonical descriptor; it never silently clamps the developer's
 request. The active-thread limit includes the bootstrap thread and accepts 1
-through 64. Publication beyond it aborts the protection domain under the
-current fail-closed spawn ABI. Legacy `CDEPLOY1` descriptors remain readable
-with the former four-page (16 KiB) and 16-thread defaults. `CDEPLOY2` retains
-its signed stack allocation and receives the 16-thread compatibility default.
-`CDEPLOY3` retains both execution limits and receives the five-second shutdown
-compatibility default. `CDEPLOY4` retains all three execution/shutdown values
-and decodes with singleton placement. New release tooling emits only
-`CDEPLOY5`. Shutdown grace accepts zero through 300,000 milliseconds; zero
-selects immediate forced retirement.
+through 64. A quota-exceeding spawn rejects before stack construction and
+returns `(u64::MAX, 0)`; the owned runtime returns `ThreadError::SpawnFailed`
+while the caller remains running. The only accepted descriptor is `CDEPLOY5`,
+with explicit execution limits, shutdown grace and placement. Older formats
+reject without compatibility defaults. Shutdown grace accepts zero through
+300,000 milliseconds; zero selects immediate forced retirement.
 
 This is deliberately a two-role decision. Development and generation know the
 component's call depth, local variables, language/runtime needs, expected

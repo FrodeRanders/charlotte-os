@@ -816,9 +816,8 @@ A signed \texttt{CRELEASE} envelope produced with
 \texttt{release-apply}. Its outer signature binds a release name, monotonic
 sequence, and the exact ordered bytes of up to 16 distinct nested descriptors;
 the complete envelope is bounded to 3,584 bytes. The cluster verifies both the
-outer signature and every nested deployment signature. Current tooling emits
-\texttt{CDEPLOY5}; the reader retains compatibility with \texttt{CDEPLOY1}
-through \texttt{CDEPLOY4}.
+outer signature and every nested deployment signature. Every nested descriptor
+must use \texttt{CDEPLOY5}; retired formats reject even when correctly signed.
 A follower relays the
 request to the current leader, which resolves all signed placement policies
 against admitted, non-draining voters and proposes the concrete replica sets

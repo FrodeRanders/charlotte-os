@@ -87,11 +87,10 @@ bootstrap thread, with five seconds to drain before forced retirement. Valid
 ranges are rejected rather than clamped. A thread spawn beyond the signed
 quota rejects before stack construction and returns `(u64::MAX, 0)`; the owned
 runtime reports `ThreadError::SpawnFailed`, leaving the caller running. The release pipeline should take all three requirements from the signed,
-developer-reviewed component plan. For compatibility, `CDEPLOY1` is interpreted
-as four pages and 16 threads, while `CDEPLOY2` retains its signed stack pages
-and receives the 16-thread default. `CDEPLOY3` receives the five-second
-shutdown compatibility default. `CDEPLOY4` retains all three values and
-decodes with singleton placement.
+developer-reviewed component plan. Only `CDEPLOY5` is accepted. Its exact
+182-byte header must include execution limits, shutdown grace and placement;
+older formats reject even with a valid signature. Regenerate old deployment
+files and their containing signed release envelopes using the current tooling.
 
 `deployment-apply` is currently release orchestration, not atomic bundle
 admission. Each descriptor is a separate Raft entry, so a transport or policy
@@ -114,8 +113,8 @@ cluster-sign release-apply orders.crelease 127.0.0.1:8081 120
 
 The outer signature binds the release name, monotonic release sequence, and
 exact ordered descriptor bytes. Every nested deployment signature is also
-verified against the cluster key; current tooling emits `CDEPLOY5`, while the
-reader retains `CDEPLOY1` through `CDEPLOY4` compatibility. An envelope is limited
+verified against the cluster key and must use the current `CDEPLOY5` grammar.
+An envelope is limited
 to 16 distinct artifact names and 3,584 bytes so it, its IPC envelope, and the
 leader-resolved node assignments remain bounded.
 

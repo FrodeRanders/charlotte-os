@@ -19,23 +19,12 @@ use crate::{
 
 pub const MAGIC: &[u8; 8] = b"CDEPLOY5";
 pub const VERSION: u16 = 5;
-pub const V4_MAGIC: &[u8; 8] = b"CDEPLOY4";
-pub const V4_VERSION: u16 = 4;
-pub const V3_MAGIC: &[u8; 8] = b"CDEPLOY3";
-pub const V3_VERSION: u16 = 3;
-pub const V2_MAGIC: &[u8; 8] = b"CDEPLOY2";
-pub const V2_VERSION: u16 = 2;
-pub const LEGACY_MAGIC: &[u8; 8] = b"CDEPLOY1";
-pub const LEGACY_VERSION: u16 = 1;
 pub const HEADER_LEN: usize = 182;
-pub const V4_HEADER_LEN: usize = 158;
-pub const LEGACY_HEADER_LEN: usize = 152;
-pub const MIN_HEADER_LEN: usize = LEGACY_HEADER_LEN;
 pub const SIGNATURE_OFFSET: usize = 88;
 pub const SIGNATURE_LEN: usize = 64;
 pub const MAX_THREADS_OFFSET: usize = SIGNATURE_OFFSET + SIGNATURE_LEN;
 pub const SHUTDOWN_GRACE_MS_OFFSET: usize = MAX_THREADS_OFFSET + 2;
-pub const PLACEMENT_OFFSET: usize = V4_HEADER_LEN;
+pub const PLACEMENT_OFFSET: usize = SHUTDOWN_GRACE_MS_OFFSET + 4;
 pub const KEY_ID_LEN: usize = 16;
 /// Leaves room in one 4 KiB IPC memory object for an acquisition header and
 /// the requested service name.
@@ -75,8 +64,7 @@ pub struct DescriptorFields<'a> {
     pub max_threads: u16,
     /// Maximum cooperative drain interval before forced domain retirement.
     pub shutdown_grace_ms: u32,
-    /// Signed desired placement. Legacy descriptor versions decode as a
-    /// singleton policy.
+    /// Signed desired placement; every descriptor carries an explicit policy.
     pub placement: PlacementPolicy,
     /// Opaque key interpreted inside the node's preconfigured object-store
     /// connector. It contains neither a bucket endpoint nor credentials.
@@ -109,7 +97,6 @@ pub enum VerifyOutcome {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DeploymentDescriptor<'a> {
     bytes: &'a [u8],
-    pub format_version: u16,
     pub sequence: u64,
     pub node_key: u64,
     pub artifact_digest: [u8; 32],
@@ -299,112 +286,36 @@ pub fn set_signature(bytes: &mut [u8], signature: &[u8; SIGNATURE_LEN]) -> bool 
 }
 
 pub fn decode(bytes: &[u8]) -> Option<DeploymentDescriptor<'_>> {
-    if bytes.len() < LEGACY_HEADER_LEN {
+    if bytes.len() < HEADER_LEN
+        || bytes.get(0..8)? != MAGIC
+        || read_u16(bytes, 8)? != VERSION
+        || usize::from(read_u16(bytes, 10)?) != HEADER_LEN
+    {
         return None;
     }
-    let format_version = read_u16(bytes, 8)?;
-    let (header_len, stack_pages_per_thread, max_threads, shutdown_grace_ms, placement) =
-        match (bytes.get(0..8)?, format_version) {
-            (magic, VERSION) if magic == MAGIC => {
-                if usize::from(read_u16(bytes, 10)?) != HEADER_LEN {
-                    return None;
-                }
-                let pages = read_u16(bytes, 70)?;
-                if !(1..=crate::MAX_USER_STACK_PAGES).contains(&usize::from(pages)) {
-                    return None;
-                }
-                let max_threads = read_u16(bytes, MAX_THREADS_OFFSET)?;
-                if !(1..=crate::MAX_USER_THREADS).contains(&usize::from(max_threads)) {
-                    return None;
-                }
-                let grace = read_u32(bytes, SHUTDOWN_GRACE_MS_OFFSET)?;
-                if grace > crate::MAX_SHUTDOWN_GRACE_MS {
-                    return None;
-                }
-                let placement = PlacementPolicy {
-                    replicas: read_u16(bytes, PLACEMENT_OFFSET)?,
-                    max_instances_per_node: read_u16(bytes, PLACEMENT_OFFSET + 2)?,
-                    min_distinct_nodes: read_u16(bytes, PLACEMENT_OFFSET + 4)?,
-                    flags: read_u16(bytes, PLACEMENT_OFFSET + 6)?,
-                    affinity_group: read_u64(bytes, PLACEMENT_OFFSET + 8)?,
-                    anti_affinity_group: read_u64(bytes, PLACEMENT_OFFSET + 16)?,
-                };
-                if placement.validate_shape().is_err() {
-                    return None;
-                }
-                (HEADER_LEN, pages, max_threads, grace, placement)
-            }
-            (magic, V4_VERSION) if magic == V4_MAGIC => {
-                if usize::from(read_u16(bytes, 10)?) != V4_HEADER_LEN {
-                    return None;
-                }
-                let pages = read_u16(bytes, 70)?;
-                if !(1..=crate::MAX_USER_STACK_PAGES).contains(&usize::from(pages)) {
-                    return None;
-                }
-                let max_threads = read_u16(bytes, MAX_THREADS_OFFSET)?;
-                if !(1..=crate::MAX_USER_THREADS).contains(&usize::from(max_threads)) {
-                    return None;
-                }
-                let grace = read_u32(bytes, SHUTDOWN_GRACE_MS_OFFSET)?;
-                if grace > crate::MAX_SHUTDOWN_GRACE_MS {
-                    return None;
-                }
-                (V4_HEADER_LEN, pages, max_threads, grace, PlacementPolicy::singleton())
-            }
-            (magic, V3_VERSION) if magic == V3_MAGIC => {
-                let header_len = MAX_THREADS_OFFSET + 2;
-                if usize::from(read_u16(bytes, 10)?) != header_len {
-                    return None;
-                }
-                let pages = read_u16(bytes, 70)?;
-                if !(1..=crate::MAX_USER_STACK_PAGES).contains(&usize::from(pages)) {
-                    return None;
-                }
-                let max_threads = read_u16(bytes, MAX_THREADS_OFFSET)?;
-                if !(1..=crate::MAX_USER_THREADS).contains(&usize::from(max_threads)) {
-                    return None;
-                }
-                (
-                    header_len,
-                    pages,
-                    max_threads,
-                    crate::DEFAULT_SHUTDOWN_GRACE_MS,
-                    PlacementPolicy::singleton(),
-                )
-            }
-            (magic, V2_VERSION) if magic == V2_MAGIC => {
-                if usize::from(read_u16(bytes, 10)?) != LEGACY_HEADER_LEN {
-                    return None;
-                }
-                let pages = read_u16(bytes, 70)?;
-                if !(1..=crate::MAX_USER_STACK_PAGES).contains(&usize::from(pages)) {
-                    return None;
-                }
-                (
-                    LEGACY_HEADER_LEN,
-                    pages,
-                    crate::DEFAULT_USER_MAX_THREADS.try_into().ok()?,
-                    crate::DEFAULT_SHUTDOWN_GRACE_MS,
-                    PlacementPolicy::singleton(),
-                )
-            }
-            (magic, LEGACY_VERSION) if magic == LEGACY_MAGIC => {
-                if usize::from(read_u16(bytes, 10)?) != LEGACY_HEADER_LEN
-                    || read_u16(bytes, 70)? != 0
-                {
-                    return None;
-                }
-                (
-                    LEGACY_HEADER_LEN,
-                    crate::DEFAULT_USER_STACK_PAGES.try_into().ok()?,
-                    crate::DEFAULT_USER_MAX_THREADS.try_into().ok()?,
-                    crate::DEFAULT_SHUTDOWN_GRACE_MS,
-                    PlacementPolicy::singleton(),
-                )
-            }
-            _ => return None,
-        };
+    let stack_pages_per_thread = read_u16(bytes, 70)?;
+    if !(1..=crate::MAX_USER_STACK_PAGES).contains(&usize::from(stack_pages_per_thread)) {
+        return None;
+    }
+    let max_threads = read_u16(bytes, MAX_THREADS_OFFSET)?;
+    if !(1..=crate::MAX_USER_THREADS).contains(&usize::from(max_threads)) {
+        return None;
+    }
+    let shutdown_grace_ms = read_u32(bytes, SHUTDOWN_GRACE_MS_OFFSET)?;
+    if shutdown_grace_ms > crate::MAX_SHUTDOWN_GRACE_MS {
+        return None;
+    }
+    let placement = PlacementPolicy {
+        replicas: read_u16(bytes, PLACEMENT_OFFSET)?,
+        max_instances_per_node: read_u16(bytes, PLACEMENT_OFFSET + 2)?,
+        min_distinct_nodes: read_u16(bytes, PLACEMENT_OFFSET + 4)?,
+        flags: read_u16(bytes, PLACEMENT_OFFSET + 6)?,
+        affinity_group: read_u64(bytes, PLACEMENT_OFFSET + 8)?,
+        anti_affinity_group: read_u64(bytes, PLACEMENT_OFFSET + 16)?,
+    };
+    if placement.validate_shape().is_err() {
+        return None;
+    }
     let total_len = usize::try_from(read_u32(bytes, 12)?).ok()?;
     if total_len != bytes.len() || total_len > MAX_DESCRIPTOR_LEN {
         return None;
@@ -424,7 +335,7 @@ pub fn decode(bytes: &[u8]) -> Option<DeploymentDescriptor<'_>> {
     if grant_count > MAX_GRANTS {
         return None;
     }
-    let name_start = header_len;
+    let name_start = HEADER_LEN;
     let name_end = name_start.checked_add(name_len)?;
     let object_key_end = name_end.checked_add(object_key_len)?;
     let artifact_name = bytes.get(name_start..name_end)?;
@@ -448,7 +359,6 @@ pub fn decode(bytes: &[u8]) -> Option<DeploymentDescriptor<'_>> {
     }
     Some(DeploymentDescriptor {
         bytes,
-        format_version,
         sequence,
         node_key,
         artifact_digest,

@@ -3,6 +3,8 @@
 These documents explain current code-facing contracts and invariants. They
 should be updated with the implementation when those contracts change.
 
+- [API and protocol simplification](api-simplification.md) — current-only internal
+  contracts, removal order, completed batches and remaining candidates.
 - [Security remediation](security-remediation.md) — current finding ledger,
   finite SEC-07/18 completion criteria and production security milestones.
 - [Cleanup ownership and recovery strategy](cleanup-recovery.md) — source-reviewed
