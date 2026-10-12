@@ -174,7 +174,10 @@ extern "C" fn verify_el0_nvme() {
                 crate::self_test::status_u32(objstore_cfg, charlotte_launch::objstore_status::STAGE)
             },
             unsafe {
-                crate::self_test::status_u32(objstore_cfg, charlotte_launch::objstore_status::ERROR)
+                crate::self_test::status_u32(
+                    objstore_cfg,
+                    charlotte_launch::objstore_status::STARTUP_ERROR,
+                )
             },
             unsafe {
                 crate::self_test::status_i64(
@@ -384,7 +387,10 @@ extern "C" fn verify_el0_nvme() {
                 crate::self_test::status_u32(objstore_cfg, charlotte_launch::objstore_status::STAGE)
             },
             unsafe {
-                crate::self_test::status_u32(objstore_cfg, charlotte_launch::objstore_status::ERROR)
+                crate::self_test::status_u32(
+                    objstore_cfg,
+                    charlotte_launch::objstore_status::STARTUP_ERROR,
+                )
             },
             unsafe {
                 crate::self_test::status_i64(

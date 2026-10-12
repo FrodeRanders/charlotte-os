@@ -28,7 +28,9 @@ use catten_rt::{
         ConnectionRef,
         Endpoint,
         IncomingMessage,
+        IpcError,
         OwnedMemory,
+        PendingCall,
         ReplyToken,
     },
 };
@@ -76,7 +78,45 @@ fn diag_stage(stage: u32) {
 }
 
 fn diag_error(error: u32) {
-    config::write::<u32>(status::ERROR, error);
+    config::write::<u32>(status::STARTUP_ERROR, error);
+}
+
+fn startup_failed(fallback: u32) -> ! {
+    if unsafe { config::read::<u32>(status::STARTUP_ERROR) } == 0 {
+        diag_error(fallback);
+    }
+    config::write_u32_release(status::STATE, status::State::Failed as u32);
+    catten_rt::domain_abort()
+}
+
+// One immutable first-failure record, published after every field is written.
+// Diagnostic recording does not authorize retry or hardware cleanup.
+fn io_failure(error: u32, op: u32, lba: u64, count: u32, phase: u32, ipc: u64, result: i64) {
+    if unsafe { config::read_u32_acquire(status::FIRST_IO_ERROR) } != 0 {
+        return;
+    }
+    let state = unsafe { config::read_u32_acquire(status::STATE) };
+    config::write::<u32>(status::FAILURE_PHASE, phase);
+    config::write::<u64>(status::FAILURE_STATUS, ipc);
+    config::write::<i64>(status::FAILURE_RESULT, result);
+    config::write::<u64>(status::FAILURE_LBA, lba);
+    config::write::<u32>(status::FAILURE_COUNT, count);
+    config::write::<u32>(status::FAILURE_STATE, state);
+    config::write::<u32>(status::FAILURE_OP, op);
+    config::write_u32_release(status::FIRST_IO_ERROR, error);
+    catten_rt::logln!(
+        concat!(
+            "[objstore] first block failure state={} op={} lba={} count={} ",
+            "phase={} status={:#x} result={}"
+        ),
+        state,
+        op,
+        lba,
+        count,
+        phase,
+        ipc,
+        result
+    );
 }
 
 #[derive(Clone, Copy)]
@@ -218,60 +258,69 @@ impl BlockDev {
     fn read_blocks_keep(&self, lba: u64, count: u32, memory: &mut OwnedMemory) -> bool {
         diag_stage(40);
         config::write::<u32>(status::BLOCK_OP, block::OP_READ);
-        let result = self
-            .conn
-            .call_borrow_write(
-                block::OP_READ,
-                charlotte_protocol_block::pack_lba_count(lba, count),
-                memory,
-            )
-            .ok()
-            .and_then(|call| call.wait().ok())
-            .map(|reply| reply.result);
-        config::write::<i64>(status::BLOCK_RESULT, result.unwrap_or(i64::MIN));
-        let ok = result == Some(0);
-        if !ok {
-            diag_error(0xd1);
-        }
-        ok
+        let pending = self.conn.call_borrow_write(
+            block::OP_READ,
+            charlotte_protocol_block::pack_lba_count(lba, count),
+            memory,
+        );
+        self.finish_block(block::OP_READ, lba, count, 0xd1, pending)
     }
 
     fn write_blocks(&self, lba: u64, count: u32, memory: &OwnedMemory) -> bool {
         diag_stage(41);
         config::write::<u32>(status::BLOCK_OP, block::OP_WRITE);
-        let result = self
-            .conn
-            .call_borrow_read(
-                block::OP_WRITE,
-                charlotte_protocol_block::pack_lba_count(lba, count),
-                memory,
-            )
-            .ok()
-            .and_then(|call| call.wait().ok())
-            .map(|reply| reply.result);
-        config::write::<i64>(status::BLOCK_RESULT, result.unwrap_or(i64::MIN));
-        let ok = result == Some(0);
-        if !ok {
-            diag_error(0xd2);
-        }
-        ok
+        let pending = self.conn.call_borrow_read(
+            block::OP_WRITE,
+            charlotte_protocol_block::pack_lba_count(lba, count),
+            memory,
+        );
+        self.finish_block(block::OP_WRITE, lba, count, 0xd2, pending)
     }
 
     fn flush(&self) -> bool {
         diag_stage(42);
         config::write::<u32>(status::BLOCK_OP, block::OP_FLUSH);
-        let result = self
-            .conn
-            .call(block::OP_FLUSH, 0)
-            .ok()
-            .and_then(|call| call.wait().ok())
-            .map(|reply| reply.result);
-        config::write::<i64>(status::BLOCK_RESULT, result.unwrap_or(i64::MIN));
-        let ok = result == Some(0);
-        if !ok {
-            diag_error(0xd3);
+        self.finish_block(block::OP_FLUSH, 0, 0, 0xd3, self.conn.call(block::OP_FLUSH, 0))
+    }
+
+    fn finish_block(
+        &self,
+        op: u32,
+        lba: u64,
+        count: u32,
+        error: u32,
+        pending: Result<PendingCall<'_>, IpcError>,
+    ) -> bool {
+        let pending = match pending {
+            Ok(pending) => pending,
+            Err(reason) => {
+                let code = match reason {
+                    IpcError::Status(code) => code,
+                    _ => u64::MAX,
+                };
+                config::write::<i64>(status::BLOCK_RESULT, i64::MIN);
+                io_failure(error, op, lba, count, 1, code, i64::MIN);
+                return false;
+            }
+        };
+        let reply = match pending.wait() {
+            Ok(reply) => reply,
+            Err(reason) => {
+                let code = match reason {
+                    IpcError::Status(code) => code,
+                    _ => u64::MAX,
+                };
+                config::write::<i64>(status::BLOCK_RESULT, i64::MIN);
+                io_failure(error, op, lba, count, 2, code, i64::MIN);
+                return false;
+            }
+        };
+        config::write::<i64>(status::BLOCK_RESULT, reply.result);
+        if reply.result != 0 || reply.memory.is_some() || reply.connection.is_some() {
+            io_failure(error, op, lba, count, 3, 0, reply.result);
+            return false;
         }
-        ok
+        true
     }
 }
 
@@ -293,22 +342,20 @@ impl ObjStore {
             diag_error(0xe1);
             return None;
         };
-        diag_stage(21);
-        let first = read_superblock(&dev, 0);
-        diag_stage(22);
-        let second = read_superblock(&dev, 1);
-        let selected = match (first, second) {
-            (Some(a), Some(b)) => Some(
+        let selected = catten_services::objstore_mount::select(
+            |slot| {
+                diag_stage(21 + slot as u32);
+                read_superblock(&dev, slot)
+            },
+            |a, b| {
                 if a.generation >= b.generation {
                     a
                 } else {
                     b
-                },
-            ),
-            (Some(a), None) => Some(a),
-            (None, Some(b)) => Some(b),
-            (None, None) => None,
-        };
+                }
+            },
+        )
+        .ok()?;
         let Some(sb) = selected else {
             diag_stage(23);
             return Self::format(dev);
@@ -1016,23 +1063,26 @@ impl ObjectHeader {
     }
 }
 
-fn read_superblock(dev: &BlockDev, slot: u64) -> Option<Superblock> {
+fn read_superblock(dev: &BlockDev, slot: u64) -> Result<Option<Superblock>, ()> {
     config::write::<u32>(status::DETAIL, 50 + slot as u32 * 10);
-    let mut memory = OwnedMemory::allocate(1).ok()?;
+    let mut memory = OwnedMemory::allocate(1).map_err(|_| {
+        io_failure(0xe3, block::OP_READ, slot, 1, 4, u64::MAX, i64::MIN);
+    })?;
     if !dev.read_blocks_keep(slot, 1, &mut memory) {
-        return None;
+        return Err(());
     }
     config::write::<u32>(status::DETAIL, 51 + slot as u32 * 10);
     let Ok(mapping) = memory.map_read_only() else {
         config::write::<u32>(status::DETAIL, 0xe50 + slot as u32);
-        return None;
+        io_failure(0xe4, block::OP_READ, slot, 1, 5, u64::MAX, i64::MIN);
+        return Err(());
     };
     config::write::<u32>(status::DETAIL, 52 + slot as u32 * 10);
     let result = decode_superblock(&mapping.as_slice()[..dev.block_size as usize]);
     config::write::<u32>(status::DETAIL, 53 + slot as u32 * 10);
     config::write::<u32>(status::DETAIL, 54 + slot as u32 * 10);
     config::write::<u32>(status::DETAIL, 55 + slot as u32 * 10);
-    result
+    Ok(result)
 }
 
 fn encode_superblock(sb: Superblock, bytes: &mut [u8]) {
@@ -1308,13 +1358,13 @@ fn apply_scope(
 }
 
 fn serve(ctx: &Context) -> ShutdownRequest {
-    let ns_connection = ctx.bootstrap_connection().unwrap_or_else(|| catten_rt::domain_abort());
+    let ns_connection = ctx.bootstrap_connection().unwrap_or_else(|| startup_failed(0xb0));
     diag_stage(1);
-    let dev = BlockDev::connect(ns_connection).unwrap_or_else(|| catten_rt::domain_abort());
+    let dev = BlockDev::connect(ns_connection).unwrap_or_else(|| startup_failed(0xc0));
     diag_stage(2);
     config::write::<u32>(status::BLOCK_SIZE, dev.block_size);
     config::write::<u32>(status::TOTAL_BLOCKS, dev.total_blocks);
-    let mut store = ObjStore::mount(dev).unwrap_or_else(|| catten_rt::domain_abort());
+    let mut store = ObjStore::mount(dev).unwrap_or_else(|| startup_failed(0xe2));
     diag_stage(3);
     // Re-apply the persisted operator scope table. A malformed or missing
     // table fails closed to no grants.
@@ -1338,7 +1388,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let endpoint =
         Endpoint::create(objstore::INTERFACE, objstore::VERSION, 64).unwrap_or_else(|_| {
             diag_error(0xb1);
-            catten_rt::domain_abort()
+            startup_failed(0xb1)
         });
     let generation = ns_connection
         .call_connection(
@@ -1352,13 +1402,15 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         .unwrap_or(0);
     if generation < 1 {
         diag_error(0xb2);
-        catten_rt::domain_abort();
+        startup_failed(0xb2);
     }
     diag_stage(4);
     config::write::<u32>(status::SENTINEL, 0x900d);
+    config::write_u32_release(status::STATE, status::State::Serving as u32);
 
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
+            config::write_u32_release(status::STATE, status::State::Draining as u32);
             // Closing the public endpoint first prevents any later mutation
             // from entering the store. Do not publish lifecycle readiness
             // until the complete on-disk commit chain is durable.

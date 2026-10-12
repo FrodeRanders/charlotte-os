@@ -40,6 +40,7 @@ pub mod tls_client;
 pub mod disk_raft;
 
 mod objstore_client;
+pub mod objstore_mount;
 
 /// Persistent, cluster-scoped node identity (`{mnemonic}:{token}`).
 pub mod node_identity;

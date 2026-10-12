@@ -92,6 +92,13 @@ read failure) separately from a passing identical-artifact repeat. Its exact
 read result/rejection phase and startup-versus-serving classification remain
 unverified; the historical AMD NIC exit remains separately unattributed.
 
+The [object-store readiness/mount follow-up](../reports/audits/2026-10-12-security-object-store-readiness.md)
+replaces numeric-stage admission with an explicit published serving milestone,
+separates startup failure from first-I/O diagnostics and rejects unreadable
+superblocks before formatting. It corrects source-confirmed gate/mount policy
+defects; the underlying historical Intel read rejection and AMD NIC exit still
+need causal captures. A boot milestone does not establish ongoing storage health.
+
 Remaining acceptance requires bounded concurrent admission and progress for
 healthy clients while hostile clients occupy slots, bounded controller/RPC
 completion, and sustained connection/packet flood, NIC failure and lifecycle

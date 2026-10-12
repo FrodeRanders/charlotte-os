@@ -385,13 +385,88 @@ pub mod nvme_status {
 pub mod objstore_status {
     pub const STAGE: usize = 0;
     pub const SENTINEL: usize = 4;
-    pub const ERROR: usize = 8;
+    pub const STARTUP_ERROR: usize = 8;
+    pub const STATE: usize = 12;
     pub const BLOCK_SIZE: usize = 16;
-    pub const BLOCK_OP: usize = 16;
     pub const TOTAL_BLOCKS: usize = 20;
     pub const REPLY_STATUS: usize = 24;
     pub const DETAIL: usize = 28;
     pub const BLOCK_RESULT: usize = 32;
+    pub const FIRST_IO_ERROR: usize = 40;
+    pub const FAILURE_PHASE: usize = 44;
+    pub const FAILURE_STATUS: usize = 48;
+    pub const FAILURE_RESULT: usize = 56;
+    pub const FAILURE_LBA: usize = 64;
+    pub const FAILURE_COUNT: usize = 72;
+    pub const FAILURE_STATE: usize = 76;
+    pub const FAILURE_OP: usize = 80;
+    pub const BLOCK_OP: usize = 84;
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    #[repr(u32)]
+    pub enum State {
+        Starting = 0,
+        Serving = 1,
+        Draining = 2,
+        Failed = 3,
+    }
+
+    /// Ready is an explicit initialization/publication milestone, never a
+    /// numeric diagnostic-stage comparison or a continuing device-health lease.
+    pub fn readiness(state: u32, startup_error: u32) -> Result<bool, (u32, u32)> {
+        if startup_error != 0 {
+            return Err((state, startup_error));
+        }
+        match state {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err((state, startup_error)),
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn only_published_serving_state_is_ready() {
+            assert_eq!(readiness(State::Starting as u32, 0), Ok(false));
+            assert_eq!(readiness(State::Serving as u32, 0), Ok(true));
+            for state in [State::Draining as u32, State::Failed as u32, 40, u32::MAX] {
+                assert_eq!(readiness(state, 0), Err((state, 0)));
+            }
+            for state in [State::Starting as u32, State::Serving as u32] {
+                assert_eq!(readiness(state, 0xd1), Err((state, 0xd1)));
+            }
+        }
+
+        #[test]
+        fn status_fields_do_not_overlap() {
+            let fields = [
+                (STAGE, 4),
+                (SENTINEL, 4),
+                (STARTUP_ERROR, 4),
+                (STATE, 4),
+                (BLOCK_SIZE, 4),
+                (TOTAL_BLOCKS, 4),
+                (REPLY_STATUS, 4),
+                (DETAIL, 4),
+                (BLOCK_RESULT, 8),
+                (FIRST_IO_ERROR, 4),
+                (FAILURE_PHASE, 4),
+                (FAILURE_STATUS, 8),
+                (FAILURE_RESULT, 8),
+                (FAILURE_LBA, 8),
+                (FAILURE_COUNT, 4),
+                (FAILURE_STATE, 4),
+                (FAILURE_OP, 4),
+                (BLOCK_OP, 4),
+            ];
+            for pair in fields.windows(2) {
+                assert!(pair[0].0 + pair[0].1 <= pair[1].0);
+            }
+        }
+    }
 }
 
 pub mod uart_status {

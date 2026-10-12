@@ -324,6 +324,22 @@ exact and allocated lengths, data offset, up to 16 extent descriptors, and a
 mandatory FNV-1a content hash. The reserved header space permits compatible
 metadata growth.
 
+Both superblock reads must finish successfully before absence/validity can
+select a mount or formatting decision. Allocation, IPC, device or mapping
+rejection returns startup failure; unreadable metadata is not a blank disk.
+The existing policy for successfully read but invalid superblocks and
+incompatible layouts remains separate from this correction.
+
+The object store publishes an explicit `Starting`/`Serving`/`Draining`/`Failed`
+state. `Serving` follows successful mount and endpoint registration; kernel
+local readiness observes it with acquire ordering and revalidates it before
+publication. Diagnostic stage numbers and latched ordinary I/O errors do not
+define startup completion. This marker is a boot milestone, not a continuing
+storage-health or hardware-quiescence lease. The first I/O failure separately
+records service state, operation, LBA/count, failure phase and available
+status/result, without retrying the operation. See the
+[readiness/mount audit evidence](../reports/audits/2026-10-12-security-object-store-readiness.md).
+
 Replacement is copy-on-write: the new data, header, and allocation state are
 flushed before the directory locator changes; the old allocation is released
 afterward. Mount validates reachable headers and reconstructs the bitmap,

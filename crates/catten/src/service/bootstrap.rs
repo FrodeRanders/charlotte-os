@@ -94,8 +94,13 @@ impl<'a> ServicePages<'a> {
         let base: *const u8 = self.status.into();
         unsafe {
             (
-                core::ptr::read_volatile(base.add(charlotte_launch::objstore_status::STAGE).cast()),
-                core::ptr::read_volatile(base.add(charlotte_launch::objstore_status::ERROR).cast()),
+                core::sync::atomic::AtomicU32::from_ptr(
+                    base.add(charlotte_launch::objstore_status::STATE) as *mut u32,
+                )
+                .load(core::sync::atomic::Ordering::Acquire),
+                core::ptr::read_volatile(
+                    base.add(charlotte_launch::objstore_status::STARTUP_ERROR).cast(),
+                ),
             )
         }
     }

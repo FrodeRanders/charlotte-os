@@ -169,6 +169,20 @@ data:      object headers and up to 16 data extents per object
 
 \subsection{Current durability boundary}
 
+Both superblock reads must finish successfully before their absence or
+validity can select mounting or formatting. Allocation, IPC, device or mapping
+rejection fails startup; unreadable metadata is not evidence of a blank disk.
+Successfully read invalid content and incompatible-layout policy remain
+separate.
+
+The store publishes explicit Starting, Serving, Draining and Failed states.
+Serving follows mount and endpoint registration; kernel local readiness
+acquires and revalidates that milestone. Diagnostic stages and ordinary I/O
+errors are separate. The marker is not a continuing storage-health lease.
+First-failure diagnostics retain state, operation, LBA/count, phase and
+available status/result without retry. See
+\repofile|docs/reports/audits/2026-10-12-security-object-store-readiness.md|.
+
 Each object header is versioned and carries explicit header length and block
 count, object generation, exact and allocated data lengths, data offset,
 extent information, and a mandatory FNV-1a content hash. The header can grow

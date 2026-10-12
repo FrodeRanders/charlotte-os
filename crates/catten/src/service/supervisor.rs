@@ -631,11 +631,18 @@ extern "C" fn local_ready_publisher() {
         .expect("local readiness requires durable storage");
     let storage_deadline = monotonic_millis().saturating_add(120_000);
     loop {
-        let (stage, error) =
+        let (state, error) =
             bootstrap::with_service_pages(&storage.objstore, |pages| pages.object_store_status())
                 .expect("local readiness service pages unavailable");
-        assert_eq!(error, 0, "local object store failed before node readiness");
-        if stage >= 4 {
+        if charlotte_launch::objstore_status::readiness(state, error).unwrap_or_else(
+            |(state, error)| {
+                panic!(
+                    "local object store unavailable before node readiness: state={} \
+                     startup_error={:#x}",
+                    state, error
+                )
+            },
+        ) {
             break;
         }
         assert!(monotonic_millis() < storage_deadline, "local object store did not become ready");
@@ -651,6 +658,14 @@ extern "C" fn local_ready_publisher() {
         "local network stack failed before node readiness"
     );
 
+    let (state, error) =
+        bootstrap::with_service_pages(&storage.objstore, |pages| pages.object_store_status())
+            .expect("local readiness service pages unavailable");
+    assert_eq!(
+        charlotte_launch::objstore_status::readiness(state, error),
+        Ok(true),
+        "local object store stopped serving before readiness publication"
+    );
     publish_local_ready();
 }
 

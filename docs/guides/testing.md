@@ -517,6 +517,18 @@ store with the real NVMe service: a 12 KiB PRP-list block round trip, a 2 MiB +
 This catches regressions in the same owned memory, mapping, borrowed-call, and
 reply-token paths used by the final shutdown flush.
 
+Object-store readiness now uses the release/acquire `objstore_status::STATE`
+milestone, never a numeric diagnostic stage. Host checks reject Starting,
+Draining, Failed, unknown states and startup errors as ready; they also verify
+status-field widths do not overlap. The production superblock selector is
+fault-tested with unreadable slot 0 or slot 1 (including a valid peer slot):
+failure must propagate rather than select formatting. Successfully read blank
+and redundant valid candidates remain distinct. These are host fault schedules,
+not injected device or mapping failures in a booting store. Fresh and reused
+Intel disks, AMD, signed ARM management and cooperative shutdown execution are
+recorded in the
+[object-store readiness evidence](../reports/audits/2026-10-12-security-object-store-readiness.md).
+
 `--kafka-test --timeout 300` similarly adds a disposable three-broker Apache
 Kafka KRaft cluster with ephemeral verified TLS listeners and an in-guest verifier.
 The verifier covers the TLS handshake, idempotent production, bounded
