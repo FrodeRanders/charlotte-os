@@ -361,6 +361,17 @@ the corrected RPC polling paths, and the remaining notification gaps.
   registry hold; never touch a successor's reused ASID/capability. Abandonment
   restores unstarted returned-memory escrow but retains the reply/connection
   source claim, roots and uncertain loan backing; do not force-clear them.
+  Explicit memory-close waits lease the transfer's captured source root and
+  retain an owned interest in that exact fence. Prepare its charged source and
+  disposal node outside memory/lifecycle/IPC guards, then revalidate before
+  linking. Completion restores/consumes escrow, releases its pin and clears the
+  fence before closing the interest. Queue admitted notifications and source
+  metadata for producer-LP post-guard dispatch; another LP must not consume them
+  while the producer holds IPC. Wait admission failure returns ResourceLimit
+  without consuming authority or proving completion. Ordinary loan/DMA/copy/
+  mapping pins still return LendingActive; their drain notification remains
+  separate. No physical owner, retry authority or root completion enters the
+  deferred waiter transport. Close/source fallback retains all fields.
   Explicit pending-call/reply close uses `PreparedCancellation`: admit both roots
   before IPC, prepare every loan, then claim the token with `completing`.
   Queued messages remain in place; receive returns Pending and endpoint close
@@ -580,10 +591,11 @@ the corrected RPC polling paths, and the remaining notification gaps.
   destruction. Outer constructor/syscall masks and growth guards still require
   qualification; this is terminal retention, never a physical retry owner.
   Per-LP reapers park on an owned retirement-head waiter, with a durable
-  post-registration readiness recheck. Staging only publishes its coalesced
-  atomic wake; dispatch detached callbacks after producer/scheduler guards
-  leave, preserving IRQ state. Idle/yield and post-switch boundaries deliver
-  that wake. Started/failed pairs are not productive readiness and must not
+  post-registration readiness recheck. Staging detaches admitted waiters into
+  the shared producer-LP deferred transport without callbacks or allocation.
+  Only that producer LP dispatches after guards leave, preserving IRQ state;
+  idle/yield and post-switch boundaries deliver the wake. Started/failed pairs
+  are not productive readiness and must not
   cause timer polling or physical retry. The 10 ms reaper backoff is confined
   to recorded waiter-admission rejection, never ordinary idle waiting.
 - IOMMU backing uses `device::dma_tables::Tables` for domain roots/intermediates,

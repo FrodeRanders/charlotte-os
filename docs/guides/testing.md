@@ -907,6 +907,18 @@ the production pinned workers, whose ordinary idle wait has no timer. Admission
 rejection alone uses the recorded 10 ms backoff. See
 [reaper readiness](../reports/audits/2026-10-12-reaper-readiness.md).
 
+Explicit memory-close readiness checks retain the exact source root through
+rollback/move, closed-source late registration, source saturation, preparation
+failure and completion winning before relinking. Notification and final source
+disposal remain deferred while IPC is held; original list/waiter charges return
+after producer-LP dispatch. The scheduled fixture observes a closer in Blocked
+with its exact transfer subscription, rejects root close as busy, then rolls back
+the transfer and requires watched thread completion and both roots to close.
+Its one-millisecond registration sampling has a five-second fixture deadline;
+production close has no timer/poll fallback. The scheduled watch uses an opened
+private completion namespace. Failed initial fixture runs are retained in
+[the readiness report](../reports/audits/2026-10-12-memory-close-readiness.md).
+
 Whole-domain abort fixtures also check the inline root fence, rejection of an
 already-prepared thread, repeated late preparation, callback guard availability,
 TID replacement between capture and claim, ASID reuse and final root/frame

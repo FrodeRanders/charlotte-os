@@ -52,12 +52,13 @@ ownership predicate remains a stub and runtime migration remains disabled
 there. LP assignment alone never authorizes releasing the executing stack.
 
 Idle workers now park on an owned, fallibly admitted waiter for their fixed LP
-retirement head, with no timer/watchdog. Staging publishes a coalesced atomic
-wake after linking the complete node. It cannot invoke callbacks under an
-outer scheduler guard. Yield, idle and post-switch boundaries claim pending
-wakes and deliver detached notifications after local guards leave, preserving
-IRQ state. The fixed readiness array carries no thread payload or recovery
-authority; the existing retirement heads remain the sole custody.
+retirement head, with no timer/watchdog. After linking the complete node,
+staging detaches admitted waiters into the shared producer-LP deferred
+transport without callbacks or allocation. Only that producer LP dispatches
+from yield, idle or post-switch boundaries after its local guards leave,
+preserving IRQ state. This also prevents another LP from notifying while a
+producer still owns serialization. The fixed sources/transport carry no thread
+payload or recovery authority; existing retirement heads remain the sole custody.
 
 The post-registration check reads the durable exact head and repeats the
 off-stack/Arm ownership and unstarted-pair predicates. Publication before
@@ -220,6 +221,7 @@ no failed-pair retry owner, shared custody adapter or abandoned-owner recovery.
 Evidence: [thread retirement audit](../reports/audits/2026-10-07-security-thread-retirement.md).
 Complete-payload fallback evidence: [thread metadata retention](../reports/audits/2026-10-12-thread-metadata-retention.md).
 Readiness evidence: [event-driven LP reapers](../reports/audits/2026-10-12-reaper-readiness.md).
+Shared producer-LP dispatch: [transfer-close readiness](../reports/audits/2026-10-12-memory-close-readiness.md).
 Whole-domain evidence: [domain thread abort audit](../reports/audits/2026-10-07-security-domain-thread-abort.md).
 
 Self-handoff evidence: [root-operation completion before caller retirement](../reports/audits/2026-10-09-security-abort-handoff.md).

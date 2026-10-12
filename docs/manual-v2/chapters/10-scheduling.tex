@@ -202,12 +202,22 @@ terminal; outer constructor/syscall masks and stack-growth guards still need
 separate qualification. See \repofile|docs/reference/thread-retirement.md|.
 
 Each pinned reaper waits on its LP retirement head instead of polling a timer.
-Staging publishes an atomic wake; scheduler and idle boundaries deliver its
-detached callbacks after guards leave. An owned generation-bound subscription
+Staging queues admitted waiter nodes; producer-LP scheduler and idle boundaries
+deliver detached callbacks after guards leave. An owned generation-bound subscription
 and a durable readiness recheck prevent lost publication. Failed stack pairs
 remain fenced and do not keep the worker runnable. Only rejected waiter
 admission uses the recorded 10\,ms backoff; readiness does not prove quiescence
 or authorize physical retry.
+
+Explicit memory close likewise waits on an owned interest in the source
+transfer fence, retaining that transfer's captured root while parked. Its
+charged source and disposal node are prepared before memory-registry publication.
+Transfer completion closes the exact interest and uses the shared producer-LP
+transport for callbacks and metadata disposal after guard exit. Another LP
+cannot consume that transport beneath the producer's IPC hold. Wait admission
+rejection leaves authority and pins intact; ordinary loan, DMA, copy and mapping
+pin rejection retains its existing policy. Readiness supplies no hardware
+completion or physical retry authority.
 
 \section{Synchronization and lock ordering}
 

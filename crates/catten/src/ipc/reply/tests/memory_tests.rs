@@ -14,6 +14,13 @@ pub(super) fn run() {
     borrowed_source();
     staged_close_and_joint_publication();
     source_fence();
+    object::test_transfer_close_readiness(
+        |perform| {
+            let _ipc = IPC.write();
+            perform();
+        },
+        || IPC.try_write().is_some(),
+    );
     crate::logln!(
         "[IPC returned memory] hidden escrow/backing, unlocked source close, observed/unobserved \
          cleanup, quota/loan/publication rollback, delivered-source checks, staged close, joint \

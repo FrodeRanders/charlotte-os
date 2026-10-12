@@ -182,7 +182,14 @@ now replaces the per-LP one-millisecond idle poll with an owned event-only
 retirement-head subscription and deferred post-guard notification. Failed pairs
 are nonready; recorded wait-admission rejection alone uses a 10 ms backoff.
 This changes no physical completion or retry rule, and broader admission
-pressure/progress remains G7.
+pressure/progress remains G7. The
+[transfer-close readiness follow-up](../reports/audits/2026-10-12-memory-close-readiness.md)
+replaces the explicit memory source-escrow yield loop with a retained-root,
+owned wait. Charged source/disposal storage precedes registry publication;
+producer-LP deferred transport shares C16 delivery and disposes metadata only
+after producer/local guard exit. This changes no pin/loan rejection, physical
+receipt or retry policy. Initial scheduled-watch fixture failures are preserved
+separately from corrected runs; broad G1/G4/G7 and SEC-18 remain open.
 The [IOMMU preparation follow-up](../reports/audits/2026-10-09-security-iommu-preparation-abandonment.md)
 also removes physical/pool cleanup and implicit ledger heap deallocation from
 C15 fallback. Private construction and ordinary metadata/allocator rejection use

@@ -121,18 +121,16 @@ static DEAD_THREADS: RwLock<
 );
 
 /// Readiness for the existing fixed LP heads, never payload custody. Staging
-/// may hold an outer scheduler guard: publish only an atomic hint there and
-/// deliver detached callbacks at the guard-free scheduler/idle boundary.
+/// may hold an outer scheduler guard: queue admitted callbacks for this
+/// producer LP's guard-free scheduler/idle boundary.
 struct ReaperWork {
     waiters: WaiterSource,
-    pending: AtomicBool,
 }
 
 impl ReaperWork {
     const fn new() -> Self {
         Self {
             waiters: WaiterSource::new(),
-            pending: AtomicBool::new(false),
         }
     }
 }
@@ -154,16 +152,6 @@ fn can_reap(thread: &Thread, current_sp: usize) -> bool {
     !thread.context.stack_retirement_started()
         && !thread.context.kernel_stack_contains(current_sp)
         && !thread.context.is_on_cpu()
-}
-
-/// No producer/subsystem guard may survive into these scheduler callbacks.
-/// IRQ state is preserved. Physical cleanup remains on the pinned worker.
-pub(crate) fn drain_reaper_wakes() {
-    for work in &REAPER_WORK {
-        if work.pending.load(Ordering::Acquire) && work.pending.swap(false, Ordering::AcqRel) {
-            work.waiters.drain().notify();
-        }
-    }
 }
 
 pub(crate) fn has_staged_asid(asid: AddressSpaceId) -> bool {
@@ -247,7 +235,7 @@ pub fn stage_dead_thread(lp: LpId, tid: ThreadId, mut thread: Thread) {
     thread.trace_lifecycle(crate::debug_trace::THREAD_LIFECYCLE_STAGE, current_stack_pointer());
     let storage = thread.retirement.take().expect("thread retirement storage missing");
     DEAD_THREADS.write()[lp as usize].push(storage.publish(thread));
-    REAPER_WORK[lp as usize].pending.store(true, Ordering::Release);
+    crate::cpu::scheduler::deferred::publish(REAPER_WORK[lp as usize].waiters.drain(), None);
 }
 
 /// Complete abort requests after the owning LP has selected another

@@ -330,6 +330,7 @@ extern "C" fn cq_driver() {
     crate::timers::event_tests::test_scheduled_cleanup();
     completion::exit_tests::test_scheduled_cleanup();
     completion::callback_tests::test_scheduled_cleanup();
+    crate::memory::object::test_scheduled_transfer_close();
 
     logln!(
         "[cq wait] SUCCESS: blocking CQ wait released by completion, by explicit wake, by a \

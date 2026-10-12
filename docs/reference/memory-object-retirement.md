@@ -202,14 +202,41 @@ observation transfers that responsibility to the server. Both root leases preven
 unlocked interval.
 
 Memory close checks the source's transfer fence before authority lookup. It
-releases the registry and yields until the transfer completes, rather than
-mistaking an escrowed source for an invalid capability. Serialized IPC cleanup
+releases the registry and leases the exact root captured by that transfer,
+then parks on an owned interest until the fence completes. Its source list and
+disposal node are admitted outside memory/lifecycle/IPC guards and relinked
+only after exact object/fence revalidation. Registration enters the independent
+list, with a completion recheck rather than reacquiring the memory registry
+under the scheduler's thread table. Closed-source late registration is immediate
+readiness. Admission failure returns `ResourceLimit`, leaving source authority
+and pins untouched; ordinary close completion explicitly releases its lease,
+while abandonment retains the whole close owner.
+
+The interest belongs to this transfer, not a namespace-wide or physical pin
+drain. Ordinary loan/DMA/copy/mapping pin rejection still returns `LendingActive`.
+Readiness proves neither hardware completion nor permission to retry uncertain
+cleanup. Nonwaiting close retains its existing path; it acquires no fresh root
+lease beneath serialized boot-fixture lifecycle/table guards. Serialized IPC cleanup
 uses a nonwaiting retirement check instead; it cannot park beneath IPC.
 It carries detached backing to explicit release after unlocking. Ordinary
 rollback restores source authority, releases the backing pin and clears the
 fence under one registry hold. Rejected close never removes/reinserts payloads.
 Late transfer Drop cannot change a successor's reused scalar capability: escrow
 captures its namespace, and payload cleanup checks the immutable object identity.
+
+After escrow/pin/fence completion and its original metadata work, transfer
+cleanup closes the exact interest. It queues already-admitted notification
+nodes and its complete source-allocation disposal node in the shared
+producer-LP waiter transport. That LP dispatches after producer/local guards
+leave, preserving IRQ state. Another LP cannot run the callbacks while the
+producer holds IPC. Source/list guards leave before Waker admission; final
+list/node disposal follows notification outside those guards, even when no
+waiter survived. The same transport serves retirement-head wakes. It carries
+no backing/root owner, recovery ticket or physical retry policy; existing
+cleanup receipts remain authoritative. Source fallback retains its list/node
+and original allocation charge without field destruction.
+
+Evidence: [exact transfer-close readiness](../reports/audits/2026-10-12-memory-close-readiness.md).
 
 After loan cleanup, memory and any returned connection reservations publish
 jointly under IPC before result visibility. A successful move removes source

@@ -42,6 +42,18 @@ pub(crate) mod namespace_close;
 pub(crate) mod retirement_tests;
 mod revocation;
 pub(crate) use revocation::LoanRevocation;
+mod close;
+
+pub(crate) fn test_transfer_close_readiness(
+    hold_ipc: fn(&mut dyn FnMut()),
+    ipc_available: fn() -> bool,
+) {
+    close::tests::serialized(hold_ipc, ipc_available);
+}
+
+pub(crate) fn test_scheduled_transfer_close() {
+    close::tests::scheduled();
+}
 mod scratch;
 use scratch::ScratchWindow;
 
@@ -112,6 +124,10 @@ struct MemoryObject {
     /// completes. An abandoned/failed retirement keeps this pin permanently.
     retirement_pins: usize,
     destroy_when_unpinned: bool,
+    // Lazily admitted by a close waiter outside registry/lifecycle/IPC guards.
+    // This exact transfer's source owns its list and deferred-disposal node.
+    close_interest: Option<close::Source>,
+    transfer_root: Option<super::AddressSpaceHandle>,
 }
 
 /// Staged or retired backing frames retain their charge until physical
@@ -462,6 +478,8 @@ pub fn allocate(owner: AddressSpaceId, pages: usize) -> Result<MemoryObjectCap, 
             copy_pins: 0,
             retirement_pins: 0,
             destroy_when_unpinned: false,
+            close_interest: None,
+            transfer_root: None,
         },
     );
     registry.caps_for_mut(owner).insert(
@@ -1069,6 +1087,10 @@ impl Drop for PreparedTransfer {
     fn drop(&mut self) {
         if let Some(source) = self.payload.source_mut() {
             let mut registry = MEMORY_OBJECTS.lock();
+            let interest = registry
+                .objects
+                .get_mut(&source.entry.object)
+                .and_then(|object| object.close_interest.take());
             if !self.committed
                 && let Some(escrow) = source.escrow.take()
             {
@@ -1094,6 +1116,9 @@ impl Drop for PreparedTransfer {
                 assert!(entry.transfer_in_flight, "prepared source fence missing");
                 entry.transfer_in_flight = false;
             }
+            if let Some(object) = registry.objects.get_mut(&source.entry.object) {
+                object.transfer_root = None;
+            }
             drop(registry);
             deallocate_frames(frames);
             // Successful move publication carries the detached authority node
@@ -1101,6 +1126,12 @@ impl Drop for PreparedTransfer {
             // release. Only now may its original metadata/charge be disposed.
             if let Some(escrow) = source.escrow.as_mut() {
                 escrow.finish_retired();
+            }
+            if let Some(interest) = interest {
+                // IPC may still be held by this producer. Transfer completion
+                // closes its exact source and queues admitted nodes; callbacks
+                // and final list/node disposal follow this LP's guard exit.
+                interest.finish();
             }
         }
         // Hidden destination authority and private-copy backing drop normally.
@@ -1182,7 +1213,9 @@ fn prepare_source_transfer(
     .map_err(capability_error)?;
     // No fallible work follows source escrow. A read-retention pin fences
     // writes/DMA and keeps backing alive even if source teardown drains it.
-    registry.objects.get_mut(&entry.object).unwrap().copy_pins = pins;
+    let object = registry.objects.get_mut(&entry.object).unwrap();
+    object.copy_pins = pins;
+    object.transfer_root = Some(source_handle);
     registry.caps.get_mut(&owner).unwrap().caps.get_mut(&cap).unwrap().transfer_in_flight = true;
     let source = PreparedSource {
         owner,
@@ -1410,6 +1443,8 @@ fn commit_transfers_with_delivery(
                         copy_pins: 0,
                         retirement_pins: 0,
                         destroy_when_unpinned: false,
+                        close_interest: None,
+                        transfer_root: None,
                     },
                 );
                 MemoryCap {
@@ -1641,7 +1676,14 @@ pub(crate) fn revoke_lend_under_ipc(
 }
 
 pub fn close_cap(asid: AddressSpaceId, cap: MemoryObjectCap) -> Result<(), MemoryObjectError> {
-    close_cap_with_wait(asid, cap, crate::cpu::scheduler::yield_lp)
+    close::run(asid, cap, |interest| {
+        crate::cpu::scheduler::try_park_until(
+            interest,
+            crate::cpu::scheduler::threads::MigrationConstraint::GeneralWait,
+            || interest.completed(),
+        )
+        .map_err(|_| MemoryObjectError::ResourceLimit)
+    })
 }
 
 /// Thread-context close and deterministic boot interleaving adapter. Callers
@@ -1651,18 +1693,10 @@ pub(crate) fn close_cap_with_wait(
     cap: MemoryObjectCap,
     mut wait: impl FnMut(),
 ) -> Result<(), MemoryObjectError> {
-    let registry = loop {
-        let registry = MEMORY_OBJECTS.lock();
-        if !transfer_in_flight(&registry, asid, cap) {
-            break registry;
-        }
-        drop(registry);
+    close::run(asid, cap, |_| {
         wait();
-    };
-    // Guessed queued/unobserved destinations remain owned by IPC, including
-    // against explicit application close. Only its cleanup adapter can consume.
-    registry.lookup(asid, cap)?;
-    prepare_close_cap(registry, asid, cap)?.release()
+        Ok(())
+    })
 }
 
 /// Nonwaiting raw kernel fixture adapter. Published IPC cleanup instead retains

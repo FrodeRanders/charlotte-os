@@ -12,6 +12,7 @@ use core::{
 use super::*;
 use crate::{
     completion,
+    cpu::scheduler::deferred::drain as drain_reaper_wakes,
     klib::observer::CallOnNotify,
     memory::{
         AddressSpaceInterface,

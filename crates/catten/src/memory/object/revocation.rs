@@ -62,7 +62,7 @@ impl LeasedRevocation {
     }
 }
 
-fn operation_error(error: OperationError) -> MemoryObjectError {
+pub(super) fn operation_error(error: OperationError) -> MemoryObjectError {
     match error {
         OperationError::Closing => MemoryObjectError::AddressSpaceClosing,
         OperationError::Limit => MemoryObjectError::ResourceLimit,

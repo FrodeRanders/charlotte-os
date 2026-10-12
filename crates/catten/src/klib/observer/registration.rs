@@ -192,6 +192,10 @@ impl<C> ObserverList<C> {
     pub(crate) fn registered(&self) -> usize {
         self.state.lock().count
     }
+
+    pub(crate) fn is_closed(&self) -> bool {
+        self.state.lock().closed
+    }
 }
 
 /// Kernel fixture: inject entry allocation failure after admission. The
@@ -252,6 +256,10 @@ pub(crate) struct NotificationBatch<C>(Option<Entry<C>>);
 impl<C> NotificationBatch<C> {
     pub(crate) const fn empty() -> Self {
         Self(None)
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.0.is_none()
     }
 
     /// Combine detached batches without allocation. Traversal is bounded by
