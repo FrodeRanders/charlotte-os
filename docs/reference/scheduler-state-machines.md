@@ -331,6 +331,36 @@ work changes the generation.
 - The design assumes one blocking reactor per shard CQ. Multiple independent
   waiters would require a cursor per waiter.
 
+### Multi-source reply and lifecycle readiness
+
+`PendingCall::bind_cq` (syscall 87) admits one owning subscription in the
+existing pending-call record, against its existing reply observer list. The
+caller thread sponsors it; observer/entry preparation occurs outside IPC and
+publication revalidates the exact pending-call identity. Readiness winning
+registration receives an immediate post-guard wake. Closing the call cancels
+its subscription. Reply/cancellation completion wakes the captured CQ without
+observing the result or delivering hidden returned attachments.
+
+`CqInterest` retains the admitted waiter-list identity of one queue lifetime.
+It validates that identity under `COMPLETIONS` before changing work generation,
+then notifies detached waiters after unlocking. An old callback cannot wake a
+successor at the same numeric ASID/CQ. It retains list metadata, not CQ ring
+backing or a root/physical completion receipt.
+
+Lifecycle request writes borrow an exact `AddressSpaceOperation`, release the
+local table guard, and publish default-CQ work while that root still excludes
+namespace reuse. Grant-controller and probe reactors combine endpoint, reply,
+deadline and lifecycle interests. Syscall 88, `CqWaitChecked`, distinguishes
+work, timeout, rejected admission and unknown queue. It captures the same exact
+queue identity, retains `CompletionQueueWait` migration constraints, and owns a
+kernel watchdog for the earliest remaining deadline; idle waits need no timer.
+Spurious wakes repark within that total deadline, without a completion
+capability or a cancellation entry fed back into the CQ. The wire reserves
+`u64::MAX` for event-only waiting. Their bounded intake must continue when a
+batch limit is reached: coalesced generations do not promise a fresh edge for
+remaining queued work. Registration/timer admission pressure and broader
+metadata destruction contexts remain separate qualification work.
+
 ### Lost-wake race closure
 
 ```

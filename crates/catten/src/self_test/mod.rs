@@ -307,6 +307,7 @@ pub fn run_synchronous_self_tests() {
     crate::ipc::cancellation::tests::run();
     ipc::test_close_watch_admission();
     crate::ipc::waiter_tests::test_source_admission();
+    crate::ipc::waiter_tests::test_reply_cq_interest();
     ipc::test_endpoint_ipc_connection_attach();
     ipc::test_endpoint_ipc_connection_copy();
     ipc::test_vector_ipc_transaction_rollback();

@@ -74,7 +74,19 @@ The application receives its admitted descriptor and grant-controller
 connection, without a name-service connection. A second valid descriptor names
 the same ELF but widens tcpip rights. The controller must reject this replacement
 policy, undeclared services, excess rights and re-delegation of client authority.
-Positive controls establish publication and ordinary calls. Missing targets and
+Positive controls establish publication and ordinary calls. The probe now
+registers reply and self-hosted endpoint interests on one CQ, with a checked
+kernel-watchdog wait to the remaining operation deadline, and drains a 32-request unauthorized batch through
+the grant controller. Kernel fixtures additionally prove actual CQ parking
+before a reply wake, late binding, cancellation, rejected source admission,
+unchanged result-observation state, hidden returned memory and stale-CQ
+identity rejection. Exact-root lifecycle publication wakes default-CQ work;
+signed probe retirement exercises its idle CQ wait, while cooperative shutdown
+validates ordinary service drain. The node shutdown roster does not include
+the grant controller, so that run is not its shutdown-acknowledgement proof.
+See the
+[reply CQ evidence](../reports/audits/2026-10-12-reply-cq-readiness.md).
+Missing targets and
 cancelled requests must not prevent acquisition of the available endpoint;
 a separately hosted silent endpoint tests the publication helper's deadline.
 The same remote endpoint also exercises the platform `publication::register`

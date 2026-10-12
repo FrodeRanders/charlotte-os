@@ -316,6 +316,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::IpcReplyPoll => sys_ipc_reply_poll(frame),
         SyscallNumber::IpcReplyWait => sys_ipc_reply_wait(frame),
         SyscallNumber::IpcReplyWaitTimeout => sys_ipc_reply_wait_timeout(frame),
+        SyscallNumber::IpcReplyBindCq => sys_ipc_reply_bind_cq(frame),
         SyscallNumber::IpcClose => sys_ipc_close(frame),
         SyscallNumber::IpcReplyConnection => sys_ipc_reply_connection(frame),
         SyscallNumber::IpcRecvBlock => sys_ipc_recv_block(frame),
@@ -338,6 +339,7 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::IpcScalarCallConnectionCopy => sys_ipc_scalar_call_connection_copy(frame),
         SyscallNumber::CqWake => sys_cq_wake(frame),
         SyscallNumber::CqWaitTimeout => sys_cq_wait_timeout(frame),
+        SyscallNumber::CqWaitChecked => sys_cq_wait_checked(frame),
         SyscallNumber::IpcEndpointBindCq => sys_ipc_endpoint_bind_cq(frame),
         SyscallNumber::IpcEndpointResize => sys_ipc_endpoint_resize(frame),
         SyscallNumber::IpcEndpointStatus => sys_ipc_endpoint_status(frame),
@@ -1592,6 +1594,14 @@ fn sys_ipc_reply_wait_timeout(frame: &mut TrapFrame) {
     }
 }
 
+fn sys_ipc_reply_bind_cq(frame: &mut TrapFrame) {
+    frame.regs[0] = match u32::try_from(frame.regs[2]) {
+        Ok(cq) => ipc::bind_reply_cq(caller_asid(frame), frame.regs[1], cq)
+            .map_or_else(ipc_status, |()| 0),
+        Err(_) => ipc_status(ipc::IpcError::UnknownCapability),
+    };
+}
+
 fn sys_ipc_close(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
     let cap = frame.regs[1];
@@ -1972,6 +1982,27 @@ fn sys_cq_wait_timeout(frame: &mut TrapFrame) {
     } else {
         1
     };
+}
+
+fn sys_cq_wait_checked(frame: &mut TrapFrame) {
+    let asid = caller_asid(frame);
+    let Ok(cq) = u32::try_from(frame.regs[2]) else {
+        frame.regs[0] = 0;
+        frame.regs[1] = catten_syscall::completion_status::INVALID_CAPABILITY;
+        return;
+    };
+    let timeout = (frame.regs[1] != u64::MAX).then_some(frame.regs[1]);
+    frame.regs[1] = match crate::completion::wait_on_cq_checked(asid, cq, timeout) {
+        Ok(true) => catten_syscall::completion_status::READY,
+        Ok(false) => catten_syscall::completion_status::PENDING_OR_TIMEOUT,
+        Err(crate::completion::CqWaitError::AdmissionRejected) => {
+            catten_syscall::completion_status::WAIT_ADMISSION_FAILED
+        }
+        Err(crate::completion::CqWaitError::UnknownQueue) => {
+            catten_syscall::completion_status::INVALID_CAPABILITY
+        }
+    };
+    frame.regs[0] = crate::completion::cq_pending(asid, cq) as u64;
 }
 
 fn sys_ipc_endpoint_bind_cq(frame: &mut TrapFrame) {

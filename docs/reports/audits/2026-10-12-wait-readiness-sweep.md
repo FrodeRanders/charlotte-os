@@ -36,6 +36,17 @@ This is a source sweep, not exhaustive reachability analysis or a CPU-utilizatio
 
 The inventory classifies 172 fixture matches, 55 non-executable matches, 36 productive matches, 13 backoff matches, nine cleanup/admission gap matches, six corrected reply matches, six terminal-retention matches, four timer-poll gap matches, three hardware-poll matches, three nonblocking progress matches, two host fixture polls, and one each acknowledgement gap, single readiness check and blocking host read. Counts are added-line classifications; the table also records enclosing wait contexts and preexisting boundaries not represented by an added yield line.
 
+## Subsequent scoped correction
+
+The [reply CQ follow-up](2026-10-12-reply-cq-readiness.md) implements owning
+pending-reply CQ interests and exact queue-identity validation, then converts
+`grantctl` and the security probe's self-serving/idle reactor. Checked CQ waits
+use an owned kernel watchdog for the remaining deadline, with explicit wait
+admission rejection and no extra completion capability. Exact-root lifecycle
+publication signals default-CQ work. The table above records the original
+reviewed-head findings; cleanup/reaper/shootdown and the other protocol/driver
+notification gaps remain open.
+
 ## Validation and reproducible evidence
 
 Both complete signed service bundles were built before guest execution using `scripts/build-catten-services.sh --embed` and `scripts/build-catten-services-x86_64.sh`. All four guest runs exit 0:

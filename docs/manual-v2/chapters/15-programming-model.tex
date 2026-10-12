@@ -248,7 +248,16 @@ integers. Application code should use the linear wrappers in
         not consume the handle unless a terminal result was observed.
     \item \texttt{Endpoint}, \texttt{Connection}, and \texttt{PendingCall}
         close exactly once. A pending call retains any memory loan until reply
-        observation or cancellation.
+        observation or cancellation. A single-call deadline uses
+        \texttt{PendingCall::wait\_timeout}; a multi-source reactor uses
+        \texttt{PendingCall::bind\_cq} with endpoint interests on the same CQ.
+        \texttt{cq\_wait\_checked} waits to the earliest remaining operation
+        deadline with an owned kernel watchdog and no extra completion
+        capability; idle waits need no timer. Admission rejection is distinct
+        from timeout. Reply readiness does not observe its
+        returned capabilities. Kernel lifecycle publication also wakes the
+        default CQ after exact-root page access and local guard exit; the
+        reactor rechecks all sources, including lifecycle, after waking.
     \item \texttt{CapabilityVector} owns moved entries and retains read/write
         loans across a vector call. Submission failure returns the builder
         intact, including every moved object.

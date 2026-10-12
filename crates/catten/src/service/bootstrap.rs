@@ -82,8 +82,18 @@ impl<'a> ServicePages<'a> {
     pub(crate) fn write_request(&self, state: u32, reason: u32, deadline_ms: u64) {
         // Serialize kernel writers. This short hold has no allocation, wait,
         // subsystem access, invalidation or physical destruction.
-        let _table = ADDRESS_SPACE_TABLE.lock();
-        write_lifecycle_request(self.config, state, reason, deadline_ms);
+        {
+            let _table = ADDRESS_SPACE_TABLE.lock();
+            write_lifecycle_request(self.config, state, reason, deadline_ms);
+        }
+        // Exact root admission keeps this namespace from slot reuse. Capture
+        // and notify CQ work only after the page-table guard leaves; callers
+        // already perform page access outside coordinator/subsystem guards.
+        if let Some(notification) =
+            crate::completion::prepare_wake(self._root.handle().id(), crate::completion::DEFAULT_CQ)
+        {
+            notification.notify();
+        }
     }
 
     pub(crate) fn lifecycle_status(&self) -> u32 {

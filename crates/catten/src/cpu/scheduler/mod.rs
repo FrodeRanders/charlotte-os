@@ -441,6 +441,20 @@ pub fn try_block_until(
     timeout_ms: u64,
     condition: impl Fn() -> bool,
 ) -> Result<bool, system_scheduler::Error> {
+    try_block_until_with_constraint(
+        observable,
+        timeout_ms,
+        threads::MigrationConstraint::GeneralWait,
+        condition,
+    )
+}
+
+pub(crate) fn try_block_until_with_constraint(
+    observable: &dyn Observable,
+    timeout_ms: u64,
+    constraint: threads::MigrationConstraint,
+    condition: impl Fn() -> bool,
+) -> Result<bool, system_scheduler::Error> {
     struct BlockTimeoutWake {
         tid: ThreadId,
         generation: threads::ThreadGeneration,
@@ -493,11 +507,10 @@ pub fn try_block_until(
         timer_event
             .event()
             .register_observer(alloc::sync::Arc::downgrade(&timeout_obs) as Weak<dyn Observer>);
-        let generation = match SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
-            tid,
-            observable,
-            threads::MigrationConstraint::GeneralWait,
-        ) {
+        let generation = match SYSTEM_SCHEDULER
+            .read()
+            .block_thread_with_constraint_generation(tid, observable, constraint)
+        {
             Ok(generation) => generation,
             Err(_) => {
                 return condition()
@@ -524,6 +537,36 @@ pub fn try_block_until(
         // Observable notification may have won. Do not retain the unused
         // watchdog until the original absolute deadline.
         let _ = crate::timers::cancel_event(timeout_handle);
+    }
+}
+
+/// Event-only equivalent for a reactor with no outstanding deadline. Waiter
+/// rejection is explicit and never parks without an owned registration.
+pub(crate) fn try_park_until(
+    observable: &dyn Observable,
+    constraint: threads::MigrationConstraint,
+    condition: impl Fn() -> bool,
+) -> Result<(), system_scheduler::Error> {
+    loop {
+        if condition() {
+            return Ok(());
+        }
+        let tid = SYSTEM_SCHEDULER
+            .read()
+            .get_lp_scheduler()
+            .lock()
+            .get_tid()
+            .ok_or(system_scheduler::Error::WaitRegistrationFailed)?;
+        let setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
+        let generation = SYSTEM_SCHEDULER
+            .read()
+            .block_thread_with_constraint_generation(tid, observable, constraint)
+            .map_err(|_| system_scheduler::Error::WaitRegistrationFailed)?;
+        if condition() {
+            let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
+        }
+        drop(setup);
+        yield_lp();
     }
 }
 

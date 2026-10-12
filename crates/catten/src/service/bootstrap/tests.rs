@@ -56,6 +56,7 @@ fn test_success_and_staged_close() {
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let image = backing_budget::test_used_pages(Kind::Image);
     let domain = fixture();
+    crate::completion::open_address_space_with_cq(domain.asid, 8, 8).unwrap();
     with_service_pages(&domain, |pages| {
         assert!(memory::ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
         assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
@@ -63,16 +64,19 @@ fn test_success_and_staged_close() {
             memory::close_user_address_space_handle(domain.address_space),
             Err(AddressSpaceCloseError::OperationsInFlight)
         );
+        let cq_before = crate::completion::cq_work_generation(domain.asid, 0);
         pages.write_request(
             charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED,
             charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
             123,
         );
+        assert_eq!(crate::completion::cq_work_generation(domain.asid, 0), cq_before + 1);
         assert_eq!(state(pages), charlotte_launch::lifecycle::STATE_DRAIN_REQUESTED);
         acknowledge(pages, charlotte_launch::lifecycle::STATUS_READY);
         assert_eq!(pages.lifecycle_status(), charlotte_launch::lifecycle::STATUS_READY);
     })
     .unwrap();
+    crate::completion::close_address_space(domain.asid);
     let root = AddressSpaceOperation::acquire(domain.address_space).unwrap();
     let closing = ClosingAddressSpace::begin(domain.address_space).unwrap();
     assert_eq!(

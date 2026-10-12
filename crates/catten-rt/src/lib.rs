@@ -277,8 +277,9 @@ pub struct Lifecycle<'context> {
 impl Lifecycle<'_> {
     /// Return the current cooperative shutdown request, if any.
     ///
-    /// Event loops should call this at bounded intervals and avoid indefinitely
-    /// blocking receives when graceful shutdown is required.
+    /// Event loops should recheck this after CQ wakes. Kernel request publication
+    /// wakes the default CQ; bind other resource interests to it before parking.
+    /// A blocking endpoint receive alone does not observe lifecycle requests.
     pub fn shutdown_requested(&self) -> Option<ShutdownRequest> {
         let (state, reason, deadline_ms) = config::lifecycle_control()?;
         if state == charlotte_launch::lifecycle::STATE_RUNNING {

@@ -19,6 +19,68 @@ fn fixture() -> (CapabilityId, CapabilityId, EndpointId) {
     (endpoint, connection, id)
 }
 
+/// Raw namespaces are confined to this serialized boot fixture. Production
+/// binds only the current caller's sponsor and admitted pending capability.
+pub(crate) fn test_reply_cq_interest() {
+    let (endpoint, connection, _) = fixture();
+    crate::completion::open_address_space_with_cq(CLIENT, 8, 8).unwrap();
+    let sponsor = WaitSponsor::new(false);
+    for finish in 0..3 {
+        let call = scalar_call(CLIENT, connection, 1, 2).unwrap();
+        let id = pending_call_id(CLIENT, call).unwrap();
+        let before = crate::completion::cq_work_generation(CLIENT, 0);
+        if finish == 1 {
+            let token = receive(SERVER, endpoint).unwrap().reply.unwrap();
+            reply(SERVER, token, 42).unwrap();
+        }
+        bind_reply_cq_with(CLIENT, call, 0, &sponsor).unwrap();
+        assert_eq!(bind_reply_cq_with(CLIENT, call, 0, &sponsor), Err(IpcError::ReplyAlreadyUsed));
+        assert!(!IPC.read().pending_calls[&id].observed);
+        if finish == 0 {
+            assert!(poll_reply(CLIENT, call).unwrap().is_none());
+            assert_eq!(crate::completion::cq_work_generation(CLIENT, 0), before);
+            let token = receive(SERVER, endpoint).unwrap().reply.unwrap();
+            reply(SERVER, token, 42).unwrap();
+        } else if finish == 2 {
+            let token = receive(SERVER, endpoint).unwrap().reply.unwrap();
+            close_cap(SERVER, token).unwrap();
+        }
+        assert_eq!(crate::completion::cq_work_generation(CLIENT, 0), before + 1);
+        assert!(!IPC.read().pending_calls[&id].observed);
+        assert_eq!(sponsor.used(), 0);
+        close_cap(CLIENT, call).unwrap();
+    }
+    let call = scalar_call(CLIENT, connection, 1, 2).unwrap();
+    let id = pending_call_id(CLIENT, call).unwrap();
+    let source = PendingCallObservable {
+        call: id,
+    };
+    let observer: Arc<dyn Observer> = CallOnNotify::new(|| {});
+    let mut tokens = Vec::new();
+    for _ in 0..waiter_budget::SOURCE_LIMIT {
+        tokens.push(source.try_register_waiter(Arc::downgrade(&observer), &sponsor).unwrap());
+    }
+    let before = crate::completion::cq_work_generation(CLIENT, 0);
+    assert_eq!(bind_reply_cq_with(CLIENT, call, 0, &sponsor), Err(IpcError::ResourceLimit));
+    assert!(IPC.read().pending_calls[&id].cq_interest.is_none());
+    assert!(poll_reply(CLIENT, call).unwrap().is_none());
+    assert_eq!(sponsor.used(), waiter_budget::SOURCE_LIMIT);
+    drop(tokens);
+    bind_reply_cq_with(CLIENT, call, 0, &sponsor).unwrap();
+    close_cap(CLIENT, call).unwrap();
+    assert_eq!(sponsor.used(), 0);
+    assert_eq!(crate::completion::cq_work_generation(CLIENT, 0), before);
+    close_cap(SERVER, endpoint).unwrap();
+    close_cap(CLIENT, connection).unwrap();
+    close_address_space_fixture(SERVER).unwrap();
+    close_address_space_fixture(CLIENT).unwrap();
+    crate::completion::close_address_space(CLIENT);
+    crate::logln!(
+        "[reply CQ] reply/cancel/late binding, unobserved results, saturated admission and owner \
+         cancellation passed"
+    );
+}
+
 pub(crate) fn test_source_admission() {
     let baseline = waiter_budget::node_used();
     let sponsor = WaitSponsor::new(false);
@@ -409,4 +471,43 @@ extern "C" fn recovery_replier() {
     let server = RECOVERY_SERVER.load(Ordering::Acquire);
     assert!(crate::memory::object::info(server, RECOVERY_LOAN.load(Ordering::Acquire)).is_ok());
     reply(server, RECOVERY_CAP.load(Ordering::Acquire), 42).unwrap();
+}
+
+static CQ_REPLY_TOKEN: AtomicU64 = AtomicU64::new(0);
+extern "C" fn reply_after_cq_park() {
+    let deadline = crate::self_test::results::Deadline::after_millis(5_000);
+    while crate::completion::cq_waiter_count(CLIENT, 0) == 0 {
+        deadline.assert_pending("reply CQ caller actually parked");
+        crate::cpu::scheduler::yield_lp();
+    }
+    reply(SERVER, CQ_REPLY_TOKEN.load(Ordering::Acquire), 42).unwrap();
+}
+
+pub(crate) fn test_scheduled_reply_cq() {
+    let (endpoint, connection, _) = fixture();
+    crate::completion::open_address_space_with_cq(CLIENT, 8, 8).unwrap();
+    let sponsor = WaitSponsor::new(false);
+    for timeout in [Some(5_000), None] {
+        let call = scalar_call(CLIENT, connection, 1, 2).unwrap();
+        bind_reply_cq_with(CLIENT, call, 0, &sponsor).unwrap();
+        CQ_REPLY_TOKEN.store(receive(SERVER, endpoint).unwrap().reply.unwrap(), Ordering::Release);
+        crate::cpu::scheduler::spawn_thread_on_lp(
+            crate::memory::KERNEL_ASID,
+            reply_after_cq_park,
+            crate::cpu::isa::lp::ops::get_lp_id(),
+        );
+        assert!(crate::completion::wait_on_cq_checked(CLIENT, 0, timeout).unwrap());
+        assert_eq!(crate::completion::cq_waiter_count(CLIENT, 0), 0);
+        assert_eq!(poll_reply(CLIENT, call).unwrap().unwrap().result, 42);
+        close_cap(CLIENT, call).unwrap();
+    }
+    close_cap(SERVER, endpoint).unwrap();
+    close_cap(CLIENT, connection).unwrap();
+    close_address_space_fixture(SERVER).unwrap();
+    close_address_space_fixture(CLIENT).unwrap();
+    crate::completion::close_address_space(CLIENT);
+    crate::logln!(
+        "[reply CQ] timed/untimed parked callers awakened by exact pending reply without a \
+         completion entry"
+    );
 }

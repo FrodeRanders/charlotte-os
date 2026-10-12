@@ -1222,6 +1222,18 @@ impl PendingCall<'_> {
         }))
     }
 
+    /// Register this call's readiness on one CQ without observing its result.
+    /// This owner retains/cancels the subscription and any memory borrow.
+    /// A service can wait on the same CQ as its endpoint and timers.
+    pub fn bind_cq(&mut self, cq: u32) -> Result<(), IpcError> {
+        let status = kernel::ipc_reply_bind_cq(self.raw_handle(), cq);
+        if status == catten_syscall::ipc_status::OK {
+            Ok(())
+        } else {
+            Err(IpcError::Status(status))
+        }
+    }
+
     pub fn poll(&mut self) -> Result<Option<CallResult>, IpcError> {
         let (status, result, connection, memory) =
             kernel::ipc_reply_poll_with_memory(self.raw_handle());

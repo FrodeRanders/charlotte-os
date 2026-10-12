@@ -314,6 +314,7 @@ struct PendingCall {
     caller: AddressSpaceId,
     result: Option<ReplyValue>,
     observers: WaiterList,
+    cq_interest: Option<ReplyCqInterest>,
     /// Set once the caller has seen the result through `poll_reply`. From
     /// that point the returned connection/memory capabilities belong to the
     /// caller, and closing the pending-call cap no longer revokes them
@@ -331,6 +332,7 @@ impl PendingCall {
             result: None,
             observers: ObserverList::try_new(waiter_budget::SOURCE_LIMIT, charge.platform())
                 .map_err(|_| IpcError::ResourceLimit)?,
+            cq_interest: None,
             observed: false,
             _charge: charge,
         })
@@ -1993,6 +1995,91 @@ pub fn wait_reply_timeout(
         return Ok(true);
     }
     waited.map_err(|_| IpcError::ResourceLimit)
+}
+
+/// One owned subscription in the existing admitted pending-call record.
+/// It is cancelled with that record, not by a separate scalar registry.
+#[derive(Debug)]
+struct ReplyCqInterest {
+    _observer: Arc<ReplyCqObserver>,
+    _registration: WaitRegistration,
+}
+
+#[derive(Debug)]
+struct ReplyCqObserver(crate::completion::CqInterest);
+impl Observer for ReplyCqObserver {
+    fn notify(self: Arc<Self>) {
+        self.0.wake();
+    }
+}
+
+/// Bind one pending call's readiness to the caller's exact CQ. This does not
+/// observe its result, adopt its attachments, or transfer any memory borrow.
+pub fn bind_reply_cq(
+    caller: AddressSpaceId,
+    call_cap: CapabilityId,
+    cq: crate::completion::CqId,
+) -> Result<(), IpcError> {
+    let tid =
+        crate::cpu::scheduler::system_scheduler::get_thread_id().ok_or(IpcError::ResourceLimit)?;
+    let sponsor = {
+        let table = crate::cpu::scheduler::threads::MASTER_THREAD_TABLE.read();
+        let thread = table.get(tid).map_err(|_| IpcError::ResourceLimit)?;
+        if thread.asid != caller {
+            return Err(IpcError::PermissionDenied);
+        }
+        thread.wait_sponsor.clone()
+    };
+    bind_reply_cq_with(caller, call_cap, cq, &sponsor)
+}
+
+fn bind_reply_cq_with(
+    caller: AddressSpaceId,
+    call_cap: CapabilityId,
+    cq: crate::completion::CqId,
+    sponsor: &WaitSponsor,
+) -> Result<(), IpcError> {
+    let call_id = pending_call_id(caller, call_cap)?;
+    let source = {
+        let ipc = IPC.read();
+        let call = ipc.pending_calls.get(&call_id).ok_or(IpcError::UnknownCapability)?;
+        if call.cq_interest.is_some() {
+            return Err(IpcError::ReplyAlreadyUsed);
+        }
+        call.observers.clone()
+    };
+    let queue =
+        crate::completion::capture_cq_interest(caller, cq).ok_or(IpcError::UnknownCapability)?;
+    let observer = Arc::try_new(ReplyCqObserver(queue)).map_err(|_| IpcError::ResourceLimit)?;
+    let weak = Arc::downgrade(&observer) as Weak<dyn Observer>;
+    // Admit storage outside IPC. List close serializes against registration;
+    // a reply winning that race is handled by the ready check below.
+    let registration = match sponsor.register(&source, weak) {
+        Ok(registration) => registration,
+        Err(RegistrationError::Closed) => WaitRegistration::ready(),
+        Err(_) => return Err(IpcError::ResourceLimit),
+    };
+    let mut interest = Some(ReplyCqInterest {
+        _observer: observer.clone(),
+        _registration: registration,
+    });
+    let ready = {
+        let mut ipc = IPC.write();
+        if !matches!(ipc.cap(caller, call_cap)?, Capability::PendingCall { call } if call == call_id)
+        {
+            return Err(IpcError::UnknownCapability);
+        }
+        let call = ipc.pending_calls.get_mut(&call_id).ok_or(IpcError::UnknownCapability)?;
+        if call.cq_interest.is_some() {
+            return Err(IpcError::ReplyAlreadyUsed);
+        }
+        call.cq_interest = interest.take();
+        call.result.is_some()
+    };
+    if ready {
+        observer.notify();
+    }
+    Ok(())
 }
 
 fn pending_call_id(

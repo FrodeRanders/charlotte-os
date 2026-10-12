@@ -74,6 +74,13 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   Preserve the enclosing IRQ policy; never enable interrupts beneath an unknown
   mask merely to permit blocking.
 - Services processing several sources must wait on all relevant interests.
+  Use `PendingCall::bind_cq` with endpoint interests on one CQ and
+  `cq_wait_checked` for the earliest remaining operation deadline (or an
+  event-only idle wait). Its owned kernel watchdog requires no extra completion
+  capability. Keep rejected wait admission distinct from timeout; a reply wake
+  does not observe its returned resources.
+  Kernel lifecycle request publication wakes the default CQ after exact-root
+  page access and local guard exit. Recheck lifecycle on those wakes.
   Do not block on one reply if that service must receive/process other work to
   produce it. Do not replace reply polling with a CQ wait unless reply readiness
   is wired to that CQ. Add the missing notification contract rather than an

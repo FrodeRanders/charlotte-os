@@ -243,6 +243,10 @@ mod kernel {
         catten_syscall::ipc_connection_watch_closed(connection)
     }
 
+    pub fn ipc_reply_bind_cq(call: u64, cq: u32) -> u64 {
+        catten_syscall::ipc_reply_bind_cq(call, cq)
+    }
+
     pub fn ipc_reply_poll_with_memory(call: u64) -> (u64, u64, u64, u64) {
         catten_syscall::ipc_reply_poll_with_memory(call)
     }
@@ -348,6 +352,7 @@ mod kernel {
         CompletionClose(u64),
         IpcClose(u64),
         IpcWaitTimeout(u64, u64),
+        IpcReplyBindCq(u64, u32),
         AbortFailedIpcClose,
         RetireArtifact(u64),
         RetireArtifactForNodeShutdown(u64, u64),
@@ -709,6 +714,13 @@ mod kernel {
 
     pub fn ipc_connection_watch_closed(_connection: u64) -> u64 {
         with_state(|state| state.connection_watch)
+    }
+
+    pub fn ipc_reply_bind_cq(call: u64, cq: u32) -> u64 {
+        with_state(|state| {
+            state.events.push(Event::IpcReplyBindCq(call, cq));
+            state.ipc_bind
+        })
     }
 
     pub fn ipc_reply_poll_with_memory(_call: u64) -> (u64, u64, u64, u64) {
@@ -1262,6 +1274,36 @@ mod tests {
             kernel::events(),
             [
                 kernel::Event::IpcWaitTimeout(30, 7),
+                kernel::Event::IpcClose(30),
+                kernel::Event::MemoryClose(41),
+                kernel::Event::IpcClose(40)
+            ]
+        );
+    }
+
+    #[test]
+    fn rejected_reply_cq_interest_preserves_the_pending_loan_owner() {
+        let _guard = setup();
+        let connection = unsafe { Connection::from_raw(40) }.unwrap();
+        let memory = unsafe { OwnedMemory::from_raw(41) }.unwrap();
+        let mut pending = connection.call_borrow_read(1, 0, &memory).unwrap();
+        kernel::update(|state| state.ipc_bind = catten_syscall::ipc_status::RESOURCE_LIMIT);
+        assert_eq!(
+            pending.bind_cq(0),
+            Err(IpcError::Status(catten_syscall::ipc_status::RESOURCE_LIMIT))
+        );
+        assert_eq!(kernel::events(), [kernel::Event::IpcReplyBindCq(30, 0)]);
+        kernel::update(|state| state.ipc_bind = catten_syscall::ipc_status::OK);
+        pending.bind_cq(1).unwrap();
+        assert!(pending.poll().unwrap().is_none());
+        drop(pending);
+        drop(memory);
+        drop(connection);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::IpcReplyBindCq(30, 0),
+                kernel::Event::IpcReplyBindCq(30, 1),
                 kernel::Event::IpcClose(30),
                 kernel::Event::MemoryClose(41),
                 kernel::Event::IpcClose(40)

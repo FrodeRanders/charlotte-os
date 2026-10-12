@@ -239,11 +239,17 @@ fn queued_vector() {
 fn returned_memory() {
     for observed in [false, true] {
         let fixture = Fixture::new();
+        crate::completion::open_address_space_with_cq(fixture.caller.id(), 8, 8).unwrap();
+        let sponsor = WaitSponsor::new(false);
         let pending = scalar_call(fixture.caller.id(), fixture.connection, 1, 0).unwrap();
+        bind_reply_cq_with(fixture.caller.id(), pending, 0, &sponsor).unwrap();
+        let before = crate::completion::cq_work_generation(fixture.caller.id(), 0);
         let token = receive(fixture.server.id(), fixture.endpoint).unwrap().reply.unwrap();
         let source = object::allocate(fixture.server.id(), 1).unwrap();
         object::write_bytes(fixture.server.id(), source, &[0x5a]).unwrap();
         reply_with_memory_move(fixture.server.id(), token, source, 42).unwrap();
+        assert_eq!(crate::completion::cq_work_generation(fixture.caller.id(), 0), before + 1);
+        assert_eq!(sponsor.used(), 0);
         let destination = {
             let ipc = IPC.read();
             let Capability::PendingCall {

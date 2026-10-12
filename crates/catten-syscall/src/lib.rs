@@ -158,6 +158,8 @@ define_syscall_numbers!(
     (IsFrameRouter, 84),
     (SocketOwnerStatus, 85),
     (IpcReplyWaitTimeout, 86),
+    (IpcReplyBindCq, 87),
+    (CqWaitChecked, 88),
 );
 
 /// Supervisor-assigned roles carried in the kernel-authenticated IPC sender
@@ -448,6 +450,7 @@ unsafe fn svc3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             82 => asm!("svc #82", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             84 => asm!("svc #84", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             85 => asm!("svc #85", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
+            87 => asm!("svc #87", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, preserves_flags)),
             _ => panic!("syscall {:?} has no svc3 emitter", imm),
         }
     }
@@ -969,6 +972,7 @@ unsafe fn svc3_x1(imm: SyscallNumber, arg1: u64, arg2: u64, _arg3: u64) -> (u64,
             21 => asm!("svc #21", lateout("x0") ret, inlateout("x1") arg1 => x1_out, in("x2") arg2, in("x3") _arg3, options(nostack, nomem, preserves_flags)),
             24 => asm!("svc #24", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             42 => asm!("svc #42", lateout("x0") ret, inlateout("x1") arg1 => x1_out, in("x2") arg2, in("x3") _arg3, options(nostack, nomem, preserves_flags)),
+            88 => asm!("svc #88", lateout("x0") ret, inlateout("x1") arg1 => x1_out, in("x2") arg2, in("x3") _arg3, options(nostack, preserves_flags)),
              47 => asm!("svc #47", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             59 => asm!("svc #59", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             75 => asm!("svc #75", lateout("x0") ret, lateout("x1") x1_out, options(nostack, nomem, preserves_flags)),
@@ -1574,6 +1578,22 @@ pub fn cq_wake(cq: u32) -> u64 {
 #[inline(always)]
 pub fn cq_wait_timeout(min_complete: u64, timeout_ms: u64, cq: u32) -> (u64, u64) {
     unsafe { svc3_x1(SyscallNumber::CqWaitTimeout, min_complete, timeout_ms, cq as u64) }
+}
+
+/// Event-driven CQ wait with explicit outcome in the second return value:
+/// completion_status READY, PENDING_OR_TIMEOUT, WAIT_ADMISSION_FAILED, or
+/// INVALID_CAPABILITY. None waits without a watchdog; Some retains one total
+/// timeout. No completion capability is allocated. CQ interest is owning.
+#[inline(always)]
+pub fn cq_wait_checked(timeout_ms: Option<u64>, cq: u32) -> (u64, CompletionStatusCode) {
+    unsafe { svc3_x1(SyscallNumber::CqWaitChecked, timeout_ms.unwrap_or(u64::MAX), cq as u64, 0) }
+}
+
+/// Bind pending reply readiness to one CQ. The pending capability owns the
+/// subscription until close. This posts a wake, not a result/attachment entry.
+#[inline(always)]
+pub fn ipc_reply_bind_cq(call: u64, cq: u32) -> u64 {
+    unsafe { svc3(SyscallNumber::IpcReplyBindCq, call, cq as u64, 0) }
 }
 
 /// Bind an endpoint's readiness to the caller's CQ `cq`: the kernel posts a

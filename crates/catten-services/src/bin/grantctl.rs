@@ -219,6 +219,7 @@ fn main(ctx: Context) -> ! {
     let endpoint =
         unsafe { Endpoint::from_raw(endpoint_cap) }.unwrap_or_else(|_| catten_rt::domain_abort());
     let name_service = ctx.name_service_connection().unwrap_or_else(|| catten_rt::domain_abort());
+    endpoint.bind_completion_queue(0).unwrap_or_else(|_| catten_rt::domain_abort());
     let mut pending: Vec<PendingGrant> = Vec::new();
     loop {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
@@ -229,10 +230,14 @@ fn main(ctx: Context) -> ! {
         pending.retain_mut(|operation| !operation.poll());
         // Bound intake per cycle as well as outstanding work, so a busy client
         // cannot prevent polling existing operations and lifecycle requests.
+        let mut intake_exhausted = true;
         for _ in 0..16 {
             let mut message = match endpoint.try_receive_authenticated() {
                 Ok(Some(message)) => message,
-                Ok(None) => break,
+                Ok(None) => {
+                    intake_exhausted = false;
+                    break;
+                }
                 Err(_) => catten_rt::domain_abort(),
             };
             let owner_pending = pending
@@ -247,16 +252,44 @@ fn main(ctx: Context) -> ! {
                 continue;
             }
             match submit(&mut message, name_service) {
-                Ok((call, publish, rights)) => pending.push(PendingGrant {
-                    message,
-                    call,
-                    publish,
-                    rights,
-                    deadline: catten_services::deadline::Deadline::after(5_000),
-                }),
+                Ok((mut call, publish, rights)) => {
+                    if call.bind_cq(0).is_err() {
+                        drop(call);
+                        reply_error(&mut message, grant::ERR_UNAVAILABLE);
+                        continue;
+                    }
+                    let deadline = catten_services::deadline::Deadline::after(5_000);
+                    pending.push(PendingGrant {
+                        message,
+                        call,
+                        publish,
+                        rights,
+                        deadline,
+                    });
+                }
                 Err(error) => reply_error(&mut message, error),
             }
         }
-        catten_services::sleep_ms(5);
+        // A coalesced endpoint wake may already be consumed while more than
+        // sixteen messages remain queued. Continue productive intake, with
+        // lifecycle/reply checks each cycle, instead of waiting for a new edge.
+        if intake_exhausted {
+            continue;
+        }
+        // Endpoint messages, reply readiness, operation deadlines and lifecycle
+        // publication all signal this CQ. Notifications are hints: the next
+        // pass rechecks every source. No short timer polling or single-call wait.
+        let timeout = pending.iter().map(|operation| operation.deadline.remaining_ms()).min();
+        let (_, status) = catten_syscall::cq_wait_checked(timeout, 0);
+        match status {
+            catten_syscall::completion_status::READY
+            | catten_syscall::completion_status::PENDING_OR_TIMEOUT => {}
+            catten_syscall::completion_status::WAIT_ADMISSION_FAILED => {
+                // No waiter was installed. Preserve the pending owners and
+                // their original deadlines; bounded admission backoff only.
+                catten_services::sleep_ms(10);
+            }
+            _ => catten_rt::domain_abort(),
+        }
     }
 }

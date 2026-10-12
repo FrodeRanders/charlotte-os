@@ -2090,6 +2090,123 @@ pub(crate) fn prepare_wake(
     Some(notification)
 }
 
+/// A wake destination captured from one exact CQ lifetime. Retaining its
+/// admitted waiter-list identity prevents an old callback from waking a
+/// successor at the same numeric ASID/CQ; it does not retain ring backing.
+#[derive(Debug, Clone)]
+pub(crate) struct CqInterest {
+    asid: AddressSpaceId,
+    cq: CqId,
+    identity:
+        crate::klib::observer::registration::ListRef<crate::klib::observer::waiter_budget::Charge>,
+}
+
+pub(crate) fn capture_cq_interest(asid: AddressSpaceId, cq: CqId) -> Option<CqInterest> {
+    let registry = COMPLETIONS.read();
+    let state = registry.get(&asid)?.cqs.get(&cq)?;
+    Some(CqInterest {
+        asid,
+        cq,
+        identity: state.waiters.clone(),
+    })
+}
+
+impl CqInterest {
+    pub(crate) fn wake(&self) {
+        let notification = {
+            let mut registry = COMPLETIONS.write();
+            let Some(state) =
+                registry.get_mut(&self.asid).and_then(|entries| entries.cqs.get_mut(&self.cq))
+            else {
+                return;
+            };
+            if !core::ptr::eq(&*state.waiters, &*self.identity) {
+                return;
+            }
+            state.work_generation = state.work_generation.wrapping_add(1);
+            state.waiters.drain()
+        };
+        notification.notify();
+    }
+}
+
+impl CqInterest {
+    fn work_pending(&self) -> Option<bool> {
+        let registry = COMPLETIONS.read();
+        let state = registry.get(&self.asid)?.cqs.get(&self.cq)?;
+        core::ptr::eq(&*state.waiters, &*self.identity)
+            .then_some(state.work_generation != state.last_seen_generation)
+    }
+}
+
+impl Observable for CqInterest {
+    fn try_register_waiter(
+        &self,
+        observer: Weak<dyn Observer>,
+        sponsor: &crate::klib::observer::WaitSponsor,
+    ) -> Result<
+        crate::klib::observer::WaitRegistration,
+        crate::klib::observer::registration::RegistrationError,
+    > {
+        match self.work_pending() {
+            None => Err(crate::klib::observer::registration::RegistrationError::Closed),
+            Some(true) => Ok(crate::klib::observer::WaitRegistration::ready()),
+            Some(false) => sponsor.register(&self.identity, observer),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum CqWaitError {
+    UnknownQueue,
+    AdmissionRejected,
+}
+
+/// Wait on one captured CQ lifetime. None is event-only; Some uses the
+/// scheduler's owned watchdog without allocating a completion capability.
+/// Spurious wakes repark within the original absolute deadline.
+pub fn wait_on_cq_checked(
+    asid: AddressSpaceId,
+    cq: CqId,
+    timeout_ms: Option<u64>,
+) -> Result<bool, CqWaitError> {
+    let source = {
+        let mut registry = COMPLETIONS.write();
+        let entries = registry.get_mut(&asid).ok_or(CqWaitError::UnknownQueue)?;
+        flush_cq_backlog(entries, cq);
+        let state = entries.cqs.get(&cq).ok_or(CqWaitError::UnknownQueue)?;
+        CqInterest {
+            asid,
+            cq,
+            identity: state.waiters.clone(),
+        }
+    };
+    let condition = || source.work_pending().unwrap_or(true);
+    let constraint = crate::cpu::scheduler::threads::MigrationConstraint::CompletionQueueWait;
+    let waited = match timeout_ms {
+        Some(timeout) => crate::cpu::scheduler::try_block_until_with_constraint(
+            &source, timeout, constraint, condition,
+        ),
+        None => {
+            crate::cpu::scheduler::try_park_until(&source, constraint, condition).map(|()| true)
+        }
+    };
+    let mut registry = COMPLETIONS.write();
+    let state = registry
+        .get_mut(&asid)
+        .and_then(|entries| entries.cqs.get_mut(&cq))
+        .ok_or(CqWaitError::UnknownQueue)?;
+    if !core::ptr::eq(&*state.waiters, &*source.identity) {
+        return Err(CqWaitError::UnknownQueue);
+    }
+    if state.work_generation != state.last_seen_generation {
+        state.last_seen_generation = state.work_generation;
+        Ok(true)
+    } else {
+        waited.map_err(|_| CqWaitError::AdmissionRejected)
+    }
+}
+
 /// Kernel fixture: a detached wake batch belongs to the captured CQ, not a
 /// later namespace occupying the same numeric ASID/CQ. Reentrant callbacks
 /// also exercise the rule that no registry/device guard survives notification.
@@ -2123,6 +2240,7 @@ pub(crate) fn test_prepared_wake_identity() {
     }
     .try_register_waiter(Arc::downgrade(&old), &sponsor)
     .unwrap();
+    let stale_interest = capture_cq_interest(CLIENT, 0).unwrap();
     let batch = prepare_wake(CLIENT, 0).unwrap();
     assert_eq!(cq_work_generation(CLIENT, 0), 1);
     assert_eq!(sponsor.used(), 1);
@@ -2139,6 +2257,8 @@ pub(crate) fn test_prepared_wake_identity() {
     }
     .try_register_waiter(Arc::downgrade(&new), &sponsor)
     .unwrap();
+    stale_interest.wake();
+    assert_eq!(cq_work_generation(CLIENT, 0), 0);
     batch.notify();
     assert_eq!(old_calls.load(Ordering::SeqCst), 1);
     assert_eq!(new_calls.load(Ordering::SeqCst), 0);

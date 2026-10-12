@@ -197,7 +197,34 @@ fn test_scheduler_waiter_admission() {
         assert_eq!(completion::waiter_count(CQW_ASID, cap), 0);
         assert!(!completion::wait_on_cq_timeout(CQW_ASID, 2, 1, 1));
         assert_eq!(completion::cq_waiter_count(CQW_ASID, 2), 0);
+        assert_eq!(completion::wait_on_cq_checked(CQW_ASID, 2, Some(1)), Ok(false));
+        assert_eq!(completion::cq_waiter_count(CQW_ASID, 2), 0);
     }
+    let cq_source = completion::capture_cq_interest(CQW_ASID, 2).unwrap();
+    let sponsor = WaitSponsor::new(false);
+    let observer: alloc::sync::Arc<dyn Observer> = crate::klib::observer::CallOnNotify::new(|| {});
+    let tokens: alloc::vec::Vec<_> = (0..waiter_budget::SOURCE_LIMIT)
+        .map(|_| {
+            cq_source.try_register_waiter(alloc::sync::Arc::downgrade(&observer), &sponsor).unwrap()
+        })
+        .collect();
+    for timeout in [None, Some(10_000)] {
+        assert_eq!(
+            completion::wait_on_cq_checked(CQW_ASID, 2, timeout),
+            Err(completion::CqWaitError::AdmissionRejected)
+        );
+        assert_eq!(completion::cq_waiter_count(CQW_ASID, 2), waiter_budget::SOURCE_LIMIT);
+        assert!(matches!(
+            MASTER_THREAD_TABLE.read().get(get_thread_id().unwrap()).unwrap().state,
+            ThreadState::Running(_)
+        ));
+    }
+    drop(tokens);
+    assert_eq!(sponsor.used(), 0);
+    assert_eq!(
+        completion::wait_on_cq_checked(CQW_ASID, u32::MAX, Some(0)),
+        Err(completion::CqWaitError::UnknownQueue)
+    );
     completion::complete(CQW_ASID, cap, OpResult::Ok(0)).unwrap();
     completion::close(CQW_ASID, cap).unwrap();
     logln!(
@@ -297,6 +324,7 @@ extern "C" fn cq_driver() {
 
     test_scheduler_waiter_admission();
     ipc::waiter_tests::test_scheduled_cleanup();
+    ipc::waiter_tests::test_scheduled_reply_cq();
     crate::cpu::scheduler::sync::tests::test_scheduled_cleanup();
     crate::timers::waiter_tests::test_scheduled_cleanup();
     crate::timers::event_tests::test_scheduled_cleanup();

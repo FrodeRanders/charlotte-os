@@ -83,7 +83,7 @@ fn request(
         .unwrap_or_else(|_| catten_rt::domain_abort())
 }
 
-fn serve(endpoint: &Endpoint) {
+fn serve(endpoint: &Endpoint) -> bool {
     if let Some(mut message) = endpoint.try_receive().unwrap_or_else(|_| catten_rt::domain_abort())
     {
         let result = if message.opcode == PING {
@@ -94,18 +94,41 @@ fn serve(endpoint: &Endpoint) {
         if let Some(reply) = message.reply.take() {
             let _ = reply.reply(result);
         }
+        true
+    } else {
+        false
     }
 }
 
 fn wait(mut pending: PendingCall<'static>, endpoint: &Endpoint) -> CallResult {
     let deadline = Deadline::after(5_000);
+    endpoint.bind_completion_queue(0).unwrap_or_else(|error| {
+        catten_rt::logln!("[security-probe] wait endpoint interest rejected: {:?}", error);
+        check(false, 102);
+        catten_rt::domain_abort()
+    });
+    pending.bind_cq(0).unwrap_or_else(|error| {
+        catten_rt::logln!("[security-probe] wait reply interest rejected: {:?}", error);
+        check(false, 103);
+        catten_rt::domain_abort()
+    });
     loop {
         check(!deadline.expired(), 100);
-        serve(endpoint);
+        let serviced = serve(endpoint);
         if let Some(reply) = pending.poll().unwrap_or_else(|_| catten_rt::domain_abort()) {
             return reply;
         }
-        sleep_ms(5);
+        if !serviced {
+            let (_, status) = catten_syscall::cq_wait_checked(Some(deadline.remaining_ms()), 0);
+            check(
+                matches!(
+                    status,
+                    catten_syscall::completion_status::READY
+                        | catten_syscall::completion_status::PENDING_OR_TIMEOUT
+                ),
+                104,
+            );
+        }
     }
 }
 
@@ -123,6 +146,7 @@ fn main(ctx: Context) -> ! {
         .as_slice()
         .to_vec();
     let endpoint = Endpoint::create(0x5ec, 1, 8).unwrap_or_else(|_| catten_rt::domain_abort());
+    endpoint.bind_completion_queue(0).unwrap_or_else(|_| catten_rt::domain_abort());
     config::write::<u32>(status::STAGE, status::STARTED);
 
     if matches!(ctx.manifest_value(status::MODE_KEY), Some(ManifestValue::Unsigned(2))) {
@@ -217,6 +241,18 @@ fn main(ctx: Context) -> ! {
     );
     checks |= 8;
 
+    // Submit more than one controller intake batch. Every accepted request
+    // remains owned until its denial; no polling timer or replay rescues it.
+    let batch: Vec<_> = (0..32)
+        .map(|_| request(controller, &own, b"security.undeclared", deployment::RIGHT_CALL))
+        .collect();
+    for call in batch {
+        denied(wait(call, &endpoint), grant::ERR_UNAUTHORIZED, 101);
+    }
+    catten_rt::logln!(
+        "[security] reply CQ: 32 controller denials drained through owned multi-source waits"
+    );
+
     let generation = grant_client::publish(controller, &descriptor, AVAILABLE, &endpoint)
         .unwrap_or_else(|_| catten_rt::domain_abort());
     check(generation > 0, 7);
@@ -231,8 +267,15 @@ fn main(ctx: Context) -> ! {
     denied(wait(unavailable, &endpoint), grant::ERR_UNAVAILABLE, 9);
     checks |= 64;
     check(
-        wait(connection.call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort()), &endpoint)
-            .result
+        wait(
+            connection.call(PING, 0).unwrap_or_else(|error| {
+                catten_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
+                check(false, 105);
+                catten_rt::domain_abort()
+            }),
+            &endpoint,
+        )
+        .result
             == PONG,
         10,
     );
@@ -335,7 +378,11 @@ fn main(ctx: Context) -> ! {
     // remote queue. Keep all eight original calls owned until rejection; the
     // silent fixture never receives, so only cancellation can drain them.
     let queued: [PendingCall<'_>; 8] = core::array::from_fn(|_| {
-        silent_connection.call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort())
+        silent_connection.call(PING, 0).unwrap_or_else(|error| {
+            catten_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
+            check(false, 105);
+            catten_rt::domain_abort()
+        })
     });
     let admission_budget = Deadline::after(2_000);
     check(
@@ -362,7 +409,11 @@ fn main(ctx: Context) -> ! {
     // All eight slots must be available again: a leaked hidden delegation or
     // replay would strand at least one slot in this never-receiving endpoint.
     let recovered_queue: [PendingCall<'_>; 8] = core::array::from_fn(|_| {
-        silent_connection.call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort())
+        silent_connection.call(PING, 0).unwrap_or_else(|error| {
+            catten_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
+            check(false, 105);
+            catten_rt::domain_abort()
+        })
     });
     drop(recovered_queue);
     catten_rt::logln!(concat!(
@@ -395,7 +446,11 @@ fn main(ctx: Context) -> ! {
     // moved request's charge, and accepted timeout must do the same for an
     // unreceived request. Retain every other page throughout both checks.
     let full: [PendingCall<'_>; 8] = core::array::from_fn(|_| {
-        silent_connection.call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort())
+        silent_connection.call(PING, 0).unwrap_or_else(|error| {
+            catten_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
+            check(false, 105);
+            catten_rt::domain_abort()
+        })
     });
     let request = allocations.pop().unwrap_or_else(|| catten_rt::domain_abort());
     check(
@@ -422,7 +477,11 @@ fn main(ctx: Context) -> ! {
     allocations.push(OwnedMemory::allocate(1).unwrap_or_else(|_| catten_rt::domain_abort()));
     check(OwnedMemory::allocate(1).is_err(), 55);
     let recovered_rpc_queue: [PendingCall<'_>; 8] = core::array::from_fn(|_| {
-        silent_connection.call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort())
+        silent_connection.call(PING, 0).unwrap_or_else(|error| {
+            catten_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
+            check(false, 105);
+            catten_rt::domain_abort()
+        })
     });
     drop(recovered_rpc_queue);
     drop(silent_connection);
@@ -460,8 +519,15 @@ fn main(ctx: Context) -> ! {
         "rejected/cancelled/returned page charges and healthy status passed"
     ));
     check(
-        wait(connection.call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort()), &endpoint)
-            .result
+        wait(
+            connection.call(PING, 0).unwrap_or_else(|error| {
+                catten_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
+                check(false, 105);
+                catten_rt::domain_abort()
+            }),
+            &endpoint,
+        )
+        .result
             == PONG,
         19,
     );
@@ -505,8 +571,15 @@ fn main(ctx: Context) -> ! {
     }
     check((4..64).contains(&endpoints.len()) && Endpoint::create(0x5ef, 1, 1).is_err(), 25);
     check(
-        wait(connection.call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort()), &endpoint)
-            .result
+        wait(
+            connection.call(PING, 0).unwrap_or_else(|error| {
+                catten_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
+                check(false, 105);
+                catten_rt::domain_abort()
+            }),
+            &endpoint,
+        )
+        .result
             == PONG,
         26,
     );
@@ -578,8 +651,15 @@ fn main(ctx: Context) -> ! {
         28,
     );
     check(
-        wait(connection.call(PING, 0).unwrap_or_else(|_| catten_rt::domain_abort()), &endpoint)
-            .result
+        wait(
+            connection.call(PING, 0).unwrap_or_else(|error| {
+                catten_rt::logln!("[security-probe] ping admission rejected: {:?}", error);
+                check(false, 105);
+                catten_rt::domain_abort()
+            }),
+            &endpoint,
+        )
+        .result
             == PONG,
         29,
     );
@@ -643,8 +723,10 @@ fn main(ctx: Context) -> ! {
             drop(endpoint);
             shutdown.complete();
         }
-        serve(&endpoint);
-        sleep_ms(5);
+        if !serve(&endpoint) {
+            let (_, status) = catten_syscall::cq_wait_checked(None, 0);
+            check(status == catten_syscall::completion_status::READY, 106);
+        }
     }
 }
 

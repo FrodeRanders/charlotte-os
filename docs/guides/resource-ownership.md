@@ -65,6 +65,26 @@ let result = reply.wait()?;
 There is no `memory_close` branch. A mapping owns its memory object, and the
 compiler prevents moving the memory until `unmap` consumes the mapping.
 
+Single-call deadlines use `PendingCall::wait_timeout`, which retains the
+pending owner and any Rust memory borrow on timeout or rejected waiter
+admission. A service that must also process incoming requests uses
+`PendingCall::bind_cq` and `Endpoint::bind_completion_queue` on the same CQ,
+with `cq_wait_checked` bounded by the earliest remaining operation deadline.
+That wait owns a kernel watchdog without requiring another completion
+capability; `None` parks without a deadline. Reply CQ interest
+lives in the pending-call record and cancels when that owner closes; it does
+not adopt returned connection/memory capabilities. Poll the owned pending call
+after waking to observe those resources exactly once. Registration failure
+leaves the owner intact, so ordinary error paths can cancel safely.
+
+Kernel lifecycle request publication also wakes the default CQ after writing
+through the exact leased root and releasing the local table guard. Reactors
+must recheck lifecycle and all ready sources after every wake. If bounded
+intake leaves queued work, continue processing before parking; a coalesced CQ
+wake is not another edge for every remaining message. See the
+[reply CQ audit](../reports/audits/2026-10-12-reply-cq-readiness.md) for scope and
+remaining cleanup/metadata qualification.
+
 `Connection::watch_closed()` also returns an owned `Completion`. Dropping a
 close watch cancels its local registration without closing the endpoint or
 waiting for endpoint death. No special destruction order is required between
