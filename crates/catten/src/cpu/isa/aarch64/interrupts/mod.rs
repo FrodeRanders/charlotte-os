@@ -23,7 +23,6 @@ use crate::{
     syscall::{
         self,
         EC_SVC_AARCH64,
-        MAX_SYSCALL,
         TrapFrame,
         ec_from_esr,
     },
@@ -114,7 +113,7 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
         );
         frame.asid = asid;
 
-        if svc_imm > MAX_SYSCALL {
+        if catten_syscall::SyscallNumber::try_from(svc_imm).is_err() {
             early_logln!(
                 "FATAL EL0 UNKNOWN SYSCALL: ASID={} SVC={} ELR={:#x}",
                 asid,

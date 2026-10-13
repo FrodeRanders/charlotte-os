@@ -58,11 +58,14 @@ or hardware quiescence.
 
 ## Remaining removal
 
-This is the first S04b step of the [simplification sweep](api-simplification.md).
-Descriptor-less launch syscall 64, its local object-store fixture path,
-packed catalog deploy/query operations and redundant primary record fields
-remain until their active fixtures/controllers have signed replacements.
-They do not provide an alternate scoped-launch grammar. The encrypted connector
-pickup has a distinct authenticated target and remains a separate API.
+S04b2a removes descriptor-less syscall 64 and its runtime/SDK wrappers,
+plus the packed catalog deploy/query operations. All active application rollout
+fixtures use signed descriptors and scoped launch; retired opcodes reject.
+Redundant primary record fields remain the next coordinated removal across
+controllers, replication and persistence. The encrypted connector pickup has
+a distinct authenticated target and remains a separate API.
+
+See [administration contract](deployment-administration.md) and its
+[removal evidence](../reports/audits/2026-10-13-protocol-simplification-administration.md).
 
 See [batch evidence](../reports/audits/2026-10-13-protocol-simplification-launch.md).

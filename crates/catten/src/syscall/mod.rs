@@ -217,9 +217,6 @@ pub mod call_no {
     /// supervisor finds the owner ASID).  Returns the new generation in x0,
     /// or 0 on failure.
     pub const SPAWN_UPGRADE: u16 = SyscallNumber::SpawnUpgrade as u16;
-    /// Start a signed, name-bound ELF. Restricted to the delegated node
-    /// deployment agent.
-    pub const SPAWN_ARTIFACT: u16 = SyscallNumber::SpawnArtifact as u16;
     /// Start a signed artifact with a signed deployment descriptor and only a
     /// capability-grant-controller bootstrap connection.
     pub const SPAWN_ARTIFACT_SCOPED: u16 = SyscallNumber::SpawnArtifactScoped as u16;
@@ -267,9 +264,6 @@ pub mod call_no {
     pub const RANDOM_U64: u16 = SyscallNumber::RandomU64 as u16;
 }
 
-/// The upper bound on the SVC immediate we will try to dispatch.
-pub const MAX_SYSCALL: u16 = catten_syscall::MAX_SYSCALL_NUMBER;
-
 /// Decode the exception class (EC) field from ESR_EL1 bits [31:26].
 pub const fn ec_from_esr(esr: u64) -> u8 {
     ((esr >> 26) & 0x3f) as u8
@@ -279,7 +273,8 @@ pub const fn ec_from_esr(esr: u64) -> u8 {
 pub const EC_SVC_AARCH64: u8 = 0x15;
 
 /// The single entry point from the ISA-specific [`sync_dispatcher`]. Panics on
-/// an unknown syscall.
+/// an unknown syscall from a trusted internal caller. ISA entry points validate
+/// exact enum membership first and abort only the offending EL0 domain.
 pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
     let syscall = SyscallNumber::try_from(syscall_no).expect("unknown syscall number");
     match syscall {
@@ -357,9 +352,6 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::IpcConnectionWatchClosed => sys_ipc_connection_watch_closed(frame),
         SyscallNumber::SpawnUpgrade => {
             sys_spawn_upgrade(frame);
-        }
-        SyscallNumber::SpawnArtifact => {
-            sys_spawn_artifact(frame);
         }
         SyscallNumber::SpawnArtifactScoped => {
             sys_spawn_artifact_scoped(frame);
@@ -2159,106 +2151,6 @@ fn deployment_agent_authorized(caller_asid: crate::memory::AddressSpaceId) -> bo
     crate::service::supervisor::DEPLOYMENT_AGENT_ASID.lock().is_some_and(|handle| {
         handle.id() == caller_asid && crate::memory::address_space_handle_is_current(handle)
     })
-}
-
-fn sys_spawn_artifact(frame: &mut TrapFrame) {
-    let caller_asid = caller_asid(frame);
-    let elf_cap = frame.regs[1];
-    let size = usize::try_from(frame.regs[2]).ok();
-    let packed_name = frame.regs[3];
-    let close_input = || {
-        if elf_cap != 0 {
-            let _ = crate::memory::object::close_cap(caller_asid, elf_cap);
-        }
-    };
-    if !deployment_agent_authorized(caller_asid)
-        || elf_cap == 0
-        || size.is_none_or(|size| size == 0 || size > charlotte_launch::MAX_ARTIFACT_ELF_SIZE)
-        || crate::service::supervisor::DEPLOYED_DOMAINS.lock().len()
-            >= crate::service::supervisor::MAX_DEPLOYED_DOMAINS
-    {
-        close_input();
-        frame.regs[0] = 0;
-        return;
-    }
-    let name_bytes = packed_name.to_le_bytes();
-    let name_len = name_bytes.iter().rposition(|byte| *byte != 0).map_or(0, |index| index + 1);
-    if name_len == 0 {
-        close_input();
-        frame.regs[0] = 0;
-        return;
-    }
-    let image = match crate::memory::object::snapshot_bytes(
-        caller_asid,
-        elf_cap,
-        size.expect("size checked above"),
-    ) {
-        Ok(image) => image,
-        Err(_) => {
-            close_input();
-            frame.regs[0] = 0;
-            return;
-        }
-    };
-    close_input();
-    if charlotte_launch::signature_note::verify_elf_for_name(
-        &image,
-        &charlotte_launch::CLUSTER_PUBLIC_KEY,
-        &name_bytes[..name_len],
-    ) != charlotte_launch::signature_note::VerifyOutcome::Valid
-        || !crate::service::loader::validate_user_elf(&image)
-    {
-        frame.regs[0] = 0;
-        return;
-    }
-    let loaded = match crate::service::loader::try_load_domain(&image) {
-        Ok(loaded) => loaded,
-        Err(_) => {
-            frame.regs[0] = 0;
-            return;
-        }
-    };
-    let name_service = crate::service::supervisor::node_name_service();
-    let bootstrap = match crate::ipc::connection_delegate(
-        name_service.domain.asid,
-        name_service.endpoint_cap,
-        loaded.asid,
-        crate::ipc::ConnectionRights::CALL,
-    ) {
-        Ok(cap) => cap,
-        Err(_) => {
-            let _ = crate::memory::close_user_address_space_handle(loaded.address_space);
-            frame.regs[0] = 0;
-            return;
-        }
-    };
-    crate::service::bootstrap::write_bootstrap_cap(loaded.config_frame, bootstrap);
-    crate::service::bootstrap::write_manifest(loaded.config_frame, &[]);
-    // This is a runtime deployment, not a mandatory boot launch: an admission
-    // failure must reject the request and roll the unstarted domain back, not
-    // panic the kernel. Deployed artifacts remain ordinary-classified.
-    let limits = crate::service::supervisor::adaptive_service_limits(loaded.address_space);
-    let domain =
-        match crate::service::supervisor::try_start_domain_with_limits(loaded, limits, false) {
-            Ok(domain) => domain,
-            Err(_) => {
-                frame.regs[0] = 0;
-                return;
-            }
-        };
-    crate::service::supervisor::DEPLOYED_DOMAINS.lock().push(
-        crate::service::supervisor::DeployedDomain {
-            principal: charlotte_launch::artifact_principal_id(&name_bytes[..name_len]),
-            domain,
-            shutdown_grace_ms: charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS,
-            retirement_deadline_ms: None,
-            retirement_reason: charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
-            force_requested: false,
-            teardown: crate::service::supervisor::DeploymentTeardown::NotStarted,
-            retirement_acknowledged: false,
-        },
-    );
-    frame.regs[0] = domain.asid as u64;
 }
 
 fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {

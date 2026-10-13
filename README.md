@@ -349,8 +349,8 @@ The node agent has narrowly delegated deployment authority. After verification,
 the kernel starts each exact ELF in a separate address space with `grantctl` as
 its sole bootstrap service. Signed descriptors determine which named
 capabilities the component may acquire, and service publication is generation
-fenced. `clusterctl` also retains the local upload/deploy/status path used by
-the test console. Artifacts are real ELF binaries blessed and
+fenced. `clusterctl` exposes signed deployment notification and full-name status.
+The test console retains local upload and status; unsigned deploy is removed. Artifacts are real ELF binaries blessed and
 signed in place with Ed25519: the signature lives in a standard 
 `.note.charlotte-sig` ELF note (added by `tools/cluster-sign elf-sign`), 
 the public key is injected at build time and committed to the replicated state 

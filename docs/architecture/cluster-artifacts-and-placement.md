@@ -346,12 +346,15 @@ remain open. Reassignment currently advances the whole deployment generation,
 so retained replicas restart alongside newly selected ones; a future
 per-replica revision can make that transition rolling.
 
-Raft agreement does not authenticate a raw DNS mutation. The network ingress
-does: it admits only a descriptor signed by the offline cluster authority and
-then enters through the administration service. The raw internal DNS mutation
-opcode and legacy local-upload/deploy IPC remain available to trusted tests,
-so production policy must ensure ordinary applications never receive those
-connections.
+Raft agreement does not authenticate a raw DNS mutation. Both the signed
+network ingress and current named DNS deployment operation require the
+current signed descriptor. The unsigned controller deploy and packed DNS
+deploy/query operations are removed, along with descriptor-less application
+launch. The local upload adapter remains for signed ELF staging only; it grants
+no placement or launch authority. Controller status carries full artifact names
+and returns the current descriptor and exact replica variant pins. Other raw
+catalog administration operations still require appropriately restricted
+connections; this removal does not authenticate every DNS mutation.
 
 The signed notification, follower-to-leader admission relay, Raft descriptor
 replication, central S3 pull, grant-controller mediation, and scoped kernel

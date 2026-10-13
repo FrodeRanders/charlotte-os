@@ -6,11 +6,9 @@
 //!
 //! 1. `OP_UPLOAD` verifies an offline CLS2 signature and logical identity, then stores the
 //!    immutable ELF under its derived cluster-wide id.
-//! 2. `OP_DEPLOY` assigns the artifact to a node by submitting a deployment record through the
-//!    local dns (the manifest is replicated cluster state).
-//! 3. `OP_NOTIFY` verifies a signed central-store descriptor and submits it through the node-local
+//! 2. `OP_NOTIFY` verifies a signed central-store descriptor and submits it through the node-local
 //!    DNS, which relays follower admissions to the current Raft leader.
-//! 4. `OP_STATUS` and `OP_ROLLOUT` expose committed and generation-safe ready state.
+//! 3. `OP_STATUS` and `OP_ROLLOUT` expose committed and generation-safe ready state.
 //!
 //! Artifact names are bare cluster-global names; the node dimension appears
 //! only in the deployment record. The private signing key never enters this
@@ -28,9 +26,11 @@ use catten_rt::{
     ShutdownRequest,
     config,
     owned::{
+        Connection,
         ConnectionRef,
         Endpoint,
         OwnedMemory,
+        ReplyToken,
     },
 };
 use catten_services::{
@@ -138,42 +138,6 @@ fn store_artifact(obj_conn: u64, object_id: u64, bytes: &[u8]) -> bool {
         return false;
     }
     true
-}
-
-/// Hash the exact object-store bytes that a deployment generation selects.
-/// This prevents a later overwrite at the same name-derived object id from
-/// silently changing code under an already committed assignment.
-fn stored_artifact_digest(obj_conn: u64, object_id: u64) -> Option<[u8; 32]> {
-    let read = ipc_scalar_call(obj_conn, objstore::OP_READ, object_id);
-    if read == 0 {
-        return None;
-    }
-    let (status, size, returned_connection, memory) = ipc_reply_wait_with_memory(read);
-    ipc_close(read);
-    if returned_connection != 0 {
-        ipc_close(returned_connection);
-    }
-    let len = usize::try_from(size).ok()?;
-    if status != 0 || memory == 0 || len == 0 || len > memory_size(memory) {
-        if memory != 0 {
-            memory_close(memory);
-        }
-        return None;
-    }
-    let (data_vaddr_8_map_status, data_vaddr_8_vaddr) = memory_map_any(memory, false);
-    if data_vaddr_8_map_status != 0 {
-        memory_close(memory);
-        return None;
-    }
-    let mut hasher = charlotte_launch::sha256::Sha256::new();
-    for index in 0..len {
-        hasher.update(&[unsafe {
-            core::ptr::read_volatile((data_vaddr_8_vaddr + index) as *const u8)
-        }]);
-    }
-    memory_unmap(memory);
-    memory_close(memory);
-    Some(hasher.finalize())
 }
 
 fn submit_deployment(
@@ -450,40 +414,6 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
                         ipc_reply(message.reply, result);
                     }
                 }
-                clusterctl::OP_DEPLOY => {
-                    let name = packed_name(message.arg0);
-                    let result = if name.is_empty() {
-                        clusterctl::ERR_TOO_LARGE
-                    } else {
-                        // The node key arrives in the attached memory object;
-                        // the object id is derived from the artifact name.
-                        match read_node_key(&message) {
-                            Some(node_key) => {
-                                let object_id = dns::artifact_object_id(&name);
-                                let Some(artifact_digest) =
-                                    stored_artifact_digest(obj_conn, object_id)
-                                else {
-                                    if message.reply != 0 {
-                                        ipc_reply(message.reply, clusterctl::ERR_NOT_FOUND);
-                                    }
-                                    continue;
-                                };
-                                submit_deployment(
-                                    dns_conn,
-                                    &name,
-                                    object_id,
-                                    node_key,
-                                    &artifact_digest,
-                                    &[],
-                                )
-                            }
-                            None => clusterctl::ERR_TOO_LARGE,
-                        }
-                    };
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, result);
-                    }
-                }
                 clusterctl::OP_NOTIFY => {
                     let result = match read_payload(&message) {
                         Some(descriptor_bytes)
@@ -650,89 +580,82 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
                         memory_close(memory);
                     }
                 }
-                clusterctl::OP_STATUS => {
-                    let name = packed_name(message.arg0);
-                    if name.is_empty() {
-                        if message.reply != 0 {
-                            ipc_reply(message.reply, clusterctl::ERR_TOO_LARGE);
-                        }
-                        continue;
-                    }
-                    // Pass the deployment record through from the dns.
-                    let call = ipc_scalar_call(dns_conn, dns::OP_DEPLOY_QUERY, message.arg0);
-                    if call == 0 {
-                        if message.reply != 0 {
-                            ipc_reply(message.reply, clusterctl::ERR_NOT_FOUND);
-                        }
-                        continue;
-                    }
-                    let (status, size, _returned_connection, memory) =
-                        ipc_reply_wait_with_memory(call);
-                    ipc_close(call);
-                    if memory == 0 || (status as i64) < 0 {
-                        if memory != 0 {
-                            memory_close(memory);
-                        }
-                        if message.reply != 0 {
-                            ipc_reply(message.reply, clusterctl::ERR_NOT_FOUND);
-                        }
-                        continue;
-                    }
-                    if message.reply != 0 {
-                        ipc_reply_move(message.reply, memory, size as i64);
-                    } else {
-                        memory_close(memory);
-                    }
-                }
-                clusterctl::OP_ROLLOUT => {
+                clusterctl::OP_STATUS | clusterctl::OP_ROLLOUT => {
+                    // Raw receive ABI boundary: each moved request and reply
+                    // token is adopted exactly once, then used only as an owner.
+                    let _connection = unsafe { Connection::from_raw(message.connection) }.ok();
+                    let request = unsafe { OwnedMemory::from_raw(message.memory) }.ok();
+                    let token = unsafe { ReplyToken::from_raw(message.reply) }.ok();
                     let name_len = usize::try_from(message.arg0).unwrap_or(0);
-                    let request = if message.memory == 0
-                        || name_len == 0
-                        || name_len > charlotte_launch::deployment::MAX_ARTIFACT_NAME_LEN
-                    {
-                        None
-                    } else {
-                        // ABI boundary: the caller moves this memory into the
-                        // request exactly once; forwarding consumes its owner.
-                        unsafe { OwnedMemory::from_raw(message.memory) }.ok()
+                    let Some(request) = request.filter(|request| {
+                        name_len != 0
+                            && name_len <= charlotte_launch::deployment::MAX_ARTIFACT_NAME_LEN
+                            && name_len <= request.len()
+                    }) else {
+                        if let Some(token) = token {
+                            let _ = token.reply(clusterctl::ERR_TOO_LARGE);
+                        }
+                        continue;
+                    };
+                    let request = match request.map_read_only() {
+                        Ok(mapping)
+                            if charlotte_launch::deployment::valid_artifact_name(
+                                &mapping.as_slice()[..name_len],
+                            ) =>
+                        {
+                            mapping.unmap().ok()
+                        }
+                        _ => None,
                     };
                     let Some(request) = request else {
-                        if message.memory != 0 {
-                            memory_close(message.memory);
-                        }
-                        if message.reply != 0 {
-                            ipc_reply(message.reply, clusterctl::ERR_TOO_LARGE);
+                        if let Some(token) = token {
+                            let _ = token.reply(clusterctl::ERR_TOO_LARGE);
                         }
                         continue;
                     };
+                    // `dns_conn` borrows the launch-owned connection for this
+                    // serving scope. Forwarding consumes the request owner.
                     let dns = unsafe { ConnectionRef::from_raw(dns_conn) }
                         .expect("launch-owned DNS connection");
+                    let opcode = if message.opcode == clusterctl::OP_STATUS {
+                        dns::OP_DEPLOY_QUERY_NAMED
+                    } else {
+                        dns::OP_DEPLOY_ROLLOUT_NAMED
+                    };
                     let reply = dns
-                        .call_move(dns::OP_DEPLOY_ROLLOUT_NAMED, name_len as u64, request)
+                        .call_move(opcode, name_len as u64, request)
                         .ok()
                         .and_then(|call| call.wait().ok());
-                    match reply {
-                        Some(reply)
-                            if reply.result == clusterctl::ROLLOUT_STATUS_LEN as i64
-                                && reply.memory.is_some() =>
-                        {
-                            let memory = reply.memory.expect("checked returned memory");
-                            if message.reply != 0 {
-                                // This service's legacy raw receive loop has
-                                // not yet been converted to `IncomingMessage`;
-                                // the ABI move below consumes the returned
-                                // owner exactly once.
-                                ipc_reply_move(
-                                    message.reply,
-                                    memory.into_raw(),
-                                    clusterctl::ROLLOUT_STATUS_LEN as i64,
-                                );
+                    if let Some(token) = token {
+                        match reply {
+                            Some(reply) if reply.result >= 0 => {
+                                let memory = reply.memory.and_then(|memory| {
+                                    let len = usize::try_from(reply.result).ok()?;
+                                    let mapping = memory.map_read_only().ok()?;
+                                    let bytes = mapping.as_slice().get(..len)?;
+                                    let valid = if message.opcode == clusterctl::OP_STATUS {
+                                        name_catalog::decode_deployment_result(bytes).is_some()
+                                    } else {
+                                        clusterctl::RolloutStatus::decode(bytes).is_some()
+                                    };
+                                    if !valid {
+                                        return None;
+                                    }
+                                    mapping.unmap().ok()
+                                });
+                                if let Some(memory) = memory {
+                                    let _ = token.reply_move(memory, reply.result);
+                                } else {
+                                    let _ = token.reply(clusterctl::ERR_NOT_FOUND);
+                                }
+                            }
+                            Some(reply) => {
+                                let _ = token.reply(reply.result);
+                            }
+                            None => {
+                                let _ = token.reply(clusterctl::ERR_NOT_FOUND);
                             }
                         }
-                        _ if message.reply != 0 => {
-                            ipc_reply(message.reply, clusterctl::ERR_NOT_FOUND);
-                        }
-                        _ => {}
                     }
                 }
                 clusterctl::OP_KEYCEREMONY => {
@@ -859,8 +782,12 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
                     }
                 }
                 _ => {
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, -1);
+                    // Raw receive ABI boundary; unsupported requests still
+                    // consume their uniquely moved memory object exactly once.
+                    let _request = unsafe { OwnedMemory::from_raw(message.memory) }.ok();
+                    let _connection = unsafe { Connection::from_raw(message.connection) }.ok();
+                    if let Ok(token) = unsafe { ReplyToken::from_raw(message.reply) } {
+                        let _ = token.reply(-1);
                     }
                 }
             }
@@ -967,26 +894,6 @@ fn read_key(message: &catten_syscall::IpcMessage) -> Option<[u8; 32]> {
     memory_unmap(message.memory);
     memory_close(message.memory);
     Some(key)
-}
-
-/// The node key attached to an `OP_DEPLOY` call: `[node_key:u64 LE]`.
-fn read_node_key(message: &catten_syscall::IpcMessage) -> Option<u64> {
-    if message.memory == 0 {
-        return None;
-    }
-    if memory_size(message.memory) < 8 {
-        memory_close(message.memory);
-        return None;
-    }
-    let (data_vaddr_map_status, data_vaddr_vaddr) = memory_map_any(message.memory, false);
-    if data_vaddr_map_status != 0 {
-        memory_close(message.memory);
-        return None;
-    }
-    let node_key = unsafe { core::ptr::read_volatile(data_vaddr_vaddr as *const u64) };
-    memory_unmap(message.memory);
-    memory_close(message.memory);
-    Some(node_key)
 }
 
 /// Unpack a packed-le short name (identical to the dns's helper).

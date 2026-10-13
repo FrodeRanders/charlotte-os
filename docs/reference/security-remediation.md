@@ -530,7 +530,7 @@ removes snapshot versions 1–14 and missing query-section defaults. Explicit
 application restore errors now stop Raft startup or reject network installation
 before log, applied-state, membership or join-completion publication. This
 closes the silent-rejection behavior at that boundary; descriptor-less launch
-callers and packed deployment APIs remain the next simplification work. It
+callers and packed deployment APIs were removed later in S04b2a below. It
 adds no cleanup custody or physical completion proof and changes no numbered
 finding status or count. Infallible snapshot allocations, concurrent reader
 isolation and power-loss atomicity remain outside this batch. All 410 host tests and four matching-architecture deployment guests passed (22/0/0 twice on ARM, 20/0/0 twice on x86). Initial status-reader failures and the invalid mixed-architecture deployment pair remain separately recorded.
@@ -541,10 +541,22 @@ removes packed scoped names and duplicate runtime wrappers. The kernel returns
 the verified descriptor principal directly into the retirement owner; callers
 cannot supply a different retirement name or select a singleton with zero.
 This changes neither numbered finding counts nor physical cleanup qualification.
-Descriptor-less launch/catalog fixtures remain the next ordered removal.
+The later S04b2a administration batch removes descriptor-less launch and packed catalog operations.
 All 411 host tests and final ARM 20/0/0 / x86 18/0/0 signed-ingress runs pass.
 The initial x86 timer-event probe received a legitimate pre-admission timeout
 under its 1 ms budget; its failed run is retained separately. The corrected
 probe uses an isolated, pre-publication sponsor and observes its worker's exact
 exit generation, without replacing live sponsorship or changing production
 wait semantics. C16/C18 and broader cleanup qualifications remain open.
+
+
+The [administration API removal](../reports/audits/2026-10-13-protocol-simplification-administration.md)
+removes the unused descriptor-less launch syscall and its SDK/runtime wrappers,
+controller unsigned deploy and DNS packed deploy/query adapters. Full-name
+status queries now retain request/reply memory through the owning IPC APIs.
+This removes the development-key deployment bypass identified historically
+under SEC-11; the separate live-upgrade trust boundary remains unresolved, so
+this batch changes no numbered finding status/count. Necessary capability
+escrow, cleanup receipts, uncertain backing retention and rollback owners
+remain unchanged. Redundant diagnostic deployment record fields are the next
+ordered removal.

@@ -300,10 +300,6 @@ mod kernel {
         catten_syscall::spawn_operational_connector(package, package_len, principal)
     }
 
-    pub fn spawn_artifact(artifact: u64, artifact_len: usize, artifact_name: u64) -> u64 {
-        catten_syscall::spawn_artifact(artifact, artifact_len, artifact_name)
-    }
-
     pub fn retire_artifact_named(principal: u64) -> u64 {
         catten_syscall::retire_artifact_named(principal)
     }
@@ -808,10 +804,6 @@ mod kernel {
     }
 
     pub fn spawn_operational_connector(_package: u64, _package_len: usize, _principal: u64) -> u64 {
-        with_state(|state| state.scoped_spawn)
-    }
-
-    pub fn spawn_artifact(_artifact: u64, _artifact_len: usize, _artifact_name: u64) -> u64 {
         with_state(|state| state.scoped_spawn)
     }
 

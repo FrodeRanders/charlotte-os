@@ -4,10 +4,10 @@
 //! Observes the normal `clusterctl` EL0 service, which wraps the dns manifest
 //! ops and the object store behind admin operations. The verifier drives the
 //! programmatic flow through the clusterctl endpoint: upload a signed artifact
-//! ("hello"), reject descriptor-less deployment, verify catalog absence, and run the key
-//! ceremony that commits the cluster's public key to replicated state. A kernel
+//! ("agent"), reject retired deployment operations, verify full-name query handling, and run the
+//! key ceremony that commits the cluster's public key to replicated state. A kernel
 //! thread then runs the interactive serial console (commands: `help`,
-//! `upload`, `deploy`, `status`) on top of the same service.
+//! `upload`, `status`) on top of the same service.
 mod inner {
     use alloc::vec::Vec;
 
@@ -27,7 +27,7 @@ mod inner {
     // "ctl" packed LE; catten_services::clusterctl.
     const CTL_NAME: u64 = 0x0000_0000_006c_7463;
     const CTL_OP_UPLOAD: u32 = 1;
-    const CTL_OP_DEPLOY: u32 = 2;
+    const RETIRED_CTL_DEPLOY: u32 = 2;
     const CTL_OP_STATUS: u32 = 3;
     const CTL_OP_KEYCEREMONY: u32 = 4;
     const CTL_OP_KEY: u32 = 5;
@@ -38,9 +38,6 @@ mod inner {
     const CTL_STAGE_SERVING: u32 = 6;
     // ns opcodes.
     const NS_OP_LOOKUP: u32 = 2;
-    // The fixed deployment target of the programmatic flow (guest B's node
-    // key, FNV-1a of 52:54:00:12:34:02 truncated to 32 bits).
-    const TARGET_NODE_KEY: u64 = 0x42e2_7737;
 
     static mut TEST_STATE: Option<NameServiceHandle> = None;
     /// The kernel-side connection to the clusterctl service.
@@ -93,7 +90,12 @@ mod inner {
             return None;
         }
         let reply = ipc::poll_reply(KERNEL_ASID, call).ok().flatten();
-        let result = reply.map(|reply| (reply.result, reply.memory));
+        let result = reply.map(|reply| {
+            if let Some(connection) = reply.cap {
+                let _ = ipc::close_cap(KERNEL_ASID, connection);
+            }
+            (reply.result, reply.memory)
+        });
         let _ = ipc::close_cap(KERNEL_ASID, call);
         result
     }
@@ -135,7 +137,9 @@ mod inner {
             crate::self_test::results::TestId::Clusterctl,
             verify_el0_clusterctl,
         );
-        logln!("[clusterctl] verifier deferred (drives upload/deploy/status; console on serial)");
+        logln!(
+            "[clusterctl] verifier deferred (drives upload/rejection/status; console on serial)"
+        );
     }
 
     extern "C" fn verify_el0_clusterctl() {
@@ -205,28 +209,41 @@ mod inner {
             "[clusterctl] upload must return the derived artifact object id"
         );
 
-        // Descriptor-less publication must reject even a valid signed ELF.
-        // The DNS deployment fixture covers current signed rollout/migration.
-        let request = TARGET_NODE_KEY.to_le_bytes();
-        let deadline = crate::self_test::results::Deadline::after_millis(120_000);
-        loop {
-            let rejected =
-                call_with_memory_reply(ctl_conn, CTL_OP_DEPLOY, TEST_ARTIFACT_NAME, &request)
-                    .map(|(result, _)| result);
-            if rejected == Some(-13) {
-                break;
-            }
-            assert!(
-                rejected.is_none() || rejected == Some(-2),
-                "unsigned deploy must not publish: {rejected:?}"
-            );
-            deadline.assert_pending("descriptor-less deployment rejection");
-            crate::cpu::scheduler::sleep_millis(500);
-        }
+        // Retired deployment opcodes reject before hashing, consensus or
+        // placement. A tiny payload suffices; there is no old request writer.
         assert_eq!(
-            call_with_memory_reply(ctl_conn, CTL_OP_STATUS, TEST_ARTIFACT_NAME, &[])
+            call_with_memory_reply(ctl_conn, RETIRED_CTL_DEPLOY, 0, b"retired")
                 .map(|(result, _)| result),
-            Some(-1)
+            Some(-1),
+        );
+        let dns = lookup_service(kernel_ns, 0x0073_6e64).expect("[clusterctl] DNS connection");
+        for retired_opcode in [8, 9] {
+            assert_eq!(
+                call_with_memory_reply(dns, retired_opcode, 0, b"retired")
+                    .map(|(result, _)| result),
+                Some(-3),
+                "[clusterctl] retired DNS opcode {retired_opcode}",
+            );
+        }
+        let _ = ipc::close_cap(KERNEL_ASID, dns);
+        for name in [b"agent".as_slice(), b"not-a-deployment-long-name"] {
+            assert_eq!(
+                call_with_memory_reply(ctl_conn, CTL_OP_STATUS, name.len() as u64, name)
+                    .map(|(result, _)| result),
+                Some(-1),
+            );
+        }
+        for (len, bytes) in [(0, b"agent".as_slice()), (5, b"bad x"), (129, b"agent")] {
+            assert_eq!(
+                call_with_memory_reply(ctl_conn, CTL_OP_STATUS, len, bytes)
+                    .map(|(result, _)| result),
+                Some(-3),
+                "[clusterctl] malformed full-name query",
+            );
+        }
+        logln!(
+            "[clusterctl] retired opcodes reject; full-name status accepts long names and rejects \
+             malformed names"
         );
 
         // --- Key ceremony ---
@@ -276,8 +293,8 @@ mod inner {
         // and calls the same clusterctl service.
         crate::cpu::scheduler::spawn_thread(KERNEL_ASID, console_entry);
         logln!(
-            "[clusterctl] SUCCESS: clusterctl verified upload, rejected unsigned deploy, and \
-             completed key ceremony; serial console listening."
+            "[clusterctl] SUCCESS: clusterctl verified upload, rejected retired opcodes and \
+             malformed queries, and completed key ceremony; serial console listening."
         );
         crate::self_test::results::pass(crate::self_test::results::TestId::Clusterctl);
     }
@@ -328,8 +345,8 @@ mod inner {
         match parts.next() {
             Some(b"help") => {
                 logln!(
-                    "[admin] commands: upload <name> <payload> | deploy <name> <node-key-hex> | \
-                     status <name>"
+                    "[admin] commands: upload <short-name> <payload> | status <full-name>; signed \
+                     deployment: cluster-sign deployment-notify"
                 );
             }
             Some(b"upload") => {
@@ -339,6 +356,10 @@ mod inner {
                     logln!("[admin] usage: upload <name> [<payload>]");
                     return;
                 };
+                if name.is_empty() || name.len() > 8 {
+                    logln!("[admin] upload requires a name of 1 to 8 bytes");
+                    return;
+                }
                 // `upload greet` (no payload) re-stages the pre-signed greet
                 // artifact; anything else stores the given bytes as-is, so
                 // only a payload signed off-cluster will validate at pickup.
@@ -370,36 +391,6 @@ mod inner {
                     None => logln!("[admin] upload call failed"),
                 }
             }
-            Some(b"deploy") => {
-                let name = parts.next();
-                let key = parts.next();
-                let (Some(name), Some(key)) = (name, key) else {
-                    logln!("[admin] usage: deploy <name> <node-key-hex>");
-                    return;
-                };
-                let Ok(key_text) = core::str::from_utf8(key) else {
-                    logln!("[admin] node key must be hex");
-                    return;
-                };
-                let Ok(node_key) = u64::from_str_radix(key_text, 16) else {
-                    logln!("[admin] node key must be hex");
-                    return;
-                };
-                let mut request = Vec::with_capacity(8);
-                request.extend_from_slice(&node_key.to_le_bytes());
-                let conn = unsafe { CTL_CONN };
-                let result = call_with_memory_reply(conn, CTL_OP_DEPLOY, pack_name(name), &request);
-                match result.map(|(generation, _)| generation) {
-                    Some(generation) if generation >= 1 => {
-                        logln!(
-                            "[admin] deployed {} (generation {generation})",
-                            core::str::from_utf8(name).unwrap_or("?")
-                        )
-                    }
-                    Some(error) => logln!("[admin] deploy failed ({error})"),
-                    None => logln!("[admin] deploy call failed"),
-                }
-            }
             Some(b"status") => {
                 let name = parts.next();
                 let Some(name) = name else {
@@ -408,7 +399,7 @@ mod inner {
                 };
                 let conn = unsafe { CTL_CONN };
                 let Some((status, memory)) =
-                    call_with_memory_reply(conn, CTL_OP_STATUS, pack_name(name), &[])
+                    call_with_memory_reply(conn, CTL_OP_STATUS, name.len() as u64, name)
                 else {
                     logln!("[admin] status call failed");
                     return;
@@ -417,7 +408,7 @@ mod inner {
                     logln!("[admin] status: {status}");
                     return;
                 };
-                let bytes = match read_moved_memory(memory, 32) {
+                let bytes = match read_moved_memory(memory, 24) {
                     Ok(bytes) => bytes,
                     Err(error) => {
                         logln!("[admin] status read failed: {error:?}");

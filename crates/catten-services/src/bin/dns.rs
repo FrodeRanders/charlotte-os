@@ -165,7 +165,6 @@ use local_calls::begin_local_call;
 use message_memory::{
     packed_name,
     read_call_request,
-    read_deploy_request,
     read_deployment_registration,
     read_generation,
     read_key,
@@ -3369,59 +3368,6 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     }
                 }
 
-                dns::OP_DEPLOY => {
-                    let artifact = packed_name(message.arg0);
-                    let request = read_deploy_request(&message);
-                    let result = if artifact.is_empty() {
-                        dns::ERR_TOO_LARGE
-                    } else if node.state != NodeState::Leader {
-                        dns::ERR_NOT_LEADER
-                    } else {
-                        match request {
-                            Some((object_id, node_key, artifact_digest, descriptor)) => {
-                                // A cluster decision: commit the assignment
-                                // to the replicated manifest. Its
-                                // authenticity is the Raft consensus; the
-                                // reply is deferred until the command is
-                                // committed (pending_registers below).
-                                let capacity = fresh_capacity_view(
-                                    &catalog,
-                                    &capacity_last_seen_ms,
-                                    node.millis(),
-                                );
-                                match deployment_command(
-                                    &catalog,
-                                    &node,
-                                    DeploymentProposal {
-                                        name: &artifact,
-                                        object_id,
-                                        node: node_key,
-                                        digest: &artifact_digest,
-                                        descriptor: &descriptor,
-                                    },
-                                    &capacity,
-                                )
-                                .and_then(|command| node.submit_command(command, node.millis()))
-                                {
-                                    Ok(log_index) => {
-                                        pending_registers.push(PendingRegistration::Deploy {
-                                            term: node.current_term,
-                                            log_index,
-                                            reply: message.reply,
-                                        });
-                                        continue;
-                                    }
-                                    Err(code) => code,
-                                }
-                            }
-                            None => dns::ERR_TOO_LARGE,
-                        }
-                    };
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, result);
-                    }
-                }
-
                 dns::OP_DEPLOY_NAMED => {
                     let request = read_named_deploy_request(&message);
                     let result = match request {
@@ -3767,33 +3713,6 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     } else if message.reply != 0 {
                         ipc_reply(message.reply, dns::ERR_NOT_FOUND);
                     }
-                }
-
-                dns::OP_DEPLOY_QUERY => {
-                    if message.memory != 0 {
-                        memory_close(message.memory);
-                    }
-                    let artifact = packed_name(message.arg0);
-                    if artifact.is_empty() {
-                        if message.reply != 0 {
-                            ipc_reply(message.reply, dns::ERR_TOO_LARGE);
-                        }
-                        continue;
-                    }
-                    // Answered from locally applied cluster state: a
-                    // deployment is only visible here once the log entry has
-                    // replicated to this replica. Agents poll, so no read
-                    // barrier is required.
-                    if let Some(entry) = catalog.deployment(&artifact) {
-                        if let Some(bytes) = encode_deployment_result(&entry) {
-                            reply_move_bytes(message.reply, &bytes);
-                        } else if message.reply != 0 {
-                            ipc_reply(message.reply, dns::ERR_TOO_LARGE);
-                        }
-                    } else if message.reply != 0 {
-                        ipc_reply(message.reply, dns::ERR_NOT_FOUND);
-                    }
-                    continue;
                 }
 
                 dns::OP_DEPLOY_QUERY_NAMED => {
@@ -4390,8 +4309,16 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 _ => {
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, dns::ERR_BAD_OPCODE);
+                    // Raw receive ABI boundary: retired/unknown operations
+                    // consume their unique attachments even when rejected.
+                    let _memory =
+                        unsafe { catten_rt::owned::OwnedMemory::from_raw(message.memory) }.ok();
+                    let _connection =
+                        unsafe { catten_rt::owned::Connection::from_raw(message.connection) }.ok();
+                    if let Ok(reply) =
+                        unsafe { catten_rt::owned::ReplyToken::from_raw(message.reply) }
+                    {
+                        let _ = reply.reply(dns::ERR_BAD_OPCODE);
                     }
                 }
             }

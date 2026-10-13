@@ -1593,8 +1593,10 @@ and central-store fixtures are shared. With ARM first and x86 second, the x86
 agent must log selected variant 1. The local two-guest `--deploy-test` prepares
 a signed descriptor, includes both staged architectures when available, and
 uses a digest/signature-verified local cache. The controller fixture now
-asserts descriptor-less deployment rejection while retaining upload identity
-and key-ceremony coverage. Neither fixture grants unsigned launch authority.
+asserts retired controller/DNS opcode rejection, accepts full-name status
+queries and rejects malformed names, while retaining upload identity and
+key-ceremony coverage. Each local rollout phase also checks the controller
+query's current descriptor and exact replica variant pin. Neither fixture grants unsigned launch authority.
 
 The scoped `greet` fixture is policy-published. Legacy DNS forwarding correctly
 returns denial instead of issuing an application connection. Deployment tests

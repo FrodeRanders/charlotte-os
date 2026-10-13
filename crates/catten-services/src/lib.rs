@@ -2178,23 +2178,6 @@ pub mod dns {
     /// memory object contain the expected distributed generation. The reply
     /// is that generation on success.
     pub const OP_UNREGISTER: u32 = 7;
-    /// Replicate a deployment record. `arg0` is the packed artifact name; the
-    /// attached memory object holds
-    /// `[object_id:u64 LE][node_key:u64 LE][artifact_sha256:32]`. The digest
-    /// pins this generation to one immutable, blessed ELF; the reply is the
-    /// committed deployment generation.
-    pub const OP_DEPLOY: u32 = 8;
-    /// Marker at byte 48 of an extended `OP_DEPLOY` payload, followed by a
-    /// u32 descriptor length and the signed descriptor bytes. Its absence
-    /// selects the legacy 48-byte request.
-    pub const DEPLOY_DESCRIPTOR_MAGIC: u32 = 0x3150_4544; // "DEP1"
-    /// Query the deployment record for `arg0` (packed artifact name). The
-    /// reply moves a page holding
-    /// `[generation:u64 LE][object_id:u64 LE][node_key:u64 LE]
-    /// [artifact_sha256:32]`,
-    /// or is `ERR_NOT_FOUND` when the artifact has never been deployed.
-    /// Answered from locally applied cluster state (the caller polls).
-    pub const OP_DEPLOY_QUERY: u32 = 9;
     /// Wait for a cluster event. `arg0` is the packed event name (the
     /// `event:` convention below). If the event has already fired — the name
     /// is present in this node's *applied* catalog — the reply is its
@@ -2218,8 +2201,8 @@ pub mod dns {
     /// Replicate a deployment whose full request travels in moved memory:
     /// `[name_len:u16][name][object_id:u64][node_key:u64][sha256:32]
     /// [descriptor_len:u32][signed_descriptor]`. `arg0` is the total byte
-    /// length. This is the normal operation for signed descriptors; the
-    /// scalar `OP_DEPLOY` remains for legacy short-name clients.
+    /// length. This is the sole single-component deployment operation; a
+    /// current signed descriptor is mandatory. Opcodes 8 and 9 are retired.
     pub const OP_DEPLOY_NAMED: u32 = 15;
     /// Query one deployment by a full artifact name carried in moved memory.
     /// `arg0` is the name length. The reply always includes generation,
@@ -2445,8 +2428,8 @@ pub mod deploy {
 /// dimension appears only in the deployment record.
 pub mod clusterctl {
     pub const INTERFACE: u64 = super::name(b"CTL");
-    /// Version 2 extends rollout status with desired and ready replica counts.
-    pub const VERSION: u32 = 2;
+    /// Version 3 requires full-name status queries and removes unsigned deploy.
+    pub const VERSION: u32 = 3;
     /// The service's short name (packed LE).
     pub const NAME: u64 = super::name(b"ctl");
     /// Plain HTTP notification ingress. Authenticity and integrity come from
@@ -2466,17 +2449,12 @@ pub mod clusterctl {
     /// id; nodes validate the signature against the cluster public key at
     /// pickup. The reply is the object id.
     pub const OP_UPLOAD: u32 = 1;
-    /// Deploy an artifact to a node. `arg0` is the packed artifact name; the
-    /// attached memory object holds `[node_key:u64 LE]`. The service derives
-    /// the object id and submits the assignment through the local dns; the
-    /// reply is the committed manifest generation (deferred until it has
-    /// replicated).
-    pub const OP_DEPLOY: u32 = 2;
-    /// Query the deployment manifest. `arg0` is the packed artifact name; the
-    /// reply moves `[generation:u64][object_id:u64][node_key:u64]
-    /// [artifact_sha256:32][descriptor_len:u32][signed_descriptor]
-    /// [replica_count:u16][node_keys:u64...]`, or the legacy 56-byte prefix
-    /// for a legacy deployment. Missing records return `ERR_NOT_FOUND`.
+    // Opcode 2 was descriptor-less deployment; retired, never reuse.
+    /// Query a deployment by its full artifact name in moved memory. `arg0`
+    /// is the name length. The reply is the complete current record encoded by
+    /// [`crate::name_catalog::encode_deployment_result`], including signed
+    /// descriptor and per-replica variant pins. Missing records return
+    /// `ERR_NOT_FOUND`; malformed names return `ERR_TOO_LARGE`.
     pub const OP_STATUS: u32 = 3;
     /// Commit the cluster's Ed25519 public key to the replicated state (the
     /// key ceremony, performed once during cluster establishment). `arg0` is
@@ -2489,7 +2467,7 @@ pub mod clusterctl {
     /// a page holding the 32 key bytes, or is `ERR_NOT_FOUND` before the
     /// first ceremony.
     pub const OP_KEY: u32 = 5;
-    /// Notify the cluster of a signed `CDEPLOY5` descriptor. The artifact
+    /// Notify the cluster of a signed `CDEPLOY6` descriptor. The artifact
     /// name is taken from the signed descriptor and the moved memory uses the same
     /// `[len:u64][bytes]` envelope as `OP_UPLOAD`. The descriptor contains the
     /// central object key, digest, target node, revision, per-thread stack

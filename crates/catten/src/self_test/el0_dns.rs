@@ -226,6 +226,7 @@ mod inner {
                 false
             };
             if ready {
+                assert_controller_status(generation, node);
                 return;
             }
             // Catalog readiness has no subscription ABI in this raw boot fixture.
@@ -234,6 +235,56 @@ mod inner {
             deadline.assert_pending("exact signed deployment readiness");
             crate::cpu::scheduler::sleep_millis(250);
         }
+    }
+
+    /// Check the public controller's full-name query after exact readiness.
+    /// This serialized kernel fixture observes each moved result once and
+    /// closes its caps outside IPC; no user-root mapping or cleanup retry.
+    #[cfg(feature = "deploy_net_test")]
+    fn assert_controller_status(generation: u64, node: u64) {
+        let ns = unsafe { TEST_STATE.as_ref() }.expect("DNS fixture name service");
+        let ns_connection = kernel_ns_connection(ns);
+        let ctl = lookup_service(ns_connection, 0x006c_7463).expect("controller connection");
+        ipc::close_cap(KERNEL_ASID, ns_connection).unwrap();
+        let memory = crate::memory::object::allocate_with_bytes(KERNEL_ASID, b"greet").unwrap();
+        let call = match ipc::scalar_call_with_memory_move(KERNEL_ASID, ctl, 3, 5, memory) {
+            Ok(call) => call,
+            Err(error) => {
+                crate::memory::object::close_cap(KERNEL_ASID, memory).unwrap();
+                panic!("controller status submission: {error:?}");
+            }
+        };
+        ipc::wait_reply(KERNEL_ASID, call).unwrap();
+        let reply = ipc::poll_reply(KERNEL_ASID, call).unwrap().unwrap();
+        ipc::close_cap(KERNEL_ASID, call).unwrap();
+        ipc::close_cap(KERNEL_ASID, ctl).unwrap();
+        if let Some(connection) = reply.cap {
+            ipc::close_cap(KERNEL_ASID, connection).unwrap();
+        }
+        let memory = reply.memory.expect("complete controller deployment record");
+        let bytes = crate::memory::object::snapshot_bytes(
+            KERNEL_ASID,
+            memory,
+            usize::try_from(reply.result).expect("controller reply length"),
+        );
+        crate::memory::object::close_cap(KERNEL_ASID, memory).unwrap();
+        let bytes = bytes.unwrap();
+        assert_eq!(u64::from_le_bytes(bytes[..8].try_into().unwrap()), generation);
+        assert_eq!(u64::from_le_bytes(bytes[16..24].try_into().unwrap()), node);
+        let descriptor_len = u32::from_le_bytes(bytes[56..60].try_into().unwrap()) as usize;
+        let descriptor = charlotte_launch::deployment::decode(&bytes[60..60 + descriptor_len])
+            .expect("current signed controller descriptor");
+        assert_eq!(descriptor.artifact_name, b"greet");
+        let replicas = &bytes[60 + descriptor_len..];
+        assert_eq!(replicas.len(), 12);
+        assert_eq!(&replicas[..2], &1u16.to_le_bytes());
+        assert_eq!(u64::from_le_bytes(replicas[2..10].try_into().unwrap()), node);
+        let variant = u16::from_le_bytes(replicas[10..12].try_into().unwrap());
+        assert!(descriptor.variant(usize::from(variant)).is_some());
+        logln!(
+            "[deploy] controller full-name status generation={generation} node={node:#x} \
+             variant={variant}"
+        );
     }
 
     #[cfg(feature = "deploy_net_test")]

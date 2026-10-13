@@ -182,35 +182,6 @@ impl Drop for DeployedArtifact {
     }
 }
 
-/// Launch a legacy short-name artifact while retaining principal-fenced
-/// retirement ownership. New production deployments should use a signed
-/// descriptor and [`launch_scoped_artifact`].
-pub fn launch_artifact(
-    mut artifact: OwnedMemory,
-    artifact_len: usize,
-    artifact_name: &[u8],
-) -> Result<DeployedArtifact, ArtifactLaunchError> {
-    if artifact_len == 0
-        || artifact_len > artifact.len()
-        || artifact_name.is_empty()
-        || artifact_name.len() > 8
-    {
-        return Err(ArtifactLaunchError::InvalidLength);
-    }
-    let mut packed = [0u8; 8];
-    packed[..artifact_name.len()].copy_from_slice(artifact_name);
-    let artifact_cap = artifact.cap.take().expect("artifact capability already consumed");
-    let asid = kernel::spawn_artifact(artifact_cap, artifact_len, u64::from_le_bytes(packed));
-    if asid == 0 {
-        return Err(ArtifactLaunchError::Rejected);
-    }
-    Ok(DeployedArtifact {
-        principal: charlotte_launch::artifact_principal_id(artifact_name),
-        asid,
-        retired: false,
-    })
-}
-
 /// An owned IPC endpoint capability.
 #[must_use = "dropping an endpoint closes it"]
 #[derive(Debug)]

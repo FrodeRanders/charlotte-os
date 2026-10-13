@@ -135,7 +135,7 @@ define_syscall_numbers!(
     (ObserveThreadExit, 61),
     (GetTid, 62),
     (MemorySize, 63),
-    (SpawnArtifact, 64),
+    // 64 was descriptor-less deployment; retired, never reuse.
     (RetireArtifact, 65),
     (MemoryMapAny, 66),
     (DeviceMmioMapAny, 67),
@@ -440,7 +440,6 @@ unsafe fn svc3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             61 => asm!("svc #61", lateout("x0") ret, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             62 => asm!("svc #62", lateout("x0") ret, options(nostack, nomem, preserves_flags)),
             63 => asm!("svc #63", lateout("x0") ret, in("x1") arg1, options(nostack, nomem, preserves_flags)),
-            64 => asm!("svc #64", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             68 => asm!("svc #68", lateout("x0") ret, options(nostack, nomem, preserves_flags)),
             69 => asm!("svc #69", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             74 => asm!("svc #74", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
@@ -1998,15 +1997,6 @@ pub unsafe fn spawn_upgrade(
     unsafe { svc4(SyscallNumber::SpawnUpgrade, elf_cap, elf_size, state_cap, target_connection) }
 }
 
-/// Start the exact signed ELF held by `elf_cap` under `artifact_name`.
-/// This succeeds only for the uniquely delegated node deployment agent and
-/// only when the CLS2 signed identity matches the packed name. The kernel
-/// consumes `elf_cap` on both success and failure.
-#[inline(always)]
-pub fn spawn_artifact(elf_cap: u64, elf_size: usize, artifact_name: u64) -> u64 {
-    unsafe { svc3(SyscallNumber::SpawnArtifact, elf_cap, elf_size as u64, artifact_name) }
-}
-
 /// Start a signed ELF with a signed deployment descriptor. The launched
 /// application receives only the capability-grant controller as bootstrap and
 /// the descriptor as an immutable profile. The kernel consumes both memory
@@ -2659,5 +2649,16 @@ mod dma_map_tests {
             Err(error)
         );
         assert_eq!(error.detail(), 0x0b030e);
+    }
+}
+
+#[cfg(test)]
+mod deployment_abi_tests {
+    use super::SyscallNumber;
+
+    #[test]
+    fn descriptorless_launch_number_rejects_without_aliasing_scoped_launch() {
+        assert_eq!(SyscallNumber::try_from(64), Err(()));
+        assert_eq!(SyscallNumber::try_from(76), Ok(SyscallNumber::SpawnArtifactScoped));
     }
 }

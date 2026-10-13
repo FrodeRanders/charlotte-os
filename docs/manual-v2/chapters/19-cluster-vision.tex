@@ -746,13 +746,14 @@ The distributed name service's Raft catalog (\autoref{chap:consensus}) also hold
 
 \begin{quote}
 \texttt{artifact -> \{object identity, artifact digest, replica nodes,} \\
-\texttt{generation, signed descriptor\}}.
+\texttt{replica variant pins, generation, signed descriptor\}}.
 \end{quote}
 
 The map is committed through the same log as name registrations. Deployment
 is therefore ordered, replicated, generation-fenced cluster state rather than
-per-node configuration. \texttt{OP\_DEPLOY} submits a record and
-\texttt{OP\_DEPLOY\_QUERY} reads a replica's applied state.
+per-node configuration. The named deployment operation (DNS 15) admits a
+current signed descriptor; the named query (DNS 16) reads a replica's applied
+state. Packed deploy/query operations are retired.
 
 The signed descriptor authorizes the deployment decision and binds artifact
 identity, placement policy, and resource limits. Raft orders and replicates the
@@ -775,13 +776,13 @@ name service rather than through a node-specific application address.
 \subsection{The deployment agent}
 
 Each networked node with durable local storage runs an \texttt{agent}. It polls
-the manifest for assignments to its node key. A legacy record selects bytes
-from the local object store. A signed descriptor instead names an opaque key
-that the agent pulls through the separately provisioned S3 connector. In both
-cases it verifies the assigned SHA-256 identity and checks that the signature
-note covers both the bytes and requested logical name. The descriptor path
+the manifest for assignments to its node key. Each assignment pins a variant
+from the signed descriptor. The agent pulls that variant's opaque key through
+the provisioned S3 connector; when no connector is registered, the local test
+cache must satisfy the same selected digest and signed name. Architecture,
+runtime ABI and required CPU features are checked before launch. The agent
 then invokes the scoped deployment-authority syscall with both owned memory
-objects.
+objects; no descriptor-less record or launch fallback remains.
 
 The sole scoped runtime API is \texttt{launch\_scoped\_artifact}: it consumes
 the ELF and descriptor owners with their exact lengths and returns an owning
@@ -815,18 +816,27 @@ wraps the DNS manifest operations and object store behind:
     \item \texttt{upload}, which stores a note-signed artifact under its
         derived cluster-wide id after checking that CLS2 blesses the requested
         name;
-    \item \texttt{deploy}, which hashes the stored bytes and submits the
-        pinned assignment; and
-    \item \texttt{status}, which queries the committed record; and
+    \item \texttt{status}, which carries a full artifact name in moved memory
+        and returns the complete committed descriptor and replica variant pins;
+        and
     \item \texttt{notify}, which verifies a signed \texttt{CDEPLOY6}
-        descriptor and commits its opaque central-object key, digest, target,
-        sequence, per-thread stack pages, maximum active-thread count, and
+        descriptor and commits its executable variants with their object keys,
+        digests and execution targets, sequence, per-thread stack pages,
+        maximum active-thread count, and
         cooperative shutdown grace period and capability grants without
         copying an ELF through Raft.
 \end{itemize}
 
+Controller interface version 3 requires full-name status queries. The
+unsigned \texttt{deploy} command and packed DNS deploy/query operations are
+removed, as is descriptor-less launch syscall 64. The serial test console
+provides \texttt{upload} for short names and \texttt{status} for full names;
+deployment uses the host's \texttt{cluster-sign deployment-notify} command.
+Signed scoped launch remains the application launch contract. Retired opcodes
+reject rather than translating their old payloads.
+
 The normal service set also starts \texttt{deployd}. Its bounded plaintext
-HTTP endpoint accepts \texttt{POST /v1/deployments} on guest port 7444 with
+HTTP endpoint accepts a \texttt{POST} to \texttt{/v1/deployments} on guest port 7444 with
 exactly one signed descriptor as the body. The signature is the authorization
 and integrity envelope and the descriptor carries no secret. Lower sequences
 are rejected, different bytes at an existing sequence conflict, and identical
@@ -1089,8 +1099,8 @@ future work.
 
 The EL0 loader verifies the note before mapping a domain. Signing is
 mandatory: unsigned or invalidly signed images are rejected. The
-live-upgrade syscall reports failure gracefully; other current load paths
-panic. By default the build signs staged services using the
+runtime scoped launch gate rejects failed preparation; mandatory boot-fixture
+launch may still panic. By default the build signs staged services using the
 version-controlled development keypair at
 \repofile|tools/cluster-sign/dev-key.hex|, whose public half is the embedded
 \texttt{CLUSTER\_PUBLIC\_KEY}. A different key can be supplied through
@@ -1102,18 +1112,20 @@ exact publicly known fixtures. Key generation writes a new mode-0600 file
 without printing private material.
 
 Build output and boot logs explicitly identify the current images as
-development images. Selecting \texttt{CATTEN\_TRUST\_MODE=production}
-refuses the build: protected bootstrap trust and recipient-key provisioning
+development images. The build refuses production trust mode
+(\texttt{CATTEN\_TRUST\_MODE}): protected bootstrap trust and recipient-key provisioning
 are not implemented. Independently generated role keys and protected boot
 remain prerequisites for production; file-based signing alone does not
 establish those properties.
 
 Store resolution and deployment additionally check the signed logical name,
-and the manifest pins the full ELF SHA-256. The demonstrated
-\texttt{greet} service is therefore a real, signed binary fetched from the
-local object store, mapped, executed, served across the network, and
-reassigned. Raft orders the assignment, but consensus is not an
-authorization proof for the administrator who requested it.
+and the descriptor pins each variant's full ELF SHA-256. The demonstrated
+\texttt{greet} service is a signed architecture-specific binary fetched from
+S3 or the validated local fixture cache, mapped, launched and reassigned.
+Exact-generation readiness and retirement are verified. Legacy DNS proxying of
+this policy-published service remains denied; authorized remote invocation is
+separate work. Public echo fixtures retain positive cross-node RPC coverage.
+Raft orders assignment, while signed admission authorizes deployment.
 
 \subsection{Validated properties}
 
@@ -1124,7 +1136,8 @@ The focused deployment fixture validates that:
         generation-fenced cluster state;
     \item a signed, name-bound ELF can be obtained, independently revalidated,
         and launched by a node agent;
-    \item a service can be hosted away from the Raft leader and remain
+    \item a scoped service can become ready away from the Raft leader while
+        legacy proxy access remains denied, and a public service remains
         reachable through the distributed name service;
     \item generation fencing protects a stateless reassignment from a stale
         owner's unregister; and
