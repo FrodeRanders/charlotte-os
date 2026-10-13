@@ -343,7 +343,7 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
         if let Some(request) = ctx.lifecycle().shutdown_requested() {
             return Ok(request);
         }
-        cq_wait_timeout(1, 10, 0);
+        catten_services::reactor::wait(None, 0);
         loop {
             let message = ipc_recv(endpoint.as_raw());
             if message.status == ipc_status::NO_MESSAGE {

@@ -32,7 +32,6 @@ use catten_services::{
 };
 use catten_syscall::{
     cq_read,
-    cq_wait_timeout,
     ipc_recv,
     ipc_reply,
     ipc_reply_move,
@@ -504,6 +503,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let cq = ctx.completion_queue_layout();
     let mut retransmit_timer_armed =
         submit_detached_timer(relmsg::RETRANSMIT_MS, 0, RETRANSMIT_TIMER_COOKIE) != u64::MAX;
+    let mut retransmit_watchdog = catten_services::deadline::Deadline::after(relmsg::RETRANSMIT_MS);
     config::write::<u32>(status::STAGE, 4);
 
     loop {
@@ -523,12 +523,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             return request;
         }
         // Retransmission cadence must be independent of endpoint traffic.
-        // A timed CQ wait alone is insufficient: a busy peer can wake that
-        // wait continuously, preventing its deadline from ever winning while
-        // one of our own frames remains unacknowledged. The detached timer's
+        // The watchdog retains one deadline across busy endpoint wakes; the
+        // detached timer provides the normal periodic wake. Its
         // cookie is drained on every reactor iteration, including iterations
         // that already have an endpoint message to process.
-        let mut retransmit_due = false;
+        let mut retransmit_due = retransmit_watchdog.expired();
         while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
             if completion.cookie == RETRANSMIT_TIMER_COOKIE {
                 retransmit_due = true;
@@ -537,6 +536,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         }
         if retransmit_due {
             retransmit_pending(net_conn, &mut peers);
+            retransmit_watchdog = catten_services::deadline::Deadline::after(relmsg::RETRANSMIT_MS);
         }
         if !retransmit_timer_armed {
             retransmit_timer_armed =
@@ -555,10 +555,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             catten_services::RequestAttachments::new(message.memory, message.connection);
         config::write::<u32>(status::STAGE, 7);
         if message.status == ipc_status::NO_MESSAGE {
-            let (_, timed_out) = cq_wait_timeout(1, relmsg::RETRANSMIT_MS, 0);
-            if timed_out != 0 {
-                retransmit_pending(net_conn, &mut peers);
-            }
+            catten_services::reactor::wait(Some(retransmit_watchdog.remaining_ms()), 0);
             continue;
         }
         if message.status == ipc_status::ENDPOINT_CLOSED {

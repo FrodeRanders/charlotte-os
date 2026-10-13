@@ -507,7 +507,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         let message = ipc_recv(endpoint);
         let _attachments = catten_services::RequestAttachments::connection_only(message.connection);
         if message.status == ipc_status::NO_MESSAGE {
-            catten_syscall::cq_wait_timeout(1, 10, 0);
+            catten_services::reactor::wait(Some(10), 0);
             continue;
         }
         if message.status == ipc_status::ENDPOINT_CLOSED {

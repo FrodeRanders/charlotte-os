@@ -34,7 +34,6 @@ use catten_services::{
 };
 use catten_syscall::{
     IpcRights,
-    cq_wait,
     device_irq_ack,
     device_irq_bind_cq,
     device_mmio_map_any,
@@ -149,7 +148,7 @@ fn main(ctx: Context) -> ! {
 
     loop {
         // Block on the single wait point.
-        cq_wait(1, 0);
+        catten_services::reactor::wait(None, 0);
 
         // Clear the device-side level condition before asking the kernel to
         // re-arm the GIC source. Clearing only when a deferred read exists

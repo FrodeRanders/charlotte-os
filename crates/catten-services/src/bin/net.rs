@@ -30,7 +30,6 @@ use catten_services::{
 };
 use catten_syscall::{
     DmaDirection,
-    cq_wait_timeout,
     device_irq_ack,
     device_irq_bind_cq,
     device_mmio_map_any,
@@ -583,7 +582,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // Interrupts are the normal wakeup path. The bounded poll also
         // recovers if a legacy virtio implementation suppresses an edge
         // while descriptors are being published.
-        let _ = cq_wait_timeout(1, 10, 0);
+        let _ = catten_services::reactor::wait(Some(10), 0);
         let (_s, _c) = device_irq_ack(irq_cap);
         let _ = unsafe {
             r8(MMIO_BASE.load(core::sync::atomic::Ordering::Relaxed) + virtio::MODERN_ISR)

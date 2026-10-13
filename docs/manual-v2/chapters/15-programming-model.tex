@@ -306,11 +306,16 @@ The signed loader also installs a stable artifact principal, exact address-space
 generation, and deployment roles in a kernel-only table. IPC enqueue snapshots
 that authentication data; every current receive operation returns it
 alongside the numeric sender ASID, so a delayed message cannot inherit the
-identity of a later occupant of the same slot. Runtime ABI 2 uses the twelve-register
+identity of a later occupant of the same slot. Runtime ABI 3 retains the twelve-register
 envelope for scalar, blocking and vector receives (syscalls 71--73); the old
 nine-register syscalls 22, 27 and 53 are retired. The canonical runtime methods
 are \texttt{Endpoint::receive} and \texttt{try\_receive}. Error returns clear all
-eleven payload/identity registers; queued attachments remain owned until delivery.
+eleven payload/identity registers; queued attachments remain owned until delivery. Checked CQ wait 88 uses an explicit timed flag; 12/42 are retired.
+The safe runtime returns typed readiness/deadline or admission/invalid-request
+errors. Ordinary service reactors abort on rejected waits rather than spin or
+advance protocol time; specialized recovery retains the original pending owners
+and deadlines. Timer-backed admission pauses likewise abort if timer
+submission or successful completion is rejected.
 
 Security-sensitive discovery uses the name service's
 \texttt{OP\_LOOKUP\_AUTHORIZED} protocol. The request names a service and an
@@ -343,7 +348,7 @@ When writing code that uses sitas on CharlotteOS:
         typed channel.
     \item Cross-shard work is an owned message. Prefer sitas channels and
         futures over shared mutable state.
-    \item The executor parks on \texttt{CQ\_WAIT} (via \texttt{ShardParker}),
+    \item The executor parks on \texttt{checked CQ wait} (via \texttt{ShardParker}),
         not on a busy-loop.
 \end{itemize}
 

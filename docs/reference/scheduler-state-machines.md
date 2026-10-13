@@ -267,21 +267,21 @@ Single-producer (kernel), single-consumer (userspace) ring buffer.
 - **Userspace reads:** `read()` → advance `tail`
 - **Kernel drain:** `drain()` → sets `tail = head` (consumes all)
 
-### Ring interaction with `cq_wait`
+### Ring interaction with `cq_wait_checked`
 
+```text
+wait_on_cq_checked(asid, cq, timeout):
+  capture the exact CQ list identity and flush its backlog
+  park against work-generation change, using an owning subscription
+  None: event-only; Some: one absolute deadline and owned watchdog
+  recheck after registration and unrelated wakes; cancel unused interests
+  revalidate the captured CQ before advancing its seen generation
+  return readiness/deadline or distinct admission/unknown-queue rejection
 ```
-wait_on_cq(asid, cq, min_complete):
-  loop:
-    ┌── work_generation != last_seen_generation
-    │   → advance last_seen_generation and return
-    │
-    ├── block_thread(tid, &observable)
-    │
-    ├── guard: generation changed while registering Waker
-    │   → submit_woken_thread(tid, generation) [lost-wake guard]
-    │
-    └── yield_lp() → blocks until woken → loop
-```
+
+The runtime exposes `catten_rt::cq::wait` with typed `WaitOutcome` and
+`WaitError`; only syscalls 88/41 implement CQ wait/wake. See the
+[current contract](cq-wait.md) for explicit timeout flags and shared-CQ limits.
 
 Every posted completion, detached completion, explicit wake, or endpoint-bound
 wake increments `work_generation`. The queue-wide `last_seen_generation` is
@@ -291,14 +291,14 @@ is deliberately not the wait condition.
 ### Resolution of the undrained-ring problem
 
 Under the historical implementation, every `complete()` posted a ring entry
-and `cq_wait` treated the undrained `cq_pending()` count as new readiness. If a
+and `cq_wait_checked` treated the undrained `cq_pending()` count as new readiness. If a
 caller polled the individual capability without reading the shared ring, the
 old entry made every later wait return immediately and the reactor busy-spun.
 
 The old implementation used `cq_pending()` as readiness and therefore spun on
 an undrained historical entry. The generation counter decouples reactor
 readiness from ring consumption. A caller may poll a specific completion
-without draining the shared ring; its next `cq_wait` still blocks until new
+without draining the shared ring; its next `cq_wait_checked` still blocks until new
 work changes the generation.
 
 ### Invariants
@@ -607,7 +607,7 @@ An LP enters `wfi` (idle) when:
 | Symptom | Root Cause | Fix |
 |---------|-----------|-----|
 | LP dispatches >100/sec indefinitely | A thread is continuously runnable (busy-spins in `yield_lp()` loop) | Thread must block (`sleep()`, `wait()`, `block_thread()`) instead of yielding |
-| `cq_wait` returns immediately after first completion | Historical implementation used undrained ring occupancy as readiness | Fixed: per-CQ work generations represent only new readiness |
+| `cq_wait_checked` returns immediately after first completion | Historical implementation used undrained ring occupancy as readiness | Fixed: per-CQ work generations represent only new readiness |
 | `is_idle` is false but only idle thread runs | `next()` requeues the sole runnable thread instead of selecting idle; thread never blocks | Thread must transition to `Blocked`, not stay in `Ready`/`Running` |
 | Timer never fires after LP goes idle | `clear_ctx_switch_pending()` skips quantum re-arm when `is_idle`; next wake depends on IPI or device IRQ | This is CORRECT behaviour — idle LP is woken by admission IPI |
 | Timer events stranded, LP stays in `wfi` forever | Queue/comparator state diverged, or an immediately due IRQ re-entered queue mutation | Keyed quantum ownership plus interrupt-masked enqueue and idle reconciliation |

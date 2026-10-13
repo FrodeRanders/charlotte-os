@@ -132,7 +132,7 @@ An \textbf{operation} is submitted work whose progress may depend on the kernel,
 hardware, or a privileged service.
 
 A \textbf{completion queue (CQ)} is the aggregated, per-shard or per-process
-destination for operation results. It is waitable (with \texttt{CQ\_WAIT}) and has
+destination for operation results. It is waitable (with \texttt{checked CQ wait}) and has
 non-lossy terminal completion semantics.
 
 \section{Notification}

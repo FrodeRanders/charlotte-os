@@ -1,6 +1,7 @@
 # Canonical IPC receive envelope
 
-Runtime ABI 2 has one receive envelope. `IpcRecv` (71), `IpcRecvBlock` (72)
+The canonical envelope introduced in runtime ABI 2 remains in current ABI 3.
+`IpcRecv` (71), `IpcRecvBlock` (72)
 and `IpcRecvVec` (73) return the same twelve register values. The SDK methods
 are `ipc_recv`, `ipc_recv_block` and unsafe `ipc_recv_vec`; the owning runtime
 methods are `Endpoint::try_receive` and `Endpoint::receive`. The former
@@ -43,7 +44,7 @@ Blocking receive still registers against endpoint readiness; pending/claimed
 fronts, loan cleanup, cancellation and exact delivery publication retain their
 existing contracts. This simplification adds no polling or cleanup owner.
 
-A signed variant declaring runtime ABI 1 cannot be placed or launched on an
-ABI 2 node. Rebuild and re-sign all variants and bundled services. The CDEPLOY6
+A signed variant declaring runtime ABI 1 or 2 cannot be placed or launched on an
+ABI 3 node. Rebuild and re-sign all variants and bundled services. The CDEPLOY6
 layout and current persistent record tags are unchanged; exact target matching
 rejects old executable requirements rather than guessing or rewriting them.

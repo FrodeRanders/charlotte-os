@@ -42,7 +42,7 @@ by the per-node DNS EL0 process, which:
     \item Carries VoteRequest, AppendEntries, InstallSnapshot, and admission
         messages through the reliable-message service.
     \item Uses completion-queue waits for time: a bounded
-        \texttt{CQ\_WAIT} drives election and heartbeat checks without a
+        \texttt{checked CQ wait} drives election and heartbeat checks without a
         detached timer completion or a busy polling loop.
     \item Applies membership commands and DNS catalog commands to the same
         durable log and state-machine snapshot.
@@ -305,18 +305,25 @@ while !timeout_elapsed() {
 }
 \end{lstlisting}
 
-In CharlotteOS, they use the completion system:
+CharlotteOS uses detached timer completion cookies and a checked CQ watchdog.
+Endpoint readiness and completion notifications release the same reactor wait:
 
 \begin{lstlisting}[style=rustCode]
-// CharlotteOS:
-let timer_id = submit_timer(timeout_duration)?;
-let result = wait_on_cq(timer_id).await?;
-// Timer fired; start election.
+let outcome = catten_services::reactor::wait(
+    Some(remaining_ms), cq_id);
+// Ready: drain completions and recheck all endpoint sources.
+// Deadline: evaluate the original protocol deadline.
+// Admission rejection: abort, retaining pending resources.
 \end{lstlisting}
 
-The timer is a kernel-managed operation. The shard parks on its CQ. When the
-timer fires, the executor wakes, drains the CQ entry, and resumes the election
-task. There is no need for a polling loop and no thread dedicated to sleeping.
+The timer is a kernel-managed operation. The shard parks on its CQ; when its
+cookie arrives, the reactor drains the entry and advances the protocol clock.
+The checked timeout remains an independent watchdog because accepting a detached
+timer does not prove that its cookie will arrive promptly. Its original watchdog
+deadline survives unrelated reactor wakes; only a clock event or expiry starts
+the next period. Wait admission
+rejection is distinct from deadline expiry and must not manufacture a clock tick.
+Neither path needs a dedicated sleeping thread or a spinning timeout loop.
 
 \section{Replication consequences}
 

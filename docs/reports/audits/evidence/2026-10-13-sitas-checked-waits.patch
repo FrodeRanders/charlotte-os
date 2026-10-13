@@ -1,0 +1,414 @@
+diff --git a/crates/sitas-charlotte/src/lib.rs b/crates/sitas-charlotte/src/lib.rs
+index 8448c48..6488dbc 100644
+--- a/crates/sitas-charlotte/src/lib.rs
++++ b/crates/sitas-charlotte/src/lib.rs
+@@ -9,16 +9,13 @@
+ //! The executor's idle wait (`wait(read, write, timeout)`) drains the kernel's
+ //! CQ ring — a shared-memory page mapped at a known virtual address in the
+ //! user AS, written by the kernel and read here without syscalls — and, when
+-//! the ring is empty, **blocks** in the kernel via `CQ_WAIT` /
+-//! `CQ_WAIT_TIMEOUT`. The kernel wait returns when a completion entry is
++//! the ring is empty, **blocks** in the kernel via checked `CQ_WAIT_CHECKED` (88). The kernel wait returns when a completion entry is
+ //! posted, when a peer thread posts an explicit `CQ_WAKE`, or (for the timed
+ //! variant) when the deadline fires. There is no busy polling.
+ //!
+ //! The waker (`ReactorWaker::wake`) posts `CQ_WAKE`, which releases any thread
+-//! of this address space blocked in a CQ wait. Until per-shard CQ partitioning
+-//! exists, the CQ (and therefore the wake) is per-process: all shards share
+-//! one ring, so a wake releases every blocked shard of the process rather than
+-//! one target LP.
++//! blocked on the exact selected queue. Mapped per-shard rings isolate reactor
++//! wakes; explicitly shared/default parkers retain their bounded recovery policy.
+ //!
+ //! Thread spawn (`ShardRuntime::spawn_shard`) uses the kernel's
+ //! `spawn_thread` via SVC, pinned to a specific LP.
+@@ -53,9 +50,11 @@ const SYSCALL_COMPLETION_WAIT: u16 = 4;
+ const SYSCALL_COMPLETION_CLOSE: u16 = 6;
+ const SYSCALL_SPAWN_THREAD: u16 = 7;
+ const SYSCALL_THREAD_EXIT: u16 = 8;
+-const SYSCALL_CQ_WAIT: u16 = 12;
++const SYSCALL_CQ_WAIT_CHECKED: u16 = 88;
+ const SYSCALL_CQ_WAKE: u16 = 41;
+-const SYSCALL_CQ_WAIT_TIMEOUT: u16 = 42;
++const SYSCALL_MONOTONIC_CLOCK: u16 = 79;
++const SYSCALL_DOMAIN_ABORT: u16 = 68;
++const SYSCALL_LOG_STR: u16 = 74;
+ const SYSCALL_OBSERVE_THREAD_EXIT: u16 = 61;
+ const SYSCALL_GET_TID: u16 = 62;
+ 
+@@ -129,7 +128,8 @@ unsafe fn syscall(imm: u16, arg1: u64, arg2: u64, arg3: u64) -> u64 {
+         SYSCALL_COMPLETION_CLOSE => svc!(6),
+         SYSCALL_SPAWN_THREAD => svc!(7),
+         SYSCALL_THREAD_EXIT => svc!(8),
+-        SYSCALL_CQ_WAIT => svc!(12),
++        SYSCALL_DOMAIN_ABORT => svc!(68),
++        SYSCALL_LOG_STR => svc!(74),
+         SYSCALL_CQ_WAKE => svc!(41),
+         SYSCALL_OBSERVE_THREAD_EXIT => svc!(61),
+         SYSCALL_GET_TID => svc!(62),
+@@ -211,51 +211,154 @@ unsafe fn sys_poll(cap: u64) -> (u64, u64) {
+ }
+ 
+ /// Post an explicit wake to queue `cq` (a per-shard wake releases only the
+-/// target shard's blocked `CQ_WAIT`).
++/// target shard's blocked checked CQ wait).
+ #[inline(always)]
+ unsafe fn sys_cq_wake(cq: u32) -> u64 {
+     unsafe { syscall(SYSCALL_CQ_WAKE, cq as u64, 0, 0) }
+ }
+ 
+-/// Block until the shard's CQ has at least `min_complete` entries or an
+-/// explicit wake is posted to it.
+-#[inline(always)]
+-unsafe fn sys_cq_wait(min_complete: u64, cq: u32) -> u64 {
+-    unsafe { syscall(SYSCALL_CQ_WAIT, min_complete, cq as u64, 0) }
++#[derive(Clone, Copy, Debug, Eq, PartialEq)]
++enum CqWaitOutcome {
++    Ready,
++    Deadline,
+ }
+ 
+-/// Like [`sys_cq_wait`] but also returns when `timeout_ms` elapses.
+-/// Returns `(pending, timed_out)`.
+-#[inline(always)]
+-unsafe fn sys_cq_wait_timeout(min_complete: u64, timeout_ms: u64, cq: u32) -> (u64, u64) {
++#[derive(Clone, Copy, Debug, Eq, PartialEq)]
++enum CqWaitError {
++    AdmissionRejected,
++    InvalidRequest,
++    InvalidStatus,
++}
++
++fn decode_cq_wait(status: u64, timed: bool) -> Result<CqWaitOutcome, CqWaitError> {
++    match status {
++        0 => Ok(CqWaitOutcome::Ready),
++        1 if timed => Ok(CqWaitOutcome::Deadline),
++        2 => Err(CqWaitError::InvalidRequest),
++        3 => Err(CqWaitError::AdmissionRejected),
++        _ => Err(CqWaitError::InvalidStatus),
++    }
++}
++
++/// Fixed two-result ABI boundaries; neither publishes an owning capability.
++unsafe fn syscall_pair(imm: u16, arg1: u64, arg2: u64, arg3: u64) -> (u64, u64) {
+     let ret: u64;
+-    let timed_out: u64;
++    let secondary: u64;
+     #[cfg(target_arch = "aarch64")]
+-    unsafe {
+-        core::arch::asm!(
+-            "svc #42",
+-            lateout("x0") ret,
+-            inlateout("x1") min_complete => timed_out,
+-            in("x2") timeout_ms,
+-            in("x3") cq as u64,
+-            options(nostack, nomem, preserves_flags),
+-        );
++    {
++        macro_rules! pair {
++            ($number:literal) => {
++                // SAFETY: only the fixed clock and checked CQ ABIs reach this
++                // boundary. All result registers are declared; the wait is a
++                // compiler memory barrier for subsequently inspected CQ state.
++                unsafe { core::arch::asm!(
++                    concat!("svc #", stringify!($number)),
++                    lateout("x0") ret,
++                    inlateout("x1") arg1 => secondary,
++                    in("x2") arg2,
++                    in("x3") arg3,
++                    options(nostack, preserves_flags),
++                ); }
++            };
++        }
++        match imm {
++            SYSCALL_MONOTONIC_CLOCK => pair!(79),
++            SYSCALL_CQ_WAIT_CHECKED => pair!(88),
++            _ => unreachable!(),
++        }
+     }
+     #[cfg(target_arch = "x86_64")]
++    // SAFETY: the private callers supply the fixed clock/CQ ABI and retain
++    // their mapped ring and pending operation owners through the wait.
+     unsafe {
+         core::arch::asm!(
+             "syscall",
+-            inlateout("rax") (SYSCALL_CQ_WAIT_TIMEOUT as u64) => ret,
+-            inlateout("rdi") min_complete => timed_out,
+-            in("rsi") timeout_ms,
+-            in("rdx") cq as u64,
++            inlateout("rax") u64::from(imm) => ret,
++            inlateout("rdi") arg1 => secondary,
++            in("rsi") arg2,
++            in("rdx") arg3,
+             lateout("rcx") _,
+             lateout("r11") _,
+             options(preserves_flags),
+         );
+     }
+-    let _ = SYSCALL_CQ_WAIT_TIMEOUT;
+-    (ret, timed_out)
++    (ret, secondary)
++}
++
++fn abort_wait(reason: CqWaitError) -> ! {
++    let message: &[u8] = match reason {
++        CqWaitError::AdmissionRejected => b"[sitas] CQ waiter admission rejected\n",
++        CqWaitError::InvalidRequest => b"[sitas] invalid CQ wait request\n",
++        CqWaitError::InvalidStatus => b"[sitas] invalid CQ wait outcome/clock\n",
++    };
++    // SAFETY: the static diagnostic stays borrowed through the synchronous
++    // logging ABI. Domain abort is terminal: do not unwind pending operation
++    // owners or turn rejection into a wake that the executor would retry.
++    unsafe {
++        syscall(
++            SYSCALL_LOG_STR,
++            message.as_ptr() as u64,
++            message.len() as u64,
++            0,
++        );
++        syscall(SYSCALL_DOMAIN_ABORT, 0, 0, 0);
++        #[cfg(target_arch = "aarch64")]
++        core::arch::asm!("udf #0", options(noreturn));
++        #[cfg(target_arch = "x86_64")]
++        core::arch::asm!("ud2", options(noreturn));
++    }
++}
++
++fn wait_for_cq(timeout: Option<u64>, cq: u32) -> CqWaitOutcome {
++    // SAFETY: this wait borrows the launch-owned CQ and returns no resources.
++    // The explicit flag distinguishes every finite timeout from event-only.
++    let (_, status) = unsafe {
++        syscall_pair(
++            SYSCALL_CQ_WAIT_CHECKED,
++            timeout.unwrap_or(0),
++            u64::from(cq),
++            u64::from(timeout.is_some()),
++        )
++    };
++    decode_cq_wait(status, timeout.is_some()).unwrap_or_else(|error| abort_wait(error))
++}
++
++struct WaitBudget {
++    start: u64,
++    frequency: u64,
++    millis: u64,
++}
++impl WaitBudget {
++    fn new(millis: u64) -> Self {
++        // SAFETY: this fixed ABI returns monotonic metadata, not a resource.
++        let (start, frequency) = unsafe { syscall_pair(SYSCALL_MONOTONIC_CLOCK, 0, 0, 0) };
++        if frequency == 0 {
++            abort_wait(CqWaitError::InvalidStatus);
++        }
++        Self {
++            start,
++            frequency,
++            millis,
++        }
++    }
++    fn remaining_at(&self, now: u64) -> Option<u64> {
++        if self.frequency == 0 {
++            return None;
++        }
++        let elapsed = u128::from(now.checked_sub(self.start)?) * 1000;
++        let total = u128::from(self.millis) * u128::from(self.frequency);
++        let left = total.saturating_sub(elapsed);
++        left.div_ceil(u128::from(self.frequency)).try_into().ok()
++    }
++    fn remaining(&self) -> u64 {
++        // SAFETY: this fixed ABI returns monotonic metadata, not a resource.
++        let (now, frequency) = unsafe { syscall_pair(SYSCALL_MONOTONIC_CLOCK, 0, 0, 0) };
++        if frequency != self.frequency {
++            abort_wait(CqWaitError::InvalidStatus);
++        }
++        self.remaining_at(now)
++            .unwrap_or_else(|| abort_wait(CqWaitError::InvalidStatus))
++    }
+ }
+ 
+ extern "C" fn shard_entry_trampoline() {
+@@ -392,7 +495,7 @@ pub struct CharlWaker {
+     /// The logical processor the owning shard runs on (for future affinity
+     /// use; currently not targeted by the wake).
+     target_lp: u32,
+-    /// The completion queue id blocked in `CQ_WAIT`; a wake targets only
++    /// The completion queue id used by the checked CQ wait; a wake targets only
+     /// this queue so per-shard rings receive isolated, non-stealing wakes.
+     cq_id: u32,
+ }
+@@ -452,6 +555,9 @@ impl ReactorBackend for CharlotteReactor {
+         _write: &[u64],
+         timeout: Option<Duration>,
+     ) -> Result<CharlEvent, sitas_core::io::ErrorKind> {
++        let budget = timeout.map(|duration| {
++            WaitBudget::new(u64::try_from(duration.as_millis()).unwrap_or(u64::MAX))
++        });
+         loop {
+             // Drain whatever the kernel has already posted — no syscall needed.
+             let pending = self.cq().pending();
+@@ -471,32 +577,14 @@ impl ReactorBackend for CharlotteReactor {
+             // Ring empty: block in the kernel until a completion entry is
+             // posted, a peer posts CQ_WAKE to this shard's queue, or the
+             // deadline fires.
+-            match timeout {
+-                Some(duration) => {
+-                    let timeout_ms = u64::try_from(duration.as_millis())
+-                        .unwrap_or(u64::MAX)
+-                        .max(1);
+-                    let (_pending, timed_out) =
+-                        unsafe { sys_cq_wait_timeout(1, timeout_ms, self.cq_id) };
+-                    if self.cq().pending() > 0 {
+-                        continue; // completions arrived: drain them above
+-                    }
+-                    return Ok(CharlEvent {
+-                        woke: timed_out == 0,
+-                        readable: Vec::new(),
+-                    });
+-                }
+-                None => {
+-                    unsafe { sys_cq_wait(1, self.cq_id) };
+-                    if self.cq().pending() > 0 {
+-                        continue; // completions arrived: drain them above
+-                    }
+-                    return Ok(CharlEvent {
+-                        woke: true,
+-                        readable: Vec::new(),
+-                    });
+-                }
++            let outcome = wait_for_cq(budget.as_ref().map(WaitBudget::remaining), self.cq_id);
++            if self.cq().pending() > 0 {
++                continue; // drain above, retaining this same deadline
+             }
++            return Ok(CharlEvent {
++                woke: outcome == CqWaitOutcome::Ready,
++                readable: Vec::new(),
++            });
+         }
+     }
+ }
+@@ -541,13 +629,15 @@ impl ShardRuntime for CharlotteReactor {
+     }
+ 
+     fn sleep(&self, duration: Duration) {
+-        // Block in the kernel for the requested duration instead of spinning.
+-        // A min_complete the small ring can never reach means only the
+-        // deadline (or a spurious peer wake) releases us.
+-        let timeout_ms = u64::try_from(duration.as_millis())
+-            .unwrap_or(u64::MAX)
+-            .max(1);
+-        let _ = unsafe { sys_cq_wait_timeout(u64::from(u32::MAX), timeout_ms, self.cq_id) };
++        let budget = WaitBudget::new(u64::try_from(duration.as_millis()).unwrap_or(u64::MAX));
++        loop {
++            let remaining = budget.remaining();
++            if remaining == 0 {
++                return;
++            }
++            // CQ wakes are hints, not proof that sleep's full deadline elapsed.
++            wait_for_cq(Some(remaining), self.cq_id);
++        }
+     }
+ 
+     fn parker(&self) -> alloc::sync::Arc<dyn ShardParker> {
+@@ -608,17 +698,15 @@ impl<T> CharlotteJoinHandle<T> {
+ 
+ /// Parks and wakes shards through the kernel completion queue.
+ ///
+-/// A shard waiting for an inter-shard message or reply parks in `CQ_WAIT`
+-/// (bounded by a short deadline so a stolen or coalesced wake self-heals while
+-/// the process-wide CQ is shared by all shards); a peer releases it with
++/// A shard waiting for an inter-shard message or reply uses checked CQ wait 88
++/// (bounded by a short deadline for potentially shared parkers); a peer releases it with
+ /// `CQ_WAKE`. This replaces the KV service's former `spin_loop` busy-waits, so
+ /// a blocked shard consumes no CPU.
+ ///
+-/// The deadline bound is a deliberate robustness choice until per-shard CQ
+-/// rings are mapped into user space: with one process-wide ring, a single
+-/// `CQ_WAKE` releases only one waiter, so a shard whose wake was consumed by a
+-/// peer still re-checks its state within one park interval rather than
+-/// stalling.
++/// The bounded backstop remains for public parkers sharing one CQ: the kernel
++/// consumes a shared work-generation cursor, so a competing reader can consume
++/// that generation. Private per-shard reactors use their own rings and can wait
++/// without a timer. Removing this backstop needs a per-waiter wake contract.
+ pub struct CharlotteParker {
+     cq_id: u32,
+ }
+@@ -642,13 +730,48 @@ impl ShardParker for CharlotteParker {
+                 .clamp(1, PARK_INTERVAL_MS),
+             None => PARK_INTERVAL_MS,
+         };
+-        // A min_complete the small ring can never reach means the wait is
+-        // released only by a peer `CQ_WAKE` or by the deadline — never by a
+-        // stray completion entry meant for the reactor.
+-        let _ = unsafe { sys_cq_wait_timeout(u64::from(u32::MAX), ms, self.cq_id) };
++        // Readiness includes completions and peer wakes. The old min_complete
++        // parameter was ignored by the kernel; it never filtered completions.
++        wait_for_cq(Some(ms), self.cq_id);
+     }
+ 
+     fn unpark(&self) {
+         let _ = unsafe { sys_cq_wake(self.cq_id) };
+     }
+ }
++
++#[cfg(test)]
++mod checked_wait_tests {
++    use super::*;
++    #[test]
++    fn rejection_is_neither_timeout_nor_peer_wake() {
++        for timed in [false, true] {
++            assert_eq!(
++                decode_cq_wait(3, timed),
++                Err(CqWaitError::AdmissionRejected)
++            );
++            assert_eq!(decode_cq_wait(0, timed), Ok(CqWaitOutcome::Ready));
++        }
++        assert_eq!(decode_cq_wait(1, true), Ok(CqWaitOutcome::Deadline));
++        assert_eq!(decode_cq_wait(1, false), Err(CqWaitError::InvalidStatus));
++        assert_eq!(decode_cq_wait(2, true), Err(CqWaitError::InvalidRequest));
++    }
++    #[test]
++    fn wakes_cannot_restart_sleep_or_reactor_deadline() {
++        let budget = WaitBudget {
++            start: 100,
++            frequency: 1000,
++            millis: 10,
++        };
++        assert_eq!(budget.remaining_at(100), Some(10));
++        assert_eq!(budget.remaining_at(105), Some(5));
++        assert_eq!(budget.remaining_at(110), Some(0));
++        assert_eq!(budget.remaining_at(99), None);
++        let wide = WaitBudget {
++            start: 0,
++            frequency: u64::MAX,
++            millis: u64::MAX,
++        };
++        assert_eq!(wide.remaining_at(0), Some(u64::MAX));
++    }
++}
+diff --git a/docs/architecture.md b/docs/architecture.md
+index 87dc854..15e557f 100644
+--- a/docs/architecture.md
++++ b/docs/architecture.md
+@@ -504,6 +504,21 @@ The TCP server's `SO_INCOMING_CPU` and kTLS ULP hooks are Linux socket options
+ on the readiness-based TCP path. They do not make TCP accept, send, or receive
+ completion-based `io_uring` operations.
+ 
++### CharlotteOS checked CQ waits
++
++The Charlotte backend uses runtime ABI 3's checked CQ syscall 88; unchecked
++syscalls 12/42 are retired. Its explicit timed flag distinguishes finite
++milliseconds (including the maximum value) from an event-only wait. Ready and
++deadline are separate from waiter admission rejection and invalid requests.
++Rejected waits log and abort the domain: the portable executor's retry-on-error
++loop must not turn failed admission into spinning or a fake wake. Pending
++operations remain governed by kernel domain retirement, never completion inferred
++from rejection. Reactor waits and runtime sleep retain one monotonic budget;
++completion/peer wakes cannot restart it or end a sleep early. Per-shard reactors
++retain their mapped queue identity. Public parkers sharing a CQ keep the 5 ms
++backstop because its shared generation cursor can be consumed by a competing
++reader; this remains timer-driven recovery, not a per-waiter readiness guarantee.
++
+ ## 10. Linux `io_uring` model
+ 
+ The Linux `io_uring` backend is a supported part of the runtime. It has a

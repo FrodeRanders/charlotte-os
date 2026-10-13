@@ -1199,7 +1199,7 @@ fn planner_filters_cpu_features_abi_and_every_node_before_ranking() {
         resolve_descriptor_assignments_with_capacity(&[&demanding], &[1, 2], 1, &capacity).unwrap(),
         vec![vec![2]]
     );
-    capacity.get_mut(&2).unwrap().target.as_mut().unwrap().runtime_abi = 1;
+    capacity.get_mut(&2).unwrap().target.as_mut().unwrap().runtime_abi = 2;
     assert_eq!(
         resolve_descriptor_assignments_with_capacity(&[&demanding], &[1, 2], 1, &capacity),
         Err(AdmissionError::InsufficientCompatibleCapacity)

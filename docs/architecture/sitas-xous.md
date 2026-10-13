@@ -34,8 +34,8 @@ is in the repository history and earlier revisions of this document.
 | 3 | Userspace name/service manager, bootstrap delivery, ELF loader, supervisor, generation tracking, long names via memory objects | Done |
 | 4 | First-class memory objects: allocate, map, unmap, close, ownership accounting | Done |
 | 5 | Memory IPC: Copy, Move, BorrowRead, BorrowWrite, reply-bound revocation, cancellation, server-death recovery | Done |
-| 6 | CQ subsystem normalisation: operation IDs, detached submission, CQ_WAIT/CQ_WAKE, per-shard CQ partitioning, bounded overflow retention, §8.2 32-byte richer completion records | Done |
-| 7 | Sitas endpoint/CQ backend: endpoint readiness binding, unified shard wait (`CQ_WAIT`), `ShardExecutor` (budgeted polling, task wakeup from drained events), spin-free `ShardParker` integration, per-shard CQ rings, `kv::spin_recv` retired | Done |
+| 6 | CQ subsystem normalisation: operation IDs, detached submission, CQ_WAIT_CHECKED/CQ_WAKE, per-shard CQ partitioning, bounded overflow retention, §8.2 32-byte richer completion records | Done |
+| 7 | Sitas endpoint/CQ backend: endpoint readiness binding, unified shard wait (`CQ_WAIT_CHECKED`), `ShardExecutor` (budgeted polling, task wakeup from drained events), spin-free `ShardParker` integration, per-shard CQ rings, `kv::spin_recv` retired | Done |
 | 8 | Userspace UART driver: delegated MMIO + IRQ, EL0 MMIO writes, interrupt-driven deferred reads, driver crash → device reset → outstanding-op reconciliation → generation-2 restart | Done |
 | 9 | Virtio-net driver: PCI discovery, translated legacy register aperture + MSI-X delegation, SMMU DMA domain, feature negotiation, MAC/link read, virtqueue setup, and EL0 frame submission. Protocol crates extracted. Smoltcp 0.13 adapter + TCP/IP service binary compile. The driver smoke path is runtime-validated under QEMU TCG; receive, completion reclamation, batching, and the TCP/IP service remain incomplete. | Driver smoke path TCG-validated; full data path pending |
 | 10 | Kernel concurrency and scheduler lifecycle: interrupt-safe registries, deferred stack reclamation, LP-affine waits, migration constraints, sustained-window rebalancing, true idle/WFI, lock-free debugger snapshots | Implemented; intermittent SMP timer/lifecycle validation remains |
@@ -47,7 +47,7 @@ is in the repository history and earlier revisions of this document.
 2. ✓ Deferred async call while a shard continues other tasks
 3. ✓ Moved memory object — sender locked out until return
 4. ✓ Lending enforced by mappings, including death cleanup
-5. ✓ Single `CQ_WAIT` for endpoint + completions + device interrupts
+5. ✓ Single `CQ_WAIT_CHECKED` for endpoint + completions + device interrupts
 6. ✓ Terminal CQ results survive ring overflow (non-lossy backlog)
 7. ✓ Coalesced remote shard wakes (idempotent scheduler fix)
 8. ✓ Userspace UART driver with only delegated MMIO + IRQ
@@ -1159,7 +1159,7 @@ is that state transition and waiter registration cannot lose a wake.
 **Current implementation.**  The kernel uses a per-CQ monotonic
 `work_generation` counter paired with a `last_seen_generation` field.
 Every `complete()`, `complete_detached()`, and `wake()` bumps the
-generation; `wait_on_cq` blocks until `work_generation !=
+generation; `wait_on_cq_checked` blocks until `work_generation !=
 last_seen_generation` and saves the new value on return.  This
 decouples the wait condition from the shared ring's `pending()` count,
 solving the undrained-ring problem: callers that poll individual
@@ -1594,7 +1594,7 @@ continue.
 -   per-address-space capability tables;
 -   shared CQ ring;
 -   non-lossy kernel CQ backlog;
--   `CQ_WAIT` blocking through scheduler/observer machinery;
+-   `CQ_WAIT_CHECKED` blocking through scheduler/observer machinery;
 -   bounded queues and explicit `WouldBlock`;
 -   no-std sitas split and CharlotteOS backend;
 -   per-shard executor model;
@@ -1953,7 +1953,7 @@ Refactor current completion code around:
 -   buffer return;
 -   CQ batching.
 
-Migrate `sitas-charlotte` to `CQ_WAIT` and remove busy polling.
+Migrate `sitas-charlotte` to `CQ_WAIT_CHECKED` and remove busy polling.
 
 ## Phase 7 --- [done] Sitas endpoint backend
 
@@ -2310,12 +2310,12 @@ Current status:
 -   Criterion 5 is met. Its kernel half has self-test evidence: one
     blocking CQ wait is released by kernel completions, explicit
     cross-thread wakes, and CQ-bound endpoint readiness
-    (`test_cq_wait_wake`).  The `wait_on_cq` implementation uses a
+    (`test_cq_wait_wake`).  The `wait_on_cq_checked` implementation uses a
     per-CQ monotonic work-generation counter (§8.5) decoupled from the
     shared ring's `pending()` count, so services that poll individual
     completions via `poll(cap)` and never drain the ring are not stuck
     in a busy-spin.  At EL0, the reference echo service serves its
-    entire protocol — including shutdown and restart — from one `CQ_WAIT`
+    entire protocol — including shutdown and restart — from one `CQ_WAIT_CHECKED`
     with endpoint readiness bound to its default queue, and the sitas
     `ShardExecutor` (sitas repo) now performs task wakeup from the
     drained events: a KV shard blocks in its reactor's single wait and
@@ -2339,7 +2339,7 @@ Current status:
     (`test_device_capabilities`): a driver domain can be granted an MMIO
     region and an interrupt source as capabilities, map the region into
     its own address space as user Device memory, and be released from one
-    `wait_on_cq` by a real GICv3 software-pended SPI routed through the
+    `wait_on_cq_checked` by a real GICv3 software-pended SPI routed through the
     live interrupt path. The EL0 half is demonstrated by
     `test_el0_uart`: the reference `uart` userspace driver runs in an
     isolated EL0 domain with only a delegated PL011 MMIO region and its

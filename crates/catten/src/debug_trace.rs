@@ -324,10 +324,6 @@ pub fn dump_after(_delay_ms: u64) {}
 #[cfg(feature = "scheduler_trace")]
 fn tag_name(tag: u64) -> &'static str {
     match tag {
-        TAG_CQ_WAIT_ENTER => "CQ_WAIT_ENTER",
-        TAG_CQ_WAIT_RESUME => "CQ_WAIT_RESUME",
-        TAG_CQ_WAIT_FAST => "CQ_WAIT_FAST",
-        TAG_CQ_WAIT_GUARD => "CQ_WAIT_GUARD",
         TAG_COMPLETE => "COMPLETE",
         TAG_COMPLETE_DETACHED => "COMPLETE_DETACHED",
         TAG_WAKE => "WAKE",
@@ -347,10 +343,6 @@ fn tag_name(tag: u64) -> &'static str {
     }
 }
 
-pub const TAG_CQ_WAIT_ENTER: u64 = 0xc0_0001;
-pub const TAG_CQ_WAIT_RESUME: u64 = 0xc0_0002;
-pub const TAG_CQ_WAIT_FAST: u64 = 0xc0_0003;
-pub const TAG_CQ_WAIT_GUARD: u64 = 0xc0_0004;
 pub const TAG_COMPLETE: u64 = 0xc0_0010;
 pub const TAG_COMPLETE_DETACHED: u64 = 0xc0_0011;
 pub const TAG_WAKE: u64 = 0xc0_0012;

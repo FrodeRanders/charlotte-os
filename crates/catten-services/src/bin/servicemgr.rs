@@ -24,7 +24,6 @@ use catten_services::{
 };
 use catten_syscall::{
     IpcRights,
-    cq_wait,
     ipc_close,
     ipc_endpoint_bind_cq,
     ipc_endpoint_create,
@@ -182,7 +181,7 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(status::STAGE, 3);
 
     loop {
-        cq_wait(1, 0);
+        catten_services::reactor::wait(None, 0);
         loop {
             let m = ipc_recv(ep);
             let _attachments = catten_services::RequestAttachments::new(m.memory, m.connection);

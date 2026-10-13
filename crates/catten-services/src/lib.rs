@@ -31,6 +31,7 @@ pub mod grant_client;
 /// Owned application-side wrappers for the Kafka service protocol.
 pub mod kafka_client;
 pub mod publication;
+pub mod reactor;
 /// Owned application-side wrappers for the S3 service protocol.
 pub mod s3_client;
 /// Verified, owned TLS client transport shared by network services.
@@ -2822,10 +2823,19 @@ pub fn spin_reply(call: u64) -> (i64, u64) {
     }
 }
 
-/// Block the calling userspace thread between low-frequency reply polls.
+/// Timer-backed pause for explicit protocol/hardware admission backoff.
+/// Rejection must not turn a caller's retry loop into a runnable spin.
 pub fn sleep_ms(milliseconds: u64) {
-    if let Ok(timer) = catten_rt::owned::Completion::timer(milliseconds) {
-        let _ = timer.wait();
+    let timer = catten_rt::owned::Completion::timer(milliseconds).unwrap_or_else(|error| {
+        catten_rt::logln!("[reactor] pause timer admission rejected: {:?}", error);
+        catten_rt::domain_abort()
+    });
+    match timer.wait() {
+        Ok(0) => {}
+        result => {
+            catten_rt::logln!("[reactor] pause timer did not complete: {:?}", result);
+            catten_rt::domain_abort()
+        }
     }
 }
 

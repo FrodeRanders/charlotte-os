@@ -44,7 +44,6 @@ use catten_services::{
 };
 use catten_syscall::{
     IpcRights,
-    cq_wait_timeout,
     thread_exit,
 };
 use charlotte_kafka::{
@@ -2664,7 +2663,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         }
         next_endpoint = (next_endpoint + 1) % endpoints.len();
         if !handled {
-            cq_wait_timeout(1, SERVICE_WAIT_MS, 0);
+            catten_services::reactor::wait(Some(SERVICE_WAIT_MS), 0);
         }
     }
 }

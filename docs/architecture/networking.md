@@ -874,7 +874,7 @@ machine exported as a native CharlotteOS IPC endpoint.
 |---|---|---|
 | Peer discovery and admission | Ethernet discovery service + replicated join | Implemented: discovery supplies identity/MAC routes; only `JOIN`/joint/finalize commands grant voter authority |
 | Inter-node RPC | Endpoint IPC + memory objects (`Move`) | Works: shared protobuf VoteRequest, AppendEntries, and InstallSnapshot payloads |
-| Election/heartbeat clock | Detached timer + bounded `CQ_WAIT` timeout | Implemented as two wake paths: the CQ timeout remains an independent watchdog if the detached completion is delayed or lost |
+| Election/heartbeat clock | Detached timer + bounded `CQ_WAIT_CHECKED` timeout | Implemented as two wake paths: the CQ timeout remains an independent watchdog if the detached completion is delayed or lost |
 | Durable state/log | Object store over block protocol | Required/optional disk policies implemented; single-voter term recovery survives process restart |
 | Client command submission | Capability-based endpoint call | DNS submits catalog, deployment, key, event, and membership commands through its own Raft node; lookup and call-routing queries are forwarded to the leader |
 | Linearizable reads | Reply tokens + read barrier | Implemented for DNS lookup and call routing: followers forward correlated queries and the leader requires recent quorum contact; two-guest follower access is boot-validated |

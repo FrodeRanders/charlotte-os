@@ -23,8 +23,9 @@
 //!
 //! The I/O CQ uses MSI-X vector zero. PCI setup programs the device's MSI-X
 //! table to target a delegated GIC SPI before this domain starts. A bounded
-//! `cq_wait_timeout` remains as a compatibility fallback for platforms where
-//! MSI-X setup is unavailable.
+//! checked 10 ms CQ watchdog remains for hardware where MSI-X setup is
+//! unavailable or its edge is suppressed; this is bounded hardware polling,
+//! not an older syscall-ABI fallback.
 #![no_std]
 #![no_main]
 extern crate alloc;
@@ -744,7 +745,7 @@ fn drain_outstanding(io: &mut IoState, dma_domain: u64, irq_cap: u64) -> bool {
         if io.outstanding == 0 {
             return true;
         }
-        cq_wait_timeout(1, 10, 0);
+        catten_services::reactor::wait(Some(10), 0);
         let _ = device_irq_ack(irq_cap);
     }
     false
@@ -763,7 +764,7 @@ fn flush_controller(io: &mut IoState, irq_cap: u64) -> bool {
             // different completion here is inconsistent and must fail closed.
             return false;
         }
-        cq_wait_timeout(1, 10, 0);
+        catten_services::reactor::wait(Some(10), 0);
         let _ = device_irq_ack(irq_cap);
     }
     false
@@ -922,10 +923,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
         }
 
-        // Lifecycle control lives in a kernel-updated launch page rather than
-        // the CQ. Keep the idle wait bounded so shutdown is observed even when
-        // no endpoint or interrupt event is pending.
-        cq_wait_timeout(1, 10, 0);
+        // Lifecycle publication also wakes the default CQ. The bounded watchdog
+        // remains for the hardware missed-MSI-X completion path described above.
+        catten_services::reactor::wait(Some(10), 0);
 
         let (status, consumed) = device_irq_ack(irq_cap);
         if status == 0 && consumed > 0 {

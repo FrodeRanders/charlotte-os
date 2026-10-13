@@ -385,7 +385,7 @@ fn main(ctx: Context) -> ! {
     ipc_endpoint_bind_cq(endpoint, 0);
 
     loop {
-        cq_wait(1, 0);
+        catten_services::reactor::wait(None, 0);
 
         loop {
             let message = ipc_recv(endpoint);

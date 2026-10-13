@@ -71,7 +71,6 @@ use catten_services::{
 use catten_syscall::{
     IpcRights,
     cq_read,
-    cq_wait_timeout,
     ipc_close,
     ipc_endpoint_bind_cq,
     ipc_endpoint_create,
@@ -565,6 +564,13 @@ fn main(ctx: Context) -> ! {
 
     let cq = ctx.completion_queue_layout();
     let mut timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
+    let mut clock_watchdog = catten_services::deadline::Deadline::after(
+        if timer_armed {
+            1_000
+        } else {
+            LOOP_TICK_MS
+        },
+    );
 
     let mut events = EventFirer::new();
 
@@ -590,22 +596,14 @@ fn main(ctx: Context) -> ! {
 
     loop {
         // Endpoint readiness and transport completions wake this reactor
-        // immediately. The bounded wait itself supplies Raft's periodic clock,
-        // avoiding a separate detached-timer completion and wake path.
-        let (_, timed_out) = cq_wait_timeout(
-            1,
-            if timer_armed {
-                1_000
-            } else {
-                LOOP_TICK_MS
-            },
-            0,
-        );
+        // immediately. The retained watchdog supplements the detached clock;
+        // ordinary readiness never restarts its deadline.
+        catten_services::reactor::wait(Some(clock_watchdog.remaining_ms()), 0);
         // A successfully submitted detached timer is not proof that its CQ
         // completion will arrive. Keep the bounded CQ timeout as an
         // independent clock watchdog so one delayed/lost cookie cannot stop
         // elections and heartbeats forever.
-        let mut tick_due = timed_out != 0;
+        let mut tick_due = clock_watchdog.expired();
         while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
             if completion.cookie == RAFT_TIMER_COOKIE {
                 tick_due = true;
@@ -1147,6 +1145,15 @@ fn main(ctx: Context) -> ! {
             if !timer_armed {
                 timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
             }
+            // Only a real clock cookie or this retained watchdog starts a new
+            // period. Other readiness cannot postpone its original deadline.
+            clock_watchdog = catten_services::deadline::Deadline::after(
+                if timer_armed {
+                    1_000
+                } else {
+                    LOOP_TICK_MS
+                },
+            );
         }
 
         // --- Cluster-event publishing (best-effort) ---

@@ -8,14 +8,16 @@ ABI, required CPU features and selection priority. Variant targets must be
 distinct. The descriptor's aggregate size remains bounded to 3,584 bytes.
 
 The current execution contract is 64-bit little-endian ELF, either AArch64
-(`e_machine=183`) or x86_64 (`e_machine=62`), and Charlotte runtime ABI 2. ABI
+(`e_machine=183`) or x86_64 (`e_machine=62`), and Charlotte runtime ABI 3. ABI
 matching is exact. A kernel/userspace ABI change must bump the shared
 `RUNTIME_ABI` and rebuild/sign components; an absent or old ABI is never filled
 in by a decoder. Microarchitecture names, vendor names and CPU generations
 are not compatibility tests. ABI 2 makes the twelve-register authenticated
 [IPC receive envelope](ipc-receive.md) canonical and retires receive syscalls
 22/27/53. Rebuild and re-sign both primary and additional variants; ABI 1
-variants fail exact target matching on ABI 2 nodes.
+variants fail exact target matching on newer nodes. ABI 3 retires unchecked CQ
+wait syscalls 12/42 and uses the checked wait's explicit timed flag; see the
+[CQ wait contract](cq-wait.md). ABI 2 variants also reject on ABI 3 nodes.
 
 | Feature bit | AArch64 | x86_64 |
 | --- | --- | --- |
@@ -82,8 +84,8 @@ derive machine and digest:
 ```text
 cluster-sign deployment-sign orders.cdep orders releases/orders-arm.elf \
   ./orders-arm.elf 0 42 8 8 15000 deployment-private.hex \
-  --variant=releases/orders-x86.elf,./orders-x86.elf,0,0,2 \
-  --variant=releases/orders-arm-lse.elf,./orders-arm-lse.elf,1,10,2 \
+  --variant=releases/orders-x86.elf,./orders-x86.elf,0,0,3 \
+  --variant=releases/orders-arm-lse.elf,./orders-arm-lse.elf,1,10,3 \
   --replicas=3 --spread-replicas orders=publish
 cluster-sign release-sign orders.crelease orders 42 deployment-private.hex orders.cdep
 cluster-sign release-apply orders.crelease 127.0.0.1:8081 120

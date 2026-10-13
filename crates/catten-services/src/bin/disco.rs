@@ -51,7 +51,6 @@ use catten_services::{
 };
 use catten_syscall::{
     cq_read,
-    cq_wait_timeout,
     ipc_close,
     ipc_recv,
     ipc_reply,
@@ -633,6 +632,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut tick_ms: u64 = RAPID_PROBE_COUNT as u64 * RAPID_PROBE_INTERVAL_MS;
     let cq = ctx.completion_queue_layout();
     let mut clock_armed = submit_detached_timer(CLOCK_TICK_MS, 0, CLOCK_TIMER_COOKIE) != u64::MAX;
+    let mut clock_watchdog = catten_services::deadline::Deadline::after(CLOCK_TICK_MS);
     let mut heart: u32 = 0;
 
     loop {
@@ -844,7 +844,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // A real timer completion advances protocol time independently of
         // endpoint traffic. Counting CQ wakes as milliseconds made TTL and
         // refresh cadence depend on packet rate.
-        let (_, timed_out) = cq_wait_timeout(1, CLOCK_TICK_MS, 0);
+        catten_services::reactor::wait(Some(clock_watchdog.remaining_ms()), 0);
         let mut clock_fired = false;
         while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
             if completion.cookie == CLOCK_TIMER_COOKIE {
@@ -856,7 +856,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // submitting a detached timer does not guarantee that its completion
         // will be delivered promptly. A delayed/lost cookie must not freeze
         // peer TTLs and Raft-posture refreshes.
-        if clock_fired || timed_out != 0 {
+        if clock_fired || clock_watchdog.expired() {
+            clock_watchdog = catten_services::deadline::Deadline::after(CLOCK_TICK_MS);
             tick_ms = tick_ms.saturating_add(CLOCK_TICK_MS);
             if !clock_armed {
                 clock_armed =

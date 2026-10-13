@@ -31,7 +31,6 @@ use catten_services::{
 use catten_syscall::{
     DmaDirection,
     IpcRights,
-    cq_wait_timeout,
     device_irq_ack,
     device_irq_bind_cq,
     device_mmio_map_any,
@@ -247,7 +246,7 @@ unsafe fn reset_controller() -> bool {
         }
         // Reset completion is asynchronous. Let another runnable thread use
         // this LP between bounded status checks instead of burning cycles.
-        let _ = cq_wait_timeout(1, RESET_WAIT_MILLIS, 0);
+        let _ = catten_services::reactor::wait(Some(RESET_WAIT_MILLIS), 0);
     }
     false
 }
@@ -455,7 +454,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             link_up = true;
             break;
         }
-        let _ = cq_wait_timeout(1, LINK_WAIT_MILLIS, 0);
+        let _ = catten_services::reactor::wait(Some(LINK_WAIT_MILLIS), 0);
         let cause = unsafe { mmio_read(ICR) };
         let _ = device_irq_ack(irq_cap);
         config::write::<u32>(status::INTERRUPT_CAUSE, cause);
@@ -529,7 +528,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 catten_services::sleep_ms(100);
             }
         }
-        let _ = cq_wait_timeout(1, 10, 0);
+        let _ = catten_services::reactor::wait(Some(10), 0);
         let cause = unsafe { mmio_read(ICR) };
         let (_status, _count) = device_irq_ack(irq_cap);
         config::write::<u32>(status::INTERRUPT_CAUSE, cause);

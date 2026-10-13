@@ -19,7 +19,7 @@ repository history remain authoritative.
 5 & Memory IPC: Copy, Move, BorrowRead, BorrowWrite, reply-bound revocation,
     cancellation, server-death recovery & Done \\
 6 & CQ subsystem normalization: operation IDs, detached submission,
-    CQ\_WAIT/CQ\_WAKE, per-shard CQ partitioning, backlog batching, 32-byte
+    checked CQ wait/CQ\_WAKE, per-shard CQ partitioning, backlog batching, 32-byte
     completion records & Done \\
 7 & Sitas endpoint/CQ backend: endpoint readiness binding, unified shard
     wait, ShardExecutor (budgeted polling), ShardParker (spin free),
@@ -70,7 +70,7 @@ repository history remain authoritative.
     \item Moved memory object with the sender locked out until return:
         \textbf{Verified.}
     \item Lending enforced by mappings, including death cleanup: \textbf{Verified.}
-    \item Single \texttt{CQ\_WAIT} for endpoint + completions + device interrupts: \textbf{Verified.}
+    \item Single \texttt{checked CQ wait} for endpoint + completions + device interrupts: \textbf{Verified.}
     \item Terminal CQ results survive ring overflow (non-lossy backlog): \textbf{Verified.}
     \item Coalesced remote shard wakes (idempotent scheduler fix): \textbf{Verified.}
     \item Userspace UART driver with only delegated MMIO + IRQ: \textbf{Verified.}
@@ -130,10 +130,11 @@ repository history remain authoritative.
     \item \textbf{Syscall dispatch:} AArch64 SVC and x86-64 SYSCALL entry use
         the shared typed \texttt{SyscallNumber} enum. Caller identity comes
         from trusted thread and trap context, never a userspace parameter.
-        Runtime ABI 2 makes the twelve-register IPC receive envelope canonical:
+        Runtime ABI 3 retains the twelve-register IPC receive envelope canonical:
         scalar, blocking and vector receives return the captured sender generation,
         signed-artifact principal and roles. Nine-register syscalls 22/27/53 are
-        retired; signed components must be rebuilt for exact ABI matching.
+        retired; checked CQ wait 88 has an explicit timed flag and retired 12/42
+        adapters are removed. Signed components require exact ABI matching.
 
     \item \textbf{Authorization:} the local name service hosts a default-deny
         policy engine. Separate roles protect policy changes and service

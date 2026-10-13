@@ -153,9 +153,9 @@ Each transition is explicit and observable:
         freed (via \texttt{close}).
 \end{description}
 
-\section{Waiting on a CQ: \texttt{CQ\_WAIT}}
+\section{Checked waiting on a CQ}
 
-When a shard's executor has no ready tasks, it calls \texttt{CQ\_WAIT} on its
+When a shard's executor has no ready tasks, it calls \texttt{checked CQ wait} on its
 assigned queue. The kernel blocks the calling thread until one of three things
 happens:
 
@@ -163,18 +163,26 @@ happens:
     \item A completion entry is posted to the CQ.
     \item An explicit \texttt{CQ\_WAKE} arrives (from another shard or the
         kernel).
-    \item A deadline elapses (timeout variant: \texttt{CQ\_WAIT\_TIMEOUT}).
+    \item A deadline elapses (timeout variant: a finite checked wait).
 \end{enumerate}
 
-The wait is race-free. The sequence is:
+The current syscall is 88, with timeout milliseconds, queue ID and an explicit
+finite/event-only flag. The safe runtime returns readiness or deadline expiry,
+or a distinct admission/invalid-request error. Syscalls 12/42 and their ignored
+entry-count threshold are retired. Rejection cannot advance a protocol clock or
+end a pending borrow; the caller retains the original operation and deadline.
+
+For the owning reactor, the sequence closes the lost-wakeup window:
 
 \begin{enumerate}
-    \item Inspect the CQ ring: if completions are pending, return immediately.
+    \item Capture the exact CQ list identity and compare its work generation
+        with the reactor's last-seen generation; old ring occupancy is not readiness.
     \item Register a waiter against the CQ's generation counter.
-    \item Re-inspect the CQ ring: if completions arrived during registration,
-        unregister and return.
-    \item Block the thread: it will be woken when the generation counter changes
-        (a new entry is posted or a \texttt{CQ\_WAKE} bumps it).
+    \item Recheck the captured generation after registration; readiness closes
+        the lost-wakeup window without observing or discarding a result.
+    \item Park with the original deadline. Unrelated wakes recheck and repark;
+        completion cancels unused source/watchdog interests and revalidates queue
+        identity before advancing the seen generation.
 \end{enumerate}
 
 This is the \textbf{single wait point} for the entire shard. Three event sources
@@ -192,7 +200,7 @@ device events. One aggregated wait covers all of them.
 
 \section{LP affinity for CQ waits}
 
-A thread that blocks in \texttt{CQ\_WAIT} is assigned an affinity LP. When woken,
+A thread that blocks in \texttt{checked CQ wait} is assigned an affinity LP. When woken,
 the scheduler returns it to the same LP rather than scanning for the least-loaded
 one. This has three benefits:
 

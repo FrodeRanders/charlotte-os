@@ -28,7 +28,6 @@ use catten_services::{
 };
 use catten_syscall::{
     IpcRights,
-    cq_wait,
     thread_exit,
 };
 use charlotte_launch::echo_status as status;
@@ -107,7 +106,7 @@ fn main(ctx: Context) -> ! {
     loop {
         // 1. Block on the single wait point. Releases on endpoint readiness, kernel completions, or
         //    explicit peer wakes alike.
-        cq_wait(1, 0);
+        catten_services::reactor::wait(None, 0);
 
         // 2. Drain every ready endpoint message. (A full executor would also drain CQ ring entries
         //    and wake tasks here.)

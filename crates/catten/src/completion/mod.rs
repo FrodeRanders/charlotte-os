@@ -259,7 +259,7 @@ impl Observer for CompletionExitObserver {
 /// An [`Observer`] that completes a capability when a timer fires.
 /// This is the mechanism backing `OpCode::Timer`: the timer event's
 /// observer posts the terminal result, so a userspace caller that
-/// blocks on `cq_wait` is released at the deadline.
+/// blocks on `cq_wait_checked` is released at the deadline.
 struct CompletionTimerObserver {
     asid: AddressSpaceId,
     cap: CompletionCap,
@@ -1181,7 +1181,7 @@ pub(crate) fn abort_submission(asid: AddressSpaceId, cap: CompletionCap) -> Resu
 
 /// Submits a timer operation: creates a capability that auto-completes after
 /// `timeout_ms` milliseconds. The returned cap delivers a completion ring entry
-/// when the deadline expires, so a user-space service waiting on `cq_wait` is
+/// when the deadline expires, so a user-space service waiting on `cq_wait_checked` is
 /// released exactly at the deadline.
 pub fn submit_timer(asid: AddressSpaceId, timeout_ms: u64) -> Result<CompletionCap, SubmitError> {
     submit_timer_with_observer(asid, timeout_ms, Arc::try_new)
@@ -2053,7 +2053,7 @@ pub fn cq_work_generation(asid: AddressSpaceId, cq: CqId) -> u64 {
 
 /// Posts an explicit wake to the waiters of one queue (architecture doc
 /// §7.3/§9.4): bumps the work generation so a thread blocked in
-/// [`wait_on_cq`]/[`wait_on_cq_timeout`] returns even though no completion
+/// [`wait_on_cq_checked`] returns even though no completion
 /// entry was posted.  Used by userspace reactors (peer shard interrupts a
 /// blocking CQ wait) and by the IPC layer (endpoint-bound CQ wake).
 pub fn wake(asid: AddressSpaceId, cq: CqId) {
@@ -2323,235 +2323,4 @@ pub(crate) fn test_irq_wake_reentrancy(asid: AddressSpaceId, intid: u32) {
     crate::logln!(
         "[device] deferred IRQ notification reentered device/CQ registries outside guards"
     );
-}
-
-/// Blocks the calling thread until queue `cq` of `asid` receives new work
-/// (a completion, an explicit wake, or an endpoint-bound message).  Uses a
-/// per-CQ monotonic work-generation counter rather than checking the ring's
-/// `pending()` count, so callers that poll individual completions via
-/// `poll(cap)` and never drain the shared ring are not stuck in a busy-spin.
-pub fn wait_on_cq(asid: AddressSpaceId, cq: CqId, _min_complete: u32) {
-    let Some(tid) = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid() else {
-        return;
-    };
-    let observable = CqObservable {
-        asid,
-        cq,
-    };
-
-    // Fast path: work arrived before the first cq_wait call.
-    {
-        let mut registry = COMPLETIONS.write();
-        if let Some(as_completions) = registry.get_mut(&asid) {
-            flush_cq_backlog(as_completions, cq);
-            if let Some(cq_state) = as_completions.cqs.get_mut(&cq)
-                && charlotte_lifecycle::classify_timed_wait(
-                    cq_state.last_seen_generation,
-                    cq_state.work_generation,
-                ) == charlotte_lifecycle::TimedWaitOutcome::Work
-            {
-                crate::debug_trace::trace(
-                    crate::debug_trace::TAG_CQ_WAIT_FAST,
-                    asid as u64,
-                    cq_state.work_generation,
-                    cq_state.last_seen_generation,
-                );
-                cq_state.last_seen_generation = cq_state.work_generation;
-                return;
-            }
-        }
-    }
-
-    loop {
-        // Work may have arrived between the fast-path check and this loop.
-        // Consume that generation atomically; returning without advancing
-        // last_seen would make the following wait report the same work again.
-        {
-            let mut registry = COMPLETIONS.write();
-            if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq))
-                && cq_state.work_generation != cq_state.last_seen_generation
-            {
-                cq_state.last_seen_generation = cq_state.work_generation;
-                return;
-            }
-        }
-
-        crate::debug_trace::trace(
-            crate::debug_trace::TAG_CQ_WAIT_ENTER,
-            asid as u64,
-            {
-                let registry = COMPLETIONS.read();
-                registry
-                    .get(&asid)
-                    .and_then(|c| c.cqs.get(&cq))
-                    .map(|s| s.work_generation)
-                    .unwrap_or(0)
-            },
-            {
-                let registry = COMPLETIONS.read();
-                registry
-                    .get(&asid)
-                    .and_then(|c| c.cqs.get(&cq))
-                    .map(|s| s.last_seen_generation)
-                    .unwrap_or(0)
-            },
-        );
-
-        let generation = match SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
-            tid,
-            &observable,
-            crate::cpu::scheduler::threads::MigrationConstraint::CompletionQueueWait,
-        ) {
-            Ok(generation) => generation,
-            Err(_) => return,
-        };
-
-        // Lost-wake guard: if work arrived while the waker was being
-        // registered, re-admit the thread before it yields.
-        {
-            let registry = COMPLETIONS.read();
-            if let Some(cq_state) = registry.get(&asid).and_then(|c| c.cqs.get(&cq))
-                && cq_state.work_generation != cq_state.last_seen_generation
-            {
-                crate::debug_trace::trace(
-                    crate::debug_trace::TAG_CQ_WAIT_GUARD,
-                    asid as u64,
-                    cq_state.work_generation,
-                    cq_state.last_seen_generation,
-                );
-                let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
-            }
-        }
-
-        yield_lp();
-
-        // On resume, update last_seen and return if new work arrived.
-        {
-            let mut registry = COMPLETIONS.write();
-            if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq)) {
-                // If the generation hasn't changed, we were woken
-                // spuriously — loop and block again.
-                if cq_state.work_generation == cq_state.last_seen_generation {
-                    continue;
-                }
-                crate::debug_trace::trace(
-                    crate::debug_trace::TAG_CQ_WAIT_RESUME,
-                    asid as u64,
-                    cq_state.work_generation,
-                    cq_state.last_seen_generation,
-                );
-                cq_state.last_seen_generation = cq_state.work_generation;
-                return;
-            }
-        }
-        // CQ was removed while we slept — nothing to wait on.
-        return;
-    }
-}
-
-/// Like [`wait_on_cq`] but also returns when `timeout_ms` elapses. Returns
-/// whether the work-generation condition was met (`true`) or the deadline
-/// fired first or waiter admission failed (`false`).
-pub fn wait_on_cq_timeout(
-    asid: AddressSpaceId,
-    cq: CqId,
-    _min_complete: u32,
-    timeout_ms: u64,
-) -> bool {
-    use crate::klib::time::duration::ExtDuration;
-
-    struct CqTimeoutWake {
-        tid: crate::cpu::scheduler::threads::ThreadId,
-        generation: crate::cpu::scheduler::threads::ThreadGeneration,
-    }
-    impl Observer for CqTimeoutWake {
-        fn notify(self: Arc<Self>) {
-            let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(self.tid, self.generation);
-        }
-    }
-
-    let Some(tid) = SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid() else {
-        return false;
-    };
-
-    {
-        let mut registry = COMPLETIONS.write();
-        if let Some(as_completions) = registry.get_mut(&asid) {
-            flush_cq_backlog(as_completions, cq);
-            if let Some(cq_state) = as_completions.cqs.get_mut(&cq)
-                && charlotte_lifecycle::classify_timed_wait(
-                    cq_state.last_seen_generation,
-                    cq_state.work_generation,
-                ) == charlotte_lifecycle::TimedWaitOutcome::Work
-            {
-                cq_state.last_seen_generation = cq_state.work_generation;
-                return true;
-            }
-        }
-    }
-
-    let observable = CqObservable {
-        asid,
-        cq,
-    };
-    // Publishing Blocked and installing its watchdog must be non-preemptible.
-    let setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
-    let Some((expected_generation, sponsor)) = crate::timers::thread_timer_context(tid) else {
-        return false;
-    };
-    let Ok(timeout_obs) = Arc::try_new(CqTimeoutWake {
-        tid,
-        generation: expected_generation,
-    }) else {
-        return false;
-    };
-    let Ok((timer_event, timeout_handle)) =
-        crate::timers::prepare_watchdog(ExtDuration::from_millis(timeout_ms as u128), &sponsor)
-    else {
-        return false;
-    };
-    timer_event.event().register_observer(Arc::downgrade(&timeout_obs) as Weak<dyn Observer>);
-    let generation = match SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
-        tid,
-        &observable,
-        crate::cpu::scheduler::threads::MigrationConstraint::CompletionQueueWait,
-    ) {
-        Ok(generation) => generation,
-        Err(_) => return false,
-    };
-
-    debug_assert_eq!(generation, expected_generation);
-    timer_event.enqueue();
-
-    {
-        let registry = COMPLETIONS.read();
-        if let Some(cq_state) = registry.get(&asid).and_then(|c| c.cqs.get(&cq))
-            && cq_state.work_generation != cq_state.last_seen_generation
-        {
-            let _ = SYSTEM_SCHEDULER.read().submit_woken_thread(tid, generation);
-        }
-    }
-
-    drop(setup);
-    yield_lp();
-
-    // A CQ notification may win before the deadline. Remove its now-useless
-    // watchdog rather than leaving an anonymous event to churn through the
-    // timer queue later. Cancellation is harmless if the timer already fired.
-    let _ = crate::timers::cancel_event(timeout_handle);
-
-    // Ready admission has already dropped the owning CQ registration, even
-    // when the watchdog wins or another strong Waker reference is retained.
-
-    let mut registry = COMPLETIONS.write();
-    if let Some(cq_state) = registry.get_mut(&asid).and_then(|c| c.cqs.get_mut(&cq))
-        && charlotte_lifecycle::classify_timed_wait(
-            cq_state.last_seen_generation,
-            cq_state.work_generation,
-        ) == charlotte_lifecycle::TimedWaitOutcome::Work
-    {
-        cq_state.last_seen_generation = cq_state.work_generation;
-        return true;
-    }
-    false
 }

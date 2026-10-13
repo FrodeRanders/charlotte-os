@@ -413,7 +413,7 @@ pub fn sleep_millis(milliseconds: u64) {
 ///
 /// This is the event-driven counterpart to the busy `yield_lp` poll loops:
 /// the thread parks in `Blocked` state with its waker registered on
-/// `observable` (exactly like `sleep`, `wait_reply`, and `cq_wait`), so the
+/// `observable` (exactly like `sleep`, `wait_reply`, and `cq_wait_checked`), so the
 /// LP is free to idle, drain deferred device wakes, and deliver timer PPIs
 /// while the wait is in flight.
 ///

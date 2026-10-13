@@ -37,7 +37,6 @@ use catten_syscall::{
     THREAD_STATISTICS_MAGIC,
     THREAD_STATISTICS_RECORD_U64S,
     THREAD_STATISTICS_VERSION,
-    cq_wait_timeout,
     monotonic_clock,
     thread_domain_record as domain_record,
     thread_exit,
@@ -592,7 +591,7 @@ fn main(ctx: Context) -> ! {
         } else {
             remaining_ms
         };
-        cq_wait_timeout(1, remaining_ms, 0);
+        catten_services::reactor::wait(Some(remaining_ms), 0);
         ticks = monotonic_clock().0;
 
         loop {

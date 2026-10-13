@@ -15,7 +15,7 @@ Each sitas shard has:
         \texttt{Poll::Pending} and whose wakers have since been invoked.
     \item One timer wheel: futures awaiting deadlines.
     \item One CQ partition: the completion queue on which this shard
-        waits (\texttt{CQ\_WAIT}).
+        waits (\texttt{checked CQ wait}).
     \item Shard-owned service state: mutable data that only this
         executor touches.
 \end{itemize}
@@ -47,7 +47,7 @@ loop {
 
     // 3. No ready tasks? Block in the unified wait.
     if ready_tasks.is_empty() && timer_wheel.is_empty() {
-        reactor.wait_for_events(); // -> CQ_WAIT
+        reactor.wait_for_events(); // -> checked CQ wait
     }
 }
 \end{lstlisting}
@@ -61,7 +61,7 @@ the same LP via the kernel scheduler, or to idle).
 \label{sec:sitas-unified-wait}
 
 When the executor has no ready tasks and no pending timers, it calls
-\texttt{CQ\_WAIT} on the shard's completion queue. This is the \textbf{only}
+\texttt{checked CQ wait} on the shard's completion queue. This is the \textbf{only}
 blocking point in the shard's execution.
 
 Three event sources converge on this one wait point:
@@ -166,25 +166,36 @@ is the \texttt{ShardParker} trait:
 
 \begin{lstlisting}[style=rustCode]
 trait ShardParker {
-    fn park(&self);    // Block the current thread.
+    fn park(&self, timeout: Option<Duration>); // Block the current thread.
     fn unpark(&self);  // Wake the blocked thread (from another shard).
 }
 \end{lstlisting}
 
-On CharlotteOS, the implementation is:
+On CharlotteOS, private shard reactors use the checked CQ wait (syscall 88),
+with an explicit timed flag and separate readiness, deadline and admission-rejection
+outcomes. For a queue with one waiter, the safe runtime boundary is:
 
 \begin{lstlisting}[style=rustCode]
-fn park(&self) { syscall::cq_wait(self.cq_id); }
-fn unpark(&self) { syscall::cq_wake(self.cq_id, self.target_lp); }
+let outcome = catten_rt::cq::wait(timeout_ms, cq_id)
+    .unwrap_or_else(|_| catten_rt::domain_abort());
+// Recheck all sources; readiness does not observe a result.
+catten_syscall::cq_wake(cq_id); // Peer notification.
 \end{lstlisting}
 
-The parker maps directly to \texttt{CQ\_WAIT} and \texttt{CQ\_WAKE}. There is no
-intermediate thread pool, condition variable, or busy-loop.
-The thread parks on native completion and message state.
+The sibling Sitas backend uses that same runtime ABI 3 contract. Its reactor
+retains one monotonic deadline; wakeups cannot restart it. Runtime sleep also
+rechecks its original deadline, so an unrelated completion cannot shorten sleep.
+Rejected waiter admission logs and aborts the domain, preserving uncertain
+operation ownership rather than becoming a fake wake or an executor retry loop.
 
-This direct mapping is the basis of the ``no retrofit tax'' claim. The runtime
-does not need a thread pool to translate blocking calls into futures because
-\texttt{CQ\_WAIT} covers the shard's asynchronous sources.
+Mapped per-shard CQ rings isolate reactor wakes. Public parkers sharing a CQ
+retain a 5 ms timer backstop because another reader can consume its shared
+work-generation cursor. This is bounded timer recovery, not a per-waiter readiness
+contract. Removing that backstop requires the corresponding notification proof.
+
+This native mapping needs no intermediate thread pool or condition variable.
+The checked CQ source covers endpoint, completion and explicit peer readiness;
+the removed unchecked syscalls 12/42 have no compatibility adapter.
 
 \section{Concurrency and execution consequences}
 
@@ -266,7 +277,7 @@ The demo separates kernel and userspace responsibilities.
     \item \texttt{spawn\_thread} via SVC, which pins each shard thread to
         its LP.
     \item The completion queue: a ring mapped read/write into user memory,
-        with \texttt{CQ\_WAIT}/\texttt{CQ\_WAKE} as the only blocking
+        with \texttt{checked CQ wait}/\texttt{CQ\_WAKE} as the only blocking
         primitive.
 \end{itemize}
 

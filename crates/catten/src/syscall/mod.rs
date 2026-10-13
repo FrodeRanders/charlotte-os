@@ -86,9 +86,6 @@ pub mod call_no {
     pub const MAILBOX_RECV: u16 = SyscallNumber::MailboxRecv as u16;
     /// Block on a completion with a timeout (milliseconds in x2).
     pub const COMPLETION_WAIT_TIMEOUT: u16 = SyscallNumber::CompletionWaitTimeout as u16;
-    /// Block until CQ `x2` of the caller has at least `x1` pending entries or
-    /// an explicit wake is posted to it.
-    pub const CQ_WAIT: u16 = SyscallNumber::CqWait as u16;
     /// Open a sender capability targeting LP `x1`. Returns cap in `x0`.
     pub const MAILBOX_OPEN_SEND: u16 = SyscallNumber::MailboxOpenSend as u16;
     /// Open a receiver capability for the caller's current LP. Returns cap in `x0`.
@@ -159,14 +156,11 @@ pub mod call_no {
     /// minted connection cap in x8 of IPC_RECV/IPC_RECV_BLOCK.
     pub const IPC_SCALAR_CALL_CONNECTION_COPY: u16 =
         SyscallNumber::IpcScalarCallConnectionCopy as u16;
+    /// Checked CQ wait: x1=timeout, x2=queue, x3=timed flag; pending/status in x0/x1.
+    pub const CQ_WAIT_CHECKED: u16 = SyscallNumber::CqWaitChecked as u16;
     /// Post an explicit wake to CQ `x1`'s waiters (cross-shard reactor wake).
     /// Returns 0.
     pub const CQ_WAKE: u16 = SyscallNumber::CqWake as u16;
-    /// Block until CQ `x3` of the caller has at least `x1` entries, an
-    /// explicit wake is posted to it, or `x2` milliseconds elapse. Returns the
-    /// pending entry count in x0 and 1 in x1 if the deadline fired first, 0
-    /// otherwise.
-    pub const CQ_WAIT_TIMEOUT: u16 = SyscallNumber::CqWaitTimeout as u16;
     /// Bind endpoint `x1`'s readiness to the caller's CQ `x2`: the kernel
     /// posts a coalesced wake to that queue on the endpoint's
     /// empty-to-nonempty transition and on closure. Returns status in x0.
@@ -289,7 +283,6 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::MailboxSend => sys_mailbox_send(frame),
         SyscallNumber::MailboxRecv => sys_mailbox_recv(frame),
         SyscallNumber::CompletionWaitTimeout => sys_completion_wait_timeout(frame),
-        SyscallNumber::CqWait => sys_cq_wait(frame),
         SyscallNumber::MailboxOpenSend => sys_mailbox_open_send(frame),
         SyscallNumber::MailboxOpenRecv => sys_mailbox_open_recv(frame),
         SyscallNumber::MailboxSendCap => sys_mailbox_send_cap(frame),
@@ -325,7 +318,6 @@ pub fn syscall_dispatch(frame: &mut TrapFrame, syscall_no: u16) {
         SyscallNumber::IpcScalarCallConnection => sys_ipc_scalar_call_connection(frame),
         SyscallNumber::IpcScalarCallConnectionCopy => sys_ipc_scalar_call_connection_copy(frame),
         SyscallNumber::CqWake => sys_cq_wake(frame),
-        SyscallNumber::CqWaitTimeout => sys_cq_wait_timeout(frame),
         SyscallNumber::CqWaitChecked => sys_cq_wait_checked(frame),
         SyscallNumber::IpcEndpointBindCq => sys_ipc_endpoint_bind_cq(frame),
         SyscallNumber::IpcEndpointResize => sys_ipc_endpoint_resize(frame),
@@ -1816,33 +1808,11 @@ fn sys_completion_wait_timeout(frame: &mut TrapFrame) {
     };
 }
 
-fn sys_cq_wait(frame: &mut TrapFrame) {
-    let asid = caller_asid(frame);
-    let min_complete = frame.regs[1].max(1) as u32;
-    let cq = frame.regs[2] as u32;
-    crate::completion::wait_on_cq(asid, cq, min_complete);
-    frame.regs[0] = crate::completion::cq_pending(asid, cq) as u64;
-}
-
 fn sys_cq_wake(frame: &mut TrapFrame) {
     let asid = caller_asid(frame);
     let cq = frame.regs[1] as u32;
     crate::completion::wake(asid, cq);
     frame.regs[0] = 0;
-}
-
-fn sys_cq_wait_timeout(frame: &mut TrapFrame) {
-    let asid = caller_asid(frame);
-    let min_complete = frame.regs[1].max(1) as u32;
-    let timeout_ms = frame.regs[2];
-    let cq = frame.regs[3] as u32;
-    let condition_met = crate::completion::wait_on_cq_timeout(asid, cq, min_complete, timeout_ms);
-    frame.regs[0] = crate::completion::cq_pending(asid, cq) as u64;
-    frame.regs[1] = if condition_met {
-        0
-    } else {
-        1
-    };
 }
 
 fn sys_cq_wait_checked(frame: &mut TrapFrame) {
@@ -1852,7 +1822,15 @@ fn sys_cq_wait_checked(frame: &mut TrapFrame) {
         frame.regs[1] = catten_syscall::completion_status::INVALID_CAPABILITY;
         return;
     };
-    let timeout = (frame.regs[1] != u64::MAX).then_some(frame.regs[1]);
+    let timeout = match frame.regs[3] {
+        0 if frame.regs[1] == 0 => None,
+        1 => Some(frame.regs[1]),
+        _ => {
+            frame.regs[0] = 0;
+            frame.regs[1] = catten_syscall::completion_status::INVALID_CAPABILITY;
+            return;
+        }
+    };
     frame.regs[1] = match crate::completion::wait_on_cq_checked(asid, cq, timeout) {
         Ok(true) => catten_syscall::completion_status::READY,
         Ok(false) => catten_syscall::completion_status::PENDING_OR_TIMEOUT,

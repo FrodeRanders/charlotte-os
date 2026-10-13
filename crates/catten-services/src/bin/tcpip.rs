@@ -69,7 +69,6 @@ use catten_services::{
 };
 use catten_syscall::{
     cq_read,
-    cq_wait_timeout,
     ipc_recv,
     ipc_reply,
     ipc_status,
@@ -1371,7 +1370,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
         }
 
-        let _ = cq_wait_timeout(1, CLOCK_TICK_MS, 0);
+        let _ = catten_services::reactor::wait(Some(CLOCK_TICK_MS), 0);
         // Bound draining even if another source can replenish this CQ. Time
         // comes from the scalar clock, not the number of cookies consumed.
         for _ in 0..cq.entries {

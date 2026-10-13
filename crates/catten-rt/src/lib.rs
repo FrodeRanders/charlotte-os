@@ -30,6 +30,7 @@
 #![no_std]
 
 pub mod config;
+pub mod cq;
 pub mod entropy;
 pub mod log;
 pub mod owned;

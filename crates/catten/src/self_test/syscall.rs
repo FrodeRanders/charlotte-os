@@ -101,6 +101,22 @@ fn create_syscall_test_address_space(label: &str) -> crate::memory::AddressSpace
     asid
 }
 
+pub(crate) fn test_cq_wait_result(
+    asid: crate::memory::AddressSpaceId,
+    cq: u32,
+    timeout: Option<u64>,
+) -> (u64, u64) {
+    let mut frame = synthetic_trap_frame_in(
+        asid,
+        0,
+        timeout.unwrap_or(0),
+        u64::from(cq),
+        u64::from(timeout.is_some()),
+    );
+    syscall::syscall_dispatch(&mut frame, call_no::CQ_WAIT_CHECKED);
+    (frame.regs[0], frame.regs[1])
+}
+
 pub(crate) fn test_completion_wait_result(
     asid: crate::memory::AddressSpaceId,
     cap: u64,
@@ -237,11 +253,12 @@ pub fn test_syscall_dispatch() {
     completion::complete(asid, cap2, OpResult::Cancelled).unwrap();
     completion::close(asid, cap2).unwrap();
 
-    // CQ_WAIT (synthetic, outside thread context): routes and reports pending.
-    {
-        let mut f = synthetic_trap_frame_in(asid, 0, 1, 0, 0);
-        syscall::syscall_dispatch(&mut f, call_no::CQ_WAIT);
-        assert_eq!(f.regs[0], 0, "CQ_WAIT should report no pending CQ entries");
+    // Checked CQ ABI rejects unknown/wide queues and noncanonical timed flags.
+    for (timeout, cq, timed) in [(0, u64::MAX, 0), (0, u32::MAX as u64, 0), (0, 0, 2), (1, 0, 0)] {
+        let mut f = synthetic_trap_frame_in(asid, 0, timeout, cq, timed);
+        syscall::syscall_dispatch(&mut f, call_no::CQ_WAIT_CHECKED);
+        assert_eq!(f.regs[0], 0);
+        assert_eq!(f.regs[1], catten_syscall::completion_status::INVALID_CAPABILITY);
     }
 
     // Mailbox endpoint capabilities.

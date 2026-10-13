@@ -38,7 +38,6 @@ use catten_services::{
 };
 use catten_syscall::{
     cq_read,
-    cq_wait_timeout,
     monotonic_clock,
     thread_exit,
 };
@@ -942,7 +941,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         handle_requests(&endpoint, &mut model, server_ipv4);
         let Some(now_mono) = read_monotonic() else {
             config::write::<u32>(status::ERROR, 0xe008);
-            cq_wait_timeout(1, LOOP_WAIT_MS, 0);
+            catten_services::reactor::wait(Some(LOOP_WAIT_MS), 0);
             continue;
         };
         if let Some(obj_conn) = obj_conn.as_ref() {
@@ -1047,7 +1046,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             }
         }
 
-        cq_wait_timeout(1, LOOP_WAIT_MS, 0);
+        catten_services::reactor::wait(Some(LOOP_WAIT_MS), 0);
         while unsafe { cq_read(cq.base, cq.entries) }.is_some() {}
     }
 }

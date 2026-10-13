@@ -13,7 +13,7 @@
 //!   object tracks pending/ack state across re-arming.
 //!
 //! The waiter and driver run as scheduled kernel threads, mirroring the
-//! `cq_wait` self-test: every release condition is also observed by the
+//! `cq_wait_checked` self-test: every release condition is also observed by the
 //! wait's fast path if it is posted before the waiter blocks, so the flow is
 //! robust to scheduling order.
 
@@ -422,7 +422,8 @@ extern "C" fn irq_waiter() {
     // Round 1: released by the deterministic kernel delivery path.
     let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     let (pending, count) = loop {
-        let _ = completion::wait_on_cq_timeout(fixture_asid(false), 0, 1, 100);
+        completion::wait_on_cq_checked(fixture_asid(false), 0, Some(100))
+            .expect("device fixture CQ admission");
         let status = device::interrupt_status(fixture_asid(false), irq)
             .expect("[device] status after round 1 failed");
         if status.0 != 0 {
@@ -450,7 +451,8 @@ extern "C" fn irq_waiter() {
     device_phase(4, irq, 0);
     let deadline = crate::self_test::results::Deadline::after_millis(10_000);
     let pending = loop {
-        let _ = completion::wait_on_cq_timeout(fixture_asid(false), 0, 1, 100);
+        completion::wait_on_cq_checked(fixture_asid(false), 0, Some(100))
+            .expect("device fixture CQ admission");
         let (pending, _) = device::interrupt_status(fixture_asid(false), irq)
             .expect("[device] status after round 2 failed");
         if pending != 0 {

@@ -195,8 +195,6 @@ fn test_scheduler_waiter_admission() {
     for _ in 0..64 {
         assert!(!completion::wait_timeout(CQW_ASID, cap, 1).unwrap());
         assert_eq!(completion::waiter_count(CQW_ASID, cap), 0);
-        assert!(!completion::wait_on_cq_timeout(CQW_ASID, 2, 1, 1));
-        assert_eq!(completion::cq_waiter_count(CQW_ASID, 2), 0);
         assert_eq!(completion::wait_on_cq_checked(CQW_ASID, 2, Some(1)), Ok(false));
         assert_eq!(completion::cq_waiter_count(CQW_ASID, 2), 0);
     }
@@ -253,6 +251,15 @@ fn test_scheduler_waiter_admission() {
             crate::self_test::syscall::test_completion_wait_result(CQW_ASID, cap, 10_000),
             (catten_syscall::completion_status::WAIT_ADMISSION_FAILED, 0)
         );
+        assert_eq!(
+            crate::self_test::syscall::test_cq_wait_result(CQW_ASID, 2, Some(u64::MAX)),
+            (0, catten_syscall::completion_status::WAIT_ADMISSION_FAILED),
+            "maximum finite timeout must attempt watchdog admission, not become event-only",
+        );
+        assert_eq!(
+            crate::self_test::syscall::test_cq_wait_result(CQW_ASID, 2, Some(0)),
+            (0, catten_syscall::completion_status::PENDING_OR_TIMEOUT),
+        );
         assert_eq!(completion::wait_timeout(CQW_ASID, cap, 0), Ok(false));
         assert_eq!(
             crate::self_test::syscall::test_completion_wait_result(CQW_ASID, cap, 0),
@@ -283,6 +290,10 @@ fn test_scheduler_waiter_admission() {
         assert_eq!(
             completion::wait_on_cq_checked(CQW_ASID, 2, timeout),
             Err(completion::CqWaitError::AdmissionRejected)
+        );
+        assert_eq!(
+            crate::self_test::syscall::test_cq_wait_result(CQW_ASID, 2, timeout),
+            (0, catten_syscall::completion_status::WAIT_ADMISSION_FAILED),
         );
         assert_eq!(completion::cq_waiter_count(CQW_ASID, 2), waiter_budget::SOURCE_LIMIT);
         assert!(matches!(
@@ -403,7 +414,7 @@ fn spin_until(flag: &AtomicU32, what: &str) {
 
 extern "C" fn cq_waiter() {
     // Round 1: released by a posted completion entry.
-    completion::wait_on_cq(CQW_ASID, 0, 1);
+    assert_eq!(completion::wait_on_cq_checked(CQW_ASID, 0, None), Ok(true));
     assert!(
         completion::cq_pending(CQW_ASID, 0) >= 1,
         "[cq wait] round 1 release must observe a pending CQ entry"
@@ -412,7 +423,7 @@ extern "C" fn cq_waiter() {
 
     // Round 2: released by an explicit wake, with no completion entry.
     spin_until(&ROUND2_START, "round 2 start");
-    completion::wait_on_cq(CQW_ASID, 0, 1);
+    assert_eq!(completion::wait_on_cq_checked(CQW_ASID, 0, None), Ok(true));
     assert_eq!(
         completion::cq_pending(CQW_ASID, 0),
         0,
@@ -423,7 +434,7 @@ extern "C" fn cq_waiter() {
     // Round 3: a wait on a second (per-shard) queue is released by a wake
     // targeted at that queue.
     spin_until(&ROUND3_START, "round 3 start");
-    completion::wait_on_cq(CQW_ASID, 1, 1);
+    assert_eq!(completion::wait_on_cq_checked(CQW_ASID, 1, None), Ok(true));
     assert_eq!(
         completion::cq_pending(CQW_ASID, 1),
         0,
@@ -436,7 +447,7 @@ extern "C" fn cq_waiter() {
     // wake, not a completion entry). The reactor contract is: released with
     // an empty ring means "inspect your endpoints".
     spin_until(&ROUND4_START, "round 4 start");
-    completion::wait_on_cq(CQW_ASID, 0, 1);
+    assert_eq!(completion::wait_on_cq_checked(CQW_ASID, 0, None), Ok(true));
     assert_eq!(
         completion::cq_pending(CQW_ASID, 0),
         0,

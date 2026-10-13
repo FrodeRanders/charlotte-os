@@ -181,7 +181,7 @@ the driver's CQ. When an I/O completion arrives:
 
 1. The MSI-X interrupt fires → GIC/APIC interrupt → kernel defers a wake
    to the driver's CQ.
-2. The driver's shard wakes from `cq_wait`.
+2. The driver's shard wakes from `cq_wait_checked`.
 3. The driver reads the I/O Completion Queue head doorbell to determine
    which completions arrived.
 4. For each completion, it finds the corresponding retained reply token
@@ -191,8 +191,9 @@ The QEMU AArch64 bring-up path uses the GICv2m MSI frame exposed by
 `virt,gic-version=3,msi=gicv2m`. The kernel allocates an SPI from that frame,
 programs MSI-X table entry zero through the BAR named by the PCI capability,
 and delegates only the resulting interrupt capability to the driver. The NVMe
-I/O CQ enables interrupt vector zero. A bounded `cq_wait_timeout` remains as a
-compatibility fallback for platforms where MSI-X setup is unavailable.
+I/O CQ enables interrupt vector zero. A checked 10 ms CQ watchdog remains for hardware where MSI-X setup is
+unavailable or an edge is suppressed. This is bounded hardware polling, not
+an older syscall-ABI fallback.
 
 ### 3.5 Memory allocation for queues
 
@@ -465,7 +466,7 @@ pages via DMA (with BorrowWrite). WRITE reads directly from the caller's
 pages via DMA (with BorrowRead). No intermediate kernel buffer, no copy.
 
 **The unified shard wait.** The NVMe driver's main loop blocks on one
-`cq_wait` that releases for both endpoint IPC (client requests) and
+`cq_wait_checked` that releases for both endpoint IPC (client requests) and
 device interrupts (I/O completions). This is the same pattern as the
 UART and virtio-net drivers — proven and tested.
 

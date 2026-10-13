@@ -148,11 +148,10 @@ impl CompletionQueueRing {
         }
     }
 
-    /// Consume all pending entries, advancing `tail` to `head`.  Callers
-    /// that poll individual completions via `poll(cap)` rather than reading
-    /// the shared ring must drain it before calling `cq_wait` again;
-    /// otherwise the undrained entries make `pending()` non-zero, causing
-    /// `cq_wait` to return immediately without blocking.
+    /// Consume all pending entries, advancing `tail` to `head`. This discards
+    /// their ring notifications; callers must retain the corresponding operation
+    /// owners and observe any needed results separately. CQ waiting uses work
+    /// generations, so an undrained old entry does not force a wait to spin.
     ///
     /// # Safety
     ///

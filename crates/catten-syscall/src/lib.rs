@@ -83,7 +83,7 @@ define_syscall_numbers!(
     (MailboxSend, 9),
     (MailboxRecv, 10),
     (CompletionWaitTimeout, 11),
-    (CqWait, 12),
+    // 12 was the unchecked CQ wait; retired.
     (MailboxOpenSend, 13),
     (MailboxOpenRecv, 14),
     (MailboxSendCap, 15),
@@ -113,7 +113,7 @@ define_syscall_numbers!(
     (IpcScalarCallConnection, 39),
     (IpcScalarCallConnectionCopy, 40),
     (CqWake, 41),
-    (CqWaitTimeout, 42),
+    // 42 collapsed CQ timeout and admission rejection; retired.
     (IpcEndpointBindCq, 43),
     (DeviceMmioMap, 44),
     (DeviceMmioUnmap, 45),
@@ -408,7 +408,6 @@ unsafe fn svc3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             8 => asm!("svc #8", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             9 => asm!("svc #9", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             10 => asm!("svc #10", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
-            12 => asm!("svc #12", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             13 => asm!("svc #13", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             14 => asm!("svc #14", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             15 => asm!("svc #15", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
@@ -830,7 +829,6 @@ unsafe fn svc3_x1(imm: SyscallNumber, arg1: u64, arg2: u64, _arg3: u64) -> (u64,
             16 => asm!("svc #16", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             21 => asm!("svc #21", lateout("x0") ret, inlateout("x1") arg1 => x1_out, in("x2") arg2, in("x3") _arg3, options(nostack, nomem, preserves_flags)),
             24 => asm!("svc #24", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
-            42 => asm!("svc #42", lateout("x0") ret, inlateout("x1") arg1 => x1_out, in("x2") arg2, in("x3") _arg3, options(nostack, nomem, preserves_flags)),
             88 => asm!("svc #88", lateout("x0") ret, inlateout("x1") arg1 => x1_out, in("x2") arg2, in("x3") _arg3, options(nostack, preserves_flags)),
              47 => asm!("svc #47", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
             59 => asm!("svc #59", lateout("x0") ret, lateout("x1") x1_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
@@ -1327,38 +1325,30 @@ pub fn wait_timeout(cap: u64, timeout_ms: u64) -> (u64, u64) {
     unsafe { svc3_x1(SyscallNumber::CompletionWaitTimeout, cap, timeout_ms, 0) }
 }
 
-/// Block until CQ `cq` of the caller has at least `min_complete` pending
-/// entries or an explicit wake is posted to it.  Returns the pending count.
-/// If waiter admission fails, returns without parking; recheck the work condition.
-#[inline(always)]
-pub fn cq_wait(min_complete: u64, cq: u32) -> u64 {
-    unsafe { svc3(SyscallNumber::CqWait, min_complete, cq as u64, 0) }
-}
-
 /// Post an explicit wake to CQ `cq`'s waiters, so a peer shard blocked in
-/// [`cq_wait`]/[`cq_wait_timeout`] on that queue returns even without a
+/// [`cq_wait_checked`] on that queue returns even without a
 /// completion.
 #[inline(always)]
 pub fn cq_wake(cq: u32) -> u64 {
     unsafe { svc3(SyscallNumber::CqWake, cq as u64, 0, 0) }
 }
 
-/// Block until CQ `cq` of the caller has at least `min_complete` entries, an
-/// explicit wake is posted to it, or `timeout_ms` elapses. Returns
-/// `(pending, timed_out)` where `timed_out` is 1 if no work was observed,
-/// including deadline expiry or failed waiter admission.
-#[inline(always)]
-pub fn cq_wait_timeout(min_complete: u64, timeout_ms: u64, cq: u32) -> (u64, u64) {
-    unsafe { svc3_x1(SyscallNumber::CqWaitTimeout, min_complete, timeout_ms, cq as u64) }
-}
-
 /// Event-driven CQ wait with explicit outcome in the second return value:
 /// completion_status READY, PENDING_OR_TIMEOUT, WAIT_ADMISSION_FAILED, or
 /// INVALID_CAPABILITY. None waits without a watchdog; Some retains one total
 /// timeout. No completion capability is allocated. CQ interest is owning.
+/// x1 = timeout milliseconds, x2 = queue, x3 = explicit timed flag (0/1).
+/// None encodes (0, queue, 0); Some, including u64::MAX, encodes (ms, queue, 1).
 #[inline(always)]
 pub fn cq_wait_checked(timeout_ms: Option<u64>, cq: u32) -> (u64, CompletionStatusCode) {
-    unsafe { svc3_x1(SyscallNumber::CqWaitChecked, timeout_ms.unwrap_or(u64::MAX), cq as u64, 0) }
+    unsafe {
+        svc3_x1(
+            SyscallNumber::CqWaitChecked,
+            timeout_ms.unwrap_or(0),
+            cq as u64,
+            u64::from(timeout_ms.is_some()),
+        )
+    }
 }
 
 /// Bind pending reply readiness to one CQ. The pending capability owns the
@@ -1370,7 +1360,7 @@ pub fn ipc_reply_bind_cq(call: u64, cq: u32) -> u64 {
 
 /// Bind an endpoint's readiness to the caller's CQ `cq`: the kernel posts a
 /// coalesced wake to that queue when the endpoint's message queue becomes
-/// nonempty and when the endpoint closes, so one [`cq_wait`] covers both
+/// nonempty and when the endpoint closes, so one [`cq_wait_checked`] covers both
 /// completions and endpoint work. Returns an IPC status code.
 #[inline(always)]
 pub fn ipc_endpoint_bind_cq(endpoint: u64, cq: u32) -> u64 {
@@ -1424,7 +1414,7 @@ pub fn device_mmio_unmap(cap: u64) -> DeviceStatusCode {
 
 /// Bind an interrupt capability to the caller's CQ `cq` and arm the source.
 /// Delivered interrupts post a coalesced readiness wake to that queue, so one
-/// [`cq_wait`] covers device interrupts, completions, and endpoint work.
+/// [`cq_wait_checked`] covers device interrupts, completions, and endpoint work.
 /// Returns a device status code.
 #[inline(always)]
 pub fn device_irq_bind_cq(cap: u64, cq: u32) -> DeviceStatusCode {
@@ -2365,5 +2355,17 @@ mod receive_abi_tests {
         assert_eq!(SyscallNumber::IpcRecv as u16, 71);
         assert_eq!(SyscallNumber::IpcRecvBlock as u16, 72);
         assert_eq!(SyscallNumber::IpcRecvVec as u16, 73);
+    }
+}
+
+#[cfg(test)]
+mod cq_abi_tests {
+    use super::SyscallNumber;
+    #[test]
+    fn unchecked_cq_wait_numbers_are_unassigned() {
+        for old in [12, 42] {
+            assert_eq!(SyscallNumber::try_from(old), Err(()));
+        }
+        assert_eq!(SyscallNumber::try_from(88), Ok(SyscallNumber::CqWaitChecked));
     }
 }

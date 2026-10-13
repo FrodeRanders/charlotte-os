@@ -232,7 +232,8 @@ pub(crate) fn test_scheduled_cleanup() {
     // Synthetic completion namespace / trap frame are kernel ABI fixtures,
     // not a real EL0 domain-saturation test. No backing memory is delegated.
     let asid = 0xfa11;
-    crate::completion::open_address_space(asid, 2);
+    crate::completion::open_address_space_with_cq(asid, 2, 2)
+        .expect("timer fixture completion queue admission");
     let cap = crate::completion::submit_timer(asid, 60_000).unwrap();
     let mut frame = crate::syscall::TrapFrame {
         regs: [0; 19],
@@ -257,7 +258,10 @@ pub(crate) fn test_scheduled_cleanup() {
     }
     assert_eq!(frame.regs[0], catten_syscall::completion_status::WAIT_ADMISSION_FAILED);
     assert!(crate::completion::poll(asid, cap).unwrap().is_none());
-    assert!(!crate::completion::wait_on_cq_timeout(asid, 0, 1, 1));
+    assert_eq!(
+        crate::completion::wait_on_cq_checked(asid, 0, Some(60_000)),
+        Err(crate::completion::CqWaitError::AdmissionRejected),
+    );
     crate::completion::cancel(asid, cap).unwrap();
     crate::completion::close(asid, cap).unwrap();
     crate::completion::close_address_space(asid);

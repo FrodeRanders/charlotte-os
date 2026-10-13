@@ -116,7 +116,6 @@ use catten_syscall::{
     IpcRights,
     close as completion_close,
     cq_read,
-    cq_wait_timeout,
     ipc_close,
     ipc_connection_watch_closed,
     ipc_endpoint_bind_cq,
@@ -1805,6 +1804,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut logged_raft_state = NodeState::Follower;
     let mut next_joint_diagnostic_ms = 0u64;
     let mut timer_armed = submit_detached_timer(LOOP_TICK_MS, 0, RAFT_TIMER_COOKIE) != u64::MAX;
+    let mut clock_watchdog = catten_services::deadline::Deadline::after(LOOP_TICK_MS);
     let mut last_heartbeat_broadcast = 0u64;
     let mut capacity_boot_nonce = None;
     let mut capacity_last_seen_ms: BTreeMap<u64, (u64, u64)> = BTreeMap::new();
@@ -1839,12 +1839,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // are not guaranteed to wake this CQ. Bound the reactor sleep to its
         // loop period so the relmsg receive queue cannot fill behind an
         // armed-but-delayed timer.
-        let (_, timed_out) = cq_wait_timeout(1, LOOP_TICK_MS, 0);
+        catten_services::reactor::wait(Some(clock_watchdog.remaining_ms()), 0);
         // The CQ timeout is an independent watchdog, not merely a fallback
         // for failure to *submit* the detached timer. A submitted timer can
         // have its completion delayed or dropped; ignoring the timeout while
         // `timer_armed` stayed true would then freeze Raft time forever.
-        let mut tick_due = timed_out != 0;
+        let mut tick_due = clock_watchdog.expired();
         while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
             if completion.cookie == RAFT_TIMER_COOKIE {
                 tick_due = true;
@@ -4903,6 +4903,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             &mut last_heartbeat_broadcast,
             &mut timer_armed,
         );
+        if tick_due {
+            // Readiness for other work cannot restart the clock watchdog.
+            clock_watchdog = catten_services::deadline::Deadline::after(LOOP_TICK_MS);
+        }
         if logged_membership_epoch != node.membership_epoch() {
             logged_membership_epoch = node.membership_epoch();
             catten_rt::logln!(

@@ -838,6 +838,14 @@ the corrected RPC polling paths, and the remaining notification gaps.
   use `observe_registered`. The timer's single internal slot is not a general
   callback-registration API.
 
+- CQ wait has one checked ABI (88): explicit timeout milliseconds, queue and
+  timed flag, with readiness/deadline/admission rejection kept distinct. Syscalls
+  12/42 and their SDK/kernel adapters are retired. Use `catten_rt::cq::wait`;
+  ordinary service reactors use the shared fail-closed policy, while specialized
+  admission recovery must retain original pending owners and deadlines. A wait
+  rejection is neither a clock tick nor permission to replay accepted work.
+  See `docs/reference/cq-wait.md`. Runtime ABI 3 and all signed variants match
+  this register contract, including the sibling Sitas dependency.
 - All IPC receive forms use the twelve-register authenticated envelope (71--73).
   Use `Endpoint::receive`/`try_receive` and authorize from the captured sender
   generation/principal/roles, never a later lookup of the recyclable ASID. Zero
