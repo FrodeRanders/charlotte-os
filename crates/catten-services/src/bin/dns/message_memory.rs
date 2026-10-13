@@ -47,42 +47,11 @@ pub(super) fn read_generation(message: &IpcMessage) -> Option<u64> {
     Some(generation)
 }
 
-/// Read an `OP_DEPLOY_NAMED` request, consuming its moved memory object.
-pub(super) struct NamedDeployRequest {
-    pub name: Vec<u8>,
-    pub object_id: u64,
-    pub node_key: u64,
-    pub digest: [u8; 32],
-    pub descriptor: Vec<u8>,
-}
-
-pub(super) fn read_named_deploy_request(message: &IpcMessage) -> Option<NamedDeployRequest> {
-    let bytes = read_moved_bytes(message, 4096)?;
-    let name_len = usize::from(u16::from_le_bytes(bytes.get(0..2)?.try_into().ok()?));
-    if name_len == 0 || name_len > charlotte_launch::deployment::MAX_ARTIFACT_NAME_LEN {
-        return None;
-    }
-    let after_name = 2usize.checked_add(name_len)?;
-    let name = bytes.get(2..after_name)?.to_vec();
-    let object_id = u64::from_le_bytes(bytes.get(after_name..after_name + 8)?.try_into().ok()?);
-    let node_key = u64::from_le_bytes(bytes.get(after_name + 8..after_name + 16)?.try_into().ok()?);
-    let digest: [u8; 32] = bytes.get(after_name + 16..after_name + 48)?.try_into().ok()?;
-    let descriptor_len = usize::try_from(u32::from_le_bytes(
-        bytes.get(after_name + 48..after_name + 52)?.try_into().ok()?,
-    ))
-    .ok()?;
-    if descriptor_len > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
-        || bytes.len() != after_name + 52 + descriptor_len
-    {
-        return None;
-    }
-    Some(NamedDeployRequest {
-        name,
-        object_id,
-        node_key,
-        digest,
-        descriptor: bytes[after_name + 52..].to_vec(),
-    })
+/// Consume the exact signed descriptor supplied to `OP_DEPLOY_SUBMIT`.
+pub(super) fn read_deployment_descriptor(message: &IpcMessage) -> Option<Vec<u8>> {
+    let bytes = read_moved_bytes(message, charlotte_launch::deployment::MAX_DESCRIPTOR_LEN)?;
+    charlotte_launch::deployment::decode(&bytes)?;
+    Some(bytes)
 }
 
 /// Read a full-length name from moved memory. `arg0` is the byte length.

@@ -77,20 +77,9 @@ fn encode_release_replicas(bytes: &[u8], nodes: &[Vec<u64>]) -> Option<Vec<u8>> 
 fn encode_release_with_operations(bytes: &[u8], nodes: &[u64]) -> Option<Vec<u8>> {
     super::encode_release_with_operations(bytes, nodes, &fixture_profiles())
 }
-fn encode_deploy(
-    name: &[u8],
-    object: u64,
-    node: u64,
-    _digest: &[u8; 32],
-    revision: &[u8],
-) -> Vec<u8> {
-    let seq = if revision.ends_with(b"2") {
-        2
-    } else {
-        1
-    };
-    let descriptor = signed_deployment(&fixture_pair(), name, seq);
-    super::encode_deploy(name, object, node, &[seq as u8; 32], &descriptor, 0)
+fn deploy_fixture(name: &[u8], node: u64, sequence: u64) -> Vec<u8> {
+    let descriptor = signed_deployment(&fixture_pair(), name, sequence);
+    super::encode_deploy(&descriptor, node, 0)
 }
 
 fn signed_deployment(pair: &KeyPair, name: &[u8], sequence: u64) -> Vec<u8> {
@@ -401,10 +390,7 @@ fn node_capacity_is_replay_fenced_and_survives_snapshot() {
 fn deployment_generation_survives_activation_and_snapshot() {
     let catalog = fixture_catalog();
     assert_eq!(
-        catalog.apply_with_result(
-            1,
-            &encode_deploy(b"orders", 17, 0x89ab_cdef, &[0x5a; 32], b"descriptor")
-        ),
+        catalog.apply_with_result(1, &deploy_fixture(b"orders", 0x89ab_cdef, 1)),
         1u64.to_le_bytes()
     );
     let prepared = catalog
@@ -424,10 +410,7 @@ fn deployment_generation_survives_activation_and_snapshot() {
 #[test]
 fn ingress_placement_requires_the_exact_ready_deployment_generation() {
     let catalog = fixture_catalog();
-    let first = catalog.apply_with_result(
-        1,
-        &encode_deploy(b"orders", 17, 0x89ab_cdef, &[0x5a; 32], b"descriptor-v1"),
-    );
+    let first = catalog.apply_with_result(1, &deploy_fixture(b"orders", 0x89ab_cdef, 1));
     assert_eq!(u64::from_le_bytes(first.try_into().unwrap()), 1);
     assert_eq!(
         catalog.ingress_placement(b"orders"),
@@ -451,10 +434,7 @@ fn ingress_placement_requires_the_exact_ready_deployment_generation() {
         })
     );
 
-    let second = catalog.apply_with_result(
-        1,
-        &encode_deploy(b"orders", 18, 0x1234_abcd, &[0x6b; 32], b"descriptor-v2"),
-    );
+    let second = catalog.apply_with_result(1, &deploy_fixture(b"orders", 0x1234_abcd, 2));
     assert_eq!(u64::from_le_bytes(second.try_into().unwrap()), 2);
     assert_eq!(
         catalog.ingress_placement(b"orders"),
@@ -578,7 +558,7 @@ fn consensus_domain_reset_discards_the_standalone_catalog() {
     let prepared = catalog.apply_with_result(1, &encode_register(b"dns", b"charlotte:1234abcd"));
     let service_generation = u64::from_le_bytes(prepared.try_into().unwrap());
     catalog.apply(1, &encode_activate(b"dns", service_generation));
-    catalog.apply(1, &encode_deploy(b"orders", 17, 0x1234_abcd, &[0x5a; 32], b"descriptor"));
+    catalog.apply(1, &deploy_fixture(b"orders", 0x1234_abcd, 1));
     assert!(catalog.lookup(b"dns").is_some());
     assert!(catalog.deployment(b"orders").is_some());
 
@@ -594,13 +574,13 @@ fn consensus_domain_reset_discards_the_standalone_catalog() {
 #[test]
 fn exact_deployment_retry_is_idempotent() {
     let catalog = fixture_catalog();
-    let command = encode_deploy(b"orders", 17, 0x1234_abcd, &[0x5a; 32], b"descriptor");
+    let command = deploy_fixture(b"orders", 0x1234_abcd, 1);
     let first = catalog.apply_with_result(1, &command);
     let retry = catalog.apply_with_result(2, &command);
     assert_eq!(u64::from_le_bytes(first.try_into().unwrap()), 1);
     assert_eq!(u64::from_le_bytes(retry.try_into().unwrap()), 1);
 
-    let replacement = encode_deploy(b"orders", 17, 0x89ab_cdef, &[0x5a; 32], b"descriptor");
+    let replacement = deploy_fixture(b"orders", 0x89ab_cdef, 1);
     let next = catalog.apply_with_result(3, &replacement);
     assert_eq!(u64::from_le_bytes(next.try_into().unwrap()), 2);
 }
@@ -614,12 +594,10 @@ fn deployment_capacity_rejects_new_keys_and_allows_replacements() {
             deployments.insert(
                 alloc::format!("fill-{index}").into_bytes(),
                 DeploymentEntry {
-                    object_id: index as u64,
-                    node_key: 0,
                     replica_nodes: Vec::new(),
                     replica_variants: Vec::new(),
                     generation: 1,
-                    artifact_digest: [0; 32],
+
                     descriptor: signed_deployment(
                         &fixture_pair(),
                         alloc::format!("fill-{index}").as_bytes(),
@@ -630,14 +608,12 @@ fn deployment_capacity_rejects_new_keys_and_allows_replacements() {
         }
     }
 
-    let overflow =
-        catalog.apply_with_result(1, &encode_deploy(b"overflow", 1, 1, &[0; 32], b"descriptor"));
+    let overflow = catalog.apply_with_result(1, &deploy_fixture(b"overflow", 1, 1));
     assert_eq!(overflow, crate::clusterctl::ERR_CAPACITY.to_le_bytes().to_vec());
 
-    let replacement =
-        catalog.apply_with_result(2, &encode_deploy(b"fill-0", 2, 2, &[1; 32], b"d2"));
+    let replacement = catalog.apply_with_result(2, &deploy_fixture(b"fill-0", 2, 2));
     assert_ne!(replacement, crate::clusterctl::ERR_CAPACITY.to_le_bytes().to_vec());
-    assert_eq!(catalog.deployment(b"fill-0").unwrap().object_id, 2);
+    assert_eq!(catalog.deployment(b"fill-0").unwrap().generation, 2);
 }
 
 #[test]
@@ -674,8 +650,8 @@ fn signed_release_is_atomic_idempotent_and_snapshot_persistent() {
     );
     assert_eq!(i64_result(catalog.apply_with_result(1, &command_v1)), 1);
     assert_eq!(i64_result(catalog.apply_with_result(2, &command_v1)), 1);
-    assert_eq!(catalog.deployment(b"receive").unwrap().node_key, 0x1111);
-    assert_eq!(catalog.deployment(b"publish").unwrap().node_key, 0x2222);
+    assert_eq!(catalog.deployment(b"receive").unwrap().replica_nodes, vec![0x1111]);
+    assert_eq!(catalog.deployment(b"publish").unwrap().replica_nodes, vec![0x2222]);
 
     let receive_v2 = signed_deployment(&pair, b"receive", 2);
     let publish_v2 = signed_deployment(&pair, b"publish", 2);
@@ -699,7 +675,7 @@ fn signed_release_is_atomic_idempotent_and_snapshot_persistent() {
         crate::clusterctl::ERR_STALE_DESCRIPTOR
     );
     let receive = catalog.deployment(b"receive").unwrap();
-    assert_eq!(receive.node_key, 0x3333);
+    assert_eq!(receive.replica_nodes, vec![0x3333]);
     assert_eq!(charlotte_launch::deployment::decode(&receive.descriptor).unwrap().sequence, 2);
 
     let restored = fixture_catalog();
@@ -808,11 +784,7 @@ fn rollout_status_and_remote_registration_are_canonical() {
         session: 3,
         request_id: 9,
         caller: b"charlotte:1234abcd".to_vec(),
-        artifact: b"orders".to_vec(),
-        object_id: 17,
-        node_key: 0,
-        digest: [0x5a; 32],
-        descriptor: b"signed descriptor".to_vec(),
+        descriptor: signed_deployment(&fixture_pair(), b"orders", 1),
     };
     let encoded = crate::rdeploy::encode_request(&request).unwrap();
     assert_eq!(
@@ -835,7 +807,7 @@ fn retired_catalog_snapshots_reject_without_changing_live_state() {
     let before = catalog.snapshot();
     let current = fixture_catalog().snapshot();
     // Historical magics, including the original CATALOGM tag.
-    for tag in b"M23456789ABCDEF" {
+    for tag in b"M23456789ABCDEFG" {
         let mut retired = current.clone();
         let magic = 0x4341_5441_4c4f_4700u64 | u64::from(*tag);
         retired[..8].copy_from_slice(&magic.to_le_bytes());
@@ -924,12 +896,10 @@ fn catalog_snapshot_rejects_missing_sections_and_unbounded_counts() {
 #[test]
 fn deployment_query_requires_complete_descriptor_and_replica_sections() {
     let entry = DeploymentEntry {
-        object_id: 17,
-        node_key: 4,
         replica_nodes: vec![4, 9],
         replica_variants: vec![0, 0],
         generation: 3,
-        artifact_digest: [0x5a; 32],
+
         descriptor: signed_deployment(&fixture_pair(), b"orders", 1),
     };
     let bytes = encode_deployment_result(&entry).unwrap();
@@ -943,23 +913,20 @@ fn deployment_query_requires_complete_descriptor_and_replica_sections() {
 }
 
 #[test]
-fn deployment_query_rejects_inconsistent_primary_and_replica_assignments() {
+fn deployment_query_rejects_invalid_generation_and_replica_pins() {
     let mut entry = DeploymentEntry {
-        object_id: 17,
-        node_key: 4,
         replica_nodes: vec![4, 9],
         replica_variants: vec![0, 0],
         generation: 3,
-        artifact_digest: [0x5a; 32],
+
         descriptor: signed_deployment(&fixture_pair(), b"orders", 1),
     };
     let bytes = encode_deployment_result(&entry).unwrap();
     for (offset, value) in [
-        (0, 0),
-        (16, 9),
-        (62 + entry.descriptor.len(), 0),
-        (72 + entry.descriptor.len(), 4),
-        (72 + entry.descriptor.len(), 3),
+        (8, 0),
+        (22 + entry.descriptor.len(), 0),
+        (32 + entry.descriptor.len(), 4),
+        (32 + entry.descriptor.len(), 3),
     ] {
         let mut malformed = bytes.clone();
         malformed[offset..offset + 8].copy_from_slice(&(value as u64).to_le_bytes());
@@ -967,7 +934,6 @@ fn deployment_query_rejects_inconsistent_primary_and_replica_assignments() {
     }
     entry.replica_nodes.clear();
     assert!(encode_deployment_result(&entry).is_none());
-    entry.node_key = 0;
     entry.replica_variants.clear();
     assert_eq!(decode_deployment_result(&encode_deployment_result(&entry).unwrap()), Some(entry));
 }
@@ -1191,7 +1157,7 @@ fn cpu_profile_is_incarnation_bound_and_unknown_profiles_cannot_place() {
         Err(crate::operations_admission::AdmissionError::UnsatisfiablePlacement)
     );
     assert_eq!(
-        catalog.apply_with_result(1, &super::encode_deploy(b"orders", 1, 2, &[1; 32], &[], 0)),
+        catalog.apply_with_result(1, &super::encode_deploy(&[], 2, 0)),
         crate::clusterctl::ERR_UNTRUSTED_DESCRIPTOR.to_le_bytes()
     );
 }
@@ -1254,4 +1220,99 @@ fn planner_filters_cpu_features_abi_and_every_node_before_ranking() {
         resolve_descriptor_assignments_with_capacity(&[&every], &[1, 2, 99], 1, &capacity).unwrap(),
         vec![vec![2]]
     );
+}
+
+#[test]
+fn descriptor_only_command_rejects_retired_tag_and_invalid_pins_without_mutation() {
+    let catalog = fixture_catalog();
+    let descriptor = signed_deployment(&fixture_pair(), b"orders", 1);
+    let command = super::encode_deploy(&descriptor, 4, 0);
+    let before = catalog.snapshot();
+    let mut retired = command.clone();
+    retired[0] = 0x05;
+    assert!(catalog.apply_with_result(1, &retired).is_empty());
+    for length in 0..command.len() {
+        catalog.apply(1, &command[..length]);
+        assert_eq!(catalog.snapshot(), before);
+    }
+    let mut extended = command.clone();
+    extended.push(0);
+    assert!(catalog.apply_with_result(1, &extended).is_empty());
+    for (node, variant) in [(0, 0), (4, 1)] {
+        assert_eq!(
+            catalog.apply_with_result(1, &super::encode_deploy(&descriptor, node, variant)),
+            crate::clusterctl::ERR_INCOMPATIBLE_TARGET.to_le_bytes()
+        );
+    }
+    let mut tampered = command.clone();
+    *tampered.last_mut().unwrap() ^= 1;
+    assert_eq!(
+        catalog.apply_with_result(1, &tampered),
+        crate::clusterctl::ERR_UNTRUSTED_DESCRIPTOR.to_le_bytes()
+    );
+    assert_eq!(catalog.snapshot(), before);
+    assert_eq!(catalog.apply_with_result(1, &command), 1u64.to_le_bytes());
+    assert_eq!(catalog.apply_with_result(2, &command), 1u64.to_le_bytes());
+}
+
+#[test]
+fn query_tag_and_signed_variant_indices_reject_legacy_or_malformed_results() {
+    let entry = DeploymentEntry {
+        generation: 1,
+        descriptor: signed_deployment(&fixture_pair(), b"orders", 1),
+        replica_nodes: vec![4],
+        replica_variants: vec![0],
+    };
+    let current = encode_deployment_result(&entry).unwrap();
+    let mut legacy = vec![0; 56];
+    legacy[..8].copy_from_slice(&1u64.to_le_bytes());
+    legacy.extend_from_slice(&current[16..]);
+    assert!(decode_deployment_result(&legacy).is_none());
+    let mut unknown_variant = current.clone();
+    let len = unknown_variant.len();
+    unknown_variant[len - 2..].copy_from_slice(&1u16.to_le_bytes());
+    assert!(decode_deployment_result(&unknown_variant).is_none());
+    assert_eq!(decode_deployment_result(&current), Some(entry));
+}
+
+#[test]
+fn descriptor_relay_rejects_retired_tags_truncation_and_extra_bytes() {
+    let request = crate::rdeploy::Request {
+        session: 3,
+        request_id: 9,
+        caller: b"charlotte:1234abcd".to_vec(),
+        descriptor: signed_deployment(&fixture_pair(), b"orders", 1),
+    };
+    let payload = crate::rdeploy::encode_request(&request).unwrap();
+    let frame = [&[crate::rdeploy::TAG_REQUEST], payload.as_slice()].concat();
+    for length in 0..frame.len() {
+        assert!(crate::rdeploy::decode_request(&frame[..length]).is_none());
+    }
+    let mut retired = frame.clone();
+    retired[0] = 0x17;
+    assert!(crate::rdeploy::decode_request(&retired).is_none());
+    let mut extended = frame.clone();
+    extended.push(0);
+    assert!(crate::rdeploy::decode_request(&extended).is_none());
+    assert_eq!(crate::rdeploy::decode_request(&frame), Some(request));
+    let reply = crate::rdeploy::encode_reply(3, 9, 1);
+    assert!(crate::rdeploy::decode_reply(&[&[0x18], reply.as_slice()].concat()).is_none());
+}
+
+#[test]
+fn snapshot_descriptor_name_binding_rejects_before_any_live_publication() {
+    let source = fixture_catalog();
+    source.apply(1, &deploy_fixture(b"orders", 4, 1));
+    let mut corrupted = source.snapshot();
+    // Empty registrations, then one deployment's six-byte map key.
+    assert_eq!(&corrupted[20..26], b"orders");
+    corrupted[20..26].copy_from_slice(b"otherx");
+    let target = fixture_catalog();
+    target.apply(1, &encode_register(b"keep", b"charlotte:1234abcd"));
+    let before = target.snapshot();
+    assert_eq!(
+        target.restore(&corrupted),
+        Err(catten_graft::state_machine::SnapshotError::Malformed)
+    );
+    assert_eq!(target.snapshot(), before);
 }

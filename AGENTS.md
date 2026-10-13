@@ -219,8 +219,13 @@ the corrected RPC polling paths, and the remaining notification gaps.
   profiles reject. Commit each replica's selected variant index; agents may not
   reselect from later reports. Recheck the actual ELF and signed target at kernel
   launch. CPU feature availability is the intersection across schedulable LPs;
-  do not advertise extensions without the context-save contract. See
-  `docs/reference/execution-targets.md`.
+  do not advertise extensions without the context-save contract. Deployment
+  state retains generation, the signed descriptor and exact replica pins;
+  derive requested identity/placement and variant keys/digests from that
+  descriptor. Admission must not accept independent name/object/node/digest
+  overrides. Keep query, snapshot, relay and durable log tags coherent when
+  changing the grammar; reject retired log-only stores before replay too. See
+  `docs/reference/execution-targets.md` and `docs/reference/catalog-snapshots.md`.
 - Internal APIs and wire formats have no backward-compatibility requirement.
   Remove compatibility-only branches when a coherent replacement is ready;
   do not preserve an unsafe allocation path for older callers.

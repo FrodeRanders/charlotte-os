@@ -61,8 +61,8 @@ or hardware quiescence.
 S04b2a removes descriptor-less syscall 64 and its runtime/SDK wrappers,
 plus the packed catalog deploy/query operations. All active application rollout
 fixtures use signed descriptors and scoped launch; retired opcodes reject.
-Redundant primary record fields remain the next coordinated removal across
-controllers, replication and persistence. The encrypted connector pickup has
+S04b2b also removes redundant primary/object/digest record fields across
+controllers, replication and persistence; signed replica variant pins remain. The encrypted connector pickup has
 a distinct authenticated target and remains a separate API.
 
 See [administration contract](deployment-administration.md) and its

@@ -325,7 +325,7 @@ fn build_cluster_json(dns_conn: ConnectionRef<'_>) -> Option<String> {
     let _ = write!(
         s,
         concat!(
-            "{{\"schema\":\"charlotte.cluster.v1\",",
+            "{{\"schema\":\"charlotte.cluster.v2\",",
             "\"fresh_committed\":{},\"served_by_leader\":{},\"truncated\":{},",
             "\"raft\":{{\"state\":\"{}\",\"term\":{},\"commit_index\":{},",
             "\"membership_epoch\":{},\"observed_millis\":{},\"leader\":"
@@ -428,13 +428,9 @@ fn build_cluster_json(dns_conn: ConnectionRef<'_>) -> Option<String> {
             s,
             concat!(
                 ",\"state\":\"{}\",\"generation\":{},\"service_generation\":{},",
-                "\"object_id\":{},\"demand_frames\":{},\"desired_nodes\":["
+                "\"demand_frames\":{},\"desired_nodes\":["
             ),
-            rollout,
-            deployment.generation,
-            deployment.service_generation,
-            deployment.object_id,
-            deployment.demand_frames,
+            rollout, deployment.generation, deployment.service_generation, deployment.demand_frames,
         );
         for (node_index, node) in deployment.desired_nodes.iter().enumerate() {
             if node_index != 0 {

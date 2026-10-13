@@ -218,7 +218,7 @@ The fixed request targets select a node or cluster view:
   report as cards, which is handy on VMware where there is no framebuffer.
 - `GET /metrics` (alias `/metric`) returns the JSON report described above.
 - `GET /cluster` returns the cluster dashboard.
-- `GET /cluster/metrics` returns the bounded `charlotte.cluster.v1` view of
+- `GET /cluster/metrics` returns the bounded `charlotte.cluster.v2` view of
   applied Raft posture, node capacity freshness, application placement and
   readiness, and DSR service projection. It returns 503 when the local
   replica cannot satisfy the bounded-read freshness requirement.

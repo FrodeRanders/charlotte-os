@@ -558,5 +558,13 @@ This removes the development-key deployment bypass identified historically
 under SEC-11; the separate live-upgrade trust boundary remains unresolved, so
 this batch changes no numbered finding status/count. Necessary capability
 escrow, cleanup receipts, uncertain backing retention and rollback owners
-remain unchanged. Redundant diagnostic deployment record fields are the next
-ordered removal.
+remain unchanged. Redundant diagnostic deployment record fields are removed by S04b2b below.
+
+
+The [lean deployment record batch](../reports/audits/2026-10-13-protocol-simplification-records.md)
+makes signed descriptors the sole source of requested names, placement, keys
+and digests. Catalog state retains generation and exact node/variant pins.
+Current-only tags reject older query/snapshot/relay forms; Raft pair-v2 also
+rejects log-only old stores before startup, without overwriting them. This
+removes compatibility state and adds no cleanup custody, physical retry or
+production trust qualification; numbered audit finding counts remain unchanged.

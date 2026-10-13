@@ -27,9 +27,6 @@ impl NameCatalog {
             size += 4
                 + artifact.len()
                 + 8
-                + 8
-                + 8
-                + 32
                 + 4
                 + entry.descriptor.len()
                 + 2
@@ -69,7 +66,7 @@ impl NameCatalog {
             size += 8 + 8 + 8 + 8 + 8 + 2 + 16;
         }
         let mut buf = Vec::with_capacity(size);
-        buf.extend_from_slice(&CATALOG_MAGIC_V16.to_le_bytes());
+        buf.extend_from_slice(&CATALOG_MAGIC_V17.to_le_bytes());
         buf.extend_from_slice(&(entries.len() as u32).to_le_bytes());
         for (name, entry) in entries.iter() {
             buf.extend_from_slice(&(name.len() as u32).to_le_bytes());
@@ -84,10 +81,7 @@ impl NameCatalog {
         for (artifact, entry) in deployments.iter() {
             buf.extend_from_slice(&(artifact.len() as u32).to_le_bytes());
             buf.extend_from_slice(artifact);
-            buf.extend_from_slice(&entry.object_id.to_le_bytes());
-            buf.extend_from_slice(&entry.node_key.to_le_bytes());
             buf.extend_from_slice(&entry.generation.to_le_bytes());
-            buf.extend_from_slice(&entry.artifact_digest);
             buf.extend_from_slice(&(entry.descriptor.len() as u32).to_le_bytes());
             buf.extend_from_slice(&entry.descriptor);
             buf.extend_from_slice(&(entry.replica_nodes.len() as u16).to_le_bytes());
@@ -184,7 +178,7 @@ impl NameCatalog {
             return Err(SnapshotError::Malformed);
         }
         let magic = u64::from_le_bytes(data[0..8].try_into().ok().unwrap_or_default());
-        if magic != CATALOG_MAGIC_V16 {
+        if magic != CATALOG_MAGIC_V17 {
             return Err(SnapshotError::Unsupported);
         }
         let count = u32::from_le_bytes(data[8..12].try_into().ok().unwrap_or_default()) as usize;
@@ -256,25 +250,8 @@ impl NameCatalog {
                 let Some((artifact, after_artifact)) = take_len_bytes(data, pos) else {
                     return Err(SnapshotError::Malformed);
                 };
-                let Some((object_id, after_object)) = read_u64(data, after_artifact) else {
+                let Some((generation, after_entry)) = read_u64(data, after_artifact) else {
                     return Err(SnapshotError::Malformed);
-                };
-                let Some((node_key, after_node)) = read_u64(data, after_object) else {
-                    return Err(SnapshotError::Malformed);
-                };
-                let Some((generation, after_generation)) = read_u64(data, after_node) else {
-                    return Err(SnapshotError::Malformed);
-                };
-                let (artifact_digest, after_entry) = {
-                    let Some(digest) =
-                        data.get(after_generation..after_generation.saturating_add(32))
-                    else {
-                        return Err(SnapshotError::Malformed);
-                    };
-                    let Ok(digest) = <[u8; 32]>::try_from(digest) else {
-                        return Err(SnapshotError::Malformed);
-                    };
-                    (digest, after_generation + 32)
                 };
                 let (descriptor, after_entry) = {
                     let Some((descriptor, after_descriptor)) = take_len_bytes(data, after_entry)
@@ -314,7 +291,7 @@ impl NameCatalog {
                         variants.push(variant);
                         position = next;
                     }
-                    if nodes.first().copied().unwrap_or(0) != node_key {
+                    if signed.artifact_name != artifact {
                         return Err(SnapshotError::Malformed);
                     }
                     (nodes, variants, position)
@@ -325,12 +302,9 @@ impl NameCatalog {
                 deployments.insert(
                     artifact.to_vec(),
                     DeploymentEntry {
-                        object_id,
-                        node_key,
                         replica_nodes,
                         replica_variants,
                         generation,
-                        artifact_digest,
                         descriptor,
                     },
                 );

@@ -13,11 +13,11 @@ questions an operator asks of the cluster rather than of one machine:
   accept new flows.
 
 The first implementation is available at `GET /cluster` and
-`GET /cluster/metrics`. The JSON schema is named `charlotte.cluster.v1`.
+`GET /cluster/metrics`. The JSON schema is named `charlotte.cluster.v2`.
 
 ## Authority and data path
 
-The Raft/DNS service constructs a bounded `CLOBSV1` binary snapshot from one
+The Raft/DNS service constructs a bounded `CLOBSV2` binary snapshot from one
 locally applied catalog view. It answers only while that view satisfies the
 same bounded-read freshness requirement as DSR. `httpd` owns no Raft state and
 cannot invent placement: it asks DNS for the snapshot, strictly decodes it,
@@ -117,9 +117,14 @@ This is the target setup, not a claim that the present port-80 implementation
 already enforces mTLS. Until that work lands, network isolation is the access
 control.
 
+Version 2 removes the local object ID from deployment observations and the
+JSON keyhole; deployment placement and readiness are represented by actual
+node sets. The fixed deployment record is 28 bytes before name/node payloads.
+Version-1 records are unsupported.
+
 ## Wire and API bounds
 
-`catten_services::cluster_observe` owns the `CLOBSV1` codec. Version 1 is
+`catten_services::cluster_observe` owns the `CLOBSV2` codec. Version 2 is
 limited to 32 nodes, 256 deployments, the launch ABI's bounded ingress table,
 and 64 KiB total. Node identities are rendered as 16-digit hexadecimal strings
 in JSON so JavaScript cannot lose precision. Unknown flags, noncanonical

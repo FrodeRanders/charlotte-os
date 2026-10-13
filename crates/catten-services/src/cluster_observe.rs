@@ -9,11 +9,11 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
-pub const MAGIC: &[u8; 8] = b"CLOBSV1\0";
-pub const VERSION: u16 = 1;
+pub const MAGIC: &[u8; 8] = b"CLOBSV2\0";
+pub const VERSION: u16 = 2;
 pub const HEADER_LEN: usize = 72;
 pub const NODE_RECORD_LEN: usize = 60;
-pub const DEPLOYMENT_RECORD_LEN: usize = 36;
+pub const DEPLOYMENT_RECORD_LEN: usize = 28;
 pub const INGRESS_RECORD_LEN: usize = 32;
 pub const MAX_SNAPSHOT_LEN: usize = 64 * 1024;
 pub const MAX_NODES: usize = 32;
@@ -68,7 +68,6 @@ pub struct Deployment {
     pub state: u8,
     pub generation: u64,
     pub service_generation: u64,
-    pub object_id: u64,
     pub demand_frames: u64,
     pub desired_nodes: Vec<u64>,
     pub ready_nodes: Vec<u64>,
@@ -244,7 +243,6 @@ pub fn encode(snapshot: &Snapshot) -> Option<Vec<u8>> {
         bytes.push(deployment.ready_nodes.len() as u8);
         put_u64(&mut bytes, deployment.generation);
         put_u64(&mut bytes, deployment.service_generation);
-        put_u64(&mut bytes, deployment.object_id);
         put_u64(&mut bytes, deployment.demand_frames);
         bytes.extend_from_slice(&deployment.name);
         for node in &deployment.desired_nodes {
@@ -353,7 +351,6 @@ pub fn decode(bytes: &[u8]) -> Option<Snapshot> {
         offset += 4;
         let generation = get_u64(bytes, &mut offset)?;
         let service_generation = get_u64(bytes, &mut offset)?;
-        let object_id = get_u64(bytes, &mut offset)?;
         let demand_frames = get_u64(bytes, &mut offset)?;
         if offset != fixed_end {
             return None;
@@ -374,7 +371,6 @@ pub fn decode(bytes: &[u8]) -> Option<Snapshot> {
             state,
             generation,
             service_generation,
-            object_id,
             demand_frames,
             desired_nodes,
             ready_nodes,
@@ -483,7 +479,6 @@ mod tests {
                 state: crate::clusterctl::ROLLOUT_READY,
                 generation: 4,
                 service_generation: 5,
-                object_id: 6,
                 demand_frames: 24,
                 desired_nodes: vec![1],
                 ready_nodes: vec![1],
@@ -518,5 +513,15 @@ mod tests {
         let mut snapshot = sample();
         snapshot.flags |= 0x8000;
         assert_eq!(encode(&snapshot), None);
+    }
+    #[test]
+    fn retired_observability_magic_and_version_reject() {
+        let current = encode(&sample()).unwrap();
+        let mut retired_magic = current.clone();
+        retired_magic[..8].copy_from_slice(b"CLOBSV1\0");
+        assert!(decode(&retired_magic).is_none());
+        let mut retired_version = current;
+        retired_version[8..10].copy_from_slice(&1u16.to_le_bytes());
+        assert!(decode(&retired_version).is_none());
     }
 }

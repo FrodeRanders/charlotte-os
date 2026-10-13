@@ -32,7 +32,7 @@ packed architecture/ABI and features. Architecture occupies bits 0–15 of the
 fourth return, bits 16–31 are zero, and ABI occupies bits 32–63. AArch64 returns
 these in x0–x4; x86_64 in rax/rdi/rsi/rdx/r10. The 58-byte `rcapacity` payload
 includes the canonical 16-byte target after its frame/load fields. Replicated
-capacity records and catalog-v16 snapshots retain the profile. Profile changes
+capacity records and catalog-v17 snapshots retain the profile. Profile changes
 within a reporter boot nonce reject; a fresh incarnation can replace it. The
 existing peer source/session checks bind a report to its node. This is not
 hardware attestation; production platform authentication remains a separate
@@ -58,8 +58,8 @@ report cannot silently select another executable for an existing generation.
 If a new node incarnation loses support for its pin, the controller may commit
 a compatible replacement pin in a new generation even when the node set stays
 the same. Gaining features leaves a compatible existing pin alone.
-The retained record digest is a diagnostic for descriptor variant zero, not
-an executable identity for every replica.
+Each replica's content identity comes from its selected signed variant.
+There is no retained primary node, local object ID or variant-zero digest.
 
 The agent uses its committed index, rechecks local CPU support, and fetches
 that variant's object key and digest. When no central connector is registered, a local cache hit is permitted only after verifying the exact selected digest and signed artifact name; otherwise acquisition uses the central store. Its scoped launch retains the existing
@@ -105,7 +105,7 @@ priority (2), key length (2), digest (32), then key bytes. Grants follow all
 variants. Targets encode architecture:u16, reserved-zero:u16, ABI:u32 and
 features:u64. All scalars are little endian. Only this grammar is accepted.
 
-Catalog snapshots use `CATALOGG` version 16. The v15 decoder is retired;
+Catalog snapshots use `CATALOGH` version 17. Versions 1–16 are retired;
 descriptor-less assignments and query/snapshot records reject. Existing
 pre-production fixtures must be regenerated explicitly. Future deployed-store
 changes require an explicit interruption-tested migration, never a silent reset.

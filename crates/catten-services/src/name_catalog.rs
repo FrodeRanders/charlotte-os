@@ -7,20 +7,18 @@
 //! operation on the hosting node.
 //!
 //! The same state machine also carries the cluster **deployment manifest**
-//! (`artifact -> {object_id, artifact_sha256, replica_nodes, descriptor, generation}`) and the
+//! (`artifact -> {replica_nodes, replica_variants, descriptor, generation}`) and the
 //! cluster's **Ed25519 public key** (committed by the key ceremony). A deployment is a
 //! cluster decision, so it lives in replicated state next to the name
 //! catalog; node-local agents read it and act on the assignments addressed
-//! to them. The deployment record itself needs no signature: its
-//! authenticity comes from the Raft consensus that committed it.
+//! to them. Signed descriptors authorize deployment; Raft orders its publication.
 //!
 //! ## Log command encoding
 //!
 //! ```text
 //! register:   0x01 | name_len:u32 | name | node_len:u32 | node
 //! unregister: 0x02 | name_len:u32 | name
-//! deploy:     0x05 | artifact_len:u32 | artifact | object_id:u64 | node_key:u64 | sha256:32 |
-//!             descriptor_len:u32 | signed_descriptor
+//! deploy:     0x0e | node_key:u64 | variant:u16 | descriptor_len:u32 | signed_descriptor
 //! set-key:    0x07 | key:[u8; 32]
 //! release:    0x08 | envelope_len:u32 | signed_release | node_count:u16 | node_keys:[u64]
 //!             [bundle_sequence:u64 | bundle_sha256:32 | binding_count:u16 | compact_bindings]
@@ -55,7 +53,8 @@ const CMD_REGISTER: u8 = 0x01;
 const CMD_UNREGISTER: u8 = 0x02;
 const CMD_ACTIVATE: u8 = 0x03;
 const CMD_UNREGISTER_GENERATION: u8 = 0x04;
-const CMD_DEPLOY: u8 = 0x05;
+// 0x05 was the redundant deployment grammar; retired.
+const CMD_DEPLOY: u8 = 0x0e;
 const CMD_SET_CLUSTER_KEY: u8 = 0x07;
 const CMD_RELEASE: u8 = 0x08;
 const CMD_SHUTDOWN: u8 = 0x09;
@@ -73,7 +72,7 @@ const MAX_RELEASES: usize = 4_096;
 const MAX_OPERATIONAL_BINDINGS: usize = 8_192;
 const MAX_SHUTDOWN_INTENTS: usize = 4_096;
 const MAX_NODE_CAPACITY_ENTRIES: usize = 256;
-const CATALOG_MAGIC_V16: u64 = 0x4341_5441_4c4f_4747; // "CATALOGG"
+const CATALOG_MAGIC_V17: u64 = 0x4341_5441_4c4f_4748; // "CATALOGH"
 
 /// Query tag prefix for a name lookup.
 const QUERY_LOOKUP: u8 = 0x01;
@@ -94,27 +93,16 @@ pub struct CatalogEntry {
     pub deployment_generation: u64,
 }
 
-/// A replicated deployment record: the cluster's answer to "which nodes run
-/// this artifact, and from which object-store object?".
-///
-/// `node_key` is the packed cluster node identity (the FNV-1a of the node's
-/// NIC MAC). The record needs no signature: the Raft consensus that
-/// committed it is its authenticity.
+/// Signed desired deployment state with exact, sorted replica variant pins.
+/// The descriptor supplies the name, object keys, digests and placement policy;
+/// Raft orders the decision, while the signature authorizes deployment.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DeploymentEntry {
-    pub object_id: u64,
-    /// Diagnostic primary: the first member of
-    /// `replica_nodes`, or zero when no placement is currently possible.
-    pub node_key: u64,
     /// Sorted, unique concrete assignments committed by Raft.
     pub replica_nodes: Vec<u64>,
     /// Signed variant index for each corresponding replica node.
     pub replica_variants: Vec<u16>,
     pub generation: u64,
-    /// Diagnostic content identity of descriptor variant zero. Each replica
-    /// executes its own committed variant; never fetch using this scalar.
-    pub artifact_digest: [u8; 32],
-    /// Signed, bounded current deployment decision.
     pub descriptor: Vec<u8>,
 }
 
@@ -793,46 +781,27 @@ impl NameCatalog {
                 generation.to_le_bytes().to_vec()
             }
             Some(CMD_DEPLOY) => {
-                let Some((artifact, after_artifact)) = take_len_bytes(command, 1) else {
+                let Some((node_key, after_node)) = read_u64(command, 1) else {
                     return Vec::new();
                 };
-                let (object_id, after_object) =
-                    read_u64(command, after_artifact).unwrap_or((0, after_artifact));
-                let (node_key, after_node) =
-                    read_u64(command, after_object).unwrap_or((0, after_object));
-                let Some(artifact_digest) = command.get(after_node..after_node.saturating_add(32))
-                else {
+                let Some((variant, after_variant)) = read_u16(command, after_node) else {
                     return Vec::new();
                 };
-                let Ok(artifact_digest) = <[u8; 32]>::try_from(artifact_digest) else {
+                let Some((descriptor, end)) = take_len_bytes(command, after_variant) else {
                     return Vec::new();
                 };
-                let Some((variant, after_digest)) = read_u16(command, after_node + 32) else {
+                if end != command.len()
+                    || descriptor.len() > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
+                {
                     return Vec::new();
-                };
-                let descriptor = if after_digest == command.len() {
-                    Vec::new()
-                } else {
-                    let Some((descriptor, after_descriptor)) =
-                        take_len_bytes(command, after_digest)
-                    else {
-                        return Vec::new();
-                    };
-                    if after_descriptor != command.len()
-                        || descriptor.len() > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
-                    {
-                        return Vec::new();
-                    }
-                    descriptor.to_vec()
-                };
-                let Some(signed) = charlotte_launch::deployment::decode(&descriptor) else {
+                }
+                let Some(signed) = charlotte_launch::deployment::decode(descriptor) else {
                     return crate::clusterctl::ERR_UNTRUSTED_DESCRIPTOR.to_le_bytes().to_vec();
                 };
+                let artifact = signed.artifact_name;
                 let key = (*self.cluster_key.lock()).unwrap_or(self.bootstrap_deployment_key);
-                if charlotte_launch::deployment::verify(&descriptor, &key)
+                if charlotte_launch::deployment::verify(descriptor, &key)
                     != charlotte_launch::deployment::VerifyOutcome::Valid
-                    || signed.artifact_name != artifact
-                    || signed.variant(0).map(|v| v.artifact_digest) != Some(artifact_digest)
                     || (signed.node_key != 0 && signed.node_key != node_key)
                     || signed.placement != charlotte_launch::placement::PlacementPolicy::singleton()
                 {
@@ -843,9 +812,7 @@ impl NameCatalog {
                 };
                 let mut deployments = self.deployments.lock();
                 if let Some(existing) = deployments.get(artifact)
-                    && existing.object_id == object_id
-                    && existing.node_key == node_key
-                    && existing.artifact_digest == artifact_digest
+                    && existing.replica_nodes == [node_key]
                     && existing.descriptor == descriptor
                     && existing.replica_variants == [variant]
                 {
@@ -881,13 +848,10 @@ impl NameCatalog {
                 deployments.insert(
                     artifact.to_vec(),
                     DeploymentEntry {
-                        object_id,
-                        node_key,
                         replica_nodes: alloc::vec![node_key],
                         replica_variants: alloc::vec![variant],
                         generation,
-                        artifact_digest,
-                        descriptor,
+                        descriptor: descriptor.to_vec(),
                     },
                 );
                 drop(deployments);
@@ -970,7 +934,6 @@ impl NameCatalog {
                 else {
                     return 0u64.to_le_bytes().to_vec();
                 };
-                current.node_key = nodes[0];
                 current.replica_nodes = nodes;
                 current.replica_variants = variants;
                 current.generation = generation;
@@ -1164,7 +1127,7 @@ impl NameCatalog {
                     }
                     let (generation, effective_nodes, effective_variants) =
                         match deployments.get(descriptor.artifact_name) {
-                            Some(current) if !current.descriptor.is_empty() => {
+                            Some(current) => {
                                 let Some(previous) =
                                     charlotte_launch::deployment::decode(&current.descriptor)
                                 else {
@@ -1197,30 +1160,14 @@ impl NameCatalog {
                                     (generation, assigned_nodes.clone(), assigned_variants.clone())
                                 }
                             }
-                            Some(current) => {
-                                let Some(generation) = current
-                                    .generation
-                                    .checked_add(1)
-                                    .filter(|generation| *generation <= i64::MAX as u64)
-                                else {
-                                    return Vec::new();
-                                };
-                                (generation, assigned_nodes.clone(), assigned_variants.clone())
-                            }
                             None => (1, assigned_nodes.clone(), assigned_variants.clone()),
                         };
-                    let effective_node = effective_nodes.first().copied().unwrap_or(0);
                     planned_deployments.push((
                         descriptor.artifact_name.to_vec(),
                         DeploymentEntry {
-                            object_id: charlotte_launch::artifact_object_id(
-                                descriptor.artifact_name,
-                            ),
-                            node_key: effective_node,
                             replica_nodes: effective_nodes,
                             replica_variants: effective_variants,
                             generation,
-                            artifact_digest: descriptor.variant(0).unwrap().artifact_digest,
                             descriptor: descriptor_bytes.to_vec(),
                         },
                     ));
@@ -1817,24 +1764,29 @@ pub fn decode_ingress_policy_result(bytes: &[u8]) -> Option<IngressPolicyEntry> 
     )
 }
 
-/// Decode the deployment record returned by a deployment query.
+/// Current deployment-query grammar. Older scalar prefixes are unsupported.
+pub const DEPLOYMENT_RESULT_MAGIC: &[u8; 8] = b"CDEPQR01";
+
+/// Decode the complete signed deployment record and exact replica pins.
 pub fn decode_deployment_result(bytes: &[u8]) -> Option<DeploymentEntry> {
-    let descriptor_len =
-        usize::try_from(u32::from_le_bytes(bytes.get(56..60)?.try_into().ok()?)).ok()?;
-    if descriptor_len > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN {
+    if bytes.get(..8)? != DEPLOYMENT_RESULT_MAGIC {
         return None;
     }
-    let descriptor_end = 60usize.checked_add(descriptor_len)?;
-    let descriptor = bytes.get(60..descriptor_end)?.to_vec();
-    let count = usize::from(read_u16(bytes, descriptor_end)?.0);
-    let nodes_end = descriptor_end.checked_add(2)?.checked_add(count.checked_mul(10)?)?;
-    if nodes_end != bytes.len() {
+    let generation = u64::from_le_bytes(bytes.get(8..16)?.try_into().ok()?);
+    if generation == 0 {
         return None;
     }
-    let mut replica_nodes = Vec::with_capacity(count);
-    let mut replica_variants = Vec::with_capacity(count);
-    let signed = charlotte_launch::deployment::decode(&descriptor)?;
-    let mut position = descriptor_end + 2;
+    let (descriptor, end) = take_len_bytes(bytes, 16)?;
+    if descriptor.len() > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN {
+        return None;
+    }
+    let signed = charlotte_launch::deployment::decode(descriptor)?;
+    let (count, mut position) = read_u16(bytes, end)?;
+    if position.checked_add(usize::from(count).checked_mul(10)?)? != bytes.len() {
+        return None;
+    }
+    let mut replica_nodes = Vec::with_capacity(usize::from(count));
+    let mut replica_variants = Vec::with_capacity(usize::from(count));
     for _ in 0..count {
         let (node, next) = read_u64(bytes, position)?;
         if node == 0 || replica_nodes.last().is_some_and(|previous| *previous >= node) {
@@ -1846,47 +1798,32 @@ pub fn decode_deployment_result(bytes: &[u8]) -> Option<DeploymentEntry> {
         replica_variants.push(variant);
         position = next;
     }
-    let node_key = u64::from_le_bytes(bytes[16..24].try_into().ok()?);
-    if replica_nodes.first().copied().unwrap_or(0) != node_key
-        || u64::from_le_bytes(bytes[0..8].try_into().ok()?) == 0
-    {
-        return None;
-    }
     Some(DeploymentEntry {
-        generation: u64::from_le_bytes(bytes[0..8].try_into().ok()?),
-        object_id: u64::from_le_bytes(bytes[8..16].try_into().ok()?),
-        node_key,
+        generation,
+        descriptor: descriptor.to_vec(),
         replica_nodes,
         replica_variants,
-        artifact_digest: bytes[24..56].try_into().ok()?,
-        descriptor,
     })
 }
 
-/// Encode a deployment query result, including the committed concrete
-/// replica set. The diagnostic primary must match the first assignment.
 pub fn encode_deployment_result(entry: &DeploymentEntry) -> Option<Vec<u8>> {
     if entry.generation == 0
         || entry.descriptor.len() > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
-        || entry.node_key != entry.replica_nodes.first().copied().unwrap_or(0)
         || entry.replica_nodes.contains(&0)
         || entry.replica_nodes.windows(2).any(|nodes| nodes[0] >= nodes[1])
+        || entry.replica_nodes.len() != entry.replica_variants.len()
     {
         return None;
     }
     let signed = charlotte_launch::deployment::decode(&entry.descriptor)?;
-    if entry.replica_nodes.len() != entry.replica_variants.len()
-        || entry.replica_variants.iter().any(|index| signed.variant(usize::from(*index)).is_none())
-    {
+    if entry.replica_variants.iter().any(|index| signed.variant(usize::from(*index)).is_none()) {
         return None;
     }
     let count = u16::try_from(entry.replica_nodes.len()).ok()?;
     let mut bytes =
-        Vec::with_capacity(62 + entry.descriptor.len() + entry.replica_nodes.len() * 10);
+        Vec::with_capacity(22 + entry.descriptor.len() + entry.replica_nodes.len() * 10);
+    bytes.extend_from_slice(DEPLOYMENT_RESULT_MAGIC);
     bytes.extend_from_slice(&entry.generation.to_le_bytes());
-    bytes.extend_from_slice(&entry.object_id.to_le_bytes());
-    bytes.extend_from_slice(&entry.node_key.to_le_bytes());
-    bytes.extend_from_slice(&entry.artifact_digest);
     bytes.extend_from_slice(&(entry.descriptor.len() as u32).to_le_bytes());
     bytes.extend_from_slice(&entry.descriptor);
     bytes.extend_from_slice(&count.to_le_bytes());
@@ -1897,23 +1834,12 @@ pub fn encode_deployment_result(entry: &DeploymentEntry) -> Option<Vec<u8>> {
     Some(bytes)
 }
 
-/// Encode a deployment command: assign `artifact` (stored at `object_id`) to
-/// the node identified by `node_key`.
-pub fn encode_deploy(
-    artifact: &[u8],
-    object_id: u64,
-    node_key: u64,
-    artifact_digest: &[u8; 32],
-    descriptor: &[u8],
-    variant: u16,
-) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(1 + 4 + artifact.len() + 16 + 32 + 4 + descriptor.len());
+/// Commit a signed singleton descriptor with its resolved node and variant.
+/// The name, object key, digest and requested placement come from the signature.
+pub fn encode_deploy(descriptor: &[u8], node: u64, variant: u16) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(15 + descriptor.len());
     buf.push(CMD_DEPLOY);
-    buf.extend_from_slice(&(artifact.len() as u32).to_le_bytes());
-    buf.extend_from_slice(artifact);
-    buf.extend_from_slice(&object_id.to_le_bytes());
-    buf.extend_from_slice(&node_key.to_le_bytes());
-    buf.extend_from_slice(artifact_digest);
+    buf.extend_from_slice(&node.to_le_bytes());
     buf.extend_from_slice(&variant.to_le_bytes());
     buf.extend_from_slice(&(descriptor.len() as u32).to_le_bytes());
     buf.extend_from_slice(descriptor);

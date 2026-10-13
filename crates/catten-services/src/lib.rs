@@ -2198,17 +2198,16 @@ pub mod dns {
     /// `ERR_NOT_LEADER`. The reply is the committed generation (deferred
     /// until replicated).
     pub const OP_EVENT_FIRE: u32 = 12;
-    /// Replicate a deployment whose full request travels in moved memory:
-    /// `[name_len:u16][name][object_id:u64][node_key:u64][sha256:32]
-    /// [descriptor_len:u32][signed_descriptor]`. `arg0` is the total byte
-    /// length. This is the sole single-component deployment operation; a
-    /// current signed descriptor is mandatory. Opcodes 8 and 9 are retired.
-    pub const OP_DEPLOY_NAMED: u32 = 15;
+    // Opcode 15 was a redundant named deployment envelope; retired.
+    /// Admit one current signed deployment descriptor in moved memory.
+    /// `arg0` is the exact descriptor length. Identity, requested placement
+    /// and variant content come only from these signed bytes.
+    pub const OP_DEPLOY_SUBMIT: u32 = 33;
     /// Query one deployment by a full artifact name carried in moved memory.
     /// `arg0` is the name length. The reply always includes generation,
-    /// object ID, diagnostic primary node, SHA-256, descriptor length/bytes,
-    /// and replica count/nodes; see [`crate::name_catalog::decode_deployment_result`].
-    /// Missing sections are rejected rather than supplying singleton placement.
+    /// signed descriptor and exact replica node/variant pins; see
+    /// [`crate::name_catalog::decode_deployment_result`]. Missing sections are rejected rather
+    /// than supplying singleton placement.
     pub const OP_DEPLOY_QUERY_NAMED: u32 = 16;
     /// Enumerate desired deployment names. The reply is
     /// `[count:u16] ([name_len:u8][name])*`, sorted by name. Callers query
@@ -3286,83 +3285,63 @@ pub mod rcapacity {
 /// identity is checked against the reliable-message source route before the
 /// leader accepts the request.
 pub mod rdeploy {
-    pub const TAG_REQUEST: u8 = 0x17;
-    pub const TAG_REPLY: u8 = 0x18;
+    // 0x17/0x18 carried redundant deployment fields; retired.
+    pub const TAG_REQUEST: u8 = 0x22;
+    pub const TAG_REPLY: u8 = 0x23;
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub struct Request {
         pub session: u64,
         pub request_id: u64,
         pub caller: alloc::vec::Vec<u8>,
-        pub artifact: alloc::vec::Vec<u8>,
-        pub object_id: u64,
-        pub node_key: u64,
-        pub digest: [u8; 32],
         pub descriptor: alloc::vec::Vec<u8>,
     }
 
     pub fn encode_request(request: &Request) -> Option<alloc::vec::Vec<u8>> {
         if request.caller.is_empty()
             || request.caller.len() > 255
-            || request.artifact.is_empty()
-            || request.artifact.len() > u16::MAX as usize
-            || request.descriptor.len() > u16::MAX as usize
+            || request.descriptor.len() > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
+            || charlotte_launch::deployment::decode(&request.descriptor).is_none()
         {
             return None;
         }
-        let mut frame = alloc::vec::Vec::with_capacity(
-            69 + request.caller.len() + request.artifact.len() + request.descriptor.len(),
-        );
+        let mut frame =
+            alloc::vec::Vec::with_capacity(19 + request.caller.len() + request.descriptor.len());
         frame.extend_from_slice(&request.session.to_le_bytes());
         frame.extend_from_slice(&request.request_id.to_le_bytes());
         frame.push(request.caller.len() as u8);
         frame.extend_from_slice(&request.caller);
-        frame.extend_from_slice(&(request.artifact.len() as u16).to_le_bytes());
-        frame.extend_from_slice(&request.artifact);
-        frame.extend_from_slice(&request.object_id.to_le_bytes());
-        frame.extend_from_slice(&request.node_key.to_le_bytes());
-        frame.extend_from_slice(&request.digest);
         frame.extend_from_slice(&(request.descriptor.len() as u16).to_le_bytes());
         frame.extend_from_slice(&request.descriptor);
         Some(frame)
     }
 
     pub fn decode_request(frame: &[u8]) -> Option<Request> {
-        if frame.len() < 70 || frame[0] != TAG_REQUEST {
+        if frame.len() < 20 || frame[0] != TAG_REQUEST {
             return None;
         }
         let session = u64::from_le_bytes(frame[1..9].try_into().ok()?);
         let request_id = u64::from_le_bytes(frame[9..17].try_into().ok()?);
         let caller_len = usize::from(frame[17]);
-        let caller_start = 18usize;
-        let artifact_len_offset = caller_start.checked_add(caller_len)?;
-        let artifact_len = usize::from(u16::from_le_bytes(
-            frame.get(artifact_len_offset..artifact_len_offset + 2)?.try_into().ok()?,
+        let len_offset = 18usize.checked_add(caller_len)?;
+        let len = usize::from(u16::from_le_bytes(
+            frame.get(len_offset..len_offset + 2)?.try_into().ok()?,
         ));
-        let artifact_start = artifact_len_offset + 2;
-        let artifact_end = artifact_start.checked_add(artifact_len)?;
-        let fixed_end = artifact_end.checked_add(50)?;
-        let object_id =
-            u64::from_le_bytes(frame.get(artifact_end..artifact_end + 8)?.try_into().ok()?);
-        let node_key =
-            u64::from_le_bytes(frame.get(artifact_end + 8..artifact_end + 16)?.try_into().ok()?);
-        let digest = frame.get(artifact_end + 16..artifact_end + 48)?.try_into().ok()?;
-        let descriptor_len = usize::from(u16::from_le_bytes(
-            frame.get(artifact_end + 48..fixed_end)?.try_into().ok()?,
-        ));
-        let descriptor_end = fixed_end.checked_add(descriptor_len)?;
-        if caller_len == 0 || artifact_len == 0 || frame.len() != descriptor_end {
+        let start = len_offset + 2;
+        let end = start.checked_add(len)?;
+        let descriptor = frame.get(start..end)?;
+        if caller_len == 0
+            || frame.len() != end
+            || len > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
+            || charlotte_launch::deployment::decode(descriptor).is_none()
+        {
             return None;
         }
         Some(Request {
             session,
             request_id,
-            caller: frame.get(caller_start..artifact_len_offset)?.to_vec(),
-            artifact: frame.get(artifact_start..artifact_end)?.to_vec(),
-            object_id,
-            node_key,
-            digest,
-            descriptor: frame.get(fixed_end..descriptor_end)?.to_vec(),
+            caller: frame.get(18..len_offset)?.to_vec(),
+            descriptor: descriptor.to_vec(),
         })
     }
 

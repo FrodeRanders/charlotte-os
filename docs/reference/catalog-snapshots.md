@@ -1,7 +1,11 @@
 # Catalog snapshots and deployment query records
 
-The catalog accepts one snapshot grammar: version 16, with numeric magic
-`0x434154414c4f4747` (`CATALOGG`), encoded little endian. Version 16 adds mandatory node execution profiles and per-replica variant indices. Versions 1–15 are unsupported; their decoders and defaults are removed. No production stores require conversion for this change.
+The catalog accepts only version 17, numeric magic `0x434154414c4f4748`
+(`CATALOGH`), encoded little endian. Its deployment records retain generation,
+signed descriptor and exact replica variant pins. Object ID, diagnostic primary
+node and variant-zero digest are removed. Versions 1–16 reject; no production
+stores need conversion for this pre-production change. The Raft pair uses
+`CRFTSTA2` / `CRFTLOG2` so old command logs also reject without a snapshot.
 
 ## Complete snapshot
 
@@ -11,8 +15,9 @@ length. Replica counts use `u16`; scalars otherwise retain their declared
 widths. Presence and active flags accept exactly zero or one.
 
 1. Service registrations: name, node, generation, active, deployment generation.
-2. Deployments: artifact name, object ID, diagnostic primary node, generation,
-   SHA-256 digest, descriptor, replica count and sorted unique nonzero nodes, each followed by its signed variant index.
+2. Deployments: artifact map key, generation, descriptor, replica count and
+   sorted unique nonzero nodes, each followed by its signed variant index.
+   The map key must equal the descriptor's signed artifact name.
 3. Releases: name, generation, operations sequence, operations digest, envelope.
 4. Operational bindings: complete release/profile/object identities, replay
    fences, recipient/signing IDs and detached authorization signature.
@@ -28,8 +33,9 @@ Restore rejects missing sections, truncation, trailing bytes, duplicate keys,
 noncanonical flags and counts above the existing collection limits. Service,
 deployment, release and shutdown collections are bounded at 4,096 keys;
 operational bindings at 8,192; capacity samples at 256. Deployment readiness
-has at most 4,096 artifact keys. The primary node must equal the first explicit
-replica, or zero for an empty assignment. No old fields are synthesized.
+has at most 4,096 artifact keys. Variant indices must be in range for the
+current descriptor; empty assignments remain explicit. No primary or scalar
+content identity is synthesized.
 Existing signed-envelope validation remains in place; this codec is not a new
 authentication or platform-trust boundary.
 
@@ -47,22 +53,27 @@ processing still precede application validation.
 ## Deployment query record
 
 The sole reply grammar is
-`generation:u64 | object_id:u64 | primary:u64 | sha256:32 |
-descriptor_len:u32 | descriptor | replica_count:u16 | replicas:[(node:u64, variant:u16)]`.
-Every field is required, with exact total length, nonzero generation and sorted,
-unique nonzero replicas. The primary is diagnostic and must match the replica
-set; it never supplies a missing singleton assignment. Both encoder and decoder
-enforce that relationship. The old 56-byte prefix and descriptor-only suffix
-are rejected. Current producers and consumers share this codec.
+`CDEPQR01:8 | generation:u64 | descriptor_len:u32 | descriptor |
+replica_count:u16 | replicas:[(node:u64, variant:u16)]`.
+It has exact total length, nonzero generation, a current descriptor and sorted,
+unique nonzero nodes with aligned, in-range variant indices. Its signed name,
+object keys and digests come only from the descriptor; there is no diagnostic
+primary field or implied singleton. The former untagged 56-byte scalar prefix
+and longer old query records reject. All current consumers use this codec.
 
-## Remaining removal and future migration
+## Command and admission contract
 
-The storage/query replacement now requires a valid current signed descriptor
-and an in-range variant index per node. Descriptor-less commands and records
-reject. Packed-name API retirement remains part of the
-[simplification sweep](api-simplification.md). Diagnostic primary and variant-zero
-digest fields remain for existing observers; they never choose a replica binary.
-See [execution targets](execution-targets.md).
+DNS `OP_DEPLOY_SUBMIT` (33) carries only the exact signed descriptor in moved
+memory, with its length in `arg0`. The former redundant named envelope (15)
+is retired. Follower relay tags 0x22/0x23 carry correlation/session identity,
+caller and descriptor; tags 0x17/0x18 reject. Source-route checks remain intact.
+Single-component Raft command 0x0e carries resolved node:u64, variant:u16,
+descriptor_len:u32 and descriptor. Its name comes from the signature; retired
+command 0x05 rejects. Apply checks signature, singleton placement, signed pin,
+node profile compatibility, sequence and exact-state idempotence before mutation.
+Release and reassign keep their current exact replica pins.
+
+## Future migration
 
 Once stores are deployed, snapshot evolution must ship an explicit migration
 preserving application state, membership and replay fences, with durable commit

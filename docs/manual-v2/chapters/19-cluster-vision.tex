@@ -569,7 +569,7 @@ replica and affinity ranking; explicit pins undergo the same checks.
 An ARM-only revision therefore cannot count x86 nodes toward its replicas.
 
 Selection uses signed priority, feature specificity and descriptor order.
-Raft commits the chosen variant index beside each replica node; catalog-v16
+Raft commits the chosen variant index beside each replica node; catalog-v17
 snapshots and queries preserve that pin. A later CPU report cannot change an
 existing generation's executable. If a new node incarnation loses support for
 its pin, the controller commits a compatible replacement in a new generation,
@@ -594,7 +594,7 @@ instances per node, minimum distinct nodes, \emph{every eligible node}, an
 affinity group, and an anti-affinity group. A request for concurrent
 replicas is invalid unless the artifact's signed CLS2 metadata contains
 \texttt{PARALLEL\_INSTANCES}. \texttt{CDEPLOY6} signs this policy, the
-leader resolves it to concrete assignments, and catalog-v16 snapshots retain
+leader resolves it to concrete assignments, and catalog-v17 snapshots retain
 both the desired set and per-node readiness. Affinity groups share a stable
 ranking seed; anti-affinity groups require unused nodes and fail closed when
 the eligible set cannot satisfy the separation. A policy that needs more
@@ -655,9 +655,9 @@ need an operator view whose subject is the cluster. The implemented
 the Raft leader, term, commit index, and membership epoch with admitted and
 draining nodes, filtered capacity freshness, desired and ready replicas, and
 the advertiser and eligible backend set for each VIP. The schema is explicitly
-versioned as \texttt{charlotte.cluster.v1}.
+versioned as \texttt{charlotte.cluster.v2}.
 
-DNS constructs the underlying, bounded \texttt{CLOBSV1} record from one
+DNS constructs the underlying, bounded \texttt{CLOBSV2} record from one
 locally applied catalog view. It serves the record only while the same
 bounded-read lease used by DSR is valid; httpd decodes it and returns HTTP 503
 when no fresh record is available. Raw one-second observations remain in the
@@ -677,7 +677,7 @@ Membership presently supplies stable node identities and authenticated
 Ethernet routes, not management IP addresses. The dashboard therefore does
 not manufacture drill-down links from MAC addresses. A future signed, leased
 management-endpoint record can support an authenticated
-\texttt{/cluster/nodes/\{node-key\}/metrics} proxy, keeping node drill-down
+\path{/cluster/nodes/{node-key}/metrics} proxy, keeping node drill-down
 behind the same policy as the cluster view.
 
 The current port-80 adapter is unauthenticated and belongs only on a protected
@@ -692,11 +692,12 @@ documented in \repofile|docs/architecture/cluster-observability.md|.
 \subsection{Focused stateless-handoff validation}
 
 The focused two-guest fixture starts the signed \texttt{greet} artifact on one
-node, invokes it remotely, reassigns it, retires the old instance, and verifies
-that the logical name remains reachable. Generation fencing prevents the
-retiring owner from unregistering its replacement. This fixture isolates
-assignment handoff and routing continuity for fresh service state; load-driven
-and stateful migration require additional protocols described below.
+node, verifies exact-generation readiness and the selected architecture variant,
+reassigns it, and checks cooperative and forced retirement. An identical signed
+submission through the follower preserves its generation. Legacy DNS proxy
+access remains denied for this scoped application; public echo separately proves
+cross-node RPC. Generation fencing protects the replacement. Load-driven and
+stateful migration require additional protocols described below.
 
 \subsection{Future stateful cross-node migration}
 
@@ -745,15 +746,17 @@ The distributed name service's Raft catalog (\autoref{chap:consensus}) also hold
 \textbf{deployment manifest}:
 
 \begin{quote}
-\texttt{artifact -> \{object identity, artifact digest, replica nodes,} \\
-\texttt{replica variant pins, generation, signed descriptor\}}.
+\texttt{artifact -> \{replica nodes, replica variant pins,} \\
+\texttt{generation, signed descriptor\}}.
 \end{quote}
 
 The map is committed through the same log as name registrations. Deployment
 is therefore ordered, replicated, generation-fenced cluster state rather than
-per-node configuration. The named deployment operation (DNS 15) admits a
+per-node configuration. The descriptor-only deployment operation (DNS 33) admits a
 current signed descriptor; the named query (DNS 16) reads a replica's applied
-state. Packed deploy/query operations are retired.
+state. Packed deploy/query operations and the redundant named admission envelope are retired.
+The signed descriptor alone supplies object keys, digests and requested placement.
+Queries use the tagged \texttt{CDEPQR01} record with exact replica variant pins.
 
 The signed descriptor authorizes the deployment decision and binds artifact
 identity, placement policy, and resource limits. Raft orders and replicates the
@@ -1060,10 +1063,10 @@ progress deadlines, rollback, and operator audit identity.
 \subsection{Artifact naming}
 
 Artifact names are currently bare cluster-global names such as
-\texttt{greet}. The compatibility object id is derived from the name using a
+\texttt{greet}. The local staging object id is derived from the name using a
 \texttt{0xfffe...} tag over FNV-1a, while signed descriptors carry the opaque
-central-S3 object key and full content digest. Concrete node assignments occur
-only in the replicated deployment record.
+per-variant central-S3 object keys and full content digests. Resolved replica
+node/variant pins appear in the replicated deployment record.
 
 The host image producer detects and rejects collisions in the complete
 bundle. Production should replace the truncated 48-bit name hash with a

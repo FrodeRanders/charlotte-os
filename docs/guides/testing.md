@@ -1605,3 +1605,14 @@ barrier observes two completed denial replies on the migrated host. The earlier
 public echo phase retains positive cross-node RPC coverage. Authorized remote
 application invocation remains separate work; do not weaken local policy to
 make the old forwarding fixture pass.
+
+
+Current deployment persistence uses `CATALOGH` v17 inside the
+`CRFTSTA2` / `CRFTLOG2` pair. Unsupported earlier stores reject before replay;
+only explicitly fresh fixture storage may initialize. Deployment queries use
+`CDEPQR01` and preserve aligned node/variant pins, without object ID, primary
+node or variant-zero digest. The linked fixture exercises descriptor-only
+follower relay idempotence. HTTP keyhole checks require `charlotte.cluster.v2`
+and absence of the removed object ID. See
+[lean record evidence](../reports/audits/2026-10-13-protocol-simplification-records.md)
+for passing runs and the separately retained initial DMA startup failure.

@@ -1113,7 +1113,7 @@ if [ -n "$TIMEOUT" ]; then
                 if [ "$HTTP_LIVENESS_OK" = "1" ] \
                     && printf '%s' "$HTTP_BODY" | grep -Fq '"http":{"requests":' \
                     && printf '%s' "$HTTP_CLUSTER_BODY" | python3 -c \
-                        'import json,sys; d=json.load(sys.stdin); assert d["schema"] == "charlotte.cluster.v1" and d["fresh_committed"] and d["raft"]["served_by"]'; then
+                        'import json,sys; d=json.load(sys.stdin); assert d["schema"] == "charlotte.cluster.v2" and d["fresh_committed"] and d["raft"]["served_by"] and all("object_id" not in e for e in d["deployments"])'; then
                     HTTP_PROBE_OK=1
                     break
                 fi

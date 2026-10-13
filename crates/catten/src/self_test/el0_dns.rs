@@ -269,13 +269,13 @@ mod inner {
         );
         crate::memory::object::close_cap(KERNEL_ASID, memory).unwrap();
         let bytes = bytes.unwrap();
-        assert_eq!(u64::from_le_bytes(bytes[..8].try_into().unwrap()), generation);
-        assert_eq!(u64::from_le_bytes(bytes[16..24].try_into().unwrap()), node);
-        let descriptor_len = u32::from_le_bytes(bytes[56..60].try_into().unwrap()) as usize;
-        let descriptor = charlotte_launch::deployment::decode(&bytes[60..60 + descriptor_len])
+        assert_eq!(&bytes[..8], b"CDEPQR01");
+        assert_eq!(u64::from_le_bytes(bytes[8..16].try_into().unwrap()), generation);
+        let descriptor_len = u32::from_le_bytes(bytes[16..20].try_into().unwrap()) as usize;
+        let descriptor = charlotte_launch::deployment::decode(&bytes[20..20 + descriptor_len])
             .expect("current signed controller descriptor");
         assert_eq!(descriptor.artifact_name, b"greet");
-        let replicas = &bytes[60 + descriptor_len..];
+        let replicas = &bytes[20 + descriptor_len..];
         assert_eq!(replicas.len(), 12);
         assert_eq!(&replicas[..2], &1u16.to_le_bytes());
         assert_eq!(u64::from_le_bytes(replicas[2..10].try_into().unwrap()), node);
@@ -331,7 +331,7 @@ mod inner {
         const GREET_NAME: u64 = 0x0000_0074_6565_7267;
         // catten_services::dns::artifact_object_id(b"greet").
         const DEPLOY_OBJECT_ID: u64 = 0xfffe_ea29_637f_e28a;
-        const DNS_OP_DEPLOY: u32 = 15;
+        const DNS_OP_DEPLOY_SUBMIT: u32 = 33;
         const DNS_OP_GET: u32 = 1;
         const AGENT_STAGE_IDENTITY: u32 = 2;
         const AGENT_STAGE_SERVING: u32 = 6;
@@ -343,12 +343,6 @@ mod inner {
         // the cluster's public key, and a tampered copy must be refused.
         let artifact = crate::service::store::service_elf(b"greet")
             .expect("[deploy] greet artifact in object store");
-        let descriptor = fixture_descriptor(0x42e278ea, 1);
-        let artifact_digest = charlotte_launch::deployment::decode(descriptor)
-            .unwrap()
-            .variant(0)
-            .unwrap()
-            .artifact_digest;
         use charlotte_launch::signature_note::VerifyOutcome;
         assert_eq!(
             charlotte_launch::signature_note::verify_elf_for_name(
@@ -421,14 +415,7 @@ mod inner {
         // hosting is the point of the cluster).
         if is_leader {
             let descriptor = fixture_descriptor(peer_key, 1);
-            let mut request = Vec::with_capacity(59 + descriptor.len());
-            request.extend_from_slice(&5u16.to_le_bytes());
-            request.extend_from_slice(b"greet");
-            request.extend_from_slice(&DEPLOY_OBJECT_ID.to_le_bytes());
-            request.extend_from_slice(&peer_key.to_le_bytes());
-            request.extend_from_slice(&artifact_digest);
-            request.extend_from_slice(&(descriptor.len() as u32).to_le_bytes());
-            request.extend_from_slice(descriptor);
+            let request = descriptor;
             logln!(
                 "[deploy] calling OP_DEPLOY on the peer (object {:#x} node {peer_key:#x})",
                 DEPLOY_OBJECT_ID
@@ -436,7 +423,7 @@ mod inner {
             let deadline = crate::self_test::results::Deadline::after_millis(120_000);
             let deploy = loop {
                 let result =
-                    call_with_memory(dns_conn, DNS_OP_DEPLOY, request.len() as u64, &request);
+                    call_with_memory(dns_conn, DNS_OP_DEPLOY_SUBMIT, request.len() as u64, request);
                 if result != Some(-23) {
                     break result;
                 }
@@ -482,6 +469,22 @@ mod inner {
             peer_key
         };
         wait_rollout_ready(dns_conn, 1, initial_host);
+        if !is_leader {
+            // Submit the same signed decision through this follower's local DNS.
+            // The current descriptor-only relay must preserve exact idempotence
+            // before the public echo barrier permits the next generation.
+            let descriptor = fixture_descriptor(my_key, 1);
+            assert_eq!(
+                call_with_memory(
+                    dns_conn,
+                    DNS_OP_DEPLOY_SUBMIT,
+                    descriptor.len() as u64,
+                    descriptor
+                ),
+                Some(1)
+            );
+            logln!("[deploy] descriptor-only follower relay preserved generation 1");
+        }
         let mut probe = Vec::with_capacity(12);
         probe.extend_from_slice(&DNS_OP_GET.to_le_bytes());
         probe.extend_from_slice(&0i64.to_le_bytes());
@@ -526,15 +529,9 @@ mod inner {
             .then(|| status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_CALLS_SERVED));
         if is_leader {
             let descriptor = fixture_descriptor(my_key, 2);
-            let mut request = Vec::with_capacity(59 + descriptor.len());
-            request.extend_from_slice(&5u16.to_le_bytes());
-            request.extend_from_slice(b"greet");
-            request.extend_from_slice(&DEPLOY_OBJECT_ID.to_le_bytes());
-            request.extend_from_slice(&my_key.to_le_bytes());
-            request.extend_from_slice(&artifact_digest);
-            request.extend_from_slice(&(descriptor.len() as u32).to_le_bytes());
-            request.extend_from_slice(descriptor);
-            let deploy = call_with_memory(dns_conn, DNS_OP_DEPLOY, request.len() as u64, &request);
+            let request = descriptor;
+            let deploy =
+                call_with_memory(dns_conn, DNS_OP_DEPLOY_SUBMIT, request.len() as u64, request);
             logln!("[deploy] migration deployment result = {deploy:?}");
             assert!(
                 deploy.is_some_and(|generation| generation >= 2),
@@ -633,15 +630,9 @@ mod inner {
             drop(deployed);
 
             let descriptor = fixture_descriptor(peer_key, 3);
-            let mut request = Vec::with_capacity(59 + descriptor.len());
-            request.extend_from_slice(&5u16.to_le_bytes());
-            request.extend_from_slice(b"greet");
-            request.extend_from_slice(&DEPLOY_OBJECT_ID.to_le_bytes());
-            request.extend_from_slice(&peer_key.to_le_bytes());
-            request.extend_from_slice(&artifact_digest);
-            request.extend_from_slice(&(descriptor.len() as u32).to_le_bytes());
-            request.extend_from_slice(descriptor);
-            let deploy = call_with_memory(dns_conn, DNS_OP_DEPLOY, request.len() as u64, &request);
+            let request = descriptor;
+            let deploy =
+                call_with_memory(dns_conn, DNS_OP_DEPLOY_SUBMIT, request.len() as u64, request);
             logln!("[deploy] zero-grace return migration result = {deploy:?}");
             assert!(
                 deploy.is_some_and(|generation| generation >= 3),

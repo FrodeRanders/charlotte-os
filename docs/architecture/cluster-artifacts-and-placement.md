@@ -125,7 +125,7 @@ bytes. The cluster verifies the outer and nested signatures, relays a request
 received by a follower to the current leader, resolves automatic placement,
 and admits the whole set in one Raft command. Catalog preflight rejects a stale
 or conflicting release or component before changing the deployment map. The sole
-[catalog-v16 snapshot](../reference/catalog-snapshots.md) retains release records,
+[catalog-v17 snapshot](../reference/catalog-snapshots.md) retains release records,
 concrete replica sets, per-node readiness, operational authorization, shutdown
 intents, ingress policy and capacity samples. Admission is atomic, while S3 fetch,
 launch, publication, and readiness remain independently reconciled after the
@@ -194,8 +194,9 @@ boundaries:
    before modifying the local object store.
 2. The kernel service-store resolver verifies that the object found under a
    name was signed for that name before caching it.
-3. A deployment record pins the full SHA-256 of the selected stored bytes, so
-   replacing an object at the same name cannot mutate an existing generation.
+3. Each signed executable variant pins its object key and SHA-256. The
+   committed replica variant index selects those exact bytes; no separate
+   object ID, primary node or variant-zero digest is stored in the record.
 4. For descriptor deployments, the assigned node agent pulls the opaque key
    through its locally provisioned S3 connector, then verifies the descriptor,
    ELF signature, digest, key, and name before invoking its scoped deployment

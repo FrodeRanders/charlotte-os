@@ -131,7 +131,7 @@ stale connections fail and clients can re-lookup a replacement generation.
 
 The operational DNS node requires persistent storage. One jointly opened pair
 of stable objects derived from cluster/node identity holds tagged
-\texttt{CRFTSTA1} term/vote/join-admission state and \texttt{CRFTLOG1}
+\texttt{CRFTSTA2} term/vote/join-admission state and \texttt{CRFTLOG2}
 snapshot/log state. Only two absent objects authorize initialization;
 incomplete, corrupt and unsupported records reject without reset or a volatile
 fallback. Older layouts are not migrated. Mutations are followed by an NVMe
@@ -141,8 +141,9 @@ changes must ship an explicit, interruption-tested migration preserving
 election, admission and committed state. See
 \path{docs/reference/raft-persistence.md}.
 
-The catalog accepts only its complete version-16 snapshot, identified by
-\texttt{CATALOGG}. It retains mandatory execution profiles and per-replica signed variant indices. Earlier snapshot decoders and synthesized generations,
+The catalog accepts only its complete version-17 snapshot, identified by
+\texttt{CATALOGH}. It retains mandatory execution profiles and per-replica signed variant indices,
+without redundant object IDs, primary nodes or variant-zero digests. Earlier snapshot decoders and synthesized generations,
 digests, descriptors, replica sets and authorization signatures are removed.
 Unsupported or malformed application snapshots reject explicitly before Raft
 publishes snapshot progress or membership. Recovery stops on rejection;

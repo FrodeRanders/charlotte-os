@@ -217,7 +217,7 @@ mod inner {
             Some(-1),
         );
         let dns = lookup_service(kernel_ns, 0x0073_6e64).expect("[clusterctl] DNS connection");
-        for retired_opcode in [8, 9] {
+        for retired_opcode in [8, 9, 15] {
             assert_eq!(
                 call_with_memory_reply(dns, retired_opcode, 0, b"retired")
                     .map(|(result, _)| result),
@@ -408,20 +408,32 @@ mod inner {
                     logln!("[admin] status: {status}");
                     return;
                 };
-                let bytes = match read_moved_memory(memory, 24) {
-                    Ok(bytes) => bytes,
-                    Err(error) => {
-                        logln!("[admin] status read failed: {error:?}");
+                let len = usize::try_from(status).unwrap_or(0);
+                let bytes = match read_moved_memory(memory, len) {
+                    Ok(bytes) if bytes.len() >= 22 && &bytes[..8] == b"CDEPQR01" => bytes,
+                    _ => {
+                        logln!("[admin] invalid deployment status record");
                         return;
                     }
                 };
-                let generation = u64::from_le_bytes(bytes[0..8].try_into().expect("generation"));
-                let object_id = u64::from_le_bytes(bytes[8..16].try_into().expect("object id"));
-                let node_key = u64::from_le_bytes(bytes[16..24].try_into().expect("node key"));
+                let generation = u64::from_le_bytes(bytes[8..16].try_into().unwrap());
+                let descriptor_len = u32::from_le_bytes(bytes[16..20].try_into().unwrap()) as usize;
+                let Some(replicas) = bytes.get(20 + descriptor_len..) else {
+                    return;
+                };
+                let Some(count) = replicas.get(..2) else {
+                    return;
+                };
+                let count = u16::from_le_bytes(count.try_into().unwrap());
                 logln!(
-                    "[admin] {}: generation={generation} object={object_id:#x} node={node_key:#x}",
+                    "[admin] {}: generation={generation} replicas={count}",
                     core::str::from_utf8(name).unwrap_or("?")
                 );
+                for pin in replicas[2..].as_chunks::<10>().0 {
+                    let node = u64::from_le_bytes(pin[..8].try_into().unwrap());
+                    let variant = u16::from_le_bytes(pin[8..].try_into().unwrap());
+                    logln!("[admin] node={node:#x} variant={variant}");
+                }
             }
             _ => {
                 logln!("[admin] unknown command (try 'help')");

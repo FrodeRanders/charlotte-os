@@ -27,13 +27,20 @@ unknown operations and absent reply tokens release their owned transient
 attachments; returned memory is never detached into scalar cleanup logic.
 These handlers do not introduce timer polling or replay accepted RPCs.
 
-Controller deploy opcode 2 and DNS packed deployment/query opcodes 8/9 are
-retired. Unknown operations reject and consume their received attachments.
-The optional `DEP1` descriptor suffix parser and stored-ELF hashing adapter
-are removed with those operations. Current named signed admission (DNS 15)
-and follower relay retain their existing name/object/node/digest fields until
-the next coordinated replicated-record simplification; those diagnostics do
-not replace signed variants or committed pins.
+Controller deploy opcode 2 and DNS packed deploy/query opcodes 8/9 are
+retired. DNS 15's redundant named envelope is also retired. Current single-
+component admission uses DNS `OP_DEPLOY_SUBMIT` (33), with only the exact
+signed descriptor and its byte length. Name, requested placement, object keys
+and content digests are read from its signature. Follower relay 0x22/0x23
+carries that same descriptor plus session/correlation/caller identity.
+
+Deployment records contain generation, descriptor and exact replica pins.
+`CDEPQR01` tags their complete query representation; `CATALOGH` version 17 tags
+snapshots. There is no object ID, primary node or variant-zero digest in either.
+Rollout status's representative node is computed from the first assignment for
+inspection; it is not stored launch authority. Unknown operations reject and
+consume their received attachments. The optional `DEP1` parser and stored-ELF
+hashing adapter are removed.
 
 ## Local tooling
 

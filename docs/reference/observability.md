@@ -223,7 +223,7 @@ both what happened and why the placement actuator did—or did not—respond.
 
 The complementary cluster keyhole is served at `GET /cluster` with its
 versioned JSON at `GET /cluster/metrics`. DNS constructs one bounded
-`CLOBSV1` snapshot from locally applied Raft state; httpd strictly decodes and
+`CLOBSV2` snapshot from locally applied Raft state; httpd strictly decodes and
 renders it. The result joins membership, leader/term/commit posture, filtered
 capacity freshness, desired and ready replicas, and each VIP's DSR advertiser
 and eligible backend set. It returns HTTP 503 instead of presenting a stale

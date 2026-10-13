@@ -165,12 +165,12 @@ use local_calls::begin_local_call;
 use message_memory::{
     packed_name,
     read_call_request,
+    read_deployment_descriptor,
     read_deployment_registration,
     read_generation,
     read_key,
     read_moved_bytes,
     read_named_bytes,
-    read_named_deploy_request,
     reply_move_bytes,
 };
 use reactor::{
@@ -725,7 +725,6 @@ fn cluster_observability_snapshot(
             state,
             generation: deployment.generation,
             service_generation,
-            object_id: deployment.object_id,
             demand_frames,
             desired_nodes,
             ready_nodes,
@@ -2560,15 +2559,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 {
                                     let result = if node.state != NodeState::Leader {
                                         Some(dns::ERR_NOT_LEADER)
-                                    } else if !charlotte_launch::deployment::valid_artifact_name(
-                                        &request.artifact,
-                                    ) || request.descriptor.len()
-                                        > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
-                                    {
-                                        Some(dns::ERR_TOO_LARGE)
                                     } else {
                                         let capacity = fresh_capacity_view(&catalog,&capacity_last_seen_ms,node.millis());
-                                        match deployment_command(&catalog,&node,DeploymentProposal { name: &request.artifact, object_id: request.object_id, node: request.node_key, digest: &request.digest, descriptor: &request.descriptor },&capacity).and_then(|command|node.submit_command(command,node.millis())) {
+                                        match deployment_command(&catalog,&node,&request.descriptor,&capacity).and_then(|command|node.submit_command(command,node.millis())) {
                                             Ok(log_index) => {
                                                 pending_registers.push(PendingRegistration::RemoteDeploy { term: node.current_term,
                                                         log_index,
@@ -3368,8 +3361,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     }
                 }
 
-                dns::OP_DEPLOY_NAMED => {
-                    let request = read_named_deploy_request(&message);
+                dns::OP_DEPLOY_SUBMIT => {
+                    let request = read_deployment_descriptor(&message);
                     let result = match request {
                         Some(request) if node.state == NodeState::Leader => {
                             match submit_deferred(
@@ -3380,13 +3373,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     deployment_command(
                                         &catalog,
                                         node,
-                                        DeploymentProposal {
-                                            name: &request.name,
-                                            object_id: request.object_id,
-                                            node: request.node_key,
-                                            digest: &request.digest,
-                                            descriptor: &request.descriptor,
-                                        },
+                                        &request,
                                         &fresh_capacity_view(
                                             &catalog,
                                             &capacity_last_seen_ms,
@@ -3414,11 +3401,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                         session,
                                         request_id,
                                         caller: node_name.clone(),
-                                        artifact: request.name,
-                                        object_id: request.object_id,
-                                        node_key: request.node_key,
-                                        digest: request.digest,
-                                        descriptor: request.descriptor,
+                                        descriptor: request,
                                     },
                                 )
                             },
@@ -3829,7 +3812,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             state,
                             deployment_generation: deployment.generation,
                             service_generation,
-                            node_key: deployment.node_key,
+                            node_key: deployment.replica_nodes.first().copied().unwrap_or(0),
                             desired_replicas: deployment
                                 .replica_nodes
                                 .len()
@@ -4981,44 +4964,22 @@ fn main(ctx: Context) -> ! {
 
 catten_rt::entry!(main);
 
-struct DeploymentProposal<'a> {
-    name: &'a [u8],
-    object_id: u64,
-    node: u64,
-    digest: &'a [u8; 32],
-    descriptor: &'a [u8],
-}
-
 fn deployment_command(
     catalog: &NameCatalog,
     node: &RaftNode,
-    proposal: DeploymentProposal<'_>,
+    bytes: &[u8],
     capacity: &operations_admission::NodeCapacityView,
 ) -> Result<Vec<u8>, i64> {
-    let DeploymentProposal {
-        name: artifact,
-        object_id,
-        node: requested_node,
-        digest,
-        descriptor: bytes,
-    } = proposal;
     let descriptor =
         charlotte_launch::deployment::decode(bytes).ok_or(clusterctl::ERR_UNTRUSTED_DESCRIPTOR)?;
-    if descriptor.artifact_name != artifact
-        || descriptor.variant(0).map(|variant| variant.artifact_digest) != Some(*digest)
-        || descriptor.placement != charlotte_launch::placement::PlacementPolicy::singleton()
-        || (descriptor.node_key != 0 && requested_node != descriptor.node_key)
-    {
+    let artifact = descriptor.artifact_name;
+    if descriptor.placement != charlotte_launch::placement::PlacementPolicy::singleton() {
         return Err(clusterctl::ERR_UNTRUSTED_DESCRIPTOR);
     }
     let capacity =
         capacity_with_reservations(catalog, capacity.clone(), &BTreeSet::from([artifact.to_vec()]));
     let eligible = placement_nodes(node, catalog);
-    let preferred = if requested_node == 0 {
-        node_identity::key_from_name(node.me.id.as_bytes()).unwrap_or(0)
-    } else {
-        requested_node
-    };
+    let preferred = node_identity::key_from_name(node.me.id.as_bytes()).unwrap_or(0);
     let assignments = operations_admission::resolve_descriptor_assignments_with_capacity(
         &[bytes],
         &eligible,
@@ -5046,7 +5007,5 @@ fn deployment_command(
                 .ok_or(clusterctl::ERR_INCOMPATIBLE_TARGET)?,
         )
         .ok_or(clusterctl::ERR_INCOMPATIBLE_TARGET)?;
-    Ok(catten_services::name_catalog::encode_deploy(
-        artifact, object_id, selected, digest, bytes, variant,
-    ))
+    Ok(catten_services::name_catalog::encode_deploy(bytes, selected, variant))
 }

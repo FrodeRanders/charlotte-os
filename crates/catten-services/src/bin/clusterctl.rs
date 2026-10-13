@@ -140,48 +140,19 @@ fn store_artifact(obj_conn: u64, object_id: u64, bytes: &[u8]) -> bool {
     true
 }
 
-fn submit_deployment(
-    dns_conn: u64,
-    name: &[u8],
-    object_id: u64,
-    node_key: u64,
-    artifact_digest: &[u8; 32],
-    descriptor: &[u8],
-) -> i64 {
-    let request_len =
-        2usize.saturating_add(name.len()).saturating_add(52).saturating_add(descriptor.len());
-    if descriptor.len() > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN || request_len > 4096 {
-        return clusterctl::ERR_UPLOAD_FAILED;
+fn submit_deployment(dns_conn: u64, descriptor: &[u8]) -> i64 {
+    if charlotte_launch::deployment::decode(descriptor).is_none() {
+        return clusterctl::ERR_UNTRUSTED_DESCRIPTOR;
     }
-    let request = match OwnedMemory::allocate(1) {
-        Ok(request) => request,
-        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
+    let Some(request) = memory_from_bytes(descriptor) else {
+        return clusterctl::ERR_UPLOAD_FAILED;
     };
-    let mut mapping = match request.map_writable() {
-        Ok(mapping) => mapping,
-        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
-    };
-    let bytes = mapping.as_mut_slice();
-    bytes[0..2].copy_from_slice(&(name.len() as u16).to_le_bytes());
-    let after_name = 2 + name.len();
-    bytes[2..after_name].copy_from_slice(name);
-    bytes[after_name..after_name + 8].copy_from_slice(&object_id.to_le_bytes());
-    bytes[after_name + 8..after_name + 16].copy_from_slice(&node_key.to_le_bytes());
-    bytes[after_name + 16..after_name + 48].copy_from_slice(artifact_digest);
-    bytes[after_name + 48..after_name + 52]
-        .copy_from_slice(&(descriptor.len() as u32).to_le_bytes());
-    bytes[after_name + 52..request_len].copy_from_slice(descriptor);
-    let request = match mapping.unmap() {
-        Ok(request) => request,
-        Err(_) => return clusterctl::ERR_UPLOAD_FAILED,
-    };
-    // `dns_conn` is owned by this legacy service loop; this short borrow keeps
-    // the newly transferred request memory under the typed ownership API.
+    // Borrow the launch-owned DNS connection; submission consumes request memory.
     let dns = match unsafe { ConnectionRef::from_raw(dns_conn) } {
         Ok(dns) => dns,
         Err(_) => return clusterctl::ERR_NOT_LEADER,
     };
-    match dns.call_move(dns::OP_DEPLOY_NAMED, request_len as u64, request) {
+    match dns.call_move(dns::OP_DEPLOY_SUBMIT, descriptor.len() as u64, request) {
         Ok(call) => match call.wait() {
             Ok(reply) => reply.result,
             Err(_) => clusterctl::ERR_NOT_LEADER,
@@ -195,7 +166,7 @@ fn current_deployment(dns_conn: u64, name: &[u8]) -> Option<name_catalog::Deploy
     let request = memory_from_bytes(name)?;
     let reply =
         dns.call_move(dns::OP_DEPLOY_QUERY_NAMED, name.len() as u64, request).ok()?.wait().ok()?;
-    if reply.result < 56 {
+    if reply.result < 22 {
         return None;
     }
     let len = usize::try_from(reply.result).ok()?;
@@ -435,7 +406,6 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
                                 }
                                 Some(descriptor) => {
                                     match current_deployment(dns_conn, descriptor.artifact_name)
-                                        .filter(|current| !current.descriptor.is_empty())
                                     {
                                         Some(current)
                                             if charlotte_launch::deployment::decode(
@@ -463,10 +433,6 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
                                         }
                                         _ => submit_deployment(
                                             dns_conn,
-                                            descriptor.artifact_name,
-                                            dns::artifact_object_id(descriptor.artifact_name),
-                                            descriptor.node_key,
-                                            &descriptor.variant(0).unwrap().artifact_digest,
                                             &descriptor_bytes,
                                         ),
                                     }
