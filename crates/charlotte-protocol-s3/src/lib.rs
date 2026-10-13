@@ -17,8 +17,8 @@ pub const INTERFACE: u64 = u64::from_le_bytes(*b"S3\0\0\0\0\0\0");
 pub const VERSION: u32 = 1;
 pub const NAME: u64 = u64::from_le_bytes(*b"s3\0\0\0\0\0\0");
 
-/// Immutable launch profile used by privileged connector pickup. The legacy
-/// manifest remains supported for statically provisioned development boots.
+/// Sole immutable launch profile for static provisioning and privileged pickup.
+/// A launch without this profile rejects; manifest fields supply no fallback.
 pub const PROFILE_MAGIC: [u8; 8] = *b"CHS3PF1\0";
 pub const PROFILE_VERSION: u16 = 1;
 pub const PROFILE_HEADER_LEN: usize = 64;
@@ -200,25 +200,6 @@ fn read_u32(bytes: &[u8], offset: usize) -> Option<u32> {
 
 fn read_u64(bytes: &[u8], offset: usize) -> Option<u64> {
     Some(u64::from_le_bytes(bytes.get(offset..offset + 8)?.try_into().ok()?))
-}
-
-/// Launch-manifest keys. Names are constrained to eight bytes by the common
-/// Charlotte launch ABI; these constants keep launchers and the service in
-/// lockstep.
-pub mod manifest {
-    pub const IP: u64 = u64::from_le_bytes(*b"s3_ip\0\0\0");
-    pub const HOST: u64 = u64::from_le_bytes(*b"s3_host\0");
-    pub const PORT: u64 = u64::from_le_bytes(*b"s3_port\0");
-    pub const TLS: u64 = u64::from_le_bytes(*b"s3_tls\0\0");
-    /// DER-encoded X.509 trust anchor used to authenticate the endpoint.
-    pub const CA_DER: u64 = u64::from_le_bytes(*b"s3_ca\0\0\0");
-    pub const REGION: u64 = u64::from_le_bytes(*b"s3regn\0\0");
-    pub const BUCKET: u64 = u64::from_le_bytes(*b"s3buck\0\0");
-    pub const PREFIX: u64 = u64::from_le_bytes(*b"s3pref\0\0");
-    pub const ACCESS_KEY: u64 = u64::from_le_bytes(*b"s3access");
-    pub const SECRET_KEY: u64 = u64::from_le_bytes(*b"s3secret");
-    pub const NAMESPACE: u64 = u64::from_le_bytes(*b"s3_ns\0\0\0");
-    pub const RIGHTS: u64 = u64::from_le_bytes(*b"s3rights");
 }
 
 /// Begin a streaming GET. The moved memory contains [`ObjectRequest`]. The
@@ -467,6 +448,106 @@ impl ObjectMetadata<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn fixture_profile() -> Profile<'static> {
+        Profile {
+            endpoint_ipv4: [10, 0, 2, 2],
+            host: b"store.test",
+            port: 8443,
+            tls: true,
+            ca_certificate_der: b"public-test-ca-placeholder",
+            region: b"eu-north-1",
+            bucket: b"bucket",
+            prefix: b"archive/",
+            access_key: b"public-fixture-access",
+            secret_key: b"public-fixture-secret",
+            namespace: b"tenant",
+            rights: RIGHT_GET | RIGHT_PUT,
+        }
+    }
+
+    #[test]
+    fn immutable_profile_preserves_explicit_values_and_empty_policy_fields() {
+        for profile in [
+            fixture_profile(),
+            Profile {
+                prefix: b"",
+                namespace: b"",
+                ..fixture_profile()
+            },
+        ] {
+            let encoded = profile.encode().unwrap();
+            assert_eq!(Profile::decode(&encoded), Some(profile));
+        }
+    }
+
+    #[test]
+    fn profile_rejection_never_fills_missing_or_invalid_configuration() {
+        for profile in [
+            Profile {
+                host: b"",
+                ..fixture_profile()
+            },
+            Profile {
+                port: 0,
+                ..fixture_profile()
+            },
+            Profile {
+                region: b"",
+                ..fixture_profile()
+            },
+            Profile {
+                bucket: b"",
+                ..fixture_profile()
+            },
+            Profile {
+                secret_key: b"",
+                ..fixture_profile()
+            },
+            Profile {
+                rights: 0,
+                ..fixture_profile()
+            },
+            Profile {
+                rights: 0x8000,
+                ..fixture_profile()
+            },
+            Profile {
+                ca_certificate_der: b"",
+                ..fixture_profile()
+            },
+            Profile {
+                host: b"bad\r\nhost",
+                ..fixture_profile()
+            },
+            Profile {
+                namespace: b"bad\r\nnamespace",
+                ..fixture_profile()
+            },
+            Profile {
+                prefix: b"../escape",
+                ..fixture_profile()
+            },
+        ] {
+            assert!(profile.encode().is_none());
+        }
+        let encoded = fixture_profile().encode().unwrap();
+        for len in 0..encoded.len() {
+            assert!(Profile::decode(&encoded[..len]).is_none());
+        }
+        let mut extended = encoded.clone();
+        extended.push(0);
+        let len = extended.len() as u32;
+        extended[12..16].copy_from_slice(&len.to_le_bytes());
+        assert!(Profile::decode(&extended).is_none());
+        for (offset, bytes) in
+            [(8, &[2u8, 0][..]), (16, &[2u8, 0][..]), (18, &[0u8, 0][..]), (52, &[1u8][..])]
+        {
+            let mut invalid = encoded.clone();
+            invalid[offset..offset + bytes.len()].copy_from_slice(bytes);
+            assert!(Profile::decode(&invalid).is_none());
+        }
+    }
 
     #[test]
     fn object_request_round_trip() {

@@ -299,6 +299,12 @@ Applications receive only the profile's endpoint capability and transfer
 object data as owned memory chunks. This makes external object storage usable
 without handing each application general socket access or raw S3 credentials.
 
+Static provisioning and operational pickup both supply the complete immutable
+\texttt{CHS3PF1} profile through read-only launch memory. The service rejects
+missing or malformed profiles; it no longer reads per-field manifest aliases
+or synthesizes region and port defaults. The shared profile codec is the single
+validation boundary. Its existing secret buffer remains zeroizing.
+
 RustFS is the current integration fixture. Dell EMC ECS is an intended managed
 store and the adapter can emit its namespace header, but it has not yet been
 qualified against an ECS installation. The cluster deployment agent can use a
@@ -316,8 +322,8 @@ qualification remain operational work.
 The Raft service selects memory (\texttt{storage=0}, or omitted) or required
 persistence (\texttt{storage=2}); retired mode 1 and malformed policy values
 reject. Required mode waits for \texttt{"obj"} through the name service.
-One jointly validated two-object pair holds \texttt{CRFTSTA2}
-term/vote/join-admission state and \texttt{CRFTLOG2} snapshot/log state.
+One jointly validated two-object pair holds \texttt{CRFTSTA3}
+term/vote/join-admission state and \texttt{CRFTLOG3} snapshot/log state.
 Only two absent records authorize initialization; existing empty, incomplete,
 corrupt or unsupported records reject without reset or a memory fallback.
 Older decoders and split-store migration are removed. Each mutation writes

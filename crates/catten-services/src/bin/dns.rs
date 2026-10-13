@@ -80,7 +80,6 @@ use catten_services::{
         encode_node_capacity,
         encode_reassign,
         encode_register,
-        encode_register_deployment,
         encode_set_cluster_key,
         encode_shutdown,
         encode_unregister_generation,
@@ -376,11 +375,7 @@ fn register_name(
         // Leader: commit the registration with this node as the owner.
         // Submit once; the reactor completes the reply once the entry has
         // replicated (see pending_registers below).
-        let command = if deployment_generation == 0 {
-            encode_register(&name, node_name)
-        } else {
-            encode_register_deployment(&name, node_name, deployment_generation)
-        };
+        let command = encode_register(&name, node_name, deployment_generation);
         match node.submit_command(command, node.millis()) {
             Ok(index) => {
                 let (connection, existing_local_generation) = observed
@@ -2426,15 +2421,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             ..
                                         } if pending_name == &name
                                     ))
-                                    && let Ok(log_index) = node.submit_command(if deployment_generation == 0 {
-                                        encode_register(&name, &owner)
-                                    } else {
-                                        encode_register_deployment(
-                                            &name,
-                                            &owner,
-                                            deployment_generation,
-                                        )
-                                    }, node.millis())
+                                    && let Ok(log_index) = node.submit_command(encode_register(&name, &owner, deployment_generation), node.millis())
                                 {
                                     pending_registers.push(PendingRegistration::RemotePrepare { term: node.current_term,
                                         log_index,
@@ -3094,7 +3081,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 if catalog.lookup(&name).is_none()
                     && !membership_events_submitted.contains(&name)
                     && let Ok(log_index) =
-                        node.submit_command(encode_register(&name, &node_name), node.millis())
+                        node.submit_command(encode_register(&name, &node_name, 0), node.millis())
                 {
                     membership_events_submitted.insert(name.clone());
                     pending_registers.push(PendingRegistration::Prepare {
@@ -3261,9 +3248,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 _ => dns::ERR_NOT_LEADER,
                             }
                         } else {
-                            match node
-                                .submit_command(encode_register(&name, &node_name), node.millis())
-                            {
+                            match node.submit_command(
+                                encode_register(&name, &node_name, 0),
+                                node.millis(),
+                            ) {
                                 Ok(index) => {
                                     pending_registers.push(PendingRegistration::Prepare {
                                         term: node.current_term,

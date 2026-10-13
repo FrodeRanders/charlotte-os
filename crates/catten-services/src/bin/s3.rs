@@ -24,7 +24,6 @@ use core::fmt::Write;
 
 use catten_rt::{
     Context,
-    ManifestValue,
     ShutdownRequest,
     config,
     owned::{
@@ -103,16 +102,14 @@ struct Profile {
 
 impl Profile {
     fn from_context(ctx: &Context) -> Option<Self> {
-        if let Some(memory) = ctx.profile_memory() {
-            let mapping = memory.map_read_only().ok()?;
-            return Self::from_wire(mapping.as_slice());
-        }
-        Self::from_manifest(ctx)
+        let memory = ctx.profile_memory()?;
+        let mapping = memory.map_read_only().ok()?;
+        Self::from_wire(mapping.as_slice())
     }
 
     fn from_wire(bytes: &[u8]) -> Option<Self> {
         let profile = charlotte_protocol_s3::Profile::decode(bytes)?;
-        Self::validate(Self {
+        Some(Self {
             ip: profile.endpoint_ipv4,
             host: core::str::from_utf8(profile.host).ok()?.into(),
             port: profile.port,
@@ -130,80 +127,6 @@ impl Profile {
             },
             rights: profile.rights,
         })
-    }
-
-    fn from_manifest(ctx: &Context) -> Option<Self> {
-        let ip = match ctx.manifest_value(protocol::manifest::IP)? {
-            ManifestValue::Bytes(bytes) if bytes.len() == 4 => {
-                [bytes[0], bytes[1], bytes[2], bytes[3]]
-            }
-            _ => return None,
-        };
-        let host = manifest_text(ctx, protocol::manifest::HOST)?;
-        let bucket = manifest_text(ctx, protocol::manifest::BUCKET)?;
-        let access_key = manifest_text(ctx, protocol::manifest::ACCESS_KEY)?;
-        let secret_key = manifest_bytes(ctx, protocol::manifest::SECRET_KEY)?;
-        let region = manifest_text(ctx, protocol::manifest::REGION)
-            .unwrap_or_else(|| "us-east-1".to_string());
-        let prefix = manifest_text(ctx, protocol::manifest::PREFIX).unwrap_or_default();
-        let namespace = manifest_text(ctx, protocol::manifest::NAMESPACE);
-        let tls =
-            matches!(ctx.manifest_value(protocol::manifest::TLS), Some(ManifestValue::Unsigned(1)))
-                || matches!(
-                    ctx.manifest_value(protocol::manifest::TLS),
-                    Some(ManifestValue::Bytes(b"1"))
-                );
-        let ca_der = manifest_bytes(ctx, protocol::manifest::CA_DER).unwrap_or_default();
-        let port = match ctx.manifest_value(protocol::manifest::PORT) {
-            Some(ManifestValue::Unsigned(port)) => u16::try_from(port).ok()?,
-            _ if tls => 443,
-            _ => 80,
-        };
-        let rights = match ctx.manifest_value(protocol::manifest::RIGHTS)? {
-            ManifestValue::Unsigned(rights) => rights,
-            _ => return None,
-        };
-        Self::validate(Self {
-            ip,
-            host,
-            port,
-            tls,
-            ca_der,
-            region,
-            bucket,
-            prefix,
-            access_key,
-            secret_key: Zeroizing::new(secret_key),
-            namespace,
-            rights,
-        })
-    }
-
-    fn validate(profile: Self) -> Option<Self> {
-        if profile.port == 0
-            || !valid_host(&profile.host)
-            || profile.bucket.is_empty()
-            || profile.bucket.bytes().any(|byte| byte <= b' ' || byte >= 0x7f || byte == b'/')
-            || profile.access_key.is_empty()
-            || !valid_header_value(&profile.access_key)
-            || profile.secret_key.is_empty()
-            || profile.region.is_empty()
-            || profile.region.bytes().any(|byte| !byte.is_ascii_alphanumeric() && byte != b'-')
-            || profile.namespace.as_deref().is_some_and(|value| !valid_header_value(value))
-            || profile.rights
-                & !(protocol::RIGHT_GET
-                    | protocol::RIGHT_PUT
-                    | protocol::RIGHT_DELETE
-                    | protocol::RIGHT_LIST)
-                != 0
-            || profile.rights == 0
-            || profile.prefix.starts_with('/')
-            || unsafe_path_segments(&profile.prefix)
-            || (profile.tls && profile.ca_der.is_empty())
-        {
-            return None;
-        }
-        Some(profile)
     }
 
     fn has(&self, right: u64) -> bool {
@@ -233,31 +156,8 @@ impl Profile {
     }
 }
 
-fn valid_header_value(value: &str) -> bool {
-    !value.is_empty() && value.bytes().all(|byte| byte == b'\t' || (b' '..=b'~').contains(&byte))
-}
-
-fn valid_host(host: &str) -> bool {
-    valid_header_value(host)
-        && host.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-'))
-}
-
 fn unsafe_path_segments(path: &str) -> bool {
     path.split('/').any(|segment| segment == "." || segment == "..")
-}
-
-fn manifest_text(ctx: &Context, key: u64) -> Option<String> {
-    let ManifestValue::Bytes(bytes) = ctx.manifest_value(key)? else {
-        return None;
-    };
-    core::str::from_utf8(bytes).ok().map(ToString::to_string)
-}
-
-fn manifest_bytes(ctx: &Context, key: u64) -> Option<Vec<u8>> {
-    let ManifestValue::Bytes(bytes) = ctx.manifest_value(key)? else {
-        return None;
-    };
-    Some(bytes.to_vec())
 }
 
 #[derive(Clone)]

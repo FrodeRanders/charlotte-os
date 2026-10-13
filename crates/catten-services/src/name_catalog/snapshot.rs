@@ -66,7 +66,7 @@ impl NameCatalog {
             size += 8 + 8 + 8 + 8 + 8 + 2 + 16;
         }
         let mut buf = Vec::with_capacity(size);
-        buf.extend_from_slice(&CATALOG_MAGIC_V17.to_le_bytes());
+        buf.extend_from_slice(&CATALOG_MAGIC_V18.to_le_bytes());
         buf.extend_from_slice(&(entries.len() as u32).to_le_bytes());
         for (name, entry) in entries.iter() {
             buf.extend_from_slice(&(name.len() as u32).to_le_bytes());
@@ -178,7 +178,7 @@ impl NameCatalog {
             return Err(SnapshotError::Malformed);
         }
         let magic = u64::from_le_bytes(data[0..8].try_into().ok().unwrap_or_default());
-        if magic != CATALOG_MAGIC_V17 {
+        if magic != CATALOG_MAGIC_V18 {
             return Err(SnapshotError::Unsupported);
         }
         let count = u32::from_le_bytes(data[8..12].try_into().ok().unwrap_or_default()) as usize;

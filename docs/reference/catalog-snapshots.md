@@ -1,11 +1,11 @@
 # Catalog snapshots and deployment query records
 
-The catalog accepts only version 17, numeric magic `0x434154414c4f4748`
-(`CATALOGH`), encoded little endian. Its deployment records retain generation,
+The catalog accepts only version 18, numeric magic `0x434154414c4f4749`
+(`CATALOGI`), encoded little endian. Its deployment records retain generation,
 signed descriptor and exact replica variant pins. Object ID, diagnostic primary
-node and variant-zero digest are removed. Versions 1–16 reject; no production
+node and variant-zero digest are removed. Versions 1–17 reject; no production
 stores need conversion for this pre-production change. The Raft pair uses
-`CRFTSTA2` / `CRFTLOG2` so old command logs also reject without a snapshot.
+`CRFTSTA3` / `CRFTLOG3` so old command logs also reject without a snapshot.
 
 ## Complete snapshot
 
@@ -84,3 +84,16 @@ fallible allocation transaction, concurrent reader snapshot isolation, or
 power-loss atomicity across application restore and persistent log writes.
 
 See [execution evidence](../reports/audits/2026-10-13-protocol-simplification-catalog.md).
+
+## Canonical registration commands
+
+Opcode 0x01 is `name_len:u32 | name | node_len:u32 | node |
+deployment_generation:u64`, after the opcode byte. Every command carries the
+last field: zero explicitly identifies a system service, and nonzero binds an
+application to its exact desired generation and committed replica node. Missing,
+partial or trailing bytes reject before generation reservation or catalog mutation.
+All callers use `encode_register(name, node, deployment_generation)`; the
+separate deployment encoder and suffix-free system grammar are removed.
+Preparation and later exact-generation activation remain separate operations.
+The snapshot and Raft pair tags advance together so old command logs cannot
+replay the suffix-free grammar, including stores without a snapshot.

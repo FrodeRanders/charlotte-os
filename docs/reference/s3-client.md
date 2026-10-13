@@ -41,31 +41,22 @@ and call `launch_s3_profile`. The launcher encodes the bounded immutable
 domain only after the transfer succeeds. The S3 service retains its secret key
 in zeroizing storage.
 
-The manifest keys below are retained only for legacy static boot images. New
-static launches and operational pickup use `charlotte_protocol_s3::Profile` as
-the format authority. Operational profiles are stored centrally as signed
-HPKE envelopes; the privileged node path fetches the ciphertext and connector
-ELF, the kernel re-verifies their authorization, decrypts into transient
+Static launches and operational pickup use `charlotte_protocol_s3::Profile`
+as the sole format authority. The legacy manifest fallback, per-key exports
+and synthesized region/port values are removed. A missing or malformed profile
+rejects before connector publication. Operational profiles are stored centrally
+as signed HPKE envelopes; the privileged node path fetches the ciphertext and
+connector ELF, the kernel re-verifies their authorization, decrypts into transient
 zeroizing memory, validates `CHS3PF1`, and moves the resulting profile directly
 into connector launch memory. No plaintext profile is returned through agent
 or application IPC.
 
-The manifest ABI uses the following eight-byte-or-shorter keys:
-
-| Key | Type | Meaning |
-| --- | --- | --- |
-| `s3_ip` | four bytes | Resolved endpoint IPv4 address |
-| `s3_host` | bytes | DNS host name, without a port; used for HTTP `Host`, TLS SNI, and certificate hostname verification |
-| `s3_port` | unsigned | TCP port |
-| `s3_tls` | unsigned | `1` requires TLS; `0` permits development HTTP |
-| `s3_ca` | bytes | DER-encoded X.509 trust anchor; required when TLS is enabled |
-| `s3regn` | bytes | Explicit SigV4 region, normally `us-east-1` for ECS |
-| `s3buck` | bytes | Fixed bucket |
-| `s3pref` | bytes | Optional fixed key prefix, without a leading slash |
-| `s3access` | bytes | Access-key identity |
-| `s3secret` | bytes | Secret key, visible only in the service domain |
-| `s3_ns` | bytes | Optional ECS namespace; sent and signed as `x-emc-namespace` |
-| `s3rights` | unsigned | Bitwise rights mask |
+The profile explicitly carries endpoint IPv4, host, port, TLS flag and trust
+anchor, region, bucket, prefix, access/secret keys, namespace and rights. Empty
+prefix/namespace are explicit current choices; region, port, credentials and
+rights cannot be omitted. The shared codec enforces the complete header,
+known flags, reserved zeros, exact lengths and policy validation. The service
+uses that validated view instead of a second independently maintained validator.
 
 Path-style addressing (`/<bucket>/<key>`) is used for both RustFS and ECS. An
 explicit region is always signed; the client does not issue a bucket-location

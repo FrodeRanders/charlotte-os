@@ -27,9 +27,9 @@ use crate::objstore_client::{
     ObjectStore,
 };
 
-const STATE_MAGIC: &[u8; 8] = b"CRFTSTA2";
+const STATE_MAGIC: &[u8; 8] = b"CRFTSTA3";
 const STATE_HEADER_LEN: usize = 32;
-const LOG_STATE_MAGIC: &[u8; 8] = b"CRFTLOG2";
+const LOG_STATE_MAGIC: &[u8; 8] = b"CRFTLOG3";
 const LOG_STATE_HEADER_LEN: usize = 40;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -609,6 +609,8 @@ mod tests {
             (ids.log, vec![0; 16], StoreError::UnsupportedFormat(RecordKind::Log)),
             (ids.state, b"CRFTSTA1".to_vec(), StoreError::UnsupportedFormat(RecordKind::State)),
             (ids.log, b"CRFTLOG1".to_vec(), StoreError::UnsupportedFormat(RecordKind::Log)),
+            (ids.state, b"CRFTSTA2".to_vec(), StoreError::UnsupportedFormat(RecordKind::State)),
+            (ids.log, b"CRFTLOG2".to_vec(), StoreError::UnsupportedFormat(RecordKind::Log)),
             (ids.log, LOG_STATE_MAGIC.to_vec(), StoreError::MalformedRecord(RecordKind::Log)),
         ] {
             let store = current_pair();
@@ -623,23 +625,22 @@ mod tests {
     #[test]
     fn complete_retired_pairs_reject_even_without_an_application_snapshot() {
         let ids = ObjectIds::new(10);
-        for retired in [vec![ids.state], vec![ids.log], vec![ids.state, ids.log]] {
-            let store = current_pair();
-            for id in retired {
-                let mut objects = store.objects.lock();
-                let record = objects.get_mut(&id).unwrap();
-                record[..8].copy_from_slice(
-                    if id == ids.state {
-                        b"CRFTSTA1"
-                    } else {
-                        b"CRFTLOG1"
-                    },
-                );
+        for revision in [b'1', b'2'] {
+            for retired in [vec![ids.state], vec![ids.log], vec![ids.state, ids.log]] {
+                let store = current_pair();
+                for id in retired {
+                    let mut objects = store.objects.lock();
+                    let record = objects.get_mut(&id).unwrap();
+                    record[7] = revision;
+                }
+                let before = store.objects.lock().clone();
+                assert!(matches!(
+                    open_from(store.clone(), 10),
+                    Err(StoreError::UnsupportedFormat(_))
+                ));
+                assert_eq!(*store.objects.lock(), before);
+                assert_eq!(store.operations.lock().len(), 2);
             }
-            let before = store.objects.lock().clone();
-            assert!(matches!(open_from(store.clone(), 10), Err(StoreError::UnsupportedFormat(_))));
-            assert_eq!(*store.objects.lock(), before);
-            assert_eq!(store.operations.lock().len(), 2);
         }
     }
 

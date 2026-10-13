@@ -254,6 +254,12 @@ the corrected RPC polling paths, and the remaining notification gaps.
   permit first-boot formatting; unsupported, unrecoverable or incompatible
   metadata rejects before mount writes. Host staging uses the kernel principal.
   See `docs/reference/object-store-format.md`.
+  Catalog registration uses one record/encoder with an explicit deployment
+  generation, including zero for system services. Missing suffixes reject;
+  catalog-v18 and Raft pair-v3 reject earlier stores before replay. S3 launches
+  require the complete immutable CHS3PF1 profile in read-only launch memory;
+  per-field manifest aliases and defaults supply no fallback. See
+  `docs/reference/catalog-snapshots.md` and `docs/reference/s3-client.md`.
   Application snapshot restore must return rejection without changing live
   state. Propagate that rejection before exposing a Raft node or publishing
   snapshot/log progress, membership or join completion; unsupported state is

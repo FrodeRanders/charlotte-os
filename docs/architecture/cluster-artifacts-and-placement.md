@@ -125,7 +125,7 @@ bytes. The cluster verifies the outer and nested signatures, relays a request
 received by a follower to the current leader, resolves automatic placement,
 and admits the whole set in one Raft command. Catalog preflight rejects a stale
 or conflicting release or component before changing the deployment map. The sole
-[catalog-v17 snapshot](../reference/catalog-snapshots.md) retains release records,
+[catalog-v18 snapshot](../reference/catalog-snapshots.md) retains release records,
 concrete replica sets, per-node readiness, operational authorization, shutdown
 intents, ingress policy and capacity samples. Admission is atomic, while S3 fetch,
 launch, publication, and readiness remain independently reconciled after the

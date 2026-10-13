@@ -393,8 +393,8 @@ fn deployment_generation_survives_activation_and_snapshot() {
         catalog.apply_with_result(1, &deploy_fixture(b"orders", 0x89ab_cdef, 1)),
         1u64.to_le_bytes()
     );
-    let prepared = catalog
-        .apply_with_result(1, &encode_register_deployment(b"orders", b"charlotte:89abcdef", 1));
+    let prepared =
+        catalog.apply_with_result(1, &encode_register(b"orders", b"charlotte:89abcdef", 1));
     let service_generation = u64::from_le_bytes(prepared.try_into().unwrap());
     catalog.apply(1, &encode_activate(b"orders", service_generation));
 
@@ -421,8 +421,8 @@ fn ingress_placement_requires_the_exact_ready_deployment_generation() {
         })
     );
 
-    let prepared = catalog
-        .apply_with_result(1, &encode_register_deployment(b"orders", b"charlotte:89abcdef", 1));
+    let prepared =
+        catalog.apply_with_result(1, &encode_register(b"orders", b"charlotte:89abcdef", 1));
     let first_service_generation = u64::from_le_bytes(prepared.try_into().unwrap());
     catalog.apply(1, &encode_activate(b"orders", first_service_generation));
     assert_eq!(
@@ -445,8 +445,8 @@ fn ingress_placement_requires_the_exact_ready_deployment_generation() {
         })
     );
 
-    let prepared = catalog
-        .apply_with_result(1, &encode_register_deployment(b"orders", b"charlotte:1234abcd", 2));
+    let prepared =
+        catalog.apply_with_result(1, &encode_register(b"orders", b"charlotte:1234abcd", 2));
     let second_service_generation = u64::from_le_bytes(prepared.try_into().unwrap());
     catalog.apply(1, &encode_activate(b"orders", second_service_generation));
     assert_eq!(
@@ -486,12 +486,11 @@ fn replica_set_readiness_is_per_node_generation_fenced_and_snapshotted() {
         vec![0x1111_1111, 0x2222_2222]
     );
 
-    let first = catalog
-        .apply_with_result(1, &encode_register_deployment(b"orders", b"charlotte:11111111", 1));
+    let first = catalog.apply_with_result(1, &encode_register(b"orders", b"charlotte:11111111", 1));
     let first = u64::from_le_bytes(first.try_into().unwrap());
     catalog.apply(1, &encode_activate(b"orders", first));
-    let second = catalog
-        .apply_with_result(1, &encode_register_deployment(b"orders", b"charlotte:22222222", 1));
+    let second =
+        catalog.apply_with_result(1, &encode_register(b"orders", b"charlotte:22222222", 1));
     let second = u64::from_le_bytes(second.try_into().unwrap());
     catalog.apply(1, &encode_activate(b"orders", second));
     assert_eq!(
@@ -535,27 +534,45 @@ fn replica_set_readiness_is_per_node_generation_fenced_and_snapshotted() {
         })
     );
     assert_eq!(
-            restored.apply_with_result(
-                1,
-                &encode_register_deployment(b"orders", b"charlotte:33333333", 1),
-            ),
-            0u64.to_le_bytes()
-        );
+        restored.apply_with_result(1, &encode_register(b"orders", b"charlotte:33333333", 1),),
+        0u64.to_le_bytes()
+    );
 }
 
 #[test]
 fn ordinary_registration_has_no_deployment_generation() {
     let catalog = fixture_catalog();
-    let prepared = catalog.apply_with_result(1, &encode_register(b"dns", b"charlotte:1234abcd"));
+    let prepared = catalog.apply_with_result(1, &encode_register(b"dns", b"charlotte:1234abcd", 0));
     let service_generation = u64::from_le_bytes(prepared.try_into().unwrap());
     catalog.apply(1, &encode_activate(b"dns", service_generation));
     assert_eq!(catalog.lookup(b"dns").unwrap().deployment_generation, 0);
 }
 
 #[test]
+fn registration_requires_an_explicit_generation_without_mutating_on_rejection() {
+    let catalog = fixture_catalog();
+    catalog.apply(1, &encode_register(b"keep", b"charlotte:1234abcd", 0));
+    let before = catalog.snapshot();
+    let current = encode_register(b"new", b"charlotte:89abcdef", 0);
+    // Every prefix includes the complete old system-service record and each
+    // partial suffix. None may synthesize zero or reserve a generation.
+    for length in 0..current.len() {
+        assert!(catalog.apply_with_result(2, &current[..length]).is_empty());
+        assert_eq!(catalog.snapshot(), before);
+    }
+    let mut extended = current.clone();
+    extended.push(0);
+    assert!(catalog.apply_with_result(2, &extended).is_empty());
+    assert_eq!(catalog.snapshot(), before);
+    assert_eq!(catalog.apply_with_result(2, &current), 1u64.to_le_bytes());
+    catalog.apply(2, &encode_activate(b"new", 1));
+    assert_eq!(catalog.lookup(b"new").unwrap().deployment_generation, 0);
+}
+
+#[test]
 fn consensus_domain_reset_discards_the_standalone_catalog() {
     let catalog = fixture_catalog();
-    let prepared = catalog.apply_with_result(1, &encode_register(b"dns", b"charlotte:1234abcd"));
+    let prepared = catalog.apply_with_result(1, &encode_register(b"dns", b"charlotte:1234abcd", 0));
     let service_generation = u64::from_le_bytes(prepared.try_into().unwrap());
     catalog.apply(1, &encode_activate(b"dns", service_generation));
     catalog.apply(1, &deploy_fixture(b"orders", 0x1234_abcd, 1));
@@ -803,11 +820,11 @@ fn rollout_status_and_remote_registration_are_canonical() {
 #[test]
 fn retired_catalog_snapshots_reject_without_changing_live_state() {
     let catalog = fixture_catalog();
-    catalog.apply(1, &encode_register(b"live", b"charlotte:1234abcd"));
+    catalog.apply(1, &encode_register(b"live", b"charlotte:1234abcd", 0));
     let before = catalog.snapshot();
     let current = fixture_catalog().snapshot();
     // Historical magics, including the original CATALOGM tag.
-    for tag in b"M23456789ABCDEFG" {
+    for tag in b"M23456789ABCDEFGH" {
         let mut retired = current.clone();
         let magic = 0x4341_5441_4c4f_4700u64 | u64::from(*tag);
         retired[..8].copy_from_slice(&magic.to_le_bytes());
@@ -827,13 +844,13 @@ fn truncated_or_extended_catalog_snapshots_do_not_publish_any_section() {
     let source = fixture_catalog();
     let public_key = pair.pk.as_ref().try_into().unwrap();
     source.apply(1, &encode_set_cluster_key(public_key));
-    source.apply(1, &encode_register(b"source", b"charlotte:89abcdef"));
+    source.apply(1, &encode_register(b"source", b"charlotte:89abcdef", 0));
     let descriptor = signed_deployment(&pair, b"orders", 1);
     let release = signed_release(&pair, b"release", 1, &[&descriptor]);
     source.apply(1, &encode_release(&release, &[0x89ab_cdef]).unwrap());
     let snapshot = source.snapshot();
     let target = fixture_catalog();
-    target.apply(1, &encode_register(b"keep", b"charlotte:1234abcd"));
+    target.apply(1, &encode_register(b"keep", b"charlotte:1234abcd", 0));
     let before = target.snapshot();
     for length in 0..snapshot.len() {
         assert!(target.restore(&snapshot[..length]).is_err(), "accepted prefix length {length}");
@@ -850,7 +867,7 @@ fn truncated_or_extended_catalog_snapshots_do_not_publish_any_section() {
 #[test]
 fn catalog_snapshot_rejects_duplicate_keys_and_noncanonical_flags() {
     let source = fixture_catalog();
-    source.apply(1, &encode_register(b"one", b"charlotte:1234abcd"));
+    source.apply(1, &encode_register(b"one", b"charlotte:1234abcd", 0));
     let snapshot = source.snapshot();
     let entry_end = 12 + 4 + 3 + 4 + b"charlotte:1234abcd".len() + 8 + 1 + 8;
     let mut duplicated = snapshot.clone();
@@ -1308,7 +1325,7 @@ fn snapshot_descriptor_name_binding_rejects_before_any_live_publication() {
     assert_eq!(&corrupted[20..26], b"orders");
     corrupted[20..26].copy_from_slice(b"otherx");
     let target = fixture_catalog();
-    target.apply(1, &encode_register(b"keep", b"charlotte:1234abcd"));
+    target.apply(1, &encode_register(b"keep", b"charlotte:1234abcd", 0));
     let before = target.snapshot();
     assert_eq!(
         target.restore(&corrupted),

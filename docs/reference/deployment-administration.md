@@ -35,7 +35,7 @@ and content digests are read from its signature. Follower relay 0x22/0x23
 carries that same descriptor plus session/correlation/caller identity.
 
 Deployment records contain generation, descriptor and exact replica pins.
-`CDEPQR01` tags their complete query representation; `CATALOGH` version 17 tags
+`CDEPQR01` tags their complete query representation; `CATALOGI` version 18 tags
 snapshots. There is no object ID, primary node or variant-zero digest in either.
 Rollout status's representative node is computed from the first assignment for
 inspection; it is not stored launch authority. Unknown operations reject and

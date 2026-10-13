@@ -569,7 +569,7 @@ replica and affinity ranking; explicit pins undergo the same checks.
 An ARM-only revision therefore cannot count x86 nodes toward its replicas.
 
 Selection uses signed priority, feature specificity and descriptor order.
-Raft commits the chosen variant index beside each replica node; catalog-v17
+Raft commits the chosen variant index beside each replica node; catalog-v18
 snapshots and queries preserve that pin. A later CPU report cannot change an
 existing generation's executable. If a new node incarnation loses support for
 its pin, the controller commits a compatible replacement in a new generation,
@@ -594,7 +594,7 @@ instances per node, minimum distinct nodes, \emph{every eligible node}, an
 affinity group, and an anti-affinity group. A request for concurrent
 replicas is invalid unless the artifact's signed CLS2 metadata contains
 \texttt{PARALLEL\_INSTANCES}. \texttt{CDEPLOY6} signs this policy, the
-leader resolves it to concrete assignments, and catalog-v17 snapshots retain
+leader resolves it to concrete assignments, and catalog-v18 snapshots retain
 both the desired set and per-node readiness. Affinity groups share a stable
 ranking seed; anti-affinity groups require unused nodes and fail closed when
 the eligible set cannot satisfy the separation. A policy that needs more

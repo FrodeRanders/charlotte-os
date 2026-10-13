@@ -281,11 +281,6 @@ pub fn signature_location(image: &[u8]) -> Option<SignatureLocation> {
     None
 }
 
-/// Compatibility helper used by tooling that needs the descriptor range.
-pub fn find_signature_desc(image: &[u8]) -> Option<(usize, usize)> {
-    signature_location(image).map(|location| (location.descriptor_offset, DESCRIPTOR_LEN))
-}
-
 pub fn artifact_metadata(image: &[u8]) -> Option<ArtifactMetadata> {
     let location = signature_location(image)?;
     decode_metadata(&image[location.descriptor_offset..location.descriptor_offset + DESCRIPTOR_LEN])

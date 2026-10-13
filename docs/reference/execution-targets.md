@@ -37,7 +37,7 @@ packed architecture/ABI and features. Architecture occupies bits 0–15 of the
 fourth return, bits 16–31 are zero, and ABI occupies bits 32–63. AArch64 returns
 these in x0–x4; x86_64 in rax/rdi/rsi/rdx/r10. The 58-byte `rcapacity` payload
 includes the canonical 16-byte target after its frame/load fields. Replicated
-capacity records and catalog-v17 snapshots retain the profile. Profile changes
+capacity records and catalog-v18 snapshots retain the profile. Profile changes
 within a reporter boot nonce reject; a fresh incarnation can replace it. The
 existing peer source/session checks bind a report to its node. This is not
 hardware attestation; production platform authentication remains a separate
@@ -110,7 +110,7 @@ priority (2), key length (2), digest (32), then key bytes. Grants follow all
 variants. Targets encode architecture:u16, reserved-zero:u16, ABI:u32 and
 features:u64. All scalars are little endian. Only this grammar is accepted.
 
-Catalog snapshots use `CATALOGH` version 17. Versions 1–16 are retired;
+Catalog snapshots use `CATALOGI` version 18. Versions 1–17 are retired;
 descriptor-less assignments and query/snapshot records reject. Existing
 pre-production fixtures must be regenerated explicitly. Future deployed-store
 changes require an explicit interruption-tested migration, never a silent reset.

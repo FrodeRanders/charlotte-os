@@ -253,7 +253,7 @@ object-store-backed implementations for durable deployments.
 
 `disk_raft::open` connects to `"obj"` through an owned runtime connection and
 validates a stable two-object pair derived from cluster/node identity. Tagged
-`CRFTSTA2` term/vote/join-admission state and `CRFTLOG2` snapshot/log state are
+`CRFTSTA3` term/vote/join-admission state and `CRFTLOG3` snapshot/log state are
 the only accepted records. Snapshot metadata, bytes and retained suffix share
 one copy-on-write publication point. Only two absent objects authorize initial
 creation; existing empty, incomplete, corrupt or unsupported records reject
@@ -262,7 +262,7 @@ Each mutation writes its complete object and calls `FLUSH` before returning.
 See [Raft persistence](../reference/raft-persistence.md) for exact formats,
 object IDs, ownership and future migration requirements.
 
-Catalog recovery accepts only the complete `CATALOGH` version-17 snapshot.
+Catalog recovery accepts only the complete `CATALOGI` version-18 snapshot.
 `StateMachine::restore` returns an explicit rejection without changing live
 state. Raft startup propagates that error; streamed installation checks it
 before replacing the log or publishing applied indices, membership or join

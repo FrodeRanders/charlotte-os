@@ -16,7 +16,7 @@
 //! ## Log command encoding
 //!
 //! ```text
-//! register:   0x01 | name_len:u32 | name | node_len:u32 | node
+//! register:   0x01 | name_len:u32 | name | node_len:u32 | node | deployment_generation:u64
 //! unregister: 0x02 | name_len:u32 | name
 //! deploy:     0x0e | node_key:u64 | variant:u16 | descriptor_len:u32 | signed_descriptor
 //! set-key:    0x07 | key:[u8; 32]
@@ -72,7 +72,7 @@ const MAX_RELEASES: usize = 4_096;
 const MAX_OPERATIONAL_BINDINGS: usize = 8_192;
 const MAX_SHUTDOWN_INTENTS: usize = 4_096;
 const MAX_NODE_CAPACITY_ENTRIES: usize = 256;
-const CATALOG_MAGIC_V17: u64 = 0x4341_5441_4c4f_4748; // "CATALOGH"
+const CATALOG_MAGIC_V18: u64 = 0x4341_5441_4c4f_4749; // "CATALOGI"
 
 /// Query tag prefix for a name lookup.
 const QUERY_LOOKUP: u8 = 0x01;
@@ -623,15 +623,12 @@ impl NameCatalog {
                 let Some((node, after_node)) = take_len_bytes(command, after_name) else {
                     return Vec::new();
                 };
-                let deployment_generation = if command.len() == after_node {
-                    0
-                } else if command.len() == after_node + 8 {
-                    u64::from_le_bytes(
-                        command[after_node..after_node + 8].try_into().unwrap_or_default(),
-                    )
-                } else {
+                let Some((deployment_generation, end)) = read_u64(command, after_node) else {
                     return Vec::new();
                 };
+                if end != command.len() {
+                    return Vec::new();
+                }
                 if deployment_generation != 0 {
                     let Some(node_key) = crate::node_identity::key_from_name(node) else {
                         return Vec::new();
@@ -1637,21 +1634,15 @@ fn decode_node_capacity(command: &[u8]) -> Option<NodeCapacityEntry> {
     })
 }
 
-/// Encode a register command: `{name, node}`.
-pub fn encode_register(name: &[u8], node: &[u8]) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(1 + 4 + name.len() + 4 + node.len());
+/// Encode a registration with an explicit deployment generation. Zero denotes
+/// a system service; applications retain their exact desired-generation fence.
+pub fn encode_register(name: &[u8], node: &[u8], deployment_generation: u64) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(1 + 4 + name.len() + 4 + node.len() + 8);
     buf.push(CMD_REGISTER);
     buf.extend_from_slice(&(name.len() as u32).to_le_bytes());
     buf.extend_from_slice(name);
     buf.extend_from_slice(&(node.len() as u32).to_le_bytes());
     buf.extend_from_slice(node);
-    buf
-}
-
-/// Encode a deployed application's registration, binding the active endpoint
-/// to the exact desired deployment generation that launched it.
-pub fn encode_register_deployment(name: &[u8], node: &[u8], deployment_generation: u64) -> Vec<u8> {
-    let mut buf = encode_register(name, node);
     buf.extend_from_slice(&deployment_generation.to_le_bytes());
     buf
 }
