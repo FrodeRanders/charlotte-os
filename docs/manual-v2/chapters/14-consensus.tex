@@ -141,8 +141,8 @@ changes must ship an explicit, interruption-tested migration preserving
 election, admission and committed state. See
 \path{docs/reference/raft-persistence.md}.
 
-The catalog accepts only its complete version-15 snapshot, identified by
-\texttt{CATALOGF}. Earlier snapshot decoders and synthesized generations,
+The catalog accepts only its complete version-16 snapshot, identified by
+\texttt{CATALOGG}. It retains mandatory execution profiles and per-replica signed variant indices. Earlier snapshot decoders and synthesized generations,
 digests, descriptors, replica sets and authorization signatures are removed.
 Unsupported or malformed application snapshots reject explicitly before Raft
 publishes snapshot progress or membership. Recovery stops on rejection;

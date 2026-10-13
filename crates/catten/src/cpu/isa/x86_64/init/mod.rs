@@ -26,6 +26,7 @@ impl InitInterface for IsaInitializer {
         bsp::init_bsp();
         early_logln!("LP {lp_id}: x86-64 bootstrap processor initialization complete");
         // return success
+        crate::cpu::execution_target::record_current_lp();
         Ok(())
     }
 
@@ -35,6 +36,7 @@ impl InitInterface for IsaInitializer {
         // Initialize TSS, GDT, and IDT
         ap::init_ap();
         logln!("LP {lp_id}: x86-64 logical processor initialization complete");
+        crate::cpu::execution_target::record_current_lp();
         Ok(())
     }
 

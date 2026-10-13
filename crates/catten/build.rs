@@ -21,6 +21,13 @@ fn main() {
         );
     }
 
+    println!("cargo:rerun-if-env-changed=CATTEN_LOCAL_DEPLOYMENT_FIXTURE");
+    if env::var_os("CARGO_FEATURE_DEPLOY_NET_TEST").is_some() {
+        let path = env::var("CATTEN_LOCAL_DEPLOYMENT_FIXTURE")
+            .expect("deploy fixture requires signed descriptor; use the boot runner");
+        println!("cargo:rerun-if-changed={path}");
+    }
+
     match arch.as_str() {
         "x86_64" => {
             // Tell cargo to pass the linker script to the linker...

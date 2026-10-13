@@ -51,6 +51,7 @@ impl InitInterface for IsaInitializer {
         );
         load_ivt();
         early_logln!("BSP: Aarch64 ISA initialization complete.");
+        crate::cpu::execution_target::record_current_lp();
         Ok(())
     }
 
@@ -58,6 +59,7 @@ impl InitInterface for IsaInitializer {
         clear_write_execute_never();
         load_ivt();
         logln!("LP {}: Aarch64 ISA initialization complete.", get_lp_id());
+        crate::cpu::execution_target::record_current_lp();
         Ok(())
     }
 

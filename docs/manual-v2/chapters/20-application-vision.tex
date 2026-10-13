@@ -412,7 +412,7 @@ every-eligible-node selection, spread, affinity, and anti-affinity. It creates t
 file once and never overwrites it during regeneration. Operations may approve
 or reject the reviewed values when signing the deployment, but should not have
 to guess them from the ELF or silently rewrite them. Charlotte's
-\texttt{CDEPLOY5} descriptor signs all three values and placement policy; Durga
+\texttt{CDEPLOY6} descriptor signs all three values and placement policy; Durga
 derives the corresponding signing options and adds the CLS2 parallel-instance
 requirement whenever the policy permits concurrent instances. The kernel gives every thread
 in the protected domain the specified 4 KiB-page stack allocation and counts
@@ -421,7 +421,7 @@ cooperative application draining and then forcibly retires the domain at the
 signed deadline. Both execution-resource ranges are one through 64; shutdown
 grace is zero through 300,000 milliseconds. A quota-exceeding spawn rejects
 before stack construction and returns \texttt{ThreadError::SpawnFailed} through
-the owned runtime, leaving the caller running. Only \texttt{CDEPLOY5} is accepted;
+the owned runtime, leaving the caller running. Only \texttt{CDEPLOY6} is accepted;
 resource limits, shutdown grace and placement are explicit signed fields.
 There are no older-format defaults.
 
@@ -484,7 +484,7 @@ manifest.
 
 The Charlotte manifest accepts signed singleton, fixed-replica, and
 \emph{every eligible node} policy. The \texttt{PlacementPolicy} contract
-described in \autoref{chap:cluster-vision} is stored in \texttt{CDEPLOY5}; a
+described in \autoref{chap:cluster-vision} is stored in \texttt{CDEPLOY6}; a
 leader-side controller resolves it and commits concrete replica sets. A
 generated component set can be wrapped in \texttt{CRELEASE}, atomically
 admitted, and observed together with \texttt{cluster-sign release-apply}.

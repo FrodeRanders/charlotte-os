@@ -102,6 +102,8 @@ S3_TEST="0"
 DEPLOYMENT_INGRESS_TEST="0"
 DEPLOY_NAME="${CATTEN_DEPLOY_NAME:-greet}"
 DEPLOY_ELF="${CATTEN_DEPLOY_ELF:-}"
+DEPLOY_VARIANT_ELF="${CATTEN_DEPLOY_VARIANT_ELF:-}"
+DEPLOY_VARIANT_KEY="${CATTEN_DEPLOY_VARIANT_OBJECT_KEY:-deployments/greet-variant-e2e.elf}"
 DEPLOY_OBJECT_KEY="${CATTEN_DEPLOY_OBJECT_KEY:-deployments/greet-e2e.elf}"
 DEPLOY_STACK_PAGES="${CATTEN_DEPLOY_STACK_PAGES:-4}"
 DEPLOY_MAX_THREADS="${CATTEN_DEPLOY_MAX_THREADS:-1}"
@@ -410,6 +412,11 @@ else
 fi
 export CATTEN_X86_64_SERVICE_BUNDLE="$SERVICE_BUNDLE"
 
+if [ "$DEPLOY_TEST" = "1" ]; then
+    export CATTEN_LOCAL_DEPLOYMENT_FIXTURE="${ROOT_DIR}/target/local-deploy-fixture/${INSTANCE}-greet.bundle"
+    bash "$ROOT_DIR/scripts/prepare-local-deployment-fixture.sh" "$CATTEN_X86_64_SERVICE_BUNDLE" "$CATTEN_LOCAL_DEPLOYMENT_FIXTURE"
+fi
+
 DEPLOYMENT_DESCRIPTOR=""
 DEPLOYMENT_RELEASE=""
 CLUSTER_SIGN_BIN="${ROOT_DIR}/target/debug/cluster-sign"
@@ -438,10 +445,22 @@ if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
         -v "${DEPLOYMENT_ELF}:/tmp/${DEPLOY_NAME}.elf:ro" \
         --entrypoint /bin/sh init -ec \
         "rc alias set local https://rustfs.test:9000 charlotte-test-access charlotte-test-secret-2026 && rc cp /tmp/${DEPLOY_NAME}.elf local/charlotte-test/${DEPLOYMENT_OBJECT_KEY}"
+    DEPLOY_VARIANT_ARGS=()
+    if [ -n "$DEPLOY_VARIANT_ELF" ]; then
+        if [ ! -f "$DEPLOY_VARIANT_ELF" ]; then
+            echo "error: deployment variant ELF not found: $DEPLOY_VARIANT_ELF" >&2
+            exit 1
+        fi
+        docker compose -f "$RUSTFS_COMPOSE" run --rm --no-deps \
+            -v "${DEPLOY_VARIANT_ELF}:/tmp/variant.elf:ro" \
+            --entrypoint /bin/sh init -ec \
+            "rc alias set local https://rustfs.test:9000 charlotte-test-access charlotte-test-secret-2026 && rc cp /tmp/variant.elf local/charlotte-test/${DEPLOY_VARIANT_KEY}"
+        DEPLOY_VARIANT_ARGS=("--variant=${DEPLOY_VARIANT_KEY},${DEPLOY_VARIANT_ELF},0,0,1")
+    fi
     "$CLUSTER_SIGN_BIN" deployment-sign \
-        "$DEPLOYMENT_DESCRIPTOR" "$DEPLOY_NAME" "$DEPLOYMENT_OBJECT_KEY" "$DEPLOYMENT_DIGEST" \
+        "$DEPLOYMENT_DESCRIPTOR" "$DEPLOY_NAME" "$DEPLOYMENT_OBJECT_KEY" "$DEPLOYMENT_ELF" \
         0 "$DEPLOYMENT_SEQUENCE" "$DEPLOY_STACK_PAGES" "$DEPLOY_MAX_THREADS" "$DEPLOY_GRACE_MS" \
-        "$DEPLOYMENT_KEY_FILE" $DEPLOY_GRANTS
+        "$DEPLOYMENT_KEY_FILE" "${DEPLOY_VARIANT_ARGS[@]}" $DEPLOY_GRANTS
     "$CLUSTER_SIGN_BIN" release-sign \
         "$DEPLOYMENT_RELEASE" "${DEPLOY_NAME}-ingress-e2e" "$DEPLOYMENT_SEQUENCE" \
         "$DEPLOYMENT_KEY_FILE" "$DEPLOYMENT_DESCRIPTOR"

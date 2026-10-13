@@ -213,6 +213,14 @@ the corrected RPC polling paths, and the remaining notification gaps.
   Dynamic creation still rejects busy unit/engine admission. Preserve DMA grant
   errors as per-return stage/cause and confirmed-versus-retained cancellation
   values; diagnostics are not custody or authority to retry uncertain creation.
+- Deployment placement must use signed executable variants and kernel-reported
+  execution profiles. Filter architecture, exact runtime ABI and required CPU
+  features before capacity/affinity ranking, including explicit pins. Unknown
+  profiles reject. Commit each replica's selected variant index; agents may not
+  reselect from later reports. Recheck the actual ELF and signed target at kernel
+  launch. CPU feature availability is the intersection across schedulable LPs;
+  do not advertise extensions without the context-save contract. See
+  `docs/reference/execution-targets.md`.
 - Internal APIs and wire formats have no backward-compatibility requirement.
   Remove compatibility-only branches when a coherent replacement is ready;
   do not preserve an unsafe allocation path for older callers.

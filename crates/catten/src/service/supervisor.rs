@@ -889,7 +889,8 @@ fn try_spawn_deployment_with_manifest(
     let metadata = charlotte_launch::signature_note::artifact_metadata(image)
         .ok_or(ProfileLaunchError::DescriptorArtifactMismatch)?;
     if metadata.name() != descriptor.artifact_name
-        || charlotte_launch::sha256::digest(image) != descriptor.artifact_digest
+        || !crate::cpu::execution_target::current()
+            .is_some_and(|target| descriptor.accepts_image(image, target))
         || descriptor.placement.validate(&metadata).is_err()
         || charlotte_launch::signature_note::verify_elf_for_name(
             image,

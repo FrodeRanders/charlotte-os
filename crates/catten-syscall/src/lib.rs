@@ -447,7 +447,6 @@ unsafe fn svc3(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64) -> u64 {
             77 => asm!("svc #77", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             78 => asm!("svc #78", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             80 => asm!("svc #80", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
-            82 => asm!("svc #82", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             84 => asm!("svc #84", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             85 => asm!("svc #85", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, nomem, preserves_flags)),
             87 => asm!("svc #87", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, options(nostack, preserves_flags)),
@@ -957,7 +956,6 @@ unsafe fn svc3_x2(imm: SyscallNumber, arg1: u64, arg2: u64, _arg3: u64) -> (u64,
             66 => asm!("svc #66", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             67 => asm!("svc #67", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x1") arg1, in("x2") arg2, options(nostack, nomem, preserves_flags)),
             81 => asm!("svc #81", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, in("x1") arg1, options(nostack, nomem, preserves_flags)),
-            82 => asm!("svc #82", lateout("x0") ret, lateout("x1") x1_out, lateout("x2") x2_out, options(nostack, nomem, preserves_flags)),
             _ => panic!("syscall {:?} has no svc3_x2 emitter", imm),
         }
     }
@@ -2565,14 +2563,45 @@ pub fn ipc_endpoint_resize(endpoint: u64, capacity: usize) -> u64 {
     unsafe { svc3(SyscallNumber::IpcEndpointResize, endpoint, capacity as u64, 0) }
 }
 
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+unsafe fn svc0_x4(imm: SyscallNumber) -> (u64, u64, u64, u64, u64) {
+    let (a, b, c, d, e): (u64, u64, u64, u64, u64);
+    unsafe {
+        match imm as u16 {
+            82 => asm!("svc #82", lateout("x0") a, lateout("x1") b, lateout("x2") c, lateout("x3") d, lateout("x4") e, options(nostack, preserves_flags)),
+            _ => panic!("syscall {:?} has no svc0_x4 emitter", imm),
+        }
+    }
+    (a, b, c, d, e)
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline(always)]
+unsafe fn svc0_x4(imm: SyscallNumber) -> (u64, u64, u64, u64, u64) {
+    let (a, b, c, d, e): (u64, u64, u64, u64, u64);
+    unsafe {
+        asm!("syscall", inlateout("rax") imm as u64 => a, lateout("rdi") b, lateout("rsi") c, lateout("rdx") d, lateout("r10") e, lateout("rcx") _, lateout("r11") _, options(preserves_flags));
+    }
+    (a, b, c, d, e)
+}
+
+#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+unsafe fn svc0_x4(_imm: SyscallNumber) -> (u64, u64, u64, u64, u64) {
+    (0, 0, 0, 0, 0)
+}
+
 /// Node-local resource pressure.
 ///
-/// Returns `(free_frames, usable_frames, cpu_load_permille)`. These are coarse
+/// Returns `(free_frames, usable_frames, cpu_load_permille, target, features)`.
+/// `target` is architecture in bits 0..16 and runtime ABI in bits 32..64;
+/// bits 16..32 are zero. Features are supported by every schedulable LP.
+/// These are coarse
 /// machine-wide aggregates with no per-domain detail; the call allocates
 /// nothing and briefly takes the frame-allocator and thread table locks.
 #[inline]
-pub fn node_pressure() -> (u64, u64, u64) {
-    unsafe { svc3_x2(SyscallNumber::NodePressure, 0, 0, 0) }
+pub fn node_pressure() -> (u64, u64, u64, u64, u64) {
+    unsafe { svc0_x4(SyscallNumber::NodePressure) }
 }
 
 /// Read an owned endpoint's `(capacity, queued depth, depth high-water)`.

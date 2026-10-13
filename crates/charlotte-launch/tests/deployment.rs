@@ -13,17 +13,28 @@ use ed25519_compact::{
     Signature,
 };
 
+const FIXTURE_VARIANTS: &[charlotte_launch::deployment::ArtifactVariant<'static>] =
+    &[charlotte_launch::deployment::ArtifactVariant {
+        target: charlotte_launch::execution_target::ExecutionTarget::baseline(
+            charlotte_launch::execution_target::Architecture::Aarch64,
+        ),
+        priority: 0,
+        artifact_digest: [0xa5; 32],
+        object_key: b"releases/orders.elf",
+    }];
+
 fn fields(stack_pages_per_thread: u16, max_threads: u16) -> DescriptorFields<'static> {
     DescriptorFields {
+        variants: FIXTURE_VARIANTS,
         sequence: 7,
         node_key: 0x1234,
-        artifact_digest: [0xa5; 32],
+
         artifact_name: b"orders",
         stack_pages_per_thread,
         max_threads,
         shutdown_grace_ms: 12_000,
         placement: charlotte_launch::placement::PlacementPolicy::singleton(),
-        object_key: b"releases/orders.elf",
+
         grants: &[],
     }
 }
@@ -35,7 +46,7 @@ fn sign(bytes: &mut [u8], pair: &KeyPair) {
 }
 
 #[test]
-fn v5_round_trip_binds_execution_shutdown_and_placement_resources() {
+fn v6_round_trip_binds_execution_shutdown_and_placement_resources() {
     let pair = KeyPair::from_seed([0x31; 32].into());
     let public: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
     let fields = fields(16, 8);
@@ -51,7 +62,7 @@ fn v5_round_trip_binds_execution_shutdown_and_placement_resources() {
     assert_eq!(deployment::verify(&bytes, public), deployment::VerifyOutcome::Valid);
 
     let mut stack_tamper = bytes.clone();
-    stack_tamper[70] ^= 1;
+    stack_tamper[38] ^= 1;
     assert_ne!(deployment::verify(&stack_tamper, public), deployment::VerifyOutcome::Valid);
 
     bytes[deployment::MAX_THREADS_OFFSET] ^= 1;
@@ -59,7 +70,7 @@ fn v5_round_trip_binds_execution_shutdown_and_placement_resources() {
 }
 
 #[test]
-fn v5_round_trip_carries_replica_policy() {
+fn v6_round_trip_carries_replica_policy() {
     let pair = KeyPair::from_seed([0x21; 32].into());
     let public: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
     let mut fields = fields(16, 8);
@@ -106,16 +117,24 @@ fn retired_formats_reject_even_with_valid_descriptor_and_release_signatures() {
         (b"CDEPLOY2", 2, 152),
         (b"CDEPLOY3", 3, 154),
         (b"CDEPLOY4", 4, 158),
+        (b"CDEPLOY5", 5, 182),
     ] {
         let mut retired = canonical.clone();
-        retired.drain(header_len..deployment::HEADER_LEN);
+        if header_len < deployment::HEADER_LEN {
+            retired.drain(header_len..deployment::HEADER_LEN);
+        } else {
+            retired.splice(
+                deployment::HEADER_LEN..deployment::HEADER_LEN,
+                vec![0; header_len - deployment::HEADER_LEN],
+            );
+        }
         retired[..8].copy_from_slice(magic);
         retired[8..10].copy_from_slice(&version.to_le_bytes());
         retired[10..12].copy_from_slice(&(header_len as u16).to_le_bytes());
         let len = retired.len() as u32;
         retired[12..16].copy_from_slice(&len.to_le_bytes());
         if version == 1 {
-            retired[70..72].fill(0);
+            retired[38..40].fill(0);
         }
         let digest = sha256::digest_skipping(
             &retired,
@@ -187,11 +206,11 @@ fn decoder_rejects_invalid_execution_resources() {
     deployment::encode_unsigned(&fields, public, &mut canonical).unwrap();
 
     let mut zero_stack = canonical.clone();
-    zero_stack[70..72].fill(0);
+    zero_stack[38..40].fill(0);
     assert!(deployment::decode(&zero_stack).is_none());
 
     let mut excessive_stack = canonical.clone();
-    excessive_stack[70..72].copy_from_slice(&(MAX_USER_STACK_PAGES as u16 + 1).to_le_bytes());
+    excessive_stack[38..40].copy_from_slice(&(MAX_USER_STACK_PAGES as u16 + 1).to_le_bytes());
     assert!(deployment::decode(&excessive_stack).is_none());
 
     let mut zero_threads = canonical.clone();
@@ -211,7 +230,7 @@ fn current_header_requires_exact_magic_version_length_and_complete_fields() {
     let fields = fields(4, 1);
     let mut canonical = vec![0; deployment::encoded_len(&fields).unwrap()];
     deployment::encode_unsigned(&fields, public, &mut canonical).unwrap();
-    for (offset, value) in [(0, b'X'), (8, 1), (8, 6), (10, 152), (10, 181), (10, 183)] {
+    for (offset, value) in [(0, b'X'), (8, 1), (8, 5), (10, 150), (10, 181), (10, 183)] {
         let mut malformed = canonical.clone();
         malformed[offset] = value;
         assert!(deployment::decode(&malformed).is_none());
@@ -220,4 +239,127 @@ fn current_header_requires_exact_magic_version_length_and_complete_fields() {
         assert!(deployment::decode(&canonical[..len]).is_none());
     }
     assert!(deployment::decode(&canonical).is_some());
+}
+
+#[test]
+fn variants_bind_targets_keys_digests_and_choose_deterministically() {
+    use charlotte_launch::{
+        deployment::ArtifactVariant,
+        execution_target::{
+            AARCH64_LSE,
+            Architecture,
+            ExecutionTarget,
+        },
+    };
+    let arm = ExecutionTarget::baseline(Architecture::Aarch64);
+    let x86 = ExecutionTarget::baseline(Architecture::X86_64);
+    let optimized = ExecutionTarget {
+        features: AARCH64_LSE,
+        ..arm
+    };
+    let variants = [
+        ArtifactVariant {
+            target: arm,
+            priority: 0,
+            artifact_digest: [1; 32],
+            object_key: b"arm/baseline.elf",
+        },
+        ArtifactVariant {
+            target: x86,
+            priority: 0,
+            artifact_digest: [2; 32],
+            object_key: b"x86/baseline.elf",
+        },
+        ArtifactVariant {
+            target: optimized,
+            priority: 1,
+            artifact_digest: [3; 32],
+            object_key: b"arm/lse.elf",
+        },
+    ];
+    let fields = DescriptorFields {
+        variants: &variants,
+        ..fields(4, 1)
+    };
+    let pair = KeyPair::from_seed([0x51; 32].into());
+    let public = pair.pk.as_ref().try_into().unwrap();
+    let mut bytes = vec![0; deployment::encoded_len(&fields).unwrap()];
+    deployment::encode_unsigned(&fields, public, &mut bytes).unwrap();
+    sign(&mut bytes, &pair);
+    let decoded = deployment::decode(&bytes).unwrap();
+    assert_eq!(decoded.variants().collect::<Vec<_>>(), variants);
+    assert_eq!(decoded.select_variant(arm), Some(0));
+    assert_eq!(decoded.select_variant(x86), Some(1));
+    assert_eq!(decoded.select_variant(optimized), Some(2));
+    assert_eq!(
+        decoded.select_variant(ExecutionTarget {
+            runtime_abi: 2,
+            ..arm
+        }),
+        None
+    );
+    for offset in [deployment::HEADER_LEN + fields.artifact_name.len(), bytes.len() - 1] {
+        let mut tampered = bytes.clone();
+        tampered[offset] ^= 1;
+        assert_ne!(deployment::verify(&tampered, public), deployment::VerifyOutcome::Valid);
+    }
+    let duplicates = [variants[0], variants[0]];
+    assert_eq!(
+        deployment::encoded_len(&DescriptorFields {
+            variants: &duplicates,
+            ..fields
+        }),
+        Err(EncodeError::DuplicateTarget)
+    );
+    assert_eq!(
+        deployment::encoded_len(&DescriptorFields {
+            variants: &[],
+            ..fields
+        }),
+        Err(EncodeError::InvalidVariant)
+    );
+}
+
+#[test]
+fn image_gate_rechecks_machine_abi_requirements_and_exact_digest() {
+    use charlotte_launch::{
+        deployment::ArtifactVariant,
+        execution_target::{
+            AARCH64_LSE,
+            Architecture,
+            ExecutionTarget,
+        },
+    };
+    let arm = ExecutionTarget::baseline(Architecture::Aarch64);
+    let mut image = vec![0; 64];
+    image[..6].copy_from_slice(b"\x7fELF\x02\x01");
+    image[18..20].copy_from_slice(&183u16.to_le_bytes());
+    let variants = [ArtifactVariant {
+        target: ExecutionTarget {
+            features: AARCH64_LSE,
+            ..arm
+        },
+        priority: 0,
+        artifact_digest: charlotte_launch::sha256::digest(&image),
+        object_key: b"arm/lse.elf",
+    }];
+    let fields = DescriptorFields {
+        variants: &variants,
+        ..fields(4, 1)
+    };
+    let mut bytes = vec![0; deployment::encoded_len(&fields).unwrap()];
+    deployment::encode_unsigned(&fields, &[1; 32], &mut bytes).unwrap();
+    let decoded = deployment::decode(&bytes).unwrap();
+    assert!(!decoded.accepts_image(&image, arm));
+    assert!(decoded.accepts_image(&image, variants[0].target));
+    assert!(!decoded.accepts_image(&image, ExecutionTarget::baseline(Architecture::X86_64)));
+    assert!(!decoded.accepts_image(
+        &image,
+        ExecutionTarget {
+            runtime_abi: 2,
+            ..variants[0].target
+        }
+    ));
+    image[63] ^= 1;
+    assert!(!decoded.accepts_image(&image, variants[0].target));
 }

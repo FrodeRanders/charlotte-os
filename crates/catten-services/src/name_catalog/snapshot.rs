@@ -33,7 +33,7 @@ impl NameCatalog {
                 + 4
                 + entry.descriptor.len()
                 + 2
-                + entry.replica_nodes.len() * 8;
+                + entry.replica_nodes.len() * 10;
         }
         size += 4;
         for (name, entry) in releases.iter() {
@@ -66,10 +66,10 @@ impl NameCatalog {
         size += 1 + 8 + 32;
         size += 4;
         for _ in node_capacity.values() {
-            size += 8 + 8 + 8 + 8 + 8 + 2;
+            size += 8 + 8 + 8 + 8 + 8 + 2 + 16;
         }
         let mut buf = Vec::with_capacity(size);
-        buf.extend_from_slice(&CATALOG_MAGIC_V15.to_le_bytes());
+        buf.extend_from_slice(&CATALOG_MAGIC_V16.to_le_bytes());
         buf.extend_from_slice(&(entries.len() as u32).to_le_bytes());
         for (name, entry) in entries.iter() {
             buf.extend_from_slice(&(name.len() as u32).to_le_bytes());
@@ -91,8 +91,9 @@ impl NameCatalog {
             buf.extend_from_slice(&(entry.descriptor.len() as u32).to_le_bytes());
             buf.extend_from_slice(&entry.descriptor);
             buf.extend_from_slice(&(entry.replica_nodes.len() as u16).to_le_bytes());
-            for node in &entry.replica_nodes {
+            for (node, variant) in entry.replica_nodes.iter().zip(&entry.replica_variants) {
                 buf.extend_from_slice(&node.to_le_bytes());
+                buf.extend_from_slice(&variant.to_le_bytes());
             }
         }
         buf.extend_from_slice(&(releases.len() as u32).to_le_bytes());
@@ -173,6 +174,7 @@ impl NameCatalog {
             buf.extend_from_slice(&entry.free_frames.to_le_bytes());
             buf.extend_from_slice(&entry.usable_frames.to_le_bytes());
             buf.extend_from_slice(&entry.cpu_load_permille.to_le_bytes());
+            buf.extend_from_slice(&entry.target.encode().unwrap_or([0; 16]));
         }
         buf
     }
@@ -182,7 +184,7 @@ impl NameCatalog {
             return Err(SnapshotError::Malformed);
         }
         let magic = u64::from_le_bytes(data[0..8].try_into().ok().unwrap_or_default());
-        if magic != CATALOG_MAGIC_V15 {
+        if magic != CATALOG_MAGIC_V16 {
             return Err(SnapshotError::Unsupported);
         }
         let count = u32::from_le_bytes(data[8..12].try_into().ok().unwrap_or_default()) as usize;
@@ -284,7 +286,9 @@ impl NameCatalog {
                     }
                     (descriptor.to_vec(), after_descriptor)
                 };
-                let (replica_nodes, after_entry) = {
+                let (replica_nodes, replica_variants, after_entry) = {
+                    let signed = charlotte_launch::deployment::decode(&descriptor)
+                        .ok_or(SnapshotError::Malformed)?;
                     let Some((replica_count, mut position)) = read_u16(data, after_entry) else {
                         return Err(SnapshotError::Malformed);
                     };
@@ -292,6 +296,7 @@ impl NameCatalog {
                         usize::from(replica_count).min(data.len().saturating_sub(position)),
                     );
                     let mut seen = BTreeSet::new();
+                    let mut variants = Vec::new();
                     for _ in 0..replica_count {
                         let Some((node, next)) = read_u64(data, position) else {
                             return Err(SnapshotError::Malformed);
@@ -302,13 +307,17 @@ impl NameCatalog {
                         {
                             return Err(SnapshotError::Malformed);
                         }
+                        let (variant, next) =
+                            read_u16(data, next).ok_or(SnapshotError::Malformed)?;
+                        signed.variant(usize::from(variant)).ok_or(SnapshotError::Malformed)?;
                         nodes.push(node);
+                        variants.push(variant);
                         position = next;
                     }
                     if nodes.first().copied().unwrap_or(0) != node_key {
                         return Err(SnapshotError::Malformed);
                     }
-                    (nodes, position)
+                    (nodes, variants, position)
                 };
                 if generation == 0 || artifact.is_empty() || deployments.contains_key(artifact) {
                     return Err(SnapshotError::Malformed);
@@ -319,6 +328,7 @@ impl NameCatalog {
                         object_id,
                         node_key,
                         replica_nodes,
+                        replica_variants,
                         generation,
                         artifact_digest,
                         descriptor,
@@ -738,7 +748,14 @@ impl NameCatalog {
                 let Some((cpu_load_permille, after_entry)) = read_u16(data, after_usable) else {
                     return Err(SnapshotError::Malformed);
                 };
+                let target = charlotte_launch::execution_target::ExecutionTarget::decode(
+                    data.get(after_entry..after_entry + 16).ok_or(SnapshotError::Malformed)?,
+                )
+                .ok_or(SnapshotError::Malformed)?;
+                let after_entry = after_entry + 16;
                 if node_key == 0
+                    || boot_nonce == 0
+                    || cpu_load_permille > 1000
                     || epoch == 0
                     || usable_frames == 0
                     || free_frames > usable_frames
@@ -746,6 +763,7 @@ impl NameCatalog {
                         .insert(
                             node_key,
                             NodeCapacityEntry {
+                                target,
                                 node_key,
                                 boot_nonce,
                                 epoch,

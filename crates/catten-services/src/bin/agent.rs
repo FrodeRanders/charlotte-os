@@ -26,7 +26,6 @@ use catten_rt::{
         ConnectionRef,
         DeployedArtifact,
         OwnedMemory,
-        launch_artifact,
         launch_operational_connector,
         launch_scoped_artifact,
         request_node_shutdown,
@@ -36,7 +35,6 @@ use catten_services::{
     dns,
     net,
     node_identity,
-    objstore,
     publication_generation_owned,
     s3_client::Client as S3Client,
     sleep_ms,
@@ -64,9 +62,8 @@ const LAUNCH_RETRY_MAX_MS: u64 = 30_000;
 
 struct DeploymentInfo {
     generation: u64,
-    object_id: u64,
     replica_nodes: Vec<u64>,
-    artifact_digest: [u8; 32],
+    replica_variants: Vec<u16>,
     descriptor: Vec<u8>,
 }
 
@@ -331,54 +328,34 @@ fn decode_deployment(bytes: &[u8]) -> Option<DeploymentInfo> {
     let entry = catten_services::name_catalog::decode_deployment_result(bytes)?;
     Some(DeploymentInfo {
         generation: entry.generation,
-        object_id: entry.object_id,
         replica_nodes: entry.replica_nodes,
-        artifact_digest: entry.artifact_digest,
+        replica_variants: entry.replica_variants,
         descriptor: entry.descriptor,
     })
-}
-
-fn fetch_from_local_store(
-    names: ConnectionRef<'_>,
-    object_id: u64,
-    expected_digest: &[u8; 32],
-    cluster_key: &[u8; 32],
-    artifact_name: &[u8],
-) -> Option<(OwnedMemory, usize)> {
-    let connection = lookup(names, objstore::NAME)?;
-    let reply = connection.as_ref().call(objstore::OP_READ, object_id).ok()?.wait().ok()?;
-    let len = usize::try_from(reply.result).ok()?;
-    let memory = reply.memory?;
-    if len == 0 || len > memory.len() {
-        return None;
-    }
-    let mapping = memory.map_read_only().ok()?;
-    let bytes = mapping.as_slice().get(..len)?;
-    if charlotte_launch::sha256::digest(bytes) != *expected_digest
-        || charlotte_launch::signature_note::verify_elf_for_name(bytes, cluster_key, artifact_name)
-            != charlotte_launch::signature_note::VerifyOutcome::Valid
-    {
-        return None;
-    }
-    let memory = mapping.unmap().ok()?;
-    Some((memory, len))
 }
 
 fn fetch_from_central_store(
     names: ConnectionRef<'_>,
     descriptor: &charlotte_launch::deployment::DeploymentDescriptor<'_>,
     cluster_key: &[u8; 32],
+    variant: charlotte_launch::deployment::ArtifactVariant<'_>,
 ) -> Option<Vec<u8>> {
+    if try_registered_name_bytes_owned(names, b"s3").is_none()
+        && let Some(artifact) =
+            fetch_cached_artifact(names, descriptor.artifact_name, variant, cluster_key)
+    {
+        return Some(artifact);
+    }
     catten_rt::logln!(
         "[agent] starting full S3 GET for {:?} key {:?}",
         core::str::from_utf8(descriptor.artifact_name).unwrap_or("<invalid>"),
-        core::str::from_utf8(descriptor.object_key).unwrap_or("<invalid>")
+        core::str::from_utf8(variant.object_key).unwrap_or("<invalid>")
     );
     let artifact = fetch_s3_object(
         names,
-        descriptor.object_key,
+        variant.object_key,
         charlotte_launch::MAX_ARTIFACT_ELF_SIZE,
-        &descriptor.artifact_digest,
+        &variant.artifact_digest,
     )?;
     if charlotte_launch::signature_note::verify_elf_for_name(
         &artifact,
@@ -516,29 +493,6 @@ fn launch(
     trust: &charlotte_launch::trust::AdmissionTrust,
     my_node_key: u64,
 ) -> Option<ActiveDeployment> {
-    if entry.descriptor.is_empty() {
-        let (artifact, artifact_len) = fetch_from_local_store(
-            names,
-            entry.object_id,
-            &entry.artifact_digest,
-            &trust.artifact_key,
-            name,
-        )?;
-        let domain = launch_artifact(artifact, artifact_len, name).ok()?;
-        catten_rt::logln!(
-            "[agent] launched legacy {:?} generation={} asid={}",
-            core::str::from_utf8(name).unwrap_or("<invalid>"),
-            entry.generation,
-            domain.asid()
-        );
-        return Some(ActiveDeployment {
-            name: name.to_vec(),
-            generation: entry.generation,
-            domain,
-            published: false,
-            retiring: false,
-        });
-    }
     if charlotte_launch::deployment::verify(&entry.descriptor, &trust.deployment_key)
         != charlotte_launch::deployment::VerifyOutcome::Valid
     {
@@ -547,11 +501,11 @@ fn launch(
     let descriptor = charlotte_launch::deployment::decode(&entry.descriptor)?;
     if descriptor.artifact_name != name
         || (descriptor.node_key != 0 && descriptor.node_key != my_node_key)
-        || descriptor.artifact_digest != entry.artifact_digest
     {
         return None;
     }
-    let artifact = fetch_from_central_store(names, &descriptor, &trust.artifact_key)?;
+    let variant = selected_variant(&descriptor, entry, my_node_key)?;
+    let artifact = fetch_from_central_store(names, &descriptor, &trust.artifact_key, variant)?;
     let metadata = charlotte_launch::signature_note::artifact_metadata(&artifact)?;
     descriptor.placement.validate(&metadata).ok()?;
     let artifact_memory = memory_from_bytes(&artifact)?;
@@ -587,16 +541,11 @@ fn launch_operational(
     trust: &charlotte_launch::trust::AdmissionTrust,
     my_node_key: u64,
 ) -> Option<ActiveOperational> {
-    if deployment.descriptor.is_empty()
-        || !deployment.replica_nodes.contains(&my_node_key)
-        || deployment.artifact_digest == [0; 32]
-    {
+    if deployment.descriptor.is_empty() || !deployment.replica_nodes.contains(&my_node_key) {
         return None;
     }
     let descriptor = charlotte_launch::deployment::decode(&deployment.descriptor)?;
-    if descriptor.artifact_name != binding.target_artifact
-        || descriptor.artifact_digest != deployment.artifact_digest
-    {
+    if descriptor.artifact_name != binding.target_artifact {
         return None;
     }
     if charlotte_launch::deployment::verify(&deployment.descriptor, &trust.deployment_key)
@@ -604,7 +553,8 @@ fn launch_operational(
     {
         return None;
     }
-    let artifact = fetch_from_central_store(names, &descriptor, &trust.artifact_key)?;
+    let variant = selected_variant(&descriptor, deployment, my_node_key)?;
+    let artifact = fetch_from_central_store(names, &descriptor, &trust.artifact_key, variant)?;
     let metadata = charlotte_launch::signature_note::artifact_metadata(&artifact)?;
     descriptor.placement.validate(&metadata).ok()?;
     let envelope = fetch_s3_object(
@@ -991,4 +941,56 @@ fn serve(ctx: &Context) -> catten_rt::ShutdownRequest {
 
 fn main(ctx: Context) -> ! {
     serve(&ctx).complete()
+}
+
+fn selected_variant<'a>(
+    descriptor: &charlotte_launch::deployment::DeploymentDescriptor<'a>,
+    entry: &DeploymentInfo,
+    node: u64,
+) -> Option<charlotte_launch::deployment::ArtifactVariant<'a>> {
+    let position = entry.replica_nodes.binary_search(&node).ok()?;
+    let variant = descriptor.variant(usize::from(*entry.replica_variants.get(position)?))?;
+    let (_, _, _, packed, features) = catten_syscall::node_pressure();
+    let target =
+        charlotte_launch::execution_target::ExecutionTarget::from_pressure(packed, features)?;
+    if !target.supports(variant.target) {
+        return None;
+    }
+    catten_rt::logln!(
+        "[agent] selected variant={} architecture={:?} abi={} required_features={:#x}",
+        entry.replica_variants[position],
+        variant.target.architecture,
+        variant.target.runtime_abi,
+        variant.target.features
+    );
+    Some(variant)
+}
+
+fn fetch_cached_artifact(
+    names: ConnectionRef<'_>,
+    name: &[u8],
+    variant: charlotte_launch::deployment::ArtifactVariant<'_>,
+    key: &[u8; 32],
+) -> Option<Vec<u8>> {
+    let connection = lookup(names, catten_services::objstore::NAME)?;
+    let reply = connection
+        .as_ref()
+        .call(catten_services::objstore::OP_READ, charlotte_launch::artifact_object_id(name))
+        .ok()?
+        .wait()
+        .ok()?;
+    let len = usize::try_from(reply.result).ok()?;
+    if len == 0 || len > charlotte_launch::MAX_ARTIFACT_ELF_SIZE {
+        return None;
+    }
+    let mapping = reply.memory?.map_read_only().ok()?;
+    let bytes = mapping.as_slice().get(..len)?;
+    if charlotte_launch::sha256::digest(bytes) != variant.artifact_digest
+        || charlotte_launch::signature_note::verify_elf_for_name(bytes, key, name)
+            != charlotte_launch::signature_note::VerifyOutcome::Valid
+    {
+        return None;
+    }
+    catten_rt::logln!("[agent] verified selected variant in local artifact cache");
+    Some(bytes.to_vec())
 }

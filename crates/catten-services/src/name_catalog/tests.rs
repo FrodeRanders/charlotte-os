@@ -9,6 +9,89 @@ use ed25519_compact::{
 use rand_core_10::UnwrapErr;
 
 use super::*;
+fn fixture_pair() -> KeyPair {
+    KeyPair::from_seed([0x37; 32].into())
+}
+fn fixture_profiles() -> crate::operations_admission::NodeCapacityView {
+    [
+        1,
+        2,
+        3,
+        4,
+        9,
+        0x1234,
+        0x1111,
+        0x2222,
+        0x3333,
+        0x4444,
+        0x5555,
+        0x6666,
+        0x1111_1111,
+        0x2222_2222,
+        0x3333_3333,
+        0x89ab_cdef,
+        0x1234_abcd,
+    ]
+    .into_iter()
+    .map(|node| {
+        (
+            node,
+            crate::operations_admission::NodeCapacity {
+                target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
+                    charlotte_launch::execution_target::Architecture::Aarch64,
+                )),
+                ..Default::default()
+            },
+        )
+    })
+    .collect()
+}
+fn seed_catalog(catalog: Arc<NameCatalog>) -> Arc<NameCatalog> {
+    for (node, capacity) in fixture_profiles() {
+        catalog.apply(
+            1,
+            &encode_node_capacity(&NodeCapacityEntry {
+                target: capacity.target.unwrap(),
+                node_key: node,
+                boot_nonce: 1,
+                epoch: 1,
+                free_frames: 10000,
+                usable_frames: 20000,
+                cpu_load_permille: 0,
+            }),
+        );
+    }
+    catalog
+}
+fn fixture_catalog() -> Arc<NameCatalog> {
+    seed_catalog(NameCatalog::new_with_deployment_key(
+        fixture_pair().pk.as_ref().try_into().unwrap(),
+    ))
+}
+fn encode_release(bytes: &[u8], nodes: &[u64]) -> Option<Vec<u8>> {
+    super::encode_release(bytes, nodes, &fixture_profiles())
+}
+fn encode_release_replicas(bytes: &[u8], nodes: &[Vec<u64>]) -> Option<Vec<u8>> {
+    super::encode_release_replicas(bytes, nodes, &fixture_profiles())
+}
+fn encode_release_with_operations(bytes: &[u8], nodes: &[u64]) -> Option<Vec<u8>> {
+    super::encode_release_with_operations(bytes, nodes, &fixture_profiles())
+}
+fn encode_deploy(
+    name: &[u8],
+    object: u64,
+    node: u64,
+    _digest: &[u8; 32],
+    revision: &[u8],
+) -> Vec<u8> {
+    let seq = if revision.ends_with(b"2") {
+        2
+    } else {
+        1
+    };
+    let descriptor = signed_deployment(&fixture_pair(), name, seq);
+    super::encode_deploy(name, object, node, &[seq as u8; 32], &descriptor, 0)
+}
 
 fn signed_deployment(pair: &KeyPair, name: &[u8], sequence: u64) -> Vec<u8> {
     signed_deployment_with_policy(
@@ -26,15 +109,23 @@ fn signed_deployment_with_policy(
     placement: charlotte_launch::placement::PlacementPolicy,
 ) -> Vec<u8> {
     let fields = charlotte_launch::deployment::DescriptorFields {
+        variants: &[charlotte_launch::deployment::ArtifactVariant {
+            target: charlotte_launch::execution_target::ExecutionTarget::baseline(
+                charlotte_launch::execution_target::Architecture::Aarch64,
+            ),
+            priority: 0,
+            artifact_digest: [sequence as u8; 32],
+            object_key: name,
+        }],
         sequence,
         node_key: 0,
-        artifact_digest: [sequence as u8; 32],
+
         artifact_name: name,
         stack_pages_per_thread: charlotte_launch::DEFAULT_USER_STACK_PAGES as u16,
         max_threads: charlotte_launch::DEFAULT_USER_MAX_THREADS as u16,
         shutdown_grace_ms: charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS,
         placement,
-        object_key: name,
+
         grants: &[],
     };
     let public_key: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
@@ -201,7 +292,7 @@ fn i64_result(bytes: Vec<u8>) -> i64 {
 fn shutdown_intent_is_replay_fenced_and_survives_snapshot() {
     let pair = KeyPair::from_seed([0x55; 32].into());
     let key: [u8; 32] = pair.pk.as_ref().try_into().unwrap();
-    let catalog = NameCatalog::new_with_deployment_key(key);
+    let catalog = seed_catalog(NameCatalog::new_with_deployment_key(key));
     let first = signed_shutdown(&pair, 4, 0x1234);
     assert_eq!(i64_result(catalog.apply_with_result(1, &encode_shutdown(&first).unwrap())), 1);
     assert_eq!(i64_result(catalog.apply_with_result(1, &encode_shutdown(&first).unwrap())), 1);
@@ -217,7 +308,7 @@ fn shutdown_intent_is_replay_fenced_and_survives_snapshot() {
 
     let query = catalog.query(&encode_shutdown_query(0x1234));
     assert_eq!(decode_shutdown_result(&query).unwrap().envelope, next);
-    let restored = NameCatalog::new_with_deployment_key(key);
+    let restored = seed_catalog(NameCatalog::new_with_deployment_key(key));
     restored.restore(&catalog.snapshot()).unwrap();
     assert_eq!(restored.shutdown_intent(0x1234), catalog.shutdown_intent(0x1234));
     assert_eq!(restored.ingress_draining_nodes(), vec![(0x1234, 2)]);
@@ -230,8 +321,11 @@ fn ingress_policy_is_replay_fenced_and_survives_snapshot() {
     let deployment_key = deployment.pk.as_ref().try_into().unwrap();
     let operations_key = operations.pk.as_ref().try_into().unwrap();
     let cluster_id = [0x58; 32];
-    let catalog =
-        NameCatalog::new_with_control_plane_trust(deployment_key, operations_key, cluster_id);
+    let catalog = seed_catalog(NameCatalog::new_with_control_plane_trust(
+        deployment_key,
+        operations_key,
+        cluster_id,
+    ));
     let first = signed_ingress_policy(&operations, cluster_id, 4, [10, 0, 2, 42]);
     assert_eq!(
         i64_result(catalog.apply_with_result(1, &encode_ingress_policy(&first).unwrap())),
@@ -256,16 +350,22 @@ fn ingress_policy_is_replay_fenced_and_survives_snapshot() {
     let query = catalog.query(&encode_ingress_policy_query());
     assert_eq!(decode_ingress_policy_result(&query).unwrap().envelope, next);
 
-    let restored =
-        NameCatalog::new_with_control_plane_trust(deployment_key, operations_key, cluster_id);
+    let restored = seed_catalog(NameCatalog::new_with_control_plane_trust(
+        deployment_key,
+        operations_key,
+        cluster_id,
+    ));
     restored.restore(&catalog.snapshot()).unwrap();
     assert_eq!(restored.ingress_policy(), catalog.ingress_policy());
 }
 
 #[test]
 fn node_capacity_is_replay_fenced_and_survives_snapshot() {
-    let catalog = NameCatalog::new();
+    let catalog = fixture_catalog();
     let sample = |boot_nonce, epoch, free_frames| NodeCapacityEntry {
+        target: charlotte_launch::execution_target::ExecutionTarget::baseline(
+            charlotte_launch::execution_target::Architecture::Aarch64,
+        ),
         node_key: 0x1234,
         boot_nonce,
         epoch,
@@ -291,7 +391,7 @@ fn node_capacity_is_replay_fenced_and_survives_snapshot() {
     let view = catalog.node_capacity_view();
     assert_eq!(view.get(&0x1234).unwrap().free_frames, 700);
 
-    let restored = NameCatalog::new();
+    let restored = fixture_catalog();
     restored.restore(&catalog.snapshot()).unwrap();
     assert_eq!(restored.node_capacity(0x1234), catalog.node_capacity(0x1234));
     assert_eq!(restored.node_capacity_view().get(&0x1234).unwrap().free_frames, 700);
@@ -299,7 +399,7 @@ fn node_capacity_is_replay_fenced_and_survives_snapshot() {
 
 #[test]
 fn deployment_generation_survives_activation_and_snapshot() {
-    let catalog = NameCatalog::new();
+    let catalog = fixture_catalog();
     assert_eq!(
         catalog.apply_with_result(
             1,
@@ -316,14 +416,14 @@ fn deployment_generation_survives_activation_and_snapshot() {
     assert_eq!(entry.deployment_generation, 1);
     assert_eq!(crate::node_identity::key_from_name(&entry.node), Some(0x89ab_cdef));
 
-    let restored = NameCatalog::new();
+    let restored = fixture_catalog();
     restored.restore(&catalog.snapshot()).unwrap();
     assert_eq!(restored.lookup(b"orders"), Some(entry));
 }
 
 #[test]
 fn ingress_placement_requires_the_exact_ready_deployment_generation() {
-    let catalog = NameCatalog::new();
+    let catalog = fixture_catalog();
     let first = catalog.apply_with_result(
         1,
         &encode_deploy(b"orders", 17, 0x89ab_cdef, &[0x5a; 32], b"descriptor-v1"),
@@ -397,7 +497,7 @@ fn replica_set_readiness_is_per_node_generation_fenced_and_snapshotted() {
         },
     );
     let release = signed_release(&pair, b"orders-v1", 1, &[&descriptor]);
-    let catalog = NameCatalog::new_with_deployment_key(key);
+    let catalog = seed_catalog(NameCatalog::new_with_deployment_key(key));
     let command = encode_release_replicas(&release, &[vec![0x1111_1111, 0x2222_2222]])
         .expect("replica command");
     assert_eq!(catalog.apply_with_result(1, &command), 1i64.to_le_bytes());
@@ -423,7 +523,7 @@ fn replica_set_readiness_is_per_node_generation_fenced_and_snapshotted() {
         })
     );
 
-    let restored = NameCatalog::new_with_deployment_key(key);
+    let restored = seed_catalog(NameCatalog::new_with_deployment_key(key));
     restored.restore(&catalog.snapshot()).unwrap();
     assert_eq!(restored.ingress_placement(b"orders"), catalog.ingress_placement(b"orders"));
     assert_eq!(
@@ -434,8 +534,17 @@ fn replica_set_readiness_is_per_node_generation_fenced_and_snapshotted() {
         first.to_le_bytes()
     );
     assert_eq!(restored.ingress_placement(b"orders").unwrap().ready_nodes, vec![0x2222_2222]);
-    let reassigned = restored
-        .apply_with_result(1, &encode_reassign(b"orders", 1, &[0x2222_2222, 0x3333_3333]).unwrap());
+    let reassigned = restored.apply_with_result(
+        1,
+        &encode_reassign(
+            b"orders",
+            1,
+            &[0x2222_2222, 0x3333_3333],
+            &descriptor,
+            &fixture_profiles(),
+        )
+        .unwrap(),
+    );
     assert_eq!(u64::from_le_bytes(reassigned.try_into().unwrap()), 2);
     assert_eq!(
         restored.ingress_placement(b"orders"),
@@ -456,7 +565,7 @@ fn replica_set_readiness_is_per_node_generation_fenced_and_snapshotted() {
 
 #[test]
 fn ordinary_registration_has_no_deployment_generation() {
-    let catalog = NameCatalog::new();
+    let catalog = fixture_catalog();
     let prepared = catalog.apply_with_result(1, &encode_register(b"dns", b"charlotte:1234abcd"));
     let service_generation = u64::from_le_bytes(prepared.try_into().unwrap());
     catalog.apply(1, &encode_activate(b"dns", service_generation));
@@ -465,7 +574,7 @@ fn ordinary_registration_has_no_deployment_generation() {
 
 #[test]
 fn consensus_domain_reset_discards_the_standalone_catalog() {
-    let catalog = NameCatalog::new();
+    let catalog = fixture_catalog();
     let prepared = catalog.apply_with_result(1, &encode_register(b"dns", b"charlotte:1234abcd"));
     let service_generation = u64::from_le_bytes(prepared.try_into().unwrap());
     catalog.apply(1, &encode_activate(b"dns", service_generation));
@@ -484,7 +593,7 @@ fn consensus_domain_reset_discards_the_standalone_catalog() {
 
 #[test]
 fn exact_deployment_retry_is_idempotent() {
-    let catalog = NameCatalog::new();
+    let catalog = fixture_catalog();
     let command = encode_deploy(b"orders", 17, 0x1234_abcd, &[0x5a; 32], b"descriptor");
     let first = catalog.apply_with_result(1, &command);
     let retry = catalog.apply_with_result(2, &command);
@@ -498,7 +607,7 @@ fn exact_deployment_retry_is_idempotent() {
 
 #[test]
 fn deployment_capacity_rejects_new_keys_and_allows_replacements() {
-    let catalog = NameCatalog::new();
+    let catalog = fixture_catalog();
     {
         let mut deployments = catalog.deployments.lock();
         for index in 0..MAX_DEPLOYMENTS {
@@ -508,9 +617,14 @@ fn deployment_capacity_rejects_new_keys_and_allows_replacements() {
                     object_id: index as u64,
                     node_key: 0,
                     replica_nodes: Vec::new(),
+                    replica_variants: Vec::new(),
                     generation: 1,
                     artifact_digest: [0; 32],
-                    descriptor: Vec::new(),
+                    descriptor: signed_deployment(
+                        &fixture_pair(),
+                        alloc::format!("fill-{index}").as_bytes(),
+                        1,
+                    ),
                 },
             );
         }
@@ -530,7 +644,7 @@ fn deployment_capacity_rejects_new_keys_and_allows_replacements() {
 fn signed_release_is_atomic_idempotent_and_snapshot_persistent() {
     let pair = KeyPair::generate();
     let public_key: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
-    let catalog = NameCatalog::new();
+    let catalog = fixture_catalog();
     assert_eq!(i64_result(catalog.apply_with_result(1, &encode_set_cluster_key(public_key))), 1);
 
     let receive_v1 = signed_deployment(&pair, b"receive", 1);
@@ -588,7 +702,7 @@ fn signed_release_is_atomic_idempotent_and_snapshot_persistent() {
     assert_eq!(receive.node_key, 0x3333);
     assert_eq!(charlotte_launch::deployment::decode(&receive.descriptor).unwrap().sequence, 2);
 
-    let restored = NameCatalog::new();
+    let restored = fixture_catalog();
     restored.restore(&catalog.snapshot()).unwrap();
     assert_eq!(restored.release(b"orders"), catalog.release(b"orders"));
     assert_eq!(restored.deployment(b"receive"), catalog.deployment(b"receive"));
@@ -600,7 +714,7 @@ fn operational_bindings_are_atomic_fenced_and_snapshot_persistent() {
     let release_pair = KeyPair::generate();
     let operational_pair = KeyPair::generate();
     let release_public: &[u8; 32] = release_pair.pk.as_ref().try_into().unwrap();
-    let catalog = NameCatalog::new();
+    let catalog = fixture_catalog();
     assert_eq!(
         i64_result(catalog.apply_with_result(1, &encode_set_cluster_key(release_public))),
         1
@@ -621,7 +735,7 @@ fn operational_bindings_are_atomic_fenced_and_snapshot_persistent() {
     assert_eq!(binding.release_digest, charlotte_launch::sha256::digest(&release_v1));
     assert_eq!(catalog.release(b"orders").unwrap().operations_sequence, 1);
 
-    let restored = NameCatalog::new();
+    let restored = fixture_catalog();
     restored.restore(&catalog.snapshot()).unwrap();
     assert_eq!(restored.operational_binding(b"kafka/orders/transactional"), Some(binding.clone()));
     assert_eq!(restored.release(b"orders"), catalog.release(b"orders"));
@@ -716,12 +830,12 @@ fn rollout_status_and_remote_registration_are_canonical() {
 
 #[test]
 fn retired_catalog_snapshots_reject_without_changing_live_state() {
-    let catalog = NameCatalog::new();
+    let catalog = fixture_catalog();
     catalog.apply(1, &encode_register(b"live", b"charlotte:1234abcd"));
     let before = catalog.snapshot();
-    let current = NameCatalog::new().snapshot();
+    let current = fixture_catalog().snapshot();
     // Historical magics, including the original CATALOGM tag.
-    for tag in b"M23456789ABCDE" {
+    for tag in b"M23456789ABCDEF" {
         let mut retired = current.clone();
         let magic = 0x4341_5441_4c4f_4700u64 | u64::from(*tag);
         retired[..8].copy_from_slice(&magic.to_le_bytes());
@@ -738,7 +852,7 @@ fn retired_catalog_snapshots_reject_without_changing_live_state() {
 #[test]
 fn truncated_or_extended_catalog_snapshots_do_not_publish_any_section() {
     let pair = KeyPair::generate();
-    let source = NameCatalog::new();
+    let source = fixture_catalog();
     let public_key = pair.pk.as_ref().try_into().unwrap();
     source.apply(1, &encode_set_cluster_key(public_key));
     source.apply(1, &encode_register(b"source", b"charlotte:89abcdef"));
@@ -746,7 +860,7 @@ fn truncated_or_extended_catalog_snapshots_do_not_publish_any_section() {
     let release = signed_release(&pair, b"release", 1, &[&descriptor]);
     source.apply(1, &encode_release(&release, &[0x89ab_cdef]).unwrap());
     let snapshot = source.snapshot();
-    let target = NameCatalog::new();
+    let target = fixture_catalog();
     target.apply(1, &encode_register(b"keep", b"charlotte:1234abcd"));
     let before = target.snapshot();
     for length in 0..snapshot.len() {
@@ -763,14 +877,14 @@ fn truncated_or_extended_catalog_snapshots_do_not_publish_any_section() {
 
 #[test]
 fn catalog_snapshot_rejects_duplicate_keys_and_noncanonical_flags() {
-    let source = NameCatalog::new();
+    let source = fixture_catalog();
     source.apply(1, &encode_register(b"one", b"charlotte:1234abcd"));
     let snapshot = source.snapshot();
     let entry_end = 12 + 4 + 3 + 4 + b"charlotte:1234abcd".len() + 8 + 1 + 8;
     let mut duplicated = snapshot.clone();
     duplicated[8..12].copy_from_slice(&2u32.to_le_bytes());
     duplicated.splice(entry_end..entry_end, snapshot[12..entry_end].iter().copied());
-    let target = NameCatalog::new();
+    let target = fixture_catalog();
     let before = target.snapshot();
     assert!(target.restore(&duplicated).is_err());
     let mut bad_active = snapshot;
@@ -781,7 +895,7 @@ fn catalog_snapshot_rejects_duplicate_keys_and_noncanonical_flags() {
 
 #[test]
 fn catalog_snapshot_rejects_missing_sections_and_unbounded_counts() {
-    let target = NameCatalog::new();
+    let target = fixture_catalog();
     let before = target.snapshot();
     for (offset, bound) in [
         (8, MAX_ENTRIES),
@@ -813,9 +927,10 @@ fn deployment_query_requires_complete_descriptor_and_replica_sections() {
         object_id: 17,
         node_key: 4,
         replica_nodes: vec![4, 9],
+        replica_variants: vec![0, 0],
         generation: 3,
         artifact_digest: [0x5a; 32],
-        descriptor: b"descriptor".to_vec(),
+        descriptor: signed_deployment(&fixture_pair(), b"orders", 1),
     };
     let bytes = encode_deployment_result(&entry).unwrap();
     assert_eq!(decode_deployment_result(&bytes), Some(entry));
@@ -833,12 +948,19 @@ fn deployment_query_rejects_inconsistent_primary_and_replica_assignments() {
         object_id: 17,
         node_key: 4,
         replica_nodes: vec![4, 9],
+        replica_variants: vec![0, 0],
         generation: 3,
         artifact_digest: [0x5a; 32],
-        descriptor: Vec::new(),
+        descriptor: signed_deployment(&fixture_pair(), b"orders", 1),
     };
     let bytes = encode_deployment_result(&entry).unwrap();
-    for (offset, value) in [(0, 0), (16, 9), (62, 0), (70, 4), (70, 3)] {
+    for (offset, value) in [
+        (0, 0),
+        (16, 9),
+        (62 + entry.descriptor.len(), 0),
+        (72 + entry.descriptor.len(), 4),
+        (72 + entry.descriptor.len(), 3),
+    ] {
         let mut malformed = bytes.clone();
         malformed[offset..offset + 8].copy_from_slice(&(value as u64).to_le_bytes());
         assert!(decode_deployment_result(&malformed).is_none());
@@ -846,5 +968,290 @@ fn deployment_query_rejects_inconsistent_primary_and_replica_assignments() {
     entry.replica_nodes.clear();
     assert!(encode_deployment_result(&entry).is_none());
     entry.node_key = 0;
+    entry.replica_variants.clear();
     assert_eq!(decode_deployment_result(&encode_deployment_result(&entry).unwrap()), Some(entry));
+}
+
+#[test]
+fn mixed_architecture_rollout_pins_each_binary_and_preserves_it_through_restore() {
+    use charlotte_launch::{
+        deployment::{
+            self,
+            ArtifactVariant,
+            DescriptorFields,
+        },
+        execution_target::{
+            AARCH64_LSE,
+            Architecture,
+            ExecutionTarget,
+        },
+    };
+    let pair = fixture_pair();
+    let arm = ExecutionTarget::baseline(Architecture::Aarch64);
+    let x86 = ExecutionTarget::baseline(Architecture::X86_64);
+    let variants = [
+        ArtifactVariant {
+            target: arm,
+            priority: 0,
+            artifact_digest: [1; 32],
+            object_key: b"arm/orders.elf",
+        },
+        ArtifactVariant {
+            target: x86,
+            priority: 0,
+            artifact_digest: [2; 32],
+            object_key: b"x86/orders.elf",
+        },
+        ArtifactVariant {
+            target: ExecutionTarget {
+                features: AARCH64_LSE,
+                ..arm
+            },
+            priority: 1,
+            artifact_digest: [3; 32],
+            object_key: b"arm/orders-lse.elf",
+        },
+    ];
+    let fields = DescriptorFields {
+        sequence: 1,
+        node_key: 0,
+        variants: &variants,
+        artifact_name: b"orders",
+        stack_pages_per_thread: 4,
+        max_threads: 1,
+        shutdown_grace_ms: 5000,
+        placement: charlotte_launch::placement::PlacementPolicy {
+            replicas: 2,
+            min_distinct_nodes: 2,
+            ..charlotte_launch::placement::PlacementPolicy::singleton()
+        },
+        grants: &[],
+    };
+    let mut descriptor = vec![0; deployment::encoded_len(&fields).unwrap()];
+    deployment::encode_unsigned(&fields, pair.pk.as_ref().try_into().unwrap(), &mut descriptor)
+        .unwrap();
+    let signature = pair.sk.sign(deployment::signature_digest(&descriptor).unwrap(), None);
+    assert!(deployment::set_signature(&mut descriptor, signature.as_ref().try_into().unwrap()));
+    let release = signed_release(&pair, b"mixed", 1, &[&descriptor]);
+    let catalog = NameCatalog::new_with_deployment_key(pair.pk.as_ref().try_into().unwrap());
+    for (node, target) in [(1, arm), (2, x86)] {
+        catalog.apply(
+            1,
+            &encode_node_capacity(&NodeCapacityEntry {
+                node_key: node,
+                target,
+                boot_nonce: 1,
+                epoch: 1,
+                free_frames: 10000,
+                usable_frames: 20000,
+                cpu_load_permille: 0,
+            }),
+        );
+    }
+    let capacity = catalog.node_capacity_view();
+    let assignments = crate::operations_admission::resolve_release_assignments_with_capacity(
+        &release,
+        &[1, 2],
+        2,
+        &capacity,
+    )
+    .unwrap();
+    let command = super::encode_release_replicas(&release, &assignments, &capacity).unwrap();
+    assert_eq!(catalog.apply_with_result(1, &command), 1i64.to_le_bytes());
+    let entry = catalog.deployment(b"orders").unwrap();
+    assert_eq!(entry.replica_nodes, vec![1, 2]);
+    assert_eq!(entry.replica_variants, vec![0, 1]);
+    assert_eq!(
+        decode_deployment_result(&encode_deployment_result(&entry).unwrap()),
+        Some(entry.clone())
+    );
+    let restored = NameCatalog::new_with_deployment_key(pair.pk.as_ref().try_into().unwrap());
+    restored.restore(&catalog.snapshot()).unwrap();
+    assert_eq!(restored.deployment(b"orders"), Some(entry.clone()));
+    // New CPU availability changes preference, never a committed assignment.
+    restored.apply(
+        1,
+        &encode_node_capacity(&NodeCapacityEntry {
+            node_key: 1,
+            target: variants[2].target,
+            boot_nonce: 2,
+            epoch: 1,
+            free_frames: 10000,
+            usable_frames: 20000,
+            cpu_load_permille: 0,
+        }),
+    );
+    assert_eq!(restored.deployment(b"orders"), Some(entry));
+    assert!(
+        !restored
+            .deployment(b"orders")
+            .unwrap()
+            .has_incompatible_pin(&restored.node_capacity_view())
+    );
+    let optimized =
+        super::encode_reassign(b"orders", 1, &[1, 2], &descriptor, &restored.node_capacity_view())
+            .unwrap();
+    assert_eq!(restored.apply_with_result(1, &optimized), 2u64.to_le_bytes());
+    assert_eq!(restored.deployment(b"orders").unwrap().replica_variants, vec![2, 1]);
+    restored.apply(
+        1,
+        &encode_node_capacity(&NodeCapacityEntry {
+            node_key: 1,
+            target: arm,
+            boot_nonce: 3,
+            epoch: 1,
+            free_frames: 10000,
+            usable_frames: 20000,
+            cpu_load_permille: 0,
+        }),
+    );
+    assert!(
+        restored
+            .deployment(b"orders")
+            .unwrap()
+            .has_incompatible_pin(&restored.node_capacity_view())
+    );
+    let repair =
+        super::encode_reassign(b"orders", 2, &[1, 2], &descriptor, &restored.node_capacity_view())
+            .unwrap();
+    assert_eq!(restored.apply_with_result(1, &repair), 3u64.to_le_bytes());
+    assert_eq!(restored.deployment(b"orders").unwrap().replica_variants, vec![0, 1]);
+    let mut incompatible = command.clone();
+    *incompatible.last_mut().unwrap() = 255;
+    let before = restored.snapshot();
+    assert_eq!(
+        restored.apply_with_result(1, &incompatible),
+        crate::clusterctl::ERR_INCOMPATIBLE_TARGET.to_le_bytes()
+    );
+    assert_eq!(restored.snapshot(), before);
+}
+
+#[test]
+fn cpu_profile_is_incarnation_bound_and_unknown_profiles_cannot_place() {
+    use charlotte_launch::execution_target::{
+        Architecture,
+        ExecutionTarget,
+    };
+    let catalog = fixture_catalog();
+    let original = catalog.node_capacity(1).unwrap();
+    let changed = NodeCapacityEntry {
+        target: ExecutionTarget::baseline(Architecture::X86_64),
+        epoch: 2,
+        ..original
+    };
+    catalog.apply(1, &encode_node_capacity(&changed));
+    assert_eq!(catalog.node_capacity(1), Some(original));
+    catalog.apply(
+        1,
+        &encode_node_capacity(&NodeCapacityEntry {
+            boot_nonce: 2,
+            ..changed
+        }),
+    );
+    assert_eq!(catalog.node_capacity(1).unwrap().target, changed.target);
+    let descriptor = signed_deployment(&fixture_pair(), b"orders", 1);
+    let release = signed_release(&fixture_pair(), b"arm-only", 1, &[&descriptor]);
+    let view = catalog.node_capacity_view();
+    assert_eq!(
+        crate::operations_admission::resolve_release_assignments_with_capacity(
+            &release,
+            &[1],
+            1,
+            &view
+        ),
+        Err(crate::operations_admission::AdmissionError::InsufficientCompatibleCapacity)
+    );
+    assert_eq!(
+        crate::operations_admission::resolve_release_assignments_with_capacity(
+            &release,
+            &[99],
+            99,
+            &view
+        ),
+        Err(crate::operations_admission::AdmissionError::InsufficientCompatibleCapacity)
+    );
+    let mut variant = descriptor.clone();
+    variant[24..32].copy_from_slice(&1u64.to_le_bytes());
+    assert_eq!(
+        crate::operations_admission::resolve_descriptor_assignments_with_capacity(
+            &[&variant],
+            &[1, 2],
+            1,
+            &view
+        ),
+        Err(crate::operations_admission::AdmissionError::InsufficientCompatibleCapacity)
+    );
+    assert_eq!(
+        crate::operations_admission::resolve_descriptor_assignments_with_capacity(
+            &[&variant],
+            &[2],
+            1,
+            &view
+        ),
+        Err(crate::operations_admission::AdmissionError::UnsatisfiablePlacement)
+    );
+    assert_eq!(
+        catalog.apply_with_result(1, &super::encode_deploy(b"orders", 1, 2, &[1; 32], &[], 0)),
+        crate::clusterctl::ERR_UNTRUSTED_DESCRIPTOR.to_le_bytes()
+    );
+}
+
+#[test]
+fn planner_filters_cpu_features_abi_and_every_node_before_ranking() {
+    use charlotte_launch::{
+        deployment,
+        execution_target::{
+            AARCH64_LSE,
+            Architecture,
+            ExecutionTarget,
+        },
+        placement::{
+            EVERY_ELIGIBLE_NODE,
+            PlacementPolicy,
+        },
+    };
+
+    use crate::operations_admission::{
+        AdmissionError,
+        resolve_descriptor_assignments_with_capacity,
+    };
+    let catalog = fixture_catalog();
+    let descriptor = signed_deployment(&fixture_pair(), b"orders", 1);
+    let target_offset = deployment::HEADER_LEN + b"orders".len();
+    let mut demanding = descriptor.clone();
+    demanding[target_offset + 8..target_offset + 16].copy_from_slice(&AARCH64_LSE.to_le_bytes());
+    let mut capacity = catalog.node_capacity_view();
+    assert_eq!(
+        resolve_descriptor_assignments_with_capacity(&[&demanding], &[1, 2], 1, &capacity),
+        Err(AdmissionError::InsufficientCompatibleCapacity)
+    );
+    capacity.get_mut(&2).unwrap().target = Some(ExecutionTarget {
+        features: AARCH64_LSE,
+        ..ExecutionTarget::baseline(Architecture::Aarch64)
+    });
+    assert_eq!(
+        resolve_descriptor_assignments_with_capacity(&[&demanding], &[1, 2], 1, &capacity).unwrap(),
+        vec![vec![2]]
+    );
+    capacity.get_mut(&2).unwrap().target.as_mut().unwrap().runtime_abi = 2;
+    assert_eq!(
+        resolve_descriptor_assignments_with_capacity(&[&demanding], &[1, 2], 1, &capacity),
+        Err(AdmissionError::InsufficientCompatibleCapacity)
+    );
+    let every = signed_deployment_with_policy(
+        &fixture_pair(),
+        b"orders",
+        1,
+        PlacementPolicy {
+            flags: EVERY_ELIGIBLE_NODE,
+            replicas: 0,
+            ..PlacementPolicy::singleton()
+        },
+    );
+    capacity.get_mut(&1).unwrap().target = Some(ExecutionTarget::baseline(Architecture::X86_64));
+    capacity.get_mut(&2).unwrap().target = Some(ExecutionTarget::baseline(Architecture::Aarch64));
+    assert_eq!(
+        resolve_descriptor_assignments_with_capacity(&[&every], &[1, 2, 99], 1, &capacity).unwrap(),
+        vec![vec![2]]
+    );
 }

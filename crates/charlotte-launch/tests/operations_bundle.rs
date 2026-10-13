@@ -33,15 +33,23 @@ fn sign_deployment(bytes: &mut [u8], pair: &KeyPair) {
 fn signed_release(pair: &KeyPair) -> Vec<u8> {
     let public: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
     let descriptor_fields = DescriptorFields {
+        variants: &[charlotte_launch::deployment::ArtifactVariant {
+            target: charlotte_launch::execution_target::ExecutionTarget::baseline(
+                charlotte_launch::execution_target::Architecture::Aarch64,
+            ),
+            priority: 0,
+            artifact_digest: [0x33; 32],
+            object_key: b"releases/kafka.elf",
+        }],
         sequence: 3,
         node_key: 0,
-        artifact_digest: [0x33; 32],
+
         artifact_name: b"kafka",
         stack_pages_per_thread: 32,
         max_threads: 16,
         shutdown_grace_ms: charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS,
         placement: charlotte_launch::placement::PlacementPolicy::singleton(),
-        object_key: b"releases/kafka.elf",
+
         grants: &[],
     };
     let mut descriptor = vec![0; deployment::encoded_len(&descriptor_fields).unwrap()];

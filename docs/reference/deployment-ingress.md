@@ -10,11 +10,11 @@ store credentials.
 1. Build a self-contained CharlotteOS ELF and sign its CLS2 note with the
    offline artifact signing key. Pass its restricted file path to the signer,
    never its bytes; see [Signing and development trust](../guides/signing-and-trust.md).
-2. Calculate the SHA-256 of the final signed ELF.
+2. Retain each final signed ELF for descriptor signing; tooling derives its architecture and SHA-256.
 3. Upload those immutable bytes from CI or an operator workstation to the
    central RustFS, Dell EMC ECS, or other compatible store.
-4. Create a `CDEPLOY5` descriptor with `cluster-sign deployment-sign`. It binds
-   the logical artifact name, exact digest, opaque object key, target node key,
+4. Create a `CDEPLOY6` descriptor with `cluster-sign deployment-sign`. It binds
+   the logical artifact name, signed architecture/ABI/feature-specific binary variants, target node key,
    monotonic sequence, per-thread stack allocation in 4 KiB pages, maximum
    active-thread count, cooperative shutdown grace, placement policy, and
    named capability grants.
@@ -56,7 +56,7 @@ For the current demonstration service, the final signing steps resemble:
 
 ```text
 cluster-sign deployment-sign greet.cdep greet releases/greet-42.elf \
-  <sha256-of-signed-elf> 0 42 4 1 5000 <private-key-file> \
+  <signed-artifact.elf> 0 42 4 1 5000 <private-key-file> \
   greet=publish
 cluster-sign deployment-notify greet.cdep 127.0.0.1:8081
 cluster-sign deployment-status greet 127.0.0.1:8081 120
@@ -68,7 +68,7 @@ the grants:
 
 ```text
 cluster-sign deployment-sign orders.cdep orders releases/orders-42.elf \
-  <sha256-of-signed-elf> 0 42 8 8 15000 <private-key-file> \
+  <signed-artifact.elf> 0 42 8 8 15000 <private-key-file> \
   --replicas=3 --spread-replicas --anti-affinity-group=42 orders=publish
 cluster-sign release-sign orders.crelease orders 42 <private-key-file> orders.cdep
 cluster-sign release-apply orders.crelease 127.0.0.1:8081 120
@@ -82,13 +82,13 @@ sequence, returns HTTP `409 Conflict`.
 The `4 1 5000` between the deployment sequence and key-file path in the example means
 four 4 KiB stack pages per thread and at most one active thread, including the
 bootstrap thread, with five seconds to drain before forced retirement. Valid
-`CDEPLOY5` execution values are 1 through 64; shutdown grace is zero through
+`CDEPLOY6` execution values are 1 through 64; shutdown grace is zero through
 300,000 milliseconds. All three values are signed and enforced exactly by the kernel; values outside those
 ranges are rejected rather than clamped. A thread spawn beyond the signed
 quota rejects before stack construction and returns `(u64::MAX, 0)`; the owned
 runtime reports `ThreadError::SpawnFailed`, leaving the caller running. The release pipeline should take all three requirements from the signed,
-developer-reviewed component plan. Only `CDEPLOY5` is accepted. Its exact
-182-byte header must include execution limits, shutdown grace and placement;
+developer-reviewed component plan. Only `CDEPLOY6` is accepted. Its exact
+152-byte header must include execution limits, shutdown grace and placement;
 older formats reject even with a valid signature. Regenerate old deployment
 files and their containing signed release envelopes using the current tooling.
 
@@ -113,7 +113,7 @@ cluster-sign release-apply orders.crelease 127.0.0.1:8081 120
 
 The outer signature binds the release name, monotonic release sequence, and
 exact ordered descriptor bytes. Every nested deployment signature is also
-verified against the cluster key and must use the current `CDEPLOY5` grammar.
+verified against the cluster key and must use the current `CDEPLOY6` grammar.
 An envelope is limited
 to 16 distinct artifact names and 3,584 bytes so it, its IPC envelope, and the
 leader-resolved node assignments remain bounded.
@@ -152,7 +152,7 @@ newer rollout.
 A node key of zero asks the cluster to apply the signed placement policy. A
 singleton prefers the current Raft leader and moves to a deterministic
 fallback when it is draining; fixed replica counts and
-`every eligible node` select from admitted, non-draining voters. The leader
+`every eligible node` select from compatible, capacity-qualified non-draining voters. The leader
 reconciles automatic sets after membership changes. A nonzero key remains an
 explicit singleton pin. Replica policies must be submitted in a `CRELEASE`, so
 the planner can honor cross-component affinity and anti-affinity consistently.
@@ -284,3 +284,7 @@ deployed service; `CATTEN_APP_HOLD_SECONDS` keeps the guest alive after
 readiness so that client can run before the runner exits. Out-of-tree projects
 drive this through `charlotte-kafka-broker/tools/qemu-smoke.sh`, which packages
 the artifact, deploys it, and runs the host smoke client end to end.
+
+Mixed clusters select a committed variant per replica. Unknown profiles and
+incompatible pins reject. See [execution targets](execution-targets.md) for
+CPU requirements, multi-variant signing and format details.

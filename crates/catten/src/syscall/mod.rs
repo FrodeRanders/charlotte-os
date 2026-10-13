@@ -472,6 +472,10 @@ fn sys_node_pressure(frame: &mut TrapFrame) {
     frame.regs[0] = free_frames;
     frame.regs[1] = usable_frames;
     frame.regs[2] = cpu_load_permille;
+    let target = crate::cpu::execution_target::current();
+    frame.regs[3] = target
+        .map_or(0, |target| (u64::from(target.runtime_abi) << 32) | target.architecture as u64);
+    frame.regs[4] = target.map_or(0, |target| target.features);
 }
 
 fn random_u64() -> Option<u64> {
@@ -2421,7 +2425,8 @@ fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
                 || release.release_name != pickup.binding.release_name
                 || !release.descriptors().any(|candidate| candidate == pickup.descriptor)
                 || descriptor.artifact_name != pickup.binding.target_artifact
-                || descriptor.artifact_digest != charlotte_launch::sha256::digest(pickup.artifact)
+                || !crate::cpu::execution_target::current()
+                    .is_some_and(|target| descriptor.accepts_image(pickup.artifact, target))
                 || charlotte_launch::signature_note::verify_elf_for_name(
                     pickup.artifact,
                     &trust.artifact_key,

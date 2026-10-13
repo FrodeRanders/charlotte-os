@@ -1,9 +1,7 @@
 # Catalog snapshots and deployment query records
 
-The catalog accepts one snapshot grammar: version 15, with numeric magic
-`0x434154414c4f4746` (`CATALOGF`), encoded little endian. The current writer's
-bytes are unchanged. Versions 1–14 are unsupported; their decoders and defaults
-are removed. No production stores require conversion for this change.
+The catalog accepts one snapshot grammar: version 16, with numeric magic
+`0x434154414c4f4747` (`CATALOGG`), encoded little endian. Version 16 adds mandatory node execution profiles and per-replica variant indices. Versions 1–15 are unsupported; their decoders and defaults are removed. No production stores require conversion for this change.
 
 ## Complete snapshot
 
@@ -14,7 +12,7 @@ widths. Presence and active flags accept exactly zero or one.
 
 1. Service registrations: name, node, generation, active, deployment generation.
 2. Deployments: artifact name, object ID, diagnostic primary node, generation,
-   SHA-256 digest, descriptor, replica count and sorted unique nonzero nodes.
+   SHA-256 digest, descriptor, replica count and sorted unique nonzero nodes, each followed by its signed variant index.
 3. Releases: name, generation, operations sequence, operations digest, envelope.
 4. Operational bindings: complete release/profile/object identities, replay
    fences, recipient/signing IDs and detached authorization signature.
@@ -24,7 +22,7 @@ widths. Presence and active flags accept exactly zero or one.
 7. Ingress policy: presence, then generation and signed envelope when present.
 8. Cluster key: presence, generation and 32-byte key. Absence requires both
    generation and key bytes to be zero; presence requires a nonzero generation.
-9. Node capacity: complete node/boot/epoch/frame/load samples.
+9. Node capacity: complete node/boot/epoch/frame/load samples and canonical 16-byte execution targets.
 
 Restore rejects missing sections, truncation, trailing bytes, duplicate keys,
 noncanonical flags and counts above the existing collection limits. Service,
@@ -50,7 +48,7 @@ processing still precede application validation.
 
 The sole reply grammar is
 `generation:u64 | object_id:u64 | primary:u64 | sha256:32 |
-descriptor_len:u32 | descriptor | replica_count:u16 | replicas:[u64]`.
+descriptor_len:u32 | descriptor | replica_count:u16 | replicas:[(node:u64, variant:u16)]`.
 Every field is required, with exact total length, nonzero generation and sorted,
 unique nonzero replicas. The primary is diagnostic and must match the replica
 set; it never supplies a missing singleton assignment. Both encoder and decoder
@@ -59,13 +57,12 @@ are rejected. Current producers and consumers share this codec.
 
 ## Remaining removal and future migration
 
-This is S04a, the storage/query portion of the
-[simplification sweep](api-simplification.md). Packed-name deployment APIs,
-descriptor-less commands/records and local-upload launch fixtures remain until
-their callers have a coherent signed replacement. An explicitly encoded empty
-descriptor is therefore still representable in the current snapshot/query
-grammar; its missing length or replica section is not. The diagnostic primary
-field also remains until the API/record replacement removes its consumers.
+The storage/query replacement now requires a valid current signed descriptor
+and an in-range variant index per node. Descriptor-less commands and records
+reject. Packed-name API retirement remains part of the
+[simplification sweep](api-simplification.md). Diagnostic primary and variant-zero
+digest fields remain for existing observers; they never choose a replica binary.
+See [execution targets](execution-targets.md).
 
 Once stores are deployed, snapshot evolution must ship an explicit migration
 preserving application state, membership and replay fences, with durable commit

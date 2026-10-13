@@ -448,7 +448,7 @@ test-only support. See
 
 `--deployment-ingress-test --timeout 240` extends the same fixture with the
 release path. The host uploads the signed `greet` ELF to RustFS, signs and
-wraps its `CDEPLOY5` descriptor in a signed `CRELEASE` envelope, atomically
+wraps its `CDEPLOY6` descriptor in a signed `CRELEASE` envelope, atomically
 admits the release, and waits on the management API until the exact desired
 generation owns the active service name on its assigned node. Scoped readiness
 uses the read-only namespace publication-generation query; it does not acquire
@@ -1584,3 +1584,22 @@ kernel-range quarantine pages. Ordinary foreign-leaf/successor cleanup now uses
 fresh explicit receipts. This is controlled abandonment, not panic unwinding
 or an EL0-triggered fault. See
 [kernel preparation audit](../reports/audits/2026-10-07-security-kernel-preparation.md).
+
+Architecture-aware fixture coverage uses `CATTEN_DEPLOY_ELF` for the first
+signed binary and optional `CATTEN_DEPLOY_VARIANT_ELF` plus
+`CATTEN_DEPLOY_VARIANT_OBJECT_KEY` for a second uploaded baseline variant.
+Run ARM and x86 signed-ingress tests serially because their Docker certificate
+and central-store fixtures are shared. With ARM first and x86 second, the x86
+agent must log selected variant 1. The local two-guest `--deploy-test` prepares
+a signed descriptor, includes both staged architectures when available, and
+uses a digest/signature-verified local cache. The controller fixture now
+asserts descriptor-less deployment rejection while retaining upload identity
+and key-ceremony coverage. Neither fixture grants unsigned launch authority.
+
+The scoped `greet` fixture is policy-published. Legacy DNS forwarding correctly
+returns denial instead of issuing an application connection. Deployment tests
+use exact-generation rollout readiness and retirement receipts; their causal
+barrier observes two completed denial replies on the migrated host. The earlier
+public echo phase retains positive cross-node RPC coverage. Authorized remote
+application invocation remains separate work; do not weaken local policy to
+make the old forwarding fixture pass.

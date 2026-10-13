@@ -34,7 +34,7 @@ The ARM wrapper uses the four-argument, two-result emitter with memory effects;
 it does not declare `nomem`. The old five-argument scalar-result emitter has no
 remaining callers and is removed on ARM, x86 and unsupported-target stubs.
 The old packed-name scoped API and its named wrappers are removed together.
-Current signed `CDEPLOY5` bytes remain unchanged; all services must be rebuilt
+Scoped launch now accepts signed `CDEPLOY6` variant descriptors; all services must be rebuilt
 for this register contract. No earlier arity is decoded or translated.
 
 ## Retirement owner

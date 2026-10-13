@@ -27,11 +27,17 @@ pub(super) fn stage(handle: AddressSpaceHandle) -> RetiredAddressSpace {
 }
 
 pub(super) fn assert_detached(handle: AddressSpaceHandle) {
+    // The callbacks can run while another LP briefly uses either registry.
+    // A global try-lock failure cannot diagnose this caller's guard context.
+    // The existing IRQ-preserving owner observation pins only the local LP.
     assert!(
-        ADDRESS_SPACE_LIFECYCLE.try_lock().is_some(),
+        !crate::cpu::multiprocessor::spin::mutex::owned_by_current_lp(&ADDRESS_SPACE_LIFECYCLE),
         "lifecycle guard leaked into final invalidation"
     );
-    assert!(ADDRESS_SPACE_TABLE.try_lock().is_some(), "table guard leaked into final invalidation");
+    assert!(
+        !crate::cpu::multiprocessor::spin::mutex::owned_by_current_lp(&ADDRESS_SPACE_TABLE),
+        "table guard leaked into final invalidation"
+    );
     assert_eq!(memory::current_address_space_handle(handle.id()), None);
     assert!(!memory::commit_user_heap_page_handle(handle, charlotte_launch::HEAP_VADDR));
     assert_eq!(
@@ -41,6 +47,11 @@ pub(super) fn assert_detached(handle: AddressSpaceHandle) {
 }
 
 pub(crate) fn run() {
+    {
+        let _table = ADDRESS_SPACE_TABLE.lock();
+        assert!(crate::cpu::multiprocessor::spin::mutex::owned_by_current_lp(&ADDRESS_SPACE_TABLE));
+    }
+    assert!(!crate::cpu::multiprocessor::spin::mutex::owned_by_current_lp(&ADDRESS_SPACE_TABLE));
     recovery::tests::run();
     test_retry_quiescence();
     test_live_operations();
@@ -82,8 +93,10 @@ fn test_staged_close() {
     else {
         panic!("close completed with two outstanding operations");
     };
-    assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
-    assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
+    assert!(!crate::cpu::multiprocessor::spin::mutex::owned_by_current_lp(
+        &ADDRESS_SPACE_LIFECYCLE
+    ));
+    assert!(!crate::cpu::multiprocessor::spin::mutex::owned_by_current_lp(&ADDRESS_SPACE_TABLE));
     assert_eq!(memory::current_address_space_handle(owner.id()), Some(owner));
     assert!(memory::budget::accepting(owner));
     assert!(memory::object::info(owner.id(), object).unwrap().mapped);
@@ -132,8 +145,10 @@ fn test_staged_close_timeout() {
         ClosingAddressSpace::begin(owner).unwrap().wait(0),
         Err(AddressSpaceCloseError::OperationDrainTimedOut)
     );
-    assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
-    assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
+    assert!(!crate::cpu::multiprocessor::spin::mutex::owned_by_current_lp(
+        &ADDRESS_SPACE_LIFECYCLE
+    ));
+    assert!(!crate::cpu::multiprocessor::spin::mutex::owned_by_current_lp(&ADDRESS_SPACE_TABLE));
     operation.release().unwrap();
     // Timeout abandons only the request, not its fence or root. Draining the
     // last lease afterwards cannot resurrect admission or steal close authority.

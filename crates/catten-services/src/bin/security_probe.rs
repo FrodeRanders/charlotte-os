@@ -217,7 +217,7 @@ fn main(ctx: Context) -> ! {
     let replacement = deployment::decode(alternate).unwrap_or_else(|| catten_rt::domain_abort());
     check(
         replacement.artifact_name == admitted.artifact_name
-            && replacement.artifact_digest == admitted.artifact_digest
+            && replacement.variants().eq(admitted.variants())
             && replacement.sequence > admitted.sequence,
         3,
     );

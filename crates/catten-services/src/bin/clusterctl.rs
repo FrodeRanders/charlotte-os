@@ -536,7 +536,7 @@ fn serve(ctx: &Context) -> Result<ShutdownRequest, u32> {
                                             descriptor.artifact_name,
                                             dns::artifact_object_id(descriptor.artifact_name),
                                             descriptor.node_key,
-                                            &descriptor.artifact_digest,
+                                            &descriptor.variant(0).unwrap().artifact_digest,
                                             &descriptor_bytes,
                                         ),
                                     }

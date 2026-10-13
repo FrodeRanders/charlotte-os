@@ -283,8 +283,8 @@ fn response(result: i64) -> alloc::string::String {
         clusterctl::ERR_OUTSIDE_VALIDITY => {
             ("409 Conflict", format!("{{\"error\":{}}}\n", clusterctl::ERR_OUTSIDE_VALIDITY))
         }
-        clusterctl::ERR_UNSATISFIABLE_PLACEMENT => {
-            ("409 Conflict", format!("{{\"error\":{}}}\n", clusterctl::ERR_UNSATISFIABLE_PLACEMENT))
+        clusterctl::ERR_UNSATISFIABLE_PLACEMENT | clusterctl::ERR_INCOMPATIBLE_TARGET => {
+            ("409 Conflict", format!("{{\"error\":{result}}}\n"))
         }
         code => ("503 Service Unavailable", format!("{{\"error\":{code}}}\n")),
     };

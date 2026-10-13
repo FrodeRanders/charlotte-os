@@ -992,10 +992,12 @@ fn deployment_sign(args: &[String]) -> Result<()> {
     let output = args.first().ok_or_else(|| "missing descriptor output path".to_owned())?;
     let artifact_name = args.get(1).ok_or_else(|| "missing artifact name".to_owned())?;
     let object_key = args.get(2).ok_or_else(|| "missing object key".to_owned())?;
-    let artifact_digest: [u8; 32] =
-        hex_decode(args.get(3).ok_or_else(|| "missing artifact SHA-256".to_owned())?)?
-            .try_into()
-            .map_err(|_| "artifact SHA-256 must contain exactly 32 bytes".to_owned())?;
+    let image_path = args.get(3).ok_or_else(|| "missing artifact ELF path".to_owned())?;
+    let image = fs::read(image_path).map_err(|error| format!("read {image_path}: {error}"))?;
+    let architecture =
+        charlotte_launch::execution_target::ExecutionTarget::elf_architecture(&image)
+            .ok_or_else(|| "unsupported ELF architecture".to_owned())?;
+    let artifact_digest = charlotte_launch::sha256::digest(&image);
     let node_key =
         parse_required_u64(args.get(4).ok_or_else(|| "missing node key".to_owned())?, "node key")?;
     let sequence = parse_required_u64(
@@ -1022,7 +1024,54 @@ fn deployment_sign(args: &[String]) -> Result<()> {
     .map_err(|_| "shutdown grace milliseconds exceed the descriptor width".to_owned())?;
     let secret =
         read_signing_key(args.get(9).ok_or_else(|| "missing private-key file".to_owned())?)?;
-    let (placement, parsed_grants) = parse_placement_and_grants(&args[10..])?;
+    let mut variant_storage = vec![(
+        object_key.to_owned(),
+        charlotte_launch::execution_target::ExecutionTarget::baseline(architecture),
+        0u16,
+        artifact_digest,
+    )];
+    let mut options = Vec::new();
+    for option in &args[10..] {
+        if let Some(spec) = option.strip_prefix("--variant=") {
+            let parts = spec.split(',').collect::<Vec<_>>();
+            if parts.len() != 5 {
+                return Err("variant requires OBJECT_KEY,ELF,FEATURE_MASK,PRIORITY,ABI".to_owned());
+            }
+            let image =
+                fs::read(parts[1]).map_err(|error| format!("read {}: {error}", parts[1]))?;
+            let mut target = charlotte_launch::execution_target::ExecutionTarget::baseline(
+                charlotte_launch::execution_target::ExecutionTarget::elf_architecture(&image)
+                    .ok_or_else(|| "unsupported variant ELF architecture".to_owned())?,
+            );
+            target.features = parse_required_u64(parts[2], "feature mask")?;
+            target.runtime_abi = parse_required_u64(parts[4], "runtime ABI")?
+                .try_into()
+                .map_err(|_| "runtime ABI too large".to_owned())?;
+            let priority = parse_required_u64(parts[3], "priority")?
+                .try_into()
+                .map_err(|_| "priority too large".to_owned())?;
+            variant_storage.push((
+                parts[0].to_owned(),
+                target,
+                priority,
+                charlotte_launch::sha256::digest(&image),
+            ));
+        } else if let Some(features) = option.strip_prefix("--features=") {
+            variant_storage[0].1.features = parse_required_u64(features, "feature mask")?;
+        } else {
+            options.push(option.clone());
+        }
+    }
+    let (placement, parsed_grants) = parse_placement_and_grants(&options)?;
+    let variants = variant_storage
+        .iter()
+        .map(|(key, target, priority, digest)| charlotte_launch::deployment::ArtifactVariant {
+            target: *target,
+            priority: *priority,
+            artifact_digest: *digest,
+            object_key: key.as_bytes(),
+        })
+        .collect::<Vec<_>>();
     let grants = parsed_grants
         .iter()
         .map(|(service, rights)| CapabilityGrant {
@@ -1031,15 +1080,16 @@ fn deployment_sign(args: &[String]) -> Result<()> {
         })
         .collect::<Vec<_>>();
     let fields = DescriptorFields {
+        variants: &variants,
         sequence,
         node_key,
-        artifact_digest,
+
         artifact_name: artifact_name.as_bytes(),
         stack_pages_per_thread,
         max_threads,
         shutdown_grace_ms,
         placement,
-        object_key: object_key.as_bytes(),
+
         grants: &grants,
     };
     let public = secret.public_key();
@@ -1089,7 +1139,14 @@ fn deployment_verify(args: &[String]) -> Result<()> {
         "VERIFY OK: artifact={:?} object={:?} node={:#x} sequence={} stack_pages_per_thread={} \
          max_threads={} shutdown_grace_ms={} replicas={} placement_flags={:#x}",
         String::from_utf8_lossy(descriptor.artifact_name),
-        String::from_utf8_lossy(descriptor.object_key),
+        descriptor
+            .variants()
+            .map(|variant| (
+                String::from_utf8_lossy(variant.object_key),
+                variant.target,
+                variant.priority
+            ))
+            .collect::<Vec<_>>(),
         descriptor.node_key,
         descriptor.sequence,
         descriptor.stack_pages_per_thread,
@@ -1956,15 +2013,23 @@ fn run() -> Result<()> {
                 rights: deployment::CLIENT_RIGHTS,
             }];
             let fields = DescriptorFields {
+                variants: &[charlotte_launch::deployment::ArtifactVariant {
+                    target: charlotte_launch::execution_target::ExecutionTarget::baseline(
+                        charlotte_launch::execution_target::Architecture::Aarch64,
+                    ),
+                    priority: 0,
+                    artifact_digest: [0xa5; 32],
+                    object_key: b"releases/orders-step-a5.elf",
+                }],
                 sequence: 7,
                 node_key: 0,
-                artifact_digest: [0xa5; 32],
+
                 artifact_name: b"orders-step",
                 stack_pages_per_thread: 16,
                 max_threads: 8,
                 shutdown_grace_ms: 5_000,
                 placement: policy,
-                object_key: b"releases/orders-step-a5.elf",
+
                 grants: &grants,
             };
             let pair = KeyPair::generate();
@@ -2003,52 +2068,53 @@ fn run() -> Result<()> {
             );
             Ok(())
         }
-        _ => {
-            Err("usage: cluster-sign generate <private-key-file> <public-key-file> | elf-sign \
-                 <elf> <name> <private-key-file> [service|driver|bootstrap|admin] [version] \
-                 [rollback] [flags] [provenance-sha256|-] | elf-verify <elf> <name> <pubkey-hex> \
-                 | sha256 <file> | deployment-sign <output> <artifact-name> <object-key> \
-                 <artifact-sha256> <node-key> <sequence> <stack-pages-per-thread> <max-threads> \
-                 <shutdown-grace-ms> <private-key-file> [--replicas=N | --every-eligible-node] \
-                 [--min-distinct-nodes=N] [--max-instances-per-node=N] [--spread-replicas] \
-                 [--affinity-group=N] [--anti-affinity-group=N] [service=send|call|client|publish \
-                 ...] | deployment-verify <descriptor> <pubkey-hex> | deployment-notify \
-                 <descriptor> [host:port] | deployment-status <artifact-name> [host:port] \
-                 [wait-seconds] | deployment-apply <host:port> <wait-seconds> <descriptor>... | \
-                 release-sign <output> <release-name> <sequence> <private-key-file> \
-                 <descriptor>... | release-verify <release> <pubkey-hex> | release-notify \
-                 <release> [host:port] | release-apply <release> [host:port] [wait-seconds] | \
-                 shutdown-sign <output> <sequence> <target-node> <not-before-unix> <expires-unix> \
-                 <node-grace-ms> <phase-grace-ms> <private-key-file> | shutdown-verify <intent> \
-                 <pubkey-hex> | shutdown-notify <intent> [host:port] | ingress-policy-sign \
-                 <output> <sequence> <not-before-unix> <expires-unix> <cluster-id-hex> \
-                 <ops-ed25519-private-key-file> ([NAME=]VIP:PORT... | --clear) | \
-                 ingress-policy-verify <policy> <cluster-id-hex> <ops-ed25519-public-key-file> | \
-                 ingress-policy-notify <policy> [host:port] | ingress-policy-status [host:port] | \
-                 node-key <mac-address> | trust-policy-create <output> <cluster-mnemonic> \
-                 <sequence> <artifact-public-file> <deployment-public-file> \
-                 <operations-public-file> <recipient-public-file> | trust-policy-check <input> \
-                 <cluster-mnemonic> <minimum-sequence> | trust-policy-sign <output> <candidate> \
-                 <bootstrap-private-file> <cluster-mnemonic> (enroll <minimum-sequence> | \
-                 installed <accepted-sequence> <accepted-digest-hex>) | trust-policy-verify \
-                 <signed-policy> <bootstrap-public-file> <cluster-mnemonic> (enroll \
-                 <minimum-sequence> | installed <accepted-sequence> <accepted-digest-hex>) | \
-                 operations-recipient-generate <private-key-file> <public-key-file> | \
-                 operations-signing-generate <private-key-file> <public-key-file> | \
-                 operations-seal <output> <profile-name> <s3|kafka> <cluster-id-hex> \
-                 <release-sha256> <sequence> <expires-unix> <recipient-public-key-file> \
-                 <ops-ed25519-private-key-file> <profile-file> | operations-verify <envelope> \
-                 <ops-ed25519-public-key-file> | operations-open <envelope> <cluster-id-hex> \
-                 <release-sha256> <now-unix> <recipient-private-key-file> \
-                 <ops-ed25519-public-key-file> <output> | operations-bundle-sign <output> \
-                 <bundle-sequence> <cluster-id-hex> <release-ed25519-public-key-hex> \
-                 <ops-ed25519-private-key-file> <recipient-public-key-file> <release> \
-                 (<target-artifact> <object-key> <envelope>)... | operations-bundle-verify \
-                 <bundle> <cluster-id-hex> <release-ed25519-public-key-hex> \
-                 <ops-ed25519-public-key-file> <recipient-public-key-file> <now-unix> | \
-                 operations-bundle-notify <bundle> [host:port] | cluster-id <mnemonic> | selftest"
-                .to_owned())
-        }
+        _ => Err("usage: cluster-sign generate <private-key-file> <public-key-file> | elf-sign \
+                  <elf> <name> <private-key-file> [service|driver|bootstrap|admin] [version] \
+                  [rollback] [flags] [provenance-sha256|-] | elf-verify <elf> <name> \
+                  <pubkey-hex> | sha256 <file> | deployment-sign <output> <artifact-name> \
+                  <object-key> <artifact-elf> <node-key> <sequence> <stack-pages-per-thread> \
+                  <max-threads> <shutdown-grace-ms> <private-key-file> [--replicas=N | \
+                  --every-eligible-node] [--min-distinct-nodes=N] [--max-instances-per-node=N] \
+                  [--spread-replicas] [--affinity-group=N] [--anti-affinity-group=N] \
+                  [--features=MASK] [--variant=OBJECT_KEY,ELF,FEATURE_MASK,PRIORITY,ABI] \
+                  [service=send|call|client|publish ...] | deployment-verify <descriptor> \
+                  <pubkey-hex> | deployment-notify <descriptor> [host:port] | deployment-status \
+                  <artifact-name> [host:port] [wait-seconds] | deployment-apply <host:port> \
+                  <wait-seconds> <descriptor>... | release-sign <output> <release-name> \
+                  <sequence> <private-key-file> <descriptor>... | release-verify <release> \
+                  <pubkey-hex> | release-notify <release> [host:port] | release-apply <release> \
+                  [host:port] [wait-seconds] | shutdown-sign <output> <sequence> <target-node> \
+                  <not-before-unix> <expires-unix> <node-grace-ms> <phase-grace-ms> \
+                  <private-key-file> | shutdown-verify <intent> <pubkey-hex> | shutdown-notify \
+                  <intent> [host:port] | ingress-policy-sign <output> <sequence> \
+                  <not-before-unix> <expires-unix> <cluster-id-hex> \
+                  <ops-ed25519-private-key-file> ([NAME=]VIP:PORT... | --clear) | \
+                  ingress-policy-verify <policy> <cluster-id-hex> <ops-ed25519-public-key-file> \
+                  | ingress-policy-notify <policy> [host:port] | ingress-policy-status \
+                  [host:port] | node-key <mac-address> | trust-policy-create <output> \
+                  <cluster-mnemonic> <sequence> <artifact-public-file> <deployment-public-file> \
+                  <operations-public-file> <recipient-public-file> | trust-policy-check <input> \
+                  <cluster-mnemonic> <minimum-sequence> | trust-policy-sign <output> <candidate> \
+                  <bootstrap-private-file> <cluster-mnemonic> (enroll <minimum-sequence> | \
+                  installed <accepted-sequence> <accepted-digest-hex>) | trust-policy-verify \
+                  <signed-policy> <bootstrap-public-file> <cluster-mnemonic> (enroll \
+                  <minimum-sequence> | installed <accepted-sequence> <accepted-digest-hex>) | \
+                  operations-recipient-generate <private-key-file> <public-key-file> | \
+                  operations-signing-generate <private-key-file> <public-key-file> | \
+                  operations-seal <output> <profile-name> <s3|kafka> <cluster-id-hex> \
+                  <release-sha256> <sequence> <expires-unix> <recipient-public-key-file> \
+                  <ops-ed25519-private-key-file> <profile-file> | operations-verify <envelope> \
+                  <ops-ed25519-public-key-file> | operations-open <envelope> <cluster-id-hex> \
+                  <release-sha256> <now-unix> <recipient-private-key-file> \
+                  <ops-ed25519-public-key-file> <output> | operations-bundle-sign <output> \
+                  <bundle-sequence> <cluster-id-hex> <release-ed25519-public-key-hex> \
+                  <ops-ed25519-private-key-file> <recipient-public-key-file> <release> \
+                  (<target-artifact> <object-key> <envelope>)... | operations-bundle-verify \
+                  <bundle> <cluster-id-hex> <release-ed25519-public-key-hex> \
+                  <ops-ed25519-public-key-file> <recipient-public-key-file> <now-unix> | \
+                  operations-bundle-notify <bundle> [host:port] | cluster-id <mnemonic> | \
+                  selftest"
+            .to_owned()),
     }
 }
 
@@ -2585,12 +2651,17 @@ mod tests {
         let pair = KeyPair::generate();
         write_new_hex_key(&private, pair.sk.as_ref(), true).unwrap();
         let public: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();
+        let image = directory.path("app.elf");
+        let mut elf = vec![0; 64];
+        elf[..6].copy_from_slice(b"\x7fELF\x02\x01");
+        elf[18..20].copy_from_slice(&183u16.to_le_bytes());
+        fs::write(&image, elf).unwrap();
         let descriptor = directory.path("app.cdep");
         deployment_sign(&[
             descriptor.clone(),
             "app".into(),
             "apps/app.elf".into(),
-            "a5".repeat(32),
+            image,
             "0".into(),
             "1".into(),
             "4".into(),
@@ -2634,15 +2705,23 @@ mod tests {
 
     fn signed_descriptor(pair: &KeyPair, name: &[u8], sequence: u64) -> Vec<u8> {
         let fields = DescriptorFields {
+            variants: &[charlotte_launch::deployment::ArtifactVariant {
+                target: charlotte_launch::execution_target::ExecutionTarget::baseline(
+                    charlotte_launch::execution_target::Architecture::Aarch64,
+                ),
+                priority: 0,
+                artifact_digest: [sequence as u8; 32],
+                object_key: name,
+            }],
             sequence,
             node_key: 0,
-            artifact_digest: [sequence as u8; 32],
+
             artifact_name: name,
             stack_pages_per_thread: charlotte_launch::DEFAULT_USER_STACK_PAGES as u16,
             max_threads: charlotte_launch::DEFAULT_USER_MAX_THREADS as u16,
             shutdown_grace_ms: charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS,
             placement: charlotte_launch::placement::PlacementPolicy::singleton(),
-            object_key: name,
+
             grants: &[],
         };
         let public_key: &[u8; 32] = pair.pk.as_ref().try_into().unwrap();

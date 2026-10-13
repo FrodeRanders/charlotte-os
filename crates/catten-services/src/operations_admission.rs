@@ -28,6 +28,7 @@ pub enum AdmissionError {
     UnsatisfiablePlacement,
     /// Enough nodes exist, but none can host the declared resource demand.
     InsufficientCapacity,
+    InsufficientCompatibleCapacity,
 }
 
 /// Sentinel for a node that has not reported CPU load yet.
@@ -36,10 +37,11 @@ pub const CPU_LOAD_UNKNOWN: u16 = u16::MAX;
 /// Coarse per-node pressure sample used by the deterministic resolver.
 ///
 /// The leader fills this from committed capacity reports; an absent node is
-/// treated as unknown (neutral), never as exhausted, so mixed-version clusters
-/// keep making progress.
+/// ineligible until its execution profile is known. Missing pressure sensors
+/// remain neutral only after target compatibility has been established.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NodeCapacity {
+    pub target: Option<charlotte_launch::execution_target::ExecutionTarget>,
     pub free_frames: u64,
     pub usable_frames: u64,
     /// Static memory promises already committed to other deployments on this
@@ -57,6 +59,7 @@ impl Default for NodeCapacity {
             usable_frames: 0,
             committed_frames: 0,
             cpu_load_permille: CPU_LOAD_UNKNOWN,
+            target: None,
         }
     }
 }
@@ -110,7 +113,9 @@ impl CapacityFilter {
         if boot_nonce == 0 || epoch == 0 {
             return None;
         }
-        if boot_nonce == self.boot_nonce && epoch <= self.epoch {
+        if boot_nonce == self.boot_nonce
+            && (epoch <= self.epoch || sample.target != self.filtered.target)
+        {
             return None;
         }
         if boot_nonce != self.boot_nonce || sample.usable_frames != self.filtered.usable_frames {
@@ -252,7 +257,7 @@ pub fn capacity_sample_changed(previous: Option<&NodeCapacity>, next: &NodeCapac
     let Some(previous) = previous else {
         return true;
     };
-    if previous.usable_frames != next.usable_frames {
+    if previous.usable_frames != next.usable_frames || previous.target != next.target {
         return true;
     }
     if memory_bucket_of(previous) != memory_bucket_of(next)
@@ -287,8 +292,8 @@ pub fn descriptor_memory_demand(
 }
 
 /// Whether a node's committed free frames cover `demand_frames` plus its own
-/// free-frame reserve. Unknown capacity is optimistic so mixed-version
-/// clusters keep making progress.
+/// free-frame reserve. Unknown pressure is optimistic after the separate
+/// execution-profile eligibility check.
 fn node_can_host(capacity: &NodeCapacityView, node: u64, demand_frames: u64) -> bool {
     let Some(sample) = capacity.get(&node) else {
         return true;
@@ -325,20 +330,8 @@ fn reserve_node_capacity(capacity: &mut NodeCapacityView, node: u64, demand_fram
 /// use a stable per-artifact ranking; affinity groups share a ranking seed and
 /// anti-affinity groups require unused nodes. Components are planned in
 /// artifact-name order so release ordering cannot change the result.
-pub fn resolve_release_assignments(
-    release_bytes: &[u8],
-    eligible_nodes: &[u64],
-    automatic_node: u64,
-) -> Result<Vec<Vec<u64>>, AdmissionError> {
-    resolve_release_assignments_with_capacity(
-        release_bytes,
-        eligible_nodes,
-        automatic_node,
-        &NodeCapacityView::new(),
-    )
-}
-
-/// Capacity-aware variant of [`resolve_release_assignments`].
+///
+/// Capacity-aware release placement with explicit node profiles.
 pub fn resolve_release_assignments_with_capacity(
     release_bytes: &[u8],
     eligible_nodes: &[u64],
@@ -358,24 +351,12 @@ pub fn resolve_release_assignments_with_capacity(
 
 /// Resolve an already decoded, stable descriptor ordering. The controller
 /// uses this to recompute desired sets after committed membership changes.
-pub fn resolve_descriptor_assignments(
-    descriptor_bytes: &[&[u8]],
-    eligible_nodes: &[u64],
-    automatic_node: u64,
-) -> Result<Vec<Vec<u64>>, AdmissionError> {
-    resolve_descriptor_assignments_with_capacity(
-        descriptor_bytes,
-        eligible_nodes,
-        automatic_node,
-        &NodeCapacityView::new(),
-    )
-}
-
-/// Capacity-aware variant of [`resolve_descriptor_assignments`].
+///
+/// Capacity-aware descriptor placement with explicit node profiles.
 ///
 /// Nodes below the free-frame reserve are excluded from new placements, and
 /// ranking prefers the least-pressured bucket before the stable hash order.
-/// Unknown nodes stay eligible and rank as moderate.
+/// Unknown execution profiles reject; missing pressure alone ranks as moderate.
 pub fn resolve_descriptor_assignments_with_capacity(
     descriptor_bytes: &[&[u8]],
     eligible_nodes: &[u64],
@@ -403,6 +384,12 @@ pub fn resolve_descriptor_assignments_with_capacity(
         let descriptor = descriptors[index];
         let demand = descriptor_memory_demand(&descriptor);
         if descriptor.node_key != 0 {
+            if !eligible.contains(&descriptor.node_key) {
+                return Err(AdmissionError::UnsatisfiablePlacement);
+            }
+            if !compatible_node(&descriptor, &projected_capacity, descriptor.node_key) {
+                return Err(AdmissionError::InsufficientCompatibleCapacity);
+            }
             if !reserve_node_capacity(&mut projected_capacity, descriptor.node_key, demand) {
                 return Err(AdmissionError::InsufficientCapacity);
             }
@@ -411,8 +398,21 @@ pub fn resolve_descriptor_assignments_with_capacity(
         }
         let policy = descriptor.placement;
         policy.validate_shape().map_err(|_| AdmissionError::Invalid)?;
+        let compatible = eligible
+            .iter()
+            .copied()
+            .filter(|node| compatible_node(&descriptor, &projected_capacity, *node))
+            .collect::<Vec<_>>();
+        if !eligible.is_empty()
+            && (compatible.is_empty()
+                || (descriptor.placement.flags & charlotte_launch::placement::EVERY_ELIGIBLE_NODE
+                    == 0
+                    && compatible.len() < usize::from(descriptor.placement.replicas)))
+        {
+            return Err(AdmissionError::InsufficientCompatibleCapacity);
+        }
         // Feasible targets for this component's declared memory reservation.
-        let candidates = eligible
+        let candidates = compatible
             .iter()
             .copied()
             .filter(|node| {
@@ -514,24 +514,8 @@ pub fn resolve_descriptor_assignments_with_capacity(
 /// This function must be called by the current leader immediately before
 /// submission. `now_unix_seconds` must come from the trusted cluster time
 /// service; callers fail closed when UTC is unavailable.
-pub fn verify_and_encode(
-    bundle_bytes: &[u8],
-    trust: &charlotte_launch::trust::AdmissionTrust,
-    now_unix_seconds: u64,
-    eligible_nodes: &[u64],
-    automatic_node: u64,
-) -> Result<Vec<u8>, AdmissionError> {
-    verify_and_encode_with_capacity(
-        bundle_bytes,
-        trust,
-        now_unix_seconds,
-        eligible_nodes,
-        automatic_node,
-        &NodeCapacityView::new(),
-    )
-}
-
-/// Capacity-aware variant of [`verify_and_encode`].
+///
+/// Capacity-aware admission with explicit node profiles.
 pub fn verify_and_encode_with_capacity(
     bundle_bytes: &[u8],
     trust: &charlotte_launch::trust::AdmissionTrust,
@@ -570,13 +554,51 @@ pub fn verify_and_encode_with_capacity(
         automatic_node,
         capacity,
     )?;
-    crate::name_catalog::encode_release_replicas_with_operations(bundle_bytes, &assignments)
-        .ok_or(AdmissionError::TooLarge)
+    crate::name_catalog::encode_release_replicas_with_operations(
+        bundle_bytes,
+        &assignments,
+        capacity,
+    )
+    .ok_or(AdmissionError::TooLarge)
 }
 
 #[cfg(test)]
 mod tests {
     use alloc::vec;
+    fn profiles(nodes: &[u64]) -> NodeCapacityView {
+        nodes
+            .iter()
+            .map(|node| {
+                (
+                    *node,
+                    NodeCapacity {
+                        target: Some(
+                            charlotte_launch::execution_target::ExecutionTarget::baseline(
+                                charlotte_launch::execution_target::Architecture::Aarch64,
+                            ),
+                        ),
+                        ..NodeCapacity::default()
+                    },
+                )
+            })
+            .collect()
+    }
+    fn resolve_release_assignments(
+        bytes: &[u8],
+        nodes: &[u64],
+        automatic: u64,
+    ) -> Result<Vec<Vec<u64>>, AdmissionError> {
+        resolve_release_assignments_with_capacity(bytes, nodes, automatic, &profiles(nodes))
+    }
+    fn verify_and_encode(
+        bytes: &[u8],
+        trust: &charlotte_launch::trust::AdmissionTrust,
+        now: u64,
+        nodes: &[u64],
+        automatic: u64,
+    ) -> Result<Vec<u8>, AdmissionError> {
+        verify_and_encode_with_capacity(bytes, trust, now, nodes, automatic, &profiles(nodes))
+    }
 
     use catten_graft::state_machine::StateMachine;
     use charlotte_launch::{
@@ -631,15 +653,23 @@ mod tests {
             .iter()
             .map(|(name, placement)| {
                 let fields = DescriptorFields {
+                    variants: &[charlotte_launch::deployment::ArtifactVariant {
+                        target: charlotte_launch::execution_target::ExecutionTarget::baseline(
+                            charlotte_launch::execution_target::Architecture::Aarch64,
+                        ),
+                        priority: 0,
+                        artifact_digest: [name[0]; 32],
+                        object_key: name,
+                    }],
                     sequence: 1,
                     node_key: 0,
-                    artifact_digest: [name[0]; 32],
+
                     artifact_name: name,
                     stack_pages_per_thread: 4,
                     max_threads: 4,
                     shutdown_grace_ms: charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS,
                     placement: *placement,
-                    object_key: name,
+
                     grants: &[],
                 };
                 let mut bytes = vec![0; deployment::encoded_len(&fields).unwrap()];
@@ -667,15 +697,23 @@ mod tests {
         let release_public: &[u8; 32] = release_pair.pk.as_ref().try_into().unwrap();
         let operational_public: &[u8; 32] = operational_pair.pk.as_ref().try_into().unwrap();
         let descriptor_fields = DescriptorFields {
+            variants: &[charlotte_launch::deployment::ArtifactVariant {
+                target: charlotte_launch::execution_target::ExecutionTarget::baseline(
+                    charlotte_launch::execution_target::Architecture::Aarch64,
+                ),
+                priority: 0,
+                artifact_digest: [0x77; 32],
+                object_key: b"releases/kafka.elf",
+            }],
             sequence: 1,
             node_key: 0,
-            artifact_digest: [0x77; 32],
+
             artifact_name: b"kafka",
             stack_pages_per_thread: 32,
             max_threads: 16,
             shutdown_grace_ms: charlotte_launch::DEFAULT_SHUTDOWN_GRACE_MS,
             placement: charlotte_launch::placement::PlacementPolicy::singleton(),
-            object_key: b"releases/kafka.elf",
+
             grants: &[],
         };
         let mut descriptor = vec![0; deployment::encoded_len(&descriptor_fields).unwrap()];
@@ -775,6 +813,18 @@ mod tests {
         assert!(!command.windows(32).any(|window| window.iter().all(|byte| *byte == 0x5a)));
 
         let catalog = NameCatalog::new_with_deployment_key(fixture.trust.deployment_key);
+        catalog.apply(
+            1,
+            &crate::name_catalog::encode_node_capacity(&crate::name_catalog::NodeCapacityEntry {
+                target: profiles(&[0x1234])[&0x1234].target.unwrap(),
+                node_key: 0x1234,
+                boot_nonce: 1,
+                epoch: 1,
+                free_frames: 10000,
+                usable_frames: 20000,
+                cpu_load_permille: 0,
+            }),
+        );
         assert_eq!(catalog.apply_with_result(1, &command), 1i64.to_le_bytes());
         let binding = catalog.operational_binding(b"kafka/orders/transactional").unwrap();
         assert_eq!(binding.target_artifact, b"kafka");
@@ -800,7 +850,7 @@ mod tests {
         assert!(assignments[0].windows(2).all(|pair| pair[0] < pair[1]));
         assert_eq!(
             resolve_release_assignments(&release, &[1, 2], 1),
-            Err(AdmissionError::UnsatisfiablePlacement)
+            Err(AdmissionError::InsufficientCompatibleCapacity)
         );
     }
 
@@ -830,27 +880,32 @@ mod tests {
         };
         let release = policy_release(&pair, &[(b"orders", policy)]);
 
-        // Unknown capacity leaves the historical ranking untouched.
         let baseline = resolve_release_assignments(&release, &[1, 2, 3], 0).unwrap();
+        // Unknown execution profiles fail closed.
         assert_eq!(
             resolve_release_assignments_with_capacity(
                 &release,
                 &[1, 2, 3],
                 0,
                 &NodeCapacityView::new(),
-            )
-            .unwrap(),
-            baseline
+            ),
+            Err(AdmissionError::InsufficientCompatibleCapacity)
         );
 
         // A pressured node loses to ample peers even when its hash wins.
         let ample = NodeCapacity {
+            target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
+                charlotte_launch::execution_target::Architecture::Aarch64,
+            )),
             free_frames: 900,
             usable_frames: 1000,
             committed_frames: 0,
             cpu_load_permille: CPU_LOAD_UNKNOWN,
         };
         let low = NodeCapacity {
+            target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
+                charlotte_launch::execution_target::Architecture::Aarch64,
+            )),
             free_frames: 60,
             usable_frames: 1000,
             committed_frames: 0,
@@ -868,6 +923,9 @@ mod tests {
 
         // Below the reserve, a node is excluded from new placements.
         let exhausted = NodeCapacity {
+            target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
+                charlotte_launch::execution_target::Architecture::Aarch64,
+            )),
             free_frames: 10,
             usable_frames: 1000,
             committed_frames: 0,
@@ -890,6 +948,9 @@ mod tests {
     #[test]
     fn capacity_sample_change_is_hysteretic() {
         let sample = NodeCapacity {
+            target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
+                charlotte_launch::execution_target::Architecture::Aarch64,
+            )),
             free_frames: 800,
             usable_frames: 1000,
             committed_frames: 0,
@@ -927,6 +988,9 @@ mod tests {
     #[test]
     fn capacity_control_filters_raw_samples_and_fences_replays() {
         let initial = NodeCapacity {
+            target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
+                charlotte_launch::execution_target::Architecture::Aarch64,
+            )),
             free_frames: 800,
             usable_frames: 1_000,
             committed_frames: 0,
@@ -995,6 +1059,9 @@ mod tests {
             (
                 node,
                 NodeCapacity {
+                    target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
+                        charlotte_launch::execution_target::Architecture::Aarch64,
+                    )),
                     free_frames: 900,
                     usable_frames: 1000,
                     committed_frames: 0,
@@ -1006,6 +1073,9 @@ mod tests {
         capacity.insert(
             busy,
             NodeCapacity {
+                target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
+                    charlotte_launch::execution_target::Architecture::Aarch64,
+                )),
                 free_frames: 900,
                 usable_frames: 1000,
                 committed_frames: 0,
@@ -1021,6 +1091,9 @@ mod tests {
             (
                 node,
                 NodeCapacity {
+                    target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
+                        charlotte_launch::execution_target::Architecture::Aarch64,
+                    )),
                     free_frames: 900,
                     usable_frames: 1000,
                     committed_frames: 0,
@@ -1050,6 +1123,9 @@ mod tests {
         let release = policy_release(&pair, &[(b"orders", policy)]);
         // Demand = 4 threads x 4 stack pages + 8 runtime pages = 24 frames.
         let tight = NodeCapacity {
+            target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
+                charlotte_launch::execution_target::Architecture::Aarch64,
+            )),
             free_frames: 30,
             usable_frames: 1000,
             committed_frames: 0,
@@ -1063,6 +1139,9 @@ mod tests {
         );
 
         let roomy = NodeCapacity {
+            target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
+                charlotte_launch::execution_target::Architecture::Aarch64,
+            )),
             free_frames: 200,
             usable_frames: 1000,
             committed_frames: 0,
@@ -1092,6 +1171,9 @@ mod tests {
         let capacity = NodeCapacityView::from_iter([(
             1,
             NodeCapacity {
+                target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
+                    charlotte_launch::execution_target::Architecture::Aarch64,
+                )),
                 free_frames: 100,
                 usable_frames: 1_000,
                 committed_frames: 0,
@@ -1116,6 +1198,9 @@ mod tests {
         let capacity = NodeCapacityView::from_iter([(
             1,
             NodeCapacity {
+                target: Some(charlotte_launch::execution_target::ExecutionTarget::baseline(
+                    charlotte_launch::execution_target::Architecture::Aarch64,
+                )),
                 free_frames: 900,
                 usable_frames: 1_000,
                 committed_frames: 920,
@@ -1199,4 +1284,16 @@ mod tests {
         frame.extend_from_slice(&body);
         assert_eq!(roperations::decode_request(&frame), Some(request));
     }
+}
+
+fn compatible_node(
+    descriptor: &charlotte_launch::deployment::DeploymentDescriptor<'_>,
+    capacity: &NodeCapacityView,
+    node: u64,
+) -> bool {
+    capacity
+        .get(&node)
+        .and_then(|entry| entry.target)
+        .and_then(|target| descriptor.select_variant(target))
+        .is_some()
 }

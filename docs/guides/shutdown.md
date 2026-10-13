@@ -56,10 +56,10 @@ RAII owners.
 
 ## Deployment and kernel behavior
 
-Current tooling emits `CDEPLOY5`. Its `shutdown_grace_ms` field is signed with
+Current tooling emits `CDEPLOY6`. Its `shutdown_grace_ms` field is signed with
 the artifact digest, placement, stack pages, thread quota, and grants. Valid
 values are zero through 300,000 milliseconds; zero requests immediate forced
-retirement. Readers accept only `CDEPLOY5`; every descriptor supplies its
+retirement. Readers accept only `CDEPLOY6`; every descriptor supplies its
 explicit grace period, with no older-format defaults. Built-in launch policy
 may separately choose the 5,000-millisecond default.
 

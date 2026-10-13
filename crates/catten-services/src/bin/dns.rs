@@ -74,7 +74,6 @@ use catten_services::{
         NodeCapacityEntry,
         decode_query_result,
         encode_activate,
-        encode_deploy,
         encode_deployment_result,
         encode_ingress_policy,
         encode_lookup_query,
@@ -858,19 +857,25 @@ fn reconcile_replica_placements(
         {
             continue;
         }
-        let forced = entry.replica_nodes.iter().any(|node| !candidates.contains(node));
+        let repair_pin = entry.has_incompatible_pin(capacity);
+        let forced =
+            repair_pin || entry.replica_nodes.iter().any(|node| !candidates.contains(node));
         let gate = gates.entry(artifact.clone()).or_default();
-        if !gate.ready(
-            &entry.replica_nodes,
-            &nodes,
-            forced,
-            node.millis(),
-            PLACEMENT_REASSIGN_DWELL_MS,
-            PLACEMENT_REASSIGN_COOLDOWN_MS,
-        ) {
+        if !repair_pin
+            && !gate.ready(
+                &entry.replica_nodes,
+                &nodes,
+                forced,
+                node.millis(),
+                PLACEMENT_REASSIGN_DWELL_MS,
+                PLACEMENT_REASSIGN_COOLDOWN_MS,
+            )
+        {
             continue;
         }
-        let Some(command) = encode_reassign(artifact, entry.generation, &nodes) else {
+        let Some(command) =
+            encode_reassign(artifact, entry.generation, &nodes, &entry.descriptor, capacity)
+        else {
             continue;
         };
         if let Ok(log_index) = node.submit_command(command, node.millis()) {
@@ -1094,6 +1099,7 @@ fn filter_capacity_report(
     report: catten_services::rcapacity::Report,
 ) -> Option<(catten_services::rcapacity::Report, bool)> {
     let observed = operations_admission::NodeCapacity {
+        target: Some(report.target),
         free_frames: report.free_frames,
         usable_frames: report.usable_frames,
         committed_frames: 0,
@@ -1151,6 +1157,7 @@ fn capacity_with_reservations(
                 capacity.insert(
                     node,
                     operations_admission::NodeCapacity {
+                        target: None,
                         free_frames: 0,
                         usable_frames: demand,
                         committed_frames: demand,
@@ -1202,6 +1209,7 @@ fn capacity_command(
     report: catten_services::rcapacity::Report,
 ) -> Option<Vec<u8>> {
     let next = operations_admission::NodeCapacity {
+        target: Some(report.target),
         free_frames: report.free_frames,
         usable_frames: report.usable_frames,
         committed_frames: 0,
@@ -1209,6 +1217,7 @@ fn capacity_command(
     };
     let previous_entry = catalog.node_capacity(report.node_key);
     let previous = previous_entry.map(|entry| operations_admission::NodeCapacity {
+        target: Some(entry.target),
         free_frames: entry.free_frames,
         usable_frames: entry.usable_frames,
         committed_frames: 0,
@@ -1218,6 +1227,7 @@ fn capacity_command(
     (new_incarnation || operations_admission::capacity_sample_changed(previous.as_ref(), &next))
         .then(|| {
             encode_node_capacity(&NodeCapacityEntry {
+                target: report.target,
                 node_key: report.node_key,
                 boot_nonce: report.boot_nonce,
                 epoch: report.epoch,
@@ -1259,12 +1269,15 @@ fn release_command(
         operations_admission::AdmissionError::UnsatisfiablePlacement => {
             clusterctl::ERR_UNSATISFIABLE_PLACEMENT
         }
+        operations_admission::AdmissionError::InsufficientCompatibleCapacity => {
+            clusterctl::ERR_INCOMPATIBLE_TARGET
+        }
         operations_admission::AdmissionError::InsufficientCapacity => {
             clusterctl::ERR_INSUFFICIENT_CAPACITY
         }
         _ => clusterctl::ERR_UNTRUSTED_DESCRIPTOR,
     })?;
-    catten_services::name_catalog::encode_release_replicas(envelope, &assignments)
+    catten_services::name_catalog::encode_release_replicas(envelope, &assignments, capacity)
         .ok_or(dns::ERR_TOO_LARGE)
 }
 
@@ -1314,6 +1327,9 @@ fn operations_command(
         operations_admission::AdmissionError::TooLarge => clusterctl::ERR_TOO_LARGE,
         operations_admission::AdmissionError::UnsatisfiablePlacement => {
             clusterctl::ERR_UNSATISFIABLE_PLACEMENT
+        }
+        operations_admission::AdmissionError::InsufficientCompatibleCapacity => {
+            clusterctl::ERR_INCOMPATIBLE_TARGET
         }
         operations_admission::AdmissionError::InsufficientCapacity => {
             clusterctl::ERR_INSUFFICIENT_CAPACITY
@@ -1841,7 +1857,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // Report local capacity. The leader proposes a committed sample when
         // the report changes the placement picture; followers relay reports
         // to the leader so every replica eventually resolves from applied
-        // state. Unknown nodes stay neutral in the resolver.
+        // state. Unknown execution profiles cannot receive assignments.
         if node.millis() >= next_capacity_report_ms {
             next_capacity_report_ms = node.millis().saturating_add(CAPACITY_REPORT_INTERVAL_MS);
             if capacity_boot_nonce.is_none()
@@ -1849,11 +1865,16 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             {
                 capacity_boot_nonce = obtain_capacity_boot_nonce(ns_connection);
             }
-            let (free_frames, usable_frames, cpu_load_permille) = catten_syscall::node_pressure();
-            if let (Some(node_key), Some(boot_nonce)) =
-                (node_identity::key_from_name(&node_name), capacity_boot_nonce)
+            let (free_frames, usable_frames, cpu_load_permille, packed, features) =
+                catten_syscall::node_pressure();
+            let target = charlotte_launch::execution_target::ExecutionTarget::from_pressure(
+                packed, features,
+            );
+            if let (Some(node_key), Some(boot_nonce), Some(target)) =
+                (node_identity::key_from_name(&node_name), capacity_boot_nonce, target)
             {
                 let report = catten_services::rcapacity::Report {
+                    target,
                     node_key,
                     boot_nonce,
                     epoch: catten_syscall::monotonic_clock().0,
@@ -1874,8 +1895,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             .insert(control.node_key, (control.boot_nonce, node.millis()));
                         if seeded {
                             catten_rt::logln!(
-                                "[dns] seeded capacity control for node {:016x}",
-                                control.node_key
+                                "[dns] seeded capacity control for node {:016x} target={:?}",
+                                control.node_key,
+                                control.target
                             );
                         }
                         if let Some(command) = capacity_command(&catalog, control)
@@ -2546,21 +2568,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     {
                                         Some(dns::ERR_TOO_LARGE)
                                     } else {
-                                        let assigned_node = if request.node_key == 0 {
-                                            node_identity::key_from_name(&node_name).unwrap_or(0)
-                                        } else {
-                                            request.node_key
-                                        };
-                                        match node.submit_command(
-                                            encode_deploy(
-                                                &request.artifact,
-                                                request.object_id,
-                                                assigned_node,
-                                                &request.digest,
-                                                &request.descriptor,
-                                            ),
-                                            node.millis(),
-                                        ) {
+                                        let capacity = fresh_capacity_view(&catalog,&capacity_last_seen_ms,node.millis());
+                                        match deployment_command(&catalog,&node,DeploymentProposal { name: &request.artifact, object_id: request.object_id, node: request.node_key, digest: &request.digest, descriptor: &request.descriptor },&capacity).and_then(|command|node.submit_command(command,node.millis())) {
                                             Ok(log_index) => {
                                                 pending_registers.push(PendingRegistration::RemoteDeploy { term: node.current_term,
                                                         log_index,
@@ -3375,20 +3384,25 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 // authenticity is the Raft consensus; the
                                 // reply is deferred until the command is
                                 // committed (pending_registers below).
-                                match node.submit_command(
-                                    encode_deploy(
-                                        &artifact,
-                                        object_id,
-                                        if node_key == 0 {
-                                            node_identity::key_from_name(&node_name).unwrap_or(0)
-                                        } else {
-                                            node_key
-                                        },
-                                        &artifact_digest,
-                                        &descriptor,
-                                    ),
+                                let capacity = fresh_capacity_view(
+                                    &catalog,
+                                    &capacity_last_seen_ms,
                                     node.millis(),
-                                ) {
+                                );
+                                match deployment_command(
+                                    &catalog,
+                                    &node,
+                                    DeploymentProposal {
+                                        name: &artifact,
+                                        object_id,
+                                        node: node_key,
+                                        digest: &artifact_digest,
+                                        descriptor: &descriptor,
+                                    },
+                                    &capacity,
+                                )
+                                .and_then(|command| node.submit_command(command, node.millis()))
+                                {
                                     Ok(log_index) => {
                                         pending_registers.push(PendingRegistration::Deploy {
                                             term: node.current_term,
@@ -3416,18 +3430,23 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 &mut node,
                                 &mut pending_registers,
                                 message.reply,
-                                |_node| {
-                                    Ok(encode_deploy(
-                                        &request.name,
-                                        request.object_id,
-                                        if request.node_key == 0 {
-                                            node_identity::key_from_name(&node_name).unwrap_or(0)
-                                        } else {
-                                            request.node_key
+                                |node| {
+                                    deployment_command(
+                                        &catalog,
+                                        node,
+                                        DeploymentProposal {
+                                            name: &request.name,
+                                            object_id: request.object_id,
+                                            node: request.node_key,
+                                            digest: &request.digest,
+                                            descriptor: &request.descriptor,
                                         },
-                                        &request.digest,
-                                        &request.descriptor,
-                                    ))
+                                        &fresh_capacity_view(
+                                            &catalog,
+                                            &capacity_last_seen_ms,
+                                            node.millis(),
+                                        ),
+                                    )
                                 },
                             ) {
                                 Ok(()) => continue,
@@ -5034,3 +5053,73 @@ fn main(ctx: Context) -> ! {
 }
 
 catten_rt::entry!(main);
+
+struct DeploymentProposal<'a> {
+    name: &'a [u8],
+    object_id: u64,
+    node: u64,
+    digest: &'a [u8; 32],
+    descriptor: &'a [u8],
+}
+
+fn deployment_command(
+    catalog: &NameCatalog,
+    node: &RaftNode,
+    proposal: DeploymentProposal<'_>,
+    capacity: &operations_admission::NodeCapacityView,
+) -> Result<Vec<u8>, i64> {
+    let DeploymentProposal {
+        name: artifact,
+        object_id,
+        node: requested_node,
+        digest,
+        descriptor: bytes,
+    } = proposal;
+    let descriptor =
+        charlotte_launch::deployment::decode(bytes).ok_or(clusterctl::ERR_UNTRUSTED_DESCRIPTOR)?;
+    if descriptor.artifact_name != artifact
+        || descriptor.variant(0).map(|variant| variant.artifact_digest) != Some(*digest)
+        || descriptor.placement != charlotte_launch::placement::PlacementPolicy::singleton()
+        || (descriptor.node_key != 0 && requested_node != descriptor.node_key)
+    {
+        return Err(clusterctl::ERR_UNTRUSTED_DESCRIPTOR);
+    }
+    let capacity =
+        capacity_with_reservations(catalog, capacity.clone(), &BTreeSet::from([artifact.to_vec()]));
+    let eligible = placement_nodes(node, catalog);
+    let preferred = if requested_node == 0 {
+        node_identity::key_from_name(node.me.id.as_bytes()).unwrap_or(0)
+    } else {
+        requested_node
+    };
+    let assignments = operations_admission::resolve_descriptor_assignments_with_capacity(
+        &[bytes],
+        &eligible,
+        preferred,
+        &capacity,
+    )
+    .map_err(|error| match error {
+        operations_admission::AdmissionError::InsufficientCompatibleCapacity => {
+            clusterctl::ERR_INCOMPATIBLE_TARGET
+        }
+        operations_admission::AdmissionError::InsufficientCapacity => {
+            clusterctl::ERR_INSUFFICIENT_CAPACITY
+        }
+        _ => clusterctl::ERR_UNSATISFIABLE_PLACEMENT,
+    })?;
+    let selected = *assignments
+        .first()
+        .and_then(|nodes| nodes.first())
+        .ok_or(clusterctl::ERR_INCOMPATIBLE_TARGET)?;
+    let variant = descriptor
+        .select_variant(
+            capacity
+                .get(&selected)
+                .and_then(|entry| entry.target)
+                .ok_or(clusterctl::ERR_INCOMPATIBLE_TARGET)?,
+        )
+        .ok_or(clusterctl::ERR_INCOMPATIBLE_TARGET)?;
+    Ok(catten_services::name_catalog::encode_deploy(
+        artifact, object_id, selected, digest, bytes, variant,
+    ))
+}

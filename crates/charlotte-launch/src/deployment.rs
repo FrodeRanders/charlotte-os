@@ -13,18 +13,19 @@ use ed25519_compact::{
 };
 
 use crate::{
+    execution_target::ExecutionTarget,
     placement::PlacementPolicy,
     sha256,
 };
 
-pub const MAGIC: &[u8; 8] = b"CDEPLOY5";
-pub const VERSION: u16 = 5;
-pub const HEADER_LEN: usize = 182;
+pub const MAGIC: &[u8; 8] = b"CDEPLOY6";
+pub const VERSION: u16 = 6;
+pub const HEADER_LEN: usize = 152;
 pub const SIGNATURE_OFFSET: usize = 88;
 pub const SIGNATURE_LEN: usize = 64;
-pub const MAX_THREADS_OFFSET: usize = SIGNATURE_OFFSET + SIGNATURE_LEN;
-pub const SHUTDOWN_GRACE_MS_OFFSET: usize = MAX_THREADS_OFFSET + 2;
-pub const PLACEMENT_OFFSET: usize = SHUTDOWN_GRACE_MS_OFFSET + 4;
+pub const MAX_THREADS_OFFSET: usize = 40;
+pub const SHUTDOWN_GRACE_MS_OFFSET: usize = 44;
+pub const PLACEMENT_OFFSET: usize = 48;
 pub const KEY_ID_LEN: usize = 16;
 /// Leaves room in one 4 KiB IPC memory object for an acquisition header and
 /// the requested service name.
@@ -53,8 +54,8 @@ pub struct DescriptorFields<'a> {
     pub sequence: u64,
     /// Cluster node identity selected by placement policy.
     pub node_key: u64,
-    /// SHA-256 of the exact signed ELF stored at `object_key`.
-    pub artifact_digest: [u8; 32],
+    /// Signed binary alternatives for this one logical component revision.
+    pub variants: &'a [ArtifactVariant<'a>],
     pub artifact_name: &'a [u8],
     /// Kernel-enforced stack allocation inherited by every thread in the
     /// protected domain, expressed in 4 KiB pages.
@@ -66,9 +67,6 @@ pub struct DescriptorFields<'a> {
     pub shutdown_grace_ms: u32,
     /// Signed desired placement; every descriptor carries an explicit policy.
     pub placement: PlacementPolicy,
-    /// Opaque key interpreted inside the node's preconfigured object-store
-    /// connector. It contains neither a bucket endpoint nor credentials.
-    pub object_key: &'a [u8],
     pub grants: &'a [CapabilityGrant<'a>],
 }
 
@@ -76,8 +74,9 @@ pub struct DescriptorFields<'a> {
 pub enum EncodeError {
     BufferTooSmall,
     InvalidArtifactName,
+    InvalidVariant,
+    DuplicateTarget,
     InvalidGrant,
-    InvalidObjectKey,
     InvalidSequence,
     InvalidStackPages,
     InvalidMaxThreads,
@@ -99,18 +98,52 @@ pub struct DeploymentDescriptor<'a> {
     bytes: &'a [u8],
     pub sequence: u64,
     pub node_key: u64,
-    pub artifact_digest: [u8; 32],
     pub artifact_name: &'a [u8],
     pub stack_pages_per_thread: u16,
     pub max_threads: u16,
     pub shutdown_grace_ms: u32,
     pub placement: PlacementPolicy,
-    pub object_key: &'a [u8],
+    variants_offset: usize,
+    variant_count: usize,
     grants_offset: usize,
     grant_count: usize,
 }
 
 impl<'a> DeploymentDescriptor<'a> {
+    pub fn variants(&self) -> ArtifactVariants<'a> {
+        ArtifactVariants {
+            bytes: self.bytes,
+            offset: self.variants_offset,
+            remaining: self.variant_count,
+        }
+    }
+
+    pub fn variant(&self, index: usize) -> Option<ArtifactVariant<'a>> {
+        self.variants().nth(index)
+    }
+
+    /// Highest signed priority, then most specific feature set, then signed
+    /// order. The chosen index is committed with the assignment, not reselected
+    /// from a later report when the node fetches its executable.
+    pub fn select_variant(&self, node: ExecutionTarget) -> Option<u16> {
+        self.variants()
+            .enumerate()
+            .filter(|(_, variant)| node.supports(variant.target))
+            .max_by_key(|(index, variant)| {
+                (variant.priority, variant.target.features.count_ones(), core::cmp::Reverse(*index))
+            })
+            .and_then(|(index, _)| u16::try_from(index).ok())
+    }
+
+    pub fn accepts_image(&self, image: &[u8], node: ExecutionTarget) -> bool {
+        if ExecutionTarget::elf_architecture(image) != Some(node.architecture) {
+            return false;
+        }
+        let digest = sha256::digest(image);
+        self.variants()
+            .any(|variant| variant.artifact_digest == digest && node.supports(variant.target))
+    }
+
     pub fn grants(&self) -> CapabilityGrants<'a> {
         CapabilityGrants {
             bytes: self.bytes,
@@ -121,6 +154,51 @@ impl<'a> DeploymentDescriptor<'a> {
 
     pub fn bytes(&self) -> &'a [u8] {
         self.bytes
+    }
+}
+
+pub const MAX_VARIANTS: usize = 8;
+pub const VARIANT_HEADER_LEN: usize = 52;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ArtifactVariant<'a> {
+    pub target: ExecutionTarget,
+    pub priority: u16,
+    pub artifact_digest: [u8; 32],
+    pub object_key: &'a [u8],
+}
+
+pub struct ArtifactVariants<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+    remaining: usize,
+}
+
+impl<'a> Iterator for ArtifactVariants<'a> {
+    type Item = ArtifactVariant<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.remaining == 0 {
+            return None;
+        }
+        let start = self.offset;
+        let target = ExecutionTarget::decode(self.bytes.get(start..start.checked_add(16)?)?)?;
+        let priority = read_u16(self.bytes, start + 16)?;
+        let key_len = usize::from(read_u16(self.bytes, start + 18)?);
+        let artifact_digest = self.bytes.get(start + 20..start + 52)?.try_into().ok()?;
+        let end = start.checked_add(VARIANT_HEADER_LEN)?.checked_add(key_len)?;
+        let object_key = self.bytes.get(start + VARIANT_HEADER_LEN..end)?;
+        if !valid_name(object_key, MAX_OBJECT_KEY_LEN) {
+            return None;
+        }
+        self.offset = end;
+        self.remaining -= 1;
+        Some(ArtifactVariant {
+            target,
+            priority,
+            artifact_digest,
+            object_key,
+        })
     }
 }
 
@@ -188,16 +266,27 @@ pub fn encoded_len(fields: &DescriptorFields<'_>) -> Result<usize, EncodeError> 
     if !valid_artifact_name(fields.artifact_name) {
         return Err(EncodeError::InvalidArtifactName);
     }
-    if !valid_name(fields.object_key, MAX_OBJECT_KEY_LEN) {
-        return Err(EncodeError::InvalidObjectKey);
+    if fields.variants.is_empty() || fields.variants.len() > MAX_VARIANTS {
+        return Err(EncodeError::InvalidVariant);
+    }
+    for (index, variant) in fields.variants.iter().enumerate() {
+        if !variant.target.valid() || !valid_name(variant.object_key, MAX_OBJECT_KEY_LEN) {
+            return Err(EncodeError::InvalidVariant);
+        }
+        if fields.variants[..index].iter().any(|previous| previous.target == variant.target) {
+            return Err(EncodeError::DuplicateTarget);
+        }
     }
     if fields.grants.len() > MAX_GRANTS {
         return Err(EncodeError::TooManyGrants);
     }
-    let mut len = HEADER_LEN
-        .checked_add(fields.artifact_name.len())
-        .and_then(|len| len.checked_add(fields.object_key.len()))
-        .ok_or(EncodeError::TooLarge)?;
+    let mut len =
+        HEADER_LEN.checked_add(fields.artifact_name.len()).ok_or(EncodeError::TooLarge)?;
+    for variant in fields.variants {
+        len = len
+            .checked_add(VARIANT_HEADER_LEN + variant.object_key.len())
+            .ok_or(EncodeError::TooLarge)?;
+    }
     for grant in fields.grants {
         if !valid_name(grant.service, MAX_SERVICE_NAME_LEN) || !valid_rights(grant.rights) {
             return Err(EncodeError::InvalidGrant);
@@ -230,11 +319,10 @@ pub fn encode_unsigned(
     bytes[12..16].copy_from_slice(&(len as u32).to_le_bytes());
     bytes[16..24].copy_from_slice(&fields.sequence.to_le_bytes());
     bytes[24..32].copy_from_slice(&fields.node_key.to_le_bytes());
-    bytes[32..64].copy_from_slice(&fields.artifact_digest);
-    bytes[64..66].copy_from_slice(&(fields.artifact_name.len() as u16).to_le_bytes());
-    bytes[66..68].copy_from_slice(&(fields.object_key.len() as u16).to_le_bytes());
-    bytes[68..70].copy_from_slice(&(fields.grants.len() as u16).to_le_bytes());
-    bytes[70..72].copy_from_slice(&fields.stack_pages_per_thread.to_le_bytes());
+    bytes[32..34].copy_from_slice(&(fields.artifact_name.len() as u16).to_le_bytes());
+    bytes[34..36].copy_from_slice(&(fields.variants.len() as u16).to_le_bytes());
+    bytes[36..38].copy_from_slice(&(fields.grants.len() as u16).to_le_bytes());
+    bytes[38..40].copy_from_slice(&fields.stack_pages_per_thread.to_le_bytes());
     bytes[72..88].copy_from_slice(&sha256::digest(public_key)[..KEY_ID_LEN]);
     bytes[MAX_THREADS_OFFSET..MAX_THREADS_OFFSET + 2]
         .copy_from_slice(&fields.max_threads.to_le_bytes());
@@ -257,9 +345,18 @@ pub fn encode_unsigned(
     let name_end = offset + fields.artifact_name.len();
     bytes[offset..name_end].copy_from_slice(fields.artifact_name);
     offset = name_end;
-    let key_end = offset + fields.object_key.len();
-    bytes[offset..key_end].copy_from_slice(fields.object_key);
-    offset = key_end;
+    for variant in fields.variants {
+        bytes[offset..offset + 16]
+            .copy_from_slice(&variant.target.encode().ok_or(EncodeError::InvalidVariant)?);
+        bytes[offset + 16..offset + 18].copy_from_slice(&variant.priority.to_le_bytes());
+        bytes[offset + 18..offset + 20]
+            .copy_from_slice(&(variant.object_key.len() as u16).to_le_bytes());
+        bytes[offset + 20..offset + 52].copy_from_slice(&variant.artifact_digest);
+        offset += VARIANT_HEADER_LEN;
+        let end = offset + variant.object_key.len();
+        bytes[offset..end].copy_from_slice(variant.object_key);
+        offset = end;
+    }
     for grant in fields.grants {
         bytes[offset..offset + 2].copy_from_slice(&grant.rights.to_le_bytes());
         bytes[offset + 2..offset + 4].copy_from_slice(&(grant.service.len() as u16).to_le_bytes());
@@ -293,7 +390,7 @@ pub fn decode(bytes: &[u8]) -> Option<DeploymentDescriptor<'_>> {
     {
         return None;
     }
-    let stack_pages_per_thread = read_u16(bytes, 70)?;
+    let stack_pages_per_thread = read_u16(bytes, 38)?;
     if !(1..=crate::MAX_USER_STACK_PAGES).contains(&usize::from(stack_pages_per_thread)) {
         return None;
     }
@@ -328,24 +425,37 @@ pub fn decode(bytes: &[u8]) -> Option<DeploymentDescriptor<'_>> {
     if node_key != 0 && placement != PlacementPolicy::singleton() {
         return None;
     }
-    let artifact_digest = bytes.get(32..64)?.try_into().ok()?;
-    let name_len = usize::from(read_u16(bytes, 64)?);
-    let object_key_len = usize::from(read_u16(bytes, 66)?);
-    let grant_count = usize::from(read_u16(bytes, 68)?);
-    if grant_count > MAX_GRANTS {
+    if read_u16(bytes, 42)? != 0 {
         return None;
     }
-    let name_start = HEADER_LEN;
-    let name_end = name_start.checked_add(name_len)?;
-    let object_key_end = name_end.checked_add(object_key_len)?;
-    let artifact_name = bytes.get(name_start..name_end)?;
-    let object_key = bytes.get(name_end..object_key_end)?;
-    if !valid_artifact_name(artifact_name) || !valid_name(object_key, MAX_OBJECT_KEY_LEN) {
+    let name_len = usize::from(read_u16(bytes, 32)?);
+    let variant_count = usize::from(read_u16(bytes, 34)?);
+    let grant_count = usize::from(read_u16(bytes, 36)?);
+    if grant_count > MAX_GRANTS || variant_count == 0 || variant_count > MAX_VARIANTS {
         return None;
     }
+    let name_end = HEADER_LEN.checked_add(name_len)?;
+    let artifact_name = bytes.get(HEADER_LEN..name_end)?;
+    if !valid_artifact_name(artifact_name) {
+        return None;
+    }
+    let mut variants = ArtifactVariants {
+        bytes,
+        offset: name_end,
+        remaining: variant_count,
+    };
+    let mut targets = [None; MAX_VARIANTS];
+    for index in 0..variant_count {
+        let variant = variants.next()?;
+        if targets[..index].contains(&Some(variant.target)) {
+            return None;
+        }
+        targets[index] = Some(variant.target);
+    }
+    let grants_offset = variants.offset;
     let mut grants = CapabilityGrants {
         bytes,
-        offset: object_key_end,
+        offset: grants_offset,
         remaining: grant_count,
     };
     for _ in 0..grant_count {
@@ -361,14 +471,14 @@ pub fn decode(bytes: &[u8]) -> Option<DeploymentDescriptor<'_>> {
         bytes,
         sequence,
         node_key,
-        artifact_digest,
         artifact_name,
         stack_pages_per_thread,
         max_threads,
         shutdown_grace_ms,
         placement,
-        object_key,
-        grants_offset: object_key_end,
+        variants_offset: name_end,
+        variant_count,
+        grants_offset,
         grant_count,
     })
 }

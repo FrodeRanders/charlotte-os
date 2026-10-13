@@ -65,10 +65,29 @@ mod inner {
         .expect("[dns] kernel name-service connection")
     }
 
+    fn finish_fixture_call(call: u64) -> Option<i64> {
+        // Serialized kernel ABI fixture: poll observes each returned capability
+        // exactly once. Dispose unused returned owners after IPC unlock; this
+        // is not a userspace adoption API or physical-cleanup retry.
+        let reply = ipc::wait_reply(KERNEL_ASID, call)
+            .ok()
+            .and_then(|()| ipc::poll_reply(KERNEL_ASID, call).ok().flatten());
+        let result = reply.as_ref().map(|reply| reply.result);
+        if let Some(reply) = reply {
+            if let Some(memory) = reply.memory {
+                let _ = crate::memory::object::close_cap(KERNEL_ASID, memory);
+            }
+            if let Some(connection) = reply.cap {
+                let _ = ipc::close_cap(KERNEL_ASID, connection);
+            }
+        }
+        let _ = ipc::close_cap(KERNEL_ASID, call);
+        result
+    }
+
     fn call(kernel_conn: u64, opcode: u32, arg0: u64) -> Option<i64> {
         let call = ipc::scalar_call(KERNEL_ASID, kernel_conn, opcode, arg0).ok()?;
-        ipc::wait_reply(KERNEL_ASID, call).ok()?;
-        ipc::poll_reply(KERNEL_ASID, call).ok().flatten().map(|reply| reply.result)
+        finish_fixture_call(call)
     }
 
     fn status_word(base: *const u8, offset: usize) -> u32 {
@@ -80,13 +99,14 @@ mod inner {
     fn call_with_memory(kernel_conn: u64, opcode: u32, arg0: u64, bytes: &[u8]) -> Option<i64> {
         let mem = crate::memory::object::allocate_with_bytes(KERNEL_ASID, bytes).ok()?;
         let call =
-            ipc::scalar_call_with_memory_move(KERNEL_ASID, kernel_conn, opcode, arg0, mem).ok()?;
-        ipc::wait_reply(KERNEL_ASID, call).ok()?;
-        let result = ipc::poll_reply(KERNEL_ASID, call).ok().flatten().map(|reply| reply.result);
-        // Release the operation and its memory object so callers may retry in
-        // a loop without exhausting the kernel heap.
-        let _ = ipc::close_cap(KERNEL_ASID, call);
-        result
+            match ipc::scalar_call_with_memory_move(KERNEL_ASID, kernel_conn, opcode, arg0, mem) {
+                Ok(call) => call,
+                Err(_) => {
+                    let _ = crate::memory::object::close_cap(KERNEL_ASID, mem);
+                    return None;
+                }
+            };
+        finish_fixture_call(call)
     }
 
     fn lookup_service(kernel_ns: u64, name: u64) -> Option<u64> {
@@ -175,6 +195,79 @@ mod inner {
     /// host takes over, generation fencing prevents the old host's unregister
     /// from clobbering the new registration).
     #[cfg(feature = "deploy_net_test")]
+    fn wait_rollout_ready(connection: u64, generation: u64, node: u64) {
+        let deadline = crate::self_test::results::Deadline::after_millis(120_000);
+        loop {
+            // Kernel-only moved-cap ABI adapter. No userspace owner is reconstructed;
+            // poll observes the returned cap exactly once, then both owners close.
+            let memory = crate::memory::object::allocate_with_bytes(KERNEL_ASID, b"greet").unwrap();
+            let call =
+                match ipc::scalar_call_with_memory_move(KERNEL_ASID, connection, 18, 5, memory) {
+                    Ok(call) => call,
+                    Err(error) => {
+                        crate::memory::object::close_cap(KERNEL_ASID, memory).unwrap();
+                        panic!("rollout query submission: {error:?}");
+                    }
+                };
+            ipc::wait_reply(KERNEL_ASID, call).unwrap();
+            let reply = ipc::poll_reply(KERNEL_ASID, call).unwrap().unwrap();
+            ipc::close_cap(KERNEL_ASID, call).unwrap();
+            let ready = if let Some(memory) = reply.memory {
+                let bytes = crate::memory::object::snapshot_bytes(KERNEL_ASID, memory, 40);
+                crate::memory::object::close_cap(KERNEL_ASID, memory).unwrap();
+                bytes.is_ok_and(|bytes| {
+                    reply.result == 40
+                        && bytes[0] == 2
+                        && u64::from_le_bytes(bytes[8..16].try_into().unwrap()) == generation
+                        && u64::from_le_bytes(bytes[24..32].try_into().unwrap()) == node
+                        && bytes[32..36] == [1, 0, 1, 0]
+                })
+            } else {
+                false
+            };
+            if ready {
+                return;
+            }
+            // Catalog readiness has no subscription ABI in this raw boot fixture.
+            // This bounded query does not authorize teardown; existing owners and
+            // acknowledged/forced retirement receipts provide that proof below.
+            deadline.assert_pending("exact signed deployment readiness");
+            crate::cpu::scheduler::sleep_millis(250);
+        }
+    }
+
+    #[cfg(feature = "deploy_net_test")]
+    fn fixture_descriptor(node: u64, sequence: u64) -> &'static [u8] {
+        let bundle = include_bytes!(env!("CATTEN_LOCAL_DEPLOYMENT_FIXTURE"));
+        let mut position = 0;
+        while position < bundle.len() {
+            let len = u32::from_le_bytes(
+                bundle
+                    .get(position..position + 4)
+                    .expect("fixture descriptor length")
+                    .try_into()
+                    .unwrap(),
+            ) as usize;
+            position += 4;
+            let bytes = bundle.get(position..position + len).expect("complete fixture descriptor");
+            position += len;
+            let descriptor =
+                charlotte_launch::deployment::decode(bytes).expect("current fixture descriptor");
+            if descriptor.node_key == node && descriptor.sequence == sequence {
+                assert_eq!(
+                    charlotte_launch::deployment::verify(
+                        bytes,
+                        &charlotte_launch::CLUSTER_PUBLIC_KEY
+                    ),
+                    charlotte_launch::deployment::VerifyOutcome::Valid
+                );
+                return bytes;
+            }
+        }
+        panic!("missing signed fixture phase");
+    }
+
+    #[cfg(feature = "deploy_net_test")]
     fn run_deploy_phase(
         ns: &NameServiceHandle,
         is_leader: bool,
@@ -187,11 +280,8 @@ mod inner {
         const GREET_NAME: u64 = 0x0000_0074_6565_7267;
         // catten_services::dns::artifact_object_id(b"greet").
         const DEPLOY_OBJECT_ID: u64 = 0xfffe_ea29_637f_e28a;
-        const DNS_OP_DEPLOY: u32 = 8;
+        const DNS_OP_DEPLOY: u32 = 15;
         const DNS_OP_GET: u32 = 1;
-        // catten_services::deploy::GREET_VALUE: the deployed artifact's
-        // leading eight bytes, the little-endian ELF header.
-        const GREET_VALUE: i64 = 0x0001_0102_464c_457f;
         const AGENT_STAGE_IDENTITY: u32 = 2;
         const AGENT_STAGE_SERVING: u32 = 6;
         const AGENT_STAGE_RETIRED: u32 = 7;
@@ -202,7 +292,12 @@ mod inner {
         // the cluster's public key, and a tampered copy must be refused.
         let artifact = crate::service::store::service_elf(b"greet")
             .expect("[deploy] greet artifact in object store");
-        let artifact_digest = charlotte_launch::sha256::digest(artifact);
+        let descriptor = fixture_descriptor(0x42e278ea, 1);
+        let artifact_digest = charlotte_launch::deployment::decode(descriptor)
+            .unwrap()
+            .variant(0)
+            .unwrap()
+            .artifact_digest;
         use charlotte_launch::signature_note::VerifyOutcome;
         assert_eq!(
             charlotte_launch::signature_note::verify_elf_for_name(
@@ -274,15 +369,31 @@ mod inner {
         // The leader deploys the artifact to the peer node (cross-node
         // hosting is the point of the cluster).
         if is_leader {
-            let mut request = Vec::with_capacity(48);
+            let descriptor = fixture_descriptor(peer_key, 1);
+            let mut request = Vec::with_capacity(59 + descriptor.len());
+            request.extend_from_slice(&5u16.to_le_bytes());
+            request.extend_from_slice(b"greet");
             request.extend_from_slice(&DEPLOY_OBJECT_ID.to_le_bytes());
             request.extend_from_slice(&peer_key.to_le_bytes());
             request.extend_from_slice(&artifact_digest);
+            request.extend_from_slice(&(descriptor.len() as u32).to_le_bytes());
+            request.extend_from_slice(descriptor);
             logln!(
                 "[deploy] calling OP_DEPLOY on the peer (object {:#x} node {peer_key:#x})",
                 DEPLOY_OBJECT_ID
             );
-            let deploy = call_with_memory(dns_conn, DNS_OP_DEPLOY, GREET_NAME, &request);
+            let deadline = crate::self_test::results::Deadline::after_millis(120_000);
+            let deploy = loop {
+                let result =
+                    call_with_memory(dns_conn, DNS_OP_DEPLOY, request.len() as u64, &request);
+                if result != Some(-23) {
+                    break result;
+                }
+                // Profile propagation has no fixture subscription ABI. Bounded
+                // backoff repeats only explicit pre-commit incompatibility.
+                deadline.assert_pending("deployment CPU profile propagation");
+                crate::cpu::scheduler::sleep_millis(500);
+            };
             logln!("[deploy] peer deployment result = {deploy:?}");
             assert!(
                 deploy.is_some_and(|generation| generation >= 1),
@@ -309,36 +420,47 @@ mod inner {
         }
         logln!("[deploy] catalog carries the deployed name.");
 
-        // Invoke the deployed service by name; the leader's call crosses the
-        // network to the hosting peer.
-        // The leader may apply the committed activation one heartbeat before
-        // the owner replica learns the new leader_commit and applies that
-        // generation locally. Generation fencing correctly rejects a call in
-        // this brief window, so retry the idempotent probe until both applied
-        // views converge.
-        let deadline = crate::self_test::results::Deadline::after_millis(120_000);
-        let result;
-        let mut attempts = 0u32;
-        loop {
-            let mut request = Vec::with_capacity(12);
-            request.extend_from_slice(&DNS_OP_GET.to_le_bytes());
-            request.extend_from_slice(&0i64.to_le_bytes());
-            let attempt = call_with_memory(dns_conn, DNS_OP_CALL, GREET_NAME, &request);
-            attempts = attempts.saturating_add(1);
-            if attempt == Some(GREET_VALUE) {
-                result = attempt;
-                break;
-            }
-            deadline.assert_pending("EL0 deploy owner-generation convergence");
-            crate::cpu::scheduler::sleep_millis(250);
-            yield_lp();
-        }
-        logln!("[deploy] cross-node greet result = {result:?} after {attempts} attempt(s)");
+        let initial_host = if is_leader {
+            peer_key
+        } else {
+            my_key
+        };
+        let migrated_host = if is_leader {
+            my_key
+        } else {
+            peer_key
+        };
+        wait_rollout_ready(dns_conn, 1, initial_host);
+        let mut probe = Vec::with_capacity(12);
+        probe.extend_from_slice(&DNS_OP_GET.to_le_bytes());
+        probe.extend_from_slice(&0i64.to_le_bytes());
         assert_eq!(
-            result,
-            Some(GREET_VALUE),
-            "[deploy] cross-node invocation of the deployed artifact must return its payload value"
+            call_with_memory(dns_conn, DNS_OP_CALL, GREET_NAME, &probe),
+            Some(DNS_ERR_NOT_FOUND),
+            "legacy DNS proxy must not resolve policy-published greet"
         );
+        logln!("[deploy] generation 1 ready on peer; protected service rejects legacy forwarding.");
+        // Republish the follower's still-live public echo as a fixture marker.
+        // This prevents the leader from advancing revision
+        // before the follower has observed exact generation-1 readiness.
+        const PHASE_ONE_READY: u64 = ECHO_NAME; // follower's still-live public echo
+        let phase_deadline = crate::self_test::results::Deadline::after_millis(120_000);
+        if !is_leader {
+            loop {
+                if call(dns_conn, DNS_OP_REGISTER, PHASE_ONE_READY)
+                    .is_some_and(|result| result >= 1)
+                {
+                    break;
+                }
+                phase_deadline.assert_pending("deployment follower phase-1 observation");
+                crate::cpu::scheduler::sleep_millis(250);
+            }
+        } else {
+            while call(dns_conn, DNS_OP_LOOKUP, PHASE_ONE_READY) != Some(DNS_RESULT_REMOTE) {
+                phase_deadline.assert_pending("deployment phase-1 catalog barrier");
+                crate::cpu::scheduler::sleep_millis(250);
+            }
+        }
 
         // The leader re-deploys the artifact to its own node: the service
         // migrates. The new host registers a fresh generation; the old host
@@ -352,11 +474,16 @@ mod inner {
         let remote_calls_before_migration = is_leader
             .then(|| status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_CALLS_SERVED));
         if is_leader {
-            let mut request = Vec::with_capacity(48);
+            let descriptor = fixture_descriptor(my_key, 2);
+            let mut request = Vec::with_capacity(59 + descriptor.len());
+            request.extend_from_slice(&5u16.to_le_bytes());
+            request.extend_from_slice(b"greet");
             request.extend_from_slice(&DEPLOY_OBJECT_ID.to_le_bytes());
             request.extend_from_slice(&my_key.to_le_bytes());
             request.extend_from_slice(&artifact_digest);
-            let deploy = call_with_memory(dns_conn, DNS_OP_DEPLOY, GREET_NAME, &request);
+            request.extend_from_slice(&(descriptor.len() as u32).to_le_bytes());
+            request.extend_from_slice(descriptor);
+            let deploy = call_with_memory(dns_conn, DNS_OP_DEPLOY, request.len() as u64, &request);
             logln!("[deploy] migration deployment result = {deploy:?}");
             assert!(
                 deploy.is_some_and(|generation| generation >= 2),
@@ -396,30 +523,14 @@ mod inner {
             );
         }
 
-        // The deployed service must still be reachable after the handover.
-        // The old host retires before the new host registers, so a call can
-        // land in the gap; retry until the name resolves to the new host.
-        let deadline = crate::self_test::results::Deadline::after_millis(120_000);
-        let post_migration;
-        loop {
-            let mut request = Vec::with_capacity(12);
-            request.extend_from_slice(&DNS_OP_GET.to_le_bytes());
-            request.extend_from_slice(&0i64.to_le_bytes());
-            let result = call_with_memory(dns_conn, DNS_OP_CALL, GREET_NAME, &request);
-            if result == Some(GREET_VALUE) {
-                post_migration = result;
-                break;
-            }
-            deadline.assert_pending("EL0 deploy post-migration reachability");
-            crate::cpu::scheduler::sleep_millis(250);
-            yield_lp();
-        }
-        logln!("[deploy] post-migration greet result = {post_migration:?}");
+        wait_rollout_ready(dns_conn, 2, migrated_host);
+        let post_migration = call_with_memory(dns_conn, DNS_OP_CALL, GREET_NAME, &probe);
         assert_eq!(
             post_migration,
-            Some(GREET_VALUE),
-            "[deploy] the deployed artifact must remain reachable across migration"
+            Some(DNS_ERR_NOT_FOUND),
+            "replacement must preserve protected namespace"
         );
+        logln!("[deploy] generation 2 ready; protected service rejects legacy forwarding.");
 
         // Causal barrier: only the follower can issue this second call, and
         // only after its first post-migration call returned. The leader waits
@@ -433,8 +544,8 @@ mod inner {
             let barrier = call_with_memory(dns_conn, DNS_OP_CALL, GREET_NAME, &request);
             assert_eq!(
                 barrier,
-                Some(GREET_VALUE),
-                "[deploy] causal barrier call must reach the migrated service"
+                Some(DNS_ERR_NOT_FOUND),
+                "[deploy] causal barrier must reach the migrated host and preserve policy denial"
             );
             logln!("[deploy] follower completed the causal post-migration barrier.");
         } else {
@@ -470,11 +581,16 @@ mod inner {
             running.shutdown_grace_ms = 0;
             drop(deployed);
 
-            let mut request = Vec::with_capacity(48);
+            let descriptor = fixture_descriptor(peer_key, 3);
+            let mut request = Vec::with_capacity(59 + descriptor.len());
+            request.extend_from_slice(&5u16.to_le_bytes());
+            request.extend_from_slice(b"greet");
             request.extend_from_slice(&DEPLOY_OBJECT_ID.to_le_bytes());
             request.extend_from_slice(&peer_key.to_le_bytes());
             request.extend_from_slice(&artifact_digest);
-            let deploy = call_with_memory(dns_conn, DNS_OP_DEPLOY, GREET_NAME, &request);
+            request.extend_from_slice(&(descriptor.len() as u32).to_le_bytes());
+            request.extend_from_slice(descriptor);
+            let deploy = call_with_memory(dns_conn, DNS_OP_DEPLOY, request.len() as u64, &request);
             logln!("[deploy] zero-grace return migration result = {deploy:?}");
             assert!(
                 deploy.is_some_and(|generation| generation >= 3),
@@ -485,9 +601,8 @@ mod inner {
         let deadline = crate::self_test::results::Deadline::after_millis(120_000);
         if is_leader {
             // The agent only reports RETIRED once *every* deployment retires,
-            // and the clusterctl test deliberately leaves an `agent`
-            // deployment on guest B. Wait for this artifact's own domain to
-            // be reaped instead of the agent's global stage.
+            // and unrelated deployments may exist on the host. Wait for this artifact's own domain
+            // to be reaped instead of the agent's global stage.
             let principal = charlotte_launch::artifact_principal_id(b"greet");
             while crate::service::supervisor::DEPLOYED_DOMAINS
                 .lock()
@@ -514,24 +629,19 @@ mod inner {
             }
         }
 
-        let deadline = crate::self_test::results::Deadline::after_millis(120_000);
-        loop {
-            let mut request = Vec::with_capacity(12);
-            request.extend_from_slice(&DNS_OP_GET.to_le_bytes());
-            request.extend_from_slice(&0i64.to_le_bytes());
-            if call_with_memory(dns_conn, DNS_OP_CALL, GREET_NAME, &request) == Some(GREET_VALUE) {
-                break;
-            }
-            deadline.assert_pending("EL0 deploy forced-migration reachability");
-            crate::cpu::scheduler::sleep_millis(250);
-            yield_lp();
-        }
-        logln!("[deploy] forced retirement preserved replacement reachability.");
+        wait_rollout_ready(dns_conn, 3, initial_host);
+        assert_eq!(
+            call_with_memory(dns_conn, DNS_OP_CALL, GREET_NAME, &probe),
+            Some(DNS_ERR_NOT_FOUND)
+        );
+        logln!(
+            "[deploy] forced retirement preserved generation-3 readiness and protected namespace."
+        );
 
         logln!(
-            "[deploy] SUCCESS: the cluster deployed a signed artifact to the peer node, served it \
-             across the network, cooperatively retired it, and exercised zero-grace forced \
-             retirement without losing the name."
+            "[deploy] SUCCESS: signed architecture variants reached readiness across three pinned \
+             generations, with cooperative and zero-grace forced retirement; legacy forwarding \
+             remained denied."
         );
     }
 

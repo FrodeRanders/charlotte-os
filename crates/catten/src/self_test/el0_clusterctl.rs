@@ -4,7 +4,7 @@
 //! Observes the normal `clusterctl` EL0 service, which wraps the dns manifest
 //! ops and the object store behind admin operations. The verifier drives the
 //! programmatic flow through the clusterctl endpoint: upload a signed artifact
-//! ("hello"), deploy it to a fixed node, query the manifest, and run the key
+//! ("hello"), reject descriptor-less deployment, verify catalog absence, and run the key
 //! ceremony that commits the cluster's public key to replicated state. A kernel
 //! thread then runs the interactive serial console (commands: `help`,
 //! `upload`, `deploy`, `status`) on top of the same service.
@@ -205,51 +205,28 @@ mod inner {
             "[clusterctl] upload must return the derived artifact object id"
         );
 
-        // 2. Deploy the artifact to the fixed target node, best-effort: the leader's dns commits
-        //    it; a follower's dns answers NOT_LEADER until (and unless) it wins an election. The
-        //    status gate below is the real wait — the record replicates to every replica either
-        //    way.
-        let mut request = Vec::with_capacity(8);
-        request.extend_from_slice(&TARGET_NODE_KEY.to_le_bytes());
-        let mut deployed_generation: Option<i64> = None;
-
-        // 3. Query the manifest until the deployment is present and assigned to the target node on
-        //    every replica.
-        let status_deadline = crate::self_test::results::Deadline::after_millis(120_000);
-        let record;
+        // Descriptor-less publication must reject even a valid signed ELF.
+        // The DNS deployment fixture covers current signed rollout/migration.
+        let request = TARGET_NODE_KEY.to_le_bytes();
+        let deadline = crate::self_test::results::Deadline::after_millis(120_000);
         loop {
-            // Best-effort deploy attempt (cheap when not the leader).
-            if deployed_generation.is_none()
-                && let Some((generation, _)) =
-                    call_with_memory_reply(ctl_conn, CTL_OP_DEPLOY, TEST_ARTIFACT_NAME, &request)
-                && generation >= 1
-            {
-                deployed_generation = Some(generation);
-            }
-
-            let Some((status, memory)) =
-                call_with_memory_reply(ctl_conn, CTL_OP_STATUS, TEST_ARTIFACT_NAME, &[])
-            else {
-                status_deadline.assert_pending("EL0 clusterctl status");
-                yield_lp();
-                continue;
-            };
-            if let Some(memory) = memory.filter(|_| status >= 0) {
-                record =
-                    read_moved_memory(memory, 24).expect("[clusterctl] readable deployment status");
+            let rejected =
+                call_with_memory_reply(ctl_conn, CTL_OP_DEPLOY, TEST_ARTIFACT_NAME, &request)
+                    .map(|(result, _)| result);
+            if rejected == Some(-13) {
                 break;
             }
-            status_deadline.assert_pending("EL0 clusterctl status replication");
-            yield_lp();
+            assert!(
+                rejected.is_none() || rejected == Some(-2),
+                "unsigned deploy must not publish: {rejected:?}"
+            );
+            deadline.assert_pending("descriptor-less deployment rejection");
+            crate::cpu::scheduler::sleep_millis(500);
         }
-        logln!("[clusterctl] deploy result = {deployed_generation:?}");
-        let generation = u64::from_le_bytes(record[0..8].try_into().expect("record generation"));
-        let node_key = u64::from_le_bytes(record[16..24].try_into().expect("record node key"));
-        logln!("[clusterctl] status: generation={} node={:#x}", generation, node_key);
-        assert!(generation >= 1, "[clusterctl] deployed artifact must carry a manifest generation");
         assert_eq!(
-            node_key, TARGET_NODE_KEY,
-            "[clusterctl] deployment must be assigned to the requested node"
+            call_with_memory_reply(ctl_conn, CTL_OP_STATUS, TEST_ARTIFACT_NAME, &[])
+                .map(|(result, _)| result),
+            Some(-1)
         );
 
         // --- Key ceremony ---
@@ -299,8 +276,8 @@ mod inner {
         // and calls the same clusterctl service.
         crate::cpu::scheduler::spawn_thread(KERNEL_ASID, console_entry);
         logln!(
-            "[clusterctl] SUCCESS: clusterctl uploaded, deployed, and reported the artifact; \
-             serial console listening."
+            "[clusterctl] SUCCESS: clusterctl verified upload, rejected unsigned deploy, and \
+             completed key ceremony; serial console listening."
         );
         crate::self_test::results::pass(crate::self_test::results::TestId::Clusterctl);
     }

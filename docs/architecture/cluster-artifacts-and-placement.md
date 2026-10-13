@@ -35,8 +35,8 @@ reproducible builds, source attestations, and key custody.
 ## Signed deployment descriptors
 
 The ELF signature and the deployment decision are different trust statements.
-An ELF signature binds code to an artifact name. A `CDEPLOY5` descriptor binds
-that artifact's complete SHA-256 to an opaque central-object-store key, a
+An ELF signature binds code to an artifact name. A `CDEPLOY6` descriptor binds
+that artifact's architecture/ABI/CPU-specific variants, each with a complete SHA-256 and opaque central-object-store key, a
 monotonic deployment sequence, an optional pinned node, a signed placement
 policy, a per-thread stack allocation, a maximum active-thread
 count, a cooperative shutdown grace period, and a bounded list of named client (`SEND`/`CALL`) or publication
@@ -52,7 +52,7 @@ or a non-canonical descriptor; it never silently clamps the developer's
 request. The active-thread limit includes the bootstrap thread and accepts 1
 through 64. A quota-exceeding spawn rejects before stack construction and
 returns `(u64::MAX, 0)`; the owned runtime returns `ThreadError::SpawnFailed`
-while the caller remains running. The only accepted descriptor is `CDEPLOY5`,
+while the caller remains running. The only accepted descriptor is `CDEPLOY6`,
 with explicit execution limits, shutdown grace and placement. Older formats
 reject without compatibility defaults. Shutdown grace accepts zero through
 300,000 milliseconds; zero selects immediate forced retirement.
@@ -97,7 +97,7 @@ giving the generator or application object-store credentials:
 
 Durga's Charlotte target retains execution limits, replica count,
 every-eligible-node selection, spread, affinity, and anti-affinity in the
-developer-owned `charlotte/resources.yaml`. It derives matching `CDEPLOY5`
+developer-owned `charlotte/resources.yaml`. It derives matching `CDEPLOY6`
 signing options and declares the CLS2 parallel-instance requirement whenever
 the policy can launch concurrent copies.
 
@@ -125,7 +125,7 @@ bytes. The cluster verifies the outer and nested signatures, relays a request
 received by a follower to the current leader, resolves automatic placement,
 and admits the whole set in one Raft command. Catalog preflight rejects a stale
 or conflicting release or component before changing the deployment map. The sole
-[catalog-v15 snapshot](../reference/catalog-snapshots.md) retains release records,
+[catalog-v16 snapshot](../reference/catalog-snapshots.md) retains release records,
 concrete replica sets, per-node readiness, operational authorization, shutdown
 intents, ingress policy and capacity samples. Admission is atomic, while S3 fetch,
 launch, publication, and readiness remain independently reconciled after the
@@ -155,7 +155,7 @@ canonical bounded wire format used by the kernel and userspace. For example:
 
 ```text
 cluster-sign deployment-sign orders.cdep orders releases/orders-a5.elf \
-  <artifact-sha256> 0 7 16 8 15000 <private-key-file> --replicas=3 \
+  <signed-artifact.elf> 0 7 16 8 15000 <private-key-file> --replicas=3 \
   --spread-replicas --anti-affinity-group=42 \
   kafka/orders/input=call kafka/orders/output=client
 ```
@@ -365,3 +365,7 @@ fixture. Replica-set placement and the control-policy primitives are
 unit-tested and compiled into the AArch64 services, but still need a dedicated
 multi-node pressure/scale/failover QEMU fixture. Authenticated audit identities
 beyond the signing key and explicit CPU/storage enforcement remain open.
+
+Architecture eligibility and exact per-replica binary selection are implemented
+through signed variants and kernel-reported node profiles. See
+[execution targets](../reference/execution-targets.md) for the contract and tooling.

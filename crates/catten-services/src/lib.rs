@@ -2608,6 +2608,7 @@ pub mod clusterctl {
     /// Eligible nodes exist, but none can host the deployment's declared
     /// resource demand (currently its stack reservation and runtime pages).
     pub const ERR_INSUFFICIENT_CAPACITY: i64 = -21;
+    pub const ERR_INCOMPATIBLE_TARGET: i64 = -23;
     /// Local observation timed out. A received mutation may already have
     /// committed; this error is not permission to replay it or undo authority.
     pub const ERR_RPC_TIMEOUT: i64 = -22;
@@ -3203,7 +3204,7 @@ pub mod rregister {
 /// Advisory node-capacity reports from every node to the current leader.
 ///
 /// Fire-and-forget: a lost report is refreshed by the next sampling interval,
-/// and stale or unknown entries are neutral in the placement resolver. A
+/// and stale or unknown execution profiles are ineligible for placement. A
 /// per-boot nonce lets the receiver fence reports within one boot while still
 /// accepting a restarted reporter whose monotonic clock has reset. The nonce
 /// is an identity, not an ordering primitive: the enclosing reliable-message
@@ -3211,10 +3212,11 @@ pub mod rregister {
 /// sessions.
 pub mod rcapacity {
     pub const TAG_REQUEST: u8 = 0x21;
-    pub const FRAME_LEN: usize = 8 + 8 + 8 + 8 + 8 + 2;
+    pub const FRAME_LEN: usize = 8 + 8 + 8 + 8 + 8 + 2 + 16;
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub struct Report {
+        pub target: charlotte_launch::execution_target::ExecutionTarget,
         pub node_key: u64,
         /// Nonzero random word generated once at service start. Reporting is
         /// withheld until either CPU or delegated VirtIO entropy is available.
@@ -3233,6 +3235,7 @@ pub mod rcapacity {
         frame.extend_from_slice(&report.free_frames.to_le_bytes());
         frame.extend_from_slice(&report.usable_frames.to_le_bytes());
         frame.extend_from_slice(&report.cpu_load_permille.to_le_bytes());
+        frame.extend_from_slice(&report.target.encode().unwrap_or([0; 16]));
         frame
     }
 
@@ -3244,6 +3247,7 @@ pub mod rcapacity {
         }
         let payload = &frame[1..];
         let report = Report {
+            target: charlotte_launch::execution_target::ExecutionTarget::decode(&payload[42..58])?,
             node_key: u64::from_le_bytes(payload[0..8].try_into().ok()?),
             boot_nonce: u64::from_le_bytes(payload[8..16].try_into().ok()?),
             epoch: u64::from_le_bytes(payload[16..24].try_into().ok()?),
@@ -3267,6 +3271,9 @@ pub mod rcapacity {
         #[test]
         fn capacity_report_round_trips() {
             let report = Report {
+                target: charlotte_launch::execution_target::ExecutionTarget::baseline(
+                    charlotte_launch::execution_target::Architecture::Aarch64,
+                ),
                 node_key: 0x1234,
                 boot_nonce: 0xfeed_face,
                 epoch: 7,

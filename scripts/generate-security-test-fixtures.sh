@@ -22,12 +22,11 @@ TOOLCHAIN="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' "$ROOT/rust-toolchain.toml")
 "$SIGNER" generate "$OUTPUT/deployment.hex" "$OUTPUT/deployment.pub"
 install -m 0755 "$SOURCE" "$OUTPUT/probe.elf"
 "$SIGNER" elf-sign "$OUTPUT/probe.elf" security_probe "$OUTPUT/artifact.hex" service 1 1 0x1 -
-DIGEST="$("$SIGNER" sha256 "$OUTPUT/probe.elf")"
 "$SIGNER" deployment-sign "$OUTPUT/admitted.cdep" security_probe security/probe.elf \
-    "$DIGEST" 0 1 8 1 5000 "$OUTPUT/deployment.hex" \
+    "$OUTPUT/probe.elf" 0 1 8 1 5000 "$OUTPUT/deployment.hex" \
     secavail=publish secavail=client security.missing=call tcpip=call \
     security.silent=publish security.silent=call
 "$SIGNER" deployment-sign "$OUTPUT/alternate.cdep" security_probe security/probe.elf \
-    "$DIGEST" 0 2 8 1 5000 "$OUTPUT/deployment.hex" \
+    "$OUTPUT/probe.elf" 0 2 8 1 5000 "$OUTPUT/deployment.hex" \
     secavail=publish secavail=client security.missing=call tcpip=client \
     security.silent=publish security.silent=call

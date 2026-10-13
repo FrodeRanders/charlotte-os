@@ -51,7 +51,7 @@ Stack and thread count are protected-domain execution limits, not
 application-controlled manifest knobs. For centrally deployed applications,
 generation or development records the required number of 4 KiB pages per
 thread and maximum active threads in the component deployment plan. Release
-tooling places the reviewed values in the signed `CDEPLOY5` descriptor. Every
+tooling places the reviewed values in the signed `CDEPLOY6` descriptor. Every
 thread subsequently created in that domain inherits the stack allocation, and
 the scheduler counts the bootstrap thread against the signed thread quota.
 
@@ -62,7 +62,7 @@ pages (4 KiB through 256 KiB), and the current thread-count range is 1 through
 64. The kernel enforces both values exactly and rejects invalid requests rather
 than clamping them. A quota-exceeding spawn returns `ThreadError::SpawnFailed`
 without aborting the caller. Built-in launches use four stack pages and 16
-threads by explicit platform policy. Signed deployment accepts only `CDEPLOY5`,
+threads by explicit platform policy. Signed deployment accepts only `CDEPLOY6`,
 with every resource value and placement carried in the descriptor. Developers
 own the estimates, while the deployment signer and cluster admission retain
 the right to reject them.
@@ -233,7 +233,7 @@ the cluster:
    path, not hexadecimal key bytes. See
    [Signing and development trust](signing-and-trust.md) for generation and
    migration instructions.
-3. **Deploy.** `cluster-sign deployment-sign` creates a `CDEPLOY5` descriptor
+3. **Deploy.** `cluster-sign deployment-sign` creates a `CDEPLOY6` descriptor
    binding the artifact digest, object key, placement, thread/stack limits, and
    capability grants, and `deployment-notify` submits it to `deployd`. See
    [Signed deployment notification](../reference/deployment-ingress.md) and

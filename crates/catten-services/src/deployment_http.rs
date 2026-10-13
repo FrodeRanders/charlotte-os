@@ -285,7 +285,7 @@ mod tests {
 
     #[test]
     fn deployment_framing_requires_current_header_floor() {
-        for length in [152, 154, 158, charlotte_launch::deployment::HEADER_LEN - 1] {
+        for length in [0, 1, 150, charlotte_launch::deployment::HEADER_LEN - 1] {
             let header =
                 format!("POST /v1/deployments HTTP/1.1\r\nContent-Length: {length}\r\n\r\n");
             assert_eq!(RequestBuffer::default().push(header.as_bytes()), Err(Error::TooLarge));

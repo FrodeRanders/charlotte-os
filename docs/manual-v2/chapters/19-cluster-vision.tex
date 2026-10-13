@@ -534,14 +534,14 @@ The current deployment pipeline has three stages:
         not a general enrollment or rotation protocol.
 
     \item \textbf{Assignment.} A Raft-committed record directs a concrete
-        replica set to load a particular object id and immutable ELF digest.
+        replica set to load an exact signed variant per node, including its immutable ELF digest.
         Each selected node's agent fetches the opaque object key through its
         locally provisioned S3 capability, then validates and runs those exact
         bytes. Endpoint and credential details remain inside that privileged
         connector rather than the descriptor or application.
 \end{enumerate}
 
-The replicated catalog records a sorted concrete node set per artifact and an
+The replicated catalog records a sorted concrete node set and variant pins per artifact and an
 independently generation-fenced readiness registration for each active owner.
 The leader resolves \emph{somewhere}, fixed replicas, and
 \emph{every eligible node} against admitted, non-draining voters and
@@ -553,14 +553,48 @@ eligible set, while each packet uses an already materialized snapshot.
 
 \section{Placement: contract, observation, and movement}
 
+\subsection{Executable variants and architecture eligibility}
+
+Each \texttt{CDEPLOY6} component revision carries up to eight signed binary
+variants. Every variant binds an immutable object key and SHA-256 to ELF
+architecture, exact runtime ABI, required CPU features and selection priority.
+One release descriptor still represents one logical component, even when its
+ARM and x86 replicas execute different binaries.
+
+The kernel reports AArch64 or x86\_64, runtime ABI 1 and the intersection of
+integer features across all configured LPs. The current optional bits cover
+ARM LSE/CRC32 and x86 CMPXCHG16B/POPCNT. Missing profiles are ineligible.
+Placement filters compatible, non-draining voting members before memory,
+replica and affinity ranking; explicit pins undergo the same checks.
+An ARM-only revision therefore cannot count x86 nodes toward its replicas.
+
+Selection uses signed priority, feature specificity and descriptor order.
+Raft commits the chosen variant index beside each replica node; catalog-v16
+snapshots and queries preserve that pin. A later CPU report cannot change an
+existing generation's executable. If a new node incarnation loses support for
+its pin, the controller commits a compatible replacement in a new generation,
+even when the node set stays the same. The agent fetches the pinned key/digest and
+rechecks local compatibility. Kernel admission rechecks actual ELF machine,
+signed requirements, digest and identity before creating the domain. Profile
+reports are identity-bound observations, not hardware attestation. CPU hotplug
+and vector context contracts remain separate work.
+
+The signer reads an ELF path instead of accepting a supplied digest.
+Additional \texttt{--variant} options supply object key, ELF path, feature mask,
+priority and ABI. Required instruction extensions must match the reviewed build
+configuration. The descriptor has a 152-byte header; retired descriptor and
+catalog formats reject without defaults. See
+\repofile|docs/reference/execution-targets.md| for exact encoding, signing
+examples and future-store migration requirements.
+
 \subsection{Declared policy and bounded scheduler}
 
 The shared \texttt{PlacementPolicy} type expresses desired replicas, maximum
 instances per node, minimum distinct nodes, \emph{every eligible node}, an
 affinity group, and an anti-affinity group. A request for concurrent
 replicas is invalid unless the artifact's signed CLS2 metadata contains
-\texttt{PARALLEL\_INSTANCES}. \texttt{CDEPLOY5} signs this policy, the
-leader resolves it to concrete assignments, and catalog-v15 snapshots retain
+\texttt{PARALLEL\_INSTANCES}. \texttt{CDEPLOY6} signs this policy, the
+leader resolves it to concrete assignments, and catalog-v16 snapshots retain
 both the desired set and per-node readiness. Affinity groups share a stable
 ranking seed; anti-affinity groups require unused nodes and fail closed when
 the eligible set cannot satisfy the separation. A policy that needs more
@@ -784,7 +818,7 @@ wraps the DNS manifest operations and object store behind:
     \item \texttt{deploy}, which hashes the stored bytes and submits the
         pinned assignment; and
     \item \texttt{status}, which queries the committed record; and
-    \item \texttt{notify}, which verifies a signed \texttt{CDEPLOY5}
+    \item \texttt{notify}, which verifies a signed \texttt{CDEPLOY6}
         descriptor and commits its opaque central-object key, digest, target,
         sequence, per-thread stack pages, maximum active-thread count, and
         cooperative shutdown grace period and capability grants without
@@ -827,7 +861,7 @@ A signed \texttt{CRELEASE} envelope produced with
 sequence, and the exact ordered bytes of up to 16 distinct nested descriptors;
 the complete envelope is bounded to 3,584 bytes. The cluster verifies both the
 outer signature and every nested deployment signature. Every nested descriptor
-must use \texttt{CDEPLOY5}; retired formats reject even when correctly signed.
+must use \texttt{CDEPLOY6}; retired formats reject even when correctly signed.
 A follower relays the
 request to the current leader, which resolves all signed placement policies
 against admitted, non-draining voters and proposes the concrete replica sets
