@@ -265,6 +265,12 @@ the corrected RPC polling paths, and the remaining notification gaps.
   buffer; reject unknown choices, disabled-field material and retired section
   formats. Broker protocol negotiation remains a separate external boundary.
   See `docs/reference/kafka-client.md`.
+  DNS catalog observations use complete bounded CDNSCAT1 records. Reject
+  oversized sets, inconsistent counts/lengths and retired untagged pages;
+  never shorten identities or decode a clamped prefix. HTTP preserves replica
+  rows and reports unavailable catalogs as null. Consume the raw request once
+  into an owned reply transaction before scalar fallback guards.
+  See `docs/reference/dns-catalog.md`.
   Application snapshot restore must return rejection without changing live
   state. Propagate that rejection before exposing a Raft node or publishing
   snapshot/log progress, membership or join completion; unsupported state is

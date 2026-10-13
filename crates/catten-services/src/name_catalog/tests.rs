@@ -501,6 +501,23 @@ fn replica_set_readiness_is_per_node_generation_fenced_and_snapshotted() {
             ready_nodes: vec![0x1111_1111, 0x2222_2222],
         })
     );
+    let observed = catalog.catalog_result().unwrap();
+    let rows = crate::dns_catalog::decode(&observed).unwrap().records().collect::<Vec<_>>();
+    assert_eq!(
+        rows,
+        vec![
+            crate::dns_catalog::Record {
+                name: b"orders",
+                node: b"charlotte:11111111",
+                generation: first
+            },
+            crate::dns_catalog::Record {
+                name: b"orders",
+                node: b"charlotte:22222222",
+                generation: second
+            },
+        ]
+    );
 
     let restored = seed_catalog(NameCatalog::new_with_deployment_key(key));
     restored.restore(&catalog.snapshot()).unwrap();
@@ -1332,4 +1349,28 @@ fn snapshot_descriptor_name_binding_rejects_before_any_live_publication() {
         Err(catten_graft::state_machine::SnapshotError::Malformed)
     );
     assert_eq!(target.snapshot(), before);
+}
+
+#[test]
+fn catalog_observation_is_complete_bounded_and_preserves_live_state_on_rejection() {
+    let catalog = fixture_catalog();
+    let name_a = vec![b'a'; 40_000];
+    let name_b = vec![b'b'; 40_000];
+    catalog.apply(1, &encode_register(&name_a, b"node", 0));
+    // Prepared registrations are not active observation rows.
+    assert!(crate::dns_catalog::decode(&catalog.catalog_result().unwrap()).unwrap().is_empty());
+    catalog.apply(1, &encode_activate(&name_a, 1));
+    let bytes = catalog.catalog_result().unwrap();
+    assert!(bytes.len() > 4096);
+    let record = crate::dns_catalog::decode(&bytes).unwrap().records().next().unwrap();
+    assert_eq!(record.name, name_a);
+    assert_eq!(record.node, b"node");
+    catalog.apply(1, &encode_register(&name_b, b"node", 0));
+    catalog.apply(1, &encode_activate(&name_b, 1));
+    let state_before = catalog.snapshot();
+    assert_eq!(catalog.catalog_result(), Err(crate::dns_catalog::EncodeError::TooLarge));
+    assert_eq!(catalog.snapshot(), state_before);
+    assert_eq!(catalog.registered_count(), 2);
+    catalog.apply(1, &encode_unregister_generation(&name_b, b"node", 1));
+    assert_eq!(catalog.catalog_result().unwrap(), bytes);
 }

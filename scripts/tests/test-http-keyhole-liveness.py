@@ -14,7 +14,7 @@ import struct
 import time
 
 
-def read_metrics(port):
+def read_metrics(port, require_dns_catalog=False):
     with socket.create_connection(("127.0.0.1", port), timeout=12) as client:
         client.settimeout(12)
         client.sendall(b"GET /metrics HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
@@ -39,16 +39,27 @@ def read_metrics(port):
                 break
         header, body = bytes(response).split(b"\r\n\r\n", 1)
         assert header.startswith(b"HTTP/1.1 200 "), header
-        assert "http" in json.loads(body[:content_length])
+        document = json.loads(body[:content_length])
+        assert "http" in document
+        if require_dns_catalog:
+            catalog = document["dns"]["catalog"]
+            assert catalog["schema"] == "charlotte.dns-catalog.v1"
+            rows = catalog["entries"]
+            assert isinstance(rows, list) and catalog["count"] == len(rows)
+            assert all(isinstance(row["name"], str) and row["name"]
+                       and isinstance(row["node"], str) and row["node"]
+                       and isinstance(row["generation"], int) and row["generation"] > 0
+                       for row in rows)
+            assert any(row["name"] == "alpha" for row in rows)
 
 
-def metrics(port):
+def metrics(port, require_dns_catalog=False):
     # The serial listener can reset connections during listener handoff. A
     # liveness check requires recovery within a bounded number of requests,
     # not perfect transport delivery. Do not retry malformed HTTP/JSON.
     for attempt in range(3):
         try:
-            read_metrics(port)
+            read_metrics(port, require_dns_catalog)
             return
         except (OSError, EOFError) as error:
             if attempt == 2:
@@ -64,6 +75,8 @@ def main():
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--ready-log", type=Path, required=True)
     parser.add_argument("--wait-seconds", type=int, default=120)
+    parser.add_argument("--require-dns-catalog", action="store_true",
+                        help="require the complete current catalog and the HTTP fixture's alpha row")
     args = parser.parse_args()
     deadline = time.monotonic() + args.wait_seconds
     while not args.ready_log.exists() or "httpd is listening" not in args.ready_log.read_text():
@@ -71,12 +84,12 @@ def main():
             raise TimeoutError("guest did not start its keyhole")
         time.sleep(0.1)
 
-    metrics(args.port)
+    metrics(args.port, args.require_dns_catalog)
     print("PASS: initial metrics request", flush=True)
     # EOF before a request must only close this socket, not exit the server.
     with socket.create_connection(("127.0.0.1", args.port), timeout=12) as client:
         client.shutdown(socket.SHUT_WR)
-    metrics(args.port)
+    metrics(args.port, args.require_dns_catalog)
     print("PASS: EOF followed by a successful metrics request", flush=True)
 
     # Abortive closes exercise peers disappearing during accept/read, rather
@@ -84,15 +97,15 @@ def main():
     for _ in range(4):
         with socket.create_connection(("127.0.0.1", args.port), timeout=12) as client:
             client.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
-    metrics(args.port)
+    metrics(args.port, args.require_dns_catalog)
     print("PASS: abortive peer closes followed by a successful metrics request", flush=True)
 
     # Hold this connection open while a healthy client queues behind it. The
     # healthy request must finish without the idle peer voluntarily closing.
     with socket.create_connection(("127.0.0.1", args.port), timeout=12):
-        metrics(args.port)
+        metrics(args.port, args.require_dns_catalog)
     print("PASS: idle client timed out without preventing subsequent metrics", flush=True)
-    metrics(args.port)
+    metrics(args.port, args.require_dns_catalog)
 
 
 if __name__ == "__main__":

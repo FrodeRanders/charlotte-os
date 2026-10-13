@@ -678,8 +678,11 @@ if [ -n "$TIMEOUT" ]; then
             HTTP_PROBED=1
             echo ">>> Probing guest node and cluster keyholes through port ${HTTP_HOST_PORT} ..."
             DEPLOY_LIVENESS_OK=0
-            if python3 "${ROOT_DIR}/scripts/tests/test-deployment-http-liveness.py" \
-                --port "$DEPLOY_HOST_PORT" --ready-log "$LOG"; then
+            if python3 "${ROOT_DIR}/scripts/tests/test-http-keyhole-liveness.py" \
+                --port "$HTTP_HOST_PORT" --ready-log "$LOG" --wait-seconds 1 \
+                --require-dns-catalog \
+                && python3 "${ROOT_DIR}/scripts/tests/test-deployment-http-liveness.py" \
+                    --port "$DEPLOY_HOST_PORT" --ready-log "$LOG"; then
                 DEPLOY_LIVENESS_OK=1
             fi
             for _ in 1 2 3 4 5 6 7 8; do

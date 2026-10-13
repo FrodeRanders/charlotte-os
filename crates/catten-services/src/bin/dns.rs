@@ -3131,6 +3131,18 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // --- Local endpoint ops (register / lookup / status) ---
         loop {
             let message = ipc_recv(endpoint);
+            if message.is_ok() && message.opcode == dns::OP_CATALOG {
+                served += 1;
+                config::write_u32_release(dns::status::IPC_REQUESTS_SERVED, served);
+                // Raw receive ABI boundary: this branch transfers every unique
+                // attachment exactly once, before any scalar fallback guard.
+                if let Ok(Some(request)) =
+                    unsafe { catten_rt::owned::IncomingMessage::from_raw(message) }
+                {
+                    catalog::reply_catalog(request, &catalog);
+                }
+                continue;
+            }
             let _attachments = catten_services::RequestAttachments::memory_only(message.memory);
             if message.status == ipc_status::NO_MESSAGE {
                 break;
@@ -4078,81 +4090,6 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         | ((catalog.registered_count() as i64) << 32);
                     if message.reply != 0 {
                         ipc_reply(message.reply, result);
-                    }
-                }
-
-                dns::OP_CATALOG => {
-                    if message.memory != 0 {
-                        memory_close(message.memory);
-                    }
-                    // Dump the replicated name -> node catalog into a moved
-                    // page: [count:u32][name_len:u8 name node_len:u8 node
-                    // generation:u64]*.
-                    let cap = memory_alloc(1);
-                    if cap == 0 {
-                        if message.reply != 0 {
-                            ipc_reply(message.reply, dns::ERR_BAD_OPCODE);
-                        }
-                        continue;
-                    }
-                    let (catalog_scratch_map_status, catalog_scratch_vaddr) =
-                        memory_map_any(cap, true);
-                    if catalog_scratch_map_status != 0 {
-                        memory_close(cap);
-                        if message.reply != 0 {
-                            ipc_reply(message.reply, dns::ERR_BAD_OPCODE);
-                        }
-                        continue;
-                    }
-                    let entries = catalog.entries();
-                    let mut length = dns::CATALOG_HEADER_BYTES;
-                    unsafe {
-                        core::ptr::write_volatile(
-                            catalog_scratch_vaddr as *mut u32,
-                            entries.len() as u32,
-                        );
-                    }
-                    for (name, entry) in entries.iter() {
-                        let name_len = name.len().min(255);
-                        let node_len = entry.node.len().min(255);
-                        if length + 2 + name_len + node_len + 8 > 4096 {
-                            break;
-                        }
-                        unsafe {
-                            core::ptr::write_volatile(
-                                (catalog_scratch_vaddr + length) as *mut u8,
-                                name_len as u8,
-                            );
-                            core::ptr::copy_nonoverlapping(
-                                name.as_ptr(),
-                                (catalog_scratch_vaddr + length + 1) as *mut u8,
-                                name_len,
-                            );
-                            core::ptr::write_volatile(
-                                (catalog_scratch_vaddr + length + 1 + name_len) as *mut u8,
-                                node_len as u8,
-                            );
-                            core::ptr::copy_nonoverlapping(
-                                entry.node.as_ptr(),
-                                (catalog_scratch_vaddr + length + 2 + name_len) as *mut u8,
-                                node_len,
-                            );
-                            core::ptr::copy_nonoverlapping(
-                                entry.generation.to_le_bytes().as_ptr(),
-                                (catalog_scratch_vaddr + length + 2 + name_len + node_len)
-                                    as *mut u8,
-                                8,
-                            );
-                        }
-                        length += 2 + name_len + node_len + 8;
-                    }
-                    memory_unmap(cap);
-                    if message.reply != 0 {
-                        if ipc_reply_move(message.reply, cap, length as i64) != 0 {
-                            memory_close(cap);
-                        }
-                    } else {
-                        memory_close(cap);
                     }
                 }
 

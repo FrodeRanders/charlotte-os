@@ -205,6 +205,12 @@ The `ns` and `dns` sections together are the node's picture of the cluster:
 `ns` is the local registry (what is registered on *this* node), while `dns`
 is the Raft-replicated catalog (which names live on *which* nodes, across
 the cluster).
+The DNS catalog uses the complete bounded [CDNSCAT1 observation](dns-catalog.md).
+Its JSON `catalog` is `{schema, count, entries:[{name, node, generation}, ...]}`;
+repeated names retain separate replica rows. Counts describe the entire decoded
+set. Unavailable, oversized or malformed replies render `catalog:null`;
+`registered_count` remains independently observed status metadata. Neither
+catalog nor status is a linearizable read or authority to invoke a service.
 
 The aggregator uses non-blocking `ns::OP_TRY_LOOKUP`, so an absent service
 renders as `null` rather than stalling a request. It consumes the same socket

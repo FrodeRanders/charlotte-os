@@ -97,3 +97,11 @@ separate deployment encoder and suffix-free system grammar are removed.
 Preparation and later exact-generation activation remain separate operations.
 The snapshot and Raft pair tags advance together so old command logs cannot
 replay the suffix-free grammar, including stores without a snapshot.
+
+## DNS observation boundary
+
+Persistent catalog-v18 and Raft pair-v3 remain unchanged by S08b2b. The DNS
+`OP_CATALOG` local observation uses the separate complete bounded
+[CDNSCAT1 grammar](dns-catalog.md). Its former untagged one-page writer and
+partial HTTP reader are removed; this read does not restore state or establish
+a linearizable lookup. Full identities and repeated replica names survive.

@@ -182,7 +182,17 @@ safely retryable \texttt{ERR\_NOT\_LEADER}; a timeout after remote execution may
 have begun remains \texttt{ERR\_UNCERTAIN}. Raft time is supplied by a persistent
 detached-timer completion, preventing sustained endpoint traffic from freezing
 the lease clock. Catalog and status dumps are diagnostic local observations,
-not linearizable reads.
+not linearizable reads. The catalog dump now uses one complete
+\texttt{CDNSCAT1} record set, bounded to 64 KiB, with explicit total length,
+row count, full identity lengths, and generations. A result above that bound
+rejects instead of returning a one-page prefix or shortening names. DNS retains
+one owned reply transaction through output allocation, mapping, and consuming
+publication. HTTP validates the whole set before rendering an array of rows,
+preserving replicas that share a name; unavailable or rejected catalogs render
+as \texttt{null}. Both node and cluster views resolve a fresh owned DNS connection
+per request, so a missed startup publication is not permanent absence. The
+separate registered-count field remains status metadata.
+See \path{docs/reference/dns-catalog.md}.
 
 \subsection{Distributed objects}
 

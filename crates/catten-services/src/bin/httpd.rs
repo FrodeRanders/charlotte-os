@@ -228,7 +228,6 @@ struct ServiceSet<'context> {
     ns_conn: ConnectionRef<'context>,
     tcp_conn: Connection,
     frouter_conn: Option<Connection>,
-    dns_conn: Option<Connection>,
     disco_conn: Option<Connection>,
     relmsg_conn: Option<Connection>,
     observe_conn: Option<Connection>,
@@ -266,8 +265,9 @@ fn read_words(
     Some(bytes.as_chunks::<4>().0.iter().copied().map(u32::from_le_bytes).collect())
 }
 
-/// Call `opcode` and copy up to `max_len` raw bytes out of the moved reply
-/// page (for variable-length payloads such as peer lists and cluster status).
+/// Call `opcode` and copy its exact meaningful bytes from the owned moved
+/// reply. Reject lengths above `max_len` or backing capacity; never decode a
+/// clamped prefix (variable-length peer lists and cluster status use this too).
 fn read_moved(
     conn: ConnectionRef<'_>,
     opcode: u32,
@@ -279,17 +279,16 @@ fn read_moved(
         return None;
     }
     let memory = result.memory?;
-    let len = (result.result as usize).min(max_len).min(memory.len());
+    let len = usize::try_from(result.result).ok()?;
+    if len > max_len || len > memory.len() {
+        return None;
+    }
     let mapping = memory.map_read_only().ok()?;
     Some(mapping.as_slice()[..len].to_vec())
 }
 
 fn u32_at(bytes: &[u8], offset: usize) -> Option<u32> {
     Some(u32::from_le_bytes(bytes.get(offset..offset + 4)?.try_into().ok()?))
-}
-
-fn u64_at(bytes: &[u8], offset: usize) -> Option<u64> {
-    Some(u64::from_le_bytes(bytes.get(offset..offset + 8)?.try_into().ok()?))
 }
 
 /// Convert a per-interval counter delta to a per-second integer rate.
@@ -757,41 +756,32 @@ fn render_dns(s: &mut String, dns_conn: ConnectionRef<'_>) {
             state_name(v & 0xff),
             (v >> 8) & 0xff_ffff
         );
-        // Dump the replicated name -> node catalog.
-        let mut rendered = false;
-        if let Some(bytes) = read_moved(dns_conn, dns::OP_CATALOG, 0, 4096)
-            && let Some(count) = u32_at(&bytes, 0)
+        // Validate the entire set before emitting rows. Repeated names are
+        // distinct replicas, so preserve them in an array rather than JSON keys.
+        if let Some(bytes) =
+            read_moved(dns_conn, dns::OP_CATALOG, 0, catten_services::dns_catalog::MAX_SNAPSHOT_LEN)
+            && let Some(catalog) = catten_services::dns_catalog::decode(&bytes)
         {
-            let _ = write!(s, "{{\"count\":{},\"entries\":{{", count);
-            let mut offset = dns::CATALOG_HEADER_BYTES;
-            let mut emitted = 0u32;
-            while emitted < count && offset + 2 < bytes.len() {
-                let name_len = bytes[offset] as usize;
-                let node_offset = offset + 1 + name_len;
-                if node_offset + 1 > bytes.len() {
-                    break;
-                }
-                let node_len = bytes[node_offset] as usize;
-                let generation_offset = node_offset + 1 + node_len;
-                let Some(generation) = u64_at(&bytes, generation_offset) else {
-                    break;
-                };
-                if emitted > 0 {
+            let _ = write!(
+                s,
+                "{{\"schema\":\"charlotte.dns-catalog.v1\",\"count\":{},\"entries\":[",
+                catalog.len()
+            );
+            for (index, entry) in catalog.records().enumerate() {
+                if index != 0 {
                     s.push(',');
                 }
-                push_json_string(s, &bytes[offset + 1..node_offset]);
-                s.push_str(":{\"node\":");
-                push_json_string(s, &bytes[node_offset + 1..generation_offset]);
-                let _ = write!(s, ",\"generation\":{generation}}}");
-                offset = generation_offset + 8;
-                emitted += 1;
+                s.push_str("{\"name\":");
+                push_json_string(s, entry.name);
+                s.push_str(",\"node\":");
+                push_json_string(s, entry.node);
+                let _ = write!(s, ",\"generation\":{}}}", entry.generation);
             }
-            s.push_str("}}");
-            rendered = true;
+            s.push_str("]}");
+        } else {
+            s.push_str("null");
         }
-        if !rendered {
-            let _ = write!(s, "{{\"count\":{},\"entries\":{{}}}}", (v >> 32) & 0xffff_ffff);
-        }
+        let _ = write!(s, ",\"registered_count\":{}", (v >> 32) & 0xffff_ffff);
         // Raft cluster posture: commit index, member count, and ids. Served on
         // the same endpoint as the dns opcodes.
         if let Some(bytes) = read_moved(dns_conn, raft::OP_CLUSTER_STATUS, 0, 256)
@@ -1306,7 +1296,9 @@ fn build_json(
 
     // dns: Raft state/term + replicated catalog + cluster posture.
     trace_phase("dns");
-    if let Some(dns_conn) = services.dns_conn.as_ref() {
+    // Resolve once for this requested observation. DNS may publish or restart
+    // after httpd starts; a cached optional startup miss is not permanent absence.
+    if let Some(dns_conn) = try_lookup(services.ns_conn, dns::NAME) {
         render_dns(&mut s, dns_conn.as_ref());
         s.push(',');
     } else {
@@ -1441,7 +1433,6 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         ns_conn,
         tcp_conn,
         frouter_conn: try_lookup(ns_conn, frouter::NAME),
-        dns_conn: try_lookup(ns_conn, dns::NAME),
         disco_conn: try_lookup(ns_conn, disco::NAME),
         relmsg_conn: try_lookup(ns_conn, relmsg::NAME),
         observe_conn: try_lookup(ns_conn, observability::NAME),
@@ -1577,17 +1568,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             ("HTTP/1.1 200 OK", "text/html; charset=utf-8", String::from(CLUSTER_DASHBOARD))
         } else if path == b"/cluster/metrics" {
             counters.metrics = counters.metrics.wrapping_add(1);
-            match services
-                .dns_conn
-                .as_ref()
+            match try_lookup(services.ns_conn, dns::NAME)
                 .and_then(|connection| build_cluster_json(connection.as_ref()))
-                .or_else(|| {
-                    // DNS may register after httpd's optional startup lookup,
-                    // or may have restarted since then. A fresh name-service
-                    // connection keeps the cluster keyhole recoverable.
-                    let connection = try_lookup(services.ns_conn, dns::NAME)?;
-                    build_cluster_json(connection.as_ref())
-                }) {
+            {
                 Some(snapshot) => ("HTTP/1.1 200 OK", "application/json", snapshot),
                 None => (
                     "HTTP/1.1 503 Service Unavailable",

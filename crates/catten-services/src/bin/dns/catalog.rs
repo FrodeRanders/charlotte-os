@@ -81,3 +81,115 @@ impl StateMachine for CatalogMachine {
         Some(self.0.as_ref())
     }
 }
+
+enum CatalogBacking {
+    Empty,
+    Memory(catten_rt::owned::OwnedMemory),
+    Mapping(catten_rt::owned::MappedMemory<catten_rt::owned::Writable>),
+}
+
+/// One owner for every transient field from preparation through publication.
+/// The output is destroyed before unused reply authority on abandonment.
+struct CatalogReply {
+    backing: CatalogBacking,
+    bytes: Vec<u8>,
+    reply: Option<catten_rt::owned::ReplyToken>,
+}
+
+impl CatalogReply {
+    fn reject(mut self, error: i64) {
+        drop(core::mem::replace(&mut self.backing, CatalogBacking::Empty));
+        if let Some(reply) = self.reply.take() {
+            let _ = reply.reply(error);
+        }
+    }
+
+    fn prepare(&mut self) -> Result<(), i64> {
+        use catten_rt::owned::OwnedMemory;
+        self.backing = CatalogBacking::Memory(
+            OwnedMemory::allocate(self.bytes.len().div_ceil(4096))
+                .map_err(|_| dns::ERR_RESOURCE_LIMIT)?,
+        );
+        let CatalogBacking::Memory(memory) =
+            core::mem::replace(&mut self.backing, CatalogBacking::Empty)
+        else {
+            unreachable!()
+        };
+        self.backing = CatalogBacking::Mapping(match memory.map_writable() {
+            Ok(mapping) => mapping,
+            Err((memory, _)) => {
+                self.backing = CatalogBacking::Memory(memory);
+                return Err(dns::ERR_RESOURCE_LIMIT);
+            }
+        });
+        let CatalogBacking::Mapping(mapping) = &mut self.backing else {
+            unreachable!()
+        };
+        mapping.as_mut_slice()[..self.bytes.len()].copy_from_slice(&self.bytes);
+        let CatalogBacking::Mapping(mapping) =
+            core::mem::replace(&mut self.backing, CatalogBacking::Empty)
+        else {
+            unreachable!()
+        };
+        self.backing = CatalogBacking::Memory(match mapping.unmap() {
+            Ok(memory) => memory,
+            Err((mapping, _)) => {
+                self.backing = CatalogBacking::Mapping(mapping);
+                return Err(dns::ERR_RESOURCE_LIMIT);
+            }
+        });
+        Ok(())
+    }
+
+    fn publish(mut self) {
+        let CatalogBacking::Memory(memory) =
+            core::mem::replace(&mut self.backing, CatalogBacking::Empty)
+        else {
+            unreachable!()
+        };
+        // Rejected move returns the memory owner; dropping its result releases
+        // it through the existing runtime policy exactly once, without replay.
+        let _ = self
+            .reply
+            .take()
+            .expect("catalog reply authority")
+            .reply_move(memory, self.bytes.len() as i64);
+    }
+}
+
+/// Consume the catalog observation's received transaction before any scalar
+/// attachment fallback can touch it. No new cleanup/retry policy is added.
+pub(super) fn reply_catalog(mut request: catten_rt::owned::IncomingMessage, catalog: &NameCatalog) {
+    let invalid = request.arg0 != 0 || request.memory.is_some() || request.connection.is_some();
+    let mut operation = CatalogReply {
+        backing: CatalogBacking::Empty,
+        bytes: Vec::new(),
+        reply: request.reply.take(),
+    };
+    drop(request);
+    if operation.reply.is_none() {
+        return;
+    }
+    if invalid {
+        operation.reject(dns::ERR_BAD_OPCODE);
+        return;
+    }
+    operation.bytes = match catalog.catalog_result() {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            operation.reject(match error {
+                catten_services::dns_catalog::EncodeError::TooLarge => dns::ERR_TOO_LARGE,
+                catten_services::dns_catalog::EncodeError::InvalidRecord => dns::ERR_BAD_OPCODE,
+                catten_services::dns_catalog::EncodeError::AllocationFailed => {
+                    dns::ERR_RESOURCE_LIMIT
+                }
+            });
+            return;
+        }
+    };
+    if let Err(error) = operation.prepare() {
+        operation.reject(error);
+        return;
+    }
+    operation.publish();
+}

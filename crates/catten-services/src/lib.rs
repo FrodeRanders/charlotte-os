@@ -52,6 +52,8 @@ pub mod broker;
 pub mod cluster_ingress;
 /// Bounded, versioned cluster-observability snapshot shared by DNS and HTTP.
 pub mod cluster_observe;
+/// Complete, bounded DNS catalog observations shared by DNS and HTTP.
+pub mod dns_catalog;
 /// Replicated name catalog: the Raft state machine for the distributed name
 /// service.
 pub mod name_catalog;
@@ -2168,12 +2170,11 @@ pub mod dns {
     /// reply is the target service's scalar result (deferred until the remote
     /// call completes).
     pub const OP_CALL: u32 = 5;
-    /// Dump the replicated catalog. Reply moves a page snapshot: one u32
-    /// count, then per entry
-    /// `[name_len:u8][name][node_len:u8][node][generation:u64 LE]`. The
-    /// scalar result is the snapshot byte length.
+    /// Return the complete locally applied active catalog as a moved
+    /// [`crate::dns_catalog`] record set. The scalar result is its exact byte
+    /// length. A catalog above the wire bound rejects instead of returning a
+    /// prefix or truncating identities. The request has no attachments/arg0.
     pub const OP_CATALOG: u32 = 6;
-    pub const CATALOG_HEADER_BYTES: usize = core::mem::size_of::<u32>();
     /// Replicate an exact-generation tombstone for a locally hosted service.
     /// `arg0` is the packed name and the first eight bytes of the attached
     /// memory object contain the expected distributed generation. The reply
@@ -2397,6 +2398,8 @@ pub mod dns {
     pub const ERR_BUSY: i64 = -6;
     pub const ERR_STALE_GENERATION: i64 = -7;
     pub const ERR_UNTRUSTED_KEY: i64 = -8;
+    /// Catalog observation could not prepare its output backing/mapping.
+    pub const ERR_RESOURCE_LIMIT: i64 = -9;
 }
 
 /// Protocol of the cluster-deployment demo artifact: a tiny service that the

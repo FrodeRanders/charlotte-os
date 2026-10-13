@@ -595,23 +595,31 @@ impl NameCatalog {
         *self.cluster_key.lock()
     }
 
-    /// Snapshot copy of the whole `name -> {node, generation}` catalog.
-    pub fn entries(&self) -> alloc::vec::Vec<(alloc::vec::Vec<u8>, CatalogEntry)> {
+    /// Encode one complete locally applied active catalog. Both registries
+    /// remain borrowed through planning/encoding; no cloned-entry snapshot or
+    /// lossy one-page prefix is prepared. This is observation, not a Raft read
+    /// barrier or authority to invoke a service.
+    pub fn catalog_result(&self) -> Result<Vec<u8>, crate::dns_catalog::EncodeError> {
         let entries = self.entries.lock();
-        let mut result = entries
+        let replicas = self.deployment_replicas.lock();
+        let ordinary = entries
             .iter()
             .filter(|(_, entry)| entry.active && !entry.node.is_empty())
-            .map(|(name, entry)| (name.clone(), entry.clone()))
-            .collect::<Vec<_>>();
-        for (name, replicas) in self.deployment_replicas.lock().iter() {
-            result.extend(
-                replicas
-                    .values()
-                    .filter(|entry| entry.active && !entry.node.is_empty())
-                    .map(|entry| (name.clone(), entry.clone())),
-            );
-        }
-        result
+            .map(|(name, entry)| crate::dns_catalog::Record {
+                name,
+                node: &entry.node,
+                generation: entry.generation,
+            });
+        let deployed = replicas.iter().flat_map(|(name, by_node)| {
+            by_node.values().filter(|entry| entry.active && !entry.node.is_empty()).map(
+                move |entry| crate::dns_catalog::Record {
+                    name,
+                    node: &entry.node,
+                    generation: entry.generation,
+                },
+            )
+        });
+        crate::dns_catalog::encode(ordinary.chain(deployed))
     }
 
     fn apply_command(&self, command: &[u8]) -> Vec<u8> {

@@ -1621,3 +1621,15 @@ follower relay idempotence. HTTP keyhole checks require `charlotte.cluster.v2`
 and absence of the removed object ID. See
 [lean record evidence](../reports/audits/2026-10-13-protocol-simplification-records.md)
 for passing runs and the separately retained initial DMA startup failure.
+
+### Complete DNS catalog observation controls
+
+`--http-test` on ARM and x86 now requires the current `charlotte.dns-catalog.v1`
+array with exact count, nonempty identities, positive generations and the
+fixture's `alpha` registration during initial, EOF, abortive and idle recovery
+requests. A missing catalog is not substituted with an empty table. Host tests
+cover complete records above one page, identities with a shared 255-byte prefix,
+repeated replica names, exact 64 KiB admission and rejection above that ceiling,
+retired untagged pages, inconsistent counts, truncation and trailing bytes.
+See [the current contract](../reference/dns-catalog.md). These are observation
+and existing typed-owner controls, not hardware/physical cleanup proofs.
