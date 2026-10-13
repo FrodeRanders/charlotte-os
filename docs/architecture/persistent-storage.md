@@ -250,23 +250,29 @@ object-store-backed implementations for durable deployments.
 
 ### 4.2 Disk-backed implementation
 
-`DiskPersistentStateStore` and `DiskLogStore` connect to the `"obj"` service.
-The cluster and node identities are hashed into a stable namespace. Term,
-vote, and in-progress join admission state share one object. Snapshot metadata, snapshot data, and the
-post-snapshot log suffix are serialized into one log-state object so snapshot
-installation and compaction have a single copy-on-write publication point.
-Stable creation (`OP_CREATE_AT`) means a replacement process opens the same
-objects instead of allocating new ones. Former three-object log stores are
-read once and migrated to the unified representation. Each mutation writes
-its serialized object and calls `FLUSH` before returning.
+`disk_raft::open` connects to `"obj"` through an owned runtime connection and
+validates a stable two-object pair derived from cluster/node identity. Tagged
+`CRFTSTA1` term/vote/join-admission state and `CRFTLOG1` snapshot/log state are
+the only accepted records. Snapshot metadata, bytes and retained suffix share
+one copy-on-write publication point. Only two absent objects authorize initial
+creation; existing empty, incomplete, corrupt or unsupported records reject
+without repair or fallback. No older decoder or split-store migration remains.
+Each mutation writes its complete object and calls `FLUSH` before returning.
+See [Raft persistence](../reference/raft-persistence.md) for exact formats,
+object IDs, ownership and future migration requirements.
 
 The Raft launch manifest selects the backend:
 
 - `storage = 0` (or omitted): in-memory, used by the ordinary local multicore
   two-node election test;
-- `storage = 1`: try persistent storage, with an explicit in-memory fallback;
 - `storage = 2`: require persistent storage and wait for the object-store
   service through the name service.
+
+Retired `storage = 1` and malformed policy values reject; disk-open failure
+never creates a fresh volatile voter. This pre-production layout change needs
+no production migration. Development fixture disks must be regenerated
+intentionally. Future deployed-store changes must provide an explicit,
+version-directed migration; unsupported data is never treated as absent.
 
 Cross-machine auto-join requires a disk-backed store. The node persists its
 selected admission anchor before accepting that anchor's log, and clears the

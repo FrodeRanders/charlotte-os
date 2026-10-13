@@ -51,10 +51,7 @@ use catten_rt::{
 };
 use catten_services::{
     disco,
-    disk_raft::{
-        DiskLogStore,
-        DiskPersistentStateStore,
-    },
+    disk_raft,
     dns,
     frouter,
     net,
@@ -354,7 +351,6 @@ const STORAGE_KEY: u64 = manifest_key(b"storage");
 const NETWORK_KEY: u64 = manifest_key(b"network");
 
 const STORAGE_MEMORY: u64 = 0;
-const STORAGE_OPTIONAL: u64 = 1;
 const STORAGE_REQUIRED: u64 = 2;
 
 fn persistent_namespace(cluster_id: &[u8], node_id: &[u8]) -> u64 {
@@ -382,9 +378,9 @@ fn main(ctx: Context) -> ! {
     };
     let storage_policy = match ctx.manifest_value(STORAGE_KEY) {
         Some(ManifestValue::Unsigned(STORAGE_MEMORY)) => STORAGE_MEMORY,
-        Some(ManifestValue::Unsigned(STORAGE_OPTIONAL)) => STORAGE_OPTIONAL,
         Some(ManifestValue::Unsigned(STORAGE_REQUIRED)) => STORAGE_REQUIRED,
-        _ => STORAGE_MEMORY,
+        None => STORAGE_MEMORY,
+        _ => fatal(9),
     };
     // Network participation is launch policy, not an accidental side effect
     // of starting any Raft instance. Several independent Raft groups may run
@@ -484,23 +480,16 @@ fn main(ctx: Context) -> ! {
         }
     }
 
-    // Storage is launch policy. A disposable or specialized Raft group may
-    // use memory, while the node-cluster service requires the object store and
-    // waits for its registration. Optional mode may fall back, but never does
-    // so silently.
+    // Storage is explicit launch policy: memory or required durable storage.
+    // A rejected disk pair must never fall back to a fresh in-memory voter.
     let namespace = persistent_namespace(cluster_id, node_id.as_bytes());
     let disk_stores = if storage_policy == STORAGE_MEMORY {
         None
     } else {
-        let wait_for_service = storage_policy == STORAGE_REQUIRED;
-        match (
-            DiskLogStore::new(ns_conn, namespace, wait_for_service),
-            DiskPersistentStateStore::new(ns_conn, namespace, wait_for_service),
-        ) {
-            (Some(log), Some(state)) => Some((log, state)),
-            _ if storage_policy == STORAGE_REQUIRED => fatal(9),
-            _ => None,
-        }
+        Some(disk_raft::open(names, namespace).unwrap_or_else(|error| {
+            catten_rt::logln!("[raft-store] open rejected: {:?}", error);
+            fatal(9)
+        }))
     };
     let (log_store, persistent_store, durable): (
         Box<dyn LogStore>,

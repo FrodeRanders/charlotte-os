@@ -10,6 +10,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [Current-only Raft persistence](audits/2026-10-13-protocol-simplification-raft.md) — Tagged two-object pair, strict recovery, owned IPC transport and future migration policy.
 - [Current-only discovery advertisements](audits/2026-10-13-protocol-simplification-discovery.md) — Complete declared-length payloads replace optional cluster fields and base-only fallbacks.
 - [Current-only deployment descriptors](audits/2026-10-13-protocol-simplification-deployment.md) — First simplification batch: retired signed grammars reject; current writers, callers and living documentation agree.
 - [Timed completion outcomes (SEC-18 / C16, C18)](audits/2026-10-12-completion-wait-outcomes.md) — Explicit kernel wait admission errors, shared deadline loop and exact-generation close-fixture diagnostics.

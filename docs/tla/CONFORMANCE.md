@@ -443,7 +443,7 @@ preserve the admission fence.
 | `PersistSnapshot` | `LogStore::install_snapshot`, `DiskLogStore::persist_log_state` | The durable boundary, bytes, current/next membership, and compatible suffix are one serialized object-store replacement. The object store publishes it copy-on-write after data and metadata reach stable storage. |
 | `ActivateSnapshot` | commit/last-applied update, membership reconstruction, and `StateMachine::restore` | Abstract split after durable publication so a crash between persistence and activation is explored. Membership activation also recomputes local decommissioning. |
 | `Crash` | service-domain exit | Pending chunks and volatile state-machine contents disappear; the atomically published log-state object survives. |
-| `Restart` | `DiskLogStore::new`, then `RaftNode::new` | Direct: construction restores snapshot bytes and current/next membership before exposing its index as committed and applied. Membership is only restored when the snapshot payload decodes to a non-empty `current_members` envelope; locally produced snapshots always satisfy this. |
+| `Restart` | `disk_raft::open`, then `RaftNode::new` | Direct: the tagged state/log pair validates jointly before construction restores snapshot bytes and current/next membership and exposes its index as committed and applied. Incomplete/unsupported pairs reject without migration or reset. Membership is only restored when the snapshot payload decodes to a non-empty `current_members` envelope; locally produced snapshots always satisfy this. |
 
 The model abstracts snapshot contents to one value, membership to peer-ID sets,
 and chunks to a bounded count. It omits peer roles and addresses within those

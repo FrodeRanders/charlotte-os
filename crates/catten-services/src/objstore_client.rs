@@ -1,163 +1,120 @@
-//! Shared persistent-object-store IPC helpers.
-//!
-//! Persistent service state (`disk_raft`, `node_identity`) uses one scratch
-//! page and the same object-store opcodes. Keeping one implementation here
-//! avoids the copies drifting apart, and every length returned by the object
-//! store is validated against the mapped memory object before it can drive a
-//! copy.
+//! Owned object-store transport for the Raft persistence pair.
+//! Durable object IDs are names; dropping this client closes its connection,
+//! never the stored objects. Accepted calls retain their moved memory owners.
 
 use alloc::vec::Vec;
 
-use catten_syscall::*;
+use catten_rt::owned::{
+    Connection,
+    ConnectionRef,
+    OwnedMemory,
+};
 
-const BUFFER_VADDR: usize = 0x0000_0000_2000_0000;
-
-/// Looks up the object-store connection. `wait_for_service` selects a
-/// deferred (blocking) name lookup for stores that must survive first boot.
-pub(crate) fn connect(ns_conn: u64, wait_for_service: bool) -> Option<u64> {
-    let opcode = if wait_for_service {
-        crate::ns::OP_LOOKUP
-    } else {
-        crate::ns::OP_TRY_LOOKUP
-    };
-    let lookup = ipc_scalar_call_connection(
-        ns_conn,
-        opcode,
-        crate::objstore::NAME,
-        0,
-        IpcRights::SEND | IpcRights::CALL,
-    );
-    if lookup == 0 {
-        return None;
-    }
-    let (generation, conn) = unsafe { crate::wait_reply(lookup) };
-    if generation < 1 || conn == 0 {
-        return None;
-    }
-    Some(conn)
+pub(crate) trait ObjectStore: Send + Sync {
+    fn read(&self, object: u64) -> Result<Option<Vec<u8>>, ()>;
+    /// Only exact successful creation authorizes an initial write.
+    fn create(&self, object: u64) -> Result<(), ()>;
+    fn write(&self, object: u64, bytes: &[u8]) -> Result<(), ()>;
+    fn flush(&self) -> Result<(), ()>;
 }
 
-pub(crate) fn create_at(obj_conn: u64, object_id: u64) -> bool {
-    create_with(obj_conn, charlotte_protocol_objstore::OP_CREATE_AT, object_id)
+pub(crate) struct Client {
+    connection: Connection,
 }
 
-fn create_with(obj_conn: u64, opcode: u32, object_id: u64) -> bool {
-    let call = ipc_scalar_call(obj_conn, opcode, object_id);
-    if call == 0 {
-        return false;
+/// Both transient buffers remain with this preparation until submission.
+struct PreparedWrite {
+    size: OwnedMemory,
+    payload: OwnedMemory,
+}
+
+impl PreparedWrite {
+    fn new(bytes: &[u8]) -> Result<Self, ()> {
+        let mut size = OwnedMemory::allocate(1).map_err(|_| ())?.map_writable().map_err(|_| ())?;
+        size.as_mut_slice()[..8].copy_from_slice(&(bytes.len() as u64).to_le_bytes());
+        let size = size.unmap().map_err(|_| ())?;
+        let mut payload = OwnedMemory::allocate(bytes.len().max(1).div_ceil(4096))
+            .map_err(|_| ())?
+            .map_writable()
+            .map_err(|_| ())?;
+        payload.as_mut_slice()[..bytes.len()].copy_from_slice(bytes);
+        Ok(Self {
+            size,
+            payload: payload.unmap().map_err(|_| ())?,
+        })
     }
-    let (result, _) = unsafe { crate::wait_reply(call) };
-    result == charlotte_protocol_objstore::ERR_OK
-        || result == charlotte_protocol_objstore::ERR_EXISTS
 }
 
-pub(crate) fn write(obj_conn: u64, object_id: u64, data: &[u8]) -> bool {
-    let size_mem = memory_alloc(1);
-    if size_mem == 0 || memory_map(size_mem, BUFFER_VADDR, true) != 0 {
-        if size_mem != 0 {
-            memory_close(size_mem);
+impl Client {
+    pub(crate) fn connect(names: ConnectionRef<'_>) -> Result<Self, ()> {
+        let (_, connection) =
+            crate::wait_for_registered_name_owned(names, crate::objstore::NAME).ok_or(())?;
+        Ok(Self {
+            connection,
+        })
+    }
+}
+
+impl ObjectStore for Client {
+    fn read(&self, object: u64) -> Result<Option<Vec<u8>>, ()> {
+        let reply = self
+            .connection
+            .call(crate::objstore::OP_READ, object)
+            .map_err(|_| ())?
+            .wait()
+            .map_err(|_| ())?;
+        if reply.result == crate::objstore::ERR_NOT_FOUND && reply.memory.is_none() {
+            return Ok(None);
         }
-        return false;
-    }
-    unsafe {
-        (BUFFER_VADDR as *mut u64).write_unaligned(data.len() as u64);
-    }
-    memory_unmap(size_mem);
-    let size_call =
-        ipc_scalar_call_borrow_read(obj_conn, crate::objstore::OP_SET_SIZE, object_id, size_mem);
-    if size_call == 0 {
-        memory_close(size_mem);
-        return false;
-    }
-    let (size_result, _) = unsafe { crate::wait_reply(size_call) };
-    memory_close(size_mem);
-    if size_result != 0 {
-        return false;
-    }
-
-    let pages = data.len().max(1).div_ceil(4096);
-    let mem = memory_alloc(pages);
-    if mem == 0 {
-        return false;
-    }
-    if memory_map(mem, BUFFER_VADDR, true) != 0 {
-        memory_close(mem);
-        return false;
-    }
-    unsafe {
-        core::ptr::copy_nonoverlapping(data.as_ptr(), BUFFER_VADDR as *mut u8, data.len());
-    }
-    memory_unmap(mem);
-    let call = ipc_scalar_call_move(obj_conn, crate::objstore::OP_WRITE, object_id, mem);
-    if call == 0 {
-        memory_close(mem);
-        return false;
-    }
-    let (result, _) = unsafe { crate::wait_reply(call) };
-    result == 0
-}
-
-/// Reads one object. `Ok(None)` means the object does not exist yet;
-/// `Err(())` means the transport, device, or a length validation failed.
-pub(crate) fn read(obj_conn: u64, object_id: u64) -> Result<Option<Vec<u8>>, ()> {
-    let call = ipc_scalar_call(obj_conn, crate::objstore::OP_READ, object_id);
-    if call == 0 {
-        return Err(());
-    }
-    let (status, result, returned_connection, memory) = ipc_reply_wait_with_memory(call);
-    ipc_close(call);
-    if returned_connection != 0 {
-        ipc_close(returned_connection);
-    }
-    if status != 0 {
-        if memory != 0 {
-            memory_close(memory);
+        let size = usize::try_from(reply.result).map_err(|_| ())?;
+        let memory = reply.memory.ok_or(())?;
+        if size > memory.len() {
+            return Err(());
         }
-        return Err(());
+        let mapping = memory.map_read_only().map_err(|_| ())?;
+        let mut bytes = Vec::new();
+        bytes.try_reserve_exact(size).map_err(|_| ())?;
+        bytes.extend_from_slice(&mapping.as_slice()[..size]);
+        Ok(Some(bytes))
     }
-    // A reply without memory is scalar only: the object store reports a
-    // missing object as ERR_NOT_FOUND with no payload. (The first tuple
-    // element is the IPC status, not the store's result.)
-    if memory == 0 {
-        return if result == charlotte_protocol_objstore::ERR_NOT_FOUND as u64 {
-            Ok(None)
-        } else {
-            Err(())
-        };
-    }
-    let capacity = memory_size(memory);
-    let Ok(size) = usize::try_from(result) else {
-        memory_close(memory);
-        return Err(());
-    };
-    if size > capacity {
-        memory_close(memory);
-        return Err(());
-    }
-    if memory_map(memory, BUFFER_VADDR, false) != 0 {
-        memory_close(memory);
-        return Err(());
-    }
-    let mut buf = alloc::vec![0u8; size];
-    unsafe {
-        core::ptr::copy_nonoverlapping(BUFFER_VADDR as *const u8, buf.as_mut_ptr(), size);
-    }
-    memory_unmap(memory);
-    memory_close(memory);
-    Ok(Some(buf))
-}
 
-pub(crate) fn flush(obj_conn: u64) -> bool {
-    let call = ipc_scalar_call_connection(
-        obj_conn,
-        crate::objstore::OP_FLUSH,
-        0,
-        0,
-        IpcRights::SEND | IpcRights::CALL,
-    );
-    if call == 0 {
-        return false;
+    fn create(&self, object: u64) -> Result<(), ()> {
+        let reply = self
+            .connection
+            .call(crate::objstore::OP_CREATE_AT, object)
+            .map_err(|_| ())?
+            .wait()
+            .map_err(|_| ())?;
+        (reply.result == crate::objstore::ERR_OK).then_some(()).ok_or(())
     }
-    let (result, _) = unsafe { crate::wait_reply(call) };
-    result == 0
+
+    fn write(&self, object: u64, bytes: &[u8]) -> Result<(), ()> {
+        let prepared = PreparedWrite::new(bytes)?;
+        let reply = self
+            .connection
+            .call_move(crate::objstore::OP_SET_SIZE, object, prepared.size)
+            .map_err(|_| ())?
+            .wait()
+            .map_err(|_| ())?;
+        if reply.result != crate::objstore::ERR_OK {
+            return Err(());
+        }
+        let reply = self
+            .connection
+            .call_move(crate::objstore::OP_WRITE, object, prepared.payload)
+            .map_err(|_| ())?
+            .wait()
+            .map_err(|_| ())?;
+        (reply.result == crate::objstore::ERR_OK).then_some(()).ok_or(())
+    }
+
+    fn flush(&self) -> Result<(), ()> {
+        let reply = self
+            .connection
+            .call(crate::objstore::OP_FLUSH, 0)
+            .map_err(|_| ())?
+            .wait()
+            .map_err(|_| ())?;
+        (reply.result == crate::objstore::ERR_OK).then_some(()).ok_or(())
+    }
 }

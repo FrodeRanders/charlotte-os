@@ -237,8 +237,9 @@ fn test_scheduler_waiter_admission() {
         // from changing this exact sponsor during the counter/charge probe.
         let _setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
         let timer_baseline = timers.used();
-        // Fill only this exact thread's scheduler sponsor, never node-wide
-        // timers or another thread's account. Charges are released below.
+        // The unpublished driver receives a private fixture sponsor below.
+        // Production kernel threads share their root's sponsor, so saturating
+        // the ordinary captured kernel account would affect other LPs.
         while let Ok(charge) = timers.reserve() {
             charges.push(charge);
         }
@@ -527,6 +528,18 @@ pub fn test_cq_wait_wake() {
     );
 
     let _waiter = spawn_thread(KERNEL_ASID, cq_waiter);
-    let _driver = spawn_thread(KERNEL_ASID, cq_driver);
+    // Raw boot accounting fixture only: isolate the driver before publication
+    // or any watchdog captures its sponsor. Production Thread construction
+    // keeps its generation-owned root account; never replace a live sponsor.
+    // This trusted kernel fixture retains platform classification and uses
+    // the existing admitted timer budget, not a new registry or bypass.
+    let mut driver = crate::cpu::scheduler::threads::Thread::new(KERNEL_ASID, cq_driver);
+    driver.timer_sponsor = crate::timers::budget::SchedulerSponsor::new(true);
+    let driver = crate::cpu::scheduler::system_scheduler::publish_thread(driver)
+        .expect("[cq wait] driver publication rejected");
+    crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
+        .read()
+        .submit_new_thread(driver)
+        .expect("[cq wait] driver scheduler admission rejected");
     logln!("[cq wait] waiter and driver deferred");
 }

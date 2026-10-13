@@ -129,9 +129,17 @@ stale connections fail and clients can re-lookup a replacement generation.
 
 \section{Persistence and launch configuration}
 
-The operational DNS node requires persistent storage. Stable object identifiers
-derived from cluster and node identity hold term/vote state, log entries, and
-snapshot data; mutations are followed by an NVMe flush.
+The operational DNS node requires persistent storage. One jointly opened pair
+of stable objects derived from cluster/node identity holds tagged
+\texttt{CRFTSTA1} term/vote/join-admission state and \texttt{CRFTLOG1}
+snapshot/log state. Only two absent objects authorize initialization;
+incomplete, corrupt and unsupported records reject without reset or a volatile
+fallback. Older layouts are not migrated. Mutations are followed by an NVMe
+flush; snapshot bytes and their retained suffix share one record replacement.
+There are no production stores to migrate now. Future deployed-store format
+changes must ship an explicit, interruption-tested migration preserving
+election, admission and committed state. See
+\path{docs/reference/raft-persistence.md}.
 
 The cluster mnemonic and election timeout remain in the launch manifest. A
 fresh identity bootstraps as a durable singleton. Discovery supplies MAC routes,

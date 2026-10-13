@@ -309,12 +309,19 @@ qualification remain operational work.
 
 \section{Raft persistence}
 
-The Raft service can use in-memory stores, optionally try persistent stores,
-or require the object store. Required mode waits for \texttt{"obj"} through
-the name service; it does not use a boot-time polling range. Four stable
-objects per cluster/node namespace contain term and vote state, snapshot
-metadata, snapshot data, and serialized log entries. Mutations write the
-object and flush the underlying NVMe device before returning.
+The Raft service selects memory (\texttt{storage=0}, or omitted) or required
+persistence (\texttt{storage=2}); retired mode 1 and malformed policy values
+reject. Required mode waits for \texttt{"obj"} through the name service.
+One jointly validated two-object pair holds \texttt{CRFTSTA1}
+term/vote/join-admission state and \texttt{CRFTLOG1} snapshot/log state.
+Only two absent records authorize initialization; existing empty, incomplete,
+corrupt or unsupported records reject without reset or a memory fallback.
+Older decoders and split-store migration are removed. Each mutation writes
+the complete object and flushes the underlying NVMe device before returning.
+Snapshot bytes and retained log suffix have one replacement point; the pair
+is not a cross-object atomic transaction. Future deployed-store changes
+require an explicit version-directed migration. See
+\path{docs/reference/raft-persistence.md}.
 
 The focused local election fixture runs two in-process Raft members with memory
 stores, keeping consensus behavior testable on a multicore machine without

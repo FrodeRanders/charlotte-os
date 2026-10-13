@@ -507,5 +507,19 @@ again observed the completion-wait timer-sponsor equality failure: ARM reported
 paired DNS progress. A fresh paired repeat with identical kernels passed
 20/0/0 on ARM and 18/0/0 on x86. The aggregate mismatch identifies no specific
 retained event and does not prove a production leak or its cause; the fixture's
-accounting/context qualification remains unresolved. The failed sample is
+private-account isolation premise is corrected by the Raft batch below;
+individual timer identities and wider contexts remain unresolved. The failed sample is
 retained separately, and no C16/C18 acceptance gate or finding count changes.
+
+The [Raft persistence batch](../reports/audits/2026-10-13-protocol-simplification-raft.md)
+records another x86 equality failure (5 versus 2) and the paired ARM discovery
+deadline failure. Source review identifies the fixture's false isolation premise:
+kernel threads share their address-space generation's timer sponsor, so local
+IRQ masking does not exclude another LP's reservations or reclamation. The
+still-unpublished fixture driver now receives a private trusted sponsor before
+event capture; production root sponsorship and wait semantics remain unchanged.
+This corrects the pressure fixture without identifying individual historical
+timer deltas or closing C16/C18, broader context qualification or finding counts.
+Corrected paired fresh-storage and disk-reuse boots passed 20/0/0 on ARM and
+18/0/0 on x86; both single-voter storage fixtures advanced 1→2 on the first
+boot and 3→4 after disk reuse. Failed samples remain separately recorded.

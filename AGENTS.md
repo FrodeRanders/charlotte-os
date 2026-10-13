@@ -85,6 +85,13 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   admission rejection into `false`. Exact-generation exit/retirement snapshots
   diagnose waits; absence, a worker-return marker or a wake is not quiescence
   and cannot authorize root/stack/backing release.
+  Kernel timer sponsors are address-space-generation accounts shared by that
+  root's threads, not private per-thread counters. Pressure fixtures needing
+  isolated accounting must prepare a private fixture sponsor before thread
+  publication or any event capture, retaining trusted classification and normal
+  node admission. Never replace a live sponsor or saturate the shared kernel
+  account to claim exact per-thread cleanup; local IRQ masking does not exclude
+  another LP's reservations or reclamation.
 - IPC close waits retain the exact root and subscribe to the active
   reply/cancellation or endpoint-close claim, including its checked epoch.
   A rollback followed by a new claim on the same token is a different episode.
@@ -215,6 +222,12 @@ the corrected RPC polling paths, and the remaining notification gaps.
   Record batches and remaining candidates in `docs/reference/api-simplification.md`.
   Preserve historical reports; hardware support and external protocol negotiation
   are not internal backward-compatibility obligations.
+  Persistent records must carry explicit format tags and distinguish absent
+  storage from unsupported, corrupt or incomplete state. Once stores are
+  deployed, format/layout changes must include an explicit version-directed,
+  interruption-tested migration preserving election and committed state;
+  never silently reset or reformat an existing store. Current pre-production
+  simplification does not require retaining older decoders or migration code.
 - New kernel capability publication uses `capability::Reservation`: reserve
   before payload/ownership mutation and publish under the subsystem's
   serialization. Retain the captured namespace identity, not just its ASID.

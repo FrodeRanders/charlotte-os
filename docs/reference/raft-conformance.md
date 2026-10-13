@@ -40,7 +40,9 @@ application state and membership. See
 - CharlotteOS stores term/vote/log/snapshot records in object-store namespaces.
   Snapshot replacement and retained-suffix persistence use one atomic disk
   record update; this is deliberately stronger than a two-write
-  compact-then-install sequence.
+  compact-then-install sequence. The current [persistence contract](raft-persistence.md)
+  opens two tagged records jointly and rejects incomplete or unsupported
+  stores; it never migrates an older layout or falls back to memory on error.
 - Time is supplied by the EL0 reactor's bounded completion-queue wait rather
   than `std::time`.
 - The current memory-capability transport limits one RPC attachment to 4 KiB.
@@ -57,10 +59,10 @@ registration-order-independent fashion and requires one leader plus completed
 capability RPC traffic. A separate NVMe-backed single-voter test tears down and
 restarts a Raft process and verifies recovered term/vote state.
 
-Host unit-test execution is currently obstructed by the workspace-wide custom
-`build-std` configuration producing duplicate `core` lang items. The
-`catten-graft` test modules remain useful where a harness is available, but
-they are not a substitute for a dedicated portable consensus test crate. Until
-that exists, changes to `catten-graft` should be reviewed against this matrix,
-checked with strict Clippy for the AArch64 target, and exercised by the full
-boot suite.
+`scripts/run-host-tests.sh` runs the portable consensus and service tests from
+a temporary invocation directory, avoiding the root's freestanding
+`build-std` configuration. Persistence probes cover tagged records, opening
+and failure admission, snapshot/suffix recovery and explicit reset. These
+tests complement the native storage fixture; they do not replace device flush,
+power-loss or multi-node restart qualification. Consensus changes must still
+be reviewed against this matrix and exercised in the relevant boot fixtures.

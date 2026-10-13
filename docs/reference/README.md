@@ -50,6 +50,8 @@ should be updated with the implementation when those contracts change.
   cleanup.
 - [Raft conformance](raft-conformance.md) — required parity between
   `catten-graft`, the other Graft implementations, and the TLA+ projections.
+- [Raft persistence](raft-persistence.md) — jointly opened tagged records,
+  owned object-store transport and future format-migration requirements.
 - [Observability](observability.md) — capability-preserving runtime statistics,
   snapshot interfaces, and the node/cluster keyholes.
 - [smoltcp adapter](smoltcp-adapter.md) — frame routing, adapter behavior, and

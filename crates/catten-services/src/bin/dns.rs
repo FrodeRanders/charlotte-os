@@ -64,10 +64,7 @@ use catten_services::{
     cluster_observe,
     clusterctl,
     disco,
-    disk_raft::{
-        DiskLogStore,
-        DiskPersistentStateStore,
-    },
+    disk_raft,
     dns,
     entropy,
     frouter,
@@ -1734,14 +1731,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     // Falling back to memory after advertising the same durable node identity
     // would permit a restarted replica to vote twice in one term.
     let namespace = persistent_namespace(&mnemonic, &node_name);
-    let log_store = match DiskLogStore::new(ns_conn, namespace, true) {
-        Some(store) => store,
-        None => fatal(16),
-    };
-    let persistent_state = match DiskPersistentStateStore::new(ns_conn, namespace, true) {
-        Some(store) => store,
-        None => fatal(17),
-    };
+    let (log_store, persistent_state) = disk_raft::open(names, namespace).unwrap_or_else(|error| {
+        catten_rt::logln!("[raft-store] DNS open rejected: {:?}", error);
+        fatal(16)
+    });
     let mut node = RaftNode::new(catten_graft::node::RaftNodeConfig {
         me: me.clone(),
         timeout_millis: election_timeout_ms,
