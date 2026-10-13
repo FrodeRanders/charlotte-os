@@ -38,8 +38,9 @@ config-page entries. It contains broker addresses and TLS identities/trust
 anchor, consume route, ordered produce routes, consumer group, transactional
 identity, optional connector-only SASL credentials, rights, transaction timeout,
 and an operator-selected route ceiling.
-The launcher encodes profile version 6, calculates a SHA-256 integrity digest, and
-transfers its memory capability with kernel-enforced `MAP_READ` rights only.
+The launcher encodes profile version 7 (`CHKAFP7`), calculates a SHA-256
+integrity digest, and transfers its memory capability with kernel-enforced
+`MAP_READ` rights only.
 Typed profile-capability metadata carries the exact meaningful byte length; it
 is not hidden in a generic capability-flags field. Before opening a socket,
 `kafka.elf` validates that length, the version, digest, UTF-8 DNS host-label
@@ -53,12 +54,50 @@ not the profile or its broker/TLS/SASL configuration. Client-certificate
 secrets reside in the same connector-only profile and remain absent from the
 application-facing IPC protocol.
 
-Authentication material is a bounded sequence of length-delimited profile
-sections rather than fixed header fields. Version 6 defines critical
-SCRAM-SHA-256 and P-256 mTLS sections, caps both the section count and aggregate
-bytes, rejects duplicate known sections, and safely skips unknown optional
-sections. An unknown critical section fails profile decoding, allowing a future
-authentication mechanism to state that an older connector must not start.
+Authentication is one closed choice: `None`, `ScramSha256`, `MtlsP256`,
+or `ScramSha256AndMtlsP256`. The fixed header declares the four credential
+lengths; fields for disabled mechanisms must be empty and fields for selected
+mechanisms must satisfy their existing nonempty size/syntax bounds. Unknown
+choices and retired formats reject before broker connection. There are no
+optional/critical extension sections or skipped authentication material.
+The encoder copies borrowed credentials directly into the final profile;
+there is no second temporary credential-section allocation. The trusted
+launcher retains its existing zeroizing encoded-buffer owner, and the
+connector retains its existing zeroizing password/private-key copies.
+
+### Current profile wire contract
+
+The only accepted profile is `CHKAFP7\0`, version 7, with an exact 112-byte
+header. Integers are little-endian; the total meaningful length must equal the
+input length. SHA-256 covers the entire record with bytes 16--47 zeroed during
+hashing. Reserved bytes and unknown TLS flags reject.
+
+| Offset | Field |
+| --- | --- |
+| 0 | Eight-byte magic |
+| 8, 10, 12 | Version `u16`, header length `u16`, total length `u32` |
+| 16 | 32-byte integrity digest |
+| 48, 52, 54 | IPv4 `[u8; 4]`, port `u16`, TLS flags `u16` |
+| 56, 64, 68 | Rights `u64`, transaction timeout `u32`, consume partition `i32` |
+| 72, 74 | Produce route count and declared ceiling, each `u16` |
+| 76, 78, 80, 82 | Host, topic, group and transactional-ID lengths, each `u16` |
+| 84, 88 | CA length `u32`, additional broker count `u16` |
+| 90 | Authentication choice `u16`: 0 none, 1 SCRAM, 2 mTLS, 3 both |
+| 92, 94 | Username and password lengths, each `u16` |
+| 96, 98 | Instance-name length and authority-endpoint count, each `u16` |
+| 100, 104 | Client-certificate and private-key lengths, each `u32` |
+| 108 | Four zero reserved bytes |
+
+Payload order is instance name, host, CA, topic, group, transactional ID,
+username, password, client certificate and private key, then produce routes,
+additional brokers and authority endpoints. Empty disabled fields occupy no
+payload bytes. Existing route (8-byte header), broker (8-byte header) and
+authority (16-byte header) records retain their bounds and zero-reserved fields.
+No suffix or padding is accepted. `CHKAFP1`--`CHKAFP6` and the retired 104-byte
+section layout reject even with a correct integrity digest; old encrypted
+operational envelopes must be regenerated from reviewed current profiles,
+not relabelled or filled with defaults. Their outer envelope and catalog
+formats are unchanged: connector decoding remains the inner-format authority.
 
 Profile-backed launch is prepared as one kernel transaction. Until the initial
 thread starts, an owning launch object retains the unloaded domain and any

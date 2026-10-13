@@ -260,6 +260,11 @@ the corrected RPC polling paths, and the remaining notification gaps.
   require the complete immutable CHS3PF1 profile in read-only launch memory;
   per-field manifest aliases and defaults supply no fallback. See
   `docs/reference/catalog-snapshots.md` and `docs/reference/s3-client.md`.
+  Kafka uses the fixed CHKAFP7 profile and one explicit authentication choice.
+  Copy borrowed credential fields directly into the existing zeroizing launch
+  buffer; reject unknown choices, disabled-field material and retired section
+  formats. Broker protocol negotiation remains a separate external boundary.
+  See `docs/reference/kafka-client.md`.
   Application snapshot restore must return rejection without changing live
   state. Propagate that rejection before exposing a Raft node or publishing
   snapshot/log progress, membership or join completion; unsupported state is

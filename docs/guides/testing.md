@@ -570,6 +570,11 @@ consume-transform-produce transaction with the consumer offset included. The
 runner creates a fresh single-partition `charlotte-events` topic and removes
 the fixture and its volumes on exit. See
 [Kafka client service](../reference/kafka-client.md#docker-integration-test).
+The launcher and connector use the sole `CHKAFP7` profile. Host controls reject
+retired section layouts, unknown authentication choices, credentials for disabled
+mechanisms, incomplete records and trailing data; they do not establish TLS
+validity. The native fixture exercises verified TLS with combined SCRAM/mTLS
+through read-only launch memory and the existing connector secret owners.
 Use `--kafka-coordinator-test` to hard-stop the transaction coordinator chosen
 by Kafka, or `--kafka-fencing-test` to start a second connector with the same
 transactional identity and require the stale producer to fail closed.

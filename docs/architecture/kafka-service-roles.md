@@ -21,7 +21,7 @@ broker, group, transactional identity, or topic. A deployment controller can
 therefore replace or rotate the connector profile independently of rebuilding
 the producer, consumer, transactional-step, or procedure artifacts.
 
-Profile version 6 separates a diagnostic connector instance name from a
+Profile version 7 separates a diagnostic connector instance name from a
 bounded set of application-facing authority endpoints. Each endpoint has a
 non-empty printable-ASCII name of at most 256 bytes and a Kafka-rights ceiling
 that must be a subset of the connector's profile ceiling. The connector checks
@@ -34,11 +34,13 @@ an access point.
 
 ![Secrets remain in connectors while applications receive attenuated capabilities](../manual-v2/figures/external-service-capabilities.svg)
 
-Connector-only authentication is encoded as bounded, length-delimited profile
-sections. Known SCRAM-SHA-256 and P-256 mTLS sections are critical; an older
-decoder may skip a future optional section but must reject an unknown critical
-one. Section count and aggregate bytes are bounded before any credentials are
-exposed to the broker adapter.
+Connector-only authentication uses the fixed `CHKAFP7` profile header and
+one explicit choice: none, SCRAM-SHA-256, P-256 mTLS, or both. Four credential
+lengths delimit bounded fields; disabled mechanisms require empty fields.
+Unknown choices, missing required material and retired section-based profiles
+reject before broker connection. The shared encoder copies borrowed fields
+directly into the launcher's existing zeroizing buffer. See the
+[current profile contract](../reference/kafka-client.md#current-profile-wire-contract).
 
 For a transactional step the authority chain is:
 
