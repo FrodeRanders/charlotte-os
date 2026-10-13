@@ -749,6 +749,16 @@ note covers both the bytes and requested logical name. The descriptor path
 then invokes the scoped deployment-authority syscall with both owned memory
 objects.
 
+The sole scoped runtime API is \texttt{launch\_scoped\_artifact}: it consumes
+the ELF and descriptor owners with their exact lengths and returns an owning
+\texttt{DeployedArtifact}. Syscall 76 takes four arguments and returns both
+the ASID and the principal derived by the kernel from the verified signed
+descriptor. Packed-name input, named aliases and a caller-supplied retirement
+name are removed. Rejection returns two zeroes and consumes submitted inputs;
+local length rejection releases the two Rust owners before submission.
+Retirement requires an explicit nonzero principal; zero cannot select a lone
+deployment. See \path{docs/reference/scoped-deployment-launch.md}.
+
 The kernel snapshots and revalidates the exact ELF and descriptor, maps the
 ELF into a fresh address space, gives the application only the grant controller
 and its immutable descriptor, and starts it. A descriptor-authorized service

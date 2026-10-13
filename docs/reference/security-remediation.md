@@ -534,3 +534,17 @@ callers and packed deployment APIs remain the next simplification work. It
 adds no cleanup custody or physical completion proof and changes no numbered
 finding status or count. Infallible snapshot allocations, concurrent reader
 isolation and power-loss atomicity remain outside this batch. All 410 host tests and four matching-architecture deployment guests passed (22/0/0 twice on ARM, 20/0/0 twice on x86). Initial status-reader failures and the invalid mixed-architecture deployment pair remain separately recorded.
+
+
+The [scoped launch API batch](../reports/audits/2026-10-13-protocol-simplification-launch.md)
+removes packed scoped names and duplicate runtime wrappers. The kernel returns
+the verified descriptor principal directly into the retirement owner; callers
+cannot supply a different retirement name or select a singleton with zero.
+This changes neither numbered finding counts nor physical cleanup qualification.
+Descriptor-less launch/catalog fixtures remain the next ordered removal.
+All 411 host tests and final ARM 20/0/0 / x86 18/0/0 signed-ingress runs pass.
+The initial x86 timer-event probe received a legitimate pre-admission timeout
+under its 1 ms budget; its failed run is retained separately. The corrected
+probe uses an isolated, pre-publication sponsor and observes its worker's exact
+exit generation, without replacing live sponsorship or changing production
+wait semantics. C16/C18 and broader cleanup qualifications remain open.

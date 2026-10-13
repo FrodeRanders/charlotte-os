@@ -230,12 +230,16 @@ repeated results as separate owning capabilities. See
 [mailbox capability budgets](../reference/mailbox-capability-budgets.md) for
 limits and the distinction between handles and queue backing.
 
-Deployment agents use `launch_scoped_artifact_named`, which consumes both the
-ELF and signed descriptor memory and returns `DeployedArtifact`. Keep that
+Deployment agents use `launch_scoped_artifact`, which consumes both the
+ELF and signed descriptor memory with their exact lengths and returns
+`DeployedArtifact`. The owner takes its principal from the kernel's verified
+launch receipt; callers cannot supply a separate retirement name or select a
+singleton with principal zero. See the [launch contract](../reference/scoped-deployment-launch.md).
+Keep that
 owner in the reconciliation record until `poll_retire` returns `Ok(true)`.
 Do not keep only the returned ASID or call the retirement syscall directly:
-the principal-bound owner prevents one rollout from retiring another domain
-after ASID reuse.
+retirement is bound to the artifact identity rather than a reused ASID. This
+does not prove physical cleanup or replace the kernel's exact root owners.
 
 For lifecycle-aware applications, keep the resource-owning serving loop in a
 function that returns `ShutdownRequest`, then call `complete()` outside that

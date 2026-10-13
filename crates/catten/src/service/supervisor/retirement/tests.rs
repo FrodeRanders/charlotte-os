@@ -103,6 +103,24 @@ fn test_timeout_registry() {
             0,
         )
     };
+    assert_eq!(
+        crate::syscall::retire_deployed_artifact_with_registry(
+            &registry,
+            0,
+            true,
+            charlotte_launch::lifecycle::REASON_DEPLOYMENT_RETIRED,
+            0,
+        ),
+        u64::MAX,
+        "a zero principal must not select the sole deployment",
+    );
+    {
+        let entries = registry.lock();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].principal, PRINCIPAL);
+        assert!(!entries[0].force_requested);
+        assert!(matches!(entries[0].teardown, DeploymentTeardown::Polling));
+    }
     assert_eq!(poll(), 1, "competing caller stole deployment close authority");
     {
         let mut entries = registry.lock();

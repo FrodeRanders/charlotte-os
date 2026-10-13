@@ -57,17 +57,16 @@ pub fn request_node_shutdown(
     }
 }
 
-/// Transfer a signed ELF and deployment descriptor to the privileged scoped
-/// deployment gate. The kernel consumes both memory capabilities on every
-/// submitted outcome; invalid lengths are rejected locally and normal `Drop`
-/// releases both owners.
-pub fn spawn_scoped_artifact(
+/// Launch a signed ELF and descriptor, retaining retirement ownership for the
+/// exact artifact principal verified by the kernel. The kernel consumes both
+/// memory capabilities on every submitted outcome. Local length rejection
+/// releases both owners normally, before submission.
+pub fn launch_scoped_artifact(
     mut artifact: OwnedMemory,
     artifact_len: usize,
-    artifact_name: u64,
     mut descriptor: OwnedMemory,
     descriptor_len: usize,
-) -> Result<u64, ArtifactLaunchError> {
+) -> Result<DeployedArtifact, ArtifactLaunchError> {
     if artifact_len == 0
         || artifact_len > artifact.len()
         || descriptor_len < charlotte_launch::deployment::HEADER_LEN
@@ -78,32 +77,16 @@ pub fn spawn_scoped_artifact(
     }
     let artifact_cap = artifact.cap.take().expect("artifact capability already consumed");
     let descriptor_cap = descriptor.cap.take().expect("descriptor capability already consumed");
-    let asid = kernel::spawn_artifact_scoped(
-        artifact_cap,
-        artifact_len,
-        artifact_name,
-        descriptor_cap,
-        descriptor_len,
-    );
+    let (asid, principal) =
+        kernel::spawn_artifact_scoped(artifact_cap, artifact_len, descriptor_cap, descriptor_len);
     if asid == 0 {
-        Err(ArtifactLaunchError::Rejected)
-    } else {
-        Ok(asid)
+        return Err(ArtifactLaunchError::Rejected);
     }
-}
-
-/// Transfer a signed ELF and descriptor to the scoped deployment gate using
-/// the descriptor's full artifact name as the authoritative identity.
-///
-/// This is the normal API for deployment descriptors. The packed-name form
-/// above remains for ABI compatibility with early short-name callers.
-pub fn spawn_scoped_artifact_named(
-    artifact: OwnedMemory,
-    artifact_len: usize,
-    descriptor: OwnedMemory,
-    descriptor_len: usize,
-) -> Result<u64, ArtifactLaunchError> {
-    spawn_scoped_artifact(artifact, artifact_len, 0, descriptor, descriptor_len)
+    Ok(DeployedArtifact {
+        principal,
+        asid,
+        retired: false,
+    })
 }
 
 /// Transfer a complete encrypted connector pickup to the kernel launch gate.
@@ -199,31 +182,9 @@ impl Drop for DeployedArtifact {
     }
 }
 
-/// Launch a scoped artifact and retain an owner that fences retirement by the
-/// full signed artifact identity.
-pub fn launch_scoped_artifact_named(
-    artifact: OwnedMemory,
-    artifact_len: usize,
-    artifact_name: &[u8],
-    descriptor: OwnedMemory,
-    descriptor_len: usize,
-) -> Result<DeployedArtifact, ArtifactLaunchError> {
-    if artifact_name.is_empty()
-        || artifact_name.len() > charlotte_launch::deployment::MAX_ARTIFACT_NAME_LEN
-    {
-        return Err(ArtifactLaunchError::InvalidLength);
-    }
-    let asid = spawn_scoped_artifact_named(artifact, artifact_len, descriptor, descriptor_len)?;
-    Ok(DeployedArtifact {
-        principal: charlotte_launch::artifact_principal_id(artifact_name),
-        asid,
-        retired: false,
-    })
-}
-
 /// Launch a legacy short-name artifact while retaining principal-fenced
 /// retirement ownership. New production deployments should use a signed
-/// descriptor and [`launch_scoped_artifact_named`].
+/// descriptor and [`launch_scoped_artifact`].
 pub fn launch_artifact(
     mut artifact: OwnedMemory,
     artifact_len: usize,

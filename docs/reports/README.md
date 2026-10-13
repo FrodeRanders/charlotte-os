@@ -10,6 +10,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
+- [One scoped launch owner](audits/2026-10-13-protocol-simplification-launch.md) — Signed launch returns its verified principal; packed/name aliases and zero-principal singleton retirement are removed.
 - [Current-only catalog snapshots](audits/2026-10-13-protocol-simplification-catalog.md) — Retired snapshot decoders removed; explicit restore rejection precedes Raft log/membership publication; deployment queries require complete sections.
 - [Current-only Raft persistence](audits/2026-10-13-protocol-simplification-raft.md) — Tagged two-object pair, strict recovery, owned IPC transport and future migration policy.
 - [Current-only discovery advertisements](audits/2026-10-13-protocol-simplification-discovery.md) — Complete declared-length payloads replace optional cluster fields and base-only fallbacks.

@@ -487,7 +487,7 @@ extern "C" fn cq_driver() {
     ipc::waiter_tests::test_scheduled_reply_cq();
     crate::cpu::scheduler::sync::tests::test_scheduled_cleanup();
     crate::timers::waiter_tests::test_scheduled_cleanup();
-    crate::timers::event_tests::test_scheduled_cleanup();
+    test_isolated_timer_events();
     completion::exit_tests::test_scheduled_cleanup();
     completion::callback_tests::test_scheduled_cleanup();
     test_timed_completion_wakes();
@@ -500,6 +500,34 @@ extern "C" fn cq_driver() {
          per-queue wake on a second shard queue, and by CQ-bound endpoint readiness."
     );
     crate::self_test::results::pass(crate::self_test::results::TestId::CqWait);
+}
+
+extern "C" fn timer_event_driver() {
+    crate::timers::event_tests::test_scheduled_cleanup();
+}
+
+fn test_isolated_timer_events() {
+    // Raw boot-fixture boundary: isolate admission before thread publication
+    // and observe its exact generation before dispatch. No live sponsor swap
+    // and no polling flag or new readiness registry is used.
+    use crate::cpu::scheduler::{
+        system_scheduler,
+        threads,
+    };
+    let mut worker = threads::Thread::new(KERNEL_ASID, timer_event_driver);
+    worker.timer_sponsor = crate::timers::budget::SchedulerSponsor::new(true);
+    let worker = system_scheduler::publish_thread(worker).expect("timer fixture publication");
+    let generation = threads::MASTER_THREAD_TABLE.read().get(worker).unwrap().generation;
+    let exited =
+        completion::observe_thread_exit_with_generation(CQW_ASID, worker, Some(generation))
+            .expect("timer fixture exit observation");
+    system_scheduler::SYSTEM_SCHEDULER
+        .read()
+        .submit_new_thread(worker)
+        .expect("timer fixture scheduler admission");
+    assert!(completion::wait_timeout(CQW_ASID, exited, 10_000).expect("timer fixture exit wait"));
+    assert_eq!(completion::poll(CQW_ASID, exited).unwrap().unwrap().result, OpResult::Ok(0));
+    completion::close(CQW_ASID, exited).expect("timer fixture exit completion close");
 }
 
 pub fn test_cq_wait_wake() {

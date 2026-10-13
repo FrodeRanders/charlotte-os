@@ -481,20 +481,6 @@ unsafe fn svc4(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64, arg4: u64) -
 
 #[cfg(target_arch = "aarch64")]
 #[inline(always)]
-unsafe fn svc5(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> u64 {
-    let ret: u64;
-    unsafe {
-        match imm as u16 {
-            39 => asm!("svc #39", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, in("x5") arg5, options(nostack, nomem, preserves_flags)),
-            76 => asm!("svc #76", lateout("x0") ret, in("x1") arg1, in("x2") arg2, in("x3") arg3, in("x4") arg4, in("x5") arg5, options(nostack, nomem, preserves_flags)),
-            _ => panic!("syscall {:?} has no svc5 emitter", imm),
-        }
-    }
-    ret
-}
-
-#[cfg(target_arch = "aarch64")]
-#[inline(always)]
 unsafe fn svc6(
     imm: SyscallNumber,
     arg1: u64,
@@ -546,27 +532,6 @@ unsafe fn svc4(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64, arg4: u64) -
             in("rsi") arg2,
             in("rdx") arg3,
             in("r10") arg4,
-            lateout("rcx") _,
-            lateout("r11") _,
-            options(preserves_flags),
-        );
-    }
-    ret
-}
-
-#[cfg(target_arch = "x86_64")]
-#[inline(always)]
-unsafe fn svc5(imm: SyscallNumber, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> u64 {
-    let ret: u64;
-    unsafe {
-        asm!(
-            "syscall",
-            inlateout("rax") imm as u64 => ret,
-            in("rdi") arg1,
-            in("rsi") arg2,
-            in("rdx") arg3,
-            in("r10") arg4,
-            in("r8") arg5,
             lateout("rcx") _,
             lateout("r11") _,
             options(preserves_flags),
@@ -864,12 +829,6 @@ unsafe fn svc3(_imm: SyscallNumber, _arg1: u64, _arg2: u64, _arg3: u64) -> u64 {
 #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 #[inline(always)]
 unsafe fn svc4(_imm: SyscallNumber, _arg1: u64, _arg2: u64, _arg3: u64, _arg4: u64) -> u64 {
-    0
-}
-
-#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
-#[inline(always)]
-unsafe fn svc5(_imm: SyscallNumber, _a1: u64, _a2: u64, _a3: u64, _a4: u64, _a5: u64) -> u64 {
     0
 }
 
@@ -2053,21 +2012,20 @@ pub fn spawn_artifact(elf_cap: u64, elf_size: usize, artifact_name: u64) -> u64 
 /// Start a signed ELF with a signed deployment descriptor. The launched
 /// application receives only the capability-grant controller as bootstrap and
 /// the descriptor as an immutable profile. The kernel consumes both memory
-/// capabilities on success and failure.
+/// capabilities on success and failure. Returns `(asid, signed_principal)` on
+/// success or `(0, 0)` on rejection; the descriptor is the sole name authority.
 #[inline(always)]
 pub fn spawn_artifact_scoped(
     elf_cap: u64,
     elf_size: usize,
-    artifact_name: u64,
     descriptor_cap: u64,
     descriptor_size: usize,
-) -> u64 {
+) -> (u64, u64) {
     unsafe {
-        svc5(
+        svc4_x1(
             SyscallNumber::SpawnArtifactScoped,
             elf_cap,
             elf_size as u64,
-            artifact_name,
             descriptor_cap,
             descriptor_size as u64,
         )
@@ -2093,17 +2051,9 @@ pub fn spawn_operational_connector(
     }
 }
 
-/// Retire the domain created by [`spawn_artifact`]. Returns 1 while thread
-/// retirement is in progress, 0 once resources and endpoints are reclaimed,
-/// and `u64::MAX` when the caller lacks deployment authority.
-#[inline(always)]
-pub fn retire_artifact() -> u64 {
-    unsafe { svc4(SyscallNumber::RetireArtifact, 0, 0, 0, 0) }
-}
-
 /// Retire the deployed domain identified by its signed artifact principal.
-/// Returns 1 while retirement is in progress, 0 once it is absent/reclaimed,
-/// and `u64::MAX` when the caller lacks deployment authority.
+/// A zero principal rejects. Returns 1 while retirement is in progress, 0 once it is
+/// absent/reclaimed, and `u64::MAX` when the caller lacks deployment authority.
 #[inline(always)]
 pub fn retire_artifact_named(principal: u64) -> u64 {
     unsafe { svc4(SyscallNumber::RetireArtifact, principal, 0, 0, 0) }
@@ -2179,6 +2129,7 @@ unsafe fn svc4_x1(imm: SyscallNumber, a1: u64, a2: u64, a3: u64, a4: u64) -> (u6
         match imm as u16 {
             // Moving memory and publishing CQ state have memory effects.
             33 => asm!("svc #33", lateout("x0") ret, inlateout("x1") a1 => status, in("x2") a2, in("x3") a3, in("x4") a4, options(nostack, preserves_flags)),
+            76 => asm!("svc #76", lateout("x0") ret, inlateout("x1") a1 => status, in("x2") a2, in("x3") a3, in("x4") a4, options(nostack, preserves_flags)),
             _ => panic!("syscall {:?} has no svc4_x1 emitter", imm),
         }
     }

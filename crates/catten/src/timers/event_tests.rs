@@ -30,8 +30,6 @@ use crate::{
             system_scheduler::get_thread_id,
             threads::{
                 MASTER_THREAD_TABLE,
-                ThreadGeneration,
-                ThreadId,
                 ThreadState,
             },
         },
@@ -217,43 +215,18 @@ fn test_retained_cancellation_admission() {
     assert_eq!(budget::node_used(), baseline);
 }
 
-/// Kernel fixture only: substitute this executing thread's sponsor to force
-/// deterministic rejection without consuming other threads' shared allowance.
-struct SponsorFixture {
-    tid: ThreadId,
-    generation: ThreadGeneration,
-    original: SchedulerSponsor,
-}
-impl SponsorFixture {
-    fn install(sponsor: SchedulerSponsor) -> Self {
-        let tid = get_thread_id().unwrap();
-        let mut table = MASTER_THREAD_TABLE.write();
-        let thread = table.get_mut(tid).unwrap();
-        Self {
-            tid,
-            generation: thread.generation,
-            original: core::mem::replace(&mut thread.timer_sponsor, sponsor),
-        }
-    }
-}
-impl Drop for SponsorFixture {
-    fn drop(&mut self) {
-        let mut table = MASTER_THREAD_TABLE.write();
-        let thread = table.get_mut(self.tid).unwrap();
-        assert_eq!(thread.generation, self.generation);
-        thread.timer_sponsor = self.original.clone();
-    }
-}
-
 pub(crate) fn test_scheduled_cleanup() {
-    let sponsor = SchedulerSponsor::new(true);
-    let fixture = SponsorFixture::install(sponsor.clone());
+    // This runs on its own raw boot-fixture worker. Its private trusted
+    // sponsor was installed before publication, with no earlier event capture.
+    let tid = get_thread_id().unwrap();
+    let (generation, sponsor) = super::thread_timer_context(tid).unwrap();
+    assert_eq!(sponsor.used(), 0, "timer fixture must start with an unused private account");
     let mut charges = Vec::new();
     for _ in 0..1024 {
         charges.push(sponsor.reserve().unwrap());
     }
     let source = WaiterSource::new();
-    let constraints = MASTER_THREAD_TABLE.read().get(fixture.tid).unwrap().migration_constraints;
+    let constraints = MASTER_THREAD_TABLE.read().get(tid).unwrap().migration_constraints;
     assert!(!block_until(&source, 1, || false));
     assert_eq!(source.registered(), 0);
     // Synthetic completion namespace / trap frame are kernel ABI fixtures,
@@ -270,8 +243,18 @@ pub(crate) fn test_scheduled_cleanup() {
         asid,
     };
     frame.regs[1] = cap;
-    frame.regs[2] = 1;
-    crate::syscall::syscall_dispatch(&mut frame, crate::syscall::call_no::COMPLETION_WAIT_TIMEOUT);
+    // Admission rejection is distinct from a deadline that expires before
+    // admission. A 1 ms budget can legitimately return timeout under TCG.
+    // Keep the private full account and this exact caller stable for the
+    // pre-allocation rejection; preserve the enclosing IRQ policy.
+    frame.regs[2] = 60_000;
+    {
+        let _mask = LocalInterruptMask::new();
+        crate::syscall::syscall_dispatch(
+            &mut frame,
+            crate::syscall::call_no::COMPLETION_WAIT_TIMEOUT,
+        );
+    }
     assert_eq!(frame.regs[0], catten_syscall::completion_status::WAIT_ADMISSION_FAILED);
     assert!(crate::completion::poll(asid, cap).unwrap().is_none());
     assert!(!crate::completion::wait_on_cq_timeout(asid, 0, 1, 1));
@@ -283,7 +266,8 @@ pub(crate) fn test_scheduled_cleanup() {
     assert!(monotonic_millis().saturating_sub(started) >= 2);
     {
         let table = MASTER_THREAD_TABLE.read();
-        let thread = table.get(fixture.tid).unwrap();
+        let thread = table.get(tid).unwrap();
+        assert_eq!(thread.generation, generation);
         assert!(matches!(thread.state, ThreadState::Running(_)));
         assert_eq!(thread.migration_constraints, constraints);
     }
@@ -333,7 +317,6 @@ pub(crate) fn test_scheduled_cleanup() {
         assert!(!block_until(&source, 1, || false));
         assert_eq!(sponsor.used(), 0);
     }
-    drop(fixture);
     crate::logln!(
         "[timer events] SUCCESS: pre-park rejection, sleep fallback, deferred queue reclamation \
          and sleep/watchdog accounting"

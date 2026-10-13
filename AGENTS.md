@@ -14,6 +14,10 @@ build manual cleanup ladders around early returns.
   and `DmaTransfer`.
 - Use protocol-specific owners, such as `catten_services::socket::OwnedSocket`,
   for remote resources represented by scalar IDs.
+- Scoped deployment uses `launch_scoped_artifact` and retains its
+  `DeployedArtifact`. The kernel's signed launch receipt supplies its retirement
+  principal; never reconstruct that owner from a caller-supplied name or use
+  a zero-principal singleton selector. See `docs/reference/scoped-deployment-launch.md`.
 - Make ownership transfer consume the Rust owner. Use `call_move`, `send_move`,
   or `reply_move`; do not call `into_raw` and then reconstruct cleanup logic.
 - Keep borrowed memory behind a Rust borrow until the pending call terminates.

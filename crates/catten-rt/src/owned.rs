@@ -290,17 +290,10 @@ mod kernel {
     pub fn spawn_artifact_scoped(
         artifact: u64,
         artifact_len: usize,
-        artifact_name: u64,
         descriptor: u64,
         descriptor_len: usize,
-    ) -> u64 {
-        catten_syscall::spawn_artifact_scoped(
-            artifact,
-            artifact_len,
-            artifact_name,
-            descriptor,
-            descriptor_len,
-        )
+    ) -> (u64, u64) {
+        catten_syscall::spawn_artifact_scoped(artifact, artifact_len, descriptor, descriptor_len)
     }
 
     pub fn spawn_operational_connector(package: u64, package_len: usize, principal: u64) -> u64 {
@@ -366,6 +359,7 @@ mod kernel {
         RetireArtifactForNodeShutdown(u64, u64),
         ForceRetireArtifact(u64),
         RequestNodeShutdown(u64, usize),
+        ScopedLaunch(u64, usize, u64, usize),
     }
 
     pub struct State {
@@ -400,6 +394,7 @@ mod kernel {
         pub ipc_close: VecDeque<u64>,
         pub connection_watch: u64,
         pub scoped_spawn: u64,
+        pub scoped_principal: u64,
         pub retire_result: u64,
         pub node_shutdown_result: u64,
         pub events: Vec<Event>,
@@ -439,6 +434,7 @@ mod kernel {
                 ipc_close: VecDeque::new(),
                 connection_watch: 20,
                 scoped_spawn: 2,
+                scoped_principal: 0x8000_1234,
                 retire_result: 0,
                 node_shutdown_result: 0,
                 events: Vec::new(),
@@ -795,13 +791,20 @@ mod kernel {
     }
 
     pub fn spawn_artifact_scoped(
-        _artifact: u64,
-        _artifact_len: usize,
-        _artifact_name: u64,
-        _descriptor: u64,
-        _descriptor_len: usize,
-    ) -> u64 {
-        with_state(|state| state.scoped_spawn)
+        artifact: u64,
+        artifact_len: usize,
+        descriptor: u64,
+        descriptor_len: usize,
+    ) -> (u64, u64) {
+        with_state(|state| {
+            state.events.push(Event::ScopedLaunch(
+                artifact,
+                artifact_len,
+                descriptor,
+                descriptor_len,
+            ));
+            (state.scoped_spawn, state.scoped_principal)
+        })
     }
 
     pub fn spawn_operational_connector(_package: u64, _package_len: usize, _principal: u64) -> u64 {
@@ -871,8 +874,8 @@ mod tests {
         SharedDmaMapError,
         kernel,
         launch_operational_connector,
+        launch_scoped_artifact,
         request_node_shutdown,
-        spawn_scoped_artifact,
     };
 
     fn setup() -> std::sync::MutexGuard<'static, ()> {
@@ -1313,8 +1316,8 @@ mod tests {
         let descriptor = unsafe { OwnedMemory::from_raw(12) }.expect("descriptor memory");
 
         assert_eq!(
-            spawn_scoped_artifact(artifact, 1, 1, descriptor, 0),
-            Err(ArtifactLaunchError::InvalidLength)
+            launch_scoped_artifact(artifact, 1, descriptor, 0).err(),
+            Some(ArtifactLaunchError::InvalidLength)
         );
         assert_eq!(
             kernel::events(),
@@ -1323,22 +1326,56 @@ mod tests {
     }
 
     #[test]
-    fn scoped_launch_transfers_both_inputs_on_submission() {
+    fn scoped_launch_transfers_both_inputs_and_retains_the_kernel_principal() {
         let _guard = setup();
         let artifact = unsafe { OwnedMemory::from_raw(11) }.expect("artifact memory");
         let descriptor = unsafe { OwnedMemory::from_raw(12) }.expect("descriptor memory");
-
+        kernel::update(|state| state.scoped_principal = 0x8000_abcd);
+        let mut domain = launch_scoped_artifact(
+            artifact,
+            1,
+            descriptor,
+            charlotte_launch::deployment::HEADER_LEN,
+        )
+        .expect("scoped launch");
+        assert_eq!(domain.asid(), 2);
+        assert_eq!(domain.principal(), 0x8000_abcd);
         assert_eq!(
-            spawn_scoped_artifact(
-                artifact,
-                1,
-                1,
-                descriptor,
-                charlotte_launch::deployment::HEADER_LEN,
-            ),
-            Ok(2)
+            kernel::events(),
+            [kernel::Event::ScopedLaunch(11, 1, 12, charlotte_launch::deployment::HEADER_LEN)]
         );
-        assert!(kernel::events().is_empty());
+        assert_eq!(domain.poll_retire(), Ok(true));
+        drop(domain);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::ScopedLaunch(11, 1, 12, charlotte_launch::deployment::HEADER_LEN),
+                kernel::Event::RetireArtifact(0x8000_abcd),
+            ]
+        );
+    }
+
+    #[test]
+    fn scoped_launch_drop_forces_only_the_returned_principal() {
+        let _guard = setup();
+        kernel::update(|state| state.scoped_principal = 0x8000_dcba);
+        let artifact = unsafe { OwnedMemory::from_raw(11) }.expect("artifact memory");
+        let descriptor = unsafe { OwnedMemory::from_raw(12) }.expect("descriptor memory");
+        let domain = launch_scoped_artifact(
+            artifact,
+            1,
+            descriptor,
+            charlotte_launch::deployment::HEADER_LEN,
+        )
+        .expect("scoped launch");
+        drop(domain);
+        assert_eq!(
+            kernel::events(),
+            [
+                kernel::Event::ScopedLaunch(11, 1, 12, charlotte_launch::deployment::HEADER_LEN),
+                kernel::Event::ForceRetireArtifact(0x8000_dcba),
+            ]
+        );
     }
 
     #[test]
@@ -1613,16 +1650,19 @@ mod tests {
         let descriptor = unsafe { OwnedMemory::from_raw(12) }.expect("descriptor memory");
 
         assert_eq!(
-            spawn_scoped_artifact(
+            launch_scoped_artifact(
                 artifact,
-                1,
                 1,
                 descriptor,
                 charlotte_launch::deployment::HEADER_LEN,
-            ),
-            Err(ArtifactLaunchError::Rejected)
+            )
+            .err(),
+            Some(ArtifactLaunchError::Rejected)
         );
-        assert!(kernel::events().is_empty());
+        assert_eq!(
+            kernel::events(),
+            [kernel::Event::ScopedLaunch(11, 1, 12, charlotte_launch::deployment::HEADER_LEN)]
+        );
     }
 
     #[test]

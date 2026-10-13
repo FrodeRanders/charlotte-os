@@ -28,7 +28,7 @@ use catten_rt::{
         OwnedMemory,
         launch_artifact,
         launch_operational_connector,
-        launch_scoped_artifact_named,
+        launch_scoped_artifact,
         request_node_shutdown,
     },
 };
@@ -556,19 +556,19 @@ fn launch(
     descriptor.placement.validate(&metadata).ok()?;
     let artifact_memory = memory_from_bytes(&artifact)?;
     let descriptor_memory = memory_from_bytes(&entry.descriptor)?;
-    let domain = launch_scoped_artifact_named(
+    let domain = launch_scoped_artifact(
         artifact_memory,
         artifact.len(),
-        name,
         descriptor_memory,
         entry.descriptor.len(),
     )
     .ok()?;
     catten_rt::logln!(
-        "[agent] launched {:?} generation={} asid={}",
+        "[agent] launched {:?} generation={} asid={} principal={:#x}",
         core::str::from_utf8(name).unwrap_or("<invalid>"),
         entry.generation,
-        domain.asid()
+        domain.asid(),
+        domain.principal()
     );
     Some(ActiveDeployment {
         name: name.to_vec(),

@@ -2261,20 +2261,22 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
     let caller_asid = caller_asid(frame);
     let elf_cap = frame.regs[1];
     let elf_size = usize::try_from(frame.regs[2]).ok();
-    let packed_name = frame.regs[3];
-    let descriptor_cap = frame.regs[4];
-    let descriptor_size = usize::try_from(frame.regs[5]).ok();
+    let descriptor_cap = frame.regs[3];
+    let descriptor_size = usize::try_from(frame.regs[4]).ok();
+    // Rejection always returns an empty receipt, never the input ELF handle.
+    frame.regs[1] = 0;
     let close_inputs = || {
         if elf_cap != 0 {
             let _ = crate::memory::object::close_cap(caller_asid, elf_cap);
         }
-        if descriptor_cap != 0 {
+        if descriptor_cap != 0 && descriptor_cap != elf_cap {
             let _ = crate::memory::object::close_cap(caller_asid, descriptor_cap);
         }
     };
     if !deployment_agent_authorized(caller_asid)
         || elf_cap == 0
         || descriptor_cap == 0
+        || descriptor_cap == elf_cap
         || elf_size.is_none_or(|size| size == 0 || size > charlotte_launch::MAX_ARTIFACT_ELF_SIZE)
         || descriptor_size.is_none_or(|size| {
             !(charlotte_launch::deployment::HEADER_LEN
@@ -2311,15 +2313,11 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
         frame.regs[0] = 0;
         return;
     };
-    let packed_name_bytes = packed_name.to_le_bytes();
-    let packed_name_len =
-        packed_name_bytes.iter().rposition(|byte| *byte != 0).map_or(0, |index| index + 1);
-    if (packed_name_len != 0 && decoded.artifact_name != &packed_name_bytes[..packed_name_len])
-        || charlotte_launch::signature_note::verify_elf_for_name(
-            &image,
-            &trust.artifact_key,
-            decoded.artifact_name,
-        ) != charlotte_launch::signature_note::VerifyOutcome::Valid
+    if charlotte_launch::signature_note::verify_elf_for_name(
+        &image,
+        &trust.artifact_key,
+        decoded.artifact_name,
+    ) != charlotte_launch::signature_note::VerifyOutcome::Valid
     {
         frame.regs[0] = 0;
         return;
@@ -2358,6 +2356,7 @@ fn sys_spawn_artifact_scoped(frame: &mut TrapFrame) {
         },
     );
     frame.regs[0] = domain.asid as u64;
+    frame.regs[1] = principal;
 }
 
 fn sys_spawn_operational_connector(frame: &mut TrapFrame) {
@@ -2636,12 +2635,11 @@ pub(crate) fn retire_deployed_artifact_with_registry(
             || requested_reason == charlotte_launch::lifecycle::REASON_NODE_SHUTDOWN,
         "invalid internal deployment-retirement reason"
     );
+    if principal == 0 {
+        return u64::MAX;
+    }
     let mut deployed = registry.lock();
-    let position = if principal == 0 && deployed.len() == 1 {
-        Some(0)
-    } else {
-        deployed.iter().position(|entry| entry.principal == principal)
-    };
+    let position = deployed.iter().position(|entry| entry.principal == principal);
     let Some(position) = position else {
         return 0;
     };
