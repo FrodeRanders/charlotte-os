@@ -5,7 +5,7 @@ service ELFs.
 AArch64 uses a small embedded storage bootstrap and loads the remaining
 services from a host-preseeded image. The x86-64 appliance can instead start
 with a blank disk and idempotently install its immutable signed bundle during
-first boot. This tool remains the QEMU path for constructing a version-3 store
+first boot. This tool remains the QEMU path for constructing a version-4 store
 ahead of boot (the same format `objstore` creates and that
 `scripts/fs-inspect.py` parses). It stores every staged ELF under its derived
 cluster-wide artifact id (`dns::artifact_object_id(name)`).
@@ -18,19 +18,19 @@ import struct
 import sys
 import zlib
 
-SB_MAGIC = 0x3352_5453_424A_4F43  # "COBJSTR3"
-SB_VERSION = 3
+SB_MAGIC = 0x3452_5453_4A42_4F43  # "COBJSTR4"
+SB_VERSION = 4
 SB_SLOTS = 2
 SB_LEN = 80
 SB_CHECKSUM_OFFSET = 76
 
 DIR_ENTRY_SIZE = 32
-DIR_CRC_SALT = 0x3344_4952
+DIR_CRC_SALT = 0x3444_4952
 MAX_DIRECTORY_BLOCKS = 4096
 FLAG_ALLOCATED = 1
 
-HEADER_MAGIC = 0x3244_484A_424F_4343
-HEADER_VERSION = 3
+HEADER_MAGIC = 0x3444_484A_424F_4343
+HEADER_VERSION = 4
 HEADER_LEN = 384
 HEADER_CHECKSUM_OFFSET = 112
 EXTENTS_OFFSET = 128
@@ -94,7 +94,7 @@ class Layout:
         self.directory_blocks = directory_blocks
         self.data_lba = self.directory_lba + 2 * directory_blocks
         if self.data_lba + 2 > total_blocks:
-            raise ValueError("image is too small for the v3 object-store layout")
+            raise ValueError("image is too small for the v4 object-store layout")
 
 
 class ImageWriter:
@@ -181,6 +181,7 @@ class ImageWriter:
         put_u16(header, 56, len(extents))
         put_u16(header, 58, HASH_FNV1A64)
         put_u32(header, 60, 1)
+        put_u64(header, 64, 1)  # Explicit kernel principal for staged artifacts.
         put_u64(header, 80, data_hash)
         for index, (lba, blocks) in enumerate(extents):
             offset = EXTENTS_OFFSET + index * EXTENT_SIZE

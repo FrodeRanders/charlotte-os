@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inspect or format a CharlotteOS v3 persistent object-store image.
+"""Inspect or format a CharlotteOS v4 persistent object-store image.
 
 Usage:
     python3 scripts/fs-inspect.py <image>                    # filesystem tree
@@ -23,19 +23,19 @@ import sys
 import zlib
 
 
-SB_MAGIC = 0x3352_5453_424A_4F43  # "COBJSTR3"
-SB_VERSION = 3
+SB_MAGIC = 0x3452_5453_4A42_4F43  # "COBJSTR4"
+SB_VERSION = 4
 SB_SLOTS = 2
 SB_LEN = 80
 SB_CHECKSUM_OFFSET = 76
 
 DIR_ENTRY_SIZE = 32
-DIR_CRC_SALT = 0x3344_4952
+DIR_CRC_SALT = 0x3444_4952
 MAX_DIRECTORY_BLOCKS = 4096
 FLAG_ALLOCATED = 1
 
-HEADER_MAGIC = 0x3244_484A_424F_4343
-HEADER_VERSION = 3
+HEADER_MAGIC = 0x3444_484A_424F_4343
+HEADER_VERSION = 4
 HEADER_LEN = 384
 HEADER_CHECKSUM_OFFSET = 112
 EXTENTS_OFFSET = 128
@@ -167,7 +167,7 @@ class Layout:
         directory_lba = bitmap_lba + bitmap_blocks
         data_lba = directory_lba + 2 * directory_blocks
         if data_lba + 2 > total_blocks:
-            raise ValueError("image is too small for the v3 object-store layout")
+            raise ValueError("image is too small for the v4 object-store layout")
         return cls(bitmap_lba, bitmap_blocks, directory_lba, directory_blocks, data_lba)
 
     def entry_count(self, block_size):
@@ -203,7 +203,7 @@ class ObjectRecord:
 
 
 class ObjectStore:
-    """Strict, read-only parser for object-store format v3."""
+    """Strict, read-only parser for object-store format v4."""
 
     def __init__(self, path):
         self.path = path
@@ -240,6 +240,10 @@ class ObjectStore:
             u64(data, 0) != SB_MAGIC
             or u32(data, 8) != SB_VERSION
             or u32(data, 12) != SB_LEN
+            or u64(data, 16) == 0
+            or u64(data, 32) == 0
+            or u32(data, 72) != 0
+            or any(self.data[start + SB_LEN:start + block_size])
             or u32(data, SB_CHECKSUM_OFFSET) != crc32(data[:SB_CHECKSUM_OFFSET])
         ):
             return None
@@ -270,7 +274,20 @@ class ObjectStore:
                 sb = self._decode_superblock(slot, candidate_size)
                 if sb is not None and sb.block_size == candidate_size:
                     candidates.append(sb)
+        # Unsupported version tags are never treated as blank or a usable
+        # redundant copy, even alongside a current slot.
+        for candidate_size in (512, 1024, 2048, 4096):
+            for slot in range(SB_SLOTS):
+                start = slot * candidate_size
+                data = self.data[start:start + candidate_size]
+                if len(data) >= SB_LEN and data[:7] in (b"COBJSTR", b"COJBSTR") and (
+                    u64(data, 0) != SB_MAGIC or u32(data, 8) != SB_VERSION
+                ):
+                    self.errors.append("unsupported object-store format; explicit migration required")
+                    return
         if not candidates:
+            if any(self.data[:2 * 4096]):
+                self.errors.append("nonblank metadata has no valid current superblock")
             return
         sb = max(candidates, key=lambda item: item.generation)
         if sb.total_blocks * sb.block_size > len(self.data):
@@ -297,12 +314,17 @@ class ObjectStore:
             return DirectoryEntry()
         if u32(data, 28) != (crc32(data[:28]) ^ DIR_CRC_SALT):
             return None
-        return DirectoryEntry(u64(data, 0), u32(data, 8), u32(data, 12), u64(data, 16), u32(data, 24))
+        obj_id, flags, generation, lba, blocks = u64(data, 0), u32(data, 8), u32(data, 12), u64(data, 16), u32(data, 24)
+        if generation == 0 or (obj_id == 0 and (flags != 0 or lba != 0 or blocks != 0)) or (
+            obj_id != 0 and (flags != FLAG_ALLOCATED or lba == 0 or blocks != 1)
+        ):
+            return None
+        return DirectoryEntry(obj_id, flags, generation, lba, blocks)
 
     @staticmethod
     def _newest(first, second):
         if first is None:
-            return second or DirectoryEntry()
+            return second
         if second is None:
             return first
         return first if first.generation >= second.generation else second
@@ -320,6 +342,9 @@ class ObjectStore:
                 self._decode_directory(bytes(first[offset : offset + DIR_ENTRY_SIZE])),
                 self._decode_directory(bytes(second[offset : offset + DIR_ENTRY_SIZE])),
             )
+            if entry is None:
+                self.errors.append(f"directory slot {index}: no valid current copy")
+                continue
             if entry.obj_id == 0:
                 continue
             if not entry.flags & FLAG_ALLOCATED:
@@ -350,7 +375,7 @@ class ObjectStore:
                 self.errors.append(f"allocation bitmap omits reachable block {block}")
 
     def _parse_header(self, entry):
-        if entry.header_lba < self.layout.data_lba or entry.header_blocks == 0:
+        if entry.header_lba < self.layout.data_lba or entry.header_blocks != 1:
             raise ValueError("invalid header location")
         data = bytes(self._block_slice(entry.header_lba, entry.header_blocks))
         if len(data) < HEADER_LEN:
@@ -359,8 +384,14 @@ class ObjectStore:
         if (
             u64(data, 0) != HEADER_MAGIC
             or u16(data, 8) != HEADER_VERSION
-            or header_len < HEADER_LEN
-            or header_len > len(data)
+            or header_len != HEADER_LEN
+            or u32(data, 12) != FLAG_ALLOCATED
+            or u64(data, 16) == 0
+            or u64(data, 24) == 0
+            or u64(data, 64) == 0
+            or u32(data, 88) & ~1
+            or any(data[72:80]) or any(data[92:112]) or any(data[116:128])
+            or any(data[HEADER_LEN:])
             or u16(data, 58) != HASH_FNV1A64
         ):
             raise ValueError("unsupported or malformed header")
@@ -371,7 +402,7 @@ class ObjectStore:
             raise ValueError("header checksum mismatch")
         if u64(data, 16) != entry.obj_id or u64(data, 24) & 0xFFFF_FFFF != entry.generation:
             raise ValueError("directory/header identity or generation mismatch")
-        if u32(data, 60) != entry.header_blocks:
+        if u32(data, 60) != entry.header_blocks or u64(data, 48) != self.block_size:
             raise ValueError("directory/header block count mismatch")
         extent_count = u16(data, 56)
         if extent_count > MAX_EXTENTS:
@@ -380,9 +411,11 @@ class ObjectStore:
         for index in range(extent_count):
             offset = EXTENTS_OFFSET + index * EXTENT_SIZE
             lba, blocks = u64(data, offset), u32(data, offset + 8)
-            if blocks == 0 or lba < self.layout.data_lba or lba + blocks > self.total_blocks:
+            if blocks == 0 or lba < self.layout.data_lba or lba + blocks > self.total_blocks or u32(data, offset + 12):
                 raise ValueError(f"invalid extent {index}")
             extents.append((lba, blocks))
+        if any(data[EXTENTS_OFFSET + extent_count * EXTENT_SIZE:HEADER_LEN]):
+            raise ValueError("nonzero unused extent descriptors")
         data_len = u64(data, 32)
         allocated_len = u64(data, 40)
         actual_allocated = sum(blocks for _, blocks in extents) * self.block_size
@@ -555,7 +588,7 @@ def cmd_format(store):
         data[start : start + block_size] = superblock
     with open(store.path, "wb") as image:
         image.write(data)
-    print("Object store formatted as v3.")
+    print("Object store formatted as v4.")
 
 
 def hexdump(data):
@@ -572,7 +605,7 @@ def hexdump(data):
 
 def print_info(store):
     if not store.is_formatted:
-        print("  Image is not a valid v3 object store.")
+        print("  Image is not a valid v4 object store.")
         print(f"  image_size: {len(store.data)} bytes ({len(store.data) / 1024 / 1024:.1f} MiB)")
         return
     sb, layout = store.superblock, store.layout
@@ -655,7 +688,7 @@ def main():
             print_info(ObjectStore(path))
             return 0
         if not store.is_formatted:
-            print("Image is not a valid v3 object store. Run 'format' to replace it.", file=sys.stderr)
+            print("Image is not a valid v4 object store. Run 'format' to replace it.", file=sys.stderr)
             return 1
         filesystem = Filesystem(store)
         if command == "info":

@@ -1,38 +1,30 @@
-//! Persistent object store protocol v1, backed by on-disk format v2.
+//! Persistent object store protocol v1, backed by on-disk format v4.
 //!
 //! The object store is a userspace service that provides crash-safe,
 //! dynamically-sized blob storage on top of a block device. Objects have
-//! 64-bit IDs and an extensible metadata header followed by their data extent.
+//! 64-bit IDs and a fixed identity/ownership header followed by their data extent.
 //!
 //! ## On-disk format
 //!
 //! Two checksummed superblock slots occupy LBAs 0 and 1. The valid slot with
 //! the newest generation selects the bitmap and fixed 512-entry directory.
 //! Directory entries are atomic locators:
-//! ```
+//! ```text
 //! id: u64 | flags: u32 | generation: u32 |
 //! header_lba: u64 | header_blocks: u32 | crc32: u32
 //! ```
 //!
-//! Each object allocation begins with a versioned header. `header_len` and
-//! `header_blocks` reserve room for compatible metadata growth:
-//! ```
-//! magic/version/header_len/flags
-//! id/generation
-//! data_len/allocated_len/data_offset
-//! extent_count/hash_algorithm/header_blocks
-//! data_lba/data_blocks
-//! mandatory content hash
-//! header crc32
-//! ```
-//!
-//! The current implementation uses one contiguous data extent, but the header
-//! is explicitly extensible. Replacement is copy-on-write: new data, header,
-//! and allocation state are flushed before the directory locator changes.
+//! Each allocation uses a fixed 384-byte `CCOBJHD4` header with explicit
+//! nonzero owner, known attributes, exact lengths, up to 16 extents, content
+//! hash and checksum. Superblocks are `COBJSTR4`; older stores reject before
+//! mutation. Replacement is copy-on-write: new data, header, and allocation
+//! state are flushed before the directory locator changes.
 //! Mount rebuilds allocation state from reachable validated headers, reclaiming
 //! abandoned pre-commit allocations. The FNV-1a content hash detects accidental
 //! corruption; it is not cryptographic authentication.
 #![no_std]
+
+pub mod disk;
 
 pub const INTERFACE: u64 = 0x525453424a4f; // "OBJSTR" packed LE (6 chars)
 pub const VERSION: u32 = 1;

@@ -1499,40 +1499,40 @@ pub mod objstore {
     /// Whether `principal` may create `id`. Creation of a new ordinary object
     /// is open; reserved artifact/executable IDs require a reserved mutator.
     pub fn may_create(id: u64, principal: u64) -> bool {
-        !is_reserved_object(id) || reserved_mutator(principal)
+        principal != 0 && (!is_reserved_object(id) || reserved_mutator(principal))
     }
 
-    /// Whether `principal` may overwrite, resize or delete an existing `id`.
-    /// `owner` is the persisted creating principal (zero for objects staged
-    /// by the image tool or written before ownership enforcement). Ordinary
-    /// owned objects are mutable only by their owner or the kernel; unowned
-    /// legacy objects are immutable except to the kernel.
+    /// Every stored object has an explicit nonzero creating principal.
+    /// Reserved mutation additionally requires kernel/administration authority.
     pub fn may_mutate(id: u64, owner: u64, principal: u64) -> bool {
-        if is_reserved_object(id) {
-            return reserved_mutator(principal);
-        }
-        principal == KERNEL_PRINCIPAL || (owner != 0 && owner == principal)
+        owner != 0
+            && principal != 0
+            && if is_reserved_object(id) {
+                reserved_mutator(principal)
+            } else {
+                principal == KERNEL_PRINCIPAL || owner == principal
+            }
     }
 
-    /// Whether `principal` may read `id` or query its size. Reserved objects
-    /// are public, shared-read objects admit every authenticated reader,
-    /// unowned legacy objects remain readable for compatibility, and owned
-    /// ordinary objects are private to their owner and the kernel.
+    /// Reserved objects are public to authenticated callers; ordinary objects
+    /// require ownership, kernel authority or an explicit shared-read attribute.
     pub fn may_read(id: u64, owner: u64, attributes: u32, principal: u64) -> bool {
-        is_reserved_object(id)
-            || attributes & ATTR_SHARED_READ != 0
-            || owner == 0
-            || owner == principal
-            || principal == KERNEL_PRINCIPAL
+        owner != 0
+            && principal != 0
+            && (is_reserved_object(id)
+                || attributes & ATTR_SHARED_READ != 0
+                || owner == principal
+                || principal == KERNEL_PRINCIPAL)
     }
 
-    /// As [`may_mutate`], but an operator scope write grant also authorizes an
-    /// ordinary object. Scope grants never extend the reserved allowlist.
+    /// Scope grants extend ordinary authority, never missing ownership or
+    /// the reserved mutation allowlist.
     pub fn may_mutate_scoped(id: u64, owner: u64, principal: u64, scope_write: bool) -> bool {
-        may_mutate(id, owner, principal) || (!is_reserved_object(id) && scope_write)
+        owner != 0
+            && principal != 0
+            && (may_mutate(id, owner, principal) || (!is_reserved_object(id) && scope_write))
     }
 
-    /// As [`may_read`], with an operator scope read grant.
     pub fn may_read_scoped(
         id: u64,
         owner: u64,
@@ -1540,7 +1540,7 @@ pub mod objstore {
         principal: u64,
         scope_read: bool,
     ) -> bool {
-        may_read(id, owner, attributes, principal) || scope_read
+        owner != 0 && principal != 0 && (may_read(id, owner, attributes, principal) || scope_read)
     }
 
     /// One operator scope grant: `principal` may exercise `rights`
@@ -1685,10 +1685,9 @@ pub mod objstore {
             assert_eq!(size, 123);
             assert!(!may_read_scoped(42, owner, attributes, other(), false));
             assert!(may_read_scoped(42, owner, attributes, ordinary(), false));
-            // A verified legacy header still has its documented read policy;
-            // it cannot be manufactured by a failed lookup.
+            // Missing ownership cannot manufacture public authority.
             let (_, (owner, attributes)) = resolve_header(Some(42), |_| Some((0, 0))).unwrap();
-            assert!(may_read_scoped(42, owner, attributes, other(), false));
+            assert!(!may_read_scoped(42, owner, attributes, other(), false));
         }
 
         #[test]
@@ -1777,13 +1776,17 @@ pub mod objstore {
 
         #[test]
         fn reserved_mutation_requires_kernel_or_administration() {
-            assert!(may_mutate(charlotte_launch::ARTIFACT_ID_TAG | 7, 0, KERNEL_PRINCIPAL));
-            assert!(may_mutate(EXECUTABLE_ECHO_ID, 0, clusterctl()));
-            assert!(!may_mutate(EXECUTABLE_ECHO_ID, 0, ordinary()));
-            assert!(!may_mutate(EXECUTABLE_ECHO_ID, 0, 0));
+            assert!(may_mutate(
+                charlotte_launch::ARTIFACT_ID_TAG | 7,
+                KERNEL_PRINCIPAL,
+                KERNEL_PRINCIPAL
+            ));
+            assert!(may_mutate(EXECUTABLE_ECHO_ID, KERNEL_PRINCIPAL, clusterctl()));
+            assert!(!may_mutate(EXECUTABLE_ECHO_ID, KERNEL_PRINCIPAL, ordinary()));
+            assert!(!may_mutate(EXECUTABLE_ECHO_ID, KERNEL_PRINCIPAL, 0));
             // Creation of ordinary IDs is open; reserved IDs are not.
             assert!(may_create(42, ordinary()));
-            assert!(may_create(42, 0));
+            assert!(!may_create(42, 0));
             assert!(may_create(EXECUTABLE_ECHO_ID, clusterctl()));
             assert!(!may_create(EXECUTABLE_ECHO_ID, ordinary()));
         }
@@ -1794,11 +1797,13 @@ pub mod objstore {
             assert!(may_mutate(42, ordinary(), KERNEL_PRINCIPAL));
             assert!(!may_mutate(42, ordinary(), other()));
             assert!(!may_mutate(42, ordinary(), 0));
-            // Legacy unowned objects are readable but not mutable by anyone
-            // except the kernel.
-            assert!(may_read(42, 0, 0, other()));
+            // Invalid ownership rejects even kernel/scope/shared-read shortcuts.
+            assert!(!may_read(42, 0, 0, other()));
+            assert!(!may_read(42, 0, ATTR_SHARED_READ, other()));
+            assert!(!may_read_scoped(42, 0, 0, other(), true));
+            assert!(!may_mutate_scoped(42, 0, other(), true));
             assert!(!may_mutate(42, 0, other()));
-            assert!(may_mutate(42, 0, KERNEL_PRINCIPAL));
+            assert!(!may_mutate(42, 0, KERNEL_PRINCIPAL));
         }
 
         #[test]

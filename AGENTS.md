@@ -249,6 +249,11 @@ the corrected RPC polling paths, and the remaining notification gaps.
   interruption-tested migration preserving election and committed state;
   never silently reset or reformat an existing store. Current pre-production
   simplification does not require retaining older decoders or migration code.
+  Object-store v4 requires explicit nonzero owners, fixed headers and current
+  directory records. Only two successfully read zero-filled superblock slots
+  permit first-boot formatting; unsupported, unrecoverable or incompatible
+  metadata rejects before mount writes. Host staging uses the kernel principal.
+  See `docs/reference/object-store-format.md`.
   Application snapshot restore must return rejection without changing live
   state. Propagate that rejection before exposing a Raft node or publishing
   snapshot/log progress, membership or join completion; unsupported state is

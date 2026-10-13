@@ -172,8 +172,10 @@ data:      object headers and up to 16 data extents per object
 Both superblock reads must finish successfully before their absence or
 validity can select mounting or formatting. Allocation, IPC, device or mapping
 rejection fails startup; unreadable metadata is not evidence of a blank disk.
-Successfully read invalid content and incompatible-layout policy remain
-separate.
+Only two successfully read zero-filled superblock slots permit first-boot
+formatting. Retired format tags reject even alongside a current copy. A valid
+current copy can recover a blank or corrupt peer; nonblank metadata with no
+current copy and incompatible layouts fail without reformatting.
 
 The store publishes explicit Starting, Serving, Draining and Failed states.
 Serving follows mount and endpoint registration; kernel local readiness
@@ -185,8 +187,8 @@ available status/result without retry. See
 
 Each object header is versioned and carries explicit header length and block
 count, object generation, exact and allocated data lengths, data offset,
-extent information, and a mandatory FNV-1a content hash. The header can grow
-without moving the data offset contract. The current format records up to 16
+extent information, and a mandatory FNV-1a content hash. The fixed header
+rejects extension lengths rather than filling absent fields. It records up to 16
 extents, so fragmented free space does not require one large contiguous run.
 
 Replacement is copy-on-write. New data, header, and allocation state are
@@ -233,11 +235,13 @@ enrollment and management-channel authentication remain separate requirements.
 
 Authorization and data access consume one validated locator/header snapshot.
 Missing objects return NotFound; metadata I/O or validation failure returns an
-error rather than adopting public legacy ownership. Automatic creation searches
+error rather than adopting public ownership defaults. Automatic creation searches
 for an unused positive scalar ID with a directory-sized bound, preserving
-explicitly created objects. Mount rejects duplicate live IDs. Objects predating
-ownership enforcement remain readable but kernel-mutable only; those storage
-images must be recreated before runtime services can mutate their state.
+explicitly created objects. Mount rejects duplicate live IDs. Current format
+v4 uses COBJSTR4 superblocks and fixed 384-byte CCOBJHD4 headers with explicit
+nonzero owners, known attributes and zero reserved/unused fields. Host-staged
+artifacts use the kernel principal. Owner-zero metadata and older stores reject
+before mutation; deployed format changes will require explicit migration.
 See \repofile|docs/reference/security-remediation.md| for current disposition
 and validation limits.
 
@@ -248,7 +252,7 @@ every ELF according to
 \repofile|crates/catten-services/artifact-policy.tsv|. AArch64 embeds only the
 set needed to reach storage (name service, NVMe, object store, UART, and the
 system observer); \repofile|scripts/make-nvme-image.py| writes the remaining
-services into an initial version-3 object-store image. The QEMU x86-64 runner
+services into an initial version-4 object-store image. The QEMU x86-64 runner
 can use the same host-preseeded model.
 
 The x86-64 kernel also carries an immutable signed installation bundle for the
@@ -369,7 +373,7 @@ plus FLUSH.
 
 A Python tool (\repofile|scripts/fs-inspect.py|) reads the raw disk image and
 walks the object store and filesystem on-disk structures. It understands both
-v3 directory banks and multi-extent headers, selects the newest valid directory
+v4 directory banks and multi-extent headers, selects the newest valid directory
 record, checks CRCs and allocation overlap, compares reachable blocks with the
 bitmap, and verifies object contents against their FNV-1a hashes. It provides
 tree, dump, raw, cat, object-list, metadata, information, and format commands,
@@ -387,8 +391,8 @@ scripts/fs-inspect.py <image> cat /raft/state
 
 Metadata output includes numeric and symbolic object/filesystem flags,
 generation, header location, logical and allocated lengths, integrity hash, and
-every extent. Unknown flag bits remain visible. The \texttt{format} command
-creates a blank v3 store and destructively replaces the image contents.
+every extent. Filesystem flag bits remain visible; unsupported object-store flags reject validation. The \texttt{format} command
+creates a blank v4 store and destructively replaces the image contents.
 
 \section{Isolation and durability limits}
 

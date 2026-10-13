@@ -289,7 +289,7 @@ after process restart.
 
 ### 4.3 Object authority boundary
 
-Every object records its creating principal in the extensible header. An
+Every object records its creating principal in the fixed current header. An
 ordinary object is readable, resizable, overwriteable and deletable only by
 its owner (or the kernel); reserved artifact (`0xfffe…`) and executable
 (`0xffff…`) objects are public to read but mutated only by the kernel or the
@@ -303,9 +303,9 @@ partition. An authenticated operator scope table (applied by the kernel or the
 signed `clusterctl` service through `OP_APPLY_SCOPE`, persisted in a reserved
 object and re-applied at mount) can additionally grant read or write rights
 over object-id ranges to a principal; grants never extend the reserved
-artifact/executable allowlist. Objects written before ownership enforcement
-remain readable but are immutable except to the kernel, so a pre-ownership
-image must be recreated before its services can mutate their objects. See the
+artifact/executable allowlist. Every current header requires an explicit nonzero
+owner; host-staged artifacts use the kernel principal. Owner-zero metadata and
+older stores reject before authority or mount mutation. See the
 [reserved-namespace](../reports/audits/2026-10-10-security-object-store-reserved-namespace.md),
 [ownership](../reports/audits/2026-10-10-security-object-store-ownership.md)
 and [scope-policy](../reports/audits/2026-10-10-security-object-store-scope-policy.md)
@@ -314,7 +314,7 @@ remediation reports.
 The [isolation follow-up](../reports/audits/2026-10-10-security-object-store-follow-up.md)
 rejects metadata I/O/validation failure before authorization. One validated
 locator/header supplies both policy and read/info data; failure never adopts
-owner-zero compatibility. Automatic creation skips occupied IDs with at most
+a public ownership default. Automatic creation skips occupied IDs with at most
 directory-slot-count plus one probes and excludes high stable/reserved IDs.
 Mount rejects duplicate live IDs from older colliding stores. Negative guest
 checks cover mixed creation, unauthorized/malformed policy replacement and
@@ -326,7 +326,7 @@ launch configuration. They are not copied into the Raft log. The durable store
 contains Raft protocol state and log/snapshot data, not the deployment
 manifest.
 
-On-disk format v3 has two checksummed superblock slots, a device-sized
+On-disk format v4 has two checksummed superblock slots, a device-sized
 allocation bitmap, and two mirrored banks of atomic object locators. Directory
 capacity scales with the device (each bank uses about 1/2048 of its blocks,
 bounded to 4,096 blocks). Each record has its own generation and checksum;
@@ -334,14 +334,18 @@ mount selects the newest valid copy. Versioned tombstones ensure that an older
 live record cannot reappear after deletion. Every allocation begins with a
 versioned header containing `header_len`, `header_blocks`, object generation,
 exact and allocated lengths, data offset, up to 16 extent descriptors, and a
-mandatory FNV-1a content hash. The reserved header space permits compatible
-metadata growth.
+mandatory FNV-1a content hash. The fixed 384-byte header admits only known
+attributes and zero reserved/unused fields. A new grammar needs a new format
+and an explicit migration once deployed; no extension-length fallback remains.
 
 Both superblock reads must finish successfully before absence/validity can
 select a mount or formatting decision. Allocation, IPC, device or mapping
 rejection returns startup failure; unreadable metadata is not a blank disk.
-The existing policy for successfully read but invalid superblocks and
-incompatible layouts remains separate from this correction.
+Only two successfully read zero-filled superblock slots permit first-boot
+formatting. Retired format tags reject even alongside a current copy. A current
+valid copy can recover a blank or corrupt peer slot; nonblank metadata with no
+valid current copy and incompatible device/layout metadata fail startup without
+formatting. See [the current format](../reference/object-store-format.md).
 
 The object store publishes an explicit `Starting`/`Serving`/`Draining`/`Failed`
 state. `Serving` follows successful mount and endpoint registration; kernel
@@ -368,12 +372,12 @@ executable objects or other data.
 
 ### 4.3 Offline inspection
 
-`scripts/fs-inspect.py` understands the v3 superblock, both directory banks,
+`scripts/fs-inspect.py` understands the v4 superblock, both directory banks,
 versioned object headers, and multi-extent data. It selects the newest valid
 copy of each directory record using the same generation rule as the service,
 checks CRCs, rejects overlapping allocations, compares reachable blocks with
 the allocation bitmap, and verifies every object read against its FNV-1a hash.
-It can also create a blank v3 image:
+It can also create a blank v4 image:
 
 ```text
 python3 scripts/fs-inspect.py os-images/nvme-disk.img info

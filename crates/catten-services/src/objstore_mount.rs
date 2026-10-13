@@ -1,16 +1,32 @@
-//! Superblock selection: unreadable metadata is never evidence of a blank disk.
+//! Only two successfully read, zero-filled slots permit first-boot formatting.
+
+pub enum Slot<T> {
+    Blank,
+    Valid(T),
+    Corrupt,
+    Unsupported,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum Error<E> {
+    Read(E),
+    Unsupported,
+    Corrupt,
+}
 
 pub fn select<T, E>(
-    mut read: impl FnMut(u64) -> Result<Option<T>, E>,
+    mut read: impl FnMut(u64) -> Result<Slot<T>, E>,
     choose: impl FnOnce(T, T) -> T,
-) -> Result<Option<T>, E> {
-    let first = read(0)?;
-    let second = read(1)?;
+) -> Result<Option<T>, Error<E>> {
+    use Slot::*;
+    let first = read(0).map_err(Error::Read)?;
+    let second = read(1).map_err(Error::Read)?;
     Ok(match (first, second) {
-        (Some(a), Some(b)) => Some(choose(a, b)),
-        (Some(a), None) => Some(a),
-        (None, Some(b)) => Some(b),
-        (None, None) => None,
+        (Unsupported, _) | (_, Unsupported) => return Err(Error::Unsupported),
+        (Valid(a), Valid(b)) => Some(choose(a, b)),
+        (Valid(a), _) | (_, Valid(a)) => Some(a),
+        (Blank, Blank) => None,
+        _ => return Err(Error::Corrupt),
     })
 }
 
@@ -31,12 +47,12 @@ mod tests {
                         if slot == failed_slot {
                             Err(failure)
                         } else {
-                            Ok(Some(7))
+                            Ok(Slot::Valid(7))
                         }
                     },
                     |_, _| panic!("must not select after unreadable metadata"),
                 );
-                assert_eq!(result, Err(failure));
+                assert_eq!(result, Err(Error::Read(failure)));
                 assert_eq!(calls.get(), failed_slot + 1);
             }
         }
@@ -55,15 +71,31 @@ mod tests {
                 |slot| {
                     Ok::<_, ()>(
                         if slot == 0 {
-                            first
+                            first.map_or(Slot::Blank, Slot::Valid)
                         } else {
-                            second
+                            second.map_or(Slot::Blank, Slot::Valid)
                         },
                     )
                 },
                 core::cmp::max,
             );
             assert_eq!(result, Ok(expected));
+        }
+    }
+
+    #[test]
+    fn unsupported_or_nonblank_without_a_current_copy_never_formats() {
+        for (a, b, expected) in [
+            (Slot::Unsupported, Slot::Valid(7), Err(Error::Unsupported)),
+            (Slot::Valid(7), Slot::Unsupported, Err(Error::Unsupported)),
+            (Slot::Corrupt, Slot::Blank, Err(Error::Corrupt)),
+            (Slot::Blank, Slot::Corrupt, Err(Error::Corrupt)),
+            (Slot::Corrupt, Slot::Corrupt, Err(Error::Corrupt)),
+            (Slot::Corrupt, Slot::Valid(7), Ok(Some(7))),
+            (Slot::Valid(7), Slot::Corrupt, Ok(Some(7))),
+        ] {
+            let mut slots = [a, b].into_iter();
+            assert_eq!(select(|_| Ok::<_, ()>(slots.next().unwrap()), core::cmp::max), expected);
         }
     }
 }

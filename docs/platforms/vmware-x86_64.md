@@ -42,7 +42,7 @@ The appliance deliberately has two disks:
   owns it from LBA zero; it is not partitioned or FAT-formatted by the host.
 
 On first boot, the object-store service recognizes an unformatted data disk,
-creates the COBJSTR3 layout, and the kernel installs missing signed service
+creates the COBJSTR4 layout, and the kernel installs missing signed service
 artifacts from its immutable x86-64 installation bundle. A successful first
 boot includes output like:
 

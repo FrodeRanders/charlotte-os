@@ -1,7 +1,7 @@
-//! Persistent object store service — on-disk format v3.
+//! Persistent object store service — on-disk format v4.
 //!
 //! The mirrored directory banks contain only atomic locators. Every allocated
-//! object has a versioned, extensible header containing its generation, exact
+//! object has a fixed current header containing its generation, exact
 //! data length, extent descriptor, and FNV-1a corruption-detection hash.
 //! Replacement is copy-on-write: data, header, and allocation state are durable
 //! before a locator in the alternate directory bank changes. Mount selects the
@@ -43,32 +43,13 @@ use catten_services::{
 };
 use catten_syscall::IpcRights;
 use charlotte_launch::objstore_status as status;
+use charlotte_protocol_objstore::disk::*;
 
 const PAGE_SIZE: usize = 4096;
 const MAX_IO_BYTES: usize = 512 * 1024;
 const METADATA_IO_BYTES: usize = 32 * 1024;
 /// Worst-case wait for the final object-store flush during shutdown.
 const SHUTDOWN_FLUSH_TIMEOUT_MS: u64 = 5_000;
-
-const SB_MAGIC: u64 = 0x3352_5453_424a_4f43; // "COBJSTR3"
-const SB_VERSION: u32 = 3;
-const SB_SLOTS: u32 = 2;
-const SB_LEN: usize = 80;
-const SB_CHECKSUM_OFFSET: usize = 76;
-
-const DIR_ENTRY_SIZE: usize = 32;
-const DIR_CRC_SALT: u32 = 0x3344_4952; // "3DIR"
-const MAX_DIRECTORY_BLOCKS: u32 = 4096;
-const FLAG_ALLOCATED: u32 = 1;
-
-const HEADER_MAGIC: u64 = 0x3244_484a_424f_4343; // "CCOBJHD2"
-const HEADER_VERSION: u16 = 3;
-const HEADER_LEN: usize = 384;
-const HEADER_CHECKSUM_OFFSET: usize = 112;
-const EXTENTS_OFFSET: usize = 128;
-const EXTENT_SIZE: usize = 16;
-const MAX_EXTENTS: usize = 16;
-const HASH_FNV1A64: u16 = 2;
 
 // Mutable status-page diagnostics consumed by the kernel boot verifier.
 // These survive an EL0 thread exit and let the supervisor distinguish an IPC
@@ -167,47 +148,9 @@ struct Superblock {
     layout: Layout,
 }
 
-#[derive(Clone, Copy, Default)]
-struct DirectoryEntry {
-    id: u64,
-    flags: u32,
-    generation: u32,
-    header_lba: u64,
-    header_blocks: u32,
-}
-
-#[derive(Clone, Copy)]
-struct Extent {
-    lba: u64,
-    blocks: u32,
-}
-
-const EMPTY_EXTENT: Extent = Extent {
-    lba: 0,
-    blocks: 0,
-};
-
-#[derive(Clone, Copy)]
-struct ObjectHeader {
-    id: u64,
-    generation: u64,
-    data_len: u64,
-    allocated_len: u64,
-    data_offset: u64,
-    header_blocks: u32,
-    extent_count: u16,
-    extents: [Extent; MAX_EXTENTS],
-    data_hash: u64,
-    /// Creating principal; zero for objects staged by the image tool or
-    /// written before ownership enforcement.
-    owner: u64,
-    /// `ATTR_*` policy bits (`objstore::ATTR_SHARED_READ`).
-    attributes: u32,
-}
-
 /// The service handles requests serially. Keep the validated locator/header
 /// together from authorization through data access; failed reads never adopt
-/// the legacy owner-zero policy or retry a different header.
+/// a default ownership policy or retry a different header.
 struct StoredObject {
     index: u32,
     entry: DirectoryEntry,
@@ -355,6 +298,7 @@ impl ObjStore {
                 }
             },
         )
+        .map_err(|_| diag_error(0xe5))
         .ok()?;
         let Some(sb) = selected else {
             diag_stage(23);
@@ -369,14 +313,15 @@ impl ObjStore {
             || sb.layout.data_lba != expected.data_lba
         {
             diag_stage(24);
-            return Self::format(dev);
+            diag_error(0xe6);
+            return None;
         }
 
         let mut store = Self {
             dev,
             layout: sb.layout,
             super_generation: sb.generation,
-            next_id: sb.next_id.max(1),
+            next_id: sb.next_id,
             bitmap: spin::Mutex::new(vec![0; bitmap_len_bytes(sb.total_blocks)]),
             directory: spin::Mutex::new(vec![
                 DirectoryEntry::default();
@@ -450,7 +395,7 @@ impl ObjStore {
                 self.directory.lock()[index] = entry;
                 continue;
             }
-            if entry.flags & FLAG_ALLOCATED == 0 {
+            if entry.flags != FLAG_ALLOCATED {
                 return None;
             }
             self.directory.lock()[index] = entry;
@@ -458,9 +403,6 @@ impl ObjStore {
             // Reject a disk produced by an earlier colliding allocator.
             if cache.insert(entry.id, index as u32).is_some() {
                 return None;
-            }
-            if entry.header_lba == 0 {
-                continue;
             }
             let header = self.read_header(entry)?;
             if bitmap_range_used(&rebuilt, entry.header_lba as u32, entry.header_blocks) {
@@ -755,7 +697,7 @@ impl ObjStore {
     }
 
     fn read_header(&self, entry: DirectoryEntry) -> Option<ObjectHeader> {
-        if entry.header_lba < self.layout.data_lba || entry.header_blocks == 0 {
+        if entry.header_lba < self.layout.data_lba || entry.header_blocks != 1 {
             return None;
         }
         let bytes = self.read_blocks(entry.header_lba, entry.header_blocks)?;
@@ -1041,29 +983,10 @@ impl ObjStore {
     }
 }
 
-impl ObjectHeader {
-    fn empty(id: u64, generation: u64, block_size: u32, owner: u64, attributes: u32) -> Self {
-        Self {
-            id,
-            generation,
-            data_len: 0,
-            allocated_len: 0,
-            data_offset: block_size as u64,
-            header_blocks: 1,
-            extent_count: 0,
-            extents: [EMPTY_EXTENT; MAX_EXTENTS],
-            data_hash: content_hash(&[]),
-            owner,
-            attributes,
-        }
-    }
-
-    fn extents(&self) -> &[Extent] {
-        &self.extents[..self.extent_count as usize]
-    }
-}
-
-fn read_superblock(dev: &BlockDev, slot: u64) -> Result<Option<Superblock>, ()> {
+fn read_superblock(
+    dev: &BlockDev,
+    slot: u64,
+) -> Result<catten_services::objstore_mount::Slot<Superblock>, ()> {
     config::write::<u32>(status::DETAIL, 50 + slot as u32 * 10);
     let mut memory = OwnedMemory::allocate(1).map_err(|_| {
         io_failure(0xe3, block::OP_READ, slot, 1, 4, u64::MAX, i64::MIN);
@@ -1078,7 +1001,14 @@ fn read_superblock(dev: &BlockDev, slot: u64) -> Result<Option<Superblock>, ()> 
         return Err(());
     };
     config::write::<u32>(status::DETAIL, 52 + slot as u32 * 10);
-    let result = decode_superblock(&mapping.as_slice()[..dev.block_size as usize]);
+    use catten_services::objstore_mount::Slot;
+    let bytes = &mapping.as_slice()[..dev.block_size as usize];
+    let result = match classify_superblock(bytes) {
+        SuperblockState::Blank => Slot::Blank,
+        SuperblockState::Current => Slot::Valid(decode_superblock(bytes).ok_or(())?),
+        SuperblockState::Corrupt => Slot::Corrupt,
+        SuperblockState::Unsupported => Slot::Unsupported,
+    };
     config::write::<u32>(status::DETAIL, 53 + slot as u32 * 10);
     config::write::<u32>(status::DETAIL, 54 + slot as u32 * 10);
     config::write::<u32>(status::DETAIL, 55 + slot as u32 * 10);
@@ -1127,123 +1057,6 @@ fn decode_superblock(bytes: &[u8]) -> Option<Superblock> {
     })
 }
 
-fn encode_directory(entry: DirectoryEntry, bytes: &mut [u8]) {
-    bytes.fill(0);
-    put_u64(bytes, 0, entry.id);
-    put_u32(bytes, 8, entry.flags);
-    put_u32(bytes, 12, entry.generation);
-    put_u64(bytes, 16, entry.header_lba);
-    put_u32(bytes, 24, entry.header_blocks);
-    put_u32(bytes, 28, crc32(&bytes[..28]) ^ DIR_CRC_SALT);
-}
-
-fn decode_directory(bytes: &[u8]) -> Option<DirectoryEntry> {
-    if bytes.len() < DIR_ENTRY_SIZE {
-        return None;
-    }
-    let id = get_u64(bytes, 0)?;
-    if id == 0 && bytes.iter().all(|byte| *byte == 0) {
-        return Some(DirectoryEntry::default());
-    }
-    if get_u32(bytes, 28)? != crc32(&bytes[..28]) ^ DIR_CRC_SALT {
-        return None;
-    }
-    Some(DirectoryEntry {
-        id,
-        flags: get_u32(bytes, 8)?,
-        generation: get_u32(bytes, 12)?,
-        header_lba: get_u64(bytes, 16)?,
-        header_blocks: get_u32(bytes, 24)?,
-    })
-}
-
-fn newest_directory_entry(
-    first: Option<DirectoryEntry>,
-    second: Option<DirectoryEntry>,
-) -> Option<DirectoryEntry> {
-    match (first, second) {
-        (Some(a), Some(b)) => Some(
-            if a.generation >= b.generation {
-                a
-            } else {
-                b
-            },
-        ),
-        (Some(entry), None) | (None, Some(entry)) => Some(entry),
-        (None, None) => Some(DirectoryEntry::default()),
-    }
-}
-
-fn encode_header(header: ObjectHeader, bytes: &mut [u8]) {
-    bytes.fill(0);
-    put_u64(bytes, 0, HEADER_MAGIC);
-    put_u16(bytes, 8, HEADER_VERSION);
-    put_u16(bytes, 10, HEADER_LEN as u16);
-    put_u32(bytes, 12, FLAG_ALLOCATED);
-    put_u64(bytes, 16, header.id);
-    put_u64(bytes, 24, header.generation);
-    put_u64(bytes, 32, header.data_len);
-    put_u64(bytes, 40, header.allocated_len);
-    put_u64(bytes, 48, header.data_offset);
-    put_u16(bytes, 56, header.extent_count);
-    put_u16(bytes, 58, HASH_FNV1A64);
-    put_u32(bytes, 60, header.header_blocks);
-    put_u64(bytes, 64, header.owner);
-    put_u64(bytes, 80, header.data_hash);
-    put_u32(bytes, 88, header.attributes);
-    for (index, extent) in header.extents().iter().enumerate() {
-        let offset = EXTENTS_OFFSET + index * EXTENT_SIZE;
-        put_u64(bytes, offset, extent.lba);
-        put_u32(bytes, offset + 8, extent.blocks);
-    }
-    put_u32(bytes, HEADER_CHECKSUM_OFFSET, 0);
-    put_u32(bytes, HEADER_CHECKSUM_OFFSET, crc32(&bytes[..HEADER_LEN]));
-}
-
-fn decode_header(bytes: &[u8]) -> Option<ObjectHeader> {
-    if bytes.len() < HEADER_LEN
-        || get_u64(bytes, 0)? != HEADER_MAGIC
-        || get_u16(bytes, 8)? != HEADER_VERSION
-        || (get_u16(bytes, 10)? as usize) > bytes.len()
-        || (get_u16(bytes, 10)? as usize) < HEADER_LEN
-        || get_u16(bytes, 56)? as usize > MAX_EXTENTS
-        || get_u16(bytes, 58)? != HASH_FNV1A64
-    {
-        return None;
-    }
-    let stored = get_u32(bytes, HEADER_CHECKSUM_OFFSET)?;
-    let mut checksum_bytes = bytes[..get_u16(bytes, 10)? as usize].to_vec();
-    put_u32(&mut checksum_bytes, HEADER_CHECKSUM_OFFSET, 0);
-    if stored != crc32(&checksum_bytes) {
-        return None;
-    }
-    let extent_count = get_u16(bytes, 56)?;
-    let mut extents = [EMPTY_EXTENT; MAX_EXTENTS];
-    for (index, extent) in extents.iter_mut().enumerate().take(extent_count as usize) {
-        let offset = EXTENTS_OFFSET + index * EXTENT_SIZE;
-        *extent = Extent {
-            lba: get_u64(bytes, offset)?,
-            blocks: get_u32(bytes, offset + 8)?,
-        };
-        if extent.blocks == 0 {
-            return None;
-        }
-    }
-    Some(ObjectHeader {
-        id: get_u64(bytes, 16)?,
-        generation: get_u64(bytes, 24)?,
-        data_len: get_u64(bytes, 32)?,
-        allocated_len: get_u64(bytes, 40)?,
-        data_offset: get_u64(bytes, 48)?,
-        header_blocks: get_u32(bytes, 60)?,
-        extent_count,
-        extents,
-        data_hash: get_u64(bytes, 80)?,
-        owner: get_u64(bytes, 64)?,
-        attributes: get_u32(bytes, 88)?,
-    })
-}
-
 fn bitmap_len_bytes(total_blocks: u32) -> usize {
     (total_blocks as usize).div_ceil(8)
 }
@@ -1270,17 +1083,6 @@ fn bitmap_range_used(bitmap: &[u8], start: u32, blocks: u32) -> bool {
         .any(|block| bitmap[block as usize / 8] & (1u8 << (block % 8)) != 0)
 }
 
-fn crc32(bytes: &[u8]) -> u32 {
-    let mut crc = 0xffff_ffffu32;
-    for byte in bytes {
-        crc ^= *byte as u32;
-        for _ in 0..8 {
-            crc = (crc >> 1) ^ (0xedb8_8320u32 & (0u32.wrapping_sub(crc & 1)));
-        }
-    }
-    !crc
-}
-
 fn content_hash(bytes: &[u8]) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325u64;
     for byte in bytes {
@@ -1290,17 +1092,11 @@ fn content_hash(bytes: &[u8]) -> u64 {
     hash
 }
 
-fn get_u16(bytes: &[u8], offset: usize) -> Option<u16> {
-    Some(u16::from_le_bytes(bytes.get(offset..offset + 2)?.try_into().ok()?))
-}
 fn get_u32(bytes: &[u8], offset: usize) -> Option<u32> {
     Some(u32::from_le_bytes(bytes.get(offset..offset + 4)?.try_into().ok()?))
 }
 fn get_u64(bytes: &[u8], offset: usize) -> Option<u64> {
     Some(u64::from_le_bytes(bytes.get(offset..offset + 8)?.try_into().ok()?))
-}
-fn put_u16(bytes: &mut [u8], offset: usize, value: u16) {
-    bytes[offset..offset + 2].copy_from_slice(&value.to_le_bytes());
 }
 fn put_u32(bytes: &mut [u8], offset: usize, value: u32) {
     bytes[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
