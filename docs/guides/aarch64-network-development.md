@@ -100,9 +100,11 @@ atomic:
 DNS evaluates each assignment independently and admits new flows only to nodes
 selected by the corresponding committed deployment after they publish
 readiness for the exact generation. A VIP is not advertised while its service
-has no matching ready generation. The older `--cluster-service VIP:PORT
---cluster-service-name NAME` spelling remains available for one assignment.
-An unnamed assignment keeps the compatibility mode that uses every admitted,
+has no matching ready generation. Use `--cluster-service NAME=VIP:PORT` for
+named assignments; the paired `--cluster-service-name` spelling is retired.
+Builds consume only `CATTEN_CLUSTER_SERVICES`, a semicolon-separated table;
+the old singleton VIP, port and name variables reject at build time.
+An unnamed assignment selects the platform-service policy that uses every admitted,
 non-draining member for platform services such as the built-in HTTP keyhole.
 
 The runner's table is operations-owned bootstrap policy: application

@@ -280,8 +280,8 @@ fn read_hex_key(path: &str, length: usize, label: &str) -> Result<Vec<u8>> {
     parse_fixed_hex(&encoded, length, label)
 }
 
-// These are PUBLIC test fixtures, not a backdoor for arbitrary argv secrets.
-// Keep old out-of-tree demo scripts working while refusing real hex keys.
+// Normalize commented key files. Public fixtures share this file-only path;
+// their known contents are exempt from private-file permission restrictions.
 fn development_fixture_hex(contents: &str) -> String {
     // Reserve once so filtering a private file cannot leave earlier growth
     // allocations containing fragments of its secret text.
@@ -352,20 +352,14 @@ fn read_private_key(path: &str, length: usize) -> Result<Zeroizing<Vec<u8>>> {
 }
 
 fn read_signing_key(reference: &str) -> Result<SecretKey> {
-    let bytes = if reference.len() == SecretKey::BYTES * 2
+    if reference.len() == SecretKey::BYTES * 2
         && reference.bytes().all(|byte| byte.is_ascii_hexdigit())
     {
-        if !reference.eq_ignore_ascii_case(&development_fixture_hex(include_str!("../dev-key.hex")))
-        {
-            return Err("private keys in argv are no longer accepted; pass a mode-0600 key-file \
-                        path (not its contents)"
-                .to_owned());
-        }
-        eprintln!("warning: legacy PUBLIC development fixture in argv; migrate to a key-file path");
-        Zeroizing::new(hex_decode(reference)?)
-    } else {
-        read_private_key(reference, SecretKey::BYTES)?
-    };
+        return Err("private keys in argv are not accepted; pass a mode-0600 key-file path (not \
+                    its contents)"
+            .to_owned());
+    }
+    let bytes = read_private_key(reference, SecretKey::BYTES)?;
     SecretKey::from_slice(&bytes).map_err(|_| "invalid Ed25519 private-key file".to_owned())
 }
 
@@ -2568,21 +2562,24 @@ mod tests {
     }
 
     #[test]
-    fn argv_only_accepts_the_public_legacy_artifact_fixture() {
+    fn argv_rejects_private_and_public_fixture_bytes_without_echoing_them() {
         let pair = KeyPair::generate();
         let secret_hex = Zeroizing::new(hex_encode(pair.sk.as_ref()));
         let error = read_signing_key(&secret_hex).err().unwrap();
         assert!(error.contains("argv"));
         assert!(!error.contains(secret_hex.as_str()));
-        let fixture = development_fixture_hex(include_str!("../dev-key.hex"));
-        assert_eq!(
-            read_signing_key(&fixture).unwrap().public_key().as_ref(),
-            &charlotte_launch::CLUSTER_PUBLIC_KEY
-        );
-        assert!(read_signing_key(&development_fixture_hex(include_str!(
-            "../dev-operations-key.hex"
-        )))
-        .is_err());
+        for fixture in [
+            include_str!("../dev-key.hex"),
+            include_str!("../dev-operations-key.hex"),
+            include_str!("../dev-recipient-key.hex"),
+        ] {
+            for encoded in
+                [development_fixture_hex(fixture), development_fixture_hex(fixture).to_uppercase()]
+            {
+                let error = read_signing_key(&encoded).err().unwrap();
+                assert!(!error.contains(&encoded));
+            }
+        }
     }
 
     #[cfg(unix)]

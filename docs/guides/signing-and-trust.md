@@ -147,17 +147,14 @@ reads `tools/cluster-sign/dev-key.hex` directly. Never extract a real key into
 a shell variable, `$(...)`, an argument or a CI log. The scripts refuse the
 old variable without expanding its value, including under shell tracing.
 
-Old out-of-tree demo scripts may still pass the exact public artifact fixture
-as hex; the signer warns and accepts that fixture only. Other raw hex keys
-are rejected with a migration error without echoing their contents. This
-exception is not a safe way to pass a secret: a key already supplied in argv
-has already been exposed by its caller. The exact public development fixture
-files are also exempt from restrictive permission checks, by contents rather
+Every signing command requires a key-file path, including public development
+fixtures. Raw key hex in argv rejects without echoing its contents. The exact
+public development fixture files are exempt from restrictive permission checks, by contents rather
 than filename, since their bytes are intentionally public.
 
 Broker packaging and Durga-generated command templates in sibling repositories
-still need migration to file-path arguments. Their public-fixture demos remain
-compatible; custom real-key callers must migrate before using this signer.
+still need migration to file-path arguments. Both their public-fixture demos
+and custom real-key callers must supply paths before using this signer.
 
 See the [current security remediation criteria](../reference/security-remediation.md)
 for remaining production-trust and credential-custody work, and the

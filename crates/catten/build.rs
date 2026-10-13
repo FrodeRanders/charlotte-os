@@ -1,6 +1,14 @@
 use std::env;
 
 fn main() {
+    for retired in ["CATTEN_CLUSTER_VIP", "CATTEN_CLUSTER_TCP_PORT", "CATTEN_CLUSTER_SERVICE_NAME"]
+    {
+        println!("cargo:rerun-if-env-changed={retired}");
+        assert!(
+            env::var_os(retired).is_none(),
+            "{retired} is retired; use CATTEN_CLUSTER_SERVICES=[NAME=]IPv4:PORT[;...]"
+        );
+    }
     println!("cargo:rerun-if-env-changed=CATTEN_TRUST_MODE");
     match env::var("CATTEN_TRUST_MODE") {
         Err(env::VarError::NotPresent) => {}

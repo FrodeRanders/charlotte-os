@@ -237,6 +237,10 @@ the corrected RPC polling paths, and the remaining notification gaps.
   reuse a retired magic while its old grammar remains accepted. Current format
   numbers may stay unchanged; resetting everything to version 1 is not required.
   Record batches and remaining candidates in `docs/reference/api-simplification.md`.
+  Tooling uses file-only signing-key arguments and repeatable
+  `--cluster-service [NAME=]VIP:PORT` assignments. Kernel builds consume only
+  `CATTEN_CLUSTER_SERVICES`; retired singleton variables reject explicitly.
+  See `docs/reference/tooling-inputs.md`.
   Preserve historical reports; hardware support and external protocol negotiation
   are not internal backward-compatibility obligations.
   Persistent records must carry explicit format tags and distinguish absent

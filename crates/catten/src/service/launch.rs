@@ -156,41 +156,15 @@ fn parse_cluster_tcp_service(value: &'static str) -> Option<ClusterTcpService> {
 }
 
 pub(crate) fn configured_cluster_tcp_services() -> Vec<ClusterTcpService> {
-    if let Some(configured) = option_env!("CATTEN_CLUSTER_SERVICES") {
-        return configured
-            .split(';')
-            .filter(|entry| !entry.is_empty())
-            .map(|entry| {
-                parse_cluster_tcp_service(entry)
-                    .unwrap_or_else(|| panic!("invalid compiled cluster service {entry:?}"))
-            })
-            .collect();
-    }
-    // Parse the historical fields directly. They remain compile-time strings,
-    // so the optional backend name keeps its launch-policy lifetime.
-    let endpoint = option_env!("CATTEN_CLUSTER_VIP").zip(option_env!("CATTEN_CLUSTER_TCP_PORT"));
-    let Some((address, port)) = endpoint else {
-        return Vec::new();
-    };
-    let legacy = ClusterTcpService {
-        address: parse_ipv4(address).unwrap_or_else(|| panic!("invalid compiled cluster VIP")),
-        port: parse_port(port).unwrap_or_else(|| panic!("invalid compiled cluster TCP port")),
-        backend_name: option_env!("CATTEN_CLUSTER_SERVICE_NAME").map(str::as_bytes),
-    };
-    alloc::vec![legacy]
-}
-
-fn parse_ipv4(address: &str) -> Option<[u8; 4]> {
-    let mut octets = [0u8; 4];
-    let mut parts = address.split('.');
-    for octet in &mut octets {
-        *octet = parts.next()?.parse().ok()?;
-    }
-    (parts.next().is_none() && octets != [0; 4]).then_some(octets)
-}
-
-fn parse_port(port: &str) -> Option<u16> {
-    port.parse::<u16>().ok().filter(|port| *port != 0)
+    option_env!("CATTEN_CLUSTER_SERVICES")
+        .unwrap_or("")
+        .split(';')
+        .filter(|entry| !entry.is_empty())
+        .map(|entry| {
+            parse_cluster_tcp_service(entry)
+                .unwrap_or_else(|| panic!("invalid compiled cluster service {entry:?}"))
+        })
+        .collect()
 }
 
 fn encode_cluster_tcp_services(services: &[ClusterTcpService]) -> Vec<u8> {

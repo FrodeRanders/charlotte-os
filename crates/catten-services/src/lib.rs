@@ -883,11 +883,6 @@ pub mod socket {
     pub const DOMAIN_TCP: u64 = 1;
     pub const DOMAIN_UDP: u64 = 2;
 
-    /// Legacy source-compatibility value. Socket capacity is now selected by
-    /// the authenticated launch policy and this value is not enforced.
-    #[deprecated(note = "socket capacity is configured by the tcpip launch policy")]
-    pub const MAX_SOCKETS: usize = 16;
-
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub enum SocketError {
         Ipc(IpcError),

@@ -404,14 +404,15 @@ remains empty until the target node publishes the matching generation. Routers
 keep separate leases, histories, and flow bindings for each service and adopt
 new results after a successful refresh. Retained epochs continue to route
 observed flows during the drain window. Omitting the application name preserves
-a compatibility mode in which every admitted, non-draining member serves the
+the platform-service policy in which every admitted, non-draining member serves the
 platform service. Fixed replica counts and \emph{every eligible node}
 placements widen a service's backend set as agents publish readiness. A
 leader-side controller reconciles automatic assignments after membership or
 drain-state changes. The runner accepts repeatable
-\texttt{--cluster-service NAME=VIP:PORT} options; the older paired
-\texttt{--cluster-service}/\texttt{--cluster-service-name} form remains a
-single-assignment compatibility spelling. Address-specific socket binds allow
+\texttt{--cluster-service [NAME=]VIP:PORT} options. The paired name flag and
+singleton VIP/port/name build variables are retired. Builds consume only the
+semicolon-separated \texttt{CATTEN\_CLUSTER\_SERVICES} table.
+Address-specific socket binds allow
 distinct VIPs to use the same conventional TCP port.
 
 The bootstrap table ceases to be authoritative after the first committed
@@ -420,7 +421,7 @@ replacement table, monotonic sequence, cluster identity, and UTC validity
 interval under the independent operations signing key. It may enter through any
 member; the leader re-verifies the signature and trusted UTC before proposing
 it to Raft. Exact retries are idempotent, stale or conflicting sequences fail,
-and an empty signed table withdraws all VIPs. Catalog-v14 snapshots retain the
+and an empty signed table withdraws all VIPs. Catalog-v17 snapshots retain the
 envelope and replay fence. DNS serves the applied table, frame routers
 reconcile service state by stable packed identity, and TCP/IP reconciles its
 \texttt{/32} addresses without restarting nodes. Applications using

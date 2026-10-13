@@ -9,7 +9,7 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--cluster-service [NAME=]VIP:PORT]... [--cluster-service-name NAME] [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--deployment-ingress-test|--shutdown-ingress-test|--kafka-test|--kafka-coordinator-test|--kafka-fencing-test] [--net-listen PORT|--net-connect HOST:PORT|--net-mcast GROUP:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test|--shutdown-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--cluster-service [NAME=]VIP:PORT]... [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--deployment-ingress-test|--shutdown-ingress-test|--kafka-test|--kafka-coordinator-test|--kafka-fencing-test] [--net-listen PORT|--net-connect HOST:PORT|--net-mcast GROUP:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test|--shutdown-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
@@ -24,7 +24,6 @@
 #   --no-network   Do not attach a NIC or launch network-backed services
 #   --cluster-service [NAME=]VIP:PORT  Bootstrap a distributed IPv4/TCP identity;
 #                  repeat for independently placed services; committed policy wins
-#   --cluster-service-name NAME  Compatibility spelling for naming one service
 #   --cluster-ingress-test  Probe the configured VIP from this guest
 #   --net-test     Verify the default virtio-net capability under TCG/KVM
 #   --relmsg-test  Exchange reliable messages with a second socket-LAN guest
@@ -129,7 +128,6 @@ NET_BACKEND="user"
 NET_MAC="52:54:00:12:34:56"
 CLUSTER_SERVICE=""
 CLUSTER_SERVICE_SPECS=()
-CLUSTER_SERVICE_NAME=""
 CLUSTER_VIP=""
 CLUSTER_TCP_PORT=""
 
@@ -150,9 +148,6 @@ while [ "$#" -gt 0 ]; do
         --cluster-service)
             [ "$#" -ge 2 ] || { echo "Missing value for --cluster-service" >&2; exit 1; }
             CLUSTER_SERVICE_SPECS+=("$2"); shift 2 ;;
-        --cluster-service-name)
-            [ "$#" -ge 2 ] || { echo "Missing value for --cluster-service-name" >&2; exit 1; }
-            CLUSTER_SERVICE_NAME="$2"; shift 2 ;;
         --cluster-ingress-test) NET_TEST="1"; CLUSTER_INGRESS_TEST="1"; shift ;;
         --net-test)    NET_TEST="1"; shift ;;
         --relmsg-test) NET_TEST="1"; RELMSG_TEST="1"; shift ;;
@@ -209,10 +204,6 @@ if [ -n "$APP_HOST_PORT" ] || [ -n "$APP_GUEST_PORT" ]; then
     catten_boot_validate_port "CATTEN_APP_HOST_PORT" "$APP_HOST_PORT"
     catten_boot_validate_port "CATTEN_APP_GUEST_PORT" "$APP_GUEST_PORT"
 fi
-if [ -n "$CLUSTER_SERVICE_NAME" ] && [ "${#CLUSTER_SERVICE_SPECS[@]}" -ne 1 ]; then
-    echo "error: --cluster-service-name requires exactly one --cluster-service" >&2
-    exit 1
-fi
 if [ "${#CLUSTER_SERVICE_SPECS[@]}" -gt 16 ]; then
     echo "error: at most 16 --cluster-service assignments fit the launch policy" >&2
     exit 1
@@ -225,13 +216,10 @@ for service_index in "${!CLUSTER_SERVICE_SPECS[@]}"; do
     if [[ "$service_spec" == *=* ]]; then
         service_name="${service_spec%%=*}"
         service_endpoint="${service_spec#*=}"
-    fi
-    if [ -n "$CLUSTER_SERVICE_NAME" ]; then
-        if [ -n "$service_name" ]; then
-            echo "error: do not combine NAME=VIP:PORT with --cluster-service-name" >&2
+        if [ -z "$service_name" ]; then
+            echo "error: cluster service names must contain 1-48 portable name characters" >&2
             exit 1
         fi
-        service_name="$CLUSTER_SERVICE_NAME"
     fi
     if [ -n "$service_name" ] && { [ "${#service_name}" -gt 48 ] \
         || ! [[ "$service_name" =~ ^[A-Za-z0-9._/-]+$ ]]; }; then
@@ -789,21 +777,8 @@ if [ "${CATTEN_SKIP_KERNEL_BUILD:-0}" = "1" ]; then
 else
     if [ -n "$CLUSTER_SERVICE" ]; then
         export CATTEN_CLUSTER_SERVICES="$CLUSTER_SERVICES_ENV"
-        # Historical single-service compile variables remain available to
-        # focused probes while platform services consume the canonical table.
-        export CATTEN_CLUSTER_VIP="$CLUSTER_VIP"
-        export CATTEN_CLUSTER_TCP_PORT="$CLUSTER_TCP_PORT"
-        first_service_spec="${CLUSTER_SERVICE_SPECS[0]}"
-        if [[ "$first_service_spec" == *=* ]]; then
-            export CATTEN_CLUSTER_SERVICE_NAME="${first_service_spec%%=*}"
-        else
-            unset CATTEN_CLUSTER_SERVICE_NAME
-        fi
     else
         unset CATTEN_CLUSTER_SERVICES
-        unset CATTEN_CLUSTER_VIP
-        unset CATTEN_CLUSTER_TCP_PORT
-        unset CATTEN_CLUSTER_SERVICE_NAME
     fi
     # Raw Ethernet peers have no DHCP server. This applies to the steady-state
     # appliance even when the fixture does not configure a cluster VIP.
