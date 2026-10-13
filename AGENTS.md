@@ -228,6 +228,10 @@ the corrected RPC polling paths, and the remaining notification gaps.
   interruption-tested migration preserving election and committed state;
   never silently reset or reformat an existing store. Current pre-production
   simplification does not require retaining older decoders or migration code.
+  Application snapshot restore must return rejection without changing live
+  state. Propagate that rejection before exposing a Raft node or publishing
+  snapshot/log progress, membership or join completion; unsupported state is
+  never an empty-catalog fallback. See `docs/reference/catalog-snapshots.md`.
 - New kernel capability publication uses `capability::Reservation`: reserve
   before payload/ownership mutation and publish under the subsystem's
   serialization. Retain the captured namespace identity, not just its ASID.

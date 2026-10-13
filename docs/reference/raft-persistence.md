@@ -6,6 +6,11 @@ accepts explicit memory mode (`storage=0`, or omitted) or required durability
 (`storage=2`); mode 1 and malformed policy values reject. A rejected disk pair
 never becomes an in-memory voter.
 
+The embedded application snapshot has its own
+[current-only catalog contract](catalog-snapshots.md). A structurally valid
+disk pair does not imply a supported application snapshot: Raft construction
+propagates application restore rejection without resetting the durable pair.
+
 ## Object layout and admission
 
 Cluster/node identity hashes select a stable two-object range:

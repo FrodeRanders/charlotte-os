@@ -1750,6 +1750,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // serialization frequency.
         snapshot_min_entries: 1024,
         snapshot_chunk_bytes: 1200,
+    })
+    .unwrap_or_else(|error| {
+        catten_rt::logln!("[raft-store] snapshot restore rejected: {:?}", error);
+        fatal(16)
     });
     config::write_u32_release(dns::status::STAGE, 8);
 

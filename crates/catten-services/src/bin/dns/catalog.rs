@@ -66,8 +66,11 @@ impl StateMachine for CatalogMachine {
         self.0.snapshot()
     }
 
-    fn restore(&self, snapshot_data: &[u8]) {
-        self.0.restore(snapshot_data);
+    fn restore(
+        &self,
+        snapshot_data: &[u8],
+    ) -> Result<(), catten_graft::state_machine::SnapshotError> {
+        self.0.restore(snapshot_data)
     }
 
     fn reset(&self) {

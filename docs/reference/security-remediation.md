@@ -523,3 +523,14 @@ timer deltas or closing C16/C18, broader context qualification or finding counts
 Corrected paired fresh-storage and disk-reuse boots passed 20/0/0 on ARM and
 18/0/0 on x86; both single-voter storage fixtures advanced 1→2 on the first
 boot and 3→4 after disk reuse. Failed samples remain separately recorded.
+
+
+The [catalog snapshot/query batch](../reports/audits/2026-10-13-protocol-simplification-catalog.md)
+removes snapshot versions 1–14 and missing query-section defaults. Explicit
+application restore errors now stop Raft startup or reject network installation
+before log, applied-state, membership or join-completion publication. This
+closes the silent-rejection behavior at that boundary; descriptor-less launch
+callers and packed deployment APIs remain the next simplification work. It
+adds no cleanup custody or physical completion proof and changes no numbered
+finding status or count. Infallible snapshot allocations, concurrent reader
+isolation and power-loss atomicity remain outside this batch. All 410 host tests and four matching-architecture deployment guests passed (22/0/0 twice on ARM, 20/0/0 twice on x86). Initial status-reader failures and the invalid mixed-architecture deployment pair remain separately recorded.

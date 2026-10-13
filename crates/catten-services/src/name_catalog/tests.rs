@@ -218,7 +218,7 @@ fn shutdown_intent_is_replay_fenced_and_survives_snapshot() {
     let query = catalog.query(&encode_shutdown_query(0x1234));
     assert_eq!(decode_shutdown_result(&query).unwrap().envelope, next);
     let restored = NameCatalog::new_with_deployment_key(key);
-    restored.restore(&catalog.snapshot());
+    restored.restore(&catalog.snapshot()).unwrap();
     assert_eq!(restored.shutdown_intent(0x1234), catalog.shutdown_intent(0x1234));
     assert_eq!(restored.ingress_draining_nodes(), vec![(0x1234, 2)]);
 }
@@ -258,7 +258,7 @@ fn ingress_policy_is_replay_fenced_and_survives_snapshot() {
 
     let restored =
         NameCatalog::new_with_control_plane_trust(deployment_key, operations_key, cluster_id);
-    restored.restore(&catalog.snapshot());
+    restored.restore(&catalog.snapshot()).unwrap();
     assert_eq!(restored.ingress_policy(), catalog.ingress_policy());
 }
 
@@ -292,7 +292,7 @@ fn node_capacity_is_replay_fenced_and_survives_snapshot() {
     assert_eq!(view.get(&0x1234).unwrap().free_frames, 700);
 
     let restored = NameCatalog::new();
-    restored.restore(&catalog.snapshot());
+    restored.restore(&catalog.snapshot()).unwrap();
     assert_eq!(restored.node_capacity(0x1234), catalog.node_capacity(0x1234));
     assert_eq!(restored.node_capacity_view().get(&0x1234).unwrap().free_frames, 700);
 }
@@ -317,7 +317,7 @@ fn deployment_generation_survives_activation_and_snapshot() {
     assert_eq!(crate::node_identity::key_from_name(&entry.node), Some(0x89ab_cdef));
 
     let restored = NameCatalog::new();
-    restored.restore(&catalog.snapshot());
+    restored.restore(&catalog.snapshot()).unwrap();
     assert_eq!(restored.lookup(b"orders"), Some(entry));
 }
 
@@ -424,7 +424,7 @@ fn replica_set_readiness_is_per_node_generation_fenced_and_snapshotted() {
     );
 
     let restored = NameCatalog::new_with_deployment_key(key);
-    restored.restore(&catalog.snapshot());
+    restored.restore(&catalog.snapshot()).unwrap();
     assert_eq!(restored.ingress_placement(b"orders"), catalog.ingress_placement(b"orders"));
     assert_eq!(
         restored.apply_with_result(
@@ -589,7 +589,7 @@ fn signed_release_is_atomic_idempotent_and_snapshot_persistent() {
     assert_eq!(charlotte_launch::deployment::decode(&receive.descriptor).unwrap().sequence, 2);
 
     let restored = NameCatalog::new();
-    restored.restore(&catalog.snapshot());
+    restored.restore(&catalog.snapshot()).unwrap();
     assert_eq!(restored.release(b"orders"), catalog.release(b"orders"));
     assert_eq!(restored.deployment(b"receive"), catalog.deployment(b"receive"));
     assert_eq!(restored.deployment(b"publish"), catalog.deployment(b"publish"));
@@ -622,7 +622,7 @@ fn operational_bindings_are_atomic_fenced_and_snapshot_persistent() {
     assert_eq!(catalog.release(b"orders").unwrap().operations_sequence, 1);
 
     let restored = NameCatalog::new();
-    restored.restore(&catalog.snapshot());
+    restored.restore(&catalog.snapshot()).unwrap();
     assert_eq!(restored.operational_binding(b"kafka/orders/transactional"), Some(binding.clone()));
     assert_eq!(restored.release(b"orders"), catalog.release(b"orders"));
 
@@ -712,4 +712,139 @@ fn rollout_status_and_remote_registration_are_canonical() {
         crate::rdeploy::decode_reply(&[&[crate::rdeploy::TAG_REPLY], reply.as_slice()].concat()),
         Some((3, 9, 21))
     );
+}
+
+#[test]
+fn retired_catalog_snapshots_reject_without_changing_live_state() {
+    let catalog = NameCatalog::new();
+    catalog.apply(1, &encode_register(b"live", b"charlotte:1234abcd"));
+    let before = catalog.snapshot();
+    let current = NameCatalog::new().snapshot();
+    // Historical magics, including the original CATALOGM tag.
+    for tag in b"M23456789ABCDE" {
+        let mut retired = current.clone();
+        let magic = 0x4341_5441_4c4f_4700u64 | u64::from(*tag);
+        retired[..8].copy_from_slice(&magic.to_le_bytes());
+        assert_eq!(
+            catalog.restore(&retired),
+            Err(catten_graft::state_machine::SnapshotError::Unsupported)
+        );
+        assert_eq!(catalog.snapshot(), before);
+    }
+    catalog.restore(&current).unwrap();
+    assert_eq!(catalog.snapshot(), current);
+}
+
+#[test]
+fn truncated_or_extended_catalog_snapshots_do_not_publish_any_section() {
+    let pair = KeyPair::generate();
+    let source = NameCatalog::new();
+    let public_key = pair.pk.as_ref().try_into().unwrap();
+    source.apply(1, &encode_set_cluster_key(public_key));
+    source.apply(1, &encode_register(b"source", b"charlotte:89abcdef"));
+    let descriptor = signed_deployment(&pair, b"orders", 1);
+    let release = signed_release(&pair, b"release", 1, &[&descriptor]);
+    source.apply(1, &encode_release(&release, &[0x89ab_cdef]).unwrap());
+    let snapshot = source.snapshot();
+    let target = NameCatalog::new();
+    target.apply(1, &encode_register(b"keep", b"charlotte:1234abcd"));
+    let before = target.snapshot();
+    for length in 0..snapshot.len() {
+        assert!(target.restore(&snapshot[..length]).is_err(), "accepted prefix length {length}");
+        assert_eq!(target.snapshot(), before);
+    }
+    let mut extended = snapshot.clone();
+    extended.push(0);
+    assert!(target.restore(&extended).is_err());
+    assert_eq!(target.snapshot(), before);
+    target.restore(&snapshot).unwrap();
+    assert_eq!(target.snapshot(), snapshot);
+}
+
+#[test]
+fn catalog_snapshot_rejects_duplicate_keys_and_noncanonical_flags() {
+    let source = NameCatalog::new();
+    source.apply(1, &encode_register(b"one", b"charlotte:1234abcd"));
+    let snapshot = source.snapshot();
+    let entry_end = 12 + 4 + 3 + 4 + b"charlotte:1234abcd".len() + 8 + 1 + 8;
+    let mut duplicated = snapshot.clone();
+    duplicated[8..12].copy_from_slice(&2u32.to_le_bytes());
+    duplicated.splice(entry_end..entry_end, snapshot[12..entry_end].iter().copied());
+    let target = NameCatalog::new();
+    let before = target.snapshot();
+    assert!(target.restore(&duplicated).is_err());
+    let mut bad_active = snapshot;
+    bad_active[entry_end - 9] = 2;
+    assert!(target.restore(&bad_active).is_err());
+    assert_eq!(target.snapshot(), before);
+}
+
+#[test]
+fn catalog_snapshot_rejects_missing_sections_and_unbounded_counts() {
+    let target = NameCatalog::new();
+    let before = target.snapshot();
+    for (offset, bound) in [
+        (8, MAX_ENTRIES),
+        (12, MAX_DEPLOYMENTS),
+        (16, MAX_RELEASES),
+        (20, MAX_OPERATIONAL_BINDINGS),
+        (24, MAX_SHUTDOWN_INTENTS),
+        (28, MAX_DEPLOYMENTS),
+    ] {
+        let mut bytes = before.clone();
+        bytes[offset..offset + 4].copy_from_slice(&((bound + 1) as u32).to_le_bytes());
+        assert!(target.restore(&bytes).is_err());
+    }
+    for offset in [32, 33] {
+        // ingress presence and cluster-key presence
+        let mut bytes = before.clone();
+        bytes[offset] = 2;
+        assert!(target.restore(&bytes).is_err());
+    }
+    let mut bytes = before.clone();
+    bytes[34..42].copy_from_slice(&1u64.to_le_bytes()); // absent key with a generation
+    assert!(target.restore(&bytes).is_err());
+    assert_eq!(target.snapshot(), before);
+}
+
+#[test]
+fn deployment_query_requires_complete_descriptor_and_replica_sections() {
+    let entry = DeploymentEntry {
+        object_id: 17,
+        node_key: 4,
+        replica_nodes: vec![4, 9],
+        generation: 3,
+        artifact_digest: [0x5a; 32],
+        descriptor: b"descriptor".to_vec(),
+    };
+    let bytes = encode_deployment_result(&entry).unwrap();
+    assert_eq!(decode_deployment_result(&bytes), Some(entry));
+    for length in 0..bytes.len() {
+        assert!(decode_deployment_result(&bytes[..length]).is_none());
+    }
+    let mut extended = bytes;
+    extended.push(0);
+    assert!(decode_deployment_result(&extended).is_none());
+}
+
+#[test]
+fn deployment_query_rejects_inconsistent_primary_and_replica_assignments() {
+    let mut entry = DeploymentEntry {
+        object_id: 17,
+        node_key: 4,
+        replica_nodes: vec![4, 9],
+        generation: 3,
+        artifact_digest: [0x5a; 32],
+        descriptor: Vec::new(),
+    };
+    let bytes = encode_deployment_result(&entry).unwrap();
+    for (offset, value) in [(0, 0), (16, 9), (62, 0), (70, 4), (70, 3)] {
+        let mut malformed = bytes.clone();
+        malformed[offset..offset + 8].copy_from_slice(&(value as u64).to_le_bytes());
+        assert!(decode_deployment_result(&malformed).is_none());
+    }
+    entry.replica_nodes.clear();
+    assert!(encode_deployment_result(&entry).is_none());
+    entry.node_key = 0;
+    assert_eq!(decode_deployment_result(&encode_deployment_result(&entry).unwrap()), Some(entry));
 }

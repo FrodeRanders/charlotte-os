@@ -23,7 +23,10 @@ use crate::{
         PersistentStateStore,
     },
     membership::ClusterConfiguration,
-    state_machine::StateMachine,
+    state_machine::{
+        SnapshotError,
+        StateMachine,
+    },
     transport::{
         AppendEntriesRpc,
         InstallSnapshotRpc,
@@ -125,7 +128,7 @@ pub struct RaftNodeConfig {
 }
 
 impl RaftNode {
-    pub fn new(config: RaftNodeConfig) -> Self {
+    pub fn new(config: RaftNodeConfig) -> Result<Self, SnapshotError> {
         let RaftNodeConfig {
             me,
             timeout_millis,
@@ -169,7 +172,7 @@ impl RaftNode {
                 snapshot_data
             };
             if let Some(ref machine) = state_machine {
-                machine.restore(&application_data);
+                machine.restore(&application_data)?;
             }
         }
 
@@ -201,7 +204,7 @@ impl RaftNode {
             0
         };
 
-        Self {
+        Ok(Self {
             me,
             state: NodeState::Follower,
             current_term,
@@ -244,7 +247,7 @@ impl RaftNode {
             current_millis,
             rand_state,
             granted_votes: BTreeSet::new(),
-        }
+        })
     }
 
     pub fn set_millis(&mut self, millis: u64) {
@@ -780,6 +783,23 @@ impl RaftNode {
         if installed {
             if let Some(ref snap) = self.pending_snapshot {
                 let data = snap.data.clone();
+                let envelope = crate::snapshot_codec::decode_snapshot_payload(&data);
+                let application_data = envelope
+                    .as_ref()
+                    .map_or(data.as_slice(), |envelope| envelope.state_machine_snapshot.as_slice());
+                if let Some(ref machine) = self.state_machine
+                    && machine.restore(application_data).is_err()
+                {
+                    self.pending_snapshot = None;
+                    return InstallSnapshotResponse {
+                        peer_id: self.me.id.clone(),
+                        term: self.current_term,
+                        success: false,
+                        last_included_index: req.last_included_index,
+                        next_offset: 0,
+                        done: false,
+                    };
+                }
                 self.log_store.install_snapshot(
                     snap.last_included_index,
                     snap.last_included_term,
@@ -787,51 +807,42 @@ impl RaftNode {
                 );
                 self.commit_index = snap.last_included_index;
                 self.last_applied = snap.last_included_index;
-                let application_data =
-                    if let Some(envelope) = crate::snapshot_codec::decode_snapshot_payload(&data) {
-                        if !envelope.current_members.is_empty() {
-                            let mut configuration =
-                                ClusterConfiguration::stable(envelope.current_members);
-                            if !envelope.next_members.is_empty() {
-                                configuration = configuration.transition_to(envelope.next_members);
-                            }
-                            self.snapshot_configuration = configuration.clone();
-                            self.cluster_configuration = configuration.clone();
-                            self.membership_epoch = if envelope.membership_epoch == 0 {
-                                snap.last_included_index
-                            } else {
-                                envelope.membership_epoch
-                            };
-                            self.committed_configurations
-                                .retain(|index, _| *index > snap.last_included_index);
-                            self.committed_configurations
-                                .insert(snap.last_included_index, configuration);
-                            self.decommissioned = !self.cluster_configuration.contains(&self.me.id);
-                            if !self.decommissioned {
-                                self.persistent_state.set_join_admission(None);
-                                self.joining = false;
-                                self.joining_from = None;
-                            }
-                            self.pending_auto_finalize_members = self
-                                .cluster_configuration
-                                .next_members()
-                                .into_iter()
-                                .map(|peer| peer.id.clone())
-                                .collect();
-                            self.pending_auto_finalize_fence_index =
-                                if self.cluster_configuration.is_joint_consensus() {
-                                    snap.last_included_index
-                                } else {
-                                    0
-                                };
-                            self.finalize_configuration_pending = false;
-                        }
-                        envelope.state_machine_snapshot
+                if let Some(envelope) = envelope
+                    && !envelope.current_members.is_empty()
+                {
+                    let mut configuration = ClusterConfiguration::stable(envelope.current_members);
+                    if !envelope.next_members.is_empty() {
+                        configuration = configuration.transition_to(envelope.next_members);
+                    }
+                    self.snapshot_configuration = configuration.clone();
+                    self.cluster_configuration = configuration.clone();
+                    self.membership_epoch = if envelope.membership_epoch == 0 {
+                        snap.last_included_index
                     } else {
-                        data
+                        envelope.membership_epoch
                     };
-                if let Some(ref sm) = self.state_machine {
-                    sm.restore(&application_data);
+                    self.committed_configurations
+                        .retain(|index, _| *index > snap.last_included_index);
+                    self.committed_configurations.insert(snap.last_included_index, configuration);
+                    self.decommissioned = !self.cluster_configuration.contains(&self.me.id);
+                    if !self.decommissioned {
+                        self.persistent_state.set_join_admission(None);
+                        self.joining = false;
+                        self.joining_from = None;
+                    }
+                    self.pending_auto_finalize_members = self
+                        .cluster_configuration
+                        .next_members()
+                        .into_iter()
+                        .map(|peer| peer.id.clone())
+                        .collect();
+                    self.pending_auto_finalize_fence_index =
+                        if self.cluster_configuration.is_joint_consensus() {
+                            snap.last_included_index
+                        } else {
+                            0
+                        };
+                    self.finalize_configuration_pending = false;
                 }
             }
             self.pending_snapshot = None;
@@ -1447,8 +1458,9 @@ mod tests {
     impl StateMachine for RecordingStateMachine {
         fn apply(&self, _term: u64, _command: &[u8]) {}
 
-        fn restore(&self, snapshot_data: &[u8]) {
+        fn restore(&self, snapshot_data: &[u8]) -> Result<(), crate::state_machine::SnapshotError> {
             *self.restored.lock() = snapshot_data.to_vec();
+            Ok(())
         }
 
         fn reset(&self) {
@@ -1484,6 +1496,7 @@ mod tests {
             snapshot_min_entries: 64,
             snapshot_chunk_bytes: 3000,
         })
+        .unwrap()
     }
 
     #[test]
@@ -1613,7 +1626,8 @@ mod tests {
             current_millis: 0,
             snapshot_min_entries: 64,
             snapshot_chunk_bytes: 3000,
-        });
+        })
+        .unwrap();
         node.start_election(200);
         node.next_index.insert("stale".to_string(), 9);
         node.match_index.insert("stale".to_string(), 8);
@@ -1659,6 +1673,7 @@ mod tests {
                 snapshot_min_entries: 64,
                 snapshot_chunk_bytes: 3000,
             })
+            .unwrap()
         };
 
         let mut node = make_node();
@@ -1844,7 +1859,8 @@ mod tests {
             current_millis: 0,
             snapshot_min_entries: 64,
             snapshot_chunk_bytes: 3000,
-        });
+        })
+        .unwrap();
 
         node.start_election(200);
 
@@ -1885,7 +1901,8 @@ mod tests {
             current_millis: 0,
             snapshot_min_entries: 64,
             snapshot_chunk_bytes: 3000,
-        });
+        })
+        .unwrap();
 
         node.start_election(200);
         assert!(applied.lock().is_empty());
@@ -1922,6 +1939,125 @@ mod tests {
             203,
         );
         assert_eq!(node.commit_index, index);
+    }
+
+    struct RejectingStateMachine;
+
+    impl StateMachine for RejectingStateMachine {
+        fn apply(&self, _term: u64, _command: &[u8]) {}
+
+        fn restore(&self, _data: &[u8]) -> Result<(), crate::state_machine::SnapshotError> {
+            Err(crate::state_machine::SnapshotError::Unsupported)
+        }
+
+        fn reset(&self) {}
+    }
+
+    #[test]
+    fn restart_rejects_application_snapshot_before_clearing_join_admission() {
+        let peers = vec![Peer::voter("n1".to_string(), 0), Peer::voter("n2".to_string(), 0)];
+        let store = InMemoryLogStore::new();
+        let snapshot = crate::snapshot_codec::wrap_snapshot_payload_with_membership_epoch(
+            &peers,
+            &[],
+            7,
+            &[9],
+        );
+        store.install_snapshot(7, 3, snapshot.clone());
+        let persistent = InMemoryPersistentStateStore::new();
+        let admission = crate::log_store::JoinAdmission {
+            anchor_id: "n2".to_string(),
+            snapshot_index: 0,
+        };
+        persistent.set_current_term(5);
+        persistent.set_voted_for(Some("n1".to_string()));
+        persistent.set_join_admission(Some(admission.clone()));
+        let result = RaftNode::new(RaftNodeConfig {
+            me: peers[0].clone(),
+            timeout_millis: 150,
+            log_store: Box::new(store.clone()),
+            persistent_state: Box::new(persistent.clone()),
+            state_machine: Some(Box::new(RejectingStateMachine)),
+            cluster_configuration: ClusterConfiguration::stable(peers),
+            transport: Arc::new(NoopTransport),
+            current_millis: 0,
+            snapshot_min_entries: 64,
+            snapshot_chunk_bytes: 3000,
+        });
+        assert!(matches!(result, Err(crate::state_machine::SnapshotError::Unsupported)));
+        assert_eq!(store.snapshot_data(), snapshot);
+        assert_eq!(store.snapshot_index(), 7);
+        assert_eq!(persistent.join_admission(), Some(admission));
+        assert_eq!(persistent.current_term(), 5);
+        assert_eq!(persistent.voted_for().as_deref(), Some("n1"));
+    }
+
+    #[test]
+    fn rejected_streamed_snapshot_does_not_publish_log_membership_or_join_completion() {
+        let mut node = node_with_voters(&["n1", "n2"]);
+        node.begin_joining("n2".to_string(), 0);
+        node.state_machine = Some(Box::new(RejectingStateMachine));
+        let peers = vec![Peer::voter("n1".to_string(), 0), Peer::voter("n3".to_string(), 0)];
+        let data = crate::snapshot_codec::wrap_snapshot_payload_with_membership_epoch(
+            &peers,
+            &[],
+            7,
+            &[9],
+        );
+        let split = data.len() / 2;
+        let request = InstallSnapshotRequest {
+            term: 3,
+            leader_id: "n2".to_string(),
+            last_included_index: 7,
+            last_included_term: 3,
+            offset: 0,
+            data: data[..split].to_vec(),
+            done: false,
+        };
+        let first = node.handle_install_snapshot(request.clone(), 1);
+        assert!(first.success && !first.done);
+        assert_eq!(first.next_offset, split as u64);
+        let final_response = node.handle_install_snapshot(
+            InstallSnapshotRequest {
+                offset: split as u64,
+                data: data[split..].to_vec(),
+                done: true,
+                ..request.clone()
+            },
+            2,
+        );
+        assert!(!final_response.success && !final_response.done);
+        assert_eq!(final_response.next_offset, 0);
+        assert!(node.pending_snapshot.is_none());
+        assert_eq!(node.log_store.snapshot_index(), 0);
+        assert_eq!(node.commit_index, 0);
+        assert_eq!(node.last_applied, 0);
+        assert_eq!(node.membership_epoch(), 0);
+        assert!(node.cluster_configuration.contains("n2"));
+        assert!(!node.cluster_configuration.contains("n3"));
+        assert!(node.joining);
+        assert!(node.persistent_state.join_admission().is_some());
+        // A supported replacement can still be installed after explicit rejection.
+        let restored = Arc::new(spin::Mutex::new(Vec::new()));
+        node.state_machine = Some(Box::new(RecordingStateMachine {
+            restored: restored.clone(),
+        }));
+        let response = node.handle_install_snapshot(
+            InstallSnapshotRequest {
+                data,
+                done: true,
+                ..request
+            },
+            3,
+        );
+        assert!(response.success && response.done);
+        assert_eq!(&*restored.lock(), &[9]);
+        assert_eq!(node.log_store.snapshot_index(), 7);
+        assert_eq!(node.commit_index, 7);
+        assert_eq!(node.last_applied, 7);
+        assert_eq!(node.membership_epoch(), 7);
+        assert!(!node.joining);
+        assert!(node.persistent_state.join_admission().is_none());
     }
 
     #[test]
@@ -1974,7 +2110,8 @@ mod tests {
             current_millis: 0,
             snapshot_min_entries: 64,
             snapshot_chunk_bytes: 3000,
-        });
+        })
+        .unwrap();
 
         assert_eq!(&*restored.lock(), &[9, 8, 7]);
         assert_eq!(node.commit_index, 4);
@@ -2098,7 +2235,8 @@ mod tests {
             current_millis: 0,
             snapshot_min_entries: 64,
             snapshot_chunk_bytes: 3000,
-        });
+        })
+        .unwrap();
         let entries =
             (1..=5).map(|index| LogEntry::new(1, "n2".to_string(), vec![index as u8])).collect();
 
@@ -2305,7 +2443,8 @@ mod tests {
             current_millis: 0,
             snapshot_min_entries: 64,
             snapshot_chunk_bytes: 3000,
-        });
+        })
+        .unwrap();
 
         assert!(node.cluster_configuration.is_joint_consensus());
         assert!(

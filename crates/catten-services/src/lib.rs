@@ -2222,7 +2222,10 @@ pub mod dns {
     /// scalar `OP_DEPLOY` remains for legacy short-name clients.
     pub const OP_DEPLOY_NAMED: u32 = 15;
     /// Query one deployment by a full artifact name carried in moved memory.
-    /// `arg0` is the name length. The reply layout matches `OP_DEPLOY_QUERY`.
+    /// `arg0` is the name length. The reply always includes generation,
+    /// object ID, diagnostic primary node, SHA-256, descriptor length/bytes,
+    /// and replica count/nodes; see [`crate::name_catalog::decode_deployment_result`].
+    /// Missing sections are rejected rather than supplying singleton placement.
     pub const OP_DEPLOY_QUERY_NAMED: u32 = 16;
     /// Enumerate desired deployment names. The reply is
     /// `[count:u16] ([name_len:u8][name])*`, sorted by name. Callers query

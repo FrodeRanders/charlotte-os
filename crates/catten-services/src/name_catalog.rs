@@ -73,20 +73,6 @@ const MAX_RELEASES: usize = 4_096;
 const MAX_OPERATIONAL_BINDINGS: usize = 8_192;
 const MAX_SHUTDOWN_INTENTS: usize = 4_096;
 const MAX_NODE_CAPACITY_ENTRIES: usize = 256;
-const CATALOG_MAGIC_V1: u64 = 0x4341_5441_4c4f_474d; // "CATALOGM"
-const CATALOG_MAGIC_V2: u64 = 0x4341_5441_4c4f_4732; // "CATALOG2"
-const CATALOG_MAGIC_V3: u64 = 0x4341_5441_4c4f_4733; // "CATALOG3"
-const CATALOG_MAGIC_V4: u64 = 0x4341_5441_4c4f_4734; // "CATALOG4"
-const CATALOG_MAGIC_V5: u64 = 0x4341_5441_4c4f_4735; // "CATALOG5"
-const CATALOG_MAGIC_V6: u64 = 0x4341_5441_4c4f_4736; // "CATALOG6"
-const CATALOG_MAGIC_V7: u64 = 0x4341_5441_4c4f_4737; // "CATALOG7"
-const CATALOG_MAGIC_V8: u64 = 0x4341_5441_4c4f_4738; // "CATALOG8"
-const CATALOG_MAGIC_V9: u64 = 0x4341_5441_4c4f_4739; // "CATALOG9"
-const CATALOG_MAGIC_V10: u64 = 0x4341_5441_4c4f_4741; // "CATALOGA"
-const CATALOG_MAGIC_V11: u64 = 0x4341_5441_4c4f_4742; // "CATALOGB"
-const CATALOG_MAGIC_V12: u64 = 0x4341_5441_4c4f_4743; // "CATALOGC"
-const CATALOG_MAGIC_V13: u64 = 0x4341_5441_4c4f_4744; // "CATALOGD"
-const CATALOG_MAGIC_V14: u64 = 0x4341_5441_4c4f_4745; // "CATALOGE"
 const CATALOG_MAGIC_V15: u64 = 0x4341_5441_4c4f_4746; // "CATALOGF"
 
 /// Query tag prefix for a name lookup.
@@ -117,7 +103,7 @@ pub struct CatalogEntry {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DeploymentEntry {
     pub object_id: u64,
-    /// Compatibility/diagnostic primary: the first member of
+    /// Diagnostic primary: the first member of
     /// `replica_nodes`, or zero when no placement is currently possible.
     pub node_key: u64,
     /// Sorted, unique concrete assignments committed by Raft.
@@ -1453,8 +1439,11 @@ impl StateMachine for NameCatalog {
         self.snapshot_bytes()
     }
 
-    fn restore(&self, snapshot_data: &[u8]) {
-        self.restore_bytes(snapshot_data);
+    fn restore(
+        &self,
+        snapshot_data: &[u8],
+    ) -> Result<(), catten_graft::state_machine::SnapshotError> {
+        self.restore_bytes(snapshot_data)
     }
 
     fn reset(&self) {
@@ -1704,48 +1693,34 @@ pub fn decode_ingress_policy_result(bytes: &[u8]) -> Option<IngressPolicyEntry> 
 
 /// Decode the deployment record returned by a deployment query.
 pub fn decode_deployment_result(bytes: &[u8]) -> Option<DeploymentEntry> {
-    if bytes.len() < 56 {
+    let descriptor_len =
+        usize::try_from(u32::from_le_bytes(bytes.get(56..60)?.try_into().ok()?)).ok()?;
+    if descriptor_len > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN {
         return None;
     }
-    let (descriptor, replica_nodes) = if bytes.len() == 56 {
-        (Vec::new(), Vec::new())
-    } else {
-        let descriptor_len =
-            usize::try_from(u32::from_le_bytes(bytes.get(56..60)?.try_into().ok()?)).ok()?;
-        if descriptor_len > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN {
+    let descriptor_end = 60usize.checked_add(descriptor_len)?;
+    let descriptor = bytes.get(60..descriptor_end)?.to_vec();
+    let count = usize::from(read_u16(bytes, descriptor_end)?.0);
+    let nodes_end = descriptor_end.checked_add(2)?.checked_add(count.checked_mul(8)?)?;
+    if nodes_end != bytes.len() {
+        return None;
+    }
+    let mut replica_nodes = Vec::with_capacity(count);
+    let mut position = descriptor_end + 2;
+    for _ in 0..count {
+        let (node, next) = read_u64(bytes, position)?;
+        if node == 0 || replica_nodes.last().is_some_and(|previous| *previous >= node) {
             return None;
         }
-        let descriptor_end = 60usize.checked_add(descriptor_len)?;
-        let descriptor = bytes.get(60..descriptor_end)?.to_vec();
-        let nodes = if descriptor_end == bytes.len() {
-            Vec::new()
-        } else {
-            let count = usize::from(read_u16(bytes, descriptor_end)?.0);
-            let nodes_end = descriptor_end.checked_add(2)?.checked_add(count.checked_mul(8)?)?;
-            if nodes_end != bytes.len() {
-                return None;
-            }
-            let mut nodes = Vec::with_capacity(count);
-            let mut seen = BTreeSet::new();
-            let mut position = descriptor_end + 2;
-            for _ in 0..count {
-                let (node, next) = read_u64(bytes, position)?;
-                if node == 0 || !seen.insert(node) {
-                    return None;
-                }
-                nodes.push(node);
-                position = next;
-            }
-            nodes
-        };
-        (descriptor, nodes)
-    };
+        replica_nodes.push(node);
+        position = next;
+    }
     let node_key = u64::from_le_bytes(bytes[16..24].try_into().ok()?);
-    let replica_nodes = if replica_nodes.is_empty() && node_key != 0 {
-        alloc::vec![node_key]
-    } else {
-        replica_nodes
-    };
+    if replica_nodes.first().copied().unwrap_or(0) != node_key
+        || u64::from_le_bytes(bytes[0..8].try_into().ok()?) == 0
+    {
+        return None;
+    }
     Some(DeploymentEntry {
         generation: u64::from_le_bytes(bytes[0..8].try_into().ok()?),
         object_id: u64::from_le_bytes(bytes[8..16].try_into().ok()?),
@@ -1757,8 +1732,16 @@ pub fn decode_deployment_result(bytes: &[u8]) -> Option<DeploymentEntry> {
 }
 
 /// Encode a deployment query result, including the committed concrete
-/// replica set after the backwards-compatible singleton prefix.
+/// replica set. The diagnostic primary must match the first assignment.
 pub fn encode_deployment_result(entry: &DeploymentEntry) -> Option<Vec<u8>> {
+    if entry.generation == 0
+        || entry.descriptor.len() > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN
+        || entry.node_key != entry.replica_nodes.first().copied().unwrap_or(0)
+        || entry.replica_nodes.contains(&0)
+        || entry.replica_nodes.windows(2).any(|nodes| nodes[0] >= nodes[1])
+    {
+        return None;
+    }
     let count = u16::try_from(entry.replica_nodes.len()).ok()?;
     let mut bytes = Vec::with_capacity(62 + entry.descriptor.len() + entry.replica_nodes.len() * 8);
     bytes.extend_from_slice(&entry.generation.to_le_bytes());

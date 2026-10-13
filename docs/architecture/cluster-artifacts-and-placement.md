@@ -124,9 +124,10 @@ cluster-sign release-apply orders.crelease 127.0.0.1:8081 120
 bytes. The cluster verifies the outer and nested signatures, relays a request
 received by a follower to the current leader, resolves automatic placement,
 and admits the whole set in one Raft command. Catalog preflight rejects a stale
-or conflicting release or component before changing the deployment map; v9
-snapshots first retained the release record and current catalog-v13 snapshots
-also retain concrete replica sets and per-node readiness. Admission is atomic, while S3 fetch,
+or conflicting release or component before changing the deployment map. The sole
+[catalog-v15 snapshot](../reference/catalog-snapshots.md) retains release records,
+concrete replica sets, per-node readiness, operational authorization, shutdown
+intents, ingress policy and capacity samples. Admission is atomic, while S3 fetch,
 launch, publication, and readiness remain independently reconciled after the
 commit. Coordinated rollback and richer rollout policy still require a release
 controller.

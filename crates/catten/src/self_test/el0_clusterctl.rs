@@ -98,17 +98,18 @@ mod inner {
         result
     }
 
-    /// Read up to `len` bytes from a moved memory object cap in the kernel
-    /// address space, then release it.
-    fn read_moved_memory(cap: u64, base: usize, len: usize) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        if crate::memory::object::map(KERNEL_ASID, cap, base.into(), false).is_ok() {
-            for index in 0..len {
-                bytes.push(unsafe { core::ptr::read_volatile((base + index) as *const u8) });
-            }
-            let _ = crate::memory::object::unmap(KERNEL_ASID, cap);
-        }
-        let _ = crate::memory::object::close_cap(KERNEL_ASID, cap);
+    /// Raw boot-fixture adapter: copy exact readable reply bytes through the
+    /// existing kernel snapshot boundary, then release the uniquely received
+    /// capability. Public application mapping requires a user-root operation
+    /// lease and intentionally rejects KERNEL_ASID; no fixture mapping bypass
+    /// or fixed low-address scratch reservation is needed here.
+    fn read_moved_memory(
+        cap: u64,
+        len: usize,
+    ) -> Result<Vec<u8>, crate::memory::object::MemoryObjectError> {
+        let bytes = crate::memory::object::snapshot_bytes(KERNEL_ASID, cap, len);
+        let closed = crate::memory::object::close_cap(KERNEL_ASID, cap);
+        closed?;
         bytes
     }
 
@@ -234,12 +235,8 @@ mod inner {
                 continue;
             };
             if let Some(memory) = memory.filter(|_| status >= 0) {
-                record = read_moved_memory(
-                    memory,
-                    crate::self_test::scratch::allocate_scratch_page()
-                        .expect("[clusterctl] kernel scratch"),
-                    24,
-                );
+                record =
+                    read_moved_memory(memory, 24).expect("[clusterctl] readable deployment status");
                 break;
             }
             status_deadline.assert_pending("EL0 clusterctl status replication");
@@ -284,12 +281,7 @@ mod inner {
                 continue;
             };
             if let Some(memory) = memory.filter(|_| status >= 0) {
-                let key = read_moved_memory(
-                    memory,
-                    crate::self_test::scratch::allocate_scratch_page()
-                        .expect("[clusterctl] kernel scratch"),
-                    32,
-                );
+                let key = read_moved_memory(memory, 32).expect("[clusterctl] readable cluster key");
                 assert_eq!(
                     key.as_slice(),
                     &charlotte_launch::CLUSTER_PUBLIC_KEY,
@@ -448,12 +440,13 @@ mod inner {
                     logln!("[admin] status: {status}");
                     return;
                 };
-                let bytes = read_moved_memory(
-                    memory,
-                    crate::self_test::scratch::allocate_scratch_page()
-                        .expect("[clusterctl] kernel scratch"),
-                    32,
-                );
+                let bytes = match read_moved_memory(memory, 32) {
+                    Ok(bytes) => bytes,
+                    Err(error) => {
+                        logln!("[admin] status read failed: {error:?}");
+                        return;
+                    }
+                };
                 let generation = u64::from_le_bytes(bytes[0..8].try_into().expect("generation"));
                 let object_id = u64::from_le_bytes(bytes[8..16].try_into().expect("object id"));
                 let node_key = u64::from_le_bytes(bytes[16..24].try_into().expect("node key"));

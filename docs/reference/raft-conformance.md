@@ -17,7 +17,7 @@ NVMe object store at the platform boundary.
 | Membership changes | `JOIN`, `JOINT`, and `FINALIZE` are shared protobuf internal commands. Direct local membership mutation is rejected. Joint consensus is automatically finalized after proposed members reach the joint-entry fence. |
 | Learners and removal | Learners replicate but neither campaign nor vote. A removed node becomes decommissioned; a learner is not incorrectly treated as removed. |
 | Reads | Linearizable queries require current leadership plus recent contact with a quorum. |
-| Snapshots | Snapshots carry current and next membership, peer roles/addresses, and application state in the shared JSON envelope. Recovery restores membership before accepting elections or leader RPCs. |
+| Snapshots | Snapshots carry current and next membership, peer roles/addresses, and application state in the shared JSON envelope. Application restore must succeed before startup exposes a node or network installation publishes snapshot progress/membership. |
 | Wire contract | Vote, append, snapshot, peer, and internal-command messages use field-compatible `raft.proto` protobuf payloads. |
 | Liveness | Capability RPCs have bounded deadlines and at most one outstanding call per peer/RPC type/term. Append batches are reduced to the largest payload fitting the current one-page IPC attachment. |
 

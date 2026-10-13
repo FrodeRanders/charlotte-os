@@ -3,6 +3,8 @@
 //! Extracted from the catalog module. The codec walks the catalog's private
 //! registries directly, so it stays a child module of `name_catalog`.
 
+use catten_graft::state_machine::SnapshotError;
+
 use super::*;
 
 impl NameCatalog {
@@ -19,15 +21,7 @@ impl NameCatalog {
         for (name, entry) in entries.iter() {
             size += 4 + name.len() + 4 + entry.node.len() + 8 + 1 + 8;
         }
-        // V7 appends signed deployment descriptors to the manifest records;
-        // V8 binds active application registrations to deployment generations;
-        // V9 persists atomically admitted signed release envelopes; V10 adds
-        // compact encrypted-profile references and their replay fences; V11
-        // adds the detached operational authorization for each binding; V12
-        // appends node-targeted signed shutdown intents; V13 adds concrete
-        // replica sets and per-node deployment readiness; V14 appends the
-        // operator-signed cluster ingress policy; V15 appends committed
-        // per-node capacity samples.
+        // The sole snapshot grammar includes every current catalog section.
         size += 4;
         for (artifact, entry) in deployments.iter() {
             size += 4
@@ -183,87 +177,54 @@ impl NameCatalog {
         buf
     }
 
-    pub(super) fn restore_bytes(&self, data: &[u8]) {
+    pub(super) fn restore_bytes(&self, data: &[u8]) -> Result<(), SnapshotError> {
         if data.len() < 12 {
-            return;
+            return Err(SnapshotError::Malformed);
         }
         let magic = u64::from_le_bytes(data[0..8].try_into().ok().unwrap_or_default());
-        if magic != CATALOG_MAGIC_V1
-            && magic != CATALOG_MAGIC_V2
-            && magic != CATALOG_MAGIC_V3
-            && magic != CATALOG_MAGIC_V4
-            && magic != CATALOG_MAGIC_V5
-            && magic != CATALOG_MAGIC_V6
-            && magic != CATALOG_MAGIC_V7
-            && magic != CATALOG_MAGIC_V8
-            && magic != CATALOG_MAGIC_V9
-            && magic != CATALOG_MAGIC_V10
-            && magic != CATALOG_MAGIC_V11
-            && magic != CATALOG_MAGIC_V12
-            && magic != CATALOG_MAGIC_V13
-            && magic != CATALOG_MAGIC_V14
-            && magic != CATALOG_MAGIC_V15
-        {
-            return;
+        if magic != CATALOG_MAGIC_V15 {
+            return Err(SnapshotError::Unsupported);
         }
         let count = u32::from_le_bytes(data[8..12].try_into().ok().unwrap_or_default()) as usize;
+        if count > MAX_ENTRIES {
+            return Err(SnapshotError::Malformed);
+        }
         let mut pos = 12;
         let mut entries = BTreeMap::new();
         for _ in 0..count {
             let Some((name, after_name)) = take_len_bytes(data, pos) else {
-                return;
+                return Err(SnapshotError::Malformed);
             };
             let Some((node, after_node)) = take_len_bytes(data, after_name) else {
-                return;
+                return Err(SnapshotError::Malformed);
             };
-            let (generation, after_generation) = if magic != CATALOG_MAGIC_V1 {
+            let (generation, after_generation) = {
                 let Some(bytes) = data.get(after_node..after_node.saturating_add(8)) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Ok(bytes) = <[u8; 8]>::try_from(bytes) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 (u64::from_le_bytes(bytes), after_node + 8)
-            } else {
-                (1, after_node)
             };
-            let (active, after_entry) = if magic == CATALOG_MAGIC_V3
-                || magic == CATALOG_MAGIC_V4
-                || magic == CATALOG_MAGIC_V5
-                || magic == CATALOG_MAGIC_V6
-                || magic == CATALOG_MAGIC_V7
-                || magic == CATALOG_MAGIC_V8
-                || magic == CATALOG_MAGIC_V9
-                || magic == CATALOG_MAGIC_V10
-                || magic == CATALOG_MAGIC_V11
-                || magic == CATALOG_MAGIC_V12
-                || magic == CATALOG_MAGIC_V13
-                || magic == CATALOG_MAGIC_V14
-                || magic == CATALOG_MAGIC_V15
-            {
+            let (active, after_entry) = {
                 let Some(active) = data.get(after_generation) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
+                if *active > 1 {
+                    return Err(SnapshotError::Malformed);
+                }
                 (*active != 0, after_generation + 1)
-            } else {
-                (true, after_generation)
             };
-            let (deployment_generation, after_entry) = if magic == CATALOG_MAGIC_V8
-                || magic == CATALOG_MAGIC_V9
-                || magic == CATALOG_MAGIC_V10
-                || magic == CATALOG_MAGIC_V11
-                || magic == CATALOG_MAGIC_V12
-                || magic == CATALOG_MAGIC_V13
-                || magic == CATALOG_MAGIC_V14
-                || magic == CATALOG_MAGIC_V15
-            {
+            let (deployment_generation, after_entry) = {
                 let Some((generation, after_generation)) = read_u64(data, after_entry) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 (generation, after_generation)
-            } else {
-                (0, after_entry)
             };
+            if generation == 0 || name.is_empty() || entries.contains_key(name) {
+                return Err(SnapshotError::Malformed);
+            }
             entries.insert(
                 name.to_vec(),
                 CatalogEntry {
@@ -277,97 +238,55 @@ impl NameCatalog {
         }
 
         let mut deployments = BTreeMap::new();
-        if magic == CATALOG_MAGIC_V4
-            || magic == CATALOG_MAGIC_V5
-            || magic == CATALOG_MAGIC_V6
-            || magic == CATALOG_MAGIC_V7
-            || magic == CATALOG_MAGIC_V8
-            || magic == CATALOG_MAGIC_V9
-            || magic == CATALOG_MAGIC_V10
-            || magic == CATALOG_MAGIC_V11
-            || magic == CATALOG_MAGIC_V12
-            || magic == CATALOG_MAGIC_V13
-            || magic == CATALOG_MAGIC_V14
-            || magic == CATALOG_MAGIC_V15
         {
             let Some(bytes) = data.get(pos..pos.saturating_add(4)) else {
-                return;
+                return Err(SnapshotError::Malformed);
             };
             let Ok(bytes) = <[u8; 4]>::try_from(bytes) else {
-                return;
+                return Err(SnapshotError::Malformed);
             };
             let deploy_count = u32::from_le_bytes(bytes) as usize;
             pos += 4;
+            if deploy_count > MAX_DEPLOYMENTS {
+                return Err(SnapshotError::Malformed);
+            }
             for _ in 0..deploy_count {
                 let Some((artifact, after_artifact)) = take_len_bytes(data, pos) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((object_id, after_object)) = read_u64(data, after_artifact) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((node_key, after_node)) = read_u64(data, after_object) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((generation, after_generation)) = read_u64(data, after_node) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
-                // V4 carried a placeholder MAC after the generation; V5 did
-                // not. V6 pins the artifact's complete SHA-256 identity.
-                let (artifact_digest, after_entry) = if magic == CATALOG_MAGIC_V4 {
-                    match read_u64(data, after_generation) {
-                        Some((_, after_mac)) => ([0; 32], after_mac),
-                        None => return,
-                    }
-                } else if magic == CATALOG_MAGIC_V6
-                    || magic == CATALOG_MAGIC_V7
-                    || magic == CATALOG_MAGIC_V8
-                    || magic == CATALOG_MAGIC_V9
-                    || magic == CATALOG_MAGIC_V10
-                    || magic == CATALOG_MAGIC_V11
-                    || magic == CATALOG_MAGIC_V12
-                    || magic == CATALOG_MAGIC_V13
-                    || magic == CATALOG_MAGIC_V14
-                    || magic == CATALOG_MAGIC_V15
-                {
+                let (artifact_digest, after_entry) = {
                     let Some(digest) =
                         data.get(after_generation..after_generation.saturating_add(32))
                     else {
-                        return;
+                        return Err(SnapshotError::Malformed);
                     };
                     let Ok(digest) = <[u8; 32]>::try_from(digest) else {
-                        return;
+                        return Err(SnapshotError::Malformed);
                     };
                     (digest, after_generation + 32)
-                } else {
-                    ([0; 32], after_generation)
                 };
-                let (descriptor, after_entry) = if magic == CATALOG_MAGIC_V7
-                    || magic == CATALOG_MAGIC_V8
-                    || magic == CATALOG_MAGIC_V9
-                    || magic == CATALOG_MAGIC_V10
-                    || magic == CATALOG_MAGIC_V11
-                    || magic == CATALOG_MAGIC_V12
-                    || magic == CATALOG_MAGIC_V13
-                    || magic == CATALOG_MAGIC_V14
-                    || magic == CATALOG_MAGIC_V15
-                {
+                let (descriptor, after_entry) = {
                     let Some((descriptor, after_descriptor)) = take_len_bytes(data, after_entry)
                     else {
-                        return;
+                        return Err(SnapshotError::Malformed);
                     };
                     if descriptor.len() > charlotte_launch::deployment::MAX_DESCRIPTOR_LEN {
-                        return;
+                        return Err(SnapshotError::Malformed);
                     }
                     (descriptor.to_vec(), after_descriptor)
-                } else {
-                    (Vec::new(), after_entry)
                 };
-                let (replica_nodes, after_entry) = if magic == CATALOG_MAGIC_V13
-                    || magic == CATALOG_MAGIC_V14
-                    || magic == CATALOG_MAGIC_V15
-                {
+                let (replica_nodes, after_entry) = {
                     let Some((replica_count, mut position)) = read_u16(data, after_entry) else {
-                        return;
+                        return Err(SnapshotError::Malformed);
                     };
                     let mut nodes = Vec::with_capacity(
                         usize::from(replica_count).min(data.len().saturating_sub(position)),
@@ -375,21 +294,25 @@ impl NameCatalog {
                     let mut seen = BTreeSet::new();
                     for _ in 0..replica_count {
                         let Some((node, next)) = read_u64(data, position) else {
-                            return;
+                            return Err(SnapshotError::Malformed);
                         };
-                        if node == 0 || !seen.insert(node) {
-                            return;
+                        if node == 0
+                            || nodes.last().is_some_and(|previous| *previous >= node)
+                            || !seen.insert(node)
+                        {
+                            return Err(SnapshotError::Malformed);
                         }
                         nodes.push(node);
                         position = next;
                     }
                     if nodes.first().copied().unwrap_or(0) != node_key {
-                        return;
+                        return Err(SnapshotError::Malformed);
                     }
                     (nodes, position)
-                } else {
-                    ((node_key != 0).then_some(node_key).into_iter().collect(), after_entry)
                 };
+                if generation == 0 || artifact.is_empty() || deployments.contains_key(artifact) {
+                    return Err(SnapshotError::Malformed);
+                }
                 deployments.insert(
                     artifact.to_vec(),
                     DeploymentEntry {
@@ -406,61 +329,48 @@ impl NameCatalog {
         }
 
         let mut releases = BTreeMap::new();
-        if magic == CATALOG_MAGIC_V9
-            || magic == CATALOG_MAGIC_V10
-            || magic == CATALOG_MAGIC_V11
-            || magic == CATALOG_MAGIC_V12
-            || magic == CATALOG_MAGIC_V13
-            || magic == CATALOG_MAGIC_V14
-            || magic == CATALOG_MAGIC_V15
         {
             let Some(bytes) = data.get(pos..pos.saturating_add(4)) else {
-                return;
+                return Err(SnapshotError::Malformed);
             };
             let Ok(bytes) = <[u8; 4]>::try_from(bytes) else {
-                return;
+                return Err(SnapshotError::Malformed);
             };
             let release_count = u32::from_le_bytes(bytes) as usize;
             pos += 4;
+            if release_count > MAX_RELEASES {
+                return Err(SnapshotError::Malformed);
+            }
             for _ in 0..release_count {
                 let Some((name, after_name)) = take_len_bytes(data, pos) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((generation, after_generation)) = read_u64(data, after_name) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
-                let (operations_sequence, operations_bundle_digest, after_operations) = if magic
-                    == CATALOG_MAGIC_V10
-                    || magic == CATALOG_MAGIC_V11
-                    || magic == CATALOG_MAGIC_V12
-                    || magic == CATALOG_MAGIC_V13
-                    || magic == CATALOG_MAGIC_V14
-                    || magic == CATALOG_MAGIC_V15
-                {
+                let (operations_sequence, operations_bundle_digest, after_operations) = {
                     let Some((operations_sequence, after_operations_sequence)) =
                         read_u64(data, after_generation)
                     else {
-                        return;
+                        return Err(SnapshotError::Malformed);
                     };
                     let Some(operations_bundle_digest) = data
                         .get(after_operations_sequence..after_operations_sequence + 32)
                         .and_then(|bytes| <[u8; 32]>::try_from(bytes).ok())
                     else {
-                        return;
+                        return Err(SnapshotError::Malformed);
                     };
                     (operations_sequence, operations_bundle_digest, after_operations_sequence + 32)
-                } else {
-                    (0, [0; 32], after_generation)
                 };
                 let Some((envelope, after_envelope)) = take_len_bytes(data, after_operations)
                 else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some(decoded) = charlotte_launch::release::decode(envelope) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
-                if decoded.release_name != name || generation == 0 {
-                    return;
+                if decoded.release_name != name || generation == 0 || releases.contains_key(name) {
+                    return Err(SnapshotError::Malformed);
                 }
                 releases.insert(
                     name.to_vec(),
@@ -475,106 +385,97 @@ impl NameCatalog {
             }
         }
         let mut operational_bindings = BTreeMap::new();
-        if magic == CATALOG_MAGIC_V10
-            || magic == CATALOG_MAGIC_V11
-            || magic == CATALOG_MAGIC_V12
-            || magic == CATALOG_MAGIC_V13
-            || magic == CATALOG_MAGIC_V14
-            || magic == CATALOG_MAGIC_V15
         {
             let Some(binding_count) = data
                 .get(pos..pos.saturating_add(4))
                 .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
                 .map(u32::from_le_bytes)
             else {
-                return;
+                return Err(SnapshotError::Malformed);
             };
             pos += 4;
+            if binding_count as usize > MAX_OPERATIONAL_BINDINGS {
+                return Err(SnapshotError::Malformed);
+            }
             for _ in 0..binding_count {
                 let Some((profile_name, after_profile)) = take_len_bytes(data, pos) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((generation, after_generation)) = read_u64(data, after_profile) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some(active) = data.get(after_generation) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((release_name, after_release_name)) =
                     take_len_bytes(data, after_generation + 1)
                 else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some(release_digest) = data
                     .get(after_release_name..after_release_name + 32)
                     .and_then(|bytes| <[u8; 32]>::try_from(bytes).ok())
                 else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((bundle_sequence, after_bundle_sequence)) =
                     read_u64(data, after_release_name + 32)
                 else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some(bundle_digest) = data
                     .get(after_bundle_sequence..after_bundle_sequence + 32)
                     .and_then(|bytes| <[u8; 32]>::try_from(bytes).ok())
                 else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((target_artifact, after_target)) =
                     take_len_bytes(data, after_bundle_sequence + 32)
                 else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((object_key, after_object)) = take_len_bytes(data, after_target) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some(envelope_digest) = data
                     .get(after_object..after_object + 32)
                     .and_then(|bytes| <[u8; 32]>::try_from(bytes).ok())
                 else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((profile_kind, after_kind)) = read_u16(data, after_object + 32) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((sequence, after_sequence)) = read_u64(data, after_kind) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((expires_unix_seconds, after_expiry)) = read_u64(data, after_sequence)
                 else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some(recipient_key_id) = data
                     .get(after_expiry..after_expiry + 16)
                     .and_then(|bytes| <[u8; 16]>::try_from(bytes).ok())
                 else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some(signing_key_id) = data
                     .get(after_expiry + 16..after_expiry + 32)
                     .and_then(|bytes| <[u8; 16]>::try_from(bytes).ok())
                 else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
-                let (authorization_signature, after_binding) = if magic == CATALOG_MAGIC_V11
-                    || magic == CATALOG_MAGIC_V12
-                    || magic == CATALOG_MAGIC_V13
-                    || magic == CATALOG_MAGIC_V14
-                    || magic == CATALOG_MAGIC_V15
-                {
+                let (authorization_signature, after_binding) = {
                     let Some(signature) = data
                         .get(after_expiry + 32..after_expiry + 96)
                         .and_then(|bytes| <[u8; 64]>::try_from(bytes).ok())
                     else {
-                        return;
+                        return Err(SnapshotError::Malformed);
                     };
                     (signature, after_expiry + 96)
-                } else {
-                    ([0; 64], after_expiry + 32)
                 };
-                if generation == 0
+                if *active > 1
+                    || generation == 0
                     || bundle_sequence == 0
                     || sequence == 0
                     || expires_unix_seconds == 0
@@ -583,15 +484,15 @@ impl NameCatalog {
                     || !charlotte_launch::operations_bundle::valid_object_key(object_key)
                     || !charlotte_launch::operations::valid_profile_kind(profile_kind)
                 {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 }
                 let Some(release_entry) = releases.get(release_name) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some(release_envelope) =
                     charlotte_launch::release::decode(&release_entry.envelope)
                 else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 if release_digest != charlotte_launch::sha256::digest(&release_entry.envelope)
                     || !release_contains_artifact(&release_envelope, target_artifact)
@@ -599,7 +500,7 @@ impl NameCatalog {
                         && (bundle_sequence != release_entry.operations_sequence
                             || bundle_digest != release_entry.operations_bundle_digest))
                 {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 }
                 if operational_bindings
                     .insert(
@@ -624,39 +525,38 @@ impl NameCatalog {
                     )
                     .is_some()
                 {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 }
                 pos = after_binding;
             }
         }
 
         let mut shutdown_intents = BTreeMap::new();
-        if magic == CATALOG_MAGIC_V12
-            || magic == CATALOG_MAGIC_V13
-            || magic == CATALOG_MAGIC_V14
-            || magic == CATALOG_MAGIC_V15
         {
             let Some(intent_count) = data
                 .get(pos..pos.saturating_add(4))
                 .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
                 .map(u32::from_le_bytes)
             else {
-                return;
+                return Err(SnapshotError::Malformed);
             };
             pos += 4;
+            if intent_count as usize > MAX_SHUTDOWN_INTENTS {
+                return Err(SnapshotError::Malformed);
+            }
             for _ in 0..intent_count {
                 let Some((node_key, after_node)) = read_u64(data, pos) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((generation, after_generation)) = read_u64(data, after_node) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((envelope, after_envelope)) = take_len_bytes(data, after_generation)
                 else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some(fields) = charlotte_launch::shutdown::decode(envelope) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 if node_key == 0
                     || generation == 0
@@ -671,46 +571,50 @@ impl NameCatalog {
                         )
                         .is_some()
                 {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 }
                 pos = after_envelope;
             }
         }
 
         let mut deployment_replicas = BTreeMap::new();
-        if magic == CATALOG_MAGIC_V13 || magic == CATALOG_MAGIC_V14 || magic == CATALOG_MAGIC_V15 {
+        {
             let Some(replica_name_count) = data
                 .get(pos..pos.saturating_add(4))
                 .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
                 .map(u32::from_le_bytes)
             else {
-                return;
+                return Err(SnapshotError::Malformed);
             };
             pos += 4;
+            if replica_name_count as usize > MAX_DEPLOYMENTS {
+                return Err(SnapshotError::Malformed);
+            }
             for _ in 0..replica_name_count {
                 let Some((name, after_name)) = take_len_bytes(data, pos) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((replica_count, mut position)) = read_u16(data, after_name) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let mut replicas = BTreeMap::new();
                 for _ in 0..replica_count {
                     let Some((node, after_node)) = take_len_bytes(data, position) else {
-                        return;
+                        return Err(SnapshotError::Malformed);
                     };
                     let Some((generation, after_generation)) = read_u64(data, after_node) else {
-                        return;
+                        return Err(SnapshotError::Malformed);
                     };
                     let Some(active) = data.get(after_generation) else {
-                        return;
+                        return Err(SnapshotError::Malformed);
                     };
                     let Some((deployment_generation, after_entry)) =
                         read_u64(data, after_generation + 1)
                     else {
-                        return;
+                        return Err(SnapshotError::Malformed);
                     };
-                    if generation == 0
+                    if *active > 1
+                        || generation == 0
                         || node.is_empty()
                         || replicas
                             .insert(
@@ -724,31 +628,34 @@ impl NameCatalog {
                             )
                             .is_some()
                     {
-                        return;
+                        return Err(SnapshotError::Malformed);
                     }
                     position = after_entry;
                 }
                 if deployment_replicas.insert(name.to_vec(), replicas).is_some() {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 }
                 pos = position;
             }
         }
 
-        let ingress_policy = if magic == CATALOG_MAGIC_V14 || magic == CATALOG_MAGIC_V15 {
+        let ingress_policy = {
             let Some(present) = data.get(pos) else {
-                return;
+                return Err(SnapshotError::Malformed);
             };
+            if *present > 1 {
+                return Err(SnapshotError::Malformed);
+            }
             pos += 1;
             if *present == 0 {
                 None
             } else {
                 let Some((generation, after_generation)) = read_u64(data, pos) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((envelope, after_envelope)) = take_len_bytes(data, after_generation)
                 else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 if generation == 0
                     || charlotte_launch::ingress_policy::verify(
@@ -757,7 +664,7 @@ impl NameCatalog {
                         &self.bootstrap_operations_key,
                     ) != charlotte_launch::ingress_policy::VerifyOutcome::Valid
                 {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 }
                 pos = after_envelope;
                 Some(IngressPolicyEntry {
@@ -765,90 +672,71 @@ impl NameCatalog {
                     envelope: envelope.to_vec(),
                 })
             }
-        } else {
-            None
         };
 
         let mut cluster_key = None;
         let mut cluster_key_generation = 0u64;
 
-        if magic == CATALOG_MAGIC_V5
-            || magic == CATALOG_MAGIC_V6
-            || magic == CATALOG_MAGIC_V7
-            || magic == CATALOG_MAGIC_V8
-            || magic == CATALOG_MAGIC_V9
-            || magic == CATALOG_MAGIC_V10
-            || magic == CATALOG_MAGIC_V11
-            || magic == CATALOG_MAGIC_V12
-            || magic == CATALOG_MAGIC_V13
-            || magic == CATALOG_MAGIC_V14
-            || magic == CATALOG_MAGIC_V15
         {
             let Some(present) = data.get(pos) else {
-                return;
+                return Err(SnapshotError::Malformed);
             };
-            let (generation, key_start) = if magic == CATALOG_MAGIC_V6
-                || magic == CATALOG_MAGIC_V7
-                || magic == CATALOG_MAGIC_V8
-                || magic == CATALOG_MAGIC_V9
-                || magic == CATALOG_MAGIC_V10
-                || magic == CATALOG_MAGIC_V11
-                || magic == CATALOG_MAGIC_V12
-                || magic == CATALOG_MAGIC_V13
-                || magic == CATALOG_MAGIC_V14
-                || magic == CATALOG_MAGIC_V15
-            {
+            let (generation, key_start) = {
                 let Some((generation, after_generation)) = read_u64(data, pos + 1) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 (generation, after_generation)
-            } else {
-                (u64::from(*present != 0), pos + 1)
             };
             let Some(key) = data.get(key_start..key_start + 32) else {
-                return;
+                return Err(SnapshotError::Malformed);
             };
+            if *present > 1 || (*present == 0 && (generation != 0 || key != [0; 32])) {
+                return Err(SnapshotError::Malformed);
+            }
             if *present != 0 {
                 let Ok(key) = <[u8; 32]>::try_from(key) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 cluster_key = Some(key);
-                cluster_key_generation = generation.max(1);
+                if generation == 0 {
+                    return Err(SnapshotError::Malformed);
+                }
+                cluster_key_generation = generation;
             }
             pos = key_start + 32;
         }
 
         let mut node_capacity = BTreeMap::new();
-        if magic == CATALOG_MAGIC_V15 {
+        {
             let Some(sample_count) = data
                 .get(pos..pos.saturating_add(4))
                 .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
                 .map(u32::from_le_bytes)
             else {
-                return;
+                return Err(SnapshotError::Malformed);
             };
             pos += 4;
             if sample_count as usize > MAX_NODE_CAPACITY_ENTRIES {
-                return;
+                return Err(SnapshotError::Malformed);
             }
             for _ in 0..sample_count {
                 let Some((node_key, after_node)) = read_u64(data, pos) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((boot_nonce, after_nonce)) = read_u64(data, after_node) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((epoch, after_epoch)) = read_u64(data, after_nonce) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((free_frames, after_free)) = read_u64(data, after_epoch) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((usable_frames, after_usable)) = read_u64(data, after_free) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 let Some((cpu_load_permille, after_entry)) = read_u16(data, after_usable) else {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 };
                 if node_key == 0
                     || epoch == 0
@@ -868,10 +756,14 @@ impl NameCatalog {
                         )
                         .is_some()
                 {
-                    return;
+                    return Err(SnapshotError::Malformed);
                 }
                 pos = after_entry;
             }
+        }
+
+        if pos != data.len() {
+            return Err(SnapshotError::Malformed);
         }
 
         // Publish the whole snapshot only after every section parsed; a
@@ -887,5 +779,6 @@ impl NameCatalog {
         *self.ingress_policy.lock() = ingress_policy;
         *self.cluster_key.lock() = cluster_key;
         *self.cluster_key_generation.lock() = cluster_key_generation;
+        Ok(())
     }
 }

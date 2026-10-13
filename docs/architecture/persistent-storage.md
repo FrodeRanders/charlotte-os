@@ -261,6 +261,12 @@ Each mutation writes its complete object and calls `FLUSH` before returning.
 See [Raft persistence](../reference/raft-persistence.md) for exact formats,
 object IDs, ownership and future migration requirements.
 
+Catalog recovery accepts only the complete `CATALOGF` version-15 snapshot.
+`StateMachine::restore` returns an explicit rejection without changing live
+state. Raft startup propagates that error; streamed installation checks it
+before replacing the log or publishing applied indices, membership or join
+completion. See [catalog snapshots](../reference/catalog-snapshots.md).
+
 The Raft launch manifest selects the backend:
 
 - `storage = 0` (or omitted): in-memory, used by the ordinary local multicore

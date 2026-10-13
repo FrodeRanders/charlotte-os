@@ -546,6 +546,10 @@ fn main(ctx: Context) -> ! {
         current_millis: 0,
         snapshot_min_entries: 64,
         snapshot_chunk_bytes: 3000,
+    })
+    .unwrap_or_else(|error| {
+        catten_rt::logln!("[raft-store] snapshot restore rejected: {:?}", error);
+        fatal(16)
     });
     config::write::<u32>(status::CURRENT_TERM, node.current_term as u32);
     config::write::<u32>(status::STAGE, 6);

@@ -141,6 +141,14 @@ changes must ship an explicit, interruption-tested migration preserving
 election, admission and committed state. See
 \path{docs/reference/raft-persistence.md}.
 
+The catalog accepts only its complete version-15 snapshot, identified by
+\texttt{CATALOGF}. Earlier snapshot decoders and synthesized generations,
+digests, descriptors, replica sets and authorization signatures are removed.
+Unsupported or malformed application snapshots reject explicitly before Raft
+publishes snapshot progress or membership. Recovery stops on rejection;
+network installation returns failure and retains the existing applied state.
+See \path{docs/reference/catalog-snapshots.md}.
+
 The cluster mnemonic and election timeout remain in the launch manifest. A
 fresh identity bootstraps as a durable singleton. Discovery supplies MAC routes,
 the lexicographically larger singleton applies to the smaller anchor, and
@@ -201,12 +209,17 @@ Raft replicates an opaque command log. The meaning of those commands is provided
 by a pluggable \texttt{StateMachine} trait:
 
 \begin{lstlisting}[style=rustCode]
-trait StateMachine {
-    fn apply(&mut self, command: Vec<u8>) -> Result<Vec<u8>, ApplyError>;
+trait StateMachine: Send + Sync {
+    fn apply(&self, term: u64, command: &[u8]);
+    fn apply_with_result(&self, term: u64, command: &[u8]) -> Vec<u8>;
     fn snapshot(&self) -> Vec<u8>;
-    fn restore(&mut self, snapshot: Vec<u8>);
+    fn restore(&self, snapshot: &[u8]) -> Result<(), SnapshotError>;
+    fn reset(&self);
 }
 \end{lstlisting}
+
+Restore errors leave application state unchanged. \texttt{RaftNode::new}
+returns a result; callers must handle rejection before exposing a voter.
 
 Different services are different state machines on the same Raft substrate:
 
