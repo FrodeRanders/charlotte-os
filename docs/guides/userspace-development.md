@@ -145,9 +145,10 @@ by both thread joins and timed completion waits.
 
 Security-sensitive service discovery uses the name service's authorized
 protocol, not `OP_LOOKUP`, `OP_LOOKUP_KEYED`, or a caller-provided identity.
-The explicit authenticated receive syscalls supply the sender's exact address-
-space generation, stable signed-artifact principal, and deployment roles while
-leaving the legacy nine-register receive ABI unchanged.
+All receive syscalls supply the sender's exact address-space generation,
+stable signed-artifact principal, and deployment roles captured at submission.
+The canonical runtime methods are `Endpoint::receive` and `try_receive`; see
+the [receive ABI contract](../reference/ipc-receive.md).
 Callers encode only the service name and explicit requested rights with
 `charlotte_authorization::wire::encode_lookup`, copy that request into
 `OP_LOOKUP_AUTHORIZED`, and receive a connection attenuated to the policy

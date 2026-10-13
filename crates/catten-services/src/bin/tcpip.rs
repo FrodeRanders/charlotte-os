@@ -70,7 +70,7 @@ use catten_services::{
 use catten_syscall::{
     cq_read,
     cq_wait_timeout,
-    ipc_recv_authenticated,
+    ipc_recv,
     ipc_reply,
     ipc_status,
     memory_close,
@@ -768,7 +768,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         }
 
         for _ in 0..MAX_IPC_REQUESTS_PER_CYCLE {
-            let msg = ipc_recv_authenticated(endpoint.as_raw());
+            let msg = ipc_recv(endpoint.as_raw());
             if msg.is_ok()
                 && msg.reply != 0
                 && matches!(msg.opcode, socket::OP_RECV | socket::OP_STATUS)

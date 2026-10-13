@@ -14,9 +14,18 @@ __catten_el0_ipc_memory_server_start:
     mov dword ptr [r15], 0x6d5e
 
     // Receive the moved memory object.
-    mov eax, 27
+    // Receive returns authenticated metadata in r12--r14.
+    push r12
+    push r13
+    push r14
+    push rbx
+    mov eax, 72
     mov edi, ebx
     syscall
+    pop rbx
+    pop r14
+    pop r13
+    pop r12
     mov dword ptr [r15 + 64], eax
     mov dword ptr [r15 + 68], edi
     mov dword ptr [r15 + 72], esi
@@ -49,9 +58,18 @@ __catten_el0_ipc_memory_server_start:
     mov dword ptr [r15 + 96], eax
 
     // Receive a reply-bound read borrow.
-    mov eax, 27
+    // Receive returns authenticated metadata in r12--r14.
+    push r12
+    push r13
+    push r14
+    push rbx
+    mov eax, 72
     mov edi, ebx
     syscall
+    pop rbx
+    pop r14
+    pop r13
+    pop r12
     mov dword ptr [r15 + 200], eax
     mov dword ptr [r15 + 204], edi
     mov dword ptr [r15 + 208], esi
@@ -88,9 +106,18 @@ __catten_el0_ipc_memory_server_start:
     mov dword ptr [r15 + 236], eax
 
     // Receive a reply-bound write borrow.
-    mov eax, 27
+    // Receive returns authenticated metadata in r12--r14.
+    push r12
+    push r13
+    push r14
+    push rbx
+    mov eax, 72
     mov edi, ebx
     syscall
+    pop rbx
+    pop r14
+    pop r13
+    pop r12
     mov dword ptr [r15 + 240], eax
     mov dword ptr [r15 + 244], edi
     mov dword ptr [r15 + 248], esi

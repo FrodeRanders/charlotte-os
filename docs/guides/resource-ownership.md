@@ -168,13 +168,12 @@ match endpoint.try_receive()? {
 Ignoring an attachment is safe: it is released when the message is dropped.
 Reply methods consume `ReplyToken`, making double replies impossible.
 
-Services that authorize requests from the caller's artifact identity or
-supervisor role must receive with `Endpoint::receive_authenticated()` (or its
-non-blocking `try_receive_authenticated()` form). These methods preserve the
-kernel-authenticated sender generation, principal, and roles in
-`IncomingMessage`. The legacy `receive` methods intentionally leave that
-authority envelope empty for ABI compatibility and must not be used as an
-authorization source.
+`Endpoint::receive()` and `try_receive()` always preserve the sender's
+kernel-authenticated generation, signed-artifact principal, and supervisor roles
+in `IncomingMessage`. These are snapshots captured at submission: authorize from
+that envelope, never by resolving the recyclable sender ASID again. A zero
+principal or missing role grants no authority. See the
+[receive ABI contract](../reference/ipc-receive.md).
 
 ## Multi-step and remote operations
 

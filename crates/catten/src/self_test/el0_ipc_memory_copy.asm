@@ -7,9 +7,9 @@
 .global __catten_el0_ipc_memory_copy_client_end
 
 __catten_el0_ipc_memory_copy_server_start:
-    // x9 = shared result page at 0x0001_1000.
-    movz x9, #0x1000
-    movk x9, #0x1, lsl #16
+    // x27 = shared result page at 0x0001_1000.
+    movz x27, #0x1000
+    movk x27, #0x1, lsl #16
 
     // x28 = memory-object mapping VA at 0x0001_2000.
     movz x28, #0x2000
@@ -19,15 +19,15 @@ __catten_el0_ipc_memory_copy_server_start:
     movz x19, #1
     dmb ish
     movz w10, #0xc05e
-    str w10, [x9]
+    str w10, [x27]
 
     mov x1, x19
-    svc #27
-    str w0, [x9, #48]
-    str w1, [x9, #52]
-    str w2, [x9, #56]
-    str w3, [x9, #60]
-    str w7, [x9, #64]
+    svc #72
+    str w0, [x27, #48]
+    str w1, [x27, #52]
+    str w2, [x27, #56]
+    str w3, [x27, #60]
+    str w7, [x27, #64]
     mov x20, x3
     mov x21, x7
 
@@ -35,44 +35,44 @@ __catten_el0_ipc_memory_copy_server_start:
     mov x2, x28
     movz x3, #1
     svc #29
-    str w0, [x9, #68]
+    str w0, [x27, #68]
 
     ldr w10, [x28]
-    str w10, [x9, #72]
+    str w10, [x27, #72]
     movz w10, #0xc092
     str w10, [x28]
 
     mov x1, x21
     svc #30
-    str w0, [x9, #76]
+    str w0, [x27, #76]
 
     mov x1, x21
     svc #31
-    str w0, [x9, #80]
+    str w0, [x27, #80]
 
     mov x1, x20
     movz x2, #0xc0
     svc #23
-    str w0, [x9, #84]
+    str w0, [x27, #84]
 
     dmb ish
     movz w10, #0xc051
-    str w10, [x9, #4]
+    str w10, [x27, #4]
     svc #8
 
 __catten_el0_ipc_memory_copy_server_end:
 
 __catten_el0_ipc_memory_copy_client_start:
-    // x9 = shared result page at 0x0001_1000.
-    movz x9, #0x1000
-    movk x9, #0x1, lsl #16
+    // x27 = shared result page at 0x0001_1000.
+    movz x27, #0x1000
+    movk x27, #0x1, lsl #16
 
     // x28 = memory-object mapping VA at 0x0001_2000.
     movz x28, #0x2000
     movk x28, #0x1, lsl #16
 
 2:
-    ldr w10, [x9]
+    ldr w10, [x27]
     movz w11, #0xc05e
     cmp w10, w11
     b.ne 2b
@@ -80,21 +80,21 @@ __catten_el0_ipc_memory_copy_client_start:
 
     movz x1, #1
     svc #28
-    str w0, [x9, #12]
+    str w0, [x27, #12]
     mov x20, x0
 
     mov x1, x20
     mov x2, x28
     movz x3, #1
     svc #29
-    str w0, [x9, #16]
+    str w0, [x27, #16]
 
     movz w10, #0xc091
     str w10, [x28]
 
     mov x1, x20
     svc #30
-    str w0, [x9, #20]
+    str w0, [x27, #20]
 
     // The kernel pre-seeds connection cap 1 into the client AS.
     movz x19, #1
@@ -103,7 +103,7 @@ __catten_el0_ipc_memory_copy_client_start:
     movz x3, #0xc9
     mov x4, x20
     svc #38
-    str w0, [x9, #24]
+    str w0, [x27, #24]
     mov x21, x0
 
     // The source remains owned and mappable immediately after call-copy.
@@ -111,45 +111,45 @@ __catten_el0_ipc_memory_copy_client_start:
     mov x2, x28
     movz x3, #0
     svc #29
-    str w0, [x9, #28]
+    str w0, [x27, #28]
 
     ldr w10, [x28]
-    str w10, [x9, #32]
+    str w10, [x27, #32]
 
     mov x1, x20
     svc #30
-    str w0, [x9, #36]
+    str w0, [x27, #36]
 
 3:
     mov x1, x21
     svc #24
     cbnz x0, 3b
-    str w0, [x9, #88]
-    str w1, [x9, #92]
-    str w2, [x9, #96]
-    str w3, [x9, #100]
+    str w0, [x27, #88]
+    str w1, [x27, #92]
+    str w2, [x27, #96]
+    str w3, [x27, #100]
 
     // Server wrote to its copy. The client original must remain unchanged.
     mov x1, x20
     mov x2, x28
     movz x3, #0
     svc #29
-    str w0, [x9, #104]
+    str w0, [x27, #104]
 
     ldr w10, [x28]
-    str w10, [x9, #108]
+    str w10, [x27, #108]
 
     mov x1, x20
     svc #30
-    str w0, [x9, #112]
+    str w0, [x27, #112]
 
     mov x1, x20
     svc #31
-    str w0, [x9, #116]
+    str w0, [x27, #116]
 
     dmb ish
     movz w10, #0xc0d1
-    str w10, [x9, #8]
+    str w10, [x27, #8]
     svc #8
 
 __catten_el0_ipc_memory_copy_client_end:

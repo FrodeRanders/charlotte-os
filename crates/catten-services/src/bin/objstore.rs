@@ -1438,7 +1438,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
 
         loop {
             let Some(mut message) =
-                endpoint.try_receive_authenticated().unwrap_or_else(|_| catten_rt::domain_abort())
+                endpoint.try_receive().unwrap_or_else(|_| catten_rt::domain_abort())
             else {
                 break;
             };

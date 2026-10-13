@@ -520,7 +520,7 @@ The current deployment pipeline has three stages:
 
 \begin{enumerate}
     \item \textbf{Blessing and signing.} Version-controlled policy admits an
-        artifact and the host-side build and \texttt{cluster-sign} tooling
+        artifact and the host-side build and \texttt{cluster-}\allowbreak\texttt{sign} tooling
         sign it with the cluster key. CLS2 metadata binds the logical name,
         class, release, rollback counter, parallel-instance permission, and
         an optional SHA-256 link to retained SBOM/build-provenance evidence.
@@ -561,7 +561,7 @@ architecture, exact runtime ABI, required CPU features and selection priority.
 One release descriptor still represents one logical component, even when its
 ARM and x86 replicas execute different binaries.
 
-The kernel reports AArch64 or x86\_64, runtime ABI 1 and the intersection of
+The kernel reports AArch64 or x86\_64, runtime ABI 2 and the intersection of
 integer features across all configured LPs. The current optional bits cover
 ARM LSE/CRC32 and x86 CMPXCHG16B/POPCNT. Missing profiles are ineligible.
 Placement filters compatible, non-draining voting members before memory,

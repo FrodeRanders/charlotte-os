@@ -209,7 +209,7 @@ fn main(ctx: Context) -> ! {
     // The kernel verifier replaces the scope table after the initial grant
     // checks and then asks this still-live principal to observe revocation.
     loop {
-        let mut request = done_endpoint.receive_authenticated().unwrap_or_else(|_| fail(0xdec6));
+        let mut request = done_endpoint.receive().unwrap_or_else(|_| fail(0xdec6));
         if request.sender_principal != 1 || request.opcode != 1 {
             if let Some(reply) = request.reply.take() {
                 let _ = reply.reply(objstore::ERR_DENIED);

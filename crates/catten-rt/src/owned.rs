@@ -167,14 +167,6 @@ mod kernel {
         catten_syscall::ipc_recv_block(endpoint)
     }
 
-    pub fn ipc_recv_authenticated(endpoint: u64) -> catten_syscall::IpcMessage {
-        catten_syscall::ipc_recv_authenticated(endpoint)
-    }
-
-    pub fn ipc_recv_block_authenticated(endpoint: u64) -> catten_syscall::IpcMessage {
-        catten_syscall::ipc_recv_block_authenticated(endpoint)
-    }
-
     pub fn ipc_scalar_call_checked(connection: u64, opcode: u32, arg0: u64) -> (u64, u64) {
         catten_syscall::ipc_scalar_call_checked(connection, opcode, arg0)
     }
@@ -636,14 +628,6 @@ mod kernel {
     }
 
     pub fn ipc_recv_block(endpoint: u64) -> catten_syscall::IpcMessage {
-        ipc_recv(endpoint)
-    }
-
-    pub fn ipc_recv_authenticated(endpoint: u64) -> catten_syscall::IpcMessage {
-        ipc_recv(endpoint)
-    }
-
-    pub fn ipc_recv_block_authenticated(endpoint: u64) -> catten_syscall::IpcMessage {
         ipc_recv(endpoint)
     }
 
@@ -1906,6 +1890,9 @@ mod tests {
         let message: IncomingMessage =
             endpoint.try_receive().expect("receive status").expect("queued message");
         assert_eq!(message.opcode, 7);
+        assert_eq!(message.sender_generation, 2);
+        assert_eq!(message.sender_principal, 3);
+        assert_eq!(message.sender_roles, 4);
         drop(message);
         drop(endpoint);
         assert_eq!(

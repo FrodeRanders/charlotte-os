@@ -2,7 +2,7 @@
 
 /// Bump whenever the userspace/kernel register or runtime contract changes.
 /// Eligibility requires exact equality; there is no older-ABI decoder.
-pub const RUNTIME_ABI: u32 = 1;
+pub const RUNTIME_ABI: u32 = 2;
 pub const ENCODED_LEN: usize = 16;
 
 #[repr(u16)]
@@ -106,6 +106,16 @@ impl ExecutionTarget {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn current_nodes_reject_nine_register_runtime_abi() {
+        for architecture in [Architecture::Aarch64, Architecture::X86_64] {
+            let current = ExecutionTarget::baseline(architecture);
+            let mut old = current;
+            old.runtime_abi = 1;
+            assert!(!current.supports(old));
+        }
+    }
 
     #[test]
     fn target_compatibility_requires_architecture_abi_and_all_features() {

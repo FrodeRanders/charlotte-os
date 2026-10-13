@@ -93,12 +93,12 @@ define_syscall_numbers!(
     (IpcConnect, 19),
     (IpcScalarSend, 20),
     (IpcScalarCall, 21),
-    (IpcRecv, 22),
+    // 22 was the nine-register receive ABI; retired.
     (IpcReply, 23),
     (IpcReplyPoll, 24),
     (IpcClose, 25),
     (IpcReplyConnection, 26),
-    (IpcRecvBlock, 27),
+    // 27 was the nine-register receive ABI; retired.
     (MemoryAlloc, 28),
     (MemoryMap, 29),
     (MemoryUnmap, 30),
@@ -124,7 +124,7 @@ define_syscall_numbers!(
     (SpawnUpgrade, 50),
     (IpcVectorSend, 51),
     (IpcVectorCall, 52),
-    (IpcRecvVec, 53),
+    // 53 was the nine-register receive ABI; retired.
     (IpcReplyWait, 54),
     (CompletionSubmitDetachedTimer, 55),
     (MemoryGetPhysPage, 56),
@@ -142,9 +142,9 @@ define_syscall_numbers!(
     (DomainAbort, 68),
     (DmaMapExclusive, 69),
     (GetDomainIdentity, 70),
-    (IpcRecvAuthenticated, 71),
-    (IpcRecvBlockAuthenticated, 72),
-    (IpcRecvVecAuthenticated, 73),
+    (IpcRecv, 71),
+    (IpcRecvBlock, 72),
+    (IpcRecvVec, 73),
     (LogStr, 74),
     (RandomU64, 75),
     (SpawnArtifactScoped, 76),
@@ -646,99 +646,13 @@ unsafe fn svc_ipc_recv(endpoint: u64) -> IpcMessage {
     let version: u64;
     let memory: u64;
     let connection: u64;
-    unsafe {
-        asm!(
-            "syscall",
-            inlateout("rax") SyscallNumber::IpcRecv as u64 => status,
-            inlateout("rdi") endpoint => opcode,
-            lateout("rsi") arg0,
-            lateout("rdx") reply,
-            lateout("r10") sender,
-            lateout("r8") interface,
-            lateout("r9") version,
-            lateout("r11") memory,
-            lateout("rcx") connection,
-            options(preserves_flags),
-        );
-    }
-    IpcMessage {
-        status,
-        opcode: opcode as u32,
-        arg0,
-        reply,
-        sender,
-        sender_generation: 0,
-        sender_principal: 0,
-        sender_roles: 0,
-        interface,
-        version: version as u32,
-        memory,
-        connection,
-    }
-}
-
-#[cfg(target_arch = "x86_64")]
-#[inline(always)]
-unsafe fn svc_ipc_recv_block(endpoint: u64) -> IpcMessage {
-    let status: u64;
-    let opcode: u64;
-    let arg0: u64;
-    let reply: u64;
-    let sender: u64;
-    let interface: u64;
-    let version: u64;
-    let memory: u64;
-    let connection: u64;
-    unsafe {
-        asm!(
-            "syscall",
-            inlateout("rax") SyscallNumber::IpcRecvBlock as u64 => status,
-            inlateout("rdi") endpoint => opcode,
-            lateout("rsi") arg0,
-            lateout("rdx") reply,
-            lateout("r10") sender,
-            lateout("r8") interface,
-            lateout("r9") version,
-            lateout("r11") memory,
-            lateout("rcx") connection,
-            options(preserves_flags),
-        );
-    }
-    IpcMessage {
-        status,
-        opcode: opcode as u32,
-        arg0,
-        reply,
-        sender,
-        sender_generation: 0,
-        sender_principal: 0,
-        sender_roles: 0,
-        interface,
-        version: version as u32,
-        memory,
-        connection,
-    }
-}
-
-#[cfg(target_arch = "x86_64")]
-#[inline(always)]
-unsafe fn svc_ipc_recv_authenticated(endpoint: u64) -> IpcMessage {
-    let status: u64;
-    let opcode: u64;
-    let arg0: u64;
-    let reply: u64;
-    let sender: u64;
-    let interface: u64;
-    let version: u64;
-    let memory: u64;
-    let connection: u64;
     let sender_generation: u64;
     let sender_principal: u64;
     let sender_roles: u64;
     unsafe {
         asm!(
             "syscall",
-            inlateout("rax") SyscallNumber::IpcRecvAuthenticated as u64 => status,
+            inlateout("rax") SyscallNumber::IpcRecv as u64 => status,
             inlateout("rdi") endpoint => opcode,
             lateout("rsi") arg0,
             lateout("rdx") reply,
@@ -771,7 +685,7 @@ unsafe fn svc_ipc_recv_authenticated(endpoint: u64) -> IpcMessage {
 
 #[cfg(target_arch = "x86_64")]
 #[inline(always)]
-unsafe fn svc_ipc_recv_block_authenticated(endpoint: u64) -> IpcMessage {
+unsafe fn svc_ipc_recv_block(endpoint: u64) -> IpcMessage {
     let status: u64;
     let opcode: u64;
     let arg0: u64;
@@ -787,7 +701,7 @@ unsafe fn svc_ipc_recv_block_authenticated(endpoint: u64) -> IpcMessage {
     unsafe {
         asm!(
             "syscall",
-            inlateout("rax") SyscallNumber::IpcRecvBlockAuthenticated as u64 => status,
+            inlateout("rax") SyscallNumber::IpcRecvBlock as u64 => status,
             inlateout("rdi") endpoint => opcode,
             lateout("rsi") arg0,
             lateout("rdx") reply,
@@ -900,18 +814,6 @@ unsafe fn svc_ipc_recv_block(_endpoint: u64) -> IpcMessage {
     }
 }
 
-#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
-#[inline(always)]
-unsafe fn svc_ipc_recv_authenticated(endpoint: u64) -> IpcMessage {
-    unsafe { svc_ipc_recv(endpoint) }
-}
-
-#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
-#[inline(always)]
-unsafe fn svc_ipc_recv_block_authenticated(endpoint: u64) -> IpcMessage {
-    unsafe { svc_ipc_recv_block(endpoint) }
-}
-
 /// Like [`svc3`] but also captures the x1 return value (for syscalls that
 /// return a secondary value in x1, e.g. MAILBOX_RECV_CAP, WAIT_TIMEOUT).
 #[cfg(target_arch = "aarch64")]
@@ -987,13 +889,13 @@ pub struct IpcMessage {
     pub arg0: u64,
     pub reply: u64,
     pub sender: u64,
-    /// Exact generation of the sender's recyclable address-space slot, or
-    /// zero when returned by a legacy receive syscall.
+    /// Exact generation of the sender's recyclable address-space slot, or zero for a
+    /// trusted kernel/serialized boot-fixture sender without a user root.
     pub sender_generation: u64,
     /// Stable principal assigned by the trusted loader from signed metadata,
-    /// or zero for a legacy receive.
+    /// or zero when no signed principal is installed.
     pub sender_principal: u64,
-    /// Supervisor-assigned [`domain_roles`] bits; zero for a legacy receive.
+    /// Supervisor-assigned [`domain_roles`] bits; zero when no role is granted.
     pub sender_roles: u32,
     pub interface: u64,
     pub version: u32,
@@ -1007,98 +909,10 @@ impl IpcMessage {
     }
 }
 
-/// Receive a scalar endpoint IPC message from `endpoint`.
-#[cfg(target_arch = "aarch64")]
-#[inline(always)]
-unsafe fn svc_ipc_recv(endpoint: u64) -> IpcMessage {
-    let status: u64;
-    let opcode: u64;
-    let arg0: u64;
-    let reply: u64;
-    let sender: u64;
-    let interface: u64;
-    let version: u64;
-    let memory: u64;
-    let connection: u64;
-    unsafe {
-        asm!(
-            "svc #22",
-            lateout("x0") status,
-            inlateout("x1") endpoint => opcode,
-            lateout("x2") arg0,
-            lateout("x3") reply,
-            lateout("x4") sender,
-            lateout("x5") interface,
-            lateout("x6") version,
-            lateout("x7") memory,
-            lateout("x8") connection,
-            options(preserves_flags),
-        );
-    }
-    IpcMessage {
-        status,
-        opcode: opcode as u32,
-        arg0,
-        reply,
-        sender,
-        sender_generation: 0,
-        sender_principal: 0,
-        sender_roles: 0,
-        interface,
-        version: version as u32,
-        memory,
-        connection,
-    }
-}
-
-/// Block until an endpoint IPC message is readable, then receive it.
-#[cfg(target_arch = "aarch64")]
-#[inline(always)]
-unsafe fn svc_ipc_recv_block(endpoint: u64) -> IpcMessage {
-    let status: u64;
-    let opcode: u64;
-    let arg0: u64;
-    let reply: u64;
-    let sender: u64;
-    let interface: u64;
-    let version: u64;
-    let memory: u64;
-    let connection: u64;
-    unsafe {
-        asm!(
-            "svc #27",
-            lateout("x0") status,
-            inlateout("x1") endpoint => opcode,
-            lateout("x2") arg0,
-            lateout("x3") reply,
-            lateout("x4") sender,
-            lateout("x5") interface,
-            lateout("x6") version,
-            lateout("x7") memory,
-            lateout("x8") connection,
-            options(preserves_flags),
-        );
-    }
-    IpcMessage {
-        status,
-        opcode: opcode as u32,
-        arg0,
-        reply,
-        sender,
-        sender_generation: 0,
-        sender_principal: 0,
-        sender_roles: 0,
-        interface,
-        version: version as u32,
-        memory,
-        connection,
-    }
-}
-
 /// Receive using the explicit authenticated-envelope ABI.
 #[cfg(target_arch = "aarch64")]
 #[inline(always)]
-unsafe fn svc_ipc_recv_authenticated(endpoint: u64) -> IpcMessage {
+unsafe fn svc_ipc_recv(endpoint: u64) -> IpcMessage {
     let status: u64;
     let opcode: u64;
     let arg0: u64;
@@ -1148,7 +962,7 @@ unsafe fn svc_ipc_recv_authenticated(endpoint: u64) -> IpcMessage {
 /// Block and receive using the explicit authenticated-envelope ABI.
 #[cfg(target_arch = "aarch64")]
 #[inline(always)]
-unsafe fn svc_ipc_recv_block_authenticated(endpoint: u64) -> IpcMessage {
+unsafe fn svc_ipc_recv_block(endpoint: u64) -> IpcMessage {
     let status: u64;
     let opcode: u64;
     let arg0: u64;
@@ -1701,31 +1515,18 @@ pub fn ipc_scalar_call(connection: u64, opcode: u32, arg0: u64) -> u64 {
     ipc_scalar_call_checked(connection, opcode, arg0).0
 }
 
-/// Receive a scalar endpoint IPC message.
+/// Receive a message with kernel-authenticated sender generation, principal,
+/// and roles captured at submission. All receive forms use this envelope.
 #[inline(always)]
 pub fn ipc_recv(endpoint: u64) -> IpcMessage {
     unsafe { svc_ipc_recv(endpoint) }
 }
 
-/// Block until a scalar endpoint IPC message is readable, then receive it.
-#[inline(always)]
-pub fn ipc_recv_block(endpoint: u64) -> IpcMessage {
-    unsafe { svc_ipc_recv_block(endpoint) }
-}
-
-/// Receive a message with kernel-authenticated sender generation, principal,
-/// and roles. This explicit ABI leaves the legacy receive register contract
-/// unchanged for existing runtimes.
-#[inline(always)]
-pub fn ipc_recv_authenticated(endpoint: u64) -> IpcMessage {
-    unsafe { svc_ipc_recv_authenticated(endpoint) }
-}
-
 /// Block until a message is readable and return its kernel-authenticated
 /// sender envelope.
 #[inline(always)]
-pub fn ipc_recv_block_authenticated(endpoint: u64) -> IpcMessage {
-    unsafe { svc_ipc_recv_block_authenticated(endpoint) }
+pub fn ipc_recv_block(endpoint: u64) -> IpcMessage {
+    unsafe { svc_ipc_recv_block(endpoint) }
 }
 
 /// Complete a call using a reply-token cap. Returns status code.
@@ -2300,141 +2101,17 @@ pub fn ipc_vector_call(connection: u64, opcode: u32, arg0: u64, cap_vector: u64)
     unsafe { svc4(SyscallNumber::IpcVectorCall, connection, opcode as u64, arg0, cap_vector) }
 }
 
-/// Receive a message and fill a result page with delivered cap IDs.
-/// `x1` = endpoint cap, `x3` = result-page memory capability. The page need
-/// not be mapped, and either an owned or BorrowWrite capability is accepted.
-/// Returns the legacy 9-register envelope used by [`ipc_recv`], and the result
-/// page contents are updated with a little-endian `u16` count followed
-/// immediately by that many little-endian `u64` capability IDs. An invalid,
-/// read-only, or undersized result page leaves the message queued and returns
-/// [`ipc_status::MEMORY_TRANSFER_FAILED`].
-#[cfg(target_arch = "aarch64")]
-#[inline(always)]
-/// # Safety
-///
-/// `result_page` must name an owned or BorrowWrite memory-object capability
-/// containing enough space for the kernel's packed capability-vector result.
-pub unsafe fn ipc_recv_vec(endpoint: u64, result_page: u64) -> IpcMessage {
-    let status: u64;
-    let opcode: u64;
-    let arg0: u64;
-    let reply: u64;
-    let sender: u64;
-    let interface: u64;
-    let version: u64;
-    let memory: u64;
-    let connection: u64;
-    unsafe {
-        asm!(
-            "svc #53",
-            lateout("x0") status,
-            inlateout("x1") endpoint => opcode,
-            lateout("x2") arg0,
-            inlateout("x3") result_page => reply,
-            lateout("x4") sender,
-            lateout("x5") interface,
-            lateout("x6") version,
-            lateout("x7") memory,
-            lateout("x8") connection,
-            // The kernel writes through `result_page`; omitting `nomem` makes
-            // this syscall a compiler memory barrier for surrounding accesses.
-            options(nostack, preserves_flags),
-        );
-    }
-    IpcMessage {
-        status,
-        opcode: opcode as u32,
-        arg0,
-        reply,
-        sender,
-        sender_generation: 0,
-        sender_principal: 0,
-        sender_roles: 0,
-        interface,
-        version: version as u32,
-        memory,
-        connection,
-    }
-}
-
-#[cfg(target_arch = "x86_64")]
-#[inline(always)]
-/// # Safety
-///
-/// `result_page` must name an owned or BorrowWrite memory-object capability
-/// containing enough space for the kernel's packed capability-vector result.
-pub unsafe fn ipc_recv_vec(endpoint: u64, result_page: u64) -> IpcMessage {
-    let status: u64;
-    let opcode: u64;
-    let arg0: u64;
-    let reply: u64;
-    let sender: u64;
-    let interface: u64;
-    let version: u64;
-    let memory: u64;
-    let connection: u64;
-    unsafe {
-        asm!(
-            "syscall",
-            inlateout("rax") SyscallNumber::IpcRecvVec as u64 => status,
-            inlateout("rdi") endpoint => opcode,
-            lateout("rsi") arg0,
-            inlateout("rdx") result_page => reply,
-            lateout("r10") sender,
-            lateout("r8") interface,
-            lateout("r9") version,
-            lateout("r11") memory,
-            lateout("rcx") connection,
-            options(preserves_flags),
-        );
-    }
-    IpcMessage {
-        status,
-        opcode: opcode as u32,
-        arg0,
-        reply,
-        sender,
-        sender_generation: 0,
-        sender_principal: 0,
-        sender_roles: 0,
-        interface,
-        version: version as u32,
-        memory,
-        connection,
-    }
-}
-
-#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
-/// # Safety
-///
-/// Mirrors the AArch64 ABI: `result_page` must identify a writable result
-/// page when this syscall is implemented on the target architecture.
-pub unsafe fn ipc_recv_vec(_endpoint: u64, _result_page: u64) -> IpcMessage {
-    IpcMessage {
-        status: ipc_status::NO_MESSAGE,
-        opcode: 0,
-        arg0: 0,
-        reply: 0,
-        sender: 0,
-        sender_generation: 0,
-        sender_principal: 0,
-        sender_roles: 0,
-        interface: 0,
-        version: 0,
-        memory: 0,
-        connection: 0,
-    }
-}
-
 /// Receive a capability vector plus the kernel-authenticated sender envelope.
-/// Unlike [`ipc_recv_vec`], this explicit ABI also returns x9--x11.
+/// Returns all twelve envelope registers, including sender identity in x9--x11.
+/// The result page contains a packed u16 count followed by u64 capabilities.
+/// Invalid, read-only or undersized backing leaves the message queued.
 #[cfg(target_arch = "aarch64")]
 #[inline(always)]
 /// # Safety
 ///
 /// `result_page` must name an owned or BorrowWrite memory-object capability
 /// containing enough space for the kernel's packed capability-vector result.
-pub unsafe fn ipc_recv_vec_authenticated(endpoint: u64, result_page: u64) -> IpcMessage {
+pub unsafe fn ipc_recv_vec(endpoint: u64, result_page: u64) -> IpcMessage {
     let status: u64;
     let opcode: u64;
     let arg0: u64;
@@ -2487,7 +2164,7 @@ pub unsafe fn ipc_recv_vec_authenticated(endpoint: u64, result_page: u64) -> Ipc
 ///
 /// `result_page` must name an owned or BorrowWrite memory-object capability
 /// containing enough space for the kernel's packed capability-vector result.
-pub unsafe fn ipc_recv_vec_authenticated(endpoint: u64, result_page: u64) -> IpcMessage {
+pub unsafe fn ipc_recv_vec(endpoint: u64, result_page: u64) -> IpcMessage {
     let status: u64;
     let opcode: u64;
     let arg0: u64;
@@ -2503,7 +2180,7 @@ pub unsafe fn ipc_recv_vec_authenticated(endpoint: u64, result_page: u64) -> Ipc
     unsafe {
         asm!(
             "syscall",
-            inlateout("rax") SyscallNumber::IpcRecvVecAuthenticated as u64 => status,
+            inlateout("rax") SyscallNumber::IpcRecvVec as u64 => status,
             inlateout("rdi") endpoint => opcode,
             lateout("rsi") arg0,
             inlateout("rdx") result_page => reply,
@@ -2537,9 +2214,23 @@ pub unsafe fn ipc_recv_vec_authenticated(endpoint: u64, result_page: u64) -> Ipc
 #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 /// # Safety
 ///
-/// Mirrors the AArch64 authenticated vector-receive ABI.
-pub unsafe fn ipc_recv_vec_authenticated(endpoint: u64, result_page: u64) -> IpcMessage {
-    unsafe { ipc_recv_vec(endpoint, result_page) }
+/// Mirrors the AArch64 ABI: `result_page` must identify a writable result
+/// page when this syscall is implemented on the target architecture.
+pub unsafe fn ipc_recv_vec(_endpoint: u64, _result_page: u64) -> IpcMessage {
+    IpcMessage {
+        status: ipc_status::NO_MESSAGE,
+        opcode: 0,
+        arg0: 0,
+        reply: 0,
+        sender: 0,
+        sender_generation: 0,
+        sender_principal: 0,
+        sender_roles: 0,
+        interface: 0,
+        version: 0,
+        memory: 0,
+        connection: 0,
+    }
 }
 
 /// Resize an owned endpoint's admission bound.
@@ -2660,5 +2351,19 @@ mod deployment_abi_tests {
     fn descriptorless_launch_number_rejects_without_aliasing_scoped_launch() {
         assert_eq!(SyscallNumber::try_from(64), Err(()));
         assert_eq!(SyscallNumber::try_from(76), Ok(SyscallNumber::SpawnArtifactScoped));
+    }
+}
+
+#[cfg(test)]
+mod receive_abi_tests {
+    use super::SyscallNumber;
+    #[test]
+    fn nine_register_receive_numbers_are_unassigned() {
+        for old in [22, 27, 53] {
+            assert_eq!(SyscallNumber::try_from(old), Err(()));
+        }
+        assert_eq!(SyscallNumber::IpcRecv as u16, 71);
+        assert_eq!(SyscallNumber::IpcRecvBlock as u16, 72);
+        assert_eq!(SyscallNumber::IpcRecvVec as u16, 73);
     }
 }

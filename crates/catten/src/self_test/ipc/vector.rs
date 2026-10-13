@@ -100,20 +100,35 @@ impl Round {
     }
 
     fn receive(&self) -> (u64, [u64; 4]) {
-        let message = ipc::receive_vec(self.server, self.endpoint, self.result).unwrap();
+        // Invalid result storage must clear the envelope and retain the queued
+        // vector, including its hidden move/copy and reply-bound loans.
+        let rejected =
+            crate::self_test::syscall::test_ipc_receive(self.server, self.endpoint, Some(u64::MAX));
+        assert_eq!(rejected.regs[0], catten_syscall::ipc_status::MEMORY_TRANSFER_FAILED);
+        assert_eq!(&rejected.regs[1..=11], &[0; 11]);
+        let frame = crate::self_test::syscall::test_ipc_receive(
+            self.server,
+            self.endpoint,
+            Some(self.result),
+        );
+        assert_eq!(frame.regs[0], catten_syscall::ipc_status::OK);
+        assert_eq!(frame.regs[4], self.client as u64);
+        assert_eq!(frame.regs[9], self.handle.generation() as u64);
+        assert_eq!(&frame.regs[10..=11], &[0, 0]);
+
         let bytes = object::snapshot_bytes(self.server, self.result, 2 + 4 * 8).unwrap();
         assert_eq!(&bytes[..2], &4u16.to_le_bytes());
         let caps = core::array::from_fn(|index| {
             u64::from_le_bytes(bytes[2 + index * 8..2 + (index + 1) * 8].try_into().unwrap())
         });
-        assert_eq!(message.memory, Some(caps[0]));
+        assert_eq!(frame.regs[7], caps[0]);
         for (index, &cap) in caps.iter().enumerate() {
             assert_eq!(object::snapshot_bytes(self.server, cap, 1).unwrap(), [(index + 1) as u8]);
         }
         object::map_any(self.server, caps[2], false).unwrap();
         object::map_any(self.server, caps[3], true).unwrap();
         object::write_bytes(self.server, caps[3], &[0x5a]).unwrap();
-        (message.reply.unwrap(), caps)
+        (frame.regs[3], caps)
     }
 
     fn assert_loans_ended(&self) {

@@ -838,6 +838,13 @@ the corrected RPC polling paths, and the remaining notification gaps.
   use `observe_registered`. The timer's single internal slot is not a general
   callback-registration API.
 
+- All IPC receive forms use the twelve-register authenticated envelope (71--73).
+  Use `Endpoint::receive`/`try_receive` and authorize from the captured sender
+  generation/principal/roles, never a later lookup of the recyclable ASID. Zero
+  principal or missing roles grant no authority. Register-contract changes bump
+  `charlotte_launch::execution_target::RUNTIME_ABI` and rebuild/sign every variant,
+  including runner fixtures. Retired nine-register syscalls 22/27/53 reject.
+  See `docs/reference/ipc-receive.md`.
 - `catten-syscall` mirrors the register ABI and intentionally exposes integers.
 - `catten-rt::owned` is the safe application layer and owns kernel resources.
 - Protocol crates define wire formats and opcodes; they do not own live

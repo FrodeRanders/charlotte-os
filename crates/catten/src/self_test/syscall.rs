@@ -74,6 +74,23 @@ fn synthetic_trap_frame4_in(
     frame
 }
 
+/// Exercise the canonical receive register envelope in serialized kernel fixtures.
+pub(crate) fn test_ipc_receive(
+    asid: crate::memory::AddressSpaceId,
+    endpoint: u64,
+    result_page: Option<u64>,
+) -> TrapFrame {
+    let mut frame = synthetic_trap_frame_in(asid, 0, endpoint, 0, result_page.unwrap_or(0));
+    frame.regs[4..=11].fill(u64::MAX);
+    let number = if result_page.is_some() {
+        call_no::IPC_RECV_VEC
+    } else {
+        call_no::IPC_RECV
+    };
+    syscall::syscall_dispatch(&mut frame, number);
+    frame
+}
+
 fn create_syscall_test_address_space(label: &str) -> crate::memory::AddressSpaceId {
     let user_as = {
         let _kas = KERNEL_AS.lock();
@@ -328,9 +345,20 @@ pub fn test_syscall_dispatch() {
         assert_eq!(f.regs[6], 1);
         assert_eq!(
             &f.regs[9..=11],
-            &[0x9999, 0xaaaa, 0xbbbb],
-            "legacy IPC receive must preserve its original x0--x8 ABI"
+            &[0, 0, 0],
+            "serialized fixture sender has no authenticated user root"
         );
+    }
+    // Empty and rejected receives must not expose stale payload or identity.
+    let empty = test_ipc_receive(asid, endpoint, None);
+    assert_eq!(empty.regs[0], catten_syscall::ipc_status::NO_MESSAGE);
+    assert_eq!(&empty.regs[1..=11], &[0; 11]);
+    for number in [call_no::IPC_RECV, call_no::IPC_RECV_BLOCK, call_no::IPC_RECV_VEC] {
+        let mut rejected = synthetic_trap_frame_in(asid, 0, u64::MAX, 0, 0);
+        rejected.regs[2..=11].fill(u64::MAX);
+        syscall::syscall_dispatch(&mut rejected, number);
+        assert_ne!(rejected.regs[0], catten_syscall::ipc_status::OK);
+        assert_eq!(&rejected.regs[1..=11], &[0; 11]);
     }
     let call = {
         let mut f = synthetic_trap_frame_in(asid, 0, connection, 12, 0xbb66);

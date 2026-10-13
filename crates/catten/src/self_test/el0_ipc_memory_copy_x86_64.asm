@@ -13,9 +13,18 @@ __catten_el0_ipc_memory_copy_server_start:
     mfence
     mov dword ptr [r15], 0xc05e
 
-    mov eax, 27
+    // Receive returns authenticated metadata in r12--r14.
+    push r12
+    push r13
+    push r14
+    push rbx
+    mov eax, 72
     mov edi, ebx
     syscall
+    pop rbx
+    pop r14
+    pop r13
+    pop r12
     mov dword ptr [r15 + 48], eax
     mov dword ptr [r15 + 52], edi
     mov dword ptr [r15 + 56], esi

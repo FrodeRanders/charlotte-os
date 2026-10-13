@@ -455,7 +455,7 @@ if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ]; then
             -v "${DEPLOY_VARIANT_ELF}:/tmp/variant.elf:ro" \
             --entrypoint /bin/sh init -ec \
             "rc alias set local https://rustfs.test:9000 charlotte-test-access charlotte-test-secret-2026 && rc cp /tmp/variant.elf local/charlotte-test/${DEPLOY_VARIANT_KEY}"
-        DEPLOY_VARIANT_ARGS=("--variant=${DEPLOY_VARIANT_KEY},${DEPLOY_VARIANT_ELF},0,0,1")
+        DEPLOY_VARIANT_ARGS=("--variant=${DEPLOY_VARIANT_KEY},${DEPLOY_VARIANT_ELF},0,0,2")
     fi
     "$CLUSTER_SIGN_BIN" deployment-sign \
         "$DEPLOYMENT_DESCRIPTOR" "$DEPLOY_NAME" "$DEPLOYMENT_OBJECT_KEY" "$DEPLOYMENT_ELF" \

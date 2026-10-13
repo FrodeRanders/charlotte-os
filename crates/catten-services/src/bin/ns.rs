@@ -38,7 +38,7 @@ use catten_syscall::{
     IpcMessage,
     IpcRights,
     ipc_close,
-    ipc_recv_block_authenticated,
+    ipc_recv_block,
     ipc_reply,
     ipc_reply_connection,
     ipc_reply_move,
@@ -796,7 +796,7 @@ fn main(ctx: Context) -> ! {
     let mut handled: u32 = 0;
 
     loop {
-        let message = ipc_recv_block_authenticated(endpoint);
+        let message = ipc_recv_block(endpoint);
         if message.status == ipc_status::ENDPOINT_CLOSED {
             unsafe { thread_exit() };
         }

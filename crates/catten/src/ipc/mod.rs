@@ -107,20 +107,6 @@ pub use catten_syscall::CAP_VECTOR_MAX;
 /// memory-object capability and how it should be transferred.
 pub use catten_syscall::CapVectorEntry;
 
-/// The kernel fills this struct into the receiver's result page during
-/// `ipc_recv_vec`. At most `count` caps were delivered; the receiver
-/// must close each one after use.
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct VectorMessage {
-    /// Number of memory-object caps returned.
-    pub memory_count: u16,
-    /// Reserved.
-    pub _pad: [u16; 3],
-    /// Cap IDs of the transferred memory objects.
-    pub memory_caps: [u64; CAP_VECTOR_MAX],
-}
-
 impl ConnectionRights {
     pub const ALL: Self =
         Self(Self::SEND.0 | Self::CALL.0 | Self::RECEIVE.0 | Self::MINT_CONNECTION.0);

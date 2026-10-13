@@ -19,22 +19,49 @@ __catten_el0_ipc_memory_cancel_server_start:
     lfence
 
     // Both queued calls were cancelled before receive.
-    mov eax, 22
+    // Receive returns authenticated metadata in r12--r14.
+    push r12
+    push r13
+    push r14
+    push rbx
+    mov eax, 71
     mov edi, ebx
     syscall
+    pop rbx
+    pop r14
+    pop r13
+    pop r12
     mov dword ptr [r15 + 72], eax
-    mov eax, 22
+    // Receive returns authenticated metadata in r12--r14.
+    push r12
+    push r13
+    push r14
+    push rbx
+    mov eax, 71
     mov edi, ebx
     syscall
+    pop rbx
+    pop r14
+    pop r13
+    pop r12
     mov dword ptr [r15 + 76], eax
 
     mfence
     mov dword ptr [r15 + 80], 0xca52
 
     // Receive, map, and update the delivered write borrow.
-    mov eax, 27
+    // Receive returns authenticated metadata in r12--r14.
+    push r12
+    push r13
+    push r14
+    push rbx
+    mov eax, 72
     mov edi, ebx
     syscall
+    pop rbx
+    pop r14
+    pop r13
+    pop r12
     mov dword ptr [r15 + 88], eax
     mov dword ptr [r15 + 92], edi
     mov dword ptr [r15 + 96], edx

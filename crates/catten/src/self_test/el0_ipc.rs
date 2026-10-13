@@ -724,6 +724,12 @@ extern "C" fn verify_el0_endpoint_ipc() {
             let poll_result = unsafe { core::ptr::read_volatile(result.add(14)) };
             let poll_cap = unsafe { core::ptr::read_volatile(result.add(15)) };
 
+            let envelope = unsafe { base.add(128).cast::<u64>() };
+            let generation = unsafe { core::ptr::read_volatile(envelope) };
+            assert_ne!(generation, 0, "EL0 IPC: canonical receive omitted sender generation");
+            assert_eq!(unsafe { core::ptr::read_volatile(envelope.add(1)) }, 0);
+            assert_eq!(unsafe { core::ptr::read_volatile(envelope.add(2)) }, 0);
+
             assert_ne!(endpoint, 0, "EL0 IPC: endpoint_create returned no cap");
             assert_ne!(connection, 0, "EL0 IPC: connect returned no cap");
             assert_eq!(send_status, 0, "EL0 IPC: scalar_send failed");

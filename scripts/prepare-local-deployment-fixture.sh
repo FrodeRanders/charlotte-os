@@ -14,7 +14,7 @@ X86="$ROOT/target/embedded-services/x86_64-unknown-none/greet.elf"
 # Canonical ordering lets both fixture nodes carry exactly the same decision.
 if [ -f "$ARM" ] && [ -f "$X86" ]; then
     PRIMARY="$ARM"
-    VARIANTS=("--variant=fixture/greet-x86.elf,$X86,0,0,1")
+    VARIANTS=("--variant=fixture/greet-x86.elf,$X86,0,0,2")
 else
     PRIMARY="$BUNDLE/greet.elf"
 fi

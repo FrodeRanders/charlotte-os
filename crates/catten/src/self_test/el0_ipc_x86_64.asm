@@ -34,9 +34,21 @@ __catten_el0_ipc_start:
     mov dword ptr [r15 + 12], eax
 
     // block-receive the send message from endpoint.
-    mov eax, 27
+    // Receive returns authenticated metadata in r12--r14.
+    push r12
+    push r13
+    push r14
+    push rbx
+    mov eax, 72
     mov edi, ebx
     syscall
+    mov qword ptr [r15 + 128], r12
+    mov qword ptr [r15 + 136], r13
+    mov qword ptr [r15 + 144], r14
+    pop rbx
+    pop r14
+    pop r13
+    pop r12
     mov dword ptr [r15 + 16], eax
     mov dword ptr [r15 + 20], edi
     mov dword ptr [r15 + 24], esi
@@ -51,9 +63,18 @@ __catten_el0_ipc_start:
     mov r12d, eax
 
     // block-receive the call message and keep its reply token.
-    mov eax, 27
+    // Receive returns authenticated metadata in r12--r14.
+    push r12
+    push r13
+    push r14
+    push rbx
+    mov eax, 72
     mov edi, ebx
     syscall
+    pop rbx
+    pop r14
+    pop r13
+    pop r12
     mov dword ptr [r15 + 32], eax
     mov dword ptr [r15 + 36], edi
     mov dword ptr [r15 + 40], esi

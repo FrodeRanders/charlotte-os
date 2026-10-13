@@ -12,9 +12,18 @@ __catten_el0_ipc_cross_server_start:
     mfence
     mov dword ptr [r15], 0x5e5e
 
-    mov eax, 27
+    // Receive returns authenticated metadata in r12--r14.
+    push r12
+    push r13
+    push r14
+    push rbx
+    mov eax, 72
     mov edi, ebx
     syscall
+    pop rbx
+    pop r14
+    pop r13
+    pop r12
     mov dword ptr [r15 + 8], eax
     mov dword ptr [r15 + 12], edi
     mov dword ptr [r15 + 16], esi

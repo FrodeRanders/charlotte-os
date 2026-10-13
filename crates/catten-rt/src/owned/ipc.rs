@@ -225,7 +225,7 @@ impl Endpoint {
         self.cap.expect("endpoint capability already consumed")
     }
 
-    /// Receive one queued request without blocking.
+    /// Receive one queued request with kernel-captured sender identity, without blocking.
     ///
     /// Every capability attached to a successful message is immediately
     /// adopted by an owning Rust value. Dropping the returned message therefore
@@ -234,24 +234,9 @@ impl Endpoint {
         IncomingMessage::from_kernel(kernel::ipc_recv(self.raw_handle()))
     }
 
-    /// Wait for and receive one request.
+    /// Wait for and receive one request with the same authenticated envelope.
     pub fn receive(&self) -> Result<IncomingMessage, ReceiveError> {
         IncomingMessage::from_kernel(kernel::ipc_recv_block(self.raw_handle()))?
-            .ok_or(ReceiveError::Status(catten_syscall::ipc_status::NO_MESSAGE))
-    }
-
-    /// Receive one queued request with the kernel-authenticated sender
-    /// generation, principal, and supervisor roles populated.
-    ///
-    /// Authority-mediating services must use this form; the legacy receive
-    /// ABI deliberately leaves those fields zero for compatibility.
-    pub fn try_receive_authenticated(&self) -> Result<Option<IncomingMessage>, ReceiveError> {
-        IncomingMessage::from_kernel(kernel::ipc_recv_authenticated(self.raw_handle()))
-    }
-
-    /// Block for a request with a kernel-authenticated sender envelope.
-    pub fn receive_authenticated(&self) -> Result<IncomingMessage, ReceiveError> {
-        IncomingMessage::from_kernel(kernel::ipc_recv_block_authenticated(self.raw_handle()))?
             .ok_or(ReceiveError::Status(catten_syscall::ipc_status::NO_MESSAGE))
     }
 

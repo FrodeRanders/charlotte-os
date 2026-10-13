@@ -232,7 +232,7 @@ fn main(ctx: Context) -> ! {
         // cannot prevent polling existing operations and lifecycle requests.
         let mut intake_exhausted = true;
         for _ in 0..16 {
-            let mut message = match endpoint.try_receive_authenticated() {
+            let mut message = match endpoint.try_receive() {
                 Ok(Some(message)) => message,
                 Ok(None) => {
                     intake_exhausted = false;

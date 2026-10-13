@@ -293,7 +293,7 @@ fn variants_bind_targets_keys_digests_and_choose_deterministically() {
     assert_eq!(decoded.select_variant(optimized), Some(2));
     assert_eq!(
         decoded.select_variant(ExecutionTarget {
-            runtime_abi: 2,
+            runtime_abi: 1,
             ..arm
         }),
         None
@@ -356,7 +356,7 @@ fn image_gate_rechecks_machine_abi_requirements_and_exact_digest() {
     assert!(!decoded.accepts_image(
         &image,
         ExecutionTarget {
-            runtime_abi: 2,
+            runtime_abi: 1,
             ..variants[0].target
         }
     ));

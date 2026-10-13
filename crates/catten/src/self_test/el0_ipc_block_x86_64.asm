@@ -28,9 +28,18 @@ __catten_el0_ipc_block_server_start:
     mov dword ptr [r15], 0x5150
 
     // This should park until the client posts a call.
-    mov eax, 27
+    // Receive returns authenticated metadata in r12--r14.
+    push r12
+    push r13
+    push r14
+    push rbx
+    mov eax, 72
     mov edi, ebx
     syscall
+    pop rbx
+    pop r14
+    pop r13
+    pop r12
     mov dword ptr [r15 + 12], eax
     mov dword ptr [r15 + 16], edi
     mov dword ptr [r15 + 20], esi
