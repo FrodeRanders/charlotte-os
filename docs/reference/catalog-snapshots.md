@@ -111,3 +111,8 @@ The correlated follower read-barrier relay is separately versioned by current
 fallible preparation do not change catalog-v18 or Raft pair-v3. Retired query
 frames reject before read-barrier processing; membership, correlation and
 exact-generation source checks remain necessary.
+
+The registration and automatic-retraction network relays use the
+[full-name correlated grammar](dns-registration-relay.md) on `0x28/0x29/0x2a`.
+They preserve the explicit deployment generation in catalog commands; this
+network-only replacement leaves catalog-v18 and Raft pair-v3 unchanged.

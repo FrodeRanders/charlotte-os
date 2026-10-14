@@ -287,116 +287,151 @@ fn fatal(stage: u64) -> ! {
 /// Returns `(connection, local_generation)`.
 fn local_publication(
     names: ConnectionRef<'_>,
-    attached_connection: u64,
+    attached_connection: Option<catten_rt::owned::Connection>,
     name: &[u8],
-) -> Option<(u64, u64)> {
-    let ns_conn = names.as_raw();
-    if attached_connection != 0 {
-        return Some((attached_connection, 0));
+) -> Option<(Option<catten_rt::owned::Connection>, u64)> {
+    if let Some(connection) = attached_connection {
+        return Some((Some(connection), 0));
     }
-    let lookup = ipc_scalar_call(ns_conn, ns::OP_TRY_LOOKUP, catten_services::name(name));
-    if lookup == 0 {
+    let staged = catten_services::stage_name_owned(name)?;
+    let result =
+        names.call_copy(ns::OP_TRY_LOOKUP_NAMED, name.len() as u64, &staged).ok()?.wait().ok()?;
+    if result.result < 1 {
         return None;
     }
-    let (generation, connection) = unsafe { wait_reply(lookup) };
-    if generation >= 1 && connection != 0 {
-        Some((connection, generation as u64))
-    } else {
-        None
-    }
+    Some((Some(result.connection?), result.result as u64))
 }
 
-/// The register/relay/submit path shared by `OP_REGISTER` and
-/// `OP_REGISTER_NAMED`. Returns `Some(code)` when the caller must reply with
-/// `code`, or `None` when the reply was deferred (the entry is committing).
+/// Prepare a correlated relay before resolving or publishing a local resource.
+#[allow(clippy::too_many_arguments)]
+fn prepare_registration_relay(
+    node: &RaftNode,
+    transport: &RelmsgRaftTransport,
+    pending: &mut Vec<PendingRegistration>,
+    session: u64,
+    next_id: &mut u64,
+    owner: &[u8],
+    name: &[u8],
+    deployment_generation: u64,
+) -> Result<(alloc::string::String, u64, Vec<u8>), i64> {
+    let leader = node
+        .known_leader_id
+        .as_ref()
+        .filter(|leader| transport.has_peer(leader))
+        .ok_or(dns::ERR_NOT_LEADER)?;
+    let id = *next_id;
+    let next = id.checked_add(1).ok_or(dns::ERR_RESOURCE_LIMIT)?;
+    let request =
+        catten_services::rregister::encode_request(session, id, owner, name, deployment_generation)
+            .map_err(|error| error.status())?;
+    pending.try_reserve(1).map_err(|_| dns::ERR_RESOURCE_LIMIT)?;
+    let mut peer = alloc::string::String::new();
+    peer.try_reserve_exact(leader.len()).map_err(|_| dns::ERR_RESOURCE_LIMIT)?;
+    peer.push_str(leader);
+    *next_id = next;
+    Ok((peer, id, request))
+}
+
+/// Register/relay/submit shared by the local registration opcodes.
 #[allow(clippy::too_many_arguments)]
 fn register_name(
     node: &mut RaftNode,
     names: ConnectionRef<'_>,
     transport: &RelmsgRaftTransport,
-    pending_registers: &mut alloc::vec::Vec<PendingRegistration>,
+    pending_registers: &mut Vec<PendingRegistration>,
     node_name: &[u8],
     message: &catten_syscall::IpcMessage,
-    name: alloc::vec::Vec<u8>,
+    name: Vec<u8>,
     deployment_generation: u64,
+    session: u64,
+    next_id: &mut u64,
 ) -> Option<i64> {
-    // Scoped applications are policy-published: legacy lookup must reject
-    // them. Observe their actual publication before any Raft mutation, without
-    // acquiring invocation authority or altering legacy watch ownership.
-    // Their complete domain/retirement owner remains with the deployment agent.
-    let observed = if !name.is_empty() && deployment_generation != 0 && message.connection == 0 {
-        let Some(generation) = catten_services::publication_generation_owned(names, &name) else {
-            return Some(dns::ERR_NOT_FOUND);
-        };
-        Some((0, generation))
-    } else {
-        None
-    };
-    if name.is_empty() {
-        Some(dns::ERR_TOO_LARGE)
-    } else if node.state != NodeState::Leader {
-        // Remote host: the service lives on this node, but only the leader
-        // may commit catalog entries. Resolve the local registration and
-        // relay a register request to the leader, which commits the entry
-        // naming this node as the owner. The reply is deferred until the
-        // leader acknowledges (see rregister replies below).
-        match observed.or_else(|| local_publication(names, message.connection, &name)) {
-            None => Some(dns::ERR_TOO_LARGE),
-            Some((connection, local_generation)) => match node.known_leader_id.clone() {
-                Some(leader) if transport.has_peer(&leader) => {
-                    let request = catten_services::rregister::encode_request(
-                        node_name,
-                        &name,
-                        deployment_generation,
-                    );
-                    transport.send_message(
-                        &leader,
-                        catten_services::rregister::TAG_REQUEST,
-                        request,
-                    );
-                    pending_registers.push(PendingRegistration::RemoteRegister {
-                        term: node.current_term,
-                        reply: message.reply,
-                        name,
-                        connection,
-                        local_generation,
-                    });
-                    None
-                }
-                _ => {
-                    if connection != 0 {
-                        ipc_close(connection);
-                    }
-                    Some(dns::ERR_NOT_LEADER)
-                }
-            },
+    // Raw receive ABI boundary: this opcode transfers its unique attachment
+    // exactly once. Every rejection drops this owner; pending phases move it.
+    let attached = unsafe { catten_rt::owned::Connection::from_raw(message.connection) }.ok();
+    if name.is_empty() || name.len() > catten_services::MAX_NAME_LEN {
+        return Some(dns::ERR_TOO_LARGE);
+    }
+    let relay = if node.state != NodeState::Leader {
+        match prepare_registration_relay(
+            node,
+            transport,
+            pending_registers,
+            session,
+            next_id,
+            node_name,
+            &name,
+            deployment_generation,
+        ) {
+            Ok(relay) => Some(relay),
+            Err(code) => return Some(code),
         }
     } else {
-        // Leader: commit the registration with this node as the owner.
-        // Submit once; the reactor completes the reply once the entry has
-        // replicated (see pending_registers below).
-        let command = encode_register(&name, node_name, deployment_generation);
-        match node.submit_command(command, node.millis()) {
+        if pending_registers.try_reserve(1).is_err() {
+            return Some(dns::ERR_RESOURCE_LIMIT);
+        }
+        None
+    };
+    // Scoped applications expose publication generation without acquiring
+    // invocation authority. Their deployment agent retains the domain owner.
+    let publication = if deployment_generation != 0 && attached.is_none() {
+        catten_services::stage_name_owned(&name).and_then(|staged| {
+            let result = names
+                .call_copy(ns::OP_PUBLICATION_GENERATION, name.len() as u64, &staged)
+                .ok()?
+                .wait()
+                .ok()?;
+            (result.result >= 1 && result.connection.is_none() && result.memory.is_none())
+                .then_some((None, result.result as u64))
+        })
+    } else {
+        local_publication(names, attached, &name)
+    };
+    if let Some((leader, request_id, request)) = relay {
+        let Some((connection, local_generation)) = publication else {
+            return Some(dns::ERR_NOT_FOUND);
+        };
+        pending_registers.push(PendingRegistration::RemoteRegister {
+            term: node.current_term,
+            expected_peer: leader,
+            session,
+            request_id,
+            // Raw receive reply authority transfers once into this pending owner.
+            reply: unsafe { catten_rt::owned::ReplyToken::from_raw(message.reply) }.ok(),
+            name,
+            connection,
+            local_generation,
+        });
+        // Publish the complete retaining operation before transport submission.
+        let PendingRegistration::RemoteRegister {
+            expected_peer,
+            ..
+        } = pending_registers.last().unwrap()
+        else {
+            unreachable!()
+        };
+        transport.send_message(expected_peer, catten_services::rregister::TAG_REQUEST, request);
+        None
+    } else {
+        let Some((connection, existing_local_generation)) = publication else {
+            return Some(dns::ERR_NOT_FOUND);
+        };
+        match node
+            .submit_command(encode_register(&name, node_name, deployment_generation), node.millis())
+        {
             Ok(index) => {
-                let (connection, existing_local_generation) = observed
-                    .or_else(|| local_publication(names, message.connection, &name))
-                    .unwrap_or((0, 0));
                 pending_registers.push(PendingRegistration::Prepare {
                     term: node.current_term,
                     log_index: index,
-                    reply: message.reply,
+                    // Raw receive reply authority transfers once into this pending owner.
+                    reply: unsafe { catten_rt::owned::ReplyToken::from_raw(message.reply) }.ok(),
                     name,
                     connection,
                     existing_local_generation,
                 });
                 None
             }
-            Err(code) => {
-                if message.connection != 0 {
-                    ipc_close(message.connection);
-                }
-                Some(code)
-            }
+            Err(code) => Some(code),
         }
     }
 }
@@ -1399,11 +1434,9 @@ fn abort_pending_entry(entry: PendingRegistration, transport: &RelmsgRaftTranspo
             connection,
             ..
         } => {
-            if connection != 0 {
-                ipc_close(connection);
-            }
-            if reply != 0 {
-                ipc_reply(reply, dns::ERR_UNCERTAIN);
+            drop(connection);
+            if let Some(reply) = reply {
+                let _ = reply.reply(dns::ERR_UNCERTAIN);
             }
         }
         PendingRegistration::RemoteRegister {
@@ -1411,11 +1444,9 @@ fn abort_pending_entry(entry: PendingRegistration, transport: &RelmsgRaftTranspo
             connection,
             ..
         } => {
-            if connection != 0 {
-                ipc_close(connection);
-            }
-            if reply != 0 {
-                ipc_reply(reply, dns::ERR_UNCERTAIN);
+            drop(connection);
+            if let Some(reply) = reply {
+                let _ = reply.reply(dns::ERR_UNCERTAIN);
             }
         }
         PendingRegistration::Unregister {
@@ -1502,16 +1533,16 @@ fn abort_pending_entry(entry: PendingRegistration, transport: &RelmsgRaftTranspo
             );
         }
         PendingRegistration::RemotePrepare {
-            name,
             owner,
+            remote_reply,
             ..
         }
         | PendingRegistration::RemoteActivate {
-            name,
             owner,
+            remote_reply,
             ..
         } => {
-            let reply = catten_services::rregister::encode_reply(&owner, &name, 0);
+            let reply = remote_reply.finish(0);
             let owner = alloc::string::String::from_utf8_lossy(&owner);
             transport.send_message(&owner, catten_services::rregister::TAG_REPLY, reply);
         }
@@ -1780,6 +1811,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut pending_local_unregistrations: Vec<u64> = Vec::new();
     let mut local_publications: Vec<LocalPublication> = Vec::new();
     let mut next_query_id: u64 = 1;
+    let mut next_registration_id: u64 = 1;
 
     // Cluster-event waiters: reply tokens parked by OP_EVENT_WAIT for events
     // that have not fired yet. Settled from the *applied* catalog each
@@ -2377,65 +2409,42 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                 }
                             }
                             Some(catten_services::runregister::TAG_REQUEST) => {
-                                if let Some((owner, name, generation)) =
-                                    catten_services::runregister::decode_request(frame)
+                                if let Some((owner, name, generation)) = catten_services::runregister::decode_request(frame)
                                     && node.state == NodeState::Leader
-                                    && transport
-                                        .peer_id_for_mac(&source_mac)
-                                        .is_some_and(|peer| peer.as_bytes() == owner)
-                                    && catalog.lookup_owner(&name, &owner).is_some_and(|entry| {
-                                        entry.generation == generation
-                                    })
-                                    && !pending_registers.iter().any(|pending| matches!(
-                                        pending,
-                                        PendingRegistration::Unregister {
-                                            name: pending_name,
-                                            expected_generation,
-                                            automatic_term: Some(_),
-                                            ..
-                                        } if pending_name == &name && *expected_generation == generation
-                                    ))
-                                    && let Ok(log_index) = node.submit_command(
-                                        encode_unregister_generation(&name, &owner, generation),
-                                        node.millis(),
-                                    )
+                                    && transport.peer_id_for_mac(&source_mac).is_some_and(|peer| peer.as_bytes() == owner)
+                                    && catalog.lookup_owner(name, owner).is_some_and(|entry| entry.generation == generation)
+                                    && !pending_registers.iter().any(|pending| matches!(pending,
+                                        PendingRegistration::Unregister { name: pending_name, expected_generation, automatic_term: Some(_), .. }
+                                        if pending_name == name && *expected_generation == generation))
                                 {
-                                    pending_registers.push(PendingRegistration::Unregister { term: node.current_term,
-                                        log_index,
-                                        reply: 0,
-                                        name,
-                                        expected_generation: generation,
-                                        local_generation: 0,
-                                        automatic_term: Some(node.current_term),
-                                    });
+                                    let mut owned_name = Vec::new();
+                                    if owned_name.try_reserve_exact(name.len()).is_ok()
+                                        && pending_registers.try_reserve(1).is_ok()
+                                    {
+                                        owned_name.extend_from_slice(name);
+                                        if let Ok(log_index) = node.submit_command(encode_unregister_generation(name, owner, generation), node.millis()) {
+                                            pending_registers.push(PendingRegistration::Unregister {
+                                                term: node.current_term, log_index, reply: 0, name: owned_name,
+                                                expected_generation: generation, local_generation: 0, automatic_term: Some(node.current_term),
+                                            });
+                                        }
+                                    }
                                 }
                             }
                             Some(catten_services::rregister::TAG_REQUEST) => {
-                                // A follower hosts a service locally but only
-                                // this leader may commit its catalog entry.
-                                if let Some((owner, name, deployment_generation)) =
-                                    catten_services::rregister::decode_request(frame)
+                                // Prepare the whole two-phase reply before the first mutation.
+                                if let Some(request) = catten_services::rregister::decode_request(frame)
                                     && node.state == NodeState::Leader
-                                    && transport
-                                        .peer_id_for_mac(&source_mac)
-                                        .is_some_and(|peer| peer.as_bytes() == owner)
-                                    && !pending_registers.iter().any(|pending| matches!(
-                                        pending,
-                                        PendingRegistration::RemotePrepare {
-                                            name: pending_name,
-                                            ..
-                                        }
-                                        | PendingRegistration::RemoteActivate {
-                                            name: pending_name,
-                                            ..
-                                        } if pending_name == &name
-                                    ))
-                                    && let Ok(log_index) = node.submit_command(encode_register(&name, &owner, deployment_generation), node.millis())
+                                    && transport.peer_id_for_mac(&source_mac).is_some_and(|peer| peer.as_bytes() == request.owner)
+                                    && !pending_registers.iter().any(|pending| matches!(pending,
+                                        PendingRegistration::RemotePrepare { name, .. } | PendingRegistration::RemoteActivate { name, .. }
+                                        if name == request.name))
+                                    && let Ok((owner, name, remote_reply)) = request.prepare()
+                                    && pending_registers.try_reserve(1).is_ok()
+                                    && let Ok(log_index) = node.submit_command(encode_register(&name, &owner, request.deployment_generation), node.millis())
                                 {
-                                    pending_registers.push(PendingRegistration::RemotePrepare { term: node.current_term,
-                                        log_index,
-                                        name,
-                                        owner,
+                                    pending_registers.push(PendingRegistration::RemotePrepare {
+                                        term: node.current_term, log_index, name, owner, remote_reply,
                                     });
                                 }
                             }
@@ -2491,29 +2500,26 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             Some(catten_services::rregister::TAG_REPLY) => {
                                 // The leader acknowledged a relayed register:
                                 // publish the locally hosted service.
-                                if let Some((owner, name, generation)) =
-                                    catten_services::rregister::decode_reply(frame)
-                                    && owner == node_name
-                                    && let Some(index) =
-                                        pending_registers.iter().position(|pending| matches!(
-                                            pending,
-                                            PendingRegistration::RemoteRegister {
-                                                name: pending_name,
-                                                ..
-                                            } if pending_name == &name
-                                        ))
+                                if let Some((session, request_id, generation)) = catten_services::rregister::decode_reply(frame)
+                                    && let Some(source_peer) = transport.peer_id_for_mac(&source_mac)
+                                    && let Some(index) = pending_registers.iter().position(|pending| matches!(pending,
+                                        PendingRegistration::RemoteRegister { expected_peer, session: expected_session, request_id: expected_request, .. }
+                                        if catten_services::rregister::reply_matches(expected_peer, *expected_session, *expected_request, &source_peer, session, request_id)))
                                 {
                                     let PendingRegistration::RemoteRegister {
                                         reply,
-                                        connection,
+                                        name,
+                                        mut connection,
                                         local_generation,
                                         ..
                                     } = pending_registers.swap_remove(index)
                                     else {
                                         unreachable!()
                                     };
-                                    if generation >= 1 && connection != 0 {
-                                        let close_watch = ipc_connection_watch_closed(connection);
+                                    // Raw watch adapter: completion/CQ qualification remains
+                                    // separate; the connection stays borrowed from its owner.
+                                    if generation >= 1 && connection.is_some() {
+                                        let close_watch = ipc_connection_watch_closed(connection.as_ref().unwrap().as_raw());
     config::write_u32_release(
                                             dns::status::PUBLICATION_LIFECYCLE,
                                             if close_watch == u64::MAX {
@@ -2523,21 +2529,18 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             },
                                         );
                                         local_publications.push(LocalPublication {
-                                            name: name.clone(),
+                                            name,
                                             generation,
                                             local_generation,
-                                            connection,
+                                            connection: connection.take(),
                                             close_watch,
                                             endpoint_closed: false,
                                             local_cleanup_submitted: false,
                                             next_unregister_attempt: 0,
                                         });
-                                    } else if connection != 0 {
-                                        ipc_close(connection);
                                     }
-                                    if reply != 0 {
-                                        ipc_reply(
-                                            reply,
+                                    if let Some(reply) = reply {
+                                        let _ = reply.reply(
                                             if generation >= 1 {
                                                 generation as i64
                                             } else {
@@ -3070,8 +3073,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     !matches!(
                         pending,
                         PendingRegistration::Prepare {
-                            reply: 0,
-                            connection: 0,
+                            reply: None,
+                            connection: None,
                             name,
                             ..
                         } if name.starts_with(b"event:membership:")
@@ -3096,9 +3099,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     pending_registers.push(PendingRegistration::Prepare {
                         term: node.current_term,
                         log_index,
-                        reply: 0,
+                        reply: None,
                         name,
-                        connection: 0,
+                        connection: None,
                         existing_local_generation: 0,
                     });
                 }
@@ -3189,6 +3192,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         &message,
                         name,
                         0,
+                        dns_session,
+                        &mut next_registration_id,
                     ) && message.reply != 0
                     {
                         ipc_reply(message.reply, result);
@@ -3206,6 +3211,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             &message,
                             name,
                             0,
+                            dns_session,
+                            &mut next_registration_id,
                         ) && message.reply != 0
                         {
                             ipc_reply(message.reply, result);
@@ -3228,6 +3235,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             &message,
                             name,
                             deployment_generation,
+                            dns_session,
+                            &mut next_registration_id,
                         ) && message.reply != 0
                         {
                             ipc_reply(message.reply, result);
@@ -3247,26 +3256,45 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     // entry replicates (pending_registers).
                     if let Some(name) = read_named_bytes(&message) {
                         let result = if node.state != NodeState::Leader {
-                            match node.known_leader_id.clone() {
-                                Some(leader) if transport.has_peer(&leader) => {
-                                    let request = catten_services::rregister::encode_request(
-                                        &node_name, &name, 0,
-                                    );
+                            match prepare_registration_relay(
+                                &node,
+                                &transport,
+                                &mut pending_registers,
+                                dns_session,
+                                &mut next_registration_id,
+                                &node_name,
+                                &name,
+                                0,
+                            ) {
+                                Ok((leader, request_id, request)) => {
+                                    pending_registers.push(PendingRegistration::RemoteRegister {
+                                        term: node.current_term,
+                                        expected_peer: leader,
+                                        session: dns_session,
+                                        request_id,
+                                        reply: unsafe {
+                                            catten_rt::owned::ReplyToken::from_raw(message.reply)
+                                        }
+                                        .ok(),
+                                        name,
+                                        connection: None,
+                                        local_generation: 0,
+                                    });
+                                    let PendingRegistration::RemoteRegister {
+                                        expected_peer,
+                                        ..
+                                    } = pending_registers.last().unwrap()
+                                    else {
+                                        unreachable!()
+                                    };
                                     transport.send_message(
-                                        &leader,
+                                        expected_peer,
                                         catten_services::rregister::TAG_REQUEST,
                                         request,
                                     );
-                                    pending_registers.push(PendingRegistration::RemoteRegister {
-                                        term: node.current_term,
-                                        reply: message.reply,
-                                        name,
-                                        connection: 0,
-                                        local_generation: 0,
-                                    });
                                     continue;
                                 }
-                                _ => dns::ERR_NOT_LEADER,
+                                Err(code) => code,
                             }
                         } else {
                             match node.submit_command(
@@ -3277,9 +3305,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     pending_registers.push(PendingRegistration::Prepare {
                                         term: node.current_term,
                                         log_index: index,
-                                        reply: message.reply,
+                                        reply: unsafe {
+                                            catten_rt::owned::ReplyToken::from_raw(message.reply)
+                                        }
+                                        .ok(),
                                         name,
-                                        connection: 0,
+                                        connection: None,
                                         existing_local_generation: 0,
                                     });
                                     continue;
@@ -4494,6 +4525,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 PendingRegistration::RemotePrepare {
                     name,
                     owner,
+                    remote_reply,
                     ..
                 } => {
                     // Register half committed: activate it, then relay the
@@ -4515,10 +4547,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             log_index: activate_index,
                             name,
                             owner,
+                            remote_reply,
                             generation,
                         });
                     } else {
-                        let reply = catten_services::rregister::encode_reply(&owner, &name, 0);
+                        let reply = remote_reply.finish(0);
                         let owner = alloc::string::String::from_utf8_lossy(&owner);
                         transport.send_message(
                             &owner,
@@ -4528,8 +4561,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     }
                 }
                 PendingRegistration::RemoteActivate {
-                    name,
                     owner,
+                    remote_reply,
                     generation,
                     ..
                 } => {
@@ -4539,9 +4572,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok())
                         .map(u64::from_le_bytes)
                         == Some(generation);
-                    let reply = catten_services::rregister::encode_reply(
-                        &owner,
-                        &name,
+                    let reply = remote_reply.finish(
                         if activated {
                             generation
                         } else {
@@ -4568,29 +4599,32 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         None
                     } else if existing_local_generation != 0 {
                         Some(existing_local_generation)
-                    } else if connection == 0 {
+                    } else if connection.is_none() {
                         Some(0)
                     } else {
-                        let local_reg = ipc_scalar_call_connection(
-                            ns_conn,
-                            ns::OP_REGISTER,
-                            catten_services::name(&name),
-                            connection,
-                            IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
-                        );
-                        if local_reg == 0 {
-                            None
-                        } else {
-                            let (local_generation, _) = unsafe { wait_reply(local_reg) };
-                            (local_generation >= 1).then_some(local_generation as u64)
-                        }
+                        // The full-name copy and delegated connection remain owned;
+                        // the returned connection (if any) stays in CallResult until Drop.
+                        catten_services::stage_name_owned(&name).and_then(|staged| {
+                            names
+                                .call_delegated_connection_copy(
+                                    ns::OP_REGISTER_NAMED,
+                                    name.len() as u64,
+                                    connection.as_ref().unwrap().as_ref(),
+                                    IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
+                                    &staged,
+                                )
+                                .ok()?
+                                .wait()
+                                .ok()
+                                .and_then(|result| {
+                                    (result.result >= 1).then_some(result.result as u64)
+                                })
+                        })
                     };
                     let Some(local_generation) = local_generation else {
-                        if connection != 0 {
-                            ipc_close(connection);
-                        }
-                        if reply != 0 {
-                            ipc_reply(reply, dns::ERR_TOO_LARGE);
+                        drop(connection);
+                        if let Some(reply) = reply {
+                            let _ = reply.reply(dns::ERR_TOO_LARGE);
                         }
                         continue;
                     };
@@ -4617,11 +4651,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     pending_local_unregistrations.push(unregister);
                                 }
                             }
-                            if connection != 0 {
-                                ipc_close(connection);
-                            }
-                            if reply != 0 {
-                                ipc_reply(reply, code);
+                            drop(connection);
+                            if let Some(reply) = reply {
+                                let _ = reply.reply(code);
                             }
                         }
                     }
@@ -4630,7 +4662,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                     reply,
                     name,
                     generation,
-                    connection,
+                    mut connection,
                     local_generation,
                     ..
                 } => {
@@ -4640,8 +4672,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok())
                         .map(u64::from_le_bytes)
                         == Some(generation);
-                    if activated && connection != 0 {
-                        let close_watch = ipc_connection_watch_closed(connection);
+                    if activated && connection.is_some() {
+                        let close_watch =
+                            ipc_connection_watch_closed(connection.as_ref().unwrap().as_raw());
                         config::write_u32_release(
                             dns::status::PUBLICATION_LIFECYCLE,
                             if close_watch == u64::MAX {
@@ -4651,21 +4684,18 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             },
                         );
                         local_publications.push(LocalPublication {
-                            name: name.clone(),
+                            name,
                             generation,
                             local_generation,
-                            connection,
+                            connection: connection.take(),
                             close_watch,
                             endpoint_closed: false,
                             local_cleanup_submitted: false,
                             next_unregister_attempt: 0,
                         });
-                    } else if connection != 0 {
-                        ipc_close(connection);
                     }
-                    if reply != 0 {
-                        ipc_reply(
-                            reply,
+                    if let Some(reply) = reply {
+                        let _ = reply.reply(
                             if activated {
                                 generation as i64
                             } else {
@@ -4726,15 +4756,15 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         while publication_index < local_publications.len() {
             let publication = &mut local_publications[publication_index];
             if !publication.endpoint_closed && publication.close_watch == u64::MAX {
-                publication.close_watch = ipc_connection_watch_closed(publication.connection);
+                publication.close_watch =
+                    ipc_connection_watch_closed(publication.connection.as_ref().unwrap().as_raw());
             }
             if !publication.endpoint_closed && publication.close_watch != u64::MAX {
                 let (status, _result) = completion_poll(publication.close_watch);
                 if status == 0 {
                     completion_close(publication.close_watch);
-                    ipc_close(publication.connection);
+                    drop(publication.connection.take());
                     publication.close_watch = u64::MAX;
-                    publication.connection = 0;
                     publication.endpoint_closed = true;
                     config::write_u32_release(dns::status::PUBLICATION_LIFECYCLE, 2);
                 }
@@ -4814,16 +4844,18 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             automatic_term: Some(node.current_term),
                         });
                     }
-                } else if let Some(leader) = node.known_leader_id.as_ref() {
+                } else if let Some(leader) = node.known_leader_id.as_ref()
+                    && let Ok(request) = catten_services::runregister::encode_request(
+                        &node_name,
+                        &publication.name,
+                        publication.generation,
+                    )
+                {
                     config::write_u32_release(dns::status::PUBLICATION_LIFECYCLE, 4);
                     transport.send_message(
                         leader,
                         catten_services::runregister::TAG_REQUEST,
-                        catten_services::runregister::encode_request(
-                            &node_name,
-                            &publication.name,
-                            publication.generation,
-                        ),
+                        request,
                     );
                 }
             }

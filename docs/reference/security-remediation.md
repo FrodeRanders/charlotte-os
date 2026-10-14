@@ -568,3 +568,15 @@ Current-only tags reject older query/snapshot/relay forms; Raft pair-v2 also
 rejects log-only old stores before startup, without overwriting them. This
 removes compatibility state and adds no cleanup custody, physical retry or
 production trust qualification; numbered audit finding counts remain unchanged.
+
+
+The [DNS registration/retraction batch](../reports/audits/2026-10-14-protocol-simplification-dns-registration-relay.md)
+removes lossy identities, name-only reply matching and the missing-publication
+leader fallback. Current relays retain captured peer/session/request correlation,
+prepared reply bytes and owned registration connections/reply authority; explicit
+catalog-only callers use the event operation. Final host, linked ARM/x86 and
+HTTP checks pass. A separate mixed-run scheduled IPC endpoint-close exit-watch
+timeout remains unresolved, with later Raft persistence errors retained and
+exact-generation diagnostics added without relaxing completion requirements.
+This changes no numbered finding status/count and grants no cleanup custody,
+physical completion or production trust qualification.

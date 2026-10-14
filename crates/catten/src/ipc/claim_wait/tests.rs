@@ -244,6 +244,37 @@ extern "C" fn close_worker() {
     RESULT.store(1, Ordering::Release);
 }
 
+/// Diagnose the captured worker episode without treating a return marker,
+/// missing table entry or staged snapshot as exit/physical completion.
+fn await_worker_exit(
+    tid: crate::cpu::scheduler::threads::ThreadId,
+    generation: crate::cpu::scheduler::threads::ThreadGeneration,
+    watched: u64,
+) {
+    if crate::completion::wait_timeout(CLIENT, watched, 5_000).unwrap() {
+        return;
+    }
+    let live = {
+        let table = MASTER_THREAD_TABLE.read();
+        table.get(tid).ok().filter(|thread| thread.generation == generation).map(|thread| {
+            let state = match thread.state {
+                ThreadState::Running(lp) => (1, Some(lp)),
+                ThreadState::Ready(lp) => (2, Some(lp)),
+                ThreadState::NeedsLpAssignment => (3, None),
+                ThreadState::Blocked(_) => (4, None),
+            };
+            (state, thread.affinity_lp, thread.pinned_lp)
+        })
+    };
+    let staged = crate::cpu::scheduler::threads::staged_retirement_snapshot(generation);
+    crate::logln!(
+        "[IPC claim readiness] exit timeout tid={tid} generation={generation} returned={} \
+         live={live:?} staged={staged:?}",
+        RESULT.load(Ordering::Acquire)
+    );
+    panic!("exact-generation IPC close worker exit did not complete");
+}
+
 pub(crate) fn scheduled() {
     crate::completion::open_address_space(CLIENT, 4);
     let fixture = Fixture::new();
@@ -284,7 +315,7 @@ pub(crate) fn scheduled() {
         Err(AddressSpaceCloseError::OperationsInFlight)
     );
     operation.finish_with(|_| panic!("scalar claim has loans")).unwrap();
-    assert!(crate::completion::wait_timeout(CLIENT, watched, 5_000).unwrap());
+    await_worker_exit(tid, generation, watched);
     assert_eq!(RESULT.load(Ordering::Acquire), 1);
     crate::completion::close(CLIENT, watched).unwrap();
     crate::completion::close_address_space(CLIENT);
@@ -349,7 +380,7 @@ fn scheduled_front() {
         );
     }
     operation.finish_with(memory::object::LoanRevocation::finish).unwrap();
-    assert!(crate::completion::wait_timeout(CLIENT, watched, 5_000).unwrap());
+    await_worker_exit(tid, generation, watched);
     assert_eq!(RESULT.load(Ordering::Acquire), 1);
     crate::completion::close(CLIENT, watched).unwrap();
     crate::completion::close_address_space(CLIENT);

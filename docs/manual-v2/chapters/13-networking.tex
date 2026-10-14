@@ -187,6 +187,24 @@ replicated tombstone must match the owning node and distributed generation, and
 local removal must match the generation captured before the proposal. A delayed
 operation therefore cannot remove a replacement instance.
 
+Follower registration now uses tags \texttt{0x28/0x29}; automatic retraction
+uses \texttt{0x2a}. Complete 32-bit lengths carry nonempty owner identities
+bounded to 4 KiB and service names bounded to 256 bytes. The old
+\texttt{0x14/0x15/0x16} records reject, including missing deployment-generation
+suffixes, shortened prefixes, and trailers. A registration reply must match the
+captured leader, DNS session, and request ID before consuming the pending
+operation; generation zero explicitly reports failure. The leader prepares
+its reply buffer before the first Raft command and retains that allocation
+through activation or rejection. Local registration phases retain owned
+connections and reply authority, and use full-name local publication helpers.
+Service registration requires a live publication or attached connection;
+catalog-only fixture markers use the explicit event operation.
+Retraction still requires the exact owner and generation; failed encoding keeps
+the existing publication owner for its one-second protocol retry interval
+and exact-generation termination policy. Transport
+metadata, raw close-watch readiness, and other local scalar adapters remain
+separately qualified. See \path{docs/reference/dns-registration-relay.md}.
+
 Lookup and call-routing decisions do not use follower-local catalog state. A
 follower sends a correlated query to the known leader, and the leader answers
 only when Graft's quorum-contact read barrier succeeds. Correlated query frames

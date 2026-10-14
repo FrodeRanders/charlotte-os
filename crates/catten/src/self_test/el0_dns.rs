@@ -25,6 +25,7 @@ mod inner {
     const DNS_NAME: u64 = 0x0073_6e64;
     // catten_services::dns opcodes.
     const DNS_OP_REGISTER: u32 = 1;
+    const DNS_OP_EVENT_FIRE: u32 = 12;
     const DNS_OP_LOOKUP: u32 = 2;
     const DNS_OP_CALL: u32 = 5;
     const DNS_OP_UNREGISTER: u32 = 7;
@@ -766,11 +767,11 @@ mod inner {
             yield_lp();
         }
 
-        // If this replica is the leader, register a name for the cluster to
-        // replicate.
+        // Catalog-only fixture markers use the explicit event operation;
+        // service registration requires a local publication or attachment.
         if state == 3 {
             logln!("[dns] replica is the Raft leader; registering name.");
-            let register = call(dns_conn, DNS_OP_REGISTER, ALPHA_NAME);
+            let register = call_with_memory(dns_conn, DNS_OP_EVENT_FIRE, 5, b"alpha");
             logln!("[dns] register result = {register:?}");
             assert!(
                 register.is_some_and(|generation| generation >= 1),

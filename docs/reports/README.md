@@ -8,6 +8,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Correlated DNS registration/retraction](audits/2026-10-14-protocol-simplification-dns-registration-relay.md) — Full names, prepared replies and owned registration phases; mixed/HTTP execution and separately retained IPC exit timeout.
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)
   — living status; historical reports below retain their original scope.
 - [One scoped launch owner](audits/2026-10-13-protocol-simplification-launch.md) — Signed launch returns its verified principal; packed/name aliases and zero-principal singleton retirement are removed.

@@ -99,18 +99,18 @@ pub(super) enum PendingRegistration {
     Prepare {
         term: u64,
         log_index: u64,
-        reply: u64,
+        reply: Option<catten_rt::owned::ReplyToken>,
         name: Vec<u8>,
-        connection: u64,
+        connection: Option<catten_rt::owned::Connection>,
         existing_local_generation: u64,
     },
     Activate {
         term: u64,
         log_index: u64,
-        reply: u64,
+        reply: Option<catten_rt::owned::ReplyToken>,
         name: Vec<u8>,
         generation: u64,
-        connection: u64,
+        connection: Option<catten_rt::owned::Connection>,
         local_generation: u64,
     },
     Unregister {
@@ -192,6 +192,7 @@ pub(super) enum PendingRegistration {
         log_index: u64,
         name: Vec<u8>,
         owner: Vec<u8>,
+        remote_reply: catten_services::rregister::PreparedReply,
     },
     /// Leader-side: the activate half of a remote register has committed; the
     /// generation reply is relayed back to the hosting node.
@@ -200,15 +201,19 @@ pub(super) enum PendingRegistration {
         log_index: u64,
         name: Vec<u8>,
         owner: Vec<u8>,
+        remote_reply: catten_services::rregister::PreparedReply,
         generation: u64,
     },
     /// Follower-side: a register for a locally hosted service was relayed to
     /// the leader; the reply completes this entry and publishes the service.
     RemoteRegister {
         term: u64,
-        reply: u64,
+        expected_peer: String,
+        session: u64,
+        request_id: u64,
+        reply: Option<catten_rt::owned::ReplyToken>,
         name: Vec<u8>,
-        connection: u64,
+        connection: Option<catten_rt::owned::Connection>,
         local_generation: u64,
     },
 }
@@ -283,7 +288,7 @@ pub(super) struct LocalPublication {
     pub(super) name: Vec<u8>,
     pub(super) generation: u64,
     pub(super) local_generation: u64,
-    pub(super) connection: u64,
+    pub(super) connection: Option<catten_rt::owned::Connection>,
     pub(super) close_watch: u64,
     pub(super) endpoint_closed: bool,
     pub(super) local_cleanup_submitted: bool,

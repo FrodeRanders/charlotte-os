@@ -2161,6 +2161,9 @@ pub mod dns {
     pub const VERSION: u32 = 3;
     pub const NAME: u64 = super::name(b"dns");
 
+    /// Register a locally published service, or a uniquely attached mintable
+    /// connection. Missing local publication rejects; catalog-only events use
+    /// the explicit memory-carried OP_EVENT_FIRE operation.
     pub const OP_REGISTER: u32 = 1;
     pub const OP_LOOKUP: u32 = 2;
     pub const OP_STATUS: u32 = 3;
@@ -3398,132 +3401,11 @@ pub fn wait_for_local_ready(ns_conn: u64) -> bool {
 
 /// Generation-fenced automatic service retraction sent by a publication's
 /// owning node to the current Raft leader.
-pub mod runregister {
-    pub const TAG_REQUEST: u8 = 0x14;
-
-    pub fn encode_request(owner: &[u8], name: &[u8], generation: u64) -> alloc::vec::Vec<u8> {
-        let owner_len = owner.len().min(255);
-        let name_len = name.len().min(255);
-        let mut frame = alloc::vec::Vec::with_capacity(2 + owner_len + name_len + 8);
-        frame.push(owner_len as u8);
-        frame.extend_from_slice(&owner[..owner_len]);
-        frame.push(name_len as u8);
-        frame.extend_from_slice(&name[..name_len]);
-        frame.extend_from_slice(&generation.to_le_bytes());
-        frame
-    }
-
-    pub fn decode_request(frame: &[u8]) -> Option<(alloc::vec::Vec<u8>, alloc::vec::Vec<u8>, u64)> {
-        if frame.len() < 12 || frame[0] != TAG_REQUEST {
-            return None;
-        }
-        let owner_len = frame[1] as usize;
-        let owner_off = 2;
-        if frame.len() < owner_off + owner_len + 1 + 8 {
-            return None;
-        }
-        let owner = frame[owner_off..owner_off + owner_len].to_vec();
-        let name_len_off = owner_off + owner_len;
-        let name_len = frame[name_len_off] as usize;
-        let name_off = name_len_off + 1;
-        if frame.len() != name_off + name_len + 8 {
-            return None;
-        }
-        let name = frame[name_off..name_off + name_len].to_vec();
-        let generation = u64::from_le_bytes(frame[name_off + name_len..].try_into().ok()?);
-        Some((owner, name, generation))
-    }
-}
-
-/// Remote-registration wire protocol carried over the reliable message layer.
-///
-/// A service can be hosted on any node, but only the Raft leader may commit
-/// catalog entries. When a follower's dns receives `OP_REGISTER` for a
-/// service hosted on its own node, it relays a register request to the
-/// leader; the leader commits the two-phase register/activate pair naming the
-/// follower's node as owner, and replies with the committed generation. The
-/// frame carries the owner (hosting node) and the service name; the reply
-/// adds the generation. The transport prepends the type tag:
-/// ```text
-/// request: 0x15 | owner_len:u8 | owner | name_len:u8 | name |
-///          deployment_generation:u64
-/// reply:   0x16 | owner_len:u8 | owner | name_len:u8 | name | generation:u64
-/// ```
-pub mod rregister {
-    pub const TAG_REQUEST: u8 = 0x15;
-    pub const TAG_REPLY: u8 = 0x16;
-
-    pub fn encode_request(
-        owner: &[u8],
-        name: &[u8],
-        deployment_generation: u64,
-    ) -> alloc::vec::Vec<u8> {
-        let owner_len = owner.len().min(255);
-        let name_len = name.len().min(255);
-        let mut frame = alloc::vec::Vec::with_capacity(10 + owner_len + name_len);
-        frame.push(owner_len as u8);
-        frame.extend_from_slice(&owner[..owner_len]);
-        frame.push(name_len as u8);
-        frame.extend_from_slice(&name[..name_len]);
-        frame.extend_from_slice(&deployment_generation.to_le_bytes());
-        frame
-    }
-
-    pub fn decode_request(frame: &[u8]) -> Option<(alloc::vec::Vec<u8>, alloc::vec::Vec<u8>, u64)> {
-        if frame.len() < 11 || frame[0] != TAG_REQUEST {
-            return None;
-        }
-        let owner_len = frame[1] as usize;
-        let owner_off = 2;
-        if frame.len() < owner_off + owner_len + 1 {
-            return None;
-        }
-        let owner = frame[owner_off..owner_off + owner_len].to_vec();
-        let name_len_off = owner_off + owner_len;
-        let name_len = frame[name_len_off] as usize;
-        let name_off = name_len_off + 1;
-        if frame.len() != name_off + name_len + 8 {
-            return None;
-        }
-        let name = frame[name_off..name_off + name_len].to_vec();
-        let deployment_generation =
-            u64::from_le_bytes(frame[name_off + name_len..].try_into().ok()?);
-        Some((owner, name, deployment_generation))
-    }
-
-    pub fn encode_reply(owner: &[u8], name: &[u8], generation: u64) -> alloc::vec::Vec<u8> {
-        let owner_len = owner.len().min(255);
-        let name_len = name.len().min(255);
-        let mut frame = alloc::vec::Vec::with_capacity(1 + owner_len + name_len + 8);
-        frame.push(owner_len as u8);
-        frame.extend_from_slice(&owner[..owner_len]);
-        frame.push(name_len as u8);
-        frame.extend_from_slice(&name[..name_len]);
-        frame.extend_from_slice(&generation.to_le_bytes());
-        frame
-    }
-
-    pub fn decode_reply(frame: &[u8]) -> Option<(alloc::vec::Vec<u8>, alloc::vec::Vec<u8>, u64)> {
-        if frame.len() < 11 || frame[0] != TAG_REPLY {
-            return None;
-        }
-        let owner_len = frame[1] as usize;
-        let owner_off = 2;
-        if frame.len() < owner_off + owner_len + 1 + 8 {
-            return None;
-        }
-        let owner = frame[owner_off..owner_off + owner_len].to_vec();
-        let name_len_off = owner_off + owner_len;
-        let name_len = frame[name_len_off] as usize;
-        let name_off = name_len_off + 1;
-        if frame.len() != name_off + name_len + 8 {
-            return None;
-        }
-        let name = frame[name_off..name_off + name_len].to_vec();
-        let generation = u64::from_le_bytes(frame[name_off + name_len..].try_into().ok()?);
-        Some((owner, name, generation))
-    }
-}
+mod registration_relay;
+pub use registration_relay::{
+    rregister,
+    runregister,
+};
 
 /// Advisory node-capacity reports from every node to the current leader.
 ///

@@ -295,6 +295,16 @@ the corrected RPC polling paths, and the remaining notification gaps.
   fencing and uncertain timeout semantics. Carry the caller's query deadline
   into invocation; reject an expired routing result before admission instead
   of restarting its budget. See `docs/reference/dns-invocation-relay.md`.
+  DNS registration/retraction use only `0x28/0x29/0x2a`, complete bounded u32
+  identities and explicit deployment generations. Bind registration replies to
+  the captured leader, session and nonreused request ID, never name alone.
+  Prepare requests, pending storage and terminal reply bytes before publication
+  or Raft mutation. Keep registration connections/reply authority in the existing
+  owning phases; full-name publication must not fall back to a packed prefix.
+  Retraction still matches the exact owner and nonzero generation; preparation
+  rejection retains the publication and grants no unconditional removal or replay.
+  Raw watch/reactor contexts remain separate qualification work. See
+  `docs/reference/dns-registration-relay.md`.
   Application snapshot restore must return rejection without changing live
   state. Propagate that rejection before exposing a Raft node or publishing
   snapshot/log progress, membership or join completion; unsupported state is

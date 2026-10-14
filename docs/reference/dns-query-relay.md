@@ -58,8 +58,8 @@ Persistent catalog-v18, Raft pair-v3, DNS interface 3 and runtime ABI 3 are
 unchanged. Both architectures must rebuild/sign their DNS service for these
 new wire tags; there is no old-tag negotiation. Remote invocation subsequently
 uses the [current 0x26/0x27 contract](dns-invocation-relay.md).
-Registration/retraction `0x14/0x15/0x16` remain separate simplification
-candidates, with their own callers and ownership contexts.
+Registration/retraction now use the separate [current full-name and correlated
+contract](dns-registration-relay.md) on `0x28/0x29/0x2a`.
 
 ## Verification
 

@@ -952,17 +952,24 @@ cluster service by running the registry as a `StateMachine` on top of Raft:
   cluster; revocation propagates through the replicated log
 
 Each owning DNS process retains a kernel completion watch on the local service
-connection. Endpoint closure wakes the DNS reactor. The owner then proposes an
+connection. Endpoint closure signals that completion; the raw watch/CQ
+qualification remains separate. The owner then proposes an
 owner-and-generation-fenced tombstone locally when it is leader, or sends an
 authenticated retraction to the known leader. Retraction is idempotent and
 retried at low frequency across leadership changes; it cannot remove a
 replacement generation.
 
-A scalar DNS registration first performs a non-blocking lookup in the
-node-local registry. If that name already denotes a local service, DNS adopts
-the returned `CALL` connection for routing and death observation without
-granting the registering caller connection-minting authority. A name with no
-local endpoint remains a catalog-only registration.
+DNS registration resolves the full name through a memory-carried try-lookup
+RPC to the node-local registry, retaining its PendingCall until completion.
+If that name denotes a local service, DNS retains the returned `CALL` connection
+for routing and death observation without granting the registering caller
+connection-minting authority. A name with no local endpoint now rejects before a
+leader proposal; catalog-only markers use
+the explicit memory-carried `OP_EVENT_FIRE` operation. Registration phases retain
+owned connections/reply authority, and use full-name memory-carried lookup and
+publication. Follower relays use the [current correlated
+contract](../reference/dns-registration-relay.md), retaining exact source, session,
+request and generation fences.
 
 Raft and DNS control messages share relmsg's per-peer serialized transport.
 Only one send may be in flight per peer. Consecutive queued AppendEntries

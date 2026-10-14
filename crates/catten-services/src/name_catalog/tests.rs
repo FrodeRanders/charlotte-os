@@ -806,12 +806,19 @@ fn rollout_status_and_remote_registration_are_canonical() {
     };
     assert_eq!(crate::clusterctl::RolloutStatus::decode(&status.encode()), Some(status));
 
-    let frame = crate::rregister::encode_request(b"charlotte:1234abcd", b"orders", 7);
+    let frame =
+        crate::rregister::encode_request(3, 9, b"charlotte:1234abcd", b"orders", 7).unwrap();
     assert_eq!(
         crate::rregister::decode_request(
             &[&[crate::rregister::TAG_REQUEST], frame.as_slice()].concat()
         ),
-        Some((b"charlotte:1234abcd".to_vec(), b"orders".to_vec(), 7))
+        Some(crate::rregister::Request {
+            session: 3,
+            request_id: 9,
+            owner: b"charlotte:1234abcd",
+            name: b"orders",
+            deployment_generation: 7
+        })
     );
 
     let request = crate::rdeploy::Request {

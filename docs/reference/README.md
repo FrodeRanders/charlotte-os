@@ -5,6 +5,8 @@ should be updated with the implementation when those contracts change.
 
 - [API and protocol simplification](api-simplification.md) — current-only internal
   contracts, removal order, completed batches and remaining candidates.
+- [DNS registration/retraction](dns-registration-relay.md) — full-name current
+  relays, captured reply correlation and owning local publication phases.
 - [Discovery protocol](discovery-protocol.md) — complete peer advertisements,
   declared lengths, Ethernet padding and current-only rollout.
 - [Security remediation](security-remediation.md) — current finding ledger,

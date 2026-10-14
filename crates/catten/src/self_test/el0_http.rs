@@ -20,9 +20,7 @@ mod inner {
 
     // "dns" packed LE; the dns service registers under this name.
     const DNS_NAME: u64 = 0x0073_6e64;
-    const DNS_OP_REGISTER: u32 = 1;
-    // "alpha" packed LE.
-    const ALPHA_NAME: u64 = 0x0061_6870_6c61;
+    const DNS_OP_EVENT_FIRE: u32 = 12;
     // ns opcodes.
     const NS_OP_LOOKUP: u32 = 2;
 
@@ -67,14 +65,41 @@ mod inner {
         .expect("[http] kernel name-service connection")
     }
 
-    fn call(kernel_conn: u64, opcode: u32, arg0: u64) -> Option<i64> {
-        let call =
-            crate::ipc::scalar_call(crate::memory::KERNEL_ASID, kernel_conn, opcode, arg0).ok()?;
-        crate::ipc::wait_reply(crate::memory::KERNEL_ASID, call).ok()?;
-        crate::ipc::poll_reply(crate::memory::KERNEL_ASID, call)
+    fn fire_catalog_marker(kernel_conn: u64) -> Option<i64> {
+        use crate::{
+            ipc,
+            memory::KERNEL_ASID,
+        };
+        // Serialized kernel fixture ABI boundary. Move the exact marker
+        // payload once; dispose each observed returned capability after IPC.
+        let memory = crate::memory::object::allocate_with_bytes(KERNEL_ASID, b"alpha").ok()?;
+        let call = match ipc::scalar_call_with_memory_move(
+            KERNEL_ASID,
+            kernel_conn,
+            DNS_OP_EVENT_FIRE,
+            5,
+            memory,
+        ) {
+            Ok(call) => call,
+            Err(_) => {
+                let _ = crate::memory::object::close_cap(KERNEL_ASID, memory);
+                return None;
+            }
+        };
+        let result = ipc::wait_reply(KERNEL_ASID, call)
             .ok()
-            .flatten()
-            .map(|reply| reply.result)
+            .and_then(|()| ipc::poll_reply(KERNEL_ASID, call).ok().flatten());
+        let status = result.as_ref().map(|reply| reply.result);
+        if let Some(reply) = result {
+            if let Some(memory) = reply.memory {
+                let _ = crate::memory::object::close_cap(KERNEL_ASID, memory);
+            }
+            if let Some(connection) = reply.cap {
+                let _ = ipc::close_cap(KERNEL_ASID, connection);
+            }
+        }
+        let _ = ipc::close_cap(KERNEL_ASID, call);
+        status
     }
 
     fn lookup_service(kernel_ns: u64, name: u64) -> Option<u64> {
@@ -193,7 +218,7 @@ mod inner {
                     {
                         logln!("[http] dns is the single-node cluster leader.");
                         let dns_conn = lookup_service(kernel_ns, DNS_NAME).unwrap_or(0);
-                        if let Some(result) = call(dns_conn, DNS_OP_REGISTER, ALPHA_NAME) {
+                        if let Some(result) = fire_catalog_marker(dns_conn) {
                             logln!("[http] dns register result = {result}");
                             if result >= 1
                                 && wait_for_value(

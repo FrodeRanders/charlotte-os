@@ -1673,3 +1673,25 @@ Registration observation uses bounded fixture-only sleeps; map waits use the
 owned unit source. AMD-Vi runtime, busy masked SVC progress, unmap/close readiness
 and broader pressure remain separate. See [contract](../reference/dma-map-readiness.md)
 and [execution evidence](../reports/audits/2026-10-14-dma-map-readiness.md).
+
+### Correlated DNS registration and retraction controls
+
+Current relays use `0x28/0x29/0x2a`; retired `0x14/0x15/0x16` reject. Host
+controls cover full 256-byte service names and 4 KiB owners, empty/oversized
+identities, exact framing, every truncated prefix, overflowing lengths, missing
+generation suffixes, trailers, prepared reply allocation reuse and wrong
+peer/session/request rejection. The linked ARM/x86 `--deploy-test` fixture
+exercises follower registration, generation-fenced endpoint retraction and
+signed architecture-pinned rollout. Large identities are codec evidence; the
+native fixture uses short identities. It does not inject allocator exhaustion
+or qualify every raw watcher/transport cleanup context. See the
+[current contract](../reference/dns-registration-relay.md) and
+[batch evidence](../reports/audits/2026-10-14-protocol-simplification-dns-registration-relay.md).
+
+The second S08b2c3 mixed run timed out in the scheduled IPC endpoint-close
+exact-generation exit probe, before registration coverage completed. The probe
+now logs the captured worker's live/staged state and return marker after timeout,
+with guards released before logging. Its five-second budget and exact exit proof
+remain unchanged; missing records/return markers never authorize cleanup.
+Passing HTTP runs do not explain or close the intermittent failure; see the
+[separately retained failure](../reports/audits/2026-10-14-protocol-simplification-dns-registration-relay.md#second-linked-failure-ipc-worker-exit-readiness).
