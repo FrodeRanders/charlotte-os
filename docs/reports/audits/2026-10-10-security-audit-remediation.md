@@ -191,3 +191,15 @@ peer state), SEC-37 (legacy lookup of policy-published registrations) and
 SEC-38 (`SPAWN_UPGRADE` snapshot bound) remain open. The standing SEC-07/18
 and production trust/authentication criteria in the
 [remediation ledger](../../reference/security-remediation.md) are unchanged.
+
+
+## 2026-10-14: owned DNS local invocation follow-up
+
+[S08b2c4a](2026-10-14-protocol-simplification-dns-local-invocation.md) removes the
+packed-name local invocation adapter and scalar call/connection cleanup stages.
+Its unique incoming transaction and typed destinations retain reply authority;
+both RPC phases bind readiness to the shared CQ and retain one kernel-monotonic
+deadline. Rejected reply binding after accepted invocation remains uncertain,
+without replay. This is scoped C18 ownership/readiness progress, not closure of
+SEC-36/37/38, kernel physical cleanup, full-name local unregister or all raw DNS
+reactor contexts. Existing numbered finding dispositions remain unchanged.

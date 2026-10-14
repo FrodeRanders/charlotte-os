@@ -14,8 +14,9 @@ Writers retain the complete bytes; decoders validate bounds, tag and exact frame
 termination before fallible identity copies. Retired `0x10/0x11` frames reject.
 The old request u8 grammar cannot be upgraded by relabelling; the reply retains
 its explicit fixed fields under the new tag. No absent field gets a default.
-Persistent catalog-v18, Raft pair-v3, DNS interface 3 and runtime ABI 3 remain
-unchanged; both architectures rebuild/sign DNS together.
+Persistent catalog-v18, Raft pair-v3 and runtime ABI 3 remain unchanged. DNS
+interface 4 changes client invocation to mandatory full-name moved memory; both
+architectures rebuild/sign DNS together.
 
 ## Preparation and admission
 
@@ -38,12 +39,12 @@ rejection returns the entire destination, so the same prepared buffer encodes
 the rejection. Terminal progress consumes that buffer into the reply, changing
 only its result field, without allocating another codec buffer.
 
-The raw asynchronous local lookup still uses a scalar packed name. It now
-rejects empty names, names above eight bytes and trailing-zero names before
-submission instead of selecting a prefix or an identity trimmed by the scalar
-ABI. Other full-name APIs support their own current policy; this adapter needs
-a coherent memory-carried, owning asynchronous replacement. A 4 KiB wire bound
-does not claim 4 KiB local publication or invocation support.
+The asynchronous local lookup now uses `LocalInvocation`, moves the complete
+1..=256-byte name to the named NS operation, and retains its pending call and
+returned connection. Both lookup and invoke phases bind readiness to the DNS CQ.
+No packed-name fallback remains in this operation. Client calls use the mandatory
+CDNSCL01 grammar described in [local invocation](dns-local-invocation.md).
+The 4 KiB relay bound does not claim 4 KiB local publication/invocation support.
 
 ## Correlation, deduplication and uncertainty
 
@@ -62,8 +63,8 @@ polling path or capability custody.
 
 The existing MAC-to-peer equality check is not a new cryptographic identity
 qualification. Only codec byte allocation is qualified here. Existing transport queue and
-dedup metadata allocation, raw local completion/connection adapters, attachment
-cleanup, wider guard/Drop contexts and physical quiescence remain separate.
+dedup metadata allocation, raw transport/receive and generation-unregister
+adapters, wider guard/Drop contexts and physical quiescence remain separate.
 The containing owner-family row is [C18](cleanup-recovery.md).
 
 ## Verification

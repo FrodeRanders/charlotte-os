@@ -1654,8 +1654,10 @@ retired grammars, truncation, overflow and trailers, and that prepared reply
 completion preserves its original allocation and correlation. The target
 prepares reply storage before admitting a local operation; ordinary rejection
 returns that destination. Query-routed invocation retains its original deadline
-and rejects expired routing before admission. The packed local adapter rejects unrepresentable
-names before submission. These controls do not inject allocator exhaustion,
+and rejects expired routing before admission. The current owned local operation carries full 1..=256-byte names and binds
+both RPC phases to the CQ with the original kernel-monotonic deadline. Native
+controls reject retired/trailing client frames and exercise the named-memory
+lookup for echo; full-length and trailing-zero identity controls use host tests. These controls do not inject allocator exhaustion,
 all live transport failures or prove physical cleanup. See
 [the invocation contract](../reference/dns-invocation-relay.md) and
 [batch evidence](../reports/audits/2026-10-14-protocol-simplification-dns-invocation-relay.md).

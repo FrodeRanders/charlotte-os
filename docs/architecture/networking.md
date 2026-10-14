@@ -400,7 +400,7 @@ Provides:
 - object references
 - serialization
 
-Current implementation status: DNS v3 provides a narrow scalar remote-call
+Current implementation status: DNS v4 provides a narrow scalar remote-call
 prototype rather than general capability RPC. Its request identity is caller
 node, caller DNS-session generation, and call ID; replies must arrive from the
 expected peer. At most 64 calls may be outstanding, a five-second deadline
@@ -411,6 +411,14 @@ advancing service generation, and remote calls carry and verify that generation
 before execution. The protocol does not yet serialize or delegate object
 capabilities across machines.
 
+Client invocation now moves one mandatory `CDNSCL01` frame carrying the complete
+1..=256-byte service name, opcode and signed argument, with exact lengths.
+Retired packed-name/12-byte calls reject. The local lookup/invocation operation
+owns its pending calls and connection and binds both reply phases to the DNS CQ.
+One kernel-monotonic deadline starts before decoding/routing; accepted work that
+loses reply binding returns uncertainty without replay. See
+[local invocation](../reference/dns-local-invocation.md) for remaining adapter gaps.
+
 Publication is also generation-fenced and two-phase. A replicated `prepare`
 allocates the next generation but is not visible to lookup or call routing.
 Only after the owning node has successfully installed the local endpoint does
@@ -419,9 +427,9 @@ therefore leaves an inactive tombstone instead of a catalog entry pointing at
 no service. Explicit unregistration is fenced by both owning node and
 distributed generation; after that tombstone commits, removal from the local
 name service is separately fenced by the local generation observed before the
-proposal. A delayed request therefore cannot remove a replacement. Automatic
-replicated unregistration when a service dies is not yet implemented because
-EL0 currently lacks an endpoint-death subscription primitive.
+proposal. A delayed request therefore cannot remove a replacement. Automatic replicated endpoint-death retraction uses the exact recorded owner
+and generation; full-name generation-fenced node-local removal still needs its
+coherent protocol replacement.
 
 Lookup and call routing are linearizable on the implemented two-voter path:
 followers do not consult their local catalog for these operations. They send a

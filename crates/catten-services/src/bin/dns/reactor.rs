@@ -29,7 +29,6 @@ use catten_syscall::{
 use super::{
     LOOP_TICK_MS,
     RAFT_TIMER_COOKIE,
-    local_calls::poll_local_call,
     state::{
         CompletedCall,
         InFlightCall,
@@ -60,11 +59,10 @@ pub(super) fn drive_local_calls(
     next_reply_ordinal: &mut BTreeMap<String, u64>,
     remote_calls_served: &mut u32,
     transport: &RelmsgRaftTransport,
-    now: u64,
 ) {
     let mut index = 0;
     while index < pending.len() {
-        let Some(result) = poll_local_call(&mut pending[index], now) else {
+        let Some(result) = pending[index].operation.advance() else {
             index += 1;
             continue;
         };
@@ -73,8 +71,8 @@ pub(super) fn drive_local_calls(
             LocalCallDestination::Client {
                 reply,
             } => {
-                if reply != 0 {
-                    ipc_reply(reply, result);
+                if let Some(reply) = reply {
+                    let _ = reply.reply(result);
                 }
             }
             LocalCallDestination::Remote {
@@ -113,16 +111,16 @@ pub(super) fn drive_local_calls(
 
 /// Expire remote calls with an explicitly uncertain outcome: the target may
 /// have executed before its reply was lost.
-pub(super) fn expire_remote_calls(calls: &mut Vec<InFlightCall>, now: u64) {
+pub(super) fn expire_remote_calls(calls: &mut Vec<InFlightCall>) {
     let mut index = 0;
     while index < calls.len() {
-        if calls[index].deadline > now {
+        if !calls[index].deadline.expired() {
             index += 1;
             continue;
         }
         let call = calls.swap_remove(index);
-        if call.reply != 0 {
-            ipc_reply(call.reply, dns::ERR_UNCERTAIN);
+        if let Some(reply) = call.reply {
+            let _ = reply.reply(dns::ERR_UNCERTAIN);
         }
     }
 }
@@ -130,20 +128,25 @@ pub(super) fn expire_remote_calls(calls: &mut Vec<InFlightCall>, now: u64) {
 /// Expire leader-routed catalog operations. Lookups have no side effect;
 /// relayed deployment retries are safe because exact desired state is
 /// idempotent in the replicated catalog.
-pub(super) fn expire_queries(queries: &mut Vec<PendingQuery>, now: u64) {
+pub(super) fn expire_queries(queries: &mut Vec<PendingQuery>) {
     let mut index = 0;
     while index < queries.len() {
-        if queries[index].deadline > now {
+        if !queries[index].deadline.expired() {
             index += 1;
             continue;
         }
         let query = queries.swap_remove(index);
         let reply = match query.kind {
-            PendingQueryKind::Lookup {
+            PendingQueryKind::Call {
                 reply,
                 ..
+            } => {
+                if let Some(reply) = reply {
+                    let _ = reply.reply(dns::ERR_NOT_LEADER);
+                }
+                continue;
             }
-            | PendingQueryKind::Call {
+            PendingQueryKind::Lookup {
                 reply,
                 ..
             }

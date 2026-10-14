@@ -1566,6 +1566,7 @@ fn relay_to_leader(
     encode: impl FnOnce(u64, u64) -> Option<Vec<u8>>,
     kind: impl FnOnce(u64) -> PendingQueryKind,
 ) -> Option<i64> {
+    let deadline = catten_services::deadline::Deadline::after(timeout_ms);
     let Some(leader) = node.known_leader_id.clone() else {
         return Some(dns::ERR_NOT_LEADER);
     };
@@ -1577,10 +1578,13 @@ fn relay_to_leader(
     let Some(frame) = encode(session, request_id) else {
         return Some(dns::ERR_TOO_LARGE);
     };
+    if deadline.expired() {
+        return Some(dns::ERR_NOT_LEADER);
+    }
     pending_queries.push(PendingQuery {
         query_id: request_id,
         expected_leader: leader.clone(),
-        deadline: node.millis().saturating_add(timeout_ms),
+        deadline,
         kind: kind(reply),
     });
     transport.send_message(&leader, tag, frame);
@@ -1866,7 +1870,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // are not guaranteed to wake this CQ. Bound the reactor sleep to its
         // loop period so the relmsg receive queue cannot fill behind an
         // armed-but-delayed timer.
-        catten_services::reactor::wait(Some(clock_watchdog.remaining_ms()), 0);
+        let wait_ms = pending_local_calls
+            .iter()
+            .map(|call| call.operation.remaining_ms())
+            .chain(pending_queries.iter().map(|query| query.deadline.remaining_ms()))
+            .chain(in_flight_calls.iter().map(|call| call.deadline.remaining_ms()))
+            .fold(clock_watchdog.remaining_ms(), core::cmp::min);
+        catten_services::reactor::wait(Some(wait_ms), 0);
         // The CQ timeout is an independent watchdog, not merely a fallback
         // for failure to *submit* the detached timer. A submitted timer can
         // have its completion delayed or dropped; ignoring the timeout while
@@ -2034,6 +2044,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         let frame = &object[IPC_MESSAGE_HEADER_SIZE..IPC_MESSAGE_HEADER_SIZE + len];
                         match frame.first().copied() {
                             Some(catten_services::rcall::TAG_REQUEST) => {
+                                let local_deadline = catten_services::deadline::Deadline::after(REMOTE_CALL_TIMEOUT_MS);
                                 // A remote invocation addressed to this node:
                                 // execute it against the local name service and
                                 // reply to the caller's MAC.
@@ -2130,10 +2141,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                         && owner.generation
                                                             == target_generation =>
                                                 {
-                                                    if pending_local_calls.len()
-                                                        >= MAX_IN_FLIGHT_CALLS
-                                                    {
+                                                    if pending_local_calls.len() >= MAX_IN_FLIGHT_CALLS {
                                                         Some(dns::ERR_BUSY)
+                                                    } else if pending_local_calls.try_reserve(1).is_err() {
+                                                        Some(dns::ERR_RESOURCE_LIMIT)
                                                     } else {
                                                         let destination =
                                                             LocalCallDestination::Remote {
@@ -2144,13 +2155,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                                 reply: prepared_reply.take().unwrap(),
                                                             };
                                                         match begin_local_call(
-                                                            ns_conn,
+                                                            names,
                                                             &target,
                                                             opcode,
                                                             arg,
-                                                            node.millis().saturating_add(
-                                                                REMOTE_CALL_TIMEOUT_MS,
-                                                            ),
+                                                            local_deadline,
                                                             destination,
                                                         ) {
                                                             Ok(call) => {
@@ -2228,9 +2237,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     })
                                 {
                                     let call = in_flight_calls.swap_remove(index);
-                                    if call.reply != 0 {
-                                        ipc_reply(call.reply, result);
-                                    }
+                                    if let Some(reply) = call.reply { let _ = reply.reply(result); }
                                 }
                             }
                             Some(catten_services::rquery::TAG_REQUEST) => {
@@ -2308,36 +2315,37 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             }
                                         }
                                         PendingQueryKind::Call {
-                                            reply,
+                                            mut reply,
                                             name,
                                             opcode,
                                             arg,
                                         } => {
-                                            let result = if node.millis() >= query.deadline {
+                                            let result = if query.deadline.expired() {
                                                 // Routing expired before any invocation admission.
                                                 Some(dns::ERR_NOT_LEADER)
                                             } else if status != 0 {
                                                 Some(status)
                                             } else if let Some(entry) = entry {
                                                 if entry.node == node_name {
-                                                    if pending_local_calls.len()
-                                                        >= MAX_IN_FLIGHT_CALLS
-                                                    {
+                                                    if pending_local_calls.len() >= MAX_IN_FLIGHT_CALLS {
                                                         Some(dns::ERR_BUSY)
+                                                    } else if pending_local_calls.try_reserve(1).is_err() {
+                                                        Some(dns::ERR_RESOURCE_LIMIT)
                                                     } else {
                                                         match begin_local_call(
-                                                            ns_conn,
+                                                            names,
                                                             &name,
                                                             opcode,
                                                             arg,
                                                             query.deadline,
-                                                            LocalCallDestination::Client { reply },
+                                                            LocalCallDestination::Client { reply: reply.take() },
                                                         ) {
                                                             Ok(call) => {
                                                                 pending_local_calls.push(call);
                                                                 None
                                                             }
-                                                            Err((result, _)) => Some(result),
+                                                            Err((result, LocalCallDestination::Client { reply: retained })) => { reply = retained; Some(result) },
+                                                            Err(_) => unreachable!(),
                                                         }
                                                     }
                                                 } else if in_flight_calls.len()
@@ -2360,12 +2368,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                             dns_session, call_id, &node_name, &name,
                                                             entry.generation, opcode, arg,
                                                         ) {
+                                                            Ok(_) if deadline.expired() => Some(dns::ERR_NOT_LEADER),
                                                             Ok(request) => {
                                                                 in_flight_calls.push(InFlightCall {
                                                                     call_id,
                                                                     expected_peer: owner_str.clone(),
                                                                     expected_generation: entry.generation,
-                                                                    reply,
+                                                                    reply: reply.take(),
                                                                     deadline,
                                                                 });
                                                                 transport.send_message(
@@ -2380,11 +2389,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             } else {
                                                 Some(dns::ERR_NOT_FOUND)
                                             };
-                                            if let Some(result) = result
-                                                && reply != 0
-                                            {
-                                                ipc_reply(reply, result);
-                                            }
+                                            if let Some(result) = result && let Some(reply) = reply { let _ = reply.reply(result); }
                                         }
                                         PendingQueryKind::Deploy {
                                             reply,
@@ -3172,7 +3177,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             if message.connection != 0
                 && !matches!(
                     message.opcode,
-                    dns::OP_REGISTER | dns::OP_REGISTER_NAMED | dns::OP_REGISTER_DEPLOYMENT_NAMED
+                    dns::OP_REGISTER
+                        | dns::OP_REGISTER_NAMED
+                        | dns::OP_REGISTER_DEPLOYMENT_NAMED
+                        | dns::OP_CALL
                 )
             {
                 ipc_close(message.connection);
@@ -3942,7 +3950,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         } else {
                             let query_id = next_query_id;
                             next_query_id = next_query_id.wrapping_add(1).max(1);
-                            let deadline = node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS);
+                            let deadline =
+                                catten_services::deadline::Deadline::after(REMOTE_CALL_TIMEOUT_MS);
                             match catten_services::rquery::encode_request(
                                 dns_session,
                                 query_id,
@@ -4139,14 +4148,19 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 }
 
                 dns::OP_CALL => {
-                    let name = packed_name(message.arg0);
-                    let (opcode, arg) = read_call_request(&message);
-                    let result = if name.is_empty() {
-                        dns::ERR_TOO_LARGE
+                    let deadline =
+                        catten_services::deadline::Deadline::after(REMOTE_CALL_TIMEOUT_MS);
+                    let Some(mut client) = read_call_request(message) else {
+                        continue;
+                    };
+                    let name = core::mem::take(&mut client.name);
+                    let (opcode, arg) = (client.opcode, client.arg);
+                    let result = if deadline.expired() {
+                        dns::ERR_NOT_LEADER
                     } else if node.state != NodeState::Leader {
                         let Some(leader) = node.known_leader_id.clone() else {
-                            if message.reply != 0 {
-                                ipc_reply(message.reply, dns::ERR_NOT_LEADER);
+                            if let Some(reply) = client.reply.take() {
+                                let _ = reply.reply(dns::ERR_NOT_LEADER);
                             }
                             continue;
                         };
@@ -4157,20 +4171,20 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         } else {
                             let query_id = next_query_id;
                             next_query_id = next_query_id.wrapping_add(1).max(1);
-                            let deadline = node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS);
                             match catten_services::rquery::encode_request(
                                 dns_session,
                                 query_id,
                                 &node_name,
                                 &name,
                             ) {
+                                Ok(_) if deadline.expired() => dns::ERR_NOT_LEADER,
                                 Ok(request) => {
                                     pending_queries.push(PendingQuery {
                                         query_id,
                                         expected_leader: leader.clone(),
                                         deadline,
                                         kind: PendingQueryKind::Call {
-                                            reply: message.reply,
+                                            reply: client.reply.take(),
                                             name,
                                             opcode,
                                             arg,
@@ -4191,22 +4205,33 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             Ok(Some(owner)) if owner.node == node_name => {
                                 if pending_local_calls.len() >= MAX_IN_FLIGHT_CALLS {
                                     dns::ERR_BUSY
+                                } else if pending_local_calls.try_reserve(1).is_err() {
+                                    dns::ERR_RESOURCE_LIMIT
                                 } else {
                                     match begin_local_call(
-                                        ns_conn,
+                                        names,
                                         &name,
                                         opcode,
                                         arg,
-                                        node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS),
+                                        deadline,
                                         LocalCallDestination::Client {
-                                            reply: message.reply,
+                                            reply: client.reply.take(),
                                         },
                                     ) {
                                         Ok(call) => {
                                             pending_local_calls.push(call);
                                             continue;
                                         }
-                                        Err((result, _)) => result,
+                                        Err((
+                                            result,
+                                            LocalCallDestination::Client {
+                                                reply,
+                                            },
+                                        )) => {
+                                            client.reply = reply;
+                                            result
+                                        }
+                                        Err(_) => unreachable!(),
                                     }
                                 }
                             }
@@ -4221,8 +4246,6 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     } else {
                                         let call_id = next_call_id;
                                         next_call_id = next_call_id.wrapping_add(1).max(1);
-                                        let deadline =
-                                            node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS);
                                         match catten_services::rcall::encode_request(
                                             dns_session,
                                             call_id,
@@ -4232,12 +4255,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             opcode,
                                             arg,
                                         ) {
+                                            Ok(_) if deadline.expired() => dns::ERR_NOT_LEADER,
                                             Ok(request) => {
                                                 in_flight_calls.push(InFlightCall {
                                                     call_id,
                                                     expected_peer: owner_str.clone(),
                                                     expected_generation: owner.generation,
-                                                    reply: message.reply,
+                                                    reply: client.reply.take(),
                                                     deadline,
                                                 });
                                                 transport.send_message(
@@ -4258,8 +4282,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             Err(code) => code,
                         }
                     };
-                    if message.reply != 0 {
-                        ipc_reply(message.reply, result);
+                    if let Some(reply) = client.reply.take() {
+                        let _ = reply.reply(result);
                     }
                 }
 
@@ -4868,10 +4892,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             &mut next_reply_ordinal,
             &mut remote_calls_served,
             &transport,
-            node.millis(),
         );
-        expire_remote_calls(&mut in_flight_calls, node.millis());
-        expire_queries(&mut pending_queries, node.millis());
+        expire_remote_calls(&mut in_flight_calls);
+        expire_queries(&mut pending_queries);
         // The transport's reply-retry guard compares against this clock; keep
         // it fresh every tick so a lost AppendEntries response cannot freeze
         // retransmission.

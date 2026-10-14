@@ -154,7 +154,7 @@ The RPC layer provides request/reply semantics over the reliable message layer:
         on the wire.
 \end{itemize}
 
-The implemented DNS v3 remote-call path is narrower than this target model. It
+The implemented DNS v4 remote-call path is narrower than this target model. It
 carries scalar opcode/argument calls. A request is identified by
 caller node, caller DNS-session generation, and call ID, and a reply is
 accepted only from the expected peer. The implementation bounds outstanding
@@ -172,10 +172,17 @@ publishing in-flight state, with its deadline captured beforehand. The target
 prepares the fixed reply buffer before admitting a local operation and retains
 it with that operation; result encoding uses the same allocation. A follower
 carries its original query deadline into invocation instead of restarting the
-budget, and rejects expired routing results before admission. The current
-scalar node-local lookup adapter rejects empty names, names above eight bytes,
-and trailing-zero names before lookup instead of invoking a shortened prefix.
-A memory-carried asynchronous lookup replacement remains pending.
+budget, and rejects expired routing results before admission. DNS v4 client calls move a mandatory \texttt{CDNSCL01} memory frame containing
+an exact byte length, complete 1--256-byte name, opcode and signed argument.
+Retired packed-name/12-byte calls reject. The local operation owns both RPC
+phases and its returned connection; each pending RPC binds reply readiness to
+the reactor CQ. One kernel-monotonic deadline begins before decoding and survives
+routing, lookup and invocation. The reactor waits for the earliest remaining
+operation deadline while retaining its separate clock/transport interests.
+Admission rejection after an accepted invocation is uncertain and never permits
+replay. Full-name generation-fenced local unregister, raw receive/transport
+adapters and broader cleanup contexts remain separate gaps; this replacement
+does not qualify their readiness or physical cleanup.
 
 Registration uses two replicated phases. A \texttt{prepare} command allocates
 the next generation while keeping it invisible. After the owner publishes its
@@ -243,7 +250,7 @@ payroll.call("calculate_salary", employee).await?;
 \end{lstlisting}
 
 The intended API hides whether a service uses local endpoint IPC or remote RPC.
-The implemented remote path is limited to the scalar DNS v3 call contract
+The implemented remote path is limited to the scalar DNS v4 call contract
 described above.
 
 \section{TCP/IP as a compatibility service}

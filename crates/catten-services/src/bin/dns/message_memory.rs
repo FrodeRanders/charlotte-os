@@ -14,22 +14,56 @@ use catten_syscall::{
     memory_unmap,
 };
 
-/// Read the `[opcode:u32 LE][arg:i64 LE]` request from an `OP_CALL` memory
-/// object, consuming the moved object.
-pub(super) fn read_call_request(message: &IpcMessage) -> (u32, i64) {
-    if message.memory == 0 {
-        return (0, 0);
+/// Fully decoded client transaction; all reply authority transfers once.
+pub(super) struct CallRequest {
+    pub(super) name: Vec<u8>,
+    pub(super) opcode: u32,
+    pub(super) arg: i64,
+    pub(super) reply: Option<catten_rt::owned::ReplyToken>,
+}
+
+pub(super) fn read_call_request(message: IpcMessage) -> Option<CallRequest> {
+    // Raw receive ABI boundary. OP_CALL bypasses the scalar attachment guard
+    // and this transaction consumes every unique attachment/reply exactly once.
+    let Ok(Some(mut incoming)) = (unsafe { catten_rt::owned::IncomingMessage::from_raw(message) })
+    else {
+        return None;
+    };
+    let parsed = (|| {
+        let length = usize::try_from(incoming.arg0).map_err(|_| dns::ERR_TOO_LARGE)?;
+        if !(catten_services::dns_call::HEADER_LEN..=catten_services::dns_call::MAX_FRAME_LEN)
+            .contains(&length)
+        {
+            return Err(dns::ERR_TOO_LARGE);
+        }
+        let memory = incoming.memory.take().ok_or(dns::ERR_BAD_OPCODE)?;
+        if memory.len() < length {
+            return Err(dns::ERR_TOO_LARGE);
+        }
+        let mapping = memory.map_read_only().map_err(|_| dns::ERR_RESOURCE_LIMIT)?;
+        let request = catten_services::dns_call::decode(&mapping.as_slice()[..length])
+            .ok_or(dns::ERR_BAD_OPCODE)?;
+        let mut name = Vec::new();
+        name.try_reserve_exact(request.name.len()).map_err(|_| dns::ERR_RESOURCE_LIMIT)?;
+        name.extend_from_slice(request.name);
+        let fields = (name, request.opcode, request.arg);
+        drop(mapping.unmap().map_err(|_| dns::ERR_RESOURCE_LIMIT)?);
+        Ok(fields)
+    })();
+    match parsed {
+        Ok((name, opcode, arg)) => Some(CallRequest {
+            name,
+            opcode,
+            arg,
+            reply: incoming.reply.take(),
+        }),
+        Err(code) => {
+            if let Some(reply) = incoming.reply.take() {
+                let _ = reply.reply(code);
+            }
+            None
+        }
     }
-    let (map_status, vaddr) = memory_map_any(message.memory, false);
-    if map_status != 0 {
-        memory_close(message.memory);
-        return (0, 0);
-    }
-    let opcode = unsafe { core::ptr::read_volatile(vaddr as *const u32) };
-    let arg = unsafe { core::ptr::read_volatile((vaddr + 4) as *const i64) };
-    memory_unmap(message.memory);
-    memory_close(message.memory);
-    (opcode, arg)
 }
 
 pub(super) fn read_generation(message: &IpcMessage) -> Option<u64> {

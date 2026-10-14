@@ -290,8 +290,15 @@ the corrected RPC polling paths, and the remaining notification gaps.
   Prepare request bytes before in-flight publication with the original
   deadline, and retain a prepared reply buffer in the existing local operation
   before admission. Ordinary rejection returns that destination owner; result
-  encoding consumes the same buffer. Packed local lookup rejects names it
-  cannot represent exactly; never invoke a truncated prefix. Keep dedup ACK
+  encoding consumes the same buffer. DNS v4 client invocation requires the
+  exact CDNSCL01 moved-memory frame and full 1..=256-byte name; retired packed
+  calls reject. Local invocation retains `LocalInvocation` with owned pending
+  calls/connections, binds both RPC phases to the reactor CQ and keeps typed
+  reply authority in its destination. Capture one kernel-monotonic deadline
+  before decoding/routing, wait for the earliest remaining operation deadline,
+  and treat binding rejection after accepted invocation as uncertain, never
+  replayable. Full-name generation unregister and other raw reactor/transport
+  adapters remain gaps; do not claim their readiness is fixed. Keep dedup ACK
   fencing and uncertain timeout semantics. Carry the caller's query deadline
   into invocation; reject an expired routing result before admission instead
   of restarting its budget. See `docs/reference/dns-invocation-relay.md`.

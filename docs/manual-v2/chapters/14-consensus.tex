@@ -271,10 +271,12 @@ placement, or invocation traffic.
 
 The DNS process also never waits synchronously for an arbitrary local service
 while running this reactor. Name lookup and local invocation are retained as
-bounded pending operations and polled on later turns. Consequently a failed
+bounded owning operations whose two RPC phases bind reply readiness to the
+shared CQ; later reactor turns observe ready replies without blocking on one
+service. Their original kernel-monotonic deadline bounds routing and execution. Consequently a failed
 service cannot stop Raft heartbeats or relmsg receive draining. A timeout before
 execution is reported as a retryable lookup failure; after invocation has been
-submitted it is reported as an uncertain outcome. Duplicate remote calls are
+submitted, timeout or reply-binding rejection is reported as an uncertain outcome. Duplicate remote calls are
 suppressed both while pending and in the acknowledged-result window.
 
 \section{Relationship to the name service}

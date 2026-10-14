@@ -79,3 +79,5 @@ should be updated with the implementation when those contracts change.
   capability-scoped VirtIO RNG service, and QEMU provisioning.
 
 - [User faults and initial CPU state](user-fault-containment.md)
+
+- [Owned DNS local invocation](dns-local-invocation.md) — full-name client frames, CQ-bound owning phases and original deadlines.

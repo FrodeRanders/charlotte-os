@@ -28,6 +28,8 @@ mod inner {
     const DNS_OP_EVENT_FIRE: u32 = 12;
     const DNS_OP_LOOKUP: u32 = 2;
     const DNS_OP_CALL: u32 = 5;
+    const DNS_ERR_TOO_LARGE: i64 = -4;
+    const DNS_ERR_BAD_OPCODE: i64 = -3;
     const DNS_OP_UNREGISTER: u32 = 7;
     const DNS_RESULT_LOCAL: i64 = 0;
     const DNS_RESULT_REMOTE: i64 = 1;
@@ -108,6 +110,16 @@ mod inner {
                 }
             };
         finish_fixture_call(call)
+    }
+
+    fn invoke_dns(connection: u64, name: &[u8], opcode: u32, arg: i64) -> Option<i64> {
+        let request = charlotte_protocol_dns::encode(charlotte_protocol_dns::Request {
+            name,
+            opcode,
+            arg,
+        })
+        .expect("DNS fixture request encoding");
+        call_with_memory(connection, DNS_OP_CALL, request.len() as u64, &request)
     }
 
     fn lookup_service(kernel_ns: u64, name: u64) -> Option<u64> {
@@ -328,8 +340,7 @@ mod inner {
     ) {
         use crate::cpu::scheduler::yield_lp;
 
-        // "greet" packed LE (matches catten_services::deploy::NAME).
-        const GREET_NAME: u64 = 0x0000_0074_6565_7267;
+        // Logical artifact name: "greet".
         // catten_services::dns::artifact_object_id(b"greet").
         const DEPLOY_OBJECT_ID: u64 = 0xfffe_ea29_637f_e28a;
         const DNS_OP_DEPLOY_SUBMIT: u32 = 33;
@@ -486,11 +497,8 @@ mod inner {
             );
             logln!("[deploy] descriptor-only follower relay preserved generation 1");
         }
-        let mut probe = Vec::with_capacity(12);
-        probe.extend_from_slice(&DNS_OP_GET.to_le_bytes());
-        probe.extend_from_slice(&0i64.to_le_bytes());
         assert_eq!(
-            call_with_memory(dns_conn, DNS_OP_CALL, GREET_NAME, &probe),
+            invoke_dns(dns_conn, b"greet", DNS_OP_GET, 0),
             Some(DNS_ERR_NOT_FOUND),
             "legacy DNS proxy must not resolve policy-published greet"
         );
@@ -573,7 +581,7 @@ mod inner {
         }
 
         wait_rollout_ready(dns_conn, 2, migrated_host);
-        let post_migration = call_with_memory(dns_conn, DNS_OP_CALL, GREET_NAME, &probe);
+        let post_migration = invoke_dns(dns_conn, b"greet", DNS_OP_GET, 0);
         assert_eq!(
             post_migration,
             Some(DNS_ERR_NOT_FOUND),
@@ -587,10 +595,7 @@ mod inner {
         // proves application progress without depending on an internal
         // transport ACK remaining observable after its retry lease ends.
         if !is_leader {
-            let mut request = Vec::with_capacity(12);
-            request.extend_from_slice(&DNS_OP_GET.to_le_bytes());
-            request.extend_from_slice(&0i64.to_le_bytes());
-            let barrier = call_with_memory(dns_conn, DNS_OP_CALL, GREET_NAME, &request);
+            let barrier = invoke_dns(dns_conn, b"greet", DNS_OP_GET, 0);
             assert_eq!(
                 barrier,
                 Some(DNS_ERR_NOT_FOUND),
@@ -673,10 +678,7 @@ mod inner {
         }
 
         wait_rollout_ready(dns_conn, 3, initial_host);
-        assert_eq!(
-            call_with_memory(dns_conn, DNS_OP_CALL, GREET_NAME, &probe),
-            Some(DNS_ERR_NOT_FOUND)
-        );
+        assert_eq!(invoke_dns(dns_conn, b"greet", DNS_OP_GET, 0), Some(DNS_ERR_NOT_FOUND));
         logln!(
             "[deploy] forced retirement preserved generation-3 readiness and protected namespace."
         );
@@ -882,16 +884,34 @@ mod inner {
 
         // Invoke the echo service by name. If this node hosts it the dns calls
         // it locally; otherwise the dns relays the call to the hosting node.
-        let mut request = Vec::new();
-        request.extend_from_slice(&ECHO_OP_ECHO.to_le_bytes());
-        request.extend_from_slice(&42i64.to_le_bytes());
+        // Retired and malformed invocation envelopes must reject without
+        // dispatching to the live echo service.
+        let mut retired = Vec::with_capacity(12);
+        retired.extend_from_slice(&ECHO_OP_ECHO.to_le_bytes());
+        retired.extend_from_slice(&42i64.to_le_bytes());
+        assert_eq!(
+            call_with_memory(dns_conn, DNS_OP_CALL, ECHO_NAME, &retired),
+            Some(DNS_ERR_TOO_LARGE)
+        );
+        let mut trailing = charlotte_protocol_dns::encode(charlotte_protocol_dns::Request {
+            name: b"echo",
+            opcode: ECHO_OP_ECHO,
+            arg: 42,
+        })
+        .expect("DNS rejection fixture encoding");
+        trailing.push(0);
+        assert_eq!(
+            call_with_memory(dns_conn, DNS_OP_CALL, trailing.len() as u64, &trailing),
+            Some(DNS_ERR_BAD_OPCODE)
+        );
+        logln!("[dns] retired and trailing invocation envelopes rejected");
         // The catalog entry can reach a follower before that replica has
         // learned the current leader (and the two QEMU guests need not boot at
         // the same rate).  Echo is idempotent, so transient routing/election
         // errors are safely retryable until both applied views converge.
         let deadline = crate::self_test::results::Deadline::after_millis(60_000);
         let echo_result = loop {
-            let result = call_with_memory(dns_conn, DNS_OP_CALL, ECHO_NAME, &request);
+            let result = invoke_dns(dns_conn, b"echo", ECHO_OP_ECHO, 42);
             if result == Some(42) {
                 break result;
             }

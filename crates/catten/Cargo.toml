@@ -94,6 +94,7 @@ catten-syscall = { path = "../catten-syscall" }
 charlotte-lifecycle = { path = "../charlotte-lifecycle" }
 charlotte-launch = { path = "../charlotte-launch" }
 charlotte-protocol-disco = { path = "../charlotte-protocol-disco" }
+charlotte-protocol-dns = { path = "../charlotte-protocol-dns" }
 charlotte-protocol-kafka = { path = "../charlotte-protocol-kafka" }
 charlotte-kafka-step = { path = "../charlotte-kafka-step" }
 charlotte-protocol-s3 = { path = "../charlotte-protocol-s3" }

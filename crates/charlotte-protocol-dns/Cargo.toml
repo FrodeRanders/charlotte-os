@@ -1,0 +1,9 @@
+[package]
+name = "charlotte-protocol-dns"
+version = "0.1.0"
+edition = "2024"
+description = "Current CharlotteOS DNS invocation envelope"
+
+[lib]
+test = true
+bench = false

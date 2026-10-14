@@ -1,5 +1,6 @@
 //! Total operation deadlines: retrying a short wait must not reset admission.
 
+#[derive(Clone, Copy)]
 pub struct Deadline {
     start: u64,
     frequency_hz: u64,

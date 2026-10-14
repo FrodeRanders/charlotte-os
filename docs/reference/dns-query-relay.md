@@ -54,9 +54,9 @@ new kernel cleanup context. Existing raw reactor reply/attachment adapters,
 metadata admission/destruction, timeout and physical-quiescence qualifications
 remain separate; C18 documents the containing publication family.
 
-Persistent catalog-v18, Raft pair-v3, DNS interface 3 and runtime ABI 3 are
-unchanged. Both architectures must rebuild/sign their DNS service for these
-new wire tags; there is no old-tag negotiation. Remote invocation subsequently
+Persistent catalog-v18, Raft pair-v3 and runtime ABI 3 are unchanged; DNS
+interface 4 changes only client invocation. Both architectures must rebuild/sign
+their DNS service for these new wire tags; there is no old-tag negotiation. Remote invocation subsequently
 uses the [current 0x26/0x27 contract](dns-invocation-relay.md).
 Registration/retraction now use the separate [current full-name and correlated
 contract](dns-registration-relay.md) on `0x28/0x29/0x2a`.

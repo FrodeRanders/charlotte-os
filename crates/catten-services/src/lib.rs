@@ -7,6 +7,8 @@
 
 extern crate alloc;
 
+pub mod local_invocation;
+pub use charlotte_protocol_dns as dns_call;
 pub mod network_random;
 pub mod socket_lifetime;
 pub mod socket_state;
@@ -2141,7 +2143,7 @@ pub mod disco {
     }
 }
 
-/// Distributed name service (`charlotte-protocol-dns` v1).
+/// Distributed name service (DNS interface 4).
 ///
 /// One replica runs per node. The replicas form a Raft group whose state
 /// machine is a replicated `name -> node` catalog; the node-local name
@@ -2158,7 +2160,7 @@ pub mod dns {
     use alloc::vec::Vec;
 
     pub const INTERFACE: u64 = super::name(b"DNS ");
-    pub const VERSION: u32 = 3;
+    pub const VERSION: u32 = charlotte_protocol_dns::VERSION;
     pub const NAME: u64 = super::name(b"dns");
 
     /// Register a locally published service, or a uniquely attached mintable
@@ -2168,11 +2170,12 @@ pub mod dns {
     pub const OP_LOOKUP: u32 = 2;
     pub const OP_STATUS: u32 = 3;
     pub const OP_SHUTDOWN: u32 = 4;
-    /// Remote invocation. `arg0` is the packed target service name; the
-    /// attached memory object holds `[target_opcode:u32 LE][arg:i64 LE]`. The
-    /// reply is the target service's scalar result (deferred until the remote
-    /// call completes).
-    pub const OP_CALL: u32 = 5;
+    /// Full-name invocation. `arg0` is the exact moved-memory byte length.
+    /// Encode the mandatory CDNSCL01 envelope with [`crate::dns_call`].
+    /// Names contain 1..=256 bytes; retired packed-name/12-byte calls reject.
+    /// The deferred reply is the target scalar result; accepted work that
+    /// cannot be confirmed returns ERR_UNCERTAIN and must not be replayed.
+    pub const OP_CALL: u32 = charlotte_protocol_dns::OP_CALL;
     /// Return the complete locally applied active catalog as a moved
     /// [`crate::dns_catalog`] record set. The scalar result is its exact byte
     /// length. A catalog above the wire bound rejects instead of returning a
@@ -2394,8 +2397,8 @@ pub mod dns {
     pub const ERR_NOT_LEADER: i64 = -2;
     pub const ERR_BAD_OPCODE: i64 = -3;
     pub const ERR_TOO_LARGE: i64 = -4;
-    /// The request may have executed remotely, but no authoritative reply
-    /// arrived before its deadline. Callers must not blindly retry a
+    /// The accepted invocation may have executed, but no authoritative result
+    /// was confirmed before timeout or reply-binding failure. Do not replay a
     /// non-idempotent operation.
     pub const ERR_UNCERTAIN: i64 = -5;
     pub const ERR_BUSY: i64 = -6;

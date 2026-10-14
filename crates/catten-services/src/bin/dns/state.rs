@@ -13,8 +13,8 @@ pub(super) struct InFlightCall {
     pub(super) call_id: u64,
     pub(super) expected_peer: String,
     pub(super) expected_generation: u64,
-    pub(super) reply: u64,
-    pub(super) deadline: u64,
+    pub(super) reply: Option<catten_rt::owned::ReplyToken>,
+    pub(super) deadline: catten_services::deadline::Deadline,
 }
 
 pub(super) struct CompletedCall {
@@ -28,7 +28,7 @@ pub(super) struct CompletedCall {
 
 pub(super) enum LocalCallDestination {
     Client {
-        reply: u64,
+        reply: Option<catten_rt::owned::ReplyToken>,
     },
     Remote {
         caller: Vec<u8>,
@@ -39,24 +39,9 @@ pub(super) enum LocalCallDestination {
     },
 }
 
-#[derive(Clone, Copy)]
-pub(super) enum LocalCallStage {
-    Lookup,
-    Invoke,
-}
-
-/// A node-local service invocation advanced by the DNS reactor.
-///
-/// Lookup and invocation are deliberately asynchronous: blocking this thread
-/// on an arbitrary service would also stop Raft heartbeats and relmsg receive
-/// draining, allowing one failed service to destabilize the cluster catalog.
+/// The complete asynchronous local operation and its terminal destination.
 pub(super) struct PendingLocalCall {
-    pub(super) completion: u64,
-    pub(super) connection: u64,
-    pub(super) opcode: u32,
-    pub(super) arg: i64,
-    pub(super) deadline: u64,
-    pub(super) stage: LocalCallStage,
+    pub(super) operation: catten_services::local_invocation::LocalInvocation,
     pub(super) destination: LocalCallDestination,
 }
 
@@ -66,7 +51,7 @@ pub(super) enum PendingQueryKind {
         name: Vec<u8>,
     },
     Call {
-        reply: u64,
+        reply: Option<catten_rt::owned::ReplyToken>,
         name: Vec<u8>,
         opcode: u32,
         arg: i64,
@@ -91,7 +76,7 @@ pub(super) enum PendingQueryKind {
 pub(super) struct PendingQuery {
     pub(super) query_id: u64,
     pub(super) expected_leader: String,
-    pub(super) deadline: u64,
+    pub(super) deadline: catten_services::deadline::Deadline,
     pub(super) kind: PendingQueryKind,
 }
 

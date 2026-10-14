@@ -653,7 +653,8 @@ retirement of an uncertain caller session.
 The invariants require stale target generations never to execute, successful
 completion to have one execution and a delivered reply, uncertainty never to
 masquerade as success, and executed identities to remain cached until safe.
-The model corresponds to the scalar DNS v3 prototype; transactional effects,
+The model corresponds to DNS v4 scalar invocation semantics; the CDNSCL01
+client frame and owned local CQ phases are outside this model. Transactional effects,
 durable deduplication across DNS reboot, and general remote capability transfer
 remain outside it.
 
