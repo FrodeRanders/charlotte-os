@@ -20,9 +20,7 @@ use catten_services::{
     relmsg_transport::RelmsgRaftTransport,
 };
 use catten_syscall::{
-    ipc_close,
     ipc_reply,
-    ipc_reply_poll_with_memory,
     submit_detached_timer,
 };
 
@@ -40,13 +38,14 @@ use super::{
 };
 
 /// Retire completed unregister calls without parking the reactor.
-pub(super) fn drain_local_unregistrations(calls: &mut Vec<u64>) {
-    calls.retain(|call| {
-        let (status, _result, _connection, _memory) = ipc_reply_poll_with_memory(*call);
-        if status == 1 {
-            true
-        } else {
-            ipc_close(*call);
+pub(super) fn drain_local_unregistrations(
+    calls: &mut Vec<catten_services::publication_generation::Unregistration>,
+) {
+    calls.retain_mut(|call| match call.advance() {
+        None => true,
+        Some(catten_services::publication_generation::Outcome::Removed) => false,
+        Some(outcome) => {
+            catten_rt::logln!("[dns] local retirement terminal outcome {:?}; no replay", outcome);
             false
         }
     });

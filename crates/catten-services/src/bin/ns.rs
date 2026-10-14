@@ -87,31 +87,11 @@ fn publication_generation(
     if query.connection.is_some() {
         return ns::ERR_INVALID;
     }
-    let packed = query.arg0.to_le_bytes();
-    let mapping;
-    let key = if let Some(memory) = query.memory.take() {
-        let Ok(len) = usize::try_from(query.arg0) else {
-            return ns::ERR_INVALID;
-        };
-        if len == 0 || len > MAX_NAME_LEN {
-            return ns::ERR_INVALID;
-        }
-        mapping = match memory.map_read_only() {
-            Ok(mapping) => mapping,
-            Err(_) => return ns::ERR_INVALID,
-        };
-        let Some(key) = mapping.as_slice().get(..len) else {
-            return ns::ERR_INVALID;
-        };
-        key
-    } else {
-        let len = packed.iter().rposition(|byte| *byte != 0).map_or(0, |index| index + 1);
-        if len == 0 {
-            return ns::ERR_INVALID;
-        }
-        &packed[..len]
+    let Ok((key, _)) = generation_request(query, catten_services::ns_generation::Action::Observe)
+    else {
+        return ns::ERR_INVALID;
     };
-    let Some(registration) = registry.get(key).filter(|entry| entry.connection != 0) else {
+    let Some(registration) = registry.get(&key).filter(|entry| entry.connection != 0) else {
         return ns::ERR_NOT_FOUND;
     };
     // Borrow at this legacy registry/ABI adapter boundary. The single-threaded
@@ -263,22 +243,81 @@ fn synchronize_sender(
     Ok(identity)
 }
 
-fn read_generation(message: &IpcMessage) -> Option<u64> {
-    if message.memory == 0 {
-        return None;
+/// Decode the complete owned receive transaction before registry/policy mutation.
+fn generation_request(
+    query: &mut catten_rt::owned::IncomingMessage,
+    action: catten_services::ns_generation::Action,
+) -> Result<(Vec<u8>, u64), i64> {
+    use catten_services::ns_generation as protocol;
+    if query.connection.is_some() {
+        return Err(ns::ERR_INVALID);
     }
-    let (name_scratch_vaddr_1_map_status, name_scratch_vaddr_1) =
-        memory_map_any(message.memory, false);
-    if unsafe { name_scratch_vaddr_1_map_status } != 0 {
-        unsafe { memory_close(message.memory) };
-        return None;
+    let length = usize::try_from(query.arg0).map_err(|_| ns::ERR_INVALID)?;
+    if !(protocol::HEADER_LEN..=protocol::MAX_FRAME_LEN).contains(&length) {
+        return Err(ns::ERR_INVALID);
     }
-    let generation = unsafe { core::ptr::read_volatile(name_scratch_vaddr_1 as *const u64) };
-    unsafe {
-        memory_unmap(message.memory);
-        memory_close(message.memory);
+    let memory = query.memory.take().ok_or(ns::ERR_INVALID)?;
+    if memory.len() < length {
+        return Err(ns::ERR_INVALID);
     }
-    Some(generation)
+    let mapping = memory.map_read_only().map_err(|_| ns::ERR_INVALID)?;
+    let request = protocol::decode(action, &mapping.as_slice()[..length]).ok_or(ns::ERR_INVALID)?;
+    let mut name = Vec::new();
+    name.try_reserve_exact(request.name.len()).map_err(|_| ns::ERR_INVALID)?;
+    name.extend_from_slice(request.name);
+    let generation = request.generation;
+    drop(mapping.unmap().map_err(|_| ns::ERR_INVALID)?);
+    Ok((name, generation))
+}
+
+fn unregister_generation(
+    registry: &mut Registry,
+    policy: &mut PolicyStore,
+    own_identity: DomainIdentity,
+    query: &mut catten_rt::owned::IncomingMessage,
+) -> i64 {
+    let Ok((key, expected)) =
+        generation_request(query, catten_services::ns_generation::Action::Retire)
+    else {
+        return ns::ERR_INVALID;
+    };
+    let Some(identity) = DomainIdentity::new(query.sender, query.sender_generation) else {
+        return ns::ERR_NOT_FOUND;
+    };
+    let Some(principal) = PrincipalId::new(query.sender_principal) else {
+        return ns::ERR_NOT_FOUND;
+    };
+    let Some(roles) = Roles::from_bits(query.sender_roles) else {
+        return ns::ERR_NOT_FOUND;
+    };
+    if policy.provision_identity_from_supervisor(identity, principal, roles).is_err() {
+        return ns::ERR_NOT_FOUND;
+    }
+    let Some(registration) = registry.get(&key).filter(|entry| entry.connection != 0) else {
+        return ns::ERR_NOT_FOUND;
+    };
+    let Ok(current) = u64::try_from(registration.generation) else {
+        return ns::ERR_NOT_FOUND;
+    };
+    if !catten_services::publication_generation::retirement_allowed(
+        current,
+        expected,
+        registration.registrar.map(PrincipalId::get),
+        Some(principal.get()),
+        roles.contains(Roles::SERVICE_MANAGER),
+    ) || policy.unpublish_service(own_identity, &key, expected).is_err()
+    {
+        return ns::ERR_NOT_FOUND;
+    }
+    let registration = registry.get_mut(&key).expect("validated registration vanished");
+    // Unique registry/owned-API boundary: detach the one raw registry owner
+    // before adoption. The tombstone retains its generation; no second adopter
+    // or raw cleanup may use this connection after this transfer.
+    let raw = core::mem::replace(&mut registration.connection, 0);
+    let connection = unsafe { catten_rt::owned::Connection::from_raw(raw) }
+        .unwrap_or_else(|_| catten_rt::domain_abort());
+    drop(connection); // Existing best-effort local close; no physical proof.
+    current as i64
 }
 
 fn reply_connection_or_error(reply: u64, connection: u64, generation: i64) {
@@ -936,41 +975,16 @@ fn main(ctx: Context) -> ! {
                 }
             }
             ns::OP_UNREGISTER_GENERATION => {
-                let key = scalar_key(message.arg0);
-                let expected_generation = read_generation(&message);
-                let current = registry
-                    .get(&key)
-                    .filter(|registration| registration.connection != 0)
-                    .map(|registration| (registration.generation, registration.registrar));
-                let actor = synchronize_sender(&mut policy, &message);
-                let actor_principal = match &actor {
-                    Ok(identity) => policy.principal_for(*identity),
-                    Err(_) => None,
+                // This branch consumes the successful receive exactly once.
+                let Ok(Some(mut query)) =
+                    (unsafe { catten_rt::owned::IncomingMessage::from_raw(message) })
+                else {
+                    continue;
                 };
-                let actor_is_manager = match &actor {
-                    Ok(identity) => policy
-                        .roles_for(*identity)
-                        .is_some_and(|roles| roles.contains(Roles::SERVICE_MANAGER)),
-                    Err(_) => false,
-                };
-                let result = match (current, expected_generation) {
-                    (Some((generation, registrar)), Some(expected))
-                        if u64::try_from(generation) == Ok(expected)
-                            && (actor_is_manager
-                                || registrar.is_some() && registrar == actor_principal)
-                            && policy.unpublish_service(own_identity, &key, expected).is_ok() =>
-                    {
-                        let registration = registry.get_mut(&key).expect("registration vanished");
-                        ipc_close(registration.connection);
-                        registration.connection = 0;
-                        generation
-                    }
-                    _ => ns::ERR_NOT_FOUND,
-                };
-                if message.reply != 0 {
-                    unsafe {
-                        ipc_reply(message.reply, result);
-                    }
+                let result =
+                    unregister_generation(&mut registry, &mut policy, own_identity, &mut query);
+                if let Some(reply) = query.reply.take() {
+                    let _ = reply.reply(result);
                 }
             }
             ns::OP_TRY_LOOKUP => {

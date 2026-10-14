@@ -63,8 +63,8 @@ polling path or capability custody.
 
 The existing MAC-to-peer equality check is not a new cryptographic identity
 qualification. Only codec byte allocation is qualified here. Existing transport queue and
-dedup metadata allocation, raw transport/receive and generation-unregister
-adapters, wider guard/Drop contexts and physical quiescence remain separate.
+dedup metadata allocation, raw transport/receive and close-watch adapters,
+wider guard/Drop contexts and physical quiescence remain separate.
 The containing owner-family row is [C18](cleanup-recovery.md).
 
 ## Verification
@@ -77,3 +77,5 @@ reply completion preserves its original allocation and correlation fields.
 The linked ARM/x86 fixture exercises real follower routing and remote
 invocation, endpoint retraction and signed architecture-pinned rollout.
 Results and limits are in [batch evidence](../reports/audits/2026-10-14-protocol-simplification-dns-invocation-relay.md).
+
+Node-local generation cleanup now follows the [NS interface 2 contract](name-service-generations.md).

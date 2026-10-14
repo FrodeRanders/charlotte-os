@@ -125,6 +125,7 @@ charlotte-protocol-fs = { path = "../charlotte-protocol-fs" }
 charlotte-protocol-kafka = { path = "../charlotte-protocol-kafka" }
 charlotte-protocol-disco = { path = "../charlotte-protocol-disco" }
 charlotte-protocol-dns = { path = "../charlotte-protocol-dns" }
+charlotte-protocol-ns = { path = "../charlotte-protocol-ns" }
 charlotte-protocol-time = { path = "../charlotte-protocol-time" }
 charlotte-protocol-s3 = { path = "../charlotte-protocol-s3" }
 charlotte-s3 = { path = "../charlotte-s3" }

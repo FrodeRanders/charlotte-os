@@ -119,3 +119,8 @@ while allocation is denied, and checks grant recovery after releasing the batch.
 This bounded two-application test is not a starvation proof. Forced ASID reuse,
 controller replacement, allocation-failure injection and aggregate resource
 budgets need additional coverage. See [test paths](../guides/testing.md).
+
+Publication generation metadata uses the mandatory full-name CNSGEN01 record
+under [NS interface 2](name-service-generations.md); packed/bare-name observation
+no longer supplies a fallback. The owned helper moves the request and carries
+one monotonic deadline without acquiring invocation authority.

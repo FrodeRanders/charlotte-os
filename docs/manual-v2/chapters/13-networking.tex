@@ -180,9 +180,22 @@ the reactor CQ. One kernel-monotonic deadline begins before decoding and survive
 routing, lookup and invocation. The reactor waits for the earliest remaining
 operation deadline while retaining its separate clock/transport interests.
 Admission rejection after an accepted invocation is uncertain and never permits
-replay. Full-name generation-fenced local unregister, raw receive/transport
-adapters and broader cleanup contexts remain separate gaps; this replacement
-does not qualify their readiness or physical cleanup.
+replay. Node-local generation observation and retirement now require the
+\texttt{CNSGEN01} frame under NS interface 2: exact total length, complete
+1--256-byte name and explicit generation. Observation requires zero; retirement
+requires a positive generation and the exact registrar principal or a service
+manager. Retired scalar observation and packed-name retirement reject. Cleanup
+owns its accepted pending call, binds reply readiness to the CQ and carries its
+original five-second monotonic deadline into the reactor's earliest wait.
+Submission/storage rejection follows the existing fail-closed domain policy;
+rejected reply binding retains the accepted owner through abort. Timeout,
+rejection and wakes never permit replay or establish physical cleanup. Raw
+receive/transport adapters, endpoint-close watches and broader cleanup contexts
+remain separate gaps. A lookup of somebody else's publication does not grant
+DNS retirement authority. Dead third-party NS entries need a separate producer
+or explicit delegation contract; the positive cleanup fixture instead delegates
+a distinct echo alias to DNS, making DNS its registrar. Raft completion and the
+publication scan share one cleanup-submission claim for that captured episode.
 
 Registration uses two replicated phases. A \texttt{prepare} command allocates
 the next generation while keeping it invisible. After the owner publishes its
@@ -288,7 +301,7 @@ pending receive retains the request, buffer and transient mapping together;
 local mapping access ends before reply or cancellation. This removes the
 identified receive-retention starvation path without claiming aggregate
 principal/heap admission or complete hostile-network fairness. See
-\repofile|docs/reports/audits/2026-10-10-security-tcpip-caller-buffers.md|.
+\repofiletext|docs/reports/audits/2026-10-10-security-tcpip-caller-buffers.md|{TCP/IP caller-buffer audit}.
 
 Scalar-call admission exposes exact IPC errors. HTTP retains its existing
 \texttt{OwnedSocket} listener through \texttt{QUEUE\_FULL} rejection and

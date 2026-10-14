@@ -6,7 +6,7 @@
 //! each (architecture doc Phase 3), and reclaim domains after they stop.
 
 const NODE_NAME_SERVICE_INTERFACE: u64 = u64::from_le_bytes(*b"NAME\0\0\0\0");
-const NODE_NAME_SERVICE_VERSION: u32 = 1;
+const NODE_NAME_SERVICE_VERSION: u32 = charlotte_protocol_ns::VERSION;
 const NODE_NAME_SERVICE_QUEUE_CAPACITY: usize = 64;
 const CAPABILITY_GRANT_INTERFACE: u64 = u64::from_le_bytes(*b"GRANT\0\0\0");
 const CAPABILITY_GRANT_VERSION: u32 = 1;

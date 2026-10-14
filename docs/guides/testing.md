@@ -1710,3 +1710,17 @@ The one-ms registration sampling remains bounded fixture-only observation.
 Two mixed ARM/x86 runs passed 192 episodes in total without reproducing the
 historical timeout. That finding remains open; see
 [investigation evidence](../reports/audits/2026-10-14-ipc-close-exit-investigation.md).
+
+
+### Full-name NS generation controls
+
+The linked four-LP `--deploy-test` pair observes the actual long echo publication
+through CNSGEN01, rejects retired observation/retirement and stale generation
+records, invokes both echo names, and requires their endpoint-death catalog
+retraction. Read-only named lookup observes the actual node-local long-name
+tombstone; the fixture never submits removal to supply missing cleanup. Host
+codec/state controls cover full 256-byte identities, principal decisions, CQ
+binding, rejection, unchanged deadlines and owning Drop. Live allocation/mapping
+failure, native wrong-principal rejection and physical cleanup remain separate.
+See [contract](../reference/name-service-generations.md) and
+[evidence](../reports/audits/2026-10-14-protocol-simplification-name-generations.md).

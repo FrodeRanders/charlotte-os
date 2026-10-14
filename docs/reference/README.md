@@ -81,3 +81,5 @@ should be updated with the implementation when those contracts change.
 - [User faults and initial CPU state](user-fault-containment.md)
 
 - [Owned DNS local invocation](dns-local-invocation.md) — full-name client frames, CQ-bound owning phases and original deadlines.
+
+- [Name-service generation operations](name-service-generations.md) — complete identity records, principal fencing and owned CQ cleanup.

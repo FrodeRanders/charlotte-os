@@ -159,6 +159,7 @@ dependencies = [
  "charlotte-protocol-disco",
  "charlotte-protocol-dns",
  "charlotte-protocol-kafka",
+ "charlotte-protocol-ns",
  "charlotte-protocol-s3",
  "concurrent-queue",
  "flanterm_bindings",
@@ -211,6 +212,7 @@ dependencies = [
  "charlotte-protocol-kafka",
  "charlotte-protocol-msg",
  "charlotte-protocol-net",
+ "charlotte-protocol-ns",
  "charlotte-protocol-objstore",
  "charlotte-protocol-s3",
  "charlotte-protocol-time",
@@ -357,6 +359,10 @@ version = "0.1.0"
 
 [[package]]
 name = "charlotte-protocol-net"
+version = "0.1.0"
+
+[[package]]
+name = "charlotte-protocol-ns"
 version = "0.1.0"
 
 [[package]]

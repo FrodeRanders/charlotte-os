@@ -63,11 +63,11 @@ retired record. These controls do not inject live allocator exhaustion or prove
 kernel physical cleanup.
 
 The native linked fixture uses the shared encoder, rejects retired/trailing
-frames, invokes public echo through the named-memory NS operation, and preserves
+frames, invokes short echo and a distinct delegated long alias through the named-memory
+NS operation, and preserves
 protected greet denial, endpoint retraction and exact signed variant pins. It
-does **not** demonstrate native 256-byte publication/retraction. Existing
-node-local generation observation/unregister still has a packed-name adapter,
-which needs one coherent full-name protocol and owning cleanup transaction.
-Raw receive/transport, close watches, local unregister completions, transport
-queue/dedup admission and broader guard/Drop contexts remain separate gaps.
-The containing family is [C18](cleanup-recovery.md), with [batch evidence](../reports/audits/2026-10-14-protocol-simplification-dns-local-invocation.md).
+does **not** demonstrate native 256-byte publication/retraction. Current [NS generation operations](name-service-generations.md) now use mandatory
+CNSGEN01 records and owned CQ-bound cleanup. Raw receive/transport, close watches,
+transport queue/dedup admission and broader guard/Drop contexts remain separate
+gaps. The containing family is [C18](cleanup-recovery.md), with
+[batch evidence](../reports/audits/2026-10-14-protocol-simplification-dns-local-invocation.md).

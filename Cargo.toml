@@ -16,6 +16,7 @@ default-members = [
     "crates/charlotte-protocol-block",
     "crates/charlotte-protocol-disco",
     "crates/charlotte-protocol-dns",
+    "crates/charlotte-protocol-ns",
     "crates/charlotte-protocol-fs",
     "crates/charlotte-protocol-kafka",
     "crates/charlotte-protocol-msg",

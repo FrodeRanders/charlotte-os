@@ -117,3 +117,23 @@ new admission-pressure suite or production trust qualification ran in this batch
 Wider reaper/physical-release, outer IRQ/guard, DMA and shared-CQ boundaries remain
 separate. Internal API simplification can proceed independently, while this
 regression remains enabled in the ordinary scheduled CQ fixture.
+
+
+## Reproduced during NS generation simplification (2026-10-14)
+
+The [NS generation batch](2026-10-14-protocol-simplification-name-generations.md)
+now reproduces the exact-exit failure with the same five-second budget and four
+LP/eight-round pressure controls. x86 at 21.321480 s reported tid 37/generation
+410, returned=1, stage=4, source_closed=true, registered=0, live=None,
+staged root=None/lp=2/started=false/error=None. Raft persistence failed later at
+28.191274 s; that ordering does not establish a causal connection.
+An unchanged-signed-artifact repeat reproduced it on ARM at 13.952917 s:
+tid 30/generation 438, returned=1, stage=4, source_closed=true, registered=0,
+live Running/LP2 with execution/saved context on LP2, staged=None. The new DNS
+controls and all rollout generations subsequently passed on that ARM guest,
+but no complete suite result appeared within 300 seconds. x86 completed 20/0/0
+and all 64 close/exit episodes in that repeat. Neither observation establishes
+quiescence, a lost-wakeup cause, physical retry or permission to free backing.
+Exact artifact hashes and the other failed attempts are retained inline in the
+batch report. Earlier passing repeats remain historical evidence; the
+intermittence is now reproduced on both architectures and remains open.

@@ -297,8 +297,21 @@ the corrected RPC polling paths, and the remaining notification gaps.
   reply authority in its destination. Capture one kernel-monotonic deadline
   before decoding/routing, wait for the earliest remaining operation deadline,
   and treat binding rejection after accepted invocation as uncertain, never
-  replayable. Full-name generation unregister and other raw reactor/transport
-  adapters remain gaps; do not claim their readiness is fixed. Keep dedup ACK
+  replayable. NS interface 2 generation observation/retirement requires the
+  exact CNSGEN01 memory record, complete name and explicit zero/positive
+  generation. Retired packed forms reject. Preserve exact registrar/manager
+  authorization from the kernel identity, and keep checked observation rejection
+  distinct from absence before catalog mutation. Queue local cleanup through
+  the owned `Unregistration`, reserve storage before submission, bind its reply
+  to the CQ and retain its original deadline. Failed admission has no recovery
+  owner: follow the fail-closed policy with the containing transaction live;
+  rejected binding retains accepted work through abort, never timer polling or
+  replay. NS connection close is best-effort logical teardown, never physical
+  proof. A lookup of a third-party publication grants no retirement authority;
+  its dead binding needs an NS producer or explicit delegation contract. Share
+  the existing publication cleanup claim across Raft commit and the scan; never
+  accept two retirements for one captured episode. Raw watch/receive/transport and other packed APIs remain gaps. See
+  `docs/reference/name-service-generations.md`. Keep dedup ACK
   fencing and uncertain timeout semantics. Carry the caller's query deadline
   into invocation; reject an expired routing result before admission instead
   of restarting its budget. See `docs/reference/dns-invocation-relay.md`.

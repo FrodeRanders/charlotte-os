@@ -203,3 +203,19 @@ deadline. Rejected reply binding after accepted invocation remains uncertain,
 without replay. This is scoped C18 ownership/readiness progress, not closure of
 SEC-36/37/38, kernel physical cleanup, full-name local unregister or all raw DNS
 reactor contexts. Existing numbered finding dispositions remain unchanged.
+
+
+## 2026-10-14: full-name NS generation and cleanup follow-up
+
+[S08b2c4b](2026-10-14-protocol-simplification-name-generations.md) replaces packed
+publication observation/retirement and raw pending cleanup handles with exact
+CNSGEN01 records, owned CQ-bound calls and original deadlines. Registrar/manager
+checks remain; a DNS lookup does not confer retirement authority over somebody
+else's binding. Raft-commit and publication-scan cleanup share one submission
+claim. Host tests and strict Clippy pass; native new DNS controls and three
+signed rollout generations execute on both architectures, with x86 20/0/0.
+The broader ARM suite retains the now-reproduced historical IPC exact-exit
+failure, also captured on x86 in the prior run. No numbered finding disposition
+changes; third-party dead NS binding producers, wider raw contexts, physical
+quiescence and production trust remain open. Failed runs and current hashes are
+self-contained in the batch report.

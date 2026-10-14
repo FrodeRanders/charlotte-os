@@ -126,7 +126,6 @@ use catten_syscall::{
     ipc_reply_poll_with_memory,
     ipc_scalar_call,
     ipc_scalar_call_connection,
-    ipc_scalar_call_move,
     ipc_status,
     memory_alloc,
     memory_close,
@@ -375,15 +374,10 @@ fn register_name(
     // Scoped applications expose publication generation without acquiring
     // invocation authority. Their deployment agent retains the domain owner.
     let publication = if deployment_generation != 0 && attached.is_none() {
-        catten_services::stage_name_owned(&name).and_then(|staged| {
-            let result = names
-                .call_copy(ns::OP_PUBLICATION_GENERATION, name.len() as u64, &staged)
-                .ok()?
-                .wait()
-                .ok()?;
-            (result.result >= 1 && result.connection.is_none() && result.memory.is_none())
-                .then_some((None, result.result as u64))
-        })
+        catten_services::publication_generation::observe(names, &name)
+            .ok()
+            .flatten()
+            .map(|generation| (None, generation))
     } else {
         local_publication(names, attached, &name)
     };
@@ -436,42 +430,32 @@ fn register_name(
     }
 }
 
-fn local_generation(ns_conn: u64, name: &[u8]) -> u64 {
-    let lookup = ipc_scalar_call(ns_conn, ns::OP_TRY_LOOKUP, catten_services::name(name));
-    if lookup == 0 {
-        return 0;
+/// Admit storage before submission. On rejection there is no recovery owner
+/// for this containing transaction; abort with it and any accepted RPC retained.
+fn queue_local_unregistration(
+    names: ConnectionRef<'_>,
+    pending: &mut Vec<catten_services::publication_generation::Unregistration>,
+    name: &[u8],
+    generation: u64,
+) {
+    if pending.len() >= MAX_IN_FLIGHT_CALLS || pending.try_reserve(1).is_err() {
+        catten_rt::logln!("[dns] local retirement storage rejected; retaining transaction");
+        catten_rt::domain_abort();
     }
-    let (generation, connection) = unsafe { wait_reply(lookup) };
-    if connection != 0 {
-        ipc_close(connection);
-    }
-    generation.max(0) as u64
-}
-
-fn submit_unregister_local_generation(ns_conn: u64, name: &[u8], generation: u64) -> u64 {
-    let memory = memory_alloc(1);
-    let (list_scratch_map_status, list_scratch_vaddr) = memory_map_any(memory, true);
-    if memory == 0 || list_scratch_map_status != 0 {
-        if memory != 0 {
-            memory_close(memory);
+    match catten_services::publication_generation::Unregistration::begin(names, name, generation, 0)
+    {
+        Ok(operation) => pending.push(operation),
+        Err(catten_services::publication_generation::BeginError::Unstarted(error)) => {
+            catten_rt::logln!("[dns] local retirement admission rejected: {:?}", error);
+            catten_rt::domain_abort();
         }
-        return 0;
+        Err(catten_services::publication_generation::BeginError::Accepted(_owner)) => {
+            // _owner remains live through nonreturning abort. Never discard
+            // accepted work, poll it on a timer fallback, or submit it again.
+            catten_rt::logln!("[dns] accepted local retirement binding rejected; retaining owner");
+            catten_rt::domain_abort();
+        }
     }
-    unsafe {
-        core::ptr::write_volatile(list_scratch_vaddr as *mut u64, generation);
-    }
-    memory_unmap(memory);
-    let call = ipc_scalar_call_move(
-        ns_conn,
-        ns::OP_UNREGISTER_GENERATION,
-        catten_services::name(name),
-        memory,
-    );
-    if call == 0 {
-        memory_close(memory);
-        return 0;
-    }
-    call
 }
 
 /// Materialize one all-or-nothing view of committed ingress eligibility.
@@ -1812,7 +1796,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
     let mut next_reply_ordinal: BTreeMap<alloc::string::String, u64> = BTreeMap::new();
     let mut next_call_id: u64 = 1;
     let mut pending_queries: Vec<PendingQuery> = Vec::new();
-    let mut pending_local_unregistrations: Vec<u64> = Vec::new();
+    let mut pending_local_unregistrations: Vec<
+        catten_services::publication_generation::Unregistration,
+    > = Vec::new();
     let mut local_publications: Vec<LocalPublication> = Vec::new();
     let mut next_query_id: u64 = 1;
     let mut next_registration_id: u64 = 1;
@@ -1873,6 +1859,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         let wait_ms = pending_local_calls
             .iter()
             .map(|call| call.operation.remaining_ms())
+            .chain(pending_local_unregistrations.iter().map(|operation| operation.remaining_ms()))
             .chain(pending_queries.iter().map(|query| query.deadline.remaining_ms()))
             .chain(in_flight_calls.iter().map(|call| call.deadline.remaining_ms()))
             .fold(clock_watchdog.remaining_ms(), core::cmp::min);
@@ -3384,7 +3371,16 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             }
                             continue;
                         }
-                        let local_generation = local_generation(ns_conn, &name);
+                        let local_generation =
+                            match catten_services::publication_generation::observe(names, &name) {
+                                Ok(generation) => generation.unwrap_or(0),
+                                Err(_) => {
+                                    if message.reply != 0 {
+                                        ipc_reply(message.reply, dns::ERR_RESOURCE_LIMIT);
+                                    }
+                                    continue;
+                                }
+                            };
                         match node.submit_command(
                             encode_unregister_generation(&name, &node_name, expected_generation),
                             node.millis(),
@@ -4666,14 +4662,12 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         }
                         Err(code) => {
                             if local_generation != 0 {
-                                let unregister = submit_unregister_local_generation(
-                                    ns_conn,
+                                queue_local_unregistration(
+                                    names,
+                                    &mut pending_local_unregistrations,
                                     &name,
                                     local_generation,
                                 );
-                                if unregister != 0 {
-                                    pending_local_unregistrations.push(unregister);
-                                }
                             }
                             drop(connection);
                             if let Some(reply) = reply {
@@ -4743,15 +4737,30 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         .unwrap_or(0);
                     let removed = removed_generation == expected_generation;
                     if removed && local_generation != 0 {
-                        // This exact local generation may already have been
-                        // replaced while Raft committed the tombstone. The
-                        // local name service leaves such a replacement intact.
-                        let call =
-                            submit_unregister_local_generation(ns_conn, &name, local_generation);
-                        if call != 0 {
-                            pending_local_unregistrations.push(call);
+                        // The publication scan shares this claim: committing a
+                        // tombstone must not enqueue another accepted retirement
+                        // for the same captured publication episode.
+                        let publication = local_publications.iter_mut().find(|publication| {
+                            publication.name == name
+                                && publication.generation == expected_generation
+                                && publication.local_generation == local_generation
+                        });
+                        if publication
+                            .as_ref()
+                            .is_none_or(|publication| !publication.local_cleanup_submitted)
+                        {
+                            queue_local_unregistration(
+                                names,
+                                &mut pending_local_unregistrations,
+                                &name,
+                                local_generation,
+                            );
+                            if let Some(publication) = publication {
+                                publication.local_cleanup_submitted = true;
+                            }
                         }
                     }
+
                     if reply != 0 {
                         ipc_reply(
                             reply,
@@ -4808,15 +4817,13 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 .is_some_and(|entry| entry.generation != publication.generation);
             if !still_active && (superseded || publication.endpoint_closed) {
                 if !publication.local_cleanup_submitted && publication.local_generation != 0 {
-                    let call = submit_unregister_local_generation(
-                        ns_conn,
+                    queue_local_unregistration(
+                        names,
+                        &mut pending_local_unregistrations,
                         &publication.name,
                         publication.local_generation,
                     );
-                    if call != 0 {
-                        pending_local_unregistrations.push(call);
-                        publication.local_cleanup_submitted = true;
-                    }
+                    publication.local_cleanup_submitted = true;
                 }
                 if publication.close_watch != u64::MAX {
                     // A replacement made this watcher obsolete. Its endpoint

@@ -641,6 +641,11 @@ pub mod ns_status {
     pub const WAITERS: usize = 12;
 }
 
+/// Optional reference-echo cluster publication; bytes name a distinct alias.
+pub mod echo_config {
+    pub const CLUSTER_NAME: u64 = super::manifest_key(b"cluster");
+}
+
 pub mod echo_status {
     pub const STAGE: usize = 0;
     pub const GENERATION: usize = 4;

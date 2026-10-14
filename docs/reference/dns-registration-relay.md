@@ -73,8 +73,9 @@ protocol retry interval and exact-generation termination policy remain. No new
 polling, wait source, registry, custody or permission to replay an accepted
 non-idempotent operation is introduced.
 
-Raw endpoint-close watch completions, watch admission retry, local unregister
-adapters, transport/catalog metadata and broader IRQ/Drop contexts remain
+Generation observation/retirement now uses [mandatory full-name records and
+owned cleanup](name-service-generations.md). Raw endpoint-close watch completions,
+watch admission retry, transport/catalog metadata and broader IRQ/Drop contexts remain
 separate qualification work. Local lookup/registration uses PendingCall::wait;
 this does not make every phase of the DNS reactor event-driven. Existing vector
 publication outside the specifically prepared pending slots also remains separate.

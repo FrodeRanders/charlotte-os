@@ -428,8 +428,11 @@ no service. Explicit unregistration is fenced by both owning node and
 distributed generation; after that tombstone commits, removal from the local
 name service is separately fenced by the local generation observed before the
 proposal. A delayed request therefore cannot remove a replacement. Automatic replicated endpoint-death retraction uses the exact recorded owner
-and generation; full-name generation-fenced node-local removal still needs its
-coherent protocol replacement.
+and generation. Node-local observation/retirement now uses the mandatory
+CNSGEN01 full-name record under NS interface 2 and an owned CQ-bound cleanup
+operation. DNS lookup grants no retirement authority over another registrar's
+binding; dead third-party entries still need an NS producer or explicit
+delegation. See [generation operations](../reference/name-service-generations.md).
 
 Lookup and call routing are linearizable on the implemented two-voter path:
 followers do not consult their local catalog for these operations. They send a

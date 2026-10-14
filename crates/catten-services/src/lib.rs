@@ -8,7 +8,9 @@
 extern crate alloc;
 
 pub mod local_invocation;
+pub mod publication_generation;
 pub use charlotte_protocol_dns as dns_call;
+pub use charlotte_protocol_ns as ns_generation;
 pub mod network_random;
 pub mod socket_lifetime;
 pub mod socket_state;
@@ -189,11 +191,11 @@ pub mod grant {
     }
 }
 
-/// Name-service protocol (`charlotte-protocol-name` v1).
+/// Name-service interface 2; generation operations use CNSGEN01.
 pub mod ns {
     /// Interface id: "NAME".
     pub const INTERFACE: u64 = super::name(b"NAME");
-    pub const VERSION: u32 = 1;
+    pub const VERSION: u32 = charlotte_protocol_ns::VERSION;
 
     /// Register a service under a short (<= 8 byte) name. `arg0` = packed
     /// name; the call must attach a re-delegable connection
@@ -252,10 +254,10 @@ pub mod ns {
     /// registered service of `[len:u8][name bytes]`. The scalar result is the
     /// snapshot byte length.
     pub const OP_STATUS: u32 = 9;
-    /// Unpublish only the exact short-name generation supplied in the first
-    /// eight bytes of an attached memory object. A stale request returns
+    /// Unpublish the full name and nonzero generation in a mandatory moved
+    /// CNSGEN01 record; arg0 is its exact byte length. A stale request returns
     /// [`ERR_NOT_FOUND`] and leaves a replacement untouched.
-    pub const OP_UNREGISTER_GENERATION: u32 = 10;
+    pub const OP_UNREGISTER_GENERATION: u32 = charlotte_protocol_ns::OP_UNREGISTER_GENERATION;
 
     /// Register a service through the production authorization path. The call
     /// attaches a re-delegable connection plus a copied
@@ -287,10 +289,10 @@ pub mod ns {
     pub const OP_TRY_LOOKUP_FOR_GRANT: u32 = 17;
 
     /// Read the live publication generation, without minting any connection
-    /// or changing policy. With no memory, arg0 is a packed short name; with
-    /// copied memory, arg0 is the full name length. Missing/dead names reject.
+    /// or changing policy. Requires a moved CNSGEN01 observation record with
+    /// generation zero; arg0 is its exact length. Missing/dead names reject.
     /// This is naming metadata, like OP_STATUS, not application authority.
-    pub const OP_PUBLICATION_GENERATION: u32 = 18;
+    pub const OP_PUBLICATION_GENERATION: u32 = charlotte_protocol_ns::OP_PUBLICATION_GENERATION;
 
     pub const STATUS_OFFSET_MAGIC: u32 = 0;
     pub const STATUS_OFFSET_REGISTERED: u32 = 1;
@@ -3297,23 +3299,7 @@ pub fn publication_generation_owned(
     names: catten_rt::owned::ConnectionRef<'_>,
     service_name: &[u8],
 ) -> Option<u64> {
-    if service_name.is_empty() || service_name.len() > MAX_NAME_LEN {
-        return None;
-    }
-    let result = if service_name.len() <= 8 {
-        names.call(ns::OP_PUBLICATION_GENERATION, name(service_name)).ok()?.wait().ok()?
-    } else {
-        let staged = stage_name_owned(service_name)?;
-        names
-            .call_copy(ns::OP_PUBLICATION_GENERATION, service_name.len() as u64, &staged)
-            .ok()?
-            .wait()
-            .ok()?
-    };
-    if result.connection.is_some() || result.memory.is_some() || result.result < 1 {
-        return None;
-    }
-    u64::try_from(result.result).ok()
+    publication_generation::observe(names, service_name).ok().flatten()
 }
 
 /// Wait for the local boot-ready marker using ownership-aware IPC.

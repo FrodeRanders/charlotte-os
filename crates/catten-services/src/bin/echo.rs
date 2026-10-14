@@ -83,6 +83,49 @@ fn main(ctx: Context) -> ! {
     }
     config::write::<u32>(status::NAMED_GENERATION, named_generation as u32);
 
+    // An optional cluster publication delegates this endpoint to DNS. DNS
+    // performs its own full-name NS publication and is its recorded registrar;
+    // this does not authorize DNS to remove our existing local registrations.
+    match ctx.manifest_value(charlotte_launch::echo_config::CLUSTER_NAME) {
+        None => (),
+        Some(catten_rt::ManifestValue::Bytes(cluster_name)) => {
+            let deadline = catten_services::deadline::Deadline::after(5_000);
+            let staged =
+                stage_name_owned(cluster_name).unwrap_or_else(|| catten_rt::domain_abort());
+            let mut lookup = ns_connection
+                .call(ns::OP_TRY_LOOKUP, catten_services::dns::NAME)
+                .unwrap_or_else(|_| catten_rt::domain_abort());
+            let mut reply = lookup
+                .wait_timeout(deadline.remaining_ms())
+                .unwrap_or_else(|_| catten_rt::domain_abort())
+                .unwrap_or_else(|| catten_rt::domain_abort());
+            if reply.result < 1 {
+                catten_rt::domain_abort();
+            }
+            let catalog = reply.connection.take().unwrap_or_else(|| catten_rt::domain_abort());
+            if deadline.expired() {
+                catten_rt::domain_abort();
+            }
+            let mut pending = catalog
+                .call_connection_copy(
+                    catten_services::dns::OP_REGISTER_NAMED,
+                    cluster_name.len() as u64,
+                    &endpoint,
+                    IpcRights::SEND | IpcRights::CALL | IpcRights::MINT_CONNECTION,
+                    &staged,
+                )
+                .unwrap_or_else(|_| catten_rt::domain_abort());
+            let result = pending
+                .wait_timeout(deadline.remaining_ms())
+                .unwrap_or_else(|_| catten_rt::domain_abort())
+                .unwrap_or_else(|| catten_rt::domain_abort());
+            if result.result < 1 {
+                catten_rt::domain_abort();
+            }
+        }
+        Some(_) => catten_rt::domain_abort(),
+    }
+
     // Unified shard wait (§7): bind the endpoint's readiness to the default
     // completion queue, then block on one CQ_WAIT and drain every ready
     // message before waiting again.

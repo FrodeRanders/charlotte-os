@@ -278,6 +278,12 @@ service cannot stop Raft heartbeats or relmsg receive draining. A timeout before
 execution is reported as a retryable lookup failure; after invocation has been
 submitted, timeout or reply-binding rejection is reported as an uncertain outcome. Duplicate remote calls are
 suppressed both while pending and in the acknowledged-result window.
+Node-local cleanup now owns its exact-generation retirement RPC and binds reply
+readiness to that CQ as well. Preparation begins one monotonic deadline;
+uncertainty never submits it again. Metadata observation uses an owned timed RPC
+to the independent NS process and keeps rejection distinct from confirmed
+absence before a catalog tombstone is submitted. Endpoint watches and raw
+receive/transport contexts retain their separate notification gaps.
 
 \section{Relationship to the name service}
 

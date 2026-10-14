@@ -25,6 +25,7 @@ mod inner {
     const DNS_NAME: u64 = 0x0073_6e64;
     // catten_services::dns opcodes.
     const DNS_OP_REGISTER: u32 = 1;
+    const LONG_ECHO_NAME: &[u8] = b"cluster.console.echo.primary.v1";
     const DNS_OP_EVENT_FIRE: u32 = 12;
     const DNS_OP_LOOKUP: u32 = 2;
     const DNS_OP_CALL: u32 = 5;
@@ -120,6 +121,31 @@ mod inner {
         })
         .expect("DNS fixture request encoding");
         call_with_memory(connection, DNS_OP_CALL, request.len() as u64, &request)
+    }
+
+    fn generation_request(
+        connection: u64,
+        name: &[u8],
+        generation: u64,
+        action: charlotte_protocol_ns::Action,
+    ) -> Option<i64> {
+        let request = charlotte_protocol_ns::encode(
+            action,
+            charlotte_protocol_ns::Request {
+                name,
+                generation,
+            },
+        )
+        .expect("NS generation fixture encoding");
+        let opcode = match action {
+            charlotte_protocol_ns::Action::Observe => {
+                charlotte_protocol_ns::OP_PUBLICATION_GENERATION
+            }
+            charlotte_protocol_ns::Action::Retire => {
+                charlotte_protocol_ns::OP_UNREGISTER_GENERATION
+            }
+        };
+        call_with_memory(connection, opcode, request.len() as u64, &request)
     }
 
     fn lookup_service(kernel_ns: u64, name: u64) -> Option<u64> {
@@ -828,14 +854,24 @@ mod inner {
             echo_owner_deadline.assert_pending("EL0 dns waiting for echo-mutating suites");
             yield_lp();
         }
-        let echo = crate::service::supervisor::spawn_with_name_service(
+        let is_leader = state == 3;
+        let manifest = [crate::service::bootstrap::ManifestEntry {
+            key: charlotte_launch::echo_config::CLUSTER_NAME,
+            flags: 0,
+            value: crate::service::bootstrap::ManifestValue::Bytes(LONG_ECHO_NAME),
+        }];
+        let echo = crate::service::supervisor::spawn_with_manifest(
             crate::service::store::service_elf(b"echo").expect("[el0_dns] echo.elf"),
             ns,
             ConnectionRights::CALL,
+            if is_leader {
+                &manifest
+            } else {
+                &[]
+            },
         );
         logln!("[dns] echo spawned (asid={})", echo.asid);
 
-        let is_leader = state == 3;
         let mut echo_generation = 0;
         if is_leader {
             // A prior lifecycle test may have left a closed echo generation
@@ -868,13 +904,59 @@ mod inner {
             logln!("[dns] echo publish result = {register:?}");
             echo_generation = register.unwrap_or(0);
             assert!(echo_generation >= 1, "[dns] echo publish must return its generation");
+            let local_generation = generation_request(
+                kernel_ns,
+                LONG_ECHO_NAME,
+                0,
+                charlotte_protocol_ns::Action::Observe,
+            )
+            .expect("long publication observation");
+            assert!(local_generation >= 1);
+            assert_eq!(
+                call(kernel_ns, charlotte_protocol_ns::OP_PUBLICATION_GENERATION, ECHO_NAME),
+                Some(-2),
+                "retired scalar observation must reject"
+            );
+            assert_eq!(
+                call_with_memory(
+                    kernel_ns,
+                    charlotte_protocol_ns::OP_UNREGISTER_GENERATION,
+                    ECHO_NAME,
+                    &(local_generation as u64).to_le_bytes()
+                ),
+                Some(-2),
+                "retired packed-generation retirement must reject"
+            );
+            assert_eq!(
+                generation_request(
+                    kernel_ns,
+                    LONG_ECHO_NAME,
+                    local_generation as u64 + 1,
+                    charlotte_protocol_ns::Action::Retire
+                ),
+                Some(-1),
+                "stale long-name retirement must leave publication intact"
+            );
+            assert_eq!(
+                generation_request(
+                    kernel_ns,
+                    LONG_ECHO_NAME,
+                    0,
+                    charlotte_protocol_ns::Action::Observe
+                ),
+                Some(local_generation)
+            );
+            logln!(
+                "[dns] full-name publication observed; retired and stale generation requests \
+                 rejected"
+            );
         }
 
         // Wait for the catalog to carry both names.
         let deadline = crate::self_test::results::Deadline::after_millis(60_000);
         loop {
             catalog = status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES);
-            if catalog >= 2 {
+            if catalog >= 3 {
                 logln!("[dns] catalog carries {catalog} name(s); invoking echo.");
                 break;
             }
@@ -926,6 +1008,17 @@ mod inner {
             "[dns] cross-node invocation of echo must return the echoed value"
         );
 
+        let long_deadline = crate::self_test::results::Deadline::after_millis(60_000);
+        loop {
+            let result = invoke_dns(dns_conn, LONG_ECHO_NAME, ECHO_OP_ECHO, 43);
+            if result == Some(43) {
+                break;
+            }
+            long_deadline.assert_pending("EL0 dns full-name echo convergence");
+            crate::cpu::scheduler::sleep_millis(200);
+        }
+        logln!("[dns] full-name echo result = 43");
+
         // The leader's own invocation is local. Keep the leader VM alive
         // until its DNS replica has also served the follower's remote call;
         // otherwise the runner can observe local SELFTEST COMPLETE and stop
@@ -933,7 +1026,7 @@ mod inner {
         let mut query_barrier = 0;
         if is_leader {
             let deadline = crate::self_test::results::Deadline::after_millis(60_000);
-            while status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_CALL_ACKS) == 0 {
+            while status_word(dns_cfg, charlotte_launch::dns_status::REMOTE_CALL_ACKS) < 2 {
                 deadline.assert_pending("EL0 dns follower remote invocation");
                 yield_lp();
             }
@@ -948,8 +1041,8 @@ mod inner {
             );
             assert_eq!(
                 status_word(dns_cfg, charlotte_launch::dns_status::CATALOG_ENTRIES),
-                3,
-                "[dns] catalog must contain alpha, echo, and the committed membership event"
+                4,
+                "[dns] catalog must contain alpha, both echo names, and the membership event"
             );
             crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER
                 .read()
@@ -1004,6 +1097,23 @@ mod inner {
                 crate::cpu::scheduler::sleep_millis(200);
                 lookup = call(dns_conn, DNS_OP_LOOKUP, ECHO_NAME);
             }
+        }
+        if is_leader {
+            // The ordinary named lookup distinguishes an unpublished tombstone
+            // from a retained connection to a dead endpoint. Observe read-only
+            // status under a bounded fixture budget; never submit a removal to
+            // make the implementation's cleanup appear complete.
+            let cleanup_deadline = crate::self_test::results::Deadline::after_millis(30_000);
+            loop {
+                let result =
+                    call_with_memory(kernel_ns, 16, LONG_ECHO_NAME.len() as u64, LONG_ECHO_NAME);
+                if result == Some(-1) {
+                    break;
+                }
+                cleanup_deadline.assert_pending("EL0 dns full-name local retirement completion");
+                crate::cpu::scheduler::sleep_millis(200);
+            }
+            logln!("[dns] full-name local generation retired after endpoint tombstone");
         }
         if is_leader {
             let stale_unregister = call_with_memory(
