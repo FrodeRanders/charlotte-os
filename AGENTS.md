@@ -955,6 +955,10 @@ the corrected RPC polling paths, and the remaining notification gaps.
   rejection is neither a clock tick nor permission to replay accepted work.
   See `docs/reference/cq-wait.md`. Runtime ABI 3 and all signed variants match
   this register contract, including the sibling Sitas dependency.
+  Keep CI's immutable Sitas pin synchronized with that dependency's ABI update;
+  `scripts/tests/test-ci-runtime-inputs.py` rejects the earlier wait backend.
+  Use `CARGO_BUILD_RUSTFLAGS` for CI's default warning policy; global RUSTFLAGS
+  would override the kernel target's denied warnings and required frame pointers.
 - All IPC receive forms use the twelve-register authenticated envelope (71--73).
   Use `Endpoint::receive`/`try_receive` and authorize from the captured sender
   generation/principal/roles, never a later lookup of the recyclable ASID. Zero

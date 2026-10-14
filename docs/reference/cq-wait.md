@@ -57,3 +57,17 @@ reactors can wait event-only. Public shared parkers retain a 5 ms backstop: a
 competing CQ reader can consume its shared work-generation cursor. This remains
 timer recovery, not a per-waiter readiness guarantee. That notification boundary
 must be qualified before removing the backstop.
+
+CI pins every Sitas checkout to published commit
+`d27f7e7b7a6e3657c9b39e53da02cf0cd8f91a78`, the checked-wait update. The prior
+`94eca685` pin still emitted retired syscalls 12/42 and is incompatible with
+runtime ABI 3, even if compilation and ELF signature validation succeed.
+`scripts/tests/test-ci-runtime-inputs.py` checks the pinned backend against the
+SDK wait number and rejects that earlier source. Developers' sibling checkout
+is `../../gautelis/sitas`; changing CI's pin does not modify that working tree.
+
+CI supplies its warning policy through `CARGO_BUILD_RUSTFLAGS`. A global
+`RUSTFLAGS` replaces Cargo's target-specific flag set and would remove the
+kernel's required frame pointers. Both kernel targets retain denied warnings
+and frame pointers explicitly; userspace keeps its existing code generation.
+This preserves panic diagnostics without widening the SITAS verifier deadline.

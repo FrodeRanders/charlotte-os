@@ -11,8 +11,9 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: "-D warnings"
-  SITAS_REV: 94eca68554e88f06721df4ccf3a69222a963c2c9
+  # A global RUSTFLAGS overrides the kernel target's frame-pointer settings.
+  CARGO_BUILD_RUSTFLAGS: "-D warnings"
+  SITAS_REV: d27f7e7b7a6e3657c9b39e53da02cf0cd8f91a78
 
 jobs:
   formatting:
@@ -34,7 +35,7 @@ jobs:
           SITAS_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/gautelis/sitas"
           mkdir -p "$(dirname "$SITAS_DIR")"
           git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
-          git -C "$SITAS_DIR" checkout "$SITAS_REV"
+          git -C "$SITAS_DIR" checkout --detach "$SITAS_REV"
           cargo fmt --all -- --check
 
   clippy:
@@ -57,7 +58,7 @@ jobs:
           SITAS_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/gautelis/sitas"
           mkdir -p "$(dirname "$SITAS_DIR")"
           git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
-          git -C "$SITAS_DIR" checkout "$SITAS_REV"
+          git -C "$SITAS_DIR" checkout --detach "$SITAS_REV"
           scripts/build-catten-services.sh --embed
           scripts/build-catten-user.sh --embed
           export CATTEN_AARCH64_SERVICE_BUNDLE="$GITHUB_WORKSPACE/target/embedded-services/aarch64-unknown-none"
@@ -101,7 +102,7 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
           SITAS_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/gautelis/sitas"
           git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
-          git -C "$SITAS_DIR" checkout "$SITAS_REV"
+          git -C "$SITAS_DIR" checkout --detach "$SITAS_REV"
           scripts/run-host-tests.sh
 
   formal-models:
@@ -152,7 +153,7 @@ jobs:
         run: |
           SITAS_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/gautelis/sitas"
           git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
-          git -C "$SITAS_DIR" checkout "$SITAS_REV"
+          git -C "$SITAS_DIR" checkout --detach "$SITAS_REV"
           scripts/build-catten-services.sh
 
   build:
@@ -180,7 +181,7 @@ jobs:
         run: |
           SITAS_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/gautelis/sitas"
           git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
-          git -C "$SITAS_DIR" checkout "$SITAS_REV"
+          git -C "$SITAS_DIR" checkout --detach "$SITAS_REV"
           if [ "${{ matrix.target }}" = "aarch64-unknown-none-catten" ]; then
             scripts/build-catten-services.sh --embed
             scripts/build-catten-user.sh --embed
@@ -229,7 +230,7 @@ jobs:
         run: |
           SITAS_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/gautelis/sitas"
           git clone https://github.com/FrodeRanders/sitas.git "$SITAS_DIR"
-          git -C "$SITAS_DIR" checkout "$SITAS_REV"
+          git -C "$SITAS_DIR" checkout --detach "$SITAS_REV"
 
       # Keep CI on the same multicore, MSI-X/NVMe configuration and marker
       # list used by developers. This also rebuilds the embedded EL0 bundle.
