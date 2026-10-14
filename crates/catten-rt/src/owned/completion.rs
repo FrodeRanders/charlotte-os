@@ -132,6 +132,13 @@ impl Completion {
         self.finish_result(status, result)
     }
 
+    /// Match a CQ readiness hint without consuming this operation. A matching
+    /// entry is not its terminal result: observe through `poll` before acting.
+    /// An old entry cannot match an already consumed completion.
+    pub fn matches_cq(&self, entry: &catten_syscall::CqEntry) -> bool {
+        self.cap.is_some_and(|cap| cap == entry.cookie)
+    }
+
     pub fn wait_timeout(&mut self, timeout_ms: u64) -> Result<Option<i64>, CompletionError> {
         let (status, result) = kernel::wait_timeout(self.raw_handle(), timeout_ms);
         self.finish_result(status, result)

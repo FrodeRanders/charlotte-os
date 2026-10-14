@@ -6,6 +6,9 @@ pub const VERSION: u32 = 2;
 pub const MAGIC: &[u8; 8] = b"CNSGEN01";
 pub const HEADER_LEN: usize = 24;
 pub const MAX_NAME_LEN: usize = 256;
+/// Each live publication owns an endpoint-death watch. The trusted NS launch
+/// supplies one additional completion slot to prepare a replacement first.
+pub const MAX_LIVE_PUBLICATIONS: usize = 64;
 pub const MAX_FRAME_LEN: usize = HEADER_LEN + MAX_NAME_LEN;
 pub const OP_UNREGISTER_GENERATION: u32 = 10;
 pub const OP_PUBLICATION_GENERATION: u32 = 18;

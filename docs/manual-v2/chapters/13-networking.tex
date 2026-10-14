@@ -190,12 +190,24 @@ original five-second monotonic deadline into the reactor's earliest wait.
 Submission/storage rejection follows the existing fail-closed domain policy;
 rejected reply binding retains the accepted owner through abort. Timeout,
 rejection and wakes never permit replay or establish physical cleanup. Raw
-receive/transport adapters, endpoint-close watches and broader cleanup contexts
-remain separate gaps. A lookup of somebody else's publication does not grant
-DNS retirement authority. Dead third-party NS entries need a separate producer
-or explicit delegation contract; the positive cleanup fixture instead delegates
-a distinct echo alias to DNS, making DNS its registrar. Raft completion and the
-publication scan share one cleanup-submission claim for that captured episode.
+receive/transport adapters, other endpoint-close watches and broader cleanup
+contexts remain separate gaps. A lookup of somebody else's publication does
+not grant DNS retirement authority. NS now owns each registry connection and
+its persistent endpoint-death completion together, admitting the watch before
+policy mutation. It binds request intake to the same default CQ signaled by
+the kernel watches and waits event-only, rechecking lifecycle requests. A CQ
+entry is only a hint: NS confirms its retained watch's exact endpoint-close
+result before internally unpublishing the current full name and generation.
+Replaced watches cannot clear a new generation; caller registrar/manager
+checks remain. Cancellation precedes source disposal. Unexpected watch results
+or rejected CQ waits retain the registry through terminal abort, without
+claiming physical cleanup. The trusted NS constructor prepares 65 completion
+slots before threads/events for 64 live publications plus one replacement;
+ordinary launch budgets and normal node admission retain their existing policy.
+The native fixture observes both DNS-owned and Echo-owned names disappearing
+after death with read-only lookups. Raft completion and the publication scan
+still share one cleanup-submission claim for their captured episode. See
+\repofile|docs/reference/name-service-generations.md|.
 
 Registration uses two replicated phases. A \texttt{prepare} command allocates
 the next generation while keeping it invisible. After the owner publishes its

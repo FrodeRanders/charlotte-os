@@ -474,7 +474,7 @@ fn spawn_name_service(
     version: u32,
     capacity: usize,
 ) -> NameServiceHandle {
-    let loaded = loader::load_domain(image);
+    let loaded = loader::load_name_service_domain(image);
     let endpoint_cap = ipc::endpoint_create(loaded.asid, interface, version, capacity)
         .expect("[supervisor] name-service endpoint_create failed");
     bootstrap::write_bootstrap_cap(loaded.config_frame, endpoint_cap);

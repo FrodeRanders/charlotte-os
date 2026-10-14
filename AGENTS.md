@@ -308,7 +308,16 @@ the corrected RPC polling paths, and the remaining notification gaps.
   rejected binding retains accepted work through abort, never timer polling or
   replay. NS connection close is best-effort logical teardown, never physical
   proof. A lookup of a third-party publication grants no retirement authority;
-  its dead binding needs an NS producer or explicit delegation contract. Share
+  NS registrations retain an owned connection and persistent endpoint-death
+  completion together. Admit the watch before policy/registry mutation and
+  cancel it before source disposal. NS waits event-only on its request endpoint
+  and those default-CQ completions, rechecking lifecycle. A CQ entry is a hint:
+  confirm the current owner's exact endpoint-close result before unpublishing
+  its captured full name/generation. Unexpected watch/wait outcomes retain the
+  registry through terminal abort, never replay or fabricated death. Trusted
+  NS construction prepares its bounded 64-publication plus replacement watch
+  budget before thread publication; never resize a live sponsor or derive
+  platform classification from a manifest/role/name. Share
   the existing publication cleanup claim across Raft commit and the scan; never
   accept two retirements for one captured episode. Raw watch/receive/transport and other packed APIs remain gaps. See
   `docs/reference/name-service-generations.md`. Keep dedup ACK

@@ -1105,15 +1105,22 @@ mod inner {
             // make the implementation's cleanup appear complete.
             let cleanup_deadline = crate::self_test::results::Deadline::after_millis(30_000);
             loop {
-                let result =
+                let long =
                     call_with_memory(kernel_ns, 16, LONG_ECHO_NAME.len() as u64, LONG_ECHO_NAME);
-                if result == Some(-1) {
+                // Echo, rather than DNS, registered the short name. DNS lookup
+                // grants no retirement authority over it. Its NS-owned watch
+                // must unpublish it without a fixture/manager removal RPC.
+                let third_party = call(kernel_ns, 7, ECHO_NAME);
+                if long == Some(-1) && third_party == Some(-1) {
                     break;
                 }
-                cleanup_deadline.assert_pending("EL0 dns full-name local retirement completion");
+                cleanup_deadline.assert_pending("EL0 NS owned and third-party death retirement");
                 crate::cpu::scheduler::sleep_millis(200);
             }
-            logln!("[dns] full-name local generation retired after endpoint tombstone");
+            logln!(
+                "[dns] NS retired DNS-owned full-name and Echo-owned short-name publications \
+                 after endpoint death without a fixture removal"
+            );
         }
         if is_leader {
             let stale_unregister = call_with_memory(

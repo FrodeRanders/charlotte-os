@@ -33,8 +33,10 @@ mapping/copy/unmap rejection returns `ERR_INVALID`; every attachment and reply
 authority stays in its Rust owner on early return.
 
 Observation exposes naming metadata without minting invocation authority. A
-confirmed missing, unpublished or dead endpoint returns `ERR_NOT_FOUND`; inability
-to prepare/check the endpoint watch returns rejection instead. The owned client
+confirmed missing or unpublished endpoint returns `ERR_NOT_FOUND`. The reactor
+consumes its persistent endpoint-death watch before request intake; watch
+admission rejection prevents publication, and uncertain watch observation
+follows the fail-closed domain policy. The owned client
 preserves `Result<Option<generation>, Error>`: only a confirmed absence is `None`.
 The agent's existing convenience API still returns `Option` for readiness only;
 DNS explicit tombstoning uses the checked result and submits no command on error.
@@ -45,15 +47,54 @@ A missing principal/registrar grants no authority. Provisioning still verifies
 the captured address-space generation, principal and roles through PolicyStore;
 its own manager identity performs the existing policy unpublish. A stale or
 unauthorized request returns `ERR_NOT_FOUND` and leaves the publication intact.
-On success the registry keeps its generation tombstone and detaches its one raw
-connection into `Connection` at a documented unique adapter boundary. Existing
-best-effort local close does not establish physical backing quiescence or refund.
-This does not convert the rest of NS's raw registry/lookup adapters to Rust owners.
+On success the registry keeps its generation tombstone and takes its complete
+`ns_publication::Publication`: an owned connection and endpoint-death completion.
+The watch is canceled/disposed before its source closes. Existing best-effort
+local connection close establishes no physical backing quiescence or refund.
+Other raw receive/lookup/reply adapters remain separate ownership work.
 DNS does not acquire retirement authority by looking up an independently
-published endpoint. Such cleanup returns no-match and cannot clear another
-registrar's binding. Retiring dead third-party namespace entries needs a separate
-NS-owned endpoint-death or explicit retirement-delegation contract; this remains
-open. Neither a catalog tombstone nor endpoint death grants DNS manager rights.
+published endpoint. Caller cleanup returns no-match unless its original
+registrar/manager and generation checks succeed. Neither a catalog tombstone
+nor endpoint death grants DNS manager rights.
+
+## NS-owned endpoint-death producer
+
+At registration's unique receive boundary, NS adopts the incoming connection
+once and prepares a persistent endpoint-close watch before policy or registry
+mutation. A failed watch submission disposes only the unused candidate and
+leaves the existing publication untouched. Each live registry entry owns its
+connection and watch together; replacement disposes the previous complete owner
+after the new generation is authoritative.
+
+NS binds its launch-owned request endpoint to the default CQ. Kernel endpoint
+watches already post capability-backed completions and signal that same CQ, so
+the reactor waits event-only on requests, watch completions and lifecycle wakes.
+It drains ready CQ entries before each request, with no timer, unrelated wake
+source or fresh per-instance registry. `Completion::matches_cq` only selects a
+readiness hint; NS still polls that owned completion once to confirm the exact
+`IPC_REPLY_ENDPOINT_CLOSED` result. Pending, stale and unrelated hints cannot
+unpublish a binding. Unexpected terminal results or observation/wait admission
+failure abort with the registry retained; they are not endpoint death, retry
+permission or successful cleanup. Lifecycle requests are rechecked on every turn
+and use terminal domain abort without a cooperative/physical-cleanup acknowledgement.
+
+A confirmed endpoint-death result unpublishes the current entry's complete name
+and captured generation through NS's own policy authority, then takes its
+publication owner. Old/replaced watches cannot act on a replacement: hints are
+resolved through its own retained completion and exact underlying producer,
+never the name or an old CQ result alone. This internal producer clears bindings
+created by any registrar, while caller retirement keeps its original principal
+checks. It is logical namespace retirement, not physical endpoint reclamation.
+
+Live publications are bounded to 64. The trusted supervisor's NS constructor
+prepares a 65-operation completion/record/watch budget before thread publication
+or event capture, retaining one slot for replacement preparation. Ordinary
+launches keep their 16-operation budget. No live sponsor is replaced; captured
+platform classification and normal node/aggregate admission remain. Tombstones
+retain generations within the existing bounded policy store and consume no live
+watch. A new binding at the live limit rejects before publication; replacement
+may prepare against its reserved slot. Wider policy/tree allocation qualification
+remains separate. See [execution evidence](../reports/audits/2026-10-14-ns-endpoint-death.md).
 
 ## Cleanup readiness and failure policy
 
@@ -108,7 +149,7 @@ wrong-principal rejection or all 256-byte publication paths. See
 [batch evidence](../reports/audits/2026-10-14-protocol-simplification-name-generations.md)
 and the existing [C18 family](cleanup-recovery.md).
 
-Other packed NS/DNS entry points, raw endpoint watches, transport/receive
+Other packed NS/DNS entry points, other raw endpoint watches, transport/receive
 adapters, metadata admission, outer IRQ/Drop contexts and physical completion
 remain separate. Historical IPC exact-exit and later persistence intermittence
 remain unresolved.

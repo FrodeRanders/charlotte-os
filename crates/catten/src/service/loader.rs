@@ -510,6 +510,20 @@ pub fn load_domain(image: &[u8]) -> LoadedDomain {
         .unwrap_or_else(|error| panic!("[loader] domain load failed: {error:?}"))
 }
 
+/// Trusted NS constructor only: prepare its bounded watch budget before thread
+/// publication/events. No live sponsor is replaced and neither artifact roles
+/// nor untrusted manifest input select this platform/resource policy.
+pub(in crate::service) fn load_name_service_domain(image: &[u8]) -> LoadedDomain {
+    try_load_domain_with_capacity(
+        image,
+        &charlotte_launch::CLUSTER_PUBLIC_KEY,
+        true,
+        charlotte_protocol_ns::MAX_LIVE_PUBLICATIONS + 1,
+        |_| Ok(()),
+    )
+    .unwrap_or_else(|error| panic!("[loader] name-service load failed: {error:?}"))
+}
+
 /// Load an ordinary domain while reporting signature, backing, mapping,
 /// hardware-ASID and CQ preparation failures to runtime creation callers.
 pub fn try_load_domain(image: &[u8]) -> Result<LoadedDomain, DomainLoadError> {
@@ -543,6 +557,16 @@ fn try_load_domain_with_preparation(
     image: &[u8],
     key: &[u8; 32],
     platform: bool,
+    prepare: impl FnOnce(AddressSpaceHandle) -> Result<(), DomainLoadError>,
+) -> Result<LoadedDomain, DomainLoadError> {
+    try_load_domain_with_capacity(image, key, platform, COMPLETION_CAPACITY, prepare)
+}
+
+fn try_load_domain_with_capacity(
+    image: &[u8],
+    key: &[u8; 32],
+    platform: bool,
+    completion_capacity: usize,
     prepare: impl FnOnce(AddressSpaceHandle) -> Result<(), DomainLoadError>,
 ) -> Result<LoadedDomain, DomainLoadError> {
     if !validate_user_elf(image) {
@@ -611,7 +635,7 @@ fn try_load_domain_with_preparation(
     // commits a frame on demand, so physical use tracks allocation demand.
     crate::completion::open_address_space_with_cq_phys(
         asid,
-        COMPLETION_CAPACITY,
+        completion_capacity,
         cq_frame,
         CQ_ENTRIES,
     )

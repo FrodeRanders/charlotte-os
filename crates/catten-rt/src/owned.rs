@@ -1843,6 +1843,39 @@ mod tests {
     }
 
     #[test]
+    fn completion_cq_hint_preserves_owner_until_terminal_observation() {
+        let _guard = setup();
+        let connection = unsafe { Connection::from_raw(41) }.unwrap();
+        let mut watch = connection.watch_closed().unwrap();
+        let mut hint = catten_syscall::CqEntry {
+            operation: 1,
+            cookie: 21,
+            status: 0,
+            flags: 0,
+            result: catten_syscall::IPC_REPLY_ENDPOINT_CLOSED,
+        };
+        assert!(!watch.matches_cq(&hint));
+        assert!(kernel::events().is_empty());
+        hint.cookie = 20;
+        assert!(watch.matches_cq(&hint));
+        kernel::update(|state| {
+            state.poll.push_back((catten_syscall::completion_status::PENDING_OR_TIMEOUT, 0));
+            state.poll.push_back((
+                catten_syscall::completion_status::READY,
+                catten_syscall::IPC_REPLY_ENDPOINT_CLOSED as u64,
+            ));
+        });
+        assert_eq!(watch.poll().unwrap(), None);
+        assert!(watch.matches_cq(&hint));
+        assert_eq!(watch.poll().unwrap(), Some(catten_syscall::IPC_REPLY_ENDPOINT_CLOSED));
+        assert!(!watch.matches_cq(&hint));
+        drop(watch);
+        assert_eq!(kernel::events(), [kernel::Event::CompletionClose(20)]);
+        drop(connection);
+        assert_eq!(kernel::events().last(), Some(&kernel::Event::IpcClose(41)));
+    }
+
+    #[test]
     fn scalar_admission_rejection_keeps_connection_without_a_pending_owner() {
         let _guard = setup();
         let endpoint = Endpoint::create(1, 1, 4).expect("endpoint creation");

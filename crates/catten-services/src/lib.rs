@@ -61,6 +61,7 @@ pub mod dns_catalog;
 /// Replicated name catalog: the Raft state machine for the distributed name
 /// service.
 pub mod name_catalog;
+pub mod ns_publication;
 pub mod operations_admission;
 
 /// Raft peer transport over the reliable message layer (`relmsg`).

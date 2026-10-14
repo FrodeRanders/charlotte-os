@@ -79,6 +79,15 @@ not adopt returned connection/memory capabilities. Poll the owned pending call
 after waking to observe those resources exactly once. Registration failure
 leaves the owner intact, so ordinary error paths can cancel safely.
 
+A local NS publication retains `ns_publication::Publication`, containing the
+owned source connection and its persistent endpoint-death `Completion`. Admit
+the watch before making the binding visible. `Completion::matches_cq` selects
+a hint without adopting or consuming it; confirm the underlying result through
+that owner before unpublishing the captured generation. Drop cancels/disposes
+the watch before its source. This does not provide physical cleanup proof or
+caller authority over another registrar's binding. See
+[the NS producer contract](../reference/name-service-generations.md).
+
 Kernel lifecycle request publication also wakes the default CQ after writing
 through the exact leased root and releasing the local table guard. Reactors
 must recheck lifecycle and all ready sources after every wake. If bounded

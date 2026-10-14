@@ -37,8 +37,12 @@ use catten_services::{
 use catten_syscall::{
     IpcMessage,
     IpcRights,
+    completion_status,
+    cq_read,
+    cq_wait_checked,
     ipc_close,
-    ipc_recv_block,
+    ipc_endpoint_bind_cq,
+    ipc_recv,
     ipc_reply,
     ipc_reply_connection,
     ipc_reply_move,
@@ -65,17 +69,24 @@ use charlotte_launch::ns_status as status;
 const STATUS_SNAPSHOT_MAX: usize = 4096;
 
 struct Registration {
-    connection: u64,
+    publication: Option<catten_services::ns_publication::Publication>,
     generation: i64,
     access_key: u64,
     /// Stable principal of the domain that created the registration, when the
     /// kernel-authenticated envelope supplied one. Only this principal (or a
-    /// service manager) may retire the registration.
+    /// service manager) may request retirement. NS's owned endpoint-death
+    /// producer independently retires its exact current publication.
     registrar: Option<PrincipalId>,
     /// Whether this entry was published through the authorized opcode and has
     /// a matching `PolicyStore` binding. Legacy publication is a separate
     /// compatibility namespace that authorized lookups must not resolve.
     authorized: bool,
+}
+
+impl Registration {
+    fn connection(&self) -> u64 {
+        self.publication.as_ref().map_or(0, |owner| owner.connection().as_raw())
+    }
 }
 
 type Registry = BTreeMap<Vec<u8>, Registration>;
@@ -91,25 +102,12 @@ fn publication_generation(
     else {
         return ns::ERR_INVALID;
     };
-    let Some(registration) = registry.get(&key).filter(|entry| entry.connection != 0) else {
+    let Some(registration) = registry.get(&key).filter(|entry| entry.connection() != 0) else {
         return ns::ERR_NOT_FOUND;
     };
-    // Borrow at this legacy registry/ABI adapter boundary. The single-threaded
-    // registry cannot close or replace its raw source during this exact borrow;
-    // only the temporary typed completion is owned here. No connection is minted.
-    let Ok(connection) =
-        (unsafe { catten_rt::owned::ConnectionRef::from_raw(registration.connection) })
-    else {
-        return ns::ERR_INVALID;
-    };
-    let Ok(mut watch) = connection.watch_closed() else {
-        return ns::ERR_INVALID;
-    };
-    match watch.poll() {
-        Ok(None) => registration.generation,
-        Ok(Some(_)) => ns::ERR_NOT_FOUND,
-        Err(_) => ns::ERR_INVALID,
-    }
+    // The reactor drains this publication's persistent exact-endpoint watch
+    // before intake. This read borrows registry metadata and mints no resource.
+    registration.generation
 }
 
 #[derive(Debug)]
@@ -146,9 +144,9 @@ impl catten_services::broker::Catalog for RegistryCatalog<'_> {
         // discard the reply token (a lost reply and a forever-stalled
         // caller).
         self.0.get(name).and_then(|registration| {
-            (registration.connection != 0).then_some(catten_services::broker::CatalogTarget {
+            (registration.connection() != 0).then_some(catten_services::broker::CatalogTarget {
                 generation: registration.generation as u64,
-                connection: registration.connection,
+                connection: registration.connection(),
             })
         })
     }
@@ -293,7 +291,7 @@ fn unregister_generation(
     if policy.provision_identity_from_supervisor(identity, principal, roles).is_err() {
         return ns::ERR_NOT_FOUND;
     }
-    let Some(registration) = registry.get(&key).filter(|entry| entry.connection != 0) else {
+    let Some(registration) = registry.get(&key).filter(|entry| entry.connection() != 0) else {
         return ns::ERR_NOT_FOUND;
     };
     let Ok(current) = u64::try_from(registration.generation) else {
@@ -310,13 +308,9 @@ fn unregister_generation(
         return ns::ERR_NOT_FOUND;
     }
     let registration = registry.get_mut(&key).expect("validated registration vanished");
-    // Unique registry/owned-API boundary: detach the one raw registry owner
-    // before adoption. The tombstone retains its generation; no second adopter
-    // or raw cleanup may use this connection after this transfer.
-    let raw = core::mem::replace(&mut registration.connection, 0);
-    let connection = unsafe { catten_rt::owned::Connection::from_raw(raw) }
-        .unwrap_or_else(|_| catten_rt::domain_abort());
-    drop(connection); // Existing best-effort local close; no physical proof.
+    // Logical unpublication precedes disposal of the complete source/watch.
+    // Best-effort connection close does not prove physical quiescence.
+    drop(registration.publication.take());
     current as i64
 }
 
@@ -391,7 +385,7 @@ fn authorize_and_reply(
         unsafe { ipc_reply(reply, ns::ERR_NOT_FOUND) };
         return;
     };
-    if registration.connection == 0
+    if registration.connection() == 0
         || u64::try_from(registration.generation) != Ok(grant.service_generation)
     {
         record_denial(
@@ -409,7 +403,7 @@ fn authorize_and_reply(
     let status = unsafe {
         ipc_reply_connection(
             reply,
-            registration.connection,
+            registration.connection(),
             IpcRights::from_bits(grant.rights.bits()),
             registration.generation,
         )
@@ -473,7 +467,7 @@ fn authorize_grant_and_reply(
         unsafe { ipc_reply(reply, ns::ERR_NOT_FOUND) };
         return;
     };
-    if registration.connection == 0
+    if registration.connection() == 0
         || u64::try_from(registration.generation) != Ok(grant.service_generation)
     {
         record_denial(
@@ -494,7 +488,7 @@ fn authorize_grant_and_reply(
     let status = unsafe {
         ipc_reply_connection(
             reply,
-            registration.connection,
+            registration.connection(),
             delegated_rights,
             registration.generation,
         )
@@ -619,33 +613,39 @@ fn register(
     access_key: u64,
     ceiling: AuthorizationRights,
 ) -> i64 {
-    let close_connection = |connection: u64| {
-        if connection != 0 {
-            unsafe {
-                ipc_close(connection);
-            }
-        }
+    // Unique receive ABI boundary: this branch transfers the incoming
+    // connection once; no handler or raw cleanup uses it after adoption.
+    let Ok(connection) = (unsafe { catten_rt::owned::Connection::from_raw(connection) }) else {
+        return ns::ERR_INVALID;
     };
+    let replacing_live = registry.get(&key).is_some_and(|entry| entry.publication.is_some());
+    let live = registry.values().filter(|entry| entry.publication.is_some()).count();
+    if !catten_services::ns_publication::publication_admitted(live, replacing_live) {
+        return ns::ERR_INVALID;
+    }
     // Legacy replacement is registrant-bound: it may only replace an active
     // legacy entry created by the same stable principal. An entry published
     // through the authorized opcode can never be displaced or downgraded by
     // the legacy opcode; a service manager must unregister it first.
     if !authorized
-        && let Some(previous) = registry.get(&key).filter(|previous| previous.connection != 0)
+        && let Some(previous) = registry.get(&key).filter(|previous| previous.connection() != 0)
         && (previous.authorized || previous.registrar.is_none() || previous.registrar != registrar)
     {
-        close_connection(connection);
         return ns::ERR_ACCESS_DENIED;
     }
+    // Watch admission precedes every policy/registry mutation. Failure closes
+    // only this unused candidate and cannot displace the existing generation.
+    let publication = match catten_services::ns_publication::Publication::prepare(connection) {
+        Ok(publication) => publication,
+        Err((_connection, _error)) => return ns::ERR_INVALID,
+    };
     let binding = match policy.publish_service(publisher, &key, ceiling) {
         Ok(binding) if binding.generation != 0 => binding,
         _ => {
-            close_connection(connection);
             return ns::ERR_ACCESS_DENIED;
         }
     };
     let Ok(generation) = i64::try_from(binding.generation) else {
-        close_connection(connection);
         return ns::ERR_INVALID;
     };
     // Publishing the new entry is the replacement linearization point. Retire
@@ -653,20 +653,15 @@ fn register(
     let previous = registry.insert(
         key.clone(),
         Registration {
-            connection,
+            publication: Some(publication),
             generation,
             access_key,
             registrar,
             authorized,
         },
     );
-    if let Some(previous) = previous
-        && previous.connection != 0
-    {
-        unsafe {
-            ipc_close(previous.connection);
-        }
-    }
+    drop(previous); // Cancel the replaced watch before its source closes.
+    let connection = registry.get(&key).expect("published registration missing").connection();
 
     // Wake all callers only after the new generation is authoritative.
     for waiter in waitlist.fire(&key) {
@@ -752,7 +747,7 @@ fn lookup_or_defer(
     actor: Option<DomainIdentity>,
 ) {
     match registry.get(key) {
-        Some(registration) if registration.connection != 0 => {
+        Some(registration) if registration.connection() != 0 => {
             if registration.authorized {
                 deny_policy_published(policy, audit, key, actor, reply);
                 return;
@@ -761,7 +756,7 @@ fn lookup_or_defer(
                 unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
                 return;
             }
-            reply_connection_or_error(reply, registration.connection, registration.generation);
+            reply_connection_or_error(reply, registration.connection(), registration.generation);
         }
         _ => {
             // Defer: the event broker retains the reply token until the
@@ -793,18 +788,56 @@ fn try_lookup(
     actor: Option<DomainIdentity>,
 ) {
     match registry.get(key) {
-        Some(registration) if registration.connection != 0 && registration.authorized => {
+        Some(registration) if registration.connection() != 0 && registration.authorized => {
             deny_policy_published(policy, audit, key, actor, reply);
         }
-        Some(registration) if registration.connection != 0 && registration.access_key == 0 => {
-            reply_connection_or_error(reply, registration.connection, registration.generation);
+        Some(registration) if registration.connection() != 0 && registration.access_key == 0 => {
+            reply_connection_or_error(reply, registration.connection(), registration.generation);
         }
-        Some(registration) if registration.connection != 0 => unsafe {
+        Some(registration) if registration.connection() != 0 => unsafe {
             ipc_reply(reply, ns::ERR_ACCESS_DENIED);
         },
         _ => unsafe {
             ipc_reply(reply, ns::ERR_NOT_FOUND);
         },
+    }
+}
+
+/// Endpoint death is an internal NS producer, not caller retirement authority.
+/// Each hint is resolved through the watch retained with the current binding;
+/// removed/replaced watches cannot retire another generation under the name.
+fn retire_closed(
+    registry: &mut Registry,
+    policy: &mut PolicyStore,
+    own_identity: DomainIdentity,
+    entry: &catten_syscall::CqEntry,
+) {
+    use catten_services::ns_publication::Observation;
+    for (name, registration) in registry.iter_mut() {
+        let Some(publication) = registration.publication.as_mut() else {
+            continue;
+        };
+        match publication.observe(entry) {
+            Ok(Observation::Unrelated) => continue,
+            Ok(Observation::Pending) => return,
+            Ok(Observation::Closed) => {
+                let Ok(generation) = u64::try_from(registration.generation) else {
+                    catten_rt::domain_abort();
+                };
+                if policy.unpublish_service(own_identity, name, generation).is_err() {
+                    // Keep the complete registry transaction on uncertainty;
+                    // do not clear the connection or fabricate policy success.
+                    catten_rt::domain_abort();
+                }
+                drop(registration.publication.take());
+                catten_rt::logln!(
+                    "[ns] endpoint-death retired {:?} generation={generation}",
+                    core::str::from_utf8(name).ok()
+                );
+                return;
+            }
+            Err(_) => catten_rt::domain_abort(),
+        }
     }
 }
 
@@ -834,13 +867,37 @@ fn main(ctx: Context) -> ! {
     let mut audit = AuditLog::new(256).expect("invalid authorization audit capacity");
     let mut handled: u32 = 0;
 
+    // Context retains the launch-owned endpoint. Binding is readiness/config
+    // only; no borrowed Endpoint view exists yet, so do not adopt this handle.
+    if ipc_endpoint_bind_cq(endpoint, 0) != ipc_status::OK {
+        catten_rt::domain_abort();
+    }
+    let cq = ctx.completion_queue_layout();
     loop {
-        let message = ipc_recv_block(endpoint);
+        if ctx.lifecycle().shutdown_requested().is_some() {
+            // Readiness is not teardown completion. Preserve the registry and
+            // outstanding reply owners through terminal domain abort rather
+            // than acknowledge cooperative/physical cleanup or spin on this wake.
+            catten_rt::domain_abort();
+        }
+        while let Some(entry) = unsafe { cq_read(cq.base, cq.entries) } {
+            retire_closed(&mut registry, &mut policy, own_identity, &entry);
+        }
+        let message = ipc_recv(endpoint);
+        if message.status == ipc_status::NO_MESSAGE {
+            let (_, status) = cq_wait_checked(None, 0);
+            if status != completion_status::READY {
+                // Wait admission rejection is neither timeout nor cleanup
+                // completion. Keep the registry's owners through fail-closed abort.
+                catten_rt::domain_abort();
+            }
+            continue;
+        }
         if message.status == ipc_status::ENDPOINT_CLOSED {
             unsafe { thread_exit() };
         }
         if !message.is_ok() {
-            continue;
+            catten_rt::domain_abort();
         }
         handled += 1;
         config::write::<u32>(status::HANDLED, handled);
@@ -947,7 +1004,7 @@ fn main(ctx: Context) -> ! {
                 let key = scalar_key(message.arg0);
                 let current = registry
                     .get(&key)
-                    .filter(|registration| registration.connection != 0)
+                    .filter(|registration| registration.connection() != 0)
                     .map(|registration| registration.generation);
                 let actor = synchronize_sender(&mut policy, &message);
                 let is_manager = match &actor {
@@ -962,8 +1019,7 @@ fn main(ctx: Context) -> ! {
                             && policy.unpublish_service(actor, &key, generation as u64).is_ok() =>
                     {
                         let registration = registry.get_mut(&key).expect("registration vanished");
-                        ipc_close(registration.connection);
-                        registration.connection = 0;
+                        drop(registration.publication.take());
                         generation
                     }
                     _ => ns::ERR_NOT_FOUND,
