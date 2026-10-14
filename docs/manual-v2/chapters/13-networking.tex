@@ -165,12 +165,24 @@ advancing service generation; requests and replies carry it, and the target
 rejects stale generations before execution. Remote object-capability
 delegation remains future work.
 
+Invocation frames use tags \texttt{0x26/0x27}, complete 32-bit caller/name
+lengths bounded to 4 KiB each, and exact frame termination. Retired
+\texttt{0x10/0x11} frames reject. The caller prepares request bytes before
+publishing in-flight state, with its deadline captured beforehand. The target
+prepares the fixed reply buffer before admitting a local operation and retains
+it with that operation; result encoding uses the same allocation. A follower
+carries its original query deadline into invocation instead of restarting the
+budget, and rejects expired routing results before admission. The current
+scalar node-local lookup adapter rejects empty names, names above eight bytes,
+and trailing-zero names before lookup instead of invoking a shortened prefix.
+A memory-carried asynchronous lookup replacement remains pending.
+
 Registration uses two replicated phases. A \texttt{prepare} command allocates
 the next generation while keeping it invisible. After the owner publishes its
 node-local endpoint, a generation-fenced \texttt{activate} command makes the
 entry visible. Failed local publication leaves an inactive tombstone rather
-than a remotely resolvable ghost. Explicit unregistration is implemented;
-automatic unregistration after service death remains future work. The
+than a remotely resolvable ghost. Explicit unregistration and automatic
+endpoint-death retraction are implemented. The
 replicated tombstone must match the owning node and distributed generation, and
 local removal must match the generation captured before the proposal. A delayed
 operation therefore cannot remove a replacement instance.

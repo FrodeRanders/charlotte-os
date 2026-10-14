@@ -2026,6 +2026,20 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                         memory_close(memory);
                                         continue;
                                     }
+                                    // Prepare the result buffer before dedup admission or
+                                    // local lookup/invocation. Failure admits no operation;
+                                    // the requester retains its existing uncertain deadline.
+                                    let mut prepared_reply = match catten_services::rcall::PreparedReply::try_new(
+                                        session, call_id, target_generation,
+                                    ) {
+                                        Ok(reply) => Some(reply),
+                                        Err(error) => {
+                                            catten_rt::logln!("[dns] invocation reply preparation rejected: {:?}", error);
+                                            memory_unmap(memory);
+                                            memory_close(memory);
+                                            continue;
+                                        }
+                                    };
                                     let cached_result = completed_calls
                                         .iter()
                                         .find(|completed| {
@@ -2094,8 +2108,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                                 caller: caller.clone(),
                                                                 session,
                                                                 call_id,
-                                                                target_generation,
                                                                 peer: source_peer.clone(),
+                                                                reply: prepared_reply.take().unwrap(),
                                                             };
                                                         match begin_local_call(
                                                             ns_conn,
@@ -2111,7 +2125,11 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                                 pending_local_calls.push(call);
                                                                 None
                                                             }
-                                                            Err(result) => Some(result),
+                                                            Err((result, LocalCallDestination::Remote { reply, .. })) => {
+                                                                prepared_reply = Some(reply);
+                                                                Some(result)
+                                                            }
+                                                            Err(_) => unreachable!("remote invocation destination"),
                                                         }
                                                     }
                                                 }
@@ -2154,12 +2172,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                 dns::status::REMOTE_CALLS_SERVED,
                                                 remote_calls_served,
                                             );
-                                            let reply = catten_services::rcall::encode_reply(
-                                                session,
-                                                call_id,
-                                                target_generation,
-                                                result,
-                                            );
+                                            let reply = prepared_reply.take().unwrap().finish(result);
                                             transport.send_message(
                                                 &source_peer,
                                                 catten_services::rcall::TAG_REPLY,
@@ -2268,7 +2281,10 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             opcode,
                                             arg,
                                         } => {
-                                            let result = if status != 0 {
+                                            let result = if node.millis() >= query.deadline {
+                                                // Routing expired before any invocation admission.
+                                                Some(dns::ERR_NOT_LEADER)
+                                            } else if status != 0 {
                                                 Some(status)
                                             } else if let Some(entry) = entry {
                                                 if entry.node == node_name {
@@ -2282,16 +2298,14 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                             &name,
                                                             opcode,
                                                             arg,
-                                                            node.millis().saturating_add(
-                                                                REMOTE_CALL_TIMEOUT_MS,
-                                                            ),
+                                                            query.deadline,
                                                             LocalCallDestination::Client { reply },
                                                         ) {
                                                             Ok(call) => {
                                                                 pending_local_calls.push(call);
                                                                 None
                                                             }
-                                                            Err(result) => Some(result),
+                                                            Err((result, _)) => Some(result),
                                                         }
                                                     }
                                                 } else if in_flight_calls.len()
@@ -2309,31 +2323,26 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                                         let call_id = next_call_id;
                                                         next_call_id =
                                                             next_call_id.wrapping_add(1).max(1);
-                                                        in_flight_calls.push(InFlightCall {
-                                                            call_id,
-                                                            expected_peer: owner_str.clone(),
-                                                            expected_generation: entry.generation,
-                                                            reply,
-                                                            deadline: node.millis().saturating_add(
-                                                                REMOTE_CALL_TIMEOUT_MS,
-                                                            ),
-                                                        });
-                                                        let request =
-                                                            catten_services::rcall::encode_request(
-                                                                dns_session,
-                                                                call_id,
-                                                                &node_name,
-                                                                &name,
-                                                                entry.generation,
-                                                                opcode,
-                                                                arg,
-                                                            );
-                                                        transport.send_message(
-                                                            &owner_str,
-                                                            catten_services::rcall::TAG_REQUEST,
-                                                            request,
-                                                        );
-                                                        None
+                                                        let deadline = query.deadline;
+                                                        match catten_services::rcall::encode_request(
+                                                            dns_session, call_id, &node_name, &name,
+                                                            entry.generation, opcode, arg,
+                                                        ) {
+                                                            Ok(request) => {
+                                                                in_flight_calls.push(InFlightCall {
+                                                                    call_id,
+                                                                    expected_peer: owner_str.clone(),
+                                                                    expected_generation: entry.generation,
+                                                                    reply,
+                                                                    deadline,
+                                                                });
+                                                                transport.send_message(
+                                                                    &owner_str, catten_services::rcall::TAG_REQUEST, request,
+                                                                );
+                                                                None
+                                                            }
+                                                            Err(error) => Some(error.status()),
+                                                        }
                                                     }
                                                 }
                                             } else {
@@ -4166,7 +4175,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             pending_local_calls.push(call);
                                             continue;
                                         }
-                                        Err(result) => result,
+                                        Err((result, _)) => result,
                                     }
                                 }
                             }
@@ -4181,16 +4190,9 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                     } else {
                                         let call_id = next_call_id;
                                         next_call_id = next_call_id.wrapping_add(1).max(1);
-                                        in_flight_calls.push(InFlightCall {
-                                            call_id,
-                                            expected_peer: owner_str.clone(),
-                                            expected_generation: owner.generation,
-                                            reply: message.reply,
-                                            deadline: node
-                                                .millis()
-                                                .saturating_add(REMOTE_CALL_TIMEOUT_MS),
-                                        });
-                                        let frame = catten_services::rcall::encode_request(
+                                        let deadline =
+                                            node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS);
+                                        match catten_services::rcall::encode_request(
                                             dns_session,
                                             call_id,
                                             &node_name,
@@ -4198,13 +4200,24 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             owner.generation,
                                             opcode,
                                             arg,
-                                        );
-                                        transport.send_message(
-                                            &owner_str,
-                                            catten_services::rcall::TAG_REQUEST,
-                                            frame,
-                                        );
-                                        continue; // reply completes when the remote REPLY arrives
+                                        ) {
+                                            Ok(request) => {
+                                                in_flight_calls.push(InFlightCall {
+                                                    call_id,
+                                                    expected_peer: owner_str.clone(),
+                                                    expected_generation: owner.generation,
+                                                    reply: message.reply,
+                                                    deadline,
+                                                });
+                                                transport.send_message(
+                                                    &owner_str,
+                                                    catten_services::rcall::TAG_REQUEST,
+                                                    request,
+                                                );
+                                                continue; // only an accepted remote reply completes this call
+                                            }
+                                            Err(error) => error.status(),
+                                        }
                                     }
                                 } else {
                                     dns::ERR_NOT_FOUND

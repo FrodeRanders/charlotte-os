@@ -81,8 +81,8 @@ pub(super) fn drive_local_calls(
                 caller,
                 session,
                 call_id,
-                target_generation,
                 peer,
+                reply,
             } => {
                 // Reserve the reply ordinal here, in reply-send order, so the
                 // per-peer ACK count can identify this entry as settled even
@@ -104,12 +104,7 @@ pub(super) fn drive_local_calls(
                 transport.send_message(
                     &peer,
                     catten_services::rcall::TAG_REPLY,
-                    catten_services::rcall::encode_reply(
-                        session,
-                        call_id,
-                        target_generation,
-                        result,
-                    ),
+                    reply.finish(result),
                 );
             }
         }

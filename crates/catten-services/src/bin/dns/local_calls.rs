@@ -26,10 +26,16 @@ pub(super) fn begin_local_call(
     arg: i64,
     deadline: u64,
     destination: LocalCallDestination,
-) -> Result<PendingLocalCall, i64> {
+) -> Result<PendingLocalCall, (i64, LocalCallDestination)> {
+    // This raw asynchronous adapter still submits a scalar packed name.
+    // Until it owns memory-carried lookup state, reject names the scalar ABI
+    // cannot represent exactly instead of invoking an eight-byte prefix.
+    if name.is_empty() || name.len() > 8 || name.last() == Some(&0) {
+        return Err((dns::ERR_TOO_LARGE, destination));
+    }
     let lookup = ipc_scalar_call(ns_conn, ns::OP_TRY_LOOKUP, catten_services::name(name));
     if lookup == 0 {
-        return Err(dns::ERR_NOT_FOUND);
+        return Err((dns::ERR_NOT_FOUND, destination));
     }
     Ok(PendingLocalCall {
         completion: lookup,

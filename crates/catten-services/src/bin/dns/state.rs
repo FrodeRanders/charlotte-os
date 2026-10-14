@@ -34,8 +34,8 @@ pub(super) enum LocalCallDestination {
         caller: Vec<u8>,
         session: u64,
         call_id: u64,
-        target_generation: u64,
         peer: String,
+        reply: catten_services::rcall::PreparedReply,
     },
 }
 

@@ -1645,3 +1645,17 @@ follower read-barrier queries and invocation/generation fencing alongside exact
 signed variant pins; it does not inject every live query allocation/transport
 rejection. See [query relay](../reference/dns-query-relay.md) and its
 [batch evidence](../reports/audits/2026-10-14-protocol-simplification-dns-query-relay.md).
+
+### Generation-fenced DNS invocation controls
+
+The linked `--deploy-test` ARM/x86 pair uses invocation tags `0x26/0x27`.
+Host tests check complete bounded identities, strict request/fixed-reply framing,
+retired grammars, truncation, overflow and trailers, and that prepared reply
+completion preserves its original allocation and correlation. The target
+prepares reply storage before admitting a local operation; ordinary rejection
+returns that destination. Query-routed invocation retains its original deadline
+and rejects expired routing before admission. The packed local adapter rejects unrepresentable
+names before submission. These controls do not inject allocator exhaustion,
+all live transport failures or prove physical cleanup. See
+[the invocation contract](../reference/dns-invocation-relay.md) and
+[batch evidence](../reports/audits/2026-10-14-protocol-simplification-dns-invocation-relay.md).

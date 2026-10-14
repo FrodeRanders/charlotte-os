@@ -277,6 +277,15 @@ the corrected RPC polling paths, and the remaining notification gaps.
   expected peer/leader, session, query ID and generation checks. Rejected
   reply preparation sends no prefix or synthetic authority and permits no
   replay. See `docs/reference/dns-query-relay.md`.
+  DNS invocation uses 0x26/0x27 with full bounded identities and exact frames.
+  Prepare request bytes before in-flight publication with the original
+  deadline, and retain a prepared reply buffer in the existing local operation
+  before admission. Ordinary rejection returns that destination owner; result
+  encoding consumes the same buffer. Packed local lookup rejects names it
+  cannot represent exactly; never invoke a truncated prefix. Keep dedup ACK
+  fencing and uncertain timeout semantics. Carry the caller's query deadline
+  into invocation; reject an expired routing result before admission instead
+  of restarting its budget. See `docs/reference/dns-invocation-relay.md`.
   Application snapshot restore must return rejection without changing live
   state. Propagate that rejection before exposing a Raft node or publishing
   snapshot/log progress, membership or join completion; unsupported state is
