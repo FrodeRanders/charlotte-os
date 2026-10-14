@@ -2205,20 +2205,20 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                                             Ok(bytes) => (0, decode_query_result(&bytes)),
                                             Err(_) => (dns::ERR_NOT_LEADER, None),
                                         };
-                                    let reply = catten_services::rquery::encode_reply(
+                                    match catten_services::rquery::encode_reply(
                                         session,
                                         query_id,
                                         status,
                                         entry.as_ref().map_or(0, |value| value.generation),
-                                        entry
-                                            .as_ref()
-                                            .map_or(&[][..], |value| value.node.as_slice()),
-                                    );
-                                    transport.send_message(
-                                        &source_peer,
-                                        catten_services::rquery::TAG_REPLY,
-                                        reply,
-                                    );
+                                        entry.as_ref().map_or(&[][..], |value| value.node.as_slice()),
+                                    ) {
+                                        Ok(reply) => transport.send_message(
+                                            &source_peer, catten_services::rquery::TAG_REPLY, reply,
+                                        ),
+                                        // No partial response or retry. The caller retains its
+                                        // original correlated query and observation deadline.
+                                        Err(error) => catten_rt::logln!("[dns] query reply preparation rejected: {:?}", error),
+                                    }
                                 }
                             }
                             Some(catten_services::rquery::TAG_REPLY) => {
@@ -3902,27 +3902,32 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         } else {
                             let query_id = next_query_id;
                             next_query_id = next_query_id.wrapping_add(1).max(1);
-                            pending_queries.push(PendingQuery {
-                                query_id,
-                                expected_leader: leader.clone(),
-                                deadline: node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS),
-                                kind: PendingQueryKind::Lookup {
-                                    reply: message.reply,
-                                    name: name.clone(),
-                                },
-                            });
-                            let request = catten_services::rquery::encode_request(
+                            let deadline = node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS);
+                            match catten_services::rquery::encode_request(
                                 dns_session,
                                 query_id,
                                 &node_name,
                                 &name,
-                            );
-                            transport.send_message(
-                                &leader,
-                                catten_services::rquery::TAG_REQUEST,
-                                request,
-                            );
-                            continue;
+                            ) {
+                                Ok(request) => {
+                                    pending_queries.push(PendingQuery {
+                                        query_id,
+                                        expected_leader: leader.clone(),
+                                        deadline,
+                                        kind: PendingQueryKind::Lookup {
+                                            reply: message.reply,
+                                            name,
+                                        },
+                                    });
+                                    transport.send_message(
+                                        &leader,
+                                        catten_services::rquery::TAG_REQUEST,
+                                        request,
+                                    );
+                                    continue;
+                                }
+                                Err(error) => error.status(),
+                            }
                         }
                     };
                     if message.reply != 0 {
@@ -4112,29 +4117,34 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                         } else {
                             let query_id = next_query_id;
                             next_query_id = next_query_id.wrapping_add(1).max(1);
-                            pending_queries.push(PendingQuery {
-                                query_id,
-                                expected_leader: leader.clone(),
-                                deadline: node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS),
-                                kind: PendingQueryKind::Call {
-                                    reply: message.reply,
-                                    name: name.clone(),
-                                    opcode,
-                                    arg,
-                                },
-                            });
-                            let request = catten_services::rquery::encode_request(
+                            let deadline = node.millis().saturating_add(REMOTE_CALL_TIMEOUT_MS);
+                            match catten_services::rquery::encode_request(
                                 dns_session,
                                 query_id,
                                 &node_name,
                                 &name,
-                            );
-                            transport.send_message(
-                                &leader,
-                                catten_services::rquery::TAG_REQUEST,
-                                request,
-                            );
-                            continue;
+                            ) {
+                                Ok(request) => {
+                                    pending_queries.push(PendingQuery {
+                                        query_id,
+                                        expected_leader: leader.clone(),
+                                        deadline,
+                                        kind: PendingQueryKind::Call {
+                                            reply: message.reply,
+                                            name,
+                                            opcode,
+                                            arg,
+                                        },
+                                    });
+                                    transport.send_message(
+                                        &leader,
+                                        catten_services::rquery::TAG_REQUEST,
+                                        request,
+                                    );
+                                    continue;
+                                }
+                                Err(error) => error.status(),
+                            }
                         }
                     } else {
                         match linearizable_entry(&node, &name) {

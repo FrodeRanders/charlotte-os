@@ -271,6 +271,12 @@ the corrected RPC polling paths, and the remaining notification gaps.
   rows and reports unavailable catalogs as null. Consume the raw request once
   into an owned reply transaction before scalar fallback guards.
   See `docs/reference/dns-catalog.md`.
+  Correlated DNS queries use 0x24/0x25 and exact u32 identity lengths. Prepare
+  bounded request bytes before publishing pending state, carrying its original
+  deadline; return preparation rejection without a pending query. Preserve
+  expected peer/leader, session, query ID and generation checks. Rejected
+  reply preparation sends no prefix or synthetic authority and permits no
+  replay. See `docs/reference/dns-query-relay.md`.
   Application snapshot restore must return rejection without changing live
   state. Propagate that rejection before exposing a Raft node or publishing
   snapshot/log progress, membership or join completion; unsupported state is

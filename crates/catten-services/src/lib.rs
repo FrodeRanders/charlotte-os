@@ -2694,48 +2694,94 @@ pub mod rcall {
 /// state, because that state can be stale. The leader replies only after its
 /// Graft read barrier admits a linearizable query.
 pub mod rquery {
-    pub const TAG_REQUEST: u8 = 0x12;
-    pub const TAG_REPLY: u8 = 0x13;
+    // Tags 0x12/0x13 used lossy u8 identities; retired, never reinterpreted.
+    pub const TAG_REQUEST: u8 = 0x24;
+    pub const TAG_REPLY: u8 = 0x25;
+    /// Bounds transport metadata, independently of local publication policy.
+    /// The persisted node identity object is also bounded to one 4 KiB page.
+    pub const MAX_IDENTITY_BYTES: usize = 4096;
 
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub enum EncodeError {
+        InvalidIdentity,
+        TooLarge,
+        AllocationFailed,
+    }
+
+    impl EncodeError {
+        pub fn status(self) -> i64 {
+            match self {
+                Self::AllocationFailed => super::dns::ERR_RESOURCE_LIMIT,
+                Self::InvalidIdentity | Self::TooLarge => super::dns::ERR_TOO_LARGE,
+            }
+        }
+    }
+
+    fn identity_len(identity: &[u8], allow_empty: bool) -> Result<u32, EncodeError> {
+        if identity.is_empty() && !allow_empty {
+            return Err(EncodeError::InvalidIdentity);
+        }
+        if identity.len() > MAX_IDENTITY_BYTES {
+            return Err(EncodeError::TooLarge);
+        }
+        Ok(identity.len() as u32)
+    }
+
+    fn buffer(length: usize) -> Result<alloc::vec::Vec<u8>, EncodeError> {
+        let mut bytes = alloc::vec::Vec::new();
+        bytes.try_reserve_exact(length).map_err(|_| EncodeError::AllocationFailed)?;
+        Ok(bytes)
+    }
+
+    fn copy_identity(identity: &[u8], allow_empty: bool) -> Option<alloc::vec::Vec<u8>> {
+        identity_len(identity, allow_empty).ok()?;
+        let mut bytes = buffer(identity.len()).ok()?;
+        bytes.extend_from_slice(identity);
+        Some(bytes)
+    }
+
+    /// Encode the body without the tag; the transport prepends it.
     pub fn encode_request(
         session: u64,
         query_id: u64,
         caller: &[u8],
         name: &[u8],
-    ) -> alloc::vec::Vec<u8> {
-        let caller_len = caller.len().min(255);
-        let name_len = name.len().min(255);
-        let mut frame = alloc::vec::Vec::with_capacity(18 + caller_len + name_len);
+    ) -> Result<alloc::vec::Vec<u8>, EncodeError> {
+        let caller_len = identity_len(caller, false)?;
+        let name_len = identity_len(name, false)?;
+        let mut frame = buffer(24 + caller.len() + name.len())?;
         frame.extend_from_slice(&session.to_le_bytes());
         frame.extend_from_slice(&query_id.to_le_bytes());
-        frame.push(caller_len as u8);
-        frame.extend_from_slice(&caller[..caller_len]);
-        frame.push(name_len as u8);
-        frame.extend_from_slice(&name[..name_len]);
-        frame
+        frame.extend_from_slice(&caller_len.to_le_bytes());
+        frame.extend_from_slice(caller);
+        frame.extend_from_slice(&name_len.to_le_bytes());
+        frame.extend_from_slice(name);
+        Ok(frame)
     }
 
     pub type Request = (u64, u64, alloc::vec::Vec<u8>, alloc::vec::Vec<u8>);
 
+    /// Validate exact framing and identity bounds before fallible copies.
     pub fn decode_request(frame: &[u8]) -> Option<Request> {
-        if frame.len() < 19 {
+        if frame.first().copied()? != TAG_REQUEST {
             return None;
         }
-        let session = u64::from_le_bytes(frame[1..9].try_into().ok()?);
-        let query_id = u64::from_le_bytes(frame[9..17].try_into().ok()?);
-        let caller_len = frame[17] as usize;
-        let caller_off = 18;
-        if frame.len() < caller_off + caller_len + 1 {
+        let session = u64::from_le_bytes(frame.get(1..9)?.try_into().ok()?);
+        let query_id = u64::from_le_bytes(frame.get(9..17)?.try_into().ok()?);
+        let caller_len = u32::from_le_bytes(frame.get(17..21)?.try_into().ok()?) as usize;
+        let caller_end = 21usize.checked_add(caller_len)?;
+        let caller = frame.get(21..caller_end)?;
+        let name_start = caller_end.checked_add(4)?;
+        let name_len =
+            u32::from_le_bytes(frame.get(caller_end..name_start)?.try_into().ok()?) as usize;
+        let end = name_start.checked_add(name_len)?;
+        let name = frame.get(name_start..end)?;
+        if frame.len() != end {
             return None;
         }
-        let caller = frame[caller_off..caller_off + caller_len].to_vec();
-        let name_len_off = caller_off + caller_len;
-        let name_len = frame[name_len_off] as usize;
-        let name_off = name_len_off + 1;
-        if frame.len() != name_off + name_len {
-            return None;
-        }
-        Some((session, query_id, caller, frame[name_off..].to_vec()))
+        identity_len(caller, false).ok()?;
+        identity_len(name, false).ok()?;
+        Some((session, query_id, copy_identity(caller, false)?, copy_identity(name, false)?))
     }
 
     pub fn encode_reply(
@@ -2744,33 +2790,148 @@ pub mod rquery {
         status: i64,
         generation: u64,
         node: &[u8],
-    ) -> alloc::vec::Vec<u8> {
-        let node_len = node.len().min(255);
-        let mut frame = alloc::vec::Vec::with_capacity(33 + node_len);
+    ) -> Result<alloc::vec::Vec<u8>, EncodeError> {
+        // Empty owner/generation zero represent an ordinary missing result.
+        let node_len = identity_len(node, true)?;
+        let mut frame = buffer(36 + node.len())?;
         frame.extend_from_slice(&session.to_le_bytes());
         frame.extend_from_slice(&query_id.to_le_bytes());
         frame.extend_from_slice(&status.to_le_bytes());
         frame.extend_from_slice(&generation.to_le_bytes());
-        frame.push(node_len as u8);
-        frame.extend_from_slice(&node[..node_len]);
-        frame
+        frame.extend_from_slice(&node_len.to_le_bytes());
+        frame.extend_from_slice(node);
+        Ok(frame)
     }
 
     pub type Reply = (u64, u64, i64, u64, alloc::vec::Vec<u8>);
 
     pub fn decode_reply(frame: &[u8]) -> Option<Reply> {
-        if frame.len() < 34 {
+        if frame.first().copied()? != TAG_REPLY {
             return None;
         }
-        let session = u64::from_le_bytes(frame[1..9].try_into().ok()?);
-        let query_id = u64::from_le_bytes(frame[9..17].try_into().ok()?);
-        let status = i64::from_le_bytes(frame[17..25].try_into().ok()?);
-        let generation = u64::from_le_bytes(frame[25..33].try_into().ok()?);
-        let node_len = frame[33] as usize;
-        if frame.len() != 34 + node_len {
+        let session = u64::from_le_bytes(frame.get(1..9)?.try_into().ok()?);
+        let query_id = u64::from_le_bytes(frame.get(9..17)?.try_into().ok()?);
+        let status = i64::from_le_bytes(frame.get(17..25)?.try_into().ok()?);
+        let generation = u64::from_le_bytes(frame.get(25..33)?.try_into().ok()?);
+        let node_len = u32::from_le_bytes(frame.get(33..37)?.try_into().ok()?) as usize;
+        if frame.len() != 37usize.checked_add(node_len)? {
             return None;
         }
-        Some((session, query_id, status, generation, frame[34..].to_vec()))
+        let node = copy_identity(frame.get(37..)?, true)?;
+        Some((session, query_id, status, generation, node))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        fn tagged(tag: u8, body: &[u8]) -> alloc::vec::Vec<u8> {
+            [&[tag], body].concat()
+        }
+
+        #[test]
+        fn query_golden_framing_and_missing_result_are_exact() {
+            let request = encode_request(1, 2, b"n", b"a").unwrap();
+            let expected = b"\x01\0\0\0\0\0\0\0\x02\0\0\0\0\0\0\0\x01\0\0\0n\x01\0\0\0a";
+            assert_eq!(request, expected);
+            assert_eq!(
+                decode_request(&tagged(TAG_REQUEST, &request)),
+                Some((1, 2, b"n".to_vec(), b"a".to_vec()))
+            );
+            let reply = encode_reply(1, 2, 0, 7, b"n").unwrap();
+            assert_eq!(reply.len(), 37);
+            assert_eq!(&reply[32..], b"\x01\0\0\0n");
+            assert_eq!(decode_reply(&tagged(TAG_REPLY, &reply)), Some((1, 2, 0, 7, b"n".to_vec())));
+            for status in [0, super::super::dns::ERR_NOT_LEADER] {
+                let missing = encode_reply(1, 2, status, 0, b"").unwrap();
+                assert_eq!(
+                    decode_reply(&tagged(TAG_REPLY, &missing)),
+                    Some((1, 2, status, 0, alloc::vec::Vec::new()))
+                );
+            }
+        }
+
+        #[test]
+        fn query_full_identities_and_bounds_do_not_alias_prefixes() {
+            let mut first = alloc::vec![b'x'; MAX_IDENTITY_BYTES];
+            let mut second = first.clone();
+            first[MAX_IDENTITY_BYTES - 1] = b'a';
+            second[MAX_IDENTITY_BYTES - 1] = b'b';
+            for identity in [&first[..], &second[..]] {
+                let request = encode_request(3, 4, identity, identity).unwrap();
+                assert_eq!(
+                    decode_request(&tagged(TAG_REQUEST, &request)),
+                    Some((3, 4, identity.to_vec(), identity.to_vec()))
+                );
+                let reply = encode_reply(3, 4, 0, 9, identity).unwrap();
+                assert_eq!(
+                    decode_reply(&tagged(TAG_REPLY, &reply)),
+                    Some((3, 4, 0, 9, identity.to_vec()))
+                );
+            }
+            let oversized = alloc::vec![b'x'; MAX_IDENTITY_BYTES + 1];
+            assert_eq!(encode_request(1, 2, &oversized, b"a"), Err(EncodeError::TooLarge));
+            assert_eq!(encode_request(1, 2, b"n", &oversized), Err(EncodeError::TooLarge));
+            assert_eq!(encode_reply(1, 2, 0, 1, &oversized), Err(EncodeError::TooLarge));
+            let mut oversized_reply = encode_reply(1, 2, 0, 1, &first).unwrap();
+            oversized_reply.push(b'x');
+            oversized_reply[32..36]
+                .copy_from_slice(&((MAX_IDENTITY_BYTES + 1) as u32).to_le_bytes());
+            assert!(decode_reply(&tagged(TAG_REPLY, &oversized_reply)).is_none());
+            let mut oversized_request = encode_request(1, 2, b"n", &first).unwrap();
+            oversized_request.push(b'x');
+            oversized_request[21..25]
+                .copy_from_slice(&((MAX_IDENTITY_BYTES + 1) as u32).to_le_bytes());
+            assert!(decode_request(&tagged(TAG_REQUEST, &oversized_request)).is_none());
+            assert_eq!(encode_request(1, 2, b"", b"a"), Err(EncodeError::InvalidIdentity));
+            assert_eq!(encode_request(1, 2, b"n", b""), Err(EncodeError::InvalidIdentity));
+        }
+
+        #[test]
+        fn query_decoders_reject_retired_mistagged_incomplete_and_extended_frames() {
+            let request = tagged(TAG_REQUEST, &encode_request(3, 4, b"node", b"name").unwrap());
+            let reply = tagged(TAG_REPLY, &encode_reply(3, 4, 0, 9, b"node").unwrap());
+            for bytes in [&request, &reply] {
+                for end in 0..bytes.len() {
+                    assert!(decode_request(&bytes[..end]).is_none());
+                    assert!(decode_reply(&bytes[..end]).is_none());
+                }
+                let mut extended = bytes.clone();
+                extended.push(0);
+                assert!(decode_request(&extended).is_none());
+                assert!(decode_reply(&extended).is_none());
+                for tag in [0x12, 0x13, 0xff] {
+                    let mut retired = bytes.clone();
+                    retired[0] = tag;
+                    assert!(decode_request(&retired).is_none());
+                    assert!(decode_reply(&retired).is_none());
+                }
+            }
+            assert!(decode_request(&reply).is_none());
+            assert!(decode_reply(&request).is_none());
+            let mut invalid = request.clone();
+            invalid[17..21].copy_from_slice(&u32::MAX.to_le_bytes());
+            assert!(decode_request(&invalid).is_none());
+            let mut invalid = reply.clone();
+            invalid[33..37].copy_from_slice(&0u32.to_le_bytes());
+            assert!(decode_reply(&invalid).is_none());
+            // Complete former grammars cannot be upgraded by relabelling tags.
+            let mut old_request = alloc::vec![0x12];
+            old_request.extend_from_slice(&3u64.to_le_bytes());
+            old_request.extend_from_slice(&4u64.to_le_bytes());
+            old_request.extend_from_slice(b"\x04node\x04name");
+            let mut old_reply = alloc::vec![0x13];
+            old_reply.extend_from_slice(&3u64.to_le_bytes());
+            old_reply.extend_from_slice(&4u64.to_le_bytes());
+            old_reply.extend_from_slice(&0i64.to_le_bytes());
+            old_reply.extend_from_slice(&9u64.to_le_bytes());
+            old_reply.extend_from_slice(b"\x04node");
+            assert!(decode_request(&old_request).is_none());
+            assert!(decode_reply(&old_reply).is_none());
+            old_request[0] = TAG_REQUEST;
+            old_reply[0] = TAG_REPLY;
+            assert!(decode_request(&old_request).is_none());
+            assert!(decode_reply(&old_reply).is_none());
+        }
     }
 }
 

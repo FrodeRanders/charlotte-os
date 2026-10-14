@@ -1633,3 +1633,15 @@ repeated replica names, exact 64 KiB admission and rejection above that ceiling,
 retired untagged pages, inconsistent counts, truncation and trailing bytes.
 See [the current contract](../reference/dns-catalog.md). These are observation
 and existing typed-owner controls, not hardware/physical cleanup proofs.
+
+### Correlated DNS query relay controls
+
+The linked `--deploy-test` ARM/x86 pair uses current query tags `0x24/0x25`.
+Host controls preserve complete identities through 4 KiB, reject oversize
+writers/frames, complete retired u8 grammars, wrong tags, truncation, length
+overflow and trailing bytes. Requests prepare before pending publication,
+retaining one deadline and moving the original name. The mixed guest checks
+follower read-barrier queries and invocation/generation fencing alongside exact
+signed variant pins; it does not inject every live query allocation/transport
+rejection. See [query relay](../reference/dns-query-relay.md) and its
+[batch evidence](../reports/audits/2026-10-14-protocol-simplification-dns-query-relay.md).
