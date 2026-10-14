@@ -287,10 +287,6 @@ fn read_moved(
     Some(mapping.as_slice()[..len].to_vec())
 }
 
-fn u32_at(bytes: &[u8], offset: usize) -> Option<u32> {
-    Some(u32::from_le_bytes(bytes.get(offset..offset + 4)?.try_into().ok()?))
-}
-
 /// Convert a per-interval counter delta to a per-second integer rate.
 fn rate(delta: u32, interval_ms: u64) -> u64 {
     (delta as u64 * 1000).checked_div(interval_ms).unwrap_or(0)
@@ -947,37 +943,24 @@ fn render_history(s: &mut String, history: &HistoryReport) {
 }
 
 fn render_ns(s: &mut String, ns_conn: ConnectionRef<'_>) {
-    let Some(bytes) = read_moved(ns_conn, ns::OP_STATUS, 0, 4096) else {
+    use catten_services::ns_generation::snapshot;
+    let Some(bytes) = read_moved(ns_conn, ns::OP_STATUS, 0, snapshot::MAX_SNAPSHOT_LEN) else {
         s.push_str("\"ns\":null");
         return;
     };
-    let Some(magic) = u32_at(&bytes, ns::STATUS_OFFSET_MAGIC as usize * 4) else {
+    let Some(snapshot) = snapshot::decode(&bytes) else {
         s.push_str("\"ns\":null");
         return;
     };
-    let Some(registered) = u32_at(&bytes, ns::STATUS_OFFSET_REGISTERED as usize * 4) else {
-        s.push_str("\"ns\":null");
-        return;
-    };
-    let Some(pending) = u32_at(&bytes, ns::STATUS_OFFSET_PENDING as usize * 4) else {
-        s.push_str("\"ns\":null");
-        return;
-    };
-    if magic != ns::STATUS_MAGIC {
-        s.push_str("\"ns\":null");
-        return;
-    }
-    let _ =
-        write!(s, "\"ns\":{{\"registered\":{},\"pending\":{},\"services\":[", registered, pending);
-    let mut offset = ns::STATUS_HEADER_BYTES;
-    let mut emitted = 0u32;
-    while emitted < registered && offset < bytes.len() {
-        let name_len = bytes[offset] as usize;
-        let end = offset + 1 + name_len;
-        let Some(name) = bytes.get(offset + 1..end) else {
-            break;
-        };
-        if emitted > 0 {
+    let _ = write!(
+        s,
+        "\"ns\":{{\"registered\":{},\"pending\":{},\"services\":[",
+        snapshot.len(),
+        snapshot.pending()
+    );
+    for (index, record) in snapshot.records().enumerate() {
+        let name = record.name;
+        if index > 0 {
             s.push(',');
         }
         if name.iter().all(u8::is_ascii_graphic) {
@@ -989,8 +972,6 @@ fn render_ns(s: &mut String, ns_conn: ConnectionRef<'_>) {
             }
             s.push('"');
         }
-        offset = end;
-        emitted += 1;
     }
     s.push_str("]}");
 }

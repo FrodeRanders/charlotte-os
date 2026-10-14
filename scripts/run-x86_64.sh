@@ -697,7 +697,7 @@ if [ -n "$TIMEOUT" ]; then
             DEPLOY_LIVENESS_OK=0
             if python3 "${ROOT_DIR}/scripts/tests/test-http-keyhole-liveness.py" \
                 --port "$HTTP_HOST_PORT" --ready-log "$LOG" --wait-seconds 1 \
-                --require-dns-catalog \
+                --require-dns-catalog --require-ns-status \
                 && python3 "${ROOT_DIR}/scripts/tests/test-deployment-http-liveness.py" \
                     --port "$DEPLOY_HOST_PORT" --ready-log "$LOG"; then
                 DEPLOY_LIVENESS_OK=1

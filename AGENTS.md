@@ -280,6 +280,13 @@ the corrected RPC polling paths, and the remaining notification gaps.
   rows and reports unavailable catalogs as null. Consume the raw request once
   into an owned reply transaction before scalar fallback guards.
   See `docs/reference/dns-catalog.md`.
+  NS status uses complete bounded CNSSTAT1 records for all active publications,
+  excluding generation tombstones. Preserve full 256-byte names, exact row
+  counts and total retained lookup-request counts. Consume the complete incoming
+  transaction once and retain output memory/mapping with reply authority through
+  consuming publication. Reject retired NSST pages, partial/extended records,
+  duplicate/unsorted names and malformed attachments; HTTP renders unavailable
+  observations as null. See `docs/reference/name-service-status.md`.
   Correlated DNS queries use 0x24/0x25 and exact u32 identity lengths. Prepare
   bounded request bytes before publishing pending state, carrying its original
   deadline; return preparation rejection without a pending query. Preserve

@@ -24,7 +24,7 @@ mod inner {
     // ns opcodes.
     const NS_OP_LOOKUP: u32 = 2;
 
-    static mut HTTP_NS: Option<NameServiceHandle> = None;
+    static mut HTTP_NS: Option<(NameServiceHandle, crate::memory::AddressSpaceHandle)> = None;
 
     /// Poll a service status word until it reaches `min`, bounded by
     /// `timeout_ms`. Returns `false` (without failing the test) on timeout so
@@ -113,6 +113,167 @@ mod inner {
             .map(|reply| reply.cap.unwrap_or(0))
     }
 
+    fn verify_ns_status(ns: &NameServiceHandle, root: crate::memory::AddressSpaceHandle) {
+        use charlotte_protocol_ns::snapshot;
+
+        use crate::{
+            ipc,
+            memory::object,
+        };
+
+        let caller = root.id();
+        let kernel_ns = ipc::connection_delegate(
+            ns.domain.asid,
+            ns.endpoint_cap,
+            caller,
+            ipc::ConnectionRights::CALL,
+        )
+        .unwrap();
+
+        // Serialized kernel fixture ABI: the captured live test namespace owns this
+        // endpoint and every source through explicit post-observation disposal.
+        // Neither raw fixture IDs nor status bytes authorize physical cleanup.
+        fn finish(caller: crate::memory::AddressSpaceId, call: u64) -> crate::ipc::ReplyValue {
+            assert!(ipc::wait_reply_timeout(caller, call, 5_000).unwrap());
+            let reply = ipc::poll_reply(caller, call).unwrap().unwrap();
+            ipc::close_cap(caller, call).unwrap();
+            reply
+        }
+        fn scalar(
+            caller: crate::memory::AddressSpaceId,
+            kernel_ns: u64,
+            opcode: u32,
+            arg0: u64,
+        ) -> i64 {
+            let reply = finish(caller, ipc::scalar_call(caller, kernel_ns, opcode, arg0).unwrap());
+            assert!(reply.cap.is_none() && reply.memory.is_none());
+            reply.result
+        }
+        let endpoint = ipc::endpoint_create(caller, 0x5354_4154, 1, 1).unwrap();
+        let source =
+            ipc::connection_delegate(caller, endpoint, caller, ipc::ConnectionRights::ALL).unwrap();
+        let mut name = [b'x'; charlotte_protocol_ns::MAX_NAME_LEN];
+        let prefix = b"audit.ns.status.";
+        name[..prefix.len()].copy_from_slice(prefix);
+        let mut last_generation = 0;
+        for index in 0..17 {
+            name[255] = b'a' + index;
+            let memory = object::allocate_with_bytes(caller, &name).unwrap();
+            let reply = finish(
+                caller,
+                ipc::scalar_call_with_connection_copy(
+                    caller,
+                    kernel_ns,
+                    3,
+                    name.len() as u64,
+                    source,
+                    ipc::ConnectionRights::ALL,
+                    memory,
+                )
+                .unwrap(),
+            );
+            assert!(reply.result > 0 && reply.cap.is_none() && reply.memory.is_none());
+            last_generation = reply.result as u64;
+            object::close_cap(caller, memory).unwrap();
+        }
+        let retire = charlotte_protocol_ns::encode(
+            charlotte_protocol_ns::Action::Retire,
+            charlotte_protocol_ns::Request {
+                name: &name,
+                generation: last_generation,
+            },
+        )
+        .unwrap();
+        let memory = object::allocate_with_bytes(caller, &retire).unwrap();
+        let reply = finish(
+            caller,
+            ipc::scalar_call_with_memory_move(
+                caller,
+                kernel_ns,
+                charlotte_protocol_ns::OP_UNREGISTER_GENERATION,
+                retire.len() as u64,
+                memory,
+            )
+            .unwrap(),
+        );
+        assert_eq!(reply.result, last_generation as i64);
+        assert!(reply.cap.is_none() && reply.memory.is_none());
+
+        assert_eq!(scalar(caller, kernel_ns, 9, 1), -2);
+        let memory = object::allocate_with_bytes(caller, b"NSST").unwrap();
+        let reply = finish(
+            caller,
+            ipc::scalar_call_with_connection_copy(
+                caller,
+                kernel_ns,
+                9,
+                0,
+                source,
+                ipc::ConnectionRights::ALL,
+                memory,
+            )
+            .unwrap(),
+        );
+        assert_eq!(reply.result, -2);
+        assert!(reply.cap.is_none() && reply.memory.is_none());
+        assert!(!object::info(caller, memory).unwrap().lent);
+        object::close_cap(caller, memory).unwrap();
+
+        // Two accepted requests for the same missing name distinguish actual
+        // pending-request count from the retired distinct-name count.
+        let pending = [0; 2].map(|_| {
+            ipc::scalar_call(caller, kernel_ns, 2, u64::from_le_bytes(*b"statwait")).unwrap()
+        });
+        let reply = finish(caller, ipc::scalar_call(caller, kernel_ns, 9, 0).unwrap());
+        assert!(reply.cap.is_none());
+        let memory = reply.memory.unwrap();
+        let length = usize::try_from(reply.result).unwrap();
+        assert!((4097..=snapshot::MAX_SNAPSHOT_LEN).contains(&length));
+        let bytes = object::snapshot_bytes(caller, memory, length).unwrap();
+        let observation = snapshot::decode(&bytes).expect("complete current NS status");
+        assert!(observation.pending() >= 2);
+        let rows: alloc::vec::Vec<_> = observation.records().collect();
+        assert_eq!(observation.len(), rows.len());
+        assert_eq!(rows.iter().filter(|row| row.name.starts_with(prefix)).count(), 16);
+        for index in 0..16 {
+            name[255] = b'a' + index;
+            assert!(rows.iter().any(|row| row.name == name && row.generation > 0));
+        }
+        name[255] = b'q';
+        assert!(!rows.iter().any(|row| row.name == name), "retired row must be absent");
+        object::close_cap(caller, memory).unwrap();
+        let reply = finish(
+            caller,
+            ipc::scalar_call_with_connection(
+                caller,
+                kernel_ns,
+                1,
+                u64::from_le_bytes(*b"statwait"),
+                source,
+                ipc::ConnectionRights::ALL,
+            )
+            .unwrap(),
+        );
+        assert!(reply.result > 0 && reply.cap.is_none() && reply.memory.is_none());
+        for call in pending {
+            let reply = finish(caller, call);
+            assert!(reply.result > 0 && reply.memory.is_none());
+            ipc::close_cap(caller, reply.cap.unwrap()).unwrap();
+        }
+        ipc::close_cap(caller, source).unwrap();
+        ipc::close_cap(caller, kernel_ns).unwrap();
+        // Keep the live endpoint in the fixture's captured namespace so the host
+        // verifies the same full names in HTTP. Namespace teardown owns it.
+        logln!(
+            concat!(
+                "[http] CNSSTAT1 complete multi-page status: {} rows, ",
+                "16 full 256-byte names, retired row absent; ",
+                "pending requests and invalid attachments checked"
+            ),
+            rows.len()
+        );
+    }
+
     pub fn test_el0_http() {
         logln!("Testing EL0 HTTP keyhole (hardcoded state server)...");
 
@@ -120,7 +281,16 @@ mod inner {
         let ns_asid = name_service.domain.asid;
         logln!("[http] using node name service (asid={})", ns_asid);
 
-        unsafe { HTTP_NS = Some(name_service) };
+        // Opt-in trusted fixture preparation: a fresh ordinary root receives
+        // one stable test principal and no manager/admin role before the
+        // verifier publishes any requests. Existing boot policy is untouched.
+        let fixture = crate::service::loader::create_user_address_space_handle();
+        crate::memory::register_domain_authority(
+            fixture,
+            charlotte_launch::artifact_principal_id(b"ns-status-fixture"),
+            0,
+        );
+        unsafe { HTTP_NS = Some((name_service, fixture)) };
 
         let _vtid = crate::self_test::results::spawn_verifier(
             crate::self_test::results::TestId::Http,
@@ -132,7 +302,7 @@ mod inner {
     extern "C" fn verify_el0_http() {
         use crate::cpu::scheduler::yield_lp;
 
-        let ns = unsafe { HTTP_NS.as_ref() }.expect("[http] test state missing");
+        let (ns, fixture) = unsafe { HTTP_NS.as_ref() }.expect("[http] test state missing");
 
         let appliance = crate::service::launch::steady_state()
             .appliance
@@ -264,6 +434,7 @@ mod inner {
             deadline.assert_pending("EL0 http httpd listening");
             yield_lp();
         }
+        verify_ns_status(ns, *fixture);
         logln!("[http] httpd reached the listening stage.");
 
         logln!("[http] SUCCESS: httpd is listening on port 80; host may curl the hostfwd port.");

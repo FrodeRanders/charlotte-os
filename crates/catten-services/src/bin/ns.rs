@@ -66,7 +66,10 @@ use charlotte_authorization::{
 };
 use charlotte_launch::ns_status as status;
 
-const STATUS_SNAPSHOT_MAX: usize = 4096;
+#[path = "ns/status_snapshot.rs"]
+mod status_snapshot;
+
+const AUDIT_SNAPSHOT_MAX: usize = 4096;
 
 struct Registration {
     publication: Option<catten_services::ns_publication::Publication>,
@@ -555,7 +558,7 @@ fn write_audit_snapshot(audit: &AuditLog, base: usize) -> usize {
         else {
             break;
         };
-        if end > STATUS_SNAPSHOT_MAX || record.service.len() > u16::MAX as usize {
+        if end > AUDIT_SNAPSHOT_MAX || record.service.len() > u16::MAX as usize {
             break;
         }
         let principal = record.principal.map_or(0, PrincipalId::get);
@@ -1276,64 +1279,12 @@ fn main(ctx: Context) -> ! {
                 }
             }
             ns::OP_STATUS => {
-                let cap = memory_alloc(1);
-                if cap == 0 {
-                    if message.reply != 0 {
-                        unsafe { ipc_reply(message.reply, ns::ERR_BAD_OPCODE) };
-                    }
-                    continue;
-                }
-                let (status_scratch_map_status, status_scratch_vaddr) = memory_map_any(cap, true);
-                if status_scratch_map_status != 0 {
-                    memory_close(cap);
-                    if message.reply != 0 {
-                        unsafe { ipc_reply(message.reply, ns::ERR_BAD_OPCODE) };
-                    }
-                    continue;
-                }
-                let mut length = 0usize;
-                unsafe {
-                    core::ptr::write_volatile(
-                        (status_scratch_vaddr + ns::STATUS_OFFSET_MAGIC as usize * 4) as *mut u32,
-                        ns::STATUS_MAGIC,
-                    );
-                    core::ptr::write_volatile(
-                        (status_scratch_vaddr + ns::STATUS_OFFSET_REGISTERED as usize * 4)
-                            as *mut u32,
-                        registry.len() as u32,
-                    );
-                    core::ptr::write_volatile(
-                        (status_scratch_vaddr + ns::STATUS_OFFSET_PENDING as usize * 4) as *mut u32,
-                        waitlist.len() as u32,
-                    );
-                }
-                length += 12;
-                for key in registry.keys() {
-                    let name_len = key.len().min(255);
-                    if length + 1 + name_len > STATUS_SNAPSHOT_MAX {
-                        break;
-                    }
-                    unsafe {
-                        core::ptr::write_volatile(
-                            (status_scratch_vaddr + length) as *mut u8,
-                            name_len as u8,
-                        );
-                        core::ptr::copy_nonoverlapping(
-                            key.as_ptr(),
-                            (status_scratch_vaddr + length + 1) as *mut u8,
-                            name_len,
-                        );
-                    }
-                    length += 1 + name_len;
-                }
-                memory_unmap(cap);
-                if message.reply != 0 {
-                    if ipc_reply_move(message.reply, cap, length as i64) != 0 {
-                        memory_close(cap);
-                        ipc_reply(message.reply, ns::ERR_INVALID);
-                    }
-                } else {
-                    memory_close(cap);
+                // Unique receive boundary: this branch owns all attachments
+                // and reply authority before validating the observation.
+                if let Ok(Some(request)) =
+                    unsafe { catten_rt::owned::IncomingMessage::from_raw(message) }
+                {
+                    status_snapshot::reply_status(request, &registry, waitlist.waiter_count());
                 }
             }
             _ => {

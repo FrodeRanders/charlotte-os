@@ -2,6 +2,8 @@
 #![no_std]
 extern crate alloc;
 
+pub mod snapshot;
+
 pub const VERSION: u32 = 2;
 pub const MAGIC: &[u8; 8] = b"CNSGEN01";
 pub const HEADER_LEN: usize = 24;

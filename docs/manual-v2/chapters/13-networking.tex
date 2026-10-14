@@ -264,6 +264,18 @@ per request, so a missed startup publication is not permanent absence. The
 separate registered-count field remains status metadata.
 See \path{docs/reference/dns-catalog.md}.
 
+Local NS status uses the complete \texttt{CNSSTAT1} observation, bounded to
+17,176 bytes for all 64 supported active publications. Its fixed header carries
+the exact total length, active row count, and number of retained lookup requests;
+each row carries a full 1--256-byte name and positive generation. Tombstones
+are excluded, and multiple pending requests for one missing name count
+separately. Retired \texttt{NSST} pages, inconsistent counts, partial sets, and
+duplicate or unsorted names reject before rendering. NS owns the incoming
+transaction, output mapping, and consuming reply; HTTP reports invalid or
+unavailable observations as \texttt{ns:null} and preserves every identity byte.
+This diagnostic listing supplies no application authority or physical cleanup
+proof. See \path{docs/reference/name-service-status.md}.
+
 \subsection{Distributed objects}
 
 At the top of the stack, applications use the same \textbf{capability}

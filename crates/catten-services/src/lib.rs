@@ -240,10 +240,11 @@ pub mod ns {
     /// normally. Existing connections retain their normal endpoint lifetime.
     pub const OP_UNREGISTER: u32 = 8;
 
-    /// Reply moves a page snapshot of the registry: three little-endian u32
-    /// words (`STATUS_OFFSET_MAGIC/REGISTERED/PENDING`), then one record per
-    /// registered service of `[len:u8][name bytes]`. The scalar result is the
-    /// snapshot byte length.
+    /// Move one complete CNSSTAT1 active-publication snapshot (see
+    /// `ns_generation::snapshot`). Arg0 must be zero, with no attachments.
+    /// Reply result is the exact byte length; tombstones are excluded and
+    /// pending counts retained lookup requests. Invalid/allocation failure
+    /// returns ERR_INVALID instead of a partial observation.
     pub const OP_STATUS: u32 = 9;
     /// Unpublish the full name and nonzero generation in a mandatory moved
     /// CNSGEN01 record; arg0 is its exact byte length. A stale request returns
@@ -285,12 +286,6 @@ pub mod ns {
     /// This is naming metadata, like OP_STATUS, not application authority.
     pub const OP_PUBLICATION_GENERATION: u32 = charlotte_protocol_ns::OP_PUBLICATION_GENERATION;
 
-    pub const STATUS_OFFSET_MAGIC: u32 = 0;
-    pub const STATUS_OFFSET_REGISTERED: u32 = 1;
-    pub const STATUS_OFFSET_PENDING: u32 = 2;
-    pub const STATUS_HEADER_BYTES: usize = 3 * core::mem::size_of::<u32>();
-    /// `"NSST"` LE.
-    pub const STATUS_MAGIC: u32 = 0x5453_534e;
     /// `"AUA1"` little-endian, leading an authorization-audit snapshot.
     pub const AUDIT_MAGIC: u32 = 0x3141_5541;
 }

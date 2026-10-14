@@ -74,7 +74,6 @@ This is a source-backed starting inventory, not a completed whole-codebase audit
 | IPC readiness intermittence | Scheduled endpoint close / exit watch | S08b2c3's second mixed run timed out on the exact-generation worker exit watch; later Raft persistence errors followed. New exact-source/stage/live/staged diagnostics retain the original wait budget and completion requirement. The [bounded IPC investigation](../reports/audits/2026-10-14-ipc-close-exit-investigation.md) passes 192 distinct close/exit episodes across two mixed pairs, including all four LPs, without reproducing the failure. Passing repeats do not explain or close it. Investigate before claiming readiness/retirement qualification; see [retained evidence](../reports/audits/2026-10-14-protocol-simplification-dns-registration-relay.md). |
 | Remaining DMA contexts | Masked SVC / unmap / close / historical contention | Map/map-exclusive now borrow the existing root/claim/pin owner through fixed-slot admission in qualified IRQ-enabled scheduled contexts; real VT-d/SMMUv3 tests and both linked pairs pass. Masked ARM SVC still rejects busy waiting; unmap/close readiness, AMD-Vi runtime, wider pressure and exact attribution of the original NIC contender remain open. Diagnostics permit no replay. See [follow-up evidence](../reports/audits/2026-10-14-dma-map-readiness.md). |
 | External NS publication retirement | NS-owned persistent endpoint-death producer | Implemented: each publication owns its connection and exact close watch; event-only default-CQ readiness confirms the owned result before logical retirement. Replacement/stale hints cannot clear a new generation; caller principal checks remain. NS admits 64 live publications plus one replacement slot before thread publication. Wider raw adapters and physical cleanup remain separate. See [contract](name-service-generations.md) and [evidence](../reports/audits/2026-10-14-ns-endpoint-death.md). |
-| NS status snapshot | OP_STATUS u8 lengths / page prefix | Current writer clamps a valid 256-byte name to 255, stops at the page bound and retains a registry count rather than an exact encoded record count. Replace with one explicit bounded/tagged grammar and owned complete observation; update readers, fixtures and Markdown/LaTeX together. Do not claim current status is an exact complete catalog. |
 | S08b2c4 | Remaining formats / raw adapters | S08b2a removes Kafka authentication sections; S08b2b replaces the lossy DNS catalog dump and HTTP reader; S08b2c1/c2 replace query/invocation identities and framing. S08b2c3 replaces registration/retraction tags and removes the empty-resource service-registration fallback. S08b2c4a replaces client/local invocation with owned full-name CQ-bound calls; S08b2c4b replaces generation observation/retirement and raw cleanup handles. Replace remaining local packed-name and scalar/named entry points, operational release-tail representations, physical-address queries and mailbox word/capability APIs coherently with rejection before admission. Current releases with/without connector bindings and serialized boot fixtures need explicit replacements, not deletion by keyword. |
 
 A version number of 1 does not identify an obsolete protocol. Hardware interrupt
@@ -95,8 +94,9 @@ corrects deferred producer delivery before guard-free wait publication, followin
 the ARM/x86 IPC timeout recurrence. It changes no protocol grammar or runtime
 ABI and adds no replay/physical-release authority. Its deterministic negative
 control is separate from historical exact-exit and Raft persistence attribution,
-which remain open. Third-party NS endpoint-death readiness, raw receive/watch/
-transport ownership and the other recorded simplification candidates remain.
+which remain open. The NS endpoint-death follow-up below supplies the third-party
+publication producer; raw receive/watch/transport ownership and the other
+recorded simplification candidates remain.
 
 The [NS endpoint-death follow-up](../reports/audits/2026-10-14-ns-endpoint-death.md)
 implements the third-party local binding producer recorded in S08b2c4b. It
@@ -105,3 +105,14 @@ watches with one owning publication and shared-CQ intake. NS interface 2,
 CNSGEN01, runtime ABI 3 and persistence grammars remain unchanged; no caller
 retirement privilege is expanded. Raw request/reply/watch/transport adapters
 and historical failure attribution remain separate work.
+
+The NS status batch S08b2c4d replaces the lossy NSST page with one complete
+bounded CNSSTAT1 observation. Active rows preserve all 256 identity bytes and
+positive generations; exact row/request counts replace registry/tombstone and
+distinct-wait-name counts. The owning server transaction and whole-set HTTP
+reader reject partial, retired or malformed observations. See the
+[status contract](name-service-status.md) and
+[execution evidence](../reports/audits/2026-10-15-ns-status-snapshot.md).
+Remaining packed/public entry points and wider raw-adapter, metadata, IRQ/Drop
+and physical-cleanup contexts remain separate; historical IPC/persistence
+attribution stays open.

@@ -130,8 +130,11 @@ state aggregated across the node:
 - `meta` — wall-clock derived from the observe snapshot's monotonic counter:
   `uptime_ms`, `interval_ms` (time since the previous request), `counter_hz`
 - `node` — NIC MAC + link (`net::OP_STATUS`)
-- `ns` — the node-local name-service registry: registered-service catalog
-  and pending lookups (`ns::OP_STATUS`, via the bootstrap connection)
+- `ns` — the complete active local publication set and pending lookup-request
+  count (`ns::OP_STATUS`, via the bootstrap connection). The bounded `CNSSTAT1`
+  observation preserves full names and exact row counts, excludes tombstones
+  and renders unavailable/invalid snapshots as null. See
+  [name-service status](name-service-status.md).
 - `tcpip` — ip, rx/tx frames, open sockets, send errors, DHCP mode, gateway,
   MTU, SocketSet capacity, per-domain socket quota, and per-domain buffer
   quota (`socket::OP_STATUS`)
