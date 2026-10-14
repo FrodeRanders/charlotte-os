@@ -47,6 +47,17 @@ pub mod sync;
 pub mod system_scheduler;
 pub mod threads;
 
+/// Enter a guard-free park-publication interval. Flush this LP's admitted
+/// notifications before publishing Blocked: restoring IRQs can switch away
+/// before the subsequent yield, and the parked producer must not be needed to
+/// deliver the wake on which another worker depends. Keep the captured mask
+/// through registration/recheck, then release it before yielding.
+pub(crate) fn prepare_park() -> crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask {
+    let setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
+    deferred::drain();
+    setup
+}
+
 const SCHED_TRACE: bool = false;
 const REBALANCE_SAMPLE_MILLIS: u64 = 10;
 static LAST_REBALANCE_SAMPLE_MILLIS: AtomicU64 = AtomicU64::new(0);
@@ -366,6 +377,7 @@ pub(crate) fn sleep_with_event(duration: ExtDuration, timer_event: TimerEvent) {
             sleep_runnable(duration);
             return;
         };
+        deferred::drain();
         let admitted = SYSTEM_SCHEDULER
             .read()
             .block_thread_with_constraint(
@@ -520,9 +532,15 @@ pub(crate) fn try_block_until_with_constraint(
         if remaining == 0 {
             return Ok(condition());
         }
+        // Flush precursor delivery before Blocked publication; callbacks may
+        // consume time too, so preserve the original absolute deadline.
+        let setup = prepare_park();
+        let remaining = deadline.saturating_sub(monotonic_millis());
+        if remaining == 0 {
+            drop(setup);
+            return Ok(condition());
+        }
         timer_event.event_mut().reset_after(ExtDuration::from_millis(remaining as u128));
-        // Only Blocked publication, recheck and watchdog enqueue belong here.
-        let setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
         let generation = match SYSTEM_SCHEDULER
             .read()
             .block_thread_with_constraint_generation(tid, observable, constraint)
@@ -573,7 +591,7 @@ pub(crate) fn try_park_until(
             .lock()
             .get_tid()
             .ok_or(system_scheduler::Error::WaitRegistrationFailed)?;
-        let setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
+        let setup = prepare_park();
         let generation = SYSTEM_SCHEDULER
             .read()
             .block_thread_with_constraint_generation(tid, observable, constraint)

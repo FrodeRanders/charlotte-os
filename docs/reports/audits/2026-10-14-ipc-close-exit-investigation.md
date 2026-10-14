@@ -137,3 +137,13 @@ quiescence, a lost-wakeup cause, physical retry or permission to free backing.
 Exact artifact hashes and the other failed attempts are retained inline in the
 batch report. Earlier passing repeats remain historical evidence; the
 intermittence is now reproduced on both architectures and remains open.
+
+## Park-boundary follow-up
+
+The [deferred-delivery correction](2026-10-14-park-deferred-delivery.md) found
+and corrected a producer park-publication gap: its existing queued wake could
+remain undelivered when IRQ restoration preempted the producer before yield.
+A bounded negative control detects omitted delivery before waiter registration.
+This is a concrete source-ordering defect with separate execution evidence,
+not a captured causal trace of the earlier timeouts or later persistence errors.
+Those historical observations and physical-release qualification remain open.

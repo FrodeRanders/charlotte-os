@@ -796,6 +796,12 @@ the corrected RPC polling paths, and the remaining notification gaps.
   are not productive readiness and must not
   cause timer polling or physical retry. The 10 ms reaper backoff is confined
   to recorded waiter-admission rejection, never ordinary idle waiting.
+  A guard-free wait must flush its LP's pending deferred delivery before
+  publishing Blocked, under the local park-publication mask. Restoring IRQs
+  can switch the producer away before its subsequent yield; that yield must
+  not be the only path to a dependent worker's wake. Preserve the caller's
+  mask and recompute a timed wait's remaining absolute budget after delivery.
+  This flush is metadata/readiness delivery, never physical cleanup authority.
 - IOMMU backing uses `device::dma_tables::Tables` for domain roots/intermediates,
   SMMU descriptors and shared unit tables/queues/completion cells. Reserve actual
   pages before physical allocation, retain an exclusive owner through zeroing

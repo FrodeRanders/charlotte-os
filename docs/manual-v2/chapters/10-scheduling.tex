@@ -209,6 +209,16 @@ remain fenced and do not keep the worker runnable. Only rejected waiter
 admission uses the recorded 10\,ms backoff; readiness does not prove quiescence
 or authorize physical retry.
 
+Guard-free park setup drains the producer LP's pending deferred callbacks
+before publishing Blocked, under an IRQ-state-preserving local mask. Restoring
+IRQs can switch the producer away before its subsequent yield; that yield
+cannot be the only delivery path for a dependent worker's wake. Timed waits
+recompute the remaining absolute budget after delivery. Event-only waits,
+sleep and untimed completion waits preserve the same ordering. This dispatch
+supplies readiness and metadata disposal, never physical cleanup authority.
+The bounded negative control detects omitted precursor delivery; historical
+IPC exact-exit timeouts remain subject to separate causal verification.
+
 Explicit memory close likewise waits on an owned interest in the source
 transfer fence, retaining that transfer's captured root while parked. Its
 charged source and disposal node are prepared before memory-registry publication.

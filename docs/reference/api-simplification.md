@@ -78,3 +78,11 @@ Architecture-aware rollout now uses signed executable variants and exact per-rep
 S08b1 subsequently advances registration persistence to catalog-v18 and pair-v3;
 current contracts above reflect those tags, while historical reports retain
 their original observations.
+
+The [park-boundary follow-up](../reports/audits/2026-10-14-park-deferred-delivery.md)
+corrects deferred producer delivery before guard-free wait publication, following
+the ARM/x86 IPC timeout recurrence. It changes no protocol grammar or runtime
+ABI and adds no replay/physical-release authority. Its deterministic negative
+control is separate from historical exact-exit and Raft persistence attribution,
+which remain open. Third-party NS endpoint-death readiness, raw receive/watch/
+transport ownership and the other recorded simplification candidates remain.

@@ -1771,6 +1771,7 @@ pub fn wait(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
         SYSTEM_SCHEDULER.read().get_lp_scheduler().lock().get_tid().ok_or(CapError::UnknownCap)?;
 
     while !completion.is_terminal() {
+        let setup = crate::cpu::scheduler::prepare_park();
         let registration = SYSTEM_SCHEDULER.read().block_thread_with_constraint_generation(
             tid,
             completion.as_ref() as &dyn Observable,
@@ -1790,6 +1791,7 @@ pub fn wait(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
             }
             Err(_) => return Err(CapError::UnknownCap),
         }
+        drop(setup);
         yield_lp();
         // A competing wake is not proof that the producer has terminated.
     }

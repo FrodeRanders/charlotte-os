@@ -60,6 +60,15 @@ preserving IRQ state. This also prevents another LP from notifying while a
 producer still owns serialization. The fixed sources/transport carry no thread
 payload or recovery authority; existing retirement heads remain the sole custody.
 
+Guard-free park setup also drains that producer LP's pending delivery before
+publishing `Blocked`, under its IRQ-state-preserving publication mask. Otherwise
+restoring IRQs can switch the producer away before `yield_lp` runs, leaving a
+dependent worker's wake queued behind a parked producer. Timed readiness waits
+recompute their remaining absolute budget after callbacks; event-only waits,
+sleep and untimed completion waits share the delivery ordering. No subsystem
+guard is held during dispatch and no physical cleanup proof is supplied.
+See the [park-boundary correction](../reports/audits/2026-10-14-park-deferred-delivery.md).
+
 The post-registration check reads the durable exact head and repeats the
 off-stack/Arm ownership and unstarted-pair predicates. Publication before
 registration or notification is therefore not lost; the owned waker captures

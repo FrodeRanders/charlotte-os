@@ -100,3 +100,102 @@ pub(crate) fn drain() {
         source.release();
     }
 }
+
+/// A queued precursor must run before a wait installs its subscription, even
+/// when restoring the park mask could preempt the producer before yield.
+/// No watchdog saturation, physical cleanup or replacement wake is involved.
+pub(crate) fn test_park_delivery() {
+    use alloc::sync::{
+        Arc,
+        Weak,
+    };
+    use core::sync::atomic::AtomicUsize;
+
+    use crate::{
+        cpu::{
+            isa::lp::ops::get_int_state,
+            multiprocessor::interrupt_tracking::LocalInterruptMask,
+            scheduler::{
+                system_scheduler::{
+                    Error,
+                    get_thread_id,
+                },
+                threads::{
+                    MASTER_THREAD_TABLE,
+                    MigrationConstraint,
+                    ThreadState,
+                },
+            },
+        },
+        klib::observer::{
+            CallOnNotify,
+            Observable,
+            Observer,
+            WaitRegistration,
+            WaitSponsor,
+            registration::RegistrationError,
+            waiter_source::WaiterSource,
+        },
+    };
+
+    struct CheckedReject(Arc<AtomicUsize>);
+    impl Observable for CheckedReject {
+        fn try_register_waiter(
+            &self,
+            _: Weak<dyn Observer>,
+            _: &WaitSponsor,
+        ) -> Result<WaitRegistration, RegistrationError> {
+            assert_eq!(self.0.load(Ordering::Acquire), 1, "park stranded producer delivery");
+            Err(RegistrationError::ResourceLimit)
+        }
+    }
+
+    drain();
+    let tid = get_thread_id().unwrap();
+    let original_irq = get_int_state();
+    for masked in [false, true] {
+        for timed in [false, true] {
+            // Admit all callback/list storage before the fixture's local mask.
+            let source = WaiterSource::new();
+            let sponsor = WaitSponsor::new(false);
+            let hits = Arc::new(AtomicUsize::new(0));
+            let count = hits.clone();
+            let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+                assert!(!get_int_state(), "park delivery lost the publication mask");
+                // Reenter the table: delivery precedes registration's guards
+                // and Blocked publication, rather than depending on yield.
+                assert!(matches!(
+                    MASTER_THREAD_TABLE.write().get(tid).unwrap().state,
+                    ThreadState::Running(_)
+                ));
+                count.fetch_add(1, Ordering::Release);
+            });
+            let token = source.register(Arc::downgrade(&observer), &sponsor).unwrap();
+            let outer = masked.then(LocalInterruptMask::new);
+            let irq = get_int_state();
+            publish(source.drain(), None);
+            assert_eq!(hits.load(Ordering::Acquire), 0);
+            let checked = CheckedReject(hits.clone());
+            let result = if timed {
+                super::try_block_until(&checked, 5_000, || false).map(|_| ())
+            } else {
+                super::try_park_until(&checked, MigrationConstraint::GeneralWait, || false)
+            };
+            assert!(matches!(result, Err(Error::WaitRegistrationFailed)));
+            assert_eq!(get_int_state(), irq, "wait changed the enclosing IRQ policy");
+            assert_eq!(hits.load(Ordering::Acquire), 1);
+            assert_eq!(sponsor.used(), 0);
+            assert!(matches!(
+                MASTER_THREAD_TABLE.read().get(tid).unwrap().state,
+                ThreadState::Running(_)
+            ));
+            drop(token);
+            drop(outer);
+            assert_eq!(get_int_state(), original_irq);
+        }
+    }
+    crate::logln!(
+        "[scheduler park delivery] timed/event-only precursor delivery before registration, \
+         retaining nested IRQ masks and admission rejection passed"
+    );
+}
