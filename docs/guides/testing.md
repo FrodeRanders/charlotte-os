@@ -1695,3 +1695,16 @@ with guards released before logging. Its five-second budget and exact exit proof
 remain unchanged; missing records/return markers never authorize cleanup.
 Passing HTTP runs do not explain or close the intermittent failure; see the
 [separately retained failure](../reports/audits/2026-10-14-protocol-simplification-dns-registration-relay.md#second-linked-failure-ipc-worker-exit-readiness).
+
+### Repeated IPC close/exit controls
+
+The scheduled CQ fixture runs eight rounds of scalar-call and owned endpoint
+close across up to four LPs: 64 episodes on a four-LP guest. Each episode retains
+the original claim/roots and requires exact-generation worker exit before its
+explicit fixture root teardown. It retains the exact source interest for timeout
+diagnosis, including source closed/registered state and the worker phase. The
+five-second budgets remain; no return marker or missing snapshot proves cleanup.
+The one-ms registration sampling remains bounded fixture-only observation.
+Two mixed ARM/x86 runs passed 192 episodes in total without reproducing the
+historical timeout. That finding remains open; see
+[investigation evidence](../reports/audits/2026-10-14-ipc-close-exit-investigation.md).

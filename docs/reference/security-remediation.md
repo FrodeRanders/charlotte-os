@@ -580,3 +580,13 @@ timeout remains unresolved, with later Raft persistence errors retained and
 exact-generation diagnostics added without relaxing completion requirements.
 This changes no numbered finding status/count and grants no cleanup custody,
 physical completion or production trust qualification.
+
+
+The [IPC close/exit investigation](../reports/audits/2026-10-14-ipc-close-exit-investigation.md)
+extends the ordinary scheduled CQ regression to bounded repeated same/cross-LP
+real closes and exact-generation exit watches. The captured source interest and
+worker phase remain available for future timeout diagnosis. Two mixed ARM/x86
+pairs passed 192 episodes, but did not reproduce or establish the cause of the
+historical failure; that finding and numbered audit statuses remain unchanged.
+No production scheduler behavior, timeout, IRQ policy, custody or physical
+completion requirement changed.

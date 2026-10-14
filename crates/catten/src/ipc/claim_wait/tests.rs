@@ -228,19 +228,28 @@ enum Target {
 
 static TARGET: memory::Mutex<Option<Target>> = memory::Mutex::new(None);
 static RESULT: AtomicUsize = AtomicUsize::new(0);
+// Fixture progress only; no stage or return marker proves exit/quiescence.
+static WORKER_STAGE: AtomicUsize = AtomicUsize::new(0);
 const CLIENT: AddressSpaceId = 0x5d07;
 
 extern "C" fn close_worker() {
     let target = TARGET.lock().take().unwrap();
+    WORKER_STAGE.store(1, Ordering::Release);
     let result = match target {
         Target::Capability(asid, cap) => close_cap(asid, cap),
         Target::Endpoint(owner) => owner.finish_with_cleanup(
             memory::object::LoanRevocation::finish,
-            endpoint_close::wait_front,
+            |owner| {
+                WORKER_STAGE.store(2, Ordering::Release);
+                let result = endpoint_close::wait_front(owner);
+                WORKER_STAGE.store(3, Ordering::Release);
+                result
+            },
             attachments::release_one,
         ),
     };
     result.expect("scheduled IPC close failed");
+    WORKER_STAGE.store(4, Ordering::Release);
     RESULT.store(1, Ordering::Release);
 }
 
@@ -250,6 +259,7 @@ fn await_worker_exit(
     tid: crate::cpu::scheduler::threads::ThreadId,
     generation: crate::cpu::scheduler::threads::ThreadGeneration,
     watched: u64,
+    interest: &Interest,
 ) {
     if crate::completion::wait_timeout(CLIENT, watched, 5_000).unwrap() {
         return;
@@ -258,10 +268,18 @@ fn await_worker_exit(
         let table = MASTER_THREAD_TABLE.read();
         table.get(tid).ok().filter(|thread| thread.generation == generation).map(|thread| {
             let state = match thread.state {
-                ThreadState::Running(lp) => (1, Some(lp)),
-                ThreadState::Ready(lp) => (2, Some(lp)),
-                ThreadState::NeedsLpAssignment => (3, None),
-                ThreadState::Blocked(_) => (4, None),
+                ThreadState::Running(lp) => {
+                    (crate::cpu::scheduler::threads::ThreadStateKind::Running, Some(lp))
+                }
+                ThreadState::Ready(lp) => {
+                    (crate::cpu::scheduler::threads::ThreadStateKind::Ready, Some(lp))
+                }
+                ThreadState::NeedsLpAssignment => {
+                    (crate::cpu::scheduler::threads::ThreadStateKind::NeedsLpAssignment, None)
+                }
+                ThreadState::Blocked(_) => {
+                    (crate::cpu::scheduler::threads::ThreadStateKind::Blocked, None)
+                }
             };
             (state, thread.affinity_lp, thread.pinned_lp)
         })
@@ -269,13 +287,44 @@ fn await_worker_exit(
     let staged = crate::cpu::scheduler::threads::staged_retirement_snapshot(generation);
     crate::logln!(
         "[IPC claim readiness] exit timeout tid={tid} generation={generation} returned={} \
-         live={live:?} staged={staged:?}",
-        RESULT.load(Ordering::Acquire)
+         stage={} source_closed={} source_registered={} live={live:?} staged={staged:?}",
+        RESULT.load(Ordering::Acquire),
+        WORKER_STAGE.load(Ordering::Acquire),
+        interest.completed(),
+        interest.0.registered()
     );
     panic!("exact-generation IPC close worker exit did not complete");
 }
 
 pub(crate) fn scheduled() {
+    let producer_lp = crate::cpu::isa::lp::ops::get_lp_id();
+    let lp_count = crate::cpu::multiprocessor::get_lp_count();
+    let probe_lps = lp_count.min(4);
+    // Bounded repeated real claims, not allocator/watchdog saturation. Each
+    // episode requires exact exit and closes its original roots before the next.
+    for round in 0..8 {
+        for offset in 0..probe_lps {
+            let worker_lp = (producer_lp + offset) % lp_count;
+            crate::logln!(
+                "[IPC claim readiness] round={round} producer_lp={producer_lp} \
+                 worker_lp={worker_lp}"
+            );
+            scheduled_call(worker_lp);
+            scheduled_front(worker_lp);
+            crate::logln!(
+                "[IPC claim readiness] round={round} worker_lp={worker_lp} call and endpoint \
+                 roots closed after exact exit watches"
+            );
+        }
+    }
+    crate::logln!(
+        "[IPC claim readiness] {} scheduled claim/endpoint close episodes completed with exact \
+         exit watches",
+        8 * probe_lps * 2
+    );
+}
+
+fn scheduled_call(worker_lp: crate::cpu::isa::lp::LpId) {
     crate::completion::open_address_space(CLIENT, 4);
     let fixture = Fixture::new();
     let operation =
@@ -288,11 +337,8 @@ pub(crate) fn scheduled() {
     };
     *TARGET.lock() = Some(Target::Capability(fixture.caller.id(), fixture.call));
     RESULT.store(0, Ordering::Release);
-    let tid = scheduler::spawn_thread_on_lp(
-        KERNEL_ASID,
-        close_worker,
-        crate::cpu::isa::lp::ops::get_lp_id(),
-    );
+    WORKER_STAGE.store(0, Ordering::Release);
+    let tid = scheduler::spawn_thread_on_lp(KERNEL_ASID, close_worker, worker_lp);
     let generation = MASTER_THREAD_TABLE.read().get(tid).unwrap().generation;
     let watched =
         crate::completion::observe_thread_exit_with_generation(CLIENT, tid, Some(generation))
@@ -314,21 +360,17 @@ pub(crate) fn scheduled() {
         memory::close_user_address_space_handle(fixture.caller),
         Err(AddressSpaceCloseError::OperationsInFlight)
     );
+    let interest = IPC.read().reply_tokens[&token].claim_interest.as_ref().unwrap().interest();
     operation.finish_with(|_| panic!("scalar claim has loans")).unwrap();
-    await_worker_exit(tid, generation, watched);
+    await_worker_exit(tid, generation, watched, &interest);
     assert_eq!(RESULT.load(Ordering::Acquire), 1);
     crate::completion::close(CLIENT, watched).unwrap();
     crate::completion::close_address_space(CLIENT);
     crate::capability::close_address_space(CLIENT);
     fixture.close();
-    scheduled_front();
-    crate::logln!(
-        "[IPC claim readiness] scheduled call and owned endpoint closers parked on exact \
-         cancellation claims; completion woke both and their roots closed"
-    );
 }
 
-fn scheduled_front() {
+fn scheduled_front(worker_lp: crate::cpu::isa::lp::LpId) {
     crate::completion::open_address_space(CLIENT, 4);
     let caller = crate::service::loader::create_user_address_space_handle();
     let server = crate::service::loader::create_user_address_space_handle();
@@ -351,11 +393,8 @@ fn scheduled_front() {
     };
     *TARGET.lock() = Some(Target::Endpoint(owner));
     RESULT.store(0, Ordering::Release);
-    let tid = scheduler::spawn_thread_on_lp(
-        KERNEL_ASID,
-        close_worker,
-        crate::cpu::isa::lp::ops::get_lp_id(),
-    );
+    WORKER_STAGE.store(0, Ordering::Release);
+    let tid = scheduler::spawn_thread_on_lp(KERNEL_ASID, close_worker, worker_lp);
     let generation = MASTER_THREAD_TABLE.read().get(tid).unwrap().generation;
     let watched =
         crate::completion::observe_thread_exit_with_generation(CLIENT, tid, Some(generation))
@@ -379,8 +418,9 @@ fn scheduled_front() {
             Err(AddressSpaceCloseError::OperationsInFlight)
         );
     }
+    let interest = IPC.read().reply_tokens[&token].claim_interest.as_ref().unwrap().interest();
     operation.finish_with(memory::object::LoanRevocation::finish).unwrap();
-    await_worker_exit(tid, generation, watched);
+    await_worker_exit(tid, generation, watched, &interest);
     assert_eq!(RESULT.load(Ordering::Acquire), 1);
     crate::completion::close(CLIENT, watched).unwrap();
     crate::completion::close_address_space(CLIENT);
