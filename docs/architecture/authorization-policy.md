@@ -14,27 +14,20 @@ policy service possible without making names themselves authoritative.
 
 The kernel already provides useful enforcement foundations:
 
-- The explicit authenticated IPC receive ABI identifies the immediate sender
-  with a kernel-supplied exact address-space generation, stable principal, and
-  role bits captured when the message is queued. Legacy receive syscalls keep
-  their original register contract and omit this metadata.
+- Every IPC receive uses one authenticated twelve-register ABI, identifying
+  the immediate sender with the kernel-captured exact address-space generation,
+  stable principal and role bits. There is no metadata-free receive fallback.
 - Connections carry `SEND`, `CALL`, and `MINT_CONNECTION` rights.
 - Delegation can attenuate a connection to `SEND | CALL`.
 - The local and distributed name catalogs retain service generations and fence
   stale lifecycle operations.
 
-The local name service also has `OP_REGISTER_KEYED` and `OP_LOOKUP_KEYED`.
-That mechanism is an interim bearer-key gate, not a realistic authorization
-policy:
-
-- the service publisher chooses one reusable 64-bit secret;
-- possession of the value, rather than a principal identity, grants access;
-- rules cannot express different rights for different callers;
-- policy administration is not a separately authorized operation;
-- the rule has no revision, durable history, or useful audit identity;
-- key replacement and service replacement are not one explicitly fenced
-  authorization transaction; and
-- the distributed catalog does not replicate a production authorization rule.
+The interim bearer-key name-service gate has been removed. Opcodes 5 and 6
+reject as unsupported without interpreting their payloads; the key field,
+SDK exports and permissive key-memory decoder no longer exist. Public bootstrap
+naming remains separate from application authorization and cannot resolve or
+replace a policy-published entry. See the
+[removal evidence](../reports/audits/2026-10-15-ns-bearer-removal.md).
 
 The raw sender ASID is suitable for authenticating the immediate IPC hop, but
 not as a durable policy identity. Numeric address spaces may be recycled and a
@@ -64,11 +57,11 @@ same exact `DomainIdentity`, and stale ASID generations are rejected rather
 than being rebound. `OP_UNREGISTER` requires the service-manager role.
 `OP_UNREGISTER_GENERATION` is restricted to the stable principal recorded when
 the registration was created, or a service-manager caller, so ordinary clients
-cannot retire names they did not publish. Legacy registration (`OP_REGISTER*`)
-remains available for compatibility, but it may only replace an active entry
+cannot retire names they did not publish. Public bootstrap registration (`OP_REGISTER`/`OP_REGISTER_NAMED`)
+may only replace an active entry
 created by the same stable principal, and it can never displace an entry
 published through the authorized opcode. A service that self-registers through
-the legacy path therefore cannot be hijacked by another domain, while
+the public bootstrap path therefore cannot be hijacked by another domain, while
 authorized publications stay authoritative.
 
 Authorization decisions and delegation failures enter a bounded FIFO audit
@@ -76,10 +69,9 @@ stream containing sequence, exact caller identity, stable principal, service,
 requested/granted rights, service generation, and policy version. Audit
 sequence exhaustion fails closed before issuance; `OP_AUTH_AUDIT` is restricted
 to policy administrators. Policy and audit state remain volatile, and the
-distributed catalog does not yet replicate policy. The legacy public and
-bearer-key opcodes remain available for compatibility and are explicitly not
-an authorization boundary; security-sensitive clients must use the authorized
-opcodes.
+distributed catalog does not yet replicate policy. Public bootstrap naming is
+not a principal authorization boundary; security-sensitive clients use the
+authorized opcodes. Retired bearer-key operations have no fallback.
 
 ## Proposed contract
 
@@ -213,8 +205,8 @@ outside this first model and are not implicit claims.
 
 ## Remaining implementation sequence
 
-1. Migrate security-sensitive clients from the public/bearer-key compatibility
-   opcodes to explicit principal rules and authorized lookup.
+1. Keep security-sensitive clients on explicit principal rules and authorized
+   lookup; public bootstrap naming supplies no application policy authority.
 2. Persist or replicate policy and audit state with generation/version fencing;
    Raft agreement must not replace caller authentication.
 3. Separate administration and service-management assignments when deployment

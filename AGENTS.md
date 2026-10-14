@@ -308,6 +308,13 @@ the corrected RPC polling paths, and the remaining notification gaps.
   rejected binding retains accepted work through abort, never timer polling or
   replay. NS connection close is best-effort logical teardown, never physical
   proof. A lookup of a third-party publication grants no retirement authority;
+  NS bearer-key opcodes 5/6 are retired; do not restore key storage, exported
+  entry points or a missing/malformed-key-to-public fallback. Unsupported
+  requests adopt their complete incoming transaction once before rejection.
+  Public bootstrap naming remains separate from application policy: immediate
+  and deferred public lookup cannot grant a policy-published service, and a
+  public registration cannot displace it. Security fixtures use CNSGEN01 for
+  metadata, retaining explicit rejection controls for earlier shapes.
   NS registrations retain an owned connection and persistent endpoint-death
   completion together. Admit the watch before policy/registry mutation and
   cancel it before source disposal. NS waits event-only on its request endpoint

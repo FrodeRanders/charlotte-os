@@ -959,8 +959,9 @@ cluster service by running the registry as a `StateMachine` on top of Raft:
 - Service generations — replicated consistently; a restart on node 3
   cannot create a split-brain where node 1 sees generation 5 and node 2
   sees generation 3
-- Access keys (`OP_REGISTER_KEYED`) — enforced consistently across the
-  cluster; revocation propagates through the replicated log
+- Authorization remains a separate principal/rights policy boundary. The
+  retired NS bearer-key operations 5/6 reject; catalog replication does not
+  create principal policy or grant namespace administration rights.
 
 Each owning DNS process retains a kernel completion watch on the local service
 connection. Endpoint closure signals that completion; the raw watch/CQ

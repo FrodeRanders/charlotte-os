@@ -9,9 +9,9 @@
 //! OP_REGISTER, all waiting callers receive their connections. No polling,
 //! no retry loops — the caller's future resolves when the service appears.
 //!
-//! `OP_REGISTER_KEYED`/`OP_LOOKUP_KEYED` remain a quarantined compatibility
-//! gate. Production callers use the explicit-rights authorization operations,
-//! whose subject identity and roles come only from the kernel IPC envelope.
+//! Public bootstrap naming and explicit-rights authorization are separate
+//! operations. Subject identity and roles come only from the kernel envelope;
+//! retired bearer-key opcodes are unsupported.
 #![no_std]
 #![no_main]
 
@@ -71,15 +71,14 @@ const STATUS_SNAPSHOT_MAX: usize = 4096;
 struct Registration {
     publication: Option<catten_services::ns_publication::Publication>,
     generation: i64,
-    access_key: u64,
     /// Stable principal of the domain that created the registration, when the
     /// kernel-authenticated envelope supplied one. Only this principal (or a
     /// service manager) may request retirement. NS's owned endpoint-death
     /// producer independently retires its exact current publication.
     registrar: Option<PrincipalId>,
     /// Whether this entry was published through the authorized opcode and has
-    /// a matching `PolicyStore` binding. Legacy publication is a separate
-    /// compatibility namespace that authorized lookups must not resolve.
+    /// a matching `PolicyStore` binding. Public bootstrap publication is a
+    /// separate namespace that authorized lookups must not resolve.
     authorized: bool,
 }
 
@@ -112,9 +111,8 @@ fn publication_generation(
 
 #[derive(Debug)]
 enum PendingLookup {
-    Legacy {
+    Public {
         reply: u64,
-        access_key: u64,
         /// Kernel-authenticated caller identity when available, retained so a
         /// deferred denial of a policy-published registration can be audited.
         actor: Option<DomainIdentity>,
@@ -151,10 +149,8 @@ impl catten_services::broker::Catalog for RegistryCatalog<'_> {
         })
     }
 }
-/// Deferred lookups: name → reply token and the interim bearer key supplied by
-/// its caller. Retaining the key is necessary because registration may
-/// establish the gate after the lookup has blocked. The waitlist is the
-/// service's *event-broker* face; the registry is its *catalog* face (see
+/// Deferred lookups retain the reply and captured caller identity. The waitlist
+/// is the service's *event-broker* face; the registry is its *catalog* face (see
 /// `catten_services::broker`).
 type Waitlist = catten_services::broker::KeyedWaitlist<PendingLookup>;
 
@@ -610,7 +606,6 @@ fn register(
     registrar: Option<PrincipalId>,
     key: Vec<u8>,
     connection: u64,
-    access_key: u64,
     ceiling: AuthorizationRights,
 ) -> i64 {
     // Unique receive ABI boundary: this branch transfers the incoming
@@ -623,10 +618,10 @@ fn register(
     if !catten_services::ns_publication::publication_admitted(live, replacing_live) {
         return ns::ERR_INVALID;
     }
-    // Legacy replacement is registrant-bound: it may only replace an active
-    // legacy entry created by the same stable principal. An entry published
+    // Public replacement is registrant-bound: it may only replace an active
+    // public entry created by the same stable principal. An entry published
     // through the authorized opcode can never be displaced or downgraded by
-    // the legacy opcode; a service manager must unregister it first.
+    // a public opcode; a service manager must unregister it first.
     if !authorized
         && let Some(previous) = registry.get(&key).filter(|previous| previous.connection() != 0)
         && (previous.authorized || previous.registrar.is_none() || previous.registrar != registrar)
@@ -655,7 +650,6 @@ fn register(
         Registration {
             publication: Some(publication),
             generation,
-            access_key,
             registrar,
             authorized,
         },
@@ -666,15 +660,12 @@ fn register(
     // Wake all callers only after the new generation is authoritative.
     for waiter in waitlist.fire(&key) {
         match waiter {
-            PendingLookup::Legacy {
+            PendingLookup::Public {
                 reply,
-                access_key: caller_key,
                 actor,
             } => {
                 if authorized {
                     deny_policy_published(policy, audit, &key, actor, reply);
-                } else if access_key != 0 && access_key != caller_key {
-                    unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
                 } else {
                     reply_connection_or_error(reply, connection, generation);
                 }
@@ -708,13 +699,13 @@ fn register(
 
 /// The kernel-authenticated caller identity for audit, when the envelope
 /// supplies a valid asid/generation pair.
-fn legacy_actor(message: &IpcMessage) -> Option<DomainIdentity> {
+fn public_actor(message: &IpcMessage) -> Option<DomainIdentity> {
     DomainIdentity::new(message.sender, message.sender_generation)
 }
 
-/// A legacy opcode may not resolve a registration published through the
+/// A public opcode may not resolve a registration published through the
 /// policy-mediated opcode. The denial is audited when the caller identity is
-/// available; legacy lookups remain outside the authorization boundary.
+/// available; public lookups remain outside the authorization boundary.
 fn deny_policy_published(
     policy: &PolicyStore,
     audit: &mut AuditLog,
@@ -743,17 +734,12 @@ fn lookup_or_defer(
     waitlist: &mut Waitlist,
     key: &[u8],
     reply: u64,
-    caller_key: u64,
     actor: Option<DomainIdentity>,
 ) {
     match registry.get(key) {
         Some(registration) if registration.connection() != 0 => {
             if registration.authorized {
                 deny_policy_published(policy, audit, key, actor, reply);
-                return;
-            }
-            if registration.access_key != 0 && registration.access_key != caller_key {
-                unsafe { ipc_reply(reply, ns::ERR_ACCESS_DENIED) };
                 return;
             }
             reply_connection_or_error(reply, registration.connection(), registration.generation);
@@ -767,9 +753,8 @@ fn lookup_or_defer(
             } else {
                 let _ = waitlist.park(
                     key,
-                    PendingLookup::Legacy {
+                    PendingLookup::Public {
                         reply,
-                        access_key: caller_key,
                         actor,
                     },
                     &RegistryCatalog(registry),
@@ -791,12 +776,9 @@ fn try_lookup(
         Some(registration) if registration.connection() != 0 && registration.authorized => {
             deny_policy_published(policy, audit, key, actor, reply);
         }
-        Some(registration) if registration.connection() != 0 && registration.access_key == 0 => {
+        Some(registration) if registration.connection() != 0 => {
             reply_connection_or_error(reply, registration.connection(), registration.generation);
         }
-        Some(registration) if registration.connection() != 0 => unsafe {
-            ipc_reply(reply, ns::ERR_ACCESS_DENIED);
-        },
         _ => unsafe {
             ipc_reply(reply, ns::ERR_NOT_FOUND);
         },
@@ -919,32 +901,6 @@ fn main(ctx: Context) -> ! {
                         PrincipalId::new(message.sender_principal),
                         scalar_key(message.arg0),
                         message.connection,
-                        0,
-                        AuthorizationRights::CLIENT,
-                    )
-                };
-                if message.reply != 0 {
-                    unsafe {
-                        ipc_reply(message.reply, result);
-                    }
-                }
-            }
-            ns::OP_REGISTER_KEYED => {
-                let access_key = unsafe { ns::read_access_key(message.memory) };
-                let result = if message.connection == 0 {
-                    ns::ERR_INVALID
-                } else {
-                    register(
-                        &mut registry,
-                        &mut waitlist,
-                        &mut policy,
-                        &mut audit,
-                        own_identity,
-                        false,
-                        PrincipalId::new(message.sender_principal),
-                        scalar_key(message.arg0),
-                        message.connection,
-                        access_key,
                         AuthorizationRights::CLIENT,
                     )
                 };
@@ -967,7 +923,6 @@ fn main(ctx: Context) -> ! {
                         PrincipalId::new(message.sender_principal),
                         key,
                         connection,
-                        0,
                         AuthorizationRights::CLIENT,
                     ),
                     (_, connection) => {
@@ -996,8 +951,7 @@ fn main(ctx: Context) -> ! {
                     &mut waitlist,
                     &scalar_key(message.arg0),
                     message.reply,
-                    0,
-                    legacy_actor(&message),
+                    public_actor(&message),
                 );
             }
             ns::OP_UNREGISTER => {
@@ -1051,25 +1005,9 @@ fn main(ctx: Context) -> ! {
                         &registry,
                         &scalar_key(message.arg0),
                         message.reply,
-                        legacy_actor(&message),
+                        public_actor(&message),
                     );
                 }
-            }
-            ns::OP_LOOKUP_KEYED => {
-                if message.reply == 0 {
-                    continue;
-                }
-                let caller_key = unsafe { ns::read_access_key(message.memory) };
-                lookup_or_defer(
-                    &policy,
-                    &mut audit,
-                    &registry,
-                    &mut waitlist,
-                    &scalar_key(message.arg0),
-                    message.reply,
-                    caller_key,
-                    legacy_actor(&message),
-                );
             }
             ns::OP_LOOKUP_NAMED => {
                 let key = read_named_key(&message);
@@ -1084,8 +1022,7 @@ fn main(ctx: Context) -> ! {
                         &mut waitlist,
                         &key,
                         message.reply,
-                        0,
-                        legacy_actor(&message),
+                        public_actor(&message),
                     ),
                     None => unsafe {
                         ipc_reply(message.reply, ns::ERR_INVALID);
@@ -1102,7 +1039,7 @@ fn main(ctx: Context) -> ! {
                             &registry,
                             &key,
                             message.reply,
-                            legacy_actor(&message),
+                            public_actor(&message),
                         ),
                         None => unsafe {
                             ipc_reply(message.reply, ns::ERR_INVALID);
@@ -1134,7 +1071,6 @@ fn main(ctx: Context) -> ! {
                         registrar,
                         service.to_vec(),
                         message.connection,
-                        0,
                         ceiling,
                     ),
                     _ => {
@@ -1401,20 +1337,13 @@ fn main(ctx: Context) -> ! {
                 }
             }
             _ => {
-                if message.memory != 0 {
-                    unsafe {
-                        memory_close(message.memory);
-                    }
-                }
-                if message.connection != 0 {
-                    unsafe {
-                        ipc_close(message.connection);
-                    }
-                }
-                if message.reply != 0 {
-                    unsafe {
-                        ipc_reply(message.reply, ns::ERR_BAD_OPCODE);
-                    }
+                // Unique receive ABI boundary, including retired opcodes: own
+                // every attachment before rejecting without decoding its body.
+                if let Ok(Some(mut request)) =
+                    unsafe { catten_rt::owned::IncomingMessage::from_raw(message) }
+                    && let Some(reply) = request.reply.take()
+                {
+                    let _ = reply.reply(ns::ERR_BAD_OPCODE);
                 }
             }
         }

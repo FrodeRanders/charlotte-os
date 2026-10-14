@@ -226,20 +226,10 @@ pub mod ns {
     pub const ERR_INVALID: i64 = -2;
     /// Unknown opcode.
     pub const ERR_BAD_OPCODE: i64 = -3;
-    /// Access denied: the caller's interim bearer key did not match the
-    /// service's registered key. This gate is not principal-based policy.
+    /// Principal/rights policy denied the request, or a public lookup targeted
+    /// a policy-published service.
     pub const ERR_ACCESS_DENIED: i64 = -4;
 
-    /// Register under a short name with an interim bearer key.  `arg0` = packed
-    /// name; the call must attach a re-delegable connection.  If a
-    /// memory object is attached, its first 8 bytes are the access key
-    /// (0 = public, no gating).  Reply = new generation.
-    pub const OP_REGISTER_KEYED: u32 = 5;
-    /// Look up a short-named service with an interim bearer key.  `arg0` = packed
-    /// name.  If a memory object is attached, its first 8 bytes are the
-    /// access key; the stored registration's key must match (or be 0 for
-    /// a public service).  Reply = generation + attenuated connection.
-    pub const OP_LOOKUP_KEYED: u32 = 6;
     /// Best-effort short-name lookup for optional dependencies. Unlike
     /// [`OP_LOOKUP`], this replies with [`ERR_NOT_FOUND`] immediately rather
     /// than retaining the call until a future registration.
@@ -303,26 +293,6 @@ pub mod ns {
     pub const STATUS_MAGIC: u32 = 0x5453_534e;
     /// `"AUA1"` little-endian, leading an authorization-audit snapshot.
     pub const AUDIT_MAGIC: u32 = 0x3141_5541;
-
-    /// Read a u64 access key from a memory object, or 0 if none.
-    /// Consumes (unmaps and closes) the memory cap on success.
-    /// # Safety
-    ///
-    /// `memory_cap` must name a mapped request object whose first word follows
-    /// the service protocol's access-key layout.
-    pub unsafe fn read_access_key(memory_cap: u64) -> u64 {
-        if memory_cap == 0 {
-            return 0;
-        }
-        if catten_syscall::memory_map(memory_cap, super::NAME_SCRATCH_VADDR, false) != 0 {
-            catten_syscall::memory_close(memory_cap);
-            return 0;
-        }
-        let key = unsafe { core::ptr::read_volatile(super::NAME_SCRATCH_VADDR as *const u64) };
-        catten_syscall::memory_unmap(memory_cap);
-        catten_syscall::memory_close(memory_cap);
-        key
-    }
 }
 
 /// Echo-service protocol (`charlotte-protocol-echo` v1).

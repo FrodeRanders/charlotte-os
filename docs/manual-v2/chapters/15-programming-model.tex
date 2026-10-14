@@ -324,9 +324,12 @@ The co-located policy engine defaults to deny, evaluates the kernel-authenticate
 principal and exact generation, and delegates only an attenuated connection.
 \texttt{OP\_SET\_POLICY} and \texttt{OP\_REGISTER\_AUTHORIZED} separately require
 administrator and service-manager roles. Issuance, denial, and delegation
-failure enter a bounded administrator-readable audit stream. The legacy public
-and bearer-key name-service operations remain compatibility paths, not a
-principal authorization boundary; policy/audit persistence and retroactive
+failure enter a bounded administrator-readable audit stream. Public bootstrap
+naming is a separate namespace and cannot resolve or replace policy-published
+services. The former bearer-key opcodes 5/6, stored key fields and permissive
+key-memory decoder have been removed; unsupported requests retain their complete
+incoming owners through rejection. Security fixtures use the current CNSGEN01
+metadata frame and explicitly reject earlier shapes. Policy/audit persistence and retroactive
 revocation of already-issued direct connections are not currently promised.
 
 \subsection{Backpressure is normal}

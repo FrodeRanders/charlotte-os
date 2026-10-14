@@ -49,6 +49,7 @@
 #   --dhcp-test    Acquire a DHCP lease through the tcpip service (single guest)
 #   --live-upgrade-test  Run the isolated persistent service-upgrade test
 #   --shutdown-test  Run the isolated cooperative/forced domain-shutdown test
+#   --security-test  Verify scoped grants, independent roots and raw-frame denial
 #   --mac ADDRESS  Set the guest NIC MAC address
 #   --net-listen PORT  Put the guest NIC on a QEMU socket LAN and listen
 #   --net-connect HOST:PORT  Connect the guest NIC to a QEMU socket LAN
@@ -99,6 +100,7 @@ SHUTDOWN_TEST="0"
 HTTP_HOST_PORT="${CATTEN_HTTP_HOST_PORT:-8080}"
 DEPLOY_HOST_PORT="${CATTEN_DEPLOY_HOST_PORT:-8081}"
 S3_TEST="0"
+SECURITY_TEST="0"
 DEPLOYMENT_INGRESS_TEST="0"
 DEPLOY_NAME="${CATTEN_DEPLOY_NAME:-greet}"
 DEPLOY_ELF="${CATTEN_DEPLOY_ELF:-}"
@@ -153,6 +155,7 @@ while [ "$#" -gt 0 ]; do
             NET_TEST="1"; DHCP_TEST="1"; S3_TEST="1"; DEPLOYMENT_INGRESS_TEST="1"; shift ;;
         --live-upgrade-test) LIVE_UPGRADE_TEST="1"; shift ;;
         --shutdown-test) SHUTDOWN_TEST="1"; shift ;;
+        --security-test) SECURITY_TEST="1"; NET_TEST="1"; shift ;;
         --net-listen)
             [ "$#" -ge 2 ] || { echo "Missing value for --net-listen" >&2; exit 1; }
             NET_BACKEND="listen:$2"; shift 2 ;;
@@ -231,6 +234,10 @@ if [ "$HTTP_TEST" = "1" ] && [ "$NET_BACKEND" != "user" ]; then
     echo "error: --http-test requires the default user network (hostfwd)" >&2
     exit 1
 fi
+if [ "$SECURITY_TEST" = "1" ] && { [ "$SHUTDOWN_TEST" = "1" ] || [ "$LIVE_UPGRADE_TEST" = "1" ]; }; then
+    echo "error: --security-test cannot be combined with isolated shutdown/upgrade suites" >&2
+    exit 1
+fi
 if [ "$USE_KVM" = "1" ] && { [ "$(uname -s)" != "Linux" ] || [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; }; then
     echo "error: --kvm requires a Linux host with accessible /dev/kvm" >&2
     exit 1
@@ -296,6 +303,9 @@ if [ "$CLEAN_BUILD" = "1" ]; then
 fi
 
 FEATURES="acpi"
+if [ "$SECURITY_TEST" = "1" ]; then
+    FEATURES="${FEATURES},security_test"
+fi
 if [ "$NET_TEST" = "1" ]; then
     FEATURES="${FEATURES},virtio_net_test"
 fi
@@ -411,6 +421,13 @@ else
     "${ROOT_DIR}/scripts/build-catten-services-x86_64.sh"
 fi
 export CATTEN_X86_64_SERVICE_BUNDLE="$SERVICE_BUNDLE"
+if [ "$SECURITY_TEST" = "1" ]; then
+    mkdir -p "$ROOT_DIR/target/security-test"
+    CATTEN_SECURITY_TEST_DIR="$(mktemp -d "$ROOT_DIR/target/security-test/fixture.XXXXXX")"
+    export CATTEN_SECURITY_TEST_DIR
+    bash "$ROOT_DIR/scripts/generate-security-test-fixtures.sh" \
+        "$CATTEN_X86_64_SERVICE_BUNDLE/security_probe.elf" "$CATTEN_SECURITY_TEST_DIR"
+fi
 
 if [ "$DEPLOY_TEST" = "1" ]; then
     export CATTEN_LOCAL_DEPLOYMENT_FIXTURE="${ROOT_DIR}/target/local-deploy-fixture/${INSTANCE}-greet.bundle"

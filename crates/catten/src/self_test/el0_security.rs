@@ -150,7 +150,7 @@ pub fn test_el0_security() {
 
 fn verify_publication_and_lookup_boundary(expected: Option<u64>) {
     // Serialized kernel fixture adapter: an ordinary live namespace issues
-    // each legacy wire opcode against the already policy-published application.
+    // each public wire opcode against the already policy-published application.
     let caller = crate::service::loader::create_user_address_space();
     let ns = supervisor::node_name_service();
     let connection = crate::ipc::connection_delegate(
@@ -159,62 +159,110 @@ fn verify_publication_and_lookup_boundary(expected: Option<u64>) {
         caller,
         crate::ipc::ConnectionRights::CALL,
     )
-    .expect("legacy lookup fixture connection");
+    .expect("public lookup fixture connection");
     // Public naming metadata is observable without any invocation capability.
-    // This must not turn the policy-published entry into a legacy grant below.
+    // This must not turn the policy-published entry into a public grant below.
+    // Current metadata grammar, including after logical endpoint death.
+    let frame = charlotte_protocol_ns::encode(
+        charlotte_protocol_ns::Action::Observe,
+        charlotte_protocol_ns::Request {
+            name: b"secavail",
+            generation: 0,
+        },
+    )
+    .unwrap();
+    let memory = crate::memory::object::allocate_with_bytes(caller, &frame).unwrap();
+    let call = crate::ipc::scalar_call_with_memory_move(
+        caller,
+        connection,
+        charlotte_protocol_ns::OP_PUBLICATION_GENERATION,
+        frame.len() as u64,
+        memory,
+    )
+    .unwrap();
+    assert!(crate::ipc::wait_reply_timeout(caller, call, 5_000).unwrap());
+    let result = crate::ipc::poll_reply(caller, call).unwrap().unwrap();
+    assert_eq!(result.result, expected.map_or(-1, |generation| generation as i64));
+    assert!(result.cap.is_none() && result.memory.is_none(), "metadata cannot convey authority");
+    crate::ipc::close_cap(caller, call).unwrap();
+
+    // Retired scalar/bare-name observation rejects independently of liveness.
     for named in [false, true] {
         let call = if named {
-            let memory = crate::memory::object::allocate_with_bytes(caller, b"secavail")
-                .expect("publication query fixture memory");
+            let memory = crate::memory::object::allocate_with_bytes(caller, b"secavail").unwrap();
             crate::ipc::scalar_call_with_memory_move(caller, connection, 18, 8, memory)
         } else {
             crate::ipc::scalar_call(caller, connection, 18, u64::from_le_bytes(*b"secavail"))
         }
-        .expect("publication query fixture call");
+        .unwrap();
         assert!(crate::ipc::wait_reply_timeout(caller, call, 5_000).unwrap());
         let result = crate::ipc::poll_reply(caller, call).unwrap().unwrap();
-        assert_eq!(
-            result.result,
-            expected.map_or(-1, |generation| generation as i64),
-            "publication observation must match its exact live generation or reject a dead \
-             endpoint"
-        );
-        assert!(
-            result.cap.is_none() && result.memory.is_none(),
-            "metadata cannot convey authority"
-        );
+        assert_eq!(result.result, -2, "retired metadata shape must reject");
+        assert!(result.cap.is_none() && result.memory.is_none());
         crate::ipc::close_cap(caller, call).unwrap();
+    }
+
+    // Retired bearer-key publication/lookup rejects with attachments, without
+    // returning authority or making a policy-published name public. These
+    // copied inputs retain their original owners in this live fixture root.
+    let endpoint = crate::ipc::endpoint_create(caller, 0x4b455953, 1, 2).unwrap();
+    let source = crate::ipc::connection_delegate(
+        caller,
+        endpoint,
+        caller,
+        crate::ipc::ConnectionRights::ALL,
+    )
+    .unwrap();
+    let key_memory =
+        crate::memory::object::allocate_with_bytes(caller, &0u64.to_le_bytes()).unwrap();
+    for opcode in [5, 6] {
+        let call = crate::ipc::scalar_call_with_connection_copy(
+            caller,
+            connection,
+            opcode,
+            u64::from_le_bytes(*b"secavail"),
+            source,
+            crate::ipc::ConnectionRights::ALL,
+            key_memory,
+        )
+        .unwrap();
+        assert!(crate::ipc::wait_reply_timeout(caller, call, 5_000).unwrap());
+        let result = crate::ipc::poll_reply(caller, call).unwrap().unwrap();
+        assert_eq!(result.result, -3, "retired bearer opcode {opcode} must reject");
+        assert!(result.cap.is_none() && result.memory.is_none());
+        crate::ipc::close_cap(caller, call).unwrap();
+        assert!(!crate::memory::object::info(caller, key_memory).unwrap().lent);
     }
     if expected.is_none() {
         crate::self_test::close_test_address_space(caller).unwrap();
         logln!(
-            "[security] short/named publication queries rejected the retired endpoint without \
-             authority"
+            "[security] current metadata observed absence; retired metadata and bearer operations \
+             rejected without authority"
         );
         return;
     }
-    for opcode in [2, 6, 7, 4, 16] {
+    for opcode in [2, 7, 4, 16] {
         let call = if matches!(opcode, 4 | 16) {
             let memory = crate::memory::object::allocate_with_bytes(caller, b"secavail")
-                .expect("legacy named lookup fixture memory");
+                .expect("public named lookup fixture memory");
             crate::ipc::scalar_call_with_memory_move(caller, connection, opcode, 8, memory)
         } else {
             crate::ipc::scalar_call(caller, connection, opcode, u64::from_le_bytes(*b"secavail"))
         }
-        .expect("legacy lookup fixture call");
+        .expect("public lookup fixture call");
         assert!(
             crate::ipc::wait_reply_timeout(caller, call, 5_000)
-                .expect("legacy lookup fixture wait")
+                .expect("public lookup fixture wait")
         );
         let result = crate::ipc::poll_reply(caller, call).unwrap().unwrap();
-        assert_eq!(result.result, -4, "legacy opcode {opcode} bypassed policy publication");
+        assert_eq!(result.result, -4, "public opcode {opcode} bypassed policy publication");
         assert!(result.cap.is_none() && result.memory.is_none());
-        crate::ipc::close_cap(caller, call).expect("legacy lookup fixture completion");
+        crate::ipc::close_cap(caller, call).expect("public lookup fixture completion");
     }
-    crate::self_test::close_test_address_space(caller).expect("legacy lookup fixture cleanup");
+    crate::self_test::close_test_address_space(caller).expect("public lookup fixture cleanup");
     logln!(
-        "[security] short/named publication queries returned scalar metadata only; all five \
-         legacy lookup opcodes denied policy-published secavail without authority"
+        "[security] current metadata returned no authority; retired bearer/metadata shapes \
+         rejected; all four public lookup opcodes denied policy-published secavail"
     );
 }
 

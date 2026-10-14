@@ -144,7 +144,8 @@ by both thread joins and timed completion waits.
 ## Authenticated service lookup
 
 Security-sensitive service discovery uses the name service's authorized
-protocol, not `OP_LOOKUP`, `OP_LOOKUP_KEYED`, or a caller-provided identity.
+protocol rather than public bootstrap lookup or a caller-provided identity.
+The former bearer-key opcodes 5/6 are retired and reject as unsupported.
 All receive syscalls supply the sender's exact address-space generation,
 stable signed-artifact principal, and deployment roles captured at submission.
 The canonical runtime methods are `Endpoint::receive` and `try_receive`; see
@@ -162,8 +163,9 @@ for administration tooling, but placing another identity in request memory
 cannot impersonate it. Authorized lookup outcomes are retained in the bounded,
 administrator-readable `OP_AUTH_AUDIT` stream.
 
-The older public and bearer-key opcodes remain compatibility paths and do not
-provide principal-based authorization. Policy and audit storage are currently
+Public bootstrap naming does not provide principal-based authorization and
+cannot resolve or replace policy-published services. The bearer-key API,
+stored keys and decoder are removed. Policy and audit storage are currently
 node-local and volatile, and policy updates provide prospective—not selective
 retroactive—revocation of connections already issued.
 
