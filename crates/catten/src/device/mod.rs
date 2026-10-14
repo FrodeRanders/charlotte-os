@@ -59,6 +59,9 @@ mod unit_initialization;
 pub(crate) fn test_scheduled_creation_readiness() {
     domain_creation::tests::scheduled();
 }
+pub(crate) fn test_scheduled_mapping_readiness() {
+    mapping::test_scheduled_readiness();
+}
 
 static REJECT_RETIREMENT: core::sync::atomic::AtomicBool =
     core::sync::atomic::AtomicBool::new(false);
@@ -1083,23 +1086,18 @@ pub fn dma_map(
     memory_cap: u64,
     direction: u32,
 ) -> Result<u64, DeviceError> {
-    dma_map_with_ownership(asid, domain_cap, memory_cap, direction, false)
+    // Kernel fixtures may inherit serialization/IRQ guards. Retain their
+    // rejecting backend admission; only the syscall boundary opts into waits.
+    let direction = dma::Direction::from_bits(direction).map_err(|_| DeviceError::DmaInvalid)?;
+    mapping::map_with(asid, domain_cap, |id, _| dma::map(id, asid, memory_cap, direction, false))
         .map_err(mapping::MapError::status)
 }
 
-/// Map memory for exclusive device ownership. The memory object must have no
-/// CPU mappings, active lends, or other DMA pins, and the kernel rejects all
-/// new CPU mappings and lends until the IOMMU mapping is removed.
-pub(crate) fn dma_map_exclusive(
-    asid: AddressSpaceId,
-    domain_cap: DeviceCap,
-    memory_cap: u64,
-    direction: u32,
-) -> Result<u64, mapping::MapError> {
-    dma_map_with_ownership(asid, domain_cap, memory_cap, direction, true)
-}
-
-pub(crate) fn dma_map_with_ownership(
+/// Syscall map/map-exclusive retain their exact root, public claim and pin
+/// through event-driven unit admission. Busy masked/nonscheduled callers reject
+/// explicitly; this adapter never enables interrupts. Exclusive memory must
+/// have no CPU mappings, loans or other DMA pins.
+pub(crate) fn dma_map_scheduled(
     asid: AddressSpaceId,
     domain_cap: DeviceCap,
     memory_cap: u64,
@@ -1107,7 +1105,9 @@ pub(crate) fn dma_map_with_ownership(
     exclusive: bool,
 ) -> Result<u64, mapping::MapError> {
     let direction = dma::Direction::from_bits(direction).map_err(mapping::MapError::Validation)?;
-    mapping::map_with(asid, domain_cap, |id| dma::map(id, asid, memory_cap, direction, exclusive))
+    mapping::map_with(asid, domain_cap, |id, owner| {
+        dma::map_scheduled(id, asid, memory_cap, direction, exclusive, owner)
+    })
 }
 
 pub fn dma_unmap(

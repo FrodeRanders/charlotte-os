@@ -29,7 +29,7 @@ impl<'slot, 'grant, T> Preparing<'slot, 'grant, T> {
         if grant.is_armed() {
             return Err(Error::OperationInFlight);
         }
-        let unit = readiness::admit(slot, grant, ready, |slot| {
+        let unit = readiness::admit(slot, grant, ready, |slot, _| {
             let UnitState::Installed(unit) =
                 core::mem::replace(&mut slot.state, UnitState::Claimed)
             else {
@@ -58,7 +58,7 @@ impl<'slot, 'grant, T> Preparing<'slot, 'grant, T> {
             slot,
             grant,
             ready,
-            |slot| {
+            |slot, _| {
                 let UnitState::Installed(unit) =
                     core::mem::replace(&mut slot.state, UnitState::Claimed)
                 else {

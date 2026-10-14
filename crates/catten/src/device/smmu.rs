@@ -707,19 +707,43 @@ pub(crate) fn create_domain_with_reset(
     )
 }
 
+fn take_mapping(
+    smmu: &mut Smmu,
+    domain_id: u64,
+) -> Result<super::detached_domain::Maintenance<Domain, Commands>, Error> {
+    let domain =
+        smmu.domains.get(&domain_id).and_then(Option::as_ref).ok_or(Error::UnknownDomain)?;
+    if domain.retiring {
+        return Err(Error::UnknownDomain);
+    }
+    let domain = smmu.domains.get_mut(&domain_id).unwrap().take().unwrap();
+    let commands = smmu.commands.take().expect("admitted mapping engine");
+    Ok(super::detached_domain::Maintenance::new(domain, commands))
+}
+
 fn claim_mapping(
     domain_id: u64,
 ) -> Result<super::detached_domain::Maintenance<Domain, Commands>, Error> {
-    with_smmu(|smmu| {
-        let domain =
-            smmu.domains.get(&domain_id).and_then(Option::as_ref).ok_or(Error::UnknownDomain)?;
-        if domain.retiring {
-            return Err(Error::UnknownDomain);
-        }
-        let domain = smmu.domains.get_mut(&domain_id).unwrap().take().unwrap();
-        let commands = smmu.commands.take().expect("admitted mapping engine");
-        Ok(super::detached_domain::Maintenance::new(domain, commands))
-    })
+    with_smmu(|smmu| take_mapping(smmu, domain_id))
+}
+
+fn admit_mapping(
+    domain_id: u64,
+    owner: &mut super::mapping::DmaOperation,
+) -> Result<super::mapping::MappingMaintenance<Domain, Commands>, Error> {
+    super::domain_creation::readiness::admit(
+        &SMMU,
+        owner,
+        |smmu| smmu.commands.is_some() && smmu.domains.values().all(Option::is_some),
+        |slot, owner| {
+            let held = take_mapping(slot.installed()?, domain_id)?;
+            // Complete actual-domain/engine/pin ownership before guard exit.
+            Ok(super::mapping::MappingMaintenance::new(
+                held,
+                owner.pending.take().expect("admitted map pin absent"),
+            ))
+        },
+    )
 }
 
 fn restore_mapping(
@@ -757,6 +781,29 @@ pub(super) fn map_at(
     memory_cap: u64,
     direction: Direction,
     exclusive: bool,
+    before_completion: impl FnMut(super::mapping::Phase),
+) -> Result<u64, Error> {
+    map_inner(domain_id, caller, memory_cap, direction, exclusive, None, before_completion)
+}
+
+pub(super) fn map_scheduled(
+    domain_id: u64,
+    caller: crate::memory::AddressSpaceId,
+    memory_cap: u64,
+    direction: Direction,
+    exclusive: bool,
+    owner: &mut super::mapping::DmaOperation,
+) -> Result<u64, Error> {
+    map_inner(domain_id, caller, memory_cap, direction, exclusive, Some(owner), |_| {})
+}
+
+fn map_inner(
+    domain_id: u64,
+    caller: crate::memory::AddressSpaceId,
+    memory_cap: u64,
+    direction: Direction,
+    exclusive: bool,
+    admission: Option<&mut super::mapping::DmaOperation>,
     mut before_completion: impl FnMut(super::mapping::Phase),
 ) -> Result<u64, Error> {
     let pin = object::pin_for_dma(
@@ -768,14 +815,28 @@ pub(super) fn map_at(
     )
     .map_err(|_| Error::Memory)?;
     let pending = super::mapping::PendingPin::new(Some(pin));
-    let held = match claim_mapping(domain_id) {
-        Ok(held) => held,
-        Err(error) => {
-            pending.release();
-            return Err(error);
+    let mut owner = if let Some(admission) = admission {
+        assert!(admission.pending.is_none(), "map preparation reused");
+        admission.pending = Some(pending);
+        match admit_mapping(domain_id, admission) {
+            Ok(owner) => owner,
+            Err(error) => {
+                // No mapping work began. Release the original pin outside
+                // backend serialization, before the public root finishes.
+                admission.pending.take().unwrap().release();
+                return Err(error);
+            }
         }
+    } else {
+        let held = match claim_mapping(domain_id) {
+            Ok(held) => held,
+            Err(error) => {
+                pending.release();
+                return Err(error);
+            }
+        };
+        super::mapping::MappingMaintenance::new(held, pending)
     };
-    let mut owner = super::mapping::MappingMaintenance::new(held, pending);
     let mapped = owner.held.domain.value_mut().map(&mut owner.pending, direction);
     let result = match mapped {
         Err((error, prefix)) => {
@@ -904,7 +965,7 @@ pub(crate) fn destroy_created_domain(creation: &mut super::DmaCreation) -> Resul
         &SMMU,
         creation,
         |smmu| smmu.commands.is_some() && smmu.domains.values().all(Option::is_some),
-        |slot| {
+        |slot, _| {
             let smmu = slot.installed()?;
             let domain =
                 smmu.domains.get(&id).and_then(Option::as_ref).ok_or(Error::UnknownDomain)?;
@@ -1165,4 +1226,25 @@ pub(super) fn test_registry_snapshot(sid: u32) -> (u64, Option<u64>, usize, usiz
         Ok((smmu.next_domain, smmu.streams.get(&sid).copied(), smmu.domains.iter().count(), 0))
     })
     .unwrap()
+}
+
+/// Serialized pre-driver probe: retain the complete actual unit in the
+/// existing creation owner, without creation/reset or descriptor mutation.
+/// Its caller retains the real mapped-domain root through the probe.
+pub(super) fn test_with_claimed_unit(action: impl FnOnce()) {
+    let mut preparation = super::DmaCreation::new();
+    super::domain_creation::prepare(
+        &SMMU,
+        &mut preparation,
+        |smmu| smmu.commands.is_some() && smmu.domains.values().all(Option::is_some),
+        |_, _| {
+            action();
+            Ok(())
+        },
+    )
+    .unwrap();
+    assert!(!preparation.is_armed());
+}
+pub(super) fn test_registered_unit_waiters() -> usize {
+    SMMU.lock().readiness.as_ref().map_or(0, |source| source.registered())
 }

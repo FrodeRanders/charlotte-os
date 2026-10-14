@@ -551,6 +551,7 @@ pub(crate) fn run() {
     let domain = grant_dma_domain(successor.id(), requester, None).unwrap();
     assert_eq!(unsafe { core::ptr::read_volatile(registers.add(0x14).cast::<u32>()) } & 1, 0);
     assert_eq!(unsafe { core::ptr::read_volatile(registers.add(0x1c).cast::<u32>()) } & 1, 0);
+    mapping::test_real_readiness(successor, domain);
     // Prime cached leaf tables, then reject a two-page map at their boundary.
     let memory = object::allocate(successor.id(), 2).unwrap();
     let address = dma_map(successor.id(), domain, memory, 3).unwrap();

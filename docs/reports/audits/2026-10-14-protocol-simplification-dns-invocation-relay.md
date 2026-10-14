@@ -210,3 +210,14 @@ scalar/named and local packed-name replacements, operational release
 representations, physical-address queries and mailbox word/capability contexts.
 Current connector-binding and serialized boot/IRQ policies cannot be removed
 merely by matching a legacy-looking keyword.
+
+## Later qualification: DMA-map readiness follow-up
+
+The [2026-10-14 follow-up](2026-10-14-dma-map-readiness.md) adds qualified
+kernel map admission and passes two linked ARM 22/0/0 / x86 20/0/0 pairs with
+the same signed final DNS ELF hashes recorded above. Its final pair also checks
+real VT-d/SMMUv3 ordinary and exclusive maps parked behind complete-unit
+ownership. Final DNS invocation and three pinned rollout generations now have
+execution evidence under that corrected kernel. Original failed captures and
+the verification limitations above remain historical evidence; this does not
+identify their exact contending owner or qualify every DMA/IRQ context.

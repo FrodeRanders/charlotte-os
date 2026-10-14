@@ -1367,7 +1367,7 @@ fn dma_map_return(frame: &mut TrapFrame, result: Result<u64, crate::device::MapE
 }
 
 fn sys_dma_map(frame: &mut TrapFrame) {
-    let result = crate::device::dma_map_with_ownership(
+    let result = crate::device::dma_map_scheduled(
         caller_asid(frame),
         frame.regs[1],
         frame.regs[2],
@@ -1378,11 +1378,12 @@ fn sys_dma_map(frame: &mut TrapFrame) {
 }
 
 fn sys_dma_map_exclusive(frame: &mut TrapFrame) {
-    let result = crate::device::dma_map_exclusive(
+    let result = crate::device::dma_map_scheduled(
         caller_asid(frame),
         frame.regs[1],
         frame.regs[2],
         frame.regs[3] as u32,
+        true,
     );
     dma_map_return(frame, result);
 }

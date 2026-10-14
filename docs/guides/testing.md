@@ -1659,3 +1659,17 @@ names before submission. These controls do not inject allocator exhaustion,
 all live transport failures or prove physical cleanup. See
 [the invocation contract](../reference/dns-invocation-relay.md) and
 [batch evidence](../reports/audits/2026-10-14-protocol-simplification-dns-invocation-relay.md).
+
+### DMA-map readiness controls
+
+The linked four-LP ARM/x86 suite exercises private-slot rejection, masked
+admission, wake-before-registration, detached-cell fencing, pre-claim retaining
+Drop and actual scheduled blocking with the original root/capability/pin. Its
+pre-driver probe then owns the complete real IOMMU unit while ordinary and
+exclusive maps register and park, restoring it once and confirming actual
+backend unmap before releasing memory. These controlled tests identify their
+own blocking owner; they do not identify the contender in earlier NIC failures.
+Registration observation uses bounded fixture-only sleeps; map waits use the
+owned unit source. AMD-Vi runtime, busy masked SVC progress, unmap/close readiness
+and broader pressure remain separate. See [contract](../reference/dma-map-readiness.md)
+and [execution evidence](../reports/audits/2026-10-14-dma-map-readiness.md).

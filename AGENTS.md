@@ -149,6 +149,15 @@ See `docs/guides/resource-ownership.md` for examples and the review checklist.
   best-effort local Drop do not discharge uncertain kernel pins/backing charges.
   Public readiness still needs an owned operation and qualified caller IRQ
   context; never add polling or enable IRQs beneath an unknown mask.
+  Map/map-exclusive syscall admission now borrows the same `DmaOperation`
+  through the existing fixed unit source. Retain its original pin and captured
+  root classification before source preparation; claim domain/engine/pin
+  together under the backend hold, then run mapping once. Busy masked or
+  nonscheduled callers reject; serialized kernel fixtures keep rejecting
+  admission. Ordinary unused preparation releases pin/interest outside guards
+  before completing the root. Abandonment retains all fields and the public
+  claim; readiness gives no cleanup or replay authority. See
+  `docs/reference/dma-map-readiness.md`.
 - Services processing several sources must wait on all relevant interests.
   Use `PendingCall::bind_cq` with endpoint interests on one CQ and
   `cq_wait_checked` for the earliest remaining operation deadline (or an

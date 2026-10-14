@@ -416,3 +416,15 @@ body then supplies actual completion, outside backend serialization, before
 original metadata/reset/root release. Masked/nonscheduled or rejected waiting
 retains the entire rollback-started owner without retry. Public DMA operation
 and whole-domain teardown readiness remain separate contexts.
+
+[DMA-map readiness](dma-map-readiness.md) subsequently shares this fixed-slot
+admission with map/map-exclusive syscalls. The existing public operation holds
+its exact root/capability claim, original pending pin and transient interest;
+captured classification precedes fallible source preparation outside guards.
+One backend claim moves domain/engine/pin together before guard exit, then
+mapping runs once. Busy masked/nonscheduled callers and serialized kernel
+fixtures retain rejection; no IRQ enabling or public map retry is added.
+Original pin/interest disposal precedes root completion on unstarted rejection.
+Abandonment and started uncertainty retain their original charges and fences;
+unit readiness supplies no hardware or physical completion proof. Unmap/close,
+masked SVC progress and broader guard/metadata contexts remain separate.

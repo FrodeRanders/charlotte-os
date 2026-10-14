@@ -101,7 +101,7 @@ impl<D, C> MappingMaintenance<D, C> {
 /// Field fallback retains the exact root. The registry's in-flight claim also
 /// remains until explicit completion, including backend restoration and unpin.
 #[must_use]
-struct DmaOperation {
+pub(super) struct DmaOperation {
     root: core::mem::ManuallyDrop<Option<AddressSpaceOperation>>,
     asid: AddressSpaceId,
     cap: DeviceCap,
@@ -109,6 +109,45 @@ struct DmaOperation {
     payload:
         Option<crate::klib::collections::retirement_list::RetiredEntry<(DeviceCap, DeviceObject)>>,
     authority: Option<crate::capability::RetiredRecord>,
+    wait_platform: bool,
+    interest: core::mem::ManuallyDrop<Option<super::domain_creation::readiness::Interest>>,
+    pub(super) pending: Option<PendingPin>,
+    waited: bool,
+}
+
+impl super::domain_creation::readiness::Owner for DmaOperation {
+    fn platform(&self) -> Option<bool> {
+        Some(self.wait_platform)
+    }
+
+    fn interest(&mut self) -> &mut Option<super::domain_creation::readiness::Interest> {
+        &mut self.interest
+    }
+
+    fn waiting(&mut self) {
+        if !self.waited {
+            self.waited = true;
+            crate::logln!(
+                "[DMA map readiness] root={}:{} cap={} domain={} waiting on original unit",
+                self.asid,
+                self.root.as_ref().map_or(0, |root| root.handle().generation()),
+                self.cap,
+                self.id
+            );
+        }
+    }
+
+    fn admitted(&mut self) {
+        if self.waited {
+            crate::logln!(
+                "[DMA map readiness] root={}:{} cap={} domain={} unit claim admitted once",
+                self.asid,
+                self.root.as_ref().map_or(0, |root| root.handle().generation()),
+                self.cap,
+                self.id
+            );
+        }
+    }
 }
 
 impl DmaOperation {
@@ -138,6 +177,12 @@ impl DmaOperation {
                 _ => operation_error(error),
             })?)
         };
+        // Capture policy while this exact root is retained, before device or
+        // backend serialization. A successor ASID cannot sponsor this wait.
+        let wait_platform = asid == crate::memory::KERNEL_ASID
+            || root.as_ref().is_some_and(|root| {
+                crate::memory::budget::platform_identity(asid) == Some(root.handle())
+            });
         let claim = (|| {
             let _lifecycle = crate::memory::ADDRESS_SPACE_LIFECYCLE.lock();
             let mut devices = DEVICES.lock();
@@ -162,6 +207,10 @@ impl DmaOperation {
                 id,
                 payload: None,
                 authority: None,
+                wait_platform,
+                interest: core::mem::ManuallyDrop::new(None),
+                pending: None,
+                waited: false,
             }),
             Err(error) => {
                 if let Some(root) = root {
@@ -172,7 +221,12 @@ impl DmaOperation {
         }
     }
 
-    fn complete(self) -> Result<(), DeviceError> {
+    fn complete(mut self) -> Result<(), DeviceError> {
+        if self.pending.is_some() {
+            // No backend may discharge a preparation it still owns. Its pin,
+            // interest, original root and public claim retain on abandonment.
+            return Err(DeviceError::OperationInFlight);
+        }
         {
             let mut devices = DEVICES.lock();
             let DeviceObject::DmaDomain {
@@ -187,6 +241,7 @@ impl DmaOperation {
             }
             *operation_in_flight = false;
         }
+        drop(self.interest.take()); // Explicit disposal after the device guard.
         if let Some(root) = core::mem::ManuallyDrop::into_inner(self.root) {
             root.release().map_err(operation_error)?;
         }
@@ -221,6 +276,7 @@ impl DmaOperation {
         }
         registry::release(self.payload.take().unwrap());
         registry::release_authority(self.authority.take().unwrap());
+        drop(self.interest.take());
         if let Some(root) = core::mem::ManuallyDrop::into_inner(self.root) {
             root.release().map_err(operation_error)?;
         }
@@ -265,10 +321,10 @@ pub(super) fn with_operation<T>(
 pub(super) fn map_with(
     asid: AddressSpaceId,
     cap: DeviceCap,
-    work: impl FnOnce(u64) -> Result<u64, dma::Error>,
+    work: impl FnOnce(u64, &mut DmaOperation) -> Result<u64, dma::Error>,
 ) -> Result<u64, MapError> {
-    let operation = DmaOperation::begin(asid, cap).map_err(MapError::Admission)?;
-    let result = work(operation.id).map_err(MapError::Backend);
+    let mut operation = DmaOperation::begin(asid, cap).map_err(MapError::Admission)?;
+    let result = work(operation.id, &mut operation).map_err(MapError::Backend);
     // Preserve the backend rejection even if finishing the public lease also
     // fails. Neither diagnostic is a cleanup receipt or permission to retry.
     let completion = operation.complete().map_err(MapError::Completion);
@@ -295,5 +351,11 @@ pub(super) fn unmap_with(
 
 pub(super) fn test_admission() {
     tests::run();
+}
+pub(super) fn test_scheduled_readiness() {
+    tests::readiness::scheduled();
+}
+pub(super) fn test_real_readiness(root: crate::memory::AddressSpaceHandle, cap: DeviceCap) {
+    tests::readiness::real(root, cap);
 }
 mod tests;

@@ -227,7 +227,7 @@ fn cancel_serial(creation: &mut DmaCreation) -> Result<(), Error> {
         &SLOT,
         creation,
         available,
-        |slot| {
+        |slot, _| {
             let unit = slot.installed()?;
             unit.work += 1;
             unit.engine = false;
@@ -299,7 +299,7 @@ pub(in crate::device) fn reject_cancellation(creation: &mut DmaCreation) -> Resu
         &SLOT,
         creation,
         available,
-        |_| panic!("rejected cancellation reached descriptor work"),
+        |_, _| panic!("rejected cancellation reached descriptor work"),
         |_| Err(Error::WaitRegistrationFailed),
         super::super::readiness::Source::prepare,
     )
@@ -402,7 +402,7 @@ pub(in crate::device) fn scheduled() {
 
 fn cancel_scheduled(creation: &mut DmaCreation) -> Result<(), Error> {
     assert_eq!(creation.id, Some(DOMAIN));
-    let _held = super::super::readiness::admit(&SLOT, creation, available, |slot| {
+    let _held = super::super::readiness::admit(&SLOT, creation, available, |slot, _| {
         let unit = slot.installed()?;
         unit.work += 1;
         unit.engine = false;

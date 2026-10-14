@@ -75,6 +75,24 @@ pub fn map(
     }
 }
 
+pub(super) fn map_scheduled(
+    domain_id: u64,
+    caller: crate::memory::AddressSpaceId,
+    memory_cap: u64,
+    direction: Direction,
+    exclusive: bool,
+    owner: &mut super::mapping::DmaOperation,
+) -> Result<u64, Error> {
+    match detect()? {
+        Backend::Vtd => {
+            super::vt_d::map_scheduled(domain_id, caller, memory_cap, direction, exclusive, owner)
+        }
+        Backend::AmdVi => {
+            super::amd_vi::map_scheduled(domain_id, caller, memory_cap, direction, exclusive, owner)
+        }
+    }
+}
+
 pub fn unmap(domain_id: u64, iova: u64) -> Result<(), Error> {
     match detect()? {
         Backend::Vtd => super::vt_d::unmap(domain_id, iova),
@@ -212,5 +230,18 @@ pub(super) fn test_registry_snapshot(sid: u32) -> (u64, Option<u64>, usize, usiz
         super::vt_d::test_registry_snapshot(sid)
     } else {
         super::amd_vi::test_registry_snapshot(sid)
+    }
+}
+
+pub(super) fn test_with_claimed_unit(action: impl FnOnce()) {
+    match detect().unwrap() {
+        Backend::Vtd => super::vt_d::test_with_claimed_unit(action),
+        Backend::AmdVi => super::amd_vi::test_with_claimed_unit(action),
+    }
+}
+pub(super) fn test_registered_unit_waiters() -> usize {
+    match detect().unwrap() {
+        Backend::Vtd => super::vt_d::test_registered_unit_waiters(),
+        Backend::AmdVi => super::amd_vi::test_registered_unit_waiters(),
     }
 }

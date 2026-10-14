@@ -42,7 +42,7 @@ struct Payload {
 pub(in crate::device) struct Source(ManuallyDrop<Payload>);
 
 impl Source {
-    pub(super) fn prepare(platform: bool) -> Result<Self, Error> {
+    pub(in crate::device) fn prepare(platform: bool) -> Result<Self, Error> {
         let disposal = PreparedEntry::try_new().map_err(|_| Error::WaitRegistrationFailed)?;
         let list = ObserverList::try_new(waiter_budget::SOURCE_LIMIT, platform)
             .map_err(|_| Error::WaitRegistrationFailed)?;
@@ -52,7 +52,7 @@ impl Source {
         })))
     }
 
-    pub(super) fn interest(&self) -> Interest {
+    pub(in crate::device) fn interest(&self) -> Interest {
         Interest(self.0.list.clone())
     }
 
@@ -65,7 +65,7 @@ impl Source {
         deferred::publish(payload.list.close(), Some(payload.disposal.publish(payload.list)));
     }
 
-    pub(super) fn registered(&self) -> usize {
+    pub(in crate::device) fn registered(&self) -> usize {
         self.0.list.registered()
     }
 }
@@ -94,18 +94,37 @@ impl Observable for Interest {
     }
 }
 
+/// The containing transaction supplies captured classification and retains
+/// transient interest. No scalar ID or diagnostic creates a wait owner.
+pub(in crate::device) trait Owner {
+    fn platform(&self) -> Option<bool>;
+    fn interest(&mut self) -> &mut Option<Interest>;
+    // Diagnostic hooks only, outside backend/lifecycle/scheduler guards.
+    fn waiting(&mut self) {}
+    fn admitted(&mut self) {}
+}
+impl Owner for DmaCreation {
+    fn platform(&self) -> Option<bool> {
+        self.wait_platform
+    }
+
+    fn interest(&mut self) -> &mut Option<Interest> {
+        &mut self.interest
+    }
+}
+
 /// Availability admission composes a borrow of the complete operation owner.
 /// `claim` runs exactly once under backend serialization, and must return a
 /// retaining owner before guard exit. There is no work/cleanup retry here.
-pub(in crate::device) fn admit<T, R>(
+pub(in crate::device) fn admit<T, R, O: Owner>(
     slot: &Mutex<UnitSlot<T>>,
-    grant: &mut DmaCreation,
+    owner: &mut O,
     ready: impl Fn(&T) -> bool,
-    claim: impl FnOnce(&mut UnitSlot<T>) -> Result<R, Error>,
+    claim: impl FnOnce(&mut UnitSlot<T>, &mut O) -> Result<R, Error>,
 ) -> Result<R, Error> {
     admit_with(
         slot,
-        grant,
+        owner,
         ready,
         claim,
         |interest| {
@@ -130,11 +149,11 @@ pub(in crate::device) fn admit<T, R>(
     )
 }
 
-pub(super) fn admit_with<T, R>(
+pub(in crate::device) fn admit_with<T, R, O: Owner>(
     slot: &Mutex<UnitSlot<T>>,
-    grant: &mut DmaCreation,
+    owner: &mut O,
     ready: impl Fn(&T) -> bool,
-    claim: impl FnOnce(&mut UnitSlot<T>) -> Result<R, Error>,
+    claim: impl FnOnce(&mut UnitSlot<T>, &mut O) -> Result<R, Error>,
     mut wait: impl FnMut(&Interest) -> Result<(), Error>,
     mut prepare: impl FnMut(bool) -> Result<Source, Error>,
 ) -> Result<R, Error> {
@@ -146,16 +165,19 @@ pub(super) fn admit_with<T, R>(
             UnitState::Installed(unit) => ready(unit),
         };
         if available {
-            let owner = claim(&mut state);
+            let claimed = claim(&mut state, owner);
             drop(state);
-            drop(grant.interest.take());
-            return owner;
+            drop(owner.interest().take());
+            if claimed.is_ok() {
+                owner.admitted();
+            }
+            return claimed;
         }
-        let platform = grant.wait_platform.ok_or(Error::OperationInFlight)?;
+        let platform = owner.platform().ok_or(Error::OperationInFlight)?;
         let interest = state.readiness.as_ref().map(Source::interest);
         drop(state);
         if let Some(interest) = interest {
-            *grant.interest = Some(interest);
+            *owner.interest() = Some(interest);
         } else {
             let mut prepared = Some(prepare(platform)?);
             let mut state = slot.lock();
@@ -179,10 +201,11 @@ pub(super) fn admit_with<T, R>(
             let Some(interest) = interest else {
                 continue;
             };
-            *grant.interest = Some(interest);
+            *owner.interest() = Some(interest);
         }
-        wait(grant.interest.as_ref().unwrap())?;
-        drop(grant.interest.take());
+        owner.waiting();
+        wait(owner.interest().as_ref().unwrap())?;
+        drop(owner.interest().take());
         // A competing claim can win after wake. Recheck this same fixed slot,
         // never reconstruct queues/epochs or replay a callback that ran.
     }

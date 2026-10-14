@@ -174,6 +174,21 @@ multi-hop bridge scopes remain rejected. AMD-Vi fault events are polled until
 post-topology MSI delivery is implemented. Non-coherent SMMUv3, ATS/PRI, and
 multi-IOMMU topologies remain future work.
 
+DMA map and map-exclusive syscalls may wait for the existing fixed unit slot
+before their first claim on the domain and command engine. The same operation retains its
+exact address-space generation, public capability claim, original memory pin,
+and transient interest. Source storage is prepared outside backend guards;
+restoration signals through producer-LP deferred delivery only when the actual
+engine and all domain cells are present. Admission rechecks and transfers the
+domain, engine, and pin together, then mapping work runs once. Waiting requires
+an already interrupt-enabled scheduled context; masked or nonscheduled busy
+callers reject explicitly, and serialized kernel fixtures keep the rejecting
+path. No adapter enables interrupts beneath an inherited mask. Admission failure
+releases only the unstarted preparation; hardware or physical uncertainty keeps
+its existing retention policy. Map readiness does not change unmap's separate
+admission/completion distinction or authorize hardware or physical cleanup
+replay. See \texttt{docs/reference/dma-map-readiness.md}.
+
 \section{Driver service layering}
 
 Complex I/O stacks decompose into separate failure and authority domains:

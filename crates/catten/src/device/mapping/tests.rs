@@ -1,5 +1,6 @@
 //! Synthetic containing-owner evidence, separate from real QEMU maintenance.
 use super::*;
+pub(super) mod readiness;
 use crate::{
     device::dma_tables::{
         Scope,
@@ -33,6 +34,7 @@ struct Payload {
 }
 
 pub(super) fn run() {
+    readiness::serialized();
     let root = crate::service::loader::create_user_address_space_handle();
     let cap = grant(root);
     use catten_syscall::{
@@ -85,7 +87,7 @@ pub(super) fn run() {
     {
         let mut attempts = 0;
         assert_eq!(
-            map_with(root.id(), cap, |_| {
+            map_with(root.id(), cap, |_, _| {
                 attempts += 1;
                 Err(error)
             }),
@@ -356,4 +358,5 @@ pub(super) fn run() {
          complete domain/engine/pending-pin Drop under guards retains one domain table, two data \
          frames, metadata, original authority and root"
     );
+    readiness::abandon(root);
 }

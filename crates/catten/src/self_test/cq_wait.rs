@@ -504,6 +504,7 @@ extern "C" fn cq_driver() {
     test_timed_completion_wakes();
     crate::memory::object::test_scheduled_transfer_close();
     crate::device::test_scheduled_creation_readiness();
+    crate::device::test_scheduled_mapping_readiness();
     ipc::claim_wait::tests::scheduled();
 
     logln!(
