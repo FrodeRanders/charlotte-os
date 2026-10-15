@@ -849,6 +849,18 @@ pub(crate) fn system_statistics() -> Vec<ThreadStatisticsSnapshot> {
 }
 
 impl Thread {
+    pub(super) fn exit_watch_source(&self) -> Option<exit_source::ExitList> {
+        self.exit_observers.source()
+    }
+
+    pub(super) fn observe_exit_prepared(
+        &self,
+        preparation: &mut exit_source::PreparingExitWatch,
+    ) -> Result<exit_source::ExitRegistration, crate::klib::observer::registration::RegistrationError>
+    {
+        self.exit_observers.register_prepared(preparation)
+    }
+
     pub(crate) fn try_observe_exit(
         &self,
         observer: Weak<dyn Observer>,

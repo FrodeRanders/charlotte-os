@@ -8,6 +8,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Thread-exit watch preparation](audits/2026-10-15-thread-exit-watch-preparation.md) — Captured-generation preparation outside the thread table/source mutex, allocation-free publication and exact-episode rejection; scoped C16/R7/G1/G4 evidence.
 - [Captured park-delivery fixture panic and current-build matrix](audits/2026-10-15-captured-park-fixture-panic.md) — Spontaneous all-LP failure capture, forced-switch reproduction of an invalid Running-only assertion, and bounded cross-architecture follow-up.
 - [Automatic guest failure capture](audits/2026-10-15-automatic-failure-capture.md) — Independent ARM/x86 watcher, private all-LP snapshots and immutable run inputs; native deadline controls and explicit capture limitations.
 - [Raft persistence failure diagnostics](audits/2026-10-15-raft-persistence-diagnostics.md) — Per-call typed errors and distinct write/flush fail-stop context through existing owners; historical attribution remains open.

@@ -88,6 +88,7 @@ fn observer(submission: &EventSubmission) -> Arc<dyn Observer> {
 }
 
 pub(crate) fn test_admission() {
+    scheduler::exit_watch_tests::run();
     let baseline = budget::node_used();
     super::open_address_space(CLIENT, 129);
     let account = super::watch_admission(CLIENT).unwrap();
@@ -307,6 +308,7 @@ extern "C" fn held_self_exit_worker() {
 }
 
 pub(crate) fn test_scheduled_cleanup() {
+    scheduler::exit_watch_tests::scheduled();
     super::open_address_space(SCHEDULED_CLIENT, 4);
     scheduler::deferred::test_first_entry(SCHEDULED_CLIENT);
     let account = super::watch_admission(SCHEDULED_CLIENT).unwrap();

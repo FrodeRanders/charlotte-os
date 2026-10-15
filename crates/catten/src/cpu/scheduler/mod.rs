@@ -42,6 +42,7 @@ use crate::{
 };
 
 pub(crate) mod deferred;
+pub(crate) mod exit_watch_tests;
 pub mod lp_schedulers;
 pub mod sync;
 pub mod system_scheduler;
@@ -618,16 +619,11 @@ pub(crate) fn try_park_until(
 
 /// Registers an observer to be notified when the specified thread exits.
 ///
-/// The master-thread table is taken in **write** mode for the whole
-/// check-and-register sequence. Thread retirement (`retire_requested_threads`)
-/// removes the dying thread from the same table, so this write lock makes the
-/// race between "the thread is still registered" and "the thread is already
-/// gone" impossible: either the observer is registered before the thread is
-/// taken (and fires when the thread is dropped), or the lookup fails here and
-/// the caller completes the capability immediately.
-///
-/// Without the write lock, a thread could be taken and dropped between the
-/// lookup and the registration, orphaning the observer forever.
+/// Capture the exact generation/source before fallible storage preparation,
+/// then revalidate and register allocation-free under the table's write guard.
+/// Retirement removes the thread under that same guard, so publication either
+/// precedes removal or rejects the captured episode. Even an unqualified TID
+/// request cannot silently attach to a replacement during preparation.
 /// The returned token owns cancellation. InvalidThread means absent/stale;
 /// WaitRegistrationFailed is admission/allocation failure, never proof of exit.
 pub(crate) fn observe_thread_exit(
@@ -675,30 +671,79 @@ fn observe_thread_exit_matching(
     observer: Weak<dyn Observer>,
     charge: crate::completion::watch_budget::Charge,
 ) -> Result<threads::exit_source::ExitRegistration, system_scheduler::Error> {
-    let table = MASTER_THREAD_TABLE.write();
-    if let Ok(thread) = table.get(thread_id) {
-        if caller.is_some_and(|caller| thread.address_space != Some(caller)) {
-            return Err(system_scheduler::Error::PermissionDenied);
-        }
-        let generation_matches = expected_generation.is_none_or(|expected| {
-            let captured = charlotte_lifecycle::ThreadIdentity::new(thread_id as u64, expected);
-            let current =
-                charlotte_lifecycle::ThreadIdentity::new(thread_id as u64, thread.generation);
-            charlotte_lifecycle::classify_join(captured, Some(current))
-                == charlotte_lifecycle::JoinDisposition::ObserveCurrent
-        });
-        if generation_matches {
-            thread
-                .try_observe_exit(observer, charge)
-                .map_err(|_| system_scheduler::Error::WaitRegistrationFailed)
-        } else {
-            drop(table);
-            Err(system_scheduler::Error::InvalidThread)
-        }
-    } else {
-        drop(table);
-        Err(system_scheduler::Error::InvalidThread)
+    observe_thread_exit_matching_with(
+        thread_id,
+        expected_generation,
+        caller,
+        observer,
+        charge,
+        threads::exit_source::PreparingExitWatch::new,
+    )
+}
+
+fn qualify_exit_watch(
+    thread: &Thread,
+    thread_id: ThreadId,
+    expected_generation: Option<ThreadGeneration>,
+    caller: Option<crate::memory::AddressSpaceHandle>,
+) -> Result<(), system_scheduler::Error> {
+    if caller.is_some_and(|caller| thread.address_space != Some(caller)) {
+        return Err(system_scheduler::Error::PermissionDenied);
     }
+    if let Some(expected) = expected_generation {
+        let captured = charlotte_lifecycle::ThreadIdentity::new(thread_id as u64, expected);
+        let current = charlotte_lifecycle::ThreadIdentity::new(thread_id as u64, thread.generation);
+        if charlotte_lifecycle::classify_join(captured, Some(current))
+            != charlotte_lifecycle::JoinDisposition::ObserveCurrent
+        {
+            return Err(system_scheduler::Error::InvalidThread);
+        }
+    }
+    Ok(())
+}
+
+fn observe_thread_exit_matching_with(
+    thread_id: ThreadId,
+    expected_generation: Option<ThreadGeneration>,
+    caller: Option<crate::memory::AddressSpaceHandle>,
+    observer: Weak<dyn Observer>,
+    charge: crate::completion::watch_budget::Charge,
+    prepare: impl FnOnce(
+        Option<threads::exit_source::ExitList>,
+        Weak<dyn Observer>,
+        crate::completion::watch_budget::Charge,
+    ) -> Result<
+        threads::exit_source::PreparingExitWatch,
+        crate::klib::observer::registration::RegistrationError,
+    >,
+) -> Result<threads::exit_source::ExitRegistration, system_scheduler::Error> {
+    let (generation, source) = {
+        let table = MASTER_THREAD_TABLE.read();
+        let thread = table.get(thread_id).map_err(|_| system_scheduler::Error::InvalidThread)?;
+        qualify_exit_watch(thread, thread_id, expected_generation, caller)?;
+        (thread.generation, thread.exit_watch_source())
+    };
+    // Source/list and entry allocation, including their failed-preparation
+    // destructors, run after the captured thread-table/source guards leave.
+    let mut preparation = prepare(source, observer, charge)
+        .map_err(|_| system_scheduler::Error::WaitRegistrationFailed)?;
+    let result = {
+        let table = MASTER_THREAD_TABLE.write();
+        match table.get(thread_id) {
+            Ok(thread) if thread.generation == generation => {
+                qualify_exit_watch(thread, thread_id, Some(generation), caller).and_then(|()| {
+                    thread
+                        .observe_exit_prepared(&mut preparation)
+                        .map_err(|_| system_scheduler::Error::WaitRegistrationFailed)
+                })
+            }
+            _ => Err(system_scheduler::Error::InvalidThread),
+        }
+    };
+    // On source races or ordinary rejection, the complete losing list/entry,
+    // weak reference and original charge survive until after table unlock.
+    drop(preparation);
+    result
 }
 
 /// Bind a worker's exit before publishing or admitting it. No numeric TID

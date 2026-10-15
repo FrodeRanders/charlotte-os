@@ -50,6 +50,33 @@ executions are recorded in the [first-entry evidence](../reports/audits/2026-10-
 They qualify this ordering boundary without attributing the historical IPC
 exit-watch or persistence failures.
 
+## Exit-watch storage and publication
+
+Thread-exit observation captures and authorizes an exact thread generation and
+optional existing source under a short table read guard. It then prepares the
+charged list/entry outside the master thread table and source mutex. The final
+write guard rechecks that captured generation and caller domain before linking
+prepared storage without allocation or deallocation. Even TID-only observation
+cannot attach to a reused slot while preparation runs. Retirement removes the
+thread under that same write guard, so registration either precedes removal or
+rejects the captured episode.
+
+`PreparingExitWatch` retains its possible source and `PreparedRegistration`
+entry through final admission. A competing first registration supplies the
+winning source; unused list/entry/weak-reference/charge disposal happens after
+the table guard leaves. Existing sources reuse their charged backing. The
+original observing-domain watch account and captured classification remain;
+there is no per-instance registry or new budget allowance. Entry publication
+consumes its prepared node once. Source/entry admission rejection remains
+`WaitRegistrationFailed`, distinct from `InvalidThread` and any terminal result.
+
+The [exit-watch preparation review](../reports/audits/2026-10-15-thread-exit-watch-preparation.md)
+records the scoped allocation inventory, heap-held publication/rejection,
+preparation failure, TID reuse, competing source, authorization and scheduled
+IRQ-preservation evidence. It does not qualify the containing completion
+registry, all generic observer callers, stack growth's enclosing table guard,
+aggregate heap limits or the historical intermittent failure causes.
+
 ## Reaping and publication fences
 
 `ReapBatch` owns the detached list, deferred list and `RetirementGuard`. The

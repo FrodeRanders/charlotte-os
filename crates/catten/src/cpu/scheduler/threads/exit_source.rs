@@ -10,6 +10,7 @@ use crate::{
         registration::{
             ListRef,
             ObserverList,
+            PreparedRegistration,
             Registration,
             RegistrationError,
         },
@@ -17,6 +18,32 @@ use crate::{
 };
 
 pub(crate) type ExitRegistration = Registration<watch_budget::Charge>;
+pub(crate) type ExitList = ListRef<watch_budget::Charge>;
+
+/// Retains both possible source storage and the charged entry across exact
+/// thread revalidation. Losing storage is disposed outside the thread table.
+pub(crate) struct PreparingExitWatch {
+    list: ExitList,
+    entry: PreparedRegistration<watch_budget::Charge>,
+}
+
+impl PreparingExitWatch {
+    pub(crate) fn new(
+        existing: Option<ExitList>,
+        observer: Weak<dyn Observer>,
+        charge: watch_budget::Charge,
+    ) -> Result<Self, RegistrationError> {
+        let list = match existing {
+            Some(list) => list,
+            None => ObserverList::try_new(watch_budget::MAX_THREAD_WATCHES, charge.platform())?,
+        };
+        let entry = PreparedRegistration::try_new(observer, charge)?;
+        Ok(Self {
+            list,
+            entry,
+        })
+    }
+}
 
 #[derive(Debug)]
 pub(crate) struct ExitSource {
@@ -35,24 +62,33 @@ impl ExitSource {
         observer: Weak<dyn Observer>,
         charge: watch_budget::Charge,
     ) -> Result<ExitRegistration, RegistrationError> {
+        let mut preparation = PreparingExitWatch::new(self.source(), observer, charge)?;
+        self.register_prepared(&mut preparation)
+    }
+
+    pub(crate) fn source(&self) -> Option<ExitList> {
+        self.list.lock().clone()
+    }
+
+    pub(crate) fn register_prepared(
+        &self,
+        preparation: &mut PreparingExitWatch,
+    ) -> Result<ExitRegistration, RegistrationError> {
         let list = {
             let mut slot = self.list.lock();
             if slot.is_none() {
-                *slot = Some(ObserverList::try_new(
-                    watch_budget::MAX_THREAD_WATCHES,
-                    charge.platform(),
-                )?);
+                *slot = Some(preparation.list.clone());
             }
             slot.as_ref().unwrap().clone()
         };
-        list.register(observer, charge)
+        list.register_prepared(&mut preparation.entry)
     }
 
     pub(crate) fn registered(&self) -> usize {
         self.list.lock().as_ref().map_or(0, |list| list.registered())
     }
 
-    /// Called exactly once by Thread::drop, before its stack is deallocated.
+    /// Called exactly once by explicit thread retirement, before stack release.
     /// No source/list or scheduler table guard is held during notification.
     pub(crate) fn notify_exit(&mut self) {
         if let Some(list) = self.list.get_mut().take() {

@@ -640,3 +640,12 @@ before wait registration. Exact generation, IRQ policy and admission assertions
 remain. This corrects a fixture premise, with no scheduler/cleanup policy or
 numbered finding disposition change; historical IPC/stack/persistence causes
 and C16/C18/G1/G7 remain open.
+
+The [thread-exit watch preparation follow-up](../reports/audits/2026-10-15-thread-exit-watch-preparation.md)
+continues R7-1/2 and C16/G1/G4. It removes fallible source/entry allocation from
+thread-table/source serialization, retains original admission through post-guard
+losing-preparation disposal and revalidates the captured generation/authority
+before allocation-free publication. Scoped inventory and race/heap-held probes
+do not complete the wider allocation/destructor audit, aggregate heap/principal
+budgets or integrated pressure/physical qualification. SEC-07/18 remain partial;
+historical exit-watch/stack/persistence causation and finding counts are unchanged.

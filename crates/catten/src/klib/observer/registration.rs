@@ -56,6 +56,38 @@ struct EntryNode<C> {
     next: Option<Entry<C>>,
 }
 
+/// Admitted entry storage, prepared before entering a source subsystem.
+/// Keep unused preparation outside that subsystem's guard so rejection frees
+/// its allocation, weak reference and charge only after serialization leaves.
+#[derive(Debug)]
+pub(crate) struct PreparedRegistration<C>(Option<Entry<C>>);
+
+impl<C> PreparedRegistration<C> {
+    pub(crate) fn try_new(
+        observer: Weak<dyn Observer>,
+        charge: C,
+    ) -> Result<Self, RegistrationError> {
+        Self::try_new_with(observer, charge, |node| {
+            Box::try_new(node).map_err(|_| RegistrationError::AllocationFailed)
+        })
+    }
+
+    fn try_new_with(
+        observer: Weak<dyn Observer>,
+        charge: C,
+        allocate: impl FnOnce(EntryNode<C>) -> Result<Box<EntryNode<C>>, RegistrationError>,
+    ) -> Result<Self, RegistrationError> {
+        Ok(Self(Some(Entry {
+            node: allocate(EntryNode {
+                id: 0,
+                observer,
+                next: None,
+            })?,
+            _charge: charge,
+        })))
+    }
+}
+
 #[derive(Debug)]
 struct State<C> {
     head: Option<Entry<C>>,
@@ -127,14 +159,16 @@ impl<C> ListRef<C> {
     ) -> Result<Registration<C>, RegistrationError> {
         // Allocate before taking the list lock. Rejection drops the staged
         // entry/charge after the guard; no uncharged spare capacity remains.
-        let mut entry = Entry {
-            node: allocate(EntryNode {
-                id: 0,
-                observer,
-                next: None,
-            })?,
-            _charge: charge,
-        };
+        let mut preparation = PreparedRegistration::try_new_with(observer, charge, allocate)?;
+        self.register_prepared(&mut preparation)
+    }
+
+    /// Allocation-free publication. Failure leaves the complete preparation
+    /// with the caller; dispose it after leaving any enclosing source guard.
+    pub(crate) fn register_prepared(
+        &self,
+        preparation: &mut PreparedRegistration<C>,
+    ) -> Result<Registration<C>, RegistrationError> {
         let mut state = self.state.lock();
         if state.closed {
             return Err(RegistrationError::Closed);
@@ -145,6 +179,7 @@ impl<C> ListRef<C> {
         let next_id = state.next_id.checked_add(1).ok_or(RegistrationError::ResourceLimit)?;
         let id = state.next_id;
         state.next_id = next_id;
+        let mut entry = preparation.0.take().expect("registration preparation already consumed");
         entry.node.id = id;
         entry.node.next = state.head.take();
         state.head = Some(entry);
