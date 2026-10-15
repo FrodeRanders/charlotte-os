@@ -101,6 +101,96 @@ pub(crate) fn drain() {
     }
 }
 
+// One scheduled fixture arms a pre-admitted batch for an exact first dispatch.
+// Enqueue under the dispatch guards, after every earlier delivery boundary:
+// the incoming context itself must deliver it before entering its worker.
+static FIRST_DISPATCH: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(0);
+static FIRST_BATCH: Mutex<Option<Waiters>> = Mutex::new(None);
+static FIRST_DELIVERED: core::sync::atomic::AtomicUsize = core::sync::atomic::AtomicUsize::new(0);
+
+pub(super) fn test_dispatch(generation: super::threads::ThreadGeneration) {
+    if FIRST_DISPATCH.load(Ordering::Acquire) == generation
+        && FIRST_DISPATCH
+            .compare_exchange(generation, 0, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    {
+        publish(FIRST_BATCH.lock().take().expect("missing first-dispatch batch"), None);
+    }
+}
+
+pub(crate) fn test_first_entry(asid: crate::memory::AddressSpaceId) {
+    use alloc::sync::Arc;
+
+    use crate::{
+        completion,
+        cpu::{
+            isa::lp::ops,
+            scheduler::{
+                system_scheduler::{
+                    SYSTEM_SCHEDULER,
+                    publish_thread,
+                },
+                threads::{
+                    MASTER_THREAD_TABLE,
+                    Thread,
+                },
+            },
+        },
+        klib::observer::{
+            CallOnNotify,
+            Observer,
+            WaitSponsor,
+            waiter_source::WaiterSource,
+        },
+        memory::KERNEL_ASID,
+    };
+
+    extern "C" fn first_entry() {
+        assert_eq!(
+            FIRST_DELIVERED.load(Ordering::Acquire),
+            1,
+            "fresh context stranded its dispatch-boundary readiness delivery"
+        );
+    }
+
+    for lp in 0..crate::cpu::multiprocessor::get_lp_count().min(4) {
+        let thread = Thread::new(KERNEL_ASID, first_entry);
+        let generation = thread.generation;
+        let tid = publish_thread(thread).unwrap();
+        let watched =
+            completion::observe_thread_exit_with_generation(asid, tid, Some(generation)).unwrap();
+        let source = WaiterSource::new();
+        let sponsor = WaitSponsor::new(false);
+        let observer: Arc<dyn Observer> = CallOnNotify::new(move || {
+            assert!(!ops::get_int_state(), "dispatch delivery restored IRQs prematurely");
+            // Reentry requires dispatch guards to have left; a table lookup
+            // here is diagnostic, never authority to release the stack/root.
+            assert_eq!(MASTER_THREAD_TABLE.write().get(tid).unwrap().generation, generation);
+            FIRST_DELIVERED.fetch_add(1, Ordering::Release);
+        });
+        let token = source.register(Arc::downgrade(&observer), &sponsor).unwrap();
+        FIRST_DELIVERED.store(0, Ordering::Release);
+        assert!(FIRST_BATCH.lock().replace(source.drain()).is_none());
+        assert_eq!(FIRST_DISPATCH.swap(generation, Ordering::AcqRel), 0);
+        SYSTEM_SCHEDULER.read().submit_to_lp(tid, lp).unwrap();
+        assert!(completion::wait_timeout(asid, watched, 5_000).unwrap());
+        assert_eq!(
+            completion::poll(asid, watched).unwrap().unwrap().result,
+            completion::OpResult::Ok(0)
+        );
+        completion::close(asid, watched).unwrap();
+        assert_eq!(FIRST_DISPATCH.load(Ordering::Acquire), 0);
+        assert!(FIRST_BATCH.lock().is_none());
+        assert_eq!(FIRST_DELIVERED.load(Ordering::Acquire), 1);
+        drop(token);
+        assert_eq!(sponsor.used(), 0);
+    }
+    crate::logln!(
+        "[scheduler first entry] exact-dispatch readiness delivered before fresh kernel entry on \
+         all selected LPs; exact exit watches completed"
+    );
+}
+
 /// A queued precursor must run before a wait installs its subscription, even
 /// when restoring the park mask could preempt the producer before yield.
 /// No watchdog saturation, physical cleanup or replacement wake is involved.

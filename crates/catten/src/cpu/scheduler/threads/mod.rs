@@ -443,6 +443,7 @@ pub fn record_dispatch(
     SCHEDULER_LP_DIAGNOSTICS[base + 1].store(generation, Ordering::Relaxed);
     SCHEDULER_LP_DIAGNOSTICS[base + 2].store(asid as u64, Ordering::Relaxed);
     SCHEDULER_LP_DIAGNOSTICS[base + 3].fetch_add(1, Ordering::Relaxed);
+    super::deferred::test_dispatch(generation);
 }
 
 pub fn record_exit(lp: LpId, tid: ThreadId, generation: ThreadGeneration) {

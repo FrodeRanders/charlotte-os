@@ -308,6 +308,7 @@ extern "C" fn held_self_exit_worker() {
 
 pub(crate) fn test_scheduled_cleanup() {
     super::open_address_space(SCHEDULED_CLIENT, 4);
+    scheduler::deferred::test_first_entry(SCHEDULED_CLIENT);
     let account = super::watch_admission(SCHEDULED_CLIENT).unwrap();
     let mut generation = 0;
     RELEASE_WORKER.store(false, Ordering::Release);

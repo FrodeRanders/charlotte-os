@@ -298,9 +298,9 @@ fn cond_yield_lp_impl() {
         unsafe {
             switch_ctx(curr_sp_ptr, next_sp_ptr, curr_on_cpu, next_on_cpu, next_ttbr0);
         }
+    } else {
+        crate::cpu::scheduler::finish_context_switch();
     }
-    crate::cpu::scheduler::threads::retire_requested_threads();
-    crate::cpu::scheduler::deferred::drain();
     // Physical reaping runs on pinned IRQ-enabled workers, outside IRQ tails.
     crate::cpu::scheduler::maybe_sample_rebalance();
     // Preserve the caller's interrupt state. In particular, a synchronous
@@ -431,6 +431,10 @@ pub unsafe extern "C" fn switch_ctx(
         "tlbi vmalle1is",
         "dsb ish",
         "isb",
+        // The incoming stack and ownership are installed. Run the same
+        // guard-free completion for first dispatch and resumed contexts,
+        // before restoring their callee-saved and FP/SIMD frame.
+        "bl {finish_switch}",
         // Restore callee-saved registers.
         "ldp x19, x20, [sp], #16",
         "ldp x21, x22, [sp], #16",
@@ -447,6 +451,7 @@ pub unsafe extern "C" fn switch_ctx(
         "msr fpsr, x6",
         // Return into the incoming thread.
         "ret",
+        finish_switch = sym crate::cpu::scheduler::finish_context_switch,
     );
 }
 

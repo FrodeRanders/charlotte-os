@@ -385,9 +385,9 @@ pub extern "C" fn cond_yield_lp() {
             }
         }
         switch_ctx(curr_rsp0_ptr, next_rsp0_ptr);
+    } else {
+        crate::cpu::scheduler::finish_context_switch();
     }
-    crate::cpu::scheduler::threads::retire_requested_threads();
-    crate::cpu::scheduler::deferred::drain();
     // Physical reaping belongs to the LP's scheduled reaper. An IRQ tail must
     // not synchronously wait on a shootdown owned by its interrupted thread.
     crate::cpu::scheduler::maybe_sample_rebalance();
@@ -424,6 +424,20 @@ pub extern "C" fn switch_ctx(curr_rsp0_ptr: *mut u64, next_rsp0_ptr: *const u64)
         "or rax, rdx",
         "mov [rdi + 24], rax",
         "skip_save:",
+        // Finish on the incoming stack before exposing its initial/resumed
+        // state. Initial user and saved kernel frames have different stack
+        // alignment: retain the exact frame pointer and align only this call.
+        "mov rsp, [rsi]",
+        "mov rax, [rsp]",
+        "mov cr3, rax",
+        "push rsi",
+        "mov rbx, rsp",
+        "and rsp, -16",
+        "call {finish_switch}",
+        "mov rsp, rbx",
+        "pop rsi",
+        // Callback work may use FP/SIMD; restore the incoming image afterward
+        // so a fresh user thread cannot observe kernel callback residue.
         "fxrstor64 [rsi + 32]",
         "mov rax, [rsi + 16]",
         "wrfsbase rax",
@@ -433,11 +447,8 @@ pub extern "C" fn switch_ctx(curr_rsp0_ptr: *mut u64, next_rsp0_ptr: *const u64)
         "mov ecx, 0xc0000102",
         "wrmsr",
 
-        // load the stack pointer from the next thread context
-        "mov rsp, [rsi]",
         // restore caller-saved registers
         "pop rax",
-        "mov cr3, rax",
         "pop rax",
         "pop r15",
         "pop r14",
@@ -449,6 +460,7 @@ pub extern "C" fn switch_ctx(curr_rsp0_ptr: *mut u64, next_rsp0_ptr: *const u64)
         "popfq",
         // return to the next thread
         "ret",
+        finish_switch = sym crate::cpu::scheduler::finish_context_switch,
     );
 }
 

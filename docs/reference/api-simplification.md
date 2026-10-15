@@ -116,3 +116,10 @@ reader reject partial, retired or malformed observations. See the
 Remaining packed/public entry points and wider raw-adapter, metadata, IRQ/Drop
 and physical-cleanup contexts remain separate; historical IPC/persistence
 attribution stays open.
+
+The [first-dispatch follow-up](../reports/audits/2026-10-15-first-dispatch-delivery.md)
+corrects a second concrete delivery gap: fresh trampolines bypassed the older
+yield continuation containing post-switch staging and deferred delivery. Both
+architectures now complete that handoff on the incoming stack before restoring
+its register frame. This changes no protocol or runtime ABI; historical IPC
+exit/persistence attribution and the remaining simplification candidates stay open.

@@ -147,3 +147,14 @@ A bounded negative control detects omitted delivery before waiter registration.
 This is a concrete source-ordering defect with separate execution evidence,
 not a captured causal trace of the earlier timeouts or later persistence errors.
 Those historical observations and physical-release qualification remain open.
+
+## First-dispatch follow-up (2026-10-15)
+
+The [first-dispatch investigation](2026-10-15-first-dispatch-delivery.md) finds a
+separate concrete switch-boundary gap: fresh kernel/user trampolines bypassed
+the yield continuation that stages requested threads and delivers queued wakes.
+An exact-dispatch negative control fails before fresh worker entry; the shared
+incoming-stack completion covers fresh and resumed contexts without physical
+reaping or changing exit deadlines. This is evidence for that ordering defect,
+not a contemporaneous trace explaining the historical IPC/persistence failures.
+Those failures remain open.

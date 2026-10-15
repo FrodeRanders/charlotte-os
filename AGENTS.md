@@ -825,6 +825,12 @@ the corrected RPC polling paths, and the remaining notification gaps.
   not be the only path to a dependent worker's wake. Preserve the caller's
   mask and recompute a timed wait's remaining absolute budget after delivery.
   This flush is metadata/readiness delivery, never physical cleanup authority.
+  Every actual switch must complete owner-LP staging and deferred delivery on
+  the incoming stack before restoring its register frame, including fresh
+  kernel/user entry. An older yield continuation is not a universal boundary.
+  Keep local guards released and IRQs masked; restore incoming FP/SIMD state
+  after callbacks to preserve userspace isolation. Physical reaping stays on
+  the scheduled worker. See `docs/reference/thread-retirement.md`.
 - IOMMU backing uses `device::dma_tables::Tables` for domain roots/intermediates,
   SMMU descriptors and shared unit tables/queues/completion cells. Reserve actual
   pages before physical allocation, retain an exclusive owner through zeroing

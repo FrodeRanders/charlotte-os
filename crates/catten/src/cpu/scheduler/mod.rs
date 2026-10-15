@@ -47,6 +47,18 @@ pub mod sync;
 pub mod system_scheduler;
 pub mod threads;
 
+/// Complete the owner-LP handoff on the incoming stack, before restoring its
+/// register frame. Fresh trampolines and resumed continuations share this
+/// boundary. Call only after scheduler/table guards leave, with IRQs masked
+/// and the outgoing save/architecture ownership handshake complete. This
+/// stages owners and delivers admitted metadata; physical reaping stays on
+/// the scheduled reaper. The assembly restores incoming FP/SIMD state after
+/// this call, including the initial userspace isolation state.
+pub(crate) extern "C" fn finish_context_switch() {
+    threads::retire_requested_threads();
+    deferred::drain();
+}
+
 /// Enter a guard-free park-publication interval. Flush this LP's admitted
 /// notifications before publishing Blocked: restoring IRQs can switch away
 /// before the subsequent yield, and the parked producer must not be needed to

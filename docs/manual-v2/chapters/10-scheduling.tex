@@ -120,16 +120,23 @@ A thread cannot free its own kernel stack (it is executing on it). When a thread
 exits:
 
 \begin{enumerate}
-    \item \texttt{abort()} moves the dying thread from the thread table to a
-        \texttt{DEAD\_THREADS} list. The thread is extracted from the table
-        without being dropped.
-    \item The scheduler performs a context switch to the next thread.
-    \item \textbf{After} the switch (on the new thread's stack),
-        \texttt{reap\_dead\_threads()} drops the dead threads, freeing their
-        stacks and other resources.
+    \item \texttt{abort()} marks the exact executing lifetime for retirement,
+        retaining its scheduler handle, thread-table entry and saved context.
+    \item The scheduler selects another thread and saves the outgoing context.
+        Arm also releases its assembly CPU-ownership flag.
+    \item On the incoming stack, before restoring its register frame, shared
+        switch completion extracts requested off-CPU threads into their owning
+        LP's \texttt{DEAD\_THREADS} head and delivers queued readiness after
+        scheduler/table guards leave. Fresh kernel and user entries use the
+        same boundary as resumed threads, with interrupts still masked.
+    \item A pinned, IRQ-enabled reaper releases the exact stack pair outside
+        IRQ tails. Failed or abandoned release retains the complete owner and
+        original charges; it cannot be retried from a numeric thread ID.
 \end{enumerate}
 
-Deferred reclamation is required because threads own their stacks.
+Deferred reclamation is required because threads own their stacks. The incoming
+FP/SIMD image is restored after switch-completion callbacks, preserving initial
+userspace isolation. Readiness delivery supplies no physical completion proof.
 
 \section{Load rebalancing}
 

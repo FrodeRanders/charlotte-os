@@ -34,6 +34,22 @@ then the architecture switch saves its context and clears Arm's `on_cpu`
 flag before post-switch extraction. Removing the current handle before the
 switch would skip that handshake and leave a permanently retained node.
 
+Both architecture switch assemblies run `finish_context_switch` on the incoming
+stack, after the outgoing save/CPU handshake and incoming address-space
+installation, before restoring its register frame. This stages requested owners
+and drains producer-LP deferred notifications with IRQs still masked and local
+scheduler/table guards released. Fresh kernel/user trampolines share this boundary
+with resumed continuations; delivery cannot depend on returning through an older
+`cond_yield_lp` call. A no-switch pass runs the same helper directly. Physical
+stack release remains on the pinned, IRQ-enabled reaper. Restore incoming FP/SIMD
+state after callback work so initial userspace state contains no callback residue.
+The x86 assembly preserves its exact saved-frame pointer and aligns only the
+temporary helper call, supporting both initial user and saved kernel frames.
+An exact-dispatch negative control and corrected native security/mixed-deployment
+executions are recorded in the [first-entry evidence](../reports/audits/2026-10-15-first-dispatch-delivery.md).
+They qualify this ordering boundary without attributing the historical IPC
+exit-watch or persistence failures.
+
 ## Reaping and publication fences
 
 `ReapBatch` owns the detached list, deferred list and `RetirementGuard`. The
