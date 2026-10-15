@@ -743,3 +743,14 @@ old payload destruction remains post-guard. Fresh registry-map nodes, unified
 authority, record construction, timer cleanup and outer producer/IRQ contexts
 remain open. No finding changes disposition, no physical pin or retry owner is
 added, and passing fixtures do not attribute historical intermittent failures.
+
+The [detached timer-disposal follow-up](../reports/audits/2026-10-16-detached-timer-disposal.md)
+continues R7-1/2 and C16/G1/G4. Detached terminal publication now retains the
+complete timer-bearing record past registry unlock. Direct-result charges
+release with that owner, while backlog entries retain their original charge
+and slot; exact-source notification follows disposal. A firing event keeps its
+separate queue/node charge through the active callback. Map removal, existing
+backlog draining, submission construction, capability-backed timer installation
+and outer producer/queue/IRQ contexts remain open. No finding changes
+disposition, physical proof or replay authority, and historical intermittent
+failure attribution remains open.

@@ -90,6 +90,14 @@ source registration confirms that same live generation. Prepared nodes hold no
 source/queue guard. Enqueue occurs only after releasing completion registries.
 Callbacks still execute under the LP queue borrow and must not re-enter it.
 
+Detached completion retirement now carries the complete timer-bearing record
+past the completion registry before disposal, then notifies only its captured
+CQ source. Direct-result record admission releases with that owner; backlog
+admission stays with its entry. A firing timer retains event/node admission
+through its enclosing queue callback even after record retirement. This does
+not qualify the queue borrow itself or all timer preparation/cancellation
+contexts; see the [detached timer-disposal follow-up](../reports/audits/2026-10-16-detached-timer-disposal.md).
+
 ## Evidence and limits
 
 Kernel fixtures cover 1,024 real sorted nodes, reuse after removal, iterative

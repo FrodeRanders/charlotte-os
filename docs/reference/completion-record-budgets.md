@@ -47,9 +47,25 @@ entry remains in independently allocated CQ backing.
 Cancelling non-timer work still waits for its producer to post a terminal
 result, except [endpoint-close watches](close-watch-budgets.md), whose owning
 registration can be cancelled locally. Timer cancellation can terminate the
-payload immediately, but its producer's weak reference retains record admission
-until queue reclamation. A cancelled event on a busy or remote LP also retains its separate
+payload immediately; for a capability-backed timer, its producer's weak
+completion reference retains record admission until queue reclamation. A cancelled event on a busy or remote LP also retains its separate
 [timer-event charge](completion-timer-budgets.md) until queue reclamation.
+
+Detached terminal publication now returns the complete remaining record,
+including its typed timer observer and cancellation owner, beyond registry
+unlock. A direct ring result leaves admission with that owner until disposal;
+only a backlogged result consumes its original charge into the retained entry.
+Disposal precedes notification of the exact CQ source captured at publication.
+A missing-CQ record likewise retains its original charge until post-guard
+disposal. The detached ID is already unaddressable; duplicate completion rejects
+without changing its terminal result. See the [detached timer-disposal follow-up](../reports/audits/2026-10-16-detached-timer-disposal.md).
+
+A firing timer callback still owns its queue node and producer reference while
+CQ callbacks run. Its separate event charge survives until those owners leave,
+even though the detached record charge can already have been released. Neither
+publication nor cancellation is physical quiescence or a replay owner.
+Registry-map removal, existing backlog draining and the timer queue's outer
+callback context are separate boundaries.
 
 Kernel-controlled CQ replacement discards the old queue's undelivered results.
 Discarded detached results now return their submission slots as well as their

@@ -69,13 +69,36 @@ admission remains charged until then. Cancellation never blocks on a remote
 queue or recursively acquires the current queue's write guard.
 
 The observer and cancellation owner are installed before enqueueing. If
-teardown wins before enqueue, the cancelled event is discarded. Timer
+teardown wins before enqueue, the cancelled event is discarded. Capability-backed timer
 callbacks retain a weak reference to their original completion object and
 verify that exact object under the registry lock before transitioning it or
 publishing a CQ entry. Reusing an ASID and numeric capability does not allow an
 old timer callback to complete the new object. Thread-exit and endpoint-close
 observers use the same captured-object check rather than resolving their old
 numeric handle again.
+
+## Detached terminal disposal
+
+Detached timer producers retain their globally nonreused operation identity.
+Terminal publication removes that exact record and publishes its effective
+result under the completion registry. Its complete remaining record then leaves
+the registry before observer destruction, cancellation and direct-result charge
+release. A retained CQ backlog entry keeps the original record charge and live
+submission slot; the fixed ring entry itself owns neither. Notification follows
+disposal through the exact CQ source captured at publication, so a replacement
+queue cannot receive the predecessor's wake.
+
+Cancellation from an active local timer callback still uses the shared flag
+without reentering its borrowed queue. The active event/node and producer Arc
+remain alive during CQ notification; their event charge is not refunded until
+queue processing finishes. A manually completed distant timer can instead
+remove its available local event before notification. These are distinct event
+lifetimes, not different physical completion proofs.
+
+This is terminal logical disposal, with no retry/custody owner or physical
+release authority. Timer submission/preparation, capability-backed timer
+installation, map/authority metadata and outer producer/IRQ contexts remain
+separate. See the [detached timer-disposal follow-up](../reports/audits/2026-10-16-detached-timer-disposal.md).
 
 ## Verification and remaining work
 

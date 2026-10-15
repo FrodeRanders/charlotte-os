@@ -355,6 +355,17 @@ live registry-map nodes, unified authority, record construction, timers and oute
 caller/IRQ contexts remain separate. A captured identity supplies no physical
 pin or permission to retry accepted work; frame owners must quiesce consumers.
 
+Detached terminal publication returns the complete remaining timer-bearing
+record beyond registry unlock before destroying its observer/cancellation
+fields. Direct-ring delivery leaves the original record charge with that owner;
+only actual backlog retention transfers it into the retained entry. Notification
+then uses the exact published CQ source, even if the queue was replaced during
+the intervening phase. A firing timer still owns its event/node and producer
+reference during notification, retaining separate event admission until queue
+processing finishes. Map removal, backlog draining, construction and outer
+queue/IRQ contexts remain separate. This is logical terminal disposal, not a
+physical cleanup receipt or a retry owner.
+
 \section{Owned completion and CQ waiters}
 
 Completion and CQ scheduler waiters use fallible registration before a thread

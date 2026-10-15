@@ -37,6 +37,7 @@ pub(crate) fn test_admission() {
     super::callbacks::test_preparation();
     super::terminal_tests::run();
     super::queue_preparation::test_preparation();
+    super::detached_tests::run();
     crate::service::launch::test_publication_waiter_admission();
     crate::self_test::results::test_waiter_admission();
     let baseline = budget::node_used();

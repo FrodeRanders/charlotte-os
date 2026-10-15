@@ -37,6 +37,7 @@ pub use callbacks::{
 };
 pub mod cq;
 pub(crate) mod cq_budget;
+mod detached_tests;
 pub(crate) mod exit_tests;
 mod queue_preparation;
 mod terminal_tests;
@@ -576,7 +577,9 @@ struct DetachedOp {
     /// Keeps a timer observer alive until it fires and removes this operation.
     _timer_observer: Option<Arc<DetachedTimerObserver>>,
     timer_cancel: Option<TimerCancellation>,
-    record_charge: budget::Charge,
+    // Remains here through direct-ring delivery and post-registry disposal;
+    // only a retained backlog entry consumes it before the record leaves.
+    record_charge: Option<budget::Charge>,
 }
 
 struct DetachedTimerObserver {
@@ -1392,7 +1395,7 @@ pub(crate) fn complete_registered(
         {
             let op = completion.operation_id();
             let flushed_detached =
-                post_to_cq(cq_state, op, cap, &transition.result, BacklogOwner::Capability)
+                post_to_cq(cq_state, op, cap, &transition.result, || BacklogOwner::Capability)
                     .flushed
                     .detached;
             as_completions.live = as_completions.live.saturating_sub(flushed_detached);
@@ -1432,7 +1435,7 @@ fn post_to_cq(
     operation: u64,
     cookie: u64,
     result: &OpResult,
-    owner: BacklogOwner,
+    owner: impl FnOnce() -> BacklogOwner,
 ) -> PostOutcome {
     let (status, val) = crate::completion::cq::op_result_to_fields(result);
     let flushed = flush_backlog(cq_state);
@@ -1448,7 +1451,10 @@ fn post_to_cq(
             cookie,
             status,
             result: val,
-            owner,
+            // Transfer admission only if a retained entry needs it. A direct
+            // delivery leaves its existing record owner intact for disposal
+            // beyond the containing registry guard.
+            owner: owner(),
         });
     }
     PostOutcome {
@@ -1493,7 +1499,7 @@ pub fn submit_detached(
             cancel_pending: false,
             _timer_observer: None,
             timer_cancel: None,
-            record_charge,
+            record_charge: Some(record_charge),
         },
     );
     as_completions.live += 1;
@@ -1555,7 +1561,7 @@ fn submit_detached_timer_with_observer(
                 cancel_pending: false,
                 _timer_observer: Some(observer),
                 timer_cancel: Some(TimerCancellation(Some(cancel))),
-                record_charge,
+                record_charge: Some(record_charge),
             },
         );
         entries.live += 1;
@@ -1577,43 +1583,94 @@ pub fn complete_detached(
     operation: OperationId,
     result: OpResult,
 ) -> Result<(), CapError> {
-    let cq = {
+    retire_detached(asid, operation, result)?.finish();
+    Ok(())
+}
+
+/// Complete logical terminal retirement, not a physical cleanup receipt.
+/// Keep every remaining record field and the exact published CQ source until
+/// producer disposal outside COMPLETIONS, before any notification.
+#[must_use = "dispose the complete detached record after registry unlock, then notify its captured \
+              source"]
+struct RetiredDetached {
+    asid: AddressSpaceId,
+    record: DetachedOp,
+    source: Option<
+        crate::klib::observer::registration::ListRef<crate::klib::observer::waiter_budget::Charge>,
+    >,
+}
+
+impl RetiredDetached {
+    fn finish(self) {
+        let Self {
+            asid,
+            record,
+            source,
+        } = self;
+        let cq = record.cq;
+        drop(record);
+        if let Some(source) = source {
+            signal_cq_source(asid, cq, &source);
+        }
+    }
+}
+
+fn retire_detached(
+    asid: AddressSpaceId,
+    operation: OperationId,
+    result: OpResult,
+) -> Result<RetiredDetached, CapError> {
+    let retired = {
         let mut registry = COMPLETIONS.write();
         let as_completions = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
         let detached = as_completions.detached.remove(&operation).ok_or(CapError::UnknownCap)?;
-        let effective = if detached.cancel_pending {
-            OpResult::Cancelled
-        } else {
-            result
-        };
-        if let Some(cq_state) = as_completions.cqs.get_mut(&detached.cq) {
-            let outcome = post_to_cq(
-                cq_state,
-                operation,
-                detached.user_data,
-                &effective,
-                BacklogOwner::Detached {
-                    _charge: detached.record_charge,
-                },
-            );
-            cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
-            crate::debug_trace::trace(
-                crate::debug_trace::TAG_COMPLETE_DETACHED,
-                asid as u64,
-                cq_state.work_generation,
-                operation,
-            );
-            let delivered = outcome.flushed.detached + usize::from(outcome.delivered_current);
-            as_completions.live = as_completions.live.saturating_sub(delivered);
-        } else {
-            // The queue disappeared after submission, so no delivery can be
-            // retained. Release this operation's submission slot.
-            as_completions.live = as_completions.live.saturating_sub(1);
-        }
-        detached.cq
+        post_detached(asid, operation, result, as_completions, detached)
     };
-    signal_cq(asid, cq);
-    Ok(())
+    Ok(retired)
+}
+
+/// The caller serializes removal and this splice under COMPLETIONS. Returning
+/// the complete remaining record keeps timer and direct-result cleanup out of
+/// that hold; registry-map node destruction is a separate boundary.
+fn post_detached(
+    asid: AddressSpaceId,
+    operation: OperationId,
+    result: OpResult,
+    as_completions: &mut AsCompletions,
+    mut detached: DetachedOp,
+) -> RetiredDetached {
+    let effective = if detached.cancel_pending {
+        OpResult::Cancelled
+    } else {
+        result
+    };
+    let source = if let Some(cq_state) = as_completions.cqs.get_mut(&detached.cq) {
+        let outcome = post_to_cq(cq_state, operation, detached.user_data, &effective, || {
+            BacklogOwner::Detached {
+                _charge: detached.record_charge.take().expect("detached record lost admission"),
+            }
+        });
+        cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
+        crate::debug_trace::trace(
+            crate::debug_trace::TAG_COMPLETE_DETACHED,
+            asid as u64,
+            cq_state.work_generation,
+            operation,
+        );
+        let delivered = outcome.flushed.detached + usize::from(outcome.delivered_current);
+        as_completions.live = as_completions.live.saturating_sub(delivered);
+        Some(cq_state.waiters.clone())
+    } else {
+        // The queue disappeared after submission, so no delivery can be
+        // retained. Release this operation's submission slot.
+        as_completions.live = as_completions.live.saturating_sub(1);
+        None
+    };
+    RetiredDetached {
+        asid,
+        record: detached,
+        source,
+    }
 }
 
 /// Requests cancellation of a capability-free operation. A completed detached
@@ -1683,17 +1740,6 @@ fn flush_cq_backlog(as_completions: &mut AsCompletions, cq: CqId) -> FlushOutcom
     let outcome = as_completions.cqs.get_mut(&cq).map(flush_backlog).unwrap_or_default();
     as_completions.live = as_completions.live.saturating_sub(outcome.detached);
     outcome
-}
-
-fn signal_cq(asid: AddressSpaceId, cq: CqId) {
-    let source = {
-        let registry = COMPLETIONS.read();
-        let Some(cq_state) = registry.get(&asid).and_then(|c| c.cqs.get(&cq)) else {
-            return;
-        };
-        cq_state.waiters.clone()
-    };
-    signal_cq_source(asid, cq, &source);
 }
 
 fn signal_cq_source(
