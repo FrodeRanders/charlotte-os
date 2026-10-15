@@ -8,6 +8,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Waiter source preparation](audits/2026-10-15-waiter-source-preparation.md) — Lazy list allocation and IPC/CQ entries leave local source guards; exact-source revalidation, readiness races and post-guard disposal.
 - [Scheduler wait preparation and publication](audits/2026-10-15-scheduler-wait-publication.md) — Registration and cancellation leave local LP/table guards; early hints and exact installed-wait identity close publication races.
 - [Inline scheduler run queues](audits/2026-10-15-inline-scheduler-run-queues.md) — Ready storage follows each complete thread; no ring growth, migration rejects before source removal, and linked owners reject physical cleanup.
 - [Scheduler selection storage and x86 dispatch gate](audits/2026-10-15-scheduler-selection-storage.md) — Allocation-free load/candidate scans, explicit caller inventory and never-dispatched-only x86 migration; run-queue growth remains open.

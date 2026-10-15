@@ -697,3 +697,15 @@ remain. Source registry/initialization guards, outer system/park masks, broader
 metadata/principal admission and essential-progress qualification remain open.
 No numbered finding changes disposition, and no historical timeout cause,
 physical completion or recovery/replay authority is inferred.
+
+The [waiter source-preparation follow-up](../reports/audits/2026-10-15-waiter-source-preparation.md)
+continues R7-1/2 and C16/G1/G4. Lazy list admission/allocation leaves the source
+slot mutex, with first-winner publication and post-guard losing-candidate
+release. IPC/CQ entries own the captured list and original sponsor charge;
+registry publication checks exact identity before readiness and links without
+allocation. Ready/full/stale owners dispose after guard exit. CQ fixtures now
+use the existing captured interest rather than a separate numeric-only
+observable. Source teardown, other observer/record allocation, caller masks,
+metadata/principal budgeting and pressure progress remain open. No finding
+changes disposition, historical failure attribution or physical/replay
+authority follows.

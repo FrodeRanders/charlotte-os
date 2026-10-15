@@ -48,6 +48,7 @@ Any live state ── abort_thread_generation(tid, generation)
 | T11 | Ready admission carries the old waker out before cancelling its owned registration, even if another strong reference survives. Cancellation and final reference disposal leave LP/table guards; reaping a Blocked thread cancels it as well. Detached batches retain their own admission until released. |
 | T12 | A pinned reaper parks on an owned LP-head subscription with a durable post-registration readiness recheck. Staging queues admitted waiter nodes under outer scheduler ownership; only the producer LP claims after its local guards leave. Short setup masks bind enqueue/claim to that LP; callbacks preserve outer IRQ state and leave source/queue guards. Failed/started pairs are nonready. Readiness never replaces the off-stack/Arm ownership and one-shot physical-release checks. Only rejected waiter admission uses the recorded 10 ms backoff. |
 | T13 | Ready storage is fixed in the complete thread payload. Queue/state/affinity transfer validates both queues before source mutation; unlink precedes table extraction and linked owners reject stack release. Queue abandonment cannot authorize adoption or physical cleanup. |
+| T14 | Lazy source-list allocation leaves its initialization mutex. IPC/CQ entries prepare outside registry guards, then match the retained original list before checking readiness and linking. Ready/full/stale preparation stays owned until post-guard disposal; a source hint grants no returned resources or physical cleanup authority. |
 
 ### Lock order for transitions
 

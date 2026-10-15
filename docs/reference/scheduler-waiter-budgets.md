@@ -65,10 +65,22 @@ registry or callback. Removed entries are freed outside that lock.
 
 This qualifies the scheduler's local LP/table boundary, not every enclosing
 mask/guard or source implementation. `SYSTEM_SCHEDULER`'s outer read guard and
-caller-owned park masks remain; no path force-enables IRQs. Some sources still
-allocate under their own registry/initialization guard. General byte/principal
-accounting, allocator failure injection and broader progress qualification remain
-open. See the [wait-publication audit](../reports/audits/2026-10-15-scheduler-wait-publication.md).
+caller-owned park masks remain; no path force-enables IRQs. The
+[wait-publication audit](../reports/audits/2026-10-15-scheduler-wait-publication.md)
+qualifies that boundary; the
+[source-preparation follow-up](../reports/audits/2026-10-15-waiter-source-preparation.md)
+additionally moves lazy list initialization and IPC/CQ entry preparation outside
+their local source guards. General byte/principal accounting, other observer
+allocation/teardown, allocator failure injection and broader progress
+qualification remain open.
+
+IPC receive/reply and CQ registration capture a retained original list before
+preparing the charged entry. Under the registry, allocation-free publication
+checks that exact list before readiness, then either returns ready or links the
+entry. Replaced/absent sources reject; ready/full/rejected preparation remains
+with its caller until guard exit. Captured list ownership prevents pointer reuse
+while comparing identity. CQ uses its existing `CqInterest` for both production
+and fixtures; the separate numeric-only fixture observable is removed.
 
 Sources detach notification batches without allocating, then notify outside
 source/list locks. Completion and pending-call lists close permanently; CQ and
@@ -112,15 +124,16 @@ wake. This is a safety fallback, not efficient idle waiting or a guarantee of
 producer progress under overload. `ReadOperation` retains its buffer borrow
 through cancellation and terminal waiting.
 
-CQ wait ABIs retain their existing return shapes: admission failure returns
-without parking (timed waits report no observed work). They do not expose a
-distinct exhaustion status. Callers must recheck their work condition; these
-ABIs already permit deadline returns without work.
+CQ wait uses the single [checked ABI 88](cq-wait.md): readiness, deadline and
+admission rejection have distinct outcomes for finite/event-only waits.
+Rejection preserves the pending operation and its borrowed resources. Callers
+recheck durable work after readiness; a hint alone is not result observation.
 
 ## IPC receive and reply waits
 
-`wait_readable` and `wait_reply` use owning registration under the IPC registry
-lock. A message drains the endpoint's current receiver batch. Reply, reply-token
+`wait_readable` and `wait_reply` prepare owning registration outside IPC, then
+revalidate exact source and readiness before publication under the registry.
+A message drains the endpoint's current receiver batch. Reply, reply-token
 Drop, endpoint death or pending-call close closes/detaches the affected call
 batch. IPC releases its registry before notifying any scheduler observer. An
 endpoint-close operation can splice multiple detached batches without allocating
@@ -155,9 +168,12 @@ kernel fixtures exercise it directly. This is infrastructure hardening, not a
 change to service IPC or a production lock-performance result.
 
 A const-initializable `WaiterSource` prepares its list fallibly on first
-contention. Uncontended data-lock acquisition allocates nothing. Initialization
-uses a short independent spin guard; admission/entry allocation follows after
-that guard is released. The list control block remains with the lock source
+contention. Uncontended data-lock acquisition allocates nothing. Capture and
+first-winner publication use short independent spin holds; admission and list
+allocation run between them. Concurrent candidates remain charged through
+publication; a loser adopts the published list and disposes its own candidate
+after guard exit. Entry preparation then runs outside the initialization guard.
+The list control block remains with the lock source
 until final source/token/weak destruction, outside the entry count but within
 separate list admission. Source destruction closes/discards
 entries even if registration tokens retain the list. A free mutex can report

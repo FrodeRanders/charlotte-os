@@ -108,7 +108,11 @@ waker remembers early notifications and later callbacks match the installed
 wait itself; an older wait cannot wake a new park on the same thread. Ready
 admission carries the old subscription past guard exit before cancellation.
 Callers retain their existing IRQ policy, condition rechecks and absolute
-deadlines; broader source and outer-guard contexts remain qualification work.
+deadlines. Lazy list allocation leaves its source initialization mutex; IPC/CQ
+entries prepare outside their registries and revalidate the exact retained
+source before readiness and allocation-free publication. Losing or rejected
+storage stays owned until post-guard disposal. Source teardown, other observer
+allocation and wider outer-guard contexts remain qualification work.
 See \texttt{docs/reference/scheduler-waiter-budgets.md}.
 
 \section{\texttt{PerLp<T>}: interrupt-safe shared data}

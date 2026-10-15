@@ -4,6 +4,7 @@ use super::*;
 
 /// Serialized boot fixture: exact counters and counter-only pool saturation.
 pub(super) fn test_list_backing_admission() {
+    crate::klib::observer::waiter_source::test_preparation();
     use alloc::vec::Vec;
 
     use crate::{

@@ -51,9 +51,39 @@ impl WaitSponsor {
         list: &registration::ListRef<waiter_budget::Charge>,
         observer: Weak<dyn Observer>,
     ) -> Result<WaitRegistration, registration::RegistrationError> {
+        self.prepare(list, observer)?.publish()
+    }
+
+    /// Capture the exact list and admit/allocate its entry outside any source
+    /// registry. Revalidate identity/readiness there before borrowed publish.
+    pub(crate) fn prepare(
+        &self,
+        list: &registration::ListRef<waiter_budget::Charge>,
+        observer: Weak<dyn Observer>,
+    ) -> Result<PreparedWaitRegistration, registration::RegistrationError> {
         let charge = waiter_budget::reserve(&self.0)?;
+        Ok(PreparedWaitRegistration {
+            entry: registration::PreparedRegistration::try_new(observer, charge)?,
+            source: list.clone(),
+        })
+    }
+}
+
+/// One exact source and its charged entry. Publication borrows this owner so
+/// ready/rejected preparation cannot destroy backing beneath a source guard.
+pub(crate) struct PreparedWaitRegistration {
+    entry: registration::PreparedRegistration<waiter_budget::Charge>,
+    source: registration::ListRef<waiter_budget::Charge>,
+}
+
+impl PreparedWaitRegistration {
+    pub(crate) fn matches(&self, source: &registration::ListRef<waiter_budget::Charge>) -> bool {
+        core::ptr::eq(&*self.source, &**source)
+    }
+
+    pub(crate) fn publish(&mut self) -> Result<WaitRegistration, registration::RegistrationError> {
         Ok(WaitRegistration {
-            owned: Some(list.register(observer, charge)?),
+            owned: Some(self.source.register_prepared(&mut self.entry)?),
             ready: false,
         })
     }

@@ -29,6 +29,12 @@ adapter or uncharged legacy watchdog remains. Producer and outer IRQ/context
 qualification remains as published; reusing this helper is not a universal
 allocator/IRQ proof.
 
+Waiter entry preparation runs outside the completion registry. Publication
+matches the prepared original list and captured `CqInterest` before checking
+readiness and linking under that registry. Ready/full/stale preparation remains
+owned until post-guard disposal. See the
+[source-preparation audit](../reports/audits/2026-10-15-waiter-source-preparation.md).
+
 Readiness is a hint, not result observation, attachment adoption or physical
 quiescence. Preserve every pending operation and borrowed buffer on timeout or
 rejection. `catten_services::reactor::wait` gives ordinary reference reactors a

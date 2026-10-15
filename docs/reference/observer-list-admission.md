@@ -23,7 +23,8 @@ classification. CQ lists and endpoint readiness/close lists use their existing
 generation-qualified source admission. Pending-call lists use the captured call
 charge. Lazy completion callbacks and thread-exit lists use the first admitted
 event-watch charge; other lazy `WaiterSource` lists use the first waiting
-generation's captured sponsor. Retirement checked by that sponsor rejects fresh
+generation's captured sponsor, with the first published candidate fixing that
+list's classification. Retirement checked by that sponsor rejects fresh
 lazy initialization. No list creation resolves a reusable numeric ASID under
 its source lock or accepts an application role/name as reserve authority.
 
@@ -59,8 +60,18 @@ Sources and registries preserve their existing outward failure shapes:
 The new node counter holds only its independent spin guard. It neither allocates,
 enters another subsystem nor looks up an address-space generation. Reservation
 and refund do not retain that guard across list allocation/destruction or
-callbacks. List initialization and registry operations still allocate under some
-existing source/subsystem guards; this does not close SEC-18.
+callbacks. Lazy `WaiterSource` list preparation now runs outside its slot mutex;
+publication borrows candidate storage and installs only the first winner.
+Losing candidates retain their original charge until post-guard disposal.
+Entry admission follows using the winning list outside that mutex. A failed
+entry can leave an already initialized empty source charged, as before.
+
+Scheduler IPC/CQ registration captures its exact list, prepares the entry
+outside the registry and revalidates identity/readiness before borrowed,
+allocation-free publication. Ready/rejected preparations dispose outside the
+registry. This does not qualify source teardown or all other observer/registry
+allocation and outer IRQ contexts; SEC-18 remains partial. See the
+[source-preparation audit](../reports/audits/2026-10-15-waiter-source-preparation.md).
 
 ## Verification and limits
 

@@ -32,6 +32,7 @@ pub mod cq;
 pub(crate) mod cq_budget;
 pub(crate) mod exit_tests;
 pub(crate) mod timer_tests;
+mod waiter_tests;
 pub(crate) mod watch_budget;
 
 use alloc::{
@@ -1721,32 +1722,6 @@ fn signal_cq(asid: AddressSpaceId, cq: CqId) {
     );
 }
 
-struct CqObservable {
-    asid: AddressSpaceId,
-    cq: CqId,
-}
-
-impl Observable for CqObservable {
-    fn try_register_waiter(
-        &self,
-        observer: Weak<dyn Observer>,
-        sponsor: &crate::klib::observer::WaitSponsor,
-    ) -> Result<
-        crate::klib::observer::WaitRegistration,
-        crate::klib::observer::registration::RegistrationError,
-    > {
-        let registry = COMPLETIONS.read();
-        let state = registry
-            .get(&self.asid)
-            .and_then(|entries| entries.cqs.get(&self.cq))
-            .ok_or(crate::klib::observer::registration::RegistrationError::Closed)?;
-        if state.work_generation != state.last_seen_generation {
-            return Ok(crate::klib::observer::WaitRegistration::ready());
-        }
-        sponsor.register(&state.waiters, observer)
-    }
-}
-
 /// Non-blocking check: drains and returns the completion if it is terminal,
 /// otherwise `Ok(None)`. Handing back the buffer transfers ownership to the
 /// caller.
@@ -2143,6 +2118,28 @@ impl CqInterest {
         core::ptr::eq(&*state.waiters, &*self.identity)
             .then_some(state.work_generation != state.last_seen_generation)
     }
+
+    fn publish_waiter(
+        &self,
+        prepared: &mut crate::klib::observer::PreparedWaitRegistration,
+    ) -> Result<
+        crate::klib::observer::WaitRegistration,
+        crate::klib::observer::registration::RegistrationError,
+    > {
+        let registry = COMPLETIONS.read();
+        let state = registry
+            .get(&self.asid)
+            .and_then(|entries| entries.cqs.get(&self.cq))
+            .filter(|state| {
+                prepared.matches(&state.waiters) && core::ptr::eq(&*state.waiters, &*self.identity)
+            })
+            .ok_or(crate::klib::observer::registration::RegistrationError::Closed)?;
+        if state.work_generation != state.last_seen_generation {
+            Ok(crate::klib::observer::WaitRegistration::ready())
+        } else {
+            prepared.publish()
+        }
+    }
 }
 
 impl Observable for CqInterest {
@@ -2157,7 +2154,10 @@ impl Observable for CqInterest {
         match self.work_pending() {
             None => Err(crate::klib::observer::registration::RegistrationError::Closed),
             Some(true) => Ok(crate::klib::observer::WaitRegistration::ready()),
-            Some(false) => sponsor.register(&self.identity, observer),
+            Some(false) => {
+                let mut prepared = sponsor.prepare(&self.identity, observer)?;
+                self.publish_waiter(&mut prepared)
+            }
         }
     }
 }
@@ -2217,6 +2217,7 @@ pub fn wait_on_cq_checked(
 /// later namespace occupying the same numeric ASID/CQ. Reentrant callbacks
 /// also exercise the rule that no registry/device guard survives notification.
 pub(crate) fn test_prepared_wake_identity() {
+    waiter_tests::run();
     use core::sync::atomic::{
         AtomicUsize,
         Ordering,
@@ -2240,12 +2241,10 @@ pub(crate) fn test_prepared_wake_identity() {
         );
     });
     open_address_space_with_cq(CLIENT, 8, 8).unwrap();
-    let old_registration = CqObservable {
-        asid: CLIENT,
-        cq: 0,
-    }
-    .try_register_waiter(Arc::downgrade(&old), &sponsor)
-    .unwrap();
+    let old_registration = capture_cq_interest(CLIENT, 0)
+        .unwrap()
+        .try_register_waiter(Arc::downgrade(&old), &sponsor)
+        .unwrap();
     let stale_interest = capture_cq_interest(CLIENT, 0).unwrap();
     let batch = prepare_wake(CLIENT, 0).unwrap();
     assert_eq!(cq_work_generation(CLIENT, 0), 1);
@@ -2257,12 +2256,10 @@ pub(crate) fn test_prepared_wake_identity() {
     let new: Arc<dyn Observer> = CallOnNotify::new(move || {
         new_counter.fetch_add(1, Ordering::SeqCst);
     });
-    let new_registration = CqObservable {
-        asid: CLIENT,
-        cq: 0,
-    }
-    .try_register_waiter(Arc::downgrade(&new), &sponsor)
-    .unwrap();
+    let new_registration = capture_cq_interest(CLIENT, 0)
+        .unwrap()
+        .try_register_waiter(Arc::downgrade(&new), &sponsor)
+        .unwrap();
     stale_interest.wake();
     assert_eq!(cq_work_generation(CLIENT, 0), 0);
     batch.notify();
@@ -2305,13 +2302,11 @@ pub(crate) fn test_irq_wake_reentrancy(asid: AddressSpaceId, intid: u32) {
         );
         counter.fetch_add(1, Ordering::SeqCst);
     });
-    let registration = {
-        let registry = COMPLETIONS.read();
-        let state = registry.get(&asid).unwrap().cqs.get(&0).unwrap();
-        // Fixture an already waiting reader independently of the queue's
-        // last_seen cursor; this pseudo domain has no scheduled reactor.
-        sponsor.register(&state.waiters, Arc::downgrade(&callback)).unwrap()
-    };
+    // Fixture an already waiting reader independently of the queue's
+    // last_seen cursor; this pseudo domain has no scheduled reactor. Capture
+    // under the registry, then allocate outside it like ordinary waiters.
+    let source = capture_cq_interest(asid, 0).unwrap();
+    let registration = sponsor.register(&source.identity, Arc::downgrade(&callback)).unwrap();
     assert!(crate::device::deliver_interrupt(intid));
     let deadline = crate::self_test::results::Deadline::after_millis(5_000);
     while calls.load(Ordering::SeqCst) == 0 {

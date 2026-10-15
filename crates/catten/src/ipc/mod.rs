@@ -55,6 +55,7 @@ pub(crate) mod record_budget;
 pub(crate) mod record_tests;
 pub(crate) mod reply;
 mod submission;
+mod waiter_source;
 pub(crate) mod waiter_tests;
 
 use attachments::MemoryAttachments;
@@ -1724,12 +1725,7 @@ impl Observable for EndpointObservable {
         observer: Weak<dyn Observer>,
         sponsor: &WaitSponsor,
     ) -> Result<WaitRegistration, RegistrationError> {
-        let ipc = IPC.read();
-        let endpoint = ipc.endpoints.get(&self.endpoint).ok_or(RegistrationError::Closed)?;
-        if endpoint_available(&ipc, endpoint) {
-            return Ok(WaitRegistration::ready());
-        }
-        sponsor.register(&endpoint.readiness_observers, observer)
+        waiter_source::Source::Endpoint(self.endpoint).register(observer, sponsor)
     }
 }
 
@@ -2110,12 +2106,7 @@ impl Observable for PendingCallObservable {
         observer: Weak<dyn Observer>,
         sponsor: &WaitSponsor,
     ) -> Result<WaitRegistration, RegistrationError> {
-        let ipc = IPC.read();
-        let call = ipc.pending_calls.get(&self.call).ok_or(RegistrationError::Closed)?;
-        if call.result.is_some() {
-            return Ok(WaitRegistration::ready());
-        }
-        sponsor.register(&call.observers, observer)
+        waiter_source::Source::Reply(self.call).register(observer, sponsor)
     }
 }
 

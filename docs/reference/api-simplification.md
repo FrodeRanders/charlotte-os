@@ -130,3 +130,12 @@ yield continuation containing post-switch staging and deferred delivery. Both
 architectures now complete that handoff on the incoming stack before restoring
 its register frame. This changes no protocol or runtime ABI; historical IPC
 exit/persistence attribution and the remaining simplification candidates stay open.
+
+The [waiter source-preparation follow-up](../reports/audits/2026-10-15-waiter-source-preparation.md)
+removes the fixture-only numeric `CqObservable`; its two registrations and the
+IRQ fixture use the existing exact `CqInterest`/source capture. Ordinary CQ
+registrations share production's prepared publication; the IRQ fixture retains
+its deliberate cursor-independent registration after exact source capture.
+No wire grammar,
+storage format, runtime ABI or numbered simplification batch changes; the
+remaining protocol/raw-adapter candidates above are unchanged.

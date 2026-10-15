@@ -37,17 +37,37 @@ impl WaiterSource {
         observer: Weak<dyn Observer>,
         sponsor: &WaitSponsor,
     ) -> Result<WaitRegistration, RegistrationError> {
-        let list = {
-            let mut slot = self.list.lock();
-            if slot.is_none() {
-                *slot = Some(ObserverList::try_new(
-                    waiter_budget::SOURCE_LIMIT,
-                    sponsor.list_platform()?,
-                )?);
-            }
-            slot.as_ref().unwrap().clone()
-        };
+        let candidate = self.prepare_list(sponsor, |platform| {
+            ObserverList::try_new(waiter_budget::SOURCE_LIMIT, platform)
+        })?;
+        let list = self.publish_list(&candidate);
+        // Another initializer may have won. Dispose losing storage only after
+        // the slot guard leaves, before admitting this wait's entry.
+        drop(candidate);
         sponsor.register(&list, observer)
+    }
+
+    fn prepare_list(
+        &self,
+        sponsor: &WaitSponsor,
+        allocate: impl FnOnce(bool) -> Result<ListRef<waiter_budget::Charge>, RegistrationError>,
+    ) -> Result<ListRef<waiter_budget::Charge>, RegistrationError> {
+        let existing = self.list.lock().clone();
+        match existing {
+            Some(list) => Ok(list),
+            None => allocate(sponsor.list_platform()?),
+        }
+    }
+
+    fn publish_list(
+        &self,
+        candidate: &ListRef<waiter_budget::Charge>,
+    ) -> ListRef<waiter_budget::Charge> {
+        let mut slot = self.list.lock();
+        if slot.is_none() {
+            *slot = Some(candidate.clone());
+        }
+        slot.as_ref().unwrap().clone()
     }
 
     pub(crate) fn registered(&self) -> usize {
@@ -85,4 +105,10 @@ impl Drop for WaiterSource {
             drop(list.close());
         }
     }
+}
+
+mod tests;
+
+pub(crate) fn test_preparation() {
+    tests::run();
 }

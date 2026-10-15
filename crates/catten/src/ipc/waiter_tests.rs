@@ -82,6 +82,7 @@ pub(crate) fn test_reply_cq_interest() {
 }
 
 pub(crate) fn test_source_admission() {
+    super::waiter_source::test_preparation();
     let baseline = waiter_budget::node_used();
     let sponsor = WaitSponsor::new(false);
     let hits = Arc::new(AtomicUsize::new(0));

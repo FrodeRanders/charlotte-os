@@ -43,7 +43,7 @@ should be updated with the implementation when those contracts change.
 - [Scheduler timer-event budgets](scheduler-timer-budgets.md) — sleep/watchdog admission,
   fallible queue-node preparation and independent quantum storage.
 - [Scheduler waiter budgets](scheduler-waiter-budgets.md) — owned completion/CQ/IPC/lock/timer
-  registrations prepared outside LP/table guards, exact wait publication and
+  registrations prepared outside LP/table and local source guards, exact wait publication and
   cleanup after competing wakes.
 - [IPC record budgets](ipc-record-budgets.md) — grantor/caller sponsorship,
   connection/call/reply admission, pre-transfer rejection and retirement fencing.
