@@ -11,7 +11,9 @@ use alloc::sync::{
 };
 
 pub trait Observable {
-    /// Never invoke callbacks inline: the scheduler holds its thread table.
+    /// Never invoke callbacks inline. Scheduler registration runs before
+    /// Blocked publication, outside its LP and master thread-table guards;
+    /// producers still detach and deliver only after their own guards leave.
     /// Every source must provide fallible owning registration. There is no
     /// weak-only fallback that can orphan parked threads or retain stale wakes.
     fn try_register_waiter(

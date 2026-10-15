@@ -61,7 +61,10 @@ and candidate scans no longer allocate. Ready storage is now inline in each
 admitted thread, and migration validates both queues before allocation-free
 queue/state/affinity publication. See the
 [run-queue contract](../reference/scheduler-run-queues.md). Wider table, timer,
-waiter, heap/principal and progress admission remains separate work.
+heap/principal and progress admission remains separate work. Scheduler
+[waiter preparation and cancellation](../reference/scheduler-waiter-budgets.md)
+now leave local LP/table guards; broader source and outer-guard contexts remain
+qualification work.
 
 ## Design principles
 

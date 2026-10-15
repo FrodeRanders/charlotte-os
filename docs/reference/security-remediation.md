@@ -684,3 +684,16 @@ owner retained. Queue abandonment grants no force-clear, cleanup or replay.
 Broader table/waiter/timer/heap storage, aggregate budgets, essential progress
 and integrated physical qualification remain open. SEC-07/18 stay partial;
 family/finding counts and historical failure attribution are unchanged.
+
+The [scheduler wait-publication follow-up](../reports/audits/2026-10-15-scheduler-wait-publication.md)
+continues R7-1/2 and C16/G1/G4. Captured generation/state/sponsor precede
+fallible waker and source registration outside local LP/table guards. Early
+notifications remain recorded through publication; source callbacks require the
+currently installed waker as well as the thread generation. Ready admission
+carries the old subscription past both guards before cancellation/destruction;
+unused or rejected preparation is disposed there too. Original deadlines,
+caller IRQ policy, accepted operation owners and the abort/execution fences
+remain. Source registry/initialization guards, outer system/park masks, broader
+metadata/principal admission and essential-progress qualification remain open.
+No numbered finding changes disposition, and no historical timeout cause,
+physical completion or recovery/replay authority is inferred.

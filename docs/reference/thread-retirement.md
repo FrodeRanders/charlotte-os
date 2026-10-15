@@ -274,8 +274,11 @@ run-queue backing no longer grows: [inline run queues](scheduler-run-queues.md)
 use each complete thread's admitted payload and qualify exact linkage before
 queue/state/affinity publication. The earlier
 [selection audit](../reports/audits/2026-10-15-scheduler-selection-storage.md)
-removed temporary load/candidate vectors. Other subsystem metadata, waiter
-cancellation and quantum-timer storage remain separate allocation paths. Outer construction/submission masks, growth's inner walker
+removed temporary load/candidate vectors. [Scheduler waiter preparation and
+cancellation](scheduler-waiter-budgets.md) now run outside local LP/table guards,
+with exact installed-wait qualification and remembered early hints. Other
+subsystem metadata, source initialization and quantum-timer storage remain
+separate allocation paths. Outer construction/submission masks, growth's inner walker
 contexts and arbitrary explicit callback contexts remain unqualified;
 full SEC-18 lock/quiescence safety is not claimed. There is
 no failed-pair retry owner, shared custody adapter or abandoned-owner recovery.

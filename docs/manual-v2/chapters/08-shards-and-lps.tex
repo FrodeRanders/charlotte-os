@@ -101,6 +101,16 @@ unlinks before detaching the thread; linked owners cannot release their stack.
 This does not complete general thread-table, waiter/timer or kernel-heap
 admission. See \texttt{docs/reference/scheduler-run-queues.md}.
 
+Scheduler waits capture their exact thread generation, state and sponsor before
+preparing waker/source storage outside local LP and thread-table guards.
+Publication revalidates that capture before changing queue membership. Each
+waker remembers early notifications and later callbacks match the installed
+wait itself; an older wait cannot wake a new park on the same thread. Ready
+admission carries the old subscription past guard exit before cancellation.
+Callers retain their existing IRQ policy, condition rechecks and absolute
+deadlines; broader source and outer-guard contexts remain qualification work.
+See \texttt{docs/reference/scheduler-waiter-budgets.md}.
+
 \section{\texttt{PerLp<T>}: interrupt-safe shared data}
 
 \label{sec:per-lp}

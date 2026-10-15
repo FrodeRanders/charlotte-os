@@ -16,8 +16,10 @@ no queue reservation or cleanup ladder is added.
 
 This is fixed metadata per admitted thread, not a complete byte/principal
 budget. Master-table vector preparation still has its existing outer guards;
-general thread-node/heap admission, waiter cancellation and quantum-timer
-metadata remain separate SEC-07/18 work. No domain account is reclassified and
+general thread-node/heap admission and quantum-timer metadata remain separate
+SEC-07/18 work. [Waiter preparation and cancellation](scheduler-waiter-budgets.md)
+now leave the scheduler's local LP/table guards; wider source/outer contexts
+remain separate. No domain account is reclassified and
 stack/root/retirement charges retain their original owners.
 Byte accounting must include both live table capacity and the prepared future
 retirement node's payload storage, even though only one link is active in the

@@ -30,6 +30,7 @@ use crate::{
             ThreadGeneration,
             ThreadId,
             ThreadTable,
+            waker::Waker,
         },
     },
     klib::observer::Observer,
@@ -52,6 +53,8 @@ pub trait LpScheduler: Debug + Send {
         &mut self,
         tid: ThreadId,
         expected_generation: Option<ThreadGeneration>,
+        expected_waker: Option<&Waker>,
+        detached_wait: &mut Option<Arc<Waker>>,
     ) -> Result<(), Error>;
     fn remove_thread(
         &mut self,

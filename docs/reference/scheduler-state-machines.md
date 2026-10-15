@@ -38,14 +38,14 @@ Any live state ── abort_thread_generation(tid, generation)
 | T2 | `Ready(lp)` has exact inline membership in that LP's run queue. An early wake may also retain the outgoing current-handle borrow until its context is saved. A popped aborted candidate remains table-owned until requested retirement. |
 | T3 | `Blocked` ⇒ thread is NOT in any `run_queue`. Transiently it may still be `current_handle` (during the `block_thread → cond_yield_lp` window). |
 | T4 | `idle_tid` is never in `run_queue` and never `Blocked`. |
-| T5 | Queued handles and asynchronous Wakers carry a `generation`; dispatch and wake admission reject stale generations after slot reuse. |
-| T6 | `add_thread()` for an already-`Running` or already-`Ready` thread is a benign no-op (aggregated wakes before the thread parks). |
+| T5 | Queued handles and asynchronous Wakers carry a `generation`; dispatch and wake admission reject stale generations after slot reuse. Source callbacks also match the currently installed Waker, preventing an earlier wait from waking a later one in the same generation. |
+| T6 | Explicit generation-qualified admission for an already-`Running` or already-`Ready` thread is a benign no-op. Source callbacks require their exact installed Blocked waker; repeated/stale callbacks reject without changing another wait. |
 | T7 | When the wake source does not exist before `block_thread()` (for example `sleep()`), publishing `Blocked` and installing that wake source form one local non-preemptible transaction. |
 | T7a | Timed waits mask local IRQs through `Blocked` publication, watchdog enqueue and the condition recheck. The local mask restores the entry state on rejection and is dropped before yielding; an external observable may never notify. |
 | T8 | Delayed cancellation and cleanup carry `(tid, generation)`; a stale request cannot retire a newer thread that reused the numeric TID. |
 | T9 | Domain quiescence requires an unchanged retirement epoch across the live/staged table snapshots and no retirement in flight. The reaper retains its retirement guard while threads are held in its owning detached nodes, through deferred reinsertion and final resource release. |
-| T10 | Fallible waiter admission precedes queue removal and `Blocked` publication. Failure leaves state, queue membership and constraints unchanged; an immediate-ready outcome does not park. |
-| T11 | Ready admission cancels an owned completion/CQ/IPC registration even if another strong Waker survives. Reaping a Blocked thread cancels it as well; detached batches retain their own admission until released. |
+| T10 | Fallible waker/source registration runs outside local LP/table guards before queue removal and `Blocked` publication. Revalidation failure leaves the current owner unchanged. An immediate-ready or remembered early-notification outcome does not park; publication and matching callback share table serialization to close the lost-wake window. |
+| T11 | Ready admission carries the old waker out before cancelling its owned registration, even if another strong reference survives. Cancellation and final reference disposal leave LP/table guards; reaping a Blocked thread cancels it as well. Detached batches retain their own admission until released. |
 | T12 | A pinned reaper parks on an owned LP-head subscription with a durable post-registration readiness recheck. Staging queues admitted waiter nodes under outer scheduler ownership; only the producer LP claims after its local guards leave. Short setup masks bind enqueue/claim to that LP; callbacks preserve outer IRQ state and leave source/queue guards. Failed/started pairs are nonready. Readiness never replaces the off-stack/Arm ownership and one-shot physical-release checks. Only rejected waiter admission uses the recorded 10 ms backoff. |
 | T13 | Ready storage is fixed in the complete thread payload. Queue/state/affinity transfer validates both queues before source mutation; unlink precedes table extraction and linked owners reject stack release. Queue abandonment cannot authorize adoption or physical cleanup. |
 
@@ -53,9 +53,12 @@ Any live state ── abort_thread_generation(tid, generation)
 
 ```
 spawn_thread:         MASTER_THREAD_TABLE.write() [drop] → SYSTEM_SCHEDULER.read() → lp_scheduler.lock()
-block_thread (self):  SYSTEM_SCHEDULER.read() → MASTER_THREAD_TABLE.read() [drop] → MASTER_THREAD_TABLE.write()
-block_thread (Ready): SYSTEM_SCHEDULER.read() → lp_scheduler.lock() → MASTER_THREAD_TABLE.write()
+block capture:        SYSTEM_SCHEDULER.read() → MASTER_THREAD_TABLE.read() [drop]
+                      allocate/register outside LP/table; retain early hints
+block publish (self): SYSTEM_SCHEDULER.read() → MASTER_THREAD_TABLE.write()
+block publish (Ready):SYSTEM_SCHEDULER.read() → lp_scheduler.lock() → MASTER_THREAD_TABLE.write()
 submit_*:             SYSTEM_SCHEDULER.read() → lp_scheduler.lock() → MASTER_THREAD_TABLE.write()
+                      detach old waker; drop LP/table before cancellation/destruction
 abort_thread:         MASTER_THREAD_TABLE.read() [drop] → lp_scheduler.lock() → MASTER_THREAD_TABLE.write()
 post-switch abort:    SYSTEM_SCHEDULER.read() → lp_scheduler.lock() → MASTER_THREAD_TABLE.write()
                       unlink exact Ready membership before table extraction; drop guards before staging

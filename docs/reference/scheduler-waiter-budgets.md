@@ -10,8 +10,18 @@ CQ, endpoint-readiness, pending-call, blocking-lock and timer sources return an 
 rejection leaves the thread's state, queue membership and migration constraints
 unchanged. Already-terminal completions, unconsumed CQ work, readable/closed
 endpoints and replied calls return an immediate-ready marker without parking.
-Registration never invokes a callback inline while the scheduler holds
-the master thread table.
+The scheduler captures the exact generation, state/LP and sponsor under a short
+table borrow, then prepares the waker and source registration outside LP and
+master-table guards. Publication revalidates the captured lifetime/state and
+abort fence before queue removal. A changed state or reused slot rejects without
+changing its current owner. Source registration never invokes callbacks inline.
+
+Each waker remembers notification before publication. Under table serialization,
+an early hint prevents parking; a later callback admits only that installed
+waker, as well as its exact thread generation. A delayed callback from an older
+wait cannot wake a new wait on the same thread. These hints still require the
+caller's durable condition recheck and original deadline; they do not prove
+operation completion or adopt returned capabilities.
 
 | Live registration limit | Current policy |
 | --- | ---: |
@@ -46,8 +56,19 @@ The thread's Waker owns its registration token. A successful Blocked-to-Ready
 transition explicitly cancels it, including when a watchdog wins and another
 strong Waker reference survives. Aborted Blocked threads cancel when their
 staged Thread is actually reaped, not necessarily when abort is requested.
-Token destruction enters only the independent list lock, never a source
+Ready admission moves the complete old waker out through its caller's LP scope.
+Explicit cancellation and final strong-reference disposal run after both LP and
+master-table guards leave, including a later placement error. Immediate-ready,
+early-notified and rejected preparations are likewise cancelled outside these
+guards. Token destruction enters only the independent list lock, never a source
 registry or callback. Removed entries are freed outside that lock.
+
+This qualifies the scheduler's local LP/table boundary, not every enclosing
+mask/guard or source implementation. `SYSTEM_SCHEDULER`'s outer read guard and
+caller-owned park masks remain; no path force-enables IRQs. Some sources still
+allocate under their own registry/initialization guard. General byte/principal
+accounting, allocator failure injection and broader progress qualification remain
+open. See the [wait-publication audit](../reports/audits/2026-10-15-scheduler-wait-publication.md).
 
 Sources detach notification batches without allocating, then notify outside
 source/list locks. Completion and pending-call lists close permanently; CQ and

@@ -20,10 +20,7 @@
 use alloc::{
     boxed::Box,
     collections::btree_map::BTreeMap,
-    sync::{
-        Arc,
-        Weak,
-    },
+    sync::Arc,
 };
 use core::sync::atomic::{
     AtomicU64,
@@ -33,9 +30,12 @@ use core::sync::atomic::{
 
 mod domain_abort;
 mod selection_tests;
+mod wait;
+use wait::with_detached_wait;
 pub(crate) fn test_rebalance_selection() {
     selection_tests::run();
     super::lp_schedulers::round_robin::test_migration_selection();
+    wait::test_publication();
 }
 pub(crate) use domain_abort::{
     abort_domain_threads,
@@ -284,30 +284,29 @@ impl SystemScheduler {
         {
             return Err(Error::InvalidThread);
         }
-        let target = self.pick_lp_for(tid);
-        let mut lp_guard = target.lock();
-        let load_before = lp_guard.thread_count();
-        match lp_guard.add_thread(tid, None) {
-            Ok(()) => {}
-            Err(_) => return Err(Error::InvalidThread),
-        }
-        let lp_id = lp_guard.get_lp_id();
-        let load_after = lp_guard.thread_count();
-        // Admission is itself a scheduling event. This is required for
-        // same-LP admission (which sends no IPI), and harmlessly coalesces for
-        // duplicate wakes or a remote admission whose IPI also sets pending.
-        lp_guard.set_ctx_switch_pending();
-        // Set affinity on first assignment — do this under the LP scheduler
-        // lock to honour the lp_scheduler → MASTER_THREAD_TABLE lock order.
-        {
-            let mut table = MASTER_THREAD_TABLE.write();
-            if let Ok(thread) = table.get_mut(tid)
-                && thread.affinity_lp.is_none()
+        let (lp_id, load_before, load_after) = with_detached_wait(|detached| {
+            let target = self.pick_lp_for(tid);
+            let mut lp_guard = target.lock();
+            let load_before = lp_guard.thread_count();
+            lp_guard.add_thread(tid, None, None, detached).map_err(|_| Error::InvalidThread)?;
+            let lp_id = lp_guard.get_lp_id();
+            let load_after = lp_guard.thread_count();
+            // Admission is itself a scheduling event. This is required for
+            // same-LP admission (which sends no IPI), and harmlessly coalesces for
+            // duplicate wakes or a remote admission whose IPI also sets pending.
+            lp_guard.set_ctx_switch_pending();
+            // Set affinity on first assignment — do this under the LP scheduler
+            // lock to honour the lp_scheduler → MASTER_THREAD_TABLE lock order.
             {
-                thread.affinity_lp = Some(lp_id);
+                let mut table = MASTER_THREAD_TABLE.write();
+                if let Ok(thread) = table.get_mut(tid)
+                    && thread.affinity_lp.is_none()
+                {
+                    thread.affinity_lp = Some(lp_id);
+                }
             }
-        }
-        drop(lp_guard);
+            Ok((lp_id, load_before, load_after))
+        })?;
         sched_trace!(
             "[sched] submit_new TID={} -> LP{} load={}->{}",
             tid,
@@ -328,14 +327,38 @@ impl SystemScheduler {
         tid: ThreadId,
         generation: ThreadGeneration,
     ) -> Result<LpId, Error> {
-        let target = self.pick_lp_for(tid);
-        let mut lp_guard = target.lock();
-        let load_before = lp_guard.thread_count();
-        lp_guard.add_thread(tid, Some(generation)).map_err(|_| Error::InvalidThread)?;
-        let lp_id = lp_guard.get_lp_id();
-        let load_after = lp_guard.thread_count();
-        lp_guard.set_ctx_switch_pending();
-        drop(lp_guard);
+        self.submit_woken_wait_matching(tid, generation, None)
+    }
+
+    /// Source callbacks must match the installed wait as well as the thread
+    /// lifetime. A delayed hint from an earlier park cannot wake a later one.
+    pub(crate) fn submit_woken_wait(
+        &self,
+        tid: ThreadId,
+        generation: ThreadGeneration,
+        waker: &waker::Waker,
+    ) -> Result<LpId, Error> {
+        self.submit_woken_wait_matching(tid, generation, Some(waker))
+    }
+
+    fn submit_woken_wait_matching(
+        &self,
+        tid: ThreadId,
+        generation: ThreadGeneration,
+        expected_waker: Option<&waker::Waker>,
+    ) -> Result<LpId, Error> {
+        let (lp_id, load_before, load_after) = with_detached_wait(|detached| {
+            let target = self.pick_lp_for(tid);
+            let mut lp_guard = target.lock();
+            let load_before = lp_guard.thread_count();
+            lp_guard
+                .add_thread(tid, Some(generation), expected_waker, detached)
+                .map_err(|_| Error::InvalidThread)?;
+            let lp_id = lp_guard.get_lp_id();
+            let load_after = lp_guard.thread_count();
+            lp_guard.set_ctx_switch_pending();
+            Ok((lp_id, load_before, load_after))
+        })?;
         sched_trace!(
             "[sched] submit_woken TID={} gen={} -> LP{} load={}->{}",
             tid,
@@ -363,17 +386,19 @@ impl SystemScheduler {
                 return Err(Error::InvalidThread);
             }
         };
-        let mut sched_guard = sched.lock();
-        sched_guard.add_thread(tid, None).map_err(|_| Error::InvalidThread)?;
-        {
-            let mut table = MASTER_THREAD_TABLE.write();
-            let thread = table.get_mut(tid).map_err(|_| Error::InvalidThread)?;
-            thread.affinity_lp = Some(target_lp);
-            thread.pinned_lp = Some(target_lp);
-            thread.migration_safe = false;
-        }
-        sched_guard.set_ctx_switch_pending();
-        drop(sched_guard);
+        with_detached_wait(|detached| {
+            let mut sched_guard = sched.lock();
+            sched_guard.add_thread(tid, None, None, detached).map_err(|_| Error::InvalidThread)?;
+            {
+                let mut table = MASTER_THREAD_TABLE.write();
+                let thread = table.get_mut(tid).map_err(|_| Error::InvalidThread)?;
+                thread.affinity_lp = Some(target_lp);
+                thread.pinned_lp = Some(target_lp);
+                thread.migration_safe = false;
+            }
+            sched_guard.set_ctx_switch_pending();
+            Ok(())
+        })?;
         if target_lp != get_lp_id() {
             LocalIntCtlr::send_unicast_ipi(target_lp, SCHEDULER_IPI_VECTOR)
                 .expect("failed to send scheduler wake IPI");
@@ -386,18 +411,20 @@ impl SystemScheduler {
     /// initial placement and for the boot rebalancing regression workload.
     pub fn submit_migratable_to_lp(&self, tid: ThreadId, target_lp: LpId) -> Result<(), Error> {
         let sched = self.lp_schedulers.get(&target_lp).ok_or(Error::InvalidThread)?;
-        let mut sched_guard = sched.lock();
-        sched_guard.add_thread(tid, None).map_err(|_| Error::InvalidThread)?;
-        {
-            let mut table = MASTER_THREAD_TABLE.write();
-            let thread = table.get_mut(tid).map_err(|_| Error::InvalidThread)?;
-            if !thread.migration_safe || thread.pinned_lp.is_some() {
-                return Err(Error::InvalidThread);
+        with_detached_wait(|detached| {
+            let mut sched_guard = sched.lock();
+            sched_guard.add_thread(tid, None, None, detached).map_err(|_| Error::InvalidThread)?;
+            {
+                let mut table = MASTER_THREAD_TABLE.write();
+                let thread = table.get_mut(tid).map_err(|_| Error::InvalidThread)?;
+                if !thread.migration_safe || thread.pinned_lp.is_some() {
+                    return Err(Error::InvalidThread);
+                }
+                thread.affinity_lp = Some(target_lp);
             }
-            thread.affinity_lp = Some(target_lp);
-        }
-        sched_guard.set_ctx_switch_pending();
-        drop(sched_guard);
+            sched_guard.set_ctx_switch_pending();
+            Ok(())
+        })?;
         if target_lp != get_lp_id() {
             LocalIntCtlr::send_unicast_ipi(target_lp, SCHEDULER_IPI_VECTOR)
                 .expect("failed to send scheduler wake IPI");
@@ -532,85 +559,6 @@ impl SystemScheduler {
         constraint: MigrationConstraint,
     ) -> Result<(), Error> {
         self.block_thread_with_constraint_generation(tid, event, constraint).map(|_| ())
-    }
-
-    /// Block a thread and return the generation captured by the installed
-    /// waker while the master-table entry is locked.
-    pub fn block_thread_with_constraint_generation(
-        &self,
-        tid: ThreadId,
-        event: &dyn crate::klib::observer::Observable,
-        constraint: MigrationConstraint,
-    ) -> Result<ThreadGeneration, Error> {
-        let state = {
-            let table = MASTER_THREAD_TABLE.read();
-            table
-                .get(tid)
-                .map(|thread| match thread.state {
-                    ThreadState::Running(_) => ThreadStateSnapshot::Running,
-                    ThreadState::Ready(lp) => ThreadStateSnapshot::Ready(lp),
-                    ThreadState::NeedsLpAssignment => ThreadStateSnapshot::NeedsLpAssignment,
-                    ThreadState::Blocked(_) => ThreadStateSnapshot::Blocked,
-                })
-                .map_err(|_| Error::InvalidThread)?
-        };
-
-        // For a queued thread, honor the global LP-scheduler -> thread-table
-        // lock order used by dispatch, wake, and abort. Holding these in the
-        // reverse order can deadlock an LP in `RoundRobin::next`.
-        let mut lp_guard = match state {
-            ThreadStateSnapshot::Ready(lp_id) => Some(self.lp_schedulers[&lp_id].lock()),
-            _ => None,
-        };
-        let mut table = MASTER_THREAD_TABLE.write();
-        let thread = table.get_mut(tid).map_err(|_| Error::InvalidThread)?;
-        match thread.state {
-            ThreadState::Running(_) => {
-                // The thread is currently executing on its LP and is
-                // blocking itself. Do NOT remove it from the LP scheduler
-                // yet: it must remain the LP's `current_handle` so that the
-                // following `cond_yield_lp` saves its execution context to
-                // its own `saved_sp`. `RoundRobin::next` declines to
-                // re-queue a Blocked thread, so it will not be rescheduled
-                // until its waker fires and re-admits it.
-            }
-            ThreadState::Ready(lp_id) => {
-                let guard = lp_guard.as_mut().ok_or(Error::InvalidThread)?;
-                if guard.get_lp_id() != lp_id {
-                    return Err(Error::InvalidThread);
-                }
-            }
-            ThreadState::NeedsLpAssignment => {}
-            ThreadState::Blocked(_) => {
-                return Err(Error::AlreadyBlocked);
-            }
-        }
-        let generation = thread.generation;
-        let waker = Arc::try_new(waker::Waker::new(tid, generation))
-            .map_err(|_| Error::WaitRegistrationFailed)?;
-        let registration = event
-            .try_register_waiter(
-                Arc::downgrade(&waker) as Weak<dyn crate::klib::observer::Observer>,
-                &thread.wait_sponsor,
-            )
-            .map_err(|_| Error::WaitRegistrationFailed)?;
-        if registration.is_ready() {
-            return Ok(generation);
-        }
-        waker.set_registration(registration);
-        // Admission precedes removing a queued thread or publishing Blocked.
-        // A rejected registration leaves state, queue and constraints intact.
-        if let ThreadState::Ready(_) = thread.state {
-            lp_guard
-                .as_mut()
-                .unwrap()
-                .remove_thread(tid, Some(generation), &mut table)
-                .map_err(|_| Error::InvalidThread)?;
-        }
-        let thread = table.get_mut(tid).map_err(|_| Error::InvalidThread)?;
-        thread.add_migration_constraint(constraint);
-        thread.state = ThreadState::Blocked(waker);
-        Ok(generation)
     }
 
     pub fn abort_thread(&self, tid: ThreadId) -> Result<ThreadId, Error> {
@@ -782,14 +730,6 @@ impl Default for SystemScheduler {
     fn default() -> Self {
         Self::new()
     }
-}
-
-#[derive(Clone, Copy)]
-enum ThreadStateSnapshot {
-    Running,
-    Ready(LpId),
-    NeedsLpAssignment,
-    Blocked,
 }
 
 pub fn get_thread_id() -> Option<ThreadId> {

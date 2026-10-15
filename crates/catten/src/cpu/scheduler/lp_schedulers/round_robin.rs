@@ -46,6 +46,7 @@ use crate::{
                 ThreadState,
                 ThreadTable,
                 record_dispatch,
+                waker::Waker,
             },
         },
     },
@@ -306,7 +307,10 @@ impl LpScheduler for RoundRobin {
         &mut self,
         tid: ThreadId,
         expected_generation: Option<ThreadGeneration>,
+        expected_waker: Option<&Waker>,
+        detached_wait: &mut Option<Arc<Waker>>,
     ) -> Result<(), Error> {
+        assert!(detached_wait.is_none(), "wake disposal already occupied");
         let mut tt_guard = MASTER_THREAD_TABLE.write();
         let thread = match tt_guard.get_mut(tid) {
             Ok(t) => t,
@@ -316,6 +320,11 @@ impl LpScheduler for RoundRobin {
             Err(_) => return Err(Error::InvalidThread),
         };
         if expected_generation.is_some_and(|generation| generation != thread.generation) {
+            return Err(Error::InvalidThread);
+        }
+        if let Some(expected) = expected_waker
+            && !matches!(&thread.state, ThreadState::Blocked(current) if core::ptr::eq(&**current, expected))
+        {
             return Err(Error::InvalidThread);
         }
         let executor = thread.operation_executor_lp.load(Ordering::Acquire);
@@ -366,11 +375,15 @@ impl LpScheduler for RoundRobin {
                     .push_back(&mut *tt_guard, handle)
                     .map_err(|_| Error::InvalidThread)?;
                 let thread = tt_guard.get_mut(tid).unwrap();
-                if let ThreadState::Blocked(waker) = &thread.state {
-                    waker.cancel_registration();
+                if let ThreadState::Blocked(waker) =
+                    core::mem::replace(&mut thread.state, ThreadState::Ready(self.lp_id))
+                {
+                    // The caller retains this complete subscription until
+                    // both table and LP guards have left. Cancellation may
+                    // destroy an entry, weak/control storage and its charge.
+                    *detached_wait = Some(waker);
                     thread.clear_blocking_migration_constraints();
                 }
-                thread.state = ThreadState::Ready(self.lp_id);
                 self.publish_load();
                 crate::debug_trace::trace(
                     crate::debug_trace::TAG_SCHED_ADMIT,
