@@ -65,13 +65,20 @@ bearer shapes. x86 gains the existing ARM security-suite runner option with
 architecture-specific independently signed fixture roots. See
 [removal evidence](../reports/audits/2026-10-15-ns-bearer-removal.md).
 
+S08b2c4d replaces lossy NSST status pages with complete bounded CNSSTAT1
+snapshots and one owning reply transaction; HTTP validates the complete set and
+renders unavailable observations as null. Host/native full-name, multi-page,
+pending-request-count and recovery controls pass; the initial invalid-caller
+fixture failure remains separate. See
+[status evidence](../reports/audits/2026-10-15-ns-status-snapshot.md).
+
 ## Remaining candidates
 
 This is a source-backed starting inventory, not a completed whole-codebase audit.
 
 | Order | Area | Candidate and coordinated work |
 | --- | --- | --- |
-| IPC readiness intermittence | Scheduled endpoint close / exit watch | S08b2c3's second mixed run timed out on the exact-generation worker exit watch; later Raft persistence errors followed. New exact-source/stage/live/staged diagnostics retain the original wait budget and completion requirement. The [bounded IPC investigation](../reports/audits/2026-10-14-ipc-close-exit-investigation.md) passes 192 distinct close/exit episodes across two mixed pairs, including all four LPs, without reproducing the failure. Passing repeats do not explain or close it. Investigate before claiming readiness/retirement qualification; see [retained evidence](../reports/audits/2026-10-14-protocol-simplification-dns-registration-relay.md). |
+| IPC readiness intermittence | Scheduled endpoint close / exit watch | After the initial 192 passing episodes, S08b2c4b reproduced the exact-exit timeout on both x86 and ARM with source/stage/live/staged diagnostics. The [investigation](../reports/audits/2026-10-14-ipc-close-exit-investigation.md) retains both failures. Later [park](../reports/audits/2026-10-14-park-deferred-delivery.md) and [first-dispatch](../reports/audits/2026-10-15-first-dispatch-delivery.md) corrections have negative controls and passing native suites, without establishing historical IPC or later Raft persistence causality. Preserve original deadlines, complete owners and exact completion requirements; broader C16/C18/G1/G7 remain open. See the [current review](../reports/audits/2026-10-15-audit-process-review.md) for separate unresolved failure families. |
 | Remaining DMA contexts | Masked SVC / unmap / close / historical contention | Map/map-exclusive now borrow the existing root/claim/pin owner through fixed-slot admission in qualified IRQ-enabled scheduled contexts; real VT-d/SMMUv3 tests and both linked pairs pass. Masked ARM SVC still rejects busy waiting; unmap/close readiness, AMD-Vi runtime, wider pressure and exact attribution of the original NIC contender remain open. Diagnostics permit no replay. See [follow-up evidence](../reports/audits/2026-10-14-dma-map-readiness.md). |
 | External NS publication retirement | NS-owned persistent endpoint-death producer | Implemented: each publication owns its connection and exact close watch; event-only default-CQ readiness confirms the owned result before logical retirement. Replacement/stale hints cannot clear a new generation; caller principal checks remain. NS admits 64 live publications plus one replacement slot before thread publication. Wider raw adapters and physical cleanup remain separate. See [contract](name-service-generations.md) and [evidence](../reports/audits/2026-10-14-ns-endpoint-death.md). |
 | S08b2c4 | Remaining formats / raw adapters | S08b2a removes Kafka authentication sections; S08b2b replaces the lossy DNS catalog dump and HTTP reader; S08b2c1/c2 replace query/invocation identities and framing. S08b2c3 replaces registration/retraction tags and removes the empty-resource service-registration fallback. S08b2c4a replaces client/local invocation with owned full-name CQ-bound calls; S08b2c4b replaces generation observation/retirement and raw cleanup handles. Replace remaining local packed-name and scalar/named entry points, operational release-tail representations, physical-address queries and mailbox word/capability APIs coherently with rejection before admission. Current releases with/without connector bindings and serialized boot fixtures need explicit replacements, not deletion by keyword. |

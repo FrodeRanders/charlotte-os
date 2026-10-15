@@ -26,6 +26,12 @@ use crate::objstore_client::{
     Client,
     ObjectStore,
 };
+pub use crate::objstore_client::{
+    IoCause,
+    IoError,
+    IoOperation,
+    IoStage,
+};
 
 const STATE_MAGIC: &[u8; 8] = b"CRFTSTA3";
 const STATE_HEADER_LEN: usize = 32;
@@ -41,7 +47,7 @@ pub enum RecordKind {
 /// Opening never repairs or overwrites an existing rejected record.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StoreError {
-    Io,
+    Io(IoError),
     IncompletePair,
     UnsupportedFormat(RecordKind),
     MalformedRecord(RecordKind),
@@ -248,7 +254,7 @@ pub fn open(
     names: ConnectionRef<'_>,
     namespace: u64,
 ) -> Result<(DiskLogStore, DiskPersistentStateStore), StoreError> {
-    let client = Client::connect(names).map_err(|_| StoreError::Io)?;
+    let client = Client::connect(names).map_err(StoreError::Io)?;
     open_from(Arc::new(client), namespace)
 }
 
@@ -257,8 +263,8 @@ fn open_from(
     namespace: u64,
 ) -> Result<(DiskLogStore, DiskPersistentStateStore), StoreError> {
     let ids = ObjectIds::new(namespace);
-    let state_bytes = store.read(ids.state).map_err(|_| StoreError::Io)?;
-    let log_bytes = store.read(ids.log).map_err(|_| StoreError::Io)?;
+    let state_bytes = store.read(ids.state).map_err(StoreError::Io)?;
+    let log_bytes = store.read(ids.log).map_err(StoreError::Io)?;
     let (state, log) = match (state_bytes, log_bytes) {
         (None, None) => {
             let state = PersistentState::default();
@@ -267,11 +273,11 @@ fn open_from(
                 .ok_or(StoreError::MalformedRecord(RecordKind::State))?;
             let log_bytes =
                 serialize_log_state(&log).ok_or(StoreError::MalformedRecord(RecordKind::Log))?;
-            store.create(ids.state).map_err(|_| StoreError::Io)?;
-            store.create(ids.log).map_err(|_| StoreError::Io)?;
-            store.write(ids.state, &state_bytes).map_err(|_| StoreError::Io)?;
-            store.write(ids.log, &log_bytes).map_err(|_| StoreError::Io)?;
-            store.flush().map_err(|_| StoreError::Io)?;
+            store.create(ids.state).map_err(StoreError::Io)?;
+            store.create(ids.log).map_err(StoreError::Io)?;
+            store.write(ids.state, &state_bytes).map_err(StoreError::Io)?;
+            store.write(ids.log, &log_bytes).map_err(StoreError::Io)?;
+            store.flush().map_err(StoreError::Io)?;
             (state, log)
         }
         (Some(state), Some(log)) => {
@@ -298,8 +304,57 @@ fn open_from(
     ))
 }
 
-fn persist_fail_stop(what: &str) -> ! {
-    catten_rt::logln!("[raft-store] FATAL: failed to persist {}", what);
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PersistCause {
+    Encoding,
+    Write(IoError),
+    Flush(IoError),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PersistError {
+    record: RecordKind,
+    object: u64,
+    bytes: Option<usize>,
+    cause: PersistCause,
+}
+
+impl core::fmt::Display for PersistError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "record={:?} object={:#018x} bytes={:?} cause={:?}",
+            self.record, self.object, self.bytes, self.cause
+        )
+    }
+}
+
+/// One attempt through the existing store owner. No flush follows a rejected
+/// write, and a rejected flush never replays the accepted write.
+fn persist_record(
+    store: &dyn ObjectStore,
+    record: RecordKind,
+    object: u64,
+    data: Option<Vec<u8>>,
+) -> Result<(), PersistError> {
+    let data = data.ok_or(PersistError {
+        record,
+        object,
+        bytes: None,
+        cause: PersistCause::Encoding,
+    })?;
+    let failure = |cause| PersistError {
+        record,
+        object,
+        bytes: Some(data.len()),
+        cause,
+    };
+    store.write(object, &data).map_err(|error| failure(PersistCause::Write(error)))?;
+    store.flush().map_err(|error| failure(PersistCause::Flush(error)))
+}
+
+fn persist_fail_stop(error: PersistError) -> ! {
+    catten_rt::logln!("[raft-store] FATAL: persistence rejected: {}", error);
     unsafe { catten_syscall::thread_exit() }
 }
 
@@ -312,10 +367,8 @@ pub struct DiskPersistentStateStore {
 impl DiskPersistentStateStore {
     fn persist(&self) {
         let data = { serialize_persistent_state(&self.state.lock()) };
-        let data = data.unwrap_or_else(|| persist_fail_stop("Raft state encoding"));
-        if self.store.write(self.object_id, &data).and_then(|()| self.store.flush()).is_err() {
-            persist_fail_stop("Raft term/vote/admission state");
-        }
+        persist_record(self.store.as_ref(), RecordKind::State, self.object_id, data)
+            .unwrap_or_else(|error| persist_fail_stop(error));
     }
 }
 
@@ -357,10 +410,8 @@ pub struct DiskLogStore {
 impl DiskLogStore {
     fn persist_log_state(&self) {
         let data = { serialize_log_state(&self.state.lock()) };
-        let data = data.unwrap_or_else(|| persist_fail_stop("Raft log encoding"));
-        if self.store.write(self.object_id, &data).and_then(|()| self.store.flush()).is_err() {
-            persist_fail_stop("Raft log state");
-        }
+        persist_record(self.store.as_ref(), RecordKind::Log, self.object_id, data)
+            .unwrap_or_else(|error| persist_fail_stop(error));
     }
 }
 
@@ -485,21 +536,40 @@ mod tests {
         Flush,
     }
 
+    impl Op {
+        fn error(&self, cause: IoCause) -> IoError {
+            let (operation, object) = match *self {
+                Self::Read(object) => (IoOperation::Read, Some(object)),
+                Self::Create(object) => (IoOperation::Create, Some(object)),
+                Self::Write(object) => (IoOperation::Write, Some(object)),
+                Self::Flush => (IoOperation::Flush, None),
+            };
+            IoError {
+                operation,
+                object,
+                stage: IoStage::Reply,
+                cause,
+            }
+        }
+    }
+
     #[derive(Default)]
     struct MemoryObjects {
         objects: Mutex<BTreeMap<u64, Vec<u8>>>,
         operations: Mutex<Vec<Op>>,
         fail_at: Option<usize>,
+        fail_with: Option<IoError>,
         creation_conflict: bool,
     }
 
     impl MemoryObjects {
-        fn record(&self, op: Op) -> Result<(), ()> {
+        fn record(&self, op: Op) -> Result<(), IoError> {
             let mut operations = self.operations.lock();
             let index = operations.len();
+            let error = op.error(IoCause::RemoteStatus(crate::objstore::ERR_IO_ERROR));
             operations.push(op);
             if self.fail_at == Some(index) {
-                Err(())
+                Err(self.fail_with.unwrap_or(error))
             } else {
                 Ok(())
             }
@@ -507,32 +577,38 @@ mod tests {
     }
 
     impl ObjectStore for MemoryObjects {
-        fn read(&self, object: u64) -> Result<Option<Vec<u8>>, ()> {
+        fn read(&self, object: u64) -> Result<Option<Vec<u8>>, IoError> {
             self.record(Op::Read(object))?;
             Ok(self.objects.lock().get(&object).cloned())
         }
 
-        fn create(&self, object: u64) -> Result<(), ()> {
+        fn create(&self, object: u64) -> Result<(), IoError> {
             self.record(Op::Create(object))?;
             let mut objects = self.objects.lock();
             if self.creation_conflict {
                 objects.insert(object, b"other-owner".to_vec());
-                return Err(());
+                return Err(
+                    Op::Create(object).error(IoCause::RemoteStatus(crate::objstore::ERR_EXISTS))
+                );
             }
             if objects.contains_key(&object) {
-                return Err(());
+                return Err(
+                    Op::Create(object).error(IoCause::RemoteStatus(crate::objstore::ERR_EXISTS))
+                );
             }
             objects.insert(object, Vec::new());
             Ok(())
         }
 
-        fn write(&self, object: u64, bytes: &[u8]) -> Result<(), ()> {
+        fn write(&self, object: u64, bytes: &[u8]) -> Result<(), IoError> {
             self.record(Op::Write(object))?;
-            *self.objects.lock().get_mut(&object).ok_or(())? = bytes.to_vec();
+            *self.objects.lock().get_mut(&object).ok_or_else(|| {
+                Op::Write(object).error(IoCause::RemoteStatus(crate::objstore::ERR_NOT_FOUND))
+            })? = bytes.to_vec();
             Ok(())
         }
 
-        fn flush(&self) -> Result<(), ()> {
+        fn flush(&self) -> Result<(), IoError> {
             self.record(Op::Flush)
         }
     }
@@ -542,6 +618,121 @@ mod tests {
         open_from(store.clone(), 10).unwrap();
         store.operations.lock().clear();
         store
+    }
+
+    #[test]
+    fn persistence_rejections_keep_inner_phase_and_never_flush_or_replay() {
+        let ids = ObjectIds::new(10);
+        for record in [RecordKind::State, RecordKind::Log] {
+            let object = match record {
+                RecordKind::State => ids.state,
+                RecordKind::Log => ids.log,
+            };
+            for operation in [IoOperation::SetSize, IoOperation::Write] {
+                for (stage, cause) in [
+                    (
+                        IoStage::Allocate,
+                        IoCause::Memory(catten_rt::owned::MemoryError::AllocationFailed),
+                    ),
+                    (
+                        IoStage::Map,
+                        IoCause::Memory(catten_rt::owned::MemoryError::MemoryStatus(13)),
+                    ),
+                    (
+                        IoStage::Unmap,
+                        IoCause::Memory(catten_rt::owned::MemoryError::MemoryStatus(19)),
+                    ),
+                    (IoStage::Submit, IoCause::Ipc(catten_rt::owned::IpcError::Status(23))),
+                    (IoStage::Wait, IoCause::Ipc(catten_rt::owned::IpcError::Status(29))),
+                    (IoStage::Reply, IoCause::RemoteStatus(crate::objstore::ERR_DENIED)),
+                ] {
+                    let error = IoError {
+                        operation,
+                        object: Some(object),
+                        stage,
+                        cause,
+                    };
+                    let store = MemoryObjects {
+                        fail_at: Some(0),
+                        fail_with: Some(error),
+                        ..MemoryObjects::default()
+                    };
+                    assert_eq!(
+                        persist_record(&store, record, object, Some(vec![0x31; 8])),
+                        Err(PersistError {
+                            record,
+                            object,
+                            bytes: Some(8),
+                            cause: PersistCause::Write(error),
+                        })
+                    );
+                    assert_eq!(*store.operations.lock(), vec![Op::Write(object)]);
+                    assert!(store.objects.lock().is_empty());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn flush_failure_preserves_completed_write_and_exact_error_without_replay() {
+        let object = ObjectIds::new(10).log;
+        for (stage, cause) in [
+            (IoStage::Submit, IoCause::Ipc(catten_rt::owned::IpcError::Status(31))),
+            (IoStage::Wait, IoCause::Ipc(catten_rt::owned::IpcError::Status(37))),
+            (IoStage::Reply, IoCause::RemoteStatus(crate::objstore::ERR_IO_ERROR)),
+        ] {
+            let error = IoError {
+                operation: IoOperation::Flush,
+                object: None,
+                stage,
+                cause,
+            };
+            let store = MemoryObjects {
+                fail_at: Some(1),
+                fail_with: Some(error),
+                ..MemoryObjects::default()
+            };
+            store.objects.lock().insert(object, Vec::new());
+            let failure =
+                persist_record(&store, RecordKind::Log, object, Some(vec![0x31; 8])).unwrap_err();
+            assert_eq!(
+                failure,
+                PersistError {
+                    record: RecordKind::Log,
+                    object,
+                    bytes: Some(8),
+                    cause: PersistCause::Flush(error)
+                }
+            );
+            assert_eq!(*store.operations.lock(), vec![Op::Write(object), Op::Flush]);
+            assert_eq!(store.objects.lock()[&object], vec![0x31; 8]);
+            let diagnostic = alloc::format!("{failure}");
+            assert!(
+                diagnostic
+                    .starts_with("record=Log object=0x800000000000000b bytes=Some(8) cause=Flush(")
+            );
+            assert!(diagnostic.contains(&alloc::format!("stage: {stage:?}, cause: {cause:?}")));
+        }
+    }
+
+    #[test]
+    fn encoding_rejection_does_no_io_and_success_writes_then_flushes_once() {
+        let object = ObjectIds::new(10).state;
+        let store = MemoryObjects::default();
+        assert_eq!(
+            persist_record(&store, RecordKind::State, object, None),
+            Err(PersistError {
+                record: RecordKind::State,
+                object,
+                bytes: None,
+                cause: PersistCause::Encoding,
+            })
+        );
+        assert!(store.operations.lock().is_empty());
+        store.objects.lock().insert(object, Vec::new());
+        assert_eq!(persist_record(&store, RecordKind::State, object, Some(vec![1, 2])), Ok(()));
+        assert_eq!(*store.operations.lock(), vec![Op::Write(object), Op::Flush]);
+        assert_eq!(store.objects.lock()[&object], vec![1, 2]);
     }
 
     #[test]
@@ -578,14 +769,28 @@ mod tests {
                 fail_at: Some(fail_at),
                 ..MemoryObjects::default()
             });
-            assert!(matches!(open_from(store.clone(), 10), Err(StoreError::Io)));
+            let expected = match fail_at {
+                0 => Op::Read(ObjectIds::new(10).state),
+                1 => Op::Read(ObjectIds::new(10).log),
+                2 => Op::Create(ObjectIds::new(10).state),
+                3 => Op::Create(ObjectIds::new(10).log),
+                4 => Op::Write(ObjectIds::new(10).state),
+                5 => Op::Write(ObjectIds::new(10).log),
+                _ => Op::Flush,
+            }
+            .error(IoCause::RemoteStatus(crate::objstore::ERR_IO_ERROR));
+            assert!(
+                matches!(open_from(store.clone(), 10), Err(StoreError::Io(error)) if error == expected)
+            );
             assert_eq!(store.operations.lock().len(), fail_at + 1);
         }
         let store = Arc::new(MemoryObjects {
             creation_conflict: true,
             ..MemoryObjects::default()
         });
-        assert!(matches!(open_from(store.clone(), 10), Err(StoreError::Io)));
+        assert!(
+            matches!(open_from(store.clone(), 10), Err(StoreError::Io(error)) if error == Op::Create(ObjectIds::new(10).state).error(IoCause::RemoteStatus(crate::objstore::ERR_EXISTS)))
+        );
         assert_eq!(store.operations.lock().len(), 3);
         assert_eq!(store.objects.lock()[&ObjectIds::new(10).state], b"other-owner");
     }

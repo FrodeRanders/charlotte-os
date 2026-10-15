@@ -9,7 +9,7 @@
 # For display (flanterm framebuffer console), use --display.
 #
 # Usage:
-#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot] [--scheduler-trace] [--hvf] [--no-network] [--cluster-service [NAME=]VIP:PORT]... [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--deployment-ingress-test|--shutdown-ingress-test|--kafka-test|--kafka-coordinator-test|--kafka-fencing-test] [--net-listen PORT|--net-connect HOST:PORT|--net-mcast GROUP:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test|--shutdown-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
+#   scripts/run-aarch64.sh [debug|release] [--clean] [--display] [--gdb] [--gdb-port PORT] [--debug-snapshot|--no-failure-capture] [--scheduler-trace] [--hvf] [--no-network] [--cluster-service [NAME=]VIP:PORT]... [--net-test|--relmsg-test|--disco-test|--dhcp-test|--s3-test|--deployment-ingress-test|--shutdown-ingress-test|--kafka-test|--kafka-coordinator-test|--kafka-fencing-test] [--net-listen PORT|--net-connect HOST:PORT|--net-mcast GROUP:PORT] [--instance NAME] [--mac ADDRESS] [--live-upgrade-test|--shutdown-test] [--smp N] [--timeout S] [--fresh-storage|--reuse-storage]
 #
 #   debug|release  Build profile (default: debug)
 #   --clean        Remove all cached AArch64 target artifacts before building
@@ -18,7 +18,8 @@
 #                  built by scripts/build-sbsa-firmware.sh (SBSA_FLASH0/1.fd)
 #   --gdb          Start QEMU paused with a gdb stub
 #   --gdb-port PORT  GDB stub port (default: 1234)
-#   --debug-snapshot  Capture all-LP stacks/registers at timeout without enabling tracing
+#   --debug-snapshot  Also capture all-LP state after successful timed execution
+#   --no-failure-capture  Disable automatic timed-run failure snapshots
 #   --scheduler-trace  Capture and decode the in-memory scheduler trace at timeout
 #   --hvf          Use Apple Hypervisor.Framework acceleration (macOS only)
 #   --no-network   Do not attach a NIC or launch network-backed services
@@ -120,6 +121,7 @@ TIMEOUT=""
 CLEAN_BUILD="0"
 SCHEDULER_TRACE="0"
 DEBUG_SNAPSHOT="0"
+FAILURE_CAPTURE="1"
 SBSA_REF="0"
 FRESH_STORAGE="0"
 REUSE_STORAGE="0"
@@ -142,6 +144,7 @@ while [ "$#" -gt 0 ]; do
             [ "$#" -ge 2 ] || { echo "Missing value for --gdb-port" >&2; exit 1; }
             GDB_PORT="$2"; shift 2 ;;
         --debug-snapshot) DEBUG_SNAPSHOT="1"; shift ;;
+        --no-failure-capture) FAILURE_CAPTURE="0"; shift ;;
         --scheduler-trace) SCHEDULER_TRACE="1"; shift ;;
         --hvf)         USE_HVF="1"; shift ;;
         --no-network)  NETWORK="0"; shift ;;
@@ -192,6 +195,18 @@ while [ "$#" -gt 0 ]; do
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
 done
+
+if [ "$DEBUG_SNAPSHOT" = "1" ]; then
+    if [ -z "$TIMEOUT" ]; then
+        echo "error: --debug-snapshot requires --timeout" >&2
+        exit 1
+    fi
+    if [ -n "$GDB" ] || [ "${CATTEN_QEMU_DEBUG_STUB:-0}" = "1" ] \
+        || [ "$SCHEDULER_TRACE" = "1" ] || [ "$FAILURE_CAPTURE" = "0" ]; then
+        echo "error: --debug-snapshot requires exclusive automatic debugger ownership" >&2
+        exit 1
+    fi
+fi
 
 catten_boot_validate_port "--gdb-port" "$GDB_PORT"
 catten_boot_validate_port "CATTEN_HTTP_HOST_PORT" "$HTTP_HOST_PORT"
@@ -382,10 +397,12 @@ QPID=""
 KAFKA_COMPOSE="${ROOT_DIR}/docker/kafka-test/compose.yaml"
 KAFKA_RUNNING="0"
 cleanup_fixtures() {
+    catten_boot_diagnostics_finish runner-exit
     if [ -n "$QPID" ]; then
         kill "$QPID" >/dev/null 2>&1 || true
         wait "$QPID" >/dev/null 2>&1 || true
     fi
+    catten_boot_diagnostics_archive
     if [ -n "$DEPLOYMENT_WORKER_PID" ]; then
         kill "$DEPLOYMENT_WORKER_PID" >/dev/null 2>&1 || true
     fi
@@ -757,17 +774,6 @@ if [ "$SCHEDULER_TRACE" = "1" ]; then
     FEATURES="${FEATURES},scheduler_trace"
 fi
 
-if [ "$DEBUG_SNAPSHOT" = "1" ]; then
-    if [ -z "$TIMEOUT" ]; then
-        echo "error: --debug-snapshot requires --timeout" >&2
-        exit 1
-    fi
-    if [ -n "$GDB" ]; then
-        echo "error: --debug-snapshot cannot be combined with --gdb" >&2
-        exit 1
-    fi
-fi
-
 if [ "${CATTEN_SKIP_KERNEL_BUILD:-0}" = "1" ]; then
     if [ ! -f "$KERNEL" ]; then
         echo "error: CATTEN_SKIP_KERNEL_BUILD=1 but ${KERNEL} does not exist" >&2
@@ -987,13 +993,21 @@ if [ -n "$TIMEOUT" ]; then
     LOG="/tmp/charlotte${INSTANCE_SUFFIX}-serial.log"
     : >"$LOG"
     catten_boot_record_log_kernel "$LOG" "$KERNEL"
+    if [ "$FAILURE_CAPTURE" = "1" ] && [ -z "$GDB" ] \
+        && [ "${CATTEN_QEMU_DEBUG_STUB:-0}" != "1" ] && [ "$SCHEDULER_TRACE" = "0" ]; then
+        catten_boot_diagnostics_prepare "$ARCH" "$KERNEL" "$LOG" "$CATTEN_AARCH64_SERVICE_BUNDLE" \
+            "${NVME_IMAGE:-$IMAGE}" "$SMP" "$TIMEOUT" "$INSTANCE" "$IMAGE"
+    elif [ "$FAILURE_CAPTURE" = "1" ]; then
+        echo ">>> Automatic failure capture disabled: manual/trace debugger owns this guest."
+    fi
     QEMU_OPTS+=(-serial "file:${LOG}")
     echo ">>> Booting under QEMU (${TIMEOUT}s timeout, serial to ${LOG})..."
-    if [ "$SCHEDULER_TRACE" = "1" ] || [ "$DEBUG_SNAPSHOT" = "1" ]; then
+    if [ "$SCHEDULER_TRACE" = "1" ]; then
         QEMU_OPTS+=(-gdb "tcp::${GDB_PORT}")
     fi
     qemu-system-aarch64 "${QEMU_OPTS[@]}" $GDB &
     QPID=$!
+    catten_boot_diagnostics_start "$QPID"
     if [ -n "${CATTEN_QEMU_PID_FILE:-}" ]; then
         printf '%s\n' "$QPID" >"$CATTEN_QEMU_PID_FILE"
     fi
@@ -1050,6 +1064,7 @@ if [ -n "$TIMEOUT" ]; then
     MAX_TICKS=$((TIMEOUT * 10))
     for ((tick = 0; tick < MAX_TICKS; tick++)); do
         sleep 0.1
+        if catten_boot_diagnostics_failed; then break; fi
         if ! kill -0 "$QPID" 2>/dev/null; then
             wait "$QPID" 2>/dev/null || true
             if { [ "$SHUTDOWN_TEST" = "1" ] || [ "$SHUTDOWN_INGRESS_TEST" = "1" ]; } \
@@ -1177,7 +1192,7 @@ if [ -n "$TIMEOUT" ]; then
                 echo ">>> Signed shutdown intent accepted; waiting for verified PSCI poweroff."
             fi
             if [ "$SHUTDOWN_TEST" != "1" ] && [ "$SHUTDOWN_INGRESS_TEST" != "1" ] \
-                && [ "$SCHEDULER_TRACE" = "0" ] && [ "$DEBUG_SNAPSHOT" = "0" ] \
+                && [ "$SCHEDULER_TRACE" = "0" ] \
                 && { [ "$KAFKA_TEST" = "0" ] || [ "$KAFKA_FENCING_TEST" = "1" ] \
                     || [ "$KAFKA_FAULT_RESTARTED" = "1" ]; } \
                 && { [ "$DEPLOYMENT_INGRESS_TEST" = "0" ] \
@@ -1190,6 +1205,11 @@ if [ -n "$TIMEOUT" ]; then
             fi
         fi
     done
+    DIAGNOSTICS_REASON=deadline
+    if [ "$SELFTEST_COMPLETE" = "1" ]; then DIAGNOSTICS_REASON=complete; fi
+    if [ "$HTTP_TEST" = "1" ] && [ "$HTTP_PROBE_OK" != "1" ]; then DIAGNOSTICS_REASON=host-probe-failed; fi
+    if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ] && [ ! -f "$DEPLOYMENT_RESULT_FILE" ]; then DIAGNOSTICS_REASON=deployment-incomplete; fi
+    catten_boot_diagnostics_finish "$DIAGNOSTICS_REASON" "$DEBUG_SNAPSHOT"
     if [ "$SCHEDULER_TRACE" = "1" ]; then
         TRACE_RAW="/tmp/charlotte${INSTANCE_SUFFIX}-scheduler-trace.bin"
         TRACE_TEXT="/tmp/charlotte${INSTANCE_SUFFIX}-scheduler-trace.log"
@@ -1238,45 +1258,17 @@ if [ -n "$TIMEOUT" ]; then
             echo "warning: trace symbols or lldb unavailable; diagnostic traces not captured" >&2
         fi
     fi
-    if [ "$DEBUG_SNAPSHOT" = "1" ]; then
-        if command -v lldb >/dev/null 2>&1; then
-            SNAPSHOT_LLDB="/tmp/charlotte${INSTANCE_SUFFIX}-debug-snapshot-lldb.log"
-            TIMER_DIAG_ADDR="$(nm "$KERNEL" | awk '$3 == "TIMER_DIAGNOSTICS" && !found { print "0x" $1; found=1 }')"
-            WAKER_DIAG_ADDR="$(nm "$KERNEL" | awk '$3 == "WAKER_DIAGNOSTICS" && !found { print "0x" $1; found=1 }')"
-            LIFECYCLE_PROGRESS_ADDR="$(nm "$KERNEL" | awk '$3 == "SCHEDULER_LIFECYCLE_PROGRESS" && !found { print "0x" $1; found=1 }')"
-            SCHEDULER_LP_DIAG_ADDR="$(nm "$KERNEL" | awk '$3 == "SCHEDULER_LP_DIAGNOSTICS" && !found { print "0x" $1; found=1 }')"
-            lldb --batch \
-                -o "settings set interpreter.stop-command-source-on-error false" \
-                -o "gdb-remote ${GDB_PORT}" \
-                -o "thread backtrace all" \
-                -o "thread select 1" \
-                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp cpsr" \
-                -o "register read cntv_ctl_el0 cntv_cval_el0" \
-                -o "thread select 2" \
-                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp cpsr" \
-                -o "register read cntv_ctl_el0 cntv_cval_el0" \
-                -o "thread select 3" \
-                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp cpsr" \
-                -o "register read cntv_ctl_el0 cntv_cval_el0" \
-                -o "thread select 4" \
-                -o "register read esr_el1 far_el1 elr_el1 spsr_el1 sp cpsr" \
-                -o "register read cntv_ctl_el0 cntv_cval_el0" \
-                -o "memory read --force --format x --size 8 --count 32 ${TIMER_DIAG_ADDR}" \
-                -o "memory read --force --format x --size 8 --count 3 ${WAKER_DIAG_ADDR}" \
-                -o "memory read --force --format x --size 8 --count 1 ${LIFECYCLE_PROGRESS_ADDR}" \
-                -o "memory read --force --format x --size 8 --count 24 ${SCHEDULER_LP_DIAG_ADDR}" \
-                -o "process detach" "$KERNEL" >"$SNAPSHOT_LLDB" 2>&1 || true
-            echo ">>> Debug snapshot captured in ${SNAPSHOT_LLDB}"
-        else
-            echo "warning: lldb unavailable; debug snapshot not captured" >&2
-        fi
-    fi
     if kill -0 "$QPID" 2>/dev/null; then
         kill "$QPID" 2>/dev/null || true
         wait "$QPID" 2>/dev/null || true
     fi
     echo ">>> Serial log (${LOG}):"
+    catten_boot_diagnostics_archive
     cat "$LOG"
+    if [ "$CATTEN_DIAGNOSTICS_FAILED" = "1" ]; then
+        echo "error: guest failure/deadline captured; see ${CATTEN_DIAGNOSTICS_DIR}" >&2
+        exit 1
+    fi
     if [ "$HTTP_TEST" = "1" ] && [ "$HTTP_PROBED" = "1" ] && [ "$HTTP_PROBE_OK" = "0" ]; then
         echo "error: guest HTTP keyhole was not validated from the host" >&2
         exit 1

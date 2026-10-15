@@ -315,3 +315,58 @@ catten_boot_validate_selftest_log() {
     fi
     echo ">>> All registered deferred self-tests passed."
 }
+
+# Timed runners own one private QMP/GDB transport and an independent watcher.
+# This host-only observation does not establish guest quiescence or recovery.
+CATTEN_DIAGNOSTICS_DIR=""
+CATTEN_DIAGNOSTICS_WATCHER=""
+CATTEN_DIAGNOSTICS_FAILED=0
+
+catten_boot_diagnostics_prepare() {
+    local arch="$1" kernel="$2" log="$3" bundle="$4" disk="$5"
+    local cpus="$6" timeout="$7" instance="$8" boot_image="$9" transport
+    CATTEN_DIAGNOSTICS_DIR="$(python3 "${CATTEN_BOOT_ROOT_DIR}/scripts/boot-diagnostics.py" prepare \
+        --root "$CATTEN_BOOT_ROOT_DIR" --kernel "$kernel" --log "$log" \
+        --arch "$arch" --bundle "$bundle" --disk "$disk" --cpus "$cpus" \
+        --timeout "$timeout" --instance "$instance" --boot-image "$boot_image")" || return 1
+    transport="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["transport"])' \
+        "$CATTEN_DIAGNOSTICS_DIR/manifest.json")" || return 1
+    QEMU_OPTS+=(-qmp "unix:${transport}/qmp.sock,server=on,wait=off"
+                -gdb "unix:${transport}/gdb.sock,server=on,wait=off")
+    echo ">>> Per-run diagnostics: ${CATTEN_DIAGNOSTICS_DIR}"
+}
+
+catten_boot_diagnostics_start() {
+    if [ -z "$CATTEN_DIAGNOSTICS_DIR" ]; then return; fi
+    python3 "${CATTEN_BOOT_ROOT_DIR}/scripts/boot-diagnostics.py" watch \
+        --directory "$CATTEN_DIAGNOSTICS_DIR" --pid "$1" -- "${QEMU_OPTS[@]}" \
+        >"${CATTEN_DIAGNOSTICS_DIR}/watcher.log" 2>&1 &
+    CATTEN_DIAGNOSTICS_WATCHER=$!
+}
+
+catten_boot_diagnostics_failed() {
+    [ -n "$CATTEN_DIAGNOSTICS_DIR" ] && [ -f "${CATTEN_DIAGNOSTICS_DIR}/failure.json" ]
+}
+
+catten_boot_diagnostics_archive() {
+    if [ -z "$CATTEN_DIAGNOSTICS_DIR" ]; then return; fi
+    if ! python3 "${CATTEN_BOOT_ROOT_DIR}/scripts/boot-diagnostics.py" archive \
+        --directory "$CATTEN_DIAGNOSTICS_DIR"; then
+        echo "warning: final serial archive failed; see ${CATTEN_DIAGNOSTICS_DIR}" >&2
+    fi
+}
+
+catten_boot_diagnostics_finish() {
+    local reason="$1" snapshot="${2:-0}" extra=()
+    if [ -z "$CATTEN_DIAGNOSTICS_WATCHER" ]; then return; fi
+    if [ "$snapshot" = "1" ]; then extra+=(--snapshot); fi
+    if ! python3 "${CATTEN_BOOT_ROOT_DIR}/scripts/boot-diagnostics.py" finish \
+        --directory "$CATTEN_DIAGNOSTICS_DIR" --watcher "$CATTEN_DIAGNOSTICS_WATCHER" \
+        --reason "$reason" "${extra[@]}"; then
+        echo "warning: diagnostic finalization failed; see ${CATTEN_DIAGNOSTICS_DIR}" >&2
+    fi
+    wait "$CATTEN_DIAGNOSTICS_WATCHER" 2>/dev/null || true
+    CATTEN_DIAGNOSTICS_WATCHER=""
+    if catten_boot_diagnostics_failed; then CATTEN_DIAGNOSTICS_FAILED=1; fi
+    echo ">>> Diagnostic outcome: ${CATTEN_DIAGNOSTICS_DIR}/result.json"
+}

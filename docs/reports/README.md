@@ -8,6 +8,12 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Captured park-delivery fixture panic and current-build matrix](audits/2026-10-15-captured-park-fixture-panic.md) — Spontaneous all-LP failure capture, forced-switch reproduction of an invalid Running-only assertion, and bounded cross-architecture follow-up.
+- [Automatic guest failure capture](audits/2026-10-15-automatic-failure-capture.md) — Independent ARM/x86 watcher, private all-LP snapshots and immutable run inputs; native deadline controls and explicit capture limitations.
+- [Raft persistence failure diagnostics](audits/2026-10-15-raft-persistence-diagnostics.md) — Per-call typed errors and distinct write/flush fail-stop context through existing owners; historical attribution remains open.
+- [2026-10-15 audit process and outstanding failure review](audits/2026-10-15-audit-process-review.md) — Current SEC accounting, corrected versus unattributed panics, diagnostic gaps and ordered next work; fresh host validation, no new guest claims.
+- [First-dispatch retirement/readiness correction](audits/2026-10-15-first-dispatch-delivery.md) — Incoming-stack handoff, failing negative control and passing ARM/x86 suites; historical IPC/persistence attribution remains open.
+- [CI Sitas runtime pin and panic diagnostics](audits/2026-10-15-ci-sitas-runtime-pin.md) — Reproduced obsolete-wait failure, corrected dependency pin and restored frame pointers.
 - [IPC close-worker exit investigation](audits/2026-10-14-ipc-close-exit-investigation.md) — Exact-source/phase diagnostics and bounded four-LP repeated closes; historical timeout remains open.
 - [Correlated DNS registration/retraction](audits/2026-10-14-protocol-simplification-dns-registration-relay.md) — Full names, prepared replies and owned registration phases; mixed/HTTP execution and separately retained IPC exit timeout.
 - [Current security remediation ledger and completion criteria](../reference/security-remediation.md)

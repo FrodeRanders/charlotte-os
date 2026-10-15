@@ -14,6 +14,7 @@
 # Usage:
 #   scripts/run-x86_64.sh [debug|release] [--clean] [--gdb] [--gdb-port PORT] [--kvm]
 #                         [--instance NAME] [--smp N] [--timeout S]
+#                         [--debug-snapshot|--no-failure-capture]
 #                         [--iommu intel|amd] [--block nvme|ahci|virtio]
 #                         [--no-network]
 #                         [--net-test|--disco-test|--dns-test|--deploy-test]
@@ -29,6 +30,8 @@
 #   --clean        Remove all cached x86_64 target artifacts before building
 #   --gdb          Start QEMU paused with a gdb stub
 #   --gdb-port PORT  GDB stub port (default: 1234)
+#   --debug-snapshot  Also capture all-LP state after successful timed execution
+#   --no-failure-capture  Disable automatic timed-run failure snapshots
 #   --kvm          Use Linux KVM with the host x86-64 CPU
 #   --instance NAME  Use separate boot/log files for this VM
 #   --smp N        Number of CPUs (default: 4)
@@ -74,6 +77,8 @@ ARCH="x86_64"
 PROFILE="debug"
 GDB=""
 GDB_PORT="1234"
+DEBUG_SNAPSHOT="0"
+FAILURE_CAPTURE="1"
 USE_KVM="0"
 SMP="4"
 TIMEOUT=""
@@ -123,6 +128,8 @@ while [ "$#" -gt 0 ]; do
         debug|release) PROFILE="$1"; shift ;;
         --clean)       CLEAN_BUILD="1"; shift ;;
         --gdb)         GDB="-S"; shift ;;
+        --debug-snapshot) DEBUG_SNAPSHOT="1"; shift ;;
+        --no-failure-capture) FAILURE_CAPTURE="0"; shift ;;
         --kvm)         USE_KVM="1"; shift ;;
         --gdb-port)
             [ "$#" -ge 2 ] || { echo "Missing value for --gdb-port" >&2; exit 1; }
@@ -185,6 +192,11 @@ catten_boot_validate_instance "$INSTANCE"
 catten_boot_validate_positive_integer "--smp" "$SMP"
 if [ -n "$TIMEOUT" ]; then
     catten_boot_validate_positive_integer "--timeout" "$TIMEOUT"
+fi
+if [ "$DEBUG_SNAPSHOT" = "1" ] && { [ -z "$TIMEOUT" ] || [ -n "$GDB" ] \
+    || [ "${CATTEN_QEMU_DEBUG_STUB:-0}" = "1" ] || [ "$FAILURE_CAPTURE" = "0" ]; }; then
+    echo "error: --debug-snapshot requires --timeout and exclusive automatic debugger ownership" >&2
+    exit 1
 fi
 if [ "$FRESH_STORAGE" = "1" ] && [ "$REUSE_STORAGE" = "1" ]; then
     echo "error: --fresh-storage and --reuse-storage are mutually exclusive" >&2
@@ -352,10 +364,12 @@ RUSTFS_RUNNING="0"
 DEPLOYMENT_WORKER_PID=""
 QPID=""
 cleanup_fixtures() {
+    catten_boot_diagnostics_finish runner-exit
     if [ -n "$QPID" ]; then
         kill "$QPID" >/dev/null 2>&1 || true
         wait "$QPID" >/dev/null 2>&1 || true
     fi
+    catten_boot_diagnostics_archive
     if [ -n "$DEPLOYMENT_WORKER_PID" ]; then
         kill "$DEPLOYMENT_WORKER_PID" >/dev/null 2>&1 || true
     fi
@@ -643,10 +657,18 @@ if [ -n "$TIMEOUT" ]; then
     LOG="/tmp/charlotte-x86${INSTANCE_SUFFIX}-serial.log"
     : >"$LOG"
     catten_boot_record_log_kernel "$LOG" "$KERNEL"
+    if [ "$FAILURE_CAPTURE" = "1" ] && [ -z "$GDB" ] \
+        && [ "${CATTEN_QEMU_DEBUG_STUB:-0}" != "1" ]; then
+        catten_boot_diagnostics_prepare "$ARCH" "$KERNEL" "$LOG" "$SERVICE_BUNDLE" \
+            "$DATA_IMAGE" "$SMP" "$TIMEOUT" "$INSTANCE" "$IMAGE"
+    elif [ "$FAILURE_CAPTURE" = "1" ]; then
+        echo ">>> Automatic failure capture disabled: manual debugger owns this guest."
+    fi
     QEMU_OPTS+=(-serial "file:${LOG}")
     echo ">>> Booting under QEMU (${TIMEOUT}s timeout, serial to ${LOG})..."
     qemu-system-x86_64 "${QEMU_OPTS[@]}" $GDB &
     QPID=$!
+    catten_boot_diagnostics_start "$QPID"
     if [ -n "${CATTEN_QEMU_PID_FILE:-}" ]; then
         printf '%s\n' "$QPID" >"$CATTEN_QEMU_PID_FILE"
     fi
@@ -681,6 +703,7 @@ if [ -n "$TIMEOUT" ]; then
     MAX_TICKS=$((TIMEOUT * 10))
     for ((tick = 0; tick < MAX_TICKS; tick++)); do
         sleep 0.1
+        if catten_boot_diagnostics_failed; then break; fi
         if ! kill -0 "$QPID" 2>/dev/null; then
             wait "$QPID" 2>/dev/null || true
             echo "error: QEMU exited before the ${TIMEOUT}s window elapsed" >&2
@@ -746,10 +769,20 @@ if [ -n "$TIMEOUT" ]; then
             fi
         fi
     done
+    DIAGNOSTICS_REASON=deadline
+    if [ "$SELFTEST_COMPLETE" = "1" ]; then DIAGNOSTICS_REASON=complete; fi
+    if [ "$HTTP_TEST" = "1" ] && [ "$HTTP_PROBE_OK" != "1" ]; then DIAGNOSTICS_REASON=host-probe-failed; fi
+    if [ "$DEPLOYMENT_INGRESS_TEST" = "1" ] && [ ! -f "$DEPLOYMENT_RESULT_FILE" ]; then DIAGNOSTICS_REASON=deployment-incomplete; fi
+    catten_boot_diagnostics_finish "$DIAGNOSTICS_REASON" "$DEBUG_SNAPSHOT"
     kill "$QPID" 2>/dev/null || true
     wait "$QPID" 2>/dev/null || true
+    catten_boot_diagnostics_archive
     echo ">>> Serial log (${LOG}):"
     cat "$LOG"
+    if [ "$CATTEN_DIAGNOSTICS_FAILED" = "1" ]; then
+        echo "error: guest failure/deadline captured; see ${CATTEN_DIAGNOSTICS_DIR}" >&2
+        exit 1
+    fi
     if [ "$HTTP_TEST" = "1" ] && { [ "$HTTP_PROBED" = "0" ] || [ "$HTTP_PROBE_OK" = "0" ]; }; then
         echo "error: guest HTTP keyhole was not validated from the host" >&2
         exit 1

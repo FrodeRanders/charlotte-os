@@ -30,7 +30,8 @@ pair that rejects on the next open; it is never silently reformatted.
 Existing records must both be present and valid. One missing record produces
 `IncompletePair`; empty/truncated or corrupt records produce `MalformedRecord`;
 a different format tag produces `UnsupportedFormat`. I/O and creation failures
-remain `Io`. Opening valid records performs no writes. No retired slot probes,
+return `Io(IoError)` with the original operation, durable object ID (if any),
+stage and typed cause. Opening valid records performs no writes. No retired slot probes,
 split-snapshot migration, term/vote-only defaults or raw-entry fallback remain.
 Local allocation rejection during record reconstruction also rejects through
 `MalformedRecord`; runtime buffer/admission failures can return `Io`. These
@@ -98,6 +99,37 @@ dropping the stores closes their connection, never deletes the records.
 This adds no physical retirement owner or kernel recovery registry. A reply or
 valid record is not proof of DMA/root quiescence. General Raft reactor ownership,
 admission backoff and broader cleanup-context qualification remain separate work.
+
+## Failure diagnostics
+
+Opening and mutation preserve per-call diagnostic context through the same
+owned transport. Operations distinguish lookup, read, create, size change,
+payload write and flush. Stages distinguish lookup, allocation, mapping,
+unmapping, submission, accepted-call waiting, reply validation and host-copy
+allocation. Memory and IPC errors retain their runtime variants and statuses;
+scalar service rejection retains its exact signed result. Lookup currently
+exposes only `LookupUnavailable` because the shared naming helper returns
+absence without its underlying cause.
+
+Read results share their register between lengths and service statuses. Only
+`ERR_NOT_FOUND` without returned memory is absence. An unusable reply retains
+its exact signed result and optional memory capacity as `InvalidReadReply`;
+the diagnostic does not infer corruption or an underlying device cause.
+
+A mutation fail-stop reports record kind, hexadecimal durable object ID,
+optional encoded byte count and `Encoding`, `Write(IoError)` or `Flush(IoError)`.
+An encoding failure still does not distinguish invalid state from allocation
+rejection. A write failure includes size-versus-payload preparation/IPC phase;
+flush has no target object in its protocol, so its nested error records no
+object while the enclosing diagnostic retains the Raft record's object ID.
+No payload, credential or owning capability is logged.
+
+Both buffers prepare before size submission. A rejected write prevents flush;
+a rejected flush never resubmits the accepted write. Rejected moved submissions
+and mappings dispose their returned owners through existing runtime policy.
+Diagnostic values carry no resource or recovery authority. Persistence remains
+fail-stop, and neither a busy-looking status nor a timeout permits replay.
+The wire protocol, pair tags, stored layout and deadlines are unchanged.
 
 ## Current rollout and future evolution
 

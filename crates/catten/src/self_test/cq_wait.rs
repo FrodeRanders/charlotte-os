@@ -55,7 +55,7 @@ extern "C" fn admission_worker() {
 }
 
 fn test_scheduler_waiter_admission() {
-    crate::cpu::scheduler::deferred::test_park_delivery();
+    crate::cpu::scheduler::deferred::test_park_delivery(CQW_ASID);
     use alloc::sync::Weak;
 
     use crate::{

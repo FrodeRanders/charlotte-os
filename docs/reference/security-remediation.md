@@ -1,9 +1,9 @@
 # Security remediation status and completion criteria
 
-Updated 2026-10-10, following the two security audits, the second renewed audit
-and subsequent fixes. Source and tests remain authoritative. Historical reports
-preserve the state at their own revision; their remaining-work paragraphs are
-not a current backlog.
+Reviewed 2026-10-15 against `1109d05a`, following the security audits and
+subsequent fixes; numbered finding dispositions are unchanged. Source and tests
+remain authoritative. Historical reports preserve the state at their own
+revision; their remaining-work paragraphs are not a current backlog.
 
 ## Finding ledger
 
@@ -24,6 +24,15 @@ corrected in that documented scope; historical reports preserve each checkpoint.
 The earlier SEC-01–25 accounting was 15 corrected, six partial and four open;
 it excluded the five additional, corrected findings SEC-26–30. Finding counts
 measure bookkeeping, not percentage of effort or production readiness.
+
+The [2026-10-15 process review](../reports/audits/2026-10-15-audit-process-review.md)
+reconciles the panic history and outstanding work. IPC exact-exit timeouts
+reproduced on both architectures after the initial passing investigation.
+Later park/first-dispatch corrections have negative controls and passing native
+execution, but do not establish the historical timeout or Raft persistence
+cause. The CI Sitas ABI mismatch and missing-frame-pointer configuration have
+separate reproduced/corrected evidence. No numbered finding is closed by these
+results; the review's fresh host suite passes 483 tests with four ignored.
 
 The [first audit](../reports/audits/2026-10-03-security-audit.md),
 [renewed audit](../reports/audits/2026-10-05-security-audit.md),
@@ -584,9 +593,50 @@ physical completion or production trust qualification.
 
 The [IPC close/exit investigation](../reports/audits/2026-10-14-ipc-close-exit-investigation.md)
 extends the ordinary scheduled CQ regression to bounded repeated same/cross-LP
-real closes and exact-generation exit watches. The captured source interest and
-worker phase remain available for future timeout diagnosis. Two mixed ARM/x86
-pairs passed 192 episodes, but did not reproduce or establish the cause of the
-historical failure; that finding and numbered audit statuses remain unchanged.
-No production scheduler behavior, timeout, IRQ policy, custody or physical
-completion requirement changed.
+real closes and exact-generation exit watches. Its initial two mixed pairs
+passed 192 episodes. The subsequent
+[NS generation batch](../reports/audits/2026-10-14-protocol-simplification-name-generations.md)
+reproduced the timeout on x86 and ARM, with returned-worker, exact-source and
+live/staged-generation diagnostics. Historical causality and the later Raft
+persistence failures remain open; the initial passing episodes do not close them.
+
+The [park-publication correction](../reports/audits/2026-10-14-park-deferred-delivery.md)
+and [first-dispatch correction](../reports/audits/2026-10-15-first-dispatch-delivery.md)
+then fix two distinct producer-LP delivery boundaries. Both have failing ARM
+negative controls and passing corrected native execution. The latest batch
+passes ARM/x86 security and linked deployment suites, including 256 exact IPC
+close/exit episodes and 16 first-entry controls. These establish scoped ordering
+corrections, not the historical interleaving or universal reaper progress.
+Timeouts, physical-release proofs, custody and finding counts remain unchanged;
+C16/C18 and G1/G7 remain open.
+
+The [CI runtime/diagnostic correction](../reports/audits/2026-10-15-ci-sitas-runtime-pin.md)
+pins all six Sitas checkouts to the checked-wait backend `d27f7e7b…` and preserves
+target frame pointers under CI's warning policy. Old-source execution reproduces
+the SITAS deadline failure and corrected local equivalent-profile execution
+passes. This is separate from IPC/persistence attribution; a later GitHub job
+is not verified here. Remaining failure families and next diagnostic work are
+listed in the [process review](../reports/audits/2026-10-15-audit-process-review.md).
+
+The [Raft persistence diagnostic follow-up](../reports/audits/2026-10-15-raft-persistence-diagnostics.md)
+addresses that review's lost-error gap. Open failures retain per-call operation,
+object, stage and typed cause; mutation fail-stop distinguishes encoding, write
+and flush while retaining the enclosing record identity. It changes no stored
+format, deadline, replay/cleanup policy or numbered finding disposition, and
+does not establish the historical persistence or IPC failure cause.
+
+The [automatic failure capture follow-up](../reports/audits/2026-10-15-automatic-failure-capture.md)
+adds an independent timed-run watcher and private all-LP QMP/LLDB snapshots on
+both architectures, retaining the actual boot-image kernel and per-run input
+identities. Native positive and short-deadline controls validate capture;
+historical IPC/persistence attribution and C16/C18/G1/G7 remain open. Snapshot
+state is diagnostic, not cleanup completion or permission to replay.
+
+The [captured park-fixture investigation](../reports/audits/2026-10-15-captured-park-fixture-panic.md)
+uses that watcher to preserve a spontaneous ARM panic and a forced-switch
+negative control. The fixture incorrectly required its publisher to remain
+Running while an incoming context delivered its callback; Ready is also valid
+before wait registration. Exact generation, IRQ policy and admission assertions
+remain. This corrects a fixture premise, with no scheduler/cleanup policy or
+numbered finding disposition change; historical IPC/stack/persistence causes
+and C16/C18/G1/G7 remain open.

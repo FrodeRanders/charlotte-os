@@ -586,6 +586,47 @@ mount-free UEFI boot image from an already-built kernel, use
 `scripts/create-boot-image.sh`; the Justfile's `create-image` recipe delegates
 to the same implementation.
 
+Timed ARM and x86 runs automatically prepare independent failure capture.
+`Kernel panic:`, `SELFTEST FAILED:`, a complete unsuccessful result, a Raft
+persistence fail-stop, or expiry of the original monotonic host window triggers
+one capture before teardown. The watcher runs independently of synchronous
+HTTP probes. A late successful result cannot erase an earlier captured failure.
+The host probe itself may still take time to return; this is a capture deadline,
+not a guarantee that every host subprocess has exited at that instant.
+
+Each run prints a unique `target/boot-diagnostics/<arch>-...` directory. Its
+manifest records revision/dirty paths and diff hash, tool hashes, CPU count,
+QEMU arguments, boot-image and initial data-disk hashes, and per-service signed
+ELF hashes. The debugger's immutable `kernel.elf` is extracted from that boot
+image and checked against the recorded payload and symbol identities. Current
+bundle hashes are distinct from the actual contents of an explicitly reused
+disk; neither is silently substituted for the other.
+
+Capture uses private mode-0700 Unix socket storage, without a public debugger
+port. QMP stops the guest, records all CPUs and their registers, and LLDB records
+all-LP backtraces/registers plus full declared timer/waker/scheduler diagnostic
+arrays. The prior QEMU run state is restored after capture. Diagnostic symbols
+are read by their declared size, rather than assuming four LPs. The result
+explicitly distinguishes complete, partial and unavailable capture. Missing
+LLDB or a bounded debugger failure preserves QMP evidence without inventing a
+backtrace. If QMP state is unavailable, restoring the pre-capture run state
+cannot be confirmed. These observations supply no kernel completion or
+quiescence proof.
+
+`--debug-snapshot` on either runner also captures after successful execution;
+it no longer holds an already successful ARM guest until the whole timeout.
+`--no-failure-capture` disables automatic capture. Manual `--gdb`,
+`CATTEN_QEMU_DEBUG_STUB=1` and ARM `--scheduler-trace` retain exclusive debugger
+ownership and disable the automatic watcher. Explicit snapshots reject those
+combinations, or a missing `--timeout`, before building.
+
+Capture retains serial-at-trigger/final serial, QMP CPU/register data, debugger
+output and artifact hashes alongside the kernel ELF. Even successful timed runs
+retain their immutable input metadata/ELF, with no debugger attach unless an
+explicit snapshot was requested. These are local build artifacts; publish
+relevant diagnostics and hashes inline or in version-controlled evidence before
+using them in an audit report. Private socket storage is removed on finalization.
+
 Long-running external harnesses can retain a live guest for post-failure
 inspection without depending on architecture-specific command-line switches.
 Set `CATTEN_QEMU_DEBUG_STUB=1` and pass `--gdb-port PORT` to expose the QEMU GDB
