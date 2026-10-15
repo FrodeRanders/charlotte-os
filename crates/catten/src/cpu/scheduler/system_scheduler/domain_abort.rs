@@ -1,7 +1,5 @@
 //! Allocation-free whole-domain abort with exact root and thread identities.
 
-use core::sync::atomic::Ordering;
-
 use super::{
     Error,
     MASTER_THREAD_TABLE,
@@ -11,7 +9,10 @@ use super::{
     ThreadId,
 };
 use crate::{
-    cpu::multiprocessor::interrupt_tracking::LocalInterruptMask,
+    cpu::{
+        multiprocessor::interrupt_tracking::LocalInterruptMask,
+        scheduler::threads::ThreadExecution,
+    },
     memory::{
         ADDRESS_SPACE_TABLE,
         AddressSpaceHandle,
@@ -19,70 +20,18 @@ use crate::{
     },
 };
 
-/// Owns the executing lifetime before root admission. Drop deliberately leaves
-/// the inline fence installed: a discarded transaction cannot authorize stack
-/// retirement or migration. This is scoped to abort-sweep execution, not a
-/// general kernel cancellation or custody API.
-struct AbortExecutor {
-    identity: Option<(ThreadId, ThreadGeneration)>,
-}
-
-impl AbortExecutor {
-    fn acquire() -> Result<Self, Error> {
-        let _mask = LocalInterruptMask::new();
-        let scheduler = SYSTEM_SCHEDULER.read();
-        let local = scheduler.get_lp_scheduler().lock();
-        let identity = local.get_current_handle();
-        if let Some((tid, generation)) = identity {
-            let mut table = MASTER_THREAD_TABLE.write();
-            let thread = table.get_mut(tid).map_err(|_| Error::InvalidThread)?;
-            if thread.generation != generation || thread.abort_requested.load(Ordering::Acquire) {
-                return Err(Error::ThreadTerminated);
-            }
-            if thread.abort_executor_lp.load(Ordering::Acquire) != usize::MAX {
-                return Err(Error::ThreadRetirementFailed);
-            }
-            thread
-                .abort_executor_lp
-                .store(crate::cpu::isa::lp::ops::get_lp_id() as usize, Ordering::Release);
-        }
-        Ok(Self {
-            identity,
-        })
-    }
-
-    fn release(self, _mask: &LocalInterruptMask) {
-        if let Some((tid, generation)) = self.identity {
-            let scheduler = SYSTEM_SCHEDULER.read();
-            let local = scheduler.get_lp_scheduler().lock();
-            assert_eq!(local.get_current_handle(), Some((tid, generation)));
-            let mut table = MASTER_THREAD_TABLE.write();
-            let thread = table.get_mut(tid).expect("retained abort executor missing");
-            assert_eq!(thread.generation, generation);
-            assert_eq!(
-                thread.abort_executor_lp.load(Ordering::Acquire),
-                crate::cpu::isa::lp::ops::get_lp_id() as usize
-            );
-            thread.abort_executor_lp.store(usize::MAX, Ordering::Release);
-            if thread.abort_requested.load(Ordering::Acquire) {
-                local.set_ctx_switch_pending();
-            }
-        }
-    }
-}
-
 /// Abandonment retains both the root lease and its terminal admission fence.
 /// The inline fence is never cleared; only a fresh root begins unfenced.
 struct DomainAbortSweep {
     root: AddressSpaceOperation,
-    executor: AbortExecutor,
+    executor: ThreadExecution,
     ceiling: usize,
 }
 
 impl DomainAbortSweep {
     fn begin(handle: AddressSpaceHandle) -> Result<Self, Error> {
         // Lifecycle admission precedes scheduler/publication serialization.
-        let executor = AbortExecutor::acquire()?;
+        let executor = ThreadExecution::acquire()?;
         let root = match AddressSpaceOperation::acquire(handle) {
             Ok(root) => root,
             Err(_) => {
@@ -109,7 +58,7 @@ impl DomainAbortSweep {
 
     fn run(self, mut before_abort: impl FnMut(ThreadId, ThreadGeneration)) -> Result<(), Error> {
         let handle = self.root.handle();
-        let caller = self.executor.identity;
+        let caller = self.executor.identity();
         tests::before_concurrent_sweep(handle, caller);
         let mut deferred_caller = None;
         let outcome = (|| {

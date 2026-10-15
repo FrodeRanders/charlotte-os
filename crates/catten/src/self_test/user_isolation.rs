@@ -21,6 +21,8 @@ core::arch::global_asm!(include_str!("user_entry_aarch64.asm"));
 #[cfg(target_arch = "x86_64")]
 core::arch::global_asm!(include_str!("user_entry_x86_64.asm"));
 unsafe extern "C" {
+    static user_stack_growth_start: u8;
+    static user_stack_growth_end: u8;
     static user_register_probe_start: u8;
     static user_register_probe_end: u8;
     #[cfg(target_arch = "x86_64")]
@@ -187,6 +189,7 @@ pub(crate) fn verify() {
     scheduler::system_scheduler::verify_executor_rejection();
     verify_abort_handoff();
     verify_concurrent_abort();
+    verify_stack_growth();
     let snapshot = Fixture::spawn(unsafe {
         code(&raw const user_register_probe_start, &raw const user_register_probe_end)
     });
@@ -335,4 +338,63 @@ fn check_snapshot(snapshot: &Fixture) {
         assert_eq!(snapshot.word(856), 0, "initial FS base");
         assert_eq!(snapshot.word(864), 0, "initial GS base");
     }
+}
+
+fn verify_stack_growth() {
+    for mode in 0..3 {
+        let fixture = Fixture::spawn_with(
+            unsafe { code(&raw const user_stack_growth_start, &raw const user_stack_growth_end) },
+            |root| {
+                memory::set_domain_limits(
+                    root,
+                    memory::DomainLimits {
+                        user_stack_pages: 4,
+                        max_threads: 1,
+                    },
+                )
+                .unwrap();
+                if mode == 2 {
+                    let mut table = ADDRESS_SPACE_TABLE.lock();
+                    let space = table.get_mut(root.id()).unwrap();
+                    let mut backing = PreparingUserBacking::new(space, Kind::Image).unwrap();
+                    backing.fill(|bytes| bytes.fill(0x5a));
+                    backing
+                        .map_with(
+                            VAddr::from(charlotte_launch::user_address::STACK_BASE + 2 * 4096),
+                            PageType::UserData,
+                            |space, mapping| space.map_existing_page(mapping).is_ok(),
+                        )
+                        .unwrap();
+                }
+                scheduler::threads::arm_stack_growth(root, mode);
+            },
+        );
+        let root = fixture.handle;
+        if mode == 0 {
+            fixture.wait_for(0xface);
+            {
+                let table = scheduler::threads::MASTER_THREAD_TABLE.read();
+                let thread = table.get(fixture.tid).unwrap();
+                assert_eq!(thread.generation, fixture.generation);
+                assert_eq!(thread.address_space, Some(root));
+                assert_eq!(thread.context.user_stack_committed_pages(), 3);
+                assert_eq!(
+                    thread.operation_executor_lp.load(core::sync::atomic::Ordering::Acquire),
+                    usize::MAX
+                );
+            }
+            // Existing bounded EL0 fixture gate; no production wait polls it.
+            let bytes: *mut u8 = fixture.result.into();
+            unsafe {
+                core::ptr::write_volatile(bytes.add(808).cast::<u32>(), 0);
+            }
+            core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
+        }
+        fixture.finish();
+        scheduler::threads::verify_stack_growth(root);
+    }
+    crate::logln!(
+        "[user isolation] real EL0 stack growth, deferred-abort handback and foreign-leaf \
+         rollback passed"
+    );
 }

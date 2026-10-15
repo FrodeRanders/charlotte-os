@@ -10,6 +10,7 @@ pub(crate) const KERNEL_STACK_PAGES: usize = 16;
 mod budget;
 mod stacks;
 pub(crate) use stacks::{
+    Growth,
     RetirementError,
     Stacks,
 };

@@ -649,3 +649,13 @@ before allocation-free publication. Scoped inventory and race/heap-held probes
 do not complete the wider allocation/destructor audit, aggregate heap/principal
 budgets or integrated pressure/physical qualification. SEC-07/18 remain partial;
 historical exit-watch/stack/persistence causation and finding counts are unchanged.
+
+The [stack-growth execution-owner follow-up](../reports/audits/2026-10-15-stack-growth-execution-owner.md)
+continues C16/C17 and G1/G2 with the same exact-thread execution fence used by
+abort sweeps. Original root/slot/maximum charge stays in its containing thread;
+provisional backing and prefix progress run outside the master thread table.
+Exact completed handback precedes fence release. Actual EL0 growth, deferred
+abort and map-rejection rollback qualify that context while inner walker,
+heap/image/constructor, aggregate-budget and integrated physical/pressure work
+remain open. No historical timeout attribution, new recovery authority or
+numbered finding disposition follows.

@@ -312,7 +312,7 @@ impl LpScheduler for RoundRobin {
         if expected_generation.is_some_and(|generation| generation != thread.generation) {
             return Err(Error::InvalidThread);
         }
-        let executor = thread.abort_executor_lp.load(Ordering::Acquire);
+        let executor = thread.operation_executor_lp.load(Ordering::Acquire);
         if executor != usize::MAX && executor != self.lp_id as usize {
             return Err(Error::InvalidThread);
         }

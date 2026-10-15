@@ -54,3 +54,23 @@ user_register_probe_start:
     svc #8
 user_register_probe_end:
 .popsection
+
+.pushsection .rodata
+.balign 16
+.global user_stack_growth_start
+.global user_stack_growth_end
+user_stack_growth_start:
+    sub x0, sp, #3, lsl #12
+    mov x1, #0x1234
+    str x1, [x0]
+    mov x0, #0x2000
+    movk x0, #1, lsl #16
+    mov x1, #0xface
+    str x1, [x0, #800]
+1:
+    ldr w1, [x0, #808]
+    cbnz w1, 1b
+    mov x0, #0
+    ldr x1, [x0]
+user_stack_growth_end:
+.popsection

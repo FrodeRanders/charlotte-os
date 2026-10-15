@@ -74,7 +74,7 @@ The [exit-watch preparation review](../reports/audits/2026-10-15-thread-exit-wat
 records the scoped allocation inventory, heap-held publication/rejection,
 preparation failure, TID reuse, competing source, authorization and scheduled
 IRQ-preservation evidence. It does not qualify the containing completion
-registry, all generic observer callers, stack growth's enclosing table guard,
+registry, all generic observer callers, stack growth's inner walker contexts,
 aggregate heap limits or the historical intermittent failure causes.
 
 ## Reaping and publication fences
@@ -265,8 +265,8 @@ The node is allocated from the global heap and adds one thread-sized allocation
 per live/deferred owner. There is no independent node-byte admission pool.
 General heap/metadata/principal accounting remains SEC-07 work. Scheduler
 run-queue/migration allocation and other subsystem metadata remain separate
-allocation paths. Outer construction/submission masks, growth's containing
-thread-table guard and arbitrary explicit callback contexts remain unqualified;
+allocation paths. Outer construction/submission masks, growth's inner walker
+contexts and arbitrary explicit callback contexts remain unqualified;
 full SEC-18 lock/quiescence safety is not claimed. There is
 no failed-pair retry owner, shared custody adapter or abandoned-owner recovery.
 
@@ -293,7 +293,7 @@ shootdown counters do not authorize physical retry or clear the earlier Intel
 progress failure; see the [IOMMU follow-up](../reports/audits/2026-10-09-security-iommu-preparation-abandonment.md).
 
 Concurrent-sweep evidence: [exact executor ownership](../reports/audits/2026-10-09-security-abort-executor.md).
-`AbortExecutor` captures the current TID/generation and installs its inline LP
+`ThreadExecution` captures the current TID/generation and installs its inline LP
 fence before the sweep can acquire a root operation. New admission rejects an
 already requested lifetime or nested owner. Remote/mutual abort records the
 request; `abort_ready` permits retirement only after explicit executor release.
@@ -311,3 +311,15 @@ retention, not an admitted retry/custody owner or a general kernel cancellation
 scheme. The two-fault fixture confirms nested rejection, mutual requests, production
 timer sleeps, eight subsequent yields each and exact root teardown; ordinary
 root/publication rejection is checked on a scheduled kernel executor.
+
+
+The [stack-growth execution-owner batch](../reports/audits/2026-10-15-stack-growth-execution-owner.md)
+shares that same inline execution fence with `CurrentGrowth`; scheduler/abort/
+wake/migration checks use `operation_executor_lp`. The original complete thread/
+context/stack/root/charge remains in the master table while one `Growth` owner
+retains provisional backing and new-prefix progress outside its guard. Completed
+handback revalidates the original episode and publishes progress before releasing
+the execution fence. Actual EL0 growth, deferred abort, foreign-leaf rollback,
+caller IRQ preservation and table reentry qualify this caller. General heap/
+image and other kernel-operation retention remain separate; this is no blanket
+cancellation/physical-recovery guarantee.

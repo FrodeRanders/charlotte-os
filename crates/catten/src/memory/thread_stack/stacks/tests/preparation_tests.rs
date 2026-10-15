@@ -74,17 +74,31 @@ fn cancellation() {
 
         let mut stacks = Stacks::user(handle, 2).unwrap();
         let before = free();
-        PreparingGrowthPage::allocate(stacks.user.as_mut().unwrap())
-            .unwrap()
-            .cancel_unpublished()
-            .unwrap();
-        assert!(!stacks.user.as_ref().unwrap().slot.uncertain);
-        assert_eq!(free(), before);
+        let address = stacks.user_stack().unwrap().base_addr();
+        let mut growth = stacks.begin_growth(address).unwrap();
+        growth.run_with(
+            PreparingUserFrame::allocate_zeroed,
+            |_, _, _| false,
+            |frame| PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame),
+        );
         assert!(
-            PreparingGrowthPage::allocate_with(stacks.user.as_mut().unwrap(), || None).is_none()
+            stacks
+                .finish_growth(growth)
+                .unwrap_or_else(|_| panic!("growth cancellation"))
+                .is_none()
         );
         assert!(!stacks.user.as_ref().unwrap().slot.uncertain);
         assert_eq!(free(), before);
+        let mut growth = stacks.begin_growth(address).unwrap();
+        growth.run_with(
+            || None,
+            |_, _, _| panic!("rejected allocation mapped"),
+            |_| panic!("rejected allocation released"),
+        );
+        assert!(
+            stacks.finish_growth(growth).unwrap_or_else(|_| panic!("growth rejection")).is_none()
+        );
+        assert!(!stacks.user.as_ref().unwrap().slot.uncertain);
         stacks.release().unwrap();
         drop(stacks);
         assert_eq!(budget::used(), used);
@@ -131,30 +145,35 @@ fn growth_abandonment() {
             let mut stacks = user_only(handle);
             let before = free();
             let user = stacks.user.as_mut().unwrap();
-            let mut preparation = if kind == 0 {
-                PreparingGrowthPage {
-                    stack: user,
-                    frame: None,
-                    mapping_started: false,
-                    finished: false,
-                }
-            } else {
-                PreparingGrowthPage::allocate(user).unwrap()
-            };
+            let mut preparation = staged_growth(user, kind != 0 && kind != 3);
             if kind == 2 {
                 preparation.mapping_started = true;
-            } else if kind == 3 {
+            }
+            if kind == 3 {
                 let mut attempts = 0;
-                assert!(matches!(
-                    preparation.rollback_with(|_| {
+                preparation.run_with(
+                    PreparingUserFrame::allocate_zeroed,
+                    |_, _, _| false,
+                    |_| {
                         attempts += 1;
                         Err(memory::physical::Error::CannotDeallocateUnallocatedFrame)
-                    }),
-                    Err(memory::physical::Error::CannotDeallocateUnallocatedFrame)
-                ));
+                    },
+                );
                 assert_eq!(attempts, 1);
+                assert!(preparation.uncertain);
+                // Completed failure handback has no frame/allocator/root work
+                // and must preserve the containing slot's original fence.
+                drop_under_guards(|| {
+                    assert!(
+                        stacks
+                            .finish_growth(preparation)
+                            .unwrap_or_else(|_| panic!("failed growth handback"))
+                            .is_none()
+                    );
+                });
+            } else {
+                drop_under_guards(|| drop(preparation));
             }
-            drop_under_guards(|| drop(preparation));
             assert!(stacks.user.as_ref().unwrap().slot.uncertain);
             assert_eq!(stacks.grow_user_stack(stacks.user_stack().unwrap().base_addr()), None);
             // Run published pair retirement outside the probe guards: successful

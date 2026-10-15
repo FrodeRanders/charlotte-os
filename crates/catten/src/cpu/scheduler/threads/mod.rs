@@ -22,6 +22,8 @@
 //! Exited threads are staged per-LP in [`DEAD_THREADS`] and reaped after
 //! the context switch away from them.
 
+mod execution;
+pub(crate) use execution::ThreadExecution;
 pub(crate) mod exit_source;
 pub(crate) mod retirement_tests;
 pub mod waker;
@@ -554,7 +556,7 @@ pub struct ThreadPayload {
     pub(crate) abort_requested: AtomicBool,
     // Exact executor ownership defers retirement and migration until explicit
     // completion. usize::MAX means no owner; abandonment retains the LP fence.
-    pub(crate) abort_executor_lp: AtomicUsize,
+    pub(crate) operation_executor_lp: AtomicUsize,
     pub(crate) abort_owner_lp: AtomicUsize,
     /// Identity retained after removal from the master table for diagnostic
     /// correlation with the deferred-reaping and stack-deallocation paths.
@@ -683,7 +685,7 @@ impl Thread {
                 dispatch_count: 0,
                 last_dispatch_tick: None,
                 abort_requested: AtomicBool::new(false),
-                abort_executor_lp: AtomicUsize::new(usize::MAX),
+                operation_executor_lp: AtomicUsize::new(usize::MAX),
                 abort_owner_lp: AtomicUsize::new(usize::MAX),
                 retired_tid: None,
                 reap_lp: None,
@@ -755,7 +757,7 @@ impl Thread {
 
     pub(crate) fn abort_ready(&self) -> bool {
         self.abort_requested.load(Ordering::Acquire)
-            && self.abort_executor_lp.load(Ordering::Acquire) == usize::MAX
+            && self.operation_executor_lp.load(Ordering::Acquire) == usize::MAX
     }
 
     pub fn is_fully_migratable(&self) -> bool {
@@ -763,30 +765,20 @@ impl Thread {
             && self.pinned_lp.is_none()
             && self.migration_constraints == 0
             && !self.abort_requested.load(Ordering::Acquire)
-            && self.abort_executor_lp.load(Ordering::Acquire) == usize::MAX
+            && self.operation_executor_lp.load(Ordering::Acquire) == usize::MAX
             && !self.context.is_on_cpu()
     }
 }
 
-/// Extend the current user thread's stack to cover one faulting address.
-///
-/// Runs in the synchronous EL0 fault path, so it must not treat transient
-/// contention as a failure: the scheduler and thread-table locks are the
-/// interrupt-masking multiprocessor locks, whose owner always makes progress.
-/// Returns the new committed low address when a page was mapped.
-pub(crate) fn grow_current_user_stack(asid: AddressSpaceId, fault_addr: usize) -> Option<usize> {
-    let (tid, generation) = {
-        let scheduler = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER.read();
-        let local = scheduler.get_lp_scheduler().lock();
-        local.get_current_handle()?
-    };
-    let mut table = MASTER_THREAD_TABLE.write();
-    let thread = table.get_mut(tid).ok()?;
-    if thread.generation != generation || thread.asid != asid {
-        return None;
-    }
-    thread.context.grow_user_stack(fault_addr)
-}
+mod growth;
+pub(crate) use growth::{
+    grow_current_user_stack,
+    tests::{
+        arm as arm_stack_growth,
+        phase as stack_growth_test_phase,
+        verify as verify_stack_growth,
+    },
+};
 
 /// Return owned snapshots for threads in one address space.
 ///

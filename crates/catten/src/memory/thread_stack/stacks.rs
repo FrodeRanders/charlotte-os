@@ -144,36 +144,52 @@ impl Stacks {
         })
     }
 
-    pub(crate) fn grow_user_stack(&mut self, address: usize) -> Option<usize> {
+    pub(crate) fn begin_growth(&mut self, address: usize) -> Option<Growth> {
         if self.release_started {
             return None;
         }
         let stack = self.user.as_mut()?;
         let page = address & !(PAGE - 1);
-        let low = stack.committed_low();
-        if page >= low || page < stack.base_addr() || stack.slot.uncertain {
+        if page >= stack.committed_low() || page < stack.base_addr() || stack.slot.uncertain {
             return None;
         }
-        let (free, total) = {
-            let allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
-            (allocator.free_frames() as u64, allocator.usable_bytes() / PAGE as u64)
+        Some(Growth::new(stack, page))
+    }
+
+    /// The containing execution owner prevents retirement/migration through
+    /// this exact handback. Failure returns the entire preparation unchanged.
+    #[allow(clippy::result_large_err)]
+    pub(crate) fn finish_growth(&mut self, growth: Growth) -> Result<Option<usize>, Growth> {
+        let Some(stack) = self.user.as_mut() else {
+            return Err(growth);
         };
-        let floor = (total / charlotte_lifecycle::STACK_GROWTH_RESERVE_DIVISOR).max(1);
-        if free < floor.saturating_add(((low - page) / PAGE) as u64) {
-            return None;
+        if self.release_started
+            || !growth.completed
+            || growth.mapping_started
+            || growth.frame.is_some()
+            || !stack.slot.uncertain
+            || stack.slot.identity() != growth.handle
+            || stack.base_addr() != growth.base
+            || stack.budget_pages != growth.budget_pages
+            || stack.committed_pages != growth.initial_pages
+        {
+            return Err(growth);
         }
-        let mut mapped_low = low;
-        while mapped_low > page {
-            let vaddr = mapped_low - PAGE;
-            let Some(preparation) = PreparingGrowthPage::allocate(stack) else {
-                break;
-            };
-            if !preparation.map(vaddr) {
-                break;
-            }
-            mapped_low = vaddr;
-        }
-        (mapped_low < low).then_some(mapped_low)
+        let low = growth.result();
+        stack.committed_pages = growth.committed_pages;
+        stack.slot.uncertain = growth.uncertain;
+        Ok(low)
+    }
+
+    // Serialized fixtures own this entire never-scheduled stack directly.
+    // Production uses the exact executing-thread owner around these phases.
+    pub(in crate::memory::thread_stack) fn grow_user_stack(
+        &mut self,
+        address: usize,
+    ) -> Option<usize> {
+        let mut growth = self.begin_growth(address)?;
+        growth.run();
+        self.finish_growth(growth).unwrap_or_else(|_| panic!("stack growth handback rejected"))
     }
 }
 
@@ -344,101 +360,144 @@ fn retire_user_with(
     }
 }
 
-struct PreparingGrowthPage<'a> {
-    stack: &'a mut UserStack,
+/// One in-flight growth episode. The original stack remains in its containing
+/// owner with its slot fenced; production additionally retains that exact
+/// thread's execution fence. This is not standalone cleanup/retry authority.
+/// Drop retains provisional backing and leaves both containing fences armed.
+pub(crate) struct Growth {
+    handle: AddressSpaceHandle,
+    base: usize,
+    budget_pages: usize,
+    initial_pages: usize,
+    committed_pages: usize,
+    target: usize,
     frame: Option<PreparingUserFrame>,
+    started: bool,
+    completed: bool,
     mapping_started: bool,
-    finished: bool,
+    uncertain: bool,
 }
-impl<'a> PreparingGrowthPage<'a> {
-    fn allocate(stack: &'a mut UserStack) -> Option<Self> {
-        Self::allocate_with(stack, || {
-            PreparingUserFrame::allocate_with_policy(|free, total| {
-                free > (total / charlotte_lifecycle::STACK_GROWTH_RESERVE_DIVISOR).max(1)
-            })
-        })
-    }
 
-    fn allocate_with(
-        stack: &'a mut UserStack,
-        allocate: impl FnOnce() -> Option<PreparingUserFrame>,
-    ) -> Option<Self> {
+impl Growth {
+    fn new(stack: &mut UserStack, target: usize) -> Self {
         assert!(!stack.slot.uncertain);
-        let mut preparation = Self {
-            stack,
+        stack.slot.uncertain = true;
+        Self {
+            handle: stack.slot.identity(),
+            base: stack.base_addr(),
+            budget_pages: stack.budget_pages,
+            initial_pages: stack.committed_pages,
+            committed_pages: stack.committed_pages,
+            target,
             frame: None,
+            started: false,
+            completed: false,
             mapping_started: false,
-            finished: false,
-        };
-        let Some(frame) = allocate() else {
-            // Ordinary allocator rejection leaves the existing stack usable.
-            preparation.finished = true;
-            return None;
-        };
-        preparation.frame = Some(frame);
-        preparation.frame.as_ref().unwrap().zero();
-        Some(preparation)
+            uncertain: false,
+        }
     }
 
-    fn map(mut self, vaddr: usize) -> bool {
-        let handle = self.stack.slot.identity();
-        assert!(self.stack.slot.contains_page(vaddr));
-        self.mapping_started = true;
-        let mapped = {
-            let mut table = ADDRESS_SPACE_TABLE.lock();
-            table.generation(handle.id()).ok() == Some(handle.generation())
-                && table.get_mut(handle.id()).is_ok_and(|space| {
-                    space
-                        .map_page(MemoryMapping {
-                            vaddr: VAddr::from(vaddr),
-                            paddr: self.frame.as_ref().unwrap().frame(),
-                            page_type: PageType::UserData,
-                        })
-                        .is_ok()
+    pub(crate) fn handle(&self) -> AddressSpaceHandle {
+        self.handle
+    }
+
+    fn low(&self) -> usize {
+        self.base + (self.budget_pages - self.committed_pages) * PAGE
+    }
+
+    fn result(&self) -> Option<usize> {
+        (self.committed_pages > self.initial_pages).then(|| self.low())
+    }
+
+    pub(crate) fn run(&mut self) {
+        let handle = self.handle;
+        self.run_with(
+            || {
+                crate::cpu::scheduler::threads::stack_growth_test_phase(handle, 1);
+                PreparingUserFrame::allocate_with_policy(|free, total| {
+                    free > (total / charlotte_lifecycle::STACK_GROWTH_RESERVE_DIVISOR).max(1)
                 })
-        };
-        if mapped {
-            self.stack.committed_pages += 1;
-            self.frame.take().unwrap().quarantine();
-        }
-        self.mapping_started = false;
-        if mapped {
-            self.finished = true;
-        } else {
-            // Walker rejection confirms non-publication. Explicit rollback
-            // runs after its address-space table guard has left.
-            let _ = self.cancel_unpublished();
-        }
-        mapped
+            },
+            |handle, vaddr, frame| {
+                crate::cpu::scheduler::threads::stack_growth_test_phase(handle, 2);
+                let mut table = ADDRESS_SPACE_TABLE.lock();
+                table.generation(handle.id()).ok() == Some(handle.generation())
+                    && table.get_mut(handle.id()).is_ok_and(|space| {
+                        space
+                            .map_page(MemoryMapping {
+                                vaddr: VAddr::from(vaddr),
+                                paddr: frame,
+                                page_type: PageType::UserData,
+                            })
+                            .is_ok()
+                    })
+            },
+            |frame| {
+                crate::cpu::scheduler::threads::stack_growth_test_phase(handle, 4);
+                PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame)
+            },
+        );
     }
 
-    fn cancel_unpublished(mut self) -> Result<(), crate::memory::physical::Error> {
-        self.rollback_with(|frame| PHYSICAL_FRAME_ALLOCATOR.lock().deallocate_frame(frame))
+    fn run_with(
+        &mut self,
+        mut allocate: impl FnMut() -> Option<PreparingUserFrame>,
+        mut map: impl FnMut(AddressSpaceHandle, usize, crate::memory::PAddr) -> bool,
+        mut release: impl FnMut(crate::memory::PAddr) -> Result<(), crate::memory::physical::Error>,
+    ) {
+        assert!(!self.started && !self.completed && self.frame.is_none());
+        self.started = true;
+        let (free, total) = {
+            let allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+            (allocator.free_frames() as u64, allocator.usable_bytes() / PAGE as u64)
+        };
+        let floor = (total / charlotte_lifecycle::STACK_GROWTH_RESERVE_DIVISOR).max(1);
+        if free >= floor.saturating_add(((self.low() - self.target) / PAGE) as u64) {
+            while self.low() > self.target {
+                self.frame = allocate();
+                let Some(frame) = self.frame.as_ref() else {
+                    break;
+                };
+                frame.zero();
+                let vaddr = self.low() - PAGE;
+                // On interruption, no handback or physical rollback is allowed.
+                self.mapping_started = true;
+                if map(self.handle, vaddr, frame.frame()) {
+                    self.committed_pages += 1;
+                    self.frame.take().unwrap().quarantine();
+                    self.mapping_started = false;
+                } else {
+                    // Walkers reject before leaf publication. Physical rollback
+                    // follows their local table guard and the scheduler guard.
+                    self.mapping_started = false;
+                    let _ = self.rollback_with(&mut release);
+                    break;
+                }
+            }
+        }
+        self.completed = true;
     }
 
     fn rollback_with(
         &mut self,
         release: impl FnOnce(crate::memory::PAddr) -> Result<(), crate::memory::physical::Error>,
     ) -> Result<(), crate::memory::physical::Error> {
-        assert!(!self.finished && !self.mapping_started && !self.stack.slot.uncertain);
-        self.finished = true;
-        self.stack.slot.uncertain = true;
+        assert!(!self.mapping_started && !self.uncertain);
+        self.uncertain = true;
         if let Some(frame) = self.frame.take() {
             frame.release_with(release)?;
         }
-        self.stack.slot.uncertain = false;
+        self.uncertain = false;
         Ok(())
     }
 }
-impl Drop for PreparingGrowthPage<'_> {
+
+impl Drop for Growth {
     fn drop(&mut self) {
-        if !self.finished {
-            self.stack.slot.uncertain = true;
-        }
         if let Some(frame) = self.frame.take() {
             frame.quarantine();
         }
-        // No allocator, registry, root lookup, reservation release or logger.
-        // The borrowed parent stack retains its complete original admission.
+        // No root lookup, allocator, pool refund, callbacks or logger. The
+        // original stack slot stays fenced until a consuming proven handback.
     }
 }

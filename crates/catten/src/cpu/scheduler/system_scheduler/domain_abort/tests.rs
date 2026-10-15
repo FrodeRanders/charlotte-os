@@ -192,7 +192,7 @@ pub(super) fn before_concurrent_sweep(
     }
     assert!(caller.is_some());
     // Nested admission rejects without consuming the outer executor owner.
-    assert!(matches!(AbortExecutor::acquire(), Err(Error::ThreadRetirementFailed)));
+    assert!(matches!(ThreadExecution::acquire(), Err(Error::ThreadRetirementFailed)));
     rendezvous(&CONCURRENT_ENTERED);
 }
 
@@ -220,7 +220,7 @@ pub(super) fn before_concurrent_completion(
         assert!(!thread.abort_ready());
         assert!(!thread.is_fully_migratable());
         assert_eq!(
-            thread.abort_executor_lp.load(Ordering::Acquire),
+            thread.operation_executor_lp.load(Ordering::Acquire),
             crate::cpu::isa::lp::ops::get_lp_id() as usize
         );
     }
@@ -270,7 +270,7 @@ pub(crate) fn verify_executor_rejection() {
     assert!(matches!(
         abort_domain_threads_with_request(root, |operation| {
             assert_eq!(operation.handle(), root);
-            assert!(matches!(AbortExecutor::acquire(), Err(Error::ThreadRetirementFailed)));
+            assert!(matches!(ThreadExecution::acquire(), Err(Error::ThreadRetirementFailed)));
             Err(Error::InvalidThread)
         }),
         Err(Error::InvalidThread)
@@ -278,7 +278,7 @@ pub(crate) fn verify_executor_rejection() {
     let table = MASTER_THREAD_TABLE.read();
     let thread = table.get(identity.0).unwrap();
     assert_eq!(thread.generation, identity.1);
-    assert_eq!(thread.abort_executor_lp.load(Ordering::Acquire), usize::MAX);
+    assert_eq!(thread.operation_executor_lp.load(Ordering::Acquire), usize::MAX);
     assert!(!thread.abort_requested.load(Ordering::Acquire));
     drop(table);
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);

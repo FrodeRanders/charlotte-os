@@ -242,16 +242,20 @@ impl ThreadContext {
         self._stacks.usage(self.user_stack_low_water.load(Ordering::Relaxed))
     }
 
-    /// Extend this thread's user stack downward to cover `fault_addr`.
-    ///
-    /// Returns the new committed low address when at least the faulting page
-    /// was mapped, or `None` outside the growable guard region and when free
-    /// frames are below the pressure reserve. Mapping is one page at a time so
-    /// a partial failure leaves an exact committed count; whatever was mapped
-    /// is still released by the owning stack transaction when the fatal path
-    /// retires the domain.
-    pub(crate) fn grow_user_stack(&mut self, fault_addr: usize) -> Option<usize> {
-        self._stacks.grow_user_stack(fault_addr)
+    /// Capture growth while the containing exact thread execution is retained.
+    pub(crate) fn begin_stack_growth(
+        &mut self,
+        fault_addr: usize,
+    ) -> Option<crate::memory::thread_stack::Growth> {
+        self._stacks.begin_growth(fault_addr)
+    }
+
+    #[allow(clippy::result_large_err)] // Retain the complete growth owner on rejection.
+    pub(crate) fn finish_stack_growth(
+        &mut self,
+        growth: crate::memory::thread_stack::Growth,
+    ) -> Result<Option<usize>, crate::memory::thread_stack::Growth> {
+        self._stacks.finish_growth(growth)
     }
 
     pub fn create_user_thread_context(

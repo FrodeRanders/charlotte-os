@@ -62,13 +62,14 @@ abandoned before allocation. An unpublished slot is not refunded by Drop; only
 ordinary explicit cancellation can release it. Dropping the operation and charge
 tokens retains the original root count and complete maximum reservation.
 
-Growth fallback marks its exclusively borrowed parent slot uncertain and
-quarantines any provisional frame. A later successful committed-prefix release
+Growth admission fences the original parent slot before leaving its guard.
+Fallback leaves that fence armed and quarantines any provisional frame. A later successful committed-prefix release
 cannot discharge that uncertainty, root lease or reservation. A rejected
 explicit provisional release consumes frame ownership once and leaves the same
-fence. Only confirmed explicit rollback can clear the fence that it armed;
-already uncertain stacks reject new growth. Normal growth allocation rejection
-completes its unused preparation explicitly and leaves the parent usable.
+fence. Only completed handback of known progress, unused preparation or
+confirmed rollback can clear this episode's temporary fence. Already uncertain
+stacks reject new growth. Normal allocation rejection completes its unused
+episode explicitly and leaves the parent usable.
 
 This is terminal retention, not a deferred retry owner or reclamation API.
 Published pair release is now explicit and arms a one-shot phase fence before
@@ -82,18 +83,32 @@ logging. Both architectures use pinned IRQ-enabled reapers. Failed pairs retain
 their entire thread/context in the original retirement node and cannot be
 retried by later scans. Ordinary constructor/publication/submission rejection
 explicitly releases a never-admitted pair after local serialization leaves.
-Growth's production `grow_current_user_stack` keeps the master thread-table
-write guard through the operation, including ordinary rollback. Outer constructor/syscall masks and general thread metadata fallback
-remain [C16/C17/G1/G2](cleanup-recovery.md).
+Production growth now retains the exact executing thread through the shared
+`ThreadExecution` fence, with only capture and handback under the master table.
+Allocation, mapping and rollback run after that guard leaves. Outer constructor/
+syscall and inner walker contexts remain [C16/C17/G1/G2](cleanup-recovery.md).
 
 ## Demand growth
 
-Growth borrows the existing `UserStack` and its `StackSlot`, whose reservation
-already covers the full configured capacity. Each provisional page has a
-physical owner through zeroing and mapping. Every mapping revalidates the exact
-root generation; publication records the committed count before relinquishing
-the provisional owner. The address must remain within that slot's captured
-capacity, independently of later launch-limit changes.
+`CurrentGrowth` retains the exact executing TID/generation/LP through
+`ThreadExecution`. The original context, `UserStack`, root lease, slot and full
+reservation stay in that thread's existing owner. A `Growth` episode captures
+its original root/base/capacity/committed prefix and fences the slot before
+table unlock. It owns provisional pages and mapped-prefix progress while
+allocation, zeroing, mapping and rollback run outside the master thread table.
+Every map revalidates the root generation; the address stays within the
+captured capacity, independently of later launch-limit changes.
+
+Only completed growth without an unconfirmed mapping or provisional frame can
+hand back under a short table guard. The exact lifetime/root, slot/base/capacity
+and original prefix must match. Handback publishes the new committed count
+before the IRQ-preserving completion of the execution fence. Other readers see
+the old committed-prefix observation during work; they gain no cleanup proof.
+Pending abort and migration stay fenced until completion. Abandonment or rejected
+handback retains both fences; failed physical rollback keeps the original slot
+uncertain. No replay/custody owner or fresh reservation is created. Serialized
+never-scheduled fixtures instead borrow their complete local `Stacks` owner.
+See the [execution-owner evidence](../reports/audits/2026-10-15-stack-growth-execution-owner.md).
 
 The existing one-sixteenth physical growth reserve is checked atomically with
 each allocation. The initial user page retains the existing one-eighth physical

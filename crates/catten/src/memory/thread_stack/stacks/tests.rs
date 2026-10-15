@@ -41,6 +41,7 @@ fn free() -> usize {
 pub(in crate::memory::thread_stack) fn run() {
     budget::test_pool();
     growth_and_drop();
+    growth_handback();
     pressure();
     confirmed_constructor_failure();
     transient_invalidation_retries_before_failure();
@@ -288,8 +289,7 @@ fn retained_failures() {
                 initial_free = free();
                 // The committed leaf is normally released, but an interrupted
                 // growth preparation must prevent slot/node refund afterward.
-                let mut preparation =
-                    PreparingGrowthPage::allocate(stacks.user.as_mut().unwrap()).unwrap();
+                let mut preparation = staged_growth(stacks.user.as_mut().unwrap(), true);
                 preparation.mapping_started = true;
                 drop(preparation);
                 assert!(stacks.release().is_err());
@@ -355,5 +355,44 @@ fn retained_failures() {
         "[stack retirement diagnostics] distinct invalidation/physical rejections retain leases \
          and count once; counters={:?}",
         after
+    );
+}
+
+// Deliberate unpublished/interrupted phase fixtures also cover a one-page
+// parent with no growth headroom. No such request enters production admission.
+fn staged_growth(stack: &mut UserStack, allocated: bool) -> Growth {
+    let mut growth = Growth::new(stack, stack.committed_low() - PAGE);
+    if allocated {
+        growth.frame = Some(PreparingUserFrame::allocate_zeroed().unwrap());
+    }
+    growth
+}
+
+fn growth_handback() {
+    let used = budget::used();
+    let first = domain(2, false);
+    let second = domain(2, false);
+    let mut a = Stacks::user(first, 2).unwrap();
+    let mut b = Stacks::user(second, 2).unwrap();
+    let ag = a.begin_growth(a.user_stack().unwrap().base_addr()).unwrap();
+    let mut ag = a.finish_growth(ag).expect_err("unfinished growth accepted");
+    let mut bg = b.begin_growth(b.user_stack().unwrap().base_addr()).unwrap();
+    ag.run_with(|| None, |_, _, _| panic!("rejected allocation mapped"), |_| panic!("no frame"));
+    bg.run_with(|| None, |_, _, _| panic!("rejected allocation mapped"), |_| panic!("no frame"));
+    let ag = b.finish_growth(ag).expect_err("foreign root growth accepted");
+    assert!(a.user.as_ref().unwrap().slot.uncertain);
+    assert!(b.user.as_ref().unwrap().slot.uncertain);
+    assert_eq!(a.committed_pages(), 1);
+    assert_eq!(b.committed_pages(), 1);
+    assert!(a.finish_growth(ag).unwrap_or_else(|_| panic!("original handback rejected")).is_none());
+    assert!(b.finish_growth(bg).unwrap_or_else(|_| panic!("original handback rejected")).is_none());
+    a.release().unwrap();
+    b.release().unwrap();
+    memory::close_user_address_space_handle(first).unwrap();
+    memory::close_user_address_space_handle(second).unwrap();
+    assert_eq!(budget::used(), used);
+    crate::logln!(
+        "[stack growth handback] unfinished/foreign owners reject without mutation; completed \
+         original owners restore usability and charges"
     );
 }

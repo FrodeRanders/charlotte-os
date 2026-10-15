@@ -222,7 +222,7 @@ impl SystemScheduler {
         let existing = {
             let table = MASTER_THREAD_TABLE.read();
             table.get(tid).ok().and_then(|t| {
-                let executor = t.abort_executor_lp.load(Ordering::Acquire);
+                let executor = t.operation_executor_lp.load(Ordering::Acquire);
                 if executor != usize::MAX {
                     Some(executor as LpId)
                 } else {
@@ -649,7 +649,7 @@ impl SystemScheduler {
             let table = MASTER_THREAD_TABLE.read();
             match table.get(tid) {
                 Ok(thread) if thread.generation == expected_generation => {
-                    let executor = thread.abort_executor_lp.load(Ordering::Acquire);
+                    let executor = thread.operation_executor_lp.load(Ordering::Acquire);
                     if executor != usize::MAX {
                         // Record the request without extracting an off-CPU/blocked
                         // executor. Its owner completes the root before this fence.
@@ -684,7 +684,7 @@ impl SystemScheduler {
             if thread.generation != expected_generation {
                 return Err(Error::InvalidThread);
             }
-            let executor = thread.abort_executor_lp.load(Ordering::Acquire);
+            let executor = thread.operation_executor_lp.load(Ordering::Acquire);
             let owner_lp = if executor != usize::MAX {
                 executor as LpId
             } else {
@@ -719,7 +719,7 @@ impl SystemScheduler {
         if thread.generation != expected_generation {
             return Err(Error::InvalidThread);
         }
-        let executor = thread.abort_executor_lp.load(Ordering::Acquire);
+        let executor = thread.operation_executor_lp.load(Ordering::Acquire);
         if executor != usize::MAX
             || local
                 .as_ref()

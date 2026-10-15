@@ -63,3 +63,23 @@ user_state_probe_start:
     syscall
 user_state_probe_end:
 .popsection
+
+.pushsection .rodata
+.balign 16
+.global user_stack_growth_start
+.global user_stack_growth_end
+user_stack_growth_start:
+    mov rax, rsp
+    add rax, 4095
+    and rax, -4096
+    sub rax, 12288
+    mov qword ptr [rax], 0x1234
+    mov ecx, 0x12000
+    mov qword ptr [rcx + 800], 0xface
+1:
+    cmp dword ptr [rcx + 808], 0
+    jne 1b
+    xor eax, eax
+    mov rax, [rax]
+user_stack_growth_end:
+.popsection
