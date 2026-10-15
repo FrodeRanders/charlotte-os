@@ -79,7 +79,7 @@ late watch; worker cancellation retains the producer-exit watch. Late terminal
 installation retains neither. See [terminal-disposal evidence](../reports/audits/2026-10-16-completion-terminal-disposal.md).
 
 This qualifies local completion guards. Timer-observer installation/cancellation,
-CQ staging, record/authority metadata and outer producer/IRQ contexts remain
+CQ registry-map/authority metadata, record construction and outer producer/IRQ contexts remain
 separate work. No subscription disposal proves physical completion or grants
 operation replay authority.
 
@@ -120,8 +120,8 @@ real immediate-return workers exercise registration versus terminal delivery.
 The scoped EL0 mask remains `0x7fff`; these added conditions are kernel fixtures.
 
 Comprehensive metadata/heap/page-table/capability admission, principal aggregates
-and hostile-pressure validation remain open. CQ staging/error cleanup, authority
-metadata, terminal event/worker-observer disposal under an outer registry and
-other caller/IRQ contexts remain separately qualified. This does not close
+and hostile-pressure validation remain open. CQ payload staging now has its
+[CQ payload-preparation follow-up](../reports/audits/2026-10-16-cq-payload-preparation.md); fresh registry-map and authority metadata, record construction,
+timer-specific cleanup and other caller/IRQ contexts remain open. This does not close
 SEC-07/18. See the
 [callback preparation and disposal audit](../reports/audits/2026-10-15-completion-callback-preparation.md).

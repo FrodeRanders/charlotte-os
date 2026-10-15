@@ -340,9 +340,20 @@ source is captured at publication: a reentrant destructor replacing the queue
 cannot redirect the old wake to its successor. Installation returns replaced or
 rejected subscriptions for disposal after both guards. Cancellation rejects a
 late event watch but retains the worker-exit subscription; terminal installation
-retains neither. Timer cancellation, staging/partial-error cleanup and outer
+retains neither. Timer cancellation, record/authority/map metadata and outer
 producer/IRQ contexts remain separate qualification work. These subscription
 transitions grant no physical cleanup proof or permission to replay accepted work.
+
+CQ source-list, backlog and heap-ring admission/allocation run outside the
+completion registry, including partial-error disposal. Preparation retains the
+exact namespace root, CQ account, submission capacity and trusted classification;
+publication rechecks identity and retirement. Physical frames remain untouched
+until alias checks and initialization under the same registry hold as queue
+publication. Rejection retains prepared backing and original charges until
+unlock. Whole-namespace preparation includes its private CQ map node. Fresh
+live registry-map nodes, unified authority, record construction, timers and outer
+caller/IRQ contexts remain separate. A captured identity supplies no physical
+pin or permission to retry accepted work; frame owners must quiesce consumers.
 
 \section{Owned completion and CQ waiters}
 

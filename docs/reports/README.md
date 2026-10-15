@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [CQ payload preparation](audits/2026-10-16-cq-payload-preparation.md) — CQ admission, list/backlog/ring storage and partial rejection leave the registry; exact namespace revalidation precedes physical writes and replacement.
+
 - [Terminal completion observer disposal](audits/2026-10-16-completion-terminal-disposal.md) — Detached event/worker owners leave local completion guards; installation disposal and terminal wakes preserve exact source identity.
 
 - [Completion callback preparation and source disposal](audits/2026-10-15-completion-callback-preparation.md) — Exact-operation callback preparation outside registry/inner guards; complete successful namespace/CQ detachments dispose after unlock.

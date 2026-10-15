@@ -56,11 +56,34 @@ teardown, not a lossless live-migration API.
 Successful replacement now returns the entire old `CqState` out of registry
 serialization before destruction, retaining its ring/backlog, subscriptions and
 original charges. Whole-namespace close/replacement does the same with the
-complete namespace after serialized authority removal. This does not qualify
-staging or partial-error destruction under the registry, authority metadata or
-the caller's outer context. Physical rings retain their original mapping owner
+complete namespace after serialized authority removal. Physical rings retain their original mapping owner
 and quiescent-consumer requirement. See the
 [callback/source audit](../reports/audits/2026-10-15-completion-callback-preparation.md).
+
+CQ payload staging now captures the exact namespace root, CQ account,
+submission capacity and trusted platform classification under a short registry
+borrow. Count/byte admission, waiter-list preparation, backlog reservation and
+heap-ring allocation run outside `COMPLETIONS`. Partial failures release their
+original storage and charges there. Publication borrows the preparation,
+rechecks root/account/capacity and retirement, then checks physical aliases
+under the same registry hold as ring initialization and replacement. A stale
+namespace rejects without crediting its successor or touching its queue.
+
+Physical preparation validates capacity/alignment but leaves the borrowed frame
+untouched. Only successful serialized publication initializes it; rejection
+retains the complete preparation until unlock. Whole-namespace preparation owns
+the complete private namespace and its CQ map node before entering the registry.
+Their existing metadata constructors remain infallible; moving them does not
+turn metadata OOM into a recoverable payload rejection.
+Its replacement still revokes current authority under serialization. See the
+[CQ payload-preparation follow-up](../reports/audits/2026-10-16-cq-payload-preparation.md).
+
+Registry-map nodes for a fresh live CQ/namespace, unified authority metadata,
+completion record construction, timer cleanup and arbitrary outer caller/IRQ
+contexts remain separate. This is payload preparation, not a claim that every
+registry publication is allocation-free or that a captured root identity pins
+physical backing. The caller retains the original frame/mapping and must
+quiesce its consumer through publication and use.
 
 The service loader owns preparation in one rollback guard. If a CQ fails,
 teardown closes already-installed queues and releases the partially mapped
@@ -70,10 +93,10 @@ and syscall preparation use ordinary admission. The boot convenience wrapper
 still panics on a failed mandatory load. ELF/runtime-page allocation itself
 is not yet fully fallible; this guard does not recover from allocator panic.
 
-Lock order is completion registry, domain budget, then node budget. Budget
-guards neither allocate nor enter another subsystem. Platform identity is
-captured before taking the registry lock and matched against its stored
-generation; retirement is checked during admission. Loader rollback enters
+Payload admission runs outside the registry and takes domain then node budget
+guards, neither of which allocates or enters another subsystem. Platform
+identity is captured before the registry borrow and matched to its stored
+generation; retirement is checked at capture and again before publication. Loader rollback enters
 lifecycle teardown only after CQ setup has returned and released the registry.
 
 ## Verification and remaining work
@@ -87,8 +110,12 @@ registration slots available exercises failure partway through its five CQs;
 the test checks returned charges and ASID reuse, then verifies trusted platform
 preparation can still succeed. Pool exhaustion uses reservations, not allocation
 of the maximum corresponding backing footprint. Host tests exercise checked
-rounding. No allocator-failure injection or exhaustive physical-frame leak
-measurement is claimed.
+rounding. New native probes inject list/ring preparation rejection, reenter the
+registry at actual allocation boundaries, and hold the heap during replacement
+or stale/retired/alias publication. They check original charges, private
+namespace replacement and unchanged physical bytes containing a pending result.
+This is injected rejection rather than physical allocator exhaustion; exhaustive
+physical-frame leak measurement remains open.
 
 Other than separately bounded [endpoint-close watches](close-watch-budgets.md),
 observer queues, weak-only Arc/control-block storage, registry/capability

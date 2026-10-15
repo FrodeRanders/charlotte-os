@@ -82,6 +82,13 @@ past the registry before destruction. These are scoped local boundaries;
 other observer disposal, staging/error and outer contexts remain open. See the
 [callback/source follow-up](../reports/audits/2026-10-15-completion-callback-preparation.md).
 
+CQ source-list preparation now runs with its admitted backlog/ring payload
+outside the completion registry. Exact namespace root/account/capacity and
+retirement revalidate at publication; unused or rejected owners dispose after
+guard exit. Physical-frame initialization follows serialized alias checks.
+Registry-map/authority metadata, timer disposal and outer caller/IRQ contexts
+remain separate; see the [CQ payload-preparation follow-up](../reports/audits/2026-10-16-cq-payload-preparation.md).
+
 ## Verification and limits
 
 Serialized guest fixtures retain an empty list with a registration token and

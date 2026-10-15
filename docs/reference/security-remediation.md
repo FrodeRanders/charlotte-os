@@ -732,3 +732,14 @@ Timer installation/cancellation, staging/partial errors, record/authority/map
 metadata and outer producer/IRQ contexts remain open. No finding changes
 disposition; historical failure attribution and physical/replay authority do not
 follow from these bounded controls.
+
+The [CQ payload-preparation follow-up](../reports/audits/2026-10-16-cq-payload-preparation.md)
+continues R7-1/2 and C16/G1/G4. CQ admission and list/backlog/heap-ring
+preparation leave the completion registry, including partial-error disposal.
+Borrowed publication rechecks exact namespace root/account/capacity and
+retirement before physical alias checks and any frame write. Whole-namespace
+preparation retains its private map node and complete payload through rejection;
+old payload destruction remains post-guard. Fresh registry-map nodes, unified
+authority, record construction, timer cleanup and outer producer/IRQ contexts
+remain open. No finding changes disposition, no physical pin or retry owner is
+added, and passing fixtures do not attribute historical intermittent failures.

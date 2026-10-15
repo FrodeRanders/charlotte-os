@@ -38,6 +38,7 @@ pub use callbacks::{
 pub mod cq;
 pub(crate) mod cq_budget;
 pub(crate) mod exit_tests;
+mod queue_preparation;
 mod terminal_tests;
 pub(crate) mod timer_tests;
 mod waiter_tests;
@@ -874,95 +875,13 @@ fn check_ring_alias(
     Ok(())
 }
 
-/// Stage admitted backing before initializing a physical ring or publication.
-/// A kernel caller of the physical variant must keep its mapped frame live
-/// and quiesce any consumer before replacing that ring.
-fn stage_cq(
-    asid: AddressSpaceId,
-    entries: &AsCompletions,
-    cq_entries: u32,
-    platform_identity: Option<crate::memory::AddressSpaceHandle>,
-    frame: Option<crate::memory::physical::PAddr>,
-) -> Result<CqState, CqOpenError> {
-    if cq_entries < 2 {
-        return Err(CqOpenError::Ring(cq::CqRingError::CapacityTooSmall));
-    }
-    if entries.address_space.is_some_and(|handle| !crate::memory::budget::accepting(handle)) {
-        return Err(CqOpenError::RetiringAddressSpace);
-    }
-    let slots = charlotte_lifecycle::resources::queue_backing_slots(entries.capacity)
-        .ok_or(CqOpenError::ResourceLimit)?;
-    let bytes = slots
-        .checked_mul(core::mem::size_of::<BacklogEntry>())
-        .and_then(|bytes| {
-            bytes.checked_add(
-                if frame.is_none() {
-                    4096
-                } else {
-                    0
-                },
-            )
-        })
-        .ok_or(CqOpenError::ResourceLimit)?;
-    let platform = asid == crate::memory::KERNEL_ASID
-        || platform_identity.is_some_and(|handle| Some(handle) == entries.address_space);
-    let charge = cq_budget::reserve(&entries.cq_budget, platform, [1, bytes as u64])
-        .map_err(|_| CqOpenError::ResourceLimit)?;
-    let mut state = CqState {
-        ring: core::ptr::null_mut(),
-        ring_head: 0,
-        ring_capacity: cq::CompletionQueueRing::capacity_for(cq_entries),
-        backlog: VecDeque::new(),
-        retained_limit: entries.capacity,
-        work_generation: 0,
-        last_seen_generation: 0,
-        waiters: crate::klib::observer::registration::ObserverList::try_new(
-            crate::klib::observer::waiter_budget::SOURCE_LIMIT,
-            platform,
-        )
-        .map_err(|_| CqOpenError::AllocationFailed)?,
-        _buf: None,
-        _storage_charge: charge,
-    };
-    state.backlog.try_reserve_exact(slots).map_err(|_| CqOpenError::AllocationFailed)?;
-    if state.backlog.capacity() > slots {
-        return Err(CqOpenError::AllocationFailed);
-    }
-    if let Some(frame) = frame {
-        // Kernel mapping boundary: the caller owns the writable physical frame;
-        // alias/admission checks precede all writes to it under the registry.
-        state.ring = unsafe { cq::CompletionQueueRing::init_at_phys(frame, cq_entries) }
-            .map_err(CqOpenError::Ring)?;
-    } else {
-        let (buf, ptr) =
-            cq::CompletionQueueRing::new_page(cq_entries).map_err(CqOpenError::Ring)?;
-        state._buf = Some(buf);
-        state.ring = ptr;
-    }
-    Ok(state)
-}
-
 fn open_namespace_with_cq(
     asid: AddressSpaceId,
     capacity: usize,
     cq_entries: u32,
     frame: Option<crate::memory::physical::PAddr>,
 ) -> Result<(), CqOpenError> {
-    let mut entries = empty_as(asid, capacity);
-    let platform = crate::memory::budget::platform_identity(asid);
-    let previous = {
-        let mut registry = COMPLETIONS.write();
-        check_ring_alias(&registry, asid, DEFAULT_CQ, frame)?;
-        let state = stage_cq(asid, &entries, cq_entries, platform, frame)?;
-        entries.cqs.insert(DEFAULT_CQ, state);
-        let previous = registry.insert(asid, entries);
-        if let Some(previous) = &previous {
-            revoke_namespace_authority(asid, previous);
-        }
-        previous
-    };
-    drop(previous);
-    Ok(())
+    queue_preparation::open_namespace(asid, capacity, cq_entries, frame)
 }
 
 /// Attaches an additional heap-backed completion queue to an address space —
@@ -989,16 +908,7 @@ fn attach_cq(
     cq_entries: u32,
     frame: Option<crate::memory::physical::PAddr>,
 ) -> Result<(), CqOpenError> {
-    let platform = crate::memory::budget::platform_identity(asid);
-    let previous = {
-        let mut registry = COMPLETIONS.write();
-        check_ring_alias(&registry, asid, cq, frame)?;
-        let entries = registry.get_mut(&asid).ok_or(CqOpenError::UnknownAddressSpace)?;
-        let state = stage_cq(asid, entries, cq_entries, platform, frame)?;
-        replace_cq(entries, cq, state)
-    };
-    drop(previous);
-    Ok(())
+    queue_preparation::attach(asid, cq, cq_entries, frame)
 }
 
 /// Kernel-controlled queue replacement discards old undelivered results.

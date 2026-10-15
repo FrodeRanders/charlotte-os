@@ -61,8 +61,9 @@ Successful namespace close/replacement and CQ replacement now retain their
 complete detached payload until the completion registry guard leaves. Source
 subscriptions, backlog records and ring/account backing are destroyed afterward;
 detached submission slots and authority removal still update under serialization.
-This qualifies local payload destruction only: staging/allocation failures,
-authority metadata, terminal producer cleanup and outer callers remain separate.
+CQ payload staging/allocation rejection now runs outside the registry; see the
+[CQ payload-preparation follow-up](../reports/audits/2026-10-16-cq-payload-preparation.md). Record construction, authority/map metadata,
+timer-specific producer cleanup and outer callers remain separate.
 See the [callback/source audit](../reports/audits/2026-10-15-completion-callback-preparation.md).
 
 ## Admission, retirement and rollback
