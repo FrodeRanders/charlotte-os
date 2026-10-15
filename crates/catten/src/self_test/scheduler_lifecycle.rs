@@ -11,7 +11,9 @@
 //!   re-admission.
 //! - **Runtime rebalance** — after the affinity phase, a coordinator induces a controlled imbalance
 //!   and a *sustained-window sampling* mechanism migrates the workers, certifying `migration_safe`
-//!   threads. Outcome: the certified-migration counter advances to the target.
+//!   threads on Arm, which supplies the assembly ownership handoff. Outcome: the
+//!   certified-migration counter advances to the target. x86 only permits never-dispatched
+//!   migration; its runtime phase is explicitly skipped.
 //! - **Cross-LP remote abort** — a thread is aborted from a different LP; the abort must retire the
 //!   target's state without wedging either LP. (Skipped when fewer than two LPs exist.)
 //!
@@ -39,11 +41,8 @@ use crate::{
         scheduler::{
             sleep_millis,
             spawn_migratable_thread_on_lp,
-            spawn_thread,
             spawn_thread_on_lp,
             system_scheduler::{
-                LP_LOAD_SUMMARIES,
-                REBALANCE_SUCCESSES,
                 SYSTEM_SCHEDULER,
                 get_thread_id,
             },
@@ -61,6 +60,7 @@ use crate::{
 #[unsafe(no_mangle)]
 pub static SCHEDULER_LIFECYCLE_PROGRESS: AtomicU64 = AtomicU64::new(0);
 static SCHEDULER_LIFECYCLE_WORKERS_DONE: AtomicU64 = AtomicU64::new(0);
+#[cfg(target_arch = "aarch64")]
 static RUNTIME_REBALANCE_TARGET: AtomicU64 = AtomicU64::new(u64::MAX);
 static RUNTIME_REBALANCE_DONE: AtomicBool = AtomicBool::new(false);
 static REMOTE_ABORT_DONE: AtomicBool = AtomicBool::new(false);
@@ -127,15 +127,29 @@ extern "C" fn worker() {
     logln!("[scheduler lifecycle] worker tid={} completed on LP{}", tid, home);
     if SCHEDULER_LIFECYCLE_WORKERS_DONE.fetch_add(1, Ordering::AcqRel) + 1 == WORKER_COUNT {
         logln!(
-            "[scheduler lifecycle] {} timer wakes retained established LP affinity; inducing a \
-             controlled runtime imbalance before the cross-LP abort regression.",
+            "[scheduler lifecycle] {} timer wakes retained established LP affinity.",
             WORKER_COUNT * TIMER_WAKE_CYCLES
         );
-        spawn_thread(KERNEL_ASID, runtime_rebalance_coordinator);
+        #[cfg(target_arch = "aarch64")]
+        crate::cpu::scheduler::spawn_thread(KERNEL_ASID, runtime_rebalance_coordinator);
+        #[cfg(target_arch = "x86_64")]
+        {
+            logln!(
+                "[scheduler runtime rebalance] x86 skipped: started contexts require a CPU \
+                 ownership handshake; only never-dispatched migration is admitted."
+            );
+            RUNTIME_REBALANCE_DONE.store(true, Ordering::Release);
+            start_remote_abort_regression();
+        }
     }
 }
 
+#[cfg(target_arch = "aarch64")]
 extern "C" fn runtime_rebalance_coordinator() {
+    use crate::cpu::scheduler::system_scheduler::{
+        LP_LOAD_SUMMARIES,
+        REBALANCE_SUCCESSES,
+    };
     sleep_millis(3_000);
     let target = REBALANCE_SUCCESSES.load(Ordering::Acquire) + 1;
     RUNTIME_REBALANCE_TARGET.store(target, Ordering::Release);
@@ -162,7 +176,9 @@ extern "C" fn runtime_rebalance_coordinator() {
     }
 }
 
+#[cfg(target_arch = "aarch64")]
 extern "C" fn runtime_rebalance_worker() {
+    use crate::cpu::scheduler::system_scheduler::REBALANCE_SUCCESSES;
     let target = RUNTIME_REBALANCE_TARGET.load(Ordering::Acquire);
     let deadline = crate::self_test::results::Deadline::after_millis(15_000);
     while REBALANCE_SUCCESSES.load(Ordering::Acquire) < target {
@@ -279,8 +295,13 @@ fn maybe_report_success() {
     {
         crate::self_test::results::pass(crate::self_test::results::TestId::SchedulerLifecycle);
         logln!(
-            "[scheduler lifecycle] SUCCESS: timer affinity, certified migration, and safe \
-             cross-LP retirement verified."
+            "[scheduler lifecycle] SUCCESS: timer affinity, {}, and safe cross-LP retirement \
+             verified.",
+            if cfg!(target_arch = "aarch64") {
+                "certified runtime migration"
+            } else {
+                "never-dispatched migration policy"
+            }
         );
     }
 }

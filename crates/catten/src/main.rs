@@ -352,7 +352,8 @@ extern "C" fn finish_boot() {
     logln!("Local storage-backed node-ready publication skipped under hvf_compat.");
     // Initial admission is intentionally affinity-preserving. Once the full
     // boot workload is known, migrate explicitly certified, still-Ready work
-    // from overloaded LPs. Contexts that already started remain ineligible.
+    // from overloaded LPs. Started contexts require an architecture ownership
+    // handshake; x86 therefore admits only never-dispatched migration.
     #[cfg(not(feature = "live_upgrade_test"))]
     {
         let mut rebalanced = 0usize;

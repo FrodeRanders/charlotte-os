@@ -15,7 +15,6 @@ pub mod round_robin;
 use alloc::{
     fmt::Debug,
     sync::Arc,
-    vec::Vec,
 };
 use core::sync::atomic::{
     AtomicBool,
@@ -29,6 +28,7 @@ use crate::{
             ThreadCount,
             ThreadGeneration,
             ThreadId,
+            ThreadTable,
         },
     },
     klib::observer::Observer,
@@ -57,9 +57,13 @@ pub trait LpScheduler: Debug + Send {
         tid: ThreadId,
         expected_generation: Option<ThreadGeneration>,
     ) -> Result<(), Error>;
-    /// Return a queued thread that may be considered for migration. The
-    /// system scheduler validates policy and state under the thread-table lock.
-    fn ready_migration_candidates(&self) -> Vec<(ThreadId, ThreadGeneration)>;
+    /// Find the first qualified queued lifetime, without allocating or
+    /// acquiring the thread table again. The caller holds both LP locks and
+    /// the supplied table through queue/state/affinity publication.
+    fn ready_migration_candidate(
+        &self,
+        table: &ThreadTable,
+    ) -> Option<(ThreadId, ThreadGeneration)>;
     /// Queue-only halves of a transactional Ready-thread migration. Callers
     /// must hold both LP scheduler locks and update ThreadState atomically.
     fn remove_ready_for_migration(

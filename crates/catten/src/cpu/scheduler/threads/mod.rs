@@ -761,6 +761,14 @@ impl Thread {
     }
 
     pub fn is_fully_migratable(&self) -> bool {
+        // Ready publication precedes the outgoing context save. x86 has no
+        // assembly ownership handoff, so only contexts that have never been
+        // dispatched can be moved safely. The counter is advanced under this
+        // same table before the first dispatch can leave serialization.
+        #[cfg(target_arch = "x86_64")]
+        if self.dispatch_count != 0 {
+            return false;
+        }
         self.migration_safe
             && self.pinned_lp.is_none()
             && self.migration_constraints == 0

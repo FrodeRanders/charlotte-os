@@ -87,6 +87,12 @@ configurations remain possible:
         to exercise migration and scheduling paths.
 \end{itemize}
 
+These are extension scenarios, not a claim that CPU hotplug or live shard
+migration is implemented. Current local Ready-thread migration requires
+explicit certification and architecture CPU-ownership qualification. Arm has
+the assembly handoff; x86 permits only never-dispatched contexts until an
+equivalent handoff exists. Pinned userspace shards remain ineligible.
+
 \section{\texttt{PerLp<T>}: interrupt-safe shared data}
 
 \label{sec:per-lp}

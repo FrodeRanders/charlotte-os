@@ -91,8 +91,14 @@ entry before claiming nodes. Both architectures use scheduled pinned reapers,
 keeping physical invalidation out of IRQ tails. Arm post-switch extraction still
 stages owners, but performs no physical reaping there. Both defer a node whose stack contains the executing SP;
 Arm also defers while the assembly `on_cpu` ownership flag is nonzero. x86's
-ownership predicate remains a stub and runtime migration remains disabled
-there. LP assignment alone never authorizes releasing the executing stack.
+ownership predicate remains a stub. The migration gate rejects every x86
+context whose `dispatch_count` is nonzero, so only never-dispatched contexts
+may move there. The sampler itself still runs on both architectures. The
+[selection audit](../reports/audits/2026-10-15-scheduler-selection-storage.md)
+found that the earlier claim of disabled x86 runtime migration was not enforced
+by the predicate and adds this conservative gate; it does not attribute any
+historical failure to migration. LP assignment alone never authorizes releasing
+the executing stack.
 
 Idle workers now park on an owned, fallibly admitted waiter for their fixed LP
 retirement head, with no timer/watchdog. After linking the complete node,
@@ -264,8 +270,10 @@ tests exercise the production worker after the new event-only wait.
 The node is allocated from the global heap and adds one thread-sized allocation
 per live/deferred owner. There is no independent node-byte admission pool.
 General heap/metadata/principal accounting remains SEC-07 work. Scheduler
-run-queue/migration allocation and other subsystem metadata remain separate
-allocation paths. Outer construction/submission masks, growth's inner walker
+run-queue growth and other subsystem metadata remain separate allocation paths.
+The [selection audit](../reports/audits/2026-10-15-scheduler-selection-storage.md)
+removes temporary load/candidate vectors; it does not make the containing
+migration transaction allocation-free. Outer construction/submission masks, growth's inner walker
 contexts and arbitrary explicit callback contexts remain unqualified;
 full SEC-18 lock/quiescence safety is not claimed. There is
 no failed-pair retry owner, shared custody adapter or abandoned-owner recovery.

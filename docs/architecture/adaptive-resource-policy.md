@@ -54,6 +54,13 @@ Existing runtime adaptation is real but localized:
   (`crates/charlotte-launch/src/placement.rs`; see
   [cluster artifacts and placement](cluster-artifacts-and-placement.md)).
 
+Local thread migration is architecture-qualified: Arm uses its assembly CPU
+ownership handoff; x86 rejects migration after the first dispatch until an
+equivalent handoff exists. Both yield tails still sample load. Temporary load
+and candidate scans no longer allocate, but destination run-queue growth under
+scheduler guards remains an admission gap. See the
+[selection audit](../reports/audits/2026-10-15-scheduler-selection-storage.md).
+
 ## Design principles
 
 1. **Signed maxima are security invariants.** A controller may only choose

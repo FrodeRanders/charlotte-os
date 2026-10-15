@@ -8,6 +8,7 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Scheduler selection storage and x86 dispatch gate](audits/2026-10-15-scheduler-selection-storage.md) — Allocation-free load/candidate scans, explicit caller inventory and never-dispatched-only x86 migration; run-queue growth remains open.
 - [Retained stack-growth execution ownership](audits/2026-10-15-stack-growth-execution-owner.md) — Original thread/root/stack charges retained through growth outside the thread table; real EL0 growth, deferred-abort and foreign-leaf rollback evidence.
 - [Thread-exit watch preparation](audits/2026-10-15-thread-exit-watch-preparation.md) — Captured-generation preparation outside the thread table/source mutex, allocation-free publication and exact-episode rejection; scoped C16/R7/G1/G4 evidence.
 - [Captured park-delivery fixture panic and current-build matrix](audits/2026-10-15-captured-park-fixture-panic.md) — Spontaneous all-LP failure capture, forced-switch reproduction of an invalid Running-only assertion, and bounded cross-architecture follow-up.

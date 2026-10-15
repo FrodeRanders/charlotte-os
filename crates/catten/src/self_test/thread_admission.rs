@@ -64,6 +64,7 @@ pub(crate) fn run() {
     memory::thread_stack::test_admission();
     crate::cpu::scheduler::threads::retirement_tests::run();
     crate::cpu::scheduler::system_scheduler::test_domain_abort();
+    crate::cpu::scheduler::system_scheduler::test_rebalance_selection();
     let own = domain();
     let foreign = domain();
     let own_thread = Thread::try_new(own.id(), unused_entry).unwrap();

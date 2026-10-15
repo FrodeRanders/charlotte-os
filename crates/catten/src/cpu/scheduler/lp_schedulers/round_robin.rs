@@ -43,6 +43,7 @@ use crate::{
                 ThreadGeneration,
                 ThreadId,
                 ThreadState,
+                ThreadTable,
                 record_dispatch,
             },
         },
@@ -61,6 +62,11 @@ use crate::{
 };
 
 const SCHED_TRACE: bool = false;
+
+mod selection_tests;
+pub(crate) fn test_migration_selection() {
+    selection_tests::run();
+}
 
 macro_rules! sched_trace {
     ($($arg:tt)*) => {
@@ -407,8 +413,17 @@ impl LpScheduler for RoundRobin {
         }
     }
 
-    fn ready_migration_candidates(&self) -> alloc::vec::Vec<(ThreadId, ThreadGeneration)> {
-        self.run_queue.iter().map(|handle| (handle.tid, handle.generation)).collect()
+    fn ready_migration_candidate(
+        &self,
+        table: &ThreadTable,
+    ) -> Option<(ThreadId, ThreadGeneration)> {
+        self.run_queue.iter().find_map(|handle| {
+            let thread = table.get(handle.tid).ok()?;
+            (thread.generation == handle.generation
+                && thread.is_fully_migratable()
+                && matches!(thread.state, ThreadState::Ready(lp) if lp == self.lp_id))
+            .then_some((handle.tid, handle.generation))
+        })
     }
 
     fn remove_ready_for_migration(

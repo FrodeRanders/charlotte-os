@@ -659,3 +659,16 @@ abort and map-rejection rollback qualify that context while inner walker,
 heap/image/constructor, aggregate-budget and integrated physical/pressure work
 remain open. No historical timeout attribution, new recovery authority or
 numbered finding disposition follows.
+
+The [scheduler selection follow-up](../reports/audits/2026-10-15-scheduler-selection-storage.md)
+continues R7-1/2 and C16/G1/G4. It removes temporary load/candidate allocation
+from rebalance scans without changing deterministic ties or exact-generation
+policy checks. The caller inventory also finds that the previously documented
+x86 migration restriction was not enforced: its CPU-ownership predicate is a
+stub while both yield tails invoke the sampler. x86 now rejects every already
+dispatched context; Arm retains its assembly ownership qualification. Native
+fixtures keep selection under the heap, both fixture LP locks and the master
+table, and distinguish the architecture gate. Destination run-queue growth,
+thread-table metadata, general heap/principal admission, full outer-context
+qualification and historical failure attribution remain open. No new owner
+family, recovery authority or numbered-finding disposition is added.

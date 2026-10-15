@@ -24,7 +24,6 @@ use alloc::{
         Arc,
         Weak,
     },
-    vec::Vec,
 };
 use core::sync::atomic::{
     AtomicU64,
@@ -33,6 +32,11 @@ use core::sync::atomic::{
 };
 
 mod domain_abort;
+mod selection_tests;
+pub(crate) fn test_rebalance_selection() {
+    selection_tests::run();
+    super::lp_schedulers::round_robin::test_migration_selection();
+}
 pub(crate) use domain_abort::{
     abort_domain_threads,
     abort_domain_threads_with_request,
@@ -82,6 +86,35 @@ use crate::{
 const SCHED_TRACE: bool = false;
 const REBALANCE_MIN_LOAD_DIFFERENCE: usize = 2;
 pub const DEFAULT_REBALANCE_WINDOW_MILLIS: u64 = 100;
+
+/// Preserve the former `(load, LP)` sorting order without an allocated
+/// snapshot. Each summary is sampled once; actual queues are rechecked under
+/// both LP locks before a move, exactly as for the former snapshot.
+#[derive(Debug, PartialEq, Eq)]
+struct LoadExtremes {
+    least: (LpId, usize),
+    most: (LpId, usize),
+}
+
+impl LoadExtremes {
+    fn sample(loads: impl IntoIterator<Item = (LpId, usize)>) -> Option<Self> {
+        let mut loads = loads.into_iter();
+        let first = loads.next()?;
+        let mut result = Self {
+            least: first,
+            most: first,
+        };
+        for (lp, load) in loads {
+            if (load, lp) < (result.least.1, result.least.0) {
+                result.least = (lp, load);
+            }
+            if (load, lp) > (result.most.1, result.most.0) {
+                result.most = (lp, load);
+            }
+        }
+        Some(result)
+    }
+}
 
 macro_rules! sched_trace {
     ($($arg:tt)*) => {
@@ -384,17 +417,9 @@ impl SystemScheduler {
             return false;
         }
 
-        let mut loads: Vec<(LpId, usize)> = self
-            .lp_schedulers
-            .keys()
-            .map(|&lp| {
-                assert!((lp as usize) < MAX_TRACKED_LPS);
-                (lp, LP_LOAD_SUMMARIES[lp as usize].load(Ordering::Acquire))
-            })
-            .collect();
-        loads.sort_unstable_by_key(|&(lp, load)| (load, lp));
-        let (destination_lp, destination_load) = loads[0];
-        let (source_lp, source_load) = loads[loads.len() - 1];
+        let loads = self.load_extremes().expect("multiple LP schedulers have no load summaries");
+        let (destination_lp, destination_load) = loads.least;
+        let (source_lp, source_load) = loads.most;
         if source_lp == destination_lp
             || source_load < destination_load + REBALANCE_MIN_LOAD_DIFFERENCE
         {
@@ -417,15 +442,8 @@ impl SystemScheduler {
             return false;
         }
 
-        let candidates = source.ready_migration_candidates();
         let mut table = MASTER_THREAD_TABLE.write();
-        let candidate = candidates.into_iter().find(|&(tid, generation)| {
-            table.get(tid).is_ok_and(|thread| {
-                thread.generation == generation
-                    && thread.is_fully_migratable()
-                    && matches!(thread.state, ThreadState::Ready(lp) if lp == source_lp)
-            })
-        });
+        let candidate = source.ready_migration_candidate(&table);
         let Some((tid, generation)) = candidate else {
             return false;
         };
@@ -463,24 +481,17 @@ impl SystemScheduler {
     /// and least-loaded LP pair remaining imbalanced for the full configured
     /// window reaches the transactional migration path.
     ///
-    /// This is intentionally not called from wake admission. A future runtime
-    /// sampler should invoke it from a non-interrupt scheduler maintenance
-    /// point with a monotonic millisecond timestamp.
+    /// Current callers are the architecture yield tails, after switch guards
+    /// leave but before restoring the caller's IRQ state. Selection therefore
+    /// cannot allocate. Destination run-queue growth remains a separate
+    /// admission gap; this helper does not qualify the whole move as heap-free.
     pub fn try_rebalance_sustained(&self, now_millis: u64) -> bool {
         if self.lp_schedulers.len() < 2 {
             return false;
         }
-        let mut loads: Vec<(LpId, usize)> = self
-            .lp_schedulers
-            .keys()
-            .map(|&lp| {
-                assert!((lp as usize) < MAX_TRACKED_LPS);
-                (lp, LP_LOAD_SUMMARIES[lp as usize].load(Ordering::Acquire))
-            })
-            .collect();
-        loads.sort_unstable_by_key(|&(lp, load)| (load, lp));
-        let (destination_lp, destination_load) = loads[0];
-        let (source_lp, source_load) = loads[loads.len() - 1];
+        let loads = self.load_extremes().expect("multiple LP schedulers have no load summaries");
+        let (destination_lp, destination_load) = loads.least;
+        let (source_lp, source_load) = loads.most;
         if source_lp == destination_lp
             || source_load < destination_load + REBALANCE_MIN_LOAD_DIFFERENCE
         {
@@ -501,6 +512,13 @@ impl SystemScheduler {
 
         self.rebalance_pair.store(0, Ordering::Release);
         self.try_rebalance()
+    }
+
+    fn load_extremes(&self) -> Option<LoadExtremes> {
+        LoadExtremes::sample(self.lp_schedulers.keys().map(|&lp| {
+            assert!((lp as usize) < MAX_TRACKED_LPS);
+            (lp, LP_LOAD_SUMMARIES[lp as usize].load(Ordering::Acquire))
+        }))
     }
 
     /// Block the specified thread at least until the given event notifies its observers
