@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Detached submission preparation](audits/2026-10-16-detached-submission-preparation.md) — Record/event admission and node/observer allocation leave the registry; exact namespace/CQ revalidation and once-only enqueue retain original charges.
+
 - [Detached timer terminal disposal](audits/2026-10-16-detached-timer-disposal.md) — Complete timer-bearing records leave the registry before disposal; direct/backlog charge lifetimes and exact-source notification remain distinct.
 
 - [CQ payload preparation](audits/2026-10-16-cq-payload-preparation.md) — CQ admission, list/backlog/ring storage and partial rejection leave the registry; exact namespace revalidation precedes physical writes and replacement.

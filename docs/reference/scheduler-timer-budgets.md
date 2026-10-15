@@ -98,6 +98,14 @@ through its enclosing queue callback even after record retirement. This does
 not qualify the queue borrow itself or all timer preparation/cancellation
 contexts; see the [detached timer-disposal follow-up](../reports/audits/2026-10-16-detached-timer-disposal.md).
 
+Detached submissions now prepare original record/event admission, cancellation
+state, timer node and observer outside `COMPLETIONS`, retaining them through
+borrowed publication. Exact namespace/CQ identity and retirement revalidate
+before record insertion; enqueue follows unlock once. Teardown between those
+phases retains the prepared node's event charge until its cancelled insertion
+is discarded. Capability-backed preparation and registry-map/authority metadata
+remain separate; see the [detached preparation follow-up](../reports/audits/2026-10-16-detached-submission-preparation.md).
+
 ## Evidence and limits
 
 Kernel fixtures cover 1,024 real sorted nodes, reuse after removal, iterative

@@ -366,6 +366,18 @@ processing finishes. Map removal, backlog draining, construction and outer
 queue/IRQ contexts remain separate. This is logical terminal disposal, not a
 physical cleanup receipt or a retry owner.
 
+Detached plain/timer submissions capture exact namespace root, record/event
+accounts, trusted classification, capacity and CQ source before preparation.
+Record/event admission and timer node/observer allocation run outside the
+completion registry. Borrowed publication rechecks that capture and retirement;
+a replaced queue rejects even if its numeric ID still exists. Rejected owners
+retain their fields through unlock for unstarted rollback, with no public retry
+owner. Accepted nodes enqueue exactly once afterward; teardown in between flags
+the retained event and keeps its charge until cancelled insertion is discarded.
+Map/authority metadata, backlog reconciliation, capability-backed construction
+and outer caller/IRQ contexts remain separate. Captured identity is no physical
+pin or cleanup receipt.
+
 \section{Owned completion and CQ waiters}
 
 Completion and CQ scheduler waiters use fallible registration before a thread

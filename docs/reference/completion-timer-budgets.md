@@ -77,6 +77,30 @@ old timer callback to complete the new object. Thread-exit and endpoint-close
 observers use the same captured-object check rather than resolving their old
 numeric handle again.
 
+## Detached preparation and publication
+
+Detached timers and plain detached submissions share one preparation owner.
+Capture retains the exact namespace root, record/timer accounts and CQ source,
+with trusted classification and bounded submission capacity. Event admission,
+cancellation state, node preparation and producer-observer allocation run
+outside the completion registry. Any rejected phase keeps its original fields
+and charges until outer disposal; no callback is registered before the producer
+observer has been allocated successfully.
+
+Borrowed publication revalidates root/account/capacity, retirement and exact CQ
+identity before record insertion. A replaced queue rejects as
+`NoCompletionQueue`, even if its numeric queue ID still exists; no old operation
+is admitted into that successor. The prepared event keeps its original deadline through publication and enqueue;
+neither phase rebases it. The node is enqueued exactly once after registry
+unlock. If namespace teardown wins in that interval, its cancellation
+owner flags the still-owned event, which remains charged until enqueue discards
+it. No timer work has started on a preparation rejection. See the [detached preparation follow-up](../reports/audits/2026-10-16-detached-submission-preparation.md).
+
+The private preparation is an unstarted rollback owner, not a public recovery
+or replay interface. Registry-map metadata, backlog reconciliation,
+capability-backed timer construction/installation and outer caller/IRQ contexts
+remain separate qualification work.
+
 ## Detached terminal disposal
 
 Detached timer producers retain their globally nonreused operation identity.

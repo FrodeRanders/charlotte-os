@@ -754,3 +754,21 @@ backlog draining, submission construction, capability-backed timer installation
 and outer producer/queue/IRQ contexts remain open. No finding changes
 disposition, physical proof or replay authority, and historical intermittent
 failure attribution remains open.
+
+The [detached preparation follow-up](../reports/audits/2026-10-16-detached-submission-preparation.md)
+continues R7-1/2 and C16/G1/G4. Detached plain/timer preparation retains original
+record/event charges and complete node/observer state outside the completion
+registry. Borrowed publication rechecks exact root/accounts/capacity, retirement
+and CQ source; rejected preparations remain owned until post-guard unstarted
+rollback. Accepted nodes enqueue once, preserving teardown-before-enqueue
+cancellation and event backing admission. Map/authority metadata, backlog
+reconciliation, capability-backed preparation and outer caller/queue/IRQ
+contexts remain open. No finding changes disposition, physical proof or replay
+authority, and historical intermittent failures remain unattributed.
+
+The same source review records an additional R7/C16 boundary: the global
+completion operation-ID allocator still uses wrapping `AtomicU64::fetch_add`,
+despite its documented nonreuse intent. Full counter exhaustion is not exercised
+by the finite matrices. Checked exhaustion and its boundary control remain
+follow-up work; this does not attribute any historical panic or change the
+numbered SEC dispositions. See the detached preparation report above.

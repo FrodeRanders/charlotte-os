@@ -97,10 +97,30 @@ cannot credit a replacement. Completion close rechecks the captured object's
 identity under the registry lock before removing a handle: a delayed close
 cannot revoke a different object that reused its numeric capability.
 
-Lock order is registry, then domain counter, then node counters. Budget guards
-do not allocate or enter other subsystems. Lifecycle teardown marks retirement
+Capability-backed admission takes registry, then domain and node counters.
+Detached preparation reserves domain/node counters outside the registry, with
+no source or timer-queue guard. Budget guards do not allocate or enter other
+subsystems. Lifecycle teardown marks retirement
 without retaining the address-space table/budget ledger locks while entering
 the completion registry.
+
+Detached plain and timer submissions now capture the exact root, record/timer
+accounts, submission capacity, trusted classification and CQ source before
+preparation. Record admission, timer cancellation state/node and observer
+allocation run outside `COMPLETIONS` in one owner. Unpublished preparations
+consume the original limits too; they cannot create an uncharged staging pool.
+Publication borrows that owner and rechecks the captured namespace and exact
+queue before moving the complete record. A replaced/missing queue returns
+`NoCompletionQueue`; a stale/retired namespace returns `UnknownAddressSpace`.
+Rejected owners dispose only after registry unlock as unstarted rollback, with
+no public retry owner or accepted work to replay. Enqueue consumes accepted
+preparation once after unlock; teardown before enqueue leaves the original
+node charged until its cancelled insertion is discarded. See the [detached preparation follow-up](../reports/audits/2026-10-16-detached-submission-preparation.md).
+
+Registry-map insertion/removal and backlog reconciliation remain under their
+existing serialization. Capability-backed record/timer construction and unified
+authority metadata still need separate work. Capture is not a root lease or
+physical quiescence proof.
 
 ## Verification and remaining work
 
@@ -148,3 +168,8 @@ shares the completion-timer node pool.
 Per-principal totals
 across domains, typed deployment limits and userspace counters remain future
 work. SEC-07 is partial; no hostile-workload containment guarantee is made.
+
+The global operation-ID allocator currently uses a wrapping 64-bit increment.
+Its documented nonreuse intent therefore still needs checked exhaustion;
+finite admission/reuse fixtures do not exercise a complete counter wrap. This
+is a separate recorded boundary in the detached preparation follow-up.

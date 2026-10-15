@@ -37,6 +37,7 @@ pub use callbacks::{
 };
 pub mod cq;
 pub(crate) mod cq_budget;
+mod detached_preparation;
 mod detached_tests;
 pub(crate) mod exit_tests;
 mod queue_preparation;
@@ -204,7 +205,7 @@ pub enum SubmitError {
     /// No capability table is open for this address space.
     UnknownAddressSpace,
     /// A capability-free ([`submit_detached`]) submission needs a completion
-    /// queue to deliver its result, but none is attached to this address space.
+    /// queue to deliver its result, but its captured queue is absent or replaced.
     NoCompletionQueue,
 }
 
@@ -1479,31 +1480,7 @@ pub fn submit_detached(
     _op: OpCode,
     user_data: u64,
 ) -> Result<OperationId, SubmitError> {
-    let platform_identity = crate::memory::budget::platform_identity(asid);
-    let mut registry = COMPLETIONS.write();
-    let as_completions = registry.get_mut(&asid).ok_or(SubmitError::UnknownAddressSpace)?;
-    flush_cq_backlog(as_completions, cq);
-    if !as_completions.cqs.contains_key(&cq) {
-        return Err(SubmitError::NoCompletionQueue);
-    }
-    if as_completions.live >= as_completions.capacity {
-        return Err(SubmitError::WouldBlock);
-    }
-    let record_charge = reserve_record(asid, as_completions, platform_identity)?;
-    let operation = alloc_operation_id();
-    as_completions.detached.insert(
-        operation,
-        DetachedOp {
-            user_data,
-            cq,
-            cancel_pending: false,
-            _timer_observer: None,
-            timer_cancel: None,
-            record_charge: Some(record_charge),
-        },
-    );
-    as_completions.live += 1;
-    Ok(operation)
+    detached_preparation::submit(asid, cq, user_data)
 }
 
 /// Submit a timer delivered exclusively through a completion queue.
@@ -1525,50 +1502,7 @@ fn submit_detached_timer_with_observer(
         DetachedTimerObserver,
     ) -> Result<Arc<DetachedTimerObserver>, core::alloc::AllocError>,
 ) -> Result<OperationId, SubmitError> {
-    let platform_identity = crate::memory::budget::platform_identity(asid);
-    let (operation, timer_event) = {
-        let mut registry = COMPLETIONS.write();
-        let entries = registry.get_mut(&asid).ok_or(SubmitError::UnknownAddressSpace)?;
-        flush_cq_backlog(entries, cq);
-        if !entries.cqs.contains_key(&cq) {
-            return Err(SubmitError::NoCompletionQueue);
-        }
-        if entries.live >= entries.capacity {
-            return Err(SubmitError::WouldBlock);
-        }
-        let record_charge = reserve_record(asid, entries, platform_identity)?;
-        let platform = asid == crate::memory::KERNEL_ASID
-            || (platform_identity.is_some() && platform_identity == entries.address_space);
-        let charge = crate::timers::budget::reserve(&entries.timer_budget, platform)
-            .map_err(|_| SubmitError::WouldBlock)?;
-        let (timer_event, cancel) =
-            TimerEvent::charged(ExtDuration::from_millis(timeout_ms as u128), charge)
-                .map_err(|_| SubmitError::WouldBlock)?;
-        let timer_event =
-            crate::timers::PreparedEvent::new(timer_event).map_err(|_| SubmitError::WouldBlock)?;
-        let operation = alloc_operation_id();
-        let observer = allocate(DetachedTimerObserver {
-            asid,
-            operation,
-        })
-        .map_err(|_| SubmitError::WouldBlock)?;
-        timer_event.event().register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
-        entries.detached.insert(
-            operation,
-            DetachedOp {
-                user_data,
-                cq,
-                cancel_pending: false,
-                _timer_observer: Some(observer),
-                timer_cancel: Some(TimerCancellation(Some(cancel))),
-                record_charge: Some(record_charge),
-            },
-        );
-        entries.live += 1;
-        (operation, timer_event)
-    };
-    timer_event.enqueue();
-    Ok(operation)
+    detached_preparation::submit_timer(asid, cq, timeout_ms, user_data, allocate)
 }
 
 /// Completes a capability-free operation: posts `(user_data, result)` to the
