@@ -40,6 +40,8 @@ should be updated with the implementation when those contracts change.
   kernel backing bytes, fallible replacement and loader rollback.
 - [Endpoint-close watch budgets](close-watch-budgets.md) — bounded one-shot
   registrations, local cancellation and transactional submission.
+- [Kernel completion callbacks](completion-callback-budgets.md) — captured-operation
+  preparation outside local guards, owned cancellation and post-guard source disposal.
 - [Scheduler timer-event budgets](scheduler-timer-budgets.md) — sleep/watchdog admission,
   fallible queue-node preparation and independent quantum storage.
 - [Scheduler waiter budgets](scheduler-waiter-budgets.md) — owned completion/CQ/IPC/lock/timer

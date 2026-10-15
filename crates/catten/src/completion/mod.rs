@@ -28,6 +28,13 @@
 
 pub(crate) mod budget;
 pub(crate) mod callback_tests;
+mod callbacks;
+pub(crate) use callbacks::observe_registered;
+pub use callbacks::{
+    CompletionObservation,
+    ObserveError,
+    observe,
+};
 pub mod cq;
 pub(crate) mod cq_budget;
 pub(crate) mod exit_tests;
@@ -751,13 +758,25 @@ fn reserve_record(
 }
 
 fn replace_address_space(asid: AddressSpaceId, replacement: AsCompletions) {
-    if let Some(previous) = COMPLETIONS.write().insert(asid, replacement) {
-        for cap in previous.table.keys() {
-            assert!(
-                crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Completion),
-                "completion payload capability was absent from unified table"
-            );
+    let previous = {
+        let mut registry = COMPLETIONS.write();
+        let previous = registry.insert(asid, replacement);
+        if let Some(previous) = &previous {
+            revoke_namespace_authority(asid, previous);
         }
+        previous
+    };
+    drop(previous);
+}
+
+/// The caller retains both the complete detached namespace and COMPLETIONS
+/// through authority removal. Destroy payload/source metadata after unlock.
+fn revoke_namespace_authority(asid: AddressSpaceId, previous: &AsCompletions) {
+    for cap in previous.table.keys() {
+        assert!(
+            crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Completion),
+            "completion payload capability was absent from unified table"
+        );
     }
 }
 
@@ -897,18 +916,18 @@ fn open_namespace_with_cq(
 ) -> Result<(), CqOpenError> {
     let mut entries = empty_as(asid, capacity);
     let platform = crate::memory::budget::platform_identity(asid);
-    let mut registry = COMPLETIONS.write();
-    check_ring_alias(&registry, asid, DEFAULT_CQ, frame)?;
-    let state = stage_cq(asid, &entries, cq_entries, platform, frame)?;
-    entries.cqs.insert(DEFAULT_CQ, state);
-    if let Some(previous) = registry.insert(asid, entries) {
-        for cap in previous.table.keys() {
-            assert!(
-                crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Completion),
-                "replaced completion capability was absent from unified table"
-            );
+    let previous = {
+        let mut registry = COMPLETIONS.write();
+        check_ring_alias(&registry, asid, DEFAULT_CQ, frame)?;
+        let state = stage_cq(asid, &entries, cq_entries, platform, frame)?;
+        entries.cqs.insert(DEFAULT_CQ, state);
+        let previous = registry.insert(asid, entries);
+        if let Some(previous) = &previous {
+            revoke_namespace_authority(asid, previous);
         }
-    }
+        previous
+    };
+    drop(previous);
     Ok(())
 }
 
@@ -937,19 +956,23 @@ fn attach_cq(
     frame: Option<crate::memory::physical::PAddr>,
 ) -> Result<(), CqOpenError> {
     let platform = crate::memory::budget::platform_identity(asid);
-    let mut registry = COMPLETIONS.write();
-    check_ring_alias(&registry, asid, cq, frame)?;
-    let entries = registry.get_mut(&asid).ok_or(CqOpenError::UnknownAddressSpace)?;
-    let state = stage_cq(asid, entries, cq_entries, platform, frame)?;
-    replace_cq(entries, cq, state);
+    let previous = {
+        let mut registry = COMPLETIONS.write();
+        check_ring_alias(&registry, asid, cq, frame)?;
+        let entries = registry.get_mut(&asid).ok_or(CqOpenError::UnknownAddressSpace)?;
+        let state = stage_cq(asid, entries, cq_entries, platform, frame)?;
+        replace_cq(entries, cq, state)
+    };
+    drop(previous);
     Ok(())
 }
 
 /// Kernel-controlled queue replacement discards old undelivered results.
 /// Retained detached results must return their submission slots as well as
 /// their owning record charges; capability results still live in the table.
-fn replace_cq(entries: &mut AsCompletions, cq: CqId, replacement: CqState) {
-    if let Some(previous) = entries.cqs.insert(cq, replacement) {
+fn replace_cq(entries: &mut AsCompletions, cq: CqId, replacement: CqState) -> Option<CqState> {
+    let previous = entries.cqs.insert(cq, replacement);
+    if let Some(previous) = &previous {
         let discarded = previous
             .backlog
             .iter()
@@ -960,6 +983,7 @@ fn replace_cq(entries: &mut AsCompletions, cq: CqId, replacement: CqState) {
             .checked_sub(discarded)
             .expect("discarded detached records must count as live");
     }
+    previous
 }
 
 /// Returns a raw pointer to a CQ ring of `asid`, or `None`.
@@ -979,14 +1003,15 @@ pub unsafe fn cq_ring_of(
 
 /// Closes an address space's capability table and frees its CQ ring (if any).
 pub fn close_address_space(asid: AddressSpaceId) {
-    if let Some(completions) = COMPLETIONS.write().remove(&asid) {
-        for cap in completions.table.keys() {
-            assert!(
-                crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Completion),
-                "completion payload capability was absent from unified table"
-            );
+    let retired = {
+        let mut registry = COMPLETIONS.write();
+        let retired = registry.remove(&asid);
+        if let Some(retired) = &retired {
+            revoke_namespace_authority(asid, retired);
         }
-    }
+        retired
+    };
+    drop(retired);
 }
 
 pub(crate) fn completion_of(
@@ -1881,108 +1906,6 @@ pub(crate) fn close_registered(
     assert!(revoked, "completion payload capability was absent from unified table");
     as_completions.live = as_completions.live.saturating_sub(1);
     Ok(())
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ObserveError {
-    UnknownAddressSpace,
-    UnknownCap,
-    ResourceLimit,
-}
-
-/// Kernel callback owner, independent of the watched operation's lifetime.
-/// Dropping it cancels only the subscription, never the operation. A callback
-/// already captured for notification may race cancellation. No syscall exposes
-/// callback objects; application completions continue to use the owned runtime.
-#[must_use = "retain the callback owner until notification or cancellation"]
-pub struct CompletionObservation {
-    _registration: Option<crate::klib::observer::registration::Registration<watch_budget::Charge>>,
-    _observer: Arc<dyn Observer>,
-}
-
-impl core::fmt::Debug for CompletionObservation {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("CompletionObservation")
-            .field("has_token", &self._registration.is_some())
-            .finish_non_exhaustive()
-    }
-}
-
-/// Register a kernel callback against this namespace's exact completion.
-/// Registration is fallible and cancellation is owned. An already-terminal
-/// completion invokes the callback immediately, outside every registry/source
-/// guard; callback invocation is not a scheduler parking primitive.
-pub fn observe(
-    asid: AddressSpaceId,
-    cap: CompletionCap,
-    observer: Arc<dyn Observer>,
-) -> Result<CompletionObservation, ObserveError> {
-    let completion = {
-        let registry = COMPLETIONS.read();
-        let entries = registry.get(&asid).ok_or(ObserveError::UnknownAddressSpace)?;
-        entries.table.get(&cap).ok_or(ObserveError::UnknownCap)?.clone()
-    };
-    observe_registered(asid, cap, &completion, observer)
-}
-
-/// Asynchronous kernel callers carrying a previously captured operation must
-/// use this exact-object variant rather than resolving reusable numeric IDs.
-pub(crate) fn observe_registered(
-    asid: AddressSpaceId,
-    cap: CompletionCap,
-    captured: &CompletionRef,
-    observer: Arc<dyn Observer>,
-) -> Result<CompletionObservation, ObserveError> {
-    let platform_identity = crate::memory::budget::platform_identity(asid);
-    let registration = {
-        let registry = COMPLETIONS.read();
-        let entries = registry.get(&asid).ok_or(ObserveError::UnknownAddressSpace)?;
-        if entries.address_space.is_some_and(|handle| !crate::memory::budget::accepting(handle)) {
-            return Err(ObserveError::UnknownAddressSpace);
-        }
-        let completion = entries.table.get(&cap).ok_or(ObserveError::UnknownCap)?;
-        if !Arc::ptr_eq(completion, captured) {
-            return Err(ObserveError::UnknownCap);
-        }
-        // Serialize the terminal check with the operation transition. Insertion
-        // either precedes terminal publication or becomes an immediate callback;
-        // it cannot append to an already-drained source and lose notification.
-        let mut inner = completion.inner.lock();
-        if matches!(inner.state, OpState::Completed(_) | OpState::Observed) {
-            None
-        } else {
-            let platform = asid == crate::memory::KERNEL_ASID
-                || platform_identity.is_some_and(|handle| Some(handle) == entries.address_space);
-            let charge = watch_budget::reserve(&entries.watch_budget, platform)
-                .map_err(|_| ObserveError::ResourceLimit)?;
-            if inner.callbacks.is_none() {
-                inner.callbacks = Some(
-                    crate::klib::observer::registration::ObserverList::try_new(
-                        watch_budget::MAX_COMPLETION_CALLBACKS,
-                        charge.platform(),
-                    )
-                    .map_err(|_| ObserveError::ResourceLimit)?,
-                );
-            }
-            Some(
-                inner
-                    .callbacks
-                    .as_ref()
-                    .unwrap()
-                    .register(Arc::downgrade(&observer), charge)
-                    .map_err(|_| ObserveError::ResourceLimit)?,
-            )
-        }
-    };
-    let ready = registration.is_none();
-    let observation = CompletionObservation {
-        _registration: registration,
-        _observer: observer,
-    };
-    if ready {
-        observation._observer.clone().notify();
-    }
-    Ok(observation)
 }
 
 /// Test/inspection helper: whether the kernel still owns a buffer for `cap`

@@ -30,7 +30,7 @@ not included in the heap-byte counter. General physical-page and loader
 admission remain separate work. Replacing a physical queue does not unmap its
 old frame; do not interpret a registration count as a bound on all mapped pages.
 
-The owning charge remains attached to the queue until removal. Backing is
+The owning charge remains attached through removal and post-guard destruction. Backing is
 released before admission is returned. Each namespace has a reference-counted
 budget owner tied to its captured generation, so old releases cannot credit a
 new namespace using the same ASID.
@@ -52,6 +52,15 @@ and returns detached submission slots, as described in the record reference.
 Whole-namespace replacement publishes only after CQ preparation succeeds and
 then revokes the old completion capabilities. This is kernel-controlled
 teardown, not a lossless live-migration API.
+
+Successful replacement now returns the entire old `CqState` out of registry
+serialization before destruction, retaining its ring/backlog, subscriptions and
+original charges. Whole-namespace close/replacement does the same with the
+complete namespace after serialized authority removal. This does not qualify
+staging or partial-error destruction under the registry, authority metadata or
+the caller's outer context. Physical rings retain their original mapping owner
+and quiescent-consumer requirement. See the
+[callback/source audit](../reports/audits/2026-10-15-completion-callback-preparation.md).
 
 The service loader owns preparation in one rollback guard. If a CQ fails,
 teardown closes already-installed queues and releases the partially mapped

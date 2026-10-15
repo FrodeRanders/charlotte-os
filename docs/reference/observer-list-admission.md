@@ -73,6 +73,15 @@ registry. This does not qualify source teardown or all other observer/registry
 allocation and outer IRQ contexts; SEC-18 remains partial. See the
 [source-preparation audit](../reports/audits/2026-10-15-waiter-source-preparation.md).
 
+Completion callback list/entry preparation also leaves registry and inner-state
+guards. Exact captured operation/account revalidation precedes allocation-free
+publication; first-winner lists retain their original classification, and
+losing/ready/rejected storage disposes after unlock. Successful completion
+namespace/CQ replacement additionally carries whole detached source metadata
+past the registry before destruction. These are scoped local boundaries;
+other observer disposal, staging/error and outer contexts remain open. See the
+[callback/source follow-up](../reports/audits/2026-10-15-completion-callback-preparation.md).
+
 ## Verification and limits
 
 Serialized guest fixtures retain an empty list with a registration token and

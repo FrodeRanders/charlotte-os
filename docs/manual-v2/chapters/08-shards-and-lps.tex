@@ -115,6 +115,15 @@ storage stays owned until post-guard disposal. Source teardown, other observer
 allocation and wider outer-guard contexts remain qualification work.
 See \texttt{docs/reference/scheduler-waiter-budgets.md}.
 
+Non-scheduler completion callbacks likewise capture their original record and
+watch account before allocation outside registry/inner guards. Publication
+revalidates that target and terminal state; immediate callbacks run after
+unused preparation is disposed. Successful completion-namespace/CQ replacement
+carries its entire detached payload past registry unlock before destruction.
+These local boundaries do not establish root/consumer quiescence or qualify
+every staging, producer-disposal or outer IRQ context. See
+\texttt{docs/reference/completion-callback-budgets.md}.
+
 \section{\texttt{PerLp<T>}: interrupt-safe shared data}
 
 \label{sec:per-lp}

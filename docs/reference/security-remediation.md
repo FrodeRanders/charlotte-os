@@ -709,3 +709,15 @@ observable. Source teardown, other observer/record allocation, caller masks,
 metadata/principal budgeting and pressure progress remain open. No finding
 changes disposition, historical failure attribution or physical/replay
 authority follows.
+
+The [completion callback/source follow-up](../reports/audits/2026-10-15-completion-callback-preparation.md)
+continues R7-1/2 and C16/G1/G4. Callback preparation retains the exact completion,
+namespace/root, watch account and existing source outside registry/inner guards;
+publication revalidates identity, retirement and terminal state before linking.
+Losing/ready/rejected storage disposes after unlock and before immediate
+notification. Successful namespace close/replacement and CQ replacement carry
+the entire old payload beyond the registry before source/field destruction,
+retaining original backing and charges. Authority/map metadata, staging/partial
+errors, terminal producer disposal and broader caller/IRQ contexts remain open.
+No numbered finding changes disposition, and no physical/quiescence proof,
+retry authority or historical-failure attribution follows.

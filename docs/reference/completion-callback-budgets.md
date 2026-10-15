@@ -14,6 +14,14 @@ ASID/capability numbers. The numeric convenience function captures the current
 object and uses the same checked path. Callbacks should likewise use captured
 producer identity rather than later resolving stale numbers.
 
+Capture records the exact completion, namespace/root identity, watch account,
+classification and existing callback list under short registry/inner borrows.
+Watch admission, lazy list allocation and entry preparation then run outside
+both guards. Publication revalidates that record/account/root and retirement,
+then checks terminal state and links the prepared entry under the same inner
+lock as completion. Competing first initializers use the published list; losing
+storage stays in the preparation until post-guard disposal.
+
 ## Admission and errors
 
 Each completion accepts 128 non-scheduler callback entries. They share the
@@ -34,6 +42,9 @@ for scheduler-only completions.
 An already-terminal or observed operation invokes its callback immediately,
 outside registry/source guards. It needs no entry or charge even when another
 operation fills the watch account. This is not a scheduler parking API.
+If it becomes terminal during preparation, unused charged storage is disposed
+after publication guards leave and before the immediate callback runs. Failure
+and a full source likewise leave the complete preparation owned until unlock.
 
 ## Lifetime and notification
 
@@ -48,6 +59,14 @@ Retirement rejects new subscriptions. Teardown and unpublished-record rollback
 discard callback entries despite retained completion objects. Source destruction
 also closes its list, so retained tokens cannot retain abandoned entries. Discard
 does not invoke callbacks or fabricate a terminal result.
+
+Successful namespace close/replacement and CQ replacement carry the complete
+detached namespace/queue out of `COMPLETIONS` before payload/source destruction.
+Authority removal and detached submission-slot accounting remain serialized.
+Original record, watch and CQ charges follow the retained payload, including
+external strong/weak references. The existing quiescent-consumer/root contract
+is still required; an identity reference or discarded subscription is no
+physical-release proof.
 
 Cancellation can race a callback already captured for notification. Callbacks
 must be short, tolerate that race and use captured identity. The owner retains
@@ -86,4 +105,8 @@ real immediate-return workers exercise registration versus terminal delivery.
 The scoped EL0 mask remains `0x7fff`; these added conditions are kernel fixtures.
 
 Comprehensive metadata/heap/page-table/capability admission, principal aggregates
-and hostile-pressure validation remain open. This does not close SEC-07.
+and hostile-pressure validation remain open. CQ staging/error cleanup, authority
+metadata, terminal event/worker-observer disposal under an outer registry and
+other caller/IRQ contexts remain separately qualified. This does not close
+SEC-07/18. See the
+[callback preparation and disposal audit](../reports/audits/2026-10-15-completion-callback-preparation.md).
