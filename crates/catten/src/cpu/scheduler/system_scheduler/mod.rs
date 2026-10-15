@@ -444,19 +444,13 @@ impl SystemScheduler {
 
         let mut table = MASTER_THREAD_TABLE.write();
         let candidate = source.ready_migration_candidate(&table);
-        let Some((tid, generation)) = candidate else {
+        let Ok(Some((tid, generation))) = candidate else {
             return false;
         };
 
-        source
-            .remove_ready_for_migration(tid, generation)
-            .expect("validated migration candidate vanished from source queue");
-        destination
-            .add_ready_from_migration(tid, generation)
-            .expect("migration duplicated a destination queue entry");
-        let thread = table.get_mut(tid).expect("validated migration candidate vanished");
-        thread.state = ThreadState::Ready(destination_lp);
-        thread.affinity_lp = Some(destination_lp);
+        if source.migrate_ready_to(destination, &mut table, tid, generation).is_err() {
+            return false;
+        }
         destination.set_ctx_switch_pending();
         drop(table);
         drop(second);
@@ -483,8 +477,8 @@ impl SystemScheduler {
     ///
     /// Current callers are the architecture yield tails, after switch guards
     /// leave but before restoring the caller's IRQ state. Selection therefore
-    /// cannot allocate. Destination run-queue growth remains a separate
-    /// admission gap; this helper does not qualify the whole move as heap-free.
+    /// cannot allocate. Queue storage is inline in already admitted threads;
+    /// broader waiter, quantum-timer and caller contexts remain separate.
     pub fn try_rebalance_sustained(&self, now_millis: u64) -> bool {
         if self.lp_schedulers.len() < 2 {
             return false;
@@ -610,9 +604,10 @@ impl SystemScheduler {
             lp_guard
                 .as_mut()
                 .unwrap()
-                .remove_thread(tid, Some(generation))
+                .remove_thread(tid, Some(generation), &mut table)
                 .map_err(|_| Error::InvalidThread)?;
         }
+        let thread = table.get_mut(tid).map_err(|_| Error::InvalidThread)?;
         thread.add_migration_constraint(constraint);
         thread.state = ThreadState::Blocked(waker);
         Ok(generation)
@@ -702,12 +697,10 @@ impl SystemScheduler {
             if thread.generation != expected_generation {
                 return Err(Error::InvalidThread);
             }
-            let executor = thread.operation_executor_lp.load(Ordering::Acquire);
-            let owner_lp = if executor != usize::MAX {
-                executor as LpId
-            } else {
-                owner_lp
-            };
+            // Requalify the notification target under the same captured
+            // generation guard as the request. A prior Ready-LP snapshot can
+            // precede a complete queue move; the old LP cannot unlink it.
+            let owner_lp = thread.abort_notification_lp(owner_lp);
             thread.abort_owner_lp.store(owner_lp as usize, Ordering::Release);
             thread.abort_requested.store(true, Ordering::Release);
             drop(table);
@@ -756,7 +749,8 @@ impl SystemScheduler {
             return Ok(tid);
         }
         if let Some(lp) = local.as_mut() {
-            lp.remove_thread(tid, Some(expected_generation)).map_err(|_| Error::InvalidThread)?;
+            lp.remove_thread(tid, Some(expected_generation), &mut table)
+                .map_err(|_| Error::InvalidThread)?;
         }
         let stage_lp = current_lp.unwrap_or_else(get_lp_id);
         let thread = table.take_element(tid).map_err(|_| Error::InvalidThread)?;

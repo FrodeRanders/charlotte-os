@@ -46,3 +46,12 @@ Existing x86 cross-LP teardown
 limitations remain documented separately. See the
 [renewed audit remediation](../reports/audits/2026-10-05-security-remediation.md)
 for regression evidence and validation scope.
+
+Ready-queue membership is fixed inline storage in the same complete thread
+payload. It is already available before scheduler admission, so enqueue,
+wakeup, requeue and migration do not grow a ring or allocate another node.
+Exact generation/queue validation rejects before state mutation; linked owners
+cannot release stacks or pass unstarted cleanup. This removes queue-capacity
+allocation without completing thread-table, general metadata or aggregate
+principal admission. See [inline run queues](scheduler-run-queues.md) and the
+[execution evidence](../reports/audits/2026-10-15-inline-scheduler-run-queues.md).

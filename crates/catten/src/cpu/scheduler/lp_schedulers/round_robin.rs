@@ -17,12 +17,13 @@
 /// so an idle LP cannot sleep past an admission whose SGI was not delivered.
 const IDLE_WAKE_MILLIS: u64 = 50;
 
-use alloc::{
-    collections::vec_deque::VecDeque,
-    sync::Arc,
-};
+use alloc::sync::Arc;
 use core::sync::atomic::Ordering;
 
+use super::run_queue::{
+    RunQueue,
+    ThreadHandle,
+};
 use crate::{
     cpu::{
         isa::lp::LpId,
@@ -76,19 +77,13 @@ macro_rules! sched_trace {
     };
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ThreadHandle {
-    tid: ThreadId,
-    generation: ThreadGeneration,
-}
-
 #[derive(Debug)]
 pub struct RoundRobin {
     lp_id: LpId,
     quantum: ExtDuration,
     is_idle: bool,
     timer_event_observer: Arc<super::TimerEventObserver>,
-    run_queue: VecDeque<ThreadHandle>,
+    run_queue: RunQueue,
     current_handle: Option<ThreadHandle>,
     /// This LP's dedicated idle thread, run only when there is no other
     /// runnable thread. It exists so that a thread which blocks itself (or
@@ -117,7 +112,7 @@ impl RoundRobin {
             // Initial remote submission must therefore send a wakeup IPI.
             is_idle: true,
             timer_event_observer: Arc::new(super::TimerEventObserver::new()),
-            run_queue: VecDeque::new(),
+            run_queue: RunQueue::new(),
             current_handle: None,
             idle_tid,
         }
@@ -195,6 +190,7 @@ impl LpScheduler for RoundRobin {
     }
 
     fn next(&mut self) -> Result<ThreadId, Error> {
+        let mut tt_guard = MASTER_THREAD_TABLE.write();
         let previous_handle = self.current_handle;
         // A thread that blocked itself remains `current_handle` until this
         // point so that `cond_yield_lp` can save its execution context. It must
@@ -210,7 +206,7 @@ impl LpScheduler for RoundRobin {
         // double-enqueue the thread and corrupt its state machine.
         let previous_running = if let Some(handle) = previous_handle {
             matches!(
-                MASTER_THREAD_TABLE.read().get(handle.tid),
+                tt_guard.get(handle.tid),
                 Ok(t) if t.generation == handle.generation
                     && matches!(t.state, ThreadState::Running(_))
                     && !t.abort_ready()
@@ -222,7 +218,9 @@ impl LpScheduler for RoundRobin {
         let requeue_previous = previous_running && !previous_is_idle;
 
         if requeue_previous {
-            self.run_queue.push_back(unsafe { previous_handle.unwrap_unchecked() });
+            self.run_queue
+                .push_back(&mut *tt_guard, previous_handle.unwrap())
+                .expect("outgoing thread lost its inline run-queue admission");
         }
 
         // Prefer a real runnable thread; otherwise fall back to this LP's idle
@@ -230,20 +228,23 @@ impl LpScheduler for RoundRobin {
         // thread) is what lets a self-blocked or exited sole thread be switched
         // away from correctly instead of being spuriously resumed.
         let next_handle = loop {
-            match self.run_queue.pop_front() {
+            match self
+                .run_queue
+                .pop_front(&mut *tt_guard)
+                .expect("run queue lost an exact inline thread owner")
+            {
                 Some(handle) => {
-                    let valid = MASTER_THREAD_TABLE.read().get(handle.tid).is_ok_and(|thread| {
+                    let valid = tt_guard.get(handle.tid).is_ok_and(|thread| {
                         thread.generation == handle.generation && !thread.abort_ready()
                     });
                     if valid {
                         break handle;
                     }
-                    // A stale handle must never schedule a later occupant of
-                    // the recycled numeric thread id.
+                    // The exact owner stays in the table for deferred abort;
+                    // unlinking readiness is not thread or stack retirement.
                 }
                 None => {
-                    let generation =
-                        MASTER_THREAD_TABLE.read().get(self.idle_tid).unwrap().generation;
+                    let generation = tt_guard.get(self.idle_tid).unwrap().generation;
                     break ThreadHandle {
                         tid: self.idle_tid,
                         generation,
@@ -256,7 +257,6 @@ impl LpScheduler for RoundRobin {
         let became_idle = next_tid == self.idle_tid;
         self.is_idle = became_idle;
 
-        let mut tt_guard = MASTER_THREAD_TABLE.write();
         let now = monotonic_ticks();
         if let Some(previous) = previous_handle
             && let Ok(thread) = tt_guard.get_mut(previous.tid)
@@ -359,12 +359,18 @@ impl LpScheduler for RoundRobin {
                 Ok(())
             }
             ThreadState::NeedsLpAssignment | ThreadState::Blocked(_) => {
+                // Inline storage was prepared with the thread. Qualify and
+                // link before consuming a blocked registration or publishing
+                // Ready; rejection leaves the original state/owner intact.
+                self.run_queue
+                    .push_back(&mut *tt_guard, handle)
+                    .map_err(|_| Error::InvalidThread)?;
+                let thread = tt_guard.get_mut(tid).unwrap();
                 if let ThreadState::Blocked(waker) = &thread.state {
                     waker.cancel_registration();
                     thread.clear_blocking_migration_constraints();
                 }
                 thread.state = ThreadState::Ready(self.lp_id);
-                self.run_queue.push_back(handle);
                 self.publish_load();
                 crate::debug_trace::trace(
                     crate::debug_trace::TAG_SCHED_ADMIT,
@@ -388,74 +394,53 @@ impl LpScheduler for RoundRobin {
         &mut self,
         tid: ThreadId,
         expected_generation: Option<ThreadGeneration>,
+        table: &mut ThreadTable,
     ) -> Result<(), Error> {
-        let matches = |handle: &ThreadHandle| {
-            handle.tid == tid
-                && expected_generation.is_none_or(|generation| handle.generation == generation)
+        let thread = table.get(tid).map_err(|_| Error::InvalidThread)?;
+        if expected_generation.is_some_and(|generation| generation != thread.generation) {
+            return Err(Error::InvalidThread);
+        }
+        let handle = ThreadHandle {
+            tid,
+            generation: thread.generation,
         };
-        let handle = self.run_queue.iter().find(|handle| matches(handle)).copied();
-
-        if self.current_handle.as_ref().is_some_and(matches) {
+        if thread.run_queue_link.is_linked() {
+            self.run_queue.remove(table, handle).map_err(|_| Error::ThreadNotAssignedToThisLp)?;
+            // An early wake can queue the outgoing context before its save.
+            // Its borrowed current handle must survive queue-only removal.
+            self.publish_load();
+            Ok(())
+        } else if self.current_handle == Some(handle) {
             self.current_handle = None;
             self.publish_load();
             Ok(())
         } else {
-            match handle
-                .and_then(|handle| self.run_queue.iter().position(|queued| *queued == handle))
-            {
-                Some(idx) => {
-                    self.run_queue.remove(idx);
-                    self.publish_load();
-                    Ok(())
-                }
-                None => Err(Error::ThreadNotAssignedToThisLp),
-            }
+            Err(Error::ThreadNotAssignedToThisLp)
         }
     }
 
     fn ready_migration_candidate(
         &self,
         table: &ThreadTable,
-    ) -> Option<(ThreadId, ThreadGeneration)> {
-        self.run_queue.iter().find_map(|handle| {
-            let thread = table.get(handle.tid).ok()?;
-            (thread.generation == handle.generation
-                && thread.is_fully_migratable()
-                && matches!(thread.state, ThreadState::Ready(lp) if lp == self.lp_id))
-            .then_some((handle.tid, handle.generation))
-        })
-    }
-
-    fn remove_ready_for_migration(
-        &mut self,
-        tid: ThreadId,
-        generation: ThreadGeneration,
-    ) -> Result<(), Error> {
-        let position = self
-            .run_queue
-            .iter()
-            .position(|handle| handle.tid == tid && handle.generation == generation)
-            .ok_or(Error::ThreadNotAssignedToThisLp)?;
-        self.run_queue.remove(position);
-        self.publish_load();
-        Ok(())
-    }
-
-    fn add_ready_from_migration(
-        &mut self,
-        tid: ThreadId,
-        generation: ThreadGeneration,
-    ) -> Result<(), Error> {
-        if self.run_queue.iter().any(|handle| handle.tid == tid && handle.generation == generation)
-        {
-            return Err(Error::ThreadAlreadyAssignedToLp);
+    ) -> Result<Option<(ThreadId, ThreadGeneration)>, Error> {
+        for handle in self.run_queue.iter(table) {
+            let handle = handle.map_err(|_| Error::InvalidThread)?;
+            let thread = table.get(handle.tid).map_err(|_| Error::InvalidThread)?;
+            if thread.is_fully_migratable()
+                && matches!(thread.state, ThreadState::Ready(lp) if lp == self.lp_id)
+            {
+                return Ok(Some((handle.tid, handle.generation)));
+            }
         }
-        self.run_queue.push_back(ThreadHandle {
-            tid,
-            generation,
-        });
+        Ok(None)
+    }
+
+    fn ready_queue(&mut self) -> &mut RunQueue {
+        &mut self.run_queue
+    }
+
+    fn refresh_load(&self) {
         self.publish_load();
-        Ok(())
     }
 
     fn is_idle(&self) -> bool {

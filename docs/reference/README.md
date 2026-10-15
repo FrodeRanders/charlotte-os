@@ -25,6 +25,8 @@ should be updated with the implementation when those contracts change.
 
 - [Scheduler state machines](scheduler-state-machines.md) — thread, timer,
   completion, CQ, interrupt, context-switch, and lock-order invariants.
+- [Inline scheduler run queues](scheduler-run-queues.md) — fixed per-thread
+  membership, allocation-free FIFO/migration and unlink-before-retirement.
 - [Locking](locking.md) — the synchronization primitives (spin mutex/rwlock,
   external spin, talc, lock-free containers), interrupt-masking discipline,
   and cross-subsystem lock-ordering rules.

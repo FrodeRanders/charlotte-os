@@ -12,6 +12,7 @@
 //! `armed` prevents duplication on repeated `yield_lp` calls.
 
 pub mod round_robin;
+pub(crate) mod run_queue;
 use alloc::{
     fmt::Debug,
     sync::Arc,
@@ -56,6 +57,7 @@ pub trait LpScheduler: Debug + Send {
         &mut self,
         tid: ThreadId,
         expected_generation: Option<ThreadGeneration>,
+        table: &mut ThreadTable,
     ) -> Result<(), Error>;
     /// Find the first qualified queued lifetime, without allocating or
     /// acquiring the thread table again. The caller holds both LP locks and
@@ -63,23 +65,65 @@ pub trait LpScheduler: Debug + Send {
     fn ready_migration_candidate(
         &self,
         table: &ThreadTable,
-    ) -> Option<(ThreadId, ThreadGeneration)>;
-    /// Queue-only halves of a transactional Ready-thread migration. Callers
-    /// must hold both LP scheduler locks and update ThreadState atomically.
-    fn remove_ready_for_migration(
+    ) -> Result<Option<(ThreadId, ThreadGeneration)>, Error>;
+    /// Complete a Ready-thread queue/state/affinity move. Callers hold both LP
+    /// locks and the exact table. Rejection leaves both owners unchanged.
+    fn migrate_ready_to(
         &mut self,
+        destination: &mut dyn LpScheduler,
+        table: &mut ThreadTable,
         tid: ThreadId,
         generation: ThreadGeneration,
-    ) -> Result<(), Error>;
-    fn add_ready_from_migration(
-        &mut self,
-        tid: ThreadId,
-        generation: ThreadGeneration,
-    ) -> Result<(), Error>;
+    ) -> Result<(), Error> {
+        let source_lp = self.get_lp_id();
+        let destination_lp = destination.get_lp_id();
+        migrate_ready(
+            source_lp,
+            self.ready_queue(),
+            destination_lp,
+            destination.ready_queue(),
+            table,
+            run_queue::ThreadHandle {
+                tid,
+                generation,
+            },
+        )?;
+        self.refresh_load();
+        destination.refresh_load();
+        Ok(())
+    }
+    fn ready_queue(&mut self) -> &mut run_queue::RunQueue;
+    fn refresh_load(&self);
     fn is_idle(&self) -> bool;
     fn start(&mut self);
     fn stop(&mut self);
     fn thread_count(&self) -> ThreadCount;
+}
+
+/// One complete queue/state publication under the caller's two LP guards and
+/// exclusive table. All ordinary rejection precedes source mutation. Native
+/// fixtures exercise this same operation without changing live LP summaries.
+pub(crate) fn migrate_ready(
+    source_lp: LpId,
+    source: &mut run_queue::RunQueue,
+    destination_lp: LpId,
+    destination: &mut run_queue::RunQueue,
+    table: &mut ThreadTable,
+    handle: run_queue::ThreadHandle,
+) -> Result<(), Error> {
+    let thread = table.get(handle.tid).map_err(|_| Error::InvalidThread)?;
+    if source_lp == destination_lp
+        || thread.generation != handle.generation
+        || !thread.is_fully_migratable()
+        || !matches!(thread.state, crate::cpu::scheduler::threads::ThreadState::Ready(lp) if lp == source_lp)
+    {
+        return Err(Error::InvalidThread);
+    }
+    source.transfer_to(destination, table, handle).map_err(|_| Error::InvalidThread)?;
+    let thread = table.get_mut(handle.tid).expect("validated migrating thread vanished");
+    thread.state = crate::cpu::scheduler::threads::ThreadState::Ready(destination_lp);
+    thread.affinity_lp = Some(destination_lp);
+    Ok(())
 }
 
 #[derive(Debug)]

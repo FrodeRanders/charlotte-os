@@ -24,6 +24,12 @@
 
 mod execution;
 pub(crate) use execution::ThreadExecution;
+
+use super::lp_schedulers::run_queue::{
+    Entries,
+    QueueLink,
+    ThreadHandle,
+};
 pub(crate) mod exit_source;
 pub(crate) mod retirement_tests;
 pub mod waker;
@@ -151,7 +157,8 @@ fn reaper_work_ready(lp: LpId, current_sp: usize) -> bool {
 }
 
 fn can_reap(thread: &Thread, current_sp: usize) -> bool {
-    !thread.context.stack_retirement_started()
+    !thread.run_queue_link.is_linked()
+        && !thread.context.stack_retirement_started()
         && !thread.context.kernel_stack_contains(current_sp)
         && !thread.context.is_on_cpu()
 }
@@ -256,6 +263,11 @@ pub fn retire_requested_threads() {
     let ceiling = MASTER_THREAD_TABLE.read().iter().len();
     for tid in 0..ceiling {
         let (thread, generation, _retirement) = {
+            // Inline queue links must leave their exact LP queue before the
+            // containing owner leaves the master table. Retain canonical
+            // system -> LP -> master order; no stale-handle cleanup scan.
+            let scheduler = crate::cpu::scheduler::system_scheduler::SYSTEM_SCHEDULER.read();
+            let mut local = scheduler.get_lp_scheduler().lock();
             let mut table = MASTER_THREAD_TABLE.write();
             let requested = table.get(tid).is_ok_and(|thread| {
                 thread.abort_owner_lp.load(Ordering::Acquire) == lp as usize
@@ -266,6 +278,12 @@ pub fn retire_requested_threads() {
                 continue;
             }
             let retirement = begin_retirement();
+            let generation = table.get(tid).unwrap().generation;
+            if table.get(tid).unwrap().run_queue_link.is_linked() {
+                local
+                    .remove_thread(tid, Some(generation), &mut table)
+                    .expect("requested thread retained by a different run queue");
+            }
             let thread = table.take_element(tid).expect("validated abort target disappeared");
             let generation = thread.generation;
             account_retired_cpu_ticks(&thread);
@@ -532,6 +550,9 @@ pub struct ThreadPayload {
     pub(crate) wait_sponsor: crate::klib::observer::WaitSponsor,
     pub(crate) timer_sponsor: crate::timers::budget::SchedulerSponsor,
     pub state: ThreadState,
+    /// Storage admitted with this complete owner, before thread publication.
+    /// Ready queues borrow its exact identity; no LP queue backing can grow.
+    pub(crate) run_queue_link: QueueLink,
     /// The LP this thread prefers to run on, assigned at spawn time.
     /// Re-admission via `submit_woken_thread` and initial `submit_new_thread`
     /// try this LP first rather than scanning for the least-loaded one,
@@ -677,6 +698,7 @@ impl Thread {
                 wait_sponsor: crate::memory::budget::waiter_sponsor(asid),
                 timer_sponsor: crate::memory::budget::timer_sponsor(asid),
                 state: ThreadState::NeedsLpAssignment,
+                run_queue_link: QueueLink::new(),
                 affinity_lp: None,
                 pinned_lp: None,
                 migration_safe: false,
@@ -760,6 +782,20 @@ impl Thread {
             && self.operation_executor_lp.load(Ordering::Acquire) == usize::MAX
     }
 
+    /// Caller holds the captured generation's table guard while publishing
+    /// the request. A migration may have changed the earlier LP snapshot.
+    pub(super) fn abort_notification_lp(&self, fallback: LpId) -> LpId {
+        let executor = self.operation_executor_lp.load(Ordering::Acquire);
+        if executor != usize::MAX {
+            executor as LpId
+        } else {
+            match self.state {
+                ThreadState::Ready(lp) | ThreadState::Running(lp) => lp,
+                _ => fallback,
+            }
+        }
+    }
+
     pub fn is_fully_migratable(&self) -> bool {
         // Ready publication precedes the outgoing context save. x86 has no
         // assembly ownership handoff, so only contexts that have never been
@@ -775,6 +811,22 @@ impl Thread {
             && !self.abort_requested.load(Ordering::Acquire)
             && self.operation_executor_lp.load(Ordering::Acquire) == usize::MAX
             && !self.context.is_on_cpu()
+    }
+}
+
+impl Entries for ThreadTable {
+    fn link(&self, handle: ThreadHandle) -> Option<&QueueLink> {
+        self.get(handle.tid)
+            .ok()
+            .filter(|thread| thread.generation == handle.generation)
+            .map(|thread| &thread.run_queue_link)
+    }
+
+    fn link_mut(&mut self, handle: ThreadHandle) -> Option<&mut QueueLink> {
+        self.get_mut(handle.tid)
+            .ok()
+            .filter(|thread| thread.generation == handle.generation)
+            .map(|thread| &mut thread.run_queue_link)
     }
 }
 
@@ -894,6 +946,9 @@ impl Thread {
     }
 
     fn retire_stacks(&mut self) -> Result<(), crate::memory::thread_stack::RetirementError> {
+        if self.run_queue_link.is_linked() {
+            return Err(crate::memory::thread_stack::RetirementError::RunQueueLinked);
+        }
         if self.context.stack_retirement_started() {
             return Err(crate::memory::thread_stack::RetirementError::AlreadyStarted);
         }
@@ -927,6 +982,7 @@ impl Thread {
     #[allow(clippy::result_large_err)] // Returning the complete owner must not allocate.
     pub(crate) fn release_unstarted(mut self) -> Result<(), Self> {
         if !matches!(self.state, ThreadState::NeedsLpAssignment)
+            || self.run_queue_link.is_linked()
             || self.context.is_on_cpu()
             || self.context.kernel_stack_contains(current_stack_pointer())
             || self.retire_stacks().is_err()

@@ -19,7 +19,7 @@ fn queue(lp_id: LpId) -> RoundRobin {
         quantum: ExtDuration::from_millis(10),
         is_idle: true,
         timer_event_observer: Arc::new(super::super::TimerEventObserver::new()),
-        run_queue: VecDeque::with_capacity(4),
+        run_queue: RunQueue::new(),
         current_handle: None,
         idle_tid: usize::MAX,
     }
@@ -49,24 +49,18 @@ pub(super) fn run() {
     });
     let [first, second] = identities;
     let mut source = queue(0);
-    source.run_queue.extend([
-        ThreadHandle {
-            tid: usize::MAX,
-            generation: 1,
-        },
-        ThreadHandle {
-            tid: first.0,
-            generation: first.1.wrapping_add(1),
-        },
-        ThreadHandle {
-            tid: first.0,
-            generation: first.1,
-        },
-        ThreadHandle {
-            tid: second.0,
-            generation: second.1,
-        },
-    ]);
+    for (tid, generation) in identities {
+        source
+            .run_queue
+            .push_back(
+                &mut table,
+                ThreadHandle {
+                    tid,
+                    generation,
+                },
+            )
+            .unwrap();
+    }
     let source = Mutex::new(source);
     let destination = Mutex::new(queue(1));
     {
@@ -74,69 +68,138 @@ pub(super) fn run() {
         let source = source.lock();
         let _destination = destination.lock();
         let _master = MASTER_THREAD_TABLE.write();
-        assert_eq!(source.ready_migration_candidate(&table), Some(first));
-        assert_eq!(source.run_queue.len(), 4);
+        assert_eq!(source.ready_migration_candidate(&table).unwrap(), Some(first));
+        assert_eq!(source.run_queue.len(), 2);
 
         table.get_mut(first.0).unwrap().dispatch_count = 1;
         #[cfg(target_arch = "x86_64")]
-        assert_eq!(source.ready_migration_candidate(&table), Some(second));
+        assert_eq!(source.ready_migration_candidate(&table).unwrap(), Some(second));
         #[cfg(target_arch = "aarch64")]
-        assert_eq!(source.ready_migration_candidate(&table), Some(first));
+        assert_eq!(source.ready_migration_candidate(&table).unwrap(), Some(first));
         table.get_mut(first.0).unwrap().dispatch_count = 0;
 
         table.get_mut(first.0).unwrap().pinned_lp = Some(0);
-        assert_eq!(source.ready_migration_candidate(&table), Some(second));
+        assert_eq!(source.ready_migration_candidate(&table).unwrap(), Some(second));
         table.get_mut(first.0).unwrap().pinned_lp = None;
 
         table.get_mut(first.0).unwrap().migration_safe = false;
-        assert_eq!(source.ready_migration_candidate(&table), Some(second));
+        assert_eq!(source.ready_migration_candidate(&table).unwrap(), Some(second));
         table.get_mut(first.0).unwrap().migration_safe = true;
 
         table.get(first.0).unwrap().abort_requested.store(true, Ordering::Release);
-        assert_eq!(source.ready_migration_candidate(&table), Some(second));
+        assert_eq!(source.ready_migration_candidate(&table).unwrap(), Some(second));
         table.get(first.0).unwrap().abort_requested.store(false, Ordering::Release);
 
         table.get(first.0).unwrap().operation_executor_lp.store(0, Ordering::Release);
-        assert_eq!(source.ready_migration_candidate(&table), Some(second));
+        assert_eq!(source.ready_migration_candidate(&table).unwrap(), Some(second));
         table.get(first.0).unwrap().operation_executor_lp.store(usize::MAX, Ordering::Release);
 
         table.get_mut(first.0).unwrap().add_migration_constraint(MigrationConstraint::GeneralWait);
-        assert_eq!(source.ready_migration_candidate(&table), Some(second));
+        assert_eq!(source.ready_migration_candidate(&table).unwrap(), Some(second));
         table.get_mut(first.0).unwrap().clear_blocking_migration_constraints();
 
         for state in
             [ThreadState::Ready(1), ThreadState::Running(0), ThreadState::NeedsLpAssignment]
         {
             table.get_mut(first.0).unwrap().state = state;
-            assert_eq!(source.ready_migration_candidate(&table), Some(second));
+            assert_eq!(source.ready_migration_candidate(&table).unwrap(), Some(second));
         }
         table.get_mut(first.0).unwrap().state = ThreadState::Ready(0);
 
         #[cfg(target_arch = "aarch64")]
         {
             table.get(first.0).unwrap().context.on_cpu.store(1, Ordering::Release);
-            assert_eq!(source.ready_migration_candidate(&table), Some(second));
+            assert_eq!(source.ready_migration_candidate(&table).unwrap(), Some(second));
             table.get(first.0).unwrap().context.on_cpu.store(0, Ordering::Release);
         }
 
         table.get_mut(first.0).unwrap().pinned_lp = Some(0);
         table.get_mut(second.0).unwrap().migration_safe = false;
-        assert_eq!(source.ready_migration_candidate(&table), None);
+        assert_eq!(source.ready_migration_candidate(&table).unwrap(), None);
         table.get_mut(first.0).unwrap().pinned_lp = None;
         table.get_mut(second.0).unwrap().migration_safe = true;
-        assert_eq!(source.ready_migration_candidate(&table), Some(first));
-        assert_eq!(source.run_queue.len(), 4);
+        assert_eq!(source.ready_migration_candidate(&table).unwrap(), Some(first));
+        assert_eq!(source.run_queue.len(), 2);
     }
 
-    // Reuse a local table slot while the source retains the old generation.
-    // These owners never entered a live scheduler, so explicit unstarted
-    // cleanup is valid after every local guard has left.
+    // The complete production move is heap-free too. Policy/identity
+    // rejection preserves queue order, state and affinity on both sides.
+    {
+        let _heap = PRIMARY_ALLOCATOR.lock();
+        let mut source = source.lock();
+        let mut destination = destination.lock();
+        let _master = MASTER_THREAD_TABLE.write();
+        let stale = ThreadHandle {
+            tid: first.0,
+            generation: first.1.wrapping_add(1),
+        };
+        assert!(
+            super::super::migrate_ready(
+                0,
+                &mut source.run_queue,
+                1,
+                &mut destination.run_queue,
+                &mut table,
+                stale
+            )
+            .is_err()
+        );
+        assert_eq!(source.ready_migration_candidate(&table).unwrap(), Some(first));
+        assert_eq!(source.run_queue.len(), 2);
+        assert_eq!(destination.run_queue.len(), 0);
+        let first_handle = ThreadHandle {
+            tid: first.0,
+            generation: first.1,
+        };
+        table.get(first.0).unwrap().operation_executor_lp.store(0, Ordering::Release);
+        assert!(
+            super::super::migrate_ready(
+                0,
+                &mut source.run_queue,
+                1,
+                &mut destination.run_queue,
+                &mut table,
+                first_handle
+            )
+            .is_err()
+        );
+        table.get(first.0).unwrap().operation_executor_lp.store(usize::MAX, Ordering::Release);
+        assert_eq!(table.get(first.0).unwrap().affinity_lp, None);
+        super::super::migrate_ready(
+            0,
+            &mut source.run_queue,
+            1,
+            &mut destination.run_queue,
+            &mut table,
+            first_handle,
+        )
+        .unwrap();
+        assert_eq!(source.ready_migration_candidate(&table).unwrap(), Some(second));
+        assert_eq!(destination.ready_migration_candidate(&table).unwrap(), Some(first));
+        assert_eq!(table.get(first.0).unwrap().affinity_lp, Some(1));
+        assert_eq!(table.get(first.0).unwrap().abort_notification_lp(0), 1);
+        table.get(first.0).unwrap().operation_executor_lp.store(0, Ordering::Release);
+        assert_eq!(table.get(first.0).unwrap().abort_notification_lp(1), 0);
+        table.get(first.0).unwrap().operation_executor_lp.store(usize::MAX, Ordering::Release);
+        assert!(matches!(table.get(first.0).unwrap().state, ThreadState::Ready(1)));
+        super::super::migrate_ready(
+            1,
+            &mut destination.run_queue,
+            0,
+            &mut source.run_queue,
+            &mut table,
+            first_handle,
+        )
+        .unwrap();
+        // The moved entry appends after the existing second thread.
+        assert_eq!(source.ready_migration_candidate(&table).unwrap(), Some(second));
+        source.run_queue.remove(&mut table, first_handle).unwrap();
+    }
     release(&mut table, first);
     let mut replacement = Thread::new(KERNEL_ASID, unused_entry);
     replacement.migration_safe = true;
     replacement.state = ThreadState::Ready(0);
     assert_ne!(replacement.generation, first.1);
-    assert_ne!(replacement.generation, first.1.wrapping_add(1));
     let replacement_generation = replacement.generation;
     assert_eq!(table.add_element(replacement), first.0);
     {
@@ -144,9 +207,31 @@ pub(super) fn run() {
         let mut source = source.lock();
         let _destination = destination.lock();
         let _master = MASTER_THREAD_TABLE.write();
-        assert_eq!(source.ready_migration_candidate(&table), Some(second));
-        source.run_queue.clear();
-        assert_eq!(source.ready_migration_candidate(&table), None);
+        let stale = ThreadHandle {
+            tid: first.0,
+            generation: first.1,
+        };
+        assert!(source.run_queue.push_back(&mut table, stale).is_err());
+        assert!(source.run_queue.remove(&mut table, stale).is_err());
+        assert!(!table.get(first.0).unwrap().run_queue_link.is_linked());
+        assert_eq!(source.ready_migration_candidate(&table).unwrap(), Some(second));
+        let next = ThreadHandle {
+            tid: first.0,
+            generation: replacement_generation,
+        };
+        source.run_queue.push_back(&mut table, next).unwrap();
+        assert!(source.run_queue.push_back(&mut table, next).is_err());
+        assert_eq!(source.run_queue.len(), 2);
+        assert_eq!(
+            source.run_queue.pop_front(&mut table).unwrap(),
+            Some(ThreadHandle {
+                tid: second.0,
+                generation: second.1
+            })
+        );
+        assert_eq!(source.run_queue.pop_front(&mut table).unwrap(), Some(next));
+        assert_eq!(source.run_queue.pop_front(&mut table).unwrap(), None);
+        assert_eq!(source.ready_migration_candidate(&table).unwrap(), None);
     }
     for identity in [(first.0, replacement_generation), second] {
         release(&mut table, identity);
@@ -154,6 +239,7 @@ pub(super) fn run() {
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
     crate::logln!(
         "[scheduler selection] heap-held load ties, stale/reused generations, policy fences, \
-         architecture dispatch gate, exact Ready owner and empty/no-candidate scans passed"
+         architecture dispatch gate, exact Ready owner and empty/no-candidate scans passed; \
+         inline queue transfer, rejection before mutation and FIFO reuse passed"
     );
 }

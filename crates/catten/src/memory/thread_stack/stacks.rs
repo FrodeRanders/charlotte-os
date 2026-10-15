@@ -195,6 +195,7 @@ impl Stacks {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RetirementError {
+    RunQueueLinked,
     AlreadyStarted,
     User,
     Kernel(KernelFailure),

@@ -150,12 +150,63 @@ pub(crate) fn run() {
     completion::close_address_space(asid);
     crate::capability::close_address_space(asid);
     readiness(lp, other_lp);
+    inline_queue_retirement_fence();
     terminal_pair_retention(lp);
     assert!(!reaper_work_ready(lp, current_stack_pointer()));
     abandoned_payloads();
     crate::logln!(
         "[thread retirement] node/context-storage rejection, masked entry, same-LP/current-stack \
          retention, unlocked callbacks and physical stack recovery passed"
+    );
+}
+
+fn inline_queue_retirement_fence() {
+    use crate::{
+        cpu::scheduler::lp_schedulers::run_queue::{
+            RunQueue,
+            ThreadHandle,
+        },
+        memory::allocators::global_allocator::PRIMARY_ALLOCATOR,
+    };
+    // This table and queue never publish to a live scheduler. The complete
+    // thread owns its stack and inline link across both rejected releases.
+    let before = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    let mut table = ThreadTable::new();
+    let thread = Thread::new(KERNEL_ASID, unused_entry);
+    let generation = thread.generation;
+    let tid = table.add_element(thread);
+    let key = ThreadHandle {
+        tid,
+        generation,
+    };
+    let mut queue = RunQueue::new();
+    queue.push_back(&mut table, key).unwrap();
+    let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+    {
+        let _heap = PRIMARY_ALLOCATOR.lock();
+        let _master = MASTER_THREAD_TABLE.write();
+        let _retirement = DEAD_THREADS.write();
+        let allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
+        assert!(!can_reap(table.get(tid).unwrap(), current_stack_pointer()));
+        let mut thread = table.take_element(tid).unwrap();
+        assert!(matches!(
+            thread.retire_stacks(),
+            Err(crate::memory::thread_stack::RetirementError::RunQueueLinked)
+        ));
+        assert!(!thread.retirement_metadata_completed);
+        let thread = thread.release_unstarted().expect_err("linked owner must be returned");
+        assert_eq!(thread.generation, generation);
+        assert!(thread.run_queue_link.is_linked());
+        assert_eq!(table.add_element(thread), tid);
+        assert_eq!(allocator.free_frames(), free);
+        queue.remove(&mut table, key).unwrap();
+    }
+    table.take_element(tid).unwrap().release_unstarted().unwrap();
+    assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), before);
+    crate::logln!(
+        "[inline run queue retirement] linked stack/unstarted release rejected under heap, \
+         master/retirement/physical guards; complete exact owner returned, explicit unlink and \
+         final frame recovery passed"
     );
 }
 

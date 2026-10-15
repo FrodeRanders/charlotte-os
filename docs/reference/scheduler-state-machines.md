@@ -34,8 +34,8 @@ Any live state ── abort_thread_generation(tid, generation)
 
 | # | Invariant |
 |---|-----------|
-| T1 | `Running(lp)` ⇒ thread IS `current_handle` of LP `lp`. |
-| T2 | `Ready(lp)` ⇒ thread IS in `run_queue` of LP `lp`; NOT any `current_handle`. |
+| T1 | An ordinary non-idle, non-aborting `Running(lp)` thread is selected by that LP's current handle. Idle and requested outgoing contexts can retain Running observations after switching; those observations are not quiescence proof. |
+| T2 | `Ready(lp)` has exact inline membership in that LP's run queue. An early wake may also retain the outgoing current-handle borrow until its context is saved. A popped aborted candidate remains table-owned until requested retirement. |
 | T3 | `Blocked` ⇒ thread is NOT in any `run_queue`. Transiently it may still be `current_handle` (during the `block_thread → cond_yield_lp` window). |
 | T4 | `idle_tid` is never in `run_queue` and never `Blocked`. |
 | T5 | Queued handles and asynchronous Wakers carry a `generation`; dispatch and wake admission reject stale generations after slot reuse. |
@@ -47,6 +47,7 @@ Any live state ── abort_thread_generation(tid, generation)
 | T10 | Fallible waiter admission precedes queue removal and `Blocked` publication. Failure leaves state, queue membership and constraints unchanged; an immediate-ready outcome does not park. |
 | T11 | Ready admission cancels an owned completion/CQ/IPC registration even if another strong Waker survives. Reaping a Blocked thread cancels it as well; detached batches retain their own admission until released. |
 | T12 | A pinned reaper parks on an owned LP-head subscription with a durable post-registration readiness recheck. Staging queues admitted waiter nodes under outer scheduler ownership; only the producer LP claims after its local guards leave. Short setup masks bind enqueue/claim to that LP; callbacks preserve outer IRQ state and leave source/queue guards. Failed/started pairs are nonready. Readiness never replaces the off-stack/Arm ownership and one-shot physical-release checks. Only rejected waiter admission uses the recorded 10 ms backoff. |
+| T13 | Ready storage is fixed in the complete thread payload. Queue/state/affinity transfer validates both queues before source mutation; unlink precedes table extraction and linked owners reject stack release. Queue abandonment cannot authorize adoption or physical cleanup. |
 
 ### Lock order for transitions
 
@@ -55,7 +56,9 @@ spawn_thread:         MASTER_THREAD_TABLE.write() [drop] → SYSTEM_SCHEDULER.re
 block_thread (self):  SYSTEM_SCHEDULER.read() → MASTER_THREAD_TABLE.read() [drop] → MASTER_THREAD_TABLE.write()
 block_thread (Ready): SYSTEM_SCHEDULER.read() → lp_scheduler.lock() → MASTER_THREAD_TABLE.write()
 submit_*:             SYSTEM_SCHEDULER.read() → lp_scheduler.lock() → MASTER_THREAD_TABLE.write()
-abort_thread:         MASTER_THREAD_TABLE.read() → lp_scheduler.lock() → MASTER_THREAD_TABLE.write()
+abort_thread:         MASTER_THREAD_TABLE.read() [drop] → lp_scheduler.lock() → MASTER_THREAD_TABLE.write()
+post-switch abort:    SYSTEM_SCHEDULER.read() → lp_scheduler.lock() → MASTER_THREAD_TABLE.write()
+                      unlink exact Ready membership before table extraction; drop guards before staging
 cond_yield_lp:        SYSTEM_SCHEDULER.read() → lp_scheduler.lock() → MASTER_THREAD_TABLE.write()
                       ALL DROPPED before switch_ctx (otherwise deadlock — abandoned stack).
 ```
@@ -63,8 +66,8 @@ cond_yield_lp:        SYSTEM_SCHEDULER.read() → lp_scheduler.lock() → MASTER
 The global lock order is: **lp_scheduler → MASTER_THREAD_TABLE**.  `block_thread` for self-block goes `MASTER_THREAD_TABLE` first (no LP lock needed), then `yield_lp` re-acquires in the canonical order. The `abort()` and `sleep()` callers bind `tid` in a temporary scope, drop all guards, then proceed — this avoids holding a read guard across a write for the non-reentrant `RwLock`.
 
 Generation-qualified retirement is mandatory for every asynchronous owner of a
-thread handle. `remove_thread(tid, expected_generation)` validates the queued
-handle before removal, and `abort_thread_generation` repeats the validation in
+thread handle. `remove_thread(tid, expected_generation, table)` borrows its caller's
+exclusive table and validates the queued handle before removal, and `abort_thread_generation` repeats the validation in
 the master table. This closes the slot-reuse race in which deferred verifier
 cleanup could otherwise abort an unrelated thread before its body ran.
 
@@ -86,7 +89,7 @@ rather than freeing resources on an uncertain snapshot.
 
 ```
                     ┌─────────┐
-                    │  IDLE   │  quantum timer NOT armed
+                    │  IDLE   │  bounded 50 ms admission-IPI fallback
                     │ is_idle │  thread_count() == 0
                     └────┬────┘
                          │ next() picks real thread from run_queue
@@ -96,7 +99,7 @@ rather than freeing resources on an uncertain snapshot.
                     │ !is_idle │  thread_count() >= 1
                     └────┬─────┘
                          │ next() picks idle_tid (run_queue empty)
-                         │  clear_ctx_switch_pending() skips timer re-arm
+                         │  clear_ctx_switch_pending() arms idle fallback
                          │
                          ▼
                     [back to IDLE]
@@ -122,8 +125,8 @@ rather than freeing resources on an uncertain snapshot.
 
 | # | Invariant |
 |---|-----------|
-| L1 | `is_idle == true` ⇒ `current_handle.tid == idle_tid`. |
-| L2 | `clear_ctx_switch_pending()` arms a quantum timer ONLY when `!is_idle`. An idle LP gets NO periodic ticks; it is woken by admission IPI or deferred wake. |
+| L1 | After first dispatch, `is_idle == true` means the current handle is the dedicated idle thread. Before first dispatch there may be no current handle. |
+| L2 | Busy LPs arm the configured quantum. Idle LPs use the same keyed slot for a 50 ms fallback when an admission IPI is not delivered; admission/deferred wakes remain the normal fast path. This is a timer fallback, not an event-only readiness guarantee. |
 | L3 | At most one `SchedulerQuantum` event is queued per LP. Uniqueness belongs to the timer queue; there is no separate `armed` flag that can diverge from it. |
 | L4 | `cond_yield_lp` with `curr_tid == next_tid` (sole runnable) still calls `clear_ctx_switch_pending()` to re-arm the timer. Without this, `sleep()` freezes. |
 | L5 | The idle loop calls `drain_deferred_wakes()` and interrupt-masked `process_local_events()` before `cond_yield_lp()`, so deferred wakes and due timers are reconciled before `wfi`/`hlt`. |
@@ -517,19 +520,20 @@ constraints are general scheduler waits, timer waits, CQ waits, and endpoint
 waits. `block_thread_with_constraint` installs the appropriate bit while the
 thread is Blocked; the LP scheduler clears the temporary blocking bits only on
 the validated `Blocked -> Ready` transition. A migration candidate must also
-have an empty constraint mask and an acquire-load of `on_cpu == 0` on either
-supported architecture.
-The lifecycle regression checks after every timer wake that the timer
-constraint has cleared while the running context is still rejected by the
-`on_cpu` condition.
+have an empty constraint mask and no pending abort/execution owner. Arm
+qualifies its assembly `on_cpu == 0` handoff. x86 has no such handoff and
+rejects any nonzero dispatch count, admitting only never-dispatched migration.
+The lifecycle regression checks timer-affinity retention; Arm separately
+requires certified runtime migration, and x86 explicitly skips that phase.
 
 Runtime policy also has a low-pass entry point,
 `try_rebalance_sustained(now_millis)`. The default 100 ms window is adjustable
 at runtime through `set_rebalance_window_millis`. A sample starts a window for the current
 busiest/least-loaded LP pair; balance recovery or a different pair resets it.
 Only a pair that remains at least two runnable threads apart for the entire
-window can reach transactional migration. No wake or interrupt path invokes
-it. An experimental 10 ms maintenance sleeper was removed after consecutive
+window can reach transactional migration. Wake admission does not invoke it;
+both architecture yield tails sample after their local switch guards leave
+and before restoring the caller's IRQ state. An experimental 10 ms maintenance sleeper was removed after consecutive
 HVF runs missed different service/device gates despite performing no runtime
 migrations: adding another periodic timer thread during boot was itself too
 disruptive. Device domains and deferred workers remain default-denied because
@@ -542,11 +546,14 @@ every LP still perturbed the device gate, so each round-robin scheduler now
 publishes its runnable count to an atomic per-LP summary whenever its queue or
 current thread changes. LP0's rate-limited sample reads only those atomics; LP
 locks are acquired only after an imbalance survives the full low-pass window
-and transactional migration is actually attempted. Both AArch64 and x86-64
-invoke the sampler after context switching and dead-thread reaping; the x86-64
-lifecycle regression verifies a certified runtime migration on four LPs.
+and transactional migration is actually attempted. Current tails complete
+post-switch metadata delivery and sample with IRQs still masked; physical
+reaping belongs to scheduled owner-LP workers. Only Arm's lifecycle regression
+requires a certified started-context runtime migration. See
+[inline run queues](scheduler-run-queues.md) for fixed membership, exact
+source/destination validation and heap-held transaction evidence.
 
-The regression suite starts a delayed runtime workload after the early service,
+On Arm, the regression suite starts a delayed runtime workload after the early service,
 device and timer-affinity gates: three certified compute-only workers are
 soft-placed on LP0 and cooperatively yield. They remain runnable long enough to
 cross the sustained window, require `REBALANCE_SUCCESSES` to advance beyond the
@@ -555,7 +562,7 @@ mistaking the boot quiescent rebalance for runtime evidence.
 
 The timer-lifecycle workers use a narrower certification lifetime: they may be
 moved while queued at boot, then clear `migration_safe` on first dispatch before
-starting their 384 fixed-affinity timer cycles. This prevents the runtime
+starting their 192 fixed-affinity timer cycles. This prevents the runtime
 sampler from invalidating the timer-affinity regression while leaving runtime
 migration to the compute-only workload.
 

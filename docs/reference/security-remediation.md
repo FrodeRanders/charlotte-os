@@ -672,3 +672,15 @@ table, and distinguish the architecture gate. Destination run-queue growth,
 thread-table metadata, general heap/principal admission, full outer-context
 qualification and historical failure attribution remain open. No new owner
 family, recovery authority or numbered-finding disposition is added.
+
+The [inline scheduler queue follow-up](../reports/audits/2026-10-15-inline-scheduler-run-queues.md)
+continues R7-1/2 and C16/G1/G4 with queue links in the original complete thread
+payload, removing growable ring allocation from admission, wake, requeue and
+migration. Exact source/destination validation precedes an allocation-free
+queue/state/affinity splice. Requested owner-LP abort unlinks before table
+extraction; remote notification revalidates placement under the original
+generation guard. Linked physical/unstarted release rejects with the complete
+owner retained. Queue abandonment grants no force-clear, cleanup or replay.
+Broader table/waiter/timer/heap storage, aggregate budgets, essential progress
+and integrated physical qualification remain open. SEC-07/18 stay partial;
+family/finding counts and historical failure attribution are unchanged.

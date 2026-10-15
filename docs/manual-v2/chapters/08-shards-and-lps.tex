@@ -93,6 +93,14 @@ explicit certification and architecture CPU-ownership qualification. Arm has
 the assembly handoff; x86 permits only never-dispatched contexts until an
 equivalent handoff exists. Pinned userspace shards remain ineligible.
 
+Ready membership uses fixed links in each complete thread payload rather than
+a growable per-LP ring. Under the existing LP-pair and thread-table guards,
+migration validates the exact source and destination before changing either
+queue, then publishes state and affinity without allocation. Owner-LP abort
+unlinks before detaching the thread; linked owners cannot release their stack.
+This does not complete general thread-table, waiter/timer or kernel-heap
+admission. See \texttt{docs/reference/scheduler-run-queues.md}.
+
 \section{\texttt{PerLp<T>}: interrupt-safe shared data}
 
 \label{sec:per-lp}

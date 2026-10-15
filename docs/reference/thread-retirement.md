@@ -270,10 +270,12 @@ tests exercise the production worker after the new event-only wait.
 The node is allocated from the global heap and adds one thread-sized allocation
 per live/deferred owner. There is no independent node-byte admission pool.
 General heap/metadata/principal accounting remains SEC-07 work. Scheduler
-run-queue growth and other subsystem metadata remain separate allocation paths.
-The [selection audit](../reports/audits/2026-10-15-scheduler-selection-storage.md)
-removes temporary load/candidate vectors; it does not make the containing
-migration transaction allocation-free. Outer construction/submission masks, growth's inner walker
+run-queue backing no longer grows: [inline run queues](scheduler-run-queues.md)
+use each complete thread's admitted payload and qualify exact linkage before
+queue/state/affinity publication. The earlier
+[selection audit](../reports/audits/2026-10-15-scheduler-selection-storage.md)
+removed temporary load/candidate vectors. Other subsystem metadata, waiter
+cancellation and quantum-timer storage remain separate allocation paths. Outer construction/submission masks, growth's inner walker
 contexts and arbitrary explicit callback contexts remain unqualified;
 full SEC-18 lock/quiescence safety is not claimed. There is
 no failed-pair retry owner, shared custody adapter or abandoned-owner recovery.
@@ -331,3 +333,11 @@ the execution fence. Actual EL0 growth, deferred abort, foreign-leaf rollback,
 caller IRQ preservation and table reentry qualify this caller. General heap/
 image and other kernel-operation retention remain separate; this is no blanket
 cancellation/physical-recovery guarantee.
+
+The [inline-queue follow-up](../reports/audits/2026-10-15-inline-scheduler-run-queues.md)
+adds queue membership to the existing complete thread owner. Owner-LP abort
+unlinks before table extraction/staging; stack/unstarted release rejects while
+linked, without notification or physical work. Lost queue heads cannot authorize
+adoption by a new queue. Original roots/charges and complete-payload fallback
+remain; this adds no custody, force-clear, physical retry or historical failure
+attribution.

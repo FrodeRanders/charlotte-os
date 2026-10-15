@@ -57,9 +57,11 @@ Existing runtime adaptation is real but localized:
 Local thread migration is architecture-qualified: Arm uses its assembly CPU
 ownership handoff; x86 rejects migration after the first dispatch until an
 equivalent handoff exists. Both yield tails still sample load. Temporary load
-and candidate scans no longer allocate, but destination run-queue growth under
-scheduler guards remains an admission gap. See the
-[selection audit](../reports/audits/2026-10-15-scheduler-selection-storage.md).
+and candidate scans no longer allocate. Ready storage is now inline in each
+admitted thread, and migration validates both queues before allocation-free
+queue/state/affinity publication. See the
+[run-queue contract](../reference/scheduler-run-queues.md). Wider table, timer,
+waiter, heap/principal and progress admission remains separate work.
 
 ## Design principles
 
