@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Terminal completion observer disposal](audits/2026-10-16-completion-terminal-disposal.md) — Detached event/worker owners leave local completion guards; installation disposal and terminal wakes preserve exact source identity.
+
 - [Completion callback preparation and source disposal](audits/2026-10-15-completion-callback-preparation.md) — Exact-operation callback preparation outside registry/inner guards; complete successful namespace/CQ detachments dispose after unlock.
 - [Waiter source preparation](audits/2026-10-15-waiter-source-preparation.md) — Lazy list allocation and IPC/CQ entries leave local source guards; exact-source revalidation, readiness races and post-guard disposal.
 - [Scheduler wait preparation and publication](audits/2026-10-15-scheduler-wait-publication.md) — Registration and cancellation leave local LP/table guards; early hints and exact installed-wait identity close publication races.

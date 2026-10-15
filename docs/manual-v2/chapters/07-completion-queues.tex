@@ -333,6 +333,17 @@ discard entries even when an old completion or token remains retained.
 Lists allocate fallibly on first subscription. Empty control blocks and arbitrary
 callback capture sizes remain outside these entry counters.
 
+Event and worker subscriptions detached by terminal completion stay in one
+transition owner through terminal-state and CQ-result publication. Disposal
+follows both local registry and state unlock, before notification. The exact CQ
+source is captured at publication: a reentrant destructor replacing the queue
+cannot redirect the old wake to its successor. Installation returns replaced or
+rejected subscriptions for disposal after both guards. Cancellation rejects a
+late event watch but retains the worker-exit subscription; terminal installation
+retains neither. Timer cancellation, staging/partial-error cleanup and outer
+producer/IRQ contexts remain separate qualification work. These subscription
+transitions grant no physical cleanup proof or permission to replay accepted work.
+
 \section{Owned completion and CQ waiters}
 
 Completion and CQ scheduler waiters use fallible registration before a thread

@@ -1018,7 +1018,7 @@ pub fn test_close_watch_admission() {
     });
     let list = ObserverList::try_new(1, false).unwrap();
     let token = list.register(Arc::downgrade(&late_observer), staged.take_charge()).unwrap();
-    assert!(!captured.set_event_observation(late_observer.clone(), token));
+    assert!(!captured.set_event_observation(late_observer.clone(), token).finish());
     assert_eq!(staged.commit(), cap);
     let account = completion::watch_admission(client).unwrap();
     let batch = list.close();

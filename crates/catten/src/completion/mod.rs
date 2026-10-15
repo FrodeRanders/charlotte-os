@@ -38,6 +38,7 @@ pub use callbacks::{
 pub mod cq;
 pub(crate) mod cq_budget;
 pub(crate) mod exit_tests;
+mod terminal_tests;
 pub(crate) mod timer_tests;
 mod waiter_tests;
 pub(crate) mod watch_budget;
@@ -243,6 +244,29 @@ struct EventObservation {
     _registration: crate::klib::observer::registration::Registration<watch_budget::Charge>,
 }
 
+/// Installation returns every replaced or rejected owner to the caller. Its
+/// explicit disposal must follow both inner and containing registry unlock.
+#[must_use]
+pub(crate) struct ObservationInstallation {
+    cancellation_won: bool,
+    unused: Option<EventObservation>,
+}
+
+impl ObservationInstallation {
+    pub(crate) fn finish(self) -> bool {
+        drop(self.unused);
+        self.cancellation_won
+    }
+}
+
+/// One terminal transition retains its detached producer subscriptions until
+/// CQ publication and registry unlock. This is not a physical cleanup receipt.
+struct TerminalTransition {
+    result: OpResult,
+    _event: Option<EventObservation>,
+    _worker: Option<EventObservation>,
+}
+
 /// An [`Observer`] that completes a capability when the worker thread it is
 /// registered against exits. This is the ABI's intended completion mechanism
 /// (see `scheduler/threads/mod.rs:63-69`): a completion capability is registered
@@ -343,10 +367,15 @@ impl Completion {
         self.operation
     }
 
-    fn set_worker_observation(&self, observation: EventObservation) {
+    fn set_worker_observation(&self, observation: EventObservation) -> ObservationInstallation {
+        let mut unused = Some(observation);
         let mut inner = self.inner.lock();
         if matches!(inner.state, OpState::InFlight | OpState::CancelPending) {
-            inner.worker_observation = Some(observation);
+            core::mem::swap(&mut inner.worker_observation, &mut unused);
+        }
+        ObservationInstallation {
+            cancellation_won: false,
+            unused,
         }
     }
 
@@ -366,19 +395,23 @@ impl Completion {
         &self,
         observer: Arc<dyn Observer>,
         registration: crate::klib::observer::registration::Registration<watch_budget::Charge>,
-    ) -> bool {
-        let observation = EventObservation {
+    ) -> ObservationInstallation {
+        let mut unused = Some(EventObservation {
             _observer: observer,
             _registration: registration,
-        };
+        });
         let mut inner = self.inner.lock();
-        match inner.state {
+        let cancellation_won = match inner.state {
             OpState::InFlight => {
-                inner.event_observation = Some(observation);
+                core::mem::swap(&mut inner.event_observation, &mut unused);
                 false
             }
             OpState::CancelPending => true,
             OpState::Completed(_) | OpState::Observed => false,
+        };
+        ObservationInstallation {
+            cancellation_won,
+            unused,
         }
     }
 
@@ -415,10 +448,11 @@ impl Completion {
     /// Kernel-side transition: the operation finished. Moves `InFlight` or
     /// `CancelPending` to `Completed`, forcing the result to
     /// [`OpResult::Cancelled`] when a cancel was requested. Returns the
-    /// effective terminal result on the first call, or `None` if the operation
+    /// effective terminal result and detached subscriptions on the first call,
+    /// or `None` if the operation
     /// was already terminal (idempotent). Does **not** signal observers; the
     /// caller wakes waiters after publishing the CQ entry.
-    fn complete(&self, result: OpResult) -> Option<OpResult> {
+    fn complete(&self, result: OpResult) -> Option<TerminalTransition> {
         let mut inner = self.inner.lock();
         let effective = match inner.state {
             OpState::InFlight => result,
@@ -426,11 +460,11 @@ impl Completion {
             OpState::Completed(_) | OpState::Observed => return None,
         };
         inner.state = OpState::Completed(effective.clone());
-        let event = inner.event_observation.take();
-        let worker = inner.worker_observation.take();
-        drop(inner);
-        drop((event, worker));
-        Some(effective)
+        Some(TerminalTransition {
+            result: effective,
+            _event: inner.event_observation.take(),
+            _worker: inner.worker_observation.take(),
+        })
     }
 
     fn signal(&self) {
@@ -1132,21 +1166,23 @@ impl EventSubmission {
         registration: crate::klib::observer::registration::Registration<watch_budget::Charge>,
         worker: bool,
     ) -> Result<bool, SubmitError> {
-        let registry = COMPLETIONS.read();
-        if !registry.get(&self.asid).is_some_and(|entries| {
-            entries.table.get(&self.cap).is_some_and(|live| Arc::ptr_eq(live, &self.completion))
-        }) {
-            return Err(SubmitError::UnknownAddressSpace);
-        }
-        if worker {
-            self.completion.set_worker_observation(EventObservation {
-                _observer: observer,
-                _registration: registration,
-            });
-            Ok(false)
-        } else {
-            Ok(self.completion.set_event_observation(observer, registration))
-        }
+        let installation = {
+            let registry = COMPLETIONS.read();
+            if !registry.get(&self.asid).is_some_and(|entries| {
+                entries.table.get(&self.cap).is_some_and(|live| Arc::ptr_eq(live, &self.completion))
+            }) {
+                return Err(SubmitError::UnknownAddressSpace);
+            }
+            if worker {
+                self.completion.set_worker_observation(EventObservation {
+                    _observer: observer,
+                    _registration: registration,
+                })
+            } else {
+                self.completion.set_event_observation(observer, registration)
+            }
+        };
+        Ok(installation.finish())
     }
 
     pub(crate) fn commit(mut self) -> CompletionCap {
@@ -1421,7 +1457,7 @@ pub(crate) fn complete_registered(
     // write must also happen-before the wake, so a userspace consumer that
     // blocks in `wait` and drains the ring the moment it is woken observes
     // the entry. Capability-backed completions go to the default queue.
-    {
+    let (transition, cq_source) = {
         let mut registry = COMPLETIONS.write();
         // A callback captured before teardown must never complete a new
         // namespace occupant that happens to reuse its ASID/cap values.
@@ -1432,10 +1468,11 @@ pub(crate) fn complete_registered(
         {
             return Err(CapError::UnknownCap);
         }
-        let Some(effective) = completion.complete(result) else {
+        let Some(transition) = completion.complete(result) else {
             // Already terminal: idempotent no-op, no duplicate CQ entry.
             return Ok(());
         };
+        let mut cq_source = None;
         if let Some(as_completions) = registry.get_mut(&asid)
             && as_completions
                 .table
@@ -1445,7 +1482,7 @@ pub(crate) fn complete_registered(
         {
             let op = completion.operation_id();
             let flushed_detached =
-                post_to_cq(cq_state, op, cap, &effective, BacklogOwner::Capability)
+                post_to_cq(cq_state, op, cap, &transition.result, BacklogOwner::Capability)
                     .flushed
                     .detached;
             as_completions.live = as_completions.live.saturating_sub(flushed_detached);
@@ -1456,10 +1493,18 @@ pub(crate) fn complete_registered(
                 cq_state.work_generation,
                 cap,
             );
+            cq_source = Some(cq_state.waiters.clone());
         }
-    }
+        (transition, cq_source)
+    };
 
-    signal_cq(asid, DEFAULT_CQ);
+    // Destructors may reenter or replace the namespace. Carry the exact CQ
+    // source from publication so disposal cannot redirect this wake to a new
+    // namespace/queue that happens to reuse the same numeric identifiers.
+    drop(transition);
+    if let Some(source) = cq_source {
+        signal_cq_source(asid, DEFAULT_CQ, &source);
+    }
     completion.signal();
 
     Ok(())
@@ -1731,13 +1776,25 @@ fn flush_cq_backlog(as_completions: &mut AsCompletions, cq: CqId) -> FlushOutcom
 }
 
 fn signal_cq(asid: AddressSpaceId, cq: CqId) {
-    let (count, waiters) = {
+    let source = {
         let registry = COMPLETIONS.read();
         let Some(cq_state) = registry.get(&asid).and_then(|c| c.cqs.get(&cq)) else {
             return;
         };
-        (cq_state.waiters.registered(), cq_state.waiters.drain())
+        cq_state.waiters.clone()
     };
+    signal_cq_source(asid, cq, &source);
+}
+
+fn signal_cq_source(
+    asid: AddressSpaceId,
+    cq: CqId,
+    source: &crate::klib::observer::registration::ListRef<
+        crate::klib::observer::waiter_budget::Charge,
+    >,
+) {
+    let count = source.registered();
+    let waiters = source.drain();
     waiters.notify();
     crate::debug_trace::trace(
         crate::debug_trace::TAG_SIGNAL_CQ,

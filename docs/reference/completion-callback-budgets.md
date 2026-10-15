@@ -68,6 +68,21 @@ external strong/weak references. The existing quiescent-consumer/root contract
 is still required; an identity reference or discarded subscription is no
 physical-release proof.
 
+Terminal completion moves its event and worker subscriptions into one transition
+owner. Terminal state and the effective CQ result publish under the registry;
+only after unlock does that owner dispose its subscriptions, followed by CQ and
+completion notification. The CQ source is captured at publication, so reentrant
+subscription destruction cannot redirect the wake to a replacement queue.
+Event/worker installation likewise returns replaced or rejected subscriptions
+until both inner and registry guards have left. Event cancellation rejects its
+late watch; worker cancellation retains the producer-exit watch. Late terminal
+installation retains neither. See [terminal-disposal evidence](../reports/audits/2026-10-16-completion-terminal-disposal.md).
+
+This qualifies local completion guards. Timer-observer installation/cancellation,
+CQ staging, record/authority metadata and outer producer/IRQ contexts remain
+separate work. No subscription disposal proves physical completion or grants
+operation replay authority.
+
 Cancellation can race a callback already captured for notification. Callbacks
 must be short, tolerate that race and use captured identity. The owner retains
 its strong callback until Drop, even after notification; the token alone does

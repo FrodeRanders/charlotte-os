@@ -192,7 +192,7 @@ fn namespace_disposal() {
         let registration = source
             .register(Arc::downgrade(&observer), watch_budget::reserve(&account, false).unwrap())
             .unwrap();
-        assert!(!captured.set_event_observation(observer, registration));
+        assert!(!captured.set_event_observation(observer, registration).finish());
         match mode {
             0 => close_address_space(CLIENT),
             1 => open_address_space(CLIENT, 4),

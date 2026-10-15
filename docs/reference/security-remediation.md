@@ -718,6 +718,17 @@ Losing/ready/rejected storage disposes after unlock and before immediate
 notification. Successful namespace close/replacement and CQ replacement carry
 the entire old payload beyond the registry before source/field destruction,
 retaining original backing and charges. Authority/map metadata, staging/partial
-errors, terminal producer disposal and broader caller/IRQ contexts remain open.
+errors, timer-specific producer disposal and broader caller/IRQ contexts remain open.
 No numbered finding changes disposition, and no physical/quiescence proof,
 retry authority or historical-failure attribution follows.
+
+The [terminal observer-disposal follow-up](../reports/audits/2026-10-16-completion-terminal-disposal.md)
+continues R7-1/2 and C16/G1/G4. One terminal transition retains event/worker
+subscriptions through effective-result/CQ publication and registry unlock;
+installation returns replaced/rejected owners for post-guard disposal. Captured
+CQ source identity prevents destructor reentry from waking a replacement queue.
+Cancellation parity, worker-exit ownership and accepted buffers are unchanged.
+Timer installation/cancellation, staging/partial errors, record/authority/map
+metadata and outer producer/IRQ contexts remain open. No finding changes
+disposition; historical failure attribution and physical/replay authority do not
+follow from these bounded controls.
