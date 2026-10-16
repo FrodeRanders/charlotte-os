@@ -2,19 +2,20 @@
 //!
 //! Each LP has a [`TimerQueue`] — a sorted owning list of anonymous events and
 //! one inline scheduler quantum. Their earliest deadline programs the hardware
-//! comparator; the PPI interrupt fires at
-//! that tick, `process_events` drains all expired events, and the comparator
-//! is re-armed with the next deadline.
+//! comparator. A processing pass captures its due prefix and rearms the queue
+//! before notifying outside its borrow on the same LP, with IRQ policy intact.
 //!
 //! Queue mutation reconciles the comparator with the earliest deadline.
 //! Cancelled anonymous timers retain their admission charge until the owning
-//! queue removes them. The idle loop calls `process_events`
+//! queue/delivery releases their actual backing. The idle loop calls `process_local_events`
 //! before `wfi` to reconcile the software queue with the hardware comparator
 //! and prevent missed deadlines after timer transitions.
 
 pub(crate) mod budget;
 mod cancellation_tests;
+mod delivery;
 mod disposal_tests;
+use delivery::PendingDelivery;
 pub(crate) mod event_tests;
 mod queue;
 pub(crate) use queue::RetiredEvents;
@@ -193,11 +194,11 @@ pub(crate) fn prepare_watchdog(
 
 /// Cancel a previously enqueued cancellable event.
 ///
-/// Returns whether this call removed the event from its owning queue. A false
-/// result means it already fired, or that the caller migrated away from the
-/// LP whose hardware timer owns it. In the latter case the shared cancellation
-/// flag still suppresses notification and the owner purges it on its next
-/// queue operation.
+/// Returns only whether this call removed the owning queue's exact entry.
+/// False also covers unpublished/selected events, a busy queue, remote callers
+/// and already-fired events. The shared flag suppresses notification whose
+/// signal check has not started, including an event in a captured due prefix.
+/// A false result is not completion, quiescence or permission to replay work.
 pub(crate) fn cancel_event(handle: TimerEventCancelHandle) -> bool {
     handle.state.cancelled.store(true, Ordering::Release);
     if crate::cpu::isa::lp::ops::get_lp_id() != handle.state.owner_lp.load(Ordering::Acquire) {
@@ -206,9 +207,9 @@ pub(crate) fn cancel_event(handle: TimerEventCancelHandle) -> bool {
 
     let interrupts_were_enabled = crate::cpu::isa::lp::ops::get_int_state();
     mask_interrupts!();
-    // A completion may release its cancellation owner from a timer callback.
-    // That callback already holds this LP's queue borrow: flag cancellation
-    // and let the outer queue operation reclaim the event instead of re-entering.
+    // Selection transfers an event into its delivery owner before notification.
+    // Its retained state still suppresses delivery that has not started; failed
+    // queue removal is not an operation completion or quiescence result.
     let (removed, retired) = match TIMER_QUEUES.try_get_mut() {
         Ok(mut queue) => queue.remove_cancellable_event(&handle.state),
         Err(_) => (false, RetiredEvents::default()),
@@ -220,21 +221,23 @@ pub(crate) fn cancel_event(handle: TimerEventCancelHandle) -> bool {
     removed
 }
 
-/// Reconcile due events and the hardware comparator from thread context.
-/// The IRQ dispatcher calls `TimerQueue::process_events` directly because its
-/// exception entry has already masked local IRQs; idle-loop callers use this
-/// wrapper to obtain the same non-reentrant transaction.
+/// Reconcile the comparator and deliver one captured due prefix on this LP.
+/// Both IRQ adapters share this path. Nested drains defer to the active owner;
+/// callbacks never retain the queue borrow.
 pub fn process_local_events() {
-    let interrupts_were_enabled = crate::cpu::isa::lp::ops::get_int_state();
-    mask_interrupts!();
-    let retired = {
-        let mut queue = TIMER_QUEUES.try_get_mut().expect("local timer queue is already borrowed");
-        queue.process_events()
-    };
-    retired.finish();
-    if interrupts_were_enabled {
-        unmask_interrupts!();
+    try_process_local_events().expect("local timer queue is already borrowed");
+}
+
+/// Busy is queue-borrow rejection, not operation completion. An active
+/// delivery keeps its original owner and comparator until explicit handback.
+pub(crate) fn try_process_local_events()
+-> Result<(), crate::cpu::multiprocessor::spin::per_lp::Error> {
+    let _mask = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
+    let pending = TIMER_QUEUES.try_get_mut()?.prepare_delivery();
+    if let Some(pending) = pending {
+        pending.deliver();
     }
+    Ok(())
 }
 
 /// Identity for timer events that must have at most one queued instance.
@@ -411,6 +414,9 @@ impl Observable for TimerEvent {
 #[derive(Debug, Default)]
 pub struct TimerQueue {
     events: queue::Events,
+    // Exactly one PendingDelivery owns this inline claim. Abandonment retains
+    // the fence; neither Drop nor a fresh object grants recovery authority.
+    delivering: bool,
 }
 
 impl TimerQueue {
@@ -563,56 +569,54 @@ impl TimerQueue {
         self.record_state();
     }
 
-    pub(crate) fn process_events(&mut self) -> RetiredEvents {
+    pub(crate) fn prepare_delivery(&mut self) -> Option<PendingDelivery> {
+        assert!(
+            !crate::cpu::isa::lp::ops::get_int_state(),
+            "timer selection requires caller IRQ mask"
+        );
+        if self.delivering {
+            return None;
+        }
+        self.delivering = true;
         let mut retired = RetiredEvents::default();
         self.purge_cancelled(&mut retired);
-        while let Some(event) = self.events.front() {
-            if event.get_deadline() <= LpTimer::now() {
-                let is_anonymous = event.key.is_none();
-                crate::debug_trace::trace(
-                    crate::debug_trace::TAG_TIMER_FIRED,
-                    event.get_deadline(),
-                    self.events.len() as u64,
-                    0,
-                );
-                event.signal();
-                self.events.pop_front_into(&mut retired);
-                let diag = &TIMER_DIAGNOSTICS[crate::cpu::isa::lp::ops::get_lp_id() as usize];
-                if is_anonymous {
-                    diag.anonymous_fired.fetch_add(1, Ordering::Relaxed);
-                } else {
-                    diag.keyed_fired.fetch_add(1, Ordering::Relaxed);
-                }
-                self.record_state();
-            } else if let Some(deadline) = self.get_next_deadline() {
-                let timer = LpTimer::get();
-                let mut timerlk = timer.lock();
-                if timerlk.set_deadline(deadline) == Err(LpTimerError::DeadlinePassed) {
-                    continue;
-                }
-                timerlk.start().expect("Failed to start timer for next event");
-                crate::debug_trace::trace(
-                    crate::debug_trace::TAG_TIMER_ARMED,
-                    deadline,
-                    self.events.len() as u64,
-                    0,
-                );
-                self.record_state();
-                return retired;
+        let mut ready = RetiredEvents::default();
+        // One monotonic cutoff bounds delivery to this already-admitted prefix.
+        // Reentrant enqueue cannot extend it or restart an operation deadline.
+        let cutoff = LpTimer::now();
+        while let Some(event) = self.events.front().filter(|event| event.deadline <= cutoff) {
+            let is_anonymous = event.key.is_none();
+            crate::debug_trace::trace(
+                crate::debug_trace::TAG_TIMER_FIRED,
+                event.deadline,
+                self.events.len() as u64,
+                0,
+            );
+            self.events.pop_front_into(&mut ready);
+            let diag = &TIMER_DIAGNOSTICS[crate::cpu::isa::lp::ops::get_lp_id() as usize];
+            if is_anonymous {
+                diag.anonymous_fired.fetch_add(1, Ordering::Relaxed);
             } else {
-                let _ = LpTimer::get().lock().stop();
-                crate::debug_trace::trace(crate::debug_trace::TAG_TIMER_STOPPED, 0, 0, 0);
-                self.record_state();
-                return retired;
+                diag.keyed_fired.fetch_add(1, Ordering::Relaxed);
             }
         }
-        // The queue drained completely. Stop the timer so it does not keep
-        // firing on a stale (already-passed) compare value — the ARM Generic
-        // Timer interrupt is level-triggered and would otherwise re-assert.
-        let _ = LpTimer::get().lock().stop();
-        crate::debug_trace::trace(crate::debug_trace::TAG_TIMER_STOPPED, 0, 0, 0);
+        ready.reverse_nodes();
+        self.rearm_front();
         self.record_state();
-        retired
+        Some(PendingDelivery::new(ready, retired))
+    }
+
+    fn complete_delivery(&mut self) {
+        assert!(
+            !crate::cpu::isa::lp::ops::get_int_state(),
+            "timer handback requires caller IRQ mask"
+        );
+        assert!(self.delivering, "timer delivery claim lost");
+        self.delivering = false;
+        // Callbacks may have changed the queue or advanced beyond its future
+        // deadline. Reconcile current state, never restore a captured head.
+        self.rearm_front();
+        self.record_state();
     }
 
     fn get_next_deadline(&self) -> Option<Timestamp> {
@@ -624,6 +628,7 @@ impl TimerQueue {
         let mut timerlk = timer.lock();
         let _ = timerlk.stop();
         let Some(next_event) = self.events.front() else {
+            crate::debug_trace::trace(crate::debug_trace::TAG_TIMER_STOPPED, 0, 0, 0);
             return;
         };
         match timerlk.set_deadline(next_event.deadline) {

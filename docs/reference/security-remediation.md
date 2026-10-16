@@ -887,3 +887,17 @@ abandonment. Callback/waiter notification remains under the queue; outer
 scheduler/producer guards, IRQ execution and unpublished preparation are still
 open. No finding disposition, physical proof, recovery custody, readiness/replay
 or historical attribution changes.
+
+The [timer callback-delivery follow-up](../reports/audits/2026-10-16-timer-callback-delivery.md)
+continues R7-1/2 and C16/G1/G4/G7. One cutoff captures the already-due prefix;
+one complete non-Send/non-Sync owner retains selected and purged original
+payloads through queue unlock. Callback/waiter delivery, temporary observer
+destruction and disposal then run on the captured LP with IRQs masked. The
+existing queue's inline claim fences nested drains; reentrant enqueue waits for
+the next pass, selected cancellation rechecks shared state, and explicit
+handback reconciles the current comparator. Fallback retains fields and claim.
+Controls cover 64 ordered selections, cancellation, nested drains, quantum ties,
+final observer destruction and private guarded retention. IRQ execution, outer
+guards, unpublished preparation, final handles and aggregate pressure remain
+open. No finding disposition, physical proof, replay/custody or historical
+attribution changes.

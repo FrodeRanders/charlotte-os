@@ -127,13 +127,14 @@ fn expiry_and_keyed_events() {
         rejected = private.ensure_event(duplicate);
         assert_eq!(rejected.front().unwrap().key, Some(TimerEventKey::SchedulerQuantum));
         assert_eq!(private.events.front().unwrap().deadline, 0);
-        expired = private.process_events();
+        expired = private.prepare_delivery().unwrap();
         assert_eq!(private.get_next_deadline(), Some(Timestamp::MAX));
-        assert_eq!(hits.load(Ordering::Relaxed), 2);
+        assert_eq!(hits.load(Ordering::Relaxed), 0);
         assert_eq!(sponsor.used(), 2);
     }
     rejected.finish_with(check_disposal);
-    expired.finish_with(check_disposal);
+    expired.deliver_with(|| private.complete_delivery());
+    assert_eq!(hits.load(Ordering::Relaxed), 2);
     assert_eq!(sponsor.used(), 2);
     drop(a);
     assert_eq!(sponsor.used(), 1);

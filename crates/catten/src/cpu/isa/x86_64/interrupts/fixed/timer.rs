@@ -1,9 +1,6 @@
-use crate::{
-    cpu::isa::{
-        interface::interrupts::LocalIntCtlrIfce,
-        interrupts::x2apic::X2Apic,
-    },
-    timers::TIMER_QUEUES,
+use crate::cpu::isa::{
+    interface::interrupts::LocalIntCtlrIfce,
+    interrupts::x2apic::X2Apic,
 };
 
 unsafe extern "custom" {
@@ -18,9 +15,5 @@ pub extern "C" fn signal_eoi() {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn process_events() {
-    if let Ok(mut timer_queue) = TIMER_QUEUES.try_get_mut() {
-        let retired = timer_queue.process_events();
-        drop(timer_queue);
-        retired.finish();
-    }
+    let _ = crate::timers::try_process_local_events();
 }

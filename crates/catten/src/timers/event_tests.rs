@@ -155,6 +155,7 @@ pub(crate) fn test_admission() {
     // Deliberate disposal abandonment retains one event. Run it after this
     // fixture's zero-baseline full-pool reservations; never reset that charge.
     super::disposal_tests::run();
+    super::delivery::test_delivery();
     crate::logln!(
         "[timer events] SUCCESS: scheduler/domain/node admission, shared reserve, prepared-node \
          rollback, sorted/iterative reclamation, inline quantum, retained cancellation backing \

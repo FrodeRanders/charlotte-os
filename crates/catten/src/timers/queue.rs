@@ -68,6 +68,20 @@ pub(super) struct Events {
 pub(crate) struct RetiredEvents(Events);
 
 impl RetiredEvents {
+    pub(super) fn reverse_nodes(&mut self) {
+        let mut head = None;
+        while let Some(mut node) = self.0.head.take() {
+            self.0.head = node.next.take();
+            node.next = head.take();
+            head = Some(node);
+        }
+        self.0.head = head;
+    }
+
+    pub(super) fn pop_front(&mut self) -> Option<Self> {
+        self.0.pop_front()
+    }
+
     pub(super) fn push_node(&mut self, mut node: OwnedNode) {
         assert!(node.next.is_none());
         node.next = self.0.head.take();

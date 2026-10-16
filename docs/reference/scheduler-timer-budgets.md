@@ -29,7 +29,7 @@ future charges only; an existing ordinary charge remains ordinary until release.
 Outstanding events retain their original account after teardown and ASID reuse.
 Dropping an old event cannot credit a replacement generation.
 
-One reservation follows an event while prepared, queued and notifying callbacks,
+One reservation follows an event while prepared, queued, selected and notifying callbacks,
 and any cancellation backing retained after event destruction. Event and node
 owners share the charged allocator's private holder; no extra event counts are
 reserved. The node's outside owner keeps admission until its Box is freed.
@@ -66,19 +66,39 @@ remote queue or re-enters a borrowed local queue.
 Filtering, purging, expiry and explicit removal now return complete retirement
 owners. Keyed ensure/removal, anonymous enqueue, eager cancellation, idle
 processing and both architecture IRQ adapters release their local queue borrow
-before explicit finish. Comparator/diagnostic updates and notification timing
-stay serialized; IRQ state is preserved. Backing admission may outlive logical
+before explicit finish. Comparator/diagnostic updates stay serialized; IRQ
+state is preserved. Backing admission may outlive logical
 removal through the complete queue transaction, final cancellation references
 and weak-only allocation backing. Receipt release creates no new physical,
 root-quiescence or replay proof. See the
 [queue-disposal follow-up](../reports/audits/2026-10-16-timer-queue-disposal.md).
 
-This qualifies the local queue handback. `TimerEvent::signal` still invokes
-callbacks and waiter notifications under the queue borrow, including their
-temporary-reference/list-entry destruction. Explicit finish can still run in
-IRQ context or beneath an enclosing scheduler/producer guard. Those contexts,
-unpublished preparation destructors and arbitrary callback work remain open;
-no guard-free deferred transport or scheduled disposal worker is added here.
+The [callback-delivery follow-up](../reports/audits/2026-10-16-timer-callback-delivery.md)
+now captures the already-due prefix against one monotonic cutoff under the
+queue, preserving anonymous FIFO and quantum-first equal-deadline ordering.
+Its complete `PendingDelivery` retains selected and purged owners, releases
+the borrow, and then invokes each event's callback and waiter notifications
+on the captured LP with IRQs masked. Temporary observer/list-entry destruction
+and event disposal leave the queue too. No extra allocation, admission or
+registry is used. The owner is neither Send nor Sync; runtime checks also
+reject callback-continuation migration or loss of the caller's mask.
+
+One inline claim in the existing queue fences nested drains until the current
+prefix finishes. Callbacks may enqueue or cancel through the queue API; new
+events and deadlines that become due during delivery belong to the next pass.
+The comparator is reconciled before notification and again against current
+queue state at handback. Each event rechecks its shared cancellation flag just
+before starting signal; selected queue absence does not prove completion.
+`cancel_event` still returns only actual queue removal, so false also covers
+selected/unpublished work. Cancellation does not undo a signal already started.
+Fired counters describe expiry selection, not confirmed notification.
+
+Abandonment retains the complete selected/purged owner and leaves its claim
+fenced, without cleanup or recovery authority. Explicit callback delivery and
+disposal can still execute in IRQ context; unrelated outer caller/producer
+guards, unpublished preparation, final handles and arbitrary blocking callback
+work remain unqualified. No scheduled disposal worker or physical/root proof
+is added. This is bounded prefix processing, not a throughput/fairness guarantee.
 
 Eager removal borrows the handle's retained cancellation-state `Arc` and
 compares exact allocation identity with the queued event's state. The private
@@ -122,7 +142,9 @@ guards and the mask are released before yield.
 Timed callbacks capture the executing thread's generation before parking;
 source registration confirms that same live generation. Prepared nodes hold no
 source/queue guard. Enqueue occurs only after releasing completion registries.
-Callbacks still execute under the LP queue borrow and must not re-enter it.
+Callbacks execute after the LP queue borrow leaves. They must remain short and
+nonblocking, on the original LP with IRQ policy intact; nested queue processing
+defers to the current prefix rather than recursively invoking notifications.
 
 Detached completion retirement now carries the complete timer-bearing record
 past the completion registry before disposal, then notifies only its captured
@@ -175,6 +197,17 @@ and source until guest shutdown; later independent waiter cancellation releases
 only its own entry. This negative control runs after the fixture's full-pool
 reservation checks and never resets node counters. It does not qualify every
 production outer caller or prove cross-LP cancellation progress.
+
+Callback controls select 64 real due nodes with heap and queue held, then check
+ordered post-queue callbacks and waiter delivery. One selected event is cancelled
+before its signal check; another queued future event is removed reentrantly.
+Immediate callback enqueue remains pending across a nested drain and runs on
+the next pass. Private comparator fixtures check quantum-first ties and stable
+anonymous FIFO. Final strong observer destruction for both callback and waiter
+paths reenters the queue and checks heap availability. A guarded private claim
+abandons one selected plus one purged event, retaining two original event
+charges and source allocations; independent waiter cancellation refunds no
+event backing. No real LP claim or live sponsor is abandoned in that control.
 
 These counts bound retained event/node/cancellation backing quantities, not
 the entire kernel heap or allocator overhead. Queue diagnostics count actual

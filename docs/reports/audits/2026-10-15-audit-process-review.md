@@ -267,3 +267,13 @@ outer scheduler/producer guards, IRQ disposal and unpublished preparation
 remain separately qualified. The private negative control retains one event
 without resetting its counter. Finding counts and historical failure causes
 are unchanged.
+
+The [timer callback-delivery batch](2026-10-16-timer-callback-delivery.md) moves
+the next local boundary beyond the queue borrow: a captured due prefix owns
+callback/waiter delivery, temporary observer destruction and disposal on its
+original masked LP. An inline claim fences recursion, new enqueue waits for
+the next pass, and cancellation still checks the exact retained state before
+signal. Original charges and abandoned selected/purged owners remain retained.
+IRQ execution, outer caller/producer guards, unpublished preparation, final
+handles and integrated pressure are still separate work. Finding counts and
+historical failure causes are unchanged.

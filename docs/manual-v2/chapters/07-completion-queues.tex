@@ -274,9 +274,23 @@ or destruction under the local queue borrow. Duplicate/removed keyed events
 move into its one inline slot. Callers release the queue before explicit,
 iterative disposal; abandoned receipts or queue storage retain all remaining
 nodes, sources, callback references and original charges. This supplies no
-physical completion, root-quiescence or replay proof. Callback invocation and
-waiter notification still occur under the queue borrow; outer scheduler guards,
-IRQ context and unpublished preparation destructors remain separate work.
+physical completion, root-quiescence or replay proof.
+
+Processing captures its already-due prefix against one monotonic cutoff,
+preserving anonymous FIFO and quantum-first ties. A complete local delivery
+owner retains selected and purged payloads after queue unlock; callbacks,
+waiter notifications, temporary observer destruction and payload disposal then
+run on the original LP with IRQs masked. One inline queue claim prevents nested
+drains. Callback enqueue and newly due deadlines wait for the next pass;
+comparator reconciliation occurs before delivery and against current state at
+handback. Shared cancellation is rechecked before each signal starts; selected
+queue absence and a false queue-removal result are not completion or replay
+permission. Fired diagnostics describe expiry selection, not notification proof.
+Abandonment retains every field and leaves the claim fenced. The delivery owner
+cannot be sent/shared across LPs; runtime checks also enforce LP and IRQ policy.
+No allocation, extra reservation or new registry is introduced. IRQ execution,
+unrelated outer guards, unpublished preparations, final handles and arbitrary
+blocking callbacks remain separate qualification work.
 
 Backlog-to-ring publication retains delivered detached-record charges in a
 fixed two-class owning batch until the completion registry is unlocked.
