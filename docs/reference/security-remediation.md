@@ -901,3 +901,20 @@ final observer destruction and private guarded retention. IRQ execution, outer
 guards, unpublished preparation, final handles and aggregate pressure remain
 open. No finding disposition, physical proof, replay/custody or historical
 attribution changes.
+
+
+The [unpublished timer ownership follow-up](../reports/audits/2026-10-16-timer-unpublished-ownership.md)
+continues R7-1/2 and C16/G1/G4/G7. Completed private nodes retain every field and
+original admission on abandonment. Enqueue or explicit unused disposal consumes
+that owner once; scheduler early returns and both completion submission finish
+paths dispose unused nodes after local guards. Sleep prepares before its local
+publication mask while preserving outer masks and the atomic Blocked/enqueue
+transition. Raw events/partial construction, final cancellation handles, waiter
+preparation and outer IRQ/guard contexts remain open. No finding disposition,
+physical proof, replay/custody or historical attribution changes.
+
+The first unpublished-node ARM/Intel samples detected an introduced timed-wait
+error-arm ordering bug: a match-scrutinee scheduler read guard survived local
+mask release and unused disposal. Binding registration before matching releases
+that guard first. Both panic samples and the correction are preserved in the
+linked batch report; this does not attribute earlier historical incidents.

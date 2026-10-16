@@ -268,6 +268,9 @@ impl Preparing {
         // An active reservation revokes only its captured hidden entry. The
         // complete payload still belongs to resources until guard-free exit.
         drop(resources.reservation.take());
+        if let Some(event) = resources.event.take() {
+            event.cancel_unpublished();
+        }
         drop(resources);
     }
 }

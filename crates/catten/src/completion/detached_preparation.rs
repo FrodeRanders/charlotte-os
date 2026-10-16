@@ -223,6 +223,9 @@ impl Preparing {
         let mut resources = ManuallyDrop::into_inner(self.0);
         // Empty prepared storage is freed before its original record charge.
         drop(resources.entry.take());
+        if let Some(event) = resources.event.take() {
+            event.cancel_unpublished();
+        }
         drop(resources);
     }
 }

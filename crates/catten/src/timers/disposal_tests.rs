@@ -88,7 +88,7 @@ fn purge_and_rejected_enqueue() {
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
         let mut queue = TIMER_QUEUES.try_get_mut().unwrap();
-        retired = queue.add_prepared(second.node);
+        retired = queue.add_prepared(second.into_node());
         assert_eq!(sponsor.used(), 2);
         assert_eq!(waits.used(), 2);
     }
@@ -111,8 +111,8 @@ fn expiry_and_keyed_events() {
     let (due, a) = prepared(&sponsor, 0);
     let (future, b) = prepared(&sponsor, Timestamp::MAX);
     due.event().register_observer(Arc::downgrade(&observer));
-    private.add_prepared(due.node).finish();
-    private.add_prepared(future.node).finish();
+    private.add_prepared(due.into_node()).finish();
+    private.add_prepared(future.into_node()).finish();
     let mut quantum =
         TimerEvent::keyed(ExtDuration::from_millis(1), TimerEventKey::SchedulerQuantum);
     quantum.deadline = 0;

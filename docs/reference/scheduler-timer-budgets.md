@@ -96,7 +96,7 @@ Fired counters describe expiry selection, not confirmed notification.
 Abandonment retains the complete selected/purged owner and leaves its claim
 fenced, without cleanup or recovery authority. Explicit callback delivery and
 disposal can still execute in IRQ context; unrelated outer caller/producer
-guards, unpublished preparation, final handles and arbitrary blocking callback
+guards, raw event/partial preparation, final handles and arbitrary blocking callback
 work remain unqualified. No scheduled disposal worker or physical/root proof
 is added. This is bounded prefix processing, not a throughput/fairness guarantee.
 
@@ -115,13 +115,16 @@ and leaves public operation IDs separate. See the
 
 Watchdog preparation reserves event admission, allocates cancellation state,
 the callback owner and the queue node **before** calling the scheduler's park
-operation. Waiter admission is a separate subsequent check. All prepared owners
-drop on failure. No event allocation or queue growth remains after parking.
+operation. Waiter admission is a separate subsequent check. Unused completed
+nodes are explicitly consumed after local publication/registry guards leave;
+their abandonment fallback retains complete payloads. No event allocation or
+queue growth remains after parking.
 Local IRQ masking still spans park, enqueue and the lost-wake recheck; all
 guards and the mask are released before yield.
 
-- Sleep falls back to cooperative runnable waiting until a rebased counter
-  deadline on event, node or waiter rejection. It preserves its void ABI and
+- Sleep prepares its event admission and node before its local park-publication
+  mask, retaining any enclosing caller mask. It falls back to cooperative runnable
+  waiting until a rebased counter deadline on event, node or waiter rejection. It preserves its void ABI and
   at-least-duration contract without publishing a wake-less Blocked state.
 - `block_until` returns its condition on failed preparation/admission.
 - Checked timed CQ wait reports admission rejection separately from readiness
@@ -131,13 +134,29 @@ guards and the mask are released before yield.
   the waiter reference. Poll and immediate-terminal fast paths are unchanged.
 - Capability and detached completion-timer submissions prepare their node and
   fallibly allocate their producer observer before callback registration,
-  record/authority publication and enqueue. Observer allocation rejection drops
-  the prepared event/node/cancellation state, record and any hidden capability
-  reservation. Failure returns `SubmitError::WouldBlock`, with the existing
+  record/authority publication and enqueue. Observer allocation rejection
+  explicitly disposes the prepared event/node and releases cancellation state,
+  record and any hidden capability reservation. Failure returns `SubmitError::WouldBlock`, with the existing
   submission-failure syscall representation. All four completion maps now
   prepare admitted nodes before local publication; their aggregate admission
   and enclosing contexts remain separate. See the
   [global metadata follow-up](../reports/audits/2026-10-16-completion-namespace-metadata.md).
+
+`PreparedEvent` now retains its complete private node behind an inert owner.
+Ordinary unused preparation consumes `cancel_unpublished(self)`; enqueue
+consumes that same owner into its original queue node. The explicit disposal
+path shares the existing complete-event retirement machinery, introduces no
+allocation/charge and never signals. Final cancellation strong/weak references
+still retain original admission after node disposal. Ordinary scheduler observer
+failure, elapsed preparation budget and waiter rejection dispose unused nodes
+explicitly; local setup masks leave before that disposal. Capability and detached
+submission owners likewise consume unused nodes in their existing post-registry
+finish paths. Abandonment preserves the node, cancellation backing, source,
+callback reference and admission without allocator, refund or source work.
+This is terminal retention, not queue cancellation, Pending, recovery custody
+or replay authority. Raw event/partial-construction destruction, final handles,
+waiter preparation and enclosing masks/guards remain separate contexts. See the
+[unpublished ownership follow-up](../reports/audits/2026-10-16-timer-unpublished-ownership.md).
 
 Timed callbacks capture the executing thread's generation before parking;
 source registration confirms that same live generation. Prepared nodes hold no
@@ -208,6 +227,13 @@ paths reenters the queue and checks heap availability. A guarded private claim
 abandons one selected plus one purged event, retaining two original event
 charges and source allocations; independent waiter cancellation refunds no
 event backing. No real LP claim or live sponsor is abandoned in that control.
+
+Unpublished-node controls explicitly dispose 64 complete watchdog preparations
+with live callback/waiter references, preserve weak-only original charges, and
+exercise noncancellable sleep-node disposal beneath an existing caller mask.
+Guarded completed-owner abandonment retains one event charge, its callback
+reference and source allocation until shutdown; independent waiter cancellation
+releases only its entry. All ordinary paths restore their baseline separately.
 
 These counts bound retained event/node/cancellation backing quantities, not
 the entire kernel heap or allocator overhead. Queue diagnostics count actual

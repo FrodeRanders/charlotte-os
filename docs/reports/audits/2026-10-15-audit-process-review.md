@@ -277,3 +277,19 @@ signal. Original charges and abandoned selected/purged owners remain retained.
 IRQ execution, outer caller/producer guards, unpublished preparation, final
 handles and integrated pressure are still separate work. Finding counts and
 historical failure causes are unchanged.
+
+
+The [unpublished timer ownership batch](2026-10-16-timer-unpublished-ownership.md)
+makes completed private-node abandonment inert and ordinary unused disposal
+explicit. Scheduler rejection and completion submission owners consume unused
+nodes after local guards; sleep prepares storage before its own publication
+mask. Controls distinguish actual disposal, weak-only original admission and
+guarded complete-owner retention. Raw/partial construction, final handles,
+waiter preparation and enclosing contexts remain separate work. Finding counts
+and historical failure causes are unchanged.
+
+The first unpublished-node ARM/Intel samples detected an introduced timed-wait
+error-arm ordering bug: a match-scrutinee scheduler read guard survived local
+mask release and unused disposal. Binding registration before matching releases
+that guard first. Both panic samples and the correction are preserved in the
+linked batch report; this does not attribute earlier historical incidents.

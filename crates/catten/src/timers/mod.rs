@@ -17,6 +17,7 @@ mod delivery;
 mod disposal_tests;
 use delivery::PendingDelivery;
 pub(crate) mod event_tests;
+mod preparation_tests;
 mod queue;
 pub(crate) use queue::RetiredEvents;
 pub(crate) mod waiter_tests;
@@ -28,11 +29,14 @@ use alloc::{
         Weak,
     },
 };
-use core::sync::atomic::{
-    AtomicBool,
-    AtomicU32,
-    AtomicU64,
-    Ordering,
+use core::{
+    mem::ManuallyDrop,
+    sync::atomic::{
+        AtomicBool,
+        AtomicU32,
+        AtomicU64,
+        Ordering,
+    },
 };
 
 use spin::LazyLock;
@@ -132,8 +136,12 @@ pub type Timestamp = <LpTimer as LpTimerIfce>::Timestamp;
 /// holds no queue guard or interrupt mask; callers mask park + publication.
 /// Enqueue additionally masks its local comparator transaction and updates
 /// shared cancellation ownership to the actual publishing LP.
+/// Abandonment retains the complete node/source/admission without cleanup.
+/// Ordinary unused preparation must be consumed by `cancel_unpublished` after
+/// local publication/registry guards leave; outer caller contexts still apply.
+#[must_use = "enqueue or explicitly cancel unused timer preparation"]
 pub(crate) struct PreparedEvent {
-    node: queue::OwnedNode,
+    node: ManuallyDrop<queue::OwnedNode>,
 }
 
 impl PreparedEvent {
@@ -149,7 +157,7 @@ impl PreparedEvent {
         let admission = event._charge.as_ref().unwrap().clone();
         let node = queue::OwnedNode::new(allocate(queue::Node::new(event))?, admission);
         Ok(Self {
-            node,
+            node: ManuallyDrop::new(node),
         })
     }
 
@@ -159,6 +167,22 @@ impl PreparedEvent {
 
     pub(crate) fn event_mut(&mut self) -> &mut TimerEvent {
         &mut self.node.event
+    }
+
+    fn into_node(self) -> queue::OwnedNode {
+        ManuallyDrop::into_inner(self.node)
+    }
+
+    /// Dispose only this still-private node. This grants no queue cancellation,
+    /// operation completion, physical release or retry authority.
+    pub(crate) fn cancel_unpublished(self) {
+        self.cancel_unpublished_with(|_| {});
+    }
+
+    fn cancel_unpublished_with(self, before_dispose: impl FnMut(&TimerEvent)) {
+        let mut retired = RetiredEvents::default();
+        retired.push_node(self.into_node());
+        retired.finish_with(before_dispose);
     }
 
     pub(crate) fn enqueue(self) {
@@ -171,7 +195,7 @@ impl PreparedEvent {
         let retired = {
             let mut queue =
                 TIMER_QUEUES.try_get_mut().expect("local timer queue is already borrowed");
-            queue.add_prepared(self.node)
+            queue.add_prepared(self.into_node())
         };
         retired.finish();
     }

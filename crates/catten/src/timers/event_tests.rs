@@ -52,7 +52,7 @@ pub(crate) fn test_admission() {
     for deadline in (1..=budget::MAX_DOMAIN_TIMERS).rev() {
         let mut event = TimerEvent::from(deadline as u64);
         event._charge = Some(super::EventAdmission::try_new(sponsor.reserve().unwrap()).unwrap());
-        events.insert_prepared(PreparedEvent::new(event).unwrap().node);
+        events.insert_prepared(PreparedEvent::new(event).unwrap().into_node());
     }
     assert_eq!(sponsor.used(), 1024);
     assert!(sponsor.reserve().is_err());
@@ -91,7 +91,7 @@ pub(crate) fn test_admission() {
     let prepared = PreparedEvent::new(event).unwrap();
     assert_eq!(get_int_state(), entry_irq);
     assert_eq!(sponsor.used(), 1);
-    drop(prepared);
+    prepared.cancel_unpublished();
     assert_eq!(sponsor.used(), 1, "retained handle outlives discarded node");
     assert_eq!(get_int_state(), entry_irq);
     drop(handle);
@@ -156,6 +156,7 @@ pub(crate) fn test_admission() {
     // fixture's zero-baseline full-pool reservations; never reset that charge.
     super::disposal_tests::run();
     super::delivery::test_delivery();
+    super::preparation_tests::run();
     crate::logln!(
         "[timer events] SUCCESS: scheduler/domain/node admission, shared reserve, prepared-node \
          rollback, sorted/iterative reclamation, inline quantum, retained cancellation backing \
@@ -174,7 +175,7 @@ fn test_retained_cancellation_admission() {
     let weak = Arc::downgrade(&handle.state);
     let aliases: Vec<_> = (0..128).map(|_| weak.clone()).collect();
     let mut events = Events::default();
-    events.insert_prepared(PreparedEvent::new(event).unwrap().node);
+    events.insert_prepared(PreparedEvent::new(event).unwrap().into_node());
     // Ordinary event expiry removes queue backing but not an outstanding
     // cancellation handle. No hardware deadline/completion is manufactured.
     events.pop_front().unwrap().finish();

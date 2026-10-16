@@ -221,7 +221,7 @@ fn quantum_tie_order() {
             log.lock().push(id);
         });
         event.event().register_observer(Arc::downgrade(&observer));
-        private.add_prepared(event.node).finish();
+        private.add_prepared(event.into_node()).finish();
         handles.push(handle);
         observers.push(observer);
     }
@@ -265,8 +265,8 @@ fn guarded_abandonment() {
     let b_token = cancelled.event().try_register_waiter(Arc::downgrade(&observer), &waits).unwrap();
     let mask = LocalInterruptMask::new();
     let mut private = TimerQueue::default();
-    private.add_prepared(due.node).finish();
-    private.add_prepared(cancelled.node).finish();
+    private.add_prepared(due.into_node()).finish();
+    private.add_prepared(cancelled.into_node()).finish();
     b.state.cancelled.store(true, Ordering::Release);
     drop((a, b));
     {

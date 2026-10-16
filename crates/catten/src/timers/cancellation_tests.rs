@@ -53,7 +53,7 @@ fn stale_unpublished_and_weak_retention() {
     let successor = budget::SchedulerSponsor::new(false);
     let (prepared, stale) = prepare(&predecessor, Timestamp::MAX);
     let weak = Arc::downgrade(&stale.state);
-    drop(prepared);
+    prepared.cancel_unpublished();
     predecessor.retire();
     assert_eq!(predecessor.used(), 1);
     assert!(predecessor.reserve().is_err());

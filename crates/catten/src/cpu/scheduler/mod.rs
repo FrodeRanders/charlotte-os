@@ -381,16 +381,16 @@ pub(crate) fn sleep_with_event(duration: ExtDuration, timer_event: TimerEvent) {
         // with no event capable of waking it. Once the event is in the local
         // queue it is safe to restore IRQs before yielding: if it fires first,
         // the scheduler's wake-before-save handling re-admits this thread.
-        let setup = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();
         let prepared = crate::timers::thread_timer_context(tid)
             .ok_or(())
             .and_then(|(_, sponsor)| timer_event.prepare_sleep(&sponsor));
         let Ok(mut prepared) = prepared else {
-            drop(setup);
             sleep_runnable(duration);
             return;
         };
-        deferred::drain();
+        // Fallible node/source preparation leaves the local publication mask.
+        // Drain precursor delivery before atomically publishing Blocked + timer.
+        let setup = prepare_park();
         let admitted = SYSTEM_SCHEDULER
             .read()
             .block_thread_with_constraint(
@@ -405,8 +405,8 @@ pub(crate) fn sleep_with_event(duration: ExtDuration, timer_event: TimerEvent) {
         prepared.event_mut().reset_after(duration);
         if !admitted {
             // No Blocked state, retained source or queued timer on rejection.
-            drop(prepared);
             drop(setup);
+            prepared.cancel_unpublished();
             sleep_runnable(duration);
             return;
         }
@@ -532,6 +532,7 @@ pub(crate) fn try_block_until_with_constraint(
             tid,
             generation: expected_generation,
         }) else {
+            timer_event.cancel_unpublished();
             return condition()
                 .then_some(true)
                 .ok_or(system_scheduler::Error::WaitRegistrationFailed);
@@ -543,6 +544,7 @@ pub(crate) fn try_block_until_with_constraint(
         // deadline. Unused preparation is disposed before taking this mask.
         let remaining = deadline.saturating_sub(monotonic_millis());
         if remaining == 0 {
+            timer_event.cancel_unpublished();
             return Ok(condition());
         }
         // Flush precursor delivery before Blocked publication; callbacks may
@@ -551,15 +553,20 @@ pub(crate) fn try_block_until_with_constraint(
         let remaining = deadline.saturating_sub(monotonic_millis());
         if remaining == 0 {
             drop(setup);
+            timer_event.cancel_unpublished();
             return Ok(condition());
         }
         timer_event.event_mut().reset_after(ExtDuration::from_millis(remaining as u128));
-        let generation = match SYSTEM_SCHEDULER
+        // End the IRQ-tracking read guard before an Err arm restores setup or
+        // disposes unused storage; match scrutinee temporaries live into arms.
+        let registration = SYSTEM_SCHEDULER
             .read()
-            .block_thread_with_constraint_generation(tid, observable, constraint)
-        {
+            .block_thread_with_constraint_generation(tid, observable, constraint);
+        let generation = match registration {
             Ok(generation) => generation,
             Err(_) => {
+                drop(setup);
+                timer_event.cancel_unpublished();
                 return condition()
                     .then_some(true)
                     .ok_or(system_scheduler::Error::WaitRegistrationFailed);
