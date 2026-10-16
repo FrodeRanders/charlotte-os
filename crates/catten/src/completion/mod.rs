@@ -40,6 +40,8 @@ pub(crate) mod cq_budget;
 mod detached_preparation;
 mod detached_tests;
 pub(crate) mod exit_tests;
+mod operation_id_tests;
+mod operation_ids;
 mod queue_preparation;
 mod terminal_tests;
 pub(crate) mod timer_tests;
@@ -100,13 +102,12 @@ pub(crate) type CompletionWeak = Weak<Completion, ChargedAllocator<budget::Charg
 /// Operation ids are independent of capability handles and also identify
 /// capability-free submissions. They remain the identity recorded in
 /// completion queues even when no first-class capability was requested.
+/// Identities in `1..u64::MAX` are never reused within a boot; `u64::MAX` stays
+/// reserved for syscall submission failure. Exhaustion permanently
+/// rejects new submissions, including after namespace teardown/replacement.
 pub type OperationId = u64;
 
-static NEXT_OPERATION_ID: core::sync::atomic::AtomicU64 = core::sync::atomic::AtomicU64::new(1);
-
-fn alloc_operation_id() -> OperationId {
-    NEXT_OPERATION_ID.fetch_add(1, core::sync::atomic::Ordering::Relaxed)
-}
+static OPERATION_IDS: operation_ids::OperationIds = operation_ids::OperationIds::new(0);
 
 /// The operation an async syscall performs. Only enough variants to exercise the
 /// buffer-ownership contract are modelled in this prototype.
@@ -200,7 +201,8 @@ pub enum OpStateKind {
 /// Reason a [`submit`] was refused.
 #[derive(Debug, PartialEq, Eq)]
 pub enum SubmitError {
-    /// The capability table is full — first-class, non-fatal backpressure.
+    /// Submission/resource admission failed, including permanent operation-ID
+    /// exhaustion. This is not evidence that retrying can make progress.
     WouldBlock,
     /// No capability table is open for this address space.
     UnknownAddressSpace,
@@ -338,6 +340,7 @@ pub struct Completion {
 
 impl Completion {
     fn new(
+        operation: OperationId,
         buffer: Option<Vec<u8>>,
         record_charge: budget::Charge,
     ) -> Result<CompletionRef, SubmitError> {
@@ -351,7 +354,7 @@ impl Completion {
         .map_err(|_| SubmitError::WouldBlock)?;
         allocator
             .try_arc(Self {
-                operation: alloc_operation_id(),
+                operation,
                 inner: Mutex::new(CompletionInner {
                     buffer,
                     state: OpState::InFlight,
@@ -983,13 +986,14 @@ pub fn submit(
     _op: OpCode,
     buffer: Option<Vec<u8>>,
 ) -> Result<CompletionCap, SubmitError> {
-    submit_captured(asid, buffer, false).map(|(cap, _, _)| cap)
+    submit_captured(asid, buffer, false, &OPERATION_IDS).map(|(cap, _, _)| cap)
 }
 
 fn submit_captured(
     asid: AddressSpaceId,
     buffer: Option<Vec<u8>>,
     event_watch: bool,
+    ids: &operation_ids::OperationIds,
 ) -> Result<(CompletionCap, CompletionRef, Option<watch_budget::Charge>), SubmitError> {
     let platform_identity = crate::memory::budget::platform_identity(asid);
     let mut registry = COMPLETIONS.write();
@@ -998,6 +1002,7 @@ fn submit_captured(
     if as_completions.live >= as_completions.capacity {
         return Err(SubmitError::WouldBlock);
     }
+    let operation = ids.allocate().ok_or(SubmitError::WouldBlock)?;
     let record_charge = reserve_record(asid, as_completions, platform_identity)?;
     let watch_charge = if event_watch {
         let platform = asid == crate::memory::KERNEL_ASID
@@ -1015,7 +1020,7 @@ fn submit_captured(
         as_completions.address_space,
     )
     .map_err(|_| SubmitError::WouldBlock)?;
-    let completion = Completion::new(buffer, record_charge)?;
+    let completion = Completion::new(operation, buffer, record_charge)?;
     let cap = reservation.publish().map_err(|_| SubmitError::WouldBlock)?;
     as_completions.table.insert(cap, completion.clone());
     as_completions.live += 1;
@@ -1034,7 +1039,7 @@ pub(crate) struct EventSubmission {
 
 impl EventSubmission {
     pub(crate) fn new(asid: AddressSpaceId) -> Result<Self, SubmitError> {
-        let (cap, completion, charge) = submit_captured(asid, None, true)?;
+        let (cap, completion, charge) = submit_captured(asid, None, true, &OPERATION_IDS)?;
         Ok(Self {
             asid,
             cap,
@@ -1160,12 +1165,13 @@ pub(crate) fn abort_submission(asid: AddressSpaceId, cap: CompletionCap) -> Resu
 /// when the deadline expires, so a user-space service waiting on `cq_wait_checked` is
 /// released exactly at the deadline.
 pub fn submit_timer(asid: AddressSpaceId, timeout_ms: u64) -> Result<CompletionCap, SubmitError> {
-    submit_timer_with_observer(asid, timeout_ms, Arc::try_new)
+    submit_timer_with_observer(asid, timeout_ms, &OPERATION_IDS, Arc::try_new)
 }
 
 fn submit_timer_with_observer(
     asid: AddressSpaceId,
     timeout_ms: u64,
+    ids: &operation_ids::OperationIds,
     allocate: impl FnOnce(
         CompletionTimerObserver,
     ) -> Result<Arc<CompletionTimerObserver>, core::alloc::AllocError>,
@@ -1178,6 +1184,7 @@ fn submit_timer_with_observer(
         if entries.live >= entries.capacity {
             return Err(SubmitError::WouldBlock);
         }
+        let operation = ids.allocate().ok_or(SubmitError::WouldBlock)?;
         let record_charge = reserve_record(asid, entries, platform_identity)?;
         // Tie policy captured before the registry lock to this exact namespace;
         // teardown/reuse must not lend a predecessor's reserved-pool access.
@@ -1196,7 +1203,7 @@ fn submit_timer_with_observer(
             entries.address_space,
         )
         .map_err(|_| SubmitError::WouldBlock)?;
-        let completion = Completion::new(None, record_charge)?;
+        let completion = Completion::new(operation, None, record_charge)?;
         let cap = reservation.identity();
         // Allocate before publishing authority or registering the callback.
         // Rejection drops the prepared event, record and hidden reservation.
@@ -1480,7 +1487,7 @@ pub fn submit_detached(
     _op: OpCode,
     user_data: u64,
 ) -> Result<OperationId, SubmitError> {
-    detached_preparation::submit(asid, cq, user_data)
+    detached_preparation::submit(asid, cq, user_data, &OPERATION_IDS)
 }
 
 /// Submit a timer delivered exclusively through a completion queue.
@@ -1502,7 +1509,7 @@ fn submit_detached_timer_with_observer(
         DetachedTimerObserver,
     ) -> Result<Arc<DetachedTimerObserver>, core::alloc::AllocError>,
 ) -> Result<OperationId, SubmitError> {
-    detached_preparation::submit_timer(asid, cq, timeout_ms, user_data, allocate)
+    detached_preparation::submit_timer(asid, cq, timeout_ms, user_data, &OPERATION_IDS, allocate)
 }
 
 /// Completes a capability-free operation: posts `(user_data, result)` to the

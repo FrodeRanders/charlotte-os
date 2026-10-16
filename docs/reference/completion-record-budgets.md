@@ -84,6 +84,20 @@ See the [callback/source audit](../reports/audits/2026-10-15-completion-callback
 
 ## Admission, retirement and rollback
 
+Operation identities share one boot-lifetime checked counter across
+capability-backed operations, event watches and detached operations/timers.
+Only `1..u64::MAX` is issued: zero is excluded and `u64::MAX` remains the syscall
+submission-failure sentinel. Once the last usable identity is issued, admission
+permanently rejects with the existing `SubmitError::WouldBlock` / submission
+failure result. This rejection precedes record/watch/timer admission and
+capability reservation; it publishes no operation and enqueues no producer.
+Existing operations can still complete, cancel and close normally.
+
+IDs consumed by subsequently rejected preparation are never refunded. Namespace
+close/replacement and numeric ASID reuse do not reset the counter. The existing
+failure result does not promise that retrying can make progress. See the
+[operation-ID exhaustion controls](../reports/audits/2026-10-16-operation-id-exhaustion.md).
+
 Record reservation precedes publishing a capability or detached operation.
 Domain/node/ordinary reservations roll back on any later admission failure,
 including timer-event exhaustion. The existing `SubmitError::WouldBlock` and

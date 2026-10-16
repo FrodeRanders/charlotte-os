@@ -73,13 +73,18 @@ struct Preparing {
 }
 
 impl Preparing {
-    fn plain(target: Target, user_data: u64) -> Result<Self, SubmitError> {
+    fn plain(
+        target: Target,
+        user_data: u64,
+        ids: &operation_ids::OperationIds,
+    ) -> Result<Self, SubmitError> {
+        let operation = ids.allocate().ok_or(SubmitError::WouldBlock)?;
         let charge = budget::reserve(&target.records, target.platform)
             .map_err(|_| SubmitError::WouldBlock)?;
         let cq = target.cq;
         Ok(Self {
             target,
-            operation: alloc_operation_id(),
+            operation,
             record: Some(DetachedOp {
                 user_data,
                 cq,
@@ -96,23 +101,32 @@ impl Preparing {
         target: Target,
         timeout_ms: u64,
         user_data: u64,
+        ids: &operation_ids::OperationIds,
         allocate: impl FnOnce(
             DetachedTimerObserver,
         ) -> Result<Arc<DetachedTimerObserver>, core::alloc::AllocError>,
     ) -> Result<Self, SubmitError> {
-        Self::timer_with(target, timeout_ms, user_data, crate::timers::PreparedEvent::new, allocate)
+        Self::timer_with(
+            target,
+            timeout_ms,
+            user_data,
+            ids,
+            crate::timers::PreparedEvent::new,
+            allocate,
+        )
     }
 
     fn timer_with(
         target: Target,
         timeout_ms: u64,
         user_data: u64,
+        ids: &operation_ids::OperationIds,
         allocate_event: impl FnOnce(TimerEvent) -> Result<crate::timers::PreparedEvent, ()>,
         allocate: impl FnOnce(
             DetachedTimerObserver,
         ) -> Result<Arc<DetachedTimerObserver>, core::alloc::AllocError>,
     ) -> Result<Self, SubmitError> {
-        let mut preparing = Self::plain(target, user_data)?;
+        let mut preparing = Self::plain(target, user_data, ids)?;
         let charge =
             crate::timers::budget::reserve(&preparing.target.timers, preparing.target.platform)
                 .map_err(|_| SubmitError::WouldBlock)?;
@@ -172,8 +186,9 @@ pub(super) fn submit(
     asid: AddressSpaceId,
     cq: CqId,
     user_data: u64,
+    ids: &operation_ids::OperationIds,
 ) -> Result<OperationId, SubmitError> {
-    let mut preparing = Preparing::plain(Target::capture(asid, cq)?, user_data)?;
+    let mut preparing = Preparing::plain(Target::capture(asid, cq)?, user_data, ids)?;
     let operation = preparing.publish()?;
     preparing.enqueue();
     Ok(operation)
@@ -184,12 +199,13 @@ pub(super) fn submit_timer(
     cq: CqId,
     timeout_ms: u64,
     user_data: u64,
+    ids: &operation_ids::OperationIds,
     allocate: impl FnOnce(
         DetachedTimerObserver,
     ) -> Result<Arc<DetachedTimerObserver>, core::alloc::AllocError>,
 ) -> Result<OperationId, SubmitError> {
     let mut preparing =
-        Preparing::timer(Target::capture(asid, cq)?, timeout_ms, user_data, allocate)?;
+        Preparing::timer(Target::capture(asid, cq)?, timeout_ms, user_data, ids, allocate)?;
     let operation = preparing.publish()?;
     preparing.enqueue();
     Ok(operation)

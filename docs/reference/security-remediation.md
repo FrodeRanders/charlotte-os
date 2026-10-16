@@ -766,9 +766,11 @@ reconciliation, capability-backed preparation and outer caller/queue/IRQ
 contexts remain open. No finding changes disposition, physical proof or replay
 authority, and historical intermittent failures remain unattributed.
 
-The same source review records an additional R7/C16 boundary: the global
-completion operation-ID allocator still uses wrapping `AtomicU64::fetch_add`,
-despite its documented nonreuse intent. Full counter exhaustion is not exercised
-by the finite matrices. Checked exhaustion and its boundary control remain
-follow-up work; this does not attribute any historical panic or change the
-numbered SEC dispositions. See the detached preparation report above.
+That source review identified wrapping completion operation IDs as an
+additional R7/C16 boundary. The [checked-exhaustion follow-up](../reports/audits/2026-10-16-operation-id-exhaustion.md)
+now rejects permanently before new record/watch/timer or capability reservation,
+excluding both zero and the syscall failure sentinel. Failed preparation never
+refunds an identity; namespace replacement never resets the boot-lifetime
+counter. Isolated boundary controls preserve existing operations and original
+charges without changing the live counter. This closes that specific source gap,
+not SEC-07/18, wider metadata preparation or historical failure attribution.

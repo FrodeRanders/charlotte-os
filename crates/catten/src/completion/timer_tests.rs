@@ -61,7 +61,9 @@ pub(crate) fn test_observer_allocation_rollback() {
     let ring = unsafe { super::cq_ring_of(CLIENT, super::DEFAULT_CQ) }.unwrap();
     for _ in 0..64 {
         assert_eq!(
-            super::submit_timer_with_observer(CLIENT, u64::MAX, |_| Err(AllocError)),
+            super::submit_timer_with_observer(CLIENT, u64::MAX, &super::OPERATION_IDS, |_| Err(
+                AllocError
+            )),
             Err(SubmitError::WouldBlock)
         );
         assert_eq!(snapshot(), baseline);
@@ -87,7 +89,7 @@ pub(crate) fn test_observer_allocation_rollback() {
     // The dead record must stay charged until that reference is released.
     let mut retained = None;
     assert_eq!(
-        super::submit_timer_with_observer(CLIENT, u64::MAX, |observer| {
+        super::submit_timer_with_observer(CLIENT, u64::MAX, &super::OPERATION_IDS, |observer| {
             retained = Some(observer.completion.clone());
             Err(AllocError)
         }),

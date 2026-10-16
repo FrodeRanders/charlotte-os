@@ -194,8 +194,13 @@ submit(op: OpCode, args: OpArgs, buffers: BufferSet) -> Result<CompletionCap, Su
 - `buffers` transfers **ownership** of userspace buffers to the kernel for the
   operation's duration (see §5, the reclaim contract). This is the direct analog
   of sitas passing `Vec<u8>` into `read_at`.
-- `SubmitError::WouldBlock` is the backpressure signal (§6): the submission
-  queue / capability table is full.
+- `SubmitError::WouldBlock` reports admission rejection, including submission
+  queue/capability capacity and permanent exhaustion of boot-lifetime operation
+  IDs. IDs in `1..u64::MAX` are issued once; zero and the syscall failure
+  sentinel `u64::MAX` are excluded. Namespace replacement never resets the
+  counter, and failed preparation never refunds an ID. Exhaustion rejects
+  before resource reservation or publication and does not prevent existing
+  operations from completing. The result does not promise retry progress.
 
 `submit` is the kernel-side of sitas's `submit_* -> Reply<T>` and of
 `ShardedSubmitter::submit_with_handle_to`. The `CompletionCap` *is* the

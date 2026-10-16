@@ -232,6 +232,15 @@ This avoids capability-table pressure for high-rate operations (timer events,
 network packet completions) while preserving the capability model for operations
 that need first-class authority.
 
+Operation identities use one checked counter for the lifetime of a boot, shared
+by capability-backed and detached submissions. It issues values from one through
+\texttt{u64::MAX - 1}; zero and the syscall submission-failure sentinel
+\texttt{u64::MAX} are excluded. Exhaustion permanently rejects new submissions
+with the existing \texttt{WouldBlock}/submission-failure result before reserving
+record, watch, timer or capability resources. Existing operations remain usable.
+Failed preparation never refunds an identity, and namespace replacement never
+resets the counter. Admission failure therefore does not promise retry progress.
+
 \section{Completion-record admission}
 
 Capability-backed and detached operations share a namespace's configured

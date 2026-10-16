@@ -16,6 +16,7 @@ fn unlocked_preparation() {
             Target::capture(CLIENT, DEFAULT_CQ).unwrap(),
             u64::MAX,
             1,
+            &OPERATION_IDS,
             |event| {
                 {
                     let _registry = COMPLETIONS.write();
@@ -81,10 +82,16 @@ fn unlocked_preparation() {
 fn prepared_admission() {
     open_address_space_with_cq(CLIENT, 2, 4).unwrap();
     let records = record_admission(CLIENT).unwrap();
-    let timer =
-        Preparing::timer(Target::capture(CLIENT, DEFAULT_CQ).unwrap(), u64::MAX, 4, Arc::try_new)
-            .unwrap();
-    let plain = Preparing::plain(Target::capture(CLIENT, DEFAULT_CQ).unwrap(), 5).unwrap();
+    let timer = Preparing::timer(
+        Target::capture(CLIENT, DEFAULT_CQ).unwrap(),
+        u64::MAX,
+        4,
+        &OPERATION_IDS,
+        Arc::try_new,
+    )
+    .unwrap();
+    let plain =
+        Preparing::plain(Target::capture(CLIENT, DEFAULT_CQ).unwrap(), 5, &OPERATION_IDS).unwrap();
     assert_eq!(records.used(), 2);
     assert_eq!(timer_events_used(CLIENT), 1);
     assert_eq!(submit_detached_timer(CLIENT, DEFAULT_CQ, 0, 6), Err(SubmitError::WouldBlock));
@@ -109,10 +116,17 @@ fn rejected_publication() {
         open_address_space_with_cq(asid, 4, 4).unwrap();
         let records = record_admission(asid).unwrap();
         let timers = COMPLETIONS.read()[&asid].timer_budget.clone();
-        let mut timer =
-            Preparing::timer(Target::capture(asid, DEFAULT_CQ).unwrap(), u64::MAX, 7, Arc::try_new)
+        let mut timer = Preparing::timer(
+            Target::capture(asid, DEFAULT_CQ).unwrap(),
+            u64::MAX,
+            7,
+            &OPERATION_IDS,
+            Arc::try_new,
+        )
+        .unwrap();
+        let mut plain =
+            Preparing::plain(Target::capture(asid, DEFAULT_CQ).unwrap(), 8, &OPERATION_IDS)
                 .unwrap();
-        let mut plain = Preparing::plain(Target::capture(asid, DEFAULT_CQ).unwrap(), 8).unwrap();
         match mode {
             0 => open_address_space_with_cq(asid, 4, 4).unwrap(),
             1 => open_cq(asid, DEFAULT_CQ, 4).unwrap(),
@@ -160,8 +174,14 @@ fn close_before_enqueue() {
     open_address_space_with_cq(CLIENT, 4, 4).unwrap();
     let records = record_admission(CLIENT).unwrap();
     let timers = COMPLETIONS.read()[&CLIENT].timer_budget.clone();
-    let mut preparing =
-        Preparing::timer(Target::capture(CLIENT, DEFAULT_CQ).unwrap(), 0, 9, Arc::try_new).unwrap();
+    let mut preparing = Preparing::timer(
+        Target::capture(CLIENT, DEFAULT_CQ).unwrap(),
+        0,
+        9,
+        &OPERATION_IDS,
+        Arc::try_new,
+    )
+    .unwrap();
     let operation = preparing.publish().unwrap();
     assert!(preparing.record.is_none());
     assert_eq!(records.used(), 1);
