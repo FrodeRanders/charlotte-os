@@ -78,8 +78,9 @@ complete detached payload until the completion registry guard leaves. Source
 subscriptions, backlog records and ring/account backing are destroyed afterward;
 detached submission slots and authority removal still update under serialization.
 CQ payload staging/allocation rejection now runs outside the registry; see the
-[CQ payload-preparation follow-up](../reports/audits/2026-10-16-cq-payload-preparation.md). Record construction, authority/map metadata,
-timer-specific producer cleanup and outer callers remain separate.
+[CQ payload-preparation follow-up](../reports/audits/2026-10-16-cq-payload-preparation.md).
+The capability-backed construction boundary is qualified below. Map metadata,
+terminal timer-producer cleanup and outer callers remain separate.
 See the [callback/source audit](../reports/audits/2026-10-15-completion-callback-preparation.md).
 
 ## Admission, retirement and rollback
@@ -131,10 +132,20 @@ no public retry owner or accepted work to replay. Enqueue consumes accepted
 preparation once after unlock; teardown before enqueue leaves the original
 node charged until its cancelled insertion is discarded. See the [detached preparation follow-up](../reports/audits/2026-10-16-detached-submission-preparation.md).
 
-Registry-map insertion/removal and backlog reconciliation remain under their
-existing serialization. Capability-backed record/timer construction and unified
-authority metadata still need separate work. Capture is not a root lease or
-physical quiescence proof.
+Capability-backed buffer/plain/event-watch submissions and timers now use one
+complete preparation. Record, waiter-list, watch charge and shared authority
+storage are prepared outside `COMPLETIONS`. Hidden authority admission rechecks
+the captured root, original record/watch/timer accounts, capacity and retirement
+under the registry; timer cancellation/node/producer preparation leaves it again.
+Final borrowed publication repeats validation and publishes authority and payload
+under the same registry hold. Rejected owners keep all fields through guard exit;
+explicit finish disposes unused storage/reservation and payload afterward.
+Abandonment retains everything without cleanup. See the
+[capability preparation follow-up](../reports/audits/2026-10-16-capability-completion-preparation.md).
+
+Registry-map insertion/removal, backlog reconciliation, capability close and
+terminal timer cleanup retain their existing serialization and need further
+qualification. Capture is not a root lease or physical quiescence proof.
 
 ## Verification and remaining work
 

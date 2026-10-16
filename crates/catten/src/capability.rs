@@ -310,6 +310,14 @@ impl PreparedReservation {
         )
     }
 
+    /// Caller holds its payload registry and revalidates that registry's exact
+    /// captured generation/retirement fence before admission. Storage was
+    /// prepared outside that guard; this only relinks admitted metadata.
+    /// Rejection retains unused storage here for post-guard `finish`.
+    pub(crate) fn reserve_captured(&mut self) -> Result<Reservation, AllocationError> {
+        self.reserve()
+    }
+
     /// Caller retains lifecycle and revalidates its captured root/closing fence.
     /// This path cannot allocate, dispose storage or acquire lifecycle itself.
     pub(crate) fn reserve_in_lifecycle(

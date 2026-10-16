@@ -261,6 +261,17 @@ allocations and the entire kernel heap still require broader accounting.
 Timer events have their own charges because deferred
 cancellation can outlive the operation record.
 
+Capability-backed completion submission prepares records, waiter lists, optional
+watch admission and shared authority storage outside the completion registry.
+Hidden authority admission and final joint publication each revalidate the exact
+namespace and original accounts under serialization. Timer node and producer
+preparation also leave that guard. Ordinary rejection retains the complete owner
+until explicit post-guard disposal; abandonment retains every field.
+Capability timers capture one absolute deadline before preparation and preserve
+it through publication and enqueue. Namespace teardown can cancel a prepared
+node before insertion, retaining its event charge until actual disposal.
+Registry-map allocation, close and outer contexts remain separate work.
+
 \section{Completion-queue admission}
 
 Queue preparation reserves a registration count and kernel-owned backing

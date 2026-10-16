@@ -29,6 +29,7 @@
 pub(crate) mod budget;
 pub(crate) mod callback_tests;
 mod callbacks;
+mod capability_preparation;
 pub(crate) use callbacks::observe_registered;
 pub use callbacks::{
     CompletionObservation,
@@ -388,11 +389,11 @@ impl Completion {
     fn set_timer_observer(
         &self,
         observer: Arc<CompletionTimerObserver>,
-        cancel: crate::timers::TimerEventCancelHandle,
+        cancel: TimerCancellation,
     ) {
         let mut inner = self.inner.lock();
         inner.timer_observer = Some(observer);
-        inner.timer_cancel = Some(TimerCancellation(Some(cancel)));
+        inner.timer_cancel = Some(cancel);
     }
 
     /// Returns whether cancellation won before this owner could be installed.
@@ -782,23 +783,6 @@ fn empty_as(asid: AddressSpaceId, capacity: usize) -> AsCompletions {
     }
 }
 
-/// Budget guards never enter another subsystem. A captured designation must
-/// match this namespace, and retirement fences admission under the registry.
-fn reserve_record(
-    asid: AddressSpaceId,
-    entries: &AsCompletions,
-    platform_identity: Option<crate::memory::AddressSpaceHandle>,
-) -> Result<budget::Charge, SubmitError> {
-    if entries.address_space.is_some_and(|handle| !crate::memory::budget::accepting(handle)) {
-        return Err(SubmitError::UnknownAddressSpace);
-    }
-    // Synthetic namespaces exist at the kernel test/adapter boundary only.
-    // Syscalls supply the authenticated caller, never an EL0-selected ASID.
-    let platform = asid == crate::memory::KERNEL_ASID
-        || platform_identity.is_some_and(|handle| Some(handle) == entries.address_space);
-    budget::reserve(&entries.record_budget, platform).map_err(|_| SubmitError::WouldBlock)
-}
-
 fn replace_address_space(asid: AddressSpaceId, replacement: AsCompletions) {
     let previous = {
         let mut registry = COMPLETIONS.write();
@@ -995,36 +979,7 @@ fn submit_captured(
     event_watch: bool,
     ids: &operation_ids::OperationIds,
 ) -> Result<(CompletionCap, CompletionRef, Option<watch_budget::Charge>), SubmitError> {
-    let platform_identity = crate::memory::budget::platform_identity(asid);
-    let mut registry = COMPLETIONS.write();
-    let as_completions = registry.get_mut(&asid).ok_or(SubmitError::UnknownAddressSpace)?;
-    flush_cq_backlog(as_completions, DEFAULT_CQ);
-    if as_completions.live >= as_completions.capacity {
-        return Err(SubmitError::WouldBlock);
-    }
-    let operation = ids.allocate().ok_or(SubmitError::WouldBlock)?;
-    let record_charge = reserve_record(asid, as_completions, platform_identity)?;
-    let watch_charge = if event_watch {
-        let platform = asid == crate::memory::KERNEL_ASID
-            || platform_identity.is_some_and(|handle| Some(handle) == as_completions.address_space);
-        Some(
-            watch_budget::reserve(&as_completions.watch_budget, platform)
-                .map_err(|_| SubmitError::WouldBlock)?,
-        )
-    } else {
-        None
-    };
-    let reservation = crate::capability::reserve_captured(
-        asid,
-        crate::capability::ObjectKind::Completion,
-        as_completions.address_space,
-    )
-    .map_err(|_| SubmitError::WouldBlock)?;
-    let completion = Completion::new(operation, buffer, record_charge)?;
-    let cap = reservation.publish().map_err(|_| SubmitError::WouldBlock)?;
-    as_completions.table.insert(cap, completion.clone());
-    as_completions.live += 1;
-    Ok((cap, completion, watch_charge))
+    capability_preparation::submit(asid, buffer, event_watch, ids)
 }
 
 /// Own an unpublished event-watch submission and its entry reservation.
@@ -1176,53 +1131,7 @@ fn submit_timer_with_observer(
         CompletionTimerObserver,
     ) -> Result<Arc<CompletionTimerObserver>, core::alloc::AllocError>,
 ) -> Result<CompletionCap, SubmitError> {
-    let platform_identity = crate::memory::budget::platform_identity(asid);
-    let (cap, timer_event) = {
-        let mut registry = COMPLETIONS.write();
-        let entries = registry.get_mut(&asid).ok_or(SubmitError::UnknownAddressSpace)?;
-        flush_cq_backlog(entries, DEFAULT_CQ);
-        if entries.live >= entries.capacity {
-            return Err(SubmitError::WouldBlock);
-        }
-        let operation = ids.allocate().ok_or(SubmitError::WouldBlock)?;
-        let record_charge = reserve_record(asid, entries, platform_identity)?;
-        // Tie policy captured before the registry lock to this exact namespace;
-        // teardown/reuse must not lend a predecessor's reserved-pool access.
-        let platform = asid == crate::memory::KERNEL_ASID
-            || (platform_identity.is_some() && platform_identity == entries.address_space);
-        let charge = crate::timers::budget::reserve(&entries.timer_budget, platform)
-            .map_err(|_| SubmitError::WouldBlock)?;
-        let (timer_event, cancel) =
-            TimerEvent::charged(ExtDuration::from_millis(timeout_ms as u128), charge)
-                .map_err(|_| SubmitError::WouldBlock)?;
-        let timer_event =
-            crate::timers::PreparedEvent::new(timer_event).map_err(|_| SubmitError::WouldBlock)?;
-        let reservation = crate::capability::reserve_captured(
-            asid,
-            crate::capability::ObjectKind::Completion,
-            entries.address_space,
-        )
-        .map_err(|_| SubmitError::WouldBlock)?;
-        let completion = Completion::new(operation, None, record_charge)?;
-        let cap = reservation.identity();
-        // Allocate before publishing authority or registering the callback.
-        // Rejection drops the prepared event, record and hidden reservation.
-        let observer = allocate(CompletionTimerObserver {
-            asid,
-            cap,
-            result: OpResult::Ok(0),
-            completion: Arc::downgrade(&completion),
-        })
-        .map_err(|_| SubmitError::WouldBlock)?;
-        timer_event.event().register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
-        completion.set_timer_observer(observer, cancel);
-        let cap = reservation.publish().map_err(|_| SubmitError::WouldBlock)?;
-        entries.table.insert(cap, completion);
-        entries.live += 1;
-        (cap, timer_event)
-    };
-    timer_event.enqueue();
-    Ok(cap)
+    capability_preparation::submit_timer(asid, timeout_ms, ids, allocate)
 }
 
 /// Submits an operation that is performed by a freshly spawned kernel worker

@@ -34,6 +34,7 @@ fn callback_count(asid: usize, cap: super::CompletionCap) -> usize {
 
 pub(crate) fn test_admission() {
     super::operation_id_tests::run();
+    super::capability_preparation::test_preparation();
     crate::klib::observer::registration::test_entry_allocation_rollback();
     super::callbacks::test_preparation();
     super::terminal_tests::run();

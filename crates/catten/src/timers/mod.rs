@@ -287,6 +287,21 @@ impl TimerEvent {
         duration: ExtDuration,
         charge: budget::Charge,
     ) -> Result<(Self, TimerEventCancelHandle), ()> {
+        Self::charged_with(charge, || deadline_after(duration))
+    }
+
+    /// Retain an operation's original deadline across unlocked preparation.
+    pub(crate) fn charged_at(
+        deadline: Timestamp,
+        charge: budget::Charge,
+    ) -> Result<(Self, TimerEventCancelHandle), ()> {
+        Self::charged_with(charge, || deadline)
+    }
+
+    fn charged_with(
+        charge: budget::Charge,
+        deadline: impl FnOnce() -> Timestamp,
+    ) -> Result<(Self, TimerEventCancelHandle), ()> {
         let admission = EventAdmission::try_new(charge).map_err(|_| ())?;
         let id = NEXT_TIMER_EVENT_ID.fetch_add(1, Ordering::Relaxed);
         let state = admission
@@ -301,7 +316,7 @@ impl TimerEvent {
             state: state.clone(),
         };
         let event = Self {
-            deadline: deadline_after(duration),
+            deadline: deadline(),
             key: None,
             cancellation: Some(state),
             callback: Mutex::new(None),
@@ -361,7 +376,7 @@ impl From<ExtDuration> for TimerEvent {
     }
 }
 
-fn deadline_after(duration: ExtDuration) -> Timestamp {
+pub(crate) fn deadline_after(duration: ExtDuration) -> Timestamp {
     charlotte_lifecycle::saturating_timer_deadline(
         LpTimer::now(),
         duration.as_picos() / LpTimer::get_ts_cycle_period().as_picos(),

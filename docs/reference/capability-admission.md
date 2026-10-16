@@ -38,6 +38,22 @@ with their outer caller contexts qualified separately below. See the
 
 ## Record ownership and publication
 
+Capability-backed completion submissions now prepare their charged record,
+waiter list, optional watch charge and `PreparedReservation` storage outside
+`COMPLETIONS`. A short registry hold revalidates exact root, original accounts,
+capacity and retirement before relinking hidden authority through
+`PreparedReservation::reserve_captured`. Timer/node/producer construction then
+also runs outside the registry. Final borrowed publication repeats validation
+and uses the existing `publish_batch` before payload installation.
+
+One complete preparation retains the reservation, record, optional event and
+original charges through rejection. Ordinary success/error explicitly finishes
+unused authority storage and disposes the owner after local guards leave;
+abandonment retains all fields without cleanup. A replaced authority namespace
+cannot redirect an old token to its reused numeric capability. Registry-map
+nodes and other callers/close/destructor contexts remain separate. See the
+[completion preparation evidence](../reports/audits/2026-10-16-capability-completion-preparation.md).
+
 Every entry owns its domain/node charge. All three states count:
 
 | State | Public authority? | Release or transition |

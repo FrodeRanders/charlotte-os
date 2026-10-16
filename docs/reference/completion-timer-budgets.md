@@ -56,6 +56,20 @@ delivery, independently of whether their timer event has been reclaimed.
 
 ## Cancellation and publication
 
+Capability timers now capture one saturating absolute deadline at entry, before
+unlocked record/authority/event preparation. `TimerEvent::charged_at` preserves
+that deadline through publication and once-only enqueue; an expired preparation
+does not receive a fresh budget. Existing relative timer constructors retain
+their established deadline-capture point, including scheduler sleep rebasing.
+
+The complete preparation owns hidden authority, charged record, event node and
+producer before final publication. Rejection disposes them after local guards;
+abandonment retains all fields. Before accepted enqueue, it releases its extra
+record reference so namespace teardown can cancel the still-prepared node.
+Original event admission remains until cancelled insertion is discarded. This
+is logical cancellation, not physical quiescence or replay authority. See the
+[capability preparation evidence](../reports/audits/2026-10-16-capability-completion-preparation.md).
+
 Each timer record owns its cancellation registration. Cancelling a timer marks
 the event cancelled and produces a terminal `Cancelled` result immediately.
 The event cannot subsequently produce a success result. This makes dropping an

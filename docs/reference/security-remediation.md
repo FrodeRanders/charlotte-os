@@ -774,3 +774,17 @@ refunds an identity; namespace replacement never resets the boot-lifetime
 counter. Isolated boundary controls preserve existing operations and original
 charges without changing the live counter. This closes that specific source gap,
 not SEC-07/18, wider metadata preparation or historical failure attribution.
+
+The [capability-backed preparation follow-up](../reports/audits/2026-10-16-capability-completion-preparation.md)
+continues R7-1/2 and C16/G1/G4. Charged records, waiter lists, watch admission,
+shared authority storage and timer cancellation/node/producer construction now
+leave the completion registry. Hidden authority admission and final borrowed
+batch publication revalidate exact root, original accounts/capacity and
+retirement. One complete owner explicitly disposes ordinary unused resources
+outside local guards; abandonment retains all fields. Timers carry their
+original absolute deadline and preserve teardown-before-enqueue cancellation.
+Registry/backlog metadata, close and terminal timer cleanup, aggregate admission
+and outer contexts remain open. The anonymous timer cancellation-ID counter
+still wraps; checked exhaustion for that separate identity is a recorded
+source-review follow-up. No finding changes disposition, physical/replay
+authority or historical intermittent failure attribution.
