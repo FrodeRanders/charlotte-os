@@ -34,9 +34,19 @@ holder follows every allocator clone. All holder owners use `Arc::into_inner`,
 so its allocation is freed before its one reservation is refunded, including
 concurrent final destruction. No weak reference to that holder escapes. Clones
 share one allocation allowance and cannot allocate another record or revive a
-freed allocation. `ChargedAllocator::try_arc` retains a preparation owner through
+freed allocation. `ChargedAllocator::try_arc` retains its original allocator owner through
 failed construction, keeping the charge until the rejected payload is destroyed.
 This adapter is for fixed record allocations, not general growable containers.
+
+The shared [charge-holder construction follow-up](../reports/audits/2026-10-16-timer-event-construction.md)
+captures the original reservation before allocating empty holder Arc storage.
+The allocator receives no owning charge; private initialization occurs once,
+and ordinary rejection releases unused storage/charge explicitly after callback
+return. Phase abandonment retains both fields without cleanup. A parent-borrowed
+form retains admission on failure for ordered containing-payload disposal.
+Holder layout, one-allocation allowance and final strong/weak accounting stay
+unchanged. Generic resource-bearing payload construction and arbitrary containing
+record/destructor contexts remain separate qualification work.
 
 A detached operation moves its admitted metadata node and original charge into
 an owning CQ backlog entry if its result cannot enter the ring. Its operation ID is no longer addressable, but

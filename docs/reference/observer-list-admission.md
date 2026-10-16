@@ -42,6 +42,16 @@ the list payload, while weak-only backing continues to hold admission. Final
 allocation release and private charge-holder deallocation precede refund.
 The allocator's clones cannot admit multiple allocations or revive freed backing.
 
+The [shared holder constructor](../reports/audits/2026-10-16-timer-event-construction.md)
+now retains the original charge in an inert preparation while allocating empty
+Arc storage. No charge is handed to the allocator callback; private storage
+initializes once. Ordinary owning rejection cancels after callback return, and
+abandonment retains all phase fields. The parent-borrowed form retains its
+reservation on failure for ordered payload disposal. Published list accounting,
+single-allocation allowance and outward errors stay unchanged. Resource-bearing
+list payload construction, source destruction and wider caller guards/masks
+remain separate work.
+
 ## Rejection and locks
 
 `ObserverList::try_new` has no uncharged alternative. Node/ordinary saturation

@@ -79,7 +79,7 @@ accepted cancellation and completion's existing timer-cancellation policy finish
 the new handback. Complete-handback fallback retains all remaining node/source/
 callback/reference fields and original charges. Both fallbacks are terminal
 retention, not Pending, retry custody, physical proof or replay authority.
-Raw Arc/Weak finalization, partial construction and arbitrary enclosing caller
+Raw Arc/Weak finalization, resource-bearing Arc payload construction and arbitrary enclosing caller
 contexts remain separate; a named explicit finish does not remove other guards.
 
 Filtering, purging, expiry and explicit removal now return complete retirement
@@ -115,7 +115,7 @@ Fired counters describe expiry selection, not confirmed notification.
 Abandonment retains the complete selected/purged owner and leaves its claim
 fenced, without cleanup or recovery authority. Explicit callback delivery and
 disposal can still execute in IRQ context; unrelated outer caller/producer
-guards, raw event/admission construction, raw cancellation references and arbitrary blocking callback
+guards, completed raw-event destruction, raw cancellation references and arbitrary blocking callback
 work remain unqualified. No scheduled disposal worker or physical/root proof
 is added. This is bounded prefix processing, not a throughput/fairness guarantee.
 
@@ -132,6 +132,28 @@ and leaves public operation IDs separate. See the
 
 ## Failure before parking
 
+The [event-construction follow-up](../reports/audits/2026-10-16-timer-event-construction.md)
+now retains the original source/callback in `PreparingEvent` before reservation.
+Uninstalled admission remains in that owner until borrowed charge-holder
+construction succeeds. Failure retains the exact parent charge; cancellation
+state allocation borrows installed admission without transferring event/source
+ownership. Ordinary rejection explicitly disposes the original event before
+any uninstalled charge. Successful completion transfers that same charged
+event into raw-event or existing node ownership. Absolute deadlines and the
+relative constructor's post-allocation deadline timing remain unchanged.
+
+Shared charge-holder construction now allocates empty Arc storage while an
+inert owner retains the original charge. Initialization is once-only and
+private; owning rejection cancels after allocator return, while parent-borrowed
+rejection retains the charge for ordered payload disposal. The same holder
+primitive serves completion records and observer lists. It preserves one
+allocation allowance and final strong/weak backing accounting. Source-only,
+reservation, holder and cancellation preparation abandonment retain complete
+fields without cleanup, refund or notification. This is terminal retention,
+not Pending, retry/custody or physical proof. Completed raw-event destruction,
+generic resource-bearing Arc payload construction and outer contexts remain
+separate qualification work.
+
 Node construction now captures the already charged event, source/callback and
 outside admission in an inert `PreparingNode` before calling the allocator.
 The callback receives no payload and returns empty `Box<MaybeUninit<Node>>`
@@ -141,9 +163,9 @@ once into the existing `PreparedEvent` without allocation or deadline change.
 Unused empty backing frees before event/source disposal and outside-admission
 release. Abandonment before or after storage allocation retains every field;
 this is terminal retention, not queued cancellation, Pending, retry/custody or
-physical proof. The same layout and one Box allocation remain. Raw event and
-admission/cancellation construction, raw references and outer caller contexts
-remain separate. See the
+physical proof. The same layout and one Box allocation remain. Completed raw
+event destruction, generic resource-bearing Arc payload construction, raw
+references and outer caller contexts remain separate. See the
 [node-construction follow-up](../reports/audits/2026-10-16-timer-node-construction.md).
 
 Watchdog preparation reserves event admission, allocates cancellation state,
@@ -187,7 +209,7 @@ submission owners likewise consume unused nodes in their existing post-registry
 finish paths. Abandonment preserves the node, cancellation backing, source,
 callback reference and admission without allocator, refund or source work.
 This is terminal retention, not queue cancellation, Pending, recovery custody
-or replay authority. Raw event/admission construction, raw cancellation references,
+or replay authority. Completed raw-event destruction, raw cancellation references,
 waiter preparation and enclosing masks/guards remain separate contexts. See the
 [unpublished ownership follow-up](../reports/audits/2026-10-16-timer-unpublished-ownership.md).
 
@@ -284,6 +306,16 @@ allocator call; explicit unused empty-backing rollback checks post-guard
 disposal. Two guarded phase abandonments retain two event charges, two empty
 source-list allocations and one uninitialized node Box until shutdown, without
 retaining waiter-entry charges after independent token cancellation.
+
+Event-construction controls consume 64 fully prepared charged events beneath
+heap/queue holds without allocation/disposal, preserving deadlines, sources
+and original admission. Private full-sponsor and cancellation-state rejection
+retain the original owner until explicit cleanup; the public sleep error path
+closes source entries. Four guarded phase abandonments retain three event
+charges and four source allocations until shutdown, with no persistent waiter
+entries. Shared holder host tests separately cover borrowed rejection,
+callback-return cleanup ordering, empty initialization/rollback and two
+synthetic charge retentions until the host process exits.
 
 These counts bound retained event/node/cancellation backing quantities, not
 the entire kernel heap or allocator overhead. Queue diagnostics count actual

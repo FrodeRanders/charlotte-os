@@ -18,6 +18,7 @@ pub(crate) use cancellation_disposal::CancelledTimer;
 mod delivery;
 mod disposal_tests;
 use delivery::PendingDelivery;
+mod event_preparation;
 pub(crate) mod event_tests;
 mod node_preparation;
 mod preparation_tests;
@@ -319,12 +320,10 @@ struct TimerEventCancellation {
 
 impl TimerEvent {
     pub(crate) fn prepare_sleep(
-        mut self,
+        self,
         sponsor: &budget::SchedulerSponsor,
     ) -> Result<PreparedEvent, ()> {
-        assert!(self._charge.is_none() && self.key.is_none());
-        self._charge = Some(EventAdmission::try_new(sponsor.reserve()?).map_err(|_| ())?);
-        PreparedEvent::new(self)
+        event_preparation::sleep(self, sponsor)
     }
 
     #[inline(always)]
@@ -357,26 +356,7 @@ impl TimerEvent {
         charge: budget::Charge,
         deadline: impl FnOnce() -> Timestamp,
     ) -> Result<(Self, TimerEventCancelHandle), ()> {
-        let admission = EventAdmission::try_new(charge).map_err(|_| ())?;
-        let state = admission
-            .clone()
-            .try_arc(TimerEventCancellation {
-                owner_lp: AtomicU32::new(crate::cpu::isa::lp::ops::get_lp_id()),
-                cancelled: AtomicBool::new(false),
-            })
-            .map_err(|_| ())?;
-        let handle = TimerEventCancelHandle {
-            state: ManuallyDrop::new(state.clone()),
-        };
-        let event = Self {
-            deadline: deadline(),
-            key: None,
-            cancellation: Some(state),
-            callback: Mutex::new(None),
-            waiters: WaiterSource::new(),
-            _charge: Some(admission),
-        };
-        Ok((event, handle))
+        event_preparation::cancellable(charge, deadline)
     }
 
     /// Rebase a relative event after its observer and blocked state have been

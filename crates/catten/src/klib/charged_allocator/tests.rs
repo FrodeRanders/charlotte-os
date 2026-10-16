@@ -60,7 +60,7 @@ fn strong_and_weak_storage_return_one_original_charge() {
 #[test]
 fn allocation_owner_failure_returns_unused_charge() {
     let used = Arc::new(AtomicUsize::new(0));
-    assert!(ChargedAllocator::try_new_with(Charge::new(&used), |_| Err(AllocError)).is_err());
+    assert!(ChargedAllocator::try_new_with(Charge::new(&used), || Err(AllocError)).is_err());
     assert_eq!(used.load(Ordering::SeqCst), 0);
 }
 
@@ -158,6 +158,109 @@ fn concurrent_allocator_clones_admit_only_one_backing() {
     assert_eq!(outcomes.iter().filter(|result| result.is_ok()).count(), 1);
     assert_eq!(used.load(Ordering::SeqCst), 1);
     drop(outcomes);
+    assert_eq!(used.load(Ordering::SeqCst), 1);
+    drop(allocator);
+    assert_eq!(used.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn holder_rejection_returns_before_original_charge_disposal() {
+    use std::sync::Mutex;
+    struct GuardedCharge {
+        used: Arc<AtomicUsize>,
+        returned: Arc<AtomicBool>,
+        guard: Arc<Mutex<()>>,
+    }
+    impl Drop for GuardedCharge {
+        fn drop(&mut self) {
+            assert!(self.returned.load(Ordering::SeqCst));
+            assert!(self.guard.try_lock().is_ok());
+            assert_eq!(self.used.fetch_sub(1, Ordering::SeqCst), 1);
+        }
+    }
+    let used = Arc::new(AtomicUsize::new(1));
+    let returned = Arc::new(AtomicBool::new(false));
+    let guard = Arc::new(Mutex::new(()));
+    let charge = GuardedCharge {
+        used: used.clone(),
+        returned: returned.clone(),
+        guard: guard.clone(),
+    };
+    assert!(
+        ChargedAllocator::try_new_with(charge, || {
+            let _guard = guard.lock().unwrap();
+            assert_eq!(used.load(Ordering::SeqCst), 1);
+            returned.store(true, Ordering::SeqCst);
+            Err(AllocError)
+        })
+        .is_err()
+    );
+    assert_eq!(used.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+#[allow(clippy::drop_non_drop)]
+fn abandoned_holder_phases_retain_original_charge() {
+    for allocated in [false, true] {
+        let used = Arc::new(AtomicUsize::new(0));
+        let guard = std::sync::Mutex::new(());
+        let mut preparing = PreparingAllocation::new(Charge::new(&used));
+        if allocated {
+            preparing.allocate(Arc::try_new_uninit).unwrap();
+        }
+        let _guard = guard.lock().unwrap();
+        drop(preparing);
+        assert_eq!(used.load(Ordering::SeqCst), 1);
+        // Deliberate host-only negative retention until process shutdown.
+    }
+}
+
+#[test]
+fn empty_holder_initialization_preserves_original_charge_and_allowance() {
+    let used = Arc::new(AtomicUsize::new(0));
+    let guard = std::sync::Mutex::new(());
+    let mut preparing = PreparingAllocation::new(Charge::new(&used));
+    preparing.allocate(Arc::try_new_uninit).unwrap();
+    let allocator = {
+        let _guard = guard.lock().unwrap();
+        preparing.complete()
+    };
+    assert_eq!(used.load(Ordering::SeqCst), 1);
+    let value = allocator.clone().try_arc(37u64).unwrap();
+    assert!(allocator.clone().try_arc(38u64).is_err());
+    let weak = Arc::downgrade(&value);
+    drop((value, allocator));
+    assert_eq!(used.load(Ordering::SeqCst), 1);
+    drop(weak);
+    assert_eq!(used.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn unused_empty_holder_storage_cancels_explicitly() {
+    let used = Arc::new(AtomicUsize::new(0));
+    let mut preparing = PreparingAllocation::new(Charge::new(&used));
+    preparing.allocate(Arc::try_new_uninit).unwrap();
+    let mut checks = 0;
+    preparing.cancel_with(|| {
+        assert_eq!(used.load(Ordering::SeqCst), 1);
+        checks += 1;
+    });
+    assert_eq!(checks, 2);
+    assert_eq!(used.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn borrowed_holder_rejection_retains_parent_reservation() {
+    let used = Arc::new(AtomicUsize::new(0));
+    let mut charge = Some(Charge::new(&used));
+    assert!(ChargedAllocator::try_new_retaining_with(&mut charge, || Err(AllocError)).is_err());
+    assert!(charge.is_some());
+    assert_eq!(used.load(Ordering::SeqCst), 1);
+    drop(charge.take());
+    assert_eq!(used.load(Ordering::SeqCst), 0);
+    charge = Some(Charge::new(&used));
+    let allocator = ChargedAllocator::try_new_retaining(&mut charge).unwrap();
+    assert!(charge.is_none());
     assert_eq!(used.load(Ordering::SeqCst), 1);
     drop(allocator);
     assert_eq!(used.load(Ordering::SeqCst), 0);

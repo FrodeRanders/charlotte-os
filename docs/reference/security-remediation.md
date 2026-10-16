@@ -941,3 +941,16 @@ owner. Abandonment retains either phase without cleanup. Raw event/admission
 construction, raw references, waiter/containing destructor and outer IRQ/guard
 contexts remain separate. No finding disposition, physical proof, retry/custody
 or historical attribution changes.
+
+
+The [event/shared-holder construction follow-up](../reports/audits/2026-10-16-timer-event-construction.md)
+continues R7-1/2 and C16/C18/G1/G4/G7. Event preparation retains original source
+and admission through shared holder and cancellation-state allocation. Holder
+factories own no charge; owning rejection cancels after allocator return while
+parent-borrowed rejection retains its exact reservation for payload-first
+cleanup. Inert phase fallback retains all fields without notification/refund.
+Completion records, timers and observer lists share the same primitive and
+unchanged lifetime accounting. Completed raw events, resource-bearing Arc
+payloads, containing destructors and wider waiter/IRQ/guard contexts remain
+open. No finding disposition, physical proof, retry/custody or historical
+attribution changes.

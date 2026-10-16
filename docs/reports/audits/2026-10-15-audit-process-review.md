@@ -313,3 +313,13 @@ once without changing deadlines, layout or reservation count. Guarded phase
 abandonment retains original backing/charges. Raw event/admission construction,
 raw references and broader waiter/caller contexts remain separate. Finding
 counts and historical failure causes are unchanged.
+
+
+The [event/shared-holder construction batch](2026-10-16-timer-event-construction.md)
+extends retained ownership through original source, reservation, holder and
+cancellation preparation. The common holder primitive owns its charge outside
+empty allocation and supports a borrowing parent that retains admission on
+failure. Payload-first explicit cleanup and inert phase abandonment preserve
+original accounts. Completed raw events, generic resource-bearing Arc payloads
+and broader containing/waiter contexts remain separate. Finding counts and
+historical failure causes are unchanged.

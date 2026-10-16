@@ -159,6 +159,7 @@ pub(crate) fn test_admission() {
     super::preparation_tests::run();
     super::cancellation_disposal::test_disposal();
     super::node_preparation::test_preparation();
+    super::event_preparation::test_preparation();
     crate::logln!(
         "[timer events] SUCCESS: scheduler/domain/node admission, shared reserve, prepared-node \
          rollback, sorted/iterative reclamation, inline quantum, retained cancellation backing \
