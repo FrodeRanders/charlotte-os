@@ -62,14 +62,20 @@ pub(crate) fn test_admission() {
     events.insert_quantum(quantum);
     assert_eq!(events.len(), 1025);
     assert!(events.iter().zip(events.iter().skip(1)).all(|(a, b)| a.deadline <= b.deadline));
-    assert_eq!(events.pop_front().unwrap().deadline, 1);
+    let first = events.pop_front().unwrap();
+    assert_eq!(first.front().unwrap().deadline, 1);
+    first.finish();
     assert_eq!(sponsor.used(), 1023);
     let charge = sponsor.reserve().unwrap();
     drop(charge);
-    assert_eq!(events.pop_front().unwrap().key, Some(TimerEventKey::SchedulerQuantum));
-    events.retain(|event| event.deadline % 2 == 0);
+    let quantum = events.pop_front().unwrap();
+    assert_eq!(quantum.front().unwrap().key, Some(TimerEventKey::SchedulerQuantum));
+    quantum.finish();
+    let mut retired = super::RetiredEvents::default();
+    events.retain(&mut retired, |event| event.deadline % 2 == 0);
+    retired.finish();
     assert_eq!(sponsor.used(), 512);
-    drop(events); // Iterative reclamation of a real linked footprint.
+    events.retire().finish(); // Iterative reclamation of a real linked footprint.
     assert_eq!(sponsor.used(), 0);
 
     let entry_irq = get_int_state();
@@ -146,6 +152,9 @@ pub(crate) fn test_admission() {
     assert!(budget::reserve(&completion, true).is_err());
     drop(charges);
     assert_eq!(budget::node_used(), baseline);
+    // Deliberate disposal abandonment retains one event. Run it after this
+    // fixture's zero-baseline full-pool reservations; never reset that charge.
+    super::disposal_tests::run();
     crate::logln!(
         "[timer events] SUCCESS: scheduler/domain/node admission, shared reserve, prepared-node \
          rollback, sorted/iterative reclamation, inline quantum, retained cancellation backing \
@@ -167,7 +176,7 @@ fn test_retained_cancellation_admission() {
     events.insert_prepared(PreparedEvent::new(event).unwrap().node);
     // Ordinary event expiry removes queue backing but not an outstanding
     // cancellation handle. No hardware deadline/completion is manufactured.
-    drop(events.pop_front().unwrap());
+    events.pop_front().unwrap().finish();
     assert_eq!(domain.used(), 1);
     assert!(budget::reserve(&domain, false).is_err());
     drop(handle);

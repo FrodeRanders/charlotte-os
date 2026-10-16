@@ -60,6 +60,49 @@ pub(super) struct Events {
     quantum: Option<TimerEvent>,
     anonymous: usize,
 }
+
+/// Detached complete queue payloads. Drop retains their original nodes,
+/// sources, callback references and charges without entering an allocator.
+#[must_use = "finish detached timer events after the local queue borrow leaves"]
+#[derive(Debug, Default)]
+pub(crate) struct RetiredEvents(Events);
+
+impl RetiredEvents {
+    pub(super) fn push_node(&mut self, mut node: OwnedNode) {
+        assert!(node.next.is_none());
+        node.next = self.0.head.take();
+        self.0.head = Some(node);
+        self.0.anonymous += 1;
+    }
+
+    pub(super) fn push_quantum(&mut self, event: TimerEvent) {
+        assert!(self.0.quantum.is_none(), "two keyed events in one queue transaction");
+        self.0.quantum = Some(event);
+    }
+
+    pub(super) fn front(&self) -> Option<&TimerEvent> {
+        self.0.front()
+    }
+
+    pub(crate) fn finish(self) {
+        self.finish_with(|_| {});
+    }
+
+    pub(super) fn finish_with(mut self, mut before_dispose: impl FnMut(&TimerEvent)) {
+        // Detach each next link before ordinary destruction, avoiding recursive
+        // cleanup. OwnedNode's outside admission outlives its Box deallocation.
+        while let Some(mut node) = self.0.head.take() {
+            self.0.head = node.next.take();
+            before_dispose(&node.event);
+            drop(node);
+        }
+        if let Some(event) = &self.0.quantum {
+            before_dispose(event);
+        }
+        drop(self.0.quantum.take());
+    }
+}
+
 impl Events {
     pub(super) fn len(&self) -> usize {
         self.anonymous + usize::from(self.quantum.is_some())
@@ -92,27 +135,33 @@ impl Events {
         self.anonymous += 1;
     }
 
-    pub(super) fn pop_front(&mut self) -> Option<TimerEvent> {
+    pub(super) fn pop_front(&mut self) -> Option<RetiredEvents> {
+        self.front()?;
+        let mut retired = RetiredEvents::default();
+        self.pop_front_into(&mut retired);
+        Some(retired)
+    }
+
+    pub(super) fn pop_front_into(&mut self, retired: &mut RetiredEvents) {
         if self.quantum.as_ref().is_some_and(|quantum| {
             self.head.as_ref().is_none_or(|head| quantum.deadline <= head.event.deadline)
         }) {
-            return self.quantum.take();
+            retired.push_quantum(self.quantum.take().unwrap());
+            return;
         }
-        let mut node = self.head.take()?;
+        let mut node = self.head.take().expect("empty timer queue removal");
         self.head = node.next.take();
         self.anonymous -= 1;
-        // Moving out frees the Box while the outside admission remains live;
-        // the returned event retains its own owner through notification/drop.
-        let Node {
-            event,
-            ..
-        } = *node.node;
-        Some(event)
+        retired.push_node(node);
     }
 
-    pub(super) fn retain(&mut self, mut keep: impl FnMut(&TimerEvent) -> bool) {
+    pub(super) fn retain(
+        &mut self,
+        retired: &mut RetiredEvents,
+        mut keep: impl FnMut(&TimerEvent) -> bool,
+    ) {
         if self.quantum.as_ref().is_some_and(|event| !keep(event)) {
-            self.quantum = None;
+            retired.push_quantum(self.quantum.take().unwrap());
         }
         let mut link = &mut self.head;
         while let Some(node) = link.as_ref() {
@@ -122,15 +171,25 @@ impl Events {
                 let mut removed = link.take().unwrap();
                 *link = removed.next.take();
                 self.anonymous -= 1;
-                drop(removed);
+                retired.push_node(removed);
             }
         }
+    }
+
+    pub(super) fn retire(self) -> RetiredEvents {
+        RetiredEvents(self)
     }
 }
 impl Drop for Events {
     fn drop(&mut self) {
-        // Kernel stacks must not recursively destroy a node-sized chain.
-        while self.pop_front().is_some() {}
+        // Unknown queue/receipt abandonment retains the complete payloads,
+        // including the inline keyed event. Explicit finish alone disposes.
+        if let Some(head) = self.head.take() {
+            core::mem::forget(head);
+        }
+        if let Some(quantum) = self.quantum.take() {
+            core::mem::forget(quantum);
+        }
     }
 }
 pub(super) struct Iter<'a> {

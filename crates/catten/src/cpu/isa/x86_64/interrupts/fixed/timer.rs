@@ -19,6 +19,8 @@ pub extern "C" fn signal_eoi() {
 #[unsafe(no_mangle)]
 pub extern "C" fn process_events() {
     if let Ok(mut timer_queue) = TIMER_QUEUES.try_get_mut() {
-        timer_queue.process_events();
+        let retired = timer_queue.process_events();
+        drop(timer_queue);
+        retired.finish();
     }
 }

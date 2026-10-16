@@ -874,3 +874,16 @@ namespaces, reentrant disposal, complete timer/backlog/authority replacement and
 real root-generation reuse. Aggregate namespace/account admission, wider
 timer/observer/IRQ/caller qualification and historical attribution remain open.
 No finding disposition, physical proof, readiness/replay or custody change.
+
+The [timer queue-disposal follow-up](../reports/audits/2026-10-16-timer-queue-disposal.md)
+continues R7-1/2 and C16/G1/G4/G7. Filtering, exact cancellation, purging,
+expiry and rejected enqueue return complete original nodes and inline keyed
+payloads without freeing them under the queue borrow. All production adapters
+leave that borrow before explicit iterative disposal; original event/node and
+cancellation backing admission follows actual release. Receipt/queue fallback
+retains all remaining fields. Controls cover 64 heap-held exact removals,
+purge/rejection, anonymous/keyed expiry, original weak-only charges and guarded
+abandonment. Callback/waiter notification remains under the queue; outer
+scheduler/producer guards, IRQ execution and unpublished preparation are still
+open. No finding disposition, physical proof, recovery custody, readiness/replay
+or historical attribution changes.

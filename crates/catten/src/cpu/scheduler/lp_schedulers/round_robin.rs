@@ -124,7 +124,8 @@ impl RoundRobin {
         timer_event.register_observer(
             Arc::downgrade(&self.timer_event_observer) as alloc::sync::Weak<dyn Observer>
         );
-        TIMER_QUEUES.try_get_mut().unwrap().ensure_event(timer_event);
+        let retired = TIMER_QUEUES.try_get_mut().unwrap().ensure_event(timer_event);
+        retired.finish();
     }
 
     fn publish_load(&self) {
@@ -186,7 +187,8 @@ impl LpScheduler for RoundRobin {
             wake.register_observer(
                 Arc::downgrade(&self.timer_event_observer) as alloc::sync::Weak<dyn Observer>
             );
-            TIMER_QUEUES.try_get_mut().unwrap().ensure_event(wake);
+            let retired = TIMER_QUEUES.try_get_mut().unwrap().ensure_event(wake);
+            retired.finish();
         }
     }
 
@@ -468,7 +470,9 @@ impl LpScheduler for RoundRobin {
 
     fn stop(&mut self) {
         self.is_idle = true;
-        TIMER_QUEUES.try_get_mut().unwrap().remove_event(TimerEventKey::SchedulerQuantum);
+        let retired =
+            TIMER_QUEUES.try_get_mut().unwrap().remove_event(TimerEventKey::SchedulerQuantum);
+        retired.finish();
         self.publish_load();
     }
 

@@ -14,8 +14,10 @@
 
 pub(crate) mod budget;
 mod cancellation_tests;
+mod disposal_tests;
 pub(crate) mod event_tests;
 mod queue;
+pub(crate) use queue::RetiredEvents;
 pub(crate) mod waiter_tests;
 
 use alloc::{
@@ -165,10 +167,12 @@ impl PreparedEvent {
         }
         // No allocation or admission remains after the caller publishes Blocked
         // or a completion record. The mask restores IRQs after the queue guard.
-        TIMER_QUEUES
-            .try_get_mut()
-            .expect("local timer queue is already borrowed")
-            .add_prepared(self.node);
+        let retired = {
+            let mut queue =
+                TIMER_QUEUES.try_get_mut().expect("local timer queue is already borrowed");
+            queue.add_prepared(self.node)
+        };
+        retired.finish();
     }
 }
 
@@ -205,9 +209,11 @@ pub(crate) fn cancel_event(handle: TimerEventCancelHandle) -> bool {
     // A completion may release its cancellation owner from a timer callback.
     // That callback already holds this LP's queue borrow: flag cancellation
     // and let the outer queue operation reclaim the event instead of re-entering.
-    let removed = TIMER_QUEUES
-        .try_get_mut()
-        .is_ok_and(|mut queue| queue.remove_cancellable_event(&handle.state));
+    let (removed, retired) = match TIMER_QUEUES.try_get_mut() {
+        Ok(mut queue) => queue.remove_cancellable_event(&handle.state),
+        Err(_) => (false, RetiredEvents::default()),
+    };
+    retired.finish();
     if interrupts_were_enabled {
         unmask_interrupts!();
     }
@@ -221,9 +227,11 @@ pub(crate) fn cancel_event(handle: TimerEventCancelHandle) -> bool {
 pub fn process_local_events() {
     let interrupts_were_enabled = crate::cpu::isa::lp::ops::get_int_state();
     mask_interrupts!();
-    {
-        TIMER_QUEUES.try_get_mut().expect("local timer queue is already borrowed").process_events();
-    }
+    let retired = {
+        let mut queue = TIMER_QUEUES.try_get_mut().expect("local timer queue is already borrowed");
+        queue.process_events()
+    };
+    retired.finish();
     if interrupts_were_enabled {
         unmask_interrupts!();
     }
@@ -414,9 +422,9 @@ impl TimerQueue {
         }
     }
 
-    fn purge_cancelled(&mut self) -> usize {
+    fn purge_cancelled(&mut self, retired: &mut RetiredEvents) -> usize {
         let before = self.events.len();
-        self.events.retain(|event| {
+        self.events.retain(retired, |event| {
             !event
                 .cancellation
                 .as_ref()
@@ -444,8 +452,9 @@ impl TimerQueue {
     /// Queue a keyed event only when no event with that identity is already
     /// present. The queue is the source of truth, while an existing quantum's
     /// deadline is deliberately preserved across voluntary yields.
-    pub(crate) fn ensure_event(&mut self, event: TimerEvent) {
-        self.purge_cancelled();
+    pub(crate) fn ensure_event(&mut self, event: TimerEvent) -> RetiredEvents {
+        let mut retired = RetiredEvents::default();
+        self.purge_cancelled(&mut retired);
         let key = event.key.expect("ensure_event requires a keyed event");
         if self.events.iter().any(|queued| queued.key == Some(key)) {
             // Software presence does not prove that the LP comparator is
@@ -456,24 +465,32 @@ impl TimerQueue {
             // timeout in `rearm_front`.
             self.rearm_front();
             self.record_state();
-            return;
+            retired.push_quantum(event);
+            return retired;
         }
         self.add_event(event);
+        retired
     }
 
-    pub(crate) fn remove_event(&mut self, key: TimerEventKey) {
-        self.purge_cancelled();
-        self.events.retain(|queued| queued.key != Some(key));
+    pub(crate) fn remove_event(&mut self, key: TimerEventKey) -> RetiredEvents {
+        let mut retired = RetiredEvents::default();
+        self.purge_cancelled(&mut retired);
+        self.events.retain(&mut retired, |queued| queued.key != Some(key));
         self.rearm_front();
         self.record_state();
+        retired
     }
 
-    fn remove_cancellable_event(&mut self, cancellation: &CancellationRef) -> bool {
+    fn remove_cancellable_event(
+        &mut self,
+        cancellation: &CancellationRef,
+    ) -> (bool, RetiredEvents) {
+        let mut retired = RetiredEvents::default();
         let before = self.events.len();
         // The consuming handle retains this allocation throughout lookup and
         // removal. Its address cannot be reused while borrowed here; equal LP,
         // deadline or cancellation flags never substitute for object identity.
-        self.events.retain(|event| {
+        self.events.retain(&mut retired, |event| {
             event.cancellation.as_ref().is_none_or(|state| !Arc::ptr_eq(state, cancellation))
         });
         let removed = before != self.events.len();
@@ -488,11 +505,12 @@ impl TimerQueue {
             self.rearm_front();
             self.record_state();
         }
-        removed
+        (removed, retired)
     }
 
-    fn add_prepared(&mut self, node: queue::OwnedNode) {
-        self.purge_cancelled();
+    fn add_prepared(&mut self, node: queue::OwnedNode) -> RetiredEvents {
+        let mut retired = RetiredEvents::default();
+        self.purge_cancelled(&mut retired);
         if node
             .event
             .cancellation
@@ -501,20 +519,18 @@ impl TimerQueue {
         {
             self.rearm_front();
             self.record_state();
-            return;
+            retired.push_node(node);
+            return retired;
         }
         self.events.insert_prepared(node);
         self.after_insert(true, None);
+        retired
     }
 
     fn add_event(&mut self, event: TimerEvent) {
-        self.purge_cancelled();
-        // Teardown/cancellation may win between record publication and
-        // enqueue. Do not publish an already-cancelled queue node.
-        if event.cancellation.as_ref().is_some_and(|state| state.cancelled.load(Ordering::Acquire))
-        {
-            return;
-        }
+        // Only ensure_event publishes the uncharged inline quantum; anonymous
+        // preparation/cancellation retains its complete admitted node instead.
+        assert!(event.cancellation.is_none() && event._charge.is_none());
         let key = event.key.expect("anonymous timer insertion requires a prepared node");
         self.events.insert_quantum(event);
         self.after_insert(false, Some(key));
@@ -547,8 +563,9 @@ impl TimerQueue {
         self.record_state();
     }
 
-    pub fn process_events(&mut self) {
-        self.purge_cancelled();
+    pub(crate) fn process_events(&mut self) -> RetiredEvents {
+        let mut retired = RetiredEvents::default();
+        self.purge_cancelled(&mut retired);
         while let Some(event) = self.events.front() {
             if event.get_deadline() <= LpTimer::now() {
                 let is_anonymous = event.key.is_none();
@@ -559,7 +576,7 @@ impl TimerQueue {
                     0,
                 );
                 event.signal();
-                self.events.pop_front();
+                self.events.pop_front_into(&mut retired);
                 let diag = &TIMER_DIAGNOSTICS[crate::cpu::isa::lp::ops::get_lp_id() as usize];
                 if is_anonymous {
                     diag.anonymous_fired.fetch_add(1, Ordering::Relaxed);
@@ -581,12 +598,12 @@ impl TimerQueue {
                     0,
                 );
                 self.record_state();
-                return;
+                return retired;
             } else {
                 let _ = LpTimer::get().lock().stop();
                 crate::debug_trace::trace(crate::debug_trace::TAG_TIMER_STOPPED, 0, 0, 0);
                 self.record_state();
-                return;
+                return retired;
             }
         }
         // The queue drained completely. Stop the timer so it does not keep
@@ -595,6 +612,7 @@ impl TimerQueue {
         let _ = LpTimer::get().lock().stop();
         crate::debug_trace::trace(crate::debug_trace::TAG_TIMER_STOPPED, 0, 0, 0);
         self.record_state();
+        retired
     }
 
     fn get_next_deadline(&self) -> Option<Timestamp> {

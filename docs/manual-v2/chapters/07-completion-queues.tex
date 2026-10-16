@@ -268,6 +268,16 @@ during lookup; equal LP, deadline or cancellation flags grant no authority over
 a successor. Weak-only backing remains charged to its original sponsor.
 This adds no admission failure and is separate from public operation IDs.
 
+Queue filtering, cancelled-event purging, expiry and rejected enqueue now
+detach complete event nodes into an owning retirement batch without allocation
+or destruction under the local queue borrow. Duplicate/removed keyed events
+move into its one inline slot. Callers release the queue before explicit,
+iterative disposal; abandoned receipts or queue storage retain all remaining
+nodes, sources, callback references and original charges. This supplies no
+physical completion, root-quiescence or replay proof. Callback invocation and
+waiter notification still occur under the queue borrow; outer scheduler guards,
+IRQ context and unpublished preparation destructors remain separate work.
+
 Backlog-to-ring publication retains delivered detached-record charges in a
 fixed two-class owning batch until the completion registry is unlocked.
 Ordinary/platform charges retain their original accounts; no disposal storage
@@ -515,7 +525,8 @@ node preparation precede parking. Queue insertion allocates nothing; anonymous
 nodes form a sorted owning list with iterative reclamation. The quantum/idle-wake
 event has one inline queue slot per LP, outside anonymous admission. Rejection
 therefore cannot consume scheduler preemption storage. Charges remain until the
-actual event is removed, including an aborted sleeper awaiting its deadline.
+actual event/node backing and cancellation references are released, including
+an aborted sleeper awaiting its deadline and detached retirement batches.
 
 Every scheduler Observable source now requires fallible owning registration;
 there is no weak-only default. Steady-state publication and self-test results

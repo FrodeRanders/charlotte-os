@@ -257,3 +257,13 @@ capability records, detached records, CQs and global namespaces. This does not
 bound empty namespaces/account storage or qualify every enclosing timer,
 observer, caller and IRQ context. Those are the remaining boundaries; historical
 intermittent causes and finding counts remain unchanged.
+
+The [timer queue-disposal batch](2026-10-16-timer-queue-disposal.md) follows the
+four completion maps by handing removed event nodes and inline keyed payloads
+out of the local queue borrow in one retaining receipt. Explicit disposal is
+iterative; fallback retains source/callback fields and original admission.
+This closes the local node-destruction boundary, while callback execution,
+outer scheduler/producer guards, IRQ disposal and unpublished preparation
+remain separately qualified. The private negative control retains one event
+without resetting its counter. Finding counts and historical failure causes
+are unchanged.

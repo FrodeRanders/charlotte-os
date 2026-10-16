@@ -38,13 +38,17 @@ retain lifetime only, including strong and weak cancellation references.
 The final owner frees the private holder before refunding its original charge.
 Anonymous queue nodes are fixed-size `Box` allocations prepared fallibly before
 Blocked state or completion publication. The sorted linked queue inserts those
-owners without allocation and frees nodes on removal; it does not retain
-high-water `VecDeque` backing. Chain destruction and cancellation removal are
-iterative to avoid consuming kernel stack proportional to queue length.
+owners without allocation. Removal detaches complete nodes into `RetiredEvents`
+without freeing backing or refunding charges under the queue borrow; it does
+not retain high-water `VecDeque` backing. Explicit post-queue finish destroys
+the detached chain iteratively. Abandoned receipts or queue storage retain
+every event/node/source/callback-reference/charge field without cleanup.
 Insertion, cancellation scanning and diagnostics remain linear in queue size;
 the bound is not a timer-throughput claim.
 
-The quantum/idle-wake event occupies an inline slot in `TimerQueue`. Its
+The quantum/idle-wake event occupies an inline slot in `TimerQueue`. Removed
+and duplicate/rejected keyed events transfer by value into the same receipt's
+one inline slot; no new disposal node or anonymous reservation is allocated. Its
 deadline participates in the queue's ordered iteration and earliest-deadline
 selection. An existing quantum's deadline is preserved across voluntary yields.
 There is no separately maintained `armed` bit, and filling anonymous admission
@@ -53,10 +57,28 @@ cannot consume this slot. Hardware comparator mutation remains IRQ-masked.
 Cancellation state is fallibly allocated and shared with its handle. Publication
 updates the actual owner LP before insertion, so preparation followed by
 relocation does not leave a stale cancellation target. Cancellation before
-publication flags the state; insertion discards that event. Local available
+publication flags the state; insertion returns that complete prepared node
+for post-queue disposal. Local available
 queues remove cancelled events eagerly. Remote/busy queues retain the flagged
 node and charge until owner reconciliation; cancellation never waits on a
 remote queue or re-enters a borrowed local queue.
+
+Filtering, purging, expiry and explicit removal now return complete retirement
+owners. Keyed ensure/removal, anonymous enqueue, eager cancellation, idle
+processing and both architecture IRQ adapters release their local queue borrow
+before explicit finish. Comparator/diagnostic updates and notification timing
+stay serialized; IRQ state is preserved. Backing admission may outlive logical
+removal through the complete queue transaction, final cancellation references
+and weak-only allocation backing. Receipt release creates no new physical,
+root-quiescence or replay proof. See the
+[queue-disposal follow-up](../reports/audits/2026-10-16-timer-queue-disposal.md).
+
+This qualifies the local queue handback. `TimerEvent::signal` still invokes
+callbacks and waiter notifications under the queue borrow, including their
+temporary-reference/list-entry destruction. Explicit finish can still run in
+IRQ context or beneath an enclosing scheduler/producer guard. Those contexts,
+unpublished preparation destructors and arbitrary callback work remain open;
+no guard-free deferred transport or scheduled disposal worker is added here.
 
 Eager removal borrows the handle's retained cancellation-state `Arc` and
 compares exact allocation identity with the queued event's state. The private
@@ -82,8 +104,8 @@ guards and the mask are released before yield.
   deadline on event, node or waiter rejection. It preserves its void ABI and
   at-least-duration contract without publishing a wake-less Blocked state.
 - `block_until` returns its condition on failed preparation/admission.
-- Timed CQ wait returns `false` without parking. It still cannot distinguish
-  admission pressure from no observed work in its existing ABI.
+- Checked timed CQ wait reports admission rejection separately from readiness
+  or deadline, retaining the operation owner; see [CQ wait](cq-wait.md).
 - Timed completion wait returns `WAIT_ADMISSION_FAILED` (3), leaving the
   operation/capability live. The Rust owner retains ownership as documented in
   the waiter reference. Poll and immediate-terminal fast paths are unchanged.
@@ -92,9 +114,10 @@ guards and the mask are released before yield.
   record/authority publication and enqueue. Observer allocation rejection drops
   the prepared event/node/cancellation state, record and any hidden capability
   reservation. Failure returns `SubmitError::WouldBlock`, with the existing
-  submission-failure syscall representation. Registry insertion still uses
-  infallible `BTreeMap` allocation; this does not make the entire submission
-  path safe under heap exhaustion.
+  submission-failure syscall representation. All four completion maps now
+  prepare admitted nodes before local publication; their aggregate admission
+  and enclosing contexts remain separate. See the
+  [global metadata follow-up](../reports/audits/2026-10-16-completion-namespace-metadata.md).
 
 Timed callbacks capture the executing thread's generation before parking;
 source registration confirms that same live generation. Prepared nodes hold no
@@ -133,13 +156,25 @@ weak reference to the rejected record keeps its original charge until final
 release; real immediate expiry and cancellation recover afterward. The injected
 allocator is private to the kernel fixture and substitutes only that allocation.
 
-Scheduled fixtures temporarily substitute only their own kernel thread's
-sponsor to force rejection. They check Running state/constraints, generic/CQ
+Scheduled fixtures receive a private trusted sponsor before thread publication
+and any event capture; no live sponsor is replaced. They check Running state/constraints, generic/CQ
 wait failure, a synthetic timed-completion syscall returning status 3 with its
 pending capability preserved, runnable sleep duration, busy-local deferred
 reclamation and 64 sleep plus 64 watchdog accounting cycles. An owner-LP fixture
 simulates relocation before publication; it is not an actual cross-LP purge or
 migration test. The scoped real-EL0 verifier is unchanged.
+
+Serialized disposal controls detach 64 actual exact-identity nodes with heap
+and queue held, retaining all charges and waiter sources. Additional controls
+cover cancelled-node purging plus rejected enqueue, anonymous/keyed expiry,
+duplicate and removed quantum handback, final weak-only original-account
+release and enclosing IRQ preservation. The shared explicit finish probes
+local queue and heap guard availability immediately before destruction.
+One guarded abandoned receipt deliberately retains one original event charge
+and source until guest shutdown; later independent waiter cancellation releases
+only its own entry. This negative control runs after the fixture's full-pool
+reservation checks and never resets node counters. It does not qualify every
+production outer caller or prove cross-LP cancellation progress.
 
 These counts bound retained event/node/cancellation backing quantities, not
 the entire kernel heap or allocator overhead. Queue diagnostics count actual
