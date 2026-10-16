@@ -156,3 +156,9 @@ original weak observer and charge stay in the preparation owner. Each private
 factory has one current contract and no compatibility branch. Wire/storage
 formats, runtime ABI, numbered protocol batches and remaining raw-adapter
 candidates are unchanged; completed/containing destructor contexts remain open.
+
+The [callback-owner follow-up](../reports/audits/2026-10-16-completion-callback-ownership.md)
+uses a borrowed complete transaction for private completion-callback entry
+factories too. This private test seam has one contract; ordinary preparation
+outcomes use explicit finish. Public observation types, runtime
+ABI, wire/storage grammars and numbered protocol batches are unchanged.

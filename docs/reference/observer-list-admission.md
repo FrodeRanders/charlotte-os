@@ -67,6 +67,15 @@ registration tokens, source/batch destruction and containing caller contexts
 retain their existing policies and separate qualification. See the
 [entry-construction follow-up](../reports/audits/2026-10-16-observer-entry-construction.md).
 
+Completion callback preparation now also retains its exact captured record,
+original weak observer, watch reservation and candidate/entry fields in one
+inert containing owner before admission. Ordinary rejection and successful/ready
+publication finish explicitly after local guards; readiness notification follows
+that disposal. Its four phase fallbacks retain complete fields. This qualifies
+that containing owner, while generic completed preparation/token/source
+finalization and other caller contexts remain separate. See the
+[callback-owner follow-up](../reports/audits/2026-10-16-completion-callback-ownership.md).
+
 ## Rejection and locks
 
 `ObserverList::try_new` has no uncharged alternative. Node/ordinary saturation

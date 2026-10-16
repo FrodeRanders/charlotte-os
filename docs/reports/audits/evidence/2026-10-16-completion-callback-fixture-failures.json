@@ -1,0 +1,420 @@
+{
+  "baseline": "448c7f4c0d80e80ff608b8f9070dbdbeabc7c2d9",
+  "cause": "Introduced fixture error: terminal-only close was used to discard a never-externally-published, deliberately in-flight test submission. Production rejection was correct. Two later fixture cleanups repeat that mistake.",
+  "correction": "Use existing abort_submission for these three never-externally-published fixture submissions after ownership assertions and all local guards leave. Do not synthesize a terminal completion or change production close.",
+  "date": "2026-10-16",
+  "failed_fixture_source_excerpt": [
+    "82:         );",
+    "83:         assert!(matches!(result, Err(ObserveError::ResourceLimit)));",
+    "84:         assert_eq!(account.used(), before);",
+    "85:         assert_eq!(Arc::weak_count(&observer), 0);",
+    "86:         assert!(completion.inner.lock().callbacks.is_none());",
+    "87:         assert!(completion.holds_buffer());",
+    "88:         assert_eq!(completion.state_kind(), OpStateKind::InFlight);",
+    "89:         drop(pressure);",
+    "90:         close(CLIENT, cap).unwrap();",
+    "91:         drop(completion);",
+    "92:         close_address_space(CLIENT);",
+    "93:         crate::capability::close_address_space(CLIENT);",
+    "94:     }"
+  ],
+  "limits": "Failed native samples remain separate from corrected repeats and earlier intermittent incidents. Artifact hashes identify original local captures; bounded all-CPU registers/backtraces and panic diagnostics are published inline. Binary snapshots/full local logs are not version-controlled and are not required for the fixture attribution. No inference about older worker/stack/persistence/NIC failures.",
+  "observation": "Both first native samples panic in new ordinary_rejection fixture teardown at line 90 with NotComplete. Preceding assertions deliberately require InFlight with the original buffer. Intel LLDB names ordinary_rejection at line 90; optimized ARM LLDB names the containing preparation_tests::run. On both, all three APs remain at the pre-test boot barrier.",
+  "reviewed_failed_source_sha256": {
+    "crates/catten/src/completion/callbacks.rs": "20aa5193a68e246d9b6fcd44df21041911b45d0ee36f882fb3c0d4b6c7b5b984",
+    "crates/catten/src/completion/callbacks/preparation_tests.rs": "35cd8b3fbf13945049f06c26a12046541c2967119d2ed91d5920fe48adb85ef6",
+    "crates/catten/src/completion/callbacks/tests.rs": "e4ac7ed0174fb1f58f9f6f7c056ce63b958f348ba1625419d13f0b9620863905",
+    "crates/catten/src/completion/mod.rs": "f7a1b85b1b0a05c065d76786a2bc6a00729cf9594891100c33396baf63d86217",
+    "crates/catten/src/klib/observer/registration.rs": "3905fb265596a0a4b6fe0b656b8b5203bd66d5cfaacd674415d7b48923082393",
+    "crates/catten/src/klib/observer/registration/entry_preparation.rs": "53d5981bceba9b8924d8105c786abed3a2a69d16f562647bd1fa576f809dbbfb"
+  },
+  "runs": [
+    {
+      "all_cpu_lldb_backtraces": "* thread #1, stop reason = signal SIGTRAP\n   * frame #0: 0xffffffff8001dc78 kernel.elf`catten::panic::panic_stop at panic.rs:183:13\n     frame #1: 0xffffffff8001da38 kernel.elf`__rustc::rust_begin_unwind(info=0xffff00005cc299d8) at panic.rs:0\n     frame #2: 0xffffffff8035e8f4 kernel.elf`core::panicking::panic_fmt(fmt=Arguments @ 0xffff00005cc299c8) at panicking.rs:80:14\n     frame #3: 0xffffffff80362e08 kernel.elf`core::result::unwrap_failed(msg=(data_ptr = \"called `Result::unwrap()` on an `Err` value\", length = 43), error=&dyn core::fmt::Debug @ 0xffff00005cc29a10) at result.rs:1870:5\n     frame #4: 0xffffffff8039dac0 kernel.elf`catten::completion::callbacks::preparation_tests::run at preparation_tests.rs:0\n     frame #5: 0xffffffff8009fc50 kernel.elf`catten::completion::callbacks::test_preparation at callbacks.rs:282:5 [inlined]\n     frame #6: 0xffffffff8009fc48 kernel.elf`catten::completion::callback_tests::test_admission at callback_tests.rs:44:5\n     frame #7: 0xffffffff803d8744 kernel.elf`catten::self_test::run_synchronous_self_tests at mod.rs:300:5\n     frame #8: 0xffffffff80045210 kernel.elf`bsp_main at main.rs:256:5\n  thread #2\n       frame #0: 0xffffffff80345e90 kernel.elf`core::sync::atomic::atomic_compare_exchange_weak::<u8>(dst=<unavailable>, old=<unavailable>, new=<unavailable>, success=<unavailable>, failure=<unavailable>) at atomic.rs:4102:17 [inlined]\n       frame #1: 0xffffffff80345e80 kernel.elf`<core::sync::atomic::Atomic<bool>>::compare_exchange_weak(self=<unavailable>) at atomic.rs:1061:13 [inlined]\n       frame #2: 0xffffffff80345e80 kernel.elf`<spin::mutex::spin::SpinMutex<spin::barrier::BarrierState>>::try_lock_weak(self=<unavailable>) at spin.rs:295:14 [inlined]\n       frame #3: 0xffffffff80345e80 kernel.elf`<spin::mutex::spin::SpinMutex<spin::barrier::BarrierState>>::lock(self=0xffffffff805ebd68) at spin.rs:183:39 [inlined]\n       frame #4: 0xffffffff80345e80 kernel.elf`<spin::mutex::Mutex<spin::barrier::BarrierState>>::lock(self=0xffffffff805ebd68) at mutex.rs:189:31 [inlined]\n       frame #5: 0xffffffff80345e80 kernel.elf`<spin::barrier::Barrier>::wait(self=0xffffffff805ebd68) at barrier.rs:121:34\n       frame #6: 0xffffffff800488b8 kernel.elf`ap_main(_cpuinfo=<unavailable>) at main.rs:398:19\n  thread #3\n       frame #0: 0xffffffff80345e90 kernel.elf`core::sync::atomic::atomic_compare_exchange_weak::<u8>(dst=<unavailable>, old=<unavailable>, new=<unavailable>, success=<unavailable>, failure=<unavailable>) at atomic.rs:4102:17 [inlined]\n       frame #1: 0xffffffff80345e80 kernel.elf`<core::sync::atomic::Atomic<bool>>::compare_exchange_weak(self=<unavailable>) at atomic.rs:1061:13 [inlined]\n       frame #2: 0xffffffff80345e80 kernel.elf`<spin::mutex::spin::SpinMutex<spin::barrier::BarrierState>>::try_lock_weak(self=<unavailable>) at spin.rs:295:14 [inlined]\n       frame #3: 0xffffffff80345e80 kernel.elf`<spin::mutex::spin::SpinMutex<spin::barrier::BarrierState>>::lock(self=0xffffffff805ebd68) at spin.rs:183:39 [inlined]\n       frame #4: 0xffffffff80345e80 kernel.elf`<spin::mutex::Mutex<spin::barrier::BarrierState>>::lock(self=0xffffffff805ebd68) at mutex.rs:189:31 [inlined]\n       frame #5: 0xffffffff80345e80 kernel.elf`<spin::barrier::Barrier>::wait(self=0xffffffff805ebd68) at barrier.rs:121:34\n       frame #6: 0xffffffff800488b8 kernel.elf`ap_main(_cpuinfo=<unavailable>) at main.rs:398:19\n  thread #4\n       frame #0: 0xffffffff80345ec8 kernel.elf`core::sync::atomic::atomic_store::<u8>(dst=\"\\U00000001\", val='\\0', order=Release) at atomic.rs:3938:24 [inlined]\n       frame #1: 0xffffffff80345ec8 kernel.elf`<core::sync::atomic::Atomic<bool>>::store(self=0xffffffff805ebd68) at atomic.rs:787:13 [inlined]\n       frame #2: 0xffffffff80345ec8 kernel.elf`<spin::mutex::spin::SpinMutexGuard<spin::barrier::BarrierState> as core::ops::drop::Drop>::drop(self=<unavailable>) at spin.rs:398:25 [inlined]\n       frame #3: 0xffffffff80345ec8 kernel.elf`core::ptr::drop_glue::<spin::mutex::spin::SpinMutexGuard<spin::barrier::BarrierState>>((null)=<unavailable>) at mod.rs:828:1 [inlined]\n       frame #4: 0xffffffff80345ec8 kernel.elf`core::ptr::drop_glue::<spin::mutex::MutexGuard<spin::barrier::BarrierState>>((null)=<unavailable>) at mod.rs:828:1 [inlined]\n       frame #5: 0xffffffff80345ec8 kernel.elf`core::mem::drop::<spin::mutex::MutexGuard<spin::barrier::BarrierState>>(_x=MutexGuard<spin::barrier::BarrierState, spin::relax::Spin> @ x0) at mod.rs:1043:1 [inlined]\n       frame #6: 0xffffffff80345ec8 kernel.elf`<spin::barrier::Barrier>::wait(self=0xffffffff805ebd68) at barrier.rs:119:17\n       frame #7: 0xffffffff800488b8 kernel.elf`ap_main(_cpuinfo=<unavailable>) at main.rs:398:19\n",
+      "all_cpu_registers": "\nCPU#0\n PC=ffffffff8001dc78 X00=0000000000000000 X01=0000000000000004\nX02=0000000000000000 X03=0000000000000000 X04=0000000000000002\nX05=0000000000000010 X06=0000000003ff0000 X07=0000000000000000\nX08=0000000000000000 X09=0000000000000000 X10=0000000000000000\nX11=0000000000000000 X12=0000000000000000 X13=0000000000000045\nX14=0000000000000010 X15=0000000000000003 X16=000000000000ff84\nX17=0000000000000000 X18=ffff00005cc29560 X19=ffffffff805ec680\nX20=ffffffff805f6c80 X21=ffff8400000017c8 X22=ffff8400000017cd\nX23=ffffffff805eb000 X24=000000000000000d X25=000000000000000a\nX26=0000000009000000 X27=000000ffffffffff X28=000000ffffffffff\nX29=ffff00005cc29920 X30=ffffffff8001da38  SP=ffff00005cc29920\nPSTATE=00000000200003c5 --C- EL1h  BTYPE=0     FPCR=00000000 FPSR=00000000\nQ00=0000000000000000:0000000000000000 Q01=00000000ffffffff:0000000000000000\nQ02=0000000000000000:0000000100000001 Q03=0000000000000000:0000000000000000\nQ04=0000000000000000:f9f9fafbfcfdfeff Q05=0000000000000000:0505050505050505\nQ06=0000000000000000:0000000000000000 Q07=0000000000000000:0000000000000000\nQ08=0000000000000000:0000000000000000 Q09=0000000000000000:0000000000000000\nQ10=0000000000000000:0000000000000000 Q11=0000000000000000:0000000000000000\nQ12=0000000000000000:0000000000000000 Q13=0000000000000000:0000000000000000\nQ14=0000000000000000:0000000000000000 Q15=0000000000000000:0000000000000000\nQ16=0000000000000000:0000000000000000 Q17=0000000000000000:0000000000000000\nQ18=0000000000000000:0000000000000000 Q19=0000000000000000:0000000000000000\nQ20=0000000000000000:0000000000000000 Q21=0000000000000000:0000000000000000\nQ22=0000000000000000:0000000000000000 Q23=0000000000000000:0000000000000000\nQ24=0000000000000000:0000000000000000 Q25=0000000000000000:0000000000000000\nQ26=0000000000000000:0000000000000000 Q27=0000000000000000:0000000000000000\nQ28=0000000000000000:0000000000000000 Q29=000000005fbb5730:000000005fbb313c\nQ30=0000000047685c10:0000000047685c10 Q31=ffffff80ffffffd0:0000000047685be0\n\nCPU#1\n PC=ffffffff80345e90 X00=ffffffff805ebd68 X01=ffffffff805ebd68\nX02=ffffffff80440ba0 X03=ffffffff80089704 X04=0000000000000000\nX05=0000000000000001 X06=0000000000000000 X07=0000000000000000\nX08=0000000000000000 X09=0000000000000001 X10=0000000000000001\nX11=0000000000000004 X12=0000000000000000 X13=0000000000000000\nX14=0000000000989680 X15=0000000000000035 X16=0000000000000000\nX17=0000000000000000 X18=0000000000000000 X19=ffffffff805ebd38\nX20=ffff00005cc0efec X21=ffffffff80360a24 X22=0000000000000000\nX23=0000000000000000 X24=0000000000000000 X25=0000000000000000\nX26=0000000000000000 X27=0000000000000000 X28=0000000000000000\nX29=ffff00005cc0efb0 X30=ffffffff800488b8  SP=ffff00005cc0efb0\nPSTATE=00000000800003c5 N--- EL1h  BTYPE=0     FPCR=00000000 FPSR=00000000\nQ00=0000000000000001:0000000000000001 Q01=0000000000000000:0000000000000000\nQ02=0000000000000000:0000000000000000 Q03=0000000000000000:0000000000000000\nQ04=0000000000000000:0000000000000000 Q05=0000000000000000:0000000000000000\nQ06=0000000000000000:0000000000000000 Q07=0000000000000000:0000000000000000\nQ08=0000000000000000:0000000000000000 Q09=0000000000000000:0000000000000000\nQ10=0000000000000000:0000000000000000 Q11=0000000000000000:0000000000000000\nQ12=0000000000000000:0000000000000000 Q13=0000000000000000:0000000000000000\nQ14=0000000000000000:0000000000000000 Q15=0000000000000000:0000000000000000\nQ16=0000000000000000:0000000000000000 Q17=0000000000000000:0000000000000000\nQ18=0000000000000000:0000000000000000 Q19=0000000000000000:0000000000000000\nQ20=0000000000000000:0000000000000000 Q21=0000000000000000:0000000000000000\nQ22=0000000000000000:0000000000000000 Q23=0000000000000000:0000000000000000\nQ24=0000000000000000:0000000000000000 Q25=0000000000000000:0000000000000000\nQ26=0000000000000000:0000000000000000 Q27=0000000000000000:0000000000000000\nQ28=0000000000000000:0000000000000000 Q29=0000000000000000:0000000000000000\nQ30=0000000000000000:0000000000000000 Q31=0000000000000000:0000000000000000\n\nCPU#2\n PC=ffffffff80345e90 X00=ffffffff805ebd68 X01=0000000000000004\nX02=ffffffff80440ba0 X03=ffffffff80089704 X04=0000000000000000\nX05=0000000000000001 X06=0000000000000000 X07=0000000000000000\nX08=0000000000000000 X09=0000000000000001 X10=0000000000000001\nX11=0000000000000004 X12=0000000000002710 X13=0000000000000030\nX14=0000000000989680 X15=0000000000000030 X16=0000000000000000\nX17=0000000000000000 X18=0000000000000000 X19=ffffffff805ebd38\nX20=ffff00005cbfefec X21=ffffffff80360a24 X22=0000000000000000\nX23=0000000000000000 X24=0000000000000000 X25=0000000000000000\nX26=0000000000000000 X27=0000000000000000 X28=0000000000000000\nX29=ffff00005cbfefb0 X30=ffffffff800488b8  SP=ffff00005cbfefb0\nPSTATE=00000000800003c5 N--- EL1h  BTYPE=0     FPCR=00000000 FPSR=00000000\nQ00=0000000000000001:0000000000000001 Q01=0000000000000000:0000000000000000\nQ02=0000000000000000:0000000000000000 Q03=0000000000000000:0000000000000000\nQ04=0000000000000000:0000000000000000 Q05=0000000000000000:0000000000000000\nQ06=0000000000000000:0000000000000000 Q07=0000000000000000:0000000000000000\nQ08=0000000000000000:0000000000000000 Q09=0000000000000000:0000000000000000\nQ10=0000000000000000:0000000000000000 Q11=0000000000000000:0000000000000000\nQ12=0000000000000000:0000000000000000 Q13=0000000000000000:0000000000000000\nQ14=0000000000000000:0000000000000000 Q15=0000000000000000:0000000000000000\nQ16=0000000000000000:0000000000000000 Q17=0000000000000000:0000000000000000\nQ18=0000000000000000:0000000000000000 Q19=0000000000000000:0000000000000000\nQ20=0000000000000000:0000000000000000 Q21=0000000000000000:0000000000000000\nQ22=0000000000000000:0000000000000000 Q23=0000000000000000:0000000000000000\nQ24=0000000000000000:0000000000000000 Q25=0000000000000000:0000000000000000\nQ26=0000000000000000:0000000000000000 Q27=0000000000000000:0000000000000000\nQ28=0000000000000000:0000000000000000 Q29=0000000000000000:0000000000000000\nQ30=0000000000000000:0000000000000000 Q31=0000000000000000:0000000000000000\n\nCPU#3\n PC=ffffffff80345ec8 X00=ffffffff805ebd68 X01=0000000000000004\nX02=ffffffff80440ba0 X03=ffffffff80089704 X04=0000000000000000\nX05=0000000000000001 X06=0000000000000000 X07=0000000000000000\nX08=0000000000000000 X09=0000000000000001 X10=0000000000000003\nX11=0000000000000004 X12=0000000000002710 X13=0000000000000034\nX14=0000000000989680 X15=0000000000000039 X16=0000000000000000\nX17=0000000000000000 X18=0000000000000000 X19=ffffffff805ebd38\nX20=ffff00005cbeefec X21=ffffffff80360a24 X22=0000000000000000\nX23=0000000000000000 X24=0000000000000000 X25=0000000000000000\nX26=0000000000000000 X27=0000000000000000 X28=0000000000000000\nX29=ffff00005cbeefb0 X30=ffffffff800488b8  SP=ffff00005cbeefb0\nPSTATE=00000000800003c5 N--- EL1h  BTYPE=0     FPCR=00000000 FPSR=00000000\nQ00=0000000000000001:0000000000000001 Q01=0000000000000000:0000000000000000\nQ02=0000000000000000:0000000000000000 Q03=0000000000000000:0000000000000000\nQ04=0000000000000000:0000000000000000 Q05=0000000000000000:0000000000000000\nQ06=0000000000000000:0000000000000000 Q07=0000000000000000:0000000000000000\nQ08=0000000000000000:0000000000000000 Q09=0000000000000000:0000000000000000\nQ10=0000000000000000:0000000000000000 Q11=0000000000000000:0000000000000000\nQ12=0000000000000000:0000000000000000 Q13=0000000000000000:0000000000000000\nQ14=0000000000000000:0000000000000000 Q15=0000000000000000:0000000000000000\nQ16=0000000000000000:0000000000000000 Q17=0000000000000000:0000000000000000\nQ18=0000000000000000:0000000000000000 Q19=0000000000000000:0000000000000000\nQ20=0000000000000000:0000000000000000 Q21=0000000000000000:0000000000000000\nQ22=0000000000000000:0000000000000000 Q23=0000000000000000:0000000000000000\nQ24=0000000000000000:0000000000000000 Q25=0000000000000000:0000000000000000\nQ26=0000000000000000:0000000000000000 Q27=0000000000000000:0000000000000000\nQ28=0000000000000000:0000000000000000 Q29=0000000000000000:0000000000000000\nQ30=0000000000000000:0000000000000000 Q31=0000000000000000:0000000000000000\n",
+      "artifact_sha256": {
+        "cpus.json": "297083f7ca5e560c9715dc9bc337369e3c59e89829d99477b95544e5d4f4a973",
+        "failure.json": "cd767e6416b1110a5cfb5bd86346341b201143d18518741409a50f685db8384d",
+        "kernel.elf": "bf39bc9e325ad8bafe9914aff3f13953cadc30909aea16638f73ebde178beb96",
+        "kernel.symbols": "ae5a9a3210f85f8602f111e0c42cf694f0468dcd4d58fe3e1d20276d5924d807",
+        "lldb.log": "3a730703e127e91624660fd30473c18dc2b66edc5a1322941a72400e8de5a191",
+        "manifest.json": "e5877b301c7b534308d3a3ce9542117d396a6de47197d2f14b4eb59f248b62eb",
+        "registers.log": "48f35681d8fdb9d1bc172401cbfffeadd61c88fd33dd6ccc70d27167a08f191c",
+        "request.json": "7a7e059e0809dda11f7ca139c1a347696f1dfe84b08339d7f86a704aad292159",
+        "result.json": "6e1b4b41376a047d058a9dff50bc6183e4ad751b081f0730a448654f1e809878",
+        "serial-at-trigger.log": "ee904dfa37eb61a6671fd334cdea768035fe2815e2549ac937664daaecd4e21f",
+        "serial.log": "ee904dfa37eb61a6671fd334cdea768035fe2815e2549ac937664daaecd4e21f",
+        "watcher.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "capture_result": {
+        "cpu_count": 4,
+        "elapsed_seconds": 8.556084792129695,
+        "errors": [],
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "qmp": "captured",
+        "reason": "kernel-panic",
+        "snapshot": "captured"
+      },
+      "cpus": [
+        {
+          "cpu-index": 0,
+          "props": {
+            "cluster-id": 0,
+            "core-id": 0,
+            "socket-id": 0,
+            "thread-id": 0
+          },
+          "qom-path": "/machine/unattached/device[0]",
+          "qom-type": "cortex-a710-arm-cpu",
+          "target": "aarch64",
+          "thread-id": 18623
+        },
+        {
+          "cpu-index": 1,
+          "props": {
+            "cluster-id": 0,
+            "core-id": 1,
+            "socket-id": 0,
+            "thread-id": 0
+          },
+          "qom-path": "/machine/unattached/device[1]",
+          "qom-type": "cortex-a710-arm-cpu",
+          "target": "aarch64",
+          "thread-id": 18623
+        },
+        {
+          "cpu-index": 2,
+          "props": {
+            "cluster-id": 0,
+            "core-id": 2,
+            "socket-id": 0,
+            "thread-id": 0
+          },
+          "qom-path": "/machine/unattached/device[2]",
+          "qom-type": "cortex-a710-arm-cpu",
+          "target": "aarch64",
+          "thread-id": 18623
+        },
+        {
+          "cpu-index": 3,
+          "props": {
+            "cluster-id": 0,
+            "core-id": 3,
+            "socket-id": 0,
+            "thread-id": 0
+          },
+          "qom-path": "/machine/unattached/device[3]",
+          "qom-type": "cortex-a710-arm-cpu",
+          "target": "aarch64",
+          "thread-id": 18623
+        }
+      ],
+      "diagnostic_id": "aarch64-gxdt9ohq",
+      "instance": "callback-owner-arm",
+      "last_passed_callback_control": [
+        "[+     1.798002] [completion callback preparation] unlocked allocation/rejection, heap-held competing/full/ready/retired/reused publication, reentrant namespace disposal and complete charged CQ detachment passed"
+      ],
+      "manifest": {
+        "arch": "aarch64",
+        "boot_image": "/Users/froran/Projects/private/charlotte-os/os-images/charlotte-aarch64-debug-callback-owner-arm.img",
+        "boot_image_sha256": "119b545a252e8530f5a422d0ce290195ef0bbe96a21021b158615bc89b3ce0db",
+        "bundle_sha256": {
+          "agent.elf": "bd5318e9920dd8b736a7de8c2fa5345e92885525b7123c965136dc0e96e8666b",
+          "cclient.elf": "2014767d410862426e6c2e5ff15031c2b108894c3e1b469270f80f466e923cff",
+          "client.elf": "7967a2b97502cccd14da1da8db6e008d34e3cef83a4f247d510521a8a6d5e8d0",
+          "clusterctl.elf": "607cd86069866c988941f29a8e054b39151f8fe1007e1eb10c6c003c845a67a1",
+          "deployd.elf": "4dcec4938efbd7eb82f95a79972bdbf933e5de6f0a3bff3b5620795def7e01b8",
+          "disco.elf": "8c041b12aa79fa53f2e0578025bb6dd0c6c960b67c2a1d37987af2f8c334f9cd",
+          "dns.elf": "298ed0e38457ccd9128aa97df220d2dbe14e03b573dcf3a7a91b6377b85927c5",
+          "echo.elf": "1df28005af0ea78fc55e057dc79a73462caf94fd456487a7279a591f1273d0c4",
+          "frouter.elf": "1b2a1d0770817747a97a4ada8e616b6885ebeafe2b714ab65b212b0cd81cac0e",
+          "fs.elf": "179a5430e9dc3e2e1edbddcf829d34595df4f341d8f01da2d0365279841b4592",
+          "grantctl.elf": "4112a947f38c26b56a9200a42b7cfec5561e091536152517ef3af2e05fcce8ea",
+          "greet.elf": "5ba29ccfb3b7689329be7c976006810a6a78978fa1a90e7cb56b95e5825a15bf",
+          "httpd.elf": "a7af73e55c4527427aa8f00d003edd9ebeacdfb7635a6bcc4aad70dc2d708217",
+          "kafka.elf": "136990e3bd0e1ad07bc59516af424560bd17b01b71f377517de4c7806a818256",
+          "kafka_fence_smoke.elf": "e043ac7719c2315c0383ef35c015ab2fb82bb77a31c4380a87912de0a3d1a5ce",
+          "kafka_smoke.elf": "e19cb244b41301e804ab5ebdfe8138da11eb4bf49d942b2d06cd2f5082a888c9",
+          "kafka_step.elf": "b9c5acd7aca66bbff77b0b894f4dc9d7cb3924eb694496e8c427cc253e82501c",
+          "kafka_step_input.elf": "3d4a3b8de67b4b609c1c045006c09b31435f79ef2c862740c502049bbab43069",
+          "kafka_step_proc.elf": "65c27573de50a074c8d439c5629e542903552d56bcf0e7b0ac51fa3e3610e48d",
+          "nclient.elf": "a7e499f76d42a1bf5e77fc807505d954476b0059c933ac2baf80c5d80f361d2f",
+          "net.elf": "62a41db2d002a8f4dcbdae07db4b0c5b561156e15b00925346db40f6f7d3c901",
+          "ns.elf": "7ad6c599f879611918e7f082e0e4dfe423800c50d4c7e45caca90dbdc8bb4022",
+          "nvme.elf": "6a3016886746774030b08873b8d8801ee85ff2fb7eda5dc9122cedfc39266c4e",
+          "nvme_client.elf": "9425cd53c2aa9a951cd3c7fceb0f4633764e0c7979aa3692d22a81f5db40c126",
+          "objstore.elf": "c1d8a7c9ab96af3f49498756b3a04838e89076bc59c8a6f61089180b3657aae0",
+          "objstore_client.elf": "b7d3fc4cbdd5ec20bd08f646b5e0a77b4f37f5ba12ab5e9082ce9d3f394a210b",
+          "observe.elf": "c0d767666b5500e12302cf3707d314ba2bb3a5d49b301fb10ae3b72e4fefd13b",
+          "raft.elf": "17a5d27f523accbd7a8fdb46bb615917a910f9d1a0f01882bec2c0b55b1eec9d",
+          "rclient.elf": "9d473cdc5c4824b4c895248ed36326ae835c8c141e3b03352fb9728a247c99b2",
+          "relmsg.elf": "8c310579f0d60db79fd59a073e06bd0c929e94c0706f0a62154d5f9e62d94403",
+          "rng.elf": "84d190cae372be2d9257d581ceb095a624db6a1072d7a9b01dccc34e6be05b9a",
+          "s3.elf": "2f857e372a4f2754a01e782b847bdff33fa228e15d9dfa30666cc77fcc08157a",
+          "s3_smoke.elf": "f7ab894ca57f527fe940d9b8202efa46f7c0effd68a4c1afd87f5aa852efe1ce",
+          "security_probe.elf": "4d5806e214ba0e770ccd2293b80e4712a432119a9412dd20636f1bbf6a758a88",
+          "servicemgr.elf": "53e9b68b772742af21ddb05fd1faac025c45defe83365dd574f702a0c526bc6e",
+          "shutdown_probe.elf": "13b6fc997c8294189d70c47f78801a47e00292c837c051b3a545b692f8cb659f",
+          "sitas-user.elf": "a01b596eab01adc9f8bf7ac45228b1b21da9dcdb00b9e38799850358d01ed564",
+          "tcpclient.elf": "fb2716c1b5d024190e0483ce93737b8fa0503a4719e306b35f6b7cbfd9eba9ae",
+          "tcpip.elf": "8162d04061f4a72911649483067b9d4f40ce1287f7dc322941693b6eea2236ac",
+          "time.elf": "09a222cd433414d1f7a0aaf19d6c409695bac2ef49578bcb91393c16c365e82e",
+          "uart.elf": "36dc59c5bbab6b7cd698248a360ecbf9bdb84fd22f3bfd126c57a6f88a8e7d77"
+        },
+        "cpus": 4,
+        "dirty_paths": [
+          " M crates/catten/src/completion/callbacks.rs",
+          " M crates/catten/src/completion/callbacks/tests.rs",
+          "?? crates/catten/src/completion/callbacks/preparation_tests.rs"
+        ],
+        "disk": "/Users/froran/Projects/private/charlotte-os/os-images/nvme-disk-callback-owner-arm.img",
+        "initial_disk_sha256": "497547f4cf0a75940f0e09370188742d612809ab7abc9bf683e29d450003734c",
+        "instance": "callback-owner-arm",
+        "kernel_sha256": "bf39bc9e325ad8bafe9914aff3f13953cadc30909aea16638f73ebde178beb96",
+        "kernel_source": "/Users/froran/Projects/private/charlotte-os/target/aarch64-unknown-none-catten/debug/catten",
+        "prepared_utc": "2026-10-16T16:00:45Z",
+        "qemu_arguments": [
+          "-M",
+          "virt,gic-version=3,msi=gicv2m,iommu=smmuv3,default-bus-bypass-iommu=off",
+          "-m",
+          "512M",
+          "-bios",
+          "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
+          "-drive",
+          "file=./os-images/charlotte-aarch64-debug-callback-owner-arm.img,format=raw,if=none,id=boot0",
+          "-device",
+          "virtio-blk-pci,drive=boot0,addr=3",
+          "-cpu",
+          "cortex-a710",
+          "-object",
+          "rng-random,filename=/dev/urandom,id=charlotte-rng",
+          "-device",
+          "virtio-rng-pci,rng=charlotte-rng,disable-legacy=on,iommu_platform=on,addr=4",
+          "-smp",
+          "4",
+          "-drive",
+          "if=none,file=./os-images/nvme-disk-callback-owner-arm.img,format=raw,id=nvme0",
+          "-device",
+          "nvme,drive=nvme0,serial=cat0,max_ioqpairs=4,addr=2",
+          "-nic",
+          "none",
+          "-display",
+          "none",
+          "-qmp",
+          "unix:/tmp/ctdiag-fc_468zz/qmp.sock,server=on,wait=off",
+          "-gdb",
+          "unix:/tmp/ctdiag-fc_468zz/gdb.sock,server=on,wait=off",
+          "-serial",
+          "file:/tmp/charlotte-callback-owner-arm-serial.log"
+        ],
+        "qemu_pid": 18623,
+        "revision": "448c7f4c0d80e80ff608b8f9070dbdbeabc7c2d9",
+        "schema": "charlotte.boot-diagnostics.v1",
+        "serial_log": "/private/tmp/charlotte-callback-owner-arm-serial.log",
+        "timeout_seconds": 180,
+        "tooling_sha256": {
+          "scripts/boot-diagnostics.py": "ac1963cc8e6a8e3403f2631946b016c46edd16279a02ca799604449803593aca",
+          "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+          "scripts/run-aarch64.sh": "63d759b017c3678fbf1f2aa0220a189602513193a1d765ef806e43c1f0202e12"
+        },
+        "tracked_diff_sha256": "f3262f1d18e008d4fcd51158e42d35df05197863a8ae385f59ec236bc0a7a4e3",
+        "transport": "/tmp/ctdiag-fc_468zz"
+      },
+      "runner_exit": 1,
+      "serial_panic_excerpt": "panicked at crates/catten/src/completion/callbacks/preparation_tests.rs:90:28:\ncalled `Result::unwrap()` on an `Err` value: NotComplete\nKernel backtrace (raw return addresses; text=0xffffffff80000000..0xffffffff8042e07c, sp=0xffff00005cc29850, fp=0xffff00005cc298d0):\n  #00 0xffffffff8001cb98\n  #01 0xffffffff8035e8f4\n  #02 0xffffffff80362e08\n  #03 0xffffffff8039dac0\n  #04 0xffffffff8009fc50\n***\n"
+    },
+    {
+      "all_cpu_lldb_backtraces": "* thread #1, stop reason = signal SIGTRAP\n   * frame #0: 0xffffffff80135722 kernel.elf`catten::panic::panic_stop at panic.rs:176:13\n     frame #1: 0xffffffff8013546d kernel.elf`__rustc::rust_begin_unwind(info=0xffff80001e059f98) at panic.rs:0\n     frame #2: 0xffffffff8035780b kernel.elf`core::panicking::panic_fmt(fmt=Arguments @ 0xffff80001e059fb0) at panicking.rs:80:14\n     frame #3: 0xffffffff8035d4ab kernel.elf`core::result::unwrap_failed(msg=(data_ptr = \"called `Result::unwrap()` on an `Err` valueunsafe precondition(s) violated: ptr::read requires that the pointer argument is aligned and non-null\\n\\nThis indicates a bug in the program. This Undefined Behavior check is optional, and cannot be relied on for safety.\", length = 43), error=&dyn core::fmt::Debug @ 0xffff80001e059ff0) at result.rs:1870:5\n     frame #4: 0xffffffff8009dce1 kernel.elf`<core::result::Result<(), catten::completion::CapError>>::unwrap(self=<unavailable>) at result.rs:1231:23\n     frame #5: 0xffffffff8009dcb5 kernel.elf`catten::completion::callbacks::preparation_tests::ordinary_rejection at preparation_tests.rs:90:28\n     frame #6: 0xffffffff8009dc96 kernel.elf`catten::completion::callbacks::preparation_tests::run at preparation_tests.rs:259:5\n     frame #7: 0xffffffff8026520b kernel.elf`catten::completion::callbacks::test_preparation at callbacks.rs:282:5 [inlined]\n     frame #8: 0xffffffff80265201 kernel.elf`catten::completion::callback_tests::test_admission at callback_tests.rs:44:5\n     frame #9: 0xffffffff800bae72 kernel.elf`catten::self_test::run_synchronous_self_tests at mod.rs:300:5\n     frame #10: 0xffffffff80254ccc kernel.elf`bsp_main at main.rs:256:5\n  thread #2\n       frame #0: 0xffffffff8012ff05 kernel.elf`core::sync::atomic::atomic_compare_exchange_weak::<u8>(dst=\"\", old='\\0', new='\\x01', success=Acquire, failure=Relaxed) at sse2.rs:0:14 [inlined]\n       frame #1: 0xffffffff8012ff05 kernel.elf`<core::sync::atomic::Atomic<bool>>::compare_exchange_weak(self=0xffffffff80921030) at atomic.rs:1061:13 [inlined]\n       frame #2: 0xffffffff8012ff05 kernel.elf`<spin::mutex::spin::SpinMutex<spin::barrier::BarrierState>>::try_lock_weak(self=0xffffffff80921030) at spin.rs:295:14 [inlined]\n       frame #3: 0xffffffff8012ff05 kernel.elf`<spin::mutex::spin::SpinMutex<spin::barrier::BarrierState>>::lock(self=0xffffffff80921030) at spin.rs:183:39 [inlined]\n       frame #4: 0xffffffff8012ff05 kernel.elf`<spin::mutex::Mutex<spin::barrier::BarrierState>>::lock(self=0xffffffff80921030) at mutex.rs:189:31 [inlined]\n       frame #5: 0xffffffff8012ff05 kernel.elf`<spin::barrier::Barrier>::wait(self=0xffffffff80921030) at barrier.rs:121:34\n       frame #6: 0xffffffff8024fc6b kernel.elf`ap_main(_cpuinfo=<unavailable>) at main.rs:398:19\n  thread #3\n       frame #0: 0xffffffff8012ff05 kernel.elf`core::sync::atomic::atomic_compare_exchange_weak::<u8>(dst=\"\", old='\\0', new='\\x01', success=Acquire, failure=Relaxed) at sse2.rs:0:14 [inlined]\n       frame #1: 0xffffffff8012ff05 kernel.elf`<core::sync::atomic::Atomic<bool>>::compare_exchange_weak(self=0xffffffff80921030) at atomic.rs:1061:13 [inlined]\n       frame #2: 0xffffffff8012ff05 kernel.elf`<spin::mutex::spin::SpinMutex<spin::barrier::BarrierState>>::try_lock_weak(self=0xffffffff80921030) at spin.rs:295:14 [inlined]\n       frame #3: 0xffffffff8012ff05 kernel.elf`<spin::mutex::spin::SpinMutex<spin::barrier::BarrierState>>::lock(self=0xffffffff80921030) at spin.rs:183:39 [inlined]\n       frame #4: 0xffffffff8012ff05 kernel.elf`<spin::mutex::Mutex<spin::barrier::BarrierState>>::lock(self=0xffffffff80921030) at mutex.rs:189:31 [inlined]\n       frame #5: 0xffffffff8012ff05 kernel.elf`<spin::barrier::Barrier>::wait(self=0xffffffff80921030) at barrier.rs:121:34\n       frame #6: 0xffffffff8024fc6b kernel.elf`ap_main(_cpuinfo=<unavailable>) at main.rs:398:19\n  thread #4\n       frame #0: 0xffffffff8012ff05 kernel.elf`core::sync::atomic::atomic_compare_exchange_weak::<u8>(dst=\"\", old='\\0', new='\\x01', success=Acquire, failure=Relaxed) at sse2.rs:0:14 [inlined]\n       frame #1: 0xffffffff8012ff05 kernel.elf`<core::sync::atomic::Atomic<bool>>::compare_exchange_weak(self=0xffffffff80921030) at atomic.rs:1061:13 [inlined]\n       frame #2: 0xffffffff8012ff05 kernel.elf`<spin::mutex::spin::SpinMutex<spin::barrier::BarrierState>>::try_lock_weak(self=0xffffffff80921030) at spin.rs:295:14 [inlined]\n       frame #3: 0xffffffff8012ff05 kernel.elf`<spin::mutex::spin::SpinMutex<spin::barrier::BarrierState>>::lock(self=0xffffffff80921030) at spin.rs:183:39 [inlined]\n       frame #4: 0xffffffff8012ff05 kernel.elf`<spin::mutex::Mutex<spin::barrier::BarrierState>>::lock(self=0xffffffff80921030) at mutex.rs:189:31 [inlined]\n       frame #5: 0xffffffff8012ff05 kernel.elf`<spin::barrier::Barrier>::wait(self=0xffffffff80921030) at barrier.rs:121:34\n       frame #6: 0xffffffff8024fc6b kernel.elf`ap_main(_cpuinfo=<unavailable>) at main.rs:398:19\n",
+      "all_cpu_registers": "\nCPU#0\nRAX=ffff840000000660 RBX=ffff840000001a68 RCX=ffff840000000600 RDX=0000000000000001\nRSI=0000000000000004 RDI=0000000000000000 RBP=ffff80001e059f30 RSP=ffff80001e059f30\nR8 =0000000000000004 R9 =0000000000000000 R10=0000000200000000 R11=0000000000000000\nR12=ffff84000005c7a0 R13=ffff84000005cb80 R14=ffff80001e05a3b8 R15=0000000000000001\nRIP=ffffffff80135722 RFL=00000046 [---Z-P-] CPL=0 II=0 A20=1 SMM=0 HLT=1\nES =0010 0000000000000000 000fffff 000f9300 DPL=0 DS   [-WA]\nCS =0008 0000000000000000 ffffffff 00af9a00 DPL=0 CS64 [-R-]\nSS =0010 0000000000000000 000fffff 000f9300 DPL=0 DS   [-WA]\nDS =0010 0000000000000000 000fffff 000f9300 DPL=0 DS   [-WA]\nFS =0010 0000000000000000 000fffff 000f9300 DPL=0 DS   [-WA]\nGS =0010 ffffffff8093bf48 000fffff 000f9300 DPL=0 DS   [-WA]\nLDT=0000 0000000000000000 00000000 00008200 DPL=0 LDT\nTR =0028 ffffffff80921708 00000068 00008900 DPL=0 TSS64-avl\nGDT=     ffffffff8091aa10 00000037\nIDT=     ffffffff8091aa50 00000fff\nCR0=80010033 CR2=0000000000000000 CR3=000000001e049000 CR4=00110620\nDR0=0000000000000000 DR1=0000000000000000 DR2=0000000000000000 DR3=0000000000000000 \nDR6=00000000ffff0ff0 DR7=0000000000000400\nEFER=0000000000000d01\nFCW=037f FSW=0000 [ST=0] FTW=00 MXCSR=00001f80\nFPR0=0000000000000000 0000 FPR1=0000000000000000 0000\nFPR2=0000000000000000 0000 FPR3=0000000000000000 0000\nFPR4=0000000000000000 0000 FPR5=0000000000000000 0000\nFPR6=0000000000000000 0000 FPR7=8000000000000000 4006\nXMM00=0000000000000000 0000000000000000 XMM01=0000000000000000 0000000000000000\nXMM02=0000000000000000 0000000000000000 XMM03=0000000000000000 0000000000000000\nXMM04=0000000000000000 0000000000000000 XMM05=0000000000000000 0000000000000000\nXMM06=0000000000000000 0000000000000000 XMM07=0000000000000000 0000000000000000\nXMM08=0000000000000000 0000000000000000 XMM09=0000000000000000 0000000000000000\nXMM10=0000000000000000 0000000000000000 XMM11=0000000000000000 0000000000000000\nXMM12=0000000000000000 0000000000000000 XMM13=0000000000000000 0000000000000000\nXMM14=0000000000000000 0000000000000000 XMM15=0000000000000000 0000000000000000\n\nCPU#1\nRAX=0000000000000003 RBX=ffff80001bf6ffd4 RCX=0000000000000000 RDX=0000000000000001\nRSI=0000000000000004 RDI=ffffffff80921030 RBP=ffff80001bf6ffc0 RSP=ffff80001bf6ffc0\nR8 =0000000000000000 R9 =0000000000000001 R10=0000000000000080 R11=ffff840000001010\nR12=0000000000000000 R13=0000000000000000 R14=0000000000000000 R15=0000000000000000\nRIP=ffffffff8012ff05 RFL=00000097 [--S-APC] CPL=0 II=0 A20=1 SMM=0 HLT=0\nES =0010 0000000000000000 000fffff 000f9300 DPL=0 DS   [-WA]\nCS =0008 0000000000000000 ffffffff 00af9a00 DPL=0 CS64 [-R-]\nSS =0010 0000000000000000 000fffff 000f9300 DPL=0 DS   [-WA]\nDS =0010 0000000000000000 000fffff 000f9300 DPL=0 DS   [-WA]\nFS =0010 0000000000000000 000fffff 000f9300 DPL=0 DS   [-WA]\nGS =0010 ffffffff8093bf58 000fffff 000f9300 DPL=0 DS   [-WA]\nLDT=0000 0000000000000000 00000000 00008200 DPL=0 LDT\nTR =0028 ffff840000030500 00000068 00008900 DPL=0 TSS64-avl\nGDT=     ffff8400000306c0 00000037\nIDT=     ffff8400000307c0 00000fff\nCR0=80010033 CR2=0000000000000000 CR3=000000001e049000 CR4=00110620\nDR0=0000000000000000 DR1=0000000000000000 DR2=0000000000000000 DR3=0000000000000000 \nDR6=00000000ffff0ff0 DR7=0000000000000400\nEFER=0000000000000d01\nFCW=037f FSW=0000 [ST=0] FTW=00 MXCSR=00001f80\nFPR0=0000000000000000 0000 FPR1=0000000000000000 0000\nFPR2=0000000000000000 0000 FPR3=0000000000000000 0000\nFPR4=0000000000000000 0000 FPR5=0000000000000000 0000\nFPR6=0000000000000000 0000 FPR7=0000000000000000 0000\nXMM00=0000000000000000 0000000000000000 XMM01=0000000000000000 0000000000000000\nXMM02=0000000000000000 0000000000000000 XMM03=0000000000000000 0000000000000000\nXMM04=0000000000000000 0000000000000000 XMM05=0000000000000000 0000000000000000\nXMM06=0000000000000000 0000000000000000 XMM07=0000000000000000 0000000000000000\nXMM08=0000000000000000 0000000000000000 XMM09=0000000000000000 0000000000000000\nXMM10=0000000000000000 0000000000000000 XMM11=0000000000000000 0000000000000000\nXMM12=0000000000000000 0000000000000000 XMM13=0000000000000000 0000000000000000\nXMM14=0000000000000000 0000000000000000 XMM15=0000000000000000 0000000000000000\n\nCPU#2\nRAX=0000000000000003 RBX=ffff800015772fd4 RCX=0000000000000000 RDX=0000000000000001\nRSI=ffffffff80921030 RDI=ffffffff80921030 RBP=ffff800015772fc0 RSP=ffff800015772fc0\nR8 =0000000000000000 R9 =0000000000000001 R10=0000000000000080 R11=ffff840000001010\nR12=0000000000000000 R13=0000000000000000 R14=0000000000000000 R15=0000000000000000\nRIP=ffffffff8012ff05 RFL=00000097 [--S-APC] CPL=0 II=0 A20=1 SMM=0 HLT=0\nES =0010 0000000000000000 000fffff 000f9300 DPL=0 DS   [-WA]\nCS =0008 0000000000000000 ffffffff 00af9a00 DPL=0 CS64 [-R-]\nSS =0010 0000000000000000 000fffff 000f9300 DPL=0 DS   [-WA]\nDS =0010 0000000000000000 000fffff 000f9300 DPL=0 DS   [-WA]\nFS =0010 0000000000000000 000fffff 000f9300 DPL=0 DS   [-WA]\nGS =0010 ffffffff8093bf68 000fffff 000f9300 DPL=0 DS   [-WA]\nLDT=0000 0000000000000000 00000000 00008200 DPL=0 LDT\nTR =0028 ffff840000030568 00000068 00008900 DPL=0 TSS64-avl\nGDT=     ffff8400000306f8 00000037\nIDT=     ffff8400000317c0 00000fff\nCR0=80010033 CR2=0000000000000000 CR3=000000001e049000 CR4=00110620\nDR0=0000000000000000 DR1=0000000000000000 DR2=0000000000000000 DR3=0000000000000000 \nDR6=00000000ffff0ff0 DR7=0000000000000400\nEFER=0000000000000d01\nFCW=037f FSW=0000 [ST=0] FTW=00 MXCSR=00001f80\nFPR0=0000000000000000 0000 FPR1=0000000000000000 0000\nFPR2=0000000000000000 0000 FPR3=0000000000000000 0000\nFPR4=0000000000000000 0000 FPR5=0000000000000000 0000\nFPR6=0000000000000000 0000 FPR7=0000000000000000 0000\nXMM00=0000000000000000 0000000000000000 XMM01=0000000000000000 0000000000000000\nXMM02=0000000000000000 0000000000000000 XMM03=0000000000000000 0000000000000000\nXMM04=0000000000000000 0000000000000000 XMM05=0000000000000000 0000000000000000\nXMM06=0000000000000000 0000000000000000 XMM07=0000000000000000 0000000000000000\nXMM08=0000000000000000 0000000000000000 XMM09=0000000000000000 0000000000000000\nXMM10=0000000000000000 0000000000000000 XMM11=0000000000000000 0000000000000000\nXMM12=0000000000000000 0000000000000000 XMM13=0000000000000000 0000000000000000\nXMM14=0000000000000000 0000000000000000 XMM15=0000000000000000 0000000000000000\n\nCPU#3\nRAX=0000000000000003 RBX=ffff800015762fd4 RCX=0000000000000000 RDX=0000000000000001\nRSI=0000000000000004 RDI=ffffffff80921030 RBP=ffff800015762fc0 RSP=ffff800015762fc0\nR8 =0000000000000000 R9 =0000000000000001 R10=0000000000000080 R11=ffff840000001010\nR12=0000000000000000 R13=0000000000000000 R14=0000000000000000 R15=0000000000000000\nRIP=ffffffff8012ff05 RFL=00000097 [--S-APC] CPL=0 II=0 A20=1 SMM=0 HLT=0\nES =0010 0000000000000000 000fffff 000f9300 DPL=0 DS   [-WA]\nCS =0008 0000000000000000 ffffffff 00af9a00 DPL=0 CS64 [-R-]\nSS =0010 0000000000000000 000fffff 000f9300 DPL=0 DS   [-WA]\nDS =0010 0000000000000000 000fffff 000f9300 DPL=0 DS   [-WA]\nFS =0010 0000000000000000 000fffff 000f9300 DPL=0 DS   [-WA]\nGS =0010 ffffffff8093bf78 000fffff 000f9300 DPL=0 DS   [-WA]\nLDT=0000 0000000000000000 00000000 00008200 DPL=0 LDT\nTR =0028 ffff8400000305d0 00000068 00008900 DPL=0 TSS64-avl\nGDT=     ffff840000030730 00000037\nIDT=     ffff8400000327c0 00000fff\nCR0=80010033 CR2=0000000000000000 CR3=000000001e049000 CR4=00110620\nDR0=0000000000000000 DR1=0000000000000000 DR2=0000000000000000 DR3=0000000000000000 \nDR6=00000000ffff0ff0 DR7=0000000000000400\nEFER=0000000000000d01\nFCW=037f FSW=0000 [ST=0] FTW=00 MXCSR=00001f80\nFPR0=0000000000000000 0000 FPR1=0000000000000000 0000\nFPR2=0000000000000000 0000 FPR3=0000000000000000 0000\nFPR4=0000000000000000 0000 FPR5=0000000000000000 0000\nFPR6=0000000000000000 0000 FPR7=0000000000000000 0000\nXMM00=0000000000000000 0000000000000000 XMM01=0000000000000000 0000000000000000\nXMM02=0000000000000000 0000000000000000 XMM03=0000000000000000 0000000000000000\nXMM04=0000000000000000 0000000000000000 XMM05=0000000000000000 0000000000000000\nXMM06=0000000000000000 0000000000000000 XMM07=0000000000000000 0000000000000000\nXMM08=0000000000000000 0000000000000000 XMM09=0000000000000000 0000000000000000\nXMM10=0000000000000000 0000000000000000 XMM11=0000000000000000 0000000000000000\nXMM12=0000000000000000 0000000000000000 XMM13=0000000000000000 0000000000000000\nXMM14=0000000000000000 0000000000000000 XMM15=0000000000000000 0000000000000000\n",
+      "artifact_sha256": {
+        "cpus.json": "f5c6a7cedde5d238c48b3cb167fc6c1fbdc7810327b1ed3658e6c4bf1f115dfb",
+        "failure.json": "2fd9e6c537e080aa420b0d8b428cb7d49aac5f5d2415ddadad22aebd2d053328",
+        "kernel.elf": "5ee0c59903410ce66be61d68cbcaf6eff6ccc71c7355e607e9f7dc82b622943d",
+        "kernel.symbols": "53c79472d3439e1739f2f88fb380349187199219e9d114b98319ca5772ae4c6f",
+        "lldb.log": "28d399a42e109c1c064dacb3d528643ef9a58e0e1f029043da8bbbf9c4941e93",
+        "manifest.json": "fe4e76dadcb0a95c66f81aedcfa8c50e41ea917e228d12ab4250f5a7497b202c",
+        "registers.log": "e6cbdfc71add0ea99b426646c20541821b92edc445f741bc6d0b6bf0b2c0b582",
+        "request.json": "7a7e059e0809dda11f7ca139c1a347696f1dfe84b08339d7f86a704aad292159",
+        "result.json": "0b7c2a53547554ad79cc21eb1cd215b50cd1d474e934ed4595b1b8a1452f48a1",
+        "serial-at-trigger.log": "b84eb355713585e1ae61ad7de44d1a5c05194eec0239922eebe4f1981d3bd6d4",
+        "serial.log": "b84eb355713585e1ae61ad7de44d1a5c05194eec0239922eebe4f1981d3bd6d4",
+        "watcher.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "capture_result": {
+        "cpu_count": 4,
+        "elapsed_seconds": 3.3466653749346733,
+        "errors": [],
+        "lldb": {
+          "exit_code": 0,
+          "reported_errors": false
+        },
+        "qmp": "captured",
+        "reason": "kernel-panic",
+        "snapshot": "captured"
+      },
+      "cpus": [
+        {
+          "cpu-index": 0,
+          "props": {
+            "core-id": 0,
+            "socket-id": 0,
+            "thread-id": 0
+          },
+          "qom-path": "/machine/unattached/device[0]",
+          "qom-type": "max-x86_64-cpu",
+          "target": "x86_64",
+          "thread-id": 18994
+        },
+        {
+          "cpu-index": 1,
+          "props": {
+            "core-id": 1,
+            "socket-id": 0,
+            "thread-id": 0
+          },
+          "qom-path": "/machine/unattached/device[2]",
+          "qom-type": "max-x86_64-cpu",
+          "target": "x86_64",
+          "thread-id": 18994
+        },
+        {
+          "cpu-index": 2,
+          "props": {
+            "core-id": 2,
+            "socket-id": 0,
+            "thread-id": 0
+          },
+          "qom-path": "/machine/unattached/device[3]",
+          "qom-type": "max-x86_64-cpu",
+          "target": "x86_64",
+          "thread-id": 18994
+        },
+        {
+          "cpu-index": 3,
+          "props": {
+            "core-id": 3,
+            "socket-id": 0,
+            "thread-id": 0
+          },
+          "qom-path": "/machine/unattached/device[4]",
+          "qom-type": "max-x86_64-cpu",
+          "target": "x86_64",
+          "thread-id": 18994
+        }
+      ],
+      "diagnostic_id": "x86_64-fxmzp89_",
+      "instance": "callback-owner-intel",
+      "last_passed_callback_control": [
+        "[+     1.344973] [completion callback preparation] unlocked allocation/rejection, heap-held competing/full/ready/retired/reused publication, reentrant namespace disposal and complete charged CQ detachment passed"
+      ],
+      "manifest": {
+        "arch": "x86_64",
+        "boot_image": "/Users/froran/Projects/private/charlotte-os/os-images/charlotte-x86_64-debug-callback-owner-intel.img",
+        "boot_image_sha256": "7e082056a3062e7a29bf3beb79340c480b2b43af23f3a35961fd95c0e26eed82",
+        "bundle_sha256": {
+          "agent.elf": "0c19e40e207015e3f816b13dd3620a9951fbbc40b0fb9f4030177661107af8c8",
+          "ahci.elf": "88e4fae8996afa2f1282d166e10706b193bd9155746f1d0034db2884638e4725",
+          "client.elf": "1738460a6ff84f4c82f79bb2508c85d9ebd25d24a36c6a7afd03371c94657c21",
+          "clusterctl.elf": "8e98bfb6507c1099ed1ab5d9f2b7b7cd65ea1975fa836773bf9004e850671df8",
+          "deployd.elf": "8851fe53917fdc8da69f0c7f127a421e2dccba96df83f93ba2aaf05ea948c9e5",
+          "disco.elf": "113a4e9fa95b2d9445ab48e59994a890235173398ddbca4d91a282965c2ed93c",
+          "dns.elf": "85d8a9ae62d6cecd999e8d869934ccf02701c7e8cc60999cfb270923c5493870",
+          "e1000e.elf": "5b9175d59f0a18ee0a03921bcd60810239c7160268745adba36e1e9f163a07b5",
+          "echo.elf": "5f90cd12afbfb3198027c7a16ba002a4533d28ef2fed51e1ad7a5c8bbc3e3712",
+          "frouter.elf": "b6965e7b32ad7652ec1a5a054c55ac626751b76676f583c8dc8f87aa8530f1c3",
+          "fs.elf": "87345d0d43febfed7144f61fa339f909615edf356bd7cef679e202bb8a7fae9a",
+          "grantctl.elf": "3a230e9febfe1b29081cb08eafed493f62c7b368f8b68d9b31f7827a3724f888",
+          "greet.elf": "610d0c7dca852cd414e37a40a0591df2e5fde9043dd71beea10f199265edb3b9",
+          "httpd.elf": "dec96a2dcf28419e1215245b759976c43126d807ab8fd7c5ffd701c4af11f296",
+          "kafka.elf": "bf0a040d0970dc6e53cc43454c2e4e3c507a1852b5fab222de2c8fad53b3fe91",
+          "kafka_smoke.elf": "95870122f825556486f6acdc0a11b171d930d80dcd340ac73f70f378d1906fec",
+          "nclient.elf": "866c0a2cc19951e4fbddb0379a537fdeddfdefcd3d6883769dad62797f79cb7f",
+          "net.elf": "6b59c52486b42301248b0419e33c1b65aa239f01301cff497ccb065899e38718",
+          "ns.elf": "684846a47e518e1ab693e89463f8117c5555faf6783ddaa5f7d2577acb12d143",
+          "nvme.elf": "60ddf2be246719f9b8a250c80fc4045821ac89ed37183276f9ea5e9a445e3d5b",
+          "nvme_client.elf": "443d4673530d4ebcc28664c6937b5c2a00c9ec2abb48e8ffa5526437db58ac99",
+          "objstore.elf": "e1b89dd06c202ac30ea0633a0c3a56f0e0ff16027648d5ec1ebbc1119d9c5591",
+          "objstore_client.elf": "712d8ea2f881959a3931381568ccad79798ef9458680e3008e5b30e7c35185a5",
+          "observe.elf": "bafaf8f9df887ba4331b381ab2f4b44a3db82c72077a59ffc59c3d09b5a48c20",
+          "raft.elf": "09f1c93c1524f2aacaea5cbbaa494ce0b3e38af7aea341e71af890ffda61742a",
+          "rclient.elf": "54687ec907ccc4b16e0b4940688b32dfb15690e2f30181b3a54e4e126acb9132",
+          "relmsg.elf": "d1aebe835ead842ba37b4c57d9987425236f1b6e21979c4d4d647a79415f54a3",
+          "rng.elf": "975a70ec0e56a95bfea64d788a3d0c18d3c473ca92e21caec3f7deb52b50b4ac",
+          "s3.elf": "f3d70cfc9ba649921ce595f6f4850a3629f7309a317881a6d2d65b390e42234d",
+          "s3_smoke.elf": "50e2c6cc012dd1b36842aa5fdacba296ab07d95761632aee4ba4931195155fe0",
+          "security_probe.elf": "2e9a06860d571391dd97a2ce98c60e0c22f171a93f9594e89d68f47bb1cd984a",
+          "servicemgr.elf": "28125606f256ff11db43fd893189a88eb49d650f5ef7c3e07c2ee9e78c35a534",
+          "shutdown_probe.elf": "4ffdbb78087a9aa6d1eb6dca4ddc3771499fba95089ddbb6555a4bf4cbf1fef2",
+          "tcpclient.elf": "4a5efd5a99a0f0e9fe09267bb8ceaea303034882cf1d6b1097992e371cecdb59",
+          "tcpip.elf": "93b7522cfbf41935befe0c0defcff6accfc7bd774e2d1579b105e595e75a28b3",
+          "time.elf": "672d24cabd91021a5e566bef401a315f41edfd25b0ecf1fd3d79d98f0ee9b945",
+          "virtio_blk.elf": "4d366ebea7ca0f6bb089c995f87281bab56a474fe2cb29a16b0070ee0178a357"
+        },
+        "cpus": 4,
+        "dirty_paths": [
+          " M crates/catten/src/completion/callbacks.rs",
+          " M crates/catten/src/completion/callbacks/tests.rs",
+          "?? crates/catten/src/completion/callbacks/preparation_tests.rs"
+        ],
+        "disk": "/Users/froran/Projects/private/charlotte-os/os-images/x86-data-callback-owner-intel.img",
+        "initial_disk_sha256": "5d9b9c3bcc90bc2d76132c79c908dfc6caedcbd2228f12d09c472701a1d81c04",
+        "instance": "callback-owner-intel",
+        "kernel_sha256": "5ee0c59903410ce66be61d68cbcaf6eff6ccc71c7355e607e9f7dc82b622943d",
+        "kernel_source": "/Users/froran/Projects/private/charlotte-os/target/x86_64-unknown-none-catten/debug/catten",
+        "prepared_utc": "2026-10-16T16:01:35Z",
+        "qemu_arguments": [
+          "-M",
+          "q35",
+          "-cpu",
+          "max",
+          "-smp",
+          "4",
+          "-m",
+          "512M",
+          "-drive",
+          "if=pflash,format=raw,unit=0,file=/opt/homebrew/opt/qemu/share/qemu/edk2-x86_64-code.fd,readonly=on",
+          "-drive",
+          "if=none,file=./os-images/charlotte-x86_64-debug-callback-owner-intel.img,format=raw,id=esp,readonly=on",
+          "-device",
+          "qemu-xhci,id=xhci",
+          "-device",
+          "usb-storage,bus=xhci.0,drive=esp,bootindex=1",
+          "-drive",
+          "if=none,file=./os-images/x86-data-callback-owner-intel.img,format=raw,id=data0",
+          "-device",
+          "nvme,drive=data0,serial=cat0",
+          "-device",
+          "intel-iommu",
+          "-display",
+          "none",
+          "-no-reboot",
+          "-nic",
+          "none",
+          "-qmp",
+          "unix:/tmp/ctdiag-r3x8_ox4/qmp.sock,server=on,wait=off",
+          "-gdb",
+          "unix:/tmp/ctdiag-r3x8_ox4/gdb.sock,server=on,wait=off",
+          "-serial",
+          "file:/tmp/charlotte-x86-callback-owner-intel-serial.log"
+        ],
+        "qemu_pid": 18994,
+        "revision": "448c7f4c0d80e80ff608b8f9070dbdbeabc7c2d9",
+        "schema": "charlotte.boot-diagnostics.v1",
+        "serial_log": "/private/tmp/charlotte-x86-callback-owner-intel-serial.log",
+        "timeout_seconds": 180,
+        "tooling_sha256": {
+          "scripts/boot-diagnostics.py": "ac1963cc8e6a8e3403f2631946b016c46edd16279a02ca799604449803593aca",
+          "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+          "scripts/run-x86_64.sh": "72b24722e3cc9db0cccb55857fe91cc86bb83f381f06f32c25b912448fdbea54"
+        },
+        "tracked_diff_sha256": "f3262f1d18e008d4fcd51158e42d35df05197863a8ae385f59ec236bc0a7a4e3",
+        "transport": "/tmp/ctdiag-r3x8_ox4"
+      },
+      "runner_exit": 1,
+      "serial_panic_excerpt": "panicked at crates/catten/src/completion/callbacks/preparation_tests.rs:90:28:\ncalled `Result::unwrap()` on an `Err` value: NotComplete\nKernel backtrace (raw return addresses; text=0xffffffff80000000..0xffffffff80432ffa, sp=0xffff80001e059e90, fp=0xffff80001e059f30):\n  #00 0xffffffff80134c0e\n  #01 0xffffffff8035780b\n  #02 0xffffffff8035d4ab\n***\n"
+    }
+  ]
+}

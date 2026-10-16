@@ -76,65 +76,120 @@ impl Captured {
     }
 }
 
-struct Storage {
-    entry: PreparedRegistration<watch_budget::Charge>,
-    candidate: CallbackList,
-}
+/// Complete transient ownership survives construction and borrowed publication.
+/// Abandonment retains all fields; ordinary outcomes finish after local guards.
+#[must_use]
+struct Preparing(ManuallyDrop<Resources>);
 
-/// All transient list/entry/account and exact-record ownership remains here
-/// through borrowed publication, including ready, losing and error outcomes.
-struct Preparing {
-    target: Captured,
-    storage: Option<Storage>,
+struct Resources {
+    target: Option<Captured>,
+    observer: Option<Weak<dyn Observer>>,
+    charge: Option<watch_budget::Charge>,
+    candidate: Option<CallbackList>,
+    entry: Option<PreparedRegistration<watch_budget::Charge>>,
 }
 
 impl Preparing {
+    fn capture(target: Captured, observer: Weak<dyn Observer>) -> Self {
+        Self(ManuallyDrop::new(Resources {
+            target: Some(target),
+            observer: Some(observer),
+            charge: None,
+            candidate: None,
+            entry: None,
+        }))
+    }
+
+    fn target(&self) -> &Captured {
+        self.0.target.as_ref().unwrap()
+    }
+
+    fn admit(&mut self) -> Result<(), ObserveError> {
+        let resources = &mut *self.0;
+        assert!(resources.charge.is_none() && resources.entry.is_none());
+        let target = resources.target.as_ref().unwrap();
+        resources.charge = Some(
+            watch_budget::reserve(&target.account, target.platform)
+                .map_err(|_| ObserveError::ResourceLimit)?,
+        );
+        Ok(())
+    }
+
+    fn candidate_with(
+        &mut self,
+        allocate: impl FnOnce(bool) -> Result<CallbackList, RegistrationError>,
+    ) -> Result<(), ObserveError> {
+        assert!(self.0.candidate.is_none() && self.0.charge.is_some());
+        self.0.candidate = Some(match &self.target().list {
+            Some(list) => list.clone(),
+            None => allocate(self.0.charge.as_ref().unwrap().platform())
+                .map_err(|_| ObserveError::ResourceLimit)?,
+        });
+        Ok(())
+    }
+
+    fn entry(&mut self) -> Result<(), ObserveError> {
+        assert!(self.0.entry.is_none() && self.0.candidate.is_some());
+        // Transfer directly into the shared complete-entry constructor. The
+        // exact captured record and independent candidate list remain here.
+        self.0.entry = Some(
+            PreparedRegistration::try_new(
+                self.0.observer.take().unwrap(),
+                self.0.charge.take().unwrap(),
+            )
+            .map_err(|_| ObserveError::ResourceLimit)?,
+        );
+        Ok(())
+    }
+
     fn new(target: Captured, observer: Weak<dyn Observer>) -> Result<Self, ObserveError> {
-        Self::new_with(target, observer, |platform| {
-            ObserverList::try_new(watch_budget::MAX_COMPLETION_CALLBACKS, platform)
-        })
+        Self::new_with(
+            target,
+            observer,
+            |platform| ObserverList::try_new(watch_budget::MAX_COMPLETION_CALLBACKS, platform),
+            Self::entry,
+        )
     }
 
     fn new_with(
         target: Captured,
         observer: Weak<dyn Observer>,
         allocate_list: impl FnOnce(bool) -> Result<CallbackList, RegistrationError>,
+        prepare_entry: impl FnOnce(&mut Self) -> Result<(), ObserveError>,
     ) -> Result<Self, ObserveError> {
-        let storage = if target.terminal {
-            None
+        let mut preparing = Self::capture(target, observer);
+        let result = if preparing.target().terminal {
+            Ok(())
         } else {
-            let charge = watch_budget::reserve(&target.account, target.platform)
-                .map_err(|_| ObserveError::ResourceLimit)?;
-            let candidate = match &target.list {
-                Some(list) => list.clone(),
-                None => {
-                    allocate_list(charge.platform()).map_err(|_| ObserveError::ResourceLimit)?
-                }
-            };
-            let entry = PreparedRegistration::try_new(observer, charge)
-                .map_err(|_| ObserveError::ResourceLimit)?;
-            Some(Storage {
-                entry,
-                candidate,
-            })
+            preparing
+                .admit()
+                .and_then(|()| preparing.candidate_with(allocate_list))
+                .and_then(|()| prepare_entry(&mut preparing))
+                .map(|()| {
+                    assert!(preparing.0.entry.is_some(), "callback factory returned no entry");
+                    assert!(preparing.0.observer.is_none() && preparing.0.charge.is_none());
+                })
         };
-        Ok(Self {
-            target,
-            storage,
-        })
+        if let Err(error) = result {
+            preparing.finish();
+            return Err(error);
+        }
+        Ok(preparing)
     }
 
     fn publish(&mut self) -> Result<Option<Registration<watch_budget::Charge>>, ObserveError> {
+        let resources = &mut *self.0;
+        let target = resources.target.as_ref().unwrap();
         let registry = COMPLETIONS.read();
-        let entries = registry.get(&self.target.asid).ok_or(ObserveError::UnknownAddressSpace)?;
-        if entries.address_space != self.target.root
-            || !Arc::ptr_eq(&entries.watch_budget, &self.target.account)
+        let entries = registry.get(&target.asid).ok_or(ObserveError::UnknownAddressSpace)?;
+        if entries.address_space != target.root
+            || !Arc::ptr_eq(&entries.watch_budget, &target.account)
             || entries.address_space.is_some_and(|handle| !crate::memory::budget::accepting(handle))
         {
             return Err(ObserveError::UnknownAddressSpace);
         }
-        let completion = entries.table.get(&self.target.cap).ok_or(ObserveError::UnknownCap)?;
-        if !Arc::ptr_eq(completion, &self.target.completion) {
+        let completion = entries.table.get(&target.cap).ok_or(ObserveError::UnknownCap)?;
+        if !Arc::ptr_eq(completion, &target.completion) {
             return Err(ObserveError::UnknownCap);
         }
         let mut inner = completion.inner.lock();
@@ -143,22 +198,41 @@ impl Preparing {
         if matches!(inner.state, OpState::Completed(_) | OpState::Observed) {
             return Ok(None);
         }
-        if let Some(original) = &self.target.list
+        if let Some(original) = &target.list
             && !inner.callbacks.as_ref().is_some_and(|list| core::ptr::eq(&**list, &**original))
         {
             return Err(ObserveError::UnknownCap);
         }
-        let storage = self.storage.as_mut().ok_or(ObserveError::UnknownCap)?;
+        let entry = resources.entry.as_mut().ok_or(ObserveError::UnknownCap)?;
         if inner.callbacks.is_none() {
-            inner.callbacks = Some(storage.candidate.clone());
+            inner.callbacks = Some(resources.candidate.as_ref().unwrap().clone());
         }
         inner
             .callbacks
             .as_ref()
             .unwrap()
-            .register_prepared(&mut storage.entry)
+            .register_prepared(entry)
             .map(Some)
             .map_err(|_| ObserveError::ResourceLimit)
+    }
+
+    fn finish(self) {
+        self.finish_with(|| {});
+    }
+
+    fn finish_with(mut self, mut before_dispose: impl FnMut()) {
+        before_dispose();
+        drop(self.0.observer.take());
+        before_dispose();
+        drop(self.0.candidate.take());
+        before_dispose();
+        drop(self.0.entry.take());
+        before_dispose();
+        drop(self.0.charge.take());
+        // Keep the exact record/account/source capture through all transient
+        // disposal. This final release is explicit too, outside local guards.
+        before_dispose();
+        drop(self.0.target.take());
     }
 }
 
@@ -186,8 +260,9 @@ pub(crate) fn observe_registered(
 ) -> Result<CompletionObservation, ObserveError> {
     let target = Captured::new(asid, cap, captured)?;
     let mut prepared = Preparing::new(target, Arc::downgrade(&observer))?;
-    let registration = prepared.publish()?;
-    drop(prepared);
+    let registration = prepared.publish();
+    prepared.finish();
+    let registration = registration?;
     let ready = registration.is_none();
     let observation = CompletionObservation {
         _registration: registration,
@@ -199,8 +274,10 @@ pub(crate) fn observe_registered(
     Ok(observation)
 }
 
+mod preparation_tests;
 mod tests;
 
 pub(super) fn test_preparation() {
     tests::run();
+    preparation_tests::run();
 }

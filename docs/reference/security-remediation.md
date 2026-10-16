@@ -994,3 +994,13 @@ Rejection cancels after allocator return; initialization consumes private storag
 once, and partial abandonment retains every field. Completed preparation/token/
 source destruction, callback-containing owners and wider contexts remain
 separate. Finding dispositions and historical failure attribution are unchanged.
+
+The [completion callback-owner batch](../reports/audits/2026-10-16-completion-callback-ownership.md)
+continues C16/C18/G1/G4/G7 and R7-1/2. Exact target, original weak callback
+and partial watch/list/entry preparation now share one inert owner before
+admission. Entry factories borrow it; ordinary outcomes finish explicitly after
+local guards and before ready notification. Four phase fallbacks retain the
+complete original buffered record and charges across namespace replacement.
+Published observation/token/source disposal, other caller/IRQ contexts and
+aggregate admission remain separate. Finding dispositions and historical
+failure attribution are unchanged.

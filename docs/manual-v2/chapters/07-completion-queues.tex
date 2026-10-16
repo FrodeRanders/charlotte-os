@@ -380,6 +380,16 @@ fallbacks retain every field without cleanup. This is no registered waiter,
 readiness, physical proof or retry owner. Completed entry/token/source disposal,
 callback-containing owners and broader guards/IRQ contexts remain separate.
 
+Completion callback preparation now captures its exact record/account/source
+and weak observer before watch/list/entry admission in one inert containing
+owner. Entry factories borrow that owner. Ordinary allocation/publication errors
+and successful or ready publication explicitly dispose transient fields after
+local guards, releasing the exact target last; ready notification follows
+unused disposal. All four phase fallbacks retain complete fields, including the
+original buffered record and charges across namespace replacement. Published
+observation/token/source destruction and wider caller contexts remain separate;
+this creates no physical root lease, quiescence proof or recovery interface.
+
 Backlog-to-ring publication retains delivered detached-record charges in a
 fixed two-class owning batch until the completion registry is unlocked.
 Ordinary/platform charges retain their original accounts; no disposal storage

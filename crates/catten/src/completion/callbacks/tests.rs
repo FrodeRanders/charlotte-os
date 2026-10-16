@@ -47,6 +47,7 @@ fn publication() {
             let _inner = captured.inner.lock();
             Err(RegistrationError::AllocationFailed)
         },
+        Preparing::entry,
     );
     assert!(matches!(rejected, Err(ObserveError::ResourceLimit)));
     assert_eq!(account.used(), 0);
@@ -61,6 +62,7 @@ fn publication() {
             }
             ObserverList::try_new(watch_budget::MAX_COMPLETION_CALLBACKS, platform)
         },
+        Preparing::entry,
     )
     .unwrap();
     let mut second = prepare(CLIENT, cap, &observer);
@@ -74,11 +76,13 @@ fn publication() {
         assert_eq!(inner.callbacks.as_ref().unwrap().registered(), 2);
         assert!(!core::ptr::eq(
             &**inner.callbacks.as_ref().unwrap(),
-            &*second.storage.as_ref().unwrap().candidate,
+            &**second.0.candidate.as_ref().unwrap(),
         ));
     }
     assert_eq!(account.used(), 2);
-    drop((first, second, token1, token2));
+    first.finish();
+    second.finish();
+    drop((token1, token2));
     assert_eq!(account.used(), 0);
     assert!(captured.holds_buffer());
     assert_eq!(captured.state_kind(), OpStateKind::InFlight);
@@ -93,7 +97,7 @@ fn publication() {
         assert!(matches!(full.publish(), Err(ObserveError::ResourceLimit)));
     }
     assert_eq!(account.used(), watch_budget::MAX_COMPLETION_CALLBACKS + 1);
-    drop(full);
+    full.finish();
     assert_eq!(account.used(), watch_budget::MAX_COMPLETION_CALLBACKS);
     drop(owners);
     assert_eq!(account.used(), 0);
@@ -106,7 +110,7 @@ fn publication() {
     }
     assert_eq!(calls.load(Ordering::SeqCst), 0);
     assert_eq!(account.used(), 1);
-    drop(ready);
+    ready.finish();
     assert_eq!(account.used(), 0);
     // Public terminal delivery reenters both guards exactly once, with no
     // prepared entry remaining charged. Observing still does not take data.
@@ -128,7 +132,7 @@ fn publication() {
     }
     assert_eq!(account.used(), 1);
     assert_eq!(watch_admission(CLIENT).unwrap().used(), 0);
-    drop(stale);
+    stale.finish();
     assert_eq!(account.used(), 0);
     assert_eq!(state_of(CLIENT, fresh).unwrap(), OpStateKind::InFlight);
     assert_eq!(calls.load(Ordering::SeqCst), 1);
@@ -147,7 +151,7 @@ fn publication() {
         assert!(matches!(retired.publish(), Err(ObserveError::UnknownAddressSpace)));
     }
     assert_eq!(account.used(), 1);
-    drop(retired);
+    retired.finish();
     assert_eq!(account.used(), 0);
     crate::memory::close_user_address_space_handle(root).unwrap();
 }

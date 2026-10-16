@@ -266,6 +266,17 @@ every field. Completion callback preparation and waiter registration share this
 helper; their containing owners, completed entry/source destruction and wider
 contexts remain separate qualification work.
 
+Completion callback preparation now captures the exact record/account/source
+and weak observer before watch/list admission. One inert owner retains partial
+charge/candidate/entry fields; entry factories borrow it, and ordinary allocation
+or publication rejection explicitly finishes after callback/local guard return.
+Finish disposes transient weak/list/entry/charge fields before its exact target.
+Successful publication transfers the entry to its registration owner; ready
+notification runs only after unused preparation finishes. All four phase
+fallbacks retain complete fields, including the captured buffered record.
+Published observations, registration/source destruction and wider caller contexts
+remain separate. See the [callback-owner follow-up](../reports/audits/2026-10-16-completion-callback-ownership.md).
+
 The scoped EL0 probe fills its record capacity with owned endpoint-close
 watches, checks that timer submission is also refused while scalar IPC still
 works, closes the watched endpoint, consumes every completion and waits for a
