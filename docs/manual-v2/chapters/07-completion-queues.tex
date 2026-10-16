@@ -326,7 +326,7 @@ Unused empty backing frees before event/source disposal and outside admission;
 abandonment at either phase retains every field and original charge. The node
 layout and single allocation stay unchanged. This creates no queue publication,
 physical proof, retry interface or custody registry. Completed raw-event
-destruction, generic resource-bearing Arc payload construction and broader
+destruction, payload assembly before the shared helper and broader
 caller contexts remain separate.
 
 Timer event preparation now retains its original source/callback before
@@ -340,8 +340,13 @@ rejection cancels after callback return, while parent-borrowed rejection retains
 the original reservation for ordered payload disposal. Phase abandonment is
 inert and retains every field. The same primitive serves records, timers and
 observer lists, preserving layout, one-allocation allowance and strong/weak
-accounting. Completed raw-event destruction, generic resource-bearing Arc
-payload construction and wider containing contexts remain separate work; no
+accounting. Shared payload preparation now also retains the complete value and
+original admission outside empty Arc allocation. The allocator owns no payload;
+private initialization consumes the same storage once, ordinary rejection
+disposes payload before backing and admission after callback return, and phase
+abandonment retains every field without heap work. Published Arc/Weak
+finalization, completed raw-event destruction, outer payload factories and wider
+containing contexts remain separate work; no
 physical proof, retry/custody or new registry is added.
 
 Backlog-to-ring publication retains delivered detached-record charges in a

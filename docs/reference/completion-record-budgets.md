@@ -34,8 +34,9 @@ holder follows every allocator clone. All holder owners use `Arc::into_inner`,
 so its allocation is freed before its one reservation is refunded, including
 concurrent final destruction. No weak reference to that holder escapes. Clones
 share one allocation allowance and cannot allocate another record or revive a
-freed allocation. `ChargedAllocator::try_arc` retains its original allocator owner through
-failed construction, keeping the charge until the rejected payload is destroyed.
+freed allocation. `ChargedAllocator::try_arc` retains its payload and original
+allocator in an inert preparation across empty storage allocation. Rejection destroys the
+payload explicitly after allocator return, before backing and admission.
 This adapter is for fixed record allocations, not general growable containers.
 
 The shared [charge-holder construction follow-up](../reports/audits/2026-10-16-timer-event-construction.md)
@@ -45,8 +46,12 @@ and ordinary rejection releases unused storage/charge explicitly after callback
 return. Phase abandonment retains both fields without cleanup. A parent-borrowed
 form retains admission on failure for ordered containing-payload disposal.
 Holder layout, one-allocation allowance and final strong/weak accounting stay
-unchanged. Generic resource-bearing payload construction and arbitrary containing
-record/destructor contexts remain separate qualification work.
+unchanged. The [payload-construction follow-up](../reports/audits/2026-10-16-charged-arc-payload-construction.md)
+extends this policy to `try_arc<T>`: the allocator receives no owning payload,
+private empty storage initializes once, and phase abandonment retains payload,
+backing and original admission without cleanup. Payload assembly before helper
+entry, outer factories and published/containing record destructors remain
+separate qualification work.
 
 A detached operation moves its admitted metadata node and original charge into
 an owning CQ backlog entry if its result cannot enter the ring. Its operation ID is no longer addressable, but

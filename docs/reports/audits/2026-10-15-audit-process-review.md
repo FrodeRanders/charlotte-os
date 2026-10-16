@@ -323,3 +323,13 @@ failure. Payload-first explicit cleanup and inert phase abandonment preserve
 original accounts. Completed raw events, generic resource-bearing Arc payloads
 and broader containing/waiter contexts remain separate. Finding counts and
 historical failure causes are unchanged.
+
+
+The [shared Arc payload-construction batch](2026-10-16-charged-arc-payload-construction.md)
+continues C16/C18/G1/G4/G7 and R7-1/2. The common helper retains the complete
+value and original allocator across empty storage allocation; rejection disposes
+explicitly after callback return, initialization consumes the same storage once,
+and phase abandonment retains every field without cleanup. Records, lists and
+cancellation state share this path. Outer factories, published reference and
+containing destructors, waiter/IRQ contexts and aggregate pressure remain
+separate. Finding dispositions and historical failure attribution are unchanged.

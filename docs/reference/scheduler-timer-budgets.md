@@ -79,8 +79,9 @@ accepted cancellation and completion's existing timer-cancellation policy finish
 the new handback. Complete-handback fallback retains all remaining node/source/
 callback/reference fields and original charges. Both fallbacks are terminal
 retention, not Pending, retry custody, physical proof or replay authority.
-Raw Arc/Weak finalization, resource-bearing Arc payload construction and arbitrary enclosing caller
-contexts remain separate; a named explicit finish does not remove other guards.
+Raw Arc/Weak finalization, payload assembly before the shared helper and arbitrary
+enclosing caller contexts remain separate; a named explicit finish does not
+remove other guards.
 
 Filtering, purging, expiry and explicit removal now return complete retirement
 owners. Keyed ensure/removal, anonymous enqueue, eager cancellation, idle
@@ -151,8 +152,16 @@ allocation allowance and final strong/weak backing accounting. Source-only,
 reservation, holder and cancellation preparation abandonment retain complete
 fields without cleanup, refund or notification. This is terminal retention,
 not Pending, retry/custody or physical proof. Completed raw-event destruction,
-generic resource-bearing Arc payload construction and outer contexts remain
+payload assembly before the shared helper and outer contexts remain
 separate qualification work.
+
+The shared [Arc payload constructor](../reports/audits/2026-10-16-charged-arc-payload-construction.md)
+now also retains its original value and admission while allocating empty
+storage. The allocator receives no payload; private initialization publishes the
+same backing once, and ordinary rejection cancels after callback return, with
+payload destruction before backing release and admission refund. Phase fallback
+retains all fields. Published Arc/Weak finalization and containing contexts stay
+separate. Cancellation state, completion records and lists share this helper.
 
 Node construction now captures the already charged event, source/callback and
 outside admission in an inert `PreparingNode` before calling the allocator.
@@ -164,7 +173,7 @@ Unused empty backing frees before event/source disposal and outside-admission
 release. Abandonment before or after storage allocation retains every field;
 this is terminal retention, not queued cancellation, Pending, retry/custody or
 physical proof. The same layout and one Box allocation remain. Completed raw
-event destruction, generic resource-bearing Arc payload construction, raw
+event destruction, outer payload factories, raw
 references and outer caller contexts remain separate. See the
 [node-construction follow-up](../reports/audits/2026-10-16-timer-node-construction.md).
 

@@ -44,6 +44,72 @@ struct AllocationResources<C> {
     storage: Option<Arc<MaybeUninit<Allocation<C>>>>,
 }
 
+/// Retain the complete payload and original admission across empty allocation.
+/// Abandonment performs no field destruction, allocator work or refund.
+#[must_use]
+struct PreparingArc<T, C>(ManuallyDrop<ArcResources<T, C>>);
+
+struct ArcResources<T, C> {
+    value: Option<T>,
+    storage: Option<Arc<MaybeUninit<T>, ChargedAllocator<C>>>,
+    allocator: ChargedAllocator<C>,
+}
+
+impl<T, C> PreparingArc<T, C> {
+    fn new(value: T, allocator: ChargedAllocator<C>) -> Self {
+        Self(ManuallyDrop::new(ArcResources {
+            value: Some(value),
+            storage: None,
+            allocator,
+        }))
+    }
+
+    fn allocate(
+        &mut self,
+        allocate: impl FnOnce(
+            ChargedAllocator<C>,
+        ) -> Result<Arc<MaybeUninit<T>, ChargedAllocator<C>>, AllocError>,
+    ) -> Result<(), AllocError> {
+        assert!(self.0.storage.is_none(), "payload storage already allocated");
+        self.0.storage = Some(allocate(self.0.allocator.clone())?);
+        Ok(())
+    }
+
+    fn complete(mut self) -> Arc<T, ChargedAllocator<C>> {
+        let resources = &mut *self.0;
+        let slot = Arc::get_mut(resources.storage.as_mut().expect("payload needs storage"))
+            .expect("private payload storage was aliased");
+        slot.write(resources.value.take().unwrap());
+        let storage = resources.storage.take().unwrap();
+        // SAFETY: This unique, unexposed Arc was initialized exactly once above.
+        // No strong or Weak alias can observe the uninitialized payload.
+        let value = unsafe { storage.assume_init() };
+        // The published allocation retains the same admission. Release only
+        // the preparation's extra allocator reference, never its payload.
+        let resources = ManuallyDrop::into_inner(self.0);
+        drop(resources);
+        value
+    }
+
+    fn cancel(self) {
+        self.cancel_with(|| {});
+    }
+
+    fn cancel_with(self, mut before_dispose: impl FnMut()) {
+        let ArcResources {
+            value,
+            storage,
+            allocator,
+        } = ManuallyDrop::into_inner(self.0);
+        before_dispose();
+        drop(value);
+        before_dispose();
+        drop(storage);
+        before_dispose();
+        drop(allocator);
+    }
+}
+
 impl<C> PreparingAllocation<C> {
     fn new(charge: C) -> Self {
         Self(ManuallyDrop::new(AllocationResources {
@@ -136,17 +202,20 @@ impl<C> ChargedAllocator<C> {
     }
 
     pub(crate) fn try_arc<T>(self, value: T) -> Result<Arc<T, Self>, AllocError> {
-        self.try_arc_with(value, Arc::try_new_in)
+        self.try_arc_with(value, Arc::<T, Self>::try_new_uninit_in)
     }
 
     fn try_arc_with<T>(
         self,
         value: T,
-        allocate: impl FnOnce(T, Self) -> Result<Arc<T, Self>, AllocError>,
+        allocate: impl FnOnce(Self) -> Result<Arc<MaybeUninit<T>, Self>, AllocError>,
     ) -> Result<Arc<T, Self>, AllocError> {
-        // Arc allocation failure can drop its allocator before the payload.
-        // Retain this preparation owner until that whole attempt has ended.
-        allocate(value, self.clone())
+        let mut preparing = PreparingArc::new(value, self);
+        if let Err(error) = preparing.allocate(allocate) {
+            preparing.cancel();
+            return Err(error);
+        }
+        Ok(preparing.complete())
     }
 }
 

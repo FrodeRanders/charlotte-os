@@ -48,8 +48,11 @@ Arc storage. No charge is handed to the allocator callback; private storage
 initializes once. Ordinary owning rejection cancels after callback return, and
 abandonment retains all phase fields. The parent-borrowed form retains its
 reservation on failure for ordered payload disposal. Published list accounting,
-single-allocation allowance and outward errors stay unchanged. Resource-bearing
-list payload construction, source destruction and wider caller guards/masks
+single-allocation allowance and outward errors stay unchanged. The shared
+[payload constructor](../reports/audits/2026-10-16-charged-arc-payload-construction.md) now
+retains owning values outside empty allocation, initializes once and cancels
+ordinary rejection after callback return; inert phase fallback retains every
+field. The outer list factory, source destruction and wider caller guards/masks
 remain separate work.
 
 ## Rejection and locks

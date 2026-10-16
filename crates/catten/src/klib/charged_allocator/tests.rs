@@ -6,6 +6,47 @@ use std::{
 
 use super::*;
 
+std::thread_local! {
+    static TRACE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static HEAP_CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+struct TracedAllocator;
+#[global_allocator]
+static ALLOCATOR: TracedAllocator = TracedAllocator;
+fn note_heap_call() {
+    if TRACE.try_with(std::cell::Cell::get).unwrap_or(false) {
+        let _ = HEAP_CALLS.try_with(|count| count.set(count.get() + 1));
+    }
+}
+// SAFETY: Forward identical pointer/layout operations to System; only count
+// calls on the current test thread, without allocating in the tracer.
+unsafe impl std::alloc::GlobalAlloc for TracedAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        note_heap_call();
+        unsafe { std::alloc::System.alloc(layout) }
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        note_heap_call();
+        unsafe { std::alloc::System.dealloc(ptr, layout) }
+    }
+}
+fn without_heap<R>(f: impl FnOnce() -> R) -> R {
+    struct Trace;
+    impl Drop for Trace {
+        fn drop(&mut self) {
+            TRACE.with(|trace| trace.set(false));
+        }
+    }
+    HEAP_CALLS.with(|count| count.set(0));
+    TRACE.with(|trace| trace.set(true));
+    let trace = Trace;
+    let result = f();
+    drop(trace);
+    assert_eq!(HEAP_CALLS.with(std::cell::Cell::get), 0);
+    result
+}
+
 struct Charge(Arc<AtomicUsize>);
 impl Charge {
     fn new(used: &Arc<AtomicUsize>) -> Self {
@@ -34,14 +75,12 @@ fn strong_and_weak_storage_return_one_original_charge() {
     let used = Arc::new(AtomicUsize::new(0));
     let dropped = Arc::new(AtomicUsize::new(0));
     let allocator = ChargedAllocator::try_new(Charge::new(&used)).unwrap();
-    let value = Arc::try_new_in(
-        Payload {
+    let value = allocator
+        .try_arc(Payload {
             used: used.clone(),
             dropped: dropped.clone(),
-        },
-        allocator,
-    )
-    .unwrap();
+        })
+        .unwrap();
     let weak = Arc::downgrade(&value);
     let aliases: Vec<_> = (0..128).map(|_| weak.clone()).collect();
     let upgraded = weak.upgrade().unwrap();
@@ -101,7 +140,7 @@ fn payload_allocation_failure_drops_payload_before_charge() {
             used: used.clone(),
             dropped: dropped.clone(),
         },
-        |value, allocator| match Arc::try_new_in(value, RejectAllocation(allocator)) {
+        |allocator| match Arc::<Payload, _>::try_new_uninit_in(RejectAllocation(allocator)) {
             Err(error) => Err(error),
             Ok(_) => panic!("injected allocation unexpectedly succeeded"),
         },
@@ -263,5 +302,125 @@ fn borrowed_holder_rejection_retains_parent_reservation() {
     assert!(charge.is_none());
     assert_eq!(used.load(Ordering::SeqCst), 1);
     drop(allocator);
+    assert_eq!(used.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn payload_rejection_returns_before_resource_disposal() {
+    struct GuardedPayload {
+        payload: Payload,
+        returned: Arc<AtomicBool>,
+        guard: Arc<std::sync::Mutex<()>>,
+    }
+    impl Drop for GuardedPayload {
+        fn drop(&mut self) {
+            assert!(self.returned.load(Ordering::SeqCst));
+            assert!(self.guard.try_lock().is_ok());
+            assert_eq!(self.payload.used.load(Ordering::SeqCst), 1);
+        }
+    }
+    let used = Arc::new(AtomicUsize::new(0));
+    let dropped = Arc::new(AtomicUsize::new(0));
+    let returned = Arc::new(AtomicBool::new(false));
+    let guard = Arc::new(std::sync::Mutex::new(()));
+    let value = GuardedPayload {
+        payload: Payload {
+            used: used.clone(),
+            dropped: dropped.clone(),
+        },
+        returned: returned.clone(),
+        guard: guard.clone(),
+    };
+    let allocator = ChargedAllocator::try_new(Charge::new(&used)).unwrap();
+    assert!(
+        allocator
+            .try_arc_with(value, |allocator| {
+                let _guard = guard.lock().unwrap();
+                drop(allocator);
+                assert_eq!(dropped.load(Ordering::SeqCst), 0);
+                assert_eq!(used.load(Ordering::SeqCst), 1);
+                returned.store(true, Ordering::SeqCst);
+                Err(AllocError)
+            })
+            .is_err()
+    );
+    assert_eq!(dropped.load(Ordering::SeqCst), 1);
+    assert_eq!(used.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+#[allow(clippy::drop_non_drop)]
+fn abandoned_payload_phases_retain_complete_owner() {
+    for allocated in [false, true] {
+        let used = Arc::new(AtomicUsize::new(0));
+        let dropped = Arc::new(AtomicUsize::new(0));
+        let allocator = ChargedAllocator::try_new(Charge::new(&used)).unwrap();
+        let mut preparing = PreparingArc::new(
+            Payload {
+                used: used.clone(),
+                dropped: dropped.clone(),
+            },
+            allocator,
+        );
+        if allocated {
+            preparing.allocate(Arc::<Payload, _>::try_new_uninit_in).unwrap();
+        }
+        let guard = std::sync::Mutex::new(());
+        let _guard = guard.lock().unwrap();
+        without_heap(|| drop(preparing));
+        assert_eq!(dropped.load(Ordering::SeqCst), 0);
+        assert_eq!(used.load(Ordering::SeqCst), 1);
+        // Host-only negative retention until process shutdown.
+    }
+}
+
+#[test]
+fn unused_payload_storage_disposes_payload_before_original_admission() {
+    let used = Arc::new(AtomicUsize::new(0));
+    let dropped = Arc::new(AtomicUsize::new(0));
+    let allocator = ChargedAllocator::try_new(Charge::new(&used)).unwrap();
+    let mut preparing = PreparingArc::new(
+        Payload {
+            used: used.clone(),
+            dropped: dropped.clone(),
+        },
+        allocator,
+    );
+    preparing.allocate(Arc::<Payload, _>::try_new_uninit_in).unwrap();
+    let mut checks = 0;
+    preparing.cancel_with(|| {
+        assert_eq!(used.load(Ordering::SeqCst), 1);
+        assert_eq!(dropped.load(Ordering::SeqCst), usize::from(checks > 0));
+        checks += 1;
+    });
+    assert_eq!(checks, 3);
+    assert_eq!(dropped.load(Ordering::SeqCst), 1);
+    assert_eq!(used.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn payload_initialization_needs_no_allocator_or_payload_disposal() {
+    let used = Arc::new(AtomicUsize::new(0));
+    let dropped = Arc::new(AtomicUsize::new(0));
+    let allocator = ChargedAllocator::try_new(Charge::new(&used)).unwrap();
+    let mut preparing = PreparingArc::new(
+        Payload {
+            used: used.clone(),
+            dropped: dropped.clone(),
+        },
+        allocator,
+    );
+    preparing.allocate(Arc::<Payload, _>::try_new_uninit_in).unwrap();
+    let guard = std::sync::Mutex::new(());
+    let value = {
+        let _guard = guard.lock().unwrap();
+        without_heap(|| preparing.complete())
+    };
+    assert_eq!(dropped.load(Ordering::SeqCst), 0);
+    let weak = Arc::downgrade(&value);
+    drop(value);
+    assert_eq!(dropped.load(Ordering::SeqCst), 1);
+    assert_eq!(used.load(Ordering::SeqCst), 1);
+    drop(weak);
     assert_eq!(used.load(Ordering::SeqCst), 0);
 }
