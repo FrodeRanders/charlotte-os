@@ -67,11 +67,16 @@ impl Target {
 
 /// Borrow publication so every rejected payload stays owned until guard exit.
 /// A physical state's null ring is private until serialized initialization.
-pub(super) struct Prepared {
+#[must_use]
+pub(super) struct Prepared(ManuallyDrop<Resources>);
+
+struct Resources {
     target: Target,
     cq_entries: u32,
     frame: Option<crate::memory::physical::PAddr>,
     state: Option<CqState>,
+    node: Option<PreparedEntry<(CqId, CqState)>>,
+    charge: Option<cq_budget::Charge>,
 }
 
 impl Prepared {
@@ -86,6 +91,7 @@ impl Prepared {
             frame,
             |platform| ObserverList::try_new(waiter_budget::SOURCE_LIMIT, platform),
             cq::CompletionQueueRing::new_page,
+            PreparedEntry::try_new,
         )
     }
 
@@ -95,6 +101,7 @@ impl Prepared {
         frame: Option<crate::memory::physical::PAddr>,
         allocate_list: impl FnOnce(bool) -> Result<Waiters, RegistrationError>,
         allocate_ring: impl FnOnce(u32) -> Result<RingStorage, cq::CqRingError>,
+        allocate_node: impl FnOnce() -> Result<PreparedEntry<(CqId, CqState)>, core::alloc::AllocError>,
     ) -> Result<Self, CqOpenError> {
         if cq_entries < 2 {
             return Err(CqOpenError::Ring(cq::CqRingError::CapacityTooSmall));
@@ -118,61 +125,97 @@ impl Prepared {
                 )
             })
             .ok_or(CqOpenError::ResourceLimit)?;
-        let charge = cq_budget::reserve(&target.account, target.platform, [1, bytes as u64])
-            .map_err(|_| CqOpenError::ResourceLimit)?;
-        let mut state = CqState {
-            ring: core::ptr::null_mut(),
-            ring_head: 0,
-            ring_capacity: cq::CompletionQueueRing::capacity_for(cq_entries),
-            backlog: VecDeque::new(),
-            retained_limit: target.capacity,
-            work_generation: 0,
-            last_seen_generation: 0,
-            waiters: allocate_list(target.platform).map_err(|_| CqOpenError::AllocationFailed)?,
-            _buf: None,
-            _storage_charge: charge,
-        };
-        state.backlog.try_reserve_exact(slots).map_err(|_| CqOpenError::AllocationFailed)?;
-        if state.backlog.capacity() > slots {
-            return Err(CqOpenError::AllocationFailed);
-        }
-        if frame.is_none() {
-            let (buffer, ring) = allocate_ring(cq_entries).map_err(CqOpenError::Ring)?;
-            state._buf = Some(buffer);
-            state.ring = ring;
-        }
-        Ok(Self {
+        let mut prepared = Self(ManuallyDrop::new(Resources {
             target,
             cq_entries,
             frame,
-            state: Some(state),
-        })
+            state: None,
+            node: None,
+            charge: None,
+        }));
+        let result = (|| {
+            let resources = &mut *prepared.0;
+            resources.charge = Some(
+                cq_budget::reserve(
+                    &resources.target.account,
+                    resources.target.platform,
+                    [1, bytes as u64],
+                )
+                .map_err(|_| CqOpenError::ResourceLimit)?,
+            );
+            resources.node = Some(allocate_node().map_err(|_| CqOpenError::AllocationFailed)?);
+            resources.state = Some(CqState {
+                ring: core::ptr::null_mut(),
+                ring_head: 0,
+                ring_capacity: cq::CompletionQueueRing::capacity_for(cq_entries),
+                backlog: VecDeque::new(),
+                retained_limit: resources.target.capacity,
+                work_generation: 0,
+                last_seen_generation: 0,
+                waiters: allocate_list(resources.target.platform)
+                    .map_err(|_| CqOpenError::AllocationFailed)?,
+                _buf: None,
+                _storage_charge: resources.charge.take().unwrap(),
+            });
+            let state = resources.state.as_mut().unwrap();
+            state.backlog.try_reserve_exact(slots).map_err(|_| CqOpenError::AllocationFailed)?;
+            if state.backlog.capacity() > slots {
+                return Err(CqOpenError::AllocationFailed);
+            }
+            if frame.is_none() {
+                let (buffer, ring) = allocate_ring(cq_entries).map_err(CqOpenError::Ring)?;
+                state._buf = Some(buffer);
+                state.ring = ring;
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            prepared.finish();
+            return Err(error);
+        }
+        Ok(prepared)
     }
 
-    fn initialize(&self, state: &mut CqState) -> Result<(), CqOpenError> {
-        if let Some(frame) = self.frame {
-            // Kernel mapping boundary: caller retains the writable frame and
-            // quiescent consumer. Identity/retirement/alias checks precede all
-            // writes, under the same registry hold as publication.
-            state.ring = unsafe { cq::CompletionQueueRing::init_at_phys(frame, self.cq_entries) }
+    fn initialize(
+        frame: Option<crate::memory::physical::PAddr>,
+        cq_entries: u32,
+        state: &mut CqState,
+    ) -> Result<(), CqOpenError> {
+        if let Some(frame) = frame {
+            // The caller retains the frame and quiescent consumer. Exact
+            // identity/retirement/alias validation precedes every frame write.
+            state.ring = unsafe { cq::CompletionQueueRing::init_at_phys(frame, cq_entries) }
                 .map_err(CqOpenError::Ring)?;
         }
         Ok(())
     }
 
-    fn publish(&mut self, cq: CqId) -> Result<Option<CqState>, CqOpenError> {
+    fn publish(&mut self, cq: CqId) -> Result<Option<RetiredCq>, CqOpenError> {
         let mut registry = COMPLETIONS.write();
-        let entries = registry.get(&self.target.asid).ok_or(CqOpenError::UnknownAddressSpace)?;
-        self.target.validate(entries)?;
-        check_ring_alias(&registry, self.target.asid, cq, self.frame)?;
-        let mut state = self.state.take().expect("CQ preparation published twice");
-        // Validation above plus construction preflight make physical init
-        // infallible here. Retain the owner if that contract ever changes.
-        if let Err(error) = self.initialize(&mut state) {
-            self.state = Some(state);
-            return Err(error);
-        }
-        Ok(replace_cq(registry.get_mut(&self.target.asid).unwrap(), cq, state))
+        let resources = &mut *self.0;
+        let entries =
+            registry.get(&resources.target.asid).ok_or(CqOpenError::UnknownAddressSpace)?;
+        resources.target.validate(entries)?;
+        check_ring_alias(&registry, resources.target.asid, cq, resources.frame)?;
+        // Keep both fields in their owner even if physical init rejects.
+        Self::initialize(
+            resources.frame,
+            resources.cq_entries,
+            resources.state.as_mut().expect("CQ preparation published twice"),
+        )?;
+        Ok(replace_cq(
+            registry.get_mut(&resources.target.asid).unwrap(),
+            cq,
+            resources.node.take().unwrap(),
+            resources.state.take().unwrap(),
+        ))
+    }
+
+    fn finish(self) {
+        let mut resources = ManuallyDrop::into_inner(self.0);
+        // Empty metadata frees before either provisional or payload admission.
+        drop(resources.node.take());
+        drop(resources);
     }
 
     /// The existing private detachment fixture stages real heap queues using
@@ -181,10 +224,13 @@ impl Prepared {
         asid: AddressSpaceId,
         entries: &AsCompletions,
         cq_entries: u32,
-    ) -> CqState {
+    ) -> (PreparedEntry<(CqId, CqState)>, CqState) {
         let platform = crate::memory::budget::platform_identity(asid);
         let target = Target::from_namespace(asid, entries, platform).unwrap();
-        Self::new(target, cq_entries, None).unwrap().state.take().unwrap()
+        let mut prepared = Self::new(target, cq_entries, None).unwrap();
+        let result = (prepared.0.node.take().unwrap(), prepared.0.state.take().unwrap());
+        prepared.finish();
+        result
     }
 }
 
@@ -195,9 +241,30 @@ pub(super) fn attach(
     frame: Option<crate::memory::physical::PAddr>,
 ) -> Result<(), CqOpenError> {
     let mut prepared = Prepared::new(Target::capture(asid)?, cq_entries, frame)?;
-    let previous = prepared.publish(cq)?;
-    drop(previous);
+    let result = prepared.publish(cq);
+    prepared.finish();
+    if let Some(previous) = result? {
+        previous.finish();
+    }
     Ok(())
+}
+
+/// Complete detached queue metadata/payload. Shared RetiredEntry fallback
+/// retains source, ring/backlog, original charge and node without cleanup.
+#[must_use = "finish the complete retired queue after local registry unlock"]
+pub(super) struct RetiredCq(RetiredEntry<(CqId, CqState)>);
+
+impl RetiredCq {
+    pub(super) fn from_node(node: RetiredEntry<(CqId, CqState)>) -> Self {
+        Self(node)
+    }
+
+    pub(super) fn finish(self) {
+        let mut state = None;
+        self.0.release_with(|(_, payload)| state = Some(payload));
+        // The node has freed; payload/source/backing still own their charge.
+        drop(state);
+    }
 }
 
 /// One owner retains the whole unpublished namespace and original queue
@@ -227,7 +294,7 @@ impl PreparedNamespace {
                 return Err(error);
             }
         };
-        entries.cqs.insert(DEFAULT_CQ, queue.state.take().unwrap());
+        entries.cqs.insert(queue.0.node.take().unwrap(), DEFAULT_CQ, queue.0.state.take().unwrap());
         Ok(Self(ManuallyDrop::new(NamespacePreparation {
             entries: Some(entries),
             queue,
@@ -238,28 +305,35 @@ impl PreparedNamespace {
         let mut registry = COMPLETIONS.write();
         let resources = &mut *self.0;
         let entries = resources.entries.as_mut().expect("CQ namespace published twice");
-        resources.queue.target.validate(entries)?;
+        resources.queue.0.target.validate(entries)?;
         check_ring_alias(
             &registry,
-            resources.queue.target.asid,
+            resources.queue.0.target.asid,
             DEFAULT_CQ,
-            resources.queue.frame,
+            resources.queue.0.frame,
         )?;
-        resources.queue.initialize(entries.cqs.get_mut(&DEFAULT_CQ).unwrap())?;
+        Prepared::initialize(
+            resources.queue.0.frame,
+            resources.queue.0.cq_entries,
+            entries.cqs.get_mut(&DEFAULT_CQ).unwrap(),
+        )?;
         let mut previous =
-            registry.insert(resources.queue.target.asid, resources.entries.take().unwrap());
+            registry.insert(resources.queue.0.target.asid, resources.entries.take().unwrap());
         if let Some(previous) = &mut previous {
-            revoke_namespace_authority(resources.queue.target.asid, previous);
+            revoke_namespace_authority(resources.queue.0.target.asid, previous);
         }
         Ok(previous)
     }
 
     fn finish(self) {
-        let mut resources = ManuallyDrop::into_inner(self.0);
-        if let Some(entries) = resources.entries.take() {
+        let NamespacePreparation {
+            entries,
+            queue,
+        } = ManuallyDrop::into_inner(self.0);
+        if let Some(entries) = entries {
             entries.finish();
         }
-        drop(resources);
+        queue.finish();
     }
 }
 
@@ -279,8 +353,10 @@ pub(super) fn open_namespace(
     Ok(())
 }
 
+mod metadata_tests;
 mod tests;
 
 pub(super) fn test_preparation() {
     tests::run();
+    metadata_tests::run();
 }

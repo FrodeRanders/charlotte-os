@@ -284,7 +284,7 @@ and CQ validation. Terminal removal transfers its owning node to the direct
 receipt or backlog. Explicit namespace close drains all remaining nodes after
 local unlock. Namespace, detached-preparation and terminal-receipt abandonment
 retain their complete fields, accounts and sources; ordinary rejection uses an
-explicit unstarted finish. CQ/global map metadata and wider caller
+explicit unstarted finish. Global namespace-map metadata and wider caller
 contexts remain open. None of these owners is a physical completion receipt or
 permission to replay accepted work.
 
@@ -306,7 +306,7 @@ determines record admission. Shared authority release also retains its charge
 until its node is actually freed. Namespace close drains those complete nodes;
 abandonment retains all fields. All three individual withdrawal paths remove
 the exact retained CQ row before returning its slot, including full-ring
-terminal abort. CQ/global-map metadata and wider timer/observer/caller contexts
+terminal abort. Global namespace-map metadata and wider timer/observer/caller contexts
 remain open; no physical completion or replay proof is added.
 
 \section{Completion-queue admission}
@@ -401,15 +401,22 @@ retains neither. Timer cancellation, record/authority/map metadata and outer
 producer/IRQ contexts remain separate qualification work. These subscription
 transitions grant no physical cleanup proof or permission to replay accepted work.
 
-CQ source-list, backlog and heap-ring admission/allocation run outside the
+CQ map-node, source-list, backlog and heap-ring admission/allocation run outside the
 completion registry, including partial-error disposal. Preparation retains the
 exact namespace root, CQ account, submission capacity and trusted classification;
 publication rechecks identity and retirement. Physical frames remain untouched
 until alias checks and initialization under the same registry hold as queue
 publication. Rejection retains prepared backing and original charges until
-unlock. Whole-namespace preparation includes its private CQ map node. Fresh
-live registry-map nodes, unified authority, record construction, timers and outer
-caller/IRQ contexts remain separate. A captured identity supplies no physical
+unlock. Whole-namespace preparation includes its fallibly prepared CQ map node.
+Fresh queue publication relinks admitted storage without allocation. Replacement
+detaches the complete old node and payload into one retaining owner; explicit
+finish frees the node before payload destruction and original charge refund.
+Namespace disposal explicitly drains these owners too. Unpublished and retired
+queue abandonment retains every field without cleanup. The registration count
+covers the one prepared node; backing-byte admission still counts ring/backlog
+storage, not aggregate metadata bytes. The global namespace map, wider
+timer/observer disposal and outer caller/IRQ contexts remain separate.
+A captured identity supplies no physical
 pin or permission to retry accepted work; frame owners must quiesce consumers.
 
 Detached terminal publication returns the complete remaining timer-bearing

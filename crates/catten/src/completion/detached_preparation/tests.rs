@@ -132,8 +132,10 @@ fn rejected_publication() {
             1 => open_cq(asid, DEFAULT_CQ, 4).unwrap(),
             2 => crate::memory::budget::retire(root.unwrap()),
             _ => {
-                let queue = COMPLETIONS.write().get_mut(&asid).unwrap().cqs.remove(&DEFAULT_CQ);
-                drop(queue);
+                let queue = COMPLETIONS.write().get_mut(&asid).unwrap().cqs.take(&DEFAULT_CQ);
+                if let Some(queue) = queue {
+                    RetiredCq::from_node(queue).finish();
+                }
             }
         }
         let successor_records = record_admission(asid).unwrap();

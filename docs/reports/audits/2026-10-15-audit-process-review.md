@@ -239,3 +239,11 @@ authority in one original owner through post-guard disposal. It also corrects a
 source-proven terminal-abort backlog gap and authority charge/deallocation order.
 CQ/global maps and wider contexts remain open; none of these source fixes
 attributes the historical intermittent incidents.
+
+The [CQ metadata batch](2026-10-16-cq-metadata.md) continues the same local
+boundary with prepared admitted queue nodes. Fresh publication and replacement
+allocate/free no queue metadata under COMPLETIONS. One retired owner keeps
+node/source/ring/backlog/original charge until explicit post-guard disposal;
+guarded fallback retains all fields. The global namespace map remains the next
+metadata boundary. Finding counts and historical intermittent attribution are
+unchanged; this adds no physical proof, recovery custody or replay permission.

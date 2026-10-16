@@ -48,6 +48,7 @@ pub(crate) mod exit_tests;
 mod operation_id_tests;
 mod operation_ids;
 mod queue_preparation;
+use queue_preparation::RetiredCq;
 mod terminal_tests;
 pub(crate) mod timer_tests;
 mod waiter_tests;
@@ -751,7 +752,7 @@ struct Namespace {
     /// Their admitted nodes transfer to terminal/backlog/refund owners.
     detached: AdmittedMap<OperationId, DetachedOp>,
     /// The address space's completion queues, keyed by [`CqId`].
-    cqs: BTreeMap<CqId, CqState>,
+    cqs: AdmittedMap<CqId, CqState>,
     /// Separate lifetime budget: a cancelled timer on another LP stays charged
     /// even after its completion slot has been reclaimed.
     timer_budget: Arc<crate::timers::budget::DomainBudget>,
@@ -790,6 +791,9 @@ impl AsCompletions {
         while let Some((&operation, _)) = entries.detached.first_key_value() {
             dispose_detached_node(entries.detached.take(&operation).unwrap());
         }
+        while let Some((&cq, _)) = entries.cqs.first_key_value() {
+            RetiredCq::from_node(entries.cqs.take(&cq).unwrap()).finish();
+        }
         drop(entries);
     }
 }
@@ -823,7 +827,7 @@ fn empty_as(asid: AddressSpaceId, capacity: usize) -> AsCompletions {
         capacity,
         live: 0,
         detached: AdmittedMap::new(),
-        cqs: BTreeMap::new(),
+        cqs: AdmittedMap::new(),
         timer_budget: crate::timers::budget::DomainBudget::new(capacity),
         record_budget: budget::DomainBudget::new(capacity),
         cq_budget: cq_budget::DomainBudget::new(),
@@ -953,10 +957,18 @@ fn attach_cq(
 /// Kernel-controlled queue replacement discards old undelivered results.
 /// Retained detached results must return their submission slots as well as
 /// their owning record charges; capability results still live in the table.
-fn replace_cq(entries: &mut AsCompletions, cq: CqId, replacement: CqState) -> Option<CqState> {
-    let previous = entries.cqs.insert(cq, replacement);
+fn replace_cq(
+    entries: &mut AsCompletions,
+    cq: CqId,
+    node: PreparedEntry<(CqId, CqState)>,
+    replacement: CqState,
+) -> Option<RetiredCq> {
+    let previous = entries.cqs.take(&cq);
+    entries.cqs.insert(node, cq, replacement);
     if let Some(previous) = &previous {
         let discarded = previous
+            .value()
+            .1
             .backlog
             .iter()
             .filter(|entry| matches!(&entry.owner, BacklogOwner::Detached { .. }))
@@ -966,7 +978,7 @@ fn replace_cq(entries: &mut AsCompletions, cq: CqId, replacement: CqState) -> Op
             .checked_sub(discarded)
             .expect("discarded detached records must count as live");
     }
-    previous
+    previous.map(RetiredCq::from_node)
 }
 
 /// Returns a raw pointer to a CQ ring of `asid`, or `None`.

@@ -31,8 +31,10 @@ fn heap_held_splice() {
             Arc::downgrade(registry[&CLIENT].detached[&operation]._timer_observer.as_ref().unwrap())
         };
         if mode == 2 {
-            let queue = COMPLETIONS.write().get_mut(&CLIENT).unwrap().cqs.remove(&DEFAULT_CQ);
-            drop(queue);
+            let queue = COMPLETIONS.write().get_mut(&CLIENT).unwrap().cqs.take(&DEFAULT_CQ);
+            if let Some(queue) = queue {
+                RetiredCq::from_node(queue).finish();
+            }
         }
         let retired;
         {

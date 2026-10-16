@@ -217,7 +217,7 @@ fn cq_detachment() {
     let mut entries = empty_as(CLIENT, 8);
     let first = queue_preparation::Prepared::heap_for_namespace(CLIENT, &entries, 8);
     let second = queue_preparation::Prepared::heap_for_namespace(CLIENT, &entries, 8);
-    entries.cqs.insert(0, first);
+    entries.cqs.insert(first.0, 0, first.1);
     let sponsor = WaitSponsor::new(false);
     let observer: Arc<dyn Observer> =
         CallOnNotify::new(|| panic!("replaced CQ fabricated readiness"));
@@ -227,11 +227,13 @@ fn cq_detachment() {
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
         let _registry = COMPLETIONS.write();
-        previous = replace_cq(&mut entries, 0, second);
+        previous = replace_cq(&mut entries, 0, second.0, second.1);
         assert_eq!(sponsor.used(), 1);
         assert_eq!(entries.cq_budget.used()[0], 2);
     }
-    drop(previous);
+    if let Some(previous) = previous {
+        previous.finish();
+    }
     assert_eq!(sponsor.used(), 0);
     assert_eq!(entries.cq_budget.used()[0], 1);
     assert_eq!(list.registered(), 0);

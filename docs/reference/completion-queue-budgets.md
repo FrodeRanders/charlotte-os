@@ -53,17 +53,20 @@ Whole-namespace replacement publishes only after CQ preparation succeeds and
 then revokes the old completion capabilities. This is kernel-controlled
 teardown, not a lossless live-migration API.
 
-Successful replacement now returns the entire old `CqState` out of registry
-serialization before destruction, retaining its ring/backlog, subscriptions and
-original charges. Whole-namespace close/replacement does the same with the
-complete namespace after serialized authority removal. Physical rings retain their original mapping owner
+Successful replacement returns a `RetiredCq` containing the complete admitted
+map node and old `CqState` out of registry serialization, retaining its
+ring/backlog, subscriptions and original charges. Explicit finish frees the
+metadata node before destroying the payload and refunding its charge.
+Whole-namespace close/replacement does the same with the complete namespace
+after serialized authority removal. Physical rings retain their original mapping owner
 and quiescent-consumer requirement. See the
 [callback/source audit](../reports/audits/2026-10-15-completion-callback-preparation.md).
 
 CQ payload staging now captures the exact namespace root, CQ account,
 submission capacity and trusted platform classification under a short registry
-borrow. Count/byte admission, waiter-list preparation, backlog reservation and
-heap-ring allocation run outside `COMPLETIONS`. Partial failures release their
+borrow. Count/byte admission, fallible map-node preparation, waiter-list
+preparation, backlog reservation and heap-ring allocation run outside
+`COMPLETIONS`. Partial failures release their
 original storage and charges there. Publication borrows the preparation,
 rechecks root/account/capacity and retirement, then checks physical aliases
 under the same registry hold as ring initialization and replacement. A stale
@@ -72,17 +75,23 @@ namespace rejects without crediting its successor or touching its queue.
 Physical preparation validates capacity/alignment but leaves the borrowed frame
 untouched. Only successful serialized publication initializes it; rejection
 retains the complete preparation until unlock. Whole-namespace preparation owns
-the complete private namespace and its CQ map node before entering the registry.
-Their existing metadata constructors remain infallible; moving them does not
-turn metadata OOM into a recoverable payload rejection.
-Its replacement still revokes current authority under serialization. See the
+the complete private namespace and its fallibly prepared CQ map node before
+entering the registry. Fresh CQ publication relinks that node without allocation;
+replacement detaches the old node without freeing it. Both unpublished and
+retired queue fallback retain every field without cleanup; ordinary rejection
+explicitly finishes after local guards. One queue registration covers its one
+prepared node, but the byte counter still measures ring/backlog storage, not
+aggregate metadata bytes. Namespace replacement still revokes current authority
+under serialization. See the
 [CQ payload-preparation follow-up](../reports/audits/2026-10-16-cq-payload-preparation.md).
 
-Registry-map nodes for a fresh live CQ/namespace, unified authority metadata,
-completion record construction, timer cleanup and arbitrary outer caller/IRQ
-contexts remain separate. This is payload preparation, not a claim that every
-registry publication is allocation-free or that a captured root identity pins
-physical backing. The caller retains the original frame/mapping and must
+The [CQ metadata follow-up](../reports/audits/2026-10-16-cq-metadata.md) covers
+fresh queue nodes, complete replacement and explicit namespace draining.
+The global namespace map still allocates/frees under its existing registry
+guard. Wider timer/observer disposal and arbitrary outer caller/IRQ contexts
+remain separate. This does not establish that every registry publication is
+allocation-free or that a captured root identity pins physical backing.
+The caller retains the original frame/mapping and must
 quiesce its consumer through publication and use.
 
 The service loader owns preparation in one rollback guard. If a CQ fails,
@@ -114,6 +123,12 @@ rounding. New native probes inject list/ring preparation rejection, reenter the
 registry at actual allocation boundaries, and hold the heap during replacement
 or stale/retired/alias publication. They check original charges, private
 namespace replacement and unchanged physical bytes containing a pending result.
+Metadata controls inject node rejection before list/ring allocation, reject a
+33rd queue before allocation, and publish/remove all 32 fresh queue nodes with
+the heap locked. Replacement retains an old ring, backlog record and waiter
+through namespace reuse; explicit disposal credits only the original accounts.
+Guarded preparation/retired-owner abandonment deliberately retains two queues
+and one backlog record until guest shutdown, without resetting their counters.
 This is injected rejection rather than physical allocator exhaustion; exhaustive
 physical-frame leak measurement remains open.
 

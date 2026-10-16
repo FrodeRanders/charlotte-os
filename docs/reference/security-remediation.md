@@ -848,3 +848,16 @@ Complete fallback retains fields/accounts without cleanup or retry custody.
 Both per-operation maps now use admitted nodes; CQ/global maps, other consumers'
 outer guards and wider timer/observer contexts remain open. No SEC disposition,
 physical proof, readiness/replay or historical failure attribution changes.
+
+The [CQ metadata follow-up](../reports/audits/2026-10-16-cq-metadata.md)
+continues R7-1/2 and C16/G1/G4/G7. Fallible queue-node preparation joins the
+complete existing payload owner outside COMPLETIONS. Fresh publication and
+replacement only relink admitted nodes; the retired owner carries the complete
+source/ring/backlog and original charge through post-guard node deallocation,
+then payload destruction. Whole namespace disposal explicitly drains queues;
+guarded fallback retains every field. Native controls cover all 32 fresh nodes,
+node rejection, full admission, physical publication and original-account reuse.
+The global namespace map, aggregate metadata/principal bounds and wider
+timer/observer/IRQ/caller contexts remain open. No finding disposition,
+physical proof, recovery custody, readiness/replay or historical attribution
+changes.

@@ -189,7 +189,13 @@ Close, abort and staged-event rollback remove the exact retained capability CQ
 row before returning the live slot, preventing aborted terminal rows from
 accumulating behind a full ring. See the [capability metadata follow-up](../reports/audits/2026-10-16-capability-completion-metadata.md).
 
-CQ/global namespace-map insertion/removal, ring/backlog mutation and wider
+CQ metadata now uses the same shared admitted map. Its complete retired owner
+keeps backlog records, source and original queue charge through node release,
+then explicitly destroys the payload after unlock. Abandonment retains all of
+them; an independent waiter token can still cancel its own subscription. See the
+[CQ metadata follow-up](../reports/audits/2026-10-16-cq-metadata.md).
+
+Global namespace-map insertion/removal, ring/backlog mutation and wider
 terminal timer/observer disposal retain their existing serialization. Local
 metadata/charge disposal is qualified above; outer guards/IRQ contexts and
 remaining metadata destruction still need work. Capture is not a root lease or
