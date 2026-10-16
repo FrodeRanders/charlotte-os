@@ -259,6 +259,7 @@ pub(crate) fn test_entry_allocation_rollback() {
     assert_eq!(Arc::weak_count(&callback), 0);
     list_tests::test_list_backing_admission();
     entry_preparation::test_preparation();
+    super::prepared_wait::test_preparation();
 }
 
 impl<C> Drop for ObserverList<C> {

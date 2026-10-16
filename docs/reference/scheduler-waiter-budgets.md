@@ -82,6 +82,16 @@ with its caller until guard exit. Captured list ownership prevents pointer reuse
 while comparing identity. CQ uses its existing `CqInterest` for both production
 and fixtures; the separate numeric-only fixture observable is removed.
 
+Shared waiter preparation now captures the exact source, original sponsor and
+weak observer in one inert owner before admission. Entry factories borrow it;
+ordinary preparation and publication outcomes explicitly finish after local
+guards. Finish releases transient entry/admission before source, retaining the
+sponsor last. All three phase fallbacks retain complete fields, including original
+charges after source close and sponsor retirement. This qualifies the containing
+preparation, while generic completed entries, published token/source destruction,
+initial source acquisition and wider contexts remain separate. See the
+[waiter-owner follow-up](../reports/audits/2026-10-16-waiter-preparation-ownership.md).
+
 Sources detach notification batches without allocating, then notify outside
 source/list locks. Completion and pending-call lists close permanently; CQ and
 endpoint-readiness lists drain and can be reused until source closure.

@@ -78,6 +78,15 @@ finalization and other caller contexts remain separate. See the
 
 ## Rejection and locks
 
+Shared waiter preparation captures its exact source, sponsor and weak observer
+before entry admission in one inert owner. Entry factories borrow it; ordinary
+outcomes explicitly finish after local guards, source before sponsor and after
+transient entry/admission disposal. All three phase fallbacks retain complete
+fields through source close and sponsor retirement. This qualifies that
+containing owner, while generic completed-entry, published token/source/batch
+destruction and other caller contexts remain separate. See the
+[waiter-owner follow-up](../reports/audits/2026-10-16-waiter-preparation-ownership.md).
+
 Thread-exit watch preparation similarly retains its captured candidate list,
 original weak callback, admitted watch charge and any completed entry in one
 inert owner before list/entry allocation. Its scheduler hook borrows the owner;

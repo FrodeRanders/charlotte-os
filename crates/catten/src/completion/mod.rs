@@ -2041,7 +2041,9 @@ impl Observable for CqInterest {
             Some(true) => Ok(crate::klib::observer::WaitRegistration::ready()),
             Some(false) => {
                 let mut prepared = sponsor.prepare(&self.identity, observer)?;
-                self.publish_waiter(&mut prepared)
+                let result = self.publish_waiter(&mut prepared);
+                prepared.finish();
+                result
             }
         }
     }

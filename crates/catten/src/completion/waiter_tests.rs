@@ -32,7 +32,8 @@ pub(super) fn run() {
     }
     assert!(token.is_owned());
     assert_eq!(sponsor.used(), 1);
-    drop((token, prepared));
+    prepared.finish();
+    drop(token);
     assert_eq!(sponsor.used(), 0);
 
     let mut tokens = Vec::new();
@@ -45,7 +46,7 @@ pub(super) fn run() {
         assert_eq!(source.publish_waiter(&mut full).unwrap_err(), RegistrationError::ResourceLimit);
     }
     assert_eq!(sponsor.used(), waiter_budget::SOURCE_LIMIT + 1);
-    drop(full);
+    full.finish();
     assert_eq!(sponsor.used(), waiter_budget::SOURCE_LIMIT);
     drop(tokens);
     assert_eq!(sponsor.used(), 0);
@@ -60,7 +61,7 @@ pub(super) fn run() {
     }
     assert_eq!(source.identity.registered(), 0);
     assert_eq!(sponsor.used(), 1);
-    drop(ready);
+    ready.finish();
     assert_eq!(sponsor.used(), 0);
 
     let mut stale = sponsor.prepare(&source.identity, Arc::downgrade(&observer)).unwrap();
@@ -72,7 +73,7 @@ pub(super) fn run() {
     }
     assert_eq!(cq_waiter_count(CLIENT, 0), 0);
     assert_eq!(sponsor.used(), 1);
-    drop(stale);
+    stale.finish();
     assert_eq!(sponsor.used(), 0);
     close_address_space(CLIENT);
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);

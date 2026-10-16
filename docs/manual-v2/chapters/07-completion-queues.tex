@@ -588,6 +588,15 @@ pin or cleanup receipt.
 
 \section{Owned completion and CQ waiters}
 
+Shared waiter preparation captures its exact source, original sponsor and weak
+observer before admission in one inert owner. Entry factories borrow it, and
+ordinary preparation/publication outcomes finish explicitly after local guards.
+Transient entry/admission disposal precedes source release, with sponsor last.
+All three phase fallbacks retain complete fields through source closure and
+sponsor retirement. Published token/source/batch destruction, generic completed
+entries, initial source acquisition and wider caller contexts remain separate.
+These metadata owners supply no thread/root lease or physical quiescence proof.
+
 Completion and CQ scheduler waiters use fallible registration before a thread
 is removed from its Ready queue or published as Blocked. Rejection preserves
 its state, queue membership and migration constraints; an already-ready source

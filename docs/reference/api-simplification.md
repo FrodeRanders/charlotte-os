@@ -168,3 +168,9 @@ replaces the private scheduler preparation hook's owning list/observer/charge
 arguments with one borrowed complete owner. It has one current contract;
 ordinary outcomes explicitly finish after local guards. Public observation
 errors, runtime ABI, wire/storage grammars and numbered batches are unchanged.
+
+The [waiter-owner follow-up](../reports/audits/2026-10-16-waiter-preparation-ownership.md)
+keeps one private borrowed entry-factory contract and replaces implicit containing
+preparation cleanup with consuming finish in direct, IPC and CQ adapters. Public
+source/registration interfaces and errors, runtime ABI, wire/storage grammars
+and numbered batches are unchanged.

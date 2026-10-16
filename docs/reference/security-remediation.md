@@ -1014,3 +1014,13 @@ fallbacks retain every field without cleanup. Initial capture/admission,
 generic completed preparation, published token/source destruction, aggregate
 admission and wider contexts remain separate. Finding dispositions and
 historical failure attribution are unchanged.
+
+The [waiter preparation owner batch](../reports/audits/2026-10-16-waiter-preparation-ownership.md)
+continues C16/C18/G1/G4/G7 and R7-1/2. Exact source, sponsor and weak
+observer now precede admission in one inert owner. Entry factories borrow it;
+ordinary preparation/publication outcomes explicitly finish after local guards,
+source before sponsor and after transient entry/admission disposal. Three phase
+fallbacks retain complete fields through source closure and sponsor retirement.
+Initial source acquisition, generic completed entry, published token/source/batch
+destruction, aggregate admission and wider contexts remain separate. Finding
+dispositions and historical failure attribution are unchanged.

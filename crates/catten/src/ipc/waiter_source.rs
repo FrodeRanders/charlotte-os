@@ -41,7 +41,9 @@ impl Source {
         // revalidation. No allocation or losing-storage destruction under IPC.
         let mut prepared = sponsor.prepare(&source, observer)?;
         drop(source);
-        self.publish(&mut prepared)
+        let result = self.publish(&mut prepared);
+        prepared.finish();
+        result
     }
 
     fn publish(

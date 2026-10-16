@@ -30,7 +30,8 @@ pub(super) fn run() {
     }
     scalar_send(CLIENT, connection, 1, 2).unwrap();
     assert_eq!(sponsor.used(), 0);
-    drop((token, prepared));
+    prepared.finish();
+    drop(token);
     receive(SERVER, endpoint).unwrap();
 
     let mut full_tokens = Vec::new();
@@ -43,7 +44,7 @@ pub(super) fn run() {
         assert_eq!(source.publish(&mut full).unwrap_err(), RegistrationError::ResourceLimit);
     }
     assert_eq!(sponsor.used(), waiter_budget::SOURCE_LIMIT + 1);
-    drop(full);
+    full.finish();
     assert_eq!(sponsor.used(), waiter_budget::SOURCE_LIMIT);
     drop(full_tokens);
 
@@ -55,7 +56,7 @@ pub(super) fn run() {
     }
     assert_eq!(sponsor.used(), 1);
     assert_eq!(identity.registered(), 0);
-    drop(readable);
+    readable.finish();
     receive(SERVER, endpoint).unwrap();
 
     let call = scalar_call(CLIENT, connection, 5, 6).unwrap();
@@ -73,7 +74,8 @@ pub(super) fn run() {
     super::super::reply(SERVER, authority, 42).unwrap();
     assert_eq!(sponsor.used(), 0);
     assert!(!IPC.read().pending_calls[&call_id].observed);
-    drop((token, prepared));
+    prepared.finish();
+    drop(token);
 
     // Reply result wins before entry publication. The complete unused entry
     // remains owned/charged until the caller leaves IPC and disposes it.
@@ -84,7 +86,7 @@ pub(super) fn run() {
     }
     assert!(!IPC.read().pending_calls[&call_id].observed);
     assert_eq!(sponsor.used(), 1);
-    drop(replied);
+    replied.finish();
     assert_eq!(poll_reply(CLIENT, call).unwrap().unwrap().result, 42);
     close_cap(CLIENT, call).unwrap();
 
@@ -97,7 +99,7 @@ pub(super) fn run() {
         assert_eq!(source.publish(&mut foreign).unwrap_err(), RegistrationError::Closed);
     }
     assert_eq!(identity.registered(), 0);
-    drop(foreign);
+    foreign.finish();
     receive(SERVER, endpoint).unwrap();
 
     let mut gone = sponsor.prepare(&identity, Arc::downgrade(&observer)).unwrap();
@@ -108,7 +110,7 @@ pub(super) fn run() {
         assert_eq!(source.publish(&mut gone).unwrap_err(), RegistrationError::Closed);
     }
     assert_eq!(sponsor.used(), 1);
-    drop(gone);
+    gone.finish();
     assert_eq!(sponsor.used(), 0);
     close_address_space_fixture(SERVER).unwrap();
     close_address_space_fixture(CLIENT).unwrap();

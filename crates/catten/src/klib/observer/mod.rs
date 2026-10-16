@@ -1,6 +1,7 @@
 //! Observer pattern implementation for event notification
 
 pub(crate) mod list_budget;
+mod prepared_wait;
 pub(crate) mod registration;
 pub(crate) mod waiter_budget;
 pub(crate) mod waiter_source;
@@ -9,6 +10,8 @@ use alloc::sync::{
     Arc,
     Weak,
 };
+
+pub(crate) use prepared_wait::PreparedWaitRegistration;
 
 pub trait Observable {
     /// Never invoke callbacks inline. Scheduler registration runs before
@@ -51,7 +54,10 @@ impl WaitSponsor {
         list: &registration::ListRef<waiter_budget::Charge>,
         observer: Weak<dyn Observer>,
     ) -> Result<WaitRegistration, registration::RegistrationError> {
-        self.prepare(list, observer)?.publish()
+        let mut prepared = self.prepare(list, observer)?;
+        let result = prepared.publish();
+        prepared.finish();
+        result
     }
 
     /// Capture the exact list and admit/allocate its entry outside any source
@@ -61,31 +67,7 @@ impl WaitSponsor {
         list: &registration::ListRef<waiter_budget::Charge>,
         observer: Weak<dyn Observer>,
     ) -> Result<PreparedWaitRegistration, registration::RegistrationError> {
-        let charge = waiter_budget::reserve(&self.0)?;
-        Ok(PreparedWaitRegistration {
-            entry: registration::PreparedRegistration::try_new(observer, charge)?,
-            source: list.clone(),
-        })
-    }
-}
-
-/// One exact source and its charged entry. Publication borrows this owner so
-/// ready/rejected preparation cannot destroy backing beneath a source guard.
-pub(crate) struct PreparedWaitRegistration {
-    entry: registration::PreparedRegistration<waiter_budget::Charge>,
-    source: registration::ListRef<waiter_budget::Charge>,
-}
-
-impl PreparedWaitRegistration {
-    pub(crate) fn matches(&self, source: &registration::ListRef<waiter_budget::Charge>) -> bool {
-        core::ptr::eq(&*self.source, &**source)
-    }
-
-    pub(crate) fn publish(&mut self) -> Result<WaitRegistration, registration::RegistrationError> {
-        Ok(WaitRegistration {
-            owned: Some(self.source.register_prepared(&mut self.entry)?),
-            ready: false,
-        })
+        PreparedWaitRegistration::new(self, list, observer)
     }
 }
 
