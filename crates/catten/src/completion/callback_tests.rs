@@ -33,6 +33,10 @@ fn callback_count(asid: usize, cap: super::CompletionCap) -> usize {
 }
 
 pub(crate) fn test_admission() {
+    // Heap-held publication probes must finish before the AP schedulers are
+    // released: unrelated registry writers still allocate map metadata.
+    super::test_prepared_wake_identity();
+    super::budget::test_backlog_refunds();
     super::operation_id_tests::run();
     super::capability_preparation::test_preparation();
     crate::klib::observer::registration::test_entry_allocation_rollback();

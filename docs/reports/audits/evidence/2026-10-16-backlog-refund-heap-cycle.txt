@@ -1,0 +1,91 @@
+Intel no-network intermediate run: backlog-refund-intel-final
+Baseline before this batch: 2fbe5137
+Diagnostic result: deadline after 180.028698875 seconds
+Kernel ELF SHA-256: 67ce1edf26358859bc0b162cb34a322f840ecb2f696caad6b42bdd1436e3edc8
+UART SHA-256: 8d78efc51bf978cd9aaab7c1aa4339cb72b90c016903517f016d37ee1a1dc0a3
+LLDB capture SHA-256: 89816198962c21215ecf174c68f40d69a0829927b1780ba123d9dbf3a6ac5ad9
+All four vCPUs captured; QMP captured; LLDB exit 0.
+Per-file source hashes are recorded in the companion JSON.
+
+Relevant UART:
+[+     1.200963] [scheduler wait publication] guard-free registration, early/late wake, exact wait/slot identity, registered-before-Blocked Ready control, heap-held publication/detachment and post-guard cancellation passed
+[+     1.260479] [backlog charge handback] full/FIFO flush under registry/domain/node/heap guards, ordinary/platform aggregation, original-account replacement and both producers passed
+[+    15.104528] Testing device capabilities (MMIO regions and interrupt objects)...
+
+LLDB all-thread backtraces:
+* thread #1, stop reason = signal SIGTRAP
+   * frame #0: 0xffffffff802f82a2 kernel.elf`core::sync::atomic::atomic_load::<usize>(dst=<unavailable>, order=Acquire) at atomic.rs:3953:24 [inlined]
+     frame #1: 0xffffffff802f82a2 kernel.elf`<core::sync::atomic::Atomic<usize>>::load(self=<unavailable>, order=Acquire) at atomic.rs:2889:26 [inlined]
+     frame #2: 0xffffffff802f82a2 kernel.elf`<catten::cpu::multiprocessor::spin::rwlock::RwLockCore as lock_api::rwlock::RawRwLock>::lock_shared(self=<unavailable>) at rwlock.rs:66:40
+     frame #3: 0xffffffff803ce2f1 kernel.elf`<lock_api::rwlock::RwLock<catten::cpu::multiprocessor::spin::rwlock::RwLockCore, alloc::collections::btree::map::BTreeMap<usize, catten::completion::AsCompletions>>>::read(self=<unavailable>) at rwlock.rs:458:18 [inlined]
+     frame #4: 0xffffffff803ce2e5 kernel.elf`<catten::completion::CqInterest>::publish_waiter(self=0xffff8100000fd820, prepared=0xffff8100000fd7d0) at mod.rs:1949:36
+     frame #5: 0xffffffff803d6b3b kernel.elf`catten::completion::waiter_tests::run at waiter_tests.rs:28:24
+     frame #6: 0xffffffff803d6794 kernel.elf`catten::completion::test_prepared_wake_identity at mod.rs:2042:5
+     frame #7: 0xffffffff80262be2 kernel.elf`catten::self_test::device::test_device_capabilities at device.rs:109:9
+     frame #8: 0xffffffff801e9651 kernel.elf`catten::self_test::run_deferred_self_tests at mod.rs:384:5
+     frame #9: 0xffffffff80043c33 kernel.elf`catten::finish_boot at main.rs:332:5
+     frame #10: 0xffffffff800065c4 kernel.elf`kernel_thread_trampoline + 8
+  thread #2
+       frame #0: 0xffffffff80161882 kernel.elf`core::sync::atomic::atomic_load::<u8>(dst=<unavailable>, order=Acquire) at atomic.rs:3953:24 [inlined]
+       frame #1: 0xffffffff80161882 kernel.elf`<core::sync::atomic::Atomic<bool>>::load(self=<unavailable>, order=Acquire) at atomic.rs:757:18 [inlined]
+       frame #2: 0xffffffff80161882 kernel.elf`<catten::cpu::multiprocessor::spin::mutex::MutexCore as lock_api::mutex::RawMutex>::lock(self=<unavailable>) at mutex.rs:90:30
+       frame #3: 0xffffffff8016184e kernel.elf`<lock_api::mutex::Mutex<catten::cpu::multiprocessor::spin::mutex::MutexCore, talc::base::Talc<catten::memory::allocators::global_allocator::ExtendOnOom, talc::base::binning::DefaultBinning>>>::lock(self=<unavailable>) at mutex.rs:213:18 [inlined]
+       frame #4: 0xffffffff8016184e kernel.elf`<talc::sync::TalcLock<catten::cpu::multiprocessor::spin::mutex::MutexCore, catten::memory::allocators::global_allocator::ExtendOnOom, talc::base::binning::DefaultBinning>>::lock(self=<unavailable>) at mod.rs:45:20 [inlined]
+       frame #5: 0xffffffff8016184e kernel.elf`<talc::sync::TalcLock<catten::cpu::multiprocessor::spin::mutex::MutexCore, catten::memory::allocators::global_allocator::ExtendOnOom, talc::base::binning::DefaultBinning> as core::alloc::global::GlobalAlloc>::alloc(self=<unavailable>, layout=Layout @ 0x00000008dd76fd90) at mod.rs:69:14 [inlined]
+       frame #6: 0xffffffff8016184e kernel.elf`__rustc::__rust_alloc(size=896, align=(_inner_repr_trick = _Align1Shl3)) at global_allocator.rs:61:31 [inlined]
+       frame #7: 0xffffffff8016184e kernel.elf`alloc::alloc::alloc(layout=Layout @ 0x00000008dd76fda0) at alloc.rs:124:9 [inlined]
+       frame #8: 0xffffffff8016184e kernel.elf`<alloc::alloc::Global>::alloc_impl_runtime(layout=Layout @ 0x00000008dd76fd80, zeroed=false) at alloc.rs:296:73
+       frame #9: 0xffffffff8016184e kernel.elf`<alloc::alloc::Global>::alloc_impl(self=<unavailable>, layout=Layout @ 0x00000008dd76fd90) at alloc.rs:418:9 [inlined]
+       frame #10: 0xffffffff8016184e kernel.elf`<alloc::alloc::Global as core::alloc::Allocator>::allocate(self=<unavailable>, layout=Layout @ 0x00000008dd76fda0) at alloc.rs:535:14 [inlined]
+       frame #11: 0xffffffff8016184e kernel.elf`<alloc::boxed::Box<alloc::collections::btree::node::LeafNode<u64, catten::completion::DetachedOp>>>::try_new_uninit_in(alloc=<unavailable>) at boxed.rs:619:19
+       frame #12: 0xffffffff8016184e kernel.elf`<alloc::boxed::Box<alloc::collections::btree::node::LeafNode<u64, catten::completion::DetachedOp>>>::new_uninit_in(alloc=<unavailable>) at boxed.rs:586:15
+       frame #13: 0xffffffff8016184e kernel.elf`<alloc::collections::btree::node::LeafNode<u64, catten::completion::DetachedOp>>::new::<alloc::alloc::Global>(alloc=<unavailable>) at node.rs:87:24 [inlined]
+       frame #14: 0xffffffff8016184e kernel.elf`<alloc::collections::btree::node::NodeRef<alloc::collections::btree::node::marker::Owned, u64, catten::completion::DetachedOp, alloc::collections::btree::node::marker::Leaf>>::new_leaf::<alloc::alloc::Global>(alloc=<unavailable>) at node.rs:225:29 [inlined]
+       frame #15: 0xffffffff8016184e kernel.elf`<alloc::collections::btree::map::entry::VacantEntry<u64, catten::completion::DetachedOp>>::insert_entry(self=<unavailable>, value=DetachedOp @ 0xffff81000020e7b0) at entry.rs:452:44
+       frame #16: 0xffffffff801617fd kernel.elf`<alloc::collections::btree::map::entry::VacantEntry<u64, catten::completion::DetachedOp>>::insert(self=<unavailable>, value=DetachedOp @ 0xffff81000020e7b0) at entry.rs:426:14 [inlined]
+       frame #17: 0xffffffff801617fd kernel.elf`<alloc::collections::btree::map::BTreeMap<u64, catten::completion::DetachedOp>>::insert(self=0xffff8400000bb940, key=2640, value=DetachedOp @ 0xffff81000020e7b0) at map.rs:1052:23
+       frame #18: 0xffffffff802a9ee6 kernel.elf`<catten::completion::detached_preparation::Preparing>::publish(self=0xffff81000020e880) at detached_preparation.rs:171:18
+       frame #19: 0xffffffff802aa27f kernel.elf`catten::completion::detached_preparation::submit(asid=<unavailable>, cq=<unavailable>, user_data=209, ids=<unavailable>) at detached_preparation.rs:196:31
+       frame #20: 0xffffffff8013d8d3 kernel.elf`catten::completion::submit_detached(asid=825879, cq=0, _op=<unavailable>, user_data=209) at mod.rs:1408:5 [inlined]
+       frame #21: 0xffffffff8013d8bb kernel.elf`catten::self_test::cq_wait::cq_driver at cq_wait.rs:471:21
+       frame #22: 0xffffffff800065c4 kernel.elf`kernel_thread_trampoline + 8
+  thread #3
+       frame #0: 0xffffffff800769f7 kernel.elf`catten::cpu::isa::x86_64::lp::ops::get_lp_id at ops.rs:196:9 [inlined]
+       frame #1: 0xffffffff800769f7 kernel.elf`catten::cpu::isa::x86_64::lp::ops::lp_idle_loop at ops.rs:559:12
+       frame #2: 0xffffffff800065c4 kernel.elf`kernel_thread_trampoline + 8
+  thread #4
+       frame #0: 0xffffffff8003c082 kernel.elf`core::sync::atomic::atomic_load::<u8>(dst=<unavailable>, order=Acquire) at atomic.rs:3953:24 [inlined]
+       frame #1: 0xffffffff8003c082 kernel.elf`<core::sync::atomic::Atomic<bool>>::load(self=<unavailable>, order=Acquire) at atomic.rs:757:18 [inlined]
+       frame #2: 0xffffffff8003c082 kernel.elf`<catten::cpu::multiprocessor::spin::mutex::MutexCore as lock_api::mutex::RawMutex>::lock(self=<unavailable>) at mutex.rs:90:30
+       frame #3: 0xffffffff8003c053 kernel.elf`<lock_api::mutex::Mutex<catten::cpu::multiprocessor::spin::mutex::MutexCore, talc::base::Talc<catten::memory::allocators::global_allocator::ExtendOnOom, talc::base::binning::DefaultBinning>>>::lock(self=<unavailable>) at mutex.rs:213:18 [inlined]
+       frame #4: 0xffffffff8003c053 kernel.elf`<talc::sync::TalcLock<catten::cpu::multiprocessor::spin::mutex::MutexCore, catten::memory::allocators::global_allocator::ExtendOnOom, talc::base::binning::DefaultBinning>>::lock(self=<unavailable>) at mod.rs:45:20 [inlined]
+       frame #5: 0xffffffff8003c053 kernel.elf`<talc::sync::TalcLock<catten::cpu::multiprocessor::spin::mutex::MutexCore, catten::memory::allocators::global_allocator::ExtendOnOom, talc::base::binning::DefaultBinning> as core::alloc::global::GlobalAlloc>::alloc(self=<unavailable>, layout=Layout @ 0x00000008dd28f100) at mod.rs:69:14 [inlined]
+       frame #6: 0xffffffff8003c053 kernel.elf`__rustc::__rust_alloc(size=40, align=(_inner_repr_trick = _Align1Shl3)) at global_allocator.rs:61:31 [inlined]
+       frame #7: 0xffffffff8003c053 kernel.elf`alloc::alloc::alloc(layout=Layout @ 0x00000008dd28f110) at alloc.rs:124:9 [inlined]
+       frame #8: 0xffffffff8003c053 kernel.elf`<alloc::alloc::Global>::alloc_impl_runtime(layout=Layout @ 0x00000008dd28f0f0, zeroed=false) at alloc.rs:296:73
+       frame #9: 0xffffffff8003c053 kernel.elf`<alloc::alloc::Global>::alloc_impl(self=<unavailable>, layout=Layout @ 0x00000008dd28f100) at alloc.rs:418:9 [inlined]
+       frame #10: 0xffffffff8003c053 kernel.elf`<alloc::alloc::Global as core::alloc::Allocator>::allocate(self=<unavailable>, layout=Layout @ 0x00000008dd28f110) at alloc.rs:535:14 [inlined]
+       frame #11: 0xffffffff8003c053 kernel.elf`<alloc::boxed::Box<catten::klib::collections::retirement_list::Node<(u64, catten::capability::Entry)>>>::try_new_uninit_in(alloc=<unavailable>) at boxed.rs:619:19
+       frame #12: 0xffffffff8003c053 kernel.elf`<alloc::boxed::Box<catten::klib::collections::retirement_list::Node<(u64, catten::capability::Entry)>>>::try_new_in(x=Node<(u64, catten::capability::Entry)> @ 0xffff81000021f578, alloc=<unavailable>) at boxed.rs:555:25 [inlined]
+       frame #13: 0xffffffff8003c053 kernel.elf`<alloc::boxed::Box<catten::klib::collections::retirement_list::Node<(u64, catten::capability::Entry)>>>::try_new(x=Node<(u64, catten::capability::Entry)> @ 0xffff81000021f578) at boxed.rs:380:9 [inlined]
+       frame #14: 0xffffffff8003c053 kernel.elf`<<alloc::boxed::Box<catten::klib::collections::retirement_list::Node<(u64, catten::capability::Entry)>>>::try_new as core::ops::function::FnOnce<(catten::klib::collections::retirement_list::Node<(u64, catten::capability::Entry)>,)>>::call_once((null)=<unavailable>, (null)=(catten::klib::collections::retirement_list::Node<(u64, catten::capability::Entry)>) @ 0xffff81000021f578) at function.rs:250:5 [inlined]
+       frame #15: 0xffffffff8003c053 kernel.elf`<catten::klib::collections::retirement_list::PreparedEntry<(u64, catten::capability::Entry)>>::try_new_with::<<alloc::boxed::Box<catten::klib::collections::retirement_list::Node<(allocate=<unavailable>)>>>::try_new> at retirement_list.rs:36:9 [inlined]
+       frame #16: 0xffffffff8003c053 kernel.elf`<catten::klib::collections::retirement_list::PreparedEntry<(u64, catten::capability::Entry)>>::try_new at retirement_list.rs:30:9 [inlined]
+       frame #17: 0xffffffff8003c053 kernel.elf`<catten::capability::record::PreparingRecord>::try_new at record.rs:23:20
+       frame #18: 0xffffffff8032ae59 kernel.elf`<catten::capability::PreparedReservation>::try_new(owner=118, kind=Ipc, identity=Option<catten::memory::AddressSpaceHandle> @ 0xffff81000021f8f8) at capability.rs:280:22
+       frame #19: 0xffffffff8032bc1f kernel.elf`catten::capability::reserve_captured(owner=<unavailable>, kind=<unavailable>, identity=<unavailable>) at capability.rs:253:27
+       frame #20: 0xffffffff802e6623 kernel.elf`<catten::ipc::IpcRegistry>::reserve_cap(self=<unavailable>, owner=118) at mod.rs:622:9 [inlined]
+       frame #21: 0xffffffff802e6546 kernel.elf`<catten::ipc::IpcRegistry>::stage_call(self=<unavailable>, caller=118) at mod.rs:634:30
+       frame #22: 0xffffffff802ef2b5 kernel.elf`catten::ipc::scalar_call_with_memory_move(caller=118, connection_cap=<unavailable>, opcode=112, arg0=160, memory_cap=2) at mod.rs:1222:28
+       frame #23: 0xffffffff80051f60 kernel.elf`catten::syscall::sys_ipc_scalar_call_move(frame=0xffff81000021fe58) at mod.rs:1660:11
+       frame #24: 0xffffffff802c3e63 kernel.elf`syscall_entry_handler(frame_base=0xffff81000021ff40) at syscall.rs:161:5
+       frame #25: 0xffffffff80005d4b kernel.elf`syscall_entry + 76
+
+Interpretation: thread #1 holds PRIMARY_ALLOCATOR in waiter_tests::run
+and requests COMPLETIONS.read. Thread #2 holds COMPLETIONS.write in
+Preparing::publish and requests PRIMARY_ALLOCATOR for a BTreeMap node.
+The fixture introduced the reverse lock order after concurrent boot work
+started. Its serialized pre-scheduler placement removes that fixture edge;
+production map allocation under COMPLETIONS remains an open audit boundary.
+Thread #4 is another heap waiter; thread #3 is idle.
+This capture does not attribute earlier IPC exit/stack/persistence/NIC failures.

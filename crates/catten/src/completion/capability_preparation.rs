@@ -24,12 +24,14 @@ struct Target {
 impl Target {
     fn capture(asid: AddressSpaceId) -> Result<Self, SubmitError> {
         let platform = crate::memory::budget::platform_identity(asid);
+        // The refund owner outlives this local registry guard on every path.
+        let mut releases = budget::Releases::default();
         let mut registry = COMPLETIONS.write();
         let entries = registry.get_mut(&asid).ok_or(SubmitError::UnknownAddressSpace)?;
         if entries.address_space.is_some_and(|root| !crate::memory::budget::accepting(root)) {
             return Err(SubmitError::UnknownAddressSpace);
         }
-        flush_cq_backlog(entries, DEFAULT_CQ);
+        flush_cq_backlog(entries, DEFAULT_CQ, &mut releases);
         if entries.live >= entries.capacity {
             return Err(SubmitError::WouldBlock);
         }
@@ -142,12 +144,14 @@ impl Preparing {
     }
 
     fn reserve(&mut self) -> Result<(), SubmitError> {
+        // The refund owner outlives this local registry guard on every path.
+        let mut releases = budget::Releases::default();
         let mut registry = COMPLETIONS.write();
         let resources = &mut *self.0;
         let entries =
             registry.get_mut(&resources.target.asid).ok_or(SubmitError::UnknownAddressSpace)?;
         resources.target.validate(entries)?;
-        flush_cq_backlog(entries, DEFAULT_CQ);
+        flush_cq_backlog(entries, DEFAULT_CQ, &mut releases);
         if entries.live >= entries.capacity {
             return Err(SubmitError::WouldBlock);
         }
@@ -200,13 +204,15 @@ impl Preparing {
     }
 
     fn publish(&mut self) -> Result<CompletionCap, SubmitError> {
+        // The refund owner outlives this local registry guard on every path.
+        let mut releases = budget::Releases::default();
         let mut registry = COMPLETIONS.write();
         let resources = &mut *self.0;
         assert!(!resources.published, "completion preparation published twice");
         let entries =
             registry.get_mut(&resources.target.asid).ok_or(SubmitError::UnknownAddressSpace)?;
         resources.target.validate(entries)?;
-        flush_cq_backlog(entries, DEFAULT_CQ);
+        flush_cq_backlog(entries, DEFAULT_CQ, &mut releases);
         if entries.live >= entries.capacity {
             return Err(SubmitError::WouldBlock);
         }

@@ -200,3 +200,26 @@ This review ran no new guest boots, service rebuild/signing, Clippy, physical
 fault injection or advisory update. Native results above are explicitly linked
 historical execution evidence. Documentation links and diff whitespace were
 checked after editing; no production behavior or ownership contract changes.
+
+## 2026-10-16 IPC park-observation fixture follow-up
+
+The [backlog refund batch](2026-10-16-completion-backlog-refunds.md) preserves a
+fresh Intel failure at the IPC claim fixture's registration-implies-Blocked
+assertion, including concise all-CPU diagnostics and artifact hashes. Scheduler
+registration intentionally precedes Blocked publication. The corrected fixture
+waits for both observations for the exact worker generation under one original
+five-second deadline; it still requires exact exit completion before root close.
+A deterministic registered-but-Ready scheduler control exercises that legitimate
+window. The capture lacks the exact worker state/generation at the assertion,
+so later idle CPU stacks cannot reconstruct that instant. This source-confirmed
+fixture defect is separate from the older exact-worker exit timeouts and does
+not establish their cause or physical quiescence. Failed and passing runs remain
+separate in the linked report.
+
+A second Intel sample in that batch reached its 180-second deadline. All-CPU
+stacks identify a heap/registry lock cycle introduced by a heap-held CQ waiter
+probe after concurrent boot workers started. The probe moves to the serialized
+pre-scheduler phase without removing its checks. The production detached-map
+allocation under the registry remains open. This is a newly diagnosed fixture
+cycle, not attribution of the older intermittent incidents; its own failed
+capture and input hashes remain separate from passing repeats.

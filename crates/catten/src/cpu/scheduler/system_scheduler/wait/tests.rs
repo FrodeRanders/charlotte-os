@@ -147,6 +147,10 @@ pub(super) fn run() {
     // callback for the previous wait must not wake this later park, even with
     // the same thread generation. Its own callback still wakes normally.
     let second = scheduler.prepare_wait(tid, &source).unwrap();
+    // Deterministic control for fixtures observing registration: a real
+    // installed subscription can precede Blocked publication while Ready.
+    assert_eq!(source.source.registered(), 1);
+    assert!(matches!(MASTER_THREAD_TABLE.read().get(tid).unwrap().state, ThreadState::Ready(_)));
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
         assert!(scheduler.publish_wait(&second, constraint).unwrap());
@@ -218,6 +222,7 @@ pub(super) fn run() {
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
     crate::logln!(
         "[scheduler wait publication] guard-free registration, early/late wake, exact wait/slot \
-         identity, heap-held publication/detachment and post-guard cancellation passed"
+         identity, registered-before-Blocked Ready control, heap-held publication/detachment and \
+         post-guard cancellation passed"
     );
 }

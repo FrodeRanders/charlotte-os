@@ -41,8 +41,29 @@ This adapter is for fixed record allocations, not general growable containers.
 A detached operation moves its charge into an owning CQ backlog entry if its
 result cannot enter the ring. Its operation ID is no longer addressable, but
 both submission slot and record admission remain occupied. Ring publication
-destroys that retained record and returns both resources. The fixed-size ring
-entry remains in independently allocated CQ backing.
+returns the submission slot; record admission refunds after local registry
+unlock as described below. The fixed-size ring entry remains in independently
+allocated CQ backing.
+
+Successful backlog-to-ring publication now moves detached charges into one
+owning refund batch before releasing them after `COMPLETIONS`. It retains at
+most two inline charges, separating ordinary/platform classes and preserving
+each original account. Combining a class checks exact account identity; the
+retained Arc keeps redundant reference drops from freeing that account under
+the registry. The existing one-dimension `VectorBudget` provides checked,
+constant-time batch refunds without changing policy limits or the shared API.
+No disposal allocation or new reservation is needed.
+
+All entries that fit still publish in FIFO order, and live submission slots
+update under the registry. Record admission remains conservatively charged
+until post-guard disposal. A failed write requeues its complete entry and
+transfers no charge. Capability-backed backlog entries own no detached charge.
+CQ observation and admission return with their refunds complete; CQ waits
+refund before watchdog preparation/parking, and producers refund before source
+notification. Late authority rejection also refunds already-published backlog
+charges without consuming the rejected operation. Namespace replacement cannot
+redirect a retained refund to its successor. See the
+[backlog refund follow-up](../reports/audits/2026-10-16-completion-backlog-refunds.md).
 
 Cancelling non-timer work still waits for its producer to post a terminal
 result, except [endpoint-close watches](close-watch-budgets.md), whose owning
@@ -143,9 +164,11 @@ explicit finish disposes unused storage/reservation and payload afterward.
 Abandonment retains everything without cleanup. See the
 [capability preparation follow-up](../reports/audits/2026-10-16-capability-completion-preparation.md).
 
-Registry-map insertion/removal, backlog reconciliation, capability close and
-terminal timer cleanup retain their existing serialization and need further
-qualification. Capture is not a root lease or physical quiescence proof.
+Registry-map insertion/removal, ring/backlog mutation, capability close and
+terminal timer cleanup retain their existing serialization. The delivered-charge
+disposal boundary above is qualified locally; outer guards/IRQ contexts and
+remaining metadata destruction still need work. Capture is not a root lease or
+physical quiescence proof.
 
 ## Verification and remaining work
 
@@ -194,7 +217,7 @@ Per-principal totals
 across domains, typed deployment limits and userspace counters remain future
 work. SEC-07 is partial; no hostile-workload containment guarantee is made.
 
-The global operation-ID allocator currently uses a wrapping 64-bit increment.
-Its documented nonreuse intent therefore still needs checked exhaustion;
-finite admission/reuse fixtures do not exercise a complete counter wrap. This
-is a separate recorded boundary in the detached preparation follow-up.
+The global operation-ID allocator uses checked boot-lifetime exhaustion,
+rejecting zero and the syscall failure sentinel before new admission. Failed
+preparation does not recycle an identity and namespace replacement does not
+reset the counter. See the [operation-ID exhaustion follow-up](../reports/audits/2026-10-16-operation-id-exhaustion.md).

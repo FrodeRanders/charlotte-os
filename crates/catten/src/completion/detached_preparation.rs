@@ -20,12 +20,14 @@ struct Target {
 impl Target {
     fn capture(asid: AddressSpaceId, cq: CqId) -> Result<Self, SubmitError> {
         let platform = crate::memory::budget::platform_identity(asid);
+        // The refund owner outlives this local registry guard on every path.
+        let mut releases = budget::Releases::default();
         let mut registry = COMPLETIONS.write();
         let entries = registry.get_mut(&asid).ok_or(SubmitError::UnknownAddressSpace)?;
         if entries.address_space.is_some_and(|root| !crate::memory::budget::accepting(root)) {
             return Err(SubmitError::UnknownAddressSpace);
         }
-        flush_cq_backlog(entries, cq);
+        flush_cq_backlog(entries, cq, &mut releases);
         let queue = entries.cqs.get(&cq).ok_or(SubmitError::NoCompletionQueue)?;
         if entries.live >= entries.capacity {
             return Err(SubmitError::WouldBlock);
@@ -151,11 +153,13 @@ impl Preparing {
     }
 
     fn publish(&mut self) -> Result<OperationId, SubmitError> {
+        // The refund owner outlives this local registry guard on every path.
+        let mut releases = budget::Releases::default();
         let mut registry = COMPLETIONS.write();
         let entries =
             registry.get_mut(&self.target.asid).ok_or(SubmitError::UnknownAddressSpace)?;
         self.target.validate(entries)?;
-        flush_cq_backlog(entries, self.target.cq);
+        flush_cq_backlog(entries, self.target.cq, &mut releases);
         if entries.live >= entries.capacity {
             return Err(SubmitError::WouldBlock);
         }

@@ -244,10 +244,43 @@ pub(super) fn run() {
     reject_before_reservation();
     reject_after_reservation();
     accepted_timer_close_and_deadline();
+    backlog_refund_on_publication_rejection();
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
     crate::logln!(
         "[capability completion preparation] unlocked construction/rejection, hidden authority, \
          heap-held stale publication, original charges, absolute deadline and \
          close-before-enqueue passed"
     );
+}
+
+fn backlog_refund_on_publication_rejection() {
+    for timer in [false, true] {
+        open_address_space_with_cq(CLIENT, 4, 2).unwrap();
+        let records = record_admission(CLIENT).unwrap();
+        let mut preparing =
+            Preparing::new(Target::capture(CLIENT).unwrap(), None, false, &OPERATION_IDS).unwrap();
+        if timer {
+            preparing.timer(0, crate::timers::PreparedEvent::new, Arc::try_new).unwrap();
+        }
+        for cookie in 1..=2 {
+            let op = submit_detached(CLIENT, DEFAULT_CQ, OpCode::Nop, cookie).unwrap();
+            complete_detached(CLIENT, op, OpResult::Ok(cookie as i64)).unwrap();
+        }
+        assert_eq!(records.used(), 2);
+        let ring = unsafe { cq_ring_of(CLIENT, DEFAULT_CQ).unwrap() };
+        assert_eq!(unsafe { (&mut *ring).read().unwrap() }.cookie, 1);
+        // The captured authority now rejects after a real backlog flush. The
+        // flush's charges must return after unlock even on this error path;
+        // the rejected operation itself remains completely owned.
+        crate::capability::close_address_space(CLIENT);
+        assert_eq!(preparing.publish(), Err(SubmitError::WouldBlock));
+        assert_eq!(records.used(), 1);
+        assert_eq!(timer_events_used(CLIENT), usize::from(timer));
+        assert!(preparing.0.completion.is_some() && preparing.0.reservation.is_some());
+        assert_eq!(unsafe { (&mut *ring).read().unwrap() }.cookie, 2);
+        preparing.finish();
+        assert_eq!(records.used(), 0);
+        assert_eq!(timer_events_used(CLIENT), 0);
+        close_address_space(CLIENT);
+    }
 }

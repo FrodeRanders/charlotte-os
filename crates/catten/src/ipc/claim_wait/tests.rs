@@ -12,6 +12,7 @@ use crate::{
     cpu::scheduler::threads::{
         MASTER_THREAD_TABLE,
         ThreadState,
+        ThreadStateKind,
     },
     klib::observer::CallOnNotify,
     memory::{
@@ -230,6 +231,7 @@ static TARGET: memory::Mutex<Option<Target>> = memory::Mutex::new(None);
 static RESULT: AtomicUsize = AtomicUsize::new(0);
 // Fixture progress only; no stage or return marker proves exit/quiescence.
 static WORKER_STAGE: AtomicUsize = AtomicUsize::new(0);
+static REGISTERED_BEFORE_PARK: AtomicUsize = AtomicUsize::new(0);
 const CLIENT: AddressSpaceId = 0x5d07;
 
 extern "C" fn close_worker() {
@@ -297,6 +299,7 @@ fn await_worker_exit(
 }
 
 pub(crate) fn scheduled() {
+    REGISTERED_BEFORE_PARK.store(0, Ordering::Release);
     let producer_lp = crate::cpu::isa::lp::ops::get_lp_id();
     let lp_count = crate::cpu::multiprocessor::get_lp_count();
     let probe_lps = lp_count.min(4);
@@ -322,6 +325,63 @@ pub(crate) fn scheduled() {
          exit watches",
         8 * probe_lps * 2
     );
+    crate::logln!(
+        "[IPC claim readiness] sampled registration before Blocked {} time(s); registration alone \
+         was never accepted as a parked worker",
+        REGISTERED_BEFORE_PARK.load(Ordering::Acquire)
+    );
+}
+
+/// Registration is prepared before Blocked publication. Observe both phases
+/// for this exact worker generation before releasing the held claim. Neither
+/// observation proves exit; the existing exact exit watch remains mandatory.
+fn await_claim_park(
+    token: ReplyTokenId,
+    tid: crate::cpu::scheduler::threads::ThreadId,
+    generation: crate::cpu::scheduler::threads::ThreadGeneration,
+) -> Interest {
+    let deadline = scheduler::monotonic_millis().saturating_add(5_000);
+    loop {
+        let interest = {
+            let ipc = IPC.read();
+            ipc.reply_tokens[&token]
+                .claim_interest
+                .as_ref()
+                .filter(|source| source.0.list.registered() == 1)
+                .map(Source::interest)
+        };
+        let state = {
+            let table = MASTER_THREAD_TABLE.read();
+            let thread = table.get(tid).expect("IPC closer disappeared before park observation");
+            assert_eq!(
+                thread.generation, generation,
+                "IPC closer generation changed before park observation"
+            );
+            match thread.state {
+                ThreadState::Blocked(_) => ThreadStateKind::Blocked,
+                ThreadState::Running(_) => ThreadStateKind::Running,
+                ThreadState::Ready(_) => ThreadStateKind::Ready,
+                ThreadState::NeedsLpAssignment => ThreadStateKind::NeedsLpAssignment,
+            }
+        };
+        if let Some(interest) = interest {
+            if state == ThreadStateKind::Blocked {
+                assert!(!interest.completed(), "fixture released its claim before observing park");
+                return interest;
+            }
+            REGISTERED_BEFORE_PARK.fetch_add(1, Ordering::Relaxed);
+        }
+        assert!(
+            scheduler::monotonic_millis() < deadline,
+            "IPC closer did not register and park: tid={tid} generation={generation} \
+             state={state:?} stage={} returned={}",
+            WORKER_STAGE.load(Ordering::Acquire),
+            RESULT.load(Ordering::Acquire)
+        );
+        // Bounded fixture observation of the publication phase, never a
+        // production wait or permission to finish/replay an uncertain close.
+        scheduler::sleep_millis(1);
+    }
 }
 
 fn scheduled_call(worker_lp: crate::cpu::isa::lp::LpId) {
@@ -343,24 +403,11 @@ fn scheduled_call(worker_lp: crate::cpu::isa::lp::LpId) {
     let watched =
         crate::completion::observe_thread_exit_with_generation(CLIENT, tid, Some(generation))
             .unwrap();
-    let deadline = scheduler::monotonic_millis().saturating_add(5_000);
-    loop {
-        let registered = IPC.read().reply_tokens[&token]
-            .claim_interest
-            .as_ref()
-            .is_some_and(|source| source.0.list.registered() == 1);
-        if registered {
-            break;
-        }
-        assert!(scheduler::monotonic_millis() < deadline, "IPC closer never registered");
-        scheduler::sleep_millis(1); // Bounded fixture sampling only.
-    }
-    assert!(matches!(MASTER_THREAD_TABLE.read().get(tid).unwrap().state, ThreadState::Blocked(_)));
+    let interest = await_claim_park(token, tid, generation);
     assert_eq!(
         memory::close_user_address_space_handle(fixture.caller),
         Err(AddressSpaceCloseError::OperationsInFlight)
     );
-    let interest = IPC.read().reply_tokens[&token].claim_interest.as_ref().unwrap().interest();
     operation.finish_with(|_| panic!("scalar claim has loans")).unwrap();
     await_worker_exit(tid, generation, watched, &interest);
     assert_eq!(RESULT.load(Ordering::Acquire), 1);
@@ -399,26 +446,13 @@ fn scheduled_front(worker_lp: crate::cpu::isa::lp::LpId) {
     let watched =
         crate::completion::observe_thread_exit_with_generation(CLIENT, tid, Some(generation))
             .unwrap();
-    let deadline = scheduler::monotonic_millis().saturating_add(5_000);
-    loop {
-        let registered = IPC.read().reply_tokens[&token]
-            .claim_interest
-            .as_ref()
-            .is_some_and(|source| source.0.list.registered() == 1);
-        if registered {
-            break;
-        }
-        assert!(scheduler::monotonic_millis() < deadline, "owned endpoint closer never registered");
-        scheduler::sleep_millis(1);
-    }
-    assert!(matches!(MASTER_THREAD_TABLE.read().get(tid).unwrap().state, ThreadState::Blocked(_)));
+    let interest = await_claim_park(token, tid, generation);
     for root in [caller, server] {
         assert_eq!(
             memory::close_user_address_space_handle(root),
             Err(AddressSpaceCloseError::OperationsInFlight)
         );
     }
-    let interest = IPC.read().reply_tokens[&token].claim_interest.as_ref().unwrap().interest();
     operation.finish_with(memory::object::LoanRevocation::finish).unwrap();
     await_worker_exit(tid, generation, watched, &interest);
     assert_eq!(RESULT.load(Ordering::Acquire), 1);

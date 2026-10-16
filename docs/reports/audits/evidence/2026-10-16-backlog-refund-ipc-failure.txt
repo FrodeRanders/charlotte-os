@@ -1,0 +1,62 @@
+Intel no-network intermediate run: backlog-refund-intel
+Baseline before this batch: 2fbe5137
+Diagnostic result: kernel-panic
+Kernel ELF SHA-256: 35ad3f96494f0b6449399b6f3460c264b2d3cdb8398f27d5efca7dd5f1625623
+UART SHA-256: a340e0d0d0fc696e00027daba01796be7085d3711b91acf779ce51d90992ecd1
+All four vCPUs captured; QMP captured; LLDB exit 0.
+Kernel compiled before the final private VectorBudget refactor and fixture correction.
+A complete per-file manifest for that intermediate build is unavailable.
+Original fixture remained byte-identical to baseline; see JSON for its hash.
+
+Relevant UART:
+[+     1.298172] [backlog charge handback] full/FIFO flush under registry/domain/node/heap guards, ordinary/platform aggregation, original-account replacement and both producers passed
+[+    16.407118] [IPC claim readiness] round=4 producer_lp=1 worker_lp=1
+[+    16.414140] [IPC claim readiness] round=4 worker_lp=1 call and endpoint roots closed after exact exit watches
+[+    16.414493] [IPC claim readiness] round=4 producer_lp=1 worker_lp=2
+[+    16.422889] [IPC claim readiness] round=4 worker_lp=2 call and endpoint roots closed after exact exit watches
+[+    16.423235] [IPC claim readiness] round=4 producer_lp=1 worker_lp=3
+Kernel panic:
+panicked at crates/catten/src/ipc/claim_wait/tests.rs:358:5:
+assertion failed: matches!(MASTER_THREAD_TABLE.read().get(tid).unwrap().state,
+    ThreadState::Blocked(_))
+Kernel backtrace (raw return addresses; text=0xffffffff80000000..0xffffffff803ecbaa, sp=0xffff8100001a83a0, fp=0xffff8100001a8440):
+  #00 0xffffffff802dd0de
+  #01 0xffffffff8031d01b
+  #02 0xffffffff8031d701
+  #03 0xffffffff801793bb
+  #04 0xffffffff8013ef22
+  #05 0xffffffff800065c8
+***
+
+LLDB all-thread backtraces:
+* thread #1, stop reason = signal SIGTRAP
+   * frame #0: 0xffffffff8016792a kernel.elf`<catten::cpu::multiprocessor::interrupt_tracking::int_save_restore::IntState>::restore_int(self=<unavailable>) at int_save_restore.rs:122:6
+     frame #1: 0xffffffff800f43de kernel.elf`<catten::cpu::multiprocessor::spin::rwlock::RwLockCore as lock_api::rwlock::RawRwLock>::unlock_shared(self=<unavailable>) at rwlock.rs:103:19 [inlined]
+     frame #2: 0xffffffff800f43c6 kernel.elf`<lock_api::rwlock::RwLockReadGuard<catten::cpu::multiprocessor::spin::rwlock::RwLockCore, catten::cpu::scheduler::system_scheduler::SystemScheduler> as core::ops::drop::Drop>::drop(self=<unavailable>) at rwlock.rs:1437:29 [inlined]
+     frame #3: 0xffffffff800f43c6 kernel.elf`core::ptr::drop_glue::<lock_api::rwlock::RwLockReadGuard<catten::cpu::multiprocessor::spin::rwlock::RwLockCore, catten::cpu::scheduler::system_scheduler::SystemScheduler>>((null)=<unavailable>) at mod.rs:828:1 [inlined]
+     frame #4: 0xffffffff800f43c6 kernel.elf`catten::cpu::scheduler::yield_lp at mod.rs:292:79
+     frame #5: 0xffffffff800da1d2 kernel.elf`catten::service::supervisor::local_ready_publisher at supervisor.rs:622:9
+     frame #6: 0xffffffff800065c8 kernel.elf`kernel_thread_trampoline + 8
+  thread #2
+       frame #0: 0xffffffff802ddbf2 kernel.elf`catten::panic::panic_stop at panic.rs:176:13
+       frame #1: 0xffffffff802dd93a kernel.elf`__rustc::rust_begin_unwind(info=0xffff8100001a84a8) at panic.rs:0
+       frame #2: 0xffffffff8031d01b kernel.elf`core::panicking::panic_fmt(fmt=Arguments @ 0xffff8100001a84c0) at panicking.rs:80:14
+       frame #3: 0xffffffff8031d701 kernel.elf`core::panicking::panic(expr=<unavailable>) at panicking.rs:150:5
+       frame #4: 0xffffffff801793bb kernel.elf`catten::ipc::claim_wait::tests::scheduled_call(worker_lp=3) at tests.rs:358:5
+       frame #5: 0xffffffff801792cf kernel.elf`catten::ipc::claim_wait::tests::scheduled at tests.rs:312:13
+       frame #6: 0xffffffff8013ef22 kernel.elf`catten::self_test::cq_wait::cq_driver at cq_wait.rs:509:5
+       frame #7: 0xffffffff800065c8 kernel.elf`kernel_thread_trampoline + 8
+  thread #3
+       frame #0: 0xffffffff80075407 kernel.elf`catten::cpu::isa::x86_64::lp::ops::get_lp_id at ops.rs:196:9 [inlined]
+       frame #1: 0xffffffff80075407 kernel.elf`catten::cpu::isa::x86_64::lp::ops::lp_idle_loop at ops.rs:559:12
+       frame #2: 0xffffffff800065c8 kernel.elf`kernel_thread_trampoline + 8
+  thread #4
+       frame #0: 0xffffffff80075407 kernel.elf`catten::cpu::isa::x86_64::lp::ops::get_lp_id at ops.rs:196:9 [inlined]
+       frame #1: 0xffffffff80075407 kernel.elf`catten::cpu::isa::x86_64::lp::ops::lp_idle_loop at ops.rs:559:12
+       frame #2: 0xffffffff800065c8 kernel.elf`kernel_thread_trampoline + 8
+
+Qualification: the assertion captured a non-Blocked state, but did not log
+the worker generation or its exact state at the check. Later CPU stack samples
+cannot reconstruct that instant. Source shows registration precedes Blocked
+publication; the new deterministic Ready control tests that legitimate window.
+This does not attribute historical exact-worker exit timeouts or physical cleanup.

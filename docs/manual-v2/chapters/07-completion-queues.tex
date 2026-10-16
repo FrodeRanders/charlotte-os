@@ -268,6 +268,14 @@ during lookup; equal LP, deadline or cancellation flags grant no authority over
 a successor. Weak-only backing remains charged to its original sponsor.
 This adds no admission failure and is separate from public operation IDs.
 
+Backlog-to-ring publication retains delivered detached-record charges in a
+fixed two-class owning batch until the completion registry is unlocked.
+Ordinary/platform charges retain their original accounts; no disposal storage
+is allocated. Full FIFO flushing and logical slot updates remain serialized.
+Checked batch refunds finish before CQ parking or producer notification;
+failed ring writes retain the complete backlog entry. Registry-map metadata
+and broader outer-context qualification remain separate work.
+
 Capability-backed completion submission prepares records, waiter lists, optional
 watch admission and shared authority storage outside the completion registry.
 Hidden authority admission and final joint publication each revalidate the exact

@@ -106,8 +106,6 @@ pub fn test_device_capabilities() {
         };
 
         logln!("Testing device capabilities (MMIO regions and interrupt objects)...");
-        crate::completion::test_prepared_wake_identity();
-
         let primary = crate::service::loader::create_user_address_space_handle();
         let peer = crate::service::loader::create_user_address_space_handle();
         assert!(FIXTURE_ROOTS.lock().replace((primary, peer)).is_none());

@@ -1,5 +1,8 @@
 //! Exact-CQ preparation probes. Raw namespaces are private serialized fixtures;
 //! their replacement is source-identity evidence, never physical root proof.
+//! Run only in the synchronous pre-scheduler boot phase. Holding the heap
+//! across publication reverses the allocation order of unrelated registry
+//! writers; private fixture ASIDs do not isolate those shared locks.
 
 use super::*;
 use crate::{

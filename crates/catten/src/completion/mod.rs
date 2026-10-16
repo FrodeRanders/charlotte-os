@@ -1287,6 +1287,7 @@ pub(crate) fn complete_registered(
     // write must also happen-before the wake, so a userspace consumer that
     // blocks in `wait` and drains the ring the moment it is woken observes
     // the entry. Capability-backed completions go to the default queue.
+    let mut releases = budget::Releases::default();
     let (transition, cq_source) = {
         let mut registry = COMPLETIONS.write();
         // A callback captured before teardown must never complete a new
@@ -1311,10 +1312,16 @@ pub(crate) fn complete_registered(
             && let Some(cq_state) = as_completions.cqs.get_mut(&DEFAULT_CQ)
         {
             let op = completion.operation_id();
-            let flushed_detached =
-                post_to_cq(cq_state, op, cap, &transition.result, || BacklogOwner::Capability)
-                    .flushed
-                    .detached;
+            let flushed_detached = post_to_cq(
+                cq_state,
+                op,
+                cap,
+                &transition.result,
+                || BacklogOwner::Capability,
+                &mut releases,
+            )
+            .flushed
+            .detached;
             as_completions.live = as_completions.live.saturating_sub(flushed_detached);
             cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
             crate::debug_trace::trace(
@@ -1331,6 +1338,7 @@ pub(crate) fn complete_registered(
     // Destructors may reenter or replace the namespace. Carry the exact CQ
     // source from publication so disposal cannot redirect this wake to a new
     // namespace/queue that happens to reuse the same numeric identifiers.
+    drop(releases);
     drop(transition);
     if let Some(source) = cq_source {
         signal_cq_source(asid, DEFAULT_CQ, &source);
@@ -1353,9 +1361,10 @@ fn post_to_cq(
     cookie: u64,
     result: &OpResult,
     owner: impl FnOnce() -> BacklogOwner,
+    releases: &mut budget::Releases,
 ) -> PostOutcome {
     let (status, val) = crate::completion::cq::op_result_to_fields(result);
-    let flushed = flush_backlog(cq_state);
+    let flushed = flush_backlog(cq_state, releases);
     let delivered_current =
         cq_state.backlog.is_empty() && cq_state.push_completion(operation, cookie, status, val);
     if !delivered_current {
@@ -1445,6 +1454,7 @@ pub fn complete_detached(
 struct RetiredDetached {
     asid: AddressSpaceId,
     record: DetachedOp,
+    releases: budget::Releases,
     source: Option<
         crate::klib::observer::registration::ListRef<crate::klib::observer::waiter_budget::Charge>,
     >,
@@ -1455,9 +1465,11 @@ impl RetiredDetached {
         let Self {
             asid,
             record,
+            releases,
             source,
         } = self;
         let cq = record.cq;
+        drop(releases);
         drop(record);
         if let Some(source) = source {
             signal_cq_source(asid, cq, &source);
@@ -1489,17 +1501,23 @@ fn post_detached(
     as_completions: &mut AsCompletions,
     mut detached: DetachedOp,
 ) -> RetiredDetached {
+    let mut releases = budget::Releases::default();
     let effective = if detached.cancel_pending {
         OpResult::Cancelled
     } else {
         result
     };
     let source = if let Some(cq_state) = as_completions.cqs.get_mut(&detached.cq) {
-        let outcome = post_to_cq(cq_state, operation, detached.user_data, &effective, || {
-            BacklogOwner::Detached {
+        let outcome = post_to_cq(
+            cq_state,
+            operation,
+            detached.user_data,
+            &effective,
+            || BacklogOwner::Detached {
                 _charge: detached.record_charge.take().expect("detached record lost admission"),
-            }
-        });
+            },
+            &mut releases,
+        );
         cq_state.work_generation = cq_state.work_generation.wrapping_add(1);
         crate::debug_trace::trace(
             crate::debug_trace::TAG_COMPLETE_DETACHED,
@@ -1519,6 +1537,7 @@ fn post_detached(
     RetiredDetached {
         asid,
         record: detached,
+        releases,
         source,
     }
 }
@@ -1555,7 +1574,7 @@ struct FlushOutcome {
 /// Writes as many retained entries as fit, preserving order. Reports how many
 /// entries became visible and how many detached entries therefore released
 /// submission slots.
-fn flush_backlog(cq_state: &mut CqState) -> FlushOutcome {
+fn flush_backlog(cq_state: &mut CqState, releases: &mut budget::Releases) -> FlushOutcome {
     if cq_state.backlog.is_empty() {
         return FlushOutcome::default();
     }
@@ -1574,8 +1593,12 @@ fn flush_backlog(cq_state: &mut CqState) -> FlushOutcome {
             break;
         }
         outcome.total += 1;
-        if matches!(&entry.owner, BacklogOwner::Detached { .. }) {
+        if let BacklogOwner::Detached {
+            _charge,
+        } = entry.owner
+        {
             outcome.detached += 1;
+            releases.push(_charge);
         }
     }
     if outcome.total != 0 {
@@ -1586,8 +1609,16 @@ fn flush_backlog(cq_state: &mut CqState) -> FlushOutcome {
     outcome
 }
 
-fn flush_cq_backlog(as_completions: &mut AsCompletions, cq: CqId) -> FlushOutcome {
-    let outcome = as_completions.cqs.get_mut(&cq).map(flush_backlog).unwrap_or_default();
+fn flush_cq_backlog(
+    as_completions: &mut AsCompletions,
+    cq: CqId,
+    releases: &mut budget::Releases,
+) -> FlushOutcome {
+    let outcome = as_completions
+        .cqs
+        .get_mut(&cq)
+        .map(|state| flush_backlog(state, releases))
+        .unwrap_or_default();
     as_completions.live = as_completions.live.saturating_sub(outcome.detached);
     outcome
 }
@@ -1791,11 +1822,14 @@ pub fn state_of(asid: AddressSpaceId, cap: CompletionCap) -> Result<OpStateKind,
 /// (flushing the non-lossy backlog first). Returns 0 if the queue does not
 /// exist.
 pub fn cq_pending(asid: AddressSpaceId, cq: CqId) -> u32 {
+    // Declared before the guard: even an early return releases charges only
+    // after registry unlock. The batch retains exact original accounts/classes.
+    let mut releases = budget::Releases::default();
     let mut registry = COMPLETIONS.write();
     let Some(as_completions) = registry.get_mut(&asid) else {
         return 0;
     };
-    flush_cq_backlog(as_completions, cq);
+    flush_cq_backlog(as_completions, cq, &mut releases);
     as_completions.cqs.get(&cq).map(CqState::ring_pending).unwrap_or(0)
 }
 
@@ -1962,10 +1996,11 @@ pub fn wait_on_cq_checked(
     cq: CqId,
     timeout_ms: Option<u64>,
 ) -> Result<bool, CqWaitError> {
+    let mut releases = budget::Releases::default();
     let source = {
         let mut registry = COMPLETIONS.write();
         let entries = registry.get_mut(&asid).ok_or(CqWaitError::UnknownQueue)?;
-        flush_cq_backlog(entries, cq);
+        flush_cq_backlog(entries, cq, &mut releases);
         let state = entries.cqs.get(&cq).ok_or(CqWaitError::UnknownQueue)?;
         CqInterest {
             asid,
@@ -1973,6 +2008,7 @@ pub fn wait_on_cq_checked(
             identity: state.waiters.clone(),
         }
     };
+    drop(releases); // Refund before preparing/parking on the captured interest.
     let condition = || source.work_pending().unwrap_or(true);
     let constraint = crate::cpu::scheduler::threads::MigrationConstraint::CompletionQueueWait;
     let waited = match timeout_ms {

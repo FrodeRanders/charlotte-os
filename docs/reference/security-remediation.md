@@ -799,3 +799,24 @@ backing charges retain their existing policies. This closes the recorded timer
 identity gap within C16; queue/outer-guard disposal, broader metadata admission,
 physical proof, progress and historical failure attribution remain separate.
 SEC-07/18 remain partial and the numbered dispositions are unchanged.
+
+The [backlog refund follow-up](../reports/audits/2026-10-16-completion-backlog-refunds.md)
+continues R7-1/2 and C16/G1/G4/G7. Delivered detached charges leave the completion
+registry in at most two inline original-account/class owners. Admission and CQ
+observation refund after local unlock; waits refund before parking and producers
+before notification. Full FIFO flushing and slot updates remain serialized.
+The initial Intel run captured a separate IPC fixture panic: registration was
+mistaken for Blocked publication. The fixture now observes both phases for the
+exact generation under its original five-second deadline, retaining mandatory
+exit watches; a deterministic Ready control verifies the pre-publication window.
+A later Intel deadline captured a separate heap/registry cycle: the heap-held
+CQ waiter fixture acquired the completion registry after concurrent writers
+started, while a detached-map insertion held the registry and needed the heap.
+That fixture now runs in the serialized pre-scheduler phase, retaining its
+heap-held controls. Both failures are preserved separately; the panic lacked
+the exact sampled worker state. Historical worker-exit timeout causes remain
+open. The captured production map allocation remains an explicit next boundary.
+Broader map,
+backlog/close/queue metadata, aggregate admission and outer contexts still need
+qualification. No SEC disposition, physical proof, readiness/replay policy or
+production IPC/scheduler behavior changes.
