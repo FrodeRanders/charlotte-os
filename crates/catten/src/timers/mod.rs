@@ -13,6 +13,7 @@
 //! and prevent missed deadlines after timer transitions.
 
 pub(crate) mod budget;
+mod cancellation_tests;
 pub(crate) mod event_tests;
 mod queue;
 pub(crate) mod waiter_tests;
@@ -106,8 +107,6 @@ impl TimerDiagnostic {
 pub static TIMER_DIAGNOSTICS: [TimerDiagnostic; MAX_DIAGNOSTIC_LPS] =
     [const { TimerDiagnostic::new() }; MAX_DIAGNOSTIC_LPS];
 
-static NEXT_TIMER_EVENT_ID: AtomicU64 = AtomicU64::new(1);
-
 /// A capability to cancel one anonymous timer event.
 ///
 /// Timer queues are LP-local because their head programs LP-local hardware.
@@ -115,13 +114,14 @@ static NEXT_TIMER_EVENT_ID: AtomicU64 = AtomicU64::new(1);
 /// resumes the waiter on a different LP; the owner removes the event eagerly
 /// whenever cancellation happens on its original LP.
 pub(crate) struct TimerEventCancelHandle {
-    state: Arc<TimerEventCancellation, EventAdmission>,
+    state: CancellationRef,
 }
 
 // One event reservation covers its node and cancellation backing. Clones used
 // as lifetime owners never allocate; only the cancellation Arc uses its single
 // allocation allowance. The node carries an outside owner through Box release.
 type EventAdmission = ChargedAllocator<budget::Charge>;
+type CancellationRef = Arc<TimerEventCancellation, EventAdmission>;
 
 pub type Timestamp = <LpTimer as LpTimerIfce>::Timestamp;
 
@@ -207,7 +207,7 @@ pub(crate) fn cancel_event(handle: TimerEventCancelHandle) -> bool {
     // and let the outer queue operation reclaim the event instead of re-entering.
     let removed = TIMER_QUEUES
         .try_get_mut()
-        .is_ok_and(|mut queue| queue.remove_cancellable_event(handle.state.id));
+        .is_ok_and(|mut queue| queue.remove_cancellable_event(&handle.state));
     if interrupts_were_enabled {
         unmask_interrupts!();
     }
@@ -246,7 +246,7 @@ pub(crate) enum TimerEventKey {
 pub struct TimerEvent {
     deadline: Timestamp,
     key: Option<TimerEventKey>,
-    cancellation: Option<Arc<TimerEventCancellation, EventAdmission>>,
+    cancellation: Option<CancellationRef>,
     // Internal timer producers each install exactly one callback. Embed that
     // slot instead of allocating an unbounded weak-observer queue.
     callback: Mutex<Option<Weak<dyn Observer>>>,
@@ -257,7 +257,6 @@ pub struct TimerEvent {
 
 #[derive(Debug)]
 struct TimerEventCancellation {
-    id: u64,
     owner_lp: AtomicU32,
     cancelled: AtomicBool,
 }
@@ -303,11 +302,9 @@ impl TimerEvent {
         deadline: impl FnOnce() -> Timestamp,
     ) -> Result<(Self, TimerEventCancelHandle), ()> {
         let admission = EventAdmission::try_new(charge).map_err(|_| ())?;
-        let id = NEXT_TIMER_EVENT_ID.fetch_add(1, Ordering::Relaxed);
         let state = admission
             .clone()
             .try_arc(TimerEventCancellation {
-                id,
                 owner_lp: AtomicU32::new(crate::cpu::isa::lp::ops::get_lp_id()),
                 cancelled: AtomicBool::new(false),
             })
@@ -471,9 +468,14 @@ impl TimerQueue {
         self.record_state();
     }
 
-    fn remove_cancellable_event(&mut self, id: u64) -> bool {
+    fn remove_cancellable_event(&mut self, cancellation: &CancellationRef) -> bool {
         let before = self.events.len();
-        self.events.retain(|event| event.cancellation.as_ref().is_none_or(|state| state.id != id));
+        // The consuming handle retains this allocation throughout lookup and
+        // removal. Its address cannot be reused while borrowed here; equal LP,
+        // deadline or cancellation flags never substitute for object identity.
+        self.events.retain(|event| {
+            event.cancellation.as_ref().is_none_or(|state| !Arc::ptr_eq(state, cancellation))
+        });
         let removed = before != self.events.len();
         self.record_cancelled(
             if removed {

@@ -56,6 +56,15 @@ delivery, independently of whether their timer event has been reclaimed.
 
 ## Cancellation and publication
 
+The event and its cancellation handle retain the same charged state allocation.
+Queue removal compares that exact owned object, rather than a numeric event ID.
+The old private wrapping cancellation counter is removed; it supplies no API,
+diagnostic or persisted identity. A retained predecessor cannot select a later
+event, even on the same LP with the same deadline and cancellation flag.
+No pointer is exposed or re-adopted, and no new exhaustion failure is introduced.
+Public completion operation IDs retain their independent checked counter. See
+the [cancellation identity follow-up](../reports/audits/2026-10-16-timer-cancellation-identity.md).
+
 Capability timers now capture one saturating absolute deadline at entry, before
 unlocked record/authority/event preparation. `TimerEvent::charged_at` preserves
 that deadline through publication and once-only enqueue; an expired preparation

@@ -58,6 +58,17 @@ queues remove cancelled events eagerly. Remote/busy queues retain the flagged
 node and charge until owner reconciliation; cancellation never waits on a
 remote queue or re-enters a borrowed local queue.
 
+Eager removal borrows the handle's retained cancellation-state `Arc` and
+compares exact allocation identity with the queued event's state. The private
+numeric cancellation ID and its global wrapping counter are removed. Equal LP,
+deadline or cancellation flags do not identify the same event. A handle keeps
+its allocation alive throughout lookup, preventing address reuse from turning
+a stale cancellation into authority over a successor; no scalar address escapes.
+Weak-only backing retains its original charge but cannot become a new strong
+handle after the payload has died. This adds no new admission/exhaustion result
+and leaves public operation IDs separate. See the
+[exact timer-cancellation evidence](../reports/audits/2026-10-16-timer-cancellation-identity.md).
+
 ## Failure before parking
 
 Watchdog preparation reserves event admission, allocates cancellation state,

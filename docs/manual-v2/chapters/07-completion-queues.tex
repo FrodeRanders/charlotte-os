@@ -261,6 +261,13 @@ allocations and the entire kernel heap still require broader accounting.
 Timer events have their own charges because deferred
 cancellation can outlive the operation record.
 
+Timer cancellation borrows the handle's retained state allocation and removes
+only a queue entry with that exact object identity. No private numeric
+cancellation counter remains. Retained strong ownership prevents address reuse
+during lookup; equal LP, deadline or cancellation flags grant no authority over
+a successor. Weak-only backing remains charged to its original sponsor.
+This adds no admission failure and is separate from public operation IDs.
+
 Capability-backed completion submission prepares records, waiter lists, optional
 watch admission and shared authority storage outside the completion registry.
 Hidden authority admission and final joint publication each revalidate the exact

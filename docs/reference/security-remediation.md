@@ -784,7 +784,18 @@ retirement. One complete owner explicitly disposes ordinary unused resources
 outside local guards; abandonment retains all fields. Timers carry their
 original absolute deadline and preserve teardown-before-enqueue cancellation.
 Registry/backlog metadata, close and terminal timer cleanup, aggregate admission
-and outer contexts remain open. The anonymous timer cancellation-ID counter
-still wraps; checked exhaustion for that separate identity is a recorded
-source-review follow-up. No finding changes disposition, physical/replay
-authority or historical intermittent failure attribution.
+and outer contexts remain open. That checkpoint recorded a separate anonymous
+timer cancellation-ID wrap gap, corrected by the exact-object cancellation
+follow-up below. No finding changes disposition, physical/replay authority or
+historical intermittent failure attribution.
+
+The [exact timer-cancellation follow-up](../reports/audits/2026-10-16-timer-cancellation-identity.md)
+removes the private numeric timer selector and its wrapping counter entirely.
+Eager queue removal borrows the consuming handle's existing charged state Arc
+and matches that exact retained allocation. A stale predecessor cannot select
+a later event; no new exhaustion admission result is introduced. Busy/remote
+flagging, cancellation-before-enqueue, IRQ preservation and original strong/weak
+backing charges retain their existing policies. This closes the recorded timer
+identity gap within C16; queue/outer-guard disposal, broader metadata admission,
+physical proof, progress and historical failure attribution remain separate.
+SEC-07/18 remain partial and the numbered dispositions are unchanged.

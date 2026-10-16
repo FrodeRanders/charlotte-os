@@ -139,3 +139,11 @@ its deliberate cursor-independent registration after exact source capture.
 No wire grammar,
 storage format, runtime ABI or numbered simplification batch changes; the
 remaining protocol/raw-adapter candidates above are unchanged.
+
+The [exact timer-cancellation follow-up](../reports/audits/2026-10-16-timer-cancellation-identity.md)
+removes the private numeric cancellation selector, state field and global
+wrapping counter. The queue borrows its handle's existing charged state owner
+and compares exact allocation identity. No scalar compatibility branch remains;
+public completion operation IDs, runtime ABI, wire/storage grammars and numbered
+protocol batches are unchanged. This closes one internal identity gap without
+qualifying broader timer queue/Drop/IRQ contexts or historical failures.
