@@ -83,6 +83,16 @@ entry or charge.
 
 ## Transactional submission
 
+Thread-exit preparation now captures its original candidate source, weak
+observer and already-admitted watch charge in one inert containing owner before
+list/entry allocation. The scheduler's preparation hook borrows that owner;
+ordinary errors and publication outcomes explicitly finish after local
+thread-table/source guards leave. Finish releases transient entry/admission
+before its candidate source. All four partial phase fallbacks retain complete
+fields without cleanup. Published token/source/batch destruction, initial
+capture/admission and wider callers remain separate qualification work. See the
+[exit-watch owner follow-up](../reports/audits/2026-10-16-thread-exit-watch-ownership.md).
+
 One kernel owner stages the completion, captured object and registration charge.
 Registration validates the connection again after staging, and the endpoint
 closed-state check and list insertion share the IPC lock. Missing or revoked

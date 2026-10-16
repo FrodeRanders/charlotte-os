@@ -78,6 +78,15 @@ finalization and other caller contexts remain separate. See the
 
 ## Rejection and locks
 
+Thread-exit watch preparation similarly retains its captured candidate list,
+original weak callback, admitted watch charge and any completed entry in one
+inert owner before list/entry allocation. Its scheduler hook borrows the owner;
+ordinary outcomes explicitly finish after local guards, releasing the candidate
+source last. Four phase fallbacks retain every field. This does not qualify
+generic completed preparation/token/source destruction or initial capture and
+wider caller contexts. See the
+[exit-watch owner follow-up](../reports/audits/2026-10-16-thread-exit-watch-ownership.md).
+
 `ObserverList::try_new` has no uncharged alternative. Node/ordinary saturation
 returns `RegistrationError::ResourceLimit`; fallible holder/list allocation
 returns `AllocationFailed`. Reservation rolls back on rejected allocation.

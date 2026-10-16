@@ -1004,3 +1004,13 @@ complete original buffered record and charges across namespace replacement.
 Published observation/token/source disposal, other caller/IRQ contexts and
 aggregate admission remain separate. Finding dispositions and historical
 failure attribution are unchanged.
+
+The [thread-exit watch owner batch](../reports/audits/2026-10-16-thread-exit-watch-ownership.md)
+continues C16/C18/G1/G4/G7 and R7-1/2. Captured candidate source, original
+weak observer and admitted watch charge now precede list/entry preparation in
+one inert owner. The scheduler preparation hook borrows it; ordinary outcomes
+finish explicitly after local guards, candidate source last. Four phase
+fallbacks retain every field without cleanup. Initial capture/admission,
+generic completed preparation, published token/source destruction, aggregate
+admission and wider contexts remain separate. Finding dispositions and
+historical failure attribution are unchanged.

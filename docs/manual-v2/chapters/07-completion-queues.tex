@@ -485,6 +485,15 @@ failure rolls back the unpublished completion and reports failure rather than
 pretending that the thread exited. Reaping invokes callbacks outside observer
 and master-table locks, before releasing the thread's stack.
 
+Thread-exit preparation captures its original candidate list, weak observer and
+already-admitted watch charge in one inert owner before list/entry allocation.
+The scheduler preparation hook borrows that owner. Ordinary allocation and
+publication outcomes finish explicitly after local guards, with candidate source
+release last; all four phase fallbacks retain every field. Published token/source
+and generic completed-entry destruction, initial capture/admission and wider
+caller contexts remain separate. A retained list grants no target-thread/root
+lease, physical quiescence proof or recovery authority.
+
 Worker-backed completions bind their callback and registration to the fresh
 thread before publication and execution. Cancellation remains pending until
 that worker actually exits; this preserves producer lifetime instead of treating

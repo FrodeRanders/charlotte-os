@@ -688,7 +688,7 @@ fn observe_thread_exit_matching(
         caller,
         observer,
         charge,
-        threads::exit_source::PreparingExitWatch::new,
+        threads::exit_source::PreparingExitWatch::prepare,
     )
 }
 
@@ -720,13 +720,8 @@ fn observe_thread_exit_matching_with(
     observer: Weak<dyn Observer>,
     charge: crate::completion::watch_budget::Charge,
     prepare: impl FnOnce(
-        Option<threads::exit_source::ExitList>,
-        Weak<dyn Observer>,
-        crate::completion::watch_budget::Charge,
-    ) -> Result<
-        threads::exit_source::PreparingExitWatch,
-        crate::klib::observer::registration::RegistrationError,
-    >,
+        &mut threads::exit_source::PreparingExitWatch,
+    ) -> Result<(), crate::klib::observer::registration::RegistrationError>,
 ) -> Result<threads::exit_source::ExitRegistration, system_scheduler::Error> {
     let (generation, source) = {
         let table = MASTER_THREAD_TABLE.read();
@@ -736,8 +731,12 @@ fn observe_thread_exit_matching_with(
     };
     // Source/list and entry allocation, including their failed-preparation
     // destructors, run after the captured thread-table/source guards leave.
-    let mut preparation = prepare(source, observer, charge)
-        .map_err(|_| system_scheduler::Error::WaitRegistrationFailed)?;
+    let mut preparation =
+        threads::exit_source::PreparingExitWatch::capture(source, observer, charge);
+    if prepare(&mut preparation).is_err() {
+        preparation.finish();
+        return Err(system_scheduler::Error::WaitRegistrationFailed);
+    }
     let result = {
         let table = MASTER_THREAD_TABLE.write();
         match table.get(thread_id) {
@@ -753,7 +752,7 @@ fn observe_thread_exit_matching_with(
     };
     // On source races or ordinary rejection, the complete losing list/entry,
     // weak reference and original charge survive until after table unlock.
-    drop(preparation);
+    preparation.finish();
     result
 }
 

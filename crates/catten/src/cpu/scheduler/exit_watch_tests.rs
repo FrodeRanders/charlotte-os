@@ -74,22 +74,31 @@ pub(crate) fn run() {
     });
     let irq = crate::cpu::isa::lp::ops::get_int_state();
 
-    let target = Target::new();
-    let rejected = super::observe_thread_exit_matching_with(
-        target.tid,
-        Some(target.generation),
-        None,
-        Arc::downgrade(&observer),
-        watch_budget::reserve(&account, false).unwrap(),
-        |_, _, _| {
-            reenter_table(irq);
-            Err(RegistrationError::AllocationFailed)
-        },
-    );
-    assert!(matches!(rejected, Err(Error::WaitRegistrationFailed)));
-    assert_eq!(MASTER_THREAD_TABLE.read().get(target.tid).unwrap().exit_watch_count(), 0);
-    assert_eq!(account.used(), 0);
-    drop(target);
+    for prepared in [false, true] {
+        let target = Target::new();
+        let rejected = super::observe_thread_exit_matching_with(
+            target.tid,
+            Some(target.generation),
+            None,
+            Arc::downgrade(&observer),
+            watch_budget::reserve(&account, false).unwrap(),
+            |preparation| {
+                reenter_table(irq);
+                if prepared {
+                    preparation.prepare()?;
+                }
+                let _heap = PRIMARY_ALLOCATOR.lock();
+                let _table = MASTER_THREAD_TABLE.write();
+                assert_eq!(account.used(), 1);
+                assert_eq!(Arc::weak_count(&observer), 1);
+                Err(RegistrationError::AllocationFailed)
+            },
+        );
+        assert!(matches!(rejected, Err(Error::WaitRegistrationFailed)));
+        assert_eq!(MASTER_THREAD_TABLE.read().get(target.tid).unwrap().exit_watch_count(), 0);
+        assert_eq!(account.used(), 0);
+        drop(target);
+    }
 
     // Both legacy TID-only and generation-bound callers retain the initially
     // captured episode across storage preparation, never a replacement.
@@ -104,14 +113,14 @@ pub(crate) fn run() {
             None,
             Arc::downgrade(&observer),
             watch_budget::reserve(&account, false).unwrap(),
-            |source, observer, charge| {
+            |preparation| {
                 reenter_table(irq);
                 drop(target);
                 let next = Target::new();
                 assert_eq!(next.tid, tid);
                 assert_ne!(next.generation, generation);
                 replacement = Some(next);
-                PreparingExitWatch::new(source, observer, charge)
+                preparation.prepare()
             },
         );
         assert!(matches!(stale, Err(Error::InvalidThread)));
@@ -131,10 +140,9 @@ pub(crate) fn run() {
         None,
         Arc::downgrade(&observer),
         watch_budget::reserve(&account, false).unwrap(),
-        |source, weak, charge| {
+        |preparation| {
             reenter_table(irq);
-            assert!(source.is_none());
-            let preparation = PreparingExitWatch::new(source, weak, charge)?;
+            preparation.prepare()?;
             winner = Some(
                 super::observe_thread_exit_with_generation(
                     target.tid,
@@ -144,7 +152,7 @@ pub(crate) fn run() {
                 )
                 .unwrap(),
             );
-            Ok(preparation)
+            Ok(())
         },
     )
     .unwrap();
@@ -164,7 +172,7 @@ pub(crate) fn run() {
         Some(root),
         Arc::downgrade(&observer),
         watch_budget::reserve(&account, false).unwrap(),
-        |_, _, _| panic!("unauthorized exit watch reached preparation"),
+        |_| panic!("unauthorized exit watch reached preparation"),
     );
     assert!(matches!(denied, Err(Error::PermissionDenied)));
     assert_eq!(account.used(), 0);
@@ -191,7 +199,7 @@ pub(crate) fn run() {
             table.get(target.tid).unwrap().observe_exit_prepared(&mut preparation)
         };
         assert_eq!(account.used(), 1);
-        drop(preparation);
+        preparation.finish();
         if closed {
             assert!(matches!(result, Err(RegistrationError::Closed)));
             assert_eq!(account.used(), 0);
@@ -210,6 +218,7 @@ pub(crate) fn run() {
         "[exit watch preparation] allocation rejection, exact-generation reuse, competing source, \
          authorization and heap-held publication/rejection passed"
     );
+    threads::exit_source::test_preparation();
 }
 
 /// Live scheduled entry checks reentry and both caller IRQ policies without
@@ -230,9 +239,9 @@ pub(crate) fn scheduled() {
             None,
             Arc::downgrade(&observer),
             watch_budget::reserve(&account, false).unwrap(),
-            |source, observer, charge| {
+            |preparation| {
                 reenter_table(irq);
-                PreparingExitWatch::new(source, observer, charge)
+                preparation.prepare()
             },
         )
         .unwrap();

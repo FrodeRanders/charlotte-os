@@ -162,3 +162,9 @@ uses a borrowed complete transaction for private completion-callback entry
 factories too. This private test seam has one contract; ordinary preparation
 outcomes use explicit finish. Public observation types, runtime
 ABI, wire/storage grammars and numbered protocol batches are unchanged.
+
+The [exit-watch owner follow-up](../reports/audits/2026-10-16-thread-exit-watch-ownership.md)
+replaces the private scheduler preparation hook's owning list/observer/charge
+arguments with one borrowed complete owner. It has one current contract;
+ordinary outcomes explicitly finish after local guards. Public observation
+errors, runtime ABI, wire/storage grammars and numbered batches are unchanged.
