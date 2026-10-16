@@ -247,3 +247,13 @@ node/source/ring/backlog/original charge until explicit post-guard disposal;
 guarded fallback retains all fields. The global namespace map remains the next
 metadata boundary. Finding counts and historical intermittent attribution are
 unchanged; this adds no physical proof, recovery custody or replay permission.
+
+The [global completion namespace metadata batch](2026-10-16-completion-namespace-metadata.md)
+replaces the last completion BTreeMap with shared admitted nodes. Preparation
+includes fallible account allocations; replacement/close keeps the global node
+and complete payload until explicit post-guard disposal, with global metadata
+freed before original accounts. The local map-storage sequence now covers
+capability records, detached records, CQs and global namespaces. This does not
+bound empty namespaces/account storage or qualify every enclosing timer,
+observer, caller and IRQ context. Those are the remaining boundaries; historical
+intermittent causes and finding counts remain unchanged.

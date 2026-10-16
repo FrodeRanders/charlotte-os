@@ -195,8 +195,16 @@ then explicitly destroys the payload after unlock. Abandonment retains all of
 them; an independent waiter token can still cancel its own subscription. See the
 [CQ metadata follow-up](../reports/audits/2026-10-16-cq-metadata.md).
 
-Global namespace-map insertion/removal, ring/backlog mutation and wider
-terminal timer/observer disposal retain their existing serialization. Local
+The global namespace map now also uses shared admitted nodes, prepared with
+four fallible account allocations before registry access. Whole namespace
+close/replacement retains the global node and complete payload through unlock;
+explicit finish frees the global node before sources, payload nodes and original
+accounts. Abandonment retains every field; ordinary rejection explicitly
+finishes unstarted preparation. See the
+[global metadata follow-up](../reports/audits/2026-10-16-completion-namespace-metadata.md).
+
+Global namespace-map relinking, ring/backlog mutation and wider terminal
+timer/observer disposal retain their existing serialization. Local
 metadata/charge disposal is qualified above; outer guards/IRQ contexts and
 remaining metadata destruction still need work. Capture is not a root lease or
 physical quiescence proof.
@@ -238,6 +246,9 @@ captures and other weak-only Arc/control-block allocations are not covered here.
 Admitted detached nodes retain their original record count through actual
 release, including backlog and post-delivery refund batches; this is not a
 separate aggregate byte admission for metadata.
+Global namespace/account allocation is fallible but has no independent aggregate
+count/byte admission here, including empty namespaces; no bounded global scan
+latency or hostile-pressure guarantee follows from the admitted map.
 General metadata allocation and reclamation remain separate work. Endpoint-close and
 thread-exit registrations now share [owning lists and event-watch admission](close-watch-budgets.md).
 Completion/CQ/IPC scheduler

@@ -272,7 +272,7 @@ impl RetiredCq {
 struct PreparedNamespace(ManuallyDrop<NamespacePreparation>);
 
 struct NamespacePreparation {
-    entries: Option<AsCompletions>,
+    namespace: namespace_preparation::Preparing,
     queue: Prepared,
 }
 
@@ -283,29 +283,32 @@ impl PreparedNamespace {
         cq_entries: u32,
         frame: Option<crate::memory::physical::PAddr>,
     ) -> Result<Self, CqOpenError> {
-        let mut entries = empty_as(asid, capacity);
+        let mut namespace = namespace_preparation::Preparing::new(asid, capacity)?;
         let platform = crate::memory::budget::platform_identity(asid);
-        let mut queue = match Target::from_namespace(asid, &entries, platform)
+        let mut queue = match Target::from_namespace(asid, namespace.entries(), platform)
             .and_then(|target| Prepared::new(target, cq_entries, frame))
         {
             Ok(queue) => queue,
             Err(error) => {
-                entries.finish();
+                namespace.finish();
                 return Err(error);
             }
         };
-        entries.cqs.insert(queue.0.node.take().unwrap(), DEFAULT_CQ, queue.0.state.take().unwrap());
+        namespace.entries_mut().cqs.insert(
+            queue.0.node.take().unwrap(),
+            DEFAULT_CQ,
+            queue.0.state.take().unwrap(),
+        );
         Ok(Self(ManuallyDrop::new(NamespacePreparation {
-            entries: Some(entries),
+            namespace,
             queue,
         })))
     }
 
-    fn publish(&mut self) -> Result<Option<AsCompletions>, CqOpenError> {
+    fn publish(&mut self) -> Result<Option<RetiredNamespace>, CqOpenError> {
         let mut registry = COMPLETIONS.write();
         let resources = &mut *self.0;
-        let entries = resources.entries.as_mut().expect("CQ namespace published twice");
-        resources.queue.0.target.validate(entries)?;
+        resources.queue.0.target.validate(resources.namespace.entries())?;
         check_ring_alias(
             &registry,
             resources.queue.0.target.asid,
@@ -315,24 +318,17 @@ impl PreparedNamespace {
         Prepared::initialize(
             resources.queue.0.frame,
             resources.queue.0.cq_entries,
-            entries.cqs.get_mut(&DEFAULT_CQ).unwrap(),
+            resources.namespace.entries_mut().cqs.get_mut(&DEFAULT_CQ).unwrap(),
         )?;
-        let mut previous =
-            registry.insert(resources.queue.0.target.asid, resources.entries.take().unwrap());
-        if let Some(previous) = &mut previous {
-            revoke_namespace_authority(resources.queue.0.target.asid, previous);
-        }
-        Ok(previous)
+        Ok(resources.namespace.publish_into(&mut registry))
     }
 
     fn finish(self) {
         let NamespacePreparation {
-            entries,
+            namespace,
             queue,
         } = ManuallyDrop::into_inner(self.0);
-        if let Some(entries) = entries {
-            entries.finish();
-        }
+        namespace.finish();
         queue.finish();
     }
 }
@@ -359,4 +355,5 @@ mod tests;
 pub(super) fn test_preparation() {
     tests::run();
     metadata_tests::run();
+    namespace_preparation::test_preparation();
 }

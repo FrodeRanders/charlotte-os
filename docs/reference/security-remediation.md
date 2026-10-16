@@ -861,3 +861,16 @@ The global namespace map, aggregate metadata/principal bounds and wider
 timer/observer/IRQ/caller contexts remain open. No finding disposition,
 physical proof, recovery custody, readiness/replay or historical attribution
 changes.
+
+The [global completion namespace metadata follow-up](../reports/audits/2026-10-16-completion-namespace-metadata.md)
+continues R7-1/2 and C16/G1/G4/G7. A complete preparation fallibly owns the
+global admitted node and four original accounts outside COMPLETIONS, alongside
+the private payload and any default CQ. Publication relinks after validation;
+there is no later admission after physical-ring initialization. Close/replacement
+detaches the global node and complete namespace, then explicitly frees metadata
+before payload/source/account disposal after local unlock. Fallback retains all
+fields. Controls cover five allocation-stage rejections, 64 heap-held fresh
+namespaces, reentrant disposal, complete timer/backlog/authority replacement and
+real root-generation reuse. Aggregate namespace/account admission, wider
+timer/observer/IRQ/caller qualification and historical attribution remain open.
+No finding disposition, physical proof, readiness/replay or custody change.

@@ -39,7 +39,13 @@ pub(crate) struct DomainBudget(Mutex<Account>);
 
 impl DomainBudget {
     pub(crate) fn new(completion_capacity: usize) -> Arc<Self> {
-        Arc::new(Self(Mutex::new(Account {
+        Self::try_new(completion_capacity).expect("mandatory timer account allocation failed")
+    }
+
+    pub(crate) fn try_new(
+        completion_capacity: usize,
+    ) -> Result<Arc<Self>, core::alloc::AllocError> {
+        Arc::try_new(Self(Mutex::new(Account {
             count: CountBudget::new(completion_capacity.min(MAX_DOMAIN_TIMERS)),
             platform: false,
             retired: false,

@@ -74,12 +74,11 @@ fn fresh_nodes() {
     for preparing in preparations {
         preparing.finish();
     }
-    // Global namespace-map removal is still a separate allocating boundary.
-    // Detach it before proving the real queue-node removal with the heap held.
-    let mut namespace = COMPLETIONS.write().remove(&CLIENT).unwrap();
+    let mut namespace;
     {
-        let _registry = COMPLETIONS.write();
         let _heap = PRIMARY_ALLOCATOR.lock();
+        let mut registry = COMPLETIONS.write();
+        namespace = RetiredNamespace::from_node(registry.take(&CLIENT).unwrap());
         while let Some((&id, _)) = namespace.cqs.first_key_value() {
             retired.push(RetiredCq::from_node(namespace.cqs.take(&id).unwrap()));
         }

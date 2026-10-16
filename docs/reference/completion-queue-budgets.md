@@ -87,10 +87,19 @@ under serialization. See the
 
 The [CQ metadata follow-up](../reports/audits/2026-10-16-cq-metadata.md) covers
 fresh queue nodes, complete replacement and explicit namespace draining.
-The global namespace map still allocates/frees under its existing registry
-guard. Wider timer/observer disposal and arbitrary outer caller/IRQ contexts
-remain separate. This does not establish that every registry publication is
-allocation-free or that a captured root identity pins physical backing.
+The [global namespace metadata follow-up](../reports/audits/2026-10-16-completion-namespace-metadata.md)
+prepares its global node and four original account allocations fallibly outside
+the registry, together with the complete private namespace and any default CQ.
+Publication relinks without allocation after validation and physical alias
+checks; there is no later admission rejection after physical initialization.
+Close/replacement carries the global node and complete payload in
+`RetiredNamespace`; explicit finish frees that node before payload/account
+disposal. Unpublished/retired fallback retains every field. Bare kernel/demo
+and mandatory fixture setup uses the same preparation through a panic wrapper;
+runtime CQ setup returns typed failure. Wider timer/observer disposal and
+arbitrary outer caller/IRQ contexts remain separate. This does not establish
+that every registry operation is allocation-free or that a captured root
+identity pins physical backing.
 The caller retains the original frame/mapping and must
 quiesce its consumer through publication and use.
 
@@ -129,13 +138,23 @@ the heap locked. Replacement retains an old ring, backlog record and waiter
 through namespace reuse; explicit disposal credits only the original accounts.
 Guarded preparation/retired-owner abandonment deliberately retains two queues
 and one backlog record until guest shutdown, without resetting their counters.
+Global metadata controls reject each of five allocation stages without changing
+the live namespace, publish/remove 64 fresh namespaces with the heap held, and
+exercise complete replacement with retained timer, buffer, backlog, watch and
+authority. Disposal reenters the registry after unlock; numeric capability and
+actual root-generation reuse leave successor accounts unchanged. Existing
+guarded namespace abandonment controls now retain the global node too.
 This is injected rejection rather than physical allocator exhaustion; exhaustive
 physical-frame leak measurement remains open.
 
 Other than separately bounded [endpoint-close watches](close-watch-budgets.md),
 observer queues, weak-only Arc/control-block storage, registry/capability
 metadata, worker stacks, other timers, loader/page tables and general kernel
-heap allocation still need bounds and fallible lifetimes. Per-principal totals
+heap allocation still need bounds and fallible lifetimes. In particular, global
+namespace nodes and their four account allocations have no separate aggregate
+count/byte budget here; queue/record admission does not cover empty namespaces.
+Sorted global map lookup is linear in retained live namespaces, with no new
+namespace-count ceiling claimed. Per-principal totals
 across domains, typed deployment limits and userspace budget counters also
 remain open. SEC-07 remains partially implemented; these checks are not a
 complete hostile-workload containment guarantee.

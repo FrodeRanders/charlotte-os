@@ -152,7 +152,7 @@ fn namespace_identity() {
     let captured = completion_of(CLIENT, cap).unwrap();
     let weak = Arc::downgrade(&captured);
     drop(captured);
-    let mut previous = COMPLETIONS.write().remove(&CLIENT).unwrap();
+    let mut previous = RetiredNamespace::from_node(COMPLETIONS.write().take(&CLIENT).unwrap());
     let authority = crate::capability::node_admission_used();
     {
         let _registry = COMPLETIONS.write();

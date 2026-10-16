@@ -45,6 +45,8 @@ pub(crate) mod cq_budget;
 mod detached_preparation;
 mod detached_tests;
 pub(crate) mod exit_tests;
+mod namespace_preparation;
+use namespace_preparation::RetiredNamespace;
 mod operation_id_tests;
 mod operation_ids;
 mod queue_preparation;
@@ -55,10 +57,7 @@ mod waiter_tests;
 pub(crate) mod watch_budget;
 
 use alloc::{
-    collections::{
-        BTreeMap,
-        VecDeque,
-    },
+    collections::VecDeque,
     sync::{
         Arc,
         Weak,
@@ -817,37 +816,43 @@ unsafe impl Sync for AsCompletions {}
 /// Per-address-space capability tables. In a full design these would live inside
 /// each `AddressSpace`; keying them here keeps the prototype self-contained
 /// without modifying the address-space type.
-static COMPLETIONS: LazyLock<RwLock<BTreeMap<AddressSpaceId, AsCompletions>>> =
-    LazyLock::new(|| RwLock::new(BTreeMap::new()));
+type Registry = AdmittedMap<AddressSpaceId, AsCompletions>;
+static COMPLETIONS: LazyLock<RwLock<Registry>> = LazyLock::new(|| RwLock::new(Registry::new()));
 
+// Mandatory private boot fixture; runtime publication uses fallible Preparing.
 fn empty_as(asid: AddressSpaceId, capacity: usize) -> AsCompletions {
+    try_empty_as(crate::memory::current_address_space_handle(asid), capacity, &mut |_| Ok(()))
+        .expect("mandatory completion namespace allocation failed")
+}
+
+fn try_empty_as(
+    root: Option<crate::memory::AddressSpaceHandle>,
+    capacity: usize,
+    before_allocate: &mut impl FnMut(u8) -> Result<(), core::alloc::AllocError>,
+) -> Result<AsCompletions, core::alloc::AllocError> {
     let capacity = capacity.min(budget::MAX_DOMAIN_RECORDS);
-    AsCompletions(ManuallyDrop::new(Namespace {
+    // No payload/source/authority is published. Partial account construction
+    // releases only unused Arcs outside local registry/lifecycle guards.
+    before_allocate(1)?;
+    let timer_budget = crate::timers::budget::DomainBudget::try_new(capacity)?;
+    before_allocate(2)?;
+    let record_budget = budget::DomainBudget::try_new(capacity)?;
+    before_allocate(3)?;
+    let cq_budget = cq_budget::DomainBudget::try_new()?;
+    before_allocate(4)?;
+    let watch_budget = watch_budget::DomainBudget::try_new(capacity)?;
+    Ok(AsCompletions(ManuallyDrop::new(Namespace {
         table: AdmittedMap::new(),
         capacity,
         live: 0,
         detached: AdmittedMap::new(),
         cqs: AdmittedMap::new(),
-        timer_budget: crate::timers::budget::DomainBudget::new(capacity),
-        record_budget: budget::DomainBudget::new(capacity),
-        cq_budget: cq_budget::DomainBudget::new(),
-        watch_budget: watch_budget::DomainBudget::new(capacity),
-        address_space: crate::memory::current_address_space_handle(asid),
-    }))
-}
-
-fn replace_address_space(asid: AddressSpaceId, replacement: AsCompletions) {
-    let previous = {
-        let mut registry = COMPLETIONS.write();
-        let mut previous = registry.insert(asid, replacement);
-        if let Some(previous) = &mut previous {
-            revoke_namespace_authority(asid, previous);
-        }
-        previous
-    };
-    if let Some(previous) = previous {
-        previous.finish();
-    }
+        timer_budget,
+        record_budget,
+        cq_budget,
+        watch_budget,
+        address_space: root,
+    })))
 }
 
 /// The caller retains both the complete detached namespace and COMPLETIONS
@@ -858,10 +863,11 @@ fn revoke_namespace_authority(asid: AddressSpaceId, previous: &mut AsCompletions
     }
 }
 
-/// Opens a bounded capability table for an address space. `capacity` bounds the
-/// number of concurrently in-flight capabilities (submission backpressure).
+/// Mandatory kernel/demo/serialized-fixture adapter. Runtime domain setup uses
+/// the fallible CQ namespace entry points below; all share prepared storage.
 pub fn open_address_space(asid: AddressSpaceId, capacity: usize) {
-    replace_address_space(asid, empty_as(asid, capacity));
+    namespace_preparation::open(asid, capacity)
+        .expect("mandatory completion namespace publication failed");
 }
 
 /// Like [`open_address_space`] but also allocates and attaches the default
@@ -899,7 +905,7 @@ pub enum CqOpenError {
 }
 
 fn check_ring_alias(
-    registry: &BTreeMap<AddressSpaceId, AsCompletions>,
+    registry: &Registry,
     asid: AddressSpaceId,
     cq: CqId,
     frame: Option<crate::memory::physical::PAddr>,
@@ -1000,7 +1006,7 @@ pub unsafe fn cq_ring_of(
 pub fn close_address_space(asid: AddressSpaceId) {
     let retired = {
         let mut registry = COMPLETIONS.write();
-        let mut retired = registry.remove(&asid);
+        let mut retired = registry.take(&asid).map(RetiredNamespace::from_node);
         if let Some(retired) = &mut retired {
             revoke_namespace_authority(asid, retired);
         }

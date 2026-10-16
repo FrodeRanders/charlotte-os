@@ -189,7 +189,7 @@ fn namespace_publication() {
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
         retired = prepared.publish().unwrap().unwrap();
-        assert!(prepared.0.entries.is_none());
+        assert!(prepared.0.namespace.is_published());
         assert_eq!(old_account.used()[0], 1);
         assert_eq!(account.used()[0], 1);
     }
@@ -212,6 +212,9 @@ fn guarded_namespace_abandonment() {
     // live root or replacement sponsor and no physical backing authority.
     let prepared = PreparedNamespace::new(CLIENT + 20, 8, 8, None).unwrap();
     let account = prepared.0.queue.0.target.account.clone();
+    let timers = Arc::downgrade(&prepared.0.namespace.entries().timer_budget);
+    let records = Arc::downgrade(&prepared.0.namespace.entries().record_budget);
+    let watches = Arc::downgrade(&prepared.0.namespace.entries().watch_budget);
     let before = account.used();
     assert_eq!(before[0], 1);
     {
@@ -220,9 +223,12 @@ fn guarded_namespace_abandonment() {
         drop(prepared);
     }
     assert_eq!(account.used(), before);
+    assert!(timers.upgrade().is_some());
+    assert!(records.upgrade().is_some());
+    assert!(watches.upgrade().is_some());
     crate::logln!(
         "[CQ namespace retention] heap/registry-held unpublished namespace abandonment retained \
-         complete payload and original CQ charge"
+         global node, all original accounts, complete payload and original CQ charge"
     );
 }
 

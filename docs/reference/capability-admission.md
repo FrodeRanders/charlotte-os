@@ -60,8 +60,12 @@ detached authority inside their admitted payload node; both nodes free only
 after local completion unlock while a charged completion Arc remains alive.
 The complete retired node's fallback retains every field and original charge.
 Numeric reuse cannot redirect explicit release into a successor namespace.
-The global completion map and other callers' enclosing contexts remain open;
-the [CQ metadata follow-up](../reports/audits/2026-10-16-cq-metadata.md) covers
+The global completion map now prepares admitted nodes and account allocations
+outside its guard, retaining the complete retired namespace through post-guard
+node/payload disposal. Its aggregate namespace/account admission and other
+callers' enclosing contexts remain open; see the
+[global metadata evidence](../reports/audits/2026-10-16-completion-namespace-metadata.md).
+The [CQ metadata follow-up](../reports/audits/2026-10-16-cq-metadata.md) covers
 per-queue preparation and complete post-guard retirement.
 See the [completion metadata evidence](../reports/audits/2026-10-16-capability-completion-metadata.md).
 

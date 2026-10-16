@@ -28,7 +28,11 @@ static NODE: LazyLock<Mutex<NodeBudget>> = LazyLock::new(|| {
 pub(crate) struct DomainBudget(Mutex<VectorBudget<1>>);
 impl DomainBudget {
     pub(crate) fn new(capacity: usize) -> Arc<Self> {
-        Arc::new(Self(Mutex::new(VectorBudget::new([capacity.min(MAX_DOMAIN_RECORDS) as u64]))))
+        Self::try_new(capacity).expect("mandatory completion account allocation failed")
+    }
+
+    pub(crate) fn try_new(capacity: usize) -> Result<Arc<Self>, core::alloc::AllocError> {
+        Arc::try_new(Self(Mutex::new(VectorBudget::new([capacity.min(MAX_DOMAIN_RECORDS) as u64]))))
     }
 
     pub(crate) fn used(&self) -> usize {

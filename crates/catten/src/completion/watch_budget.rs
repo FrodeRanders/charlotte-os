@@ -30,7 +30,11 @@ static NODE: LazyLock<Mutex<NodeBudget>> = LazyLock::new(|| {
 pub(crate) struct DomainBudget(Mutex<CountBudget>);
 impl DomainBudget {
     pub(crate) fn new(capacity: usize) -> Arc<Self> {
-        Arc::new(Self(Mutex::new(CountBudget::new(capacity.min(MAX_DOMAIN_WATCHES)))))
+        Self::try_new(capacity).expect("mandatory watch account allocation failed")
+    }
+
+    pub(crate) fn try_new(capacity: usize) -> Result<Arc<Self>, core::alloc::AllocError> {
+        Arc::try_new(Self(Mutex::new(CountBudget::new(capacity.min(MAX_DOMAIN_WATCHES)))))
     }
 
     pub(crate) fn used(&self) -> usize {
