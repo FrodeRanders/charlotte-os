@@ -89,14 +89,29 @@ impl Drop for Charge {
 /// Ring publication has ended these records' retention, but their original
 /// charges must survive the registry hold. One flush belongs to one captured
 /// namespace; promotion can leave both ordinary and platform classes present.
-/// Two inline owning charges suffice, without allocation or a detached list.
+/// Two inline owning charges suffice for accounting. Detached nodes travel in
+/// the shared retirement list until post-guard deallocation, before refunds.
 #[derive(Default)]
 #[must_use = "retain flushed charges until the enclosing registry guard leaves"]
 pub(super) struct Releases {
     charges: [Option<Charge>; 2],
+    nodes: crate::klib::collections::retirement_list::RetirementList<(
+        super::OperationId,
+        super::DetachedOp,
+    )>,
 }
 
 impl Releases {
+    pub(super) fn push_node(
+        &mut self,
+        node: crate::klib::collections::retirement_list::RetiredEntry<(
+            super::OperationId,
+            super::DetachedOp,
+        )>,
+    ) {
+        self.nodes.push(node);
+    }
+
     pub(super) fn push(&mut self, mut charge: Charge) {
         let slot = &mut self.charges[usize::from(charge.platform)];
         if let Some(retained) = slot {
@@ -112,6 +127,15 @@ impl Releases {
             charge.count = 0;
         } else {
             *slot = Some(charge);
+        }
+    }
+}
+impl Drop for Releases {
+    fn drop(&mut self) {
+        // The caller has left its local registry hold. Retain both class
+        // charges until every delivered node's actual allocation is freed.
+        while let Some(node) = self.nodes.pop() {
+            node.release();
         }
     }
 }

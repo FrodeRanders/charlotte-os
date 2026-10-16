@@ -30,7 +30,7 @@ fn unlocked_preparation() {
             |observer| {
                 {
                     let registry = COMPLETIONS.write();
-                    assert!(registry[&CLIENT].detached.is_empty());
+                    assert!(registry[&CLIENT].detached.first_key_value().is_none());
                 }
                 if mode == 1 {
                     Err(AllocError)
@@ -45,9 +45,9 @@ fn unlocked_preparation() {
             let prepared = prepared.unwrap();
             assert_eq!(records.used(), 1);
             assert_eq!(timer_events_used(CLIENT), 1);
-            assert!(COMPLETIONS.read()[&CLIENT].detached.is_empty());
-            assert!(prepared.record.is_some() && prepared.event.is_some());
-            drop(prepared);
+            assert!(COMPLETIONS.read()[&CLIENT].detached.first_key_value().is_none());
+            assert!(prepared.0.record.is_some() && prepared.0.event.is_some());
+            prepared.finish();
         }
         assert_eq!(records.used(), 0);
         assert_eq!(timer_events_used(CLIENT), 0);
@@ -58,7 +58,7 @@ fn unlocked_preparation() {
         submit_detached_timer_with_observer(CLIENT, DEFAULT_CQ, u64::MAX, 2, |observer| {
             {
                 let registry = COMPLETIONS.write();
-                assert!(registry[&CLIENT].detached.is_empty());
+                assert!(registry[&CLIENT].detached.first_key_value().is_none());
             }
             Arc::try_new(observer)
         })
@@ -95,11 +95,11 @@ fn prepared_admission() {
     assert_eq!(records.used(), 2);
     assert_eq!(timer_events_used(CLIENT), 1);
     assert_eq!(submit_detached_timer(CLIENT, DEFAULT_CQ, 0, 6), Err(SubmitError::WouldBlock));
-    assert!(COMPLETIONS.read()[&CLIENT].detached.is_empty());
+    assert!(COMPLETIONS.read()[&CLIENT].detached.first_key_value().is_none());
     assert_eq!(timer_events_used(CLIENT), 1);
-    drop(plain);
+    plain.finish();
     assert_eq!(records.used(), 1);
-    drop(timer);
+    timer.finish();
     assert_eq!(records.used(), 0);
     assert_eq!(timer_events_used(CLIENT), 0);
     close_address_space(CLIENT);
@@ -151,15 +151,16 @@ fn rejected_publication() {
                         SubmitError::NoCompletionQueue
                     }
                 );
-                assert!(preparing.record.is_some());
+                assert!(preparing.0.record.is_some());
             }
-            assert!(timer.event.is_some());
+            assert!(timer.0.event.is_some());
             assert_eq!(records.used(), 2);
             assert_eq!(timers.used(), 1);
             assert_eq!((successor_records.used(), successor_timers.used()), before);
-            assert!(COMPLETIONS.read()[&asid].detached.is_empty());
+            assert!(COMPLETIONS.read()[&asid].detached.first_key_value().is_none());
         }
-        drop((timer, plain));
+        timer.finish();
+        plain.finish();
         assert_eq!(records.used(), 0);
         assert_eq!(timers.used(), 0);
         if let Some(root) = root {
@@ -183,13 +184,14 @@ fn close_before_enqueue() {
     )
     .unwrap();
     let operation = preparing.publish().unwrap();
-    assert!(preparing.record.is_none());
+    assert!(preparing.0.record.is_none());
     assert_eq!(records.used(), 1);
     assert_eq!(timers.used(), 1);
     close_address_space(CLIENT);
     assert_eq!(records.used(), 0);
     assert_eq!(timers.used(), 1, "unpublished prepared node still owns its original event charge");
     preparing.enqueue();
+    preparing.finish();
     assert_eq!(timers.used(), 0);
     assert_eq!(
         complete_detached(CLIENT, operation, OpResult::Ok(0)),

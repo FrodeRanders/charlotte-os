@@ -60,6 +60,13 @@ use alloc::{
     },
     vec::Vec,
 };
+use core::{
+    mem::ManuallyDrop,
+    ops::{
+        Deref,
+        DerefMut,
+    },
+};
 
 use spin::LazyLock;
 
@@ -76,6 +83,11 @@ use crate::{
     },
     klib::{
         charged_allocator::ChargedAllocator,
+        collections::retirement_list::{
+            AdmittedMap,
+            PreparedEntry,
+            RetiredEntry,
+        },
         observer::{
             Observable,
             Observer,
@@ -592,15 +604,13 @@ struct DetachedTimerObserver {
     operation: OperationId,
 }
 
-#[derive(Debug)]
 enum BacklogOwner {
     Capability,
     Detached {
-        _charge: budget::Charge,
+        record: RetiredEntry<(OperationId, DetachedOp)>,
     },
 }
 
-#[derive(Debug)]
 struct BacklogEntry {
     operation: OperationId,
     cookie: u64,
@@ -711,9 +721,22 @@ impl CqState {
 impl Drop for CqState {
     fn drop(&mut self) {
         drop(self.waiters.close());
+        while let Some(entry) = self.backlog.pop_front() {
+            if let BacklogOwner::Detached {
+                record,
+            } = entry.owner
+            {
+                dispose_detached_node(record);
+            }
+        }
     }
 }
-struct AsCompletions {
+/// Complete namespace fallback retains all payloads and original accounts.
+/// Only explicit post-registry finish may dispose sources, nodes and backing.
+#[must_use = "explicitly finish the complete namespace after registry unlock"]
+struct AsCompletions(ManuallyDrop<Namespace>);
+
+struct Namespace {
     table: BTreeMap<CompletionCap, CompletionRef>,
     /// Shared upper bound for capability records, in-flight detached
     /// operations, and completed detached records awaiting CQ delivery.
@@ -721,7 +744,8 @@ struct AsCompletions {
     live: usize,
     /// Live capability-free operations, keyed by their stable operation id.
     /// These count toward `capacity` exactly like capability-backed ones.
-    detached: BTreeMap<OperationId, DetachedOp>,
+    /// Their admitted nodes transfer to terminal/backlog/refund owners.
+    detached: AdmittedMap<OperationId, DetachedOp>,
     /// The address space's completion queues, keyed by [`CqId`].
     cqs: BTreeMap<CqId, CqState>,
     /// Separate lifetime budget: a cancelled timer on another LP stays charged
@@ -733,15 +757,33 @@ struct AsCompletions {
     address_space: Option<crate::memory::AddressSpaceHandle>,
 }
 
-impl Drop for AsCompletions {
-    fn drop(&mut self) {
+impl Deref for AsCompletions {
+    type Target = Namespace;
+
+    fn deref(&self) -> &Namespace {
+        &self.0
+    }
+}
+impl DerefMut for AsCompletions {
+    fn deref_mut(&mut self) -> &mut Namespace {
+        &mut self.0
+    }
+}
+
+impl AsCompletions {
+    fn finish(self) {
+        let mut entries = ManuallyDrop::into_inner(self.0);
         // Public watches are revoked even if a kernel waiter retains their
         // completion object. Only independent list locks are entered here.
-        for completion in self.table.values() {
+        for completion in entries.table.values() {
             completion.release_event_observation();
             drop(completion.waiters.close());
             drop(completion.detach_callbacks());
         }
+        while let Some((&operation, _)) = entries.detached.first_key_value() {
+            dispose_detached_node(entries.detached.take(&operation).unwrap());
+        }
+        drop(entries);
     }
 }
 
@@ -769,18 +811,18 @@ static COMPLETIONS: LazyLock<RwLock<BTreeMap<AddressSpaceId, AsCompletions>>> =
 
 fn empty_as(asid: AddressSpaceId, capacity: usize) -> AsCompletions {
     let capacity = capacity.min(budget::MAX_DOMAIN_RECORDS);
-    AsCompletions {
+    AsCompletions(ManuallyDrop::new(Namespace {
         table: BTreeMap::new(),
         capacity,
         live: 0,
-        detached: BTreeMap::new(),
+        detached: AdmittedMap::new(),
         cqs: BTreeMap::new(),
         timer_budget: crate::timers::budget::DomainBudget::new(capacity),
         record_budget: budget::DomainBudget::new(capacity),
         cq_budget: cq_budget::DomainBudget::new(),
         watch_budget: watch_budget::DomainBudget::new(capacity),
         address_space: crate::memory::current_address_space_handle(asid),
-    }
+    }))
 }
 
 fn replace_address_space(asid: AddressSpaceId, replacement: AsCompletions) {
@@ -792,7 +834,9 @@ fn replace_address_space(asid: AddressSpaceId, replacement: AsCompletions) {
         }
         previous
     };
-    drop(previous);
+    if let Some(previous) = previous {
+        previous.finish();
+    }
 }
 
 /// The caller retains both the complete detached namespace and COMPLETIONS
@@ -946,7 +990,9 @@ pub fn close_address_space(asid: AddressSpaceId) {
         }
         retired
     };
-    drop(retired);
+    if let Some(retired) = retired {
+        retired.finish();
+    }
 }
 
 pub(crate) fn completion_of(
@@ -1304,7 +1350,7 @@ pub(crate) fn complete_registered(
             return Ok(());
         };
         let mut cq_source = None;
-        if let Some(as_completions) = registry.get_mut(&asid)
+        if let Some(as_completions) = registry.get_mut(&asid).map(|entries| &mut **entries)
             && as_completions
                 .table
                 .get(&cap)
@@ -1451,9 +1497,14 @@ pub fn complete_detached(
 /// producer disposal outside COMPLETIONS, before any notification.
 #[must_use = "dispose the complete detached record after registry unlock, then notify its captured \
               source"]
-struct RetiredDetached {
+struct RetiredDetached(ManuallyDrop<DetachedRetirement>);
+
+struct DetachedRetirement {
     asid: AddressSpaceId,
-    record: DetachedOp,
+    record: Option<RetiredEntry<(OperationId, DetachedOp)>>,
+    cq: CqId,
+    observer: Option<Arc<DetachedTimerObserver>>,
+    cancel: Option<TimerCancellation>,
     releases: budget::Releases,
     source: Option<
         crate::klib::observer::registration::ListRef<crate::klib::observer::waiter_budget::Charge>,
@@ -1462,19 +1513,35 @@ struct RetiredDetached {
 
 impl RetiredDetached {
     fn finish(self) {
-        let Self {
+        let DetachedRetirement {
             asid,
-            record,
+            mut record,
+            cq,
+            observer,
+            cancel,
             releases,
             source,
-        } = self;
-        let cq = record.cq;
+        } = ManuallyDrop::into_inner(self.0);
         drop(releases);
-        drop(record);
+        let charge = record.as_mut().and_then(|node| node.value_mut().1.record_charge.take());
+        if let Some(record) = record {
+            record.release();
+        }
+        drop(observer);
+        drop(cancel);
+        drop(charge);
         if let Some(source) = source {
             signal_cq_source(asid, cq, &source);
         }
     }
+}
+
+/// Retain the original record charge through actual admitted-node release.
+/// Backlogged records have already moved that charge into their CQ owner.
+fn dispose_detached_node(mut record: RetiredEntry<(OperationId, DetachedOp)>) {
+    let charge = record.value_mut().1.record_charge.take();
+    record.release();
+    drop(charge);
 }
 
 fn retire_detached(
@@ -1485,7 +1552,7 @@ fn retire_detached(
     let retired = {
         let mut registry = COMPLETIONS.write();
         let as_completions = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
-        let detached = as_completions.detached.remove(&operation).ok_or(CapError::UnknownCap)?;
+        let detached = as_completions.detached.take(&operation).ok_or(CapError::UnknownCap)?;
         post_detached(asid, operation, result, as_completions, detached)
     };
     Ok(retired)
@@ -1493,28 +1560,35 @@ fn retire_detached(
 
 /// The caller serializes removal and this splice under COMPLETIONS. Returning
 /// the complete remaining record keeps timer and direct-result cleanup out of
-/// that hold; registry-map node destruction is a separate boundary.
+/// that hold. A backlog takes the admitted node and its original charge;
+/// direct delivery retains it in this receipt until post-guard disposal.
 fn post_detached(
     asid: AddressSpaceId,
     operation: OperationId,
     result: OpResult,
-    as_completions: &mut AsCompletions,
-    mut detached: DetachedOp,
+    as_completions: &mut Namespace,
+    mut record: RetiredEntry<(OperationId, DetachedOp)>,
 ) -> RetiredDetached {
+    let detached = &mut record.value_mut().1;
+    let cq = detached.cq;
+    let user_data = detached.user_data;
+    let observer = detached._timer_observer.take();
+    let cancel = detached.timer_cancel.take();
     let mut releases = budget::Releases::default();
     let effective = if detached.cancel_pending {
         OpResult::Cancelled
     } else {
         result
     };
-    let source = if let Some(cq_state) = as_completions.cqs.get_mut(&detached.cq) {
+    let mut record = Some(record);
+    let source = if let Some(cq_state) = as_completions.cqs.get_mut(&cq) {
         let outcome = post_to_cq(
             cq_state,
             operation,
-            detached.user_data,
+            user_data,
             &effective,
             || BacklogOwner::Detached {
-                _charge: detached.record_charge.take().expect("detached record lost admission"),
+                record: record.take().expect("detached record queued twice"),
             },
             &mut releases,
         );
@@ -1534,12 +1608,15 @@ fn post_detached(
         as_completions.live = as_completions.live.saturating_sub(1);
         None
     };
-    RetiredDetached {
+    RetiredDetached(ManuallyDrop::new(DetachedRetirement {
         asid,
-        record: detached,
+        record,
+        cq,
+        observer,
+        cancel,
         releases,
         source,
-    }
+    }))
 }
 
 /// Requests cancellation of a capability-free operation. A completed detached
@@ -1594,11 +1671,12 @@ fn flush_backlog(cq_state: &mut CqState, releases: &mut budget::Releases) -> Flu
         }
         outcome.total += 1;
         if let BacklogOwner::Detached {
-            _charge,
+            mut record,
         } = entry.owner
         {
             outcome.detached += 1;
-            releases.push(_charge);
+            releases.push(record.value_mut().1.record_charge.take().expect("backlog lost charge"));
+            releases.push_node(record);
         }
     }
     if outcome.total != 0 {

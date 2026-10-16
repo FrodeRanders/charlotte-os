@@ -107,7 +107,7 @@ fn stale_and_retired() {
     let account = cq_admission(root.id()).unwrap();
     let mut queue = Prepared::new(Target::capture(root.id()).unwrap(), 8, None).unwrap();
     let mut namespace = PreparedNamespace::new(root.id(), 8, 8, None).unwrap();
-    let new_account = namespace.queue.target.account.clone();
+    let new_account = namespace.0.queue.target.account.clone();
     crate::memory::budget::retire(root);
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
@@ -116,7 +116,8 @@ fn stale_and_retired() {
         assert_eq!(account.used()[0], 2);
         assert_eq!(new_account.used()[0], 1);
     }
-    drop((queue, namespace));
+    drop(queue);
+    namespace.finish();
     assert_eq!(account.used()[0], 1);
     assert_eq!(new_account.used(), [0, 0]);
     crate::memory::close_user_address_space_handle(root).unwrap();
@@ -140,7 +141,7 @@ fn physical_publication() {
     let cap = submit(CLIENT + 1, OpCode::Nop, None).unwrap();
     complete(CLIENT + 1, cap, OpResult::Ok(91)).unwrap();
     let mut namespace = PreparedNamespace::new(CLIENT, 8, 8, Some(frame)).unwrap();
-    let new_account = namespace.queue.target.account.clone();
+    let new_account = namespace.0.queue.target.account.clone();
     let snapshot = Vec::from(unsafe { core::slice::from_raw_parts(page, 4096) });
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
@@ -150,7 +151,7 @@ fn physical_publication() {
         assert_eq!(new_account.used()[0], 1);
         assert_eq!(unsafe { core::slice::from_raw_parts(page, 4096) }, snapshot.as_slice());
     }
-    drop(namespace);
+    namespace.finish();
     assert_eq!(new_account.used(), [0, 0]);
     close_address_space(CLIENT + 1);
     // No consumer remains. The original preparation may now publish once.
@@ -176,16 +177,17 @@ fn namespace_publication() {
     open_address_space_with_cq(CLIENT, 8, 8).unwrap();
     let old_account = cq_admission(CLIENT).unwrap();
     let mut prepared = PreparedNamespace::new(CLIENT, 8, 8, None).unwrap();
-    let account = prepared.queue.target.account.clone();
+    let account = prepared.0.queue.target.account.clone();
     let retired;
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
         retired = prepared.publish().unwrap().unwrap();
-        assert!(prepared.entries.is_none());
+        assert!(prepared.0.entries.is_none());
         assert_eq!(old_account.used()[0], 1);
         assert_eq!(account.used()[0], 1);
     }
-    drop((retired, prepared));
+    retired.finish();
+    prepared.finish();
     assert_eq!(old_account.used(), [0, 0]);
     // Authority/map metadata remains a separate boundary. Exercise actual
     // capability revocation through the public adapter outside the heap guard.
@@ -196,12 +198,34 @@ fn namespace_publication() {
     close_address_space(CLIENT);
 }
 
+// Dropping this ManuallyDrop wrapper is the negative control: it must do nothing.
+#[allow(clippy::drop_non_drop)]
+fn guarded_namespace_abandonment() {
+    // Private unpublished raw namespace: bounded deliberate retention, with no
+    // live root or replacement sponsor and no physical backing authority.
+    let prepared = PreparedNamespace::new(CLIENT + 20, 8, 8, None).unwrap();
+    let account = prepared.0.queue.target.account.clone();
+    let before = account.used();
+    assert_eq!(before[0], 1);
+    {
+        let _registry = COMPLETIONS.write();
+        let _heap = PRIMARY_ALLOCATOR.lock();
+        drop(prepared);
+    }
+    assert_eq!(account.used(), before);
+    crate::logln!(
+        "[CQ namespace retention] heap/registry-held unpublished namespace abandonment retained \
+         complete payload and original CQ charge"
+    );
+}
+
 pub(super) fn run() {
     let irq = crate::cpu::isa::lp::ops::get_int_state();
     allocation_and_replacement();
     stale_and_retired();
     physical_publication();
     namespace_publication();
+    guarded_namespace_abandonment();
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
     crate::logln!(
         "[CQ payload preparation] unlocked list/ring allocation and partial rejection, heap-held \

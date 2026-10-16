@@ -1,6 +1,8 @@
 //! Detached record/timer preparation outside COMPLETIONS. Capture/publication
 //! retain backlog reconciliation; accepted timers enqueue once after unlock.
 
+use core::mem::ManuallyDrop;
+
 use super::*;
 
 type Source =
@@ -67,10 +69,14 @@ impl Target {
 
 /// Own the exact target, original record/timer admission and unpublished node
 /// through every preparation failure or rejected borrowed publication.
-struct Preparing {
+#[must_use]
+struct Preparing(ManuallyDrop<Resources>);
+
+struct Resources {
     target: Target,
     operation: OperationId,
     record: Option<DetachedOp>,
+    entry: Option<PreparedEntry<(OperationId, DetachedOp)>>,
     event: Option<crate::timers::PreparedEvent>,
 }
 
@@ -80,23 +86,46 @@ impl Preparing {
         user_data: u64,
         ids: &operation_ids::OperationIds,
     ) -> Result<Self, SubmitError> {
+        Self::plain_with(target, user_data, ids, PreparedEntry::try_new)
+    }
+
+    fn plain_with(
+        target: Target,
+        user_data: u64,
+        ids: &operation_ids::OperationIds,
+        allocate: impl FnOnce() -> Result<
+            PreparedEntry<(OperationId, DetachedOp)>,
+            core::alloc::AllocError,
+        >,
+    ) -> Result<Self, SubmitError> {
         let operation = ids.allocate().ok_or(SubmitError::WouldBlock)?;
-        let charge = budget::reserve(&target.records, target.platform)
-            .map_err(|_| SubmitError::WouldBlock)?;
-        let cq = target.cq;
-        Ok(Self {
+        let mut preparing = Self(ManuallyDrop::new(Resources {
             target,
             operation,
-            record: Some(DetachedOp {
+            record: None,
+            entry: None,
+            event: None,
+        }));
+        let result = (|| {
+            let resources = &mut *preparing.0;
+            let charge = budget::reserve(&resources.target.records, resources.target.platform)
+                .map_err(|_| SubmitError::WouldBlock)?;
+            resources.record = Some(DetachedOp {
                 user_data,
-                cq,
+                cq: resources.target.cq,
                 cancel_pending: false,
                 _timer_observer: None,
                 timer_cancel: None,
                 record_charge: Some(charge),
-            }),
-            event: None,
-        })
+            });
+            resources.entry = Some(allocate().map_err(|_| SubmitError::WouldBlock)?);
+            Ok(())
+        })();
+        if let Err(error) = result {
+            preparing.finish();
+            return Err(error);
+        }
+        Ok(preparing)
     }
 
     fn timer(
@@ -129,60 +158,72 @@ impl Preparing {
         ) -> Result<Arc<DetachedTimerObserver>, core::alloc::AllocError>,
     ) -> Result<Self, SubmitError> {
         let mut preparing = Self::plain(target, user_data, ids)?;
-        let charge =
-            crate::timers::budget::reserve(&preparing.target.timers, preparing.target.platform)
-                .map_err(|_| SubmitError::WouldBlock)?;
-        let (event, cancel) =
-            TimerEvent::charged(ExtDuration::from_millis(timeout_ms as u128), charge)
-                .map_err(|_| SubmitError::WouldBlock)?;
-        preparing.record.as_mut().unwrap().timer_cancel = Some(TimerCancellation(Some(cancel)));
-        preparing.event = Some(allocate_event(event).map_err(|_| SubmitError::WouldBlock)?);
-        let observer = allocate(DetachedTimerObserver {
-            asid: preparing.target.asid,
-            operation: preparing.operation,
-        })
-        .map_err(|_| SubmitError::WouldBlock)?;
-        preparing
-            .event
-            .as_ref()
-            .unwrap()
-            .event()
-            .register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
-        preparing.record.as_mut().unwrap()._timer_observer = Some(observer);
+        let result = (|| {
+            let charge = crate::timers::budget::reserve(
+                &preparing.0.target.timers,
+                preparing.0.target.platform,
+            )
+            .map_err(|_| SubmitError::WouldBlock)?;
+            let (event, cancel) =
+                TimerEvent::charged(ExtDuration::from_millis(timeout_ms as u128), charge)
+                    .map_err(|_| SubmitError::WouldBlock)?;
+            preparing.0.record.as_mut().unwrap().timer_cancel =
+                Some(TimerCancellation(Some(cancel)));
+            preparing.0.event = Some(allocate_event(event).map_err(|_| SubmitError::WouldBlock)?);
+            let observer = allocate(DetachedTimerObserver {
+                asid: preparing.0.target.asid,
+                operation: preparing.0.operation,
+            })
+            .map_err(|_| SubmitError::WouldBlock)?;
+            preparing
+                .0
+                .event
+                .as_ref()
+                .unwrap()
+                .event()
+                .register_observer(Arc::downgrade(&observer) as Weak<dyn Observer>);
+            preparing.0.record.as_mut().unwrap()._timer_observer = Some(observer);
+            Ok(())
+        })();
+        if let Err(error) = result {
+            preparing.finish();
+            return Err(error);
+        }
         Ok(preparing)
     }
 
     fn publish(&mut self) -> Result<OperationId, SubmitError> {
-        // The refund owner outlives this local registry guard on every path.
         let mut releases = budget::Releases::default();
         let mut registry = COMPLETIONS.write();
+        let resources = &mut *self.0;
         let entries =
-            registry.get_mut(&self.target.asid).ok_or(SubmitError::UnknownAddressSpace)?;
-        self.target.validate(entries)?;
-        flush_cq_backlog(entries, self.target.cq, &mut releases);
+            registry.get_mut(&resources.target.asid).ok_or(SubmitError::UnknownAddressSpace)?;
+        resources.target.validate(entries)?;
+        flush_cq_backlog(entries, resources.target.cq, &mut releases);
         if entries.live >= entries.capacity {
             return Err(SubmitError::WouldBlock);
         }
-        // Registry-map allocation is separate work. The complete payload
-        // already exists; no timer/node/observer allocation remains here.
-        assert!(
-            entries
-                .detached
-                .insert(
-                    self.operation,
-                    self.record.take().expect("detached preparation published twice")
-                )
-                .is_none()
+        entries.detached.insert(
+            resources.entry.take().expect("detached preparation published twice"),
+            resources.operation,
+            resources.record.take().expect("detached preparation lost record"),
         );
         entries.live += 1;
-        Ok(self.operation)
+        Ok(resources.operation)
     }
 
-    fn enqueue(mut self) {
-        assert!(self.record.is_none(), "unpublished detached timer cannot enqueue");
-        if let Some(event) = self.event.take() {
+    fn enqueue(&mut self) {
+        assert!(self.0.record.is_none(), "unpublished detached timer cannot enqueue");
+        if let Some(event) = self.0.event.take() {
             event.enqueue();
         }
+    }
+
+    fn finish(self) {
+        let mut resources = ManuallyDrop::into_inner(self.0);
+        // Empty prepared storage is freed before its original record charge.
+        drop(resources.entry.take());
+        drop(resources);
     }
 }
 
@@ -193,9 +234,12 @@ pub(super) fn submit(
     ids: &operation_ids::OperationIds,
 ) -> Result<OperationId, SubmitError> {
     let mut preparing = Preparing::plain(Target::capture(asid, cq)?, user_data, ids)?;
-    let operation = preparing.publish()?;
-    preparing.enqueue();
-    Ok(operation)
+    let result = preparing.publish();
+    if result.is_ok() {
+        preparing.enqueue();
+    }
+    preparing.finish();
+    result
 }
 
 pub(super) fn submit_timer(
@@ -210,13 +254,18 @@ pub(super) fn submit_timer(
 ) -> Result<OperationId, SubmitError> {
     let mut preparing =
         Preparing::timer(Target::capture(asid, cq)?, timeout_ms, user_data, ids, allocate)?;
-    let operation = preparing.publish()?;
-    preparing.enqueue();
-    Ok(operation)
+    let result = preparing.publish();
+    if result.is_ok() {
+        preparing.enqueue();
+    }
+    preparing.finish();
+    result
 }
 
+mod metadata_tests;
 mod tests;
 
 pub(super) fn test_preparation() {
     tests::run();
+    metadata_tests::run();
 }

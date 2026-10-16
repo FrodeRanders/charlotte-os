@@ -34,23 +34,19 @@ fn heap_held_splice() {
             let queue = COMPLETIONS.write().get_mut(&CLIENT).unwrap().cqs.remove(&DEFAULT_CQ);
             drop(queue);
         }
-        // Map removal may free its node: it is explicitly outside this
-        // heap-held payload-splice proof. Production keeps removal + posting
-        // serialized by one registry hold; this namespace is fixture-private.
-        let record =
-            COMPLETIONS.write().get_mut(&CLIENT).unwrap().detached.remove(&operation).unwrap();
         let retired;
         {
             let _heap = PRIMARY_ALLOCATOR.lock();
             let mut registry = COMPLETIONS.write();
             let entries = registry.get_mut(&CLIENT).unwrap();
+            let record = entries.detached.take(&operation).unwrap();
             retired = post_detached(CLIENT, operation, OpResult::Ok(12), entries, record);
             assert_eq!(entries.live, usize::from(mode == 1));
             assert_eq!(entries.timer_budget.used(), 1);
             assert_eq!(records.used(), 1);
             assert!(observer.upgrade().is_some());
-            assert_eq!(retired.record.record_charge.is_some(), mode != 1);
-            assert_eq!(retired.source.is_some(), mode != 2);
+            assert_eq!(retired.0.record.is_some(), mode != 1);
+            assert_eq!(retired.0.source.is_some(), mode != 2);
         }
         retired.finish();
         assert!(observer.upgrade().is_none());
@@ -203,8 +199,8 @@ pub(super) fn run() {
     source_replacement();
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
     crate::logln!(
-        "[detached timer disposal] heap-held direct/backlog/missing-CQ splice, post-registry \
-         cancellation and charges, manual/cancel/firing producers, duplicate rejection and exact \
-         successor-source fencing passed"
+        "[detached timer disposal] heap-held admitted-node removal and direct/backlog/missing-CQ \
+         splice, post-registry cancellation and charges, manual/cancel/firing producers, \
+         duplicate rejection and exact successor-source fencing passed"
     );
 }

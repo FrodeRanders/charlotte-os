@@ -236,6 +236,7 @@ fn cq_detachment() {
     assert_eq!(entries.cq_budget.used()[0], 1);
     assert_eq!(list.registered(), 0);
     drop(token);
+    entries.finish();
     // A normal public CQ replacement cancels an old source too.
     open_address_space_with_cq(CLIENT, 4, 8).unwrap();
     let interest = capture_cq_interest(CLIENT, 0).unwrap();

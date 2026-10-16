@@ -35,7 +35,7 @@ fn snapshot() -> Snapshot {
         (
             entries.live,
             entries.table.len(),
-            entries.detached.len(),
+            entries.detached.iter().count(),
             entries.cqs.get(&super::DEFAULT_CQ).unwrap().backlog.len(),
         )
     };

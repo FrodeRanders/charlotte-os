@@ -202,7 +202,9 @@ pub(super) fn attach(
 
 /// One owner retains the whole unpublished namespace and original queue
 /// preparation. Its private CQ map node is prepared before COMPLETIONS too.
-struct PreparedNamespace {
+struct PreparedNamespace(ManuallyDrop<NamespacePreparation>);
+
+struct NamespacePreparation {
     entries: Option<AsCompletions>,
     queue: Prepared,
 }
@@ -216,26 +218,48 @@ impl PreparedNamespace {
     ) -> Result<Self, CqOpenError> {
         let mut entries = empty_as(asid, capacity);
         let platform = crate::memory::budget::platform_identity(asid);
-        let mut queue =
-            Prepared::new(Target::from_namespace(asid, &entries, platform)?, cq_entries, frame)?;
+        let mut queue = match Target::from_namespace(asid, &entries, platform)
+            .and_then(|target| Prepared::new(target, cq_entries, frame))
+        {
+            Ok(queue) => queue,
+            Err(error) => {
+                entries.finish();
+                return Err(error);
+            }
+        };
         entries.cqs.insert(DEFAULT_CQ, queue.state.take().unwrap());
-        Ok(Self {
+        Ok(Self(ManuallyDrop::new(NamespacePreparation {
             entries: Some(entries),
             queue,
-        })
+        })))
     }
 
     fn publish(&mut self) -> Result<Option<AsCompletions>, CqOpenError> {
         let mut registry = COMPLETIONS.write();
-        let entries = self.entries.as_mut().expect("CQ namespace published twice");
-        self.queue.target.validate(entries)?;
-        check_ring_alias(&registry, self.queue.target.asid, DEFAULT_CQ, self.queue.frame)?;
-        self.queue.initialize(entries.cqs.get_mut(&DEFAULT_CQ).unwrap())?;
-        let previous = registry.insert(self.queue.target.asid, self.entries.take().unwrap());
+        let resources = &mut *self.0;
+        let entries = resources.entries.as_mut().expect("CQ namespace published twice");
+        resources.queue.target.validate(entries)?;
+        check_ring_alias(
+            &registry,
+            resources.queue.target.asid,
+            DEFAULT_CQ,
+            resources.queue.frame,
+        )?;
+        resources.queue.initialize(entries.cqs.get_mut(&DEFAULT_CQ).unwrap())?;
+        let previous =
+            registry.insert(resources.queue.target.asid, resources.entries.take().unwrap());
         if let Some(previous) = &previous {
-            revoke_namespace_authority(self.queue.target.asid, previous);
+            revoke_namespace_authority(resources.queue.target.asid, previous);
         }
         Ok(previous)
+    }
+
+    fn finish(self) {
+        let mut resources = ManuallyDrop::into_inner(self.0);
+        if let Some(entries) = resources.entries.take() {
+            entries.finish();
+        }
+        drop(resources);
     }
 }
 
@@ -246,8 +270,12 @@ pub(super) fn open_namespace(
     frame: Option<crate::memory::physical::PAddr>,
 ) -> Result<(), CqOpenError> {
     let mut prepared = PreparedNamespace::new(asid, capacity, cq_entries, frame)?;
-    let previous = prepared.publish()?;
-    drop(previous);
+    let result = prepared.publish();
+    prepared.finish();
+    let previous = result?;
+    if let Some(previous) = previous {
+        previous.finish();
+    }
     Ok(())
 }
 

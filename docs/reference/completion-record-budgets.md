@@ -38,8 +38,8 @@ freed allocation. `ChargedAllocator::try_arc` retains a preparation owner throug
 failed construction, keeping the charge until the rejected payload is destroyed.
 This adapter is for fixed record allocations, not general growable containers.
 
-A detached operation moves its charge into an owning CQ backlog entry if its
-result cannot enter the ring. Its operation ID is no longer addressable, but
+A detached operation moves its admitted metadata node and original charge into
+an owning CQ backlog entry if its result cannot enter the ring. Its operation ID is no longer addressable, but
 both submission slot and record admission remain occupied. Ring publication
 returns the submission slot; record admission refunds after local registry
 unlock as described below. The fixed-size ring entry remains in independently
@@ -52,7 +52,9 @@ each original account. Combining a class checks exact account identity; the
 retained Arc keeps redundant reference drops from freeing that account under
 the registry. The existing one-dimension `VectorBudget` provides checked,
 constant-time batch refunds without changing policy limits or the shared API.
-No disposal allocation or new reservation is needed.
+The same admitted nodes relink into a shared retirement list in that batch.
+After local unlock, node allocations free before either class refunds. No
+disposal allocation or new reservation is needed.
 
 All entries that fit still publish in FIFO order, and live submission slots
 update under the registry. Record admission remains conservatively charged
@@ -164,8 +166,19 @@ explicit finish disposes unused storage/reservation and payload afterward.
 Abandonment retains everything without cleanup. See the
 [capability preparation follow-up](../reports/audits/2026-10-16-capability-completion-preparation.md).
 
-Registry-map insertion/removal, ring/backlog mutation, capability close and
-terminal timer cleanup retain their existing serialization. The delivered-charge
+Detached-map metadata now uses shared `PreparedEntry`/`AdmittedMap` storage.
+Preparation allocates fallibly outside COMPLETIONS. Publication revalidates the
+captured root/accounts/capacity and exact CQ source before relinking; terminal
+removal transfers the same node to its direct/backlog/refund owner. Direct node
+release and timer disposal precede the original record refund and notification.
+Full namespace close/replacement explicitly drains live and backlogged nodes
+after local unlock. Namespace, unpublished namespace, detached preparation and
+terminal-receipt fallbacks retain their complete fields rather than disposing
+only some siblings. Ordinary rejection explicitly finishes unstarted owners.
+See the [detached metadata follow-up](../reports/audits/2026-10-16-detached-completion-metadata.md).
+
+Capability/CQ/global registry-map insertion/removal, ring/backlog mutation,
+capability close and terminal timer cleanup retain their existing serialization. The delivered-charge
 disposal boundary above is qualified locally; outer guards/IRQ contexts and
 remaining metadata destruction still need work. Capture is not a root lease or
 physical quiescence proof.
@@ -202,8 +215,11 @@ heap. Separate [CQ admission](completion-queue-budgets.md) bounds registered
 queues and kernel-owned ring/backlog backing. Completion record/control-block
 storage and its auxiliary charge holder are covered by the record count, not
 an aggregate byte budget. Observer-list backing has separate
-[allocation admission](observer-list-admission.md). Registry nodes, arbitrary callback
+[allocation admission](observer-list-admission.md). Other registry nodes, arbitrary callback
 captures and other weak-only Arc/control-block allocations are not covered here.
+Admitted detached nodes retain their original record count through actual
+release, including backlog and post-delivery refund batches; this is not a
+separate aggregate byte admission for metadata.
 General metadata allocation and reclamation remain separate work. Endpoint-close and
 thread-exit registrations now share [owning lists and event-watch admission](close-watch-budgets.md).
 Completion/CQ/IPC scheduler

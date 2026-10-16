@@ -820,3 +820,17 @@ Broader map,
 backlog/close/queue metadata, aggregate admission and outer contexts still need
 qualification. No SEC disposition, physical proof, readiness/replay policy or
 production IPC/scheduler behavior changes.
+
+
+The [detached metadata follow-up](../reports/audits/2026-10-16-detached-completion-metadata.md)
+continues R7-1/2 and C16/G1/G4/G7. Detached records prepare admitted map nodes
+outside COMPLETIONS and relink only after exact root/account/capacity/CQ
+validation. Terminal delivery retains the same node with its original charge
+in a direct receipt or backlog. Flush batches free nodes after local unlock
+before checked original-class refunds. Whole namespace/preparation/terminal
+fallback retains every field; ordinary rejection and namespace close/replacement
+explicitly finish after local guards. The preceding captured detached-map
+allocation is removed without restoring concurrent heap-held probes. Other
+capability/CQ/global maps, authority revocation, aggregate admission and wider
+contexts remain open. No SEC disposition, physical proof, custody, readiness or
+replay policy changes, and historical intermittent causes remain unattributed.

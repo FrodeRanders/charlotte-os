@@ -223,3 +223,11 @@ pre-scheduler phase without removing its checks. The production detached-map
 allocation under the registry remains open. This is a newly diagnosed fixture
 cycle, not attribution of the older intermittent incidents; its own failed
 capture and input hashes remain separate from passing repeats.
+
+
+The [detached metadata batch](2026-10-16-detached-completion-metadata.md)
+subsequently removes that captured detached-map allocation/removal path using
+prepared admitted nodes, preserving them with original charges through backlog
+and post-guard retirement. Complete namespace and operation fallbacks retain all
+fields; ordinary close/replacement explicitly drains nodes. Capability/CQ/global
+maps and wider contexts remain open; this does not attribute older incidents.

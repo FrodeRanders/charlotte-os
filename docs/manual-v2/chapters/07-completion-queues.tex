@@ -272,9 +272,21 @@ Backlog-to-ring publication retains delivered detached-record charges in a
 fixed two-class owning batch until the completion registry is unlocked.
 Ordinary/platform charges retain their original accounts; no disposal storage
 is allocated. Full FIFO flushing and logical slot updates remain serialized.
+The same admitted detached nodes relink into the shared retirement list and
+free after local unlock, before either accounting class refunds.
 Checked batch refunds finish before CQ parking or producer notification;
 failed ring writes retain the complete backlog entry. Registry-map metadata
 and broader outer-context qualification remain separate work.
+
+Detached-record metadata uses the shared admitted map: fallible node storage is
+prepared outside the completion registry, then relinked after exact namespace
+and CQ validation. Terminal removal transfers its owning node to the direct
+receipt or backlog. Explicit namespace close drains all remaining nodes after
+local unlock. Namespace, detached-preparation and terminal-receipt abandonment
+retain their complete fields, accounts and sources; ordinary rejection uses an
+explicit unstarted finish. Capability/CQ/global map metadata and wider caller
+contexts remain open. None of these owners is a physical completion receipt or
+permission to replay accepted work.
 
 Capability-backed completion submission prepares records, waiter lists, optional
 watch admission and shared authority storage outside the completion registry.

@@ -56,7 +56,7 @@ fn boundary_and_replacement() {
         assert_eq!(state_of(CLIENT, cap), Ok(OpStateKind::InFlight));
         let registry = COMPLETIONS.read();
         let entries = &registry[&CLIENT];
-        assert_eq!((entries.live, entries.table.len(), entries.detached.len()), (2, 1, 1));
+        assert_eq!((entries.live, entries.table.len(), entries.detached.iter().count()), (2, 1, 1));
         assert!(Arc::ptr_eq(&entries.table[&cap], &completion));
         assert!(entries.detached.contains_key(&detached));
     }
@@ -81,7 +81,7 @@ fn boundary_and_replacement() {
     {
         let registry = COMPLETIONS.read();
         let entries = &registry[&CLIENT];
-        assert_eq!((entries.live, entries.table.len(), entries.detached.len()), (0, 0, 0));
+        assert_eq!((entries.live, entries.table.len(), entries.detached.iter().count()), (0, 0, 0));
     }
     // The actual global counter was never changed by this boundary fixture.
     let cap = submit(CLIENT, OpCode::Nop, None).unwrap();
