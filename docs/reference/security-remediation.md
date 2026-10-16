@@ -834,3 +834,17 @@ allocation is removed without restoring concurrent heap-held probes. Other
 capability/CQ/global maps, authority revocation, aggregate admission and wider
 contexts remain open. No SEC disposition, physical proof, custody, readiness or
 replay policy changes, and historical intermittent causes remain unattributed.
+
+
+The [capability completion metadata follow-up](../reports/audits/2026-10-16-capability-completion-metadata.md)
+continues R7-1/2 and C16/G1/G4/G7. Payload map storage prepares before hidden
+authority reservation; final publication relinks after existing exact validation
+and authority publication. Retirement keeps payload and detached authority in
+one admitted node, then frees both outside local completion guards while the
+charged completion remains live. Shared authority refund follows actual node
+deallocation. Common close/abort/event rollback removes the exact pending CQ
+row before returning its slot, correcting terminal-abort backlog accumulation.
+Complete fallback retains fields/accounts without cleanup or retry custody.
+Both per-operation maps now use admitted nodes; CQ/global maps, other consumers'
+outer guards and wider timer/observer contexts remain open. No SEC disposition,
+physical proof, readiness/replay or historical failure attribution changes.

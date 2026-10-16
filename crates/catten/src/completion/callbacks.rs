@@ -65,7 +65,7 @@ impl Captured {
         Ok(Self {
             asid,
             cap,
-            completion: completion.clone(),
+            completion: Arc::clone(completion),
             root: entries.address_space,
             account: entries.watch_budget.clone(),
             platform: asid == crate::memory::KERNEL_ASID
@@ -171,7 +171,7 @@ pub fn observe(
     let completion = {
         let registry = COMPLETIONS.read();
         let entries = registry.get(&asid).ok_or(ObserveError::UnknownAddressSpace)?;
-        entries.table.get(&cap).ok_or(ObserveError::UnknownCap)?.clone()
+        Arc::clone(entries.table.get(&cap).ok_or(ObserveError::UnknownCap)?)
     };
     observe_registered(asid, cap, &completion, observer)
 }

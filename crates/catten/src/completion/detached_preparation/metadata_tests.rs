@@ -153,6 +153,7 @@ fn guarded_abandonment() {
     let records = record_admission(CLIENT).unwrap();
     let queues = cq_admission(CLIENT).unwrap();
     let watches = watch_admission(CLIENT).unwrap();
+    let original_authority = crate::capability::node_admission_used();
     let cap = crate::completion::submit(CLIENT, OpCode::Read, Some(alloc::vec![1, 2, 3])).unwrap();
     let captured = completion_of(CLIENT, cap).unwrap();
     let weak = Arc::downgrade(&captured);
@@ -171,8 +172,8 @@ fn guarded_abandonment() {
     }
     let namespace = {
         let mut registry = COMPLETIONS.write();
-        let namespace = registry.remove(&CLIENT).unwrap();
-        revoke_namespace_authority(CLIENT, &namespace);
+        let mut namespace = registry.remove(&CLIENT).unwrap();
+        revoke_namespace_authority(CLIENT, &mut namespace);
         namespace
     };
     let queue_usage = queues.used();
@@ -184,6 +185,10 @@ fn guarded_abandonment() {
         assert_eq!(hits.load(Ordering::SeqCst), 0);
     }
     assert_eq!(records.used(), 3);
+    assert_eq!(
+        crate::capability::node_admission_used(),
+        (original_authority.0 + 1, original_authority.1 + 1)
+    );
     assert_eq!(queues.used(), queue_usage);
     assert_eq!(watches.used(), 1);
     assert_eq!(source.registered(), 1);
@@ -194,6 +199,10 @@ fn guarded_abandonment() {
     assert_eq!(record_admission(CLIENT).unwrap().used(), 0);
     close_address_space(CLIENT);
     assert_eq!(records.used(), 3);
+    assert_eq!(
+        crate::capability::node_admission_used(),
+        (original_authority.0 + 1, original_authority.1 + 1)
+    );
     assert_eq!(queues.used(), queue_usage);
     assert_eq!(hits.load(Ordering::SeqCst), 0);
 

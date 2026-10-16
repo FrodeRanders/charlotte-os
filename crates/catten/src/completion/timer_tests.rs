@@ -34,7 +34,7 @@ fn snapshot() -> Snapshot {
         let entries = registry.get(&CLIENT).unwrap();
         (
             entries.live,
-            entries.table.len(),
+            entries.table.iter().count(),
             entries.detached.iter().count(),
             entries.cqs.get(&super::DEFAULT_CQ).unwrap().backlog.len(),
         )

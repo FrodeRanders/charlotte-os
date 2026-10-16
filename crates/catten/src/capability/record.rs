@@ -93,7 +93,10 @@ impl RetiredRecord {
     pub(crate) fn release(self) {
         let entry_irq = crate::cpu::isa::lp::ops::get_int_state();
         record_tests::boundary(true, entry_irq);
-        self.0.release();
+        let mut charge = None;
+        self.0.release_with(|entry| charge = Some(entry.1._charge));
+        // The authority's original admission survives actual node deallocation.
+        drop(charge);
         record_tests::boundary_after(entry_irq);
     }
 }

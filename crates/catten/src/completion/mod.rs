@@ -4,9 +4,8 @@
 //! completion-capability ABI specified in `docs/architecture/async-syscall-abi.md`. It builds
 //! the kernel side of the boundary directly on facilities that already exist:
 //!
-//! - [`IdTable`](crate::klib::collections::id_table::IdTable) backs a per-address-space
-//!   **capability table** mapping a small integer [`CompletionCap`] to a kernel object naming an
-//!   in-flight or completed operation;
+//! - bounded per-address-space admitted maps retain capability and detached-operation metadata; a
+//!   [`CompletionCap`] names an in-flight or completed kernel object through unified authority;
 //! - the [`Observable`]/[`Observer`] mechanism (the same one `TimerEvent` and thread-exit use) is
 //!   how a completion signals the threads awaiting it — so [`wait`] blocks exactly as
 //!   [`sleep`](crate::cpu::scheduler::sleep) does, registering the caller's `Waker` as an observer;
@@ -29,12 +28,17 @@
 pub(crate) mod budget;
 pub(crate) mod callback_tests;
 mod callbacks;
+mod capability_metadata;
 mod capability_preparation;
 pub(crate) use callbacks::observe_registered;
 pub use callbacks::{
     CompletionObservation,
     ObserveError,
     observe,
+};
+use capability_metadata::{
+    CapabilityRecord,
+    RetiredCapability,
 };
 pub mod cq;
 pub(crate) mod cq_budget;
@@ -737,7 +741,7 @@ impl Drop for CqState {
 struct AsCompletions(ManuallyDrop<Namespace>);
 
 struct Namespace {
-    table: BTreeMap<CompletionCap, CompletionRef>,
+    table: AdmittedMap<CompletionCap, CapabilityRecord>,
     /// Shared upper bound for capability records, in-flight detached
     /// operations, and completed detached records awaiting CQ delivery.
     capacity: usize,
@@ -780,6 +784,9 @@ impl AsCompletions {
             drop(completion.waiters.close());
             drop(completion.detach_callbacks());
         }
+        while let Some((&cap, _)) = entries.table.first_key_value() {
+            RetiredCapability::from_node(entries.table.take(&cap).unwrap()).finish();
+        }
         while let Some((&operation, _)) = entries.detached.first_key_value() {
             dispose_detached_node(entries.detached.take(&operation).unwrap());
         }
@@ -812,7 +819,7 @@ static COMPLETIONS: LazyLock<RwLock<BTreeMap<AddressSpaceId, AsCompletions>>> =
 fn empty_as(asid: AddressSpaceId, capacity: usize) -> AsCompletions {
     let capacity = capacity.min(budget::MAX_DOMAIN_RECORDS);
     AsCompletions(ManuallyDrop::new(Namespace {
-        table: BTreeMap::new(),
+        table: AdmittedMap::new(),
         capacity,
         live: 0,
         detached: AdmittedMap::new(),
@@ -828,8 +835,8 @@ fn empty_as(asid: AddressSpaceId, capacity: usize) -> AsCompletions {
 fn replace_address_space(asid: AddressSpaceId, replacement: AsCompletions) {
     let previous = {
         let mut registry = COMPLETIONS.write();
-        let previous = registry.insert(asid, replacement);
-        if let Some(previous) = &previous {
+        let mut previous = registry.insert(asid, replacement);
+        if let Some(previous) = &mut previous {
             revoke_namespace_authority(asid, previous);
         }
         previous
@@ -841,12 +848,9 @@ fn replace_address_space(asid: AddressSpaceId, replacement: AsCompletions) {
 
 /// The caller retains both the complete detached namespace and COMPLETIONS
 /// through authority removal. Destroy payload/source metadata after unlock.
-fn revoke_namespace_authority(asid: AddressSpaceId, previous: &AsCompletions) {
-    for cap in previous.table.keys() {
-        assert!(
-            crate::capability::remove(asid, *cap, crate::capability::ObjectKind::Completion),
-            "completion payload capability was absent from unified table"
-        );
+fn revoke_namespace_authority(asid: AddressSpaceId, previous: &mut AsCompletions) {
+    for (cap, record) in previous.table.iter_mut() {
+        record.revoke(asid, *cap);
     }
 }
 
@@ -984,8 +988,8 @@ pub unsafe fn cq_ring_of(
 pub fn close_address_space(asid: AddressSpaceId) {
     let retired = {
         let mut registry = COMPLETIONS.write();
-        let retired = registry.remove(&asid);
-        if let Some(retired) = &retired {
+        let mut retired = registry.remove(&asid);
+        if let Some(retired) = &mut retired {
             revoke_namespace_authority(asid, retired);
         }
         retired
@@ -1005,7 +1009,7 @@ pub(crate) fn completion_of(
     let registry = COMPLETIONS.read();
     let as_completions = registry.get(&asid).ok_or(CapError::UnknownAddressSpace)?;
     let completion = as_completions.table.get(&cap).ok_or(CapError::UnknownCap)?;
-    Ok(completion.clone())
+    Ok(Arc::clone(completion))
 }
 
 /// Starts an async operation. Returns immediately with a capability naming it;
@@ -1116,48 +1120,39 @@ impl Drop for EventSubmission {
         if self.committed {
             return;
         }
-        let mut registry = COMPLETIONS.write();
-        if let Some(entries) = registry.get_mut(&self.asid)
-            && entries.table.get(&self.cap).is_some_and(|live| Arc::ptr_eq(live, &self.completion))
-        {
-            if let Some(cq) = entries.cqs.get_mut(&DEFAULT_CQ) {
-                let operation = self.completion.operation_id();
-                cq.backlog.retain(|entry| {
-                    !matches!(&entry.owner, BacklogOwner::Capability)
-                        || entry.operation != operation
-                        || entry.cookie != self.cap
-                });
+        let retired = {
+            let mut registry = COMPLETIONS.write();
+            if let Some(entries) = registry.get_mut(&self.asid)
+                && entries
+                    .table
+                    .get(&self.cap)
+                    .is_some_and(|live| Arc::ptr_eq(live, &self.completion))
+            {
+                Some(capability_metadata::retire(entries, self.asid, self.cap).unwrap())
+            } else {
+                None
             }
-            entries.table.remove(&self.cap);
-            entries.live = entries.live.checked_sub(1).expect("staged event slot missing");
-            assert!(crate::capability::remove(
-                self.asid,
-                self.cap,
-                crate::capability::ObjectKind::Completion
-            ));
-        }
-        drop(registry);
+        };
         self.completion.release_event_observation();
         drop(self.completion.detach_callbacks());
+        if let Some(retired) = retired {
+            retired.finish();
+        }
     }
 }
 
 /// Roll back a capability-backed submission before it becomes externally
-/// visible. This is used by syscall validation that must reserve a bounded
-/// completion slot before performing an atomic checked user-memory write.
+/// visible. Retain both metadata owners and remove any terminal backlog row
+/// before returning its slot, then dispose outside the local registry hold.
 pub(crate) fn abort_submission(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
-    let mut registry = COMPLETIONS.write();
-    let as_completions = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
-    let completion = as_completions.table.remove(&cap).ok_or(CapError::UnknownCap)?;
-    as_completions.live =
-        as_completions.live.checked_sub(1).expect("aborted completion must count as live");
-    assert!(
-        crate::capability::remove(asid, cap, crate::capability::ObjectKind::Completion),
-        "aborted completion capability was absent from unified table"
-    );
-    drop(registry);
-    completion.release_event_observation();
-    drop(completion.detach_callbacks());
+    let retired = {
+        let mut registry = COMPLETIONS.write();
+        let entries = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
+        capability_metadata::retire(entries, asid, cap)?
+    };
+    retired.completion().release_event_observation();
+    drop(retired.completion().detach_callbacks());
+    retired.finish();
     Ok(())
 }
 
@@ -1853,31 +1848,26 @@ pub(crate) fn close_registered(
     cap: CompletionCap,
     completion: CompletionRef,
 ) -> Result<(), CapError> {
+    retire_completed(asid, cap, &completion)?.finish();
+    Ok(())
+}
+
+/// Exact-object logical retirement; the returned owner retains payload and
+/// authority metadata until explicit post-guard release, without retry policy.
+fn retire_completed(
+    asid: AddressSpaceId,
+    cap: CompletionCap,
+    completion: &CompletionRef,
+) -> Result<RetiredCapability, CapError> {
     if !completion.is_reclaimable() {
         return Err(CapError::NotComplete);
     }
-    let operation = completion.operation_id();
     let mut registry = COMPLETIONS.write();
-    let as_completions = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
-    if !as_completions
-        .table
-        .get(&cap)
-        .is_some_and(|registered| Arc::ptr_eq(registered, &completion))
-    {
+    let entries = registry.get_mut(&asid).ok_or(CapError::UnknownAddressSpace)?;
+    if !entries.table.get(&cap).is_some_and(|live| Arc::ptr_eq(live, completion)) {
         return Err(CapError::UnknownCap);
     }
-    if let Some(cq_state) = as_completions.cqs.get_mut(&DEFAULT_CQ) {
-        cq_state.backlog.retain(|entry| {
-            !matches!(&entry.owner, BacklogOwner::Capability)
-                || entry.operation != operation
-                || entry.cookie != cap
-        });
-    }
-    as_completions.table.remove(&cap).ok_or(CapError::UnknownCap)?;
-    let revoked = crate::capability::remove(asid, cap, crate::capability::ObjectKind::Completion);
-    assert!(revoked, "completion payload capability was absent from unified table");
-    as_completions.live = as_completions.live.saturating_sub(1);
-    Ok(())
+    capability_metadata::retire(entries, asid, cap)
 }
 
 /// Test/inspection helper: whether the kernel still owns a buffer for `cap`

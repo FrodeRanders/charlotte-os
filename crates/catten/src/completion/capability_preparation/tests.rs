@@ -18,7 +18,7 @@ fn unlocked() {
             true,
             &OPERATION_IDS,
             |operation, buffer, charge| {
-                assert!(COMPLETIONS.write()[&CLIENT].table.is_empty());
+                assert!(COMPLETIONS.write()[&CLIENT].table.first_key_value().is_none());
                 if mode == 0 {
                     Err(SubmitError::WouldBlock)
                 } else {
@@ -26,7 +26,7 @@ fn unlocked() {
                 }
             },
             |asid, root| {
-                assert!(COMPLETIONS.write()[&CLIENT].table.is_empty());
+                assert!(COMPLETIONS.write()[&CLIENT].table.first_key_value().is_none());
                 if mode == 1 {
                     // Boot fixture is serialized; no live sibling can consume
                     // this existing one-shot authority-node allocation hook.
@@ -34,6 +34,7 @@ fn unlocked() {
                 }
                 PreparedReservation::try_new(asid, ObjectKind::Completion, root)
             },
+            PreparedEntry::try_new,
         );
         if mode < 2 {
             assert!(matches!(prepared, Err(SubmitError::WouldBlock)));
@@ -55,7 +56,7 @@ fn unlocked() {
         let result = preparing.timer(
             0,
             |event| {
-                assert!(COMPLETIONS.write()[&CLIENT].table.is_empty());
+                assert!(COMPLETIONS.write()[&CLIENT].table.first_key_value().is_none());
                 assert_eq!(event.get_deadline(), 0, "expired deadline was restarted");
                 if mode == 0 {
                     Err(())
@@ -64,7 +65,7 @@ fn unlocked() {
                 }
             },
             |observer| {
-                assert!(COMPLETIONS.write()[&CLIENT].table.is_empty());
+                assert!(COMPLETIONS.write()[&CLIENT].table.first_key_value().is_none());
                 assert!(!crate::capability::contains(CLIENT, observer.cap, ObjectKind::Completion));
                 if mode == 1 {
                     Err(core::alloc::AllocError)
@@ -116,6 +117,7 @@ fn reject_before_reservation() {
                 }
                 Ok(authority)
             },
+            PreparedEntry::try_new,
         );
         assert!(matches!(result, Err(SubmitError::UnknownAddressSpace)));
         assert_eq!((records.used(), watches.used()), (0, 0));

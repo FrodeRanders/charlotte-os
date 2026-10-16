@@ -231,3 +231,11 @@ prepared admitted nodes, preserving them with original charges through backlog
 and post-guard retirement. Complete namespace and operation fallbacks retain all
 fields; ordinary close/replacement explicitly drains nodes. Capability/CQ/global
 maps and wider contexts remain open; this does not attribute older incidents.
+
+
+The [capability completion metadata batch](2026-10-16-capability-completion-metadata.md)
+subsequently converts the other per-operation map, carrying payload and detached
+authority in one original owner through post-guard disposal. It also corrects a
+source-proven terminal-abort backlog gap and authority charge/deallocation order.
+CQ/global maps and wider contexts remain open; none of these source fixes
+attributes the historical intermittent incidents.

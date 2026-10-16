@@ -177,9 +177,21 @@ terminal-receipt fallbacks retain their complete fields rather than disposing
 only some siblings. Ordinary rejection explicitly finishes unstarted owners.
 See the [detached metadata follow-up](../reports/audits/2026-10-16-detached-completion-metadata.md).
 
-Capability/CQ/global registry-map insertion/removal, ring/backlog mutation,
-capability close and terminal timer cleanup retain their existing serialization. The delivered-charge
-disposal boundary above is qualified locally; outer guards/IRQ contexts and
+Capability-backed payload metadata now also uses prepared admitted nodes. One
+preparation retains node, charged completion, hidden authority and timer/watch
+fields before publication. Retirement stores the detached unified authority in
+the same payload node; explicit finish frees both nodes after local unlock while
+a charged completion Arc remains alive. Final strong/weak backing still controls
+the record refund. Whole namespace close drains these complete nodes too;
+abandonment retains every field and original account. Shared authority release
+now moves its original charge past actual node deallocation before refunding it.
+Close, abort and staged-event rollback remove the exact retained capability CQ
+row before returning the live slot, preventing aborted terminal rows from
+accumulating behind a full ring. See the [capability metadata follow-up](../reports/audits/2026-10-16-capability-completion-metadata.md).
+
+CQ/global namespace-map insertion/removal, ring/backlog mutation and wider
+terminal timer/observer disposal retain their existing serialization. Local
+metadata/charge disposal is qualified above; outer guards/IRQ contexts and
 remaining metadata destruction still need work. Capture is not a root lease or
 physical quiescence proof.
 

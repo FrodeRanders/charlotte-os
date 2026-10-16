@@ -50,9 +50,18 @@ One complete preparation retains the reservation, record, optional event and
 original charges through rejection. Ordinary success/error explicitly finishes
 unused authority storage and disposes the owner after local guards leave;
 abandonment retains all fields without cleanup. A replaced authority namespace
-cannot redirect an old token to its reused numeric capability. Registry-map
-nodes and other callers/close/destructor contexts remain separate. See the
+cannot redirect an old token to its reused numeric capability. See the
 [completion preparation evidence](../reports/audits/2026-10-16-capability-completion-preparation.md).
+
+Completion payload nodes now prepare in that same owner before hidden authority
+reservation. Final publication relinks without allocation after the existing
+authority batch. Close, abort/event rollback and namespace retirement retain
+detached authority inside their admitted payload node; both nodes free only
+after local completion unlock while a charged completion Arc remains alive.
+The complete retired node's fallback retains every field and original charge.
+Numeric reuse cannot redirect explicit release into a successor namespace.
+CQ/global completion maps and other callers' enclosing contexts remain open.
+See the [completion metadata evidence](../reports/audits/2026-10-16-capability-completion-metadata.md).
 
 Every entry owns its domain/node charge. All three states count:
 
@@ -252,7 +261,11 @@ unfinished node/charge. There is no infallible record insertion fallback.
 
 Removal detaches a `RetiredRecord` without destruction under `CAPABILITIES`.
 Its original account/class charge survives until explicit node release; Drop
-retains it even after namespace teardown, promotion or ASID reuse. Namespace
+retains it even after namespace teardown, promotion or ASID reuse. Explicit
+release uses the existing owning payload handoff to move the charge into a
+local owner, free the node, then refund that exact account/class. Charge-field
+destruction therefore cannot precede actual node deallocation. This ordering
+adds no reservation or cleanup authority and does not qualify outer callers. Namespace
 completion drains its existing admitted nodes without allocating a snapshot.
 Batch move publication keeps the retired source in its exact `SourceEscrow`;
 `PreparedTransfer` releases it after payload completion, pin release and memory

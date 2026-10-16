@@ -69,6 +69,7 @@ struct Preparing(ManuallyDrop<Resources>);
 struct Resources {
     target: Target,
     completion: Option<CompletionRef>,
+    entry: Option<PreparedEntry<(CompletionCap, CapabilityRecord)>>,
     watch: Option<watch_budget::Charge>,
     authority: Option<PreparedReservation>,
     reservation: Option<Reservation>,
@@ -84,9 +85,15 @@ impl Preparing {
         watch: bool,
         ids: &operation_ids::OperationIds,
     ) -> Result<Self, SubmitError> {
-        Self::new_with(target, buffer, watch, ids, Completion::new, |asid, root| {
-            PreparedReservation::try_new(asid, ObjectKind::Completion, root)
-        })
+        Self::new_with(
+            target,
+            buffer,
+            watch,
+            ids,
+            Completion::new,
+            |asid, root| PreparedReservation::try_new(asid, ObjectKind::Completion, root),
+            PreparedEntry::try_new,
+        )
     }
 
     fn new_with(
@@ -106,11 +113,16 @@ impl Preparing {
             PreparedReservation,
             crate::capability::AllocationError,
         >,
+        allocate_node: impl FnOnce() -> Result<
+            PreparedEntry<(CompletionCap, CapabilityRecord)>,
+            core::alloc::AllocError,
+        >,
     ) -> Result<Self, SubmitError> {
         let operation = ids.allocate().ok_or(SubmitError::WouldBlock)?;
         let mut preparing = Self(ManuallyDrop::new(Resources {
             target,
             completion: None,
+            entry: None,
             watch: None,
             authority: None,
             reservation: None,
@@ -130,6 +142,7 @@ impl Preparing {
                 );
             }
             resources.completion = Some(allocate_record(operation, buffer, charge)?);
+            resources.entry = Some(allocate_node().map_err(|_| SubmitError::WouldBlock)?);
             resources.authority = Some(
                 allocate_authority(target.asid, target.root)
                     .map_err(|_| SubmitError::WouldBlock)?,
@@ -224,9 +237,11 @@ impl Preparing {
             source: None,
         }])
         .map_err(|_| SubmitError::WouldBlock)?;
-        // BTreeMap nodes remain separate inventory work. No record, observer,
-        // authority-node or timer construction/destruction remains here.
-        entries.table.insert(cap, resources.completion.as_ref().unwrap().clone());
+        entries.table.insert(
+            resources.entry.take().expect("completion metadata published twice"),
+            cap,
+            CapabilityRecord::new(resources.completion.as_ref().unwrap().clone()),
+        );
         entries.live += 1;
         resources.published = true;
         Ok(cap)
@@ -245,6 +260,8 @@ impl Preparing {
 
     fn finish(self) {
         let mut resources = ManuallyDrop::into_inner(self.0);
+        // Unused payload storage leaves before its original charged record.
+        drop(resources.entry.take());
         if let Some(authority) = resources.authority.take() {
             authority.finish();
         }
@@ -289,8 +306,10 @@ pub(super) fn submit_timer(
     result
 }
 
+mod metadata_tests;
 mod tests;
 
 pub(super) fn test_preparation() {
     tests::run();
+    metadata_tests::run();
 }

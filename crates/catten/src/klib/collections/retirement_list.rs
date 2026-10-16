@@ -219,6 +219,11 @@ impl<K: Ord + Copy, V> AdmittedMap<K, V> {
         self.0.iter().map(|(k, v)| (k, v))
     }
 
+    /// Mutate payloads while preserving immutable keys and sorted node order.
+    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut V)> {
+        self.0.iter_mut().map(|(k, v)| (&*k, v))
+    }
+
     pub(crate) fn values(&self) -> impl Iterator<Item = &V> {
         self.0.iter().map(|(_, v)| v)
     }

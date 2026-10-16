@@ -235,6 +235,13 @@ fn admitted_map_keeps_detached_node_identity_without_allocator_work() {
             assert_eq!(map.values().copied().sum::<usize>(), 60);
             *map.get_mut(&2).unwrap() += 1;
             assert_eq!(map[&2], 21);
+            let mut visited = [0; 3];
+            for (i, (key, value)) in map.iter_mut().enumerate() {
+                visited[i] = *key;
+                *value += 100;
+            }
+            assert_eq!(visited, [1, 2, 3]);
+            assert_eq!(map.values().copied().sum::<usize>(), 361);
             assert!(!map.contains_key(&4));
             assert!(map.take(&4).is_none());
             detached = map.take(&2);
@@ -243,7 +250,7 @@ fn admitted_map_keeps_detached_node_identity_without_allocator_work() {
         detached.unwrap()
     };
     assert_eq!(DEALLOCATIONS.with(Cell::get), 0);
-    assert_eq!(detached.value(), &(2, 21));
+    assert_eq!(detached.value(), &(2, 121));
     detached.release();
     for key in [1, 3] {
         map.take(&key).unwrap().release();
@@ -273,6 +280,25 @@ fn explicit_payload_disposal_precedes_node_deallocation() {
             assert_eq!(value.0, 7);
             drop(value);
         })
+    });
+    assert_eq!(drops.load(Ordering::Relaxed), 1);
+    assert_eq!(DEALLOCATIONS.with(Cell::get), 1);
+}
+
+#[test]
+fn retained_payload_can_outlive_its_node_without_allocator_work_in_handoff() {
+    let drops = Arc::new(AtomicUsize::new(0));
+    let node = PreparedEntry::try_new().unwrap().publish(Tracked(7, drops.clone()));
+    let mut retained = None;
+    DEALLOCATIONS.with(|n| n.set(0));
+    without_allocation(|| {
+        node.release_with(|value| {
+            assert_eq!(DEALLOCATIONS.with(Cell::get), 0);
+            retained = Some(value);
+        });
+        assert_eq!(DEALLOCATIONS.with(Cell::get), 1);
+        assert_eq!(drops.load(Ordering::Relaxed), 0);
+        drop(retained.take());
     });
     assert_eq!(drops.load(Ordering::Relaxed), 1);
     assert_eq!(DEALLOCATIONS.with(Cell::get), 1);

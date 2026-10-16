@@ -284,7 +284,7 @@ and CQ validation. Terminal removal transfers its owning node to the direct
 receipt or backlog. Explicit namespace close drains all remaining nodes after
 local unlock. Namespace, detached-preparation and terminal-receipt abandonment
 retain their complete fields, accounts and sources; ordinary rejection uses an
-explicit unstarted finish. Capability/CQ/global map metadata and wider caller
+explicit unstarted finish. CQ/global map metadata and wider caller
 contexts remain open. None of these owners is a physical completion receipt or
 permission to replay accepted work.
 
@@ -297,7 +297,17 @@ until explicit post-guard disposal; abandonment retains every field.
 Capability timers capture one absolute deadline before preparation and preserve
 it through publication and enqueue. Namespace teardown can cancel a prepared
 node before insertion, retaining its event charge until actual disposal.
-Registry-map allocation, close and outer contexts remain separate work.
+Capability payload nodes now prepare in that same transaction before hidden
+authority reservation. Publication relinks them without allocation after the
+authority batch. Logical close, abort and event rollback retain detached
+payload and authority in the same node until post-registry disposal. A charged
+completion Arc survives both node releases; final strong/weak backing still
+determines record admission. Shared authority release also retains its charge
+until its node is actually freed. Namespace close drains those complete nodes;
+abandonment retains all fields. All three individual withdrawal paths remove
+the exact retained CQ row before returning its slot, including full-ring
+terminal abort. CQ/global-map metadata and wider timer/observer/caller contexts
+remain open; no physical completion or replay proof is added.
 
 \section{Completion-queue admission}
 

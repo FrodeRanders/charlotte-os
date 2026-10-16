@@ -246,9 +246,9 @@ impl PreparedNamespace {
             resources.queue.frame,
         )?;
         resources.queue.initialize(entries.cqs.get_mut(&DEFAULT_CQ).unwrap())?;
-        let previous =
+        let mut previous =
             registry.insert(resources.queue.target.asid, resources.entries.take().unwrap());
-        if let Some(previous) = &previous {
+        if let Some(previous) = &mut previous {
             revoke_namespace_authority(resources.queue.target.asid, previous);
         }
         Ok(previous)
