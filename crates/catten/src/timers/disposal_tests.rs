@@ -56,7 +56,10 @@ fn exact_removals() {
     }
     assert_eq!(waits.used(), 0);
     assert_eq!(sponsor.used(), 64, "cancellation owners retain original backing admission");
-    drop((handles, tokens));
+    for handle in handles {
+        handle.release();
+    }
+    drop(tokens);
     assert!(weak.upgrade().is_none());
     assert_eq!(sponsor.used(), 1);
     sponsor.retire();
@@ -79,11 +82,16 @@ fn purge_and_rejected_enqueue() {
     let a_token = first.event().try_register_waiter(Arc::downgrade(&observer), &waits).unwrap();
     let b_token = second.event().try_register_waiter(Arc::downgrade(&observer), &waits).unwrap();
     first.enqueue();
+    let (a_cancelled, b_cancelled);
     {
         let _queue = TIMER_QUEUES.try_get_mut().unwrap();
-        assert!(!cancel_event(a));
-        assert!(!cancel_event(b));
+        a_cancelled = cancel_event(a);
+        b_cancelled = cancel_event(b);
+        assert!(!a_cancelled.removed());
+        assert!(!b_cancelled.removed());
     }
+    assert!(!a_cancelled.finish());
+    assert!(!b_cancelled.finish());
     let retired;
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
@@ -136,7 +144,7 @@ fn expiry_and_keyed_events() {
     expired.deliver_with(|| private.complete_delivery());
     assert_eq!(hits.load(Ordering::Relaxed), 2);
     assert_eq!(sponsor.used(), 2);
-    drop(a);
+    a.release();
     assert_eq!(sponsor.used(), 1);
     let remaining;
     {
@@ -148,7 +156,7 @@ fn expiry_and_keyed_events() {
         assert_eq!(sponsor.used(), 1);
     }
     remaining.finish_with(check_disposal);
-    drop(b);
+    b.release();
     assert_eq!(sponsor.used(), 0);
     private
         .ensure_event(TimerEvent::keyed(
@@ -181,7 +189,7 @@ fn guarded_abandonment() {
         assert!(removed);
         retired = events;
     }
-    drop(handle);
+    handle.release();
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
         let _queue = TIMER_QUEUES.try_get_mut().unwrap();

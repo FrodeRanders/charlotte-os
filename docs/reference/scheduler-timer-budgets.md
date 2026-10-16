@@ -63,6 +63,25 @@ queues remove cancelled events eagerly. Remote/busy queues retain the flagged
 node and charge until owner reconciliation; cancellation never waits on a
 remote queue or re-enters a borrowed local queue.
 
+The [cancellation handback](../reports/audits/2026-10-16-timer-cancellation-handback.md)
+now retains the exact handle and any removed node/source in `CancelledTimer`.
+`cancel_event` sets the flag and performs only the queue transaction; its
+must-use result survives local and enclosing queue/registry guards. `removed()`
+observes exact queue removal; consuming `finish()` disposes complete payloads
+before releasing the handle and returns the same Boolean. Stale, busy and
+remote cases also retain their reference until finish, so a stale final handle
+cannot be implicitly freed beneath a caller's busy queue borrow.
+
+The bare handle's fallback retains its reference without flagging cancellation,
+freeing or refunding. Consuming `release()` releases only that reference after
+local guards. Scheduler unused-watchdog rejection explicitly releases handles;
+accepted cancellation and completion's existing timer-cancellation policy finish
+the new handback. Complete-handback fallback retains all remaining node/source/
+callback/reference fields and original charges. Both fallbacks are terminal
+retention, not Pending, retry custody, physical proof or replay authority.
+Raw Arc/Weak finalization, partial construction and arbitrary enclosing caller
+contexts remain separate; a named explicit finish does not remove other guards.
+
 Filtering, purging, expiry and explicit removal now return complete retirement
 owners. Keyed ensure/removal, anonymous enqueue, eager cancellation, idle
 processing and both architecture IRQ adapters release their local queue borrow
@@ -89,14 +108,14 @@ events and deadlines that become due during delivery belong to the next pass.
 The comparator is reconciled before notification and again against current
 queue state at handback. Each event rechecks its shared cancellation flag just
 before starting signal; selected queue absence does not prove completion.
-`cancel_event` still returns only actual queue removal, so false also covers
+The cancellation handback's Boolean records actual queue removal, so false also covers
 selected/unpublished work. Cancellation does not undo a signal already started.
 Fired counters describe expiry selection, not confirmed notification.
 
 Abandonment retains the complete selected/purged owner and leaves its claim
 fenced, without cleanup or recovery authority. Explicit callback delivery and
 disposal can still execute in IRQ context; unrelated outer caller/producer
-guards, raw event/partial preparation, final handles and arbitrary blocking callback
+guards, raw event/partial preparation, raw cancellation references and arbitrary blocking callback
 work remain unqualified. No scheduled disposal worker or physical/root proof
 is added. This is bounded prefix processing, not a throughput/fairness guarantee.
 
@@ -154,7 +173,7 @@ submission owners likewise consume unused nodes in their existing post-registry
 finish paths. Abandonment preserves the node, cancellation backing, source,
 callback reference and admission without allocator, refund or source work.
 This is terminal retention, not queue cancellation, Pending, recovery custody
-or replay authority. Raw event/partial-construction destruction, final handles,
+or replay authority. Raw event/partial-construction destruction, raw cancellation references,
 waiter preparation and enclosing masks/guards remain separate contexts. See the
 [unpublished ownership follow-up](../reports/audits/2026-10-16-timer-unpublished-ownership.md).
 
@@ -234,6 +253,15 @@ exercise noncancellable sleep-node disposal beneath an existing caller mask.
 Guarded completed-owner abandonment retains one event charge, its callback
 reference and source allocation until shutdown; independent waiter cancellation
 releases only its entry. All ordinary paths restore their baseline separately.
+
+Cancellation controls retain 64 complete removals beneath a held heap, then
+verify post-queue node/source and final-reference disposal. A stale final handle
+survives simultaneous heap and queue holds until explicit handback finish.
+A synthetic remote-owner branch remains flag-only. Guarded bare-handle
+abandonment does not set the flag and its event still fires; guarded successful
+cancellation handback retains its complete removed node/source and reference.
+The two new negative controls retain two original event charges and one empty
+source allocation until shutdown, with no persistent waiter entries.
 
 These counts bound retained event/node/cancellation backing quantities, not
 the entire kernel heap or allocator overhead. Queue diagnostics count actual

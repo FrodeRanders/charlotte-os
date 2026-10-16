@@ -70,12 +70,14 @@ fn ordered_reentrant_prefix() {
                 assert!(!log.lock().contains(&10002), "nested drain extended the active prefix");
             }
             if i == 32 {
+                let selected = selected_target.lock().take().unwrap();
                 assert!(
-                    !cancel_event(selected_target.lock().take().unwrap()),
+                    !cancel_event(selected).finish(),
                     "selected state was fabricated as a queued removal"
                 );
+                let queued = queued_cancel.lock().take().unwrap();
                 assert!(
-                    cancel_event(queued_cancel.lock().take().unwrap()),
+                    cancel_event(queued).finish(),
                     "reentrant cancellation failed to remove queued future event"
                 );
             }
@@ -131,7 +133,11 @@ fn ordered_reentrant_prefix() {
     process_local_events();
     assert_eq!(order.lock().last(), Some(&10002));
     assert_eq!(order.lock().len(), expected.len() + 1);
-    drop((handles, fresh_handle, tokens));
+    for handle in handles {
+        handle.release();
+    }
+    fresh_handle.release();
+    drop(tokens);
     assert_eq!(sponsor.used(), 0);
     drop(mask);
 }
@@ -195,7 +201,8 @@ fn observer_destruction() {
         assert!(holders.iter().all(|holder| holder.lock().is_none()));
         assert_eq!(waits.used(), 0);
         assert_eq!(sponsor.used(), 1);
-        drop((token, handle));
+        drop(token);
+        handle.release();
         assert_eq!(sponsor.used(), 0);
         drop(publication);
         assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
@@ -247,7 +254,9 @@ fn quantum_tie_order() {
     pending.deliver_with(|| private.complete_delivery());
     assert_eq!(&*order.lock(), &[99, 10, 11, 12]);
     assert!(!private.delivering);
-    drop(handles);
+    for handle in handles {
+        handle.release();
+    }
     assert_eq!(sponsor.used(), 0);
     process_local_events();
     drop(mask);
@@ -268,7 +277,8 @@ fn guarded_abandonment() {
     private.add_prepared(due.into_node()).finish();
     private.add_prepared(cancelled.into_node()).finish();
     b.state.cancelled.store(true, Ordering::Release);
-    drop((a, b));
+    a.release();
+    b.release();
     {
         let _heap = PRIMARY_ALLOCATOR.lock();
         let _queue = TIMER_QUEUES.try_get_mut().unwrap();

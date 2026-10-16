@@ -337,7 +337,7 @@ struct TimerCancellation(Option<crate::timers::TimerEventCancelHandle>);
 impl Drop for TimerCancellation {
     fn drop(&mut self) {
         if let Some(handle) = self.0.take() {
-            let _ = crate::timers::cancel_event(handle);
+            let _ = crate::timers::cancel_event(handle).finish();
         }
     }
 }

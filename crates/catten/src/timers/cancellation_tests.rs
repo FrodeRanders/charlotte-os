@@ -41,10 +41,10 @@ fn exact_live_removal() {
         a_handle.state.owner_lp.load(Ordering::Acquire),
         b_handle.state.owner_lp.load(Ordering::Acquire)
     );
-    assert!(cancel_event(a_handle));
+    assert!(cancel_event(a_handle).finish());
     assert_eq!((first.used(), second.used()), (0, 1));
     assert!(!b_handle.state.cancelled.load(Ordering::Acquire));
-    assert!(cancel_event(b_handle));
+    assert!(cancel_event(b_handle).finish());
     assert_eq!((first.used(), second.used()), (0, 0));
 }
 
@@ -61,20 +61,23 @@ fn stale_unpublished_and_weak_retention() {
         let (fresh, handle) = prepare(&successor, Timestamp::MAX);
         assert!(!Arc::ptr_eq(&stale.state, &handle.state));
         fresh.enqueue();
-        assert!(!cancel_event(alias(&stale)), "unpublished predecessor removed a successor");
+        assert!(
+            !cancel_event(alias(&stale)).finish(),
+            "unpublished predecessor removed a successor"
+        );
         assert_eq!((predecessor.used(), successor.used()), (1, 1));
         assert!(!handle.state.cancelled.load(Ordering::Acquire));
-        assert!(cancel_event(handle));
+        assert!(cancel_event(handle).finish());
         assert_eq!((predecessor.used(), successor.used()), (1, 0));
     }
-    drop(stale);
+    stale.release();
     assert!(weak.upgrade().is_none());
     assert_eq!(predecessor.used(), 1, "weak-only backing must keep its original charge");
     let (fresh, handle) = prepare(&successor, Timestamp::MAX);
     fresh.enqueue();
     drop(weak);
     assert_eq!((predecessor.used(), successor.used()), (0, 1));
-    assert!(cancel_event(handle));
+    assert!(cancel_event(handle).finish());
     assert_eq!(successor.used(), 0);
 }
 
@@ -99,15 +102,15 @@ fn stale_fired_preserves_notification() {
         // this expired successor cannot fire before the exact-removal check.
         let _mask = LocalInterruptMask::new();
         fresh.enqueue();
-        assert!(!cancel_event(alias(&stale)), "fired predecessor removed a successor");
+        assert!(!cancel_event(alias(&stale)).finish(), "fired predecessor removed a successor");
         assert_eq!(sponsor.used(), 2);
         assert!(!handle.state.cancelled.load(Ordering::Acquire));
     }
     process_local_events();
     assert_eq!(hits.load(Ordering::Relaxed), 2, "successor notification was lost");
-    assert!(!cancel_event(handle));
+    assert!(!cancel_event(handle).finish());
     assert_eq!(sponsor.used(), 1);
-    assert!(!cancel_event(stale));
+    assert!(!cancel_event(stale).finish());
     assert_eq!(sponsor.used(), 0);
 }
 
@@ -122,13 +125,17 @@ fn busy_cancellation_removes_only_one() {
     {
         let _mask = LocalInterruptMask::new();
         let queue = TIMER_QUEUES.try_get_mut().unwrap();
-        assert!(!cancel_event(a_handle));
-        assert!(!cancel_event(b_handle));
+        let a_cancelled = cancel_event(a_handle);
+        let b_cancelled = cancel_event(b_handle);
+        assert!(!a_cancelled.removed());
+        assert!(!b_cancelled.removed());
         assert_eq!((first.used(), second.used()), (1, 1));
         drop(queue);
+        assert!(!a_cancelled.finish());
+        assert!(!b_cancelled.finish());
         // Both flags/LPs/deadlines match. Eager removal must consume only a,
         // leaving b's actual node charged until owner reconciliation.
-        assert!(cancel_event(a_retry));
+        assert!(cancel_event(a_retry).finish());
         assert_eq!((first.used(), second.used()), (0, 1));
     }
     process_local_events();

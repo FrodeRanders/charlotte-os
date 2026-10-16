@@ -84,7 +84,7 @@ pub(crate) fn test_admission() {
     assert!(PreparedEvent::new_with(event, |_| Err(())).is_err());
     assert_eq!(sponsor.used(), 1, "rejected node leaves live cancellation backing charged");
     assert_eq!(get_int_state(), entry_irq);
-    drop(handle);
+    handle.release();
     assert_eq!(sponsor.used(), 0);
     let (event, handle) =
         TimerEvent::charged(ExtDuration::from_millis(60_000), sponsor.reserve().unwrap()).unwrap();
@@ -94,7 +94,7 @@ pub(crate) fn test_admission() {
     prepared.cancel_unpublished();
     assert_eq!(sponsor.used(), 1, "retained handle outlives discarded node");
     assert_eq!(get_int_state(), entry_irq);
-    drop(handle);
+    handle.release();
     assert_eq!(sponsor.used(), 0);
 
     test_retained_cancellation_admission();
@@ -157,6 +157,7 @@ pub(crate) fn test_admission() {
     super::disposal_tests::run();
     super::delivery::test_delivery();
     super::preparation_tests::run();
+    super::cancellation_disposal::test_disposal();
     crate::logln!(
         "[timer events] SUCCESS: scheduler/domain/node admission, shared reserve, prepared-node \
          rollback, sorted/iterative reclamation, inline quantum, retained cancellation backing \
@@ -181,7 +182,7 @@ fn test_retained_cancellation_admission() {
     events.pop_front().unwrap().finish();
     assert_eq!(domain.used(), 1);
     assert!(budget::reserve(&domain, false).is_err());
-    drop(handle);
+    handle.release();
     assert!(weak.upgrade().is_none());
     assert_eq!(domain.used(), 1);
     assert!(budget::reserve(&domain, false).is_err());
@@ -196,7 +197,7 @@ fn test_retained_cancellation_admission() {
     let sponsor = SchedulerSponsor::new(false);
     let (event, handle) =
         TimerEvent::charged(ExtDuration::from_millis(60_000), sponsor.reserve().unwrap()).unwrap();
-    drop(handle);
+    handle.release();
     assert_eq!(sponsor.used(), 1);
     assert!(PreparedEvent::new_with(event, |_| Err(())).is_err());
     assert_eq!(sponsor.used(), 0);
@@ -206,7 +207,8 @@ fn test_retained_cancellation_admission() {
     let (event, handle) =
         TimerEvent::charged(ExtDuration::from_millis(60_000), old.reserve().unwrap()).unwrap();
     let stale = Arc::downgrade(&handle.state);
-    drop((event, handle));
+    drop(event);
+    handle.release();
     crate::memory::budget::retire(original);
     assert!(old.reserve().is_err());
     crate::memory::close_user_address_space_handle(original).unwrap();
@@ -302,9 +304,11 @@ pub(crate) fn test_scheduled_cleanup() {
     {
         let _mask = LocalInterruptMask::new();
         let queue = super::TIMER_QUEUES.try_get_mut().unwrap();
-        assert!(!super::cancel_event(handle));
+        let cancelled = super::cancel_event(handle);
+        assert!(!cancelled.removed());
         assert_eq!(sponsor.used(), 1);
         drop(queue);
+        assert!(!cancelled.finish());
     }
     super::process_local_events();
     assert_eq!(sponsor.used(), 0);
@@ -317,11 +321,11 @@ pub(crate) fn test_scheduled_cleanup() {
     handle.state.owner_lp.store(lp.wrapping_add(1), Ordering::Release);
     prepared.enqueue();
     assert_eq!(handle.state.owner_lp.load(Ordering::Acquire), lp);
-    assert!(super::cancel_event(handle));
+    assert!(super::cancel_event(handle).finish());
     assert_eq!(sponsor.used(), 0);
     let (prepared, handle) =
         super::prepare_watchdog(ExtDuration::from_millis(60_000), &sponsor).unwrap();
-    assert!(!super::cancel_event(handle)); // Not yet published.
+    assert!(!super::cancel_event(handle).finish()); // Not yet published.
     assert_eq!(sponsor.used(), 1);
     prepared.enqueue(); // Discards the cancelled prepared node, without a wake.
     assert_eq!(sponsor.used(), 0);

@@ -293,3 +293,13 @@ error-arm ordering bug: a match-scrutinee scheduler read guard survived local
 mask release and unused disposal. Binding registration before matching releases
 that guard first. Both panic samples and the correction are preserved in the
 linked batch report; this does not attribute earlier historical incidents.
+
+
+The [timer cancellation handback batch](2026-10-16-timer-cancellation-handback.md)
+extends complete ownership through final handle release. Cancellation returns
+its exact handle and removed node/source together; busy-queue callers retain
+that owner past their outer borrow, then finish explicitly. Bare-handle and
+handback abandonment retain original admission without fabricated cancellation.
+Raw cancellation references, partial construction, completion containing
+destructors and broader waiter/IRQ contexts remain separate work. Finding
+counts and historical failure causes are unchanged.

@@ -32,7 +32,7 @@ fn unused_nodes() {
     }
     let weak = Arc::downgrade(&handles[0].state);
     // Flag cancellation before publication is not a terminal queue result.
-    assert!(!cancel_event(handles.pop().unwrap()));
+    assert!(!cancel_event(handles.pop().unwrap()).finish());
     assert_eq!(sponsor.used(), 64);
     assert_eq!(waits.used(), 64);
     for node in nodes {
@@ -42,7 +42,10 @@ fn unused_nodes() {
     assert_eq!(waits.used(), 0);
     assert_eq!(sponsor.used(), 63);
     assert_eq!(Arc::weak_count(&observer), 0);
-    drop((tokens, handles));
+    drop(tokens);
+    for handle in handles {
+        handle.release();
+    }
     assert!(weak.upgrade().is_none());
     assert_eq!(sponsor.used(), 1, "weak-only original cancellation backing stays charged");
     sponsor.retire();
@@ -75,7 +78,7 @@ fn guarded_abandonment() {
     node.event().register_observer(Arc::downgrade(&observer));
     let token = node.event().try_register_waiter(Arc::downgrade(&observer), &waits).unwrap();
     let identity = Arc::downgrade(&handle.state);
-    drop(handle);
+    handle.release();
     let mask = LocalInterruptMask::new();
     {
         let _heap = PRIMARY_ALLOCATOR.lock();

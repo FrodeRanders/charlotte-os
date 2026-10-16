@@ -12,7 +12,9 @@
 //! and prevent missed deadlines after timer transitions.
 
 pub(crate) mod budget;
+mod cancellation_disposal;
 mod cancellation_tests;
+pub(crate) use cancellation_disposal::CancelledTimer;
 mod delivery;
 mod disposal_tests;
 use delivery::PendingDelivery;
@@ -120,8 +122,18 @@ pub static TIMER_DIAGNOSTICS: [TimerDiagnostic; MAX_DIAGNOSTIC_LPS] =
 /// The shared flag prevents notification even if a future scheduler change
 /// resumes the waiter on a different LP; the owner removes the event eagerly
 /// whenever cancellation happens on its original LP.
+/// Abandonment retains this exact reference without flagging, cleanup or refund.
+#[must_use = "cancel into an owned handback, or explicitly release this reference"]
 pub(crate) struct TimerEventCancelHandle {
-    state: CancellationRef,
+    state: ManuallyDrop<CancellationRef>,
+}
+
+impl TimerEventCancelHandle {
+    /// Release only this reference after local guards leave. This does not
+    /// cancel a queued/selected event or prove that its producer completed.
+    pub(crate) fn release(self) {
+        drop(ManuallyDrop::into_inner(self.state));
+    }
 }
 
 // One event reservation covers its node and cancellation backing. Clones used
@@ -213,20 +225,30 @@ pub(crate) fn prepare_watchdog(
     sponsor: &budget::SchedulerSponsor,
 ) -> Result<(PreparedEvent, TimerEventCancelHandle), ()> {
     let (event, handle) = TimerEvent::charged(duration, sponsor.reserve()?)?;
-    Ok((PreparedEvent::new(event)?, handle))
+    match PreparedEvent::new(event) {
+        Ok(event) => Ok((event, handle)),
+        Err(error) => {
+            handle.release();
+            Err(error)
+        }
+    }
 }
 
 /// Cancel a previously enqueued cancellable event.
 ///
-/// Returns only whether this call removed the owning queue's exact entry.
+/// The returned owner retains the exact handle and any detached payloads until
+/// explicit finish after both local and enclosing queue/registry guards leave.
+/// Its Boolean describes only removal of the owning queue's exact entry.
 /// False also covers unpublished/selected events, a busy queue, remote callers
 /// and already-fired events. The shared flag suppresses notification whose
 /// signal check has not started, including an event in a captured due prefix.
 /// A false result is not completion, quiescence or permission to replay work.
-pub(crate) fn cancel_event(handle: TimerEventCancelHandle) -> bool {
+pub(crate) fn cancel_event(handle: TimerEventCancelHandle) -> CancelledTimer {
+    let mut cancelled = CancelledTimer::new(handle);
+    let handle = cancelled.handle();
     handle.state.cancelled.store(true, Ordering::Release);
     if crate::cpu::isa::lp::ops::get_lp_id() != handle.state.owner_lp.load(Ordering::Acquire) {
-        return false;
+        return cancelled;
     }
 
     let interrupts_were_enabled = crate::cpu::isa::lp::ops::get_int_state();
@@ -238,11 +260,11 @@ pub(crate) fn cancel_event(handle: TimerEventCancelHandle) -> bool {
         Ok(mut queue) => queue.remove_cancellable_event(&handle.state),
         Err(_) => (false, RetiredEvents::default()),
     };
-    retired.finish();
+    cancelled.record(removed, retired);
     if interrupts_were_enabled {
         unmask_interrupts!();
     }
-    removed
+    cancelled
 }
 
 /// Reconcile the comparator and deliver one captured due prefix on this LP.
@@ -345,7 +367,7 @@ impl TimerEvent {
             })
             .map_err(|_| ())?;
         let handle = TimerEventCancelHandle {
-            state: state.clone(),
+            state: ManuallyDrop::new(state.clone()),
         };
         let event = Self {
             deadline: deadline(),

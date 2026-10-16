@@ -918,3 +918,15 @@ error-arm ordering bug: a match-scrutinee scheduler read guard survived local
 mask release and unused disposal. Binding registration before matching releases
 that guard first. Both panic samples and the correction are preserved in the
 linked batch report; this does not attribute earlier historical incidents.
+
+
+The [timer cancellation handback follow-up](../reports/audits/2026-10-16-timer-cancellation-handback.md)
+continues R7-1/2 and C16/G1/G4/G7. The exact cancellation handle and any detached
+node/source remain in one complete result until explicit finish after local and
+enclosing queue/registry guards. Bare handles use explicit reference-only
+release; their fallback retains without flagging. Handback fallback retains all
+fields and original charges. Stale busy-queue final-reference and 64 heap-held
+removal controls distinguish handback from actual release. Raw Arc/Weak and
+partial construction, completion containing destructors, outer IRQ/guard and
+aggregate pressure remain open. No finding disposition, physical proof,
+replay/custody or historical attribution changes.

@@ -533,6 +533,7 @@ pub(crate) fn try_block_until_with_constraint(
             generation: expected_generation,
         }) else {
             timer_event.cancel_unpublished();
+            timeout_handle.release();
             return condition()
                 .then_some(true)
                 .ok_or(system_scheduler::Error::WaitRegistrationFailed);
@@ -545,6 +546,7 @@ pub(crate) fn try_block_until_with_constraint(
         let remaining = deadline.saturating_sub(monotonic_millis());
         if remaining == 0 {
             timer_event.cancel_unpublished();
+            timeout_handle.release();
             return Ok(condition());
         }
         // Flush precursor delivery before Blocked publication; callbacks may
@@ -554,6 +556,7 @@ pub(crate) fn try_block_until_with_constraint(
         if remaining == 0 {
             drop(setup);
             timer_event.cancel_unpublished();
+            timeout_handle.release();
             return Ok(condition());
         }
         timer_event.event_mut().reset_after(ExtDuration::from_millis(remaining as u128));
@@ -567,6 +570,7 @@ pub(crate) fn try_block_until_with_constraint(
             Err(_) => {
                 drop(setup);
                 timer_event.cancel_unpublished();
+                timeout_handle.release();
                 return condition()
                     .then_some(true)
                     .ok_or(system_scheduler::Error::WaitRegistrationFailed);
@@ -590,7 +594,7 @@ pub(crate) fn try_block_until_with_constraint(
 
         // Observable notification may have won. Do not retain the unused
         // watchdog until the original absolute deadline.
-        let _ = crate::timers::cancel_event(timeout_handle);
+        let _ = crate::timers::cancel_event(timeout_handle).finish();
     }
 }
 

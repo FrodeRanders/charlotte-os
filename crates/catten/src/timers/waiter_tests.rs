@@ -95,7 +95,8 @@ pub(crate) fn test_admission() {
     drop(cancelled);
     assert_eq!(sponsor.used(), 0);
     assert_eq!(event_sponsor.used(), 1);
-    drop((token, handle));
+    drop(token);
+    handle.release();
     assert_eq!(event_sponsor.used(), 0);
 
     let discarded = TimerEvent::from(ExtDuration::from_millis(60_000));

@@ -289,7 +289,7 @@ permission. Fired diagnostics describe expiry selection, not notification proof.
 Abandonment retains every field and leaves the claim fenced. The delivery owner
 cannot be sent/shared across LPs; runtime checks also enforce LP and IRQ policy.
 No allocation, extra reservation or new registry is introduced. IRQ execution,
-unrelated outer guards, raw events/partial preparations, final handles and arbitrary
+unrelated outer guards, raw events/partial preparations, raw cancellation references and arbitrary
 blocking callbacks remain separate qualification work.
 
 Completed unpublished timer nodes have the same inert ownership policy:
@@ -304,6 +304,18 @@ outlive explicit node disposal. Raw event/partial-construction destruction,
 waiter preparation and broader IRQ/outer contexts remain separate work; no
 queue cancellation, physical proof, recovery custody or replay authority is
 created by private-node disposal.
+
+Cancellation likewise returns one complete must-use handback containing the
+exact handle and any removed node/source. Queue mutation and comparator updates
+finish before return; callers retain that owner through enclosing queue/registry
+guards and explicitly finish afterward. Finish disposes payloads before releasing
+the handle. Its Boolean records only queue removal, including false for selected,
+unpublished, stale, busy or remote cases. The bare handle has inert abandonment
+and explicit reference-only release; abandonment does not fabricate cancellation.
+Complete-handback abandonment retains every field and original charge. No new
+allocation, admission, registry, physical proof or replay authority is added.
+Raw Arc/Weak finalization and wider caller/destructor contexts remain separate
+qualification work.
 
 Backlog-to-ring publication retains delivered detached-record charges in a
 fixed two-class owning batch until the completion registry is unlocked.
