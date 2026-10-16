@@ -44,10 +44,10 @@ impl<C> PreparingEntry<C> {
                 next: None,
             },
         );
-        PreparedRegistration(Some(Entry {
+        PreparedRegistration(ManuallyDrop::new(Some(Entry {
             node,
             _charge: self.0.charge.take().unwrap(),
-        }))
+        })))
     }
 
     fn cancel(self) {

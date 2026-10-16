@@ -105,7 +105,9 @@ impl PreparedWaitRegistration {
         before_dispose();
         drop(self.0.observer.take());
         before_dispose();
-        drop(self.0.entry.take());
+        if let Some(entry) = self.0.entry.take() {
+            entry.finish();
+        }
         before_dispose();
         drop(self.0.charge.take());
         before_dispose();

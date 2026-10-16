@@ -88,9 +88,16 @@ ordinary preparation and publication outcomes explicitly finish after local
 guards. Finish releases transient entry/admission before source, retaining the
 sponsor last. All three phase fallbacks retain complete fields, including original
 charges after source close and sponsor retirement. This qualifies the containing
-preparation, while generic completed entries, published token/source destruction,
+preparation, while active linked entries, published token/source destruction,
 initial source acquisition and wider contexts remain separate. See the
 [waiter-owner follow-up](../reports/audits/2026-10-16-waiter-preparation-ownership.md).
+
+The shared completed entry preparation now also retains backing, weak observer
+and original charge on abandonment. Direct registration and containing-owner
+finish consume its explicit finish after local guards, including ready or
+rejected unused preparations and emptied published preparations. Linked entry,
+token/source/batch destruction and wider contexts remain separate. See the
+[completed-entry follow-up](../reports/audits/2026-10-16-completed-observer-entry-ownership.md).
 
 Sources detach notification batches without allocating, then notify outside
 source/list locks. Completion and pending-call lists close permanently; CQ and

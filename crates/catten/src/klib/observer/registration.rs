@@ -8,7 +8,10 @@ use alloc::{
         Weak,
     },
 };
-use core::mem::MaybeUninit;
+use core::mem::{
+    ManuallyDrop,
+    MaybeUninit,
+};
 
 use super::{
     Observer,
@@ -58,10 +61,11 @@ struct EntryNode<C> {
 }
 
 /// Admitted entry storage, prepared before entering a source subsystem.
-/// Keep unused preparation outside that subsystem's guard so rejection frees
-/// its allocation, weak reference and charge only after serialization leaves.
+/// Abandonment retains the complete entry. Finish ordinary unused preparation
+/// outside that subsystem's guard, after serialization leaves.
+#[must_use]
 #[derive(Debug)]
-pub(crate) struct PreparedRegistration<C>(Option<Entry<C>>);
+pub(crate) struct PreparedRegistration<C>(ManuallyDrop<Option<Entry<C>>>);
 
 impl<C> PreparedRegistration<C> {
     pub(crate) fn try_new(
@@ -79,6 +83,17 @@ impl<C> PreparedRegistration<C> {
         allocate: impl FnOnce() -> Result<Box<MaybeUninit<EntryNode<C>>>, RegistrationError>,
     ) -> Result<Self, RegistrationError> {
         entry_preparation::prepare(observer, charge, allocate)
+    }
+
+    pub(crate) fn finish(self) {
+        self.finish_with(|| {});
+    }
+
+    fn finish_with(mut self, before_dispose: impl FnOnce()) {
+        before_dispose();
+        // Entry keeps its original charge outside and after node backing;
+        // explicit disposal preserves the existing weak/node-before-charge order.
+        drop(self.0.take());
     }
 }
 
@@ -151,10 +166,12 @@ impl<C> ListRef<C> {
         charge: C,
         allocate: impl FnOnce() -> Result<Box<MaybeUninit<EntryNode<C>>>, RegistrationError>,
     ) -> Result<Registration<C>, RegistrationError> {
-        // Allocate before taking the list lock. Rejection drops the staged
-        // entry/charge after the guard; no uncharged spare capacity remains.
+        // Allocate before taking the list lock. Explicit unused disposal follows
+        // publication's local guard, including closed/full rejection.
         let mut preparation = PreparedRegistration::try_new_with(observer, charge, allocate)?;
-        self.register_prepared(&mut preparation)
+        let result = self.register_prepared(&mut preparation);
+        preparation.finish();
+        result
     }
 
     /// Allocation-free publication. Failure leaves the complete preparation
@@ -260,6 +277,7 @@ pub(crate) fn test_entry_allocation_rollback() {
     list_tests::test_list_backing_admission();
     entry_preparation::test_preparation();
     super::prepared_wait::test_preparation();
+    completed_preparation::run();
 }
 
 impl<C> Drop for ObserverList<C> {
@@ -334,3 +352,6 @@ mod entry_preparation;
 
 #[path = "registration/list_tests.rs"]
 mod list_tests;
+
+#[path = "registration/completed_preparation.rs"]
+mod completed_preparation;

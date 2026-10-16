@@ -226,7 +226,9 @@ impl Preparing {
         before_dispose();
         drop(self.0.candidate.take());
         before_dispose();
-        drop(self.0.entry.take());
+        if let Some(entry) = self.0.entry.take() {
+            entry.finish();
+        }
         before_dispose();
         drop(self.0.charge.take());
         // Keep the exact record/account/source capture through all transient

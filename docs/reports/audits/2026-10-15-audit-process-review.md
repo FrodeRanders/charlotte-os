@@ -399,3 +399,12 @@ fallbacks retain complete fields through source closure and sponsor retirement.
 Initial source acquisition, generic completed entry, published token/source/batch
 destruction, aggregate admission and wider contexts remain separate. Finding
 dispositions and historical failure attribution are unchanged.
+
+The [completed observer-entry batch](2026-10-16-completed-observer-entry-ownership.md)
+continues C16/C18/G1/G4/G7 and R7-1/2. Shared completed preparation now
+retains its entry on abandonment. Direct registration and callback/exit-watch/
+waiter containing owners explicitly consume child finish after local guards;
+publication still transfers the same entry once. Ordinary private disposal keeps
+weak/node-before-charge order. Active linked-entry/token/source/batch destruction,
+aggregate admission and wider contexts remain separate. Finding dispositions
+and historical failure attribution are unchanged.

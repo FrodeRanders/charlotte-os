@@ -53,10 +53,11 @@ fn completed_entries() {
         assert_eq!(account.used(), 64);
         assert_eq!(Arc::weak_count(&observer), 64);
     }
-    // Completed unused preparation retains its existing active Drop policy.
-    // This explicit fixture disposal is outside both local guards.
+    // Completed unused preparation requires consuming post-guard finish too.
     context(&list);
-    completed.truncate(32);
+    for entry in completed.drain(32..) {
+        entry.finish();
+    }
     assert_eq!(account.used(), 32);
     assert_eq!(Arc::weak_count(&observer), 32);
     {
@@ -68,7 +69,10 @@ fn completed_entries() {
     }
     assert_eq!(list.registered(), 32);
     context(&list);
-    drop((completed, tokens));
+    for entry in completed {
+        entry.finish();
+    }
+    drop(tokens);
     assert_eq!(list.registered(), 0);
     assert_eq!(account.used(), 0);
     assert_eq!(Arc::weak_count(&observer), 0);

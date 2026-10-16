@@ -377,8 +377,8 @@ no payload; rejection cancels explicitly after callback return, freeing empty
 backing and weak reference before admission. Private initialization consumes
 that same storage once without allocation or disposal. Both partial phase
 fallbacks retain every field without cleanup. This is no registered waiter,
-readiness, physical proof or retry owner. Completed entry/token/source disposal,
-callback-containing owners and broader guards/IRQ contexts remain separate.
+readiness, physical proof or retry owner. Active linked-entry/token/source disposal,
+other containing owners and broader guards/IRQ contexts remain separate.
 
 Completion callback preparation now captures its exact record/account/source
 and weak observer before watch/list/entry admission in one inert containing
@@ -490,7 +490,7 @@ already-admitted watch charge in one inert owner before list/entry allocation.
 The scheduler preparation hook borrows that owner. Ordinary allocation and
 publication outcomes finish explicitly after local guards, with candidate source
 release last; all four phase fallbacks retain every field. Published token/source
-and generic completed-entry destruction, initial capture/admission and wider
+and active linked-entry destruction, initial capture/admission and wider
 caller contexts remain separate. A retained list grants no target-thread/root
 lease, physical quiescence proof or recovery authority.
 
@@ -588,12 +588,20 @@ pin or cleanup receipt.
 
 \section{Owned completion and CQ waiters}
 
+Completed private observer-entry preparation retains its complete entry on
+abandonment. Direct registration and callback/exit-watch/waiter containing
+owners consume explicit child finish after local guards. Publication transfers
+the same entry once, so finishing an emptied preparation cannot refund it.
+Ordinary private disposal keeps weak/node-before-charge order. Active linked
+entry, token/source/batch destruction and broader contexts remain separate;
+this is terminal retention, not physical proof or recovery custody.
+
 Shared waiter preparation captures its exact source, original sponsor and weak
 observer before admission in one inert owner. Entry factories borrow it, and
 ordinary preparation/publication outcomes finish explicitly after local guards.
 Transient entry/admission disposal precedes source release, with sponsor last.
 All three phase fallbacks retain complete fields through source closure and
-sponsor retirement. Published token/source/batch destruction, generic completed
+sponsor retirement. Published token/source/batch destruction, active linked
 entries, initial source acquisition and wider caller contexts remain separate.
 These metadata owners supply no thread/root lease or physical quiescence proof.
 

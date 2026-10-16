@@ -263,8 +263,8 @@ now keeps original weak references and waiter/watch charges outside fallible
 empty Box allocation. Rejection cancels explicitly after callback return;
 initialization consumes private storage once, and partial phase fallback retains
 every field. Completion callback preparation and waiter registration share this
-helper; their containing owners, completed entry/source destruction and wider
-contexts remain separate qualification work.
+helper; active linked-entry/source destruction and wider containing contexts
+remain separate qualification work.
 
 Completion callback preparation now captures the exact record/account/source
 and weak observer before watch/list admission. One inert owner retains partial
@@ -276,6 +276,13 @@ notification runs only after unused preparation finishes. All four phase
 fallbacks retain complete fields, including the captured buffered record.
 Published observations, registration/source destruction and wider caller contexts
 remain separate. See the [callback-owner follow-up](../reports/audits/2026-10-16-completion-callback-ownership.md).
+
+Shared completed private entry preparation now also retains backing, weak
+observer and original admission on abandonment. Direct registration and all
+callback/exit-watch/waiter containing finishes consume explicit child finish
+after local guards. Linked-entry/token/source/batch destruction and wider
+contexts remain separate. See the
+[completed-entry follow-up](../reports/audits/2026-10-16-completed-observer-entry-ownership.md).
 
 The scoped EL0 probe fills its record capacity with owned endpoint-close
 watches, checks that timer submission is also refused while scalar IPC still

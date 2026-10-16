@@ -174,3 +174,8 @@ keeps one private borrowed entry-factory contract and replaces implicit containi
 preparation cleanup with consuming finish in direct, IPC and CQ adapters. Public
 source/registration interfaces and errors, runtime ABI, wire/storage grammars
 and numbered batches are unchanged.
+
+The [completed-entry follow-up](../reports/audits/2026-10-16-completed-observer-entry-ownership.md)
+removes implicit cleanup from the private completed preparation contract. Direct
+registration and all containing owners consume explicit finish. Public registration interfaces and errors, runtime
+ABI, wire/storage grammars and numbered batches are unchanged.

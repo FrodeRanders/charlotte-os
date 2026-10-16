@@ -62,8 +62,9 @@ until explicit post-callback cancellation. Private initialization consumes the
 same storage once without allocation, locks or disposal. Cancellation frees
 unused backing and the weak reference before original admission; abandonment
 before/after storage retains every field without cleanup. This is terminal
-retention, not a registered waiter or retry owner. Completed `PreparedRegistration`,
-registration tokens, source/batch destruction and containing caller contexts
+retention, not a registered waiter or retry owner. Completed `PreparedRegistration`
+now also uses inert abandonment and explicit finish as described below.
+Registration tokens, source/batch destruction and wider containing caller contexts
 retain their existing policies and separate qualification. See the
 [entry-construction follow-up](../reports/audits/2026-10-16-observer-entry-construction.md).
 
@@ -72,18 +73,27 @@ original weak observer, watch reservation and candidate/entry fields in one
 inert containing owner before admission. Ordinary rejection and successful/ready
 publication finish explicitly after local guards; readiness notification follows
 that disposal. Its four phase fallbacks retain complete fields. This qualifies
-that containing owner, while generic completed preparation/token/source
+that containing owner, while active linked-entry/token/source
 finalization and other caller contexts remain separate. See the
 [callback-owner follow-up](../reports/audits/2026-10-16-completion-callback-ownership.md).
 
 ## Rejection and locks
+
+Completed private `PreparedRegistration` retains its complete entry on
+abandonment too. Direct registration and callback/exit-watch/waiter containing
+owners explicitly finish unused or emptied preparations after local guards.
+Publication transfers the same entry once; finish cannot refund a published
+entry. Ordinary private disposal preserves weak/node-before-charge order.
+Active linked-entry/token/source/batch destructors and wider contexts remain
+separate. See the
+[completed-entry follow-up](../reports/audits/2026-10-16-completed-observer-entry-ownership.md).
 
 Shared waiter preparation captures its exact source, sponsor and weak observer
 before entry admission in one inert owner. Entry factories borrow it; ordinary
 outcomes explicitly finish after local guards, source before sponsor and after
 transient entry/admission disposal. All three phase fallbacks retain complete
 fields through source close and sponsor retirement. This qualifies that
-containing owner, while generic completed-entry, published token/source/batch
+containing owner, while active linked-entry and published token/source/batch
 destruction and other caller contexts remain separate. See the
 [waiter-owner follow-up](../reports/audits/2026-10-16-waiter-preparation-ownership.md).
 
@@ -92,7 +102,7 @@ original weak callback, admitted watch charge and any completed entry in one
 inert owner before list/entry allocation. Its scheduler hook borrows the owner;
 ordinary outcomes explicitly finish after local guards, releasing the candidate
 source last. Four phase fallbacks retain every field. This does not qualify
-generic completed preparation/token/source destruction or initial capture and
+active linked-entry/token/source destruction or initial capture and
 wider caller contexts. See the
 [exit-watch owner follow-up](../reports/audits/2026-10-16-thread-exit-watch-ownership.md).
 
