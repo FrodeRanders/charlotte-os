@@ -16,7 +16,7 @@ fn allocation_and_publication() {
         Some(alloc::vec![1]),
         true,
         &OPERATION_IDS,
-        Completion::new,
+        Preparing::record,
         |_, _| panic!("metadata rejection reached authority preparation"),
         || {
             let registry = COMPLETIONS.write();
@@ -39,7 +39,7 @@ fn allocation_and_publication() {
             Some(alloc::vec![i]),
             false,
             &OPERATION_IDS,
-            Completion::new,
+            Preparing::record,
             |asid, root| PreparedReservation::try_new(asid, ObjectKind::Completion, root),
             || {
                 {

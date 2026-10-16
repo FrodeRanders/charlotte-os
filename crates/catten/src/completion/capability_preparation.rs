@@ -68,6 +68,9 @@ impl Target {
 struct Preparing(ManuallyDrop<Resources>);
 struct Resources {
     target: Target,
+    buffer: Option<Vec<u8>>,
+    operation: Option<OperationId>,
+    record_charge: Option<budget::Charge>,
     completion: Option<CompletionRef>,
     entry: Option<PreparedEntry<(CompletionCap, CapabilityRecord)>>,
     watch: Option<watch_budget::Charge>,
@@ -90,7 +93,7 @@ impl Preparing {
             buffer,
             watch,
             ids,
-            Completion::new,
+            Self::record,
             |asid, root| PreparedReservation::try_new(asid, ObjectKind::Completion, root),
             PreparedEntry::try_new,
         )
@@ -101,11 +104,7 @@ impl Preparing {
         buffer: Option<Vec<u8>>,
         watch: bool,
         ids: &operation_ids::OperationIds,
-        allocate_record: impl FnOnce(
-            OperationId,
-            Option<Vec<u8>>,
-            budget::Charge,
-        ) -> Result<CompletionRef, SubmitError>,
+        allocate_record: impl FnOnce(&mut Self) -> Result<(), SubmitError>,
         allocate_authority: impl FnOnce(
             AddressSpaceId,
             Option<crate::memory::AddressSpaceHandle>,
@@ -118,33 +117,18 @@ impl Preparing {
             core::alloc::AllocError,
         >,
     ) -> Result<Self, SubmitError> {
-        let operation = ids.allocate().ok_or(SubmitError::WouldBlock)?;
-        let mut preparing = Self(ManuallyDrop::new(Resources {
-            target,
-            completion: None,
-            entry: None,
-            watch: None,
-            authority: None,
-            reservation: None,
-            event: None,
-            cancel: None,
-            published: false,
-        }));
+        let mut preparing = Self::capture(target, buffer);
         let result = (|| {
+            preparing.admit(watch, ids)?;
+            // Factories borrow this complete transaction. Rejection cannot
+            // destroy an owning buffer/charge argument inside the callback.
+            allocate_record(&mut preparing)?;
             let resources = &mut *preparing.0;
-            let target = &resources.target;
-            let charge = budget::reserve(&target.records, target.platform)
-                .map_err(|_| SubmitError::WouldBlock)?;
-            if watch {
-                resources.watch = Some(
-                    watch_budget::reserve(&target.watches, target.platform)
-                        .map_err(|_| SubmitError::WouldBlock)?,
-                );
-            }
-            resources.completion = Some(allocate_record(operation, buffer, charge)?);
+            assert!(resources.completion.is_some(), "record factory returned no record");
+            assert!(resources.buffer.is_none() && resources.record_charge.is_none());
             resources.entry = Some(allocate_node().map_err(|_| SubmitError::WouldBlock)?);
             resources.authority = Some(
-                allocate_authority(target.asid, target.root)
+                allocate_authority(resources.target.asid, resources.target.root)
                     .map_err(|_| SubmitError::WouldBlock)?,
             );
             preparing.reserve()
@@ -154,6 +138,52 @@ impl Preparing {
             return Err(error);
         }
         Ok(preparing)
+    }
+
+    fn capture(target: Target, buffer: Option<Vec<u8>>) -> Self {
+        Self(ManuallyDrop::new(Resources {
+            target,
+            buffer,
+            operation: None,
+            record_charge: None,
+            completion: None,
+            entry: None,
+            watch: None,
+            authority: None,
+            reservation: None,
+            event: None,
+            cancel: None,
+            published: false,
+        }))
+    }
+
+    fn admit(&mut self, watch: bool, ids: &operation_ids::OperationIds) -> Result<(), SubmitError> {
+        let resources = &mut *self.0;
+        assert!(resources.operation.is_none() && resources.record_charge.is_none());
+        resources.operation = Some(ids.allocate().ok_or(SubmitError::WouldBlock)?);
+        resources.record_charge = Some(
+            budget::reserve(&resources.target.records, resources.target.platform)
+                .map_err(|_| SubmitError::WouldBlock)?,
+        );
+        if watch {
+            resources.watch = Some(
+                watch_budget::reserve(&resources.target.watches, resources.target.platform)
+                    .map_err(|_| SubmitError::WouldBlock)?,
+            );
+        }
+        Ok(())
+    }
+
+    fn record(&mut self) -> Result<(), SubmitError> {
+        let resources = &mut *self.0;
+        assert!(resources.completion.is_none());
+        let operation = resources.operation.expect("record construction precedes identity");
+        let charge =
+            resources.record_charge.take().expect("record construction precedes admission");
+        // Transfer directly into the inner complete-record owner before its
+        // first fallible phase. The outer watch and target remain here.
+        resources.completion = Some(Completion::new(operation, resources.buffer.take(), charge)?);
+        Ok(())
     }
 
     fn reserve(&mut self) -> Result<(), SubmitError> {
@@ -259,6 +289,10 @@ impl Preparing {
     }
 
     fn finish(self) {
+        self.finish_with(|| {});
+    }
+
+    fn finish_with(self, mut before_early_disposal: impl FnMut()) {
         let mut resources = ManuallyDrop::into_inner(self.0);
         // Unused payload storage leaves before its original charged record.
         drop(resources.entry.take());
@@ -271,6 +305,12 @@ impl Preparing {
         if let Some(event) = resources.event.take() {
             event.cancel_unpublished();
         }
+        // Early rejection has no record owner yet. Keep its original charge
+        // until the submitted buffer and all unused metadata have gone.
+        before_early_disposal();
+        drop(resources.buffer.take());
+        before_early_disposal();
+        drop(resources.record_charge.take());
         drop(resources);
     }
 }
@@ -309,10 +349,12 @@ pub(super) fn submit_timer(
     result
 }
 
+mod initial_tests;
 mod metadata_tests;
 mod tests;
 
 pub(super) fn test_preparation() {
     tests::run();
     metadata_tests::run();
+    initial_tests::run();
 }

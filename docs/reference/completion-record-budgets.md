@@ -191,6 +191,16 @@ explicit finish disposes unused storage/reservation and payload afterward.
 Abandonment retains everything without cleanup. See the
 [capability preparation follow-up](../reports/audits/2026-10-16-capability-completion-preparation.md).
 
+The [initial admission follow-up](../reports/audits/2026-10-16-completion-initial-admission.md)
+extends that containing owner to the phase before operation-ID and record/watch
+admission. Captured target, original buffer, assigned operation and any record
+charge remain together on rejection. Record factories borrow the owner instead
+of receiving owning buffer/charge arguments; successful construction transfers
+directly into the complete-record helper. Ordinary pre-record rollback disposes
+buffer before its original reservation, and captured/record/watch phase fallback
+retains every field without cleanup. Target capture, timer/observer factories,
+published and containing destructors, and wider contexts remain separate.
+
 Detached-map metadata now uses shared `PreparedEntry`/`AdmittedMap` storage.
 Preparation allocates fallibly outside COMPLETIONS. Publication revalidates the
 captured root/accounts/capacity and exact CQ source before relinking; terminal

@@ -359,6 +359,18 @@ Success transfers the same buffer and identity into the shared Arc helper.
 Published completion destruction, outer factories and broader guard/IRQ contexts
 remain separate; no physical receipt, retry owner or registry is added.
 
+The containing capability-submission owner now captures the original buffer
+and target before operation-ID and record/watch admission too. Early watch
+rejection retains its assigned operation and original record charge with that
+buffer. Record factories borrow the complete transaction; successful transfer
+enters the complete-record helper before its first fallible phase. Ordinary
+pre-record rollback disposes buffer before reservation refund. Captured,
+record-admitted and watch-admitted abandonment retains every field and original
+account without cleanup, including across namespace replacement. Public ID
+exhaustion, hidden authority and publication revalidation remain unchanged;
+target capture, timer/observer factories and wider containing contexts remain
+separate qualification work.
+
 Backlog-to-ring publication retains delivered detached-record charges in a
 fixed two-class owning batch until the completion registry is unlocked.
 Ordinary/platform charges retain their original accounts; no disposal storage

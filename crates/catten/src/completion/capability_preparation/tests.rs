@@ -17,12 +17,12 @@ fn unlocked() {
             Some(alloc::vec![1, 2, 3]),
             true,
             &OPERATION_IDS,
-            |operation, buffer, charge| {
+            |preparing| {
                 assert!(COMPLETIONS.write()[&CLIENT].table.first_key_value().is_none());
                 if mode == 0 {
                     Err(SubmitError::WouldBlock)
                 } else {
-                    Completion::new(operation, buffer, charge)
+                    preparing.record()
                 }
             },
             |asid, root| {
@@ -106,7 +106,7 @@ fn reject_before_reservation() {
             None,
             true,
             &OPERATION_IDS,
-            Completion::new,
+            Preparing::record,
             |asid, captured| {
                 let authority =
                     PreparedReservation::try_new(asid, ObjectKind::Completion, captured)?;

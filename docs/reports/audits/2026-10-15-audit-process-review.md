@@ -343,3 +343,14 @@ preserves the same buffer/identity through shared Arc construction. Outer
 submission factories, published/containing destructors, authority rollback and
 wider IRQ/guard qualification remain separate. Finding dispositions and
 historical failure attribution are unchanged.
+
+
+The [initial completion admission batch](2026-10-16-completion-initial-admission.md)
+continues C16/C18/G1/G4/G7 and R7-1/2. The containing submission owner now
+captures its original buffer before identity/record/watch admission, retains
+early record charges on rejection and lends itself to record factories. Explicit
+pre-record rollback destroys buffer before refund; all three early phase
+fallbacks retain complete fields and original accounts. Target capture, timer/
+observer factories, published/containing destruction and wider IRQ/guard
+contexts remain separate. Finding dispositions and historical failure
+attribution are unchanged.
