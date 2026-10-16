@@ -588,6 +588,14 @@ pin or cleanup receipt.
 
 \section{Owned completion and CQ waiters}
 
+Lazy waiter-source initialization retains original sponsor, weak observer,
+candidate, first published winner and shared waiter child in one inert owner.
+Losing candidate disposal remains after the slot guard and before entry admission.
+Ordinary results finish explicitly; all six handoff-stage fallbacks retain every
+field. Published tokens retain their independent entry authority. Inner list
+construction, active source/token/batch destruction and wider caller contexts
+remain separate; metadata ownership supplies no physical proof or root lease.
+
 Completed private observer-entry preparation retains its complete entry on
 abandonment. Direct registration and callback/exit-watch/waiter containing
 owners consume explicit child finish after local guards. Publication transfers

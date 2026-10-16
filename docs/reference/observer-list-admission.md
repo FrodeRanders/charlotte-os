@@ -79,6 +79,16 @@ finalization and other caller contexts remain separate. See the
 
 ## Rejection and locks
 
+Lazy `WaiterSource` initialization now captures its original sponsor and weak
+observer before list work in one inert containing owner. Candidate and selected
+winner stay with it through first-winner publication; losing storage releases
+after the source-slot guard and before waiter admission. The shared waiter child
+then captures that winner/sponsor. Ordinary results finish explicitly, and six
+handoff-stage fallbacks retain complete fields, including emptied child metadata
+after token publication. Inner list-factory, active source/token/batch destruction
+and wider contexts remain separate. See the
+[lazy-source owner follow-up](../reports/audits/2026-10-16-lazy-waiter-source-ownership.md).
+
 Completed private `PreparedRegistration` retains its complete entry on
 abandonment too. Direct registration and callback/exit-watch/waiter containing
 owners explicitly finish unused or emptied preparations after local guards.

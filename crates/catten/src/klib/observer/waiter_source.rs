@@ -5,6 +5,8 @@
 
 use alloc::sync::Weak;
 
+use preparation::Preparing;
+
 use super::{
     Observable,
     Observer,
@@ -37,26 +39,28 @@ impl WaiterSource {
         observer: Weak<dyn Observer>,
         sponsor: &WaitSponsor,
     ) -> Result<WaitRegistration, RegistrationError> {
-        let candidate = self.prepare_list(sponsor, |platform| {
+        self.register_with(observer, sponsor, |platform| {
             ObserverList::try_new(waiter_budget::SOURCE_LIMIT, platform)
-        })?;
-        let list = self.publish_list(&candidate);
-        // Another initializer may have won. Dispose losing storage only after
-        // the slot guard leaves, before admitting this wait's entry.
-        drop(candidate);
-        sponsor.register(&list, observer)
+        })
     }
 
-    fn prepare_list(
+    fn register_with(
         &self,
+        observer: Weak<dyn Observer>,
         sponsor: &WaitSponsor,
         allocate: impl FnOnce(bool) -> Result<ListRef<waiter_budget::Charge>, RegistrationError>,
-    ) -> Result<ListRef<waiter_budget::Charge>, RegistrationError> {
-        let existing = self.list.lock().clone();
-        match existing {
-            Some(list) => Ok(list),
-            None => allocate(sponsor.list_platform()?),
-        }
+    ) -> Result<WaitRegistration, RegistrationError> {
+        let mut preparing = Preparing::capture(sponsor, observer);
+        let result = preparing.prepare_list(self, allocate).and_then(|()| {
+            preparing.select(self);
+            // Release losing storage after the slot guard, before entry
+            // admission, while retaining winner/sponsor/callback ownership.
+            preparing.release_candidate();
+            preparing.prepare_entry()?;
+            preparing.publish_entry()
+        });
+        preparing.finish();
+        result
     }
 
     fn publish_list(
@@ -107,8 +111,13 @@ impl Drop for WaiterSource {
     }
 }
 
+mod preparation;
 mod tests;
 
 pub(crate) fn test_preparation() {
     tests::run();
+}
+
+pub(crate) fn test_owner_preparation() {
+    preparation::test_preparation();
 }

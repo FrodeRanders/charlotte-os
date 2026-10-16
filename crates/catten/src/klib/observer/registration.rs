@@ -278,6 +278,7 @@ pub(crate) fn test_entry_allocation_rollback() {
     entry_preparation::test_preparation();
     super::prepared_wait::test_preparation();
     completed_preparation::run();
+    super::waiter_source::test_owner_preparation();
 }
 
 impl<C> Drop for ObserverList<C> {

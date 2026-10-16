@@ -99,6 +99,14 @@ rejected unused preparations and emptied published preparations. Linked entry,
 token/source/batch destruction and wider contexts remain separate. See the
 [completed-entry follow-up](../reports/audits/2026-10-16-completed-observer-entry-ownership.md).
 
+Lazy source registration now retains the original sponsor, weak observer,
+candidate, actual first winner and shared waiter child in one inert transaction.
+Losing candidate release remains post-slot and precedes entry admission. Ordinary
+results finish explicitly, while six handoff-stage fallbacks retain every field.
+Published token cancellation remains independent. Inner list-factory, active
+source/token/batch destruction and wider contexts remain separate; see the
+[lazy-source owner follow-up](../reports/audits/2026-10-16-lazy-waiter-source-ownership.md).
+
 Sources detach notification batches without allocating, then notify outside
 source/list locks. Completion and pending-call lists close permanently; CQ and
 endpoint-readiness lists drain and can be reused until source closure.

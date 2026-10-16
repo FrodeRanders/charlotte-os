@@ -1033,3 +1033,13 @@ publication still transfers the same entry once. Ordinary private disposal keeps
 weak/node-before-charge order. Active linked-entry/token/source/batch destruction,
 aggregate admission and wider contexts remain separate. Finding dispositions
 and historical failure attribution are unchanged.
+
+The [lazy waiter-source owner batch](../reports/audits/2026-10-16-lazy-waiter-source-ownership.md)
+continues C16/C18/G1/G4/G7 and R7-1/2. Original sponsor/weak observer,
+candidate, actual first winner and shared waiter child now form one inert
+transaction. Losing storage still releases after the slot guard and before
+entry admission; ordinary results finish explicitly. Six handoff-stage
+fallbacks retain complete fields, while published tokens retain entry authority.
+Inner list-factory, active source/token/batch destruction, aggregate admission
+and wider contexts remain separate. Finding dispositions and historical failure
+attribution are unchanged.

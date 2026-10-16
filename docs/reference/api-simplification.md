@@ -179,3 +179,9 @@ The [completed-entry follow-up](../reports/audits/2026-10-16-completed-observer-
 removes implicit cleanup from the private completed preparation contract. Direct
 registration and all containing owners consume explicit finish. Public registration interfaces and errors, runtime
 ABI, wire/storage grammars and numbered batches are unchanged.
+
+The [lazy-source owner follow-up](../reports/audits/2026-10-16-lazy-waiter-source-ownership.md)
+replaces the private owning candidate-preparation helper with a borrowed complete
+transaction. Production and fixtures share that one contract and consuming finish.
+Public waiter interfaces/errors, runtime ABI, wire/storage grammars and numbered
+batches are unchanged.
