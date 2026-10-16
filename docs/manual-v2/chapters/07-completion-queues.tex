@@ -289,7 +289,7 @@ permission. Fired diagnostics describe expiry selection, not notification proof.
 Abandonment retains every field and leaves the claim fenced. The delivery owner
 cannot be sent/shared across LPs; runtime checks also enforce LP and IRQ policy.
 No allocation, extra reservation or new registry is introduced. IRQ execution,
-unrelated outer guards, raw events/partial preparations, raw cancellation references and arbitrary
+unrelated outer guards, raw event/admission construction, raw cancellation references and arbitrary
 blocking callbacks remain separate qualification work.
 
 Completed unpublished timer nodes have the same inert ownership policy:
@@ -300,7 +300,7 @@ publication mask; timed-wait rejection/expired preparation and both completion
 submission families explicitly dispose unused nodes. Caller-owned masks remain
 intact. Abandonment retains node, cancellation backing, callback/source and
 original charge without cleanup. Final strong/weak cancellation references can
-outlive explicit node disposal. Raw event/partial-construction destruction,
+outlive explicit node disposal. Raw event/admission construction,
 waiter preparation and broader IRQ/outer contexts remain separate work; no
 queue cancellation, physical proof, recovery custody or replay authority is
 created by private-node disposal.
@@ -316,6 +316,17 @@ Complete-handback abandonment retains every field and original charge. No new
 allocation, admission, registry, physical proof or replay authority is added.
 Raw Arc/Weak finalization and wider caller/destructor contexts remain separate
 qualification work.
+
+Timer node construction captures its already charged event/source/callback and
+outside admission before allocating empty uninitialized Box storage. The
+allocator receives no payload; rejection leaves it with the same inert owner
+until explicit cancellation after callback return. Successful storage initializes
+once into completed private ownership without allocation or deadline changes.
+Unused empty backing frees before event/source disposal and outside admission;
+abandonment at either phase retains every field and original charge. The node
+layout and single allocation stay unchanged. This creates no queue publication,
+physical proof, retry interface or custody registry. Raw event and admission/
+cancellation construction and broader caller contexts remain separate.
 
 Backlog-to-ring publication retains delivered detached-record charges in a
 fixed two-class owning batch until the completion registry is unlocked.

@@ -81,7 +81,7 @@ pub(crate) fn test_admission() {
     let entry_irq = get_int_state();
     let (event, handle) =
         TimerEvent::charged(ExtDuration::from_millis(60_000), sponsor.reserve().unwrap()).unwrap();
-    assert!(PreparedEvent::new_with(event, |_| Err(())).is_err());
+    assert!(PreparedEvent::new_with(event, || Err(())).is_err());
     assert_eq!(sponsor.used(), 1, "rejected node leaves live cancellation backing charged");
     assert_eq!(get_int_state(), entry_irq);
     handle.release();
@@ -158,6 +158,7 @@ pub(crate) fn test_admission() {
     super::delivery::test_delivery();
     super::preparation_tests::run();
     super::cancellation_disposal::test_disposal();
+    super::node_preparation::test_preparation();
     crate::logln!(
         "[timer events] SUCCESS: scheduler/domain/node admission, shared reserve, prepared-node \
          rollback, sorted/iterative reclamation, inline quantum, retained cancellation backing \
@@ -199,7 +200,7 @@ fn test_retained_cancellation_admission() {
         TimerEvent::charged(ExtDuration::from_millis(60_000), sponsor.reserve().unwrap()).unwrap();
     handle.release();
     assert_eq!(sponsor.used(), 1);
-    assert!(PreparedEvent::new_with(event, |_| Err(())).is_err());
+    assert!(PreparedEvent::new_with(event, || Err(())).is_err());
     assert_eq!(sponsor.used(), 0);
 
     let original = crate::service::loader::create_user_address_space_handle();

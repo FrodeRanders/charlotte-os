@@ -19,6 +19,7 @@ mod delivery;
 mod disposal_tests;
 use delivery::PendingDelivery;
 pub(crate) mod event_tests;
+mod node_preparation;
 mod preparation_tests;
 mod queue;
 pub(crate) use queue::RetiredEvents;
@@ -32,7 +33,10 @@ use alloc::{
     },
 };
 use core::{
-    mem::ManuallyDrop,
+    mem::{
+        ManuallyDrop,
+        MaybeUninit,
+    },
     sync::atomic::{
         AtomicBool,
         AtomicU32,
@@ -158,19 +162,14 @@ pub(crate) struct PreparedEvent {
 
 impl PreparedEvent {
     pub(crate) fn new(event: TimerEvent) -> Result<Self, ()> {
-        Self::new_with(event, |node| Box::try_new(node).map_err(|_| ()))
+        Self::new_with(event, || Box::<queue::Node>::try_new_uninit().map_err(|_| ()))
     }
 
     fn new_with(
         event: TimerEvent,
-        allocate: impl FnOnce(queue::Node) -> Result<Box<queue::Node>, ()>,
+        allocate: impl FnOnce() -> Result<Box<MaybeUninit<queue::Node>>, ()>,
     ) -> Result<Self, ()> {
-        assert!(event.key.is_none() && event._charge.is_some());
-        let admission = event._charge.as_ref().unwrap().clone();
-        let node = queue::OwnedNode::new(allocate(queue::Node::new(event))?, admission);
-        Ok(Self {
-            node: ManuallyDrop::new(node),
-        })
+        node_preparation::prepare(event, allocate)
     }
 
     pub(crate) fn event(&self) -> &TimerEvent {

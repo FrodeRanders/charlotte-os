@@ -115,7 +115,7 @@ Fired counters describe expiry selection, not confirmed notification.
 Abandonment retains the complete selected/purged owner and leaves its claim
 fenced, without cleanup or recovery authority. Explicit callback delivery and
 disposal can still execute in IRQ context; unrelated outer caller/producer
-guards, raw event/partial preparation, raw cancellation references and arbitrary blocking callback
+guards, raw event/admission construction, raw cancellation references and arbitrary blocking callback
 work remain unqualified. No scheduled disposal worker or physical/root proof
 is added. This is bounded prefix processing, not a throughput/fairness guarantee.
 
@@ -131,6 +131,20 @@ and leaves public operation IDs separate. See the
 [exact timer-cancellation evidence](../reports/audits/2026-10-16-timer-cancellation-identity.md).
 
 ## Failure before parking
+
+Node construction now captures the already charged event, source/callback and
+outside admission in an inert `PreparingNode` before calling the allocator.
+The callback receives no payload and returns empty `Box<MaybeUninit<Node>>`
+storage. Allocation rejection retains the event through callback return; the
+ordinary constructor then cancels explicitly. Successful storage initializes
+once into the existing `PreparedEvent` without allocation or deadline change.
+Unused empty backing frees before event/source disposal and outside-admission
+release. Abandonment before or after storage allocation retains every field;
+this is terminal retention, not queued cancellation, Pending, retry/custody or
+physical proof. The same layout and one Box allocation remain. Raw event and
+admission/cancellation construction, raw references and outer caller contexts
+remain separate. See the
+[node-construction follow-up](../reports/audits/2026-10-16-timer-node-construction.md).
 
 Watchdog preparation reserves event admission, allocates cancellation state,
 the callback owner and the queue node **before** calling the scheduler's park
@@ -173,7 +187,7 @@ submission owners likewise consume unused nodes in their existing post-registry
 finish paths. Abandonment preserves the node, cancellation backing, source,
 callback reference and admission without allocator, refund or source work.
 This is terminal retention, not queue cancellation, Pending, recovery custody
-or replay authority. Raw event/partial-construction destruction, raw cancellation references,
+or replay authority. Raw event/admission construction, raw cancellation references,
 waiter preparation and enclosing masks/guards remain separate contexts. See the
 [unpublished ownership follow-up](../reports/audits/2026-10-16-timer-unpublished-ownership.md).
 
@@ -262,6 +276,14 @@ abandonment does not set the flag and its event still fires; guarded successful
 cancellation handback retains its complete removed node/source and reference.
 The two new negative controls retain two original event charges and one empty
 source allocation until shutdown, with no persistent waiter entries.
+
+Node phase controls complete 64 prepared empty allocations beneath held heap
+and queue guards without allocating or disposing, preserving deadlines and all
+original event/waiter charges. Rejection retains source/payload through the
+allocator call; explicit unused empty-backing rollback checks post-guard
+disposal. Two guarded phase abandonments retain two event charges, two empty
+source-list allocations and one uninitialized node Box until shutdown, without
+retaining waiter-entry charges after independent token cancellation.
 
 These counts bound retained event/node/cancellation backing quantities, not
 the entire kernel heap or allocator overhead. Queue diagnostics count actual

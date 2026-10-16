@@ -930,3 +930,14 @@ removal controls distinguish handback from actual release. Raw Arc/Weak and
 partial construction, completion containing destructors, outer IRQ/guard and
 aggregate pressure remain open. No finding disposition, physical proof,
 replay/custody or historical attribution changes.
+
+
+The [timer node-construction follow-up](../reports/audits/2026-10-16-timer-node-construction.md)
+continues R7-1/2 and C16/G1/G4/G7. Partial node preparation retains the already
+charged event, source/callback and outside admission before allocating empty
+storage. The allocator owns no payload; rejection cancels explicitly after its
+return, and successful storage initializes once into the existing private node
+owner. Abandonment retains either phase without cleanup. Raw event/admission
+construction, raw references, waiter/containing destructor and outer IRQ/guard
+contexts remain separate. No finding disposition, physical proof, retry/custody
+or historical attribution changes.

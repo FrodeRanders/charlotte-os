@@ -303,3 +303,13 @@ handback abandonment retain original admission without fabricated cancellation.
 Raw cancellation references, partial construction, completion containing
 destructors and broader waiter/IRQ contexts remain separate work. Finding
 counts and historical failure causes are unchanged.
+
+
+The [timer node-construction batch](2026-10-16-timer-node-construction.md) extends
+complete ownership to the phase before a node Box exists. Original event/source
+and admission remain with one inert preparation while the allocator handles only
+empty storage. Rejection cancels after allocator return; completion initializes
+once without changing deadlines, layout or reservation count. Guarded phase
+abandonment retains original backing/charges. Raw event/admission construction,
+raw references and broader waiter/caller contexts remain separate. Finding
+counts and historical failure causes are unchanged.
