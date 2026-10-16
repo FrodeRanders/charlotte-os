@@ -8,6 +8,7 @@ use alloc::{
         Weak,
     },
 };
+use core::mem::MaybeUninit;
 
 use super::{
     Observer,
@@ -67,24 +68,17 @@ impl<C> PreparedRegistration<C> {
         observer: Weak<dyn Observer>,
         charge: C,
     ) -> Result<Self, RegistrationError> {
-        Self::try_new_with(observer, charge, |node| {
-            Box::try_new(node).map_err(|_| RegistrationError::AllocationFailed)
+        Self::try_new_with(observer, charge, || {
+            Box::try_new_uninit().map_err(|_| RegistrationError::AllocationFailed)
         })
     }
 
     fn try_new_with(
         observer: Weak<dyn Observer>,
         charge: C,
-        allocate: impl FnOnce(EntryNode<C>) -> Result<Box<EntryNode<C>>, RegistrationError>,
+        allocate: impl FnOnce() -> Result<Box<MaybeUninit<EntryNode<C>>>, RegistrationError>,
     ) -> Result<Self, RegistrationError> {
-        Ok(Self(Some(Entry {
-            node: allocate(EntryNode {
-                id: 0,
-                observer,
-                next: None,
-            })?,
-            _charge: charge,
-        })))
+        entry_preparation::prepare(observer, charge, allocate)
     }
 }
 
@@ -146,8 +140,8 @@ impl<C> ListRef<C> {
         observer: Weak<dyn Observer>,
         charge: C,
     ) -> Result<Registration<C>, RegistrationError> {
-        self.register_with(observer, charge, |node| {
-            Box::try_new(node).map_err(|_| RegistrationError::AllocationFailed)
+        self.register_with(observer, charge, || {
+            Box::try_new_uninit().map_err(|_| RegistrationError::AllocationFailed)
         })
     }
 
@@ -155,7 +149,7 @@ impl<C> ListRef<C> {
         &self,
         observer: Weak<dyn Observer>,
         charge: C,
-        allocate: impl FnOnce(EntryNode<C>) -> Result<Box<EntryNode<C>>, RegistrationError>,
+        allocate: impl FnOnce() -> Result<Box<MaybeUninit<EntryNode<C>>>, RegistrationError>,
     ) -> Result<Registration<C>, RegistrationError> {
         // Allocate before taking the list lock. Rejection drops the staged
         // entry/charge after the guard; no uncharged spare capacity remains.
@@ -234,7 +228,7 @@ impl<C> ObserverList<C> {
 }
 
 /// Kernel fixture: inject entry allocation failure after admission. The
-/// production path still uses Box::try_new; no physical allocator is exhausted.
+/// production path still allocates empty Box storage; no physical allocator is exhausted.
 pub(crate) fn test_entry_allocation_rollback() {
     use crate::{
         completion::watch_budget as budget,
@@ -247,7 +241,7 @@ pub(crate) fn test_entry_allocation_rollback() {
         list.register_with(
             Arc::downgrade(&callback),
             budget::reserve(&account, false).unwrap(),
-            |_| Err(RegistrationError::AllocationFailed),
+            || Err(RegistrationError::AllocationFailed),
         )
         .unwrap_err(),
         RegistrationError::AllocationFailed
@@ -264,6 +258,7 @@ pub(crate) fn test_entry_allocation_rollback() {
     assert_eq!(account.used(), 0);
     assert_eq!(Arc::weak_count(&callback), 0);
     list_tests::test_list_backing_admission();
+    entry_preparation::test_preparation();
 }
 
 impl<C> Drop for ObserverList<C> {
@@ -332,6 +327,9 @@ impl<C> Drop for NotificationBatch<C> {
         }
     }
 }
+
+#[path = "registration/entry_preparation.rs"]
+mod entry_preparation;
 
 #[path = "registration/list_tests.rs"]
 mod list_tests;

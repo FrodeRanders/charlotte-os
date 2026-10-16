@@ -354,3 +354,12 @@ fallbacks retain complete fields and original accounts. Target capture, timer/
 observer factories, published/containing destruction and wider IRQ/guard
 contexts remain separate. Finding dispositions and historical failure
 attribution are unchanged.
+
+
+The [shared observer-entry construction batch](2026-10-16-observer-entry-construction.md)
+continues C16/C18/G1/G4/G7 and R7-1/2. Original weak observer, waiter/watch
+charge and empty backing stay with one inert preparation during allocation.
+Rejection cancels after allocator return; initialization consumes private storage
+once, and partial abandonment retains every field. Completed preparation/token/
+source destruction, callback-containing owners and wider contexts remain
+separate. Finding dispositions and historical failure attribution are unchanged.

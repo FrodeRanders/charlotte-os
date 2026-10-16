@@ -529,7 +529,7 @@ catten_boot_report_kernel "$KERNEL"
 # formatting or object-store writes can no longer corrupt the next boot.
 catten_boot_create_uefi_image \
     "$IMAGE" \
-    64 \
+    "$CATTEN_BOOT_DEFAULT_IMAGE_SIZE_MIB" \
     "${ROOT_DIR}/limine-binary/${EFI_BOOT_FILE}" \
     "$KERNEL" \
     "$LIMINE_CONFIG" \

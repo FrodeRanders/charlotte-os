@@ -802,7 +802,7 @@ catten_boot_report_kernel "$KERNEL"
 # --- Build a FAT32 EFI System Partition image with mtools. ---
 catten_boot_create_uefi_image \
     "$IMAGE" \
-    128 \
+    "$CATTEN_BOOT_DEFAULT_IMAGE_SIZE_MIB" \
     "${ROOT_DIR}/limine-binary/${EFI_BOOT_FILE}" \
     "$KERNEL" \
     "$LIMINE_CONFIG"

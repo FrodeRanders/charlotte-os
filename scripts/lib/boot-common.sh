@@ -7,6 +7,10 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     exit 2
 fi
 
+# Disposable FAT32 capacity includes the complete debug ELF and EFI loader.
+# Keep all architecture runners and the standalone creator on one default.
+CATTEN_BOOT_DEFAULT_IMAGE_SIZE_MIB=128
+
 catten_boot_init() {
     local root_dir="$1"
 

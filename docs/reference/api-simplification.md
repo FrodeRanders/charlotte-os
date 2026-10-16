@@ -147,3 +147,12 @@ and compares exact allocation identity. No scalar compatibility branch remains;
 public completion operation IDs, runtime ABI, wire/storage grammars and numbered
 protocol batches are unchanged. This closes one internal identity gap without
 qualifying broader timer queue/Drop/IRQ contexts or historical failures.
+
+The [initial completion admission follow-up](../reports/audits/2026-10-16-completion-initial-admission.md)
+replaces owning record-factory arguments with a borrowed complete transaction.
+The [shared observer-entry follow-up](../reports/audits/2026-10-16-observer-entry-construction.md)
+replaces initialized owning node arguments with empty-storage allocation; the
+original weak observer and charge stay in the preparation owner. Each private
+factory has one current contract and no compatibility branch. Wire/storage
+formats, runtime ABI, numbered protocol batches and remaining raw-adapter
+candidates are unchanged; completed/containing destructor contexts remain open.

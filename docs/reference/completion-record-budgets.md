@@ -258,6 +258,14 @@ captured close and a stale weak allocation charged to the old generation.
 Reservation-only pool exhaustion does not allocate the
 equivalent maximum record footprint.
 
+The shared [observer entry constructor](../reports/audits/2026-10-16-observer-entry-construction.md)
+now keeps original weak references and waiter/watch charges outside fallible
+empty Box allocation. Rejection cancels explicitly after callback return;
+initialization consumes private storage once, and partial phase fallback retains
+every field. Completion callback preparation and waiter registration share this
+helper; their containing owners, completed entry/source destruction and wider
+contexts remain separate qualification work.
+
 The scoped EL0 probe fills its record capacity with owned endpoint-close
 watches, checks that timer submission is also refused while scalar IPC still
 works, closes the watched endpoint, consumes every completion and waits for a

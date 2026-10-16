@@ -1,0 +1,58 @@
+{
+  "baseline": "793f508702ca1bca27bd97e3a5dee664a61d6814",
+  "boot_image_size_mib": 64,
+  "command": "./scripts/run-x86_64.sh debug --smp 4 --iommu intel --security-test --fresh-storage --timeout 180 --instance entry-construction-intel-security",
+  "date": "2026-10-16",
+  "efi_loader_bytes": 368640,
+  "efi_loader_sha256": "8df2bdd73aa9e4f679b4dec73b1665268343b50c5de76ea17c8de498d717ef30",
+  "environment": {
+    "CARGO_BUILD_RUSTFLAGS": "-D warnings",
+    "CATTEN_ALLOW_SANDBOX_NETWORK": "1",
+    "CATTEN_DEPLOY_HOST_PORT": "19181",
+    "CATTEN_HTTP_HOST_PORT": "19180",
+    "CATTEN_SKIP_EMBED_BUILD": "1"
+  },
+  "failed_runner_output_sha256": "f79cdc9c845f22a26cf2e2a343401f92c5adbd24339caa0411e6292a2996d48e",
+  "guest_diagnostics_created": false,
+  "host_available_bytes": 171494993920,
+  "instance": "entry-construction-intel-security",
+  "kernel_elf_bytes": 65861080,
+  "kernel_elf_sha256": "3a58164a643ef105a332759b799c6b09003ed7007d2562760f63ea1c5f1073a0",
+  "limine_config_bytes": 308,
+  "limine_config_sha256": "28ec7f9e353b475cdcefba428585ec4cbd9b1bc137e1cc9acc634bed8a92e11f",
+  "observations": [
+    ">>> Kernel assembly permissions: 249 native entries verified",
+    ">>> Kernel SHA-256: 3a58164a643ef105a332759b799c6b09003ed7007d2562760f63ea1c5f1073a0",
+    ">>> Creating boot image ./os-images/charlotte-x86_64-debug-entry-construction-intel-security.img...",
+    "Disk full",
+    "error: failed to create boot image ./os-images/charlotte-x86_64-debug-entry-construction-intel-security.img"
+  ],
+  "payload_input_bytes_total": 66230028,
+  "pre_fix_runner_sha256": {
+    "scripts/create-boot-image.sh": "17d4d264c07306913d508e259c76d270b1d24efb3b6a7222cfa077ae72dcbad4",
+    "scripts/lib/boot-common.sh": "07db39937c1039acb000d252cb03f0435a85f4b363930555c422f243613fc21a",
+    "scripts/run-aarch64.sh": "2031e845a2e0d4386548fb23f2ff1bee3bf6f025bec3eb58499bac423f8bfb34",
+    "scripts/run-x86_64.sh": "bd3f2ccfb3ba7705e79efea42d36ccbe8ed315ecd0d3484ffdc330e60e25166c"
+  },
+  "qemu_launched": false,
+  "reviewed_rust_sha256": {
+    "crates/catten/src/completion/callbacks.rs": "0360db6a62da733222a6c6dd3927063e7e90685168606207d9ffe7cb4674f23f",
+    "crates/catten/src/klib/observer/mod.rs": "8835102296973ebec0e92dd86427ddf4792d3a64a3efef1e3bd4107bd687bb67",
+    "crates/catten/src/klib/observer/registration.rs": "3905fb265596a0a4b6fe0b656b8b5203bd66d5cfaacd674415d7b48923082393",
+    "crates/catten/src/klib/observer/registration/entry_preparation.rs": "53d5981bceba9b8924d8105c786abed3a2a69d16f562647bd1fa576f809dbbfb",
+    "crates/catten/src/klib/observer/registration/entry_preparation/tests.rs": "a2e86f258130c868c05c8f3abefd7b0111ad355c7c097eb8206e60eaf5a6e5f0",
+    "crates/catten/src/klib/observer/waiter_source.rs": "b36ef51e795aaaa399a6e4ce284289187f0a5a0066fdf63a6e9dfc6adc268c08"
+  },
+  "runner_exit": 1,
+  "separate_empty_64_mib_fat_geometry_observation": [
+    " Volume in drive : has no label",
+    " Volume Serial Number is 1857-D993",
+    "Directory for ::/",
+    "",
+    "No files",
+    "                         66 058 752 bytes free",
+    ""
+  ],
+  "stage": "boot-image-creation-before-data-image-and-QEMU",
+  "verification_limit": "The existing atomic image helper removed its failed temporary FAT image; no partial image hash, guest UART or CPU capture exists. The immutable kernel/input hashes and inline image-creation diagnostic are retained. Host filesystem capacity was available; no old artifact was deleted."
+}

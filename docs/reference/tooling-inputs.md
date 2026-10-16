@@ -35,3 +35,11 @@ The exported application SDK carries the same file-only signer. Sibling broker
 and Durga callers previously recorded as passing key bytes must migrate their
 call sites to paths; this repository does not maintain their argv exception.
 See [S07 evidence](../reports/audits/2026-10-13-protocol-simplification-tooling.md).
+
+
+Boot runners and the standalone image creator share one 128 MiB disposable
+FAT32 default, including the complete debug ELF and EFI loader. The creator's
+explicit `--size-mib` still overrides it; insufficient capacity rejects through
+atomic staging without replacing prior output. This boot container is separate
+from persistent data-store sizing and does not reformat existing data disks.
+See the [preserved capacity failure and correction](../reports/audits/2026-10-16-observer-entry-construction.md).

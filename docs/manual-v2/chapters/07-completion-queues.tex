@@ -371,6 +371,15 @@ exhaustion, hidden authority and publication revalidation remain unchanged;
 target capture, timer/observer factories and wider containing contexts remain
 separate qualification work.
 
+Shared observer-entry preparation now retains its exact weak observer and
+original waiter/watch charge outside empty Box allocation. The allocator owns
+no payload; rejection cancels explicitly after callback return, freeing empty
+backing and weak reference before admission. Private initialization consumes
+that same storage once without allocation or disposal. Both partial phase
+fallbacks retain every field without cleanup. This is no registered waiter,
+readiness, physical proof or retry owner. Completed entry/token/source disposal,
+callback-containing owners and broader guards/IRQ contexts remain separate.
+
 Backlog-to-ring publication retains delivered detached-record charges in a
 fixed two-class owning batch until the completion registry is unlocked.
 Ordinary/platform charges retain their original accounts; no disposal storage

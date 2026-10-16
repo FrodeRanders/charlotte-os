@@ -55,6 +55,18 @@ ordinary rejection after callback return; inert phase fallback retains every
 field. The outer list factory, source destruction and wider caller guards/masks
 remain separate work.
 
+Entry construction now captures its exact weak observer and original entry
+charge before allocating empty `Box<MaybeUninit<EntryNode<C>>>` storage. The
+allocator owns no payload; failure leaves both fields with the same inert owner
+until explicit post-callback cancellation. Private initialization consumes the
+same storage once without allocation, locks or disposal. Cancellation frees
+unused backing and the weak reference before original admission; abandonment
+before/after storage retains every field without cleanup. This is terminal
+retention, not a registered waiter or retry owner. Completed `PreparedRegistration`,
+registration tokens, source/batch destruction and containing caller contexts
+retain their existing policies and separate qualification. See the
+[entry-construction follow-up](../reports/audits/2026-10-16-observer-entry-construction.md).
+
 ## Rejection and locks
 
 `ObserverList::try_new` has no uncharged alternative. Node/ordinary saturation

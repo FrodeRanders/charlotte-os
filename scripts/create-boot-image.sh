@@ -22,7 +22,7 @@ usage: scripts/create-boot-image.sh [options]
   --profile PROFILE debug or release (default: debug)
   --kernel PATH     override the inferred kernel path
   --output PATH     override os-images/charlotte-ARCH-PROFILE.img
-  --size-mib N      override the architecture's boot-image size
+  --size-mib N      override the shared 128 MiB boot-image default
   --config PATH     override limine.conf (also: CATTEN_LIMINE_CONFIG)
 EOF
 }
@@ -61,18 +61,15 @@ case "$ARCH" in
     x86_64)
         TARGET_DIR="x86_64-unknown-none-catten"
         EFI_BOOT_FILE="BOOTX64.EFI"
-        DEFAULT_SIZE_MIB="64"
         VOLUME_LABEL="CATOS"
         ;;
     aarch64)
         TARGET_DIR="aarch64-unknown-none-catten"
         EFI_BOOT_FILE="BOOTAA64.EFI"
-        DEFAULT_SIZE_MIB="128"
         ;;
     riscv64)
         TARGET_DIR="riscv64gc-unknown-none-catten"
         EFI_BOOT_FILE="BOOTRISCV64.EFI"
-        DEFAULT_SIZE_MIB="128"
         ;;
     *) echo "error: unsupported architecture: ${ARCH}" >&2; exit 1 ;;
 esac
@@ -82,7 +79,7 @@ cd "$ROOT_DIR"
 
 KERNEL="${KERNEL:-${ROOT_DIR}/target/${TARGET_DIR}/${PROFILE}/catten}"
 OUTPUT="${OUTPUT:-${ROOT_DIR}/os-images/charlotte-${ARCH}-${PROFILE}.img}"
-SIZE_MIB="${SIZE_MIB:-${DEFAULT_SIZE_MIB}}"
+SIZE_MIB="${SIZE_MIB:-${CATTEN_BOOT_DEFAULT_IMAGE_SIZE_MIB}}"
 
 catten_boot_report_kernel "$KERNEL"
 catten_boot_create_uefi_image \
