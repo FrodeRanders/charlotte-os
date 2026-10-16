@@ -349,6 +349,16 @@ finalization, completed raw-event destruction, outer payload factories and wider
 containing contexts remain separate work; no
 physical proof, retry/custody or new registry is added.
 
+Completion record preparation captures its original buffer, operation ID and
+reservation before shared holder and waiter-list allocation. Holder preparation
+borrows the reservation; rejected allocation retains it with the original
+buffer. List allocation receives only captured classification. Ordinary
+rejection disposes buffer and unused list before either installed or uninstalled
+admission; abandonment at all three phases retains every field without cleanup.
+Success transfers the same buffer and identity into the shared Arc helper.
+Published completion destruction, outer factories and broader guard/IRQ contexts
+remain separate; no physical receipt, retry owner or registry is added.
+
 Backlog-to-ring publication retains delivered detached-record charges in a
 fixed two-class owning batch until the completion registry is unlocked.
 Ordinary/platform charges retain their original accounts; no disposal storage

@@ -333,3 +333,13 @@ and phase abandonment retains every field without cleanup. Records, lists and
 cancellation state share this path. Outer factories, published reference and
 containing destructors, waiter/IRQ contexts and aggregate pressure remain
 separate. Finding dispositions and historical failure attribution are unchanged.
+
+
+The [completion record-construction batch](2026-10-16-completion-record-construction.md)
+continues C16/C18/G1/G4/G7 and R7-1/2. Original buffer, operation and admission
+now share one owner before holder/list allocation. Rejection disposes payload
+before refund; abandonment retains all phase fields, and successful transfer
+preserves the same buffer/identity through shared Arc construction. Outer
+submission factories, published/containing destructors, authority rollback and
+wider IRQ/guard qualification remain separate. Finding dispositions and
+historical failure attribution are unchanged.

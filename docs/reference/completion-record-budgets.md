@@ -53,6 +53,16 @@ backing and original admission without cleanup. Payload assembly before helper
 entry, outer factories and published/containing record destructors remain
 separate qualification work.
 
+Completion record preparation now captures the original buffer, operation ID
+and record charge before holder/list allocation. The borrowed holder factory
+leaves admission with that owner on rejection; the list factory takes only the
+captured classification. Explicit rejection destroys buffer and unused list
+before either form of original admission. All three phase fallbacks retain every
+field without cleanup; success transfers the same buffer and operation into the
+shared Arc payload helper. Published completion destruction remains active;
+outer submission factories, authority/namespace rollback and wider contexts
+remain separate. See the [record-construction follow-up](../reports/audits/2026-10-16-completion-record-construction.md).
+
 A detached operation moves its admitted metadata node and original charge into
 an owning CQ backlog entry if its result cannot enter the ring. Its operation ID is no longer addressable, but
 both submission slot and record admission remain occupied. Ring publication
@@ -244,12 +254,13 @@ works, closes the watched endpoint, consumes every completion and waits for a
 short timer after recovery. A further probe drops an entire watch batch while
 its endpoint remains live, validating local cancellation rather than requiring
 endpoint death for destructor progress.
-The shared checked counter has host overflow/rejection/release tests. Six host
-tests execute the actual allocation adapter: strong/weak lifetime, holder
+The shared checked counter has host overflow/rejection/release tests. Fifteen
+host tests execute the actual allocation adapter, including strong/weak lifetime, holder
 allocation rejection, rejected payload destruction before refund, prevention of
 allocation multiplication/revival, concurrent final weak destruction and
 concurrent cloned-allocator admission. Evidence:
-[completion backing audit](../reports/audits/2026-10-07-security-completion-backing.md).
+[completion backing audit](../reports/audits/2026-10-07-security-completion-backing.md)
+and [shared payload follow-up](../reports/audits/2026-10-16-charged-arc-payload-construction.md).
 
 These are retained-state counts, not byte accounting for the entire kernel
 heap. Separate [CQ admission](completion-queue-budgets.md) bounds registered

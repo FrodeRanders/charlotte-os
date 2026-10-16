@@ -40,6 +40,7 @@ pub(crate) fn test_admission() {
     super::operation_id_tests::run();
     super::capability_preparation::test_preparation();
     crate::klib::observer::registration::test_entry_allocation_rollback();
+    super::record_preparation::test_preparation();
     super::callbacks::test_preparation();
     super::terminal_tests::run();
     super::queue_preparation::test_preparation();

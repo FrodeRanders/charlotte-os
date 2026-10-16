@@ -50,6 +50,7 @@ use namespace_preparation::RetiredNamespace;
 mod operation_id_tests;
 mod operation_ids;
 mod queue_preparation;
+mod record_preparation;
 use queue_preparation::RetiredCq;
 mod terminal_tests;
 pub(crate) mod timer_tests;
@@ -361,29 +362,7 @@ impl Completion {
         buffer: Option<Vec<u8>>,
         record_charge: budget::Charge,
     ) -> Result<CompletionRef, SubmitError> {
-        let platform = record_charge.platform();
-        let allocator =
-            ChargedAllocator::try_new(record_charge).map_err(|_| SubmitError::WouldBlock)?;
-        let waiters = crate::klib::observer::registration::ObserverList::try_new(
-            crate::klib::observer::waiter_budget::SOURCE_LIMIT,
-            platform,
-        )
-        .map_err(|_| SubmitError::WouldBlock)?;
-        allocator
-            .try_arc(Self {
-                operation,
-                inner: Mutex::new(CompletionInner {
-                    buffer,
-                    state: OpState::InFlight,
-                    worker_observation: None,
-                    timer_observer: None,
-                    timer_cancel: None,
-                    event_observation: None,
-                    callbacks: None,
-                }),
-                waiters,
-            })
-            .map_err(|_| SubmitError::WouldBlock)
+        record_preparation::new(operation, buffer, record_charge)
     }
 
     fn operation_id(&self) -> OperationId {
