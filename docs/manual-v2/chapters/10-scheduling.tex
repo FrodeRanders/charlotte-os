@@ -227,7 +227,11 @@ lifetimes independently. Launch-limit and domain-usage nodes now prepare in the
 same registration owner and publish without allocation. Their detached nodes
 follow the exact closing/final-root receipt through failed invalidation; confirmed
 invalidation releases them outside local guards before backing and slot completion.
-Aggregate heap/principal admission, authority/high-water metadata and outer
+The signed-authority slot now prepares with those nodes. It initially grants no
+identity; the signed loader fills the exact assigned generation without allocation.
+The populated principal/roles/descriptor binding remains in the same final-root
+receipt through rejected invalidation. Aggregate heap/principal admission,
+principal high-water metadata and outer
 destructor contexts remain separate work. See
 \repofile|docs/reference/memory-object-retirement.md|.
 

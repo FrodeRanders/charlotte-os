@@ -6,6 +6,7 @@ pub(super) fn run() {
     rejection();
     let mut limits = DomainLimitsTable::new();
     let mut usage = usage::DomainUsageTable::new();
+    let mut authority = DomainAuthoritiesTable::new();
     for generation in 1..=64 {
         let prepared = PreparingMetadata::try_new().unwrap();
         let handle = AddressSpaceHandle {
@@ -14,47 +15,60 @@ pub(super) fn run() {
         };
         {
             let _heap = PRIMARY_ALLOCATOR.lock();
-            prepared.publish_into(&mut limits, &mut usage, handle);
+            prepared.publish_into(&mut limits, &mut usage, &mut authority, handle);
             assert_eq!(limits.get(&1).unwrap().0, handle);
             assert_eq!(usage.get(&1).unwrap().0, handle);
+            assert_eq!(authority.get(&1).unwrap().handle, handle);
+            assert!(authority.get(&1).unwrap().authority.is_none());
         }
         limits.take(&1).unwrap().release();
         usage.take(&1).unwrap().release();
+        authority.take(&1).unwrap().release();
     }
     assert!(limits.iter().next().is_none());
     assert!(usage.iter().next().is_none());
+    assert!(authority.iter().next().is_none());
     generation_reuse();
+    authority_generation_reuse();
 
     // Partial preparation fallback; complete fallback is tested by the parent
-    // registration owner. Retain exactly one empty node, with no root/charge.
-    let owner = PreparingMetadata(ManuallyDrop::new(Resources {
-        limits: Some(PreparedEntry::try_new().unwrap()),
-        usage: None,
-    }));
-    {
+    // registration owner. Retain three empty nodes across the partial phases,
+    // with no root/charge. This adds two to the earlier single-node control.
+    for stage in 1..=2 {
+        let mut owner = PreparingMetadata(ManuallyDrop::new(Resources {
+            limits: Some(PreparedEntry::try_new().unwrap()),
+            usage: None,
+            authority: None,
+        }));
+        if stage == 2 {
+            owner.0.usage = Some(PreparedEntry::try_new().unwrap());
+        }
         let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
         let _table = ADDRESS_SPACE_TABLE.lock();
         let _limits = DOMAIN_LIMITS.lock();
         let _usage = usage::DOMAIN_USAGE.lock();
+        let _authority = DOMAIN_AUTHORITIES.lock();
         let _heap = PRIMARY_ALLOCATOR.lock();
         drop(owner);
     }
     crate::logln!(
-        "[root policy preparation] 192 phase rejections, 64 heap-held publications, exact \
-         generation reuse and guarded partial retention passed; one standalone empty node retained"
+        "[root policy preparation] 256 phase rejections, 64 heap-held publications, exact \
+         generation reuse and guarded partial retention passed; three standalone empty nodes \
+         retained"
     );
 }
 
 // The root stays inline on rejection; no failure-path boxing.
 #[allow(clippy::result_large_err)]
 fn rejection() {
-    for reject in 1..=3 {
+    for reject in 1..=4 {
         for _ in 0..64 {
             let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
             let roots = ADDRESS_SPACE_TABLE.lock().iter().filter(|e| e.is_some()).count();
             let capabilities = crate::capability::node_admission_used();
             let limits = DOMAIN_LIMITS.lock().iter().count();
             let usage = usage::DOMAIN_USAGE.lock().iter().count();
+            let authorities = DOMAIN_AUTHORITIES.lock().iter().count();
             let root = AddressSpace::try_new_user().unwrap();
             let mut visits = 0;
             assert_eq!(
@@ -66,6 +80,7 @@ fn rejection() {
                         assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
                         assert!(DOMAIN_LIMITS.try_lock().is_some());
                         assert!(usage::DOMAIN_USAGE.try_lock().is_some());
+                        assert!(DOMAIN_AUTHORITIES.try_lock().is_some());
                         assert!(PRIMARY_ALLOCATOR.try_lock().is_some());
                         assert!(budget::tests::ledger_available());
                         drop(root);
@@ -77,6 +92,7 @@ fn rejection() {
                         assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
                         assert!(DOMAIN_LIMITS.try_lock().is_some());
                         assert!(usage::DOMAIN_USAGE.try_lock().is_some());
+                        assert!(DOMAIN_AUTHORITIES.try_lock().is_some());
                         assert!(PRIMARY_ALLOCATOR.try_lock().is_some());
                         if stage == reject {
                             Err(AllocError)
@@ -93,8 +109,55 @@ fn rejection() {
             assert_eq!(crate::capability::node_admission_used(), capabilities);
             assert_eq!(DOMAIN_LIMITS.lock().iter().count(), limits);
             assert_eq!(usage::DOMAIN_USAGE.lock().iter().count(), usage);
+            assert_eq!(DOMAIN_AUTHORITIES.lock().iter().count(), authorities);
         }
     }
+}
+
+fn authority_generation_reuse() {
+    let first = register_user_address_space(AddressSpace::try_new_user().unwrap()).unwrap();
+    assert_eq!(domain_authority(first.id()), None);
+    let principal = charlotte_launch::artifact_principal_id(b"authority-slot-control");
+    let roles = catten_syscall::domain_roles::SERVICE_MANAGER;
+    let descriptor = b"authority-slot descriptor binding control";
+    {
+        let _heap = PRIMARY_ALLOCATOR.lock();
+        register_domain_authority(first, principal, roles);
+        install_launch_descriptor(first, descriptor);
+        let authority = domain_authority(first.id()).unwrap();
+        assert_eq!(authority.address_space, first);
+        assert_eq!(authority.principal, principal);
+        assert_eq!(authority.roles, roles);
+        assert_eq!(
+            authority.launch_descriptor_digest,
+            Some(charlotte_launch::sha256::digest(descriptor))
+        );
+    }
+    {
+        let mut table = DOMAIN_AUTHORITIES.lock();
+        let slot = table.get_mut(&first.id()).unwrap();
+        let original = slot.authority;
+        assert_eq!(slot.install(first, principal, 0), Err(DomainAuthorityError::AlreadyInstalled));
+        assert_eq!(slot.authority, original);
+    }
+    close_user_address_space_handle(first).unwrap();
+    assert_eq!(domain_authority(first.id()), None);
+    let next = register_user_address_space(AddressSpace::try_new_user().unwrap()).unwrap();
+    assert_eq!(next.id(), first.id());
+    assert_eq!(next.generation(), first.generation() + 1);
+    assert_eq!(domain_authority(next.id()), None);
+    {
+        let mut table = DOMAIN_AUTHORITIES.lock();
+        let slot = table.get_mut(&next.id()).unwrap();
+        assert_eq!(slot.install(first, principal, roles), Err(DomainAuthorityError::StaleHandle));
+        assert_eq!(slot.install(next, 0, roles), Err(DomainAuthorityError::ZeroPrincipal));
+        assert!(slot.authority.is_none());
+    }
+    close_user_address_space_handle(next).unwrap();
+    crate::logln!(
+        "[root authority slot] empty grants no authority; heap-held signed-identity/descriptor \
+         installation, duplicate/zero/stale rejection and exact generation reuse passed"
+    );
 }
 
 fn generation_reuse() {

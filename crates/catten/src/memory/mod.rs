@@ -75,9 +75,49 @@ pub struct DomainAuthority {
     pub launch_descriptor_digest: Option<[u8; 32]>,
 }
 
-static DOMAIN_AUTHORITIES: LazyLock<
-    Mutex<alloc::collections::BTreeMap<AddressSpaceId, DomainAuthority>>,
-> = LazyLock::new(|| Mutex::new(alloc::collections::BTreeMap::new()));
+/// Prepared with the root; an empty slot grants no authority.
+struct DomainAuthoritySlot {
+    handle: AddressSpaceHandle,
+    authority: Option<DomainAuthority>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum DomainAuthorityError {
+    StaleHandle,
+    ZeroPrincipal,
+    AlreadyInstalled,
+}
+
+impl DomainAuthoritySlot {
+    fn install(
+        &mut self,
+        handle: AddressSpaceHandle,
+        principal: u64,
+        roles: u32,
+    ) -> Result<(), DomainAuthorityError> {
+        if self.handle != handle {
+            return Err(DomainAuthorityError::StaleHandle);
+        }
+        if principal == 0 {
+            return Err(DomainAuthorityError::ZeroPrincipal);
+        }
+        if self.authority.is_some() {
+            return Err(DomainAuthorityError::AlreadyInstalled);
+        }
+        self.authority = Some(DomainAuthority {
+            address_space: handle,
+            principal,
+            roles,
+            launch_descriptor_digest: None,
+        });
+        Ok(())
+    }
+}
+
+type DomainAuthoritiesTable =
+    crate::klib::collections::retirement_list::AdmittedMap<AddressSpaceId, DomainAuthoritySlot>;
+static DOMAIN_AUTHORITIES: LazyLock<Mutex<DomainAuthoritiesTable>> =
+    LazyLock::new(|| Mutex::new(DomainAuthoritiesTable::new()));
 
 /// Resource limits inherited by every thread in one userspace domain.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,28 +171,23 @@ pub(crate) fn register_domain_authority(
     principal: u64,
     roles: u32,
 ) {
-    assert_ne!(principal, 0, "domain principal zero is reserved");
     assert!(
         address_space_handle_is_current(address_space),
         "cannot authorize a stale address-space handle"
     );
-    let previous = DOMAIN_AUTHORITIES.lock().insert(
-        address_space.id(),
-        DomainAuthority {
-            address_space,
-            principal,
-            roles,
-            launch_descriptor_digest: None,
-        },
-    );
-    assert!(previous.is_none(), "domain authority installed twice for one ASID");
+    DOMAIN_AUTHORITIES
+        .lock()
+        .get_mut(&address_space.id())
+        .expect("published root lost prepared authority slot")
+        .install(address_space, principal, roles)
+        .expect("invalid signed-loader authority installation");
 }
 
 /// Resolve the current supervisor-assigned authority for `asid`.
 pub fn domain_authority(asid: AddressSpaceId) -> Option<DomainAuthority> {
     let authority = {
         let authorities = DOMAIN_AUTHORITIES.lock();
-        authorities.get(&asid).copied()?
+        authorities.get(&asid)?.authority?
     };
     address_space_handle_is_current(authority.address_space).then_some(authority)
 }
@@ -160,7 +195,9 @@ pub fn domain_authority(asid: AddressSpaceId) -> Option<DomainAuthority> {
 pub(crate) fn install_launch_descriptor(address_space: AddressSpaceHandle, bytes: &[u8]) {
     assert!(address_space_handle_is_current(address_space));
     let mut authorities = DOMAIN_AUTHORITIES.lock();
-    let authority = authorities.get_mut(&address_space.id()).expect("launch authority missing");
+    let slot = authorities.get_mut(&address_space.id()).expect("launch authority slot missing");
+    assert_eq!(slot.handle, address_space);
+    let authority = slot.authority.as_mut().expect("launch authority missing");
     assert_eq!(authority.address_space, address_space);
     assert!(authority.launch_descriptor_digest.is_none());
     authority.launch_descriptor_digest = Some(charlotte_launch::sha256::digest(bytes));
@@ -503,9 +540,11 @@ fn finish_user_address_space_cleanup(
     // service principal before the authority and accounting entries
     // disappear. The launch path uses them to size the principal's next
     // generation.
-    if let Some(principal) =
-        DOMAIN_AUTHORITIES.lock().get(&asid).map(|authority| authority.principal)
-    {
+    let principal = {
+        let authorities = DOMAIN_AUTHORITIES.lock();
+        authorities.get(&asid).and_then(|slot| slot.authority.map(|a| a.principal))
+    };
+    if let Some(principal) = principal {
         if let Some(usage) = usage::domain_usage(asid) {
             usage::remember_principal_stack_high_water(
                 principal,
@@ -515,11 +554,6 @@ fn finish_user_address_space_cleanup(
         if let Some(status) = usage::domain_heap_status(asid) {
             usage::remember_principal_heap_peak(principal, status.peak_bytes);
         }
-    }
-
-    let removed_authority = DOMAIN_AUTHORITIES.lock().remove(&asid);
-    if let Some(authority) = removed_authority {
-        debug_assert_eq!(authority.address_space, handle);
     }
 
     registration::metadata::RetiredMetadata::detach(handle)

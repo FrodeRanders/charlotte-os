@@ -343,6 +343,7 @@ fn test_quarantine(abandon: bool) {
         let _table = ADDRESS_SPACE_TABLE.lock();
         let _limits = memory::DOMAIN_LIMITS.lock();
         let _usage = memory::usage::DOMAIN_USAGE.lock();
+        let _authority = memory::DOMAIN_AUTHORITIES.lock();
         let _heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
         // RetiredEntry's ManuallyDrop owns the resource even though the
         // receipt's ordinary metadata is dropped. No address-space destructor.
@@ -372,6 +373,14 @@ fn test_quarantine(abandon: bool) {
 fn test_retry_quiescence() {
     let before = backing_budget::test_used_pages(Kind::Heap);
     let owner = loader::create_user_address_space_handle();
+    memory::register_domain_authority(
+        owner,
+        charlotte_launch::artifact_principal_id(b"retired-authority-control"),
+        0,
+    );
+    memory::install_launch_descriptor(owner, b"retired authority descriptor");
+    let authority = memory::domain_authority(owner.id());
+    assert!(authority.is_some());
     assert!(memory::commit_user_heap_page_handle(owner, charlotte_launch::HEAP_VADDR));
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let retired = stage(owner);
@@ -382,6 +391,8 @@ fn test_retry_quiescence() {
         })
         .expect_err("rejected invalidation consumed root");
     retired.metadata.as_ref().unwrap().test_assert_retained(owner);
+    assert_eq!(retired.metadata.as_ref().unwrap().test_authority(), authority);
+    assert_eq!(memory::domain_authority(owner.id()), None);
     assert_detached(owner);
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
     assert_eq!(backing_budget::test_used_pages(Kind::Heap), before + 1);
@@ -392,6 +403,7 @@ fn test_retry_quiescence() {
     let successor = loader::create_user_address_space_handle();
     assert_eq!(successor.id(), owner.id());
     assert_ne!(successor, owner);
+    assert_eq!(memory::domain_authority(successor.id()), None);
     memory::close_user_address_space_handle(successor).unwrap();
     memory::close_user_address_space_handle(intervening).unwrap();
 }

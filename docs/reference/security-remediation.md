@@ -138,7 +138,7 @@ unpublished root, capability namespace and account metadata. The exact generatio
 is bound under publication serialization; runtime sponsor lookup is allocation-free.
 Kernel sponsorship is prepared before schedulers/APs start. Closed old accounts
 remain until their original memory charges end; detached metadata disposes after
-the local ledger guard. General heap/aggregate limits, authority/high-water registries
+the local ledger guard. General heap/aggregate limits, principal high-water registries
 and enclosing caller/IRQ/destructor contexts remain open R7/R18 work.
 
 The [root policy/telemetry follow-up](../reports/audits/2026-10-18-root-policy-preparation.md)
@@ -148,8 +148,16 @@ only relinks admitted nodes. Sealed cleanup transfers both nodes through the
 existing closing/final-root receipt; invalidation rejection retains them and
 confirmed invalidation disposes them after local guards, before backing/slot
 completion. No new registry, custody authority or numbered disposition change.
-Authority/high-water/snapshot allocations, aggregate budgets, list hold-time
+Principal high-water/snapshot allocations, aggregate budgets, list hold-time
 pressure and wider destructor contexts remain open.
+
+The [signed-authority slot follow-up](../reports/audits/2026-10-18-root-authority-preparation.md)
+prepares its storage with that same root transaction. Empty slots grant no identity;
+the signed loader fills the exact assigned generation without allocation, rejecting
+zero principals, duplicates and stale generations before mutation. Sealed cleanup
+carries the populated slot in the same final-root receipt through invalidation.
+Authority-node disposal is post-guard; high-water maps, aggregate budgets and wider
+caller/IRQ contexts remain open. This does not change platform trust or enrollment.
 
 SEC-07 remains partial until all of the following deliverables are accepted:
 

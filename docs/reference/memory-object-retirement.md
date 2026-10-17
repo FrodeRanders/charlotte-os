@@ -35,22 +35,23 @@ The [sponsor metadata audit](../reports/audits/2026-10-18-memory-sponsor-prepara
 records rejection, heap-held first-use/publication, exact generation reuse and
 guarded retention controls. These qualify preparation and local lifetime ordering.
 The account/sponsor allocations do not yet have aggregate logical-principal or
-general heap byte admission. Authority/high-water metadata maps and wider
+general heap byte admission. Principal high-water metadata maps and wider
 destructors remain SEC-07/18 work; this is not a fully fallible root-publication
 path or hostile-pressure progress qualification.
 
 ## Root policy and telemetry metadata
 
-`PreparingMetadata` now prepares the launch-limit and domain-usage nodes fallibly
-alongside the existing capability namespace and sponsor account, before local
+`PreparingMetadata` now prepares the launch-limit, domain-usage and signed-authority
+slot nodes fallibly alongside the existing capability namespace and sponsor
+account, before local
 lifecycle/table publication guards. `PreparingRegistration` retains all partial
 fields and the never-published root. Ordinary preparation or table rejection
 explicitly disposes unused metadata and then the root after those guards leave;
 abandonment retains the complete owner without field destruction.
 
-Publication relinks both nodes in their existing registries using the assigned
+Publication relinks these nodes in their existing registries using the assigned
 generation. No allocating insertion or lazy fallback remains for those records.
-After cleanup admission seals, both exact-generation nodes detach into the
+After cleanup admission seals, all three exact-generation nodes detach into the
 existing `ClosingAddressSpace` and transfer with the root to `RetiredAddressSpace`.
 Failed invalidation retains them in the same receipt; only confirmed invalidation
 permits explicit post-guard node release before root backing and slot completion.
@@ -60,8 +61,19 @@ policy is unchanged; these nodes confer no new cleanup or replay authority.
 The [root policy preparation audit](../reports/audits/2026-10-18-root-policy-preparation.md)
 records rejection, heap-held publication, generation reuse and retirement controls.
 Shared `AdmittedMap` lookup is linear and its hold time under hostile pressure is
-unqualified. Signed authority, principal high-water and snapshot allocation,
-aggregate metadata/principal admission and wider caller contexts remain open.
+unqualified. Principal high-water and snapshot allocation, aggregate
+metadata/principal admission and wider caller contexts remain open.
+
+The [signed-authority slot follow-up](../reports/audits/2026-10-18-root-authority-preparation.md)
+extends that same owner and retirement receipt with an empty slot tagged by the
+root's assigned generation. Empty slots grant no authority. Only the trusted signed
+loader installs the principal/roles and descriptor digest, without allocation;
+stale generation, zero principal and duplicate installation reject before mutation.
+The slot detaches with the other root metadata; invalidation rejection retains
+even a populated identity/digest, and confirmed invalidation releases its node
+outside local guards before backing/slot completion. No separate registry or
+identity cleanup ticket is introduced. Principal high-water allocation remains
+beneath lifecycle; this change only releases the authority borrow before sampling.
 
 ## Owning the gap
 

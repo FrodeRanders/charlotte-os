@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Signed-authority slot preparation](audits/2026-10-18-root-authority-preparation.md) — Prepares identity storage with the root; exact generation installation and receipt retention through invalidation.
+
 - [Root policy and telemetry metadata preparation](audits/2026-10-18-root-policy-preparation.md) — Fallible limit/usage nodes before publication; exact nodes retained in the root retirement receipt through invalidation.
 
 - [Memory sponsor metadata preparation](audits/2026-10-18-memory-sponsor-preparation.md) — Fallible account/sponsor preparation before root publication; exact generation lifetimes and post-ledger metadata disposal.

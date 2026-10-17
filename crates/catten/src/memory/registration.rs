@@ -118,6 +118,7 @@ pub(super) fn test_abandonment() {
         let table = ADDRESS_SPACE_TABLE.lock();
         let _limits = DOMAIN_LIMITS.lock();
         let _usage = usage::DOMAIN_USAGE.lock();
+        let _authority = DOMAIN_AUTHORITIES.lock();
         budget::tests::with_ledger_locked(|| {
             let allocator = PHYSICAL_FRAME_ALLOCATOR.lock();
             let _heap = allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
@@ -128,6 +129,7 @@ pub(super) fn test_abandonment() {
     }
     crate::logln!(
         "[memory sponsor registration retention] guarded abandonment retains one unpublished \
-         root, capability namespace, complete sponsor and policy/usage metadata; no ASID published"
+         root, capability namespace, complete sponsor and policy/usage/authority metadata; no \
+         ASID published"
     );
 }
