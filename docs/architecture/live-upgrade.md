@@ -26,7 +26,8 @@ See [resource ownership](../guides/resource-ownership.md) and
 [memory-object budgets](../reference/memory-object-budgets.md).
 
 The executable snapshot is verified as a CLS2 Ed25519-signed artifact before
-mapping. The object checksum detects corruption; it is not executable authority.
+mapping. Executable authority comes from the signed artifact; the object checksum
+detects corruption.
 
 ## Multi-state kernel prototype
 
@@ -44,7 +45,7 @@ pub fn try_spawn_upgrade(
 
 `UpgradeGrant` describes state capabilities already held by the kernel
 supervisor and an optional old endpoint from which to delegate a connection.
-This helper is not the implementation invoked by the userspace upgrade syscall.
+The userspace upgrade syscall uses a different implementation.
 
 Its preparation owner holds the loaded, not-yet-running replacement and every
 `PreparedTransfer`. Destination identities are reserved before source authority is

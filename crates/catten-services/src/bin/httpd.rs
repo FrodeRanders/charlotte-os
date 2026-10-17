@@ -28,8 +28,8 @@
 //!
 //! Services that are not running are rendered as `null`; the aggregator uses
 //! non-blocking `ns::OP_TRY_LOOKUP` so an absent service never stalls a
-//! request. This is a deliberate keyhole, not a general-purpose web server:
-//! it has a fixed set of read-only targets, no keep-alive, and serves one
+//! request. The server exposes a fixed set of read-only targets,
+//! has no keep-alive, and serves one
 //! connection at a time.
 //!
 //! The request target selects either the node or cluster view:

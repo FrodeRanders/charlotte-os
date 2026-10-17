@@ -308,8 +308,8 @@ fn read_private_key(path: &str, length: usize) -> Result<Zeroizing<Vec<u8>>> {
     const MAX_KEY_FILE_BYTES: u64 = 4096;
     let mut options = OpenOptions::new();
     options.read(true);
-    // Inspect metadata on the opened descriptor, not a pathname checked and
-    // reopened later. Nonblocking/no-follow also prevents FIFO/symlink traps.
+    // Inspect the opened descriptor so a path change cannot swap the checked file.
+    // Nonblocking/no-follow also prevents FIFO/symlink traps.
     #[cfg(unix)]
     options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
     let file = options.open(path).map_err(|_| "cannot open private-key file".to_owned())?;
@@ -2632,7 +2632,7 @@ mod tests {
             fs::write(&path, malformed).unwrap();
             assert!(read_private_key(&path, 64).is_err());
         }
-        // Permissions are exempted by exact PUBLIC fixture contents, not name.
+        // Only exact public fixture contents qualify for the permission exemption.
         fs::write(&path, include_str!("../dev-key.hex")).unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
         assert!(read_signing_key(&path).is_ok());

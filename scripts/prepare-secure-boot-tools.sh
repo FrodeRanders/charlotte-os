@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Workspace-local host tools for disposable QEMU trust tests, not guest custody.
+# Workspace-local host tools for disposable QEMU trust tests; guest key custody needs separate
+# support.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TOOLS="$ROOT/target/secure-boot-tools"

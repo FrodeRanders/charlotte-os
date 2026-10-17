@@ -1,5 +1,6 @@
 //! Real detached timer owners, CQ publication and local disposal boundaries.
-//! Private fixtures retain their original accounts, not physical root proofs.
+//! Private fixtures retain their original accounts; physical root completion needs separate
+//! proof.
 
 use core::sync::atomic::{
     AtomicUsize,

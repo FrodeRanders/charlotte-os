@@ -197,7 +197,7 @@ printable registry names as JSON strings and represents internal binary keys as
 `hex:<bytes>`; those hexadecimal entries are intentional opaque identifiers,
 not unnamed threads or malformed text.
 
-The report is time-aware, not just a point-in-time dump. It reuses the
+The report compares consecutive snapshots. It reuses the
 observe snapshot's monotonic counter and frequency (`mono_ticks` and
 `counter_hz`) as a wall-clock source, so it reports uptime, the interval
 between consecutive requests, and per-counter `*_delta`/`*_rate` fields for

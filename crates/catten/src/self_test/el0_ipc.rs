@@ -6,7 +6,7 @@
 //! reply polling. The userspace stubs never receive or pass ASIDs; authority is
 //! represented only by caps in their own protection domains.
 //!
-//! ### Why these stubs are hand-written assembly, not Rust
+//! ### Why these stubs use hand-written assembly
 //!
 //! This is a deliberately narrow syscall-ABI test. The EL0 stubs
 //! included below run with **no runtime at all** — no crt0, no heap, no panic

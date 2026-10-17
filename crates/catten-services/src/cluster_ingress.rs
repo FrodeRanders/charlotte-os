@@ -220,7 +220,7 @@ impl BackendSnapshot {
 
 /// Produce the load-balancing epoch from committed membership plus replicated
 /// drain generations. The explicit hash is stable on every node and changes
-/// only when the backend policy changes, not for unrelated catalog traffic.
+/// only when the backend policy changes. Unrelated catalog traffic leaves it unchanged.
 pub fn load_balancing_epoch(membership_epoch: u64, draining_nodes: &[(u64, u64)]) -> u64 {
     service_load_balancing_epoch(membership_epoch, b"", 0, 0, 0, &[], draining_nodes)
 }

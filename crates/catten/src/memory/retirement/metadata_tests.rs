@@ -1,4 +1,5 @@
-//! Serialized final-metadata release context probes, not generic caller policy.
+//! Serialized probes of the final metadata release boundary. Wider caller contexts remain
+//! unqualified.
 use core::sync::atomic::{
     AtomicBool,
     AtomicUsize,

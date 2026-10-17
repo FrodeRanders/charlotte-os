@@ -71,8 +71,8 @@ impl PreparingEvent {
         allocate: impl FnOnce(&EventAdmission) -> Result<CancellationRef, ()>,
     ) -> Result<(), ()> {
         assert!(self.event().cancellation.is_none());
-        // This is a borrow of the same admission, not an owning allocator
-        // argument. Rejected cancellation allocation cannot refund the event.
+        // Borrow the existing admission so a rejected cancellation allocation
+        // leaves the event's original charge intact.
         let state = allocate(self.event()._charge.as_ref().unwrap())?;
         self.0.event.as_mut().unwrap().cancellation = Some(state);
         Ok(())

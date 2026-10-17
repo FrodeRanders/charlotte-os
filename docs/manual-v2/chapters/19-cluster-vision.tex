@@ -14,8 +14,8 @@ five voters, and the safety models explore three-node elections and membership
 transitions. Operational QEMU validation ranges from focused two-guest
 scenarios to a three-guest cluster with discovery-driven admission,
 joint-consensus membership, replica placement, and cluster-wide TCP ingress.
-The number of guests in a fixture is a validation choice, not a cluster-size
-limit or architectural objective.
+We choose the number of guests to test a particular behavior. Those fixtures
+do not establish a cluster-size limit or target.
 
 The implemented system now includes replicated naming and deployment state,
 signed ELF artifacts, central-S3 artifact pickup, per-node deployment agents,
@@ -29,12 +29,12 @@ This chapter first develops the cluster-level model and then uses Linux
 containers and Kubernetes/OpenShift as a counterpoint. The comparison separates
 the intrinsic cost of distributed computation from machinery needed to adapt
 general-purpose, machine-centered operating systems to isolated, reproducible,
-movable workloads. CharlotteOS is a research prototype for testing that
-separation, not a production container-platform replacement.
+movable workloads. With CharlotteOS, we want to test that separation.
+This is still a research prototype.
 
 \section{The cluster is the computer}
 
-\subsection{Nodes are resources, not deployment targets}
+\subsection{Nodes as resources}
 
 The central proposition is simple:
 
@@ -181,8 +181,8 @@ failure detection, load balancing, and recovery from partial failure. Network
 partitions require consistency rules; persistent state requires ownership,
 durability, repair, and backup; rolling change requires compatibility and
 rollback; and secrets require secure creation and delegation. Moving these
-responsibilities into the operating system changes their integration, not
-their necessity.
+responsibilities into the operating system changes where we handle them.
+We still have to do the work.
 
 \subsubsection{Compatibility and boundary-construction complexity may change}
 Some machinery exists because a cluster platform must turn a
@@ -232,12 +232,11 @@ scheduling survive while Pods, OCI, CRI, and much container security
 scaffolding do not would identify which platform ideas are consequences of
 distributed computation and which are consequences of the substrate.
 
-Existing Linux software does not simply run on CharlotteOS. The system
-exchanges compatibility for a smaller and
-more explicit execution contract. Kubernetes asks how to orchestrate today's
-applications. CharlotteOS asks what applications and operating systems could
-look like if cluster execution, artifact trust, and explicit authority were
-native from the beginning.
+Existing Linux software needs adaptation to run on CharlotteOS. We give up
+that compatibility to explore a smaller, more explicit execution contract.
+The question we want to study is how applications might change when cluster
+execution, artifact trust, and explicit authority are part of the operating
+system from the start.
 
 \section{Target architecture}
 
@@ -576,8 +575,8 @@ its pin, the controller commits a compatible replacement in a new generation,
 even when the node set stays the same. The agent fetches the pinned key/digest and
 rechecks local compatibility. Kernel admission rechecks actual ELF machine,
 signed requirements, digest and identity before creating the domain. Profile
-reports are identity-bound observations, not hardware attestation. CPU hotplug
-and vector context contracts remain separate work.
+reports bind an observation to a node identity; they do not attest to its hardware.
+CPU hotplug and vector context contracts remain separate work.
 
 The signer reads an ELF path instead of accepting a supplied digest.
 Additional \texttt{--variant} options supply object key, ELF path, feature mask,
@@ -637,7 +636,7 @@ Declared relationships are guesses. Shard-level message counts, byte flow,
 queue depth, and task snapshots are already observable inside a node
 (\autoref{chap:sitas-executor}), and the distributed name service can identify which components
 call which. The target controller should aggregate these signals across
-nodes and use sustained behavior, not transient noise, to refine placement.
+nodes and base placement changes on sustained behavior.
 
 The node-capacity path is the first cluster-wide feedback loop, deliberately
 limited to slow memory and CPU pressure. Detailed executor and communication
@@ -674,7 +673,7 @@ making browser polling part of consensus or requiring the leader to terminate
 every connection.
 
 Membership presently supplies stable node identities and authenticated
-Ethernet routes, not management IP addresses. The dashboard therefore does
+Ethernet routes, rather than management IP addresses. The dashboard therefore does
 not manufacture drill-down links from MAC addresses. A future signed, leased
 management-endpoint record can support an authenticated
 \path{/cluster/nodes/{node-key}/metrics} proxy, keeping node drill-down
@@ -1043,7 +1042,7 @@ rather than polling only \texttt{greet}. A node can own up to 64 independently
 named application domains. Each domain is fenced by the principal derived from
 its signed artifact name, so a generation change retires only the matching
 application even if address-space identifiers have been reused. This bound is
-kernel admission policy, not a naming or descriptor-format limit.
+kernel admission policy, rather than a naming or descriptor-format limit.
 
 Automatic placement now covers singletons, fixed distinct-node replica sets,
 every eligible voter, stable affinity/anti-affinity ranking, cumulative

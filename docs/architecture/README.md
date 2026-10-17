@@ -1,10 +1,10 @@
 # Architecture and design
 
-These are living design documents. They describe the intended composition and
-security boundaries, but may also record implementation status. Treat an
-unqualified design statement as direction, not proof that the feature exists;
-consult the [manual status appendix](../manual-v2/charlotte.pdf) and
-[`reference/`](../reference/README.md) for implemented contracts.
+These are working design notes. They describe how we intend the pieces to fit
+together and where their security boundaries should be. Some also record what
+we have implemented. For current behavior, check the
+[manual status appendix](../manual-v2/charlotte.pdf) and
+[`reference/`](../reference/README.md).
 
 ![CharlotteOS system layering](../manual-v2/figures/system-layering.svg)
 
@@ -50,4 +50,4 @@ logic, and external managed infrastructure at explicit boundaries.
 - [Real-hardware roadmap](real-hardware-roadmap.md) — progression from QEMU
   server models to SystemReady hardware.
 - [EL2 capability root](el2-capability-root.md) — an exploratory security
-  design, not an implemented contract.
+  design that has not been implemented.

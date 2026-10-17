@@ -88,7 +88,7 @@ fn source_close_wait() {
             );
         } else {
             // Close waited until publication. The delegated connection now
-            // names a closed but still retained endpoint, not a dangling ID.
+            // names a closed endpoint whose backing remains retained.
             assert_eq!(
                 scalar_send(fixture.caller.id(), destination, 9, 0),
                 Err(IpcError::EndpointClosed)

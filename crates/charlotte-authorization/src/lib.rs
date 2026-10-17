@@ -7,8 +7,8 @@
 //! transitions over IPC. Keeping the decision state independent makes the
 //! safety boundary testable before it is connected to a privileged endpoint.
 //!
-//! A transport integrating this store must obtain [`DomainIdentity`] from the
-//! kernel, not from request bytes, and must allow
+//! A transport integrating this store must use the kernel-authenticated
+//! [`DomainIdentity`]. Request bytes cannot supply that identity. It must allow
 //! [`PolicyStore::provision_identity_from_supervisor`] only on an authenticated
 //! supervisor control path.
 
@@ -500,7 +500,7 @@ impl PolicyStore {
     /// Replace one complete subject/service rule using optimistic versioning.
     ///
     /// `expected_version` is zero when creating a rule. An empty allowed-rights
-    /// set is an explicit versioned deny, not deletion of the tombstone.
+    /// set records a versioned deny and retains the tombstone.
     pub fn set_policy(
         &mut self,
         actor: DomainIdentity,

@@ -168,7 +168,7 @@ pub struct ServiceDomain {
 
 /// Per-domain resource limits selected by the trusted launch path.
 ///
-/// These are kernel-enforced limits, not mutable manifest data. Every thread
+/// The kernel enforces the limits selected by trusted launch policy. Every thread
 /// subsequently created inside the domain inherits the selected stack size,
 /// and the scheduler rejects publication beyond the domain's thread quota.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -292,7 +292,7 @@ pub(crate) struct DeployedDomain {
 
 /// Domains currently owned by the deployment agent on this node.
 ///
-/// The limit is an admission bound, not a wire-format limitation. It keeps a
+/// Admission enforces this limit independently of the wire format. It keeps a
 /// compromised deployment agent from growing kernel bookkeeping without
 /// bound while allowing a useful set of co-located application components.
 pub(crate) const MAX_DEPLOYED_DOMAINS: usize = 64;
@@ -301,7 +301,7 @@ pub(crate) static DEPLOYED_DOMAINS: spin::LazyLock<
 > = spin::LazyLock::new(|| crate::cpu::multiprocessor::spin::mutex::Mutex::new(Vec::new()));
 
 /// Retirement outcomes retained for self-tests and debugger observability.
-/// They are evidence counters, not synchronization inputs.
+/// These counters support inspection only; synchronization must use the lifecycle state.
 pub(crate) static DEPLOYMENT_ACKNOWLEDGED_RETIREMENTS: core::sync::atomic::AtomicU64 =
     core::sync::atomic::AtomicU64::new(0);
 pub(crate) static DEPLOYMENT_FORCED_RETIREMENTS: core::sync::atomic::AtomicU64 =
@@ -622,9 +622,9 @@ extern "C" fn local_ready_publisher() {
         yield_lp();
     }
 
-    // Local business first: publish only once the operational object store is
-    // serving. Readiness is a platform contract, not a self-test result: a
-    // production boot or a focused verifier may legitimately omit the NVMe
+    // Publish only once the operational object store is serving. Readiness must
+    // also work when booting without self-tests: a production boot or a focused
+    // verifier may omit the NVMe
     // test while the steady-state launcher still owns the same storage stack.
     let storage = crate::service::launch::steady_state()
         .storage
@@ -1471,8 +1471,8 @@ pub fn elf_for_selector(selector: u64) -> Option<&'static [u8]> {
 
 /// Persistent service images are trusted by their cluster signature: the EL0
 /// loader refuses anything that is not validly signed, so provenance here is
-/// the signature note, not a byte-for-byte match against a kernel-embedded
-/// copy (the old hash-equality constraint, which the signing work removed).
+/// established by the signature note. No match against a kernel-embedded
+/// copy is required; signing replaced the old hash-equality constraint.
 pub(crate) fn persistent_elf_is_trusted(image: &[u8]) -> bool {
     charlotte_launch::signature_note::verify_elf(image, &charlotte_launch::CLUSTER_PUBLIC_KEY)
         == charlotte_launch::signature_note::VerifyOutcome::Valid

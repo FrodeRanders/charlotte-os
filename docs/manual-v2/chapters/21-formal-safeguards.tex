@@ -113,7 +113,7 @@ implementation, and validation:
         builds and Clippy, and relevant boot or multi-node tests.
 \end{enumerate}
 
-The model is an executable safety contract, not a diagram added after
+We use the executable model to check the safety contract alongside the
 implementation. A change is incomplete if
 the model claims an atomic or durable transition that the code does not
 provide.
@@ -353,7 +353,7 @@ Dynamic admission originally kept \texttt{joining} and
 \texttt{joining\_from} only in process memory. A node could select an existing
 cluster as its authority, crash before membership became durable, restart from
 its launch-time singleton configuration, and campaign. The gap represented
-real CharlotteOS functionality, not merely a missing model action.
+a behavior of the implementation that the model had not captured.
 
 The repaired implementation persists a \texttt{JoinAdmission} record
 containing the selected anchor and the snapshot index that existed before
@@ -605,7 +605,7 @@ fast configurations produced the following complete state graphs:
 \hline
 \end{longtable}
 
-State counts are evidence about one configuration, not a quality score. A
+State counts tell us how much of one configuration was explored. A
 small model may encode the decisive identity argument, while a large model may
 contain substantial independent bookkeeping. The invariant, abstraction, and
 coverage matter more than graph size.
@@ -689,7 +689,7 @@ A practical review checklist is:
         configuration.
     \item Add the new action to the required-coverage list in
         \repofile|docs/tla/check.sh|.
-    \item Run the entire TLC suite, not only the edited module, because shared
+    \item Run the entire TLC suite, including modules you did not edit, because shared
         documentation claims and layered Raft assumptions can drift together.
     \item Update the conformance map with exact Rust functions and ordering.
     \item Add implementation tests at the crash, retry, or stale-generation

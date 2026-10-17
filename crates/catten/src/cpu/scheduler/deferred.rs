@@ -1,8 +1,8 @@
 //! Per-producer-LP delivery of already-admitted scheduler waiter nodes.
 //! Producers may hold IPC/other masking guards: enqueue without callbacks or
 //! allocation. Only that LP claims after guard exit, so another LP cannot run
-//! a callback before its producer has left serialization. This is metadata
-//! transport, not custody or authority for any physical cleanup transaction.
+//! a callback before its producer has left serialization. This transports metadata;
+//! it grants no custody or authority to complete physical cleanup.
 
 use core::sync::atomic::{
     AtomicBool,

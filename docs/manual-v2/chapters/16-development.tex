@@ -17,7 +17,7 @@ This chapter gives the current build, boot, test, and code-reading workflow.
         default under TCG; the virtio-net smoke-test switch adds verification.
         HVF is unsuitable for the driver's direct EL0 device-MMIO path and
         therefore requires \texttt{--no-network}. KVM is an optional Linux
-        accelerator, not a networking requirement.
+        accelerator; networking also works under TCG.
         \textbf{HVF also does not honor hardware ASIDs}. See the
         \repofiletext|docs/platforms/aarch64.md|{\emph{AArch64 Port Status}}
         write-up. HVF builds rely on the
@@ -286,8 +286,8 @@ async model. It:
 \end{enumerate}
 
 This exercises thread creation, scheduling, timer events, the block--yield--wake
-cycle, exit observation, and the wait/poll ABI. It is evidence for that path, not
-a substitute for the wider self-test suite.
+cycle, exit observation, and the wait/poll ABI. It gives us evidence for that
+path. We still need the wider self-test suite.
 
 \section{CI pipeline}
 
@@ -351,7 +351,7 @@ For new contributors, the recommended reading order:
         ASID 0 (which equals \texttt{KERNEL\_ASID}). The address-space table
         must be pre-populated with the kernel AS at index 0.
     \item[x86-64 LA57 mismatch] Derive the address width from
-        \texttt{CR4.LA57} (the active paging mode), not from CPUID capability.
+        \texttt{CR4.LA57} (the active paging mode), rather than from CPUID capability.
         Limine boots with 4-level paging even on CPUs that support 5-level.
 \end{description}
 

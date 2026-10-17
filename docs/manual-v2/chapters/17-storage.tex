@@ -38,9 +38,9 @@ and PCI/MSI-X setup paths.
 
 The NVMe driver is a userspace EL0 prototype implementing the subset needed for
 QEMU bring-up: controller and namespace identification, queue creation, and
-basic read, write, and flush operations. It is not a claim of NVMe 1.4
-compliance. It receives an \texttt{MmioRegion} capability covering the
-controller's BAR0 register window, an \texttt{Interrupt} capability for I/O
+basic read, write, and flush operations. NVMe 1.4 compliance has not been
+established. It receives an \texttt{MmioRegion} capability covering the controller's
+BAR0 register window, an \texttt{Interrupt} capability for I/O
 completion signalling, and a \texttt{DmaDomain} capability bound to the
 controller's PCI requester ID. Queue and data memory are mapped with
 \texttt{dma\_map}; the driver receives contiguous IOVAs rather than physical
@@ -180,7 +180,7 @@ current copy and incompatible layouts fail without reformatting.
 The store publishes explicit Starting, Serving, Draining and Failed states.
 Serving follows mount and endpoint registration; kernel local readiness
 acquires and revalidates that milestone. Diagnostic stages and ordinary I/O
-errors are separate. The marker is not a continuing storage-health lease.
+errors are separate. The marker records startup completion; later I/O can still fail.
 First-failure diagnostics retain state, operation, LBA/count, phase and
 available status/result without retry. See
 \repofile|docs/reports/audits/2026-10-12-security-object-store-readiness.md|.
@@ -195,8 +195,8 @@ Replacement is copy-on-write. New data, header, and allocation state are
 flushed before the directory locator changes, and the old allocation is freed
 afterward. Mount reconstructs the bitmap from validated reachable headers,
 reclaiming pre-commit allocations. Whole-object transfers use multi-page
-memory objects and are divided into block requests of at most 512 KiB, so the
-NVMe request limit is not an object or file limit. The current service API's
+memory objects and are divided into block requests of at most 512 KiB. Objects
+and files can be larger than a single request. The current service API's
 32-bit length limits an individual object to 4 GiB and available disk space.
 Directory records are checksummed and mirrored. Each update goes to the
 generation-selected bank, and mount chooses the newest valid copy per record;
@@ -313,7 +313,7 @@ key from a signed deployment descriptor, streams the ELF, checks its pinned
 SHA-256 and name-bound CLS2 signature, and transfers both ELF and descriptor to
 the scoped kernel launch gate. Credentials, endpoint, bucket, prefix, and TLS
 identity remain outside both descriptor and application. Bootstrap services
-still come from the local store; central S3 is not a boot dependency. Caching,
+still come from the local store; the node can boot without central S3. Caching,
 availability policy, credential rotation, and an end-to-end managed-store
 qualification remain operational work.
 
@@ -328,15 +328,16 @@ Only two absent records authorize initialization; existing empty, incomplete,
 corrupt or unsupported records reject without reset or a memory fallback.
 Older decoders and split-store migration are removed. Each mutation writes
 the complete object and flushes the underlying NVMe device before returning.
-Snapshot bytes and retained log suffix have one replacement point; the pair
-is not a cross-object atomic transaction. Future deployed-store changes
+Snapshot bytes and the retained log suffix share one replacement point in the
+log object. The two-object pair has no cross-object atomicity guarantee.
+Future deployed-store changes
 require an explicit version-directed migration. See
 \path{docs/reference/raft-persistence.md}.
 
 The focused local election fixture runs two in-process Raft members with memory
 stores, keeping consensus behavior testable on a multicore machine without
-NVMe. Its peer count is a fixture choice, not a Raft limit. A separate storage
-test starts a single voter with required persistence,
+NVMe. We chose its peer count for the fixture; Raft is not limited to that count.
+A separate storage test starts a single voter with required persistence,
 records its elected term, tears down that process, restarts the same identity,
 and requires the new election term to be greater. A repeated term 1 would
 fail, so the test distinguishes recovery from a fresh in-memory start.
@@ -405,8 +406,8 @@ creates a blank v4 store and destructively replaces the image contents.
 \begin{enumerate}
     \item Storage policy lives in userspace: a bug in a block
         driver, the object store, or the filesystem corrupts that service's
-        address space, not the kernel. The kernel grants MMIO and interrupts;
-        everything else is userspace.
+        address space. The kernel grants MMIO and interrupts; the storage
+        implementation stays in userspace.
 
     \item Device-independent protocol: the object store and filesystem use
         one block protocol over the implemented NVMe, AHCI, and virtio-blk

@@ -145,10 +145,10 @@ static HW_ASID_ALLOCATOR: LazyLock<Mutex<HwAsidAllocator>> =
 /// switch and read by synchronous EL0 exception paths (e.g. the SVC handler) to
 /// attribute the caller's syscalls.
 ///
-/// This holds CharlotteOS's *logical* address-space id — an index into
-/// [`ADDRESS_SPACE_TABLE`](crate::memory::ADDRESS_SPACE_TABLE) — not the
-/// hardware [`HwAsid`](crate::cpu::isa::aarch64::memory::paging::walker::HwAsid)
-/// tag encoded into TTBR0. The caller ASID must not be reconstructed from
+/// This holds CharlotteOS's *logical* address-space id, an index into
+/// [`ADDRESS_SPACE_TABLE`](crate::memory::ADDRESS_SPACE_TABLE). The hardware
+/// [`HwAsid`](crate::cpu::isa::aarch64::memory::paging::walker::HwAsid) is a
+/// separate tag in TTBR0. The caller ASID must not be reconstructed from
 /// `TTBR0_EL1`: some hypervisors (notably Apple's Hypervisor.framework) do not
 /// preserve the ASID bits when the guest reads the register while running at
 /// EL0, so `mrs ttbr0_el1` can return the base address with the tag stripped.

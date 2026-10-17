@@ -1,5 +1,5 @@
 //! Deterministic cancellation interleavings before secondary LP startup.
-//! Scalar capabilities here are kernel ABI fixtures, not application owners.
+//! Raw capability IDs belong to these kernel ABI fixtures; applications use typed owners.
 use super::*;
 use crate::memory::{
     self,
@@ -106,8 +106,8 @@ impl Fixture {
             )
         };
         let reply = delivered.then(|| receive(server.id(), endpoint).unwrap().reply.unwrap());
-        // Queued caps are guessed only by this raw kernel fixture. This lets
-        // queued close exercise a real mapped-loan shootdown, not just metadata.
+        // This raw kernel fixture guesses queued caps so close exercises the
+        // actual mapped-loan shootdown along with metadata cleanup.
         for (index, borrow) in borrows.iter().enumerate() {
             // Neither queued nor delivered loans confer copy/move ownership.
             assert!(matches!(

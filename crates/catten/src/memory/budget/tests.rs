@@ -1,4 +1,4 @@
-//! Serialized boot controls; reservations here are counter-only, not backing proof.
+//! Serialized boot controls for reservation counters; these do not allocate physical backing.
 use alloc::sync::Arc;
 
 pub(crate) fn ledger_available() -> bool {

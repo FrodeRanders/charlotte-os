@@ -39,8 +39,8 @@ const OBJ_ERR_EXISTS: i64 = 5;
 /// Mirrors `charlotte_protocol_objstore::EXECUTABLE_ECHO_ID`.
 const OBJ_EXECUTABLE_ECHO_ID: u64 = 0xffff_0000_0000_0001;
 
-// This is a loader resource bound, not an object-store format limit. Keep it
-// comfortably above the largest staged service while preventing corrupted or
+// This bounds loader resource use independently of the object-store format.
+// Keep it above the largest staged service while preventing corrupted or
 // misconfigured store contents from consuming an unbounded amount of kernel
 // heap before the ELF verifier can reject them.
 const MAX_SERVICE_ELF_SIZE: usize = 4 * 1024 * 1024;

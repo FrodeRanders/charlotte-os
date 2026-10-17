@@ -53,7 +53,7 @@ impl Fixture {
 }
 
 fn hidden(asid: AddressSpaceId, cap: MemoryObjectCap, peer: AddressSpaceId) {
-    // Presence proves this is a live but undelivered payload, not a bad guess.
+    // Confirm the payload is live and undelivered before testing its hidden authority.
     assert!(crate::capability::contains(asid, cap, crate::capability::ObjectKind::Memory));
     assert_eq!(object::info(asid, cap), Err(MemoryObjectError::UnknownCapability));
     assert_eq!(object::snapshot_bytes(asid, cap, 1), Err(MemoryObjectError::UnknownCapability));

@@ -3,8 +3,8 @@
 
 \section{A mismatch at the operating-system boundary}
 
-CharlotteOS starts from a specific mismatch. Async runtimes, least-privilege
-services, and isolated components are often built above interfaces organized
+CharlotteOS is our attempt to address a particular mismatch. Async runtimes,
+least-privilege services, and isolated components are often built above interfaces organized
 around blocking calls, ambient namespaces, and machine-wide policy. This manual
 calls the resulting adapters, duplicated concurrency models, and policy layers
 the \textbf{retrofit tax}.
@@ -73,7 +73,7 @@ programs run on operating systems that do not share Rust's ownership discipline.
 \begin{itemize}
     \item A Rust program cannot protect itself from a C driver that
         corrupts kernel memory. Isolation must be enforced by the hardware
-        (MMU, IOMMU), not by the language.
+        (MMU, IOMMU) rather than by the language.
     \item A Rust \texttt{Mutex<Vec<T>{>}} crossing a syscall boundary is
         still a shared-memory lock with all the contention, priority inversion,
         and deadlock risks that implies. The kernel does not know the lock exists.
@@ -87,16 +87,15 @@ Rust prevents some bug classes within an address space. The OS still defines the
 rules between address spaces. If authority is ambient until restricted, then the
 language's guarantees remain local.
 
-\section{What needs to change}
+\section{What we are trying to build}
 
-We need an operating system whose foundational abstractions align with the demands
-of critical, performant software:
+We want to see how an operating system can support these programs more directly.
+The design starts with a few requirements:
 
 \begin{enumerate}
     \item Asynchronous by construction: operations that may wait for
-        external progress should have submission/completion semantics, not
-        blocking-call semantics. No subsystem should force a thread to dedicate
-        itself to one operation.
+        external progress should let the caller submit work and observe its
+        completion later. The thread should be able to do other work while it waits.
 
     \item Capability-based, instead of ambient, authority: a process should be
         able to perform an operation only if it holds a capability authorizing it.
@@ -107,8 +106,8 @@ of critical, performant software:
         A fault in one domain should not propagate to another.
 
     \item Ownership that crosses boundaries: data movement between
-        domains should transfer ownership, not copy bytes. The kernel should move
-        page mappings, so the sender loses access and the receiver gains it.
+        domains should support ownership transfer. The kernel should be able to
+        move page mappings, so the sender loses access and the receiver gains it.
 
     \item Bounded resource consumption: every queue, table, and buffer
         should be bounded. Backpressure should propagate explicitly. No unbounded

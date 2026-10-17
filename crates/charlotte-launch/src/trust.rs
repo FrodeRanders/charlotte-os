@@ -1,7 +1,7 @@
 //! Role-separated public trust configuration for deployment admission.
 //!
-//! The configuration is launch-owned policy, not application input and not a
-//! container for private key material.  It deliberately identifies each key
+//! The launcher owns this public policy. Applications cannot supply it, and
+//! it excludes private key material. It identifies each key
 //! by the decision it authorizes even when a development installation uses
 //! the same Ed25519 key for more than one role.
 

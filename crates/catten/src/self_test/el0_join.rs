@@ -191,8 +191,8 @@ pub mod inner {
         let serving_deadline = crate::self_test::results::Deadline::after_millis(60_000);
         while status_word(charlotte_launch::dns_status::RAFT_STATE) == 0 {
             serving_deadline.assert_pending("EL0 join DNS-owned Raft serving");
-            // This is a verifier observing a shared status page, not service
-            // synchronization. Yielding keeps the deadline live even on a
+            // This is a fixture-only observation of a shared status page.
+            // Yielding keeps the deadline live even on a
             // boot path where a timer PPI is delayed on an otherwise-idle LP.
             yield_lp();
         }

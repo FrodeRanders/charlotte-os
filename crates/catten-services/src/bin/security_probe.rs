@@ -286,7 +286,7 @@ fn main(ctx: Context) -> ! {
         .connect(IpcRights::CALL | IpcRights::MINT_CONNECTION)
         .unwrap_or_else(|_| catten_rt::domain_abort());
     // Positive control: the same submission succeeds for an explicitly
-    // mintable source. The invalid opcode is rejected remotely, not by IPC.
+    // mintable source. IPC accepts it, then the remote service rejects the invalid opcode.
     denied(
         wait(
             controller
@@ -313,7 +313,7 @@ fn main(ctx: Context) -> ! {
                 IpcRights::CALL,
                 &memory,
             ),
-            // This submission ABI reports a zero handle, not a status code.
+            // This submission ABI signals rejection by returning a zero handle.
             Err(catten_rt::owned::IpcError::CreationFailed)
         ),
         11,
@@ -555,7 +555,7 @@ fn main(ctx: Context) -> ! {
     check((4..=1_024).contains(&timers.len()) && Completion::timer(1).is_err(), 22);
     let cleanup_budget = Deadline::after(5_000);
     drop(timers);
-    // Dropping an hour-long timer must cancel it, not wait for its deadline.
+    // Drop must cancel the hour-long timer without waiting for its deadline.
     check(!cleanup_budget.expired(), 23);
     for _ in 0..64 {
         drop(Completion::timer(3_600_000).unwrap_or_else(|_| catten_rt::domain_abort()));

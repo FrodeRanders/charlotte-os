@@ -744,8 +744,8 @@ fn poll_shutdown_slot_with(
         slot.polling = true;
         coordinator
     };
-    // Take the whole owner, not a borrow behind a masking guard. The Polling
-    // claim keeps another caller from starting/polling/transferring it.
+    // Take the whole owner so polling can run after the masking guard leaves.
+    // The Polling claim excludes another caller from starting, polling or transferring it.
     let progress = poll(&mut coordinator);
     let mut slot = registry.lock();
     slot.coordinator = Some(coordinator);

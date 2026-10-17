@@ -1,6 +1,7 @@
 //! One immutable admission policy per boot, shared by service manifests and
-//! the kernel's final operational launch gate. This is a trusted kernel
-//! handoff, not protected enrollment, persistent installation or key custody.
+//! the kernel's final operational launch gate. This trusted kernel handoff covers
+//! policy publication only. Protected enrollment, persistent installation and
+//! key custody need separate support.
 
 use charlotte_launch::trust::{
     self,

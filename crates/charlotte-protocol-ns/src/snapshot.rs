@@ -99,7 +99,7 @@ impl<'a> Snapshot<'a> {
         self.count == 0
     }
 
-    /// Exact number of retained lookup requests, not distinct missing names.
+    /// Count every retained lookup request, including requests for the same missing name.
     pub fn pending(&self) -> u32 {
         self.pending
     }

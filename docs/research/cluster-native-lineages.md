@@ -367,8 +367,7 @@ proposed contribution is an end-to-end composition in which:
 - drain and shutdown withdraw authority in a bounded order.
 
 This composition is useful only if it stays easier to inspect and operate as
-functionality grows. The research programme should therefore treat complexity
-as an empirical result, not a premise.
+functionality grows. We need to measure that complexity as we build the system.
 
 ## 9. Falsifiable evaluation questions
 

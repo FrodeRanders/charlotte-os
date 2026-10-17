@@ -25,9 +25,10 @@ fn reset_admission_failure() -> DeviceError {
 static CREATION_IRQ: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
 // Other LPs can legitimately use global allocators during this pre-driver
-// fixture. One rejected try_lock proves contention, not that this caller owns
-// the lock. Bound observation without yielding or enabling the caller's IRQs;
-// a lock retained by this caller cannot pass, and timeout remains a failure.
+// fixture. A rejected try_lock may reflect another LP's hold, so it cannot
+// diagnose ownership by this caller. Bound observation without yielding or enabling the
+// caller's
+// IRQs; a lock retained by this caller cannot pass, and timeout remains a failure.
 fn assert_available(mut available: impl FnMut() -> bool, boundary: &'static str) {
     let deadline = crate::self_test::results::Deadline::after_millis(1000);
     let mut contended = false;

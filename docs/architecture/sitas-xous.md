@@ -142,7 +142,7 @@ draft:
 
 -   a Rust `Waker` is not a kernel completion;
 -   a completion capability is not an IPC endpoint;
--   an endpoint connection is not merely a waitable event;
+-   an endpoint connection grants authority to communicate with a service;
 -   a shard is not identical to an LP;
 -   a wake is not identical to an IPI;
 -   "async throughout" does not mean that every syscall must allocate an
@@ -177,7 +177,7 @@ Capabilities answer one question:
 
 > "May I perform this operation?"
 
-They represent authority, not work.
+They grant permission to act. Operations describe the work.
 
 Examples include:
 
@@ -335,7 +335,8 @@ Its main value for CharlotteOS is:
     syscall follows this rule by returning only the caller's address-space
     records in a memory object by default. The supervisor delegates one typed
     system-observer capability to the node observability service; presenting
-    it authorizes cross-domain aggregation. It is not ambient kernel authority.
+    it authorizes cross-domain aggregation without granting ambient kernel
+    authority.
 
 ### 2.3 Xous
 
@@ -453,7 +454,8 @@ A **message** is a kernel-validated IPC envelope consisting of:
 -   zero or more delegated capability attachments;
 -   optional reply authority.
 
-The kernel understands the envelope, not arbitrary Rust types.
+The kernel understands the envelope; arbitrary Rust types remain a userspace
+concern.
 
 ### 3.8 Reply token
 
@@ -498,7 +500,7 @@ A **notification** means:
 
 > State may have changed; inspect the corresponding object or queue.
 
-It may be coalesced. It is not itself a result.
+It may be coalesced and carries no operation result.
 
 ### 3.12 Rust `Waker`
 
@@ -506,7 +508,7 @@ A Rust `Waker` means:
 
 > Poll this userspace future again.
 
-It is a userspace scheduling hint. It is not a kernel completion record
+It is a userspace scheduling hint, distinct from a kernel completion record,
 and should not cross the ABI directly.
 
 ------------------------------------------------------------------------
@@ -602,7 +604,7 @@ required.
 
 ------------------------------------------------------------------------
 
-## 5. Two kernel data paths, not one
+## 5. Two kernel data paths
 
 The earlier CharlotteOS/sitas draft leaned toward a universal
 completion-capability model. Xous shows why that is insufficient.
@@ -623,7 +625,7 @@ Examples:
 -   service → name service;
 -   driver manager → driver process.
 
-The receiver is a userspace server, not the kernel operation engine.
+The receiving userspace server handles the request.
 
 ``` text
 client task
@@ -728,8 +730,8 @@ struct ServiceInstanceId {
 }
 ```
 
-A name such as `"system.network.v1"` is discovery metadata, not
-authority.
+A name such as `"system.network.v1"` is discovery metadata; authority comes
+from the capability.
 
 ## 6.3 Message classes
 
@@ -808,8 +810,8 @@ enum TransferMode {
 -   receiver receives temporary exclusive writable mapping;
 -   sender access is revoked for the duration;
 -   reply or call completion restores sender ownership/access;
--   mutable lending must be hardware enforced, not inferred from Rust
-    types.
+-   mutable lending must be enforced by hardware rather than inferred from
+    Rust types.
 
 The implementation must not rely on safe Rust alone. Unsafe code or a
 non-Rust process must still be contained by page tables and capability
@@ -1060,8 +1062,8 @@ A CharlotteOS service process may own:
 -   one or more completion queues;
 -   per-shard endpoint ingress queues.
 
-The server abstraction is a protection and authority boundary, not a
-single-thread requirement.
+The server abstraction provides protection and authority without requiring a
+single thread.
 
 ------------------------------------------------------------------------
 
@@ -1069,8 +1071,8 @@ single-thread requirement.
 
 ## 8.1 Aggregated wait
 
-A sitas shard should wait on one kernel-managed CQ or wait set, not
-independently wait on every operation capability.
+A sitas shard should wait on one kernel-managed CQ or wait set rather than
+independently waiting on every operation capability.
 
 ``` text
 many operations
@@ -1105,7 +1107,7 @@ is correct and must become an architectural invariant:
 > A terminal operation result must never be silently lost because the
 > userspace CQ ring is full.
 
-The ring's overflow counter is pressure telemetry, not a count of
+The ring's overflow counter is pressure telemetry rather than a count of
 discarded completions.
 
 The kernel may:
@@ -1606,10 +1608,10 @@ continue.
 ### Reframe
 
 -   completion capability work as the **operation completion
-    subsystem**, not the universal service IPC subsystem;
--   observer/waker code as internal scheduling machinery, not the public
-    semantic identity of all async objects;
--   IPI queue closures as a temporary kernel work mechanism, not the
+    subsystem**, distinct from the universal service IPC subsystem;
+-   observer/waker code as internal scheduling machinery, separate from the
+    public semantic identity of all async objects;
+-   IPI queue closures as a temporary kernel work mechanism, separate from the
     long-term cross-domain messaging model;
 -   the current mailbox syscall ABI as a smoke-test interface only.
 
@@ -1644,7 +1646,7 @@ Implement endpoint and connection capabilities independent of LP
 identity.
 
 The endpoint owner may choose which shard receives a message. Clients
-address the service connection, not a target LP.
+address the service connection rather than a target LP.
 
 ## 16.2 Do not allocate one completion capability for every service request
 
@@ -1710,7 +1712,7 @@ Use closed kernel enums for mandatory kernel RPCs and typed mailbox
 instances for subsystem-specific work.
 
 For generic deferred kernel work, use an allocated work object with a
-stable vtable/lifecycle owned by one subsystem, not an unrestricted
+stable vtable/lifecycle owned by one subsystem rather than an unrestricted
 closure transported through the IPI layer.
 
 ## 16.5 Do not equate shard wake with IPI delivery

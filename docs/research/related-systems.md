@@ -78,7 +78,7 @@ The documents establish the following core ideas:
 - cross-shard coordination uses bounded typed messages;
 - the native cluster interface is reliable, message-oriented service invocation rather than sockets;
 - TCP/IP remains an interoperability service;
-- service names are discovery metadata, not authority;
+- service names are discovery metadata; authority comes from capabilities;
 - remote calls carry request identity, deadlines, duplicate handling,
   generation fencing, and explicit uncertain outcomes;
 - signed releases, placement, readiness, connector bindings, and shutdown
@@ -174,11 +174,11 @@ EROS demonstrates that:
 
 #### Relevance to this OS
 
-The rule that a capability means authority -- not work, readiness, notification, or
-completion -- is consistent with this tradition.
+We follow this tradition by treating authority, work, readiness, notification,
+and completion as separate concepts.
 
 CharlotteOS’s monotonic, non-reused handles prevent a stale handle from accidentally
-naming a later local object. That is useful, but it is not a complete solution to:
+naming a later local object. That is useful, but several problems remain:
 
 - capability derivation;
 - transitive delegation;
@@ -401,8 +401,8 @@ The bounded remote-call path now carries or defines:
 - reconnect and re-resolution; and
 - protocol-specific recovery, including the transactional Kafka-step path.
 
-This is an implemented narrowing of the original slogan, not a claim that a
-local call and remote call have identical costs or failure semantics.
+The implementation gives a narrower meaning to the original slogan. Local and
+remote calls still have different costs and failure conditions.
 
 Remote invocation should not silently inherit assumptions from MMU-enforced
 local memory lending. In particular, a network partition cannot synchronously
@@ -596,9 +596,8 @@ handoff time, and production crash consistency remain future work.
 ### 6.2 What remains a protocol-level problem
 
 CharlotteOS therefore already defines local resource reclamation and stale
-connection behavior. The remaining research issue is not simply "how to
-restart a service." It is how each service protocol recovers its externally
-observable state.
+connection behavior. We still need to understand how each service protocol
+recovers its externally observable state after a restart.
 
 Examples include:
 
@@ -1289,9 +1288,8 @@ mobile devices. seL4 added machine-checked functional correctness and security
 properties, became open source in 2014, and gained a foundation and a
 commercial high-assurance ecosystem in 2020. Its own
 [history](https://sel4.systems/About/history.html) records both the proofs and
-real deployments. The lesson was not merely that microkernels can be small,
-but that a deliberately constrained kernel interface can be fast enough to
-verify and use.
+real deployments. For us, this is a useful example of a small kernel interface
+that supports both verification and practical use.
 
 **Capsicum and CHERI.** Capability ideas also entered conventional systems in
 partial form. Capsicum has shipped in FreeBSD since 9.0 and turns file
@@ -1332,7 +1330,7 @@ manifest-checked components, and ownership transfer through an exchange heap.
 Managed-language enforcement did not become a mainstream OS boundary, but
 ownership types and message-oriented runtimes became much more familiar.
 
-**Xous.** Xous is not merely an historical analogy. It remains a working Rust
+**Xous.** Xous is a working Rust
 microkernel for embedded devices, with userspace servers and explicit scalar,
 `Send`, `Lend`, and mutable-lend messages
 ([Xous kernel documentation](https://xous.dev/kernel/)). It is CharlotteOS's
@@ -1378,7 +1376,8 @@ messages, and deliberate placement. Barrelfish supplies the architectural
 analogy for explicit cross-core coordination. IX, DPDK, and Arrakis inform
 batched queues, userspace drivers, IOMMU protection, and buffer ownership.
 CharlotteOS rejects Arrakis's ordinary-application fast path: a device is
-delegated to an isolated driver service, not directly to every application.
+delegated to an isolated driver service rather than directly to every
+application.
 Its completion queues retain terminal operation records and remain distinct
 from endpoint IPC and Rust `Waker`s.
 
@@ -1399,7 +1398,7 @@ domains. A supervisor can revoke their capabilities and borrows, reset a
 device, reconcile operations and DMA, create a fresh generation, and make
 clients re-resolve it. CharlotteOS deliberately promises deterministic failure
 and recovery boundaries rather than transparent continuation. Stateful live
-upgrade is an explicit handoff protocol, not inherited process memory.
+upgrade is an explicit handoff protocol rather than inherited process memory.
 
 ### 16.5 Distributed systems: transparency lost, orchestration won
 

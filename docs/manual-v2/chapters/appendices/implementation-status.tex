@@ -268,8 +268,8 @@ repository history remain authoritative.
         TCP/IP service are validated; TX reclamation and batching remain
         incomplete.
     \item \textbf{General process loader:} the ELF loader is fixed-address for
-        reference service images, not a general loader with argv/env/auxv-style
-        setup.
+        reference service images. General argv/env/auxv-style setup is not
+        implemented.
     \item \textbf{Resource accounting:} memory-object backing pages and counts
         have generation-scoped sponsorship budgets, node-wide admission and
         platform progress reserves. Completion-backed timer events have

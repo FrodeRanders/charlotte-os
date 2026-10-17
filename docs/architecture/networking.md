@@ -8,21 +8,18 @@
 
 ---
 
-# 1. Executive Summary
+# 1. Overview
 
-CharlotteOS deliberately departs from the traditional UNIX networking model.
+In CharlotteOS, we are exploring how networking can fit the same message-passing
+and capability model as local services.
 
-Rather than treating TCP/IP as the foundation of all communication, CharlotteOS treats **networking as an extension of the operating system's message passing and capability model**.
+We want applications to invoke local and remote services through a common
+capability-based interface. Remote calls still have different costs and failure
+conditions; the interface needs to make those visible.
 
-The central idea is simple:
+TCP/IP remains available for communication with other systems.
 
-> **Remote IPC should be indistinguishable from local IPC.**
-
-Applications should invoke services through capabilities, not by connecting to IP addresses and ports.
-
-TCP/IP remains an important interoperability layer, but it is no longer the native programming model.
-
-Instead, the networking architecture is built around:
+The native networking path is built around:
 
 - Ethernet frame transport
 - reliable message passing
@@ -30,7 +27,7 @@ Instead, the networking architecture is built around:
 - distributed object references
 - transparent service discovery
 
-This architecture aligns naturally with the existing CharlotteOS goals:
+This follows the choices we are already exploring in CharlotteOS:
 
 - message passing
 - capability-based security
@@ -55,16 +52,14 @@ recv()
 close()
 ```
 
-Every network interaction is fundamentally based upon:
+The socket interface exposes:
 
 - IP addresses
 - ports
 - byte streams
 - connection-oriented communication
 
-This model has served the Internet extremely well.
-
-However, it is not necessarily the best model for:
+We want to explore a service interface suited to:
 
 - microkernels
 - distributed operating systems
@@ -297,7 +292,8 @@ Others include:
 - EtherCAT
 - custom protocols
 
-CharlotteOS therefore treats Ethernet as a **generic frame transport**, not as "IP networking."
+CharlotteOS therefore treats Ethernet as a **generic frame transport** rather
+than as "IP networking."
 
 ---
 
@@ -354,7 +350,7 @@ Provides:
 - congestion control
 - batching
 
-This layer exports **messages**, not streams.
+This layer exports **messages** rather than streams.
 
 Fragmentation is implemented: a message larger than one frame's payload (1454
 bytes in wire protocol v3) is split across frames that share the message's
@@ -689,9 +685,8 @@ It simply becomes another operating system service.
             Ethernet Transport
 ```
 
-Legacy software uses TCP/IP.
-
-Native software does not.
+Native services are reached through capabilities. The TCP/IP service provides
+socket-based communication where applications need it.
 
 > **Implementation note.** The TCP/IP service is implemented as a userspace
 > `tcpip` binary: the smoltcp stack runs through the frame demultiplexer
@@ -895,10 +890,10 @@ The precise correspondence with the general Graft implementation and the
 intentional platform substitutions are recorded in
 [Graft Conformance in CharlotteOS](../reference/raft-conformance.md).
 
-## 18.2 Why this is better than socket-based Raft
+## 18.2 Why we use this interface for Raft
 
-**Authority, not addresses — after bootstrap.** Once the cluster is
-running, peers are identified by name service entries, not IP:port.
+**Peer connections after bootstrap.** Once the cluster is
+running, peers are identified by name service entries rather than IP:port.
 A node that has joined the cluster receives connection caps for its
 peers through the name service. No IP configuration and no DNS are
 needed for ongoing operation.
@@ -1057,7 +1052,7 @@ routed through the reliable message layer and NIC driver.
 
 This is functionally equivalent to `--peers=10.0.0.1:7000` in a
 traditional Raft cluster. The difference is that the seed identifier
-is a service name, not a transport address, so the transport layer can
+is a service name rather than a transport address, so the transport layer can
 change (Ethernet → RDMA → shared memory) without invalidating the seed
 configuration.
 
@@ -1192,7 +1187,8 @@ abstraction through the same endpoint IPC that local services use.
   configuration store are different `StateMachine` implementations on the
   same Raft substrate.
 - Timer-driven operations (election timeouts, heartbeat intervals) shall
-  use the first-class `submit_timer()` completion primitive, not polling loops.
+  use the first-class `submit_timer()` completion primitive rather than
+  polling loops.
 - Existing single-node services that need consistency across the cluster
   shall be refactored as state machines behind the Raft service rather than
   re-implementing consensus internally.

@@ -54,7 +54,8 @@ complete inventory.
 
 The initial dashboard links `/` on the member that served the cluster request.
 The replicated membership and discovery protocols currently carry stable node
-identities and authenticated Ethernet routes, not management IPv4 addresses.
+identities and authenticated Ethernet routes rather than management IPv4
+addresses.
 For that reason `nodes[].management_endpoint` is explicitly `null`; the UI
 does not guess an address from a MAC or a QEMU convention.
 
@@ -72,7 +73,7 @@ The current `httpd` implements plain HTTP and has no server-side TLS stack or
 request identity. Both node and cluster endpoints therefore belong only on an
 isolated operations network, VPN, or equivalent trusted test segment. They
 must not be exposed to an untrusted LAN or the public Internet. DSR supplies a
-stable address, not authentication.
+stable address; authentication must come from another mechanism.
 
 Production access should use mutual TLS at a dedicated cluster-keyhole
 frontend:
@@ -113,9 +114,8 @@ browser is configured as follows:
 4. Select the observer certificate when prompted. Never export or install a
    cluster signing private key in the browser.
 
-This is the target setup, not a claim that the present port-80 implementation
-already enforces mTLS. Until that work lands, network isolation is the access
-control.
+This describes the setup we want. The current port-80 implementation does not
+enforce mTLS; access control still depends on network isolation.
 
 Version 2 removes the local object ID from deployment observations and the
 JSON keyhole; deployment placement and readiness are represented by actual

@@ -1,4 +1,4 @@
-//! Serialized boot fault adapters, not real OOM or panic/unwind tests.
+//! Serialized boot fixtures inject allocation rejection without exhausting memory or unwinding.
 
 use super::*;
 use crate::{

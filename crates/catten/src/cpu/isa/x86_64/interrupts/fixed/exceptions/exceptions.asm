@@ -82,7 +82,7 @@
 1:
 .endm
 
-// The hardware CS, not a fault-code guess or reusable TID, identifies origin.
+// Use the hardware-saved CS to identify origin; fault codes and reusable TIDs are insufficient.
 // Ten saved words precede the hardware frame. All ordinary fault vectors pass
 // the same trusted frame to Rust; hardware aborts and watchdog NMIs stay separate.
 .extern ih_fault

@@ -321,8 +321,8 @@ fn process_frame(
         return;
     };
     if flags & FLAG_ACK != 0 {
-        // ACK-only frames carry the session being acknowledged, not a new
-        // receive-side session belonging to the ACK sender. Fence completion
+        // ACK-only frames name the session being acknowledged. They cannot
+        // establish a new receive-side session for the ACK sender. Fence completion
         // on both values: sequence numbers restart at one whenever a retry
         // lease advances `tx_session`, so sequence equality alone would let a
         // delayed ACK complete a call from the replacement session.

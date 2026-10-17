@@ -8,9 +8,8 @@ run-time authority that joins those two independently authorized inputs and
 hands applications only attenuated capabilities.
 
 This document records the target model, the implemented admission and
-node-pickup path, and the production hardening that remains. It is not a claim
-that private-key custody, rotation, audit, or connector rollout is production
-ready.
+node-pickup path, and the work still needed for production. Private-key custody,
+rotation, audit, and connector rollout are not ready for production use.
 
 Current builds and boot logs explicitly identify development trust.
 `CATTEN_TRUST_MODE=production` refuses the build until protected provisioning
@@ -59,8 +58,8 @@ The planned hierarchy therefore has distinct keys:
 They may be issued and audited under the same organisational PKI or KMS, but
 they are different keys with different policies. Production deployments should
 ultimately seal the cluster recipient private key to measured boot, an HSM/KMS,
-TPM, Arm CCA realm, or equivalent facility. A file-backed key is development
-tooling, not the final custody design.
+TPM, Arm CCA realm, or equivalent facility. File-backed keys serve development;
+we still need to implement and validate protected key custody.
 
 ## End-to-end flow
 

@@ -497,8 +497,8 @@ fourth probe represents a hardware adapter: the device coordinator must publish
 its request, observe the distinct `DEVICE_QUIESCED` acknowledgement and thread
 exit, and only then reclaim its domain.
 
-The verifier then exercises the production steady-state owners, not only the
-probes. It drains and reclaims the real object store, transfers the actual NVMe,
+The verifier then exercises the production steady-state owners in addition to
+the probes. It drains and reclaims the real object store, transfers the actual NVMe,
 VirtIO RNG, and (on an ordinary network-enabled run) VirtIO NIC domains, and
 requires every retained driver to finish its device-specific flush, drain, and
 reset path before the test can complete. AHCI, VirtIO block, and E1000E use the

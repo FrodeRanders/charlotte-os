@@ -62,7 +62,7 @@ pub const OP_CREATE_AT_SHARED: u32 = 10;
 /// The table is persisted and re-applied at mount.
 pub const OP_APPLY_SCOPE: u32 = 11;
 
-/// Object attribute: readable by any authenticated domain, not just the owner.
+/// Object attribute: readable by every authenticated domain, including non-owners.
 pub const ATTR_SHARED_READ: u32 = 1;
 
 /// Reserved object holding the persisted scope table.

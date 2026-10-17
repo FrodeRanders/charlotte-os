@@ -398,7 +398,7 @@ impl RelmsgRaftTransport {
     }
 
     /// Number of messages with `tag` acknowledged by the remote relmsg
-    /// instance. This is transport delivery, not application processing.
+    /// instance. This confirms transport delivery; application processing may still be pending.
     pub fn acknowledged_count(&self, tag: u8) -> u64 {
         self.acknowledged_by_tag.lock().get(&tag).copied().unwrap_or(0)
     }

@@ -15,7 +15,7 @@
 //!
 //! Requires >= 2 LPs; skipped otherwise.
 //!
-//! ### Why this runs as hand-written assembly, not Rust
+//! ### Why this test uses hand-written assembly
 //!
 //! Like [`super::el0_ipc`], this is a narrowly scoped syscall-ABI test: the
 //! two stubs run at EL0 with no runtime (no crt0, heap, panic handler or

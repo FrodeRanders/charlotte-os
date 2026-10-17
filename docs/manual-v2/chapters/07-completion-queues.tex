@@ -7,8 +7,8 @@ discard a terminal result.
 
 \section{When to use a completion queue}
 
-Use submission/completion when the operation belongs to the \textbf{kernel or a
-hardware-facing mechanism}, not to another userspace service:
+Use submission/completion for operations handled by the \textbf{kernel or a
+hardware-facing mechanism}:
 
 \begin{itemize}
     \item Timer expiry.
@@ -51,7 +51,7 @@ assigns each side its own fields:
         No kernel crossing needed for the common fast path.
     \item The kernel publishes entries with a release fence: the consumer
         sees coherent data without additional synchronization.
-    \item Overflow is detected, not hidden: an overflow counter in the
+    \item Overflow is detected and counted: an overflow counter in the
         header lets userspace detect when entries were produced faster than
         consumed.
 \end{itemize}
@@ -99,7 +99,7 @@ rings} enable targeted wakes:
 
 This prevents cross-shard completion stealing (a pathological behavior where one
 busy shard drains entries intended for another) and keeps wakeup latency
-proportional to the number of entries, not the number of shards.
+proportional to the number of entries, independently of the number of shards.
 
 \section{Operation lifecycle}
 
@@ -656,7 +656,7 @@ yield; an unlock preceding list insertion must not strand a preempted caller.
 Unlock releases ownership and detaches all candidates before callbacks; the
 final reader releases an RwLock's writer waiters. Notifications do not reserve
 ownership, and broadcast does not guarantee fairness or writer priority.
-The blocking family currently has kernel test users, not production callers;
+The blocking family is currently used only by kernel tests;
 existing registry/allocator spin locks are unchanged.
 
 Scheduler timer observers also use owning admission. Non-scheduler producers
@@ -665,8 +665,8 @@ Rejected sleep admission leaves the caller runnable to yield until its counter
 deadline, preserving the requested interval without queuing an event.
 Sleep/watchdog events have separate generation-owned admission: 1,024 per
 generation, sharing the 8,192-event node pool and its 6,144 ordinary share with
-completion timers. These are independent domain accounts, not one combined
-domain allowance. Cancellation state, watchdog callback and fixed-size queue
+completion timers. Each has its own domain account. Cancellation state,
+watchdog callback and fixed-size queue
 node preparation precede parking. Queue insertion allocates nothing; anonymous
 nodes form a sorted owning list with iterative reclamation. The quantum/idle-wake
 event has one inline queue slot per LP, outside anonymous admission. Rejection
@@ -725,10 +725,9 @@ it on terminal completion.
         transitions. A syscall occurs only when the ring is empty and the shard
         must block.
 
-    \item Cancellation is defined, not best-effort: every cancellation
-        path ends in a terminal completion. There is no ``the buffer might or
-        might not be freed'' ambiguity. The ownership contract is explicit and
-        testable.
+    \item Cancellation has explicit states. These determine when the caller
+        can reclaim the buffer. Uncertain cancellation must retain ownership;
+        a timeout alone cannot end the borrow. We can test those transitions.
 \end{enumerate}
 
 \endinput

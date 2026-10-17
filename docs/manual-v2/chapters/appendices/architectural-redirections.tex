@@ -31,17 +31,16 @@ These components are correct but their \emph{role} in the architecture has
 shifted:
 
 \begin{itemize}
-    \item \textbf{Completion capability work} is the \textbf{operation completion
-        subsystem}, not the universal service IPC subsystem. Use completion
+    \item \textbf{Completion capability work} belongs to the operation
+        completion subsystem. Use completion
         queues for kernel and device operations; use endpoints for cross-domain
         service calls.
 
-    \item \textbf{Observer/waker code} is internal scheduling machinery, not the
-        public semantic identity of all async objects. A Waker is a hint to
+    \item \textbf{Observer/waker code} handles internal scheduling. A Waker is a hint to
         repoll a future; it is not a completion record.
 
-    \item \textbf{IPI queue closures} are a temporary kernel work mechanism, not
-        the long-term cross-domain messaging model. Use typed mailboxes or
+    \item \textbf{IPI queue closures} remain a temporary mechanism for kernel
+        work. Use typed mailboxes or
         closed kernel enums for subsystem-specific work.
 
     \item \textbf{The earlier mailbox syscall ABI} is a smoke-test interface
@@ -55,9 +54,9 @@ shifted:
 A mailbox tied directly to LP identity is not a complete userspace service
 abstraction: it exposes placement where authority should be exposed, lacks
 protocol identity, conflates shard transport with domain IPC, and lacks
-    move/lend semantics. Endpoint and connection capabilities are therefore
-    independent of LP identity. Clients address the service
-connection, not a target LP.
+move/lend semantics. Endpoint and connection capabilities are therefore
+independent of LP identity. Clients address the service connection without
+choosing a target LP.
 
 \subsection{Do not allocate one completion capability per service request}
 

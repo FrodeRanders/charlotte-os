@@ -283,7 +283,7 @@ pub mod ns {
     /// Read the live publication generation, without minting any connection
     /// or changing policy. Requires a moved CNSGEN01 observation record with
     /// generation zero; arg0 is its exact length. Missing/dead names reject.
-    /// This is naming metadata, like OP_STATUS, not application authority.
+    /// Like OP_STATUS, this returns naming metadata without granting application access.
     pub const OP_PUBLICATION_GENERATION: u32 = charlotte_protocol_ns::OP_PUBLICATION_GENERATION;
 
     /// `"AUA1"` little-endian, leading an authorization-audit snapshot.
@@ -352,8 +352,8 @@ pub mod console {
     /// completing any retained reply — modelling a crashed driver. The
     /// service manager must then reclaim the device authority (unmap MMIO,
     /// mask/unroute the interrupt) and reconcile the outstanding operation on
-    /// teardown (architecture doc §13, success criterion 9). Sent, not
-    /// called: there is no reply.
+    /// teardown (architecture doc §13, success criterion 9). Use send for this
+    /// request; it has no reply.
     pub const OP_CRASH: u32 = 5;
 }
 
@@ -1449,8 +1449,8 @@ pub mod objstore {
     /// (`ipc` sets it to 1; loaded user domains never use zero or one).
     const KERNEL_PRINCIPAL: u64 = 1;
 
-    /// Object is readable by any domain authenticated by the kernel, not just
-    /// its owner. Set at creation and preserved across rewrites.
+    /// Object is readable by every kernel-authenticated domain, including
+    /// non-owners. Set at creation and preserved across rewrites.
     pub const ATTR_SHARED_READ: u32 = 1;
 
     /// Whether `id` names a reserved artifact or executable object. Both
@@ -3368,8 +3368,8 @@ pub use registration_relay::{
 /// and stale or unknown execution profiles are ineligible for placement. A
 /// per-boot nonce lets the receiver fence reports within one boot while still
 /// accepting a restarted reporter whose monotonic clock has reset. The nonce
-/// is an identity, not an ordering primitive: the enclosing reliable-message
-/// session supplies monotonic incarnation order and rejects delayed older
+/// identifies the boot. The enclosing reliable-message session supplies
+/// monotonic incarnation order and rejects delayed older
 /// sessions.
 pub mod rcapacity {
     pub const TAG_REQUEST: u8 = 0x21;

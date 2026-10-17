@@ -1,7 +1,7 @@
 # Cooperative shutdown and forced retirement
 
-CharlotteOS treats shutdown as a bounded lifecycle transition, not as an
-assumption that destructors run when a thread is killed. Deployed applications
+Shutdown follows a bounded sequence; killing a thread does not run its
+destructors. Deployed applications
 receive requests through their kernel-owned, userspace-read-only launch page.
 They acknowledge the request through the domain status page, release owned
 resources, and exit. The kernel forcibly retires all remaining domain threads
@@ -123,8 +123,8 @@ from ordinary deployment replacement outcomes.
 
 ## Cluster-authorized shutdown ingress
 
-Whole-node poweroff begins as an operator-signed `CSHUTDN1` envelope, not as
-an application request. The fixed 144-byte record binds a nonzero target node
+Whole-node poweroff requires an operator-signed `CSHUTDN1` envelope.
+The fixed 144-byte record binds a nonzero target node
 key, a per-node monotonic sequence, a UTC validity interval, the whole-node and
 per-phase grace budgets, and the `power-off` reason. Current policy permits at
 most 24 hours of validity, 15 minutes of total grace, and 60 seconds per phase;

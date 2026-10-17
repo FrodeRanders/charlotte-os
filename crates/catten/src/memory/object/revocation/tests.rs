@@ -154,7 +154,7 @@ fn test_dma_pin_rejection(create: &mut impl FnMut(&str) -> usize) {
             pin.frames[0]
         );
         // Rejected preparation returns both leases and leaves the original
-        // loan/pin intact. This is pin-state validation, not IOMMU fault injection.
+        // loan/pin intact. This validates pin state without injecting an IOMMU fault.
         for asid in [owner, borrower] {
             AddressSpaceOperation::acquire(current_address_space_handle(asid).unwrap())
                 .unwrap()

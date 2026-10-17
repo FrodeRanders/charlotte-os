@@ -98,8 +98,7 @@ impl CpuInfoIfce for CpuInfo {
     }
 
     fn get_vaddr_sig_bits() -> u8 {
-        // Report the width of the *active* paging mode, not the CPU's maximum
-        // capability. CPUID 0x80000008 EAX[15:8] gives the largest linear
+        // Report the active paging width. CPUID 0x80000008 EAX[15:8] gives the largest linear
         // address width the CPU supports (e.g. 57 when LA57 is available), but
         // the bootloader (Limine) may have enabled only 4-level paging. Using
         // the CPUID capability would select a linear address map with 5-level

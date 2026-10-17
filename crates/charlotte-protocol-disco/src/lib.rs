@@ -42,7 +42,7 @@
 //! 1–63 bytes, raft/leader IDs have at most 255 bytes, and the complete payload
 //! has at most 256 bytes. The payload parser consumes exactly one record. Frame
 //! parsing additionally permits zero padding to Ethernet's 60-byte minimum.
-//! Discovery supplies routing hints, not authenticated identity or membership.
+//! Discovery supplies routing hints. Identity and membership require separate authentication.
 //! The header length is required: retired zero-length headers reject. This
 //! prevents Ethernet padding from masquerading as omitted cluster fields.
 #![no_std]

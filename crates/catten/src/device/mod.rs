@@ -13,8 +13,8 @@
 //!   own address space as Device-nGnRnE memory, reachable from EL0 under its own page table;
 //! - [`DeviceObject::Interrupt`] — an interrupt source whose readiness is delivered to the driver's
 //!   completion queue. This reuses the same notification machinery as endpoint readiness (Phase 7):
-//!   an IRQ posts a coalesced wake to the bound CQ (§16.3: readiness is a notification to inspect
-//!   state, not a completion record).
+//!   an IRQ posts a coalesced wake to the bound CQ (§16.3). The wake asks the driver to inspect
+//!   state; it carries no completion record.
 //!
 //! Interrupt delivery follows the kernel interrupt path of §10.2: the IRQ
 //! handler identifies and masks the source, marks the interrupt object
@@ -364,7 +364,8 @@ fn admission_error(error: crate::capability::AllocationError) -> DeviceError {
 /// Complete grant transaction, including implicit reservation field destruction.
 /// Abandonment must not enter registries, allocators, hardware or logging. The
 /// backend retains the actual domain; this adapter exclusively owns its rollback
-/// obligation until payload publication. Retention is terminal, not a retry API.
+/// obligation until payload publication. Abandonment retains it without
+/// providing a retry path.
 struct PreparedDmaDomain {
     resources: core::mem::ManuallyDrop<DmaGrantResources>,
     rollback_started: bool,
@@ -403,7 +404,7 @@ impl DmaDestruction {
 #[must_use]
 pub(crate) struct DmaCreation {
     // Capture from the containing exact-root admission before backend access.
-    // Interest is metadata, not an armed hardware/rollback obligation.
+    // This captures waiter metadata; the complete grant owns any hardware/rollback obligation.
     wait_platform: Option<bool>,
     interest: core::mem::ManuallyDrop<Option<domain_creation::readiness::Interest>>,
     failure: Option<creation_failure::Failure>,

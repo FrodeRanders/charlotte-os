@@ -133,8 +133,8 @@ const SOCKET_HEAP_RESERVE_BYTES: usize = 512 * 1024;
 /// socket slot and buffers.
 const SOCKET_CLOSE_GRACE_MS: u64 = 5_000;
 
-/// Socket ownership is tied to the authenticated sender identity, not to the
-/// numeric socket id. The address-space id prevents two live instances of the
+/// Socket access requires the authenticated owner's identity; a socket id
+/// alone grants no access. The address-space id prevents two live instances of the
 /// same artifact principal from sharing sockets; the generation makes an id
 /// recyclable without reviving the previous owner's authority.
 use catten_services::{
@@ -585,7 +585,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // Periodic heartbeat (~every 1024 reactor iterations) with enough
         // protocol state to distinguish a dead listener, a stranded deferred
         // receive, socket backpressure, and loss before the stack. `tx_ok` and
-        // `tx_err` count client OP_SEND calls, not emitted Ethernet frames.
+        // `tx_err` count client OP_SEND calls.
         let tick = HEARTBEAT_TICKS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
         config::write::<u64>(status::REACTOR_CYCLES, tick.saturating_add(1));
         if tick & 0x3ff == 0 {
@@ -1371,8 +1371,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         }
 
         let _ = catten_services::reactor::wait(Some(CLOCK_TICK_MS), 0);
-        // Bound draining even if another source can replenish this CQ. Time
-        // comes from the scalar clock, not the number of cookies consumed.
+        // Bound draining even if another source replenishes this CQ.
+        // Measure elapsed time with the scalar clock, independently of cookie count.
         for _ in 0..cq.entries {
             if unsafe { cq_read(cq.base, cq.entries) }.is_none() {
                 break;

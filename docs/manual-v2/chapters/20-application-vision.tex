@@ -235,8 +235,8 @@ fn calculate_entitlement(
 ) -> Result<Decision, RuleError>
 \end{lstlisting}
 
-The exact Rust interface is a design question, not an implemented ABI. Around
-that function, the Charlotte backend could generate a wrapper that:
+We have not settled the Rust interface or implemented this ABI. Around that
+function, the Charlotte backend could generate a wrapper that:
 
 \begin{enumerate}
     \item receives a typed activity invocation through a delegated endpoint;
@@ -696,8 +696,7 @@ and delivery requirements. The Charlotte runtime must define how it recovers an
 in-flight process when a node fails, when an acknowledgement is lost, or when a
 business rule completes twice. If native messaging does not yet satisfy those
 requirements, the backend must retain Kafka for that edge. Removing Kafka from
-internal paths is an optimization and architectural option, not a prerequisite
-for the Charlotte backend.
+internal paths is optional; the Charlotte backend can keep it where needed.
 
 \section{Preserving application intent}
 
@@ -936,8 +935,8 @@ The experiment should verify the following end-to-end properties:
         name service.
 
     \item The activity receives only the generated capabilities. An attempted
-        undeclared communication fails because no authority is present, not
-        because a network deny rule happens to match.
+        undeclared communication fails because no authority is present, regardless
+        of any network deny rule.
 
     \item Typed input reaches the rule. Its typed result reaches the generated
         successor or test driver.

@@ -198,8 +198,8 @@ The closure must not:
         \rusttype{ShardLocal<T>} without locking. The choice is explicit.
 
     \item Cross-shard communication is typed and bounded: A
-        \rusttype{ShardSender<M>} carries a specific Rust type (not
-        \texttt{Box<dyn Any>}, not a byte buffer). The receiver knows what it will
+        \rusttype{ShardSender<M>} carries a specific Rust type (neither
+        \texttt{Box<dyn Any>} nor a byte buffer). The receiver knows what it will
         get. The channel has fixed capacity; senders handle backpressure. There
         is no unbounded message queue that can exhaust memory.
 \end{enumerate}

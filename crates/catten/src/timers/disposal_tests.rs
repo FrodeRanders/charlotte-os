@@ -198,8 +198,8 @@ fn guarded_abandonment() {
         assert_eq!(waits.used(), 1);
         assert!(weak.upgrade().is_some());
     }
-    // Independent token cancellation releases only its own entry, not the
-    // retained event/node/source or original event reservation.
+    // Independent token cancellation releases only its own entry. The event,
+    // node, source and original event reservation remain retained.
     drop(token);
     assert_eq!(waits.used(), 0);
     assert_eq!(sponsor.used(), 1);

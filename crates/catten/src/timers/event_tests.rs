@@ -131,8 +131,8 @@ pub(crate) fn test_admission() {
     assert_eq!(budget::node_used().1, ordinary_before + 1);
     drop((old, platform));
 
-    // Shared completion/scheduler node pool and reserve; maximum node pressure
-    // is counter-only, not an allocation of its full backing footprint.
+    // Saturate the shared completion/scheduler node counters and reserve
+    // without allocating the full backing footprint.
     let domains: Vec<_> = (0..6).map(|_| SchedulerSponsor::new(false)).collect();
     let mut charges = Vec::new();
     for domain in &domains {

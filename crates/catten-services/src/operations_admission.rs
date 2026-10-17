@@ -128,8 +128,8 @@ impl CapacityFilter {
         self.filtered.free_frames = low_pass_u64(self.filtered.free_frames, sample.free_frames);
         self.filtered.cpu_load_permille =
             low_pass_cpu(self.filtered.cpu_load_permille, sample.cpu_load_permille);
-        // Committed reservations are supplied by the catalog projection, not
-        // by node reports, so filtering never manufactures them.
+        // Only the catalog projection supplies committed reservations.
+        // Node reports and filtering cannot create them.
         self.filtered.committed_frames = 0;
         Some(self.filtered)
     }
@@ -1154,7 +1154,7 @@ mod tests {
             vec![vec![1]]
         );
 
-        // Too few eligible nodes is a spread failure, not a capacity failure.
+        // Report a spread failure when too few nodes are eligible, even if they have capacity.
         assert_eq!(
             resolve_release_assignments_with_capacity(&release, &[0], 0, &capacity),
             Err(AdmissionError::UnsatisfiablePlacement)

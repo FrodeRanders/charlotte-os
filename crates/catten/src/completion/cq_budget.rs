@@ -1,5 +1,5 @@
-//! CQ registration count and kernel-owned ring/backlog backing bytes. Physical
-//! ring frames remain owned by their mappings, not by the CQ registry.
+//! CQ registration count and kernel-owned ring/backlog backing bytes.
+//! Mappings retain ownership of the physical ring frames independently of the CQ registry.
 
 use alloc::sync::Arc;
 

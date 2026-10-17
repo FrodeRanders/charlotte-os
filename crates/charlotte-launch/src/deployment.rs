@@ -123,8 +123,8 @@ impl<'a> DeploymentDescriptor<'a> {
     }
 
     /// Highest signed priority, then most specific feature set, then signed
-    /// order. The chosen index is committed with the assignment, not reselected
-    /// from a later report when the node fetches its executable.
+    /// order. Commit the chosen index with the assignment and retain that choice
+    /// when the node later fetches its executable.
     pub fn select_variant(&self, node: ExecutionTarget) -> Option<u16> {
         self.variants()
             .enumerate()

@@ -88,10 +88,10 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
         };
 
         // An SVC accepted by this ABI must have originated at EL0t. Derive
-        // authority from the translation context that was active at exception
-        // entry, not from the scheduler's current_handle: exit/reaping can
-        // update that software handle while the outgoing EL0 context is still
-        // executing its final syscall.
+        // authority from the translation context active at exception entry.
+        // Exit/reaping can update the scheduler's current_handle while the outgoing EL0 context
+        // is
+        // still executing its final syscall.
         assert_eq!(
             spsr & 0xf,
             0,
@@ -205,7 +205,7 @@ pub extern "C" fn sync_dispatcher(frame_base: *mut u64) {
             // another LP installs a mapping. Retry only when the software page
             // table says the faulting page really is mapped. An unmapped guard
             // page, stale pointer, use-after-move, write to read-only memory,
-            // or execute-never violation is a domain fault, not a TLB event.
+            // or execute-never violation must instead take the domain-fault path.
             let iss = (esr_el1 & 0x3f) as u32;
             let is_tf = (iss & 0b111100) == 0b000100; // translation fault
             let asid = crate::cpu::isa::aarch64::memory::paging::CURRENT_LOGICAL_ASID

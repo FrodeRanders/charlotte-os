@@ -96,7 +96,7 @@ kernel posts a coalesced wake to the bound CQ. The executor, on waking, calls th
 endpoint's receive path to drain the pending messages.
 
 Coalescing means: if 10 messages arrive before the shard wakes, the kernel
-delivers one wake, not 10. The executor drains all 10 messages in one batch.
+delivers one wake instead of 10. The executor drains all 10 messages in one batch.
 
 \subsection{Device interrupts (coalesced wake)}
 
@@ -217,8 +217,8 @@ the removed unchecked syscalls 12/42 have no compatibility adapter.
         threads to convert blocking syscalls into futures.
 
     \item Budgeting prevents starvation: the polling budget ensures that
-        a shard with many ready tasks makes progress on all of them, not just the
-        one that finishes fastest. This prevents priority-inversion-like behavior
+        a shard with many ready tasks makes progress on all of them, including the
+        ones that finish slowly. This prevents priority-inversion-like behavior
         within a shard.
 
     \item Internal messaging avoids unnecessary kernel crossings: shards
@@ -344,7 +344,7 @@ caller that must observe thread exit can use the kernel-backed primitive.
 
 \subsection{Verification}
 
-Verification checks the product, not the implementation path:
+The tests check the result:
 
 \begin{enumerate}
     \item Every run is internally sorted.

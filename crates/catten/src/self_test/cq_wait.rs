@@ -444,9 +444,9 @@ extern "C" fn cq_waiter() {
     ROUND3_RELEASED.store(1, Ordering::Release);
 
     // Round 4: unified shard wait — the same CQ wait is released by an
-    // incoming IPC message on a CQ-bound endpoint (a coalesced readiness
-    // wake, not a completion entry). The reactor contract is: released with
-    // an empty ring means "inspect your endpoints".
+    // incoming IPC message on a CQ-bound endpoint. It posts a coalesced
+    // readiness wake and leaves the completion ring empty, asking the reactor
+    // to inspect its endpoints.
     spin_until(&ROUND4_START, "round 4 start");
     assert_eq!(completion::wait_on_cq_checked(CQW_ASID, 0, None), Ok(true));
     assert_eq!(
@@ -573,7 +573,7 @@ pub fn test_cq_wait_wake() {
     // or any watchdog captures its sponsor. Production Thread construction
     // keeps its generation-owned root account; never replace a live sponsor.
     // This trusted kernel fixture retains platform classification and uses
-    // the existing admitted timer budget, not a new registry or bypass.
+    // the existing admitted timer budget, preserving its ordinary admission checks.
     let mut driver = crate::cpu::scheduler::threads::Thread::new(KERNEL_ASID, cq_driver);
     driver.timer_sponsor = crate::timers::budget::SchedulerSponsor::new(true);
     let driver = crate::cpu::scheduler::system_scheduler::publish_thread(driver)

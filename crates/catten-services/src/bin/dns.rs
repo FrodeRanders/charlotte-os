@@ -1864,8 +1864,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
             .chain(in_flight_calls.iter().map(|call| call.deadline.remaining_ms()))
             .fold(clock_watchdog.remaining_ms(), core::cmp::min);
         catten_services::reactor::wait(Some(wait_ms), 0);
-        // The CQ timeout is an independent watchdog, not merely a fallback
-        // for failure to *submit* the detached timer. A submitted timer can
+        // Keep the CQ timeout active even after the detached timer is submitted.
+        // It is an independent watchdog: a submitted timer can
         // have its completion delayed or dropped; ignoring the timeout while
         // `timer_armed` stayed true would then freeze Raft time forever.
         let mut tick_due = clock_watchdog.expired();
@@ -4327,7 +4327,8 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 continue;
             }
             let log_index = match &pending_registers[index] {
-                // Completed by the rregister reply frame, not by a log entry.
+                // Wait for the rregister reply frame to complete this request; a log entry is
+                // insufficient.
                 PendingRegistration::RemoteRegister {
                     ..
                 } => {

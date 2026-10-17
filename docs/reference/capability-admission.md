@@ -386,7 +386,7 @@ vector calls check all-mode preparation failures, rejected copy backing after
 a staged loan, and successful four-mode delivery. Mapped read/write loans are
 revoked on reply, queued/delivered cancellation, reply-token close and queued
 endpoint close; queued copies/moves are also reclaimed. Kernel buffer and DMA
-access checks enforce committed loan permissions, not only mapping rights.
+access checks enforce committed loan permissions as well as mapping rights.
 
 Actual mailbox syscalls and completion/timer submissions are rejected by the
 shared ceiling with room in their family budgets; failed staging refunds those

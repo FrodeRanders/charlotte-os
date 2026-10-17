@@ -1,5 +1,5 @@
-//! Architecture-shared single-mutator boot probes. The private architecture
-//! adapter is the production destructor walk, not a second cleanup path.
+//! Architecture-shared single-mutator boot probes. The private adapter uses
+//! the production destructor walk, so these tests exercise the same cleanup path.
 
 use super::{
     AddressSpace,

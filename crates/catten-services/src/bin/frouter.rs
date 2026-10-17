@@ -374,8 +374,8 @@ fn classify_ingress(
                     destination: backend.mac,
                 }
             }
-            // A complete committed snapshot with no eligible backend is an
-            // explicit fail-closed policy, not ordinary local VIP traffic.
+            // A complete committed snapshot with no eligible backend denies delivery.
+            // Keep it fail-closed instead of falling back to local VIP handling.
             None => IngressDecision::Drop(IngressDropReason::Policy),
         }
     } else {

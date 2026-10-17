@@ -46,7 +46,7 @@ impl MutexCore {
         }
     }
 
-    /// Count linked entries, not live/retained detached notification batches.
+    /// Count entries still linked here. Detached notification batches are excluded.
     pub(super) fn waiter_count(&self) -> usize {
         self.waitlist.registered()
     }
@@ -128,9 +128,9 @@ unsafe impl RawMutex for MutexCore {
 
     unsafe fn unlock(&self) {
         self.raw_lock.store(false, Ordering::Release);
-        // Notification is a hint, not an ownership handoff. Wake all candidates
-        // after release so an expired/cancelled first candidate cannot strand
-        // another waiter. CAS still chooses the next owner.
+        // Wake all candidates after release; they still compete for ownership
+        // through CAS. An expired or cancelled first candidate must not strand
+        // the remaining waiters.
         self.waitlist.drain().notify();
     }
 }

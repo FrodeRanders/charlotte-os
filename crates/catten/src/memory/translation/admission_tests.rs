@@ -128,7 +128,7 @@ fn platform_progress() {
         assert_eq!(root.hw_asid(), 0);
         assert_eq!(root.table_account.pages(), 0);
     }
-    // Classification must precede x86 root admission, not just namespace grant.
+    // Classify before x86 root admission as well as namespace grant.
     let mut platform = AddressSpace::try_new_platform_user().unwrap();
     assert!(map(&mut platform, 0x4000_0000, data.frame()));
     assert_eq!(platform.table_account.pages(), 4);

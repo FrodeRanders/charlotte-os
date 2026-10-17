@@ -952,8 +952,8 @@ pub const PROFILE_CAPABILITY_RIGHT_MAP_READ: u16 = 1;
 /// Typed metadata carried by an immutable profile capability.
 ///
 /// The length selects the meaningful prefix of the read-only memory object;
-/// its final page may contain padding. Authenticity still comes from the
-/// trusted launcher and the capability transfer, not from this scalar.
+/// its final page may contain padding. The trusted launcher and capability
+/// transfer establish authenticity; the length alone provides no such proof.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProfileCapabilityMetadata {
     byte_len: u32,

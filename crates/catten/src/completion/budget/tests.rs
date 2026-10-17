@@ -12,8 +12,8 @@ const CLIENT: usize = 0x5e38;
 fn mixed_classes() {
     let baseline = node_used();
     let account = DomainBudget::new(64);
-    // Isolated kernel accounting fixture, not a caller-selected platform
-    // classification or replacement of any live namespace's sponsor.
+    // This isolated kernel accounting fixture uses trusted classification and
+    // leaves every live namespace's sponsor unchanged.
     let mut charges: [Option<Charge>; 64] =
         core::array::from_fn(|i| Some(reserve(&account, i % 2 != 0).unwrap()));
     let mut releases = Releases::default();

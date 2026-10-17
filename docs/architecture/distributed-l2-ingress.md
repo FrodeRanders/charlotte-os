@@ -14,7 +14,7 @@ client -> VIP advertiser/frouter -- one-hop L2 envelope --> backend tcpip
 client <----------------------- direct VIP reply -------- backend tcpip
 ```
 
-## A cluster facade, not only a load balancer
+## A shared address for the cluster
 
 Charlotte supports two complementary network identities. A node's DHCP or
 static address deliberately identifies that node and remains useful for
@@ -24,11 +24,11 @@ Charlotte without revealing which node admits a packet or owns the resulting
 connection.
 
 Direct Server Return is commonly described as a load-balancing technique, and
-this implementation does distribute five-tuples across eligible nodes. Its
-more important architectural effect for Charlotte is indirection: the external
+this implementation does distribute five-tuples across eligible nodes. The
+main reason we use it in Charlotte is indirection: the external
 contract is `VIP:port`, while ingress ownership and execution placement may
 move independently behind it. Individual node addresses remain mechanisms of
-the cluster, not part of the cluster-addressed application's public identity.
+the cluster. They stay outside the cluster-addressed application's public identity.
 
 Each service declaration binds a VIP and port to an optional deployed
 application name. DNS then intersects admitted members with that application's committed placement
@@ -37,7 +37,7 @@ does not remain in the newly derived policy through a stale registration:
 eligibility becomes empty after the new placement commits and reappears only
 when the target node publishes the matching deployment generation. Routers
 learn that policy asynchronously, so this statement describes the committed
-projection, not instantaneous convergence at every packet path. Omitting the
+projection. Individual packet paths may take time to learn it. Omitting the
 application name retains the original platform-service mode in which every
 admitted, non-draining member is a backend.
 
@@ -182,19 +182,19 @@ gratuitous ARP reply. Loss of the ingress owner can therefore move advertisement
 after an ordinary Raft election without changing the backend set or introducing
 a second consensus system.
 
-The forwarding envelope is an isolation marker, not cryptographic link
-authentication. The receive path checks its source against committed member
-routes, which prevents an unadmitted honest peer from becoming a backend, but
-a hostile machine able to spoof an admitted MAC on the same L2 segment could
-forge it. This first version therefore assumes the cluster-facing L2 is a
-trusted or administratively isolated fabric. Authenticated link envelopes,
+The forwarding envelope marks isolated traffic but has no cryptographic link
+authentication. The receive path checks its source against
+committed member routes, which prevents an unadmitted honest peer from
+becoming a backend. A hostile machine able to spoof an admitted MAC on the
+same L2 segment could forge it. This first version therefore assumes the
+cluster-facing L2 is a trusted or administratively isolated fabric. Authenticated link envelopes,
 switch port controls, or a protected overlay are required before exposing that
 segment to mutually untrusted hosts.
 
 ## Operations-owned service assignment
 
-Production addresses belong to operations configuration, not to the signed
-application descriptor. DNS, `frouter`, and `tcpip` therefore share one
+Production addresses belong to operations configuration rather than to the
+signed application descriptor. DNS, `frouter`, and `tcpip` therefore share one
 canonical, validated assignment table. Each entry is
 `service-name=VIP:port`; an unnamed entry retains the platform-service mode.
 The QEMU runner exposes this directly as a repeatable option:

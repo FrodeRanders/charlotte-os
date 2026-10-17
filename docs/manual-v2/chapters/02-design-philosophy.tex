@@ -1,18 +1,18 @@
 \chapter{Design Philosophy}
 \label{chap:design-philosophy}
 
-CharlotteOS combines ideas from three projects around one thesis.
+In CharlotteOS, we bring together ideas from three projects.
 
-\section{The combined thesis}
+\section{Our starting point}
 
 \begin{quote}
 \textbf{Hardware is asynchronous; the operating system and the userspace runtime
 should be too.}
 \end{quote}
 
-Three systems approach the same design space from different directions. Rather than
-collapsing their abstractions into one universal mechanism, the architecture
-composes them at the right boundaries.
+The three projects approach this design space from different directions. We
+want to keep the distinctions that make each useful and give them clear ways
+to work together.
 
 \subsection{CharlotteOS: the protection, scheduling, and interrupt substrate}
 
@@ -55,10 +55,9 @@ Sitas provides:
         must handle \texttt{WouldBlock}.
     \item Shard-local ownership: mutable state belongs to exactly one
         shard; no locks, no atomics for shard-internal data.
-    \item Explicit placement: where a task runs is a deliberate choice,
-        not an accident of scheduling.
+    \item Explicit placement: the caller chooses where a task runs.
     \item Typed command/reply APIs: what a shard receives is a specific
-        Rust type, not a generic byte buffer.
+        Rust type.
     \item Structured shutdown and cancellation: tasks can be cancelled,
         and cancellation has defined ownership semantics.
     \item Observability through owned snapshots: diagnostics capture
@@ -75,12 +74,13 @@ protection-domain service model:
 
 \begin{itemize}
     \item Services are userspace servers: drivers, filesystems, and
-        protocol stacks run in their own protection domains, not in the kernel.
+        protocol stacks run in their own protection domains rather than in the
+        kernel.
     \item Clients connect to servers and receive connection identifiers:
         a connection \emph{is} authority; possessing one means you may communicate
         with that server.
-    \item IPC is a kernel primitive: communication is not a convention
-        layered on shared memory; it is mediated and validated by the kernel.
+    \item IPC is a kernel primitive: the kernel mediates and validates
+        communication between protection domains.
     \item Scalar messages are distinct from memory-bearing messages:
         small control-plane operations (opcodes, handles, status codes) travel
         in fixed-size messages; bulk data travels as memory-object attachments.
@@ -194,8 +194,9 @@ grants, and DMA mappings, is a \textbf{composition} of these three primitives.
 \subsection{Capabilities: ``May I?''}
 
 A capability answers one question: \textbf{``May I perform this operation?''}
-It represents authority, not work. Examples include endpoint capabilities,
-connection capabilities, memory-object capabilities, interrupt capabilities,
+It grants permission to act. Operations describe the work. Examples include
+endpoint capabilities, connection capabilities, memory-object capabilities,
+interrupt capabilities,
 DMA-domain capabilities, and timer capabilities.
 
 \subsection{Endpoints: ``With whom?''}
@@ -239,7 +240,7 @@ This rule limits the kernel interface and keeps the ABI and trust model reviewab
         on the shard.
 \end{enumerate}
 
-This is not the same as saying:
+This leaves some things outside the model:
 
 \begin{itemize}
     \item Every syscall is asynchronous.

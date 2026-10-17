@@ -1352,7 +1352,8 @@ pub fn cq_wait_checked(timeout_ms: Option<u64>, cq: u32) -> (u64, CompletionStat
 }
 
 /// Bind pending reply readiness to one CQ. The pending capability owns the
-/// subscription until close. This posts a wake, not a result/attachment entry.
+/// subscription until close. The wake asks the caller to observe the reply;
+/// it carries no result or attachment.
 #[inline(always)]
 pub fn ipc_reply_bind_cq(call: u64, cq: u32) -> u64 {
     unsafe { svc3(SyscallNumber::IpcReplyBindCq, call, cq as u64, 0) }
@@ -1707,7 +1708,7 @@ pub struct DmaMapError {
 
 impl DmaMapError {
     /// Compact driver diagnostic: status in bits 0..7, phase in 8..15,
-    /// backend cause in 16..23. This is evidence, not retry authority.
+    /// backend cause in 16..23. These diagnostics alone cannot authorize a retry.
     pub const fn detail(self) -> u64 {
         self.status | (self.phase << 8) | (self.cause << 16)
     }

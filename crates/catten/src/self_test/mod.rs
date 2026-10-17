@@ -88,7 +88,7 @@
 //!   generation bump) hold.
 //! - [`el0_raft`] — NVMe-backed persistent Raft recovery; outcome: a restarted domain recovers and
 //!   advances its durable term. Network cluster formation is exercised by the multi-guest cluster
-//!   tests, not by constructing multiple Raft peers inside one kernel.
+//!   tests, with peers in separate guests.
 //!
 //! Device model:
 //! - [`device`] — device capabilities (MMIO regions, interrupt objects); outcome: grants/unmaps and

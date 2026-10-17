@@ -1,5 +1,5 @@
-//! Real-domain kernel ABI fixtures. Raw IDs are intentional here: these tests
-//! inspect registry admission, not duplicated userspace capability ownership.
+//! Real-domain kernel ABI fixtures use raw IDs to inspect registry admission.
+//! These IDs are fixture references without corresponding userspace owners.
 
 use super::*;
 use crate::{

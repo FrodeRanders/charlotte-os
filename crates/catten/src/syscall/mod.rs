@@ -2042,9 +2042,9 @@ fn sys_spawn_upgrade(frame: &mut TrapFrame) {
     crate::service::bootstrap::write_bootstrap_cap(loaded.config_frame, bootstrap_conn);
     crate::service::bootstrap::write_manifest(loaded.config_frame, &[]);
 
-    // Move the state cap from the caller to the new domain. Capability ids are
-    // address-space local, so publish the id returned by move_to, not the
-    // manager's now-invalid source id.
+    // Move the state cap from the caller to the new domain. Publish the id
+    // returned by move_to: it belongs to the destination address space, and
+    // the manager's source id is now invalid.
     if state_cap != 0 {
         let moved_cap = match crate::memory::object::move_to(caller_asid, state_cap, loaded.asid) {
             Ok(cap) => cap,

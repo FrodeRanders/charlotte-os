@@ -177,8 +177,8 @@ pub(crate) fn try_allocate(
     reserve(owner, kind)?.publish()
 }
 
-// Borrow the actual lifecycle guard, not a boolean assertion from a caller.
-// The crate-private helper's caller must own ADDRESS_SPACE_LIFECYCLE itself.
+// Borrowing the guard proves that this caller holds ADDRESS_SPACE_LIFECYCLE.
+// A caller-supplied boolean cannot provide that proof.
 pub(crate) type LifecycleGuard<'a> =
     lock_api::MutexGuard<'a, crate::cpu::multiprocessor::spin::mutex::MutexCore, ()>;
 
@@ -240,7 +240,7 @@ pub(crate) fn reserve_in_lifecycle(
 }
 
 /// Subsystem-serialized admission. The caller retains its registry guard and
-/// supplies that registry's captured generation, not a fresh numeric lookup.
+/// supplies the generation captured with it. A fresh numeric lookup could select a successor.
 /// Real user namespaces are prepared at domain creation, never recreated here.
 /// None is restricted to the permanent kernel and kernel-only pseudo domains.
 pub(crate) fn reserve_captured(

@@ -76,8 +76,8 @@ impl ProductionTrustCandidate {
             identities[index] = signing_identity(&keys[index])?;
         }
         if !canonical_montgomery(&trust.recipient_key)
-            // This fixed scalar is a public validation probe, not key material
-            // used for an envelope. A zero DH result identifies a
+            // Use this fixed public scalar only to validate the recipient.
+            // Envelope encryption uses separate key material. A zero DH result identifies a
             // non-contributory recipient; no randomness or allocation is needed.
             || MontgomeryPoint(trust.recipient_key).mul_clamped([0; 32]).to_bytes() == [0; 32]
         {

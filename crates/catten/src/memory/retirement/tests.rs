@@ -150,8 +150,8 @@ fn test_staged_close_timeout() {
     ));
     assert!(!crate::cpu::multiprocessor::spin::mutex::owned_by_current_lp(&ADDRESS_SPACE_TABLE));
     operation.release().unwrap();
-    // Timeout abandons only the request, not its fence or root. Draining the
-    // last lease afterwards cannot resurrect admission or steal close authority.
+    // Timeout abandons the request while retaining its fence and root. Draining
+    // the last lease afterwards cannot reopen admission or transfer close authority.
     assert!(matches!(AddressSpaceOperation::acquire(owner), Err(OperationError::Closing)));
     assert_eq!(
         memory::close_user_address_space_handle(owner),

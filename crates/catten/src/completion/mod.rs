@@ -258,7 +258,7 @@ struct CompletionInner {
     /// to the concrete IPC observer type.
     event_observation: Option<EventObservation>,
     /// Non-scheduler callbacks use a separate lazy one-shot list. Its entries
-    /// share event-watch admission, not scheduler-waiter sponsorship.
+    /// use event-watch admission independently of scheduler-waiter sponsorship.
     callbacks: Option<crate::klib::observer::registration::ListRef<watch_budget::Charge>>,
 }
 
@@ -1484,7 +1484,7 @@ pub fn complete_detached(
     Ok(())
 }
 
-/// Complete logical terminal retirement, not a physical cleanup receipt.
+/// Own the complete logically retired record. Physical cleanup needs its own completion proof.
 /// Keep every remaining record field and the exact published CQ source until
 /// producer disposal outside COMPLETIONS, before any notification.
 #[must_use = "dispose the complete detached record after registry unlock, then notify its captured \
@@ -1839,7 +1839,7 @@ pub fn close(asid: AddressSpaceId, cap: CompletionCap) -> Result<(), CapError> {
     close_registered(asid, cap, completion)
 }
 
-/// Close only the captured object, not a replacement that reused its handle.
+/// Close the captured object while leaving any successor with the same handle untouched.
 pub(crate) fn close_registered(
     asid: AddressSpaceId,
     cap: CompletionCap,
@@ -2102,8 +2102,8 @@ pub fn wait_on_cq_checked(
     }
 }
 
-/// Kernel fixture: a detached wake batch belongs to the captured CQ, not a
-/// later namespace occupying the same numeric ASID/CQ. Reentrant callbacks
+/// Kernel fixture: a detached wake batch retains its captured CQ across
+/// numeric ASID/CQ reuse. Reentrant callbacks
 /// also exercise the rule that no registry/device guard survives notification.
 pub(crate) fn test_prepared_wake_identity() {
     waiter_tests::run();

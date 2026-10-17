@@ -69,8 +69,9 @@ qualification work.
 ## Design principles
 
 1. **Signed maxima are security invariants.** A controller may only choose
-   below a blessed envelope (`MAX_USER_STACK_PAGES`, `MAX_USER_THREADS`, signed
-   deployment limits). A buggy controller then costs performance, not safety.
+   below an approved envelope (`MAX_USER_STACK_PAGES`, `MAX_USER_THREADS`, signed
+   deployment limits). A controller bug can hurt performance; the kernel still
+   enforces those limits.
 2. **Policy in userspace.** The kernel exposes sensors and enforces caps; a
    supervisor/controller service computes allocations. This mirrors the
    existing signed-descriptor model and keeps the trusted core small.
@@ -148,9 +149,9 @@ operation; scheduler, loader, and teardown hooks are off the interrupt path.
 
 ### Telemetry export
 
-Point-in-time snapshots serve live dashboards, not offline analysis. The
-measured counters are intended to feed developers and operations, so export is
-part of the phase rather than an afterthought:
+Snapshots feed the live dashboard; the stored archive lets us examine earlier
+behavior. Both need enough context for developers and operators to interpret
+the measurements:
 
 - **Schema stability.** Treat `CCOSTAT` like an on-disk format: magic,
   version, and per-record byte sizes are part of the contract, and an analyzer
@@ -159,8 +160,8 @@ part of the phase rather than an afterthought:
   archives should carry per-domain aggregates plus bounded per-thread
   summaries. Export deltas with the counter frequency so consumers can compute
   rates.
-- **Timestamps.** Every sample carries monotonic ticks and frequency; wall
-  clock is correlated through the time service, not assumed.
+- **Timestamps.** Every sample carries monotonic ticks and frequency. Use the
+  time service to relate those ticks to wall-clock time.
 - **Sinks, in order of increasing trust cost:**
   1. an in-memory history ring in the observe service (implemented: bounded,
      lost on reboot, immediately useful in CI and on a dev machine);
@@ -304,9 +305,9 @@ property to preserve is "the allocating thread usually frees in the same
 shard", which scheduler affinity already encourages; shard-local heaps
 reinforce the recommended model rather than impose new placement constraints.
 
-Qualifying memory for sharing within the protected domain is a userspace
-allocator concern, not a kernel one: all shards share one address space, so the
-kernel cannot distinguish pointers and should not try. The practical mechanism
+The userspace allocator decides which memory may be shared within a protection
+domain. All shards share one address space, so the kernel cannot distinguish
+their pointers. The practical mechanism
 is a typed allocator API in `catten-rt` (shard-local versus shared owners with
 `dealloc` routing), plus the rule that a shard-local allocation must not escape
 its shard. That keeps the fast path uncontended per shard while making
@@ -338,7 +339,7 @@ The design this implements is:
   those pages under the serializing address-space lifecycle lock and returns to
   retry the instruction. This covers instructions that move the stack pointer
   by several pages while preserving the reserve after the complete growth.
-  The adaptive size is the budget ceiling, not a physical reservation.
+  The adaptive size sets the budget ceiling. Physical pages are committed on demand.
 - A fault with the budget exhausted kills the domain through the ordinary
   teardown path: all stack frames return to the frame allocator exactly once,
   threads are retired, and the supervisor observes a clean domain-exit rather

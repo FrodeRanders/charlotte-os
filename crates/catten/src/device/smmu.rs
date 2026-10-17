@@ -64,8 +64,8 @@ const QUEUE_ENTRIES: u32 = 256;
 const EVENT_ENTRIES: u32 = 128;
 // Keep the default aperture usable by devices whose DMA descriptors are
 // nominally 64-bit but whose queue transport still has an effective 32-bit
-// address limit. This is an I/O virtual address, not exposed physical memory;
-// each requester retains its own isolated stage-1 domain.
+// address limit. The aperture contains I/O virtual addresses; physical memory stays private.
+// Each requester retains its own isolated stage-1 domain.
 const IOVA_START: u64 = 0x1000_0000;
 
 const IDR0: usize = 0x000;

@@ -64,9 +64,8 @@ pub fn test_memory_objects() {
     assert!(!object::info(owner, invalid_range).unwrap().mapped);
     object::close_cap(owner, invalid_range).unwrap();
 
-    // Kernel-assigned scratch virtual addresses are a reusable resource, not
-    // a lifetime allocation counter. Exercise adjacent-range coalescing and
-    // rollback after a reservation whose mapping is rejected.
+    // Kernel-assigned scratch virtual addresses must be reusable. Exercise
+    // adjacent-range coalescing and rollback after a rejected mapping.
     let scratch_one = object::allocate(owner, 1).expect("scratch one-page allocation failed");
     let scratch_two = object::allocate(owner, 2).expect("scratch two-page allocation failed");
     let first_scratch =

@@ -67,7 +67,7 @@ Lock-free per-LP container for single-LP, thread-only data:
 // Declaration:
 static MAILBOX: ShardLocal<ShardMailbox<Command>> = ShardLocal::new();
 
-// Access (only from owning LP, not from interrupt context):
+// Access from the owning LP's thread context only:
 MAILBOX.with(|mb| {
     mb.try_send(Command::Ping)?;
 });
@@ -370,8 +370,8 @@ When writing code that uses sitas on CharlotteOS:
     \item \textbf{Register a CQ ring at address-space creation} so completions
         are visible to userspace without per-entry syscalls.
     \item \textbf{Accept backpressure.} \texttt{WouldBlock} or \texttt{Err(m)}
-        means the receiver is slow, not that the system is broken. Retry or
-        propagate upstream.
+        means the receiver cannot accept the work yet. Retry according to the
+        operation's policy or propagate the rejection upstream.
     \item \textbf{Buffers have one owner.} While an async operation owns a
         buffer, userspace must not mutate or free it. Cancellation still ends
         in a terminal completion.
@@ -432,9 +432,8 @@ The full ABI is described in
         inherited file descriptors, no ambient filesystem. The bootstrap
         capabilities are the program's entire universe of authority.
 
-    \item \textbf{Messages, not shared memory, are the default.} The safe,
-        preferred path is to send an owned value through a bounded channel.
-        Shared memory with locks is the exception and not the rule. This reduces
+    \item \textbf{Use messages by default.} Send an owned value through a bounded
+        channel. Reserve shared memory and locks for cases that need them. This reduces
         the number of places where concurrency bugs can hide.
 
     \item \textbf{The ABI is auditable.} Userspace wrappers and the kernel

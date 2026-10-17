@@ -16,7 +16,7 @@ artifact/deployment roots; that does not replace platform bootstrap trust.
 ## Private keys stay in files
 
 The private-key positional argument to `elf-sign`, `deployment-sign`,
-`release-sign` and `shutdown-sign` is now a **file path**, not hexadecimal
+`release-sign` and `shutdown-sign` is now a **file path** rather than hexadecimal
 bytes. Operational signing and decryption commands also enforce the private
 file policy. Public verification-key hex remains permitted: it is not secret.
 
@@ -61,7 +61,7 @@ cluster-sign trust-policy-create /secure/signing/cluster.ctrust orders 1 \
 cluster-sign trust-policy-check /secure/signing/cluster.ctrust orders 1
 ```
 
-The final check argument is the minimum accepted policy sequence, not a secret.
+The final check argument is the minimum accepted policy sequence. It is public.
 Creation is exclusive: it cannot overwrite an existing policy. Input is bounded
 to 4096 bytes per public-key file and exactly 184 bytes for policy checking;
 Unix readers reject symlinks, directories and FIFOs. Public files accept hex,
@@ -103,7 +103,7 @@ created exclusively, after self-verification. A failed check writes no policy.
 After authorized installation, retain the printed **accepted-digest** together
 with the policy sequence. To sign revision 2 of an initial revision-1 policy,
 prepare its new candidate and use the actual accepted digest in place of the
-placeholder below. These digests are public, not private-key material.
+placeholder below. These digests are public and contain no private-key material.
 
 ```sh
 cluster-sign trust-policy-sign /secure/signing/cluster-v2.cbtrust \

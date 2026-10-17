@@ -83,7 +83,7 @@ on each context switch and obtains syscall identity from trusted per-LP state.
 \section{Engineering lessons}
 
 \begin{enumerate}
-    \item \textbf{Test transitions, not only interfaces.} The difficult failures
+    \item \textbf{Test transitions as well as interfaces.} The difficult failures
         occurred where block, yield, wake, context save, and reclamation met.
         Tests must cross those boundaries.
 

@@ -144,8 +144,8 @@ At steady state, a CharlotteOS system consists of:
     {fig:service-composition}
 
 Every component beyond the kernel, supervisor, and name service is a replaceable
-userspace process. A different NIC driver, a different filesystem, a different
-network stack. These are configuration choices, not kernel modifications.
+userspace process. We can choose a different NIC driver, filesystem, or network
+stack through configuration without modifying the kernel.
 
 \section{Failure containment and recovery}
 

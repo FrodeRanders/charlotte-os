@@ -22,8 +22,8 @@ Only trusted kernel platform launch policy can use the shared reserve.
 
 The allocation-free layout validator accepts at most 64 ELF program headers.
 It keeps page ranges in a fixed array, checks overlap/permissions/entry point,
-and excludes the entire maximum adaptive heap window, not just its default
-capacity. This is a format-policy limit, independent of the page budget.
+and excludes the full heap window up to its maximum adaptive capacity.
+This is a format-policy limit, independent of the page budget.
 Checked/saturating aggregate page planning includes all runtime pages and
 rejects an oversized signed image before namespace creation. Signatures still
 bind the exact original image; none of these checks replace authentication.

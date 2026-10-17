@@ -1,7 +1,8 @@
 # CharlotteOS documentation
 
-The Markdown documentation is organized by **purpose and freshness**, rather
-than by subsystem alone. Start with the LaTeX
+These notes describe what we are building, what we have tested, and what we
+still need to understand. They are organized by purpose and how current they
+are. Start with the LaTeX
 [manual](manual-v2/charlotte.pdf) for the integrated system description, then
 use the sections below for deeper design, implementation, or historical
 context.
@@ -21,8 +22,8 @@ Use this order when two documents disagree:
 5. Documents in [`reports/`](reports/README.md) are point-in-time evidence.
    They deliberately preserve findings that may since have been fixed.
 
-The distinction matters: a successful historical boot or an audit statement
-is evidence about one revision and configuration, not a standing guarantee.
+A past boot or audit tells us what happened with a particular revision and
+configuration. We need current checks before relying on it for a later build.
 
 ## Documentation map
 
@@ -42,7 +43,8 @@ is evidence about one revision and configuration, not a standing guarantee.
 
 ## Maintenance rules
 
-- Put durable design intent in `architecture/`, not in an audit report.
+- Put durable design intent in `architecture/`; audit reports capture a point
+  in time.
 - Put implementation invariants beside the relevant code-facing material in
   `reference/` or `tla/`.
 - Put commands that contributors should continue to run in `guides/`.

@@ -18,7 +18,7 @@
 > the kernel yet (`sync_dispatcher` panics on SVC; there is no x86_64 syscall
 > handler; there is no capability table). This document defines the ABI that the
 > future implementation should target and records the decision-gate answers for
-> Phase 2. The Rust in §9 is a *type sketch*, not compiled kernel code.
+> Phase 2. The Rust in §9 sketches the types; it is not compiled kernel code.
 
 ---
 
@@ -38,7 +38,7 @@ comment on `Thread` in
 
 sitas asks the *same* question from userspace: *what is the right
 submission/completion boundary for async I/O?* Its answer — visible in the
-the experimental OS-backend branch — is a three-method reactor contract plus an
+experimental OS-backend branch — is a three-method reactor contract plus an
 owned-buffer completion model. Option C is the observation that **sitas's
 reactor contract is the shape of CharlotteOS's syscall ABI**, and its io_uring
 buffer discipline is the shape of the kernel's buffer-ownership contract.
@@ -84,7 +84,7 @@ capabilities from the OS:
 1. **Block until something happens**, with a deadline — `wait(...)`.
 2. **Wake a blocked reactor** from another shard/core — `ReactorWaker::wake`.
 3. **Submit/complete async operations** — currently a *second* wait source
-   (io_uring), not yet folded into `wait`.
+   (io_uring), pending integration into `wait`.
 
 ### 2.2 The sharpest finding from Phase 1
 
@@ -115,7 +115,7 @@ kernel must honor:
   owed to the kernel on timeout is `mem::forget`'d rather than freed. The rule:
   *never free a buffer while the kernel may still touch it.*
 
-This is not Unix-specific; it is an ownership contract. The kernel side of the
+This ownership contract applies beyond Unix. The kernel side of the
 ABI must expose exactly this: **submit an owned buffer, get a completion
 capability, reclaim the buffer only on observed completion or acknowledged
 cancel.**
@@ -227,7 +227,7 @@ The mapping:
 
 | sitas `wait` | CharlotteOS `wait` |
 |---|---|
-| `read`/`write: &[Handle]` (fds to watch) | *not needed* — interests are registered at `submit` time and reported via the CQ; the shard watches one CQ, not N handles |
+| `read`/`write: &[Handle]` (fds to watch) | *not applicable* — interests are registered at `submit` and reported via the CQ; the shard watches one CQ rather than N handles |
 | `timeout: Option<Duration>` | `deadline: Option<Timestamp>` |
 | returns `Event { woke, readable[], writable[] }` | returns count; CQ entries carry `{ operation, cookie, status, flags, result }` |
 | `woke` (wake pipe drained) | a wake IPI raised the CQ observable with no completion payload |
@@ -282,8 +282,8 @@ close(cap: CompletionCap) -> Result<(), CapError>   // release a completed/obser
 
 ## 5. The buffer-ownership / reclaim contract
 
-Lifted verbatim from sitas's io_uring discipline, because it is an ownership
-rule, not a Linux detail.
+We use sitas's io_uring ownership rules here. They also apply to buffers passed
+to this kernel.
 
 1. **Transfer on submit.** `submit` moves buffer ownership to the kernel. While
    an operation is in flight, userspace must not read/write or free those pages.
@@ -494,8 +494,9 @@ impl ReactorBackend for CharlotteReactor {
 
     fn wait(&self, _read: &[CompletionCap], _write: &[CompletionCap],
             timeout: Option<Duration>) -> io::Result<CharlotteEvent> {
-        // Interests are registered at submit-time, not passed here; the shard
-        // watches its single CQ. Drain into an owned Event after waking.
+        // Interests are registered at submit-time, so this call receives none.
+        // The shard watches its single CQ. Drain into an owned Event after
+        // waking.
         let n = wait(self.cq, 0, timeout.map(deadline_from))?;
         Ok(drain_cq(self.cq, n))
     }

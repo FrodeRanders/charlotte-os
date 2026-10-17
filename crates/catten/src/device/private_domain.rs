@@ -1,5 +1,6 @@
 //! Never hardware-published domain ownership, carried by the complete grant.
-//! This is an unstarted rollback proof, not a hardware retirement receipt.
+//! The owner permits rollback before hardware publication. Hardware retirement needs a separate
+//! receipt.
 mod tests;
 
 use super::{

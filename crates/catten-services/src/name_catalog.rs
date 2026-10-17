@@ -597,8 +597,8 @@ impl NameCatalog {
 
     /// Encode one complete locally applied active catalog. Both registries
     /// remain borrowed through planning/encoding; no cloned-entry snapshot or
-    /// lossy one-page prefix is prepared. This is observation, not a Raft read
-    /// barrier or authority to invoke a service.
+    /// lossy one-page prefix is prepared. The result observes local state; it
+    /// provides neither a Raft read barrier nor authority to invoke a service.
     pub fn catalog_result(&self) -> Result<Vec<u8>, crate::dns_catalog::EncodeError> {
         let entries = self.entries.lock();
         let replicas = self.deployment_replicas.lock();
@@ -822,8 +822,8 @@ impl NameCatalog {
                     && existing.replica_variants == [variant]
                 {
                     // Admission may be retried after the follower-to-leader
-                    // reply is lost. Make exact desired state idempotent in
-                    // the replicated state machine, not merely at ingress.
+                    // reply is lost. The replicated state machine must make exact desired
+                    // state idempotent, even after an ingress check has accepted the request.
                     return existing.generation.to_le_bytes().to_vec();
                 }
                 if let Some(existing) = deployments.get(artifact) {
@@ -1349,9 +1349,8 @@ impl NameCatalog {
                 let mut current = self.cluster_key.lock();
                 let mut generation = self.cluster_key_generation.lock();
                 if let Some(existing) = *current {
-                    // Establishment is idempotent, not an unauthenticated key
-                    // rotation exposure. Rotation needs a separately
-                    // authorized protocol and overlap policy.
+                    // Repeated establishment leaves the existing key unchanged.
+                    // Rotation needs a separately authorized protocol and overlap policy.
                     if existing != key {
                         return Vec::new();
                     }

@@ -119,8 +119,8 @@ def prepare(args):
 
 def prepare_inputs(args, directory):
     root = Path(args.root).resolve()
-    # Inspect the actual boot-image payload, not a build output which another
-    # build could replace before a delayed debugger attach.
+    # Inspect the actual boot-image payload. A later build could replace the
+    # build output before a delayed debugger attach.
     subprocess.run(["mcopy", "-i", args.boot_image, "::/catten", str(directory / "kernel.elf")],
                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
     kernel_hash = digest(directory / "kernel.elf")

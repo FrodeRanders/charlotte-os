@@ -206,7 +206,7 @@ boundaries:
    in a new address space with `grantctl` as its sole bootstrap service. It
    stores the admitted descriptor digest in the domain's generation-fenced
    authority record before starting it; the final ELF loader uses the supplied
-   artifact trust key, not a different development default.
+   artifact trust key. It cannot substitute a development default.
 
 The agent is a desired-state reconciler rather than an artifact-specific
 launcher. It enumerates all signed deployment names, launches assignments for
@@ -313,16 +313,16 @@ content addressing.
 
 Validation rejects concurrent instances unless CLS2 includes
 `FLAG_PARALLEL_INSTANCES`. Co-location is therefore a joint decision between
-the blessed component contract and cluster placement state, not an unchecked
-operator override.
+the approved component contract and cluster placement state. An operator override
+alone cannot authorize it.
 
 The distinction matters: dependencies between components may justify placing
 one instance of each together, while replicas of the same component may need
 separate failure domains. A policy can express both constraints rather than
 treating “affinity” as one Boolean.
 
-Agent lifecycle stages are synchronization state, not diagnostic text. The
-agent publishes them to its shared status page with release stores and the
+Agent lifecycle stages are synchronization state; diagnostic text is separate.
+The agent publishes them to its shared status page with release stores and the
 kernel verifier consumes them with acquire loads. During cross-node migration,
 this guarantees that successful domain retirement becomes visible before the
 agent exits, independent of which LP runs the verifier.

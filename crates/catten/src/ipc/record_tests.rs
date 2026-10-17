@@ -26,7 +26,7 @@ pub(crate) fn test_admission() {
         ipc.as_caps(client.id()).record_budget.clone()
     };
 
-    // Each minted/delegated capability, not just its endpoint, occupies a slot.
+    // Every minted or delegated capability occupies its own slot, in addition to the endpoint.
     // Re-delegation sponsors the new capability from the grantor's own budget.
     let mut connections = Vec::new();
     for _ in 1..record_budget::DOMAIN_LIMIT[0] {
@@ -282,7 +282,7 @@ fn test_retirement() {
 }
 
 fn test_node_limits() {
-    // Counter saturation, not allocation of a maximum-footprint registry.
+    // Saturate the counters without allocating a maximum-footprint registry.
     for dimension in 0..3 {
         let baseline = record_budget::node_used();
         let mut charges = Vec::new();

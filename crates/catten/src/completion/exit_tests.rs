@@ -157,7 +157,7 @@ pub(crate) fn test_admission() {
     assert_eq!(records.used(), 0);
     drop(replacement);
 
-    // The watch account is shared across event types, not an extra allowance.
+    // All event types draw from the same watch account.
     super::open_address_space(CLIENT, 2);
     let account = super::watch_admission(CLIENT).unwrap();
     let target = Target::new();

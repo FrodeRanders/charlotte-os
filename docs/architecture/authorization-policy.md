@@ -29,9 +29,9 @@ naming remains separate from application authorization and cannot resolve or
 replace a policy-published entry. See the
 [removal evidence](../reports/audits/2026-10-15-ns-bearer-removal.md).
 
-The raw sender ASID is suitable for authenticating the immediate IPC hop, but
-not as a durable policy identity. Numeric address spaces may be recycled and a
-service restart creates a new execution instance. The signed loader therefore
+The raw sender ASID identifies the caller on the immediate IPC hop. Durable
+policy identity needs a different identifier: numeric address spaces may be
+recycled, and a service restart creates a new execution instance. The signed loader therefore
 derives a stable `PrincipalId` from the authenticated artifact name and binds
 it to the active `(ASID, generation)` in a kernel-only authority table. Only
 artifacts classified as administration workloads receive policy-administrator

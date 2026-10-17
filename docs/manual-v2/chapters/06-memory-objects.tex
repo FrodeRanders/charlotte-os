@@ -195,7 +195,7 @@ consume the original domain ceiling and node pool; successful root destruction
 excludes those quarantined pages from its refund. Slot reuse and platform
 promotion cannot recover or reclassify the retained charge. If publication is
 unconfirmed, cleanup retains backing without attempting deallocation. These
-are bounded account counters, not a growing recovery queue.
+are fixed account counters; recording a failure does not grow a recovery queue.
 
 Translation roots and intermediate tables also have an owning preparation
 through publication. Private lower-half tables preserve the physical progress
@@ -339,14 +339,15 @@ so later work can proceed. A failed request remains fenced from delivery/reply.
 The runtime's explicit \texttt{PendingCall::close} returns its owner on error,
 preserving the Rust borrow. Drop and consuming waits cannot return an owner;
 if close fails, they abort the domain instead of ending a potentially unsafe
-borrow. This is fail-closed termination, not forced resource reclamation.
+borrow. The domain terminates, but that alone does not establish that resources
+can be reclaimed.
 Bulk endpoint/domain cleanup remains serialized. Its reply-token cleanup must
 retain failed loans without reporting them as completed; full bulk ownership
 and failure recovery remain work in progress.
 
 \section{Why hardware enforcement matters}
 
-The transfer modes are enforced by page tables, not by Rust's type system:
+Page tables enforce the transfer modes across protection domains:
 
 \begin{itemize}
     \item A C program running in a protection domain cannot violate the
@@ -448,12 +449,11 @@ uncertain kernel DMA pin or authorize backing reuse.
         implementations remain responsible for volatile/atomic access and the
         device protocol.
 
-    \item Hardware enforcement, not language enforcement: the page tables
-        are the ultimate arbiter. No amount of unsafe code, C FFI, or compiler
-        bug should access CPU pages that are not mapped, assuming correct MMU
-        setup and TLB maintenance. The implemented SMMUv3, VT-d, and AMD-Vi
-        paths provide the corresponding DMA boundary for explicitly mapped
-        objects.
+    \item Page tables enforce access. With correct MMU setup and TLB maintenance,
+        unmapped CPU pages remain inaccessible even when a program uses unsafe
+        code or C FFI, or contains a compiler bug. The implemented SMMUv3, VT-d,
+        and AMD-Vi paths provide the corresponding DMA boundary for explicitly
+        mapped objects.
 \end{enumerate}
 
 \endinput

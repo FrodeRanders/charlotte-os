@@ -101,8 +101,8 @@ impl DomainAbortSweep {
             }
             Ok(())
         });
-        // This releases only the sweep's lease, not the terminal fence. Pending
-        // thread contexts retain their own stack/root owners until reaped.
+        // Release the sweep's lease while keeping the terminal fence in place.
+        // Pending thread contexts retain their stack/root owners until reaped.
         self.root.release().map_err(|_| Error::ThreadRetirementFailed)?;
         self.executor.release(&handoff);
         tests::after_self_handoff(handle, deferred_caller, outcome.is_ok());

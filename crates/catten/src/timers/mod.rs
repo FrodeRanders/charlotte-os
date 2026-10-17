@@ -274,8 +274,8 @@ pub fn process_local_events() {
     try_process_local_events().expect("local timer queue is already borrowed");
 }
 
-/// Busy is queue-borrow rejection, not operation completion. An active
-/// delivery keeps its original owner and comparator until explicit handback.
+/// Busy means the queue could not be borrowed; it cannot confirm completion.
+/// An active delivery keeps its original owner and comparator until explicit handback.
 pub(crate) fn try_process_local_events()
 -> Result<(), crate::cpu::multiprocessor::spin::per_lp::Error> {
     let _mask = crate::cpu::multiprocessor::interrupt_tracking::LocalInterruptMask::new();

@@ -1,8 +1,8 @@
 //! Capability-oriented S3 data-plane service.
 //!
 //! One instance is bound at launch to a single endpoint, bucket, key prefix,
-//! credential identity, and rights mask. Applications receive the service
-//! capability, not the credentials. Object bodies stream as moved memory
+//! credential identity, and rights mask. Applications use the service
+//! capability; credentials stay with the service. Object bodies stream as moved memory
 //! pages; remote GET/PUT operation IDs are owned and have explicit close or
 //! abort operations with application-side `Drop` fallbacks.
 #![no_std]

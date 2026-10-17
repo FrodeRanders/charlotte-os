@@ -1,5 +1,5 @@
 //! Kernel ABI fixtures intentionally retain raw IDs to inspect admission.
-//! Fake DMA backends exercise creation/rollback ordering, not IOMMU hardware.
+//! Fake DMA backends exercise creation/rollback ordering without using IOMMU hardware.
 
 use super::*;
 use crate::capability::admission_tests::{

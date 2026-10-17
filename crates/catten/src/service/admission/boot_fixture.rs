@@ -1,5 +1,6 @@
-//! Disposable x86 QEMU fixture, not a production provisioning adapter.
-//! Its anchor, exact expected state and recipient are publicly known test
+//! Disposable x86 QEMU fixture using public test material; production provisioning needs
+//! separate
+//! support. Its anchor, exact expected state and recipient are publicly known test
 //! material. The signed EFI/config/kernel chain authenticates these constants
 //! only within a VM whose firmware store was enrolled by the host test owner.
 

@@ -1,10 +1,10 @@
 //! Cluster placement policy shared by deployment tooling and nodes.
 //!
-//! This is a policy contract, not a scheduler implementation. It makes the
-//! important distinctions explicit before the replicated deployment format
+//! This defines placement policy; the scheduler is implemented separately.
+//! It records the distinctions needed before the replicated deployment format
 //! grows beyond its original single-assignment slice: component replicas,
 //! co-location affinity between different components, anti-affinity/failure
-//! domains, and whether the blessed artifact permits parallel instances.
+//! domains, and whether the signed artifact permits parallel instances.
 
 use crate::signature_note::{
     ArtifactMetadata,

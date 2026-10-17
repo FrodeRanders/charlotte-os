@@ -159,7 +159,7 @@ pub(crate) fn test_source_admission() {
         Err(RegistrationError::Closed)
     ));
 
-    // Dropping reply authority signals cancellation, not a lost wake.
+    // Dropping reply authority signals cancellation and must wake the waiter.
     let call_cap = scalar_call(CLIENT, connection, 5, 6).unwrap();
     let source = PendingCallObservable {
         call: pending_call_id(CLIENT, call_cap).unwrap(),
@@ -446,8 +446,8 @@ fn close_after_reply(
     }
 }
 
-// Kernel fixture IDs, not userspace owners. The verifier retains ownership
-// and closes them; helpers borrow these identifiers only for one operation.
+// The kernel verifier owns and closes these fixture resources. Helpers
+// borrow their IDs for one operation; no userspace owner is constructed.
 static RECOVERY_CAP: AtomicU64 = AtomicU64::new(0);
 static RECOVERY_LOAN: AtomicU64 = AtomicU64::new(0);
 static RECOVERY_RETRY_BASE: AtomicU64 = AtomicU64::new(0);

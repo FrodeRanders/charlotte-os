@@ -46,7 +46,7 @@ trait IdentityStore {
 }
 
 /// The connection and total admission deadline belong to this transaction.
-/// Persistent object IDs are durable names, not resources deleted on Drop.
+/// Persistent object IDs name durable data; Drop leaves those objects intact.
 struct Store {
     connection: Connection,
     deadline: Deadline,

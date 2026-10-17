@@ -59,7 +59,7 @@ use crate::{
 const PAGE_SIZE: usize = 4096;
 // Keep the default aperture usable by devices whose DMA descriptors are
 // nominally 64-bit but whose queue transport still has an effective 32-bit
-// address limit. This is an I/O virtual address, not exposed physical memory.
+// address limit. The aperture contains I/O virtual addresses; physical memory stays private.
 const IOVA_START: u64 = 0x1000_0000;
 // Physical address field mask (bits 51:12). All remapping structure pointers
 // and page-table entries share it.
@@ -296,8 +296,8 @@ impl Unit {
         // pointer, hi = adjusted guest address width (AW) in bits 2:0.
         unsafe {
             if u64::from(root) == 0 {
-                // Clear Present, not just the address. Never expose a valid
-                // pointer to physical zero or alter live secondary metadata
+                // Clear Present along with the address so physical zero cannot become
+                // a valid target. Never alter live secondary metadata
                 // before configuration/IOTLB retirement completes.
                 entry.write_volatile(0);
                 return;

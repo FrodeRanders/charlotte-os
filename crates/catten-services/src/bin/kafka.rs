@@ -936,8 +936,8 @@ impl<'connection> BrokerSession<'connection> {
                 return Err(map_broker(leader.error));
             }
             if !brokers.contains_key(&leader.leader) {
-                // Metadata is discovery, not authority: an application profile
-                // must authorize every selected network destination.
+                // Metadata discovers destinations. The application profile must
+                // authorize each one before we connect.
                 return Err(protocol::ERR_DENIED);
             }
             route_nodes.insert(route, leader.leader);

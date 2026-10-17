@@ -2,8 +2,8 @@
 \label{chap:capabilities}
 
 A capability is the answer to one question: \textbf{``May I perform this
-operation?''} It is authority, not work. CharlotteOS capabilities are unforgeable,
-delegable, and attenuable.
+operation?''} It grants permission to act. Operations describe the work.
+CharlotteOS capabilities are unforgeable, delegable, and attenuable.
 
 \section{What a capability is}
 
@@ -97,8 +97,8 @@ services delegate whatever the protocol authorizes.
 \section{Authority and audit consequences}
 
 \begin{enumerate}
-    \item Least privilege is architectural, not advisory: a process
-        starts with nothing. Every capability it holds was explicitly granted by
+    \item A process starts without ambient authority. Every capability it
+        holds was explicitly granted by
         a trusted component (the supervisor, the name service, or another service
         under a protocol). There is no ambient authority to strip away and the
         default is none.

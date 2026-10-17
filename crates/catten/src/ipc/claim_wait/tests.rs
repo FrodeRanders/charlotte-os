@@ -303,8 +303,8 @@ pub(crate) fn scheduled() {
     let producer_lp = crate::cpu::isa::lp::ops::get_lp_id();
     let lp_count = crate::cpu::multiprocessor::get_lp_count();
     let probe_lps = lp_count.min(4);
-    // Bounded repeated real claims, not allocator/watchdog saturation. Each
-    // episode requires exact exit and closes its original roots before the next.
+    // Repeat real claims within a fixed bound, leaving allocator/watchdog pressure
+    // to separate tests. Each episode requires exact exit and closes its roots before the next.
     for round in 0..8 {
         for offset in 0..probe_lps {
             let worker_lp = (producer_lp + offset) % lp_count;

@@ -104,8 +104,8 @@ pub enum IpiRpc {
     VMemInval(AddressSpaceId, VAddr, usize),
     AsidInval(AddressSpaceId),
     Wakeup,
-    /// A closure executed on the target LP. The sender boxes arbitrary work;
-    /// the allocation happens on the sending LP, not in the IRQ handler.
+    /// A closure executed on the target LP. The sender boxes the work on its own
+    /// LP, keeping allocation out of the IRQ handler.
     #[allow(clippy::type_complexity)]
     Closure(alloc::boxed::Box<dyn FnOnce() + Send>),
 }

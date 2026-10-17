@@ -1,4 +1,4 @@
-//! Serialized boot probes for namespace storage, not authority-record storage.
+//! Serialized boot probes cover namespace storage. Authority-record storage has separate tests.
 use core::sync::atomic::{
     AtomicBool,
     AtomicUsize,

@@ -107,7 +107,7 @@ External thread-exit watches also cancel their subscription locally without
 terminating the watched thread. Worker-backed completions retain their exit
 registration until the producer really exits. Keep those two roles distinct:
 cancelling an observation is not evidence that work has finished. A failed
-join registration is backpressure, not a successful join.
+join registration signals backpressure. It provides no evidence of thread exit.
 
 Kernel adapters registering completion callbacks must retain the
 `CompletionObservation` returned by `completion::observe`. Asynchronous callers
@@ -141,7 +141,7 @@ backpressure. Do not reconstruct its scalar capability or reuse the borrowed
 memory after a rejected close. Drop and consuming reply waits cannot return an
 owner: if synchronous close is rejected, they abort the domain instead of
 silently ending a borrow with potentially reachable server mappings. This is a
-fail-closed fallback, not a recovery mechanism or forced kernel reclamation.
+fail-closed fallback. It does not recover the operation or force kernel reclamation.
 An abandoned kernel cancellation claim may still wait indefinitely and retain
 its roots. Endpoint/domain bulk cleanup has a separate, still-serialized boundary.
 
@@ -325,13 +325,13 @@ converted; there is no unbounded allocation/retirement bypass.
 copy backing or source escrow/backing pins for moves and loans. Its Drop
 restores original source authority without re-admission, cancels the destination
 and releases backing; `commit_transfers` publishes the complete mixed-mode batch
-or none. Use this owner for multi-step kernel transfers, not a moved scalar
-plus a reverse-move cleanup ladder. Move/loan payload stays source-owned until
+or none. Use this owner to retain the whole multi-step transfer. Move/loan
+payload stays source-owned until
 commit, and generation checks fence late cancellation from reused ASIDs.
 Copied pages stay private until commit, so cancellation
 never closes a live receiver alias. Drop must run outside the memory registry
 guard. Drop committed owners before exposing writable access to release their
-pins. IPC reply tokens track every vector loan, not just scalar attachments.
+pins. IPC reply tokens track every vector loan as well as scalar attachments.
 Kernel `PreparedReceive` retains exclusive IPC access and owns speculative reply
 authority until result writing/dequeue commits. Result-write failure drops only
 that authority, preserving queued work and its loans. Shared quota rejection
@@ -352,7 +352,8 @@ hardware creation and own unpublished DMA domains through `PreparedDmaDomain`.
 Failed hardware rollback quarantines backing rather than returning potentially
 DMA-reachable pages. Observer startup uses a cancellable claim and one owning
 unstarted domain, so rejected grants reclaim delegated bootstrap authority.
-Userspace continues to use `catten_rt::owned`, not these kernel tokens.
+Userspace continues to use `catten_rt::owned`; these kernel tokens remain
+internal.
 
 ## Review checklist
 

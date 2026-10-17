@@ -75,7 +75,7 @@ pub fn test_vmem() {
 }
 
 /// These private roots are never installed on any LP. The fixture checks
-/// ownership and reuse, not concurrent hardware walk/shootdown correctness.
+/// ownership and reuse. Concurrent hardware walks and shootdowns need separate tests.
 fn test_retained_tables() {
     use crate::memory::PreparingUserFrame;
 
@@ -119,7 +119,7 @@ fn test_retained_tables() {
             assert_eq!(second.translate_address(vaddr).unwrap(), frame.frame());
         }
         assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), retained);
-        // Empty tables are retained, not silently promoted to a block mapping.
+        // Keep empty tables intact; do not silently replace them with a block mapping.
         assert!(
             first
                 .map_large_page(MemoryMapping {

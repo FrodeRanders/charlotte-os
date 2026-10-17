@@ -249,8 +249,8 @@ mod inner {
         // --- Key ceremony ---
         // Commit the cluster's public key to the replicated state (the
         // manual establishment path) and read it back, exactly as a joining
-        // node would: the key is obtained from the cluster, not from a
-        // channel out of band. Best-effort like the deploy: the ceremony
+        // node would, obtaining the key through the cluster protocol.
+        // Best-effort like the deploy: the ceremony
         // commits through the leader's dns; the read gate below polls every
         // replica's locally applied state until it sees the key.
         let key_deadline = crate::self_test::results::Deadline::after_millis(120_000);

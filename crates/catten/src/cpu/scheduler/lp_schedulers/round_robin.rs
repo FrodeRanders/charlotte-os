@@ -349,8 +349,8 @@ impl LpScheduler for RoundRobin {
             // completions, endpoint readiness, device interrupts, and explicit
             // peer wakes all target the same blocked thread) can fire more than
             // once before the thread next parks. Re-admitting an
-            // already-runnable thread is therefore a benign no-op, not an error
-            // — it must not double-enqueue it and must not panic.
+            // already-runnable thread must therefore be a no-op: leave its existing
+            // queue entry intact and return without panicking.
             ThreadState::Running(_) => {
                 sched_trace!(
                     "[sched] LP{} add TID={} gen={} already-Running (noop)",

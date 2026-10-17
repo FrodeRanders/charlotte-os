@@ -276,8 +276,8 @@ struct Endpoint {
     claim_interest: Option<claim_wait::Source>,
     claim_epoch: u64,
     /// When bound, endpoint readiness is delivered to this completion queue
-    /// of the owner as a coalesced wake (architecture doc §16.3: readiness is
-    /// a notification, not a completion). Posted on the empty→nonempty queue
+    /// of the owner as a coalesced wake (architecture doc §16.3). The receiver
+    /// must inspect the endpoint for work. Posted on the empty→nonempty queue
     /// transition and on closure, so a shard can block on one CQ wait for
     /// both kernel completions and endpoint work (§7, Phase 7).
     notify_cq: Option<crate::completion::CqId>,
@@ -807,8 +807,8 @@ pub fn endpoint_create(
 /// queue transitions from empty to nonempty, and when the endpoint closes.
 /// This lets a shard block on a single CQ wait for both
 /// kernel/device completions and endpoint work (architecture doc §7,
-/// Phase 7); readiness is a notification to inspect the endpoint, not a
-/// completion record (§16.3).
+/// Phase 7). The wake asks the shard to inspect the endpoint; it carries
+/// no completion record (§16.3).
 pub fn endpoint_bind_cq(
     owner: AddressSpaceId,
     endpoint_cap: CapabilityId,
@@ -1418,8 +1418,8 @@ pub fn receive(
 
 /// Own speculative reply authority until dequeue commits. IPC stays exclusively
 /// borrowed, so guessed handles cannot use that authority before delivery. A
-/// result-page failure drops only this capability, not the queued call/token or
-/// its loans. No reverse cleanup of delivered attachments is necessary.
+/// result-page failure drops only this capability. The queued call/token and
+/// its loans stay intact, so delivered attachments need no reverse cleanup.
 #[must_use]
 struct PreparedReceive<'a> {
     ipc: &'a mut IpcRegistry,
@@ -1989,7 +1989,7 @@ pub fn wait_reply_timeout(
 }
 
 /// One owned subscription in the existing admitted pending-call record.
-/// It is cancelled with that record, not by a separate scalar registry.
+/// The record owns cancellation; no separate scalar registry is needed.
 #[derive(Debug)]
 struct ReplyCqInterest {
     _observer: Arc<ReplyCqObserver>,
@@ -2396,8 +2396,8 @@ pub(crate) fn close_address_space_fixture(asid: AddressSpaceId) -> Result<(), Ip
 }
 
 fn drain_namespace_caps(asid: AddressSpaceId) -> Result<(), IpcError> {
-    // Use admitted registry storage as the work list, not an infallibly
-    // allocated teardown snapshot. Closing one call may also remove a reply cap.
+    // Reuse admitted registry storage as the work list to avoid allocating
+    // a teardown snapshot. Closing one call may also remove a reply cap.
     loop {
         let next = IPC.read().caps.get(&asid).and_then(|caps| caps.caps.keys().next().copied());
         let Some(cap) = next else {

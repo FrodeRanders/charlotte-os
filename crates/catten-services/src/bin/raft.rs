@@ -353,8 +353,8 @@ const STORAGE_MEMORY: u64 = 0;
 const STORAGE_REQUIRED: u64 = 2;
 
 fn persistent_namespace(cluster_id: &[u8], node_id: &[u8]) -> u64 {
-    // Stable FNV-1a over the cluster/node tuple. This is an object-store
-    // namespace, not a security boundary; ownership policy remains external.
+    // Stable FNV-1a over the cluster/node tuple chooses the object-store
+    // namespace. Separate ownership policy enforces access.
     let mut hash = 0xcbf2_9ce4_8422_2325u64;
     for byte in
         cluster_id.iter().copied().chain(core::iter::once(0xff)).chain(node_id.iter().copied())
@@ -381,8 +381,8 @@ fn main(ctx: Context) -> ! {
         None => STORAGE_MEMORY,
         _ => fatal(9),
     };
-    // Network participation is launch policy, not an accidental side effect
-    // of starting any Raft instance. Several independent Raft groups may run
+    // Launch policy selects which Raft instance participates on the network.
+    // Several independent Raft groups may run
     // on one node; only the node-cluster instance may own the well-known
     // Ethernet ingress name used by the frame router.
     let network_enabled = matches!(
@@ -1121,8 +1121,8 @@ fn main(ctx: Context) -> ! {
                 }
             }
 
-            // Request attachments are borrowed, not retained: close whatever
-            // this request left open so a client cannot pin capabilities.
+            // Keep attachments scoped to this request. Release them before the next
+            // receive so a client cannot leave capabilities pinned in this service.
             if message.memory != 0 {
                 memory_close(message.memory);
             }

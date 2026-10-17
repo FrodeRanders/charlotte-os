@@ -63,7 +63,7 @@ pub fn test_admission() {
     assert_eq!(backing_budget::test_used_pages(Kind::Image), before);
 
     // Partial signed-image preparation fails after its first mapped page. The
-    // unstarted owner must return backing and the exact namespace, not panic.
+    // unstarted owner must return backing and the exact namespace without panicking.
     let image = crate::service::store::service_elf(b"ns").unwrap();
     let expected = image_backing_pages(image);
     assert!(expected > 8);

@@ -47,7 +47,7 @@ mandatory even when a signature is checked.
 
 ## Updating Limine
 
-Treat a loader update as a platform change, not routine dependency churn:
+A loader update can affect the whole boot path. Check it as a platform change:
 
 1. Read every intervening entry in Limine's `ChangeLog`, paying particular
    attention to the Limine protocol, ELF loading, UEFI, paging, MP startup,

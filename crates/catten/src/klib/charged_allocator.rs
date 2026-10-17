@@ -244,8 +244,8 @@ impl<C> Drop for ChargedAllocator<C> {
 unsafe impl<C> Allocator for ChargedAllocator<C> {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         let allocation = self.charge.as_ref().unwrap();
-        // One reservation permits one allocation, not one allocation per
-        // clone. Even a freed allocation cannot be revived with its old charge.
+        // All clones share permission for a single allocation. Freeing that
+        // allocation does not let a clone reuse its old charge.
         if allocation.started.swap(true, Ordering::AcqRel) {
             return Err(AllocError);
         }

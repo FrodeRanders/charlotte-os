@@ -63,7 +63,7 @@ fn reenter_table(irq: bool) {
     assert_eq!(crate::cpu::isa::lp::ops::get_int_state(), irq);
 }
 
-/// Serialized boot-only counter/reuse probes, not a concurrent pressure test.
+/// Serialized boot probes check counters and reuse; concurrent pressure needs separate tests.
 pub(crate) fn run() {
     let lists = list_budget::node_used();
     let account = watch_budget::DomainBudget::new(4);

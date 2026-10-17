@@ -1,4 +1,4 @@
-//! Kernel fixtures for timer observer ownership, not timer-queue capacity.
+//! Kernel fixtures cover timer observer ownership. Queue capacity has separate tests.
 
 use alloc::{
     sync::Arc,

@@ -2,7 +2,7 @@
 //!
 //! The creating generation sponsors the allocation for its entire lifetime.
 //! Move, lend and IPC rollback never erase or duplicate that charge. Copies
-//! consume a new charge in the copying caller, not an unsuspecting receiver.
+//! take a new backing charge from the copying caller's budget.
 //! Retired sponsors remain in the ledger until their last charge is released.
 //! No syscall permits a domain to enlarge its budget or claim platform reserve.
 
@@ -230,8 +230,8 @@ pub(crate) fn retire(handle: AddressSpaceHandle) {
     account.timers.retire();
 }
 
-/// Capture a generation-owned sponsor at thread construction, not while
-/// parking under the master table. Reservation needs only counter locks.
+/// Capture the generation-owned sponsor during thread construction, before
+/// parking takes the master table. Reservation then needs only counter locks.
 pub(crate) fn waiter_sponsor(asid: AddressSpaceId) -> crate::klib::observer::WaitSponsor {
     let table = super::ADDRESS_SPACE_TABLE.lock();
     let generation = table.generation(asid).expect("waiter sponsor requires live ASID");

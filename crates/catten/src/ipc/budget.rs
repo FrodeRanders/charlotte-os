@@ -15,7 +15,7 @@ use spin::LazyLock;
 
 use crate::cpu::multiprocessor::spin::mutex::Mutex;
 
-// Dimensions are endpoint records and queue backing slots, not payload bytes.
+// Count endpoint records and queue backing slots; payload bytes are outside this budget.
 pub(crate) const DOMAIN_LIMIT: [u64; 2] = [64, 8_192];
 pub(crate) const NODE_LIMIT: [u64; 2] = [1_024, 32_768];
 pub(crate) const ORDINARY_LIMIT: [u64; 2] = [768, 24_576];

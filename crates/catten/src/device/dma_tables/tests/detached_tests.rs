@@ -42,7 +42,7 @@ pub(super) fn run() {
     let baseline = used();
     let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
     let drops = DROPS.load(Ordering::Relaxed);
-    // Preserve the containing allocation, not just the table's own fallback.
+    // Check that the containing allocation survives along with the table's own fallback.
     let mut slot = Some(payload(1));
     let metadata = slot.as_ref().unwrap().metadata.as_ptr();
     let mut commands = Some(alloc::vec![Metadata {

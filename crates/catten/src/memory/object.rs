@@ -34,8 +34,9 @@ use crate::{
 };
 
 const PAGE_SIZE: usize = 4096;
-// Bounded stack metadata, not an object-size or admission limit. Retirement
-// copies identities under the registry, then walks tables after releasing it.
+// Bound the stack metadata by processing identities in batches. Object size
+// and admission limits are unchanged. Copy identities under the registry,
+// then walk tables after releasing it.
 const RETIREMENT_FRAME_BATCH: usize = 16;
 
 pub(crate) mod namespace_close;
@@ -1609,8 +1610,8 @@ pub(crate) fn prepare_copy(
     }
     let destination = admit_capability(target, target_handle)?;
     let source = copy_pin.0.as_ref().unwrap();
-    // Private backing belongs to this owner, not to a destination registry
-    // entry. Cancellation never consults a receiver-controlled numeric handle.
+    // This owner retains the private backing until destination publication.
+    // Cancellation never consults a receiver-controlled numeric handle.
     let staged = allocate_frames(source_handle, source.frames.len())?;
     for (source, target_frame) in source.frames.iter().zip(staged.frames.iter()) {
         let source_ptr: *const u8 = (*source).into();
@@ -1800,7 +1801,7 @@ fn prepare_close_cap(
 ///
 /// Dropping an unfinished receipt deliberately leaves its pin in the registry
 /// (and thus its physical backing and exact sponsorship charge quarantined).
-/// Drop releases receipt metadata, not its backing pin or physical frames.
+/// Drop releases only receipt metadata; the backing pin and physical frames remain retained.
 #[must_use]
 struct RetiredObjectMappings {
     pin: MappingRetirementPin,

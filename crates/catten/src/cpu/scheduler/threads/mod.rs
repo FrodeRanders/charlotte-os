@@ -146,8 +146,9 @@ impl ReaperWork {
 static REAPER_WORK: [ReaperWork; crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS] =
     [const { ReaperWork::new() }; crate::cpu::scheduler::system_scheduler::MAX_TRACKED_LPS];
 
-/// Wait-admission rejection, not idle polling or a physical retry. The void
-/// sleep API preserves this backoff even if its timer admission also rejects.
+/// Back off after wait-admission rejection. This neither polls idle work nor
+/// retries physical cleanup. The void sleep API preserves the backoff even if timer admission
+/// rejects.
 const REAPER_ADMISSION_BACKOFF_MILLIS: u64 = 10;
 #[unsafe(no_mangle)]
 pub static REAPER_WAIT_ADMISSION_FAILURES: AtomicU64 = AtomicU64::new(0);
@@ -257,7 +258,7 @@ pub fn retire_requested_threads() {
         .get_lp_scheduler()
         .lock()
         .get_tid();
-    // Capture a finite scan ceiling, not a heap-backed teardown snapshot.
+    // Bound this scan by the current table ceiling without allocating a teardown snapshot.
     // Each selected occupant is claimed under the table using its own request
     // and generation; new slots beyond the ceiling wait for the next boundary.
     let ceiling = MASTER_THREAD_TABLE.read().iter().len();

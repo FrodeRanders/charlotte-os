@@ -111,8 +111,7 @@ fn store_artifact(obj_conn: u64, object_id: u64, bytes: &[u8]) -> bool {
         return false;
     }
 
-    // The artifact is an ELF (tens of KiB): the data cap must span every
-    // page the bytes occupy, not a single page.
+    // The ELF occupies tens of KiB. The data cap must span all of its pages.
     let data = memory_alloc(bytes.len().div_ceil(4096).max(1));
     let (data_vaddr_9_map_status, data_vaddr_9_vaddr) = memory_map_any(data, true);
     if data == 0 || data_vaddr_9_map_status != 0 {

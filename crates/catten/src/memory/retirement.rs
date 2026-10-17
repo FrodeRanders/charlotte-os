@@ -400,8 +400,8 @@ impl RetiredAddressSpace {
 }
 
 fn invalidate(space: &AddressSpace, handle: AddressSpaceHandle) -> bool {
-    // This is deliberately resolved from the owning root, not the table: the
-    // software entry is detached and its hardware tag is still privately held.
+    // Resolve the hardware tag from the owning root. Its software table entry
+    // is already detached, while this owner still holds the tag privately.
     #[cfg(target_arch = "aarch64")]
     {
         let _ = handle;

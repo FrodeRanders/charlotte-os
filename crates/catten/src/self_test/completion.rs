@@ -105,7 +105,7 @@ pub fn test_completion_caps() {
 
     completion::close_address_space(asid);
 
-    // --- CQ overflow is retained in a kernel backlog, not lost --------------
+    // --- CQ overflow retains results in the kernel backlog -----------------
     let cq_asid = 0xc0ff_ee01;
     completion::open_address_space_with_cq(cq_asid, 4, 2).expect("CQ setup failed");
     let cap_a = completion::submit(cq_asid, OpCode::Nop, None).unwrap();

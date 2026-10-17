@@ -1,6 +1,8 @@
 //! Shared node admission for completion and scheduler timer events, including cancelled events
 //! awaiting reclamation on another LP. A charge follows event/node backing and
-//! cancellation references, not the shorter-lived completion record or queue membership.
+//! cancellation references. Ending a completion record or removing a queue entry cannot refund
+//! it
+//! early.
 
 use alloc::sync::Arc;
 
@@ -58,7 +60,7 @@ impl DomainBudget {
 }
 
 /// Captured from the generation-owned memory ledger before Thread publication.
-/// Scheduling paths reserve only counter locks, not the address-space table.
+/// Scheduling paths reserve under counter locks without taking the address-space table.
 #[derive(Debug, Clone)]
 pub(crate) struct SchedulerSponsor(Arc<DomainBudget>);
 

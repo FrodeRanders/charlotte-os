@@ -208,8 +208,8 @@ pub(crate) fn test_queue_admission() {
 }
 
 pub(crate) fn test_node_admission() {
-    // Isolated counters, not thousands of live registry allocations or
-    // mutation of the shared budget underneath other booting services.
+    // Exercise isolated counters without allocating thousands of registry
+    // entries or changing the shared budget used by other booting services.
     let mut node = NodeBudget::new();
     for _ in 0..ORDINARY_LIMIT {
         node.reserve(false).unwrap();

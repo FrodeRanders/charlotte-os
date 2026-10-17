@@ -115,8 +115,8 @@ impl Completion {
             }
             catten_syscall::completion_status::PENDING_OR_TIMEOUT => Ok(None),
             catten_syscall::completion_status::WAIT_ADMISSION_FAILED => {
-                // Admission failed, not the operation. Keep ownership for a
-                // retry or for Drop's cancel/terminal-wait/close sequence.
+                // Wait admission failed; no terminal result was observed. Keep ownership
+                // to retry the wait or let Drop cancel, wait for termination, and close.
                 Err(CompletionError::Status(status))
             }
             other => {

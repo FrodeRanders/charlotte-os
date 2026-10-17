@@ -1,5 +1,5 @@
 //! Checked admission counters. Callers serialize reservations and retain their
-//! charge until the resource is actually released, not merely transferred.
+//! charge through transfers until the resource is actually released.
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Amount {
@@ -166,7 +166,7 @@ impl Budget {
 
 /// Keep one eighth of usable physical frames beyond reach of memory-object
 /// and user heap/image backing allocations. Check this under the frame lock.
-/// This is a progress reserve, not an entitlement for every other subsystem.
+/// Other subsystems must still apply their own admission limits when using this reserve.
 pub const fn frames_available(free: u64, usable: u64, request: u64) -> bool {
     let reserve = if usable / 8 == 0 {
         1

@@ -788,7 +788,7 @@ fn try_lookup(
     }
 }
 
-/// Endpoint death is an internal NS producer, not caller retirement authority.
+/// NS observes endpoint death internally; callers gain no retirement authority from it.
 /// Each hint is resolved through the watch retained with the current binding;
 /// removed/replaced watches cannot retire another generation under the name.
 fn retire_closed(

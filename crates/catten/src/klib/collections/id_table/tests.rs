@@ -289,7 +289,7 @@ fn wrong_table_or_generation_completion_does_not_release_another_lease() {
     assert_eq!(first.slots[a].leases, 1);
     assert_eq!(second.slots[b].leases, 1);
     let mut corrupt = second.lease(b, second.generation(b).unwrap()).unwrap();
-    // Kernel-boundary corruption, not a production token constructor.
+    // Forge this token only to test corruption at the kernel boundary.
     corrupt.generation += 1;
     assert_eq!(second.finish_lease(corrupt), Err(Error::WrongLease));
     assert_eq!(second.slots[b].leases, 2);
@@ -417,7 +417,7 @@ fn wrong_generation_completion_cannot_release_slot() {
     let mut table = IdTable::new();
     let id = table.add_element(1);
     let mut slot = table.retire_element(id).unwrap().release_value_with(|_| ()).0;
-    // Kernel-boundary corruption fixture, not a production token constructor.
+    // Forge this token only to test corruption at the kernel boundary.
     slot.generation += 1;
     assert_eq!(table.finish_retirement(slot), Err(Error::WrongRetirement));
     assert!(table.slots[id].retiring);

@@ -55,7 +55,9 @@ impl DomainTeardown {
     }
 
     /// No scheduler wait. Caller must release registry/coordinator guards first.
-    /// The deadline bounds thread/lease drain, not hardware rendezvous or cleanup.
+    /// The deadline covers thread/lease drain only. Hardware rendezvous and cleanup fall
+    /// outside
+    /// it.
     pub(crate) fn poll(&mut self) -> Result<bool, DomainTeardownError> {
         if let Some(error) = self.failed {
             return Err(error);

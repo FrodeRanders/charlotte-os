@@ -1,4 +1,4 @@
-//! Complete private grant retention, not a hardware completion fixture.
+//! Check complete private grant retention without claiming hardware completion.
 use crate::{
     device::{
         PreparedDmaDomain,

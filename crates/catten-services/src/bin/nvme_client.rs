@@ -45,8 +45,8 @@ fn main(ctx: Context) -> ! {
     config::write::<u32>(status::BLOCK_SIZE, block_size);
     config::write::<u32>(status::TOTAL_BLOCKS, total_blocks);
 
-    // Exercise PRP-list DMA, not merely PRP1: three pages require PRP1 plus a
-    // PRP2 list containing the second and third physical frames. Use the final
+    // Use three pages to exercise PRP-list DMA: PRP1 holds the first frame,
+    // and the PRP2 list contains the second and third. Use the final
     // namespace blocks so object-store formatting cannot overwrite the pattern.
     const TEST_PAGES: usize = 3;
     let transfer_bytes = TEST_PAGES * 4096;

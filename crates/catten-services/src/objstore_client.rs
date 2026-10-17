@@ -284,7 +284,7 @@ mod tests {
             object: Some(17),
         };
         assert_eq!(request.read_size(crate::objstore::ERR_NOT_FOUND, None), Ok(None));
-        // The same small result with memory is a length, not an absent object.
+        // With attached memory, this small result gives the length; the object exists.
         assert_eq!(request.read_size(crate::objstore::ERR_NOT_FOUND, Some(4096)), Ok(Some(1)));
         assert_eq!(request.read_size(0, Some(4096)), Ok(Some(0)));
         assert_eq!(request.read_size(4096, Some(4096)), Ok(Some(4096)));

@@ -80,8 +80,8 @@ pub(crate) struct SlotLease {
 
 impl Drop for SlotLease {
     fn drop(&mut self) {
-        // No implicit completion under an unknown guard. The live value/slot
-        // remain retained, not destructively retired or returned to free IDs.
+        // Retain the live value and slot under this unknown guard. Destruction
+        // and ID reuse require explicit retirement completion.
     }
 }
 

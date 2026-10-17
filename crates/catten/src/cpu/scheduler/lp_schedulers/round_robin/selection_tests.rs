@@ -31,7 +31,7 @@ fn release(table: &mut ThreadTable, (tid, generation): (ThreadId, ThreadGenerati
     assert_eq!(thread.dispatch_count, 0);
     assert!(!thread.context.is_on_cpu());
     // Only this private fixture table ever owned the context; Ready was a
-    // synthetic selection input, not scheduler publication. Restore its
+    // synthetic input to selection; the scheduler never published it. Restore its
     // constructor state before the ordinary never-admitted release adapter.
     thread.state = ThreadState::NeedsLpAssignment;
     thread.release_unstarted().unwrap();

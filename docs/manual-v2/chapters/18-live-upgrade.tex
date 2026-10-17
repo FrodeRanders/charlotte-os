@@ -2,7 +2,7 @@
 \label{chap:live-upgrade}
 
 CharlotteOS has a tested prototype for replacing a reference service while
-transferring its state. It is \textbf{restart-with-state}, not zero-downtime:
+transferring its state. We describe this as \textbf{restart-with-state}:
 in-flight requests may fail during handoff and clients must re-lookup and retry.
 
 \section{The four primitives}
@@ -25,7 +25,7 @@ service:
         the kernel closes its endpoint. Queued requests that were never
         delivered complete as \texttt{EndpointClosed}. Delivered calls whose
         server exited before replying complete as \texttt{Cancelled}. Clients
-        see a deterministic failure, not a hung request.
+        receive the corresponding failure result.
 
     \item Bootstrap capability delivery: the supervisor writes
         initial capabilities to the config page before a domain starts. For a
@@ -75,7 +75,7 @@ Executable artifacts carry an Ed25519 CLS2 note that binds the complete ELF to
 its logical service name, artifact class, release metadata, rollback counter,
 policy flags, and signing-key identifier. The loader snapshots the bytes and
 verifies the note before mapping. The FNV-1a object checksum remains corruption
-detection, not executable authority. Rollback policy, key rotation, and measured
+detection; the CLS2 signature supplies executable authority. Rollback policy, key rotation, and measured
 boot remain future policy work.
 
 \section{What the supervisor prototype provides}
@@ -104,7 +104,7 @@ atomically publishes the new connection and generation before retiring the
 old connection or releasing deferred lookups. The reference path supports both a
 persistent signed echo image and its embedded fallback, plus one state object.
 The separate \texttt{try\_spawn\_upgrade} helper shown above is a kernel
-prototype, not the syscall implementation. It owns the loaded replacement and
+prototype; the syscall uses a different implementation. The helper owns the loaded replacement and
 all prepared state moves, delegates connections before committing the batch,
 and cancels preparation on failure. Cancellation restores original source
 handles without fresh quota and closes the not-yet-running replacement. This
@@ -206,7 +206,7 @@ instance exits, rather than starting the new instance from scratch.
         fallback.
         Before transfer, the manager retains the state capability; after
         transfer, it belongs to the replacement. Recovering state after that
-        replacement fails requires an explicit policy, not just capability
+        replacement fails requires an explicit policy, beyond capability
         cleanup.
 
     \item The building blocks are covered by self-tests: memory-object

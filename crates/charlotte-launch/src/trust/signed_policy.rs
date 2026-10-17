@@ -90,8 +90,9 @@ enum Expectation {
     },
 }
 
-/// Caller-supplied acceptance state, not state discovered from the signed
-/// record. Production callers must retain it in rollback-resistant storage and
+/// Acceptance state supplied independently by the caller. The signed record
+/// cannot establish this state. Production callers must retain it in rollback-resistant storage
+/// and
 /// must never fall back to enrollment after a failed installed-state check.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PolicyExpectation(Expectation);

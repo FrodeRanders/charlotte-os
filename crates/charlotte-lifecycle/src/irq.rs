@@ -28,9 +28,10 @@ pub const fn retired_generation(current: u64) -> u64 {
     }
 }
 
-/// Single coalescing mailbox, not a FIFO. The high watermark survives claiming
-/// readiness, preventing an older in-flight publisher from replacing a newer
-/// pending wake or resurrecting an already retired lifetime. Multiple consumers
+/// A single mailbox coalesces readiness instead of queuing each publication.
+/// The high watermark survives a claim, preventing an older in-flight publisher from replacing
+/// a
+/// newer pending wake or resurrecting an already retired lifetime. Multiple consumers
 /// may claim concurrently; at most one receives each published readiness bit.
 pub struct DeferredIrqWake {
     state: AtomicU64,

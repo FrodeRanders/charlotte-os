@@ -581,8 +581,8 @@ fn main(ctx: Context) -> ! {
                 }
             }
 
-            // Request attachments are borrowed, not retained: close whatever
-            // this request left open so a client cannot pin capabilities.
+            // Keep attachments scoped to this request. Release them before the next
+            // receive so a client cannot leave capabilities pinned in this service.
             if message.memory != 0 {
                 memory_close(message.memory);
             }

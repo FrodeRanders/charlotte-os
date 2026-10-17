@@ -23,9 +23,9 @@
 
 ## What the sbsa-ref work validated (portable)
 
-These subsystems are implemented against the architecture (ACPI, GICv3, ITS,
-SMMUv3, PCIe, NVMe), not against QEMU's quirks, so they are the transferable
-core:
+These subsystems follow the architecture interfaces (ACPI, GICv3, ITS,
+SMMUv3, PCIe, NVMe). We expect to reuse them on hardware, though each platform
+still needs validation:
 
 - **Boot chain**: TF-A → edk2 UEFI → Limine → kernel at EL1, with ACPI table
   parsing (XSDT, FADT, MADT, SPCR, GTDT).
@@ -38,7 +38,7 @@ core:
 - **EL0 driver model**: capability-granted MMIO + interrupt + DMA to userspace
   drivers (`device`, `el0_uart`, `el0_nvme`).
 - **Storage**: a block driver, an object store, and NVMe-backed Raft recovery.
-- **Correctness fixes that are general, not QEMU-specific**:
+- **Fixes that also apply beyond QEMU**:
   - ACPI MADT signature is `"APIC"`, not `"MADT"`.
   - The IRQ dispatcher treated every INTID >= 1020 as spurious, dropping valid
     LPIs; the check is now `1020..=1023`.
@@ -85,7 +85,8 @@ EL2-resident features.
   layouts, interrupt routes, and ACPI table content than QEMU's models.
 - The UART is PL011 (sbsa-ref) or the virt PL011; other platforms use different
   consoles.
-- The virtio-net path is validated against QEMU's device, not a real NIC.
+- We have validated the virtio-net path against QEMU's device. Real-NIC
+  validation is still needed.
 - Port-wide caveats from `docs/platforms/aarch64.md`: framebuffer/display is
   unreliable under emulation; KASLR and similar are untested.
 
@@ -100,15 +101,14 @@ EL2-resident features.
 - Decide the EL2 story: **VHE** (reuse the EL2 register bank at EL1 semantics)
   or a minimal hypervisor.
 - Make the boot path accept an EL2 entry without the firmware EL1-handoff
-  patch (i.e., the kernel, not the firmware, performs the EL2 → EL1 transition,
-  as it already can via the `_start` descent).
+  patch (i.e., the kernel performs the EL2 → EL1 transition rather than the
+  firmware, as it already can via the `_start` descent).
 - Add a TCG/HVF EL2 test mode so this is exercised before real hardware.
 
-#### Why EL2 — what it constructively buys
+#### What EL2 could provide
 
-EL2 is not merely "where real firmware enters us"; it is an *isolation
-authority* that CharlotteOS's capability model is unusually well-placed to
-use. Two models:
+EL2 could provide an isolation boundary beneath the kernel. We are considering
+two ways to use it with the capability model:
 
 - **Separate hypervisor at EL2** (kernel stays at EL1, a thin hypervisor
   isolates it), or

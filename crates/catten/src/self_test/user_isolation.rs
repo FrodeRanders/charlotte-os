@@ -83,7 +83,7 @@ impl Fixture {
         }
         before_publish(handle);
         let mut generation = 0;
-        // Documented test ABI: entry is a mapped user address, not a kernel function.
+        // The test ABI requires entry to name a mapped userspace address.
         let entry = unsafe { core::mem::transmute::<usize, extern "C" fn()>(0x20000) };
         crate::logln!(
             "[user isolation] launching {} bytes: first={:02x?} asid={}",

@@ -98,7 +98,7 @@ def main():
 
     metrics(args.port, args.require_dns_catalog, args.require_ns_status)
     print("PASS: initial metrics request", flush=True)
-    # EOF before a request must only close this socket, not exit the server.
+    # EOF before a request must close this socket while leaving the server running.
     with socket.create_connection(("127.0.0.1", args.port), timeout=12) as client:
         client.shutdown(socket.SHUT_WR)
     metrics(args.port, args.require_dns_catalog, args.require_ns_status)

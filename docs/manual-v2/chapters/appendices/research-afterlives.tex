@@ -52,7 +52,8 @@ notification, completion, or unit of work. Reply tokens are linear authority;
 memory, device, DMA, observer, and bootstrap access are explicitly delegated.
 The present kernel does \emph{not} retain a general derivation tree, prove
 confinement, or provide CHERI-style protection for arbitrary pointers. This is
-an EROS/seL4-inspired object model, not an seL4 refinement or a CHERI substitute.
+an object model inspired by EROS and seL4. It provides neither an seL4
+refinement nor a substitute for CHERI.
 
 \section{IPC, typed channels, and ownership}
 
@@ -77,8 +78,8 @@ research ideas. Managed-language enforcement did not become a mainstream OS
 boundary, but ownership types and message-oriented runtimes became normal
 engineering tools.
 
-\textbf{Xous.} Xous remains a working Rust microkernel for embedded devices,
-not merely an historical analogy. Its userspace servers and distinct scalar,
+\textbf{Xous.} Xous is a working Rust microkernel for embedded devices.
+Its userspace servers and distinct scalar,
 send, lend, and mutable-lend messages make it CharlotteOS's closest direct IPC
 ancestor (\url{https://xous.dev/kernel/}).
 
@@ -124,7 +125,7 @@ per shard, cooperative futures, bounded messages, and deliberate placement.
 Barrelfish supplies the analogy for explicit cross-LP coordination. IX, DPDK,
 and Arrakis inform userspace drivers, batched queues, IOMMU protection, and
 buffer ownership. CharlotteOS makes a different authority choice from Arrakis:
-devices are delegated to isolated driver services, not directly to ordinary
+devices are delegated to isolated driver services, rather than directly to ordinary
 applications. Completion queues retain terminal operation records and remain
 separate from endpoint IPC and Rust \texttt{Waker}s.
 

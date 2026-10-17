@@ -272,7 +272,7 @@ maps human-readable names to re-delegable connection capabilities:
         counter. Stale client connections bound to the previous generation fail
         with \texttt{ServiceRestarted}.
     \item Access-key gating: a registration may specify a non-zero access
-        key. The userspace name service, not the kernel, denies lookups without
+        key. The userspace name service denies lookups without
         the matching key.
     \item Lookup: a client asks for \texttt{"driver.nic.v1"} and receives
         a connection capability (or an error). It never receives an address, a
@@ -282,11 +282,10 @@ maps human-readable names to re-delegable connection capabilities:
 The name service runs in userspace. The kernel provides the endpoint and
 connection primitives; userspace provides the naming policy.
 
-\section{Two kernel data paths, not one}
+\section{Two kernel data paths}
 
 A central distinction is that endpoint IPC is for \textbf{cross-domain
 service calls}. Completion queues are for \textbf{kernel and device operations}.
-They are not the same mechanism.
 
 \begin{center}
 \begin{tabular}{|l|l|}
@@ -330,8 +329,8 @@ they are different kernel abstractions with different semantics.
         errors such as \texttt{EndpointClosed} and \texttt{ServiceRestarted}.
         A replacement cannot inherit the old instance's reply tokens.
 
-    \item Name service is policy, not mechanism: the kernel provides
-        endpoints and connections. Userspace decides who can register what name,
+    \item The kernel provides endpoints and connections. The userspace name
+        service decides who can register what name,
         who can look up what service, and what access keys are required. The
         kernel remains small; policy is replaceable without a kernel rebuild.
 \end{enumerate}

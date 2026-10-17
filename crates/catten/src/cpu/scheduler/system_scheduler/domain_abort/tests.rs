@@ -153,7 +153,7 @@ pub(crate) fn finish_self_handoff(handle: AddressSpaceHandle) {
 }
 
 // The two faulting executors rendezvous only after each owns its root lease.
-// These bounded counters are diagnostic selectors, not resource custody.
+// These bounded counters select diagnostics; resource ownership stays with the executors.
 static CONCURRENT_ROOT: AtomicUsize = AtomicUsize::new(0);
 static CONCURRENT_GENERATION: AtomicUsize = AtomicUsize::new(0);
 static CONCURRENT_ENTERED: AtomicUsize = AtomicUsize::new(0);
@@ -333,7 +333,7 @@ fn verify_lock_ownership() {
     // Deliberate bounded contention fixture: keep the observing LP executing
     // until acknowledgement. Yield/preemption could run another local task
     // that needs lifecycle while the remote holder waits for this observer,
-    // deadlocking the handshake. Mask before publication, not after phase 1.
+    // deadlocking the handshake. Mask before publication so phase 1 is already protected.
     let pin = LocalInterruptMask::new();
     // Trusted boot fixture: one bounded kernel thread, no application resource
     // or dynamically growing observer/registry is admitted by this probe.

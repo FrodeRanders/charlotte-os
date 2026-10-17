@@ -41,7 +41,7 @@ pub(super) fn run() {
         })
         .unwrap();
     assert_eq!(list_budget::node_used(), (baseline.0 + 2, baseline.1 + 1));
-    // A drain before first publication is only a hint, not stored readiness.
+    // A drain before first publication leaves no readiness stored for later waiters.
     assert!(source.drain().is_empty());
     {
         let _heap = PRIMARY_ALLOCATOR.lock();

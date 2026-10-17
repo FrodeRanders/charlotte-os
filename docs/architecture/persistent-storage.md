@@ -90,7 +90,7 @@ the argument u64. No memory object.
 | 3 | UNALIGNED | Buffer size not a multiple of block size |
 | 4 | DEVICE_GONE | Device was removed or reset |
 
-### 2.5 Why BorrowRead/BorrowWrite, not Move
+### 2.5 Why we borrow the caller's buffer
 
 READ uses BorrowWrite: the caller provides an empty buffer, the driver fills
 it, the caller reads it. Move would require the driver to allocate a buffer,
@@ -323,8 +323,8 @@ atomicity remains outside this evidence.
 
 Node ID, peer list, election timing, and storage policy remain supervisor-owned
 launch configuration. They are not copied into the Raft log. The durable store
-contains Raft protocol state and log/snapshot data, not the deployment
-manifest.
+contains Raft protocol state and log/snapshot data. The deployment manifest
+stays in the supervisor's launch configuration.
 
 On-disk format v4 has two checksummed superblock slots, a device-sized
 allocation bitmap, and two mirrored banks of atomic object locators. Directory
@@ -351,9 +351,9 @@ The object store publishes an explicit `Starting`/`Serving`/`Draining`/`Failed`
 state. `Serving` follows successful mount and endpoint registration; kernel
 local readiness observes it with acquire ordering and revalidates it before
 publication. Diagnostic stage numbers and latched ordinary I/O errors do not
-define startup completion. This marker is a boot milestone, not a continuing
-storage-health or hardware-quiescence lease. The first I/O failure separately
-records service state, operation, LBA/count, failure phase and available
+define startup completion. The marker records a boot milestone. It does not
+establish continuing storage health or hardware quiescence. The first I/O failure
+separately records service state, operation, LBA/count, failure phase and available
 status/result, without retrying the operation. See the
 [readiness/mount audit evidence](../reports/audits/2026-10-12-security-object-store-readiness.md).
 
@@ -456,25 +456,25 @@ machines. DNS currently runs a distinct Raft group for its replicated catalog.
 
 ## 6. Why This Architecture
 
-**Userspace driver, not kernel driver.** A bug in the NVMe driver corrupts
-the driver's address space, not the kernel. The driver restarts; the system
-stays up.
+**Driver isolation.** We run the NVMe driver in its own address space to
+contain memory faults and allow it to be restarted separately from the kernel.
 
 **Capability-based authority.** The NVMe driver receives exactly the BAR0
-MMIO window and MSI-X interrupt it needs. It cannot access other PCI
-devices. It cannot receive arbitrary interrupts. The block device protocol
+MMIO window and MSI-X interrupt it needs. It cannot access other PCI devices
+or receive arbitrary interrupts. The block device protocol
 definition gives it authority only over the namespace it serves.
 
-**Memory objects, not copies.** READ writes directly into the caller's
+**Caller-owned buffers.** READ writes directly into the caller's
 pages via DMA (with BorrowWrite). WRITE reads directly from the caller's
-pages via DMA (with BorrowRead). No intermediate kernel buffer, no copy.
+pages via DMA (with BorrowRead). Neither operation needs an intermediate kernel
+buffer or copy.
 
 **The unified shard wait.** The NVMe driver's main loop blocks on one
 `cq_wait_checked` that releases for both endpoint IPC (client requests) and
 device interrupts (I/O completions). This is the same pattern as the
-UART and virtio-net drivers — proven and tested.
+UART and virtio-net drivers.
 
 **Disk-backed Raft through the same block protocol.** The Raft log store
-speaks the block device endpoint protocol. It does not know the storage
-is NVMe — it could be AHCI, USB MSC, a ramdisk for testing, or a network
-block device. The block protocol is the abstraction boundary.
+speaks the block device endpoint protocol. That boundary allows a driver for
+NVMe, AHCI, USB MSC, a test ramdisk, or a network block device to supply storage
+without changing the log store.

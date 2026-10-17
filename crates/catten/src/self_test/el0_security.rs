@@ -32,7 +32,8 @@ const ARTIFACT_KEY_HEX: &[u8] =
 const DEPLOYMENT_KEY_HEX: &[u8] =
     include_bytes!(concat!(env!("CATTEN_SECURITY_TEST_DIR"), "/deployment.pub"));
 
-/// Kernel/runtime-boundary owner for a test domain, not a userspace capability.
+/// Own a test domain at the kernel/runtime boundary without constructing a userspace
+/// capability.
 /// Explicit stop waits and reaps. Failure-path Drop only requests an abort;
 /// it must not block while another verifier is reporting a panic.
 struct ProbeDomain(Option<ServiceDomain>);

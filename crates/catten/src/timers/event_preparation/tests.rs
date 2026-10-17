@@ -59,7 +59,8 @@ fn completed_events() {
         assert_eq!(waits.used(), 64);
     }
     // Completed raw events retain their ordinary destructor policy. Qualify
-    // this explicit fixture disposal after both holds, not every raw caller.
+    // this fixture's explicit disposal after both holds. Wider raw callers need separate
+    // review.
     context();
     drop(events);
     assert_eq!(waits.used(), 0);

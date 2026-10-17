@@ -92,8 +92,8 @@ new lifetime's wake. Thread context validates the route and publishes CQ work
 under the device-management guard, detaches the exact queue's waiters and
 releases all subsystem guards before notification. Route teardown precedes
 release of source ownership. Exhausted binding identities fail closed rather
-than wrapping. These are storage and deferred-publication guarantees, not a
-proof of every cross-LP controller mask/rearm interleaving.
+than wrapping. This establishes storage and deferred-publication guarantees.
+We have not proved every cross-LP controller mask/rearm interleaving.
 
 Boot hardware launch separates grant preparation from thread start. The
 supervisor retains each loaded driver root and its exact operation lease in a

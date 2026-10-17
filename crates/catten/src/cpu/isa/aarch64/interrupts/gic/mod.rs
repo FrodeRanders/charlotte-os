@@ -257,7 +257,7 @@ impl GicV3 {
         let rd = gicr_rd_base();
         let sgi = gicr_sgi_base();
         unsafe {
-            // Group and priority are configuration, not live-state controls.
+            // Disable the source before changing its group or priority.
             // Firmware commonly leaves the BSP timer PPI enabled; changing its
             // group while enabled is architecturally invalid and on QEMU can
             // leave LP0's PPI permanently undispatchable. Disable first and

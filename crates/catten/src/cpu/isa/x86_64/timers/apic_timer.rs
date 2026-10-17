@@ -177,8 +177,8 @@ impl LpTimerIfce for ApicTimer {
         let period_ps = self.resolution.as_picos();
         let ticks = duration_until_deadline.as_picos() / period_ps
             + u128::from(!duration_until_deadline.as_picos().is_multiple_of(period_ps));
-        // APIC initial counts are 32-bit; a distant logical deadline needs
-        // multiple hardware checkpoints, not an out-of-range panic. TimerQueue
+        // APIC initial counts are 32-bit. Use multiple hardware checkpoints
+        // to reach a distant logical deadline within that range. TimerQueue
         // compares `now` with the unchanged logical deadline on every IRQ.
         self.reset_value = charlotte_lifecycle::timer_checkpoint_count(ticks);
         Ok(())

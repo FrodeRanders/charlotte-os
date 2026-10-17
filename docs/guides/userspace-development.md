@@ -122,8 +122,8 @@ Protocol-specific scalar resources also need owners;
 `catten_services::socket::OwnedSocket` supplies explicit fallible close plus a
 best-effort `Drop` fallback for TCP/IP socket IDs.
 
-The raw `catten-syscall` functions remain available at runtime and narrowly
-documented driver boundaries, not as a service-development convenience.
+Keep raw `catten-syscall` calls within the runtime and documented driver
+boundaries. Service code should use the owning runtime types.
 Coherent `dma_map` is explicitly unsafe because the driver must
 synchronize CPU references and device access itself. Both DMA-map forms return
 `Result<u64, DmaMapError>` with the original per-call status, stage and backend
@@ -233,7 +233,7 @@ the cluster:
    in-tree `artifact-policy.tsv` and `scripts/sign-service-elfs.sh` are
    conveniences for bundled services; an out-of-tree artifact calls
    `cluster-sign` directly. Its private-key argument is a restricted key-file
-   path, not hexadecimal key bytes. See
+   path rather than hexadecimal key bytes. See
    [Signing and development trust](signing-and-trust.md) for generation and
    migration instructions.
 3. **Deploy.** `cluster-sign deployment-sign` creates a `CDEPLOY6` descriptor

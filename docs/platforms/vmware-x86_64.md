@@ -82,8 +82,8 @@ The supplied VMX configures the qualified combination:
 - an E1000E adapter attached to VMware NAT; and
 - one PCIe root-port group, sufficient for the storage controllers and NIC.
 
-The appliance kernel is built with the ordinary service configuration, not
-the DHCP test feature. On boot, hardware discovery finds the E1000E adapter and
+The appliance kernel uses the ordinary service configuration rather than the
+DHCP test feature. On boot, hardware discovery finds the E1000E adapter and
 Charlotte automatically starts DHCP, discovery and cluster services, TCP/IP,
 HTTP, and NTP-backed time synchronization. Test features are reserved for QEMU
 validation runs and are not required in an appliance intended for use.
@@ -112,7 +112,7 @@ select a bridged adapter (or a host-only network with a DHCP service) in
 Fusion/Workstation. The guest's normal DHCP client then obtains its node
 address from that network, and clients can connect directly to the advertised
 service ports. No host-port forwarding is needed in this mode; forwarding is a
-property of QEMU's user-mode network, not of the CharlotteOS node.
+property of QEMU's user-mode network rather than of the CharlotteOS node.
 
 Serial output makes that sequence visible even though CharlotteOS does not
 need console input:

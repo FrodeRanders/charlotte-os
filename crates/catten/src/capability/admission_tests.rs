@@ -81,7 +81,7 @@ pub(crate) fn test_admission() {
     assert_eq!(local.used(), 0);
 
     // A rejected batch can cancel every staged entry without publishing any
-    // authority. This is RAII staging, not an atomic vector admission API.
+    // authority. RAII releases the staged entries; the vector API itself is not atomic.
     let mut batch = Vec::new();
     for _ in 0..budget::DOMAIN_LIMIT {
         batch.push(reserve(OWNER, ObjectKind::Memory).unwrap());

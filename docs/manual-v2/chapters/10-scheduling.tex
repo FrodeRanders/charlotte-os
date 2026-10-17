@@ -87,7 +87,7 @@ coalescing:
 
 \begin{itemize}
     \item If 10 messages arrive on an endpoint before the shard wakes, the kernel
-        posts one wake, not 10.
+        posts one wake instead of 10.
     \item If 3 timer events fire before the LP processes the timer queue, the
         kernel delivers them in one batch during the next \texttt{process\_events}.
     \item The unified shard wait (\autoref{chap:sitas-executor}) aggregates multiple wake sources onto
@@ -189,8 +189,8 @@ to rewrite authority or oscillate execution continuously.
 
 \subsection{Generation-safe retirement}
 
-A numeric thread identifier is a recyclable table slot, not a permanent
-identity. Every queued scheduler handle, waker, deferred verifier callback, and
+A numeric thread identifier names a table slot that can be reused. Every queued
+scheduler handle, waker, deferred verifier callback, and
 asynchronous retirement request therefore carries the thread generation.
 \texttt{abort\_thread\_generation} and the LP scheduler's removal operation
 validate both values before changing state. A delayed cleanup request for an
@@ -426,8 +426,8 @@ Rules:
     \item The block-yield-wake cycle is exercised across subsystems: the same
         mechanism handles sleep, IPC wait, CQ wait, and timer wait. A bug fixed
         in one path fixes all paths. The cycle is exercised by the async demo and
-        by self-tests that call \texttt{wait()}; this is test evidence, not a
-        formal proof.
+        by self-tests that call \texttt{wait()}. These tests give us evidence for
+        the path; they do not provide a formal proof.
 
     \item Idempotent wakes eliminate lost-wake races: re-waking an
         already-ready thread is a no-op. This means the kernel can be aggressive

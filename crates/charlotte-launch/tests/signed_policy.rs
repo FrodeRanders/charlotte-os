@@ -319,7 +319,7 @@ fn signed_revision_lineage_rejects_rollback_conflicts_gaps_and_forks() {
     let fork = sign(&rotated, accepted.digest());
     // Both successors may be signed by an authorized operator. Once one is
     // installed, its exact digest fences the other. The installer must commit
-    // acceptance state atomically, not reuse a stale expectation concurrently.
+    // acceptance state atomically so concurrent installs cannot reuse a stale expectation.
     assert!(verify(&fork, &installed).is_ok());
     assert_eq!(
         verify(&fork, &advanced.installed_expectation().unwrap()),

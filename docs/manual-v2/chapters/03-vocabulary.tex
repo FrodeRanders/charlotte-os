@@ -61,7 +61,7 @@ A \textbf{shard} is a userspace ownership and execution domain:
     \item One executor runs its tasks.
     \item At most one task at a time mutates shard-owned state.
     \item Cross-shard access occurs through typed messages carrying owned values.
-    \item Placement is explicit but is not the shard's identity.
+    \item Placement is explicit and remains separate from the shard's identity.
 \end{itemize}
 
 \section{Capability}
@@ -105,7 +105,8 @@ A \textbf{message} is a kernel-validated IPC envelope consisting of:
     \item Optional reply authority.
 \end{itemize}
 
-The kernel understands the envelope structure, not arbitrary Rust types.
+The kernel understands the envelope structure; arbitrary Rust types remain a
+userspace concern.
 
 \section{Reply token}
 

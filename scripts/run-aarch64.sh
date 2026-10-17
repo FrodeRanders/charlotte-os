@@ -381,8 +381,8 @@ catten_boot_init "$ROOT_DIR"
 catten_boot_require_commands mformat mmd mcopy
 LIMINE_CONFIG="$CATTEN_BOOT_LIMINE_CONFIG"
 
-# A root Cargo clean can remove arbitrary generated files below `target/`, not
-# only Rust artifacts. Do it before creating test certificates whose paths are
+# A root Cargo clean can remove any generated file below `target/`, including
+# test certificates. Run it before creating certificates whose paths are
 # consumed later by kernel `include_bytes!` expressions. This ordering matters
 # for both --s3-test and --kafka-test.
 if [ "${CATTEN_SKIP_EMBED_BUILD:-0}" != "1" ] && [ "$CLEAN_BUILD" = "1" ]; then
@@ -834,8 +834,8 @@ fi
 
 # --- sbsa-ref firmware check ---
 # The sbsa-ref machine boots from the TF-A + edk2 firmware produced by
-# scripts/build-sbsa-firmware.sh, not from QEMU's own UEFI (-bios). Locate
-# SBSA_FLASH0/1.fd and fail with a pointer to the build script if absent.
+# scripts/build-sbsa-firmware.sh. QEMU's own UEFI (-bios) cannot replace it.
+# Locate SBSA_FLASH0/1.fd and point to the build script if they are absent.
 if [ "$SBSA_REF" = "1" ]; then
     resolve_firmware() {
         local name="$1"

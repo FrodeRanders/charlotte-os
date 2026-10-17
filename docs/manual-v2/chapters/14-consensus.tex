@@ -66,7 +66,7 @@ between DNS replicas; the consensus core does not change.
 
 \section{Intended properties relative to socket-based Raft}
 
-\subsection{Authority, not addresses}
+\subsection{Peer access through capabilities}
 
 Once the cluster is running, committed peer identities resolve through the
 name service. A joined node receives connection capabilities for the current
@@ -92,7 +92,7 @@ change. This permits:
     \item Development and testing can run a multi-node Raft cluster on one
         machine with local IPC.
     \item Deployment can switch to cross-machine networking by changing how
-        peers are resolved, not by changing the Raft code.
+        peers are resolved without changing the Raft code.
     \item The cluster can be heterogeneous: some peers communicate via shared
         memory, others via Ethernet.
 \end{itemize}
@@ -106,17 +106,16 @@ buffer or copy.
 
 The current local transport uses one moved page per RPC and batches the largest
 AppendEntries prefix whose protobuf encoding fits. This is a 4\,KiB transport
-attachment limit, not a persistent-object or Raft-log limit. A network
+attachment limit. Persistent objects and Raft logs have separate limits. A network
 transport can use different framing without changing the protobuf contract.
 
 \subsection{Capability-based security}
 
 A client invokes the Raft service only if it possesses a connection cap. The
 service manager attenuates rights: a typical client receives only
-\texttt{CALL} for \texttt{OP\_CLIENT\_COMMAND}, not for
-\texttt{OP\_ADD\_SERVER} or \texttt{OP\_REMOVE\_SERVER}. There is no ambient
-authority, no IP-based ACL, and no ``any process on the cluster network can
-propose commands.''
+\texttt{CALL} for \texttt{OP\_CLIENT\_COMMAND}. Membership changes through
+\texttt{OP\_ADD\_SERVER} or \texttt{OP\_REMOVE\_SERVER} require separate rights.
+Network reachability alone grants neither right.
 
 \subsection{Failure isolation}
 
@@ -305,8 +304,8 @@ Kernel capability identifiers and endpoint objects are machine-local and are
 not Raft state. For a local registration, lookup delegates a connection to the
 local endpoint. For a remote registration, the local name-service instance
 must return a local proxy connection whose transport reaches the owning node.
-Raft replicates the metadata needed to choose that route, not the capability
-object itself.
+Raft replicates the metadata needed to choose that route; the capability
+object itself remains local.
 
 \section{Election timers as first-class completions}
 
@@ -347,9 +346,9 @@ Neither path needs a dedicated sleeping thread or a spinning timeout loop.
         service implements \texttt{StateMachine} and uses the shared Raft,
         transport, timer, and storage interfaces.
 
-    \item Capabilities, not IP addresses, identify peers: the cluster
-        configuration is a set of capabilities, not a list of \texttt{host:port}
-        pairs. A network reconfiguration (new NIC, new subnet, move to RDMA)
+    \item Peers are reached through capabilities. The cluster configuration
+        uses these connections independently of transport addresses.
+        A network reconfiguration (new NIC, new subnet, move to RDMA)
         need not change the replicated peer identities.
 
     \item Timers are first-class and reliable: an election timeout

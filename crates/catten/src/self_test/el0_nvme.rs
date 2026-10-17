@@ -530,9 +530,9 @@ extern "C" fn verify_el0_nvme() {
         2 * 1024 * 1024 + 4096
     );
     logln!("[nvme] 2 MiB + 4 KiB persistent object round trip verified.");
-    // The completion service reports that the client finished its work, not
-    // that the scheduler has reaped its initial thread. Wait for that separate
-    // lifecycle event before releasing the address space.
+    // The completion service confirms that the client finished its work.
+    // Also wait for the scheduler to reap its initial thread before releasing
+    // the address space.
     supervisor::wait_domain_exit(&object_client, 30_000);
     supervisor::teardown_domain(object_client).expect("[nvme] object-client reclamation");
     // The persistent upgrade phase reloads the echo service ELF through the
