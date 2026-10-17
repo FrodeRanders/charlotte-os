@@ -171,10 +171,10 @@ pub fn test_waiter_admission() {
     assert!(sources.iter().all(|source| source.registered() == 0));
 
     // Counter-only saturation isolates ordinary/node admission and rollback.
-    let ordinary = DomainBudget::new(false);
+    let ordinary = DomainBudget::try_new(false).unwrap();
     let mut charges = Vec::new();
     for _ in 0..waiter_budget::ORDINARY_LIMIT / waiter_budget::DOMAIN_LIMIT {
-        let domain = DomainBudget::new(false);
+        let domain = DomainBudget::try_new(false).unwrap();
         for _ in 0..waiter_budget::DOMAIN_LIMIT {
             charges.push(waiter_budget::reserve(&domain).unwrap());
         }
@@ -184,12 +184,12 @@ pub fn test_waiter_admission() {
     for _ in
         0..(waiter_budget::NODE_LIMIT - waiter_budget::ORDINARY_LIMIT) / waiter_budget::DOMAIN_LIMIT
     {
-        let domain = DomainBudget::new(true);
+        let domain = DomainBudget::try_new(true).unwrap();
         for _ in 0..waiter_budget::DOMAIN_LIMIT {
             charges.push(waiter_budget::reserve(&domain).unwrap());
         }
     }
-    let platform = DomainBudget::new(true);
+    let platform = DomainBudget::try_new(true).unwrap();
     assert!(matches!(waiter_budget::reserve(&platform), Err(RegistrationError::ResourceLimit)));
     assert_eq!(platform.used(), 0);
     assert_eq!(

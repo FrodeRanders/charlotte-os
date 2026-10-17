@@ -208,6 +208,29 @@ never recovery authority. Failed or abandoned physical retirement remains
 terminal; outer constructor/syscall masks and stack-growth guards still need
 separate qualification. See \repofile|docs/reference/thread-retirement.md|.
 
+The kernel half of each pair now carries a non-copyable \texttt{KernelStack}
+owner with the exact base, page count and one-shot release fence. Teardown
+borrows that owner; no numeric base/length adoption is exposed. Its unmapped
+guard pages need no registry entries, eliminating the former guard-map
+allocations beneath stack-arena serialization. Failure retains the containing
+pair's root and original admission; dropping the range owner performs no
+physical cleanup. General thread metadata admission remains separate.
+
+Waiter and scheduler-timer sponsors are now prepared fallibly with each root's
+memory-budget registry node before address-space publication locks. One owner
+retains the unpublished root and both namespace preparations; publication binds
+the account to the exact assigned generation without allocating its metadata.
+The kernel account is prepared on the BSP before scheduler/AP startup. Runtime
+sponsor capture cannot lazily allocate or substitute a successor's account;
+old memory charges and outstanding waiter/timer owners retain their original
+lifetimes independently. Launch-limit and domain-usage nodes now prepare in the
+same registration owner and publish without allocation. Their detached nodes
+follow the exact closing/final-root receipt through failed invalidation; confirmed
+invalidation releases them outside local guards before backing and slot completion.
+Aggregate heap/principal admission, authority/high-water metadata and outer
+destructor contexts remain separate work. See
+\repofile|docs/reference/memory-object-retirement.md|.
+
 Each pinned reaper waits on its LP retirement head instead of polling a timer.
 Staging queues admitted waiter nodes; producer-LP scheduler and idle boundaries
 deliver detached callbacks after guards leave. An owned generation-bound subscription

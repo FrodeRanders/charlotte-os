@@ -16,6 +16,7 @@ use crate::memory::{
         self,
         AllocationFailure,
         Error,
+        KernelStack,
     },
     linear::{
         MemoryMapping,
@@ -60,7 +61,7 @@ impl UserStack {
 
 #[derive(Debug, Default)]
 pub(crate) struct Stacks {
-    kernel: Option<VAddr>,
+    kernel: Option<KernelStack>,
     user: Option<UserStack>,
     // Kernel-only threads own node admission here. A user thread's StackSlot
     // owns the complete maximum user+kernel reservation and exact root lease.
@@ -109,7 +110,7 @@ impl Stacks {
 
     fn allocate_kernel_with(
         &mut self,
-        allocate: impl FnOnce(usize) -> Result<VAddr, AllocationFailure>,
+        allocate: impl FnOnce(usize) -> Result<KernelStack, AllocationFailure>,
     ) -> Result<(), Error> {
         self.kernel_uncertain = true;
         match allocate(KERNEL_STACK_PAGES) {
@@ -126,7 +127,7 @@ impl Stacks {
     }
 
     pub(crate) fn kernel_base(&self) -> VAddr {
-        self.kernel.unwrap_or_default()
+        self.kernel.as_ref().map_or_else(VAddr::default, KernelStack::base)
     }
 
     pub(crate) fn user_stack(&self) -> Option<&UserStack> {
@@ -227,7 +228,7 @@ impl KernelFailure {
 
 impl Stacks {
     pub(crate) fn reject_release_for_test(&mut self) -> Result<(), RetirementError> {
-        self.release_with(retire_user, |_, _| Err(Error::InvalidStack))
+        self.release_with(retire_user, KernelStack::reject_release_for_test)
     }
 
     pub(crate) fn retirement_started(&self) -> bool {
@@ -243,7 +244,7 @@ impl Stacks {
     fn release_with(
         &mut self,
         release_user: impl FnOnce(&mut UserStack) -> bool,
-        release_kernel: impl FnOnce(VAddr, usize) -> Result<(), Error>,
+        release_kernel: impl FnOnce(&mut KernelStack) -> Result<(), Error>,
     ) -> Result<(), RetirementError> {
         if self.release_started {
             return Err(RetirementError::AlreadyStarted);
@@ -252,9 +253,9 @@ impl Stacks {
         self.release_started = true;
         let user_ok = self.user.as_mut().is_none_or(release_user);
         let mut kernel_failure = KernelFailure::Unconfirmed;
-        let kernel_ok = if let Some(base) = self.kernel {
+        let kernel_ok = if let Some(stack) = self.kernel.as_mut() {
             self.kernel_uncertain = true;
-            match release_kernel(base, KERNEL_STACK_PAGES) {
+            match release_kernel(stack) {
                 Ok(()) => {
                     self.kernel = None;
                     self.kernel_uncertain = false;
@@ -285,7 +286,7 @@ impl Stacks {
 }
 
 // No physical destructor. Implicit slot/charge destruction retains their
-// original admission, and scalar mapped ranges are never re-adopted by address.
+// original admission, and kernel range owners are never re-adopted by address.
 
 /// Bounded re-confirmation attempts for user-translation invalidation before
 /// any backing is physically released. A transient rendezvous miss (busy or

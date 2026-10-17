@@ -338,6 +338,12 @@ fn test_quarantine(abandon: bool) {
     let retired = stage(owner);
     assert_detached(owner);
     if abandon {
+        retired.metadata.as_ref().unwrap().test_assert_retained(owner);
+        let _lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
+        let _table = ADDRESS_SPACE_TABLE.lock();
+        let _limits = memory::DOMAIN_LIMITS.lock();
+        let _usage = memory::usage::DOMAIN_USAGE.lock();
+        let _heap = memory::allocators::global_allocator::PRIMARY_ALLOCATOR.lock();
         // RetiredEntry's ManuallyDrop owns the resource even though the
         // receipt's ordinary metadata is dropped. No address-space destructor.
         drop(retired);
@@ -375,6 +381,7 @@ fn test_retry_quiescence() {
             false
         })
         .expect_err("rejected invalidation consumed root");
+    retired.metadata.as_ref().unwrap().test_assert_retained(owner);
     assert_detached(owner);
     assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
     assert_eq!(backing_budget::test_used_pages(Kind::Heap), before + 1);

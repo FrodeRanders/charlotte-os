@@ -13,6 +13,10 @@ use crate::klib::collections::id_table::Error;
 // Rejected roots stay inline: boxing would allocate on the failure path.
 #[allow(clippy::result_large_err)]
 pub(crate) fn test_publication_rejection() {
+    super::registration::metadata::test_preparation();
+    sponsor_rejection();
+    super::budget::tests::run();
+    super::registration::test_abandonment();
     let existing =
         super::register_user_address_space(AddressSpace::try_new_user().unwrap()).unwrap();
     let previous =
@@ -24,7 +28,7 @@ pub(crate) fn test_publication_rejection() {
         super::translation::account::test_used_pages(),
         super::translation::account::test_ordinary_pages(),
     );
-    let limits = DOMAIN_LIMITS.lock().len();
+    let limits = DOMAIN_LIMITS.lock().iter().count();
     let occupied = ADDRESS_SPACE_TABLE.lock().iter().filter(|entry| entry.is_some()).count();
 
     for _ in 0..64 {
@@ -52,7 +56,7 @@ pub(crate) fn test_publication_rejection() {
             ),
             tables
         );
-        assert_eq!(DOMAIN_LIMITS.lock().len(), limits);
+        assert_eq!(DOMAIN_LIMITS.lock().iter().count(), limits);
         assert_eq!(
             ADDRESS_SPACE_TABLE.lock().iter().filter(|entry| entry.is_some()).count(),
             occupied
@@ -70,5 +74,39 @@ pub(crate) fn test_publication_rejection() {
     crate::logln!(
         "[slot publication] repeated rejection releases unpublished roots outside guards, \
          preserves existing namespaces and recovers the exact slot generation"
+    );
+}
+
+// Rejected roots stay inline; rejection must not allocate another owner.
+#[allow(clippy::result_large_err)]
+fn sponsor_rejection() {
+    for _ in 0..64 {
+        let free = PHYSICAL_FRAME_ALLOCATOR.lock().free_frames();
+        let space = AddressSpace::try_new_user().unwrap();
+        let before = ADDRESS_SPACE_TABLE.lock().iter().filter(|entry| entry.is_some()).count();
+        assert_eq!(
+            super::registration::register(
+                space,
+                |_, _| panic!("sponsor rejection published a root"),
+                |root| {
+                    assert!(ADDRESS_SPACE_LIFECYCLE.try_lock().is_some());
+                    assert!(ADDRESS_SPACE_TABLE.try_lock().is_some());
+                    assert!(super::budget::tests::ledger_available());
+                    drop(root);
+                },
+                || Err(core::alloc::AllocError),
+                super::registration::metadata::PreparingMetadata::try_new,
+            ),
+            Err(AddressSpaceRegistrationError::MemorySponsorAllocationFailed)
+        );
+        assert_eq!(
+            ADDRESS_SPACE_TABLE.lock().iter().filter(|entry| entry.is_some()).count(),
+            before
+        );
+        assert_eq!(PHYSICAL_FRAME_ALLOCATOR.lock().free_frames(), free);
+    }
+    crate::logln!(
+        "[memory sponsor registration] 64 preparation rejections precede root publication and \
+         release original roots outside local guards"
     );
 }

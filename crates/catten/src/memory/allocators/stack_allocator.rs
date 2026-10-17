@@ -10,13 +10,7 @@
 //! reallocation such that from that thread's perspective it is as if the stack overflow never
 //! happened.
 
-use alloc::collections::BTreeMap;
-
-use spin::{
-    LazyLock,
-    Mutex,
-    RwLock,
-};
+use spin::Mutex;
 
 use super::memory;
 use crate::{
@@ -45,25 +39,48 @@ use crate::{
     },
 };
 
-/// Reference-counted set of kernel stack guard-page addresses.
-///
-/// `find_free_region` places stacks back-to-back and only checks whether pages
-/// are *mapped*; guard pages are intentionally left unmapped, so one stack's
-/// upper guard page and the next stack's lower guard page can be the *same*
-/// address. Reference counting lets such a shared guard survive until *both*
-/// stacks are freed, instead of the first free removing a guard the second
-/// still relies on.
-static KERNEL_GUARD_PAGES: LazyLock<RwLock<BTreeMap<VAddr, usize>>> =
-    LazyLock::new(|| RwLock::new(BTreeMap::new()));
+/// Exact authority for one kernel stack range. Only successful allocation can
+/// construct it. It is neither Copy nor Clone, and no scalar adoption API exists.
+/// The containing Stacks owner retains its root and original admission through
+/// explicit release. Dropping this token never unmaps or frees backing.
+#[derive(Debug)]
+#[must_use]
+pub(in crate::memory) struct KernelStack {
+    base: VAddr,
+    pages: usize,
+    release_started: bool,
+}
+
+impl KernelStack {
+    pub(in crate::memory) fn base(&self) -> VAddr {
+        self.base
+    }
+
+    pub(in crate::memory) fn reject_release_for_test(&mut self) -> Result<(), Error> {
+        self.release_with(|_, _| Err(Error::InvalidStack))
+    }
+
+    fn release_with(
+        &mut self,
+        release: impl FnOnce(VAddr, usize) -> Result<(), Error>,
+    ) -> Result<(), Error> {
+        if self.release_started {
+            return Err(Error::InvalidStack);
+        }
+        // Arm before detachment or callbacks. Failure/interruption is terminal;
+        // the containing pair must retain its original admission and root.
+        self.release_started = true;
+        release(self.base, self.pages)
+    }
+}
 
 /// Serializes *all* kernel-stack arena management (free-region search, mapping,
-/// guard-page bookkeeping, and teardown) across logical processors.
+/// and teardown) across logical processors.
 ///
 /// Without it, two LPs could each `find_free_region` and receive the same base
-/// before either maps it — a TOCTOU that overlaps two stacks — or race on the
-/// guard-page map while another LP unmaps an adjacent stack. The entire
-/// alloc/free operation is therefore performed under this lock, and interrupts
-/// are masked while it is held so a timer preemption on the same LP cannot
+/// before either maps it, or reuse a range before its detachment is complete.
+/// The entire alloc/free operation is therefore performed under this lock,
+/// and interrupts are masked while it is held so a timer preemption cannot
 /// re-enter the allocator (e.g. via `reap_dead_threads` -> `deallocate_stack`)
 /// and self-deadlock on the same lock.
 static STACK_ARENA_LOCK: Mutex<()> = Mutex::new(());
@@ -141,9 +158,9 @@ impl From<memory::Error> for Error {
 /// Allocate a kernel stack with `n_pages` being the number of usable pages.
 ///
 /// The address returned by this function is the base (lowest) address of the
-/// usable stack region, page-aligned. The usable region is surrounded by one
-/// guard page below and one above, which are recorded in
-/// [`KERNEL_GUARD_PAGES`] so the stack can later be validated and freed.
+/// usable stack region, page-aligned. The returned owner records its exact
+/// range; one unmapped guard page remains below and above. Guards carry no
+/// mutable metadata and adjacent stacks may share the same unmapped page.
 /// Used only by the owning admitted stack transaction, which retains its
 /// reservation on incomplete physical rollback or interrupted preparation.
 pub(crate) struct AllocationFailure {
@@ -151,7 +168,13 @@ pub(crate) struct AllocationFailure {
     pub(crate) retained: bool,
 }
 
-pub(in crate::memory) fn allocate_stack(n_pages: usize) -> Result<VAddr, AllocationFailure> {
+pub(in crate::memory) fn allocate_stack(n_pages: usize) -> Result<KernelStack, AllocationFailure> {
+    if n_pages == 0 || n_pages > memory::KERNEL_RANGE_FRAME_CAPACITY {
+        return Err(AllocationFailure {
+            error: Error::InvalidStack,
+            retained: false,
+        });
+    }
     let mut retirement = RetiredKernelRange::new();
     // Serialize the whole region-search-then-map sequence against other LPs.
     let result = with_arena(1, n_pages as u64, || allocate_stack_locked(n_pages, &mut retirement));
@@ -162,8 +185,8 @@ pub(in crate::memory) fn allocate_stack(n_pages: usize) -> Result<VAddr, Allocat
             retained: true,
         });
     }
-    if let Ok(base) = result
-        && crate::cpu::isa::memory::tlb::try_inval_range_kernel(base, n_pages).is_err()
+    if let Ok(stack) = &result
+        && crate::cpu::isa::memory::tlb::try_inval_range_kernel(stack.base, stack.pages).is_err()
     {
         return Err(AllocationFailure {
             error: Error::AllocatorsMemory(memory::Error::RetirementFailed),
@@ -179,7 +202,7 @@ pub(in crate::memory) fn allocate_stack(n_pages: usize) -> Result<VAddr, Allocat
 fn allocate_stack_locked(
     n_pages: usize,
     retirement: &mut RetiredKernelRange,
-) -> Result<VAddr, Error> {
+) -> Result<KernelStack, Error> {
     const NUM_GUARD_PAGES: usize = 2;
     let page = PageSize::Standard.num_bytes();
     // find a suitable range in the kernel stack arena
@@ -190,65 +213,31 @@ fn allocate_stack_locked(
     )?;
     // One guard page below the usable region, then `n_pages` usable, then one
     // guard page above.
-    let lower_guard = stack_region_base;
     let stack_buf_base = stack_region_base + page * (NUM_GUARD_PAGES / 2);
-    let upper_guard = stack_buf_base + page * n_pages;
     memory::try_allocate_and_map_range(
         stack_buf_base,
         memory::PageSize::Standard,
         n_pages,
         retirement,
     )?;
-    // Record the guard pages (reference-counted; a guard may be shared with an
-    // adjacent stack).
-    let mut guards = KERNEL_GUARD_PAGES.write();
-    *guards.entry(lower_guard).or_insert(0) += 1;
-    *guards.entry(upper_guard).or_insert(0) += 1;
-    Ok(stack_buf_base)
+    Ok(KernelStack {
+        base: stack_buf_base,
+        pages: n_pages,
+        release_started: false,
+    })
 }
 
-/// Deallocate a kernel stack previously allocated by [`allocate_stack`]. The
-/// argument is the base address returned by `allocate_stack`.
-pub(in crate::memory) fn deallocate_stack(
-    stack_buf_base: VAddr,
-    n_pages: usize,
-) -> Result<(), Error> {
-    let mut retirement = RetiredKernelRange::new();
-    // Serialize teardown against concurrent alloc/free on other LPs.
-    let result = with_arena(2, stack_buf_base.into(), || {
-        deallocate_stack_locked(stack_buf_base, n_pages, &mut retirement)
-    });
-    // All backing stays marked in-use until this post-guard invalidation.
-    // A partial unmap or failed release quarantines via the owning receipt.
-    retirement.release()?;
-    result
-}
-
-fn deallocate_stack_locked(
-    stack_buf_base: VAddr,
-    n_pages: usize,
-    retirement: &mut RetiredKernelRange,
-) -> Result<(), Error> {
-    let page = PageSize::Standard.num_bytes();
-    let lower_guard = stack_buf_base - page;
-    let upper_guard = stack_buf_base + page * n_pages;
-    {
-        let guards = KERNEL_GUARD_PAGES.read();
-        if !guards.contains_key(&lower_guard) || !guards.contains_key(&upper_guard) {
-            return Err(Error::InvalidStack);
-        }
-    }
-    memory::retire_kernel_range(stack_buf_base, PageSize::Standard, n_pages, retirement)?;
-    // Drop a reference on each guard page; remove it only when no adjacent stack
-    // still relies on it.
-    let mut guards = KERNEL_GUARD_PAGES.write();
-    for guard in [lower_guard, upper_guard] {
-        if let Some(count) = guards.get_mut(&guard) {
-            *count -= 1;
-            if *count == 0 {
-                guards.remove(&guard);
-            }
-        }
-    }
-    Ok(())
+/// Release only the original range owner, once, with the containing stack pair
+/// and its original root/admission retained. Guards are never mapped or detached.
+pub(in crate::memory) fn deallocate_stack(stack: &mut KernelStack) -> Result<(), Error> {
+    stack.release_with(|base, pages| {
+        let mut retirement = RetiredKernelRange::new();
+        let result = with_arena(2, base.into(), || {
+            memory::retire_kernel_range(base, PageSize::Standard, pages, &mut retirement)
+        });
+        // Backing stays marked in-use through post-guard invalidation/release.
+        // Either failure retains the receipt and the containing pair's charge.
+        retirement.release()?;
+        result.map_err(Error::from)
+    })
 }

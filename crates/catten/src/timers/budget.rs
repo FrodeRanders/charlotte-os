@@ -63,10 +63,15 @@ impl DomainBudget {
 pub(crate) struct SchedulerSponsor(Arc<DomainBudget>);
 
 impl SchedulerSponsor {
+    /// Mandatory trusted fixture construction; runtime root preparation is fallible.
     pub(crate) fn new(platform: bool) -> Self {
-        let domain = DomainBudget::new(MAX_DOMAIN_TIMERS);
+        Self::try_new(platform).expect("mandatory scheduler timer sponsor allocation failed")
+    }
+
+    pub(crate) fn try_new(platform: bool) -> Result<Self, core::alloc::AllocError> {
+        let domain = DomainBudget::try_new(MAX_DOMAIN_TIMERS)?;
         domain.0.lock().platform = platform;
-        Self(domain)
+        Ok(Self(domain))
     }
 
     pub(crate) fn reserve(&self) -> Result<Charge, ()> {

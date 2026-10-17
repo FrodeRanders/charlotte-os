@@ -31,6 +31,16 @@ kernel-only threads. Both architecture contexts retain that owner through
 construction, publication, execution and off-CPU retirement. There is no scalar
 stack cleanup ladder when kernel preparation fails after user mapping.
 
+The kernel half is a non-copyable `KernelStack` holding its exact base, page
+count and one-shot release fence. Only the stack allocator constructs it;
+there is no scalar adoption or base/length teardown API. `Stacks` retains that
+owner alongside its original root/slot/reservation. Guard pages remain unmapped
+and may be shared by adjacent ranges; they require no reference-counted map.
+Removing that map eliminates its infallible allocation after backing publication
+under the arena/guard locks. A failed or interrupted range release stays fenced,
+and dropping the range owner performs no physical or allocator cleanup. This
+qualifies this metadata boundary, not all thread or translation allocations.
+
 Ordinary unused admission is cancelled explicitly: `StackSlot::cancel_unpublished`
 checks that no backing was published, then consumes the exact slot/lease/charge.
 `PreparingStackPage::cancel_unpublished` first consumes its frame before physical
@@ -126,6 +136,12 @@ allocation, growth with a foreign-leaf collision, partial progress and retry,
 cached slot reuse, exact reservation/free-count restoration, and platform/kernel
 progress under ordinary admission pressure. Existing thread-publication,
 128-round preparation/explicit-release churn and launch rollback fixtures still run.
+
+The [kernel-stack ownership follow-up](../reports/audits/2026-10-17-kernel-stack-ownership.md)
+adds real admitted-range checks for both unmapped guards and independent
+release, invalid-layout rejection before mapping, and repeated direct teardown
+rejection after an injected first failure. It reuses the existing retained
+sixteen-page failure control and adds no persistent fixture reservation.
 
 Six failed/abandoned fixtures retain six original roots/slots and 102 reservation
 pages. They retain four provisional/user data frames and one sixteen-page live

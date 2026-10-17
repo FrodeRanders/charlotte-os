@@ -40,6 +40,7 @@ fn free() -> usize {
 
 pub(in crate::memory::thread_stack) fn run() {
     budget::test_pool();
+    kernel_range_ownership();
     growth_and_drop();
     growth_handback();
     pressure();
@@ -52,6 +53,51 @@ pub(in crate::memory::thread_stack) fn run() {
          explicit success refund, rejection before allocation, transient-invalidation \
          re-confirmation and platform progress passed; six failed/abandoned owners retain \
          original roots/slots/reservations (20 data frames retained)"
+    );
+}
+
+fn kernel_range_ownership() {
+    let used = budget::used();
+    // Invalid layout rejects before mapping, without an arena mutation.
+    for pages in [0, memory::allocators::memory::KERNEL_RANGE_FRAME_CAPACITY + 1] {
+        let before = free();
+        let failure = stack_allocator::allocate_stack(pages).unwrap_err();
+        assert!(matches!(failure.error, Error::InvalidStack));
+        assert!(!failure.retained);
+        assert_eq!(free(), before);
+        assert_eq!(budget::used(), used);
+    }
+
+    // Real, admitted ranges keep both unmapped guards. Releasing one owner
+    // must not detach any page of the other, including a shared guard boundary.
+    let mut left = Stacks::kernel().unwrap();
+    let mut right = Stacks::kernel().unwrap();
+    let right_base = right.kernel_base();
+    for base in [left.kernel_base(), right_base] {
+        let mut space = memory::KERNEL_AS.lock();
+        assert!(!space.is_mapped(base - PAGE).unwrap());
+        assert!(!space.is_mapped(base + KERNEL_STACK_PAGES * PAGE).unwrap());
+        for index in 0..KERNEL_STACK_PAGES {
+            assert!(space.is_mapped(base + index * PAGE).unwrap());
+        }
+    }
+    let before = free();
+    left.release().unwrap();
+    assert_eq!(free(), before + KERNEL_STACK_PAGES);
+    {
+        let mut space = memory::KERNEL_AS.lock();
+        assert!(!space.is_mapped(right_base - PAGE).unwrap());
+        assert!(!space.is_mapped(right_base + KERNEL_STACK_PAGES * PAGE).unwrap());
+        for index in 0..KERNEL_STACK_PAGES {
+            assert!(space.is_mapped(right_base + index * PAGE).unwrap());
+        }
+    }
+    right.release().unwrap();
+    assert_eq!(free(), before + 2 * KERNEL_STACK_PAGES);
+    assert_eq!(budget::used(), used);
+    crate::logln!(
+        "[kernel stack ownership] exact owned ranges, unmapped guards, invalid layout and \
+         independent release passed"
     );
 }
 
@@ -108,7 +154,7 @@ fn growth_and_drop() {
     assert_eq!(
         stacks.release_with(
             |_| panic!("repeated successful user release"),
-            |_, _| panic!("repeated successful kernel release")
+            |_| panic!("repeated successful kernel release")
         ),
         Err(RetirementError::AlreadyStarted)
     );
@@ -304,13 +350,19 @@ fn retained_failures() {
                 let base = stacks.kernel_base();
                 initial_free = free();
                 assert_eq!(
-                    stacks.release_with(retire_user, |_, _| Err(Error::InvalidStack)),
+                    stacks.release_with(retire_user, KernelStack::reject_release_for_test),
                     Err(RetirementError::Kernel(KernelFailure::InvalidStack))
                 );
+                // The range owner also fences direct repeated teardown, even
+                // before the containing pair rejects its own second attempt.
+                assert!(matches!(
+                    stack_allocator::deallocate_stack(stacks.kernel.as_mut().unwrap()),
+                    Err(Error::InvalidStack)
+                ));
                 assert_eq!(
                     stacks.release_with(
                         |_| panic!("retried user release"),
-                        |_, _| panic!("retried kernel release")
+                        |_| panic!("retried kernel release")
                     ),
                     Err(RetirementError::AlreadyStarted)
                 );

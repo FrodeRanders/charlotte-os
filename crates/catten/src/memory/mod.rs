@@ -9,6 +9,7 @@ pub mod object;
 pub(crate) mod operation;
 pub mod physical;
 pub(crate) mod preparation;
+mod registration;
 pub(crate) mod registration_tests;
 pub(crate) mod retirement;
 pub(crate) mod thread_stack;
@@ -104,9 +105,12 @@ pub enum DomainLimitError {
 
 /// Limits are keyed by a generation-bearing handle so ASID reuse cannot
 /// accidentally transfer one application's policy to its successor.
-static DOMAIN_LIMITS: LazyLock<
-    Mutex<alloc::collections::BTreeMap<AddressSpaceId, (AddressSpaceHandle, DomainLimits)>>,
-> = LazyLock::new(|| Mutex::new(alloc::collections::BTreeMap::new()));
+type DomainLimitsTable = crate::klib::collections::retirement_list::AdmittedMap<
+    AddressSpaceId,
+    (AddressSpaceHandle, DomainLimits),
+>;
+static DOMAIN_LIMITS: LazyLock<Mutex<DomainLimitsTable>> =
+    LazyLock::new(|| Mutex::new(DomainLimitsTable::new()));
 
 impl AddressSpaceHandle {
     pub const fn id(self) -> AddressSpaceId {
@@ -222,6 +226,8 @@ pub enum AddressSpaceRegistrationError {
     TableAllocationFailed,
     HardwareAsidExhausted,
     CapabilityNamespaceAllocationFailed,
+    MemorySponsorAllocationFailed,
+    DomainMetadataAllocationFailed,
     /// The image failed cluster signature verification (unsigned or
     /// invalidly signed); loading it is refused.
     SignatureVerificationFailed,
@@ -256,7 +262,7 @@ pub fn register_user_address_space(
 }
 
 fn register_user_address_space_with(
-    mut address_space: AddressSpace,
+    address_space: AddressSpace,
     publish: impl FnOnce(
         &mut IdTable<AddressSpace>,
         AddressSpace,
@@ -264,40 +270,13 @@ fn register_user_address_space_with(
         -> Result<usize, (AddressSpace, crate::klib::collections::id_table::Error)>,
     reject: impl FnOnce(AddressSpace),
 ) -> Result<AddressSpaceHandle, AddressSpaceRegistrationError> {
-    // Complete namespace backing precedes lifecycle/table publication guards.
-    let namespace = crate::capability::prepare_namespace()
-        .map_err(|_| AddressSpaceRegistrationError::CapabilityNamespaceAllocationFailed)?;
-    let lifecycle = ADDRESS_SPACE_LIFECYCLE.lock();
-    if let Err(error) = prepare_user_address_space(&mut address_space) {
-        drop(lifecycle);
-        namespace.cancel_unpublished();
-        reject(address_space);
-        return Err(error);
-    }
-    let mut table = ADDRESS_SPACE_TABLE.lock();
-    let id = match publish(&mut table, address_space) {
-        Ok(id) => id,
-        Err((address_space, _)) => {
-            // The unpublished root still owns physical backing and its ARM
-            // hardware tag. Destroy it only after both masking guards leave.
-            drop(table);
-            drop(lifecycle);
-            namespace.cancel_unpublished();
-            reject(address_space);
-            return Err(AddressSpaceRegistrationError::TableAllocationFailed);
-        }
-    };
-    debug_assert_ne!(id, KERNEL_ASID);
-    let generation = table.generation(id).expect("new address space missing generation");
-    let handle = AddressSpaceHandle {
-        id,
-        generation,
-    };
-    namespace.publish(handle);
-    let previous = DOMAIN_LIMITS.lock().insert(id, (handle, DomainLimits::default()));
-    debug_assert!(previous.is_none(), "domain limits survived ASID teardown");
-    usage::register_domain(handle);
-    Ok(handle)
+    registration::register(
+        address_space,
+        publish,
+        reject,
+        budget::PreparingAccount::try_new,
+        registration::metadata::PreparingMetadata::try_new,
+    )
 }
 
 /// Replace the launch limits for one not-yet-running userspace domain.
@@ -513,7 +492,9 @@ fn begin_user_address_space_cleanup(handle: AddressSpaceHandle) {
 
 // Caller retains lifecycle, has drained cleanup leases and sealed admission.
 // IPC loan cleanup and namespace removal have already completed outside locks.
-fn finish_user_address_space_cleanup(handle: AddressSpaceHandle) {
+fn finish_user_address_space_cleanup(
+    handle: AddressSpaceHandle,
+) -> registration::metadata::RetiredMetadata {
     let asid = handle.id();
     object::close_scratch_address_space(asid);
     crate::completion::close_address_space(asid);
@@ -541,8 +522,7 @@ fn finish_user_address_space_cleanup(handle: AddressSpaceHandle) {
         debug_assert_eq!(authority.address_space, handle);
     }
 
-    DOMAIN_LIMITS.lock().remove(&asid);
-    usage::unregister_domain(asid);
+    registration::metadata::RetiredMetadata::detach(handle)
 }
 /// The starting virtual address of the higher half direct mapping region created by the bootloader.
 /// This should be remapped by the VMM during BSP init to be placed at the address specified by the

@@ -1,0 +1,358 @@
+{
+  "date": "2026-10-17",
+  "baseline": "3a0454f86f15195766a950b41f21911f5cfd501b",
+  "source_uncommitted": true,
+  "scope": "Kernel stack guard-map removal and exact one-shot range ownership; SEC-07/18 remain partial. Existing user documentation edits preserved.",
+  "reviewed_rust_sha256": {
+    "crates/catten/src/memory/allocators/stack_allocator.rs": "856a6eee29c9ffeb9eb9bb5a631b3a60069c1e6a963fb0412a0e60f4ec6f6426",
+    "crates/catten/src/memory/thread_stack/stacks.rs": "8a199944f7a611620bcddcb541da21e31a900540f13e4862a3c870c94872e52c",
+    "crates/catten/src/memory/thread_stack/stacks/tests.rs": "cd98c5c26e48ee37ab53c55b001282ea99283528562cb967b811ab8e94e4023b"
+  },
+  "checks": {
+    "host_runner_exit": 0,
+    "host_rust_tests": {
+      "passed": 509,
+      "failed": 0,
+      "ignored": 4,
+      "harness_summaries": 57
+    },
+    "additional_host_controls": "Signing policy, boot/tooling/Python regressions, syscall emitters and cluster-sign self-tests passed.",
+    "aarch64_strict_clippy_exit": 0,
+    "x86_64_strict_clippy_exit": 0,
+    "cargo_fmt_check_exit": 0,
+    "git_diff_check_exit": 0,
+    "frozen_rust_hashes_verified": true
+  },
+  "runs": [
+    {
+      "instance": "stack-owner-arm",
+      "profile": "ARM / SMMUv3",
+      "command": "./scripts/run-aarch64.sh debug --smp 4 --no-network --fresh-storage --timeout 180 --instance stack-owner-arm",
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "CARGO_BUILD_RUSTFLAGS": "-D warnings",
+        "CATTEN_SKIP_KERNEL_BUILD": "1"
+      },
+      "runner_exit": 0,
+      "diagnostic_result": "complete",
+      "diagnostic_id": "aarch64-gh4oudj_",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "prepared_utc": "2026-10-17T21:48:50Z",
+      "kernel_elf_sha256": "7cf701302880082d1cce6499d3842f87f0fd3dff2fce3113e3b073f5fa380b1d",
+      "boot_image_sha256": "c1a0f9897e895d4f28b62dee8ca42fcfeb3fc8942e03748a24b69cebffa1025e",
+      "initial_disk_sha256": "497547f4cf0a75940f0e09370188742d612809ab7abc9bf683e29d450003734c",
+      "final_uart_sha256": "0b210d8aa0e93d7ba06f91f79d3258b6223e68be9078d9e50f4af7e2ac4714ff",
+      "diagnostic_manifest_sha256": "509d002cbe0b54e9e9e14fe6502183dabe96753e3de887b45545cf37226ded10",
+      "deferred": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0,
+        "completed_at_guest_seconds": "12.073447"
+      },
+      "markers": [
+        "[+     1.649876] [kernel stack ownership] exact owned ranges, unmapped guards, invalid layout and independent release passed",
+        "[+     1.767915] [stack backing admission] maximum user/kernel reservation, growth/collision/retry, explicit success refund, rejection before allocation, transient-invalidation re-confirmation and platform progress passed; six failed/abandoned owners retain original roots/slots/reservations (20 data frames retained)",
+        "[+    10.302169] [IPC claim readiness] 64 scheduled claim/endpoint close episodes completed with exact exit watches",
+        "[+    12.073447] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x1ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "qemu_network_arguments": [],
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ac1963cc8e6a8e3403f2631946b016c46edd16279a02ca799604449803593aca",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-aarch64.sh": "63d759b017c3678fbf1f2aa0220a189602513193a1d765ef806e43c1f0202e12"
+      }
+    },
+    {
+      "instance": "stack-owner-intel",
+      "profile": "Intel VT-d",
+      "command": "./scripts/run-x86_64.sh debug --smp 4 --iommu intel --no-network --fresh-storage --timeout 180 --instance stack-owner-intel",
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "CARGO_BUILD_RUSTFLAGS": "-D warnings"
+      },
+      "runner_exit": 0,
+      "diagnostic_result": "complete",
+      "diagnostic_id": "x86_64-lvyb62e9",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "prepared_utc": "2026-10-17T21:50:31Z",
+      "kernel_elf_sha256": "d5f446d86baa68a9d8dd777395171988adf000e9576b1d4963a079c1b99d0567",
+      "boot_image_sha256": "517c71cd8d249770b0d988c050a3bc5f583c460ecbb20b7f9e4aef279904163a",
+      "initial_disk_sha256": "5d9b9c3bcc90bc2d76132c79c908dfc6caedcbd2228f12d09c472701a1d81c04",
+      "final_uart_sha256": "9eb93912bf8e8f9c34d0f928b7f805ec001dc7a588655adeb4dccb13a182d8b5",
+      "diagnostic_manifest_sha256": "a59dadaec8dbb908ad47caad84ab460eac5e92df807805e725184983da4279d8",
+      "deferred": {
+        "passed": 15,
+        "failed": 0,
+        "pending": 0,
+        "completed_at_guest_seconds": "20.566040"
+      },
+      "markers": [
+        "[+     1.232562] [kernel stack ownership] exact owned ranges, unmapped guards, invalid layout and independent release passed",
+        "[+     1.253537] [stack backing admission] maximum user/kernel reservation, growth/collision/retry, explicit success refund, rejection before allocation, transient-invalidation re-confirmation and platform progress passed; six failed/abandoned owners retain original roots/slots/reservations (20 data frames retained)",
+        "[+    19.580174] [IPC claim readiness] 64 scheduled claim/endpoint close episodes completed with exact exit watches",
+        "[+    20.566040] SELFTEST COMPLETE: passed=15 failed=0 pending=0 passed_bitmap=0x1bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "qemu_network_arguments": [],
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ac1963cc8e6a8e3403f2631946b016c46edd16279a02ca799604449803593aca",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-x86_64.sh": "72b24722e3cc9db0cccb55857fe91cc86bb83f381f06f32c25b912448fdbea54"
+      }
+    },
+    {
+      "instance": "stack-owner-amd",
+      "profile": "AMD-Vi",
+      "command": "./scripts/run-x86_64.sh debug --smp 4 --iommu amd --no-network --fresh-storage --timeout 180 --instance stack-owner-amd",
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "CARGO_BUILD_RUSTFLAGS": "-D warnings",
+        "CATTEN_SKIP_KERNEL_BUILD": "1"
+      },
+      "runner_exit": 0,
+      "diagnostic_result": "complete",
+      "diagnostic_id": "x86_64-ls00kv65",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "prepared_utc": "2026-10-17T21:53:25Z",
+      "kernel_elf_sha256": "d5f446d86baa68a9d8dd777395171988adf000e9576b1d4963a079c1b99d0567",
+      "boot_image_sha256": "0b4fd51841b6bc791a655e8917cd86e10a4bd38bdebdced819fb5b13df1229a9",
+      "initial_disk_sha256": "5d9b9c3bcc90bc2d76132c79c908dfc6caedcbd2228f12d09c472701a1d81c04",
+      "final_uart_sha256": "d97cbc3d4b2be92fd1dda341cb77414436866731fce52a3a7b1232ced795e90e",
+      "diagnostic_manifest_sha256": "9b14c5b1ab0dc49d742bc46b07937e9c6bc0def9675ee4edff2467ab5c649be9",
+      "deferred": {
+        "passed": 15,
+        "failed": 0,
+        "pending": 0,
+        "completed_at_guest_seconds": "14.518357"
+      },
+      "markers": [
+        "[+     1.190586] [kernel stack ownership] exact owned ranges, unmapped guards, invalid layout and independent release passed",
+        "[+     1.210054] [stack backing admission] maximum user/kernel reservation, growth/collision/retry, explicit success refund, rejection before allocation, transient-invalidation re-confirmation and platform progress passed; six failed/abandoned owners retain original roots/slots/reservations (20 data frames retained)",
+        "[+    13.683448] [IPC claim readiness] 64 scheduled claim/endpoint close episodes completed with exact exit watches",
+        "[+    14.518357] SELFTEST COMPLETE: passed=15 failed=0 pending=0 passed_bitmap=0x1bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "qemu_network_arguments": [],
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ac1963cc8e6a8e3403f2631946b016c46edd16279a02ca799604449803593aca",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-x86_64.sh": "72b24722e3cc9db0cccb55857fe91cc86bb83f381f06f32c25b912448fdbea54"
+      }
+    },
+    {
+      "instance": "stack-owner-arm-security",
+      "profile": "ARM security",
+      "command": "./scripts/run-aarch64.sh debug --smp 4 --security-test --fresh-storage --timeout 180 --instance stack-owner-arm-security",
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "CARGO_BUILD_RUSTFLAGS": "-D warnings",
+        "CATTEN_ALLOW_SANDBOX_NETWORK": "1",
+        "CATTEN_HTTP_HOST_PORT": "19080",
+        "CATTEN_DEPLOY_HOST_PORT": "19081"
+      },
+      "runner_exit": 0,
+      "diagnostic_result": "complete",
+      "diagnostic_id": "aarch64-9kaqwtwd",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "prepared_utc": "2026-10-17T21:51:34Z",
+      "kernel_elf_sha256": "9d34d87de0452cb9aa606d88f026e145b7a15df016477576034b5275b3f4a8f1",
+      "boot_image_sha256": "9783c0ca23241f45d5c6403d8bc9da548f94b050bdbe9569f5a8c16e049fb15f",
+      "initial_disk_sha256": "497547f4cf0a75940f0e09370188742d612809ab7abc9bf683e29d450003734c",
+      "final_uart_sha256": "f600b15897d345e6b9aebf1185121960722b4e9d40fa6c6b4553c0ff9e3abe0b",
+      "diagnostic_manifest_sha256": "ae637e9849529a8d0af1443ab31378f30d4fd0a39578aeece3429e7a55d717f7",
+      "deferred": {
+        "passed": 19,
+        "failed": 0,
+        "pending": 0,
+        "completed_at_guest_seconds": "55.918860"
+      },
+      "markers": [
+        "[+     1.171964] [kernel stack ownership] exact owned ranges, unmapped guards, invalid layout and independent release passed",
+        "[+     1.198568] [stack backing admission] maximum user/kernel reservation, growth/collision/retry, explicit success refund, rejection before allocation, transient-invalidation re-confirmation and platform progress passed; six failed/abandoned owners retain original roots/slots/reservations (20 data frames retained)",
+        "[+     8.906846] [IPC claim readiness] 64 scheduled claim/endpoint close episodes completed with exact exit watches",
+        "[+    55.918860] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "qemu_network_arguments": [
+        "-netdev",
+        "user,id=charlotte-net,hostfwd=tcp::19081-:7444",
+        "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1"
+      ],
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ac1963cc8e6a8e3403f2631946b016c46edd16279a02ca799604449803593aca",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-aarch64.sh": "63d759b017c3678fbf1f2aa0220a189602513193a1d765ef806e43c1f0202e12"
+      }
+    },
+    {
+      "instance": "stack-owner-intel-security",
+      "profile": "Intel security",
+      "command": "./scripts/run-x86_64.sh debug --smp 4 --iommu intel --security-test --fresh-storage --timeout 180 --instance stack-owner-intel-security",
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "CARGO_BUILD_RUSTFLAGS": "-D warnings",
+        "CATTEN_HTTP_HOST_PORT": "19180",
+        "CATTEN_DEPLOY_HOST_PORT": "19181"
+      },
+      "runner_exit": 0,
+      "diagnostic_result": "complete",
+      "diagnostic_id": "x86_64-h64eney_",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "prepared_utc": "2026-10-17T21:54:38Z",
+      "kernel_elf_sha256": "77a83055977bb7514d91ddc4090fc61cb874fe8dd8fe0c6ce4ce6267af3b0952",
+      "boot_image_sha256": "62dbbbcaa225c8f682b2f206c8d57a5530c49f6d8f7497d7b7009fb3e3eec007",
+      "initial_disk_sha256": "5d9b9c3bcc90bc2d76132c79c908dfc6caedcbd2228f12d09c472701a1d81c04",
+      "final_uart_sha256": "a8d18f9ffbfc01898e1f76d8059c3854e786406de728fb05b68b151cf3be64e6",
+      "diagnostic_manifest_sha256": "fad1ee98e18f510fdfb22a86e501cf6e168d6dd76701b02e7f86553ac7183d38",
+      "deferred": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0,
+        "completed_at_guest_seconds": "61.644405"
+      },
+      "markers": [
+        "[+     1.182439] [kernel stack ownership] exact owned ranges, unmapped guards, invalid layout and independent release passed",
+        "[+     1.202865] [stack backing admission] maximum user/kernel reservation, growth/collision/retry, explicit success refund, rejection before allocation, transient-invalidation re-confirmation and platform progress passed; six failed/abandoned owners retain original roots/slots/reservations (20 data frames retained)",
+        "[+    14.068396] [IPC claim readiness] 64 scheduled claim/endpoint close episodes completed with exact exit watches",
+        "[+    61.644405] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "qemu_network_arguments": [
+        "-netdev",
+        "user,id=net0,hostfwd=tcp::19181-:7444",
+        "virtio-net-pci-non-transitional,netdev=net0,iommu_platform=on,mac=52:54:00:12:34:56"
+      ],
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ac1963cc8e6a8e3403f2631946b016c46edd16279a02ca799604449803593aca",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-x86_64.sh": "72b24722e3cc9db0cccb55857fe91cc86bb83f381f06f32c25b912448fdbea54"
+      }
+    }
+  ],
+  "staged_service_bundles_sha256": {
+    "aarch64": {
+      "agent.elf": "bd5318e9920dd8b736a7de8c2fa5345e92885525b7123c965136dc0e96e8666b",
+      "cclient.elf": "2014767d410862426e6c2e5ff15031c2b108894c3e1b469270f80f466e923cff",
+      "client.elf": "7967a2b97502cccd14da1da8db6e008d34e3cef83a4f247d510521a8a6d5e8d0",
+      "clusterctl.elf": "607cd86069866c988941f29a8e054b39151f8fe1007e1eb10c6c003c845a67a1",
+      "deployd.elf": "4dcec4938efbd7eb82f95a79972bdbf933e5de6f0a3bff3b5620795def7e01b8",
+      "disco.elf": "8c041b12aa79fa53f2e0578025bb6dd0c6c960b67c2a1d37987af2f8c334f9cd",
+      "dns.elf": "298ed0e38457ccd9128aa97df220d2dbe14e03b573dcf3a7a91b6377b85927c5",
+      "echo.elf": "1df28005af0ea78fc55e057dc79a73462caf94fd456487a7279a591f1273d0c4",
+      "frouter.elf": "1b2a1d0770817747a97a4ada8e616b6885ebeafe2b714ab65b212b0cd81cac0e",
+      "fs.elf": "179a5430e9dc3e2e1edbddcf829d34595df4f341d8f01da2d0365279841b4592",
+      "grantctl.elf": "4112a947f38c26b56a9200a42b7cfec5561e091536152517ef3af2e05fcce8ea",
+      "greet.elf": "5ba29ccfb3b7689329be7c976006810a6a78978fa1a90e7cb56b95e5825a15bf",
+      "httpd.elf": "a7af73e55c4527427aa8f00d003edd9ebeacdfb7635a6bcc4aad70dc2d708217",
+      "kafka.elf": "136990e3bd0e1ad07bc59516af424560bd17b01b71f377517de4c7806a818256",
+      "kafka_fence_smoke.elf": "e043ac7719c2315c0383ef35c015ab2fb82bb77a31c4380a87912de0a3d1a5ce",
+      "kafka_smoke.elf": "e19cb244b41301e804ab5ebdfe8138da11eb4bf49d942b2d06cd2f5082a888c9",
+      "kafka_step.elf": "b9c5acd7aca66bbff77b0b894f4dc9d7cb3924eb694496e8c427cc253e82501c",
+      "kafka_step_input.elf": "3d4a3b8de67b4b609c1c045006c09b31435f79ef2c862740c502049bbab43069",
+      "kafka_step_proc.elf": "65c27573de50a074c8d439c5629e542903552d56bcf0e7b0ac51fa3e3610e48d",
+      "nclient.elf": "a7e499f76d42a1bf5e77fc807505d954476b0059c933ac2baf80c5d80f361d2f",
+      "net.elf": "62a41db2d002a8f4dcbdae07db4b0c5b561156e15b00925346db40f6f7d3c901",
+      "ns.elf": "7ad6c599f879611918e7f082e0e4dfe423800c50d4c7e45caca90dbdc8bb4022",
+      "nvme.elf": "6a3016886746774030b08873b8d8801ee85ff2fb7eda5dc9122cedfc39266c4e",
+      "nvme_client.elf": "9425cd53c2aa9a951cd3c7fceb0f4633764e0c7979aa3692d22a81f5db40c126",
+      "objstore.elf": "c1d8a7c9ab96af3f49498756b3a04838e89076bc59c8a6f61089180b3657aae0",
+      "objstore_client.elf": "b7d3fc4cbdd5ec20bd08f646b5e0a77b4f37f5ba12ab5e9082ce9d3f394a210b",
+      "observe.elf": "c0d767666b5500e12302cf3707d314ba2bb3a5d49b301fb10ae3b72e4fefd13b",
+      "raft.elf": "17a5d27f523accbd7a8fdb46bb615917a910f9d1a0f01882bec2c0b55b1eec9d",
+      "rclient.elf": "9d473cdc5c4824b4c895248ed36326ae835c8c141e3b03352fb9728a247c99b2",
+      "relmsg.elf": "8c310579f0d60db79fd59a073e06bd0c929e94c0706f0a62154d5f9e62d94403",
+      "rng.elf": "84d190cae372be2d9257d581ceb095a624db6a1072d7a9b01dccc34e6be05b9a",
+      "s3.elf": "2f857e372a4f2754a01e782b847bdff33fa228e15d9dfa30666cc77fcc08157a",
+      "s3_smoke.elf": "f7ab894ca57f527fe940d9b8202efa46f7c0effd68a4c1afd87f5aa852efe1ce",
+      "security_probe.elf": "4d5806e214ba0e770ccd2293b80e4712a432119a9412dd20636f1bbf6a758a88",
+      "servicemgr.elf": "53e9b68b772742af21ddb05fd1faac025c45defe83365dd574f702a0c526bc6e",
+      "shutdown_probe.elf": "13b6fc997c8294189d70c47f78801a47e00292c837c051b3a545b692f8cb659f",
+      "sitas-user.elf": "a01b596eab01adc9f8bf7ac45228b1b21da9dcdb00b9e38799850358d01ed564",
+      "tcpclient.elf": "fb2716c1b5d024190e0483ce93737b8fa0503a4719e306b35f6b7cbfd9eba9ae",
+      "tcpip.elf": "8162d04061f4a72911649483067b9d4f40ce1287f7dc322941693b6eea2236ac",
+      "time.elf": "09a222cd433414d1f7a0aaf19d6c409695bac2ef49578bcb91393c16c365e82e",
+      "uart.elf": "36dc59c5bbab6b7cd698248a360ecbf9bdb84fd22f3bfd126c57a6f88a8e7d77"
+    },
+    "x86_64": {
+      "agent.elf": "0c19e40e207015e3f816b13dd3620a9951fbbc40b0fb9f4030177661107af8c8",
+      "ahci.elf": "88e4fae8996afa2f1282d166e10706b193bd9155746f1d0034db2884638e4725",
+      "client.elf": "1738460a6ff84f4c82f79bb2508c85d9ebd25d24a36c6a7afd03371c94657c21",
+      "clusterctl.elf": "8e98bfb6507c1099ed1ab5d9f2b7b7cd65ea1975fa836773bf9004e850671df8",
+      "deployd.elf": "8851fe53917fdc8da69f0c7f127a421e2dccba96df83f93ba2aaf05ea948c9e5",
+      "disco.elf": "113a4e9fa95b2d9445ab48e59994a890235173398ddbca4d91a282965c2ed93c",
+      "dns.elf": "85d8a9ae62d6cecd999e8d869934ccf02701c7e8cc60999cfb270923c5493870",
+      "e1000e.elf": "5b9175d59f0a18ee0a03921bcd60810239c7160268745adba36e1e9f163a07b5",
+      "echo.elf": "5f90cd12afbfb3198027c7a16ba002a4533d28ef2fed51e1ad7a5c8bbc3e3712",
+      "frouter.elf": "b6965e7b32ad7652ec1a5a054c55ac626751b76676f583c8dc8f87aa8530f1c3",
+      "fs.elf": "87345d0d43febfed7144f61fa339f909615edf356bd7cef679e202bb8a7fae9a",
+      "grantctl.elf": "3a230e9febfe1b29081cb08eafed493f62c7b368f8b68d9b31f7827a3724f888",
+      "greet.elf": "610d0c7dca852cd414e37a40a0591df2e5fde9043dd71beea10f199265edb3b9",
+      "httpd.elf": "dec96a2dcf28419e1215245b759976c43126d807ab8fd7c5ffd701c4af11f296",
+      "kafka.elf": "bf0a040d0970dc6e53cc43454c2e4e3c507a1852b5fab222de2c8fad53b3fe91",
+      "kafka_smoke.elf": "95870122f825556486f6acdc0a11b171d930d80dcd340ac73f70f378d1906fec",
+      "nclient.elf": "866c0a2cc19951e4fbddb0379a537fdeddfdefcd3d6883769dad62797f79cb7f",
+      "net.elf": "6b59c52486b42301248b0419e33c1b65aa239f01301cff497ccb065899e38718",
+      "ns.elf": "684846a47e518e1ab693e89463f8117c5555faf6783ddaa5f7d2577acb12d143",
+      "nvme.elf": "60ddf2be246719f9b8a250c80fc4045821ac89ed37183276f9ea5e9a445e3d5b",
+      "nvme_client.elf": "443d4673530d4ebcc28664c6937b5c2a00c9ec2abb48e8ffa5526437db58ac99",
+      "objstore.elf": "e1b89dd06c202ac30ea0633a0c3a56f0e0ff16027648d5ec1ebbc1119d9c5591",
+      "objstore_client.elf": "712d8ea2f881959a3931381568ccad79798ef9458680e3008e5b30e7c35185a5",
+      "observe.elf": "bafaf8f9df887ba4331b381ab2f4b44a3db82c72077a59ffc59c3d09b5a48c20",
+      "raft.elf": "09f1c93c1524f2aacaea5cbbaa494ce0b3e38af7aea341e71af890ffda61742a",
+      "rclient.elf": "54687ec907ccc4b16e0b4940688b32dfb15690e2f30181b3a54e4e126acb9132",
+      "relmsg.elf": "d1aebe835ead842ba37b4c57d9987425236f1b6e21979c4d4d647a79415f54a3",
+      "rng.elf": "975a70ec0e56a95bfea64d788a3d0c18d3c473ca92e21caec3f7deb52b50b4ac",
+      "s3.elf": "f3d70cfc9ba649921ce595f6f4850a3629f7309a317881a6d2d65b390e42234d",
+      "s3_smoke.elf": "50e2c6cc012dd1b36842aa5fdacba296ab07d95761632aee4ba4931195155fe0",
+      "security_probe.elf": "2e9a06860d571391dd97a2ce98c60e0c22f171a93f9594e89d68f47bb1cd984a",
+      "servicemgr.elf": "28125606f256ff11db43fd893189a88eb49d650f5ef7c3e07c2ee9e78c35a534",
+      "shutdown_probe.elf": "4ffdbb78087a9aa6d1eb6dca4ddc3771499fba95089ddbb6555a4bf4cbf1fef2",
+      "tcpclient.elf": "4a5efd5a99a0f0e9fe09267bb8ceaea303034882cf1d6b1097992e371cecdb59",
+      "tcpip.elf": "93b7522cfbf41935befe0c0defcff6accfc7bd774e2d1579b105e595e75a28b3",
+      "time.elf": "672d24cabd91021a5e566bef401a315f41edfd25b0ecf1fd3d79d98f0ee9b945",
+      "virtio_blk.elf": "4d366ebea7ca0f6bb089c995f87281bab56a474fe2cb29a16b0070ee0178a357"
+    }
+  },
+  "new_fixture_cost": {
+    "admitted_kernel_ranges_released_per_guest": 2,
+    "data_pages_released_per_guest": 32,
+    "new_persistent_retention": 0,
+    "existing_retention_control": "Reuses the existing sixteen-page kernel-release failure. Original root/slot and maximum reservation stay charged; direct range teardown and pair teardown both reject a second attempt."
+  },
+  "pre_guest_failures": [
+    {
+      "kind": "sandbox diagnostic socket rejection",
+      "instance": "stack-owner-arm",
+      "runner_exit": 1,
+      "guest_execution": false,
+      "diagnostic_id": "aarch64-vcyn7l2h",
+      "diagnostic_reason": "guest-exited",
+      "diagnostic_snapshot": "unavailable",
+      "kernel_elf_sha256": "7cf701302880082d1cce6499d3842f87f0fd3dff2fce3113e3b073f5fa380b1d",
+      "diagnostic": "qemu-system-aarch64: -qmp unix:/tmp/ctdiag-d2a5sr9u/qmp.sock,server=on,wait=off: Failed to bind socket to /tmp/ctdiag-d2a5sr9u/qmp.sock: Operation not permitted",
+      "resolution": "Reran outside sandbox with the same kernel, fresh storage and diagnostic capture; completed."
+    },
+    {
+      "kind": "x86 Clippy staging precondition",
+      "guest_execution": false,
+      "result": "Compilation rejected missing staged x86 service ELF files while bundle signing/staging was still running. Reran after completed staging; strict Clippy passed. No source workaround."
+    }
+  ],
+  "failed_native_runs": [],
+  "limits": [
+    "Bounded QEMU fixtures, not physical hardware or sustained hostile pressure qualification.",
+    "Lazy memory-budget account/sponsor metadata, general heap/aggregate principal admission and wider destructor/outer IRQ contexts remain open.",
+    "No historical IPC/stack timeout, persistence or NIC failure attribution."
+  ],
+  "finding_dispositions_changed": false,
+  "validation_commands": {
+    "host": "bash scripts/run-host-tests.sh",
+    "formatting": "cargo fmt --all -- --check",
+    "aarch64_clippy": "CATTEN_AARCH64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/aarch64-unknown-none\" cargo clippy --locked --package catten --target target_specs/aarch64-unknown-none-catten.json -- -D warnings",
+    "x86_64_clippy": "CATTEN_X86_64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/x86_64-unknown-none\" cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+    "x86_service_staging": "CARGO_BUILD_RUSTFLAGS=\"-D warnings\" bash scripts/build-catten-services-x86_64.sh",
+    "whitespace": "git diff --check"
+  },
+  "report_sha256": "6893a396db2df35eeeea76dc2a23be5fa9acdd4e2fde96dc7bda1f40556a88f5"
+}

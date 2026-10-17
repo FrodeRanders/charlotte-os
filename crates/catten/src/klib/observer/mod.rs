@@ -29,8 +29,13 @@ pub trait Observable {
 #[derive(Debug, Clone)]
 pub struct WaitSponsor(Arc<waiter_budget::DomainBudget>);
 impl WaitSponsor {
+    /// Mandatory trusted fixture construction; runtime root preparation is fallible.
     pub(crate) fn new(platform: bool) -> Self {
-        Self(waiter_budget::DomainBudget::new(platform))
+        Self::try_new(platform).expect("mandatory waiter sponsor allocation failed")
+    }
+
+    pub(crate) fn try_new(platform: bool) -> Result<Self, core::alloc::AllocError> {
+        waiter_budget::DomainBudget::try_new(platform).map(Self)
     }
 
     pub(crate) fn retire(&self) {

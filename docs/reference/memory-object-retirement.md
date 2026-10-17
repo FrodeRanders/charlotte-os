@@ -6,6 +6,63 @@ This repairs a teardown race: the final external unpin could previously destroy
 a deferred object after the registry was unlocked but before its shootdown.
 Failed bulk unmaps could also lead to physical release with live leaves.
 
+## Sponsor metadata preparation
+
+Memory-budget accounts now have fallibly prepared registry nodes and waiter/timer
+sponsors. `PreparingAccount` retains all partial fields before any root-publication
+guard. `PreparingRegistration` retains the unpublished root, capability namespace
+and account preparation together. Ordinary rejection cancels metadata and disposes
+the never-published root after local lifecycle/table guards leave; abandonment
+retains every field without allocator, registry, callback or physical cleanup.
+
+Publication links the prepared account to the root's exact assigned generation
+under the existing table/lifecycle serialization. Runtime lookup, reservation,
+retirement and sponsor capture never create an account. Missing account admission
+rejects; thread sponsor capture treats a missing published account as an invariant
+failure. BSP initialization prepares the kernel's trusted account after heap setup
+and before any scheduler/thread or AP can capture a sponsor. User preparation is
+ordinary; existing trusted platform promotion remains separate from manifest input.
+
+The existing memory-budget ledger uses the shared `AdmittedMap` nodes instead of
+an allocating `BTreeMap::entry`. A closed generation retains its node until its
+last memory-object charge ends. Node removal does not refund an outstanding
+waiter or timer: each retains its original sponsor allocation independently.
+Final detached account metadata disposes after the local ledger guard, including
+last-charge Drop and final-root bookkeeping. Other enclosing guards/masks remain
+separate caller-context qualification; this is not physical completion or recovery.
+
+The [sponsor metadata audit](../reports/audits/2026-10-18-memory-sponsor-preparation.md)
+records rejection, heap-held first-use/publication, exact generation reuse and
+guarded retention controls. These qualify preparation and local lifetime ordering.
+The account/sponsor allocations do not yet have aggregate logical-principal or
+general heap byte admission. Authority/high-water metadata maps and wider
+destructors remain SEC-07/18 work; this is not a fully fallible root-publication
+path or hostile-pressure progress qualification.
+
+## Root policy and telemetry metadata
+
+`PreparingMetadata` now prepares the launch-limit and domain-usage nodes fallibly
+alongside the existing capability namespace and sponsor account, before local
+lifecycle/table publication guards. `PreparingRegistration` retains all partial
+fields and the never-published root. Ordinary preparation or table rejection
+explicitly disposes unused metadata and then the root after those guards leave;
+abandonment retains the complete owner without field destruction.
+
+Publication relinks both nodes in their existing registries using the assigned
+generation. No allocating insertion or lazy fallback remains for those records.
+After cleanup admission seals, both exact-generation nodes detach into the
+existing `ClosingAddressSpace` and transfer with the root to `RetiredAddressSpace`.
+Failed invalidation retains them in the same receipt; only confirmed invalidation
+permits explicit post-guard node release before root backing and slot completion.
+Abandonment is terminal retention. The existing bounded root-invalidation retry
+policy is unchanged; these nodes confer no new cleanup or replay authority.
+
+The [root policy preparation audit](../reports/audits/2026-10-18-root-policy-preparation.md)
+records rejection, heap-held publication, generation reuse and retirement controls.
+Shared `AdmittedMap` lookup is linear and its hold time under hostile pressure is
+unqualified. Signed authority, principal high-water and snapshot allocation,
+aggregate metadata/principal admission and wider caller contexts remain open.
+
 ## Owning the gap
 
 `MappingRetirementPin` acquires a registry pin before mapping work or detachment.

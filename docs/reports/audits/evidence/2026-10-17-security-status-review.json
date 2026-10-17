@@ -1,0 +1,189 @@
+{
+  "date": "2026-10-17",
+  "baseline": "3a0454f86f15195766a950b41f21911f5cfd501b",
+  "scope": "Read-only source/status review; added report/index/evidence only. No new guest or exploit execution; no numbered disposition change.",
+  "working_tree_qualification": {
+    "preexisting_modified_documentation_files": 52,
+    "preexisting_modified_source_files": 0,
+    "user_documentation_preserved": true,
+    "full_tree_attestation": false
+  },
+  "reviewed_source_sha256": {
+    ".github/workflows/ci.yml": "5a9b54994ea72626ebab739f0b4a6ece299e5c4991a97ff78c8b5d1c572008e1",
+    "crates/catten-rt/src/owned/ipc.rs": "ca68efa9790d121cc7ccb1cd4f794ae150c30fa1ca14312c3b5c4a948a02d6ed",
+    "crates/catten-services/src/bin/deployd.rs": "9416da775bc9ecb466d1f69a4b5bb73d851a8f0bb2605a4e35a001deceb4f5d6",
+    "crates/catten-services/src/bin/disco.rs": "45968526c110e66a3c54dd0aa3af3906d29630bf29246b7cdd034b14bfe5bc81",
+    "crates/catten-services/src/bin/httpd.rs": "5b32a59bcaa86fe265fd4ab3b5d885b16fd34920d50c4c2296172d37d58f77a1",
+    "crates/catten-services/src/bin/ns.rs": "c0a7e67ce474483beb6108680af7cb5bc8e770e825755ff14b043c7f9131911c",
+    "crates/catten-services/src/bin/relmsg.rs": "d8981904f47f931788e0dc25aca66a4225595abf64caec7f37d1dd5c5a691dfb",
+    "crates/catten-services/src/bin/tcpip.rs": "df510e96d837cfdcdce17a4578784778d825375ceef4920bc7b3a7fc07142693",
+    "crates/catten-services/src/bin/time.rs": "8bb720fb5fa7c2aab96c9e1e73c031a076be2f544b73ceb8f56c7a9fec0ef014",
+    "crates/catten-services/src/disk_raft.rs": "82936a9fba9f5b98dc5c178350692b2760870dab9576778fa150f88483664263",
+    "crates/catten-services/src/lib.rs": "4c5c51c0b4d7cbc5ea6d100eb4cd02c37b43c2849af8f0e58fc99608efc16c6e",
+    "crates/catten/build.rs": "1b4fc27aba6c0e53e394071c4e837ff2936577d25e9ebef74fc127331df158f2",
+    "crates/catten/src/cpu/scheduler/threads/mod.rs": "8058d0ffd197ae51cf6ec64958b3db89c6f6c2be92f795e54d8d74f33afdce54",
+    "crates/catten/src/klib/observer/mod.rs": "1052dcf07b67f0781585c34d9dc1359274267aa7bb8ed104799ce74efbc5505f",
+    "crates/catten/src/klib/observer/prepared_wait.rs": "ac2080e2c5879e90fc84de2958468f2ea5bc183bb5a1c0e31327d1a2d08bf268",
+    "crates/catten/src/klib/observer/registration.rs": "349ad661c61c0c6ce079c0bb75869cf053e1e17f78df35d7adb8b73ecd06c7f5",
+    "crates/catten/src/klib/observer/registration/entry_preparation.rs": "d7134a37136d3f19be7511f44d9e1213b3d7ef74b72e91c1f10ee3502b076a72",
+    "crates/catten/src/klib/observer/waiter_budget.rs": "8444e17b9653b66551bbe1c4494a5084f087012c1e5d3ae549655b5d8ac62f69",
+    "crates/catten/src/klib/observer/waiter_source.rs": "cf1b633e2dcc2c910c783052d6b4c2af22ebe3ca51bd11256cd2a43850a9c883",
+    "crates/catten/src/klib/observer/waiter_source/preparation.rs": "33d09f1722f00ecdc3cc5802ad25e40e36e62665411a02239d52d5d1062bb132",
+    "crates/catten/src/klib/observer/waiter_source/preparation/tests.rs": "2c254160bed549b803848214562f5b377dfea021e488c21eef4b23a10399fb39",
+    "crates/catten/src/klib/observer/waiter_source/tests.rs": "6685e81f9427e2ec79d804eb0e7de15969d727d3a8559bc287dfaf1fffda14db",
+    "crates/catten/src/memory/allocators/global_allocator.rs": "d5194a414553e189903edc740fd64849ac8c0b86cf4740231c7cc48fe2e51ed3",
+    "crates/catten/src/memory/allocators/stack_allocator.rs": "3c5a68d10d17b1f361f43f5fe00a635b2c32c76c41a5896c686af88932952a14",
+    "crates/catten/src/memory/budget.rs": "34b3531b307fda9d54c12394c637e3db69ddb56daa35471b71bf9d0855427967",
+    "crates/catten/src/memory/thread_stack/stacks.rs": "42b3dc9f9a3b1a1e6b7fa41feff08aca63e3e58596f50b2530e4b5b4e6279208",
+    "crates/catten/src/service/admission.rs": "b420b3f1086174d08b9022126f66a3c519b05d63408a1ca9fedba742e026fbf7",
+    "crates/catten/src/service/launch.rs": "a49f6368b35ff2a6cc8ed75dc2287495176cfe195d5b5a22ebf34f96d86699ad",
+    "crates/catten/src/syscall/mod.rs": "6acdd2537c16f8dc2644c071d40f81eb21af9abaa711f32902b4f88509396448",
+    "crates/catten/src/timers/budget.rs": "7afb85222026f368f915bc13114bad49b56cff625e19b9f4223dd76d97b24cfe",
+    "crates/catten/src/timers/mod.rs": "7c33863c6754463df527a376b0434725fe15794c501fe8174484262b05af1850",
+    "crates/charlotte-smoltcp/src/lib.rs": "d49d51e7fccff69113654875d108d807c01a5635621891f925142fdc4bcf543b"
+  },
+  "fresh_checks": {
+    "host": {
+      "command": "bash scripts/run-host-tests.sh",
+      "exit": 0,
+      "rust_harness_summaries": 57,
+      "rust_passed": 509,
+      "rust_failed": 0,
+      "rust_ignored": 4,
+      "additional_controls": "Signing policy, boot results/diagnostics/images, Secure Boot results, syscall emitters (86 call sites, nine arities), CI runtime inputs, tooling contracts, object-store format and cluster-sign self-tests passed.",
+      "kernel_harness_limit": "Kernel binary has test=false; most architecture-specific kernel integration fixtures require a guest."
+    },
+    "formatting": {
+      "command": "cargo fmt --all -- --check",
+      "exit": 0
+    },
+    "report_links": {
+      "checked": 28,
+      "missing": 0
+    },
+    "changed_documentation_whitespace": "pass"
+  },
+  "prior_native_evidence_verification": {
+    "path": "docs/reports/audits/evidence/2026-10-16-lazy-waiter-source-ownership.json",
+    "sha256": "850188277ae7424ca3b5a5b0227932f0e5ec7806d103ac824023535112ac2710",
+    "hash_matches": {
+      "reviewed_source_sha256": {
+        "crates/catten/src/klib/observer/mod.rs": true,
+        "crates/catten/src/klib/observer/prepared_wait.rs": true,
+        "crates/catten/src/klib/observer/registration.rs": true,
+        "crates/catten/src/klib/observer/registration/entry_preparation.rs": true,
+        "crates/catten/src/klib/observer/waiter_source.rs": true,
+        "crates/catten/src/klib/observer/waiter_source/preparation.rs": true,
+        "crates/catten/src/klib/observer/waiter_source/preparation/tests.rs": true,
+        "crates/catten/src/klib/observer/waiter_source/tests.rs": true
+      },
+      "reviewed_unchanged_tooling_sha256": {
+        "scripts/create-boot-image.sh": true,
+        "scripts/lib/boot-common.sh": true,
+        "scripts/run-aarch64.sh": true,
+        "scripts/run-host-tests.sh": true,
+        "scripts/run-x86_64.sh": true,
+        "scripts/tests/test-boot-images.py": true
+      }
+    },
+    "runs_as_recorded_not_rerun": [
+      {
+        "instance": "lazy-owner-arm",
+        "command": "./scripts/run-aarch64.sh debug --smp 4 --no-network --fresh-storage --timeout 180 --instance lazy-owner-arm",
+        "runner_exit": 0,
+        "diagnostic_result": "complete",
+        "cpus": 4,
+        "deferred": {
+          "failed": 0,
+          "passed": 17,
+          "pending": 0
+        }
+      },
+      {
+        "instance": "lazy-owner-intel",
+        "command": "./scripts/run-x86_64.sh debug --smp 4 --iommu intel --no-network --fresh-storage --timeout 180 --instance lazy-owner-intel",
+        "runner_exit": 0,
+        "diagnostic_result": "complete",
+        "cpus": 4,
+        "deferred": {
+          "failed": 0,
+          "passed": 15,
+          "pending": 0
+        }
+      },
+      {
+        "instance": "lazy-owner-amd",
+        "command": "./scripts/run-x86_64.sh debug --smp 4 --iommu amd --no-network --fresh-storage --timeout 180 --instance lazy-owner-amd",
+        "runner_exit": 0,
+        "diagnostic_result": "complete",
+        "cpus": 4,
+        "deferred": {
+          "failed": 0,
+          "passed": 15,
+          "pending": 0
+        }
+      },
+      {
+        "instance": "lazy-owner-arm-security",
+        "command": "./scripts/run-aarch64.sh debug --smp 4 --security-test --fresh-storage --timeout 180 --instance lazy-owner-arm-security",
+        "runner_exit": 0,
+        "diagnostic_result": "complete",
+        "cpus": 4,
+        "deferred": {
+          "failed": 0,
+          "passed": 19,
+          "pending": 0
+        }
+      },
+      {
+        "instance": "lazy-owner-intel-security",
+        "command": "./scripts/run-x86_64.sh debug --smp 4 --iommu intel --security-test --fresh-storage --timeout 180 --instance lazy-owner-intel-security",
+        "runner_exit": 0,
+        "diagnostic_result": "complete",
+        "cpus": 4,
+        "deferred": {
+          "failed": 0,
+          "passed": 17,
+          "pending": 0
+        }
+      }
+    ],
+    "limit": "Only the eight reviewed-source and six unchanged-tooling hashes were compared. No complete kernel source/bundle attestation or fresh native execution."
+  },
+  "source_observations_under_existing_findings": [
+    {
+      "finding": "SEC-07",
+      "path": "crates/catten/src/memory/allocators/stack_allocator.rs",
+      "function": "allocate_stack_locked",
+      "observation": "Guard map entry insertion is infallible after stack backing mapping under arena/guard serialization; reachable through user thread construction. No actual heap exhaustion executed."
+    },
+    {
+      "finding": "SEC-07",
+      "path": "crates/catten/src/memory/budget.rs",
+      "function": "Ledger::account",
+      "observation": "Lazy generation account map and waiter/timer sponsor allocation remain beneath ledger/address-space guards, outside complete fallible metadata admission."
+    },
+    {
+      "finding": "SEC-18",
+      "path": "crates/catten/src/klib/observer/registration.rs",
+      "observation": "Active registration/source/batch destructors retain allocation/refund/capture disposal; local guard release does not qualify all containing contexts. No demonstrated deadlock or historical causal attribution."
+    }
+  ],
+  "not_performed": [
+    "Fresh advisory/license scan",
+    "Guest boot or native pressure matrix",
+    "Physical hardware qualification",
+    "Heap exhaustion exploit",
+    "Sustained hostile networking or fairness experiment",
+    "Power-loss test",
+    "Exhaustive source or cryptographic erasure audit"
+  ],
+  "finding_accounting": {
+    "corrected_within_scope": 29,
+    "partial": 6,
+    "open": 3,
+    "total": 38,
+    "dispositions_changed": false
+  },
+  "report_sha256": "3337ca19b90c6778da05bce9eefa58aac1eba20d546ea82dcfebda94c7cd5200"
+}

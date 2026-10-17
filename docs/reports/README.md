@@ -8,6 +8,14 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Root policy and telemetry metadata preparation](audits/2026-10-18-root-policy-preparation.md) — Fallible limit/usage nodes before publication; exact nodes retained in the root retirement receipt through invalidation.
+
+- [Memory sponsor metadata preparation](audits/2026-10-18-memory-sponsor-preparation.md) — Fallible account/sponsor preparation before root publication; exact generation lifetimes and post-ledger metadata disposal.
+
+- [Kernel stack range ownership](audits/2026-10-17-kernel-stack-ownership.md) — Removes infallible guard-map allocations; exact stack owners fence teardown while retaining the containing root and admission.
+
+- [Security status source review](audits/2026-10-17-security-status-review.md) — Current finding accounting, sampled corrections, concrete remaining allocation/destructor boundaries and fresh host validation.
+
 - [Detached submission preparation](audits/2026-10-16-detached-submission-preparation.md) — Record/event admission and node/observer allocation leave the registry; exact namespace/CQ revalidation and once-only enqueue retain original charges.
 
 - [Detached timer terminal disposal](audits/2026-10-16-detached-timer-disposal.md) — Complete timer-bearing records leave the registry before disposal; direct/backlog charge lifetimes and exact-source notification remain distinct.

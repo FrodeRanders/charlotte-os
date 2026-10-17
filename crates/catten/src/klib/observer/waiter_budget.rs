@@ -22,8 +22,8 @@ struct Account {
 #[derive(Debug)]
 pub(crate) struct DomainBudget(Mutex<Account>);
 impl DomainBudget {
-    pub(crate) fn new(platform: bool) -> Arc<Self> {
-        Arc::new(Self(Mutex::new(Account {
+    pub(crate) fn try_new(platform: bool) -> Result<Arc<Self>, core::alloc::AllocError> {
+        Arc::try_new(Self(Mutex::new(Account {
             count: CountBudget::new(DOMAIN_LIMIT),
             platform,
             retired: false,

@@ -6,7 +6,11 @@
 //! Retired sponsors remain in the ledger until their last charge is released.
 //! No syscall permits a domain to enlarge its budget or claim platform reserve.
 
-use alloc::collections::BTreeMap;
+use crate::klib::collections::retirement_list::AdmittedMap;
+
+mod preparation;
+pub(crate) use preparation::PreparingAccount;
+pub(crate) mod tests;
 
 pub use charlotte_lifecycle::resources::Amount;
 use charlotte_lifecycle::resources::Budget;
@@ -38,7 +42,7 @@ struct DomainAccount {
 struct Ledger {
     total: Budget,
     ordinary: Budget,
-    domains: BTreeMap<Identity, DomainAccount>,
+    domains: AdmittedMap<Identity, DomainAccount>,
 }
 
 impl Ledger {
@@ -58,7 +62,7 @@ impl Ledger {
                 pages: pages * 3 / 4,
                 objects: MAX_NODE_OBJECTS * 3 / 4,
             }),
-            domains: BTreeMap::new(),
+            domains: AdmittedMap::new(),
         }
     }
 
@@ -67,18 +71,6 @@ impl Ledger {
             pages: MAX_DOMAIN_OBJECT_PAGES.min(self.total.limit().pages),
             objects: MAX_DOMAIN_OBJECTS,
         }
-    }
-
-    fn account(&mut self, identity: Identity) -> &mut DomainAccount {
-        let limit = self.default_limit();
-        self.domains.entry(identity).or_insert_with(|| DomainAccount {
-            budget: Budget::new(limit),
-            platform: identity.0 == KERNEL_ASID,
-            retired: false,
-            closed: false,
-            waiters: crate::klib::observer::WaitSponsor::new(identity.0 == KERNEL_ASID),
-            timers: crate::timers::budget::SchedulerSponsor::new(identity.0 == KERNEL_ASID),
-        })
     }
 }
 
@@ -112,7 +104,7 @@ pub(crate) fn accepting(handle: AddressSpaceHandle) -> bool {
             .lock()
             .domains
             .get(&(handle.id(), handle.generation()))
-            .is_none_or(|account| !account.retired)
+            .is_some_and(|account| !account.retired)
 }
 
 /// Kernel policy shared with other resource families; no caller-supplied
@@ -143,8 +135,10 @@ impl Drop for Charge {
         if ordinary {
             ledger.ordinary.release(self.amount).expect("ordinary memory budget underflow");
         }
-        if remove {
-            ledger.domains.remove(&self.identity);
+        let retired = remove.then(|| ledger.domains.take(&self.identity).unwrap());
+        drop(ledger);
+        if let Some(retired) = retired {
+            retired.release();
         }
     }
 }
@@ -176,7 +170,7 @@ fn reserve_inner(
     }
     let identity = (owner, generation);
     let mut ledger = LEDGER.lock();
-    let account = ledger.account(identity);
+    let account = ledger.domains.get_mut(&identity).ok_or(Error::StaleDomain)?;
     if account.retired {
         return Err(Error::StaleDomain);
     }
@@ -207,7 +201,10 @@ pub(crate) fn mark_platform(handle: AddressSpaceHandle) {
     table.get_mut(handle.id()).unwrap().image_account.mark_platform();
     table.get_mut(handle.id()).unwrap().table_account.mark_platform();
     let mut ledger = LEDGER.lock();
-    let account = ledger.account((handle.id(), handle.generation()));
+    let account = ledger
+        .domains
+        .get_mut(&(handle.id(), handle.generation()))
+        .expect("published memory sponsor missing");
     assert!(!account.retired);
     account.waiters.mark_platform();
     account.timers.mark_platform();
@@ -227,7 +224,7 @@ pub(crate) fn mark_platform(handle: AddressSpaceHandle) {
 pub(crate) fn retire(handle: AddressSpaceHandle) {
     let mut ledger = LEDGER.lock();
     let identity = (handle.id(), handle.generation());
-    let account = ledger.account(identity);
+    let account = ledger.domains.get_mut(&identity).expect("published memory sponsor missing");
     account.retired = true;
     account.waiters.retire();
     account.timers.retire();
@@ -238,13 +235,25 @@ pub(crate) fn retire(handle: AddressSpaceHandle) {
 pub(crate) fn waiter_sponsor(asid: AddressSpaceId) -> crate::klib::observer::WaitSponsor {
     let table = super::ADDRESS_SPACE_TABLE.lock();
     let generation = table.generation(asid).expect("waiter sponsor requires live ASID");
-    LEDGER.lock().account((asid, generation)).waiters.clone()
+    LEDGER
+        .lock()
+        .domains
+        .get(&(asid, generation))
+        .expect("published waiter sponsor missing")
+        .waiters
+        .clone()
 }
 
 pub(crate) fn timer_sponsor(asid: AddressSpaceId) -> crate::timers::budget::SchedulerSponsor {
     let table = super::ADDRESS_SPACE_TABLE.lock();
     let generation = table.generation(asid).expect("timer sponsor requires live ASID");
-    LEDGER.lock().account((asid, generation)).timers.clone()
+    LEDGER
+        .lock()
+        .domains
+        .get(&(asid, generation))
+        .expect("published timer sponsor missing")
+        .timers
+        .clone()
 }
 
 pub(crate) fn forget(handle: AddressSpaceHandle) {
@@ -252,8 +261,11 @@ pub(crate) fn forget(handle: AddressSpaceHandle) {
     let identity = (handle.id(), handle.generation());
     let account = ledger.domains.get_mut(&identity).expect("retirement tombstone missing");
     account.closed = true;
-    if account.budget.used() == Amount::default() {
-        ledger.domains.remove(&identity);
+    let retired = (account.budget.used() == Amount::default())
+        .then(|| ledger.domains.take(&identity).unwrap());
+    drop(ledger);
+    if let Some(retired) = retired {
+        retired.release();
     }
 }
 
@@ -269,7 +281,8 @@ pub(crate) fn set_limit(handle: AddressSpaceHandle, limit: Amount) -> Result<(),
     if limit.pages > ceiling.pages || limit.objects > ceiling.objects {
         return Err(Error::Limit);
     }
-    let account = ledger.account((handle.id(), handle.generation()));
+    let account =
+        ledger.domains.get_mut(&(handle.id(), handle.generation())).ok_or(Error::StaleDomain)?;
     if account.retired {
         return Err(Error::StaleDomain);
     }
@@ -287,4 +300,17 @@ pub(crate) fn used(handle: AddressSpaceHandle) -> Amount {
 pub(crate) fn node_snapshot() -> (Budget, Budget) {
     let ledger = LEDGER.lock();
     (ledger.total, ledger.ordinary)
+}
+
+/// Mandatory BSP-only preparation, after heap initialization and before any LP
+/// scheduler/thread can capture a sponsor. Runtime lookups never create accounts.
+pub(crate) fn initialize_kernel() {
+    let prepared = PreparingAccount::try_new_kernel()
+        .expect("mandatory kernel memory sponsor preparation failed");
+    let table = super::ADDRESS_SPACE_TABLE.lock();
+    let handle = AddressSpaceHandle {
+        id: KERNEL_ASID,
+        generation: table.generation(KERNEL_ASID).expect("kernel slot missing"),
+    };
+    prepared.publish(handle);
 }

@@ -44,6 +44,7 @@ pub fn bsp_init() {
     }
     early_logln!("LP 0: Initializing kernel allocator...");
     init_primary_allocator();
+    crate::memory::budget::initialize_kernel();
     logln!("LP 0: Intialized kernel allocator.");
     // Record the BSP's APIC ID now that the heap allocator is ready (BTreeMap requires the heap).
     #[cfg(target_arch = "x86_64")]

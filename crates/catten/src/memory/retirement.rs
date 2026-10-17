@@ -26,6 +26,7 @@ pub(crate) struct ClosingAddressSpace {
     memory_closed: bool,
     mailboxes: Option<crate::syscall::mailbox_retirement::RetiredMailboxes>,
     authority: Option<crate::capability::RetiredNamespace>,
+    metadata: Option<super::registration::metadata::RetiredMetadata>,
 }
 
 #[must_use]
@@ -82,6 +83,7 @@ impl ClosingAddressSpace {
             memory_closed: false,
             mailboxes: None,
             authority: None,
+            metadata: None,
         })
     }
 
@@ -187,7 +189,7 @@ impl ClosingAddressSpace {
         }
         // The closing transaction continues to own every detached field before
         // final slot extraction. Interruption cannot run metadata destructors.
-        super::finish_user_address_space_cleanup(self.handle);
+        self.metadata = Some(super::finish_user_address_space_cleanup(self.handle));
         self.mailboxes = Some(
             crate::syscall::mailbox_retirement::detach(self.handle, &_lifecycle)
                 .expect("sealed root lost its exact mailbox namespace"),
@@ -205,6 +207,7 @@ impl ClosingAddressSpace {
             entry,
             self.mailboxes.take().unwrap(),
             self.authority.take().unwrap(),
+            self.metadata.take().unwrap(),
         )))
     }
 
@@ -303,6 +306,7 @@ pub(crate) struct RetiredAddressSpace {
     entry: RetiredEntry<AddressSpace>,
     mailboxes: Option<crate::syscall::mailbox_retirement::RetiredMailboxes>,
     authority: Option<crate::capability::RetiredNamespace>,
+    metadata: Option<super::registration::metadata::RetiredMetadata>,
 }
 
 impl RetiredAddressSpace {
@@ -311,12 +315,14 @@ impl RetiredAddressSpace {
         entry: RetiredEntry<AddressSpace>,
         mailboxes: crate::syscall::mailbox_retirement::RetiredMailboxes,
         authority: crate::capability::RetiredNamespace,
+        metadata: super::registration::metadata::RetiredMetadata,
     ) -> Self {
         Self {
             handle,
             entry,
             mailboxes: Some(mailboxes),
             authority: Some(authority),
+            metadata: Some(metadata),
         }
     }
 
@@ -379,6 +385,7 @@ impl RetiredAddressSpace {
         // root backing/slot completion; a rejected barrier retains all fields.
         self.mailboxes.take().unwrap().release();
         self.authority.take().unwrap().release();
+        self.metadata.take().unwrap().release();
         // Quiescence precedes all root/data/table destruction and account
         // refunds. No masking guard is held during AddressSpace::drop.
         let (slot, failed) =

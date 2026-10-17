@@ -1,0 +1,405 @@
+{
+  "date": "2026-10-18",
+  "baseline": "3a0454f86f15195766a950b41f21911f5cfd501b",
+  "source_uncommitted": true,
+  "scope": "Fallible memory-budget account/sponsor preparation before root publication, exact-generation retention and local post-ledger node disposal. No numbered disposition change.",
+  "prior_stack_patch": {
+    "evidence": "docs/reports/audits/evidence/2026-10-17-kernel-stack-ownership.json",
+    "evidence_sha256": "3bfcaa9cb7effd8c978c71d2a2022bc451bfd5a3df68b3ae2ca26a6bdbff8854",
+    "reviewed_rust_sha256_unchanged": {
+      "crates/catten/src/memory/allocators/stack_allocator.rs": "856a6eee29c9ffeb9eb9bb5a631b3a60069c1e6a963fb0412a0e60f4ec6f6426",
+      "crates/catten/src/memory/thread_stack/stacks.rs": "8a199944f7a611620bcddcb541da21e31a900540f13e4862a3c870c94872e52c",
+      "crates/catten/src/memory/thread_stack/stacks/tests.rs": "cd98c5c26e48ee37ab53c55b001282ea99283528562cb967b811ab8e94e4023b"
+    }
+  },
+  "frozen_modified_rust_sha256": {
+    "crates/catten/src/init/mod.rs": "6554a1f839d97a0081ab343d33804f3dd42d75bdd16d715d51513585f982133c",
+    "crates/catten/src/klib/observer/mod.rs": "ae4774e422043ed4df33d9aa42c3355dde90577e7a63e124f72cd95bfe4935c4",
+    "crates/catten/src/klib/observer/waiter_budget.rs": "baa716c8ab68f4a3ee6d52d657072aabef63bb77982165a2fb24191992e1f3a0",
+    "crates/catten/src/memory/allocators/stack_allocator.rs": "856a6eee29c9ffeb9eb9bb5a631b3a60069c1e6a963fb0412a0e60f4ec6f6426",
+    "crates/catten/src/memory/budget.rs": "39b13b7ea679f724acdb865b24032c56c6b7a4be6a51d4d1376276fa00fa1e82",
+    "crates/catten/src/memory/budget/preparation.rs": "87928aef6080132fc582f85710ab667472e39f974043216f24d417120e336009",
+    "crates/catten/src/memory/budget/preparation/tests.rs": "cd288904426a79fb9d74d346ba790e6f7a4ed60ec01cbcf4f0a65cbd193fda60",
+    "crates/catten/src/memory/budget/tests.rs": "bafdbf448557d46bd0d33ba11fcc21414c2eefbd92f277c4a7d46b51e612a4f3",
+    "crates/catten/src/memory/mod.rs": "07e20df73e5dc1e5dbd11902a7a0f741f7d8209d80dd946ff005ccef75df31c1",
+    "crates/catten/src/memory/registration.rs": "0a6fb3f6eee87031605b3ad7ff876a23ec6c925a32b89b45bbac94c5219594ce",
+    "crates/catten/src/memory/registration_tests.rs": "8028e7cc48c4ef0ea877bf673b0fec4a0e5a6385f7fc33ab3c29ed676e1b62f9",
+    "crates/catten/src/memory/thread_stack/stacks.rs": "8a199944f7a611620bcddcb541da21e31a900540f13e4862a3c870c94872e52c",
+    "crates/catten/src/memory/thread_stack/stacks/tests.rs": "cd98c5c26e48ee37ab53c55b001282ea99283528562cb967b811ab8e94e4023b",
+    "crates/catten/src/self_test/waiters.rs": "aa4182e6f206156a00659118551752c05aafc2eda6b4bc059285e75b57bf45fd",
+    "crates/catten/src/timers/budget.rs": "aac620b97d35971500d28b0273fe84a572767a6c16437500a0c712e2afb25fcd"
+  },
+  "new_batch_rust_files": [
+    "crates/catten/src/init/mod.rs",
+    "crates/catten/src/klib/observer/mod.rs",
+    "crates/catten/src/klib/observer/waiter_budget.rs",
+    "crates/catten/src/memory/budget.rs",
+    "crates/catten/src/memory/budget/preparation.rs",
+    "crates/catten/src/memory/budget/preparation/tests.rs",
+    "crates/catten/src/memory/budget/tests.rs",
+    "crates/catten/src/memory/mod.rs",
+    "crates/catten/src/memory/registration.rs",
+    "crates/catten/src/memory/registration_tests.rs",
+    "crates/catten/src/self_test/waiters.rs",
+    "crates/catten/src/timers/budget.rs"
+  ],
+  "checks": {
+    "host_runner_exit": 0,
+    "host_rust_tests": {
+      "passed": 509,
+      "failed": 0,
+      "ignored": 4,
+      "harness_summaries": 57
+    },
+    "additional_host_controls": "Signing policy, boot/tooling/Python regressions, syscall emitters and cluster-sign self-tests passed.",
+    "aarch64_strict_clippy_exit": 0,
+    "x86_64_strict_clippy_exit": 0,
+    "cargo_fmt_check_exit": 0,
+    "git_diff_check_exit": 0,
+    "frozen_rust_hashes_verified": true,
+    "prior_service_bundle_inventories_identical": true
+  },
+  "validation_commands": {
+    "host": "bash scripts/run-host-tests.sh",
+    "formatting": "cargo fmt --all -- --check",
+    "aarch64_clippy": "CATTEN_AARCH64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/aarch64-unknown-none\" cargo clippy --locked --package catten --target target_specs/aarch64-unknown-none-catten.json -- -D warnings",
+    "x86_64_clippy": "CATTEN_X86_64_SERVICE_BUNDLE=\"$PWD/target/embedded-services/x86_64-unknown-none\" cargo clippy --locked --package catten --target target_specs/x86_64-unknown-none-catten.json --no-default-features --features acpi -- -D warnings",
+    "whitespace": "git diff --check"
+  },
+  "runs": [
+    {
+      "instance": "sponsor-arm",
+      "profile": "ARM / SMMUv3",
+      "command": "./scripts/run-aarch64.sh debug --smp 4 --no-network --fresh-storage --timeout 180 --instance sponsor-arm",
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "CARGO_BUILD_RUSTFLAGS": "-D warnings"
+      },
+      "runner_exit": 0,
+      "diagnostic_result": "complete",
+      "diagnostic_id": "aarch64-9q03vjhn",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "prepared_utc": "2026-10-17T22:06:16Z",
+      "kernel_elf_sha256": "151bbb9aaab8eb1ec6b1bb5922f8721fc27156bde266c66718833fbbb253e834",
+      "boot_image_sha256": "fc930121445a1f167cab57ef598b2ebd284c7348bfe2182fba268d2ee9cb7dde",
+      "boot_image_bytes": 134217728,
+      "initial_disk_sha256": "497547f4cf0a75940f0e09370188742d612809ab7abc9bf683e29d450003734c",
+      "final_uart_sha256": "3fcc2d858e71b3310d30c633c4d793cd66f4e562cc3f7fc281703838d585ee49",
+      "diagnostic_manifest_sha256": "87bec9ccb10aaae8ccb4689209e37ef95f915f8523524c8f34fc5519bc2d8a55",
+      "deferred": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0,
+        "completed_at_guest_seconds": "10.563070"
+      },
+      "markers": [
+        "[+     0.947334] [memory sponsor registration] 64 preparation rejections precede root publication and release original roots outside local guards",
+        "[+     0.949194] [memory sponsor preparation] four rejection phases, 64 heap-held publications and four guarded abandonments passed; retains three nodes, two waiter sponsors and one timer sponsor, no root or resource charge",
+        "[+     0.952514] [memory sponsor metadata] heap-held first lookup/reservation, exact generation reuse, retired memory charge and independent waiter/timer lifetimes passed",
+        "[+     0.953434] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability namespace and complete sponsor metadata; no ASID published",
+        "[+     8.620104] [IPC claim readiness] 64 scheduled claim/endpoint close episodes completed with exact exit watches",
+        "[+    10.563070] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x1ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "qemu_network_arguments": [],
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ac1963cc8e6a8e3403f2631946b016c46edd16279a02ca799604449803593aca",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-aarch64.sh": "63d759b017c3678fbf1f2aa0220a189602513193a1d765ef806e43c1f0202e12"
+      }
+    },
+    {
+      "instance": "sponsor-intel",
+      "profile": "Intel VT-d",
+      "command": "./scripts/run-x86_64.sh debug --smp 4 --iommu intel --no-network --fresh-storage --timeout 180 --instance sponsor-intel",
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "CARGO_BUILD_RUSTFLAGS": "-D warnings"
+      },
+      "runner_exit": 0,
+      "diagnostic_result": "complete",
+      "diagnostic_id": "x86_64-f5_s6mne",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "prepared_utc": "2026-10-17T22:08:27Z",
+      "kernel_elf_sha256": "44903ad647cae7738217f3afd69483764e02c9a5a2786fce0ec6d0aefb6bc4bc",
+      "boot_image_sha256": "076671d7af77d6809b12bc1f447ed6fea565498450c0090ec3e05b7f88e12c6e",
+      "boot_image_bytes": 134217728,
+      "initial_disk_sha256": "5d9b9c3bcc90bc2d76132c79c908dfc6caedcbd2228f12d09c472701a1d81c04",
+      "final_uart_sha256": "f4e3004ae1b180bd9d2b06ff7f867137e3cbe1c6e36e61a09418b0233cfeabfa",
+      "diagnostic_manifest_sha256": "687639d91427894386eb62276db622c526a8c3ac37a27331c96979809de103d5",
+      "deferred": {
+        "passed": 15,
+        "failed": 0,
+        "pending": 0,
+        "completed_at_guest_seconds": "21.088538"
+      },
+      "markers": [
+        "[+     2.144844] [memory sponsor registration] 64 preparation rejections precede root publication and release original roots outside local guards",
+        "[+     2.152541] [memory sponsor preparation] four rejection phases, 64 heap-held publications and four guarded abandonments passed; retains three nodes, two waiter sponsors and one timer sponsor, no root or resource charge",
+        "[+     2.163739] [memory sponsor metadata] heap-held first lookup/reservation, exact generation reuse, retired memory charge and independent waiter/timer lifetimes passed",
+        "[+     2.166335] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability namespace and complete sponsor metadata; no ASID published",
+        "[+    20.103493] [IPC claim readiness] 64 scheduled claim/endpoint close episodes completed with exact exit watches",
+        "[+    21.088538] SELFTEST COMPLETE: passed=15 failed=0 pending=0 passed_bitmap=0x1bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "qemu_network_arguments": [],
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ac1963cc8e6a8e3403f2631946b016c46edd16279a02ca799604449803593aca",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-x86_64.sh": "72b24722e3cc9db0cccb55857fe91cc86bb83f381f06f32c25b912448fdbea54"
+      }
+    },
+    {
+      "instance": "sponsor-amd",
+      "profile": "AMD-Vi",
+      "command": "./scripts/run-x86_64.sh debug --smp 4 --iommu amd --no-network --fresh-storage --timeout 180 --instance sponsor-amd",
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "CARGO_BUILD_RUSTFLAGS": "-D warnings",
+        "CATTEN_SKIP_KERNEL_BUILD": "1"
+      },
+      "runner_exit": 0,
+      "diagnostic_result": "complete",
+      "diagnostic_id": "x86_64-xuq7mh7i",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "prepared_utc": "2026-10-17T22:10:31Z",
+      "kernel_elf_sha256": "44903ad647cae7738217f3afd69483764e02c9a5a2786fce0ec6d0aefb6bc4bc",
+      "boot_image_sha256": "54f853335836f50dec99d881ece48e6d181cec2c748110e01ecad02f83f16f7d",
+      "boot_image_bytes": 134217728,
+      "initial_disk_sha256": "5d9b9c3bcc90bc2d76132c79c908dfc6caedcbd2228f12d09c472701a1d81c04",
+      "final_uart_sha256": "e7b2770bcf9128cc0919951166c7598150378bcdd357d2dc685054b3e7f77338",
+      "diagnostic_manifest_sha256": "905a5ef41d3ded8038feec26f1087240c4596e96a0a7276dbb037a5319fadb93",
+      "deferred": {
+        "passed": 15,
+        "failed": 0,
+        "pending": 0,
+        "completed_at_guest_seconds": "14.604087"
+      },
+      "markers": [
+        "[+     0.978410] [memory sponsor registration] 64 preparation rejections precede root publication and release original roots outside local guards",
+        "[+     0.980517] [memory sponsor preparation] four rejection phases, 64 heap-held publications and four guarded abandonments passed; retains three nodes, two waiter sponsors and one timer sponsor, no root or resource charge",
+        "[+     0.984142] [memory sponsor metadata] heap-held first lookup/reservation, exact generation reuse, retired memory charge and independent waiter/timer lifetimes passed",
+        "[+     0.985519] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability namespace and complete sponsor metadata; no ASID published",
+        "[+    13.749969] [IPC claim readiness] 64 scheduled claim/endpoint close episodes completed with exact exit watches",
+        "[+    14.604087] SELFTEST COMPLETE: passed=15 failed=0 pending=0 passed_bitmap=0x1bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "qemu_network_arguments": [],
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ac1963cc8e6a8e3403f2631946b016c46edd16279a02ca799604449803593aca",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-x86_64.sh": "72b24722e3cc9db0cccb55857fe91cc86bb83f381f06f32c25b912448fdbea54"
+      }
+    },
+    {
+      "instance": "sponsor-arm-security",
+      "profile": "ARM security",
+      "command": "./scripts/run-aarch64.sh debug --smp 4 --security-test --fresh-storage --timeout 180 --instance sponsor-arm-security",
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "CARGO_BUILD_RUSTFLAGS": "-D warnings",
+        "CATTEN_ALLOW_SANDBOX_NETWORK": "1",
+        "CATTEN_HTTP_HOST_PORT": "19080",
+        "CATTEN_DEPLOY_HOST_PORT": "19081"
+      },
+      "runner_exit": 0,
+      "diagnostic_result": "complete",
+      "diagnostic_id": "aarch64-dqdy4tql",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "prepared_utc": "2026-10-17T22:09:29Z",
+      "kernel_elf_sha256": "942b3303819a7b472c054c7654cb52ea990a7333c52740bfb9052c849315374e",
+      "boot_image_sha256": "bd718689038e7df071e161a0ff25e35ef40b65f60c0def423696191db6715ab3",
+      "boot_image_bytes": 134217728,
+      "initial_disk_sha256": "497547f4cf0a75940f0e09370188742d612809ab7abc9bf683e29d450003734c",
+      "final_uart_sha256": "5ba912aee98039d7e7a0962f3dfbcff92736433d1e49b6ef08afe7c5392764a7",
+      "diagnostic_manifest_sha256": "efb41b37bdff1a3dcba85fd51bb7772863c70be96550a10e14cb26f733ed883c",
+      "deferred": {
+        "passed": 19,
+        "failed": 0,
+        "pending": 0,
+        "completed_at_guest_seconds": "56.847442"
+      },
+      "markers": [
+        "[+     1.023420] [memory sponsor registration] 64 preparation rejections precede root publication and release original roots outside local guards",
+        "[+     1.025314] [memory sponsor preparation] four rejection phases, 64 heap-held publications and four guarded abandonments passed; retains three nodes, two waiter sponsors and one timer sponsor, no root or resource charge",
+        "[+     1.028652] [memory sponsor metadata] heap-held first lookup/reservation, exact generation reuse, retired memory charge and independent waiter/timer lifetimes passed",
+        "[+     1.029590] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability namespace and complete sponsor metadata; no ASID published",
+        "[+     9.742950] [IPC claim readiness] 64 scheduled claim/endpoint close episodes completed with exact exit watches",
+        "[+    56.847442] SELFTEST COMPLETE: passed=19 failed=0 pending=0 passed_bitmap=0x2003ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "qemu_network_arguments": [
+        "-netdev",
+        "user,id=charlotte-net,hostfwd=tcp::19081-:7444",
+        "virtio-net-pci,netdev=charlotte-net,disable-legacy=on,iommu_platform=on,mac=52:54:00:12:34:56,addr=1"
+      ],
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ac1963cc8e6a8e3403f2631946b016c46edd16279a02ca799604449803593aca",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-aarch64.sh": "63d759b017c3678fbf1f2aa0220a189602513193a1d765ef806e43c1f0202e12"
+      }
+    },
+    {
+      "instance": "sponsor-intel-security",
+      "profile": "Intel security",
+      "command": "./scripts/run-x86_64.sh debug --smp 4 --iommu intel --security-test --fresh-storage --timeout 180 --instance sponsor-intel-security",
+      "environment": {
+        "CATTEN_SKIP_EMBED_BUILD": "1",
+        "CARGO_BUILD_RUSTFLAGS": "-D warnings",
+        "CATTEN_HTTP_HOST_PORT": "19180",
+        "CATTEN_DEPLOY_HOST_PORT": "19181"
+      },
+      "runner_exit": 0,
+      "diagnostic_result": "complete",
+      "diagnostic_id": "x86_64-2v0ghtuy",
+      "cpus": 4,
+      "timeout_seconds": 180,
+      "prepared_utc": "2026-10-17T22:12:05Z",
+      "kernel_elf_sha256": "ce4a81182ec499fa8811aa098ecc34f6fe7d4c1920da717581528c06018adaa8",
+      "boot_image_sha256": "0f7ae894bbe760a8361c4acd6459f788563177f2cccbc8ae88db4f4df7eece2d",
+      "boot_image_bytes": 134217728,
+      "initial_disk_sha256": "5d9b9c3bcc90bc2d76132c79c908dfc6caedcbd2228f12d09c472701a1d81c04",
+      "final_uart_sha256": "20ce36f303ace325d675dbc18b724c4bcfe5a10fbce7de5516dfa9e35462a6cd",
+      "diagnostic_manifest_sha256": "067b59a293a7add43fdf544e6366515c4082d25d1e147c6e5732956b49cf317c",
+      "deferred": {
+        "passed": 17,
+        "failed": 0,
+        "pending": 0,
+        "completed_at_guest_seconds": "61.741831"
+      },
+      "markers": [
+        "[+     0.973964] [memory sponsor registration] 64 preparation rejections precede root publication and release original roots outside local guards",
+        "[+     0.976072] [memory sponsor preparation] four rejection phases, 64 heap-held publications and four guarded abandonments passed; retains three nodes, two waiter sponsors and one timer sponsor, no root or resource charge",
+        "[+     0.979734] [memory sponsor metadata] heap-held first lookup/reservation, exact generation reuse, retired memory charge and independent waiter/timer lifetimes passed",
+        "[+     0.981069] [memory sponsor registration retention] guarded abandonment retains one unpublished root, capability namespace and complete sponsor metadata; no ASID published",
+        "[+    14.041688] [IPC claim readiness] 64 scheduled claim/endpoint close episodes completed with exact exit watches",
+        "[+    61.741831] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x2003bbff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "qemu_network_arguments": [
+        "-netdev",
+        "user,id=net0,hostfwd=tcp::19181-:7444",
+        "virtio-net-pci-non-transitional,netdev=net0,iommu_platform=on,mac=52:54:00:12:34:56"
+      ],
+      "tooling_sha256": {
+        "scripts/boot-diagnostics.py": "ac1963cc8e6a8e3403f2631946b016c46edd16279a02ca799604449803593aca",
+        "scripts/lib/boot-common.sh": "69e7bf8e1857ac0cf5a522ed9ecfdb3b1f5046be2e29ef5a5fde0cd8d3eeb26b",
+        "scripts/run-x86_64.sh": "72b24722e3cc9db0cccb55857fe91cc86bb83f381f06f32c25b912448fdbea54"
+      }
+    }
+  ],
+  "staged_service_bundles_sha256": {
+    "aarch64": {
+      "agent.elf": "bd5318e9920dd8b736a7de8c2fa5345e92885525b7123c965136dc0e96e8666b",
+      "cclient.elf": "2014767d410862426e6c2e5ff15031c2b108894c3e1b469270f80f466e923cff",
+      "client.elf": "7967a2b97502cccd14da1da8db6e008d34e3cef83a4f247d510521a8a6d5e8d0",
+      "clusterctl.elf": "607cd86069866c988941f29a8e054b39151f8fe1007e1eb10c6c003c845a67a1",
+      "deployd.elf": "4dcec4938efbd7eb82f95a79972bdbf933e5de6f0a3bff3b5620795def7e01b8",
+      "disco.elf": "8c041b12aa79fa53f2e0578025bb6dd0c6c960b67c2a1d37987af2f8c334f9cd",
+      "dns.elf": "298ed0e38457ccd9128aa97df220d2dbe14e03b573dcf3a7a91b6377b85927c5",
+      "echo.elf": "1df28005af0ea78fc55e057dc79a73462caf94fd456487a7279a591f1273d0c4",
+      "frouter.elf": "1b2a1d0770817747a97a4ada8e616b6885ebeafe2b714ab65b212b0cd81cac0e",
+      "fs.elf": "179a5430e9dc3e2e1edbddcf829d34595df4f341d8f01da2d0365279841b4592",
+      "grantctl.elf": "4112a947f38c26b56a9200a42b7cfec5561e091536152517ef3af2e05fcce8ea",
+      "greet.elf": "5ba29ccfb3b7689329be7c976006810a6a78978fa1a90e7cb56b95e5825a15bf",
+      "httpd.elf": "a7af73e55c4527427aa8f00d003edd9ebeacdfb7635a6bcc4aad70dc2d708217",
+      "kafka.elf": "136990e3bd0e1ad07bc59516af424560bd17b01b71f377517de4c7806a818256",
+      "kafka_fence_smoke.elf": "e043ac7719c2315c0383ef35c015ab2fb82bb77a31c4380a87912de0a3d1a5ce",
+      "kafka_smoke.elf": "e19cb244b41301e804ab5ebdfe8138da11eb4bf49d942b2d06cd2f5082a888c9",
+      "kafka_step.elf": "b9c5acd7aca66bbff77b0b894f4dc9d7cb3924eb694496e8c427cc253e82501c",
+      "kafka_step_input.elf": "3d4a3b8de67b4b609c1c045006c09b31435f79ef2c862740c502049bbab43069",
+      "kafka_step_proc.elf": "65c27573de50a074c8d439c5629e542903552d56bcf0e7b0ac51fa3e3610e48d",
+      "nclient.elf": "a7e499f76d42a1bf5e77fc807505d954476b0059c933ac2baf80c5d80f361d2f",
+      "net.elf": "62a41db2d002a8f4dcbdae07db4b0c5b561156e15b00925346db40f6f7d3c901",
+      "ns.elf": "7ad6c599f879611918e7f082e0e4dfe423800c50d4c7e45caca90dbdc8bb4022",
+      "nvme.elf": "6a3016886746774030b08873b8d8801ee85ff2fb7eda5dc9122cedfc39266c4e",
+      "nvme_client.elf": "9425cd53c2aa9a951cd3c7fceb0f4633764e0c7979aa3692d22a81f5db40c126",
+      "objstore.elf": "c1d8a7c9ab96af3f49498756b3a04838e89076bc59c8a6f61089180b3657aae0",
+      "objstore_client.elf": "b7d3fc4cbdd5ec20bd08f646b5e0a77b4f37f5ba12ab5e9082ce9d3f394a210b",
+      "observe.elf": "c0d767666b5500e12302cf3707d314ba2bb3a5d49b301fb10ae3b72e4fefd13b",
+      "raft.elf": "17a5d27f523accbd7a8fdb46bb615917a910f9d1a0f01882bec2c0b55b1eec9d",
+      "rclient.elf": "9d473cdc5c4824b4c895248ed36326ae835c8c141e3b03352fb9728a247c99b2",
+      "relmsg.elf": "8c310579f0d60db79fd59a073e06bd0c929e94c0706f0a62154d5f9e62d94403",
+      "rng.elf": "84d190cae372be2d9257d581ceb095a624db6a1072d7a9b01dccc34e6be05b9a",
+      "s3.elf": "2f857e372a4f2754a01e782b847bdff33fa228e15d9dfa30666cc77fcc08157a",
+      "s3_smoke.elf": "f7ab894ca57f527fe940d9b8202efa46f7c0effd68a4c1afd87f5aa852efe1ce",
+      "security_probe.elf": "4d5806e214ba0e770ccd2293b80e4712a432119a9412dd20636f1bbf6a758a88",
+      "servicemgr.elf": "53e9b68b772742af21ddb05fd1faac025c45defe83365dd574f702a0c526bc6e",
+      "shutdown_probe.elf": "13b6fc997c8294189d70c47f78801a47e00292c837c051b3a545b692f8cb659f",
+      "sitas-user.elf": "a01b596eab01adc9f8bf7ac45228b1b21da9dcdb00b9e38799850358d01ed564",
+      "tcpclient.elf": "fb2716c1b5d024190e0483ce93737b8fa0503a4719e306b35f6b7cbfd9eba9ae",
+      "tcpip.elf": "8162d04061f4a72911649483067b9d4f40ce1287f7dc322941693b6eea2236ac",
+      "time.elf": "09a222cd433414d1f7a0aaf19d6c409695bac2ef49578bcb91393c16c365e82e",
+      "uart.elf": "36dc59c5bbab6b7cd698248a360ecbf9bdb84fd22f3bfd126c57a6f88a8e7d77"
+    },
+    "x86_64": {
+      "agent.elf": "0c19e40e207015e3f816b13dd3620a9951fbbc40b0fb9f4030177661107af8c8",
+      "ahci.elf": "88e4fae8996afa2f1282d166e10706b193bd9155746f1d0034db2884638e4725",
+      "client.elf": "1738460a6ff84f4c82f79bb2508c85d9ebd25d24a36c6a7afd03371c94657c21",
+      "clusterctl.elf": "8e98bfb6507c1099ed1ab5d9f2b7b7cd65ea1975fa836773bf9004e850671df8",
+      "deployd.elf": "8851fe53917fdc8da69f0c7f127a421e2dccba96df83f93ba2aaf05ea948c9e5",
+      "disco.elf": "113a4e9fa95b2d9445ab48e59994a890235173398ddbca4d91a282965c2ed93c",
+      "dns.elf": "85d8a9ae62d6cecd999e8d869934ccf02701c7e8cc60999cfb270923c5493870",
+      "e1000e.elf": "5b9175d59f0a18ee0a03921bcd60810239c7160268745adba36e1e9f163a07b5",
+      "echo.elf": "5f90cd12afbfb3198027c7a16ba002a4533d28ef2fed51e1ad7a5c8bbc3e3712",
+      "frouter.elf": "b6965e7b32ad7652ec1a5a054c55ac626751b76676f583c8dc8f87aa8530f1c3",
+      "fs.elf": "87345d0d43febfed7144f61fa339f909615edf356bd7cef679e202bb8a7fae9a",
+      "grantctl.elf": "3a230e9febfe1b29081cb08eafed493f62c7b368f8b68d9b31f7827a3724f888",
+      "greet.elf": "610d0c7dca852cd414e37a40a0591df2e5fde9043dd71beea10f199265edb3b9",
+      "httpd.elf": "dec96a2dcf28419e1215245b759976c43126d807ab8fd7c5ffd701c4af11f296",
+      "kafka.elf": "bf0a040d0970dc6e53cc43454c2e4e3c507a1852b5fab222de2c8fad53b3fe91",
+      "kafka_smoke.elf": "95870122f825556486f6acdc0a11b171d930d80dcd340ac73f70f378d1906fec",
+      "nclient.elf": "866c0a2cc19951e4fbddb0379a537fdeddfdefcd3d6883769dad62797f79cb7f",
+      "net.elf": "6b59c52486b42301248b0419e33c1b65aa239f01301cff497ccb065899e38718",
+      "ns.elf": "684846a47e518e1ab693e89463f8117c5555faf6783ddaa5f7d2577acb12d143",
+      "nvme.elf": "60ddf2be246719f9b8a250c80fc4045821ac89ed37183276f9ea5e9a445e3d5b",
+      "nvme_client.elf": "443d4673530d4ebcc28664c6937b5c2a00c9ec2abb48e8ffa5526437db58ac99",
+      "objstore.elf": "e1b89dd06c202ac30ea0633a0c3a56f0e0ff16027648d5ec1ebbc1119d9c5591",
+      "objstore_client.elf": "712d8ea2f881959a3931381568ccad79798ef9458680e3008e5b30e7c35185a5",
+      "observe.elf": "bafaf8f9df887ba4331b381ab2f4b44a3db82c72077a59ffc59c3d09b5a48c20",
+      "raft.elf": "09f1c93c1524f2aacaea5cbbaa494ce0b3e38af7aea341e71af890ffda61742a",
+      "rclient.elf": "54687ec907ccc4b16e0b4940688b32dfb15690e2f30181b3a54e4e126acb9132",
+      "relmsg.elf": "d1aebe835ead842ba37b4c57d9987425236f1b6e21979c4d4d647a79415f54a3",
+      "rng.elf": "975a70ec0e56a95bfea64d788a3d0c18d3c473ca92e21caec3f7deb52b50b4ac",
+      "s3.elf": "f3d70cfc9ba649921ce595f6f4850a3629f7309a317881a6d2d65b390e42234d",
+      "s3_smoke.elf": "50e2c6cc012dd1b36842aa5fdacba296ab07d95761632aee4ba4931195155fe0",
+      "security_probe.elf": "2e9a06860d571391dd97a2ce98c60e0c22f171a93f9594e89d68f47bb1cd984a",
+      "servicemgr.elf": "28125606f256ff11db43fd893189a88eb49d650f5ef7c3e07c2ee9e78c35a534",
+      "shutdown_probe.elf": "4ffdbb78087a9aa6d1eb6dca4ddc3771499fba95089ddbb6555a4bf4cbf1fef2",
+      "tcpclient.elf": "4a5efd5a99a0f0e9fe09267bb8ceaea303034882cf1d6b1097992e371cecdb59",
+      "tcpip.elf": "93b7522cfbf41935befe0c0defcff6accfc7bd774e2d1579b105e595e75a28b3",
+      "time.elf": "672d24cabd91021a5e566bef401a315f41edfd25b0ecf1fd3d79d98f0ee9b945",
+      "virtio_blk.elf": "4d366ebea7ca0f6bb089c995f87281bab56a474fe2cb29a16b0070ee0178a357"
+    }
+  },
+  "new_deliberate_retention_per_guest": {
+    "memory_account_nodes": 4,
+    "waiter_sponsor_allocations": 3,
+    "timer_sponsor_allocations": 2,
+    "unpublished_roots_with_private_table_ownership": 1,
+    "capability_namespace_nodes": 1,
+    "capability_namespace_accounts": 1,
+    "published_asids": 0,
+    "published_authority_records": 0,
+    "persistent_memory_object_charges": 0,
+    "persistent_waiter_entry_charges": 0,
+    "persistent_timer_event_charges": 0,
+    "policy": "Four private account phase owners plus one complete unpublished-root registration owner abandoned under held heap/lifecycle/table/ledger guards, with physical allocator held for root retention. Terminal until guest shutdown; no recovery or physical proof. Retained root translation admission is separate from the zero resource-charge account controls."
+  },
+  "counter_reuse_control": "Real root registration/retirement and numeric-ASID generation reuse; the memory reservation in this new probe is counter-only, not actual object backing. Waiter/timer original charges remain independent through old account removal.",
+  "failed_native_runs": [],
+  "limits": [
+    "Local preparation/publication/disposal ordering only; implicit destruction under all enclosing guards/IRQ masks is not qualified.",
+    "Policy, usage and high-water map storage remains separate allocation work.",
+    "No aggregate logical-principal/general heap byte admission or independent sponsor-byte budget.",
+    "Shared admitted-map lookup is linear; worst-case hold time with many retained accounts remains unqualified.",
+    "No sustained hostile/physical-backing pressure, physical-platform qualification or historical failure attribution."
+  ],
+  "finding_accounting": {
+    "corrected_within_scope": 29,
+    "partial": 6,
+    "open": 3,
+    "total": 38,
+    "dispositions_changed": false
+  },
+  "report_sha256": "44eb58ac0606df1c05fa9b16dc69968125a336cc01f0ebee399e7bfc4f66b8eb"
+}

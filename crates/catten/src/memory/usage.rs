@@ -46,7 +46,7 @@ pub struct DomainUsageSnapshot {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-struct DomainUsage {
+pub(super) struct DomainUsage {
     snapshot: DomainUsageSnapshot,
     /// Physical frame of the domain's mutable status page, where `catten-rt`
     /// publishes standard heap accounting.
@@ -59,10 +59,13 @@ struct DomainUsage {
     cpu_sample: Option<(u64, u128)>,
 }
 
-type DomainUsageTable = BTreeMap<AddressSpaceId, (AddressSpaceHandle, DomainUsage)>;
+pub(super) type DomainUsageTable = crate::klib::collections::retirement_list::AdmittedMap<
+    AddressSpaceId,
+    (AddressSpaceHandle, DomainUsage),
+>;
 
-static DOMAIN_USAGE: LazyLock<Mutex<DomainUsageTable>> =
-    LazyLock::new(|| Mutex::new(BTreeMap::new()));
+pub(super) static DOMAIN_USAGE: LazyLock<Mutex<DomainUsageTable>> =
+    LazyLock::new(|| Mutex::new(DomainUsageTable::new()));
 
 /// Highest touched stack high-water mark observed for one service principal,
 /// across address-space generations within this boot. The table is what lets
@@ -83,23 +86,6 @@ fn with_usage(asid: AddressSpaceId, update: impl FnOnce(&mut DomainUsage)) {
         return;
     };
     update(usage);
-}
-
-/// Install a zeroed accounting entry for a freshly registered address space.
-pub(crate) fn register_domain(handle: AddressSpaceHandle) {
-    let previous = DOMAIN_USAGE.lock().insert(
-        handle.id(),
-        (
-            handle,
-            DomainUsage {
-                snapshot: DomainUsageSnapshot::default(),
-                status_frame: None,
-                heap_bytes: None,
-                cpu_sample: None,
-            },
-        ),
-    );
-    debug_assert!(previous.is_none(), "domain accounting survived ASID teardown");
 }
 
 /// Derive this domain's interval CPU occupancy from monotonic node counters.
@@ -202,11 +188,6 @@ pub(crate) fn domain_heap_status(asid: AddressSpaceId) -> Option<HeapStatus> {
         total_allocated_bytes: read(heap_status::TOTAL_ALLOCATED_OFFSET),
         lock_spins: read(heap_status::LOCK_SPINS_OFFSET),
     })
-}
-
-/// Drop a domain's accounting when its address space is torn down.
-pub(crate) fn unregister_domain(asid: AddressSpaceId) {
-    DOMAIN_USAGE.lock().remove(&asid);
 }
 
 /// Account one loader-owned frame registered to `asid`.

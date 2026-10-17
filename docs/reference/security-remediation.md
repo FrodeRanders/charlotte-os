@@ -124,6 +124,33 @@ lists. Their individual contracts describe limits and retained backing. Stack
 and translation-table admission listed as missing in the renewed audit has
 since been implemented; do not repeat those historical gaps as current ones.
 
+The [kernel stack range ownership follow-up](../reports/audits/2026-10-17-kernel-stack-ownership.md)
+removes the guard-address `BTreeMap` identified in the October 17 review.
+`Stacks` now retains a non-copyable exact kernel-range owner, and teardown
+borrows its one-shot fence. Guard bookkeeping no longer allocates under arena
+serialization. Existing pair/root/reservation retention and physical completion
+rules remain unchanged. This correction does not complete SEC-07 or SEC-18.
+
+The [memory sponsor preparation follow-up](../reports/audits/2026-10-18-memory-sponsor-preparation.md)
+replaces lazy memory-budget account insertion with fallibly prepared nodes and
+waiter/timer sponsors before root publication. One containing owner retains the
+unpublished root, capability namespace and account metadata. The exact generation
+is bound under publication serialization; runtime sponsor lookup is allocation-free.
+Kernel sponsorship is prepared before schedulers/APs start. Closed old accounts
+remain until their original memory charges end; detached metadata disposes after
+the local ledger guard. General heap/aggregate limits, authority/high-water registries
+and enclosing caller/IRQ/destructor contexts remain open R7/R18 work.
+
+The [root policy/telemetry follow-up](../reports/audits/2026-10-18-root-policy-preparation.md)
+prepares the existing launch-limit and domain-usage nodes before root publication,
+retaining partial storage with the unpublished root. Exact-generation publication
+only relinks admitted nodes. Sealed cleanup transfers both nodes through the
+existing closing/final-root receipt; invalidation rejection retains them and
+confirmed invalidation disposes them after local guards, before backing/slot
+completion. No new registry, custody authority or numbered disposition change.
+Authority/high-water/snapshot allocations, aggregate budgets, list hold-time
+pressure and wider destructor contexts remain open.
+
 SEC-07 remains partial until all of the following deliverables are accepted:
 
 | Deliverable | Completion evidence |
