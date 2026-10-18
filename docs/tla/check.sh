@@ -335,6 +335,21 @@ run_model CharlotteRaft CharlotteRaft_small.cfg \
     StartElection GrantVote BecomeLeader ObserveHigherTerm Crash Restart
 run_model CharlotteRaftLog CharlotteRaftLog_small.cfg \
     Elect AppendLeader ReplicateOne CommitLeader PropagateCommit Crash Restart
+run_model CharlotteRaftResponse CharlotteRaftResponse_small.cfg \
+    CaptureOldReply ReplacePrefix Reelect Replicate Acknowledge Failure \
+    RejectOld RejectInvalid Commit ObserveHigherTerm
+run_expected_violation CharlotteRaftResponse \
+    CharlotteRaftResponse_oldterm_unsafe.cfg \
+    CommitHasCurrentPrefix UnsafeOldTermAck
+run_expected_violation CharlotteRaftResponse \
+    CharlotteRaftResponse_regress_unsafe.cfg \
+    ConfirmedProgressRetained UnsafeRegressSuccess
+run_expected_violation CharlotteRaftResponse \
+    CharlotteRaftResponse_backoff_unsafe.cfg \
+    BackoffRespectsConfirmedPrefix UnsafeBackoff
+run_expected_violation CharlotteRaftResponse \
+    CharlotteRaftResponse_invalid_unsafe.cfg \
+    AcknowledgementsHaveProof UnsafeInvalidCredit
 run_model CharlotteRaftMembership CharlotteRaftMembership_small.cfg \
     Elect SubmitJoint Replicate CommitJoint SubmitFinalize CommitFinalize Crash Restart
 run_model CharlotteRaftJoin CharlotteRaftJoin_small.cfg \
@@ -349,7 +364,8 @@ run_model CharlotteRaftSnapshot CharlotteRaftSnapshot_small.cfg \
 run_model CharlotteSnapshotRestore CharlotteSnapshotRestore_small.cfg \
     ReadHeader ParseSections RejectUnsupported RejectMalformed Validate Restore \
     Persist DefinitePersistenceFailure AmbiguousPersistenceFailure \
-    ActivateStream ActivateRecovery Crash BeginRecovery
+    ActivateStreamJoin ActivateStreamRetained \
+    ActivateRecoveryJoin ActivateRecoveryRetained Crash BeginRecovery
 run_expected_violation CharlotteSnapshotRestore \
     CharlotteSnapshotRestore_application_unsafe.cfg \
     RejectionPreservesApplication UnsafeRejectApplication

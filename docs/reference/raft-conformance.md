@@ -13,10 +13,10 @@ NVMe object store at the platform boundary.
 | Membership identity | Peer IDs are normalized; duplicate IDs cannot manufacture a quorum. |
 | Elections | Only voters campaign, only active voters receive votes, and joint configurations require a majority of each voter set. |
 | Leadership | A newly elected leader appends an empty no-op entry; no-op entries are never delivered to the application state machine. |
-| Replication and commit | The leader counts itself once, counts distinct configured voters, requires an entry from its current term, and evaluates the configuration in force at the candidate index. |
-| Membership changes | `JOIN`, `JOINT`, and `FINALIZE` are shared protobuf internal commands. Direct local membership mutation is rejected. Joint consensus is automatically finalized after proposed members reach the joint-entry fence. |
+| Replication and commit | Responses require a matching admitted source and exact current term; success cannot exceed the local tail or reduce confirmed progress, and backoff retains that floor. The leader counts itself once, counts configured voters, requires a current-term entry and uses the candidate index's configuration. |
+| Membership changes | `JOIN`, `JOINT`, and `FINALIZE` are shared protobuf internal commands. Direct local membership mutation is rejected. After JOINT commits, FINALIZE may be proposed immediately; its commit still requires both voter majorities. The older membership model retains a stronger all-member catch-up gate, as the conformance map records. |
 | Learners and removal | Learners replicate but neither campaign nor vote. A removed node becomes decommissioned; a learner is not incorrectly treated as removed. |
-| Reads | Linearizable queries require current leadership plus recent contact with a quorum. |
+| Reads | The current query gate requires leadership and recent receive-time quorum contact. Exact-term response fencing rejects stale-term credit; lease duration, delayed same-term responses and election/clock assumptions still need qualification before claiming linearizability. |
 | Snapshots | Snapshots carry current and next membership, peer roles/addresses, and application state in the shared JSON envelope. Application restore must succeed before startup exposes a node or network installation publishes snapshot progress/membership. |
 | Wire contract | Vote, append, snapshot, peer, and internal-command messages use field-compatible `raft.proto` protobuf payloads. |
 | Liveness | Capability RPCs have bounded deadlines and at most one outstanding call per peer/RPC type/term. Append batches are reduced to the largest payload fitting the current one-page IPC attachment. |
@@ -24,7 +24,8 @@ NVMe object store at the platform boundary.
 The executable TLA+ suite checks this behavior in complementary bounded
 layers: durable election safety, log replication, joint voter/learner
 membership and automatic finalization, and atomic snapshot recovery of both
-application state and membership. See
+application state and membership, plus application rejection and asynchronous
+response fencing. See
 [`../tla/README.md`](../tla/README.md#raft-election-model) and
 [`../tla/CONFORMANCE.md`](../tla/CONFORMANCE.md#raft-membership-and-joint-consensus).
 
@@ -66,3 +67,14 @@ and failure admission, snapshot/suffix recovery and explicit reset. These
 tests complement the native storage fixture; they do not replace device flush,
 power-loss or multi-node restart qualification. Consensus changes must still
 be reviewed against this matrix and exercised in the relevant boot fixtures.
+
+## Response-ordering follow-up
+
+The [18 October response review](../reports/audits/2026-10-18-raft-response-fencing.md)
+reproduces an old-term acknowledgement committing a replaced prefix, then checks
+the corrected core for both append and snapshot responses. Committed joiners
+remain eligible for replication before membership promotion. Transport source
+identity is an input: these checks do not implement authenticated networking or
+protect against a peer lying about its own durable prefix. Demoted-leader and
+model finalization-order differences remain recorded in the formal conformance
+map; this correction does not resolve them.

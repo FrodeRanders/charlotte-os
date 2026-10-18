@@ -1,0 +1,2751 @@
+{
+  "schema": "charlotte-raft-response-fencing-evidence-v1",
+  "reviewed_revision": "62c49a3e68490abe6bae4c57f9b49e7ecbf1829f",
+  "tooling": {
+    "release": "TLA+ Tools v1.7.4",
+    "tlc": "2.19, revision 5a47802",
+    "jar_sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88",
+    "java": "Azul OpenJDK 25.0.3; CI Java 17"
+  },
+  "verification": {
+    "new_module": "CharlotteRaftResponse",
+    "new_safe_configurations": 1,
+    "new_expected_counterexamples": 4,
+    "rerun_snapshot_configurations": 8,
+    "fresh_cases": 13,
+    "fresh_harness_exit": 0,
+    "fresh_harness_sha256": "eafeabf836d1ea06dfe1c43f418010e4d825c3519d3f6a94ef0a88983db453fd",
+    "fresh_output_sha256": "d302b641dd2fa681da46fc4345de1774cf2c3914765baa251e6a0fc237a2d2a5",
+    "configured_modules": 32,
+    "configured_safe_cases": 34,
+    "configured_negative_cases": 98,
+    "fresh_single_full_suite_run_claimed": false,
+    "all_required_actions_exercised": true,
+    "derivation": "Use final check.sh header/functions, replace script_dir with repository path, print instead of deleting temp evidence directory, then append its exact response and snapshot case blocks."
+  },
+  "baseline": {
+    "evidence_file": "2026-10-18-snapshot-restore-model.json",
+    "evidence_sha256": "73fe353b758c8e17f8e424833a8ad5e22ff564a4fb3a2cddfc77ceef13a4c5df",
+    "prior_model_config_inputs_rechecked_except_changed_snapshot_module": 157,
+    "all_hashes_match": true,
+    "reused_cases": 119,
+    "reused_case_model_config_inputs": 149,
+    "harness_unchanged_except_new_response_block_and_explicit_snapshot_branch_coverage": true
+  },
+  "snapshot_model_correction": {
+    "historical_module_sha256": "b8db4b8d7d2b6ff71c2a615d2d9bc02f04e05c31feff88747ddfe276eddca24a",
+    "historical_generated_states": 278,
+    "historical_distinct_states": 124,
+    "corrected_generated_states": 372,
+    "corrected_distinct_states": 168,
+    "cause": "Unparenthesized joining assignment was parsed as an equality plus guard, excluding join-clear activation. Parenthesized RHS restores the missing successors. Four independent required activation branches now witness clear/retain in stream/recovery. Historical report/evidence preserved as originally recorded; their join-completion coverage was insufficient.",
+    "original_runtime_restore_ordering_unchanged": true
+  },
+  "checked_input_sha256": {
+    "docs/tla/CharlotteAddressSpace.tla": "94e8ae476eab11029c39513fa66197793b05f0a6ca1655b751497a6e518d0284",
+    "docs/tla/CharlotteAddressSpace_small.cfg": "25feef19bf1dc780d8cece87801b7590b0bce68aa884c7459f7a9a65866d35eb",
+    "docs/tla/CharlotteAddressSpace_unsafe.cfg": "4be0b588a5b44ff54ac273701331a622b9f2bfd241b4a428be8acaf98a5337cf",
+    "docs/tla/CharlotteAuthorization.tla": "d5e14f9e9eb674522b6446235d24e322507959a2baf0219d22912ab3c7929515",
+    "docs/tla/CharlotteAuthorization_generation_unsafe.cfg": "4f23d40ea610f3e457a4d3e8107d111c9d4bdbadd421a83d946c371677b105db",
+    "docs/tla/CharlotteAuthorization_policy_unsafe.cfg": "4f0e81b15fa4c54d4e10216d4b23f84ed3ce85fd801c0c271ca0486717750779",
+    "docs/tla/CharlotteAuthorization_policy_version_unsafe.cfg": "369762db357baf735d3464b0c1f309b9a2c6ff1c2f22bb19c28ef1d91361be2a",
+    "docs/tla/CharlotteAuthorization_principal_unsafe.cfg": "c3f4c2815588d123d723e6f3aa12360a08c5c93d1dc9730e31bca4c6590525bf",
+    "docs/tla/CharlotteAuthorization_rights_unsafe.cfg": "9d82cd883cb9b68ba02cc926d9019d591c0edaceb9568416744dc3b7a882221f",
+    "docs/tla/CharlotteAuthorization_small.cfg": "2ddfd048b004e053686223171bcfcbbeb94d1ef4f4d53cc2c63b2276738ea15b",
+    "docs/tla/CharlotteBootTrust.tla": "cad787631097b7d870db5c33d923347cc5af9cb0220331aa317d17c2b89ac646",
+    "docs/tla/CharlotteBootTrust_authenticate_unsafe.cfg": "611d53f8615472e6958a8901a1ecd1b0011801228e319577633e070780b3d328",
+    "docs/tla/CharlotteBootTrust_boundary_unsafe.cfg": "8e415118debd8e9a467bce69e30d890b8ee024cc71d00cec360c9f5e8acb4c70",
+    "docs/tla/CharlotteBootTrust_contract.cfg": "46363cde40899130188ea50dea6f0aceff8b7bac675291d52862998170a82e57",
+    "docs/tla/CharlotteBootTrust_development_unsafe.cfg": "996e72ecbf931c6e5891f6ebaa7a6e6bc807b9ab01917a3a5d6161afc4b1849f",
+    "docs/tla/CharlotteBootTrust_enrollment_unsafe.cfg": "95b4dee9697707dc39edbe8ac6c94a4c49cfe3a0cd10c05c3d4084a0163f3395",
+    "docs/tla/CharlotteBootTrust_failure_unsafe.cfg": "2310166ce6c6c0bb4f93c1e4ee384c07b959920d8c29d109fc100b1107d74d15",
+    "docs/tla/CharlotteBootTrust_fixture.cfg": "023562d632e18920d8d51cac7cee5f5d9159aad42c423782d6d833b37e5b19df",
+    "docs/tla/CharlotteBootTrust_manifest_unsafe.cfg": "6989bfd31e1eb9c7f433017cc1c2a780af10a0d9f7bdc8d1cadaec20f8abb3c6",
+    "docs/tla/CharlotteBootTrust_overwrite_unsafe.cfg": "311a8f4022eb40cba78628ec14a7a32a324b7218084fdead778d7add6d9bbfc8",
+    "docs/tla/CharlotteBootTrust_recipient_unsafe.cfg": "6dc6e0759a42289cbbd65888842c40efbea1b8e1207cb36458adfbef8248122f",
+    "docs/tla/CharlotteBootTrust_stale_unsafe.cfg": "aec488139f350badb5164942bc4bbe05b58bc1178c7a713bdf086defddd6b88b",
+    "docs/tla/CharlotteBootTrust_uninstalled_unsafe.cfg": "99362ddbc2c34acd714b36f30f2e037ff17138e1b9845e9d6881242654be8a7f",
+    "docs/tla/CharlotteCQ.tla": "1557db52418f0e4d47a737951b4a1d9cae5dfb44329b228bbd749da22a4bdd04",
+    "docs/tla/CharlotteCQ_buffer_unsafe.cfg": "9c5a49c335ba999c468e18651ee9a60bfb336d7ea32db783de562f8c897bf5ac",
+    "docs/tla/CharlotteCQ_mini.cfg": "e1b7eafb8fbc246c9122055672615be144e3b43ed869c9dbe41ba4d7d101125f",
+    "docs/tla/CharlotteCapability.tla": "4e94c107f21e7486cfe23c232c2b1930557af27df89c45cf75f29f4ddd098f1a",
+    "docs/tla/CharlotteCapability_small.cfg": "6a0cf36f3f4845ea37d901eb3ddbbf603445789ba18081ef7646c3f7ea36c8e3",
+    "docs/tla/CharlotteCheckedWait.tla": "0a94737e26b40c49939af7233d765ef4c76523608e39bf1b21818ac344c129b7",
+    "docs/tla/CharlotteCheckedWait_deadline_unsafe.cfg": "ed16d0f4d9759d76eafa780f56f6be83a95e7ae4721e0535aa8249afcbc0e5d2",
+    "docs/tla/CharlotteCheckedWait_park_unsafe.cfg": "0851785424eb552b590f5b191e31a0b3ec38ff8f6ee2a437803cc47a0e60fbbc",
+    "docs/tla/CharlotteCheckedWait_rejection_unsafe.cfg": "d73cdb7ac12b71fc3413a87343adecbd23a3ed3fbe29d8f5bd12d024e7b10188",
+    "docs/tla/CharlotteCheckedWait_replay_unsafe.cfg": "48df5cf72013a629118216d005481a2bef0c8e6fbee23e29664470affbec15c1",
+    "docs/tla/CharlotteCheckedWait_result_unsafe.cfg": "609274f19fcbd3f2d1a259f03c98bd8670ee2790a2de9c1b127cc935a51139c5",
+    "docs/tla/CharlotteCheckedWait_small.cfg": "5c114d9f0027dc3382a9b0ba9516b8dbc88eed5dde9b1067ebd8eecaace13e04",
+    "docs/tla/CharlotteCheckedWait_timeout_unsafe.cfg": "92699d7f09749d4f7f05ecc0e5e11605d79a0d02b715f4814eb5e0e590c36477",
+    "docs/tla/CharlotteClusterIngress.tla": "4660b215db89bb5d67b8433091eff5bb0052c993152e5423c657b9909aa6ac13",
+    "docs/tla/CharlotteClusterIngress_history_unsafe.cfg": "b35cd382b188843b7ae065053d0095c1fd55c41b6695410e8d8824e2a7820926",
+    "docs/tla/CharlotteClusterIngress_readiness_unsafe.cfg": "811add7d3dc380ff4f5feb31c33ba002ca72fa6ebc3b45e4116b5427fdec0656",
+    "docs/tla/CharlotteClusterIngress_small.cfg": "402c878db4ccef9c752c84c9beee894d823a8bf0d5f669d62de57734f2063360",
+    "docs/tla/CharlotteClusterIngress_stale_snapshot_unsafe.cfg": "ed01b5382c1dc5aa11eee36b853a7cf72e5193f586d5e9075e6c73adb22127a2",
+    "docs/tla/CharlotteDMA.tla": "5c732aed07fa1f79463d4ca30d2aa7fc7e7c58f46c1e0a64f9445298867cd9fc",
+    "docs/tla/CharlotteDMA_small.cfg": "55befa332f585191e5078b4085601f1ea9439a02f24c042d14e2bc7ae3009e93",
+    "docs/tla/CharlotteDMA_unsafe.cfg": "8b5f798d0723b8d9640eae2f9fb4c8a20383b49552d501943826fb55ad25b2ac",
+    "docs/tla/CharlotteDmaOperation.tla": "2839f7d90627b32049ac677bd0040474df313f1dc862090e1d9373817787e682",
+    "docs/tla/CharlotteDmaOperation_abandon_unsafe.cfg": "ffb8ec7166354bd94c8b53dca935d7cd0f1332aa1d922ed625c09476b6716d10",
+    "docs/tla/CharlotteDmaOperation_access_unsafe.cfg": "5a7b9512acaf0c030ed76a2c9c834b244ad06e4742db5fea72f09e1ae4182c88",
+    "docs/tla/CharlotteDmaOperation_cell_unsafe.cfg": "afca9bcf0e4ebf495043761e5a75e5f707c2f015b7596471a97e4c078e88123b",
+    "docs/tla/CharlotteDmaOperation_confirmation_unsafe.cfg": "fe466b9e71056adebe75475a3ccced1a5fa41d428694013c3924e76e14f35ea5",
+    "docs/tla/CharlotteDmaOperation_context_unsafe.cfg": "ad3c3e24b3cfdd57d6dc07851a0c73d3de6ebd123b545facbdd0ab2bf8e62999",
+    "docs/tla/CharlotteDmaOperation_cpu_unsafe.cfg": "16d1450ba672e9366eeed68a17c018d1a1988bee2bcd286ea87a4883ef3031ef",
+    "docs/tla/CharlotteDmaOperation_drop_unsafe.cfg": "b12da60b76b0b776895ba9a2b267fed4f777f9fad6561c023fbbedb290c224b8",
+    "docs/tla/CharlotteDmaOperation_map_unsafe.cfg": "bed6cdfaf7f0df9d4ba31d5f8d5005f287bcbbacd82a291986fb9771fee74a27",
+    "docs/tla/CharlotteDmaOperation_preparation_unsafe.cfg": "6fd8ba8d7238d6cc415a8dcc300d10154fd02f7bc1833605bcc612357804ce13",
+    "docs/tla/CharlotteDmaOperation_public_unsafe.cfg": "6684e9fcb141fa7ab6fa1df96918a7df1c490c62f765e2b4296c325e05b463c2",
+    "docs/tla/CharlotteDmaOperation_readiness_unsafe.cfg": "e4153638e5f59bbf1728ed2f338ade189844ad1c7254aec8751e6cfc754cb57f",
+    "docs/tla/CharlotteDmaOperation_rearm_unsafe.cfg": "3e124e8f8d7cc95794c56b1f615fcd1e30b4000aae7c9207a35f54e99f933503",
+    "docs/tla/CharlotteDmaOperation_remap_unsafe.cfg": "a97e1f454c658a35aeaac53d1ce06552fe0a95ffae5522fff19e3512a7896362",
+    "docs/tla/CharlotteDmaOperation_small.cfg": "5cd7d31f47748b790b12b903fd5fdd309106400aa6a5511e6991fc06664ddc95",
+    "docs/tla/CharlotteEndpointObservers.tla": "42415be276a5a31546337c473cfb89300cee102664809905169eb713efb140b6",
+    "docs/tla/CharlotteEndpointObservers_small.cfg": "8a972975c5d21bc23df1d1529258c455d35f5278ad6f209c19349dfbe6c11e14",
+    "docs/tla/CharlotteEndpointObservers_unsafe.cfg": "c85058ca46cb9ed10c39c38742cdb1c2895571fc6247de2fbaedcd488aff89a2",
+    "docs/tla/CharlotteHardwareAsid.tla": "2074acb290a98b6113874dbb3a6c93bb213698d5731153acd0f099b996644928",
+    "docs/tla/CharlotteHardwareAsid_small.cfg": "f4ef9b3536f735756f09f04bd0297b4f74d54ce03a6725806b5475b26b72d8ef",
+    "docs/tla/CharlotteHardwareAsid_unsafe.cfg": "4cc26e9851630ffbd7b8f3de981304bda0e3be2d06bf16c2e71cd6d286d852c9",
+    "docs/tla/CharlotteIPC.tla": "cafa97f897a33d496eb5c1ce2da877e6546ec66f9202d20f6ab33280a49ad857",
+    "docs/tla/CharlotteIPC_small.cfg": "7b5369411db55b2a2e8ea88245bdffc3dfbeb4867528f59c9e6e659a27931570",
+    "docs/tla/CharlotteInterruptRoute.tla": "9e6fdc9caff46461273a279b2a76153c6f22c7c97152999a92a93b46e281b0b4",
+    "docs/tla/CharlotteInterruptRoute_small.cfg": "d2d75e070eab33d10fd0cc38a3d60f53788637dfac9dfe505df0702f8f98f24e",
+    "docs/tla/CharlotteInterruptRoute_unsafe.cfg": "58e087639848e1cae282cd413caf77b3fffd0b912ebdde3728c6d05820f8bf10",
+    "docs/tla/CharlotteIpcPublication.tla": "67d87012aaed9bed5eec8df42b68f46359153a618d43a9b0befcb6b92e009432",
+    "docs/tla/CharlotteIpcPublication_batch_unsafe.cfg": "f21d1ad0c3c4ae9110851d914f55df4e08a5583db20fb9a1c3524c8158f3af1f",
+    "docs/tla/CharlotteIpcPublication_cancel_unsafe.cfg": "fb3cb26ea11333c4341a9569f3d1eea6757d28d2bed3a8bab006c8930187cd6d",
+    "docs/tla/CharlotteIpcPublication_connection_unsafe.cfg": "aaca3189ab479abf22b273882ca92fdf23602696a91aba0c1ff316bd46e1beae",
+    "docs/tla/CharlotteIpcPublication_memory_unsafe.cfg": "157e67d386164b1789334327b7c329b5cc2f133203867a7f2f3738688616133d",
+    "docs/tla/CharlotteIpcPublication_observe_unsafe.cfg": "958ce487bbee6ff56aae8a9a40df99593537a6b64320f4a5641a262ce245b0f9",
+    "docs/tla/CharlotteIpcPublication_readiness_unsafe.cfg": "dbc976896ed54d43217106ac32f920a93ef1ea9be8821e71b926d16ca6a02a27",
+    "docs/tla/CharlotteIpcPublication_refund_unsafe.cfg": "6aad7a123d8d50f7604ea78ed9f3106e05c5d95559c6dda0e83948f533abdc57",
+    "docs/tla/CharlotteIpcPublication_restore_unsafe.cfg": "a96f0da36e15eda49e0698ed30b3f373425fac45e76d11f8f8b034e5866ac5dd",
+    "docs/tla/CharlotteIpcPublication_rollback_unsafe.cfg": "e835593816f7502ac984d59d370237950b166a938774ec5a45a5686afbab6313",
+    "docs/tla/CharlotteIpcPublication_serial_unsafe.cfg": "32130b6ce3d0d01be1df08a89b7dd38d9a7d476ad31cd3605df48376eb1a5650",
+    "docs/tla/CharlotteIpcPublication_small.cfg": "4c6da1ebeb79eeefa62bb0dbb9d26184956c1fdd6d097a5de41b120275d67d87",
+    "docs/tla/CharlotteIpcTransaction.tla": "bfc596a22480fae309c31732670b60024085014ec084d998dbbf8affd40fed7c",
+    "docs/tla/CharlotteIpcTransaction_rollback_unsafe.cfg": "89326400847cf5ac0fd76e7c68eb2f32385d551cd38ce201c70dd6a5a6b7fe99",
+    "docs/tla/CharlotteIpcTransaction_small.cfg": "67e0efe832fbadf7258296297af6afa293da1a78edcdb464a14cf9a70280a471",
+    "docs/tla/CharlotteIpcTransaction_timeout_unsafe.cfg": "5c748b860dec8df3fb253e6aefcaa8138835fac61dc0b6ea48c8a089cb2b4c00",
+    "docs/tla/CharlotteNamePublication.tla": "64e06c4d4eba6c9af622cc8433bcb27e97a9c55655f4151a9f4d4e0faf9728f1",
+    "docs/tla/CharlotteNamePublication_abort_unsafe.cfg": "e271ebbf4cb0a504119c836cbdc42dcab8d6039a85209439f0dfa9c1d6f90a8c",
+    "docs/tla/CharlotteNamePublication_deferred_unsafe.cfg": "d1c9e007af1d13797dd43395aef321c857bb869285cbf9e13f9259b6b0ebf705",
+    "docs/tla/CharlotteNamePublication_disposal_unsafe.cfg": "9962dfc20c9bb6e4e7bdc54a2ac6a68dae04a701427004a494b54f9aaee02865",
+    "docs/tla/CharlotteNamePublication_exhausted_unsafe.cfg": "a942fbefc77918b1ad9ee416f77bd0357a1205e9cd831c1110e30e193d4deca2",
+    "docs/tla/CharlotteNamePublication_exhaustion.cfg": "9276ebe1529abbd3863d389066d633d0440adce13c69cccbdf7c8facc4c81cc6",
+    "docs/tla/CharlotteNamePublication_hint_unsafe.cfg": "8484b3ae8b8c58ceeee38e3e4bf4bee13056b420883c04924393984f85af2c09",
+    "docs/tla/CharlotteNamePublication_public_unsafe.cfg": "e569ee4d0b6f3bb86c05785a6574565195ef0d73a64edd9074cf61e18710443f",
+    "docs/tla/CharlotteNamePublication_quota_unsafe.cfg": "75624b9f524283872e18b0ec2d36c49e9b7b70a78d10e0b9248450c6eb10ee36",
+    "docs/tla/CharlotteNamePublication_replacement_unsafe.cfg": "02b0c2abe35eacfa067a22403296400228c8fff7e6531450bc428aa9bb3a8c8c",
+    "docs/tla/CharlotteNamePublication_retire_unsafe.cfg": "435a962cad50daf5e8c928c23bb0034a7b1f88f8b0d46b8e9018eb3b521b1748",
+    "docs/tla/CharlotteNamePublication_serial_unsafe.cfg": "beb2131c7c79377259741ca89e909273e0bde7bf43f7cb1e1413f182c911ad30",
+    "docs/tla/CharlotteNamePublication_small.cfg": "df05aff71bceb53c288f9e29ec0f64fd4efd5d17face5d1884fdc0a339b7dd88",
+    "docs/tla/CharlotteNamePublication_stale_unsafe.cfg": "23470b9661034062398a56368f0ff5980ecbe731f4f764da51b4e4de5ee89ac3",
+    "docs/tla/CharlotteNamePublication_watch_unsafe.cfg": "acff70f0762e23fa9ba9411edba9e5b9464a5ac9f6ba54f94ac03af10f9c020b",
+    "docs/tla/CharlotteNamePublication_wrap_unsafe.cfg": "d857d5368be2ca80b990b0b6d476da2d24ba8e5719116b19ce30a138794241a3",
+    "docs/tla/CharlottePlacementControl.tla": "2c93a5cf0a91d5babd0d4fbb863ea0d0c64eeda82a9bfc8d2467e19ba17e2515",
+    "docs/tla/CharlottePlacementControl_dwell_unsafe.cfg": "c1ffcc9f00441a11bd727cb812389a12dab91898d0764081e763693abaf55e8a",
+    "docs/tla/CharlottePlacementControl_reserve_unsafe.cfg": "969d1b58a2debd681a1beea9a4b69585f0f04f3e563eb78ddf32ef5396382733",
+    "docs/tla/CharlottePlacementControl_small.cfg": "ea702173e19534cf9f0967fe2f5a46bc5ea0e25a78c6a0a66ecd96da6e514cf8",
+    "docs/tla/CharlotteRaft.tla": "6ab1ef702a12515a8299263af5d5216115dd976dfee7d69e6b394c4c1fc94d80",
+    "docs/tla/CharlotteRaftJoin.tla": "4436022e36d4ed88690e3ba1dbd995bcb7bbaf60acd2c9da10063bb5cb221486",
+    "docs/tla/CharlotteRaftJoin_restart_unsafe.cfg": "9ae634438f5cfcd525ef79f229861ed5f16b09ded70282aa2d672670291b95eb",
+    "docs/tla/CharlotteRaftJoin_small.cfg": "645defb0cbba7276f412504af6ae1edd648bb75dc612bfec0c4466de5e15c833",
+    "docs/tla/CharlotteRaftJoin_unsafe.cfg": "e9e87d139447a922465906760b61028efcfdeb06e08fc0657111127bb1d3f3e1",
+    "docs/tla/CharlotteRaftLog.tla": "f1264ced4451c6498bbc23877475805613a798d4baa4dc7b92a16804f4d1266b",
+    "docs/tla/CharlotteRaftLog_small.cfg": "d0922611874d0a0c3aad1302c79cbeb2964b28047f5a4d62828c4b83ba44addb",
+    "docs/tla/CharlotteRaftMembership.tla": "c25a25ca001a24f0dc4944bed2c36b046f92d2e57abd0f9526554ba9ee2b46a4",
+    "docs/tla/CharlotteRaftMembership_small.cfg": "f1729e757e37e9ac065e419b7ed3cb4c276f936cf7943e984d64428055bdbb9f",
+    "docs/tla/CharlotteRaftResponse.tla": "3d18cf384a8769934d40b538d1b66a62c347f24429e03e347076c359972fa3fa",
+    "docs/tla/CharlotteRaftResponse_backoff_unsafe.cfg": "9a72a7d3759a03c6515d0f345ef67bbb015881ae50f906b36259173c1618ec55",
+    "docs/tla/CharlotteRaftResponse_invalid_unsafe.cfg": "955dbde49aea1b4811db506ec61c662d3650272d7ec982c8d5b8d3506a36ed0f",
+    "docs/tla/CharlotteRaftResponse_oldterm_unsafe.cfg": "ca31d6e2a4e4a1545c2a541d583bdd30e68ff7c16857397c307745383f1cd4fe",
+    "docs/tla/CharlotteRaftResponse_regress_unsafe.cfg": "fec5226e58addf76e4676b34d144bb9f85785a3b725ecf88b420ef6e4161e192",
+    "docs/tla/CharlotteRaftResponse_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+    "docs/tla/CharlotteRaftSnapshot.tla": "3ecd5c17fdb200227c0de9608b732df5ae18c648acdcf4619d607eff3a7639d8",
+    "docs/tla/CharlotteRaftSnapshot_small.cfg": "0ea7a243aab5cdeace57a0ef990237f8893614d30afc06427d98ce0425baafb1",
+    "docs/tla/CharlotteRaft_small.cfg": "48294c1cddc1d440a1e2d70a80fd6ea9da8ade2d20ff0f1f4f54b85e8843bb9b",
+    "docs/tla/CharlotteReliableMessage.tla": "3a17cb197cbf7818717940a30cf6930f41a3b5e6fe16b8dfe4cfa52851e51f6a",
+    "docs/tla/CharlotteReliableMessage_identity_unsafe.cfg": "4cbb48be424584a73181c7c5495e31faf41c3b967405092b520a41b9503678da",
+    "docs/tla/CharlotteReliableMessage_regression_unsafe.cfg": "49dbe795212fe69495d4c927592dce59074306c5b30c254d6d4bf8f43bd6ce8b",
+    "docs/tla/CharlotteReliableMessage_small.cfg": "85adbd3bb065b8da79a7d8dfe58fd5e4b530f10d26015f83952c4a82e22edea5",
+    "docs/tla/CharlotteRemoteCall.tla": "36de513b3ffbfa1e9cbd74bac0404fc1ef66cd5400c7b536a9da18c1be2b1c55",
+    "docs/tla/CharlotteRemoteCall_small.cfg": "56d4993c70c7c7f9a5d5ec478240776ee12e00432adf8402a6cc291bc7fe9601",
+    "docs/tla/CharlotteRootRetirement.tla": "817ce0b352e358ab901f6392354d4a42ca294274080e5f1b979d1105f563d87e",
+    "docs/tla/CharlotteRootRetirement_abandon_unsafe.cfg": "693f4eeb72902cd536fb1fa185b05e7daec0f0fd50f9fe655f1dcbd9396c7202",
+    "docs/tla/CharlotteRootRetirement_lease_unsafe.cfg": "185baa2c91ce27fd6872e654ee522f6b3770f467e0eead8557bb26c60c95c889",
+    "docs/tla/CharlotteRootRetirement_physical_unsafe.cfg": "fa20b8c4b353156b8f39c48362bc3ea995377e31d81a69f742300ca41077edab",
+    "docs/tla/CharlotteRootRetirement_refund_unsafe.cfg": "c01d5c13fbee34239773c05eb0a33db1d5c31dfaa2ecf9a8de25853de659faed",
+    "docs/tla/CharlotteRootRetirement_release_unsafe.cfg": "47ca560b0c4fba4952c7009e3fb6af8c5c3cde906a7bb943d70aea4113dbada5",
+    "docs/tla/CharlotteRootRetirement_small.cfg": "9ee0187ad3b152ba75044f87f71788bb9bd1f5d2af8ebf0a1b1389c487b593d1",
+    "docs/tla/CharlotteScheduler.tla": "a58ef1f0f39ebb06d7b5d09568071891b51ecc327ca097b018155026c2acab5e",
+    "docs/tla/CharlotteScheduler_domain_abort_unsafe.cfg": "53332baa166196b745e9c8a9ae53ca6f0df3675120de0ff4fa4c9b8d7c24ee56",
+    "docs/tla/CharlotteScheduler_small.cfg": "f48844b2897340be11b29446d9fe763fe5ac12eb09a4d98128ed8567adffb047",
+    "docs/tla/CharlotteScheduler_unsafe.cfg": "d8816f8c15bd9c50ccb9421ba88b5aba6c2b737b03d8f71bddbb8791cf8165c5",
+    "docs/tla/CharlotteServiceLifecycle.tla": "5cab06543727b1373ae1ba9a342217f93a275fb3058cc33c3408c6f6fc39dee0",
+    "docs/tla/CharlotteServiceLifecycle_small.cfg": "e44daeaa25b96571f91e1f440ef61865ca2cfe7ac2908e3761a0c17a24fc1762",
+    "docs/tla/CharlotteServiceLifecycle_unsafe.cfg": "dfbae5bdd1af4274cec07f6501be0724140ff96343be816b836d7458262e1e74",
+    "docs/tla/CharlotteSnapshotRestore.tla": "c71563b3814d1f58b6bee72dac6bfd78e76d55d50895dad5c70372002f42eb88",
+    "docs/tla/CharlotteSnapshotRestore_application_unsafe.cfg": "983d4959987c263293f339a66848e2d2160c8d47314b1006fcc965139f78c041",
+    "docs/tla/CharlotteSnapshotRestore_durable_unsafe.cfg": "08aab0735de4db738b699997e9c1e9db496a2c5627c71ead888bb9755dae2321",
+    "docs/tla/CharlotteSnapshotRestore_exposure_unsafe.cfg": "6aae5eb519c5d5e67c5cb64be07b8b64f3f82635236f0854f9d6797d00f193ad",
+    "docs/tla/CharlotteSnapshotRestore_join_unsafe.cfg": "f9e148560d035b72c231e971fabe1e0281db21539b1886d86a6aacc16bd6b079",
+    "docs/tla/CharlotteSnapshotRestore_membership_unsafe.cfg": "6de0ef827f05f5e144f88fb97473f5b8f1b15b49df87d253c6a58565d571a3b6",
+    "docs/tla/CharlotteSnapshotRestore_ordering_unsafe.cfg": "5c773fbf7a6930b96ee72c86b0a06ecba3fae85b6e51b05e03164059052eb6f5",
+    "docs/tla/CharlotteSnapshotRestore_progress_unsafe.cfg": "8e8ff5e47b8a3d60cab8d400802ff594af6320666274ce7366482045f136a854",
+    "docs/tla/CharlotteSnapshotRestore_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+    "docs/tla/CharlotteStackGrowth.tla": "36dce6679dd969bd14136bb79c5c2cff8cec8df6479f0d33458ab196324a4a5f",
+    "docs/tla/CharlotteStackGrowth_grow_unsafe.cfg": "bef8d583b177e41bc58ef6312d0726129b58aa62f0539fe0e3b2b3dc4cf99e74",
+    "docs/tla/CharlotteStackGrowth_leak_unsafe.cfg": "d3df7e3d6e69ea109cb6b9ee06c57cf54c9d6d4ac92ede12b7497066093857d6",
+    "docs/tla/CharlotteStackGrowth_small.cfg": "1931995ce026befe604d6225a63e43cf5afbc336881c9141222af8943076baf9",
+    "docs/tla/CharlotteThreadJoin.tla": "3e61029e5fa352c6b065f0edd165a94f132095fb1c0d79c31b57d6761653b0e6",
+    "docs/tla/CharlotteThreadJoin_small.cfg": "64bf35e8eea699f9f8d1f1fd51c4c8c8b3f0e123a32912015546ea891563c819",
+    "docs/tla/CharlotteThreadJoin_unsafe.cfg": "1caa3d988aea11eefcc695c7524337b2ceac2ccfa8daa7620732affb6fc577d7",
+    "docs/tla/CharlotteThreadJoin_wrap_unsafe.cfg": "6304719f640bb360f0aa8f7c85face93526dea4e490f9de314dcc46bdf62eed9",
+    "docs/tla/CharlotteTimedWait.tla": "8739f35fb3eb7d97b5e9b41c786ada3f1f74d7bfd9d285fbb332bd457e06078e",
+    "docs/tla/CharlotteTimedWait_small.cfg": "a3d3b0fcaf80d4030a515699c0f02d29b6951f4e4170774df1c83cb558aba1d2",
+    "docs/tla/CharlotteTimedWait_unsafe.cfg": "1ffdb5d33dd8d1280de6aa281c33a646b6bfa111f6f3ac8eb82b9800c8833be6",
+    "docs/tla/check.sh": "c09413db2254ab6f1f50a3d18c93fbff0af98989b758abbc8202acf21f96763e"
+  },
+  "reviewed_source_sha256": {
+    "crates/catten-graft/src/node.rs": "56a5710bcd18c39471cca0534b91470d85a551d33ba264e02ade0a6dcc27f43e",
+    "crates/catten-graft/src/membership.rs": "0157bd75f9051072d97dd99169e0a7c5f2d2376ce9432828077d467927f8b540",
+    "crates/catten-graft/src/transport.rs": "354b62c5d62ec429c2a9ee14ea241a62c360ad99b36c6c76e3f51868f226b99e",
+    "crates/catten-graft/src/charlotte.rs": "e46e4e2a7aa41dc62143ad91bd4a9ffe9df6c855361296ffd6282e845d5b00f4",
+    "crates/catten-services/src/relmsg_transport.rs": "771136f16d833b5449977de6837b354695f01652e6e26ec7c27a89e6119c6178",
+    "crates/catten-services/src/bin/raft.rs": "7bf44c274b36f45e383dd82f5e8a54dae5fbddd0000f06b48db2d107fd04ea4d",
+    "crates/catten-services/src/bin/dns/transport.rs": "f18945e35b6f4776e7e6ab0f9aa26e0cf44a931b13cb96906f0a3e37969213cc"
+  },
+  "cases": [
+    {
+      "module": "CharlotteRaftResponse",
+      "config": "CharlotteRaftResponse_small.cfg",
+      "expected_counterexample": false,
+      "generated_states": 687124,
+      "distinct_states": 49395,
+      "log_sha256": "6f0e890396caa52c7b62967502441a8523ca76fc97f40ad212e22cfb83800292",
+      "action_coverage": {
+        "Init": {
+          "new_successors": 1,
+          "total_successors": 1
+        },
+        "CaptureOldReply": {
+          "new_successors": 1,
+          "total_successors": 1
+        },
+        "ReplacePrefix": {
+          "new_successors": 1,
+          "total_successors": 1
+        },
+        "Reelect": {
+          "new_successors": 1,
+          "total_successors": 1
+        },
+        "Replicate": {
+          "new_successors": 185,
+          "total_successors": 269892
+        },
+        "Acknowledge": {
+          "new_successors": 2228,
+          "total_successors": 250530
+        },
+        "Failure": {
+          "new_successors": 17438,
+          "total_successors": 89964
+        },
+        "RejectOld": {
+          "new_successors": 9540,
+          "total_successors": 14994
+        },
+        "RejectInvalid": {
+          "new_successors": 0,
+          "total_successors": 29988
+        },
+        "Commit": {
+          "new_successors": 596,
+          "total_successors": 1764
+        },
+        "ObserveHigherTerm": {
+          "new_successors": 19404,
+          "total_successors": 29988
+        },
+        "UnsafeOldTermAck": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRegressSuccess": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeBackoff": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeInvalidCredit": {
+          "new_successors": 0,
+          "total_successors": 0
+        }
+      },
+      "exit_status": 0,
+      "depth": 16,
+      "required_actions": [
+        "CaptureOldReply",
+        "ReplacePrefix",
+        "Reelect",
+        "Replicate",
+        "Acknowledge",
+        "Failure",
+        "RejectOld",
+        "RejectInvalid",
+        "Commit",
+        "ObserveHigherTerm"
+      ]
+    },
+    {
+      "module": "CharlotteRaftResponse",
+      "config": "CharlotteRaftResponse_oldterm_unsafe.cfg",
+      "expected_counterexample": true,
+      "generated_states": 1003,
+      "distinct_states": 444,
+      "log_sha256": "7914247965d343b434fa2f0e61909301c0e681561edf1d0943c0c5ec7f53c57d",
+      "action_coverage": {
+        "Init": {
+          "new_successors": 2,
+          "total_successors": 2
+        },
+        "CaptureOldReply": {
+          "new_successors": 1,
+          "total_successors": 2
+        },
+        "ReplacePrefix": {
+          "new_successors": 1,
+          "total_successors": 2
+        },
+        "Reelect": {
+          "new_successors": 1,
+          "total_successors": 2
+        },
+        "Replicate": {
+          "new_successors": 85,
+          "total_successors": 441
+        },
+        "Acknowledge": {
+          "new_successors": 124,
+          "total_successors": 261
+        },
+        "Failure": {
+          "new_successors": 112,
+          "total_successors": 147
+        },
+        "RejectOld": {
+          "new_successors": 39,
+          "total_successors": 44
+        },
+        "RejectInvalid": {
+          "new_successors": 0,
+          "total_successors": 49
+        },
+        "Commit": {
+          "new_successors": 2,
+          "total_successors": 3
+        },
+        "ObserveHigherTerm": {
+          "new_successors": 42,
+          "total_successors": 46
+        },
+        "UnsafeOldTermAck": {
+          "new_successors": 36,
+          "total_successors": 44
+        },
+        "UnsafeRegressSuccess": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeBackoff": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeInvalidCredit": {
+          "new_successors": 0,
+          "total_successors": 0
+        }
+      },
+      "exit_status": "nonzero, verified by harness",
+      "violated_invariant": "CommitHasCurrentPrefix",
+      "trace": [
+        "State 1: <Initial predicate>",
+        "/\\ term = 1",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = FALSE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 1, Learner |-> 1, Joiner |-> 1]",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 2: <CaptureOldReply line 22, col 5 to line 26, col 54 of module CharlotteRaftResponse>",
+        "/\\ term = 1",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = TRUE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 1, Learner |-> 1, Joiner |-> 1]",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 3: <ReplacePrefix line 29, col 5 to line 33, col 54 of module CharlotteRaftResponse>",
+        "/\\ term = 2",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = TRUE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 1, Learner |-> 1, Joiner |-> 1]",
+        "/\\ leader = FALSE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 4: <Reelect line 36, col 5 to line 42, col 40 of module CharlotteRaftResponse>",
+        "/\\ term = 3",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = TRUE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 3, Learner |-> 3, Joiner |-> 3]",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 5: <UnsafeOldTermAck line 93, col 5 to line 97, col 77 of module CharlotteRaftResponse>",
+        "/\\ term = 3",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = FALSE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 4, Learner |-> 3, Joiner |-> 3]",
+        "/\\ leader = TRUE",
+        "/\\ contact = TRUE",
+        "/\\ matched = [Voter |-> 3, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 6: <Commit line 80, col 5 to line 84, col 54 of module CharlotteRaftResponse>",
+        "/\\ term = 3",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = FALSE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = TRUE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 4, Learner |-> 3, Joiner |-> 3]",
+        "/\\ leader = TRUE",
+        "/\\ contact = TRUE",
+        "/\\ matched = [Voter |-> 3, Learner |-> 0, Joiner |-> 0]"
+      ],
+      "actions": [
+        "Initial",
+        "CaptureOldReply",
+        "ReplacePrefix",
+        "Reelect",
+        "UnsafeOldTermAck",
+        "Commit"
+      ]
+    },
+    {
+      "module": "CharlotteRaftResponse",
+      "config": "CharlotteRaftResponse_regress_unsafe.cfg",
+      "expected_counterexample": true,
+      "generated_states": 1292,
+      "distinct_states": 524,
+      "log_sha256": "dfe0983dc56f7941eae3f2ee27b0528de91c502863d2b62ee3e6a37823df2df2",
+      "action_coverage": {
+        "Init": {
+          "new_successors": 2,
+          "total_successors": 2
+        },
+        "CaptureOldReply": {
+          "new_successors": 1,
+          "total_successors": 2
+        },
+        "ReplacePrefix": {
+          "new_successors": 1,
+          "total_successors": 2
+        },
+        "Reelect": {
+          "new_successors": 1,
+          "total_successors": 2
+        },
+        "Replicate": {
+          "new_successors": 61,
+          "total_successors": 587
+        },
+        "Acknowledge": {
+          "new_successors": 164,
+          "total_successors": 347
+        },
+        "Failure": {
+          "new_successors": 174,
+          "total_successors": 192
+        },
+        "RejectOld": {
+          "new_successors": 59,
+          "total_successors": 62
+        },
+        "RejectInvalid": {
+          "new_successors": 0,
+          "total_successors": 64
+        },
+        "Commit": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ObserveHigherTerm": {
+          "new_successors": 56,
+          "total_successors": 64
+        },
+        "UnsafeOldTermAck": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRegressSuccess": {
+          "new_successors": 6,
+          "total_successors": 7
+        },
+        "UnsafeBackoff": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeInvalidCredit": {
+          "new_successors": 0,
+          "total_successors": 0
+        }
+      },
+      "exit_status": "nonzero, verified by harness",
+      "violated_invariant": "ConfirmedProgressRetained",
+      "trace": [
+        "State 1: <Initial predicate>",
+        "/\\ term = 1",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = FALSE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 1, Learner |-> 1, Joiner |-> 1]",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 2: <CaptureOldReply line 22, col 5 to line 26, col 54 of module CharlotteRaftResponse>",
+        "/\\ term = 1",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = TRUE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 1, Learner |-> 1, Joiner |-> 1]",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 3: <ReplacePrefix line 29, col 5 to line 33, col 54 of module CharlotteRaftResponse>",
+        "/\\ term = 2",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = TRUE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 1, Learner |-> 1, Joiner |-> 1]",
+        "/\\ leader = FALSE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 4: <Reelect line 36, col 5 to line 42, col 40 of module CharlotteRaftResponse>",
+        "/\\ term = 3",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = TRUE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 3, Learner |-> 3, Joiner |-> 3]",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 5: <Replicate line 45, col 5 to line 48, col 54 of module CharlotteRaftResponse>",
+        "/\\ term = 3",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = TRUE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 1, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 3, Learner |-> 3, Joiner |-> 3]",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 6: <Acknowledge line 51, col 5 to line 59, col 62 of module CharlotteRaftResponse>",
+        "/\\ term = 3",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = TRUE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 1, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 1, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 3, Learner |-> 3, Joiner |-> 3]",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 1, Joiner |-> 0]",
+        "",
+        "State 7: <UnsafeRegressSuccess line 100, col 5 to line 104, col 54 of module CharlotteRaftResponse>",
+        "/\\ term = 3",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = TRUE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 1, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 1, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 3, Learner |-> 1, Joiner |-> 3]",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]"
+      ],
+      "actions": [
+        "Initial",
+        "CaptureOldReply",
+        "ReplacePrefix",
+        "Reelect",
+        "Replicate",
+        "Acknowledge",
+        "UnsafeRegressSuccess"
+      ]
+    },
+    {
+      "module": "CharlotteRaftResponse",
+      "config": "CharlotteRaftResponse_backoff_unsafe.cfg",
+      "expected_counterexample": true,
+      "generated_states": 1779,
+      "distinct_states": 594,
+      "log_sha256": "278227dd385b77efc741d088ab7b7ae6379044193ef50815d461fecdbde42726",
+      "action_coverage": {
+        "Init": {
+          "new_successors": 2,
+          "total_successors": 2
+        },
+        "CaptureOldReply": {
+          "new_successors": 1,
+          "total_successors": 2
+        },
+        "ReplacePrefix": {
+          "new_successors": 1,
+          "total_successors": 2
+        },
+        "Reelect": {
+          "new_successors": 1,
+          "total_successors": 2
+        },
+        "Replicate": {
+          "new_successors": 75,
+          "total_successors": 706
+        },
+        "Acknowledge": {
+          "new_successors": 182,
+          "total_successors": 424
+        },
+        "Failure": {
+          "new_successors": 196,
+          "total_successors": 231
+        },
+        "RejectOld": {
+          "new_successors": 68,
+          "total_successors": 73
+        },
+        "RejectInvalid": {
+          "new_successors": 0,
+          "total_successors": 77
+        },
+        "Commit": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ObserveHigherTerm": {
+          "new_successors": 67,
+          "total_successors": 77
+        },
+        "UnsafeOldTermAck": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRegressSuccess": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeBackoff": {
+          "new_successors": 2,
+          "total_successors": 226
+        },
+        "UnsafeInvalidCredit": {
+          "new_successors": 0,
+          "total_successors": 0
+        }
+      },
+      "exit_status": "nonzero, verified by harness",
+      "violated_invariant": "BackoffRespectsConfirmedPrefix",
+      "trace": [
+        "State 1: <Initial predicate>",
+        "/\\ term = 1",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = FALSE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 1, Learner |-> 1, Joiner |-> 1]",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 2: <CaptureOldReply line 22, col 5 to line 26, col 54 of module CharlotteRaftResponse>",
+        "/\\ term = 1",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = TRUE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 1, Learner |-> 1, Joiner |-> 1]",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 3: <ReplacePrefix line 29, col 5 to line 33, col 54 of module CharlotteRaftResponse>",
+        "/\\ term = 2",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = TRUE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 1, Learner |-> 1, Joiner |-> 1]",
+        "/\\ leader = FALSE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 4: <Reelect line 36, col 5 to line 42, col 40 of module CharlotteRaftResponse>",
+        "/\\ term = 3",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = TRUE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 3, Learner |-> 3, Joiner |-> 3]",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 5: <Replicate line 45, col 5 to line 48, col 54 of module CharlotteRaftResponse>",
+        "/\\ term = 3",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = TRUE",
+        "/\\ actual = [Voter |-> 2, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 3, Learner |-> 3, Joiner |-> 3]",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 6: <Acknowledge line 51, col 5 to line 59, col 62 of module CharlotteRaftResponse>",
+        "/\\ term = 3",
+        "/\\ contactProof = TRUE",
+        "/\\ oldReply = TRUE",
+        "/\\ actual = [Voter |-> 2, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 2, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 3, Learner |-> 3, Joiner |-> 3]",
+        "/\\ leader = TRUE",
+        "/\\ contact = TRUE",
+        "/\\ matched = [Voter |-> 2, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 7: <UnsafeBackoff line 107, col 5 to line 110, col 54 of module CharlotteRaftResponse>",
+        "/\\ term = 3",
+        "/\\ contactProof = TRUE",
+        "/\\ oldReply = TRUE",
+        "/\\ actual = [Voter |-> 2, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 2, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 2, Learner |-> 3, Joiner |-> 3]",
+        "/\\ leader = TRUE",
+        "/\\ contact = TRUE",
+        "/\\ matched = [Voter |-> 2, Learner |-> 0, Joiner |-> 0]"
+      ],
+      "actions": [
+        "Initial",
+        "CaptureOldReply",
+        "ReplacePrefix",
+        "Reelect",
+        "Replicate",
+        "Acknowledge",
+        "UnsafeBackoff"
+      ]
+    },
+    {
+      "module": "CharlotteRaftResponse",
+      "config": "CharlotteRaftResponse_invalid_unsafe.cfg",
+      "expected_counterexample": true,
+      "generated_states": 167,
+      "distinct_states": 107,
+      "log_sha256": "a703b1c2d57abacea336ceeda727a0110c2f5b55583936edf6262b0b47bce6ae",
+      "action_coverage": {
+        "Init": {
+          "new_successors": 2,
+          "total_successors": 2
+        },
+        "CaptureOldReply": {
+          "new_successors": 1,
+          "total_successors": 2
+        },
+        "ReplacePrefix": {
+          "new_successors": 1,
+          "total_successors": 2
+        },
+        "Reelect": {
+          "new_successors": 1,
+          "total_successors": 2
+        },
+        "Replicate": {
+          "new_successors": 36,
+          "total_successors": 81
+        },
+        "Acknowledge": {
+          "new_successors": 19,
+          "total_successors": 38
+        },
+        "Failure": {
+          "new_successors": 24,
+          "total_successors": 27
+        },
+        "RejectOld": {
+          "new_successors": 8,
+          "total_successors": 9
+        },
+        "RejectInvalid": {
+          "new_successors": 0,
+          "total_successors": 9
+        },
+        "Commit": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ObserveHigherTerm": {
+          "new_successors": 8,
+          "total_successors": 9
+        },
+        "UnsafeOldTermAck": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRegressSuccess": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeBackoff": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeInvalidCredit": {
+          "new_successors": 8,
+          "total_successors": 9
+        }
+      },
+      "exit_status": "nonzero, verified by harness",
+      "violated_invariant": "AcknowledgementsHaveProof",
+      "trace": [
+        "State 1: <Initial predicate>",
+        "/\\ term = 1",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = FALSE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 1, Learner |-> 1, Joiner |-> 1]",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 2: <CaptureOldReply line 22, col 5 to line 26, col 54 of module CharlotteRaftResponse>",
+        "/\\ term = 1",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = TRUE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 1, Learner |-> 1, Joiner |-> 1]",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 3: <ReplacePrefix line 29, col 5 to line 33, col 54 of module CharlotteRaftResponse>",
+        "/\\ term = 2",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = TRUE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 1, Learner |-> 1, Joiner |-> 1]",
+        "/\\ leader = FALSE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 4: <Reelect line 36, col 5 to line 42, col 40 of module CharlotteRaftResponse>",
+        "/\\ term = 3",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = TRUE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 3, Learner |-> 3, Joiner |-> 3]",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "",
+        "State 5: <UnsafeInvalidCredit line 113, col 5 to line 119, col 65 of module CharlotteRaftResponse>",
+        "/\\ term = 3",
+        "/\\ contactProof = FALSE",
+        "/\\ oldReply = TRUE",
+        "/\\ actual = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ committed = FALSE",
+        "/\\ confirmed = [Voter |-> 0, Learner |-> 0, Joiner |-> 0]",
+        "/\\ nextIndex = [Voter |-> 4, Learner |-> 3, Joiner |-> 3]",
+        "/\\ leader = TRUE",
+        "/\\ contact = FALSE",
+        "/\\ matched = [Voter |-> 3, Learner |-> 0, Joiner |-> 0]"
+      ],
+      "actions": [
+        "Initial",
+        "CaptureOldReply",
+        "ReplacePrefix",
+        "Reelect",
+        "UnsafeInvalidCredit"
+      ]
+    },
+    {
+      "module": "CharlotteSnapshotRestore",
+      "config": "CharlotteSnapshotRestore_small.cfg",
+      "expected_counterexample": false,
+      "generated_states": 372,
+      "distinct_states": 168,
+      "log_sha256": "d8636ca4c3426e49a590fd1abb1c20ee049d8a12cc8f6e372cc24a585d4c0371",
+      "action_coverage": {
+        "Init": {
+          "new_successors": 18,
+          "total_successors": 18
+        },
+        "ReadHeader": {
+          "new_successors": 18,
+          "total_successors": 18
+        },
+        "ParseSections": {
+          "new_successors": 18,
+          "total_successors": 18
+        },
+        "RejectUnsupported": {
+          "new_successors": 9,
+          "total_successors": 9
+        },
+        "RejectMalformed": {
+          "new_successors": 9,
+          "total_successors": 9
+        },
+        "Validate": {
+          "new_successors": 9,
+          "total_successors": 9
+        },
+        "Restore": {
+          "new_successors": 9,
+          "total_successors": 9
+        },
+        "Persist": {
+          "new_successors": 3,
+          "total_successors": 3
+        },
+        "DefinitePersistenceFailure": {
+          "new_successors": 3,
+          "total_successors": 3
+        },
+        "AmbiguousPersistenceFailure": {
+          "new_successors": 2,
+          "total_successors": 3
+        },
+        "ActivateStreamJoin": {
+          "new_successors": 2,
+          "total_successors": 2
+        },
+        "ActivateStreamRetained": {
+          "new_successors": 1,
+          "total_successors": 1
+        },
+        "ActivateRecoveryJoin": {
+          "new_successors": 2,
+          "total_successors": 2
+        },
+        "ActivateRecoveryRetained": {
+          "new_successors": 4,
+          "total_successors": 4
+        },
+        "Crash": {
+          "new_successors": 52,
+          "total_successors": 93
+        },
+        "BeginRecovery": {
+          "new_successors": 9,
+          "total_successors": 171
+        },
+        "UnsafeRejectApplication": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectDurable": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectProgress": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectMembership": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectJoin": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeExposeRecovery": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafePublishBeforeRestore": {
+          "new_successors": 0,
+          "total_successors": 0
+        }
+      },
+      "exit_status": 0,
+      "depth": 14,
+      "required_actions": [
+        "ReadHeader",
+        "ParseSections",
+        "RejectUnsupported",
+        "RejectMalformed",
+        "Validate",
+        "Restore",
+        "Persist",
+        "DefinitePersistenceFailure",
+        "AmbiguousPersistenceFailure",
+        "ActivateStreamJoin",
+        "ActivateStreamRetained",
+        "ActivateRecoveryJoin",
+        "ActivateRecoveryRetained",
+        "Crash",
+        "BeginRecovery"
+      ]
+    },
+    {
+      "module": "CharlotteSnapshotRestore",
+      "config": "CharlotteSnapshotRestore_application_unsafe.cfg",
+      "expected_counterexample": true,
+      "generated_states": 134,
+      "distinct_states": 76,
+      "log_sha256": "9f035f4cedad51275f57fc2491cd4ca8e1a16b353ee9ed2b56e795b324a46e21",
+      "action_coverage": {
+        "Init": {
+          "new_successors": 36,
+          "total_successors": 36
+        },
+        "ReadHeader": {
+          "new_successors": 12,
+          "total_successors": 12
+        },
+        "ParseSections": {
+          "new_successors": 11,
+          "total_successors": 11
+        },
+        "RejectUnsupported": {
+          "new_successors": 6,
+          "total_successors": 7
+        },
+        "RejectMalformed": {
+          "new_successors": 1,
+          "total_successors": 1
+        },
+        "Validate": {
+          "new_successors": 1,
+          "total_successors": 1
+        },
+        "Restore": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "Persist": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "DefinitePersistenceFailure": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "AmbiguousPersistenceFailure": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateStreamJoin": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateStreamRetained": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateRecoveryJoin": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateRecoveryRetained": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "Crash": {
+          "new_successors": 18,
+          "total_successors": 31
+        },
+        "BeginRecovery": {
+          "new_successors": 3,
+          "total_successors": 48
+        },
+        "UnsafeRejectApplication": {
+          "new_successors": 6,
+          "total_successors": 7
+        },
+        "UnsafeRejectDurable": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectProgress": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectMembership": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectJoin": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeExposeRecovery": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafePublishBeforeRestore": {
+          "new_successors": 0,
+          "total_successors": 0
+        }
+      },
+      "exit_status": "nonzero, verified by harness",
+      "violated_invariant": "RejectionPreservesApplication",
+      "trace": [
+        "State 1: <Initial predicate>",
+        "/\\ phase = \"Header\"",
+        "/\\ durable = [index |-> 1, membership |-> \"IncludingSelf\"]",
+        "/\\ application = 1",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"JointIncludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 1",
+        "/\\ commitIndex = 1",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Unsupported\"",
+        "",
+        "State 2: <RejectUnsupported line 72, col 22 to line 72, col 57 of module CharlotteSnapshotRestore>",
+        "/\\ phase = \"Rejected\"",
+        "/\\ durable = [index |-> 1, membership |-> \"IncludingSelf\"]",
+        "/\\ application = 1",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"JointIncludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 1",
+        "/\\ commitIndex = 1",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Unsupported\"",
+        "",
+        "State 3: <UnsafeRejectApplication line 177, col 5 to line 181, col 62 of module CharlotteSnapshotRestore>",
+        "/\\ phase = \"Rejected\"",
+        "/\\ durable = [index |-> 1, membership |-> \"IncludingSelf\"]",
+        "/\\ application = 2",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"JointIncludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 1",
+        "/\\ commitIndex = 1",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Unsupported\""
+      ],
+      "actions": [
+        "Initial",
+        "RejectUnsupported",
+        "UnsafeRejectApplication"
+      ]
+    },
+    {
+      "module": "CharlotteSnapshotRestore",
+      "config": "CharlotteSnapshotRestore_durable_unsafe.cfg",
+      "expected_counterexample": true,
+      "generated_states": 186,
+      "distinct_states": 104,
+      "log_sha256": "88494607786470403690015d6690102ec5993fb9e589bd46ef3a0791a58f1ded",
+      "action_coverage": {
+        "Init": {
+          "new_successors": 36,
+          "total_successors": 36
+        },
+        "ReadHeader": {
+          "new_successors": 14,
+          "total_successors": 14
+        },
+        "ParseSections": {
+          "new_successors": 13,
+          "total_successors": 13
+        },
+        "RejectUnsupported": {
+          "new_successors": 7,
+          "total_successors": 8
+        },
+        "RejectMalformed": {
+          "new_successors": 6,
+          "total_successors": 6
+        },
+        "Validate": {
+          "new_successors": 6,
+          "total_successors": 6
+        },
+        "Restore": {
+          "new_successors": 6,
+          "total_successors": 6
+        },
+        "Persist": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "DefinitePersistenceFailure": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "AmbiguousPersistenceFailure": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateStreamJoin": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateStreamRetained": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateRecoveryJoin": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateRecoveryRetained": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "Crash": {
+          "new_successors": 27,
+          "total_successors": 52
+        },
+        "BeginRecovery": {
+          "new_successors": 3,
+          "total_successors": 60
+        },
+        "UnsafeRejectApplication": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectDurable": {
+          "new_successors": 4,
+          "total_successors": 5
+        },
+        "UnsafeRejectProgress": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectMembership": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectJoin": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeExposeRecovery": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafePublishBeforeRestore": {
+          "new_successors": 0,
+          "total_successors": 0
+        }
+      },
+      "exit_status": "nonzero, verified by harness",
+      "violated_invariant": "RejectionPreservesDurable",
+      "trace": [
+        "State 1: <Initial predicate>",
+        "/\\ phase = \"Header\"",
+        "/\\ durable = [index |-> 1, membership |-> \"IncludingSelf\"]",
+        "/\\ application = 1",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"JointIncludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 1",
+        "/\\ commitIndex = 1",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Unsupported\"",
+        "",
+        "State 2: <RejectUnsupported line 72, col 22 to line 72, col 57 of module CharlotteSnapshotRestore>",
+        "/\\ phase = \"Rejected\"",
+        "/\\ durable = [index |-> 1, membership |-> \"IncludingSelf\"]",
+        "/\\ application = 1",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"JointIncludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 1",
+        "/\\ commitIndex = 1",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Unsupported\"",
+        "",
+        "State 3: <UnsafeRejectDurable line 184, col 5 to line 188, col 62 of module CharlotteSnapshotRestore>",
+        "/\\ phase = \"Rejected\"",
+        "/\\ durable = [index |-> 2, membership |-> \"JointIncludingSelf\"]",
+        "/\\ application = 1",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"JointIncludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 1",
+        "/\\ commitIndex = 1",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Unsupported\""
+      ],
+      "actions": [
+        "Initial",
+        "RejectUnsupported",
+        "UnsafeRejectDurable"
+      ]
+    },
+    {
+      "module": "CharlotteSnapshotRestore",
+      "config": "CharlotteSnapshotRestore_progress_unsafe.cfg",
+      "expected_counterexample": true,
+      "generated_states": 127,
+      "distinct_states": 74,
+      "log_sha256": "cf83fe6b9976c1a5d39ea74d85c6d10fc233648c15fdc091cbec22c4de0b5c47",
+      "action_coverage": {
+        "Init": {
+          "new_successors": 36,
+          "total_successors": 36
+        },
+        "ReadHeader": {
+          "new_successors": 12,
+          "total_successors": 12
+        },
+        "ParseSections": {
+          "new_successors": 11,
+          "total_successors": 11
+        },
+        "RejectUnsupported": {
+          "new_successors": 6,
+          "total_successors": 7
+        },
+        "RejectMalformed": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "Validate": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "Restore": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "Persist": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "DefinitePersistenceFailure": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "AmbiguousPersistenceFailure": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateStreamJoin": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateStreamRetained": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateRecoveryJoin": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateRecoveryRetained": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "Crash": {
+          "new_successors": 18,
+          "total_successors": 29
+        },
+        "BeginRecovery": {
+          "new_successors": 3,
+          "total_successors": 45
+        },
+        "UnsafeRejectApplication": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectDurable": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectProgress": {
+          "new_successors": 6,
+          "total_successors": 7
+        },
+        "UnsafeRejectMembership": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectJoin": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeExposeRecovery": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafePublishBeforeRestore": {
+          "new_successors": 0,
+          "total_successors": 0
+        }
+      },
+      "exit_status": "nonzero, verified by harness",
+      "violated_invariant": "RejectionPreservesProgress",
+      "trace": [
+        "State 1: <Initial predicate>",
+        "/\\ phase = \"Header\"",
+        "/\\ durable = [index |-> 1, membership |-> \"IncludingSelf\"]",
+        "/\\ application = 1",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"IncludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 1",
+        "/\\ commitIndex = 1",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Unsupported\"",
+        "",
+        "State 2: <RejectUnsupported line 72, col 22 to line 72, col 57 of module CharlotteSnapshotRestore>",
+        "/\\ phase = \"Rejected\"",
+        "/\\ durable = [index |-> 1, membership |-> \"IncludingSelf\"]",
+        "/\\ application = 1",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"IncludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 1",
+        "/\\ commitIndex = 1",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Unsupported\"",
+        "",
+        "State 3: <UnsafeRejectProgress line 191, col 5 to line 195, col 41 of module CharlotteSnapshotRestore>",
+        "/\\ phase = \"Rejected\"",
+        "/\\ durable = [index |-> 1, membership |-> \"IncludingSelf\"]",
+        "/\\ application = 1",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"IncludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 2",
+        "/\\ commitIndex = 2",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Unsupported\""
+      ],
+      "actions": [
+        "Initial",
+        "RejectUnsupported",
+        "UnsafeRejectProgress"
+      ]
+    },
+    {
+      "module": "CharlotteSnapshotRestore",
+      "config": "CharlotteSnapshotRestore_membership_unsafe.cfg",
+      "expected_counterexample": true,
+      "generated_states": 156,
+      "distinct_states": 87,
+      "log_sha256": "5a5e2fb1df800cd7a23dd25e57412a6b70f649e4a0b310b00b8a9e4292e26642",
+      "action_coverage": {
+        "Init": {
+          "new_successors": 36,
+          "total_successors": 36
+        },
+        "ReadHeader": {
+          "new_successors": 14,
+          "total_successors": 14
+        },
+        "ParseSections": {
+          "new_successors": 12,
+          "total_successors": 12
+        },
+        "RejectUnsupported": {
+          "new_successors": 7,
+          "total_successors": 8
+        },
+        "RejectMalformed": {
+          "new_successors": 3,
+          "total_successors": 3
+        },
+        "Validate": {
+          "new_successors": 3,
+          "total_successors": 3
+        },
+        "Restore": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "Persist": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "DefinitePersistenceFailure": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "AmbiguousPersistenceFailure": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateStreamJoin": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateStreamRetained": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateRecoveryJoin": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateRecoveryRetained": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "Crash": {
+          "new_successors": 21,
+          "total_successors": 39
+        },
+        "BeginRecovery": {
+          "new_successors": 3,
+          "total_successors": 54
+        },
+        "UnsafeRejectApplication": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectDurable": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectProgress": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectMembership": {
+          "new_successors": 6,
+          "total_successors": 7
+        },
+        "UnsafeRejectJoin": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeExposeRecovery": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafePublishBeforeRestore": {
+          "new_successors": 0,
+          "total_successors": 0
+        }
+      },
+      "exit_status": "nonzero, verified by harness",
+      "violated_invariant": "RejectionPreservesMembership",
+      "trace": [
+        "State 1: <Initial predicate>",
+        "/\\ phase = \"Header\"",
+        "/\\ durable = [index |-> 1, membership |-> \"IncludingSelf\"]",
+        "/\\ application = 1",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"JointIncludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 1",
+        "/\\ commitIndex = 1",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Unsupported\"",
+        "",
+        "State 2: <RejectUnsupported line 72, col 22 to line 72, col 57 of module CharlotteSnapshotRestore>",
+        "/\\ phase = \"Rejected\"",
+        "/\\ durable = [index |-> 1, membership |-> \"IncludingSelf\"]",
+        "/\\ application = 1",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"JointIncludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 1",
+        "/\\ commitIndex = 1",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Unsupported\"",
+        "",
+        "State 3: <UnsafeRejectMembership line 198, col 5 to line 202, col 62 of module CharlotteSnapshotRestore>",
+        "/\\ phase = \"Rejected\"",
+        "/\\ durable = [index |-> 1, membership |-> \"IncludingSelf\"]",
+        "/\\ application = 1",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"JointIncludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 1",
+        "/\\ commitIndex = 1",
+        "/\\ membership = \"ExcludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Unsupported\""
+      ],
+      "actions": [
+        "Initial",
+        "RejectUnsupported",
+        "UnsafeRejectMembership"
+      ]
+    },
+    {
+      "module": "CharlotteSnapshotRestore",
+      "config": "CharlotteSnapshotRestore_join_unsafe.cfg",
+      "expected_counterexample": true,
+      "generated_states": 160,
+      "distinct_states": 89,
+      "log_sha256": "6fe9a320a851f2e72f63d4c4a2c06efebbab2257dd403889489bd914d09b691d",
+      "action_coverage": {
+        "Init": {
+          "new_successors": 36,
+          "total_successors": 36
+        },
+        "ReadHeader": {
+          "new_successors": 14,
+          "total_successors": 14
+        },
+        "ParseSections": {
+          "new_successors": 12,
+          "total_successors": 12
+        },
+        "RejectUnsupported": {
+          "new_successors": 7,
+          "total_successors": 8
+        },
+        "RejectMalformed": {
+          "new_successors": 3,
+          "total_successors": 3
+        },
+        "Validate": {
+          "new_successors": 5,
+          "total_successors": 5
+        },
+        "Restore": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "Persist": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "DefinitePersistenceFailure": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "AmbiguousPersistenceFailure": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateStreamJoin": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateStreamRetained": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateRecoveryJoin": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateRecoveryRetained": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "Crash": {
+          "new_successors": 21,
+          "total_successors": 41
+        },
+        "BeginRecovery": {
+          "new_successors": 3,
+          "total_successors": 54
+        },
+        "UnsafeRejectApplication": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectDurable": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectProgress": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectMembership": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectJoin": {
+          "new_successors": 6,
+          "total_successors": 7
+        },
+        "UnsafeExposeRecovery": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafePublishBeforeRestore": {
+          "new_successors": 0,
+          "total_successors": 0
+        }
+      },
+      "exit_status": "nonzero, verified by harness",
+      "violated_invariant": "RejectionPreservesJoin",
+      "trace": [
+        "State 1: <Initial predicate>",
+        "/\\ phase = \"Header\"",
+        "/\\ durable = [index |-> 1, membership |-> \"IncludingSelf\"]",
+        "/\\ application = 1",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"ExcludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 1",
+        "/\\ commitIndex = 1",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Unsupported\"",
+        "",
+        "State 2: <RejectUnsupported line 72, col 22 to line 72, col 57 of module CharlotteSnapshotRestore>",
+        "/\\ phase = \"Rejected\"",
+        "/\\ durable = [index |-> 1, membership |-> \"IncludingSelf\"]",
+        "/\\ application = 1",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"ExcludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 1",
+        "/\\ commitIndex = 1",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Unsupported\"",
+        "",
+        "State 3: <UnsafeRejectJoin line 205, col 5 to line 209, col 62 of module CharlotteSnapshotRestore>",
+        "/\\ phase = \"Rejected\"",
+        "/\\ durable = [index |-> 1, membership |-> \"IncludingSelf\"]",
+        "/\\ application = 1",
+        "/\\ joining = FALSE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"ExcludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 1",
+        "/\\ commitIndex = 1",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Unsupported\""
+      ],
+      "actions": [
+        "Initial",
+        "RejectUnsupported",
+        "UnsafeRejectJoin"
+      ]
+    },
+    {
+      "module": "CharlotteSnapshotRestore",
+      "config": "CharlotteSnapshotRestore_exposure_unsafe.cfg",
+      "expected_counterexample": true,
+      "generated_states": 221,
+      "distinct_states": 121,
+      "log_sha256": "109e766dc2a9113163350d9e1dc0ab8916c0b0ad6852b4ec24459967b0f2ce11",
+      "action_coverage": {
+        "Init": {
+          "new_successors": 36,
+          "total_successors": 36
+        },
+        "ReadHeader": {
+          "new_successors": 14,
+          "total_successors": 14
+        },
+        "ParseSections": {
+          "new_successors": 14,
+          "total_successors": 14
+        },
+        "RejectUnsupported": {
+          "new_successors": 7,
+          "total_successors": 8
+        },
+        "RejectMalformed": {
+          "new_successors": 7,
+          "total_successors": 7
+        },
+        "Validate": {
+          "new_successors": 7,
+          "total_successors": 7
+        },
+        "Restore": {
+          "new_successors": 6,
+          "total_successors": 6
+        },
+        "Persist": {
+          "new_successors": 3,
+          "total_successors": 3
+        },
+        "DefinitePersistenceFailure": {
+          "new_successors": 3,
+          "total_successors": 3
+        },
+        "AmbiguousPersistenceFailure": {
+          "new_successors": 3,
+          "total_successors": 3
+        },
+        "ActivateStreamJoin": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateStreamRetained": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateRecoveryJoin": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "ActivateRecoveryRetained": {
+          "new_successors": 1,
+          "total_successors": 1
+        },
+        "Crash": {
+          "new_successors": 28,
+          "total_successors": 59
+        },
+        "BeginRecovery": {
+          "new_successors": 3,
+          "total_successors": 72
+        },
+        "UnsafeRejectApplication": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectDurable": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectProgress": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectMembership": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectJoin": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeExposeRecovery": {
+          "new_successors": 7,
+          "total_successors": 8
+        },
+        "UnsafePublishBeforeRestore": {
+          "new_successors": 0,
+          "total_successors": 0
+        }
+      },
+      "exit_status": "nonzero, verified by harness",
+      "violated_invariant": "RecoveryExposureRequiresRestore",
+      "trace": [
+        "State 1: <Initial predicate>",
+        "/\\ phase = \"Header\"",
+        "/\\ durable = [index |-> 2, membership |-> \"ExcludingSelf\"]",
+        "/\\ application = 0",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Recovery\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"ExcludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 0",
+        "/\\ commitIndex = 0",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 2, membership |-> \"ExcludingSelf\"],",
+        "  application |-> 0,",
+        "  commitIndex |-> 0,",
+        "  appliedIndex |-> 0,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = FALSE",
+        "/\\ verdict = \"Unsupported\"",
+        "",
+        "State 2: <RejectUnsupported line 72, col 22 to line 72, col 57 of module CharlotteSnapshotRestore>",
+        "/\\ phase = \"Rejected\"",
+        "/\\ durable = [index |-> 2, membership |-> \"ExcludingSelf\"]",
+        "/\\ application = 0",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Recovery\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"ExcludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 0",
+        "/\\ commitIndex = 0",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 2, membership |-> \"ExcludingSelf\"],",
+        "  application |-> 0,",
+        "  commitIndex |-> 0,",
+        "  appliedIndex |-> 0,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = FALSE",
+        "/\\ verdict = \"Unsupported\"",
+        "",
+        "State 3: <UnsafeExposeRecovery line 212, col 5 to line 216, col 62 of module CharlotteSnapshotRestore>",
+        "/\\ phase = \"Rejected\"",
+        "/\\ durable = [index |-> 2, membership |-> \"ExcludingSelf\"]",
+        "/\\ application = 0",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Recovery\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"ExcludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 0",
+        "/\\ commitIndex = 0",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 2, membership |-> \"ExcludingSelf\"],",
+        "  application |-> 0,",
+        "  commitIndex |-> 0,",
+        "  appliedIndex |-> 0,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Unsupported\""
+      ],
+      "actions": [
+        "Initial",
+        "RejectUnsupported",
+        "UnsafeExposeRecovery"
+      ]
+    },
+    {
+      "module": "CharlotteSnapshotRestore",
+      "config": "CharlotteSnapshotRestore_ordering_unsafe.cfg",
+      "expected_counterexample": true,
+      "generated_states": 257,
+      "distinct_states": 131,
+      "log_sha256": "ec5aef21eb6ea03735dc60a0d37728806a606f3b28b2a8658660da527fb79897",
+      "action_coverage": {
+        "Init": {
+          "new_successors": 36,
+          "total_successors": 36
+        },
+        "ReadHeader": {
+          "new_successors": 14,
+          "total_successors": 15
+        },
+        "ParseSections": {
+          "new_successors": 14,
+          "total_successors": 15
+        },
+        "RejectUnsupported": {
+          "new_successors": 7,
+          "total_successors": 7
+        },
+        "RejectMalformed": {
+          "new_successors": 7,
+          "total_successors": 7
+        },
+        "Validate": {
+          "new_successors": 7,
+          "total_successors": 8
+        },
+        "Restore": {
+          "new_successors": 7,
+          "total_successors": 8
+        },
+        "Persist": {
+          "new_successors": 3,
+          "total_successors": 3
+        },
+        "DefinitePersistenceFailure": {
+          "new_successors": 3,
+          "total_successors": 3
+        },
+        "AmbiguousPersistenceFailure": {
+          "new_successors": 2,
+          "total_successors": 3
+        },
+        "ActivateStreamJoin": {
+          "new_successors": 1,
+          "total_successors": 1
+        },
+        "ActivateStreamRetained": {
+          "new_successors": 1,
+          "total_successors": 1
+        },
+        "ActivateRecoveryJoin": {
+          "new_successors": 2,
+          "total_successors": 2
+        },
+        "ActivateRecoveryRetained": {
+          "new_successors": 2,
+          "total_successors": 2
+        },
+        "Crash": {
+          "new_successors": 37,
+          "total_successors": 70
+        },
+        "BeginRecovery": {
+          "new_successors": 3,
+          "total_successors": 96
+        },
+        "UnsafeRejectApplication": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectDurable": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectProgress": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectMembership": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeRejectJoin": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafeExposeRecovery": {
+          "new_successors": 0,
+          "total_successors": 0
+        },
+        "UnsafePublishBeforeRestore": {
+          "new_successors": 3,
+          "total_successors": 4
+        }
+      },
+      "exit_status": "nonzero, verified by harness",
+      "violated_invariant": "PublicationRequiresRestore",
+      "trace": [
+        "State 1: <Initial predicate>",
+        "/\\ phase = \"Header\"",
+        "/\\ durable = [index |-> 1, membership |-> \"IncludingSelf\"]",
+        "/\\ application = 1",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"JointIncludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 1",
+        "/\\ commitIndex = 1",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Supported\"",
+        "",
+        "State 2: <ReadHeader line 49, col 5 to line 54, col 62 of module CharlotteSnapshotRestore>",
+        "/\\ phase = \"Sections\"",
+        "/\\ durable = [index |-> 1, membership |-> \"IncludingSelf\"]",
+        "/\\ application = 1",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"JointIncludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 1",
+        "/\\ commitIndex = 1",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Supported\"",
+        "",
+        "State 3: <ParseSections line 57, col 5 to line 62, col 62 of module CharlotteSnapshotRestore>",
+        "/\\ phase = \"Parsed\"",
+        "/\\ durable = [index |-> 1, membership |-> \"IncludingSelf\"]",
+        "/\\ application = 1",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"JointIncludingSelf\"]",
+        "/\\ validated = FALSE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 1",
+        "/\\ commitIndex = 1",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Supported\"",
+        "",
+        "State 4: <Validate line 76, col 5 to line 82, col 51 of module CharlotteSnapshotRestore>",
+        "/\\ phase = \"Validated\"",
+        "/\\ durable = [index |-> 1, membership |-> \"IncludingSelf\"]",
+        "/\\ application = 1",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"JointIncludingSelf\"]",
+        "/\\ validated = TRUE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 1",
+        "/\\ commitIndex = 1",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Supported\"",
+        "",
+        "State 5: <UnsafePublishBeforeRestore line 219, col 5 to line 223, col 62 of module CharlotteSnapshotRestore>",
+        "/\\ phase = \"Persisted\"",
+        "/\\ durable = [index |-> 2, membership |-> \"JointIncludingSelf\"]",
+        "/\\ application = 1",
+        "/\\ joining = TRUE",
+        "/\\ replyDone = FALSE",
+        "/\\ mode = \"Stream\"",
+        "/\\ candidate = [index |-> 2, membership |-> \"JointIncludingSelf\"]",
+        "/\\ validated = TRUE",
+        "/\\ restored = FALSE",
+        "/\\ appliedIndex = 1",
+        "/\\ commitIndex = 1",
+        "/\\ membership = \"IncludingSelf\"",
+        "/\\ baseline = [ membership |-> \"IncludingSelf\",",
+        "  durable |-> [index |-> 1, membership |-> \"IncludingSelf\"],",
+        "  application |-> 1,",
+        "  commitIndex |-> 1,",
+        "  appliedIndex |-> 1,",
+        "  joining |-> TRUE ]",
+        "/\\ exposed = TRUE",
+        "/\\ verdict = \"Supported\""
+      ],
+      "actions": [
+        "Initial",
+        "ReadHeader",
+        "ParseSections",
+        "Validate",
+        "UnsafePublishBeforeRestore"
+      ]
+    }
+  ],
+  "failed_or_rejected_runs": [
+    {
+      "case": "old-term unsafe commit",
+      "exit_status": 101,
+      "meaning": "Production regression: old-term acknowledgement advances commit to 3; expected 0.",
+      "log_sha256": "07d89afb97162b5924e112fcf90d0f53811e629900892660497f1e715002d7db",
+      "diagnostics": [
+        "thread 'node::tests::old_term_append_response_cannot_commit_a_replaced_prefix' (19242131) panicked at crates/catten-graft/src/node.rs:1563:9:",
+        "assertion `left == right` failed: an old response cannot acknowledge the new prefix",
+        "  left: 3",
+        " right: 0",
+        "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 34 filtered out; finished in 0.00s",
+        ""
+      ]
+    },
+    {
+      "case": "reordered/admission regressions",
+      "exit_status": 101,
+      "meaning": "Production regressions: confirmed match 3 regresses to 1, and an unadmitted higher-term source steps the leader down.",
+      "log_sha256": "b1318fa4d1aa8b88878ec03bef93ecb58387354fd414471c3915b97ec7273923",
+      "diagnostics": [
+        "thread 'node::tests::replication_responses_require_an_admitted_matching_peer_and_local_index' (19242264) panicked at crates/catten-graft/src/node.rs:1656:9:",
+        "assertion `left == right` failed",
+        "  left: Follower",
+        " right: Leader",
+        "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+        "thread 'node::tests::reordered_replication_responses_preserve_confirmed_progress' (19242263) panicked at crates/catten-graft/src/node.rs:1599:9:",
+        "  left: Some(1)",
+        " right: Some(3)",
+        "",
+        "test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 33 filtered out; finished in 0.00s"
+      ]
+    },
+    {
+      "case": "new fixture assertion",
+      "exit_status": 101,
+      "meaning": "Fixture mistake: leader construction prepopulates snapshot_offsets. Rejection must preserve that map, not make it empty.",
+      "log_sha256": "b849f1bd8349b5b60eaf4bc68567caceec862b0e899351ca25a3723010298ff8",
+      "diagnostics": [
+        "thread 'node::tests::snapshot_responses_require_an_admitted_peer_and_completed_result' (19245410) panicked at crates/catten-graft/src/node.rs:1763:9:",
+        "assertion failed: node.snapshot_offsets.is_empty()",
+        "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+        "test result: FAILED. 35 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+        ""
+      ]
+    },
+    {
+      "case": "response model draft",
+      "exit_status": 75,
+      "meaning": "Model assignment-precedence error left contactProof unspecified. Parenthesize boolean right-hand sides; no production defect.",
+      "log_sha256": "6ecb4f3ed407e3567f200d0d3d415bfb38690517b52a92163e9d13d6b69d991b",
+      "diagnostics": [
+        "Error: Successor state is not completely specified by action Acknowledge of the next-state relation. The following variable is not assigned: contactProof.",
+        ""
+      ]
+    },
+    {
+      "case": "two-node launch environment",
+      "exit_status": 1,
+      "meaning": "Runner refused the retained CODEX_SANDBOX_NETWORK_DISABLED marker before build/guest execution; an explicitly escalated local-socket run follows.",
+      "log_sha256": "e46420568f376f48f740f102ed0265e99d5c15eacce2e26d1cccf845e5a4921b",
+      "diagnostics": [
+        "error: two-QEMU socket networking is unavailable in this sandbox",
+        "       CODEX_SANDBOX_NETWORK_DISABLED=1 prevents the listener/connect path.",
+        "       Re-run outside the sandbox (or with network permission)."
+      ]
+    }
+  ],
+  "host_validation": [
+    {
+      "command": "cargo test --locked --manifest-path <repo>/crates/catten-graft/Cargo.toml --lib (outside root Cargo configuration)",
+      "exit_status": 0,
+      "passed": 36,
+      "failed": 0,
+      "log_sha256": "17e21d46afdce8f587f2497a89145c0f54130ad3d47958237777ef0da7b483e2",
+      "relevant_tests": [
+        "node::tests::old_term_append_response_cannot_commit_a_replaced_prefix",
+        "node::tests::reordered_replication_responses_preserve_confirmed_progress",
+        "node::tests::replication_responses_require_an_admitted_matching_peer_and_local_index",
+        "node::tests::snapshot_responses_require_an_admitted_peer_and_completed_result"
+      ]
+    },
+    {
+      "command": "cargo test --locked --manifest-path <repo>/crates/catten-services/Cargo.toml --lib (outside root Cargo configuration)",
+      "exit_status": 0,
+      "passed": 145,
+      "failed": 0,
+      "log_sha256": "d43546db7ebcbc96204b169964224a1c223d8dd7da5e70cd9bb4484e8ce01779",
+      "relevant_tests": []
+    }
+  ],
+  "checks": {
+    "clippy": {
+      "command": "cargo clippy --locked --manifest-path <repo>/crates/catten-graft/Cargo.toml --all-targets -- -D warnings (outside root Cargo configuration)",
+      "exit_status": 0,
+      "log_sha256": "e6d35c3329663fcb8ff6ba60d320447fec5001a415d650d9c56cc46ec01dc3ff"
+    },
+    "format": "cargo fmt --all -- --check passes",
+    "bundle_build": {
+      "command": "scripts/build-catten-services.sh --embed",
+      "exit_status": 0,
+      "log_sha256": "762d209fd4b9cd73ca31be1227eaf274538021e3e982e55f6bdc780d7b46940a"
+    },
+    "bundle_check": {
+      "command": "scripts/build-catten-services.sh --check",
+      "exit_status": 0,
+      "log_sha256": "bd12602f973835550e64c32359da39335de24fca89d6154fe94e745fa68e97bf"
+    },
+    "local_markdown_destinations": {
+      "checked": 316,
+      "missing": 0
+    },
+    "shell_syntax": "bash -n docs/tla/check.sh passes",
+    "whitespace": "git diff --check passes"
+  },
+  "manual_validation": {
+    "command": "Two final-source pdflatex -no-shell-escape -interaction=nonstopmode -halt-on-error passes with temporary output-directory, after the initial pass",
+    "exit_statuses": [
+      0,
+      0
+    ],
+    "pages": 232,
+    "reviewed_pdf_pages": [
+      14,
+      15,
+      16,
+      196,
+      197,
+      198,
+      199,
+      200,
+      201,
+      202,
+      203,
+      204,
+      205,
+      206,
+      207,
+      208,
+      209,
+      210,
+      211,
+      212,
+      213
+    ],
+    "visual_review": "Rendered contents and all Chapter 21 pages: no clipping, overlap or broken rows. No Chapter 21 overfull boxes; unrelated existing warnings remain.",
+    "source_sha256": "00364b6e1a60a6d332a48e69ba7434438a3907a1319e9137d9aeea91c1b3dc1d",
+    "temporary_pdf_sha256": "704b5b0a7f8cc86bee4ee413e5c7601dc1c9b488cb85e89dde8d65c7d4c6a866",
+    "build_log_sha256": [
+      "dfd1dc0f9426e2c22bb7577ae6bc645c81de293a501b937fd935b9c205f7bd70",
+      "dfd1dc0f9426e2c22bb7577ae6bc645c81de293a501b937fd935b9c205f7bd70"
+    ],
+    "tracked_pdf_preserved_sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f"
+  },
+  "native_validation": [
+    {
+      "command": "scripts/run-aarch64.sh --instance raft-response-audit --fresh-storage --timeout 180",
+      "exit_status": 0,
+      "kernel_sha256": "53786db1afe18262eba044f163ee32480521d08ffcac165a3952108ebd0d403c",
+      "runner_log_sha256": "7e1f5f333f2b6bf1f8faca31d748fdbdc2c7123d52318c0fd920dd2b458e40eb",
+      "serial_log_sha256": "6485f2c38d78bf369cf65b7a30d3992510ebbf14e5e3e04e9790fbd018140880",
+      "passed": 17,
+      "failed": 0,
+      "pending": 0,
+      "passed_bitmap": "0x1ffff",
+      "failed_bitmap": "0x0",
+      "pending_bitmap": "0x0",
+      "result_excerpts": [
+        "[+    10.613813] [raft-storage] SUCCESS: term/vote state survived Raft process restart on NVMe.",
+        "[+    11.985645] SELFTEST COMPLETE: passed=17 failed=0 pending=0 passed_bitmap=0x1ffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ],
+      "meaning": "Base ARM boot and NVMe Raft term/vote restart, not native delayed-response injection or multi-node proof."
+    },
+    {
+      "case": "first-a",
+      "profile": "debug --dns-test --fresh-storage --timeout 180; socket-LAN MAC suffixes 01/02",
+      "exit_status": 1,
+      "kernel_sha256": "8fefd47edfe60e750091daa051775f485fa8c6b416e5ecc8c646c47339b67962",
+      "passed": 18,
+      "failed": 1,
+      "pending": 1,
+      "passed_bitmap": "0x3ffff",
+      "failed_bitmap": "0x40000",
+      "pending_bitmap": "0x80000",
+      "runner_log_sha256": "547164e89b363ec5d9abe479cd8ea696fe90f4f68daa225046e890e74e5daba7",
+      "serial_log_sha256": "6d0dfff6a9c0fd1a6ad62b6f088a369ad9887b63c3bfbc52945d34cf524a1d1b",
+      "serial_file_created_utc": "2026-10-18T20:29:41.717858+00:00",
+      "result_excerpts": [
+        "[+   127.387813] SELFTEST COMPLETE: passed=18 failed=1 pending=1 passed_bitmap=0x3ffff failed_bitmap=0x40000 pending_bitmap=0x80000",
+        "***",
+        "Kernel panic:",
+        "panicked at crates/catten/src/self_test/el0_disco.rs:116:26:",
+        "self-test deadline expired while waiting for EL0 disco cross-node peer",
+        "Kernel backtrace (raw return addresses; text=0xffffffff80000000..0xffffffff8043e56c, sp=0xffff8100002b8a20, fp=0xffff8100002b8aa0):",
+        "  #00 0xffffffff802d31d4",
+        "  #01 0xffffffff803a0cac",
+        "  #02 0xffffffff80321a48",
+        "  #03 0xffffffff80000a5c",
+        "***",
+        "[+   127.387281] SELFTEST FAILED: disco",
+        "[+   127.387561] SELFTEST PENDING: dns",
+        "[+   127.387813] SELFTEST COMPLETE: passed=18 failed=1 pending=1 passed_bitmap=0x3ffff failed_bitmap=0x40000 pending_bitmap=0x80000",
+        "[+   127.388441] [thread] abort tid=46 lp=1 asid=0"
+      ]
+    },
+    {
+      "case": "first-b",
+      "profile": "debug --dns-test --fresh-storage --timeout 180; socket-LAN MAC suffixes 01/02",
+      "exit_status": 1,
+      "kernel_sha256": "8fefd47edfe60e750091daa051775f485fa8c6b416e5ecc8c646c47339b67962",
+      "passed": 18,
+      "failed": 1,
+      "pending": 1,
+      "passed_bitmap": "0x3ffff",
+      "failed_bitmap": "0x40000",
+      "pending_bitmap": "0x80000",
+      "runner_log_sha256": "3e9a0f83d46e7259b2f75f858de92b2968dfb4bcf41b9461e45a53f69be9c61d",
+      "serial_log_sha256": "f87eec169de945e15d3287da4c7136ebfe395e9f818311e617f06423ab40c4e6",
+      "serial_file_created_utc": "2026-10-18T20:31:49.895335+00:00",
+      "result_excerpts": [
+        "[+   127.477056] SELFTEST COMPLETE: passed=18 failed=1 pending=1 passed_bitmap=0x3ffff failed_bitmap=0x40000 pending_bitmap=0x80000",
+        "***",
+        "Kernel panic:",
+        "panicked at crates/catten/src/self_test/el0_disco.rs:116:26:",
+        "self-test deadline expired while waiting for EL0 disco cross-node peer",
+        "Kernel backtrace (raw return addresses; text=0xffffffff80000000..0xffffffff8043e56c, sp=0xffff8100002daa20, fp=0xffff8100002daaa0):",
+        "  #00 0xffffffff802d31d4",
+        "  #01 0xffffffff803a0cac",
+        "  #02 0xffffffff80321a48",
+        "  #03 0xffffffff80000a5c",
+        "***",
+        "[+   127.476524] SELFTEST FAILED: disco",
+        "[+   127.476820] SELFTEST PENDING: dns",
+        "[+   127.477056] SELFTEST COMPLETE: passed=18 failed=1 pending=1 passed_bitmap=0x3ffff failed_bitmap=0x40000 pending_bitmap=0x80000",
+        "[+   127.477676] [thread] abort tid=41 lp=1 asid=0"
+      ]
+    },
+    {
+      "case": "repeat-a",
+      "profile": "debug --dns-test --fresh-storage --timeout 180; socket-LAN MAC suffixes 01/02",
+      "exit_status": 0,
+      "kernel_sha256": "8fefd47edfe60e750091daa051775f485fa8c6b416e5ecc8c646c47339b67962",
+      "passed": 20,
+      "failed": 0,
+      "pending": 0,
+      "passed_bitmap": "0xfffff",
+      "failed_bitmap": "0x0",
+      "pending_bitmap": "0x0",
+      "runner_log_sha256": "cfd444f32ef5fc946d3e5069d10eed3dc7012a3b020f63a79f6a8f9ce236d614",
+      "serial_log_sha256": "9c227a96cf19075dc6f064a512a472f637c8b958a85753af208b4256cb20126f",
+      "serial_file_created_utc": "2026-10-18T20:34:34.850362+00:00",
+      "result_excerpts": [
+        "[+    92.269222] [disco] SUCCESS: cluster discovery service is running.",
+        "[+    94.448278] [EL0 LOG] lp=0 asid=112 [dns] JOIN ACK index=0 term=1 committed_members=1",
+        "[+   100.529985] [EL0 LOG] lp=0 asid=112 [dns] JOIN ACK index=4 term=1 committed_members=1",
+        "[+   105.508703] [dns] remote echo result = Some(42)",
+        "[+   105.849572] [dns] full-name echo result = 43",
+        "[+   106.808239] [dns] SUCCESS: Raft-elected name service replicated the catalog, served a remote invocation, and automatically fenced endpoint-death unregister by generation.",
+        "[+   106.809462] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0xfffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    },
+    {
+      "case": "repeat-b",
+      "profile": "debug --dns-test --fresh-storage --timeout 180; socket-LAN MAC suffixes 01/02",
+      "exit_status": 0,
+      "kernel_sha256": "8fefd47edfe60e750091daa051775f485fa8c6b416e5ecc8c646c47339b67962",
+      "passed": 20,
+      "failed": 0,
+      "pending": 0,
+      "passed_bitmap": "0xfffff",
+      "failed_bitmap": "0x0",
+      "pending_bitmap": "0x0",
+      "runner_log_sha256": "c14901f32139bdb5aa26c085047b40d8ad6aecdab3a03d65e9514b94e637cfff",
+      "serial_log_sha256": "87a393d14d2e07af895cf7394e80e753a3a55f4ccaf4d4bed2104a4913c978fe",
+      "serial_file_created_utc": "2026-10-18T20:35:55.789523+00:00",
+      "result_excerpts": [
+        "[+    11.699670] [disco] SUCCESS: cluster discovery service is running.",
+        "[+    24.068526] [dns] remote echo result = Some(42)",
+        "[+    24.070903] [dns] full-name echo result = 43",
+        "[+    25.618889] [dns] endpoint death unregistered generation 1; stale replay rejected.",
+        "[+    25.619239] [dns] SUCCESS: Raft-elected name service replicated the catalog, served a remote invocation, and automatically fenced endpoint-death unregister by generation.",
+        "[+    25.620076] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0xfffff failed_bitmap=0x0 pending_bitmap=0x0"
+      ]
+    }
+  ],
+  "service_artifacts": {
+    "ordered_filename_digest_lines_sha256": "c7708f21a71a6711445d524f54b3ba8fd5faddc92198de36c6b42922fd577632",
+    "bundle_count": 41,
+    "selected_elf_sha256": {
+      "raft.elf": "da15e2b69cf716e9691ada836b2877db01c70788e2a5ac8c958cd7d9213ab878",
+      "dns.elf": "722ae26b6733773059744f90d5423068edd793da496b48e859a12b126b34723b"
+    },
+    "encoding": "SHA-256 of newline-terminated sorted filename:ELF-SHA256 lines; full manifest retained below.",
+    "manifest": [
+      "agent.elf:7d3b67eac957f67ff0e6f3b58eaae1be5cc26ed98406414fe39061471c5d8535",
+      "cclient.elf:d11a4899844532ab013eb1a72026b9f27df7e9b2104708bcfedd4cb9993603d0",
+      "client.elf:7967a2b97502cccd14da1da8db6e008d34e3cef83a4f247d510521a8a6d5e8d0",
+      "clusterctl.elf:471f93f21fe1b023162f28ea35f48ae92eea69da74f26a9dc52b483aaa5f1cd3",
+      "deployd.elf:be01ab8f5ede59c5a369117d3f228f7ada7a4c5e9eda1f68f5c88486fc103ef7",
+      "disco.elf:8c232df50a9633bccfac9a211d5e4f378cf535215e2b5cdebf4f316c69798e4a",
+      "dns.elf:722ae26b6733773059744f90d5423068edd793da496b48e859a12b126b34723b",
+      "echo.elf:b802e0b48b6d702fd79374b5e6f3becb21a9edaa151a2bb1ea0ab2bec0c7035b",
+      "frouter.elf:8b1502cae4b32c0145ab09267fb3170eea406da05df04ade444bec6e3ca0685b",
+      "fs.elf:7187a33826e3e62706847dba9ff007047f071859117bf5374d08b449a5eddf1c",
+      "grantctl.elf:1ae9fc289499dcd4f9e2a396ba14661325722feeabf7721162a6a4f596e0bbb5",
+      "greet.elf:c53eb700ed9efafc5d40e53b0a4b2e56e241d08598cfd1079f856db9de514c53",
+      "httpd.elf:d6becb7fa078efeb8bf96b6652150ba8cb7fcdbe50021b4b399138e5c731a12f",
+      "kafka.elf:113b404a01138b574fbc5c80ad77bdb137a412bc97c7d39f207561c1682e1232",
+      "kafka_fence_smoke.elf:d7a8a318ab20aa1b964cc6300244394df24eed0c0e4e2166c7a3fdcebffa23df",
+      "kafka_smoke.elf:84371e9e73bcfd74be5b431e3d74d62c69d6a2117f9f878c54b4ff75f631540b",
+      "kafka_step.elf:c1ec93baf36c62b0ff4789534d728b1aa7ee3c286c698db5fba7cf7bed305580",
+      "kafka_step_input.elf:eb7411550595ec46211d7e638d0d66cbc9716ff571c22c0c7c6cec80153751a6",
+      "kafka_step_proc.elf:4725cc1dea80963ae967206919a42de854d534d35aaae4aabbf4cbcaebf84144",
+      "nclient.elf:2fe2c6277a856fcf5af72ca4bcbd94a789a2f5dd78ee7c7514a9d08de6c3d0c2",
+      "net.elf:2adb539affc013fca4ce7694ba0a5626de67b5b49602ff29cab2ecec936cf116",
+      "ns.elf:d3f12171855d0dfc63e95e63b18b4374ab185b28d740aeb0d30472bcb0a085e9",
+      "nvme.elf:d8690c20426eeb838786900ec33d924f960b9572cb81bd32ec4dc4def922d189",
+      "nvme_client.elf:b6535d8748f007a30509fb7e7ec9370c36a2c7d4538d231cf503562060ca9138",
+      "objstore.elf:b9838dff983d5215ef8e1ae699ceb2028fe812c49267966536eb24bea14117f0",
+      "objstore_client.elf:437d09698a14bed86f74c19582dd7e424e49e76d7cc599f5ed60474e2e45bcd6",
+      "observe.elf:8a18e19b951d324bd93da7c4cc26a68c788356d6e34325d771692ad256b13a48",
+      "raft.elf:da15e2b69cf716e9691ada836b2877db01c70788e2a5ac8c958cd7d9213ab878",
+      "rclient.elf:9ef269c04623ad6ae8a5d2854af38362511a7a97508e12c923d029c2ab26ef0c",
+      "relmsg.elf:b2225be466b5ee9e0e74b35d194450f889585d2f1c10221375cdd568a5a0d0a8",
+      "rng.elf:add0bd0c85847f0663fb49c3ae915164499feffbbb4cea5e07c9830c1a2c2df1",
+      "s3.elf:0c0aafdd9316c2a412fe0b8fce565015398c132fb01b3d642e5abd3154ff569f",
+      "s3_smoke.elf:8a54ef9fc0a56eceab5ec098a87aa7fd04e48eb399a057eb24940a014fcc5bf7",
+      "security_probe.elf:9695fdb28227ca993e9a76def091d787e6591d0efdd3d65bbf62b74e5397cff2",
+      "servicemgr.elf:ca0d2ef12a99976ca6829aeba2b1724f74a0a50a45b53730e56eafbb35c43e2d",
+      "shutdown_probe.elf:dc3093f1ce383b4026e73875ab8de80861bc955c0df8c4262f9e393e9cebee19",
+      "sitas-user.elf:a01b596eab01adc9f8bf7ac45228b1b21da9dcdb00b9e38799850358d01ed564",
+      "tcpclient.elf:b612770680a5d7dc8f03e0ffeee7287a2d47f7699ffb1521ded36d3d23f61b31",
+      "tcpip.elf:857eb9b535672312acd0ecc97466bdc29dd1fb3705719bac3790197fbf50d998",
+      "time.elf:8e289ea94f26208229125f7b306b7c51ce8262783a38438f493835ed6010e196",
+      "uart.elf:57e44f1f1e99848fa2a53f0af8c9aa0472b49729aee94fd23c5cbccad1c2b281"
+    ]
+  },
+  "pre_fix_node_with_three_regressions_sha256": "7c04198949ea132366175f2d73a3557ef21c405719a9e477d8438c2028dc7d73",
+  "native_pair_coordination": {
+    "repeat": {
+      "events": [
+        {
+          "event": "runner_started",
+          "utc": "2026-10-18T20:33:21.779362+00:00",
+          "instance": "rresp-a2",
+          "pid": 61344,
+          "arguments": [
+            "scripts/run-aarch64.sh",
+            "debug",
+            "--dns-test",
+            "--instance",
+            "rresp-a2",
+            "--mac",
+            "52:54:00:12:34:01",
+            "--fresh-storage",
+            "--timeout",
+            "180",
+            "--net-listen",
+            "12441"
+          ]
+        },
+        {
+          "event": "listener_ready",
+          "utc": "2026-10-18T20:34:35.338972+00:00"
+        },
+        {
+          "event": "runner_started",
+          "utc": "2026-10-18T20:34:35.340127+00:00",
+          "instance": "rresp-b2",
+          "pid": 63411,
+          "arguments": [
+            "scripts/run-aarch64.sh",
+            "debug",
+            "--dns-test",
+            "--instance",
+            "rresp-b2",
+            "--mac",
+            "52:54:00:12:34:02",
+            "--fresh-storage",
+            "--timeout",
+            "180",
+            "--net-connect",
+            "127.0.0.1:12441"
+          ]
+        },
+        {
+          "event": "runners_finished",
+          "utc": "2026-10-18T20:36:45.312548+00:00",
+          "exit_statuses": [
+            0,
+            0
+          ]
+        }
+      ],
+      "exit_statuses": [
+        0,
+        0
+      ]
+    },
+    "host_script_sha256": "fdea0989c243594b54b1f9c186089b271b4436aeb92a07166147d66466ea7ab3",
+    "host_output_sha256": "ab11633a335bf82c6956dccf10701d786bc9cf3dd7e42e0835fd0d8151fc8555",
+    "first_serial_creation_gap_seconds": 128.17747735977173,
+    "repeat_serial_creation_gap_seconds": 80.93916130065918,
+    "interpretation": "The first pair failed discovery with DNS pending on both. Its serial files began 128.18 seconds apart; the repeat began 80.94 seconds apart and passed unchanged kernel/bundle. Late peer startup is an observed fixture difference, not proof of a general discovery/Raft cause or of historical incident causality. Host coordination bounds listener polling without consuming the QEMU single accept slot; no production guest readiness change."
+  },
+  "limits": [
+    "Host core tests and a finite model reproduce the delayed old-term unsafe commit; native boots do not inject that response ordering.",
+    "Peer truthfulness, source identity and fixed membership roles are model inputs; no authenticated networking, Byzantine tolerance or removal/re-admission proof.",
+    "The contact proof is current-term response provenance, not lease freshness or linearizable-read proof.",
+    "Existing membership finalization and demoted-leader differences remain open in CONFORMANCE.md.",
+    "No cleanup owner, recovery registry, physical release or production trust boundary changes."
+  ],
+  "reviewed_document_sha256": {
+    "docs/reference/raft-conformance.md": "0a86b0b53f6659b8eb78e438cc3f1bb72ccf64db60e3333189697a1edba2ee0b",
+    "docs/reference/security-remediation.md": "ca5960b2e0ebf03de71afaf3c121e2c428df43bbc203a05003d4937e4a51132e",
+    "docs/reports/README.md": "b85691f44dd0c4375e909664975434f9a42df174525a9287247418b1a75b90b8",
+    "docs/tla/CONFORMANCE.md": "76ee35c02ee416f653883d4ae65d5c44a81fb6f4ae2668255e38fb9a003b4ede",
+    "docs/tla/README.md": "205aa807dd85a858472f0368c502ab3cf931ed2f9448b39f72c9e8174bdc9012",
+    "docs/reports/audits/2026-10-18-raft-response-fencing.md": "02238bed9befabab430fcc7801c7a2c19ac6dca2f75e6c3aae4660b4fb230fb7"
+  }
+}

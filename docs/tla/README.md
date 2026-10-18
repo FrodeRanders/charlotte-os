@@ -1,6 +1,6 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for thirty-one
+This directory contains finite, executable specifications for thirty-two
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
@@ -28,6 +28,7 @@ CharlotteOS subsystems:
 | DMA unit admission and uncertain map/unmap ownership | `CharlotteDmaOperation.tla` | `CharlotteDmaOperation_small.cfg` |
 | Raft election and durable voting | `CharlotteRaft.tla` | `CharlotteRaft_small.cfg` |
 | Raft log replication and commit safety | `CharlotteRaftLog.tla` | `CharlotteRaftLog_small.cfg` |
+| Raft delayed responses and confirmed progress | `CharlotteRaftResponse.tla` | `CharlotteRaftResponse_small.cfg` |
 | Raft joint membership and decommissioning | `CharlotteRaftMembership.tla` | `CharlotteRaftMembership_small.cfg` |
 | Raft pre-membership join admission | `CharlotteRaftJoin.tla` | `CharlotteRaftJoin_small.cfg` |
 | Raft snapshot installation and recovery | `CharlotteRaftSnapshot.tla` | `CharlotteRaftSnapshot_small.cfg` |
@@ -63,10 +64,10 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all thirty-three complete fast configurations and ninety-four expected-failure
+- runs all thirty-four complete fast configurations and ninety-eight expected-failure
   IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
   checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
-  Raft-join, snapshot-restore, cluster-ingress, and reliable-message regression configurations;
+  Raft-join, Raft-response, snapshot-restore, cluster-ingress, and reliable-message regression configurations;
 - enables TLC action coverage;
 - places checkpoints and traces in a temporary directory;
 - rejects structural TLC warnings in addition to invariant failures.
@@ -784,6 +785,16 @@ restores on construction, acknowledges stale snapshots without installing
 them, retains a suffix with a matching boundary term, and serializes snapshot
 metadata, bytes, and log suffix into one copy-on-write object.
 
+`CharlotteRaftResponse.tla` checks delayed acknowledgements separately from log
+replication. An honest response for an old prefix cannot commit a new prefix at
+the same index after re-election. Current-term append and completed-snapshot
+successes preserve confirmed progress; failure backoff retains that floor.
+Matching admitted source and local-tail checks precede credit. A fixed voter,
+learner and pending-joiner projection explores 49,395 distinct states, with four
+required counterexamples. Transport authenticity, request correlation and read
+lease timing remain separate. The [source regression and evidence](../reports/audits/2026-10-18-raft-response-fencing.md)
+record the unsafe commit before correction and the passing repeat.
+
 `CharlotteSnapshotRestore.tla` checks the application acceptance boundary
 separately. Unsupported headers and malformed later sections leave application
 state, durable snapshots, Raft progress, membership and durable join admission
@@ -793,7 +804,10 @@ excluding this node cannot. Seven negative configurations weaken these checks
 individually, including durable publication before successful restore.
 
 The finite instance has two snapshot indices, three membership classes and three
-application verdicts. It explores 124 distinct states. Parsing is an abstraction
+application verdicts. It explores 168 distinct states. Separate streamed/recovery action coverage
+requires both cleared and retained join admission; the
+[follow-up](../reports/audits/2026-10-18-raft-response-fencing.md) corrects an
+assignment-precedence omission in the preceding instance. Parsing is an abstraction
 of catalog validation, not a proof of the byte decoder. Streamed restore precedes
 persistence. Definite or ambiguous persistence failure stops the calling Raft
 thread; fresh recovery validates the whole old or new durable image. This assumes

@@ -120,8 +120,8 @@ provide.
 
 \section{What is modeled}
 
-The current suite checks thirty-three safe configurations across thirty-one
-specifications. It also checks ninety-four expected-counterexample
+The current suite checks thirty-four safe configurations across thirty-two
+specifications. It also checks ninety-eight expected-counterexample
 configurations. The models are divided by state ownership and failure boundary
 so that each remains reviewable.
 The Raft models are deliberately layered: election, log replication,
@@ -248,6 +248,10 @@ different proof obligations.
 \tlbreak{Charlotte}{RaftLog} & Append, conflict repair, replication, commit,
     crash/restart & Log matching, committed-entry agreement, commit within the
     log, and leader completeness. \\
+\hline
+\tlbreak{Charlotte}{RaftResponse} & Delayed term replies, admitted peers and
+    confirmed replication progress & An old prefix acknowledgement cannot commit
+    a replacement; reordered replies and backoff preserve confirmed progress. \\
 \hline
 \tlbreak{Charlotte}{RaftMembership} & Voters/learners, joint consensus,
     finalization, decommissioning & Both voter majorities are required while
@@ -529,6 +533,25 @@ prove which cluster has authority. The safe
 TLA+ specification includes crash and restart; an unsafe restart that forgets
 admission must violate \tlbreak{RestartPreserves}{Admission}.
 
+\subsection{A delayed acknowledgement belongs to its original term}
+
+A source regression captured an honest term-one acknowledgement for index three,
+then replaced the local prefix under term two. On re-election in term three,
+a new no-op occupied index three. The old response incorrectly committed the
+replacement, although the responding voter still held the old bytes.
+
+The core now requires exact current term and a matching admitted source before
+crediting an append or completed-snapshot response. Successful indices cannot
+exceed the local tail. Reordered successes retain the strongest confirmed prefix;
+append rejection cannot back off below it. Committed joiners can still replicate
+before promotion, while voter quorum rules remain unchanged.
+
+\tlbreak{Charlotte}{RaftResponse} checks this boundary in 49,395 distinct states
+and retains four counterexamples. The source tests reproduce the unsafe commit
+before correction. Transport authenticity, request correlation, removal epochs
+and the timing assumptions of the existing quorum-contact read gate remain
+outside this proof.
+
 \subsection{Rejected application snapshots leave known ground intact}
 
 A complete snapshot stream can still contain an unsupported application format
@@ -539,8 +562,11 @@ commit/applied indices, membership or join completion. Construction returns an
 error before exposing the node or clearing durable admission.
 
 \tlbreak{Charlotte}{SnapshotRestore} makes this boundary explicit alongside the
-existing chunk and suffix model. Its finite configuration explores 124 distinct
-states; seven weakened configurations must produce counterexamples. An accepted
+existing chunk and suffix model. Its finite configuration explores 168 distinct
+states; seven weakened configurations must produce counterexamples. Separate
+streamed/recovery coverage requires both completed joins and retained admission.
+This corrects an earlier assignment-precedence omission that excluded join
+clearing while broader activation coverage still passed. An accepted
 newer membership snapshot can complete a join, while the original snapshot or
 membership excluding this node retains its admission fence.
 
@@ -829,6 +855,18 @@ present conformance obligations:
 \tlbreak{UnsafeRestartForgets}{Admission} & Restart makes an incomplete joiner
     election-eligible. & \tlbreak{RestartPreserves}{Admission} \\
 \hline
+\tlbreak{UnsafeOldTerm}{Ack} & An old reply commits a replaced prefix. &
+    \tlbreak{CommitHas}{CurrentPrefix} \\
+\hline
+\tlbreak{UnsafeRegress}{Success} & A delayed success discards confirmed progress. &
+    \tlbreak{ConfirmedProgress}{Retained} \\
+\hline
+\tlbreak{Unsafe}{Backoff} & Rejection backs off below confirmed progress. &
+    \tlbreak{BackoffRespects}{ConfirmedPrefix} \\
+\hline
+\tlbreak{UnsafeInvalid}{Credit} & An unqualified response gains credit. &
+    \tlbreak{Acknowledgements}{HaveProof} \\
+\hline
 \tlbreak{UnsafeReject}{Application} & Rejected restore changes application state. &
     \tlbreak{RejectionPreserves}{Application} \\
 \hline
@@ -891,7 +929,7 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \end{longtable}
 \normalsize
 
-The check suite expects all ninety-four negative configurations to fail for the named
+The check suite expects all ninety-eight negative configurations to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -937,12 +975,12 @@ docs/tla/check.sh /path/to/tla2tools.jar
 Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
 
 \begin{itemize}
-    \item runs all thirty-three safe configurations;
+    \item runs all thirty-four safe configurations;
     \item enables action coverage and requires selected actions to have a
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs ninety-four negative configurations and requires each one to fail on
+    \item runs ninety-eight negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.

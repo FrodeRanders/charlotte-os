@@ -644,7 +644,9 @@ impl RaftNode {
     ) {
         self.current_millis = current_millis;
 
-        if self.state != NodeState::Leader {
+        if self.state != NodeState::Leader
+            || !self.accepts_replication_response(peer_id, &resp.peer_id)
+        {
             return;
         }
 
@@ -652,21 +654,43 @@ impl RaftNode {
             self.step_down(resp.term, current_millis);
             return;
         }
+        if resp.term != self.current_term {
+            return;
+        }
 
         if resp.success {
-            let new_match = resp.match_index;
-            self.match_index.insert(peer_id.to_string(), new_match);
-            self.next_index.insert(peer_id.to_string(), new_match + 1);
+            if resp.match_index > self.log_store.last_index() {
+                return;
+            }
+            self.record_replication_progress(peer_id, resp.match_index);
             self.last_follower_contact_millis.insert(peer_id.to_string(), current_millis);
             self.advance_commit_index();
             self.maybe_auto_finalize_joint_configuration();
         } else {
-            if let Some(ni) = self.next_index.get_mut(peer_id)
-                && *ni > 1
-            {
-                *ni -= 1;
+            let confirmed_next =
+                self.match_index.get(peer_id).copied().unwrap_or(0).saturating_add(1);
+            if let Some(ni) = self.next_index.get_mut(peer_id) {
+                *ni = ni.saturating_sub(1).max(confirmed_next);
             }
         }
+    }
+
+    fn accepts_replication_response(&self, peer_id: &str, reported_peer_id: &str) -> bool {
+        // The transport supplies the source peer. Replication also serves
+        // committed joiners before they enter the active membership.
+        peer_id == reported_peer_id
+            && peer_id != self.me.id
+            && (self.cluster_configuration.contains(peer_id)
+                || self.pending_joiners.contains_key(peer_id))
+    }
+
+    fn record_replication_progress(&mut self, peer_id: &str, index: u64) {
+        // A delayed success may describe an older prefix. Keep the strongest
+        // acknowledgement in this leadership term, including snapshot replies.
+        let confirmed = self.match_index.entry(peer_id.to_string()).or_insert(0);
+        *confirmed = (*confirmed).max(index);
+        let next = self.next_index.entry(peer_id.to_string()).or_insert(1);
+        *next = (*next).max(confirmed.saturating_add(1));
     }
 
     pub fn handle_install_snapshot(
@@ -868,14 +892,20 @@ impl RaftNode {
         sent_done: bool,
         current_millis: u64,
     ) {
+        self.current_millis = current_millis;
+        if !self.accepts_replication_response(peer_id, &response.peer_id) {
+            return;
+        }
         if response.term > self.current_term {
             self.step_down(response.term, current_millis);
         } else if self.state == NodeState::Leader && response.term == self.current_term {
             if response.success {
+                if response.last_included_index > self.log_store.last_index() {
+                    return;
+                }
                 self.snapshot_offsets.insert(peer_id.to_string(), sent_next_offset);
-                if sent_done {
-                    self.match_index.insert(peer_id.to_string(), response.last_included_index);
-                    self.next_index.insert(peer_id.to_string(), response.last_included_index + 1);
+                if sent_done && response.done {
+                    self.record_replication_progress(peer_id, response.last_included_index);
                     self.snapshot_offsets.insert(peer_id.to_string(), 0);
                     self.advance_commit_index();
                 }
@@ -1497,6 +1527,256 @@ mod tests {
             snapshot_chunk_bytes: 3000,
         })
         .unwrap()
+    }
+
+    fn elected_three_node_leader() -> RaftNode {
+        let mut node = node_with_voters(&["n1", "n2", "n3"]);
+        node.start_election(200);
+        node.handle_vote_response(
+            "n2",
+            VoteResponse {
+                peer_id: "n2".to_string(),
+                term: node.current_term,
+                vote_granted: true,
+            },
+            201,
+        );
+        assert_eq!(node.state, NodeState::Leader);
+        node
+    }
+
+    #[test]
+    fn old_term_append_response_cannot_commit_a_replaced_prefix() {
+        let mut node = elected_three_node_leader();
+        node.submit_command(vec![0xff, 1], 202).unwrap();
+        let old_index = node.submit_command(vec![0xff, 2], 203).unwrap();
+        let delayed = AppendEntriesResponse {
+            peer_id: "n2".to_string(),
+            term: node.current_term,
+            success: true,
+            match_index: old_index,
+        };
+        // n2 acknowledged this old prefix, but its response remains in flight.
+        // A different leader replaces it with a shorter, higher-term prefix.
+        let replacement_term = node.current_term + 1;
+        let response = node.handle_append_entries(
+            AppendEntriesRequest {
+                term: replacement_term,
+                leader_id: "n3".to_string(),
+                prev_log_index: 0,
+                prev_log_term: 0,
+                entries: vec![
+                    LogEntry::new(replacement_term, "n3".to_string(), vec![0xff, 3]),
+                    LogEntry::new(replacement_term, "n3".to_string(), vec![0xff, 4]),
+                ],
+                leader_commit: 0,
+            },
+            300,
+        );
+        assert!(response.success);
+        node.start_election(500);
+        node.handle_vote_response(
+            "n2",
+            VoteResponse {
+                peer_id: "n2".to_string(),
+                term: node.current_term,
+                vote_granted: true,
+            },
+            501,
+        );
+        assert_eq!(node.state, NodeState::Leader);
+        assert_eq!(node.log_store.last_index(), old_index);
+        assert_eq!(node.commit_index, 0);
+        let next_index = node.next_index.get("n2").copied();
+
+        node.handle_append_entries_response("n2", delayed.clone(), 1_500);
+        node.handle_append_entries_response(
+            "n2",
+            AppendEntriesResponse {
+                success: false,
+                ..delayed.clone()
+            },
+            1_500,
+        );
+
+        assert_eq!(node.commit_index, 0, "an old response cannot acknowledge the new prefix");
+        assert_eq!(node.last_applied, 0);
+        assert_eq!(node.match_index.get("n2"), Some(&0));
+        assert_eq!(node.next_index.get("n2").copied(), next_index);
+        assert!(!node.can_serve_linearizable_read());
+        // An actual response from this term can acknowledge the replacement.
+        node.handle_append_entries_response(
+            "n2",
+            AppendEntriesResponse {
+                term: node.current_term,
+                ..delayed
+            },
+            1_501,
+        );
+        assert_eq!(node.commit_index, old_index);
+    }
+
+    #[test]
+    fn reordered_replication_responses_preserve_confirmed_progress() {
+        let mut node = elected_three_node_leader();
+        node.submit_command(vec![0xff, 1], 202).unwrap();
+        let index = node.submit_command(vec![0xff, 2], 203).unwrap();
+        let acknowledgement = AppendEntriesResponse {
+            peer_id: "n2".to_string(),
+            term: node.current_term,
+            success: true,
+            match_index: index,
+        };
+        node.handle_append_entries_response("n2", acknowledgement.clone(), 204);
+        node.handle_append_entries_response(
+            "n2",
+            AppendEntriesResponse {
+                match_index: 1,
+                ..acknowledgement.clone()
+            },
+            205,
+        );
+        assert_eq!(node.match_index.get("n2"), Some(&index));
+        assert_eq!(node.next_index.get("n2"), Some(&(index + 1)));
+        node.handle_append_entries_response(
+            "n2",
+            AppendEntriesResponse {
+                success: false,
+                ..acknowledgement
+            },
+            206,
+        );
+        assert_eq!(node.next_index.get("n2"), Some(&(index + 1)));
+        node.handle_install_snapshot_response(
+            "n2",
+            InstallSnapshotResponse {
+                peer_id: "n2".to_string(),
+                term: node.current_term,
+                success: true,
+                last_included_index: 1,
+                next_offset: 0,
+                done: true,
+            },
+            0,
+            true,
+            207,
+        );
+        assert_eq!(node.match_index.get("n2"), Some(&index));
+        assert_eq!(node.next_index.get("n2"), Some(&(index + 1)));
+    }
+
+    #[test]
+    fn replication_responses_require_an_admitted_matching_peer_and_local_index() {
+        let mut node = elected_three_node_leader();
+        let term = node.current_term;
+        let acknowledgement = AppendEntriesResponse {
+            peer_id: "n2".to_string(),
+            term,
+            success: true,
+            match_index: node.log_store.last_index(),
+        };
+        node.handle_append_entries_response("n3", acknowledgement.clone(), 202);
+        node.handle_append_entries_response(
+            "unknown",
+            AppendEntriesResponse {
+                peer_id: "unknown".to_string(),
+                term: term + 1,
+                ..acknowledgement.clone()
+            },
+            203,
+        );
+        node.handle_append_entries_response(
+            "n2",
+            AppendEntriesResponse {
+                match_index: u64::MAX,
+                ..acknowledgement.clone()
+            },
+            204,
+        );
+        assert_eq!(node.state, NodeState::Leader);
+        assert_eq!(node.current_term, term);
+        assert_eq!(node.commit_index, 0);
+        assert!(node.last_follower_contact_millis.is_empty());
+        assert!(!node.match_index.contains_key("unknown"));
+        assert_eq!(node.match_index.get("n3"), Some(&0));
+        node.handle_append_entries_response(
+            "n2",
+            AppendEntriesResponse {
+                term: term + 1,
+                ..acknowledgement
+            },
+            205,
+        );
+        assert_eq!(node.state, NodeState::Follower);
+        assert_eq!(node.current_term, term + 1);
+    }
+
+    #[test]
+    fn snapshot_responses_require_an_admitted_peer_and_completed_result() {
+        let mut node = elected_three_node_leader();
+        let term = node.current_term;
+        let response = InstallSnapshotResponse {
+            peer_id: "n2".to_string(),
+            term,
+            success: true,
+            last_included_index: node.log_store.last_index(),
+            next_offset: 64,
+            done: true,
+        };
+        let offsets_before = node.snapshot_offsets.clone();
+        for (source, reply) in [
+            ("n3", response.clone()),
+            (
+                "unknown",
+                InstallSnapshotResponse {
+                    peer_id: "unknown".to_string(),
+                    term: term + 1,
+                    ..response.clone()
+                },
+            ),
+            (
+                "n1",
+                InstallSnapshotResponse {
+                    peer_id: "n1".to_string(),
+                    ..response.clone()
+                },
+            ),
+            (
+                "n2",
+                InstallSnapshotResponse {
+                    last_included_index: u64::MAX,
+                    ..response.clone()
+                },
+            ),
+            (
+                "n2",
+                InstallSnapshotResponse {
+                    term: term - 1,
+                    ..response.clone()
+                },
+            ),
+        ] {
+            node.handle_install_snapshot_response(source, reply, 64, true, 202);
+        }
+        assert_eq!(node.current_term, term);
+        assert_eq!(node.state, NodeState::Leader);
+        assert_eq!(node.commit_index, 0);
+        assert_eq!(node.snapshot_offsets, offsets_before);
+        assert_eq!(node.match_index.get("n2"), Some(&0));
+        node.handle_install_snapshot_response(
+            "n2",
+            InstallSnapshotResponse {
+                done: false,
+                ..response.clone()
+            },
+            64,
+            true,
+            203,
+        );
+        assert_eq!(node.commit_index, 0, "an accepted chunk is not a completed snapshot");
+        node.handle_install_snapshot_response("n2", response, 64, true, 204);
+        assert_eq!(node.commit_index, 1);
+        assert_eq!(node.match_index.get("n2"), Some(&1));
     }
 
     #[test]
@@ -2172,6 +2452,7 @@ mod tests {
         node.start_election(200);
         assert_eq!(node.state, NodeState::Leader);
         let term = node.current_term;
+        node.submit_join(Peer::voter("n2".to_string(), 0), 200).unwrap();
 
         node.snapshot_offsets.insert("n2".to_string(), 512);
         node.handle_install_snapshot_response(

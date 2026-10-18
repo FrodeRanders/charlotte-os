@@ -560,6 +560,14 @@ historical AMD causality, the retained Intel scheduled-close/ingress failure and
 broader cleanup acceptance remain open. SEC-18 remains partial; finding counts
 are unchanged.
 
+The [Raft response-ordering review](../reports/audits/2026-10-18-raft-response-fencing.md)
+reproduces and corrects old-term acknowledgements committing a replaced prefix.
+Append/snapshot progress now rejects mismatched or unadmitted sources and
+out-of-tail success, retaining confirmed progress under reordering/backoff.
+It also corrects the snapshot model's missing join-clear branches with explicit
+coverage. Numbered finding dispositions remain unchanged; transport identity,
+read-lease timing, membership drift and physical cleanup remain separate work.
+
 The [snapshot acceptance model review](../reports/audits/2026-10-18-snapshot-restore-model.md)
 checks application rejection before durable/progress/membership/join publication
 and fallible restart exposure. Existing host tests pass; no runtime fix or finding

@@ -529,13 +529,38 @@ inside the log model. Snapshots and joint membership are checked by separate
 layers. Failed storage operations, state-machine application, transport
 framing, and temporal liveness are outside this abstraction.
 
+## Raft response term and progress fencing
+
+`CharlotteRaftResponse` isolates asynchronous acknowledgement handling from the
+log model. Its fixed schedule captures an honest term-one acknowledgement for
+index three, replaces the local prefix under term two, then elects this node in
+term three and appends a new no-op at the same index. Election legitimacy and
+prefix selection are assumptions from the other Raft layers.
+
+| Model action | Rust implementation | Correspondence |
+|---|---|---|
+| `CaptureOldReply`, `ReplacePrefix`, `Reelect` | delayed `RpcCompletion`; follower conflict repair; `become_leader` | The old response describes different bytes. New leadership resets follower match indices and contact evidence. The exact reproduced Rust trace is retained in the audit evidence. |
+| `Replicate`, `Acknowledge` | append handling, completed snapshot reply, `record_replication_progress` | Current-term successes retain the maximum confirmed index and keep next-index above it. Actual follower prefix agreement is assumed for a truthful response. Only append replies update the concrete contact clock; the model's contact abstraction represents that path. |
+| `Failure` | rejected current-term append response | Backoff cannot cross the confirmed prefix. An older-term rejection cannot back off current work. |
+| `RejectOld`, `RejectInvalid` | exact term check, `accepts_replication_response`, local-tail check | Reject old terms, mismatched/self/unadmitted sources and success beyond the local tail. Committed pending joiners are admitted for replication before promotion; they do not supply voter quorum by that status. Detailed field parsing and transport authentication remain outside the model. |
+| `Commit` | `advance_commit_index` | A fixed self-plus-one-voter quorum can commit the current-term no-op only after that voter has the current prefix. Learner/joiner acknowledgements cannot supply its second vote. General and joint quorum selection remain in the other models. |
+| `ObserveHigherTerm` | qualified higher-term response and `step_down` | Leadership and contact evidence clear. Higher terms from an unadmitted or mismatched source are rejected before this transition. |
+
+Four controls retain the old-term unsafe commit, regressed success, backoff
+below confirmed progress and invalid-response credit. The invalid-source control
+is a coarse admission abstraction; field-by-field rejection is tested in Rust.
+Snapshot chunk offsets, request/session correlation, removal/re-admission epochs,
+Byzantine peers, clock/lease bounds, election liveness, persistence and allocation
+are not proved. In particular, accepting only this term's responses does not
+establish that the existing receive-time contact lease is linearizable.
+
 ## Raft membership and joint consensus
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
 | `Elect` | `has_election_majority`, `become_leader` | Membership projection of election: a candidate must obtain both current and next voter majorities while joint. Durable voting remains in the election model. Concrete `ClusterConfiguration::is_voter` also admits a next-only voter as a candidate, so the concrete eligibility set is `current ∪ next` rather than `currentVoters`. |
 | `SubmitJoint` | `submit_joint_configuration`, `submit_command` | Direct for appending the encoded `JOINT` command while the old configuration is authoritative. |
-| `Replicate` | append-response handling and `match_index` | Abstract replication progress for configured voters and learners. Concrete `match_index` is assigned from each successful response without a monotonic `max` guard and without a membership check; commit counting only reads configured members. Log contents and conflict repair remain in the log model. |
+| `Replicate` | append-response handling and `match_index` | Abstract replication progress for configured voters and learners. Concrete append and completed-snapshot successes now require a matching admitted peer, exact current term and an index within the local tail. Progress retains its maximum and append rejection respects its floor; `CharlotteRaftResponse` checks this boundary. Commit counting reads configured voters. Log contents and conflict repair remain in the log model. |
 | `CommitJoint` | `advance_commit_index`, then `apply_configuration_command(Joint)` | The `JOINT` entry commits under its preceding configuration; applying it activates the old/new union and records the finalization fence. |
 | `SubmitFinalize` | `maybe_auto_finalize_joint_configuration` | Abstract: the model requires every proposed voter and learner to reach the committed joint-entry fence before `FINALIZE` is submitted. Concrete code intentionally omits that catch-up fence and proposes `FINALIZE` as soon as `JOINT` is committed, because the `FINALIZE` commit still requires both voter majorities. The recorded fence index is not read on this path, so the model's `FinalizationWasJoint` ordering is stronger than the implementation. |
 | `CommitFinalize` | `advance_commit_index`, then `apply_configuration_command(Finalize)` | Requires both voter majorities while joint, installs the next configuration, and decommissions nodes absent from the resulting voter/learner set. A leader that survives only as a learner keeps leadership, whereas the model sets `leader' = NoNode`. |
@@ -593,9 +618,15 @@ continue with the node; it is not a global endpoint-availability assertion.
 | `Validate`, `Restore` | final length check and collection replacement in `restore_bytes`; `StateMachine::restore` | All validation precedes live replacement. Several section locks remain distinct; the model assumes serialized Raft execution, not concurrent-reader isolation or fallible allocation. |
 | `Persist` | `handle_install_snapshot` after successful restore; `DiskLogStore::install_snapshot` | The existing whole-object replacement is assumed. Chunk ordering, term checks and suffix selection belong to the separate model. |
 | `DefinitePersistenceFailure`, `AmbiguousPersistenceFailure` | `persist_bytes`, `persist_log_state`, `persist_fail_stop` | Write/flush rejection calls `thread_exit` and never returns to publish progress. The model allows either the old or whole new durable object after failure, then requires fresh recovery. No new storage failure injection, global domain abort or physical quiescence is proved. |
-| `ActivateStream` | progress/membership updates and join-fence clear in `handle_install_snapshot` | Only a restored, persisted snapshot completes the reply. The finite candidate is newer than the join-admission snapshot; membership excluding self retains admission. |
-| `ActivateRecovery` | `RaftNode::new` | Restore must succeed before `Ok(Self)` exposes progress or clears admission. The recorded admission index is one: restoring that same old snapshot cannot complete it, even when membership includes self. |
+| `ActivateStreamJoin`, `ActivateStreamRetained` | progress/membership updates and join-fence clear in `handle_install_snapshot` | Only a restored, persisted snapshot completes the reply. The finite candidate is newer than the join-admission snapshot; membership excluding self retains admission. |
+| `ActivateRecoveryJoin`, `ActivateRecoveryRetained` | `RaftNode::new` | Restore must succeed before `Ok(Self)` exposes progress or clears admission. The recorded admission index is one: restoring that same old snapshot cannot complete it, even when membership includes self. |
 | `Crash`, `BeginRecovery` | stopped caller/service restart, fallible node reconstruction | Volatile progress is reconstructed from durable bytes and join admission. Decoder/context verdict may differ on a later process start; this is not spontaneous disk corruption or an in-place migration. |
+
+Join completion and retained admission each have separate required action
+coverage in streamed and recovery paths. The preceding 124-state instance
+accidentally excluded join clearing through boolean-assignment precedence; the
+[response/coverage follow-up](../reports/audits/2026-10-18-raft-response-fencing.md)
+records the correction and fresh checks.
 
 The six rejected-publication controls cover application, durable snapshot,
 progress, membership, join admission and recovery exposure; the seventh publishes

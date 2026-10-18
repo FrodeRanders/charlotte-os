@@ -125,14 +125,22 @@ Activate ==
     /\ commitIndex' = durable.index
     /\ appliedIndex' = durable.index
     /\ membership' = durable.membership
-    /\ joining' = joining /\ ~(durable.index > 1 /\ IncludesSelf(durable))
+    /\ joining' = (joining /\ ~(durable.index > 1 /\ IncludesSelf(durable)))
     /\ exposed' = TRUE
     /\ replyDone' = (mode = "Stream")
     /\ UNCHANGED <<mode, verdict, candidate, durable, application,
                     validated, restored, baseline>>
 
-ActivateStream == /\ mode = "Stream" /\ Activate
-ActivateRecovery == /\ mode = "Recovery" /\ Activate
+ActivateStreamJoin ==
+    /\ mode = "Stream" /\ joining /\ IncludesSelf(durable) /\ Activate
+ActivateStreamRetained ==
+    /\ mode = "Stream" /\ ~IncludesSelf(durable) /\ Activate
+ActivateRecoveryJoin ==
+    /\ mode = "Recovery" /\ joining
+    /\ durable.index > 1 /\ IncludesSelf(durable) /\ Activate
+ActivateRecoveryRetained ==
+    /\ mode = "Recovery"
+    /\ (~joining \/ durable.index = 1 \/ ~IncludesSelf(durable)) /\ Activate
 
 Crash ==
     /\ phase \notin {"Stopped", "Rejected"}
@@ -217,7 +225,9 @@ UnsafePublishBeforeRestore ==
 Next == ReadHeader \/ ParseSections \/ RejectUnsupported \/ RejectMalformed
         \/ Validate \/ Restore
         \/ Persist \/ DefinitePersistenceFailure \/ AmbiguousPersistenceFailure
-        \/ ActivateStream \/ ActivateRecovery \/ Crash \/ BeginRecovery
+        \/ ActivateStreamJoin \/ ActivateStreamRetained
+        \/ ActivateRecoveryJoin \/ ActivateRecoveryRetained
+        \/ Crash \/ BeginRecovery
         \/ UnsafeRejectApplication \/ UnsafeRejectDurable
         \/ UnsafeRejectProgress \/ UnsafeRejectMembership \/ UnsafeRejectJoin
         \/ UnsafeExposeRecovery \/ UnsafePublishBeforeRestore

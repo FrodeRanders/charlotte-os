@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Raft response term and progress fencing](audits/2026-10-18-raft-response-fencing.md) — Reproduced stale-term unsafe commit, corrected response admission/progress, and repaired snapshot join-completion coverage.
+
 - [Application snapshot acceptance model](audits/2026-10-18-snapshot-restore-model.md) — Rejected restore preserves live state and Raft publication; recovery requires acceptance, with seven required counterexamples.
 
 - [Boot trust and conditional installation model](audits/2026-10-18-boot-trust-model.md) — Exact installed boot acceptance, immutable shared policy and conditional commit/reboot ordering; protected production boundaries remain absent.
