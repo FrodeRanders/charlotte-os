@@ -144,3 +144,16 @@ unauthenticated time. The [remediation criteria](security-remediation.md) retain
 the broader production and quiescence gates.
 
 Usage: [signing and trust guide](../guides/signing-and-trust.md#signed-trust-policy).
+
+## Formal ordering projection
+
+[`CharlotteBootTrust`](../tla/CharlotteBootTrust.tla) checks current verifier,
+fixture and one-shot handoff behavior separately from a **conditional** protected
+installation contract. The latter assumes atomic rollback-resistant state and
+trusted platform/custody inputs; those boundaries remain unimplemented. It
+covers stale competing expectations, failed/interrupted commit, qualified reads
+after recovery has settled/fenced original writers, and reboot before/after commit, without turning verification into
+installation authority. Ten required counterexamples, source correspondence and
+limits are in the [model review](../reports/audits/2026-10-18-boot-trust-model.md).
+Production remains disabled; a passing contract instance is no enrollment,
+protected-storage, custody or physical-lifetime qualification.

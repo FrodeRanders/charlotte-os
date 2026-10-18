@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Boot trust and conditional installation model](audits/2026-10-18-boot-trust-model.md) — Exact installed boot acceptance, immutable shared policy and conditional commit/reboot ordering; protected production boundaries remain absent.
+
 - [NS publication and endpoint-death model](audits/2026-10-18-name-publication-model.md) — Public/policy gates, admitted watch ownership, exact death retirement and corrected signed generation exhaustion.
 
 - [Coherent-DMA CPU remap fence](audits/2026-10-18-coherent-dma-remap-fence.md) — Reproduced and closed fresh CPU mapping while coherent DMA pins remain; ARM and Intel execution evidence.

@@ -1,6 +1,6 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for twenty-nine
+This directory contains finite, executable specifications for thirty
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
@@ -10,6 +10,7 @@ CharlotteOS subsystems:
 | Captured capability admission and hidden IPC delivery | `CharlotteIpcPublication.tla` | `CharlotteIpcPublication_small.cfg` |
 | Endpoint readiness and close observers | `CharlotteEndpointObservers.tla` | `CharlotteEndpointObservers_small.cfg` |
 | Local NS publication classes and exact death watches | `CharlotteNamePublication.tla` | `CharlotteNamePublication_small.cfg`, `CharlotteNamePublication_exhaustion.cfg` |
+| Boot publication and conditional protected installation | `CharlotteBootTrust.tla` | `CharlotteBootTrust_fixture.cfg`, `CharlotteBootTrust_contract.cfg` |
 | Completion queues and waits | `CharlotteCQ.tla` | `CharlotteCQ_mini.cfg` |
 | Timed-wait wake races | `CharlotteTimedWait.tla` | `CharlotteTimedWait_small.cfg` |
 | Fallible checked waits and retained operations | `CharlotteCheckedWait.tla` | `CharlotteCheckedWait_small.cfg` |
@@ -42,7 +43,8 @@ Establishing that a Rust operation implements the same atomic transition will
 require identified linearization points and a refinement argument.
 
 The latest scoped implementation-to-model review is the
-[18 October NS publication synchronization](../reports/audits/2026-10-18-name-publication-model.md).
+[18 October boot-trust synchronization](../reports/audits/2026-10-18-boot-trust-model.md).
+The preceding [NS publication synchronization](../reports/audits/2026-10-18-name-publication-model.md).
 The preceding [DMA operation synchronization](../reports/audits/2026-10-18-dma-operation-model.md).
 Earlier October reviews cover
 [IPC publication](../reports/audits/2026-10-18-ipc-publication-model.md) and
@@ -60,8 +62,8 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all thirty complete fast configurations and seventy-seven expected-failure
-  IPC-transaction, IPC-publication, endpoint-observer, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
+- runs all thirty-two complete fast configurations and eighty-seven expected-failure
+  IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
   checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
   Raft-join, cluster-ingress, and reliable-message regression configurations;
 - enables TLC action coverage;
@@ -579,6 +581,35 @@ kernel-authenticated domain generations and principals. Bearer-key name
 lookup opcodes are retired. Public bootstrap naming cannot resolve or replace
 policy-published services. Publication classes and endpoint-death watch
 admission are still outside this authorization model.
+
+## Boot trust and installation ordering
+
+`CharlotteBootTrust.tla` distinguishes authenticating a policy from authorizing
+its use at boot. The shared verifier accepts either the exact installed record
+or a signed direct successor naming its predecessor. The current boot fixture
+accepts only its compiled installed revision/digest. Preparing the recipient
+owner checks its public binding; publication is one-shot, and manifests borrow
+the kernel gate's published view. Development trust is an explicit configuration,
+never a verification fallback.
+
+The fixture/development instance checks those implemented handoff boundaries.
+A separate **conditional contract** assumes a protected pinned context, atomic
+rollback-resistant state commit and serialized publication. It checks competing
+installers, rejected/interrupted commits, fresh reads after uncertainty, no
+enrollment fallback and reboot before/after commit. Those storage, platform and
+custody assumptions have no production implementation. A qualified post-interruption
+read assumes recovery has settled or fenced the original writer; observing old
+bytes alone is no completion proof. `ProtectedBoundary = TRUE`
+is a model input, not a supported production selector. Production remains disabled.
+
+Both instances use two boot epochs and eight finite record classes, including
+signed siblings, a bad predecessor/gap and invalid authentication. Initial
+enrollment has a fixed floor of one. Ten negative controls cover uninstalled
+publication, stale commit, enrollment/development fallback, slot overwrite,
+independent manifests, wrong recipient, unauthenticated receipts, publication
+after failed commit and an unavailable protected boundary. Real cryptography,
+firmware, atomic storage, erasure/custody and physical lifetime are omitted.
+See the [review and evidence](../reports/audits/2026-10-18-boot-trust-model.md).
 
 ## Local name publication model
 

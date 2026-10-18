@@ -560,6 +560,13 @@ historical AMD causality, the retained Intel scheduled-close/ingress failure and
 broader cleanup acceptance remain open. SEC-18 remains partial; finding counts
 are unchanged.
 
+The [boot-trust model review](../reports/audits/2026-10-18-boot-trust-model.md)
+checks existing fixture/one-shot publication separately from a conditional
+protected-installation contract. Stale expectations, failed/interrupted commit
+and reboot are explored only under explicit atomic-state/platform assumptions.
+No protected installer, custody provider or production selector is added;
+SEC-04 and finding counts remain unchanged.
+
 The [NS publication model and generation correction](../reports/audits/2026-10-18-name-publication-model.md)
 checks public/policy issuance, admitted watch ownership, exact death retirement
 and fail-closed owner retention. It also reproduces and corrects publication

@@ -19,6 +19,11 @@ adds the serialized local registry, public/policy issuance boundary, prepared
 watch ownership and exact death retirement. It also corrects publication
 exhaustion at NS's signed-result limit.
 
+The [boot-trust review](../reports/audits/2026-10-18-boot-trust-model.md)
+separates current verifier/fixture/handoff behavior from a conditional future
+protected-installation contract. Platform, atomic-state and custody inputs remain
+unimplemented production boundaries.
+
 ## IPC
 
 | TLA+ action | Rust implementation | Correspondence |
@@ -704,7 +709,7 @@ records bounded audit entries. The design contract is in
 
 | TLA+ action | Intended CharlotteOS implementation | Correspondence |
 |---|---|---|
-| `PublishService` / `ReplaceService` / `UnpublishService` | `PolicyStore::publish_service` / `unpublish_service`, `ns::OP_REGISTER_AUTHORIZED`, and generation-fenced unregister | Direct for kernel-authenticated service-manager role, rights ceiling, checked generation, and stale-unpublish rejection. `OP_UNREGISTER` requires an authenticated service-manager sender. `OP_UNREGISTER_GENERATION` requires the authenticated sender's stable principal to match the principal recorded at registration, or a service-manager sender. Public bootstrap registration shares policy-store generation bookkeeping, but NS records its separate publication class: public lookup cannot resolve an authorized entry, authorized lookup cannot resolve a public entry, and public replacement requires the same stable registrar and cannot displace an authorized publication. That class distinction and fallible endpoint-death watch admission are outside this model. Distributed policy replication is not implemented. |
+| `PublishService` / `ReplaceService` / `UnpublishService` | `PolicyStore::publish_service` / `unpublish_service`, `ns::OP_REGISTER_AUTHORIZED`, and generation-fenced unregister | Direct for kernel-authenticated service-manager role, rights ceiling, checked generation, and stale-unpublish rejection. `OP_UNREGISTER` requires an authenticated service-manager sender. `OP_UNREGISTER_GENERATION` requires the authenticated sender's stable principal to match the principal recorded at registration, or a service-manager sender. Public bootstrap registration shares policy-store generation bookkeeping, but NS records its separate publication class: public lookup cannot resolve an authorized entry, authorized lookup of either class still requires its policy decision, and public replacement requires the same stable registrar and cannot displace an authorized publication. That class distinction and fallible endpoint-death watch admission are outside this model. Distributed policy replication is not implemented. |
 | `SetPolicy` | `PolicyStore::set_policy`, `ns::OP_SET_POLICY` | Direct for authenticated administrator role, exact subject/service rule, optimistic version fence, explicit deny, and exhaustion failure. State and its bounded audit are currently volatile. |
 | `IssueTicket` | `PolicyStore::issue_ticket` | Direct in the engine for exact generation-aware identity, requested rights, current rule and binding, attenuation, bounded outstanding decisions, and default deny. The co-located runtime path uses `authorize_now` instead of exporting a ticket. |
 | `CancelTicket` | `PolicyStore::cancel_ticket` | Direct for subject-bound removal. Expiry is not implemented. A co-located adapter can keep decisions internal by using `authorize_now`. |
@@ -761,3 +766,29 @@ closure/abort and reaches the generation-two boundary. Thirteen required negativ
 configurations weaken the guarded actions. The 64+1 trusted launch budget,
 aggregate metadata accounting, raw receive/transport ownership, full-name wire
 parsing, outer contexts and physical cleanup remain separate C18 work.
+
+## Boot trust and conditional protected installation
+
+`CharlotteBootTrust` has two explicitly different configurations. `fixture`
+projects existing development boot and the x86 test fixture, with protected
+production support absent. `contract` assumes that missing boundary to explore
+installation ordering; it is a specification obligation, not implemented storage
+or production admission. Record identities stand for complete signed-fields
+digests; sequences/predecessors are finite, and authentication is an input bit.
+
+| Action | Source or conditional boundary | Correspondence |
+|---|---|---|
+| `ReadInstalled`, `ReadEnrollment`, `ReadFailure` | explicit `PolicyExpectation` constructors, CLI mode parsing, compiled fixture expectation | Current callers supply state independently and never infer enrollment after failure. Protected reads and authorized initial enrollment in the contract instance are assumptions. Missing/corrupt reads collapse to failure. |
+| `Verify`, `RejectRecord` | `signed_policy::verify`, `PolicyExpectation::accept` | Relative to a supplied anchor/cluster: exact digest at current sequence, direct successor with correct predecessor, explicit enrollment floor. Cryptography, key/role qualification and byte parsing collapse to authenticity; the model fixes the floor to one. |
+| `CommitPolicy`, `CompetingCommit` | **unimplemented protected installer** | Conditional atomic compare-and-swap of exact revision/digest against captured expectation. Two signed successors may verify against the same old expectation; only one can commit it. Boot publication remains fenced while the state changes. No host-file or kernel-slot write implements this boundary. |
+| `CommitFailure`, `CommitInterrupted` | **unimplemented protected commit outcome contract** | Definite rejection changes no state. Interruption may leave the whole old or new record committed; cached receipt publication is blocked until a fresh protected read. Atomicity and a recovery fence for unfinished writers are assumed, not proved. An ordinary read of old bytes is not that fence, and no arbitrary hardware error authorizes retry. |
+| `AcquireRecipient`, `PrepareSigned`, `RejectRecipient` | `boot_fixture::prepare`, `PreparedBootTrust::verified` | Fixture exact-installed comparison precedes the kernel constructor's cluster/recipient checks. The model compresses cluster matching into authenticated context and treats correct recipient binding symbolically. Protected custody is absent. |
+| `PrepareDevelopment` | explicit `PreparedBootTrust::development` in boot composition | Allowed only for an explicitly configured development instance. It proves no production authenticity or custody. |
+| `Publish`, `RejectPublication` | `publish_into`, `launch_steady_state_with_trust` | Existing slot publishes once and returns unused preparation on duplicate publication. The fixture's caller checks installed state; atomic publication against concurrently changing protected state is only a contract assumption. No runtime policy reset/overwrite API exists. |
+| `BorrowView` | `BootTrust::public`, manifest construction, `with_installed_trust` | Public policy is copied from the same boot slot as the kernel gate. Private key bytes, zeroization and callback/IRQ/guard behavior are not proved. |
+| `DropPreparation`, `Reboot` | unpublished preparation Drop; abstract machine restart | Drop publishes nothing. Reset removes volatile proof/slot/consumer state while preserving committed acceptance identity. Actual erasure, custody reacquisition and boot authentication are outside the model; reboot is not a kernel reset API. |
+
+Required negative configurations check each weakened boundary. The unavailable
+production-boundary control corresponds to the build gate's continued refusal,
+not an implemented protected selector. SEC-04 remains partial. This model adds no
+root lease, cleanup custody or physical-release qualification.

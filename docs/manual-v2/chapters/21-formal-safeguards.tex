@@ -120,9 +120,10 @@ provide.
 
 \section{What is modeled}
 
-The current suite contains thirty safe configurations across twenty-nine specifications and seventy-seven
-expected-counterexample configurations. They are divided by
-state ownership and failure boundary so that each model remains reviewable.
+The current suite checks thirty-two safe configurations across thirty
+specifications. It also checks eighty-seven expected-counterexample
+configurations. The models are divided by state ownership and failure boundary
+so that each remains reviewable.
 The Raft models are deliberately layered: election, log replication,
 membership, pre-membership admission, and snapshots have different state and
 different proof obligations.
@@ -217,6 +218,11 @@ different proof obligations.
     death watches, replacement and retirement & Public paths cannot issue
     policy-published connections; watch admission precedes mutation; stale hints
     need the current producer's own result; disposal preserves watch/source order. \\
+\hline
+\tlbreak{CharlotteBoot}{Trust} & Verifier, exact installed fixture, one-shot
+    handoff and conditional protected installation & Signed verification does
+    not install policy; boot uses committed identity; the slot cannot be replaced;
+    future commit/reboot ordering assumes protected atomic state. \\
 \hline
 \tlbreak{Charlotte}{DMA} & CPU mapping, IPC loans, coherent/exclusive SMMU
     mapping, invalidation, quarantine, driver exit, pin reclamation & Unique
@@ -327,6 +333,33 @@ requires endpoint closure, a revocable proxy, or a future kernel lease object.
 This prospective revocation contract is safer than documenting authority that
 the implementation cannot enforce. The practical design is recorded in
 \repofile|docs/architecture/authorization-policy.md|.
+
+\subsection{Boot verification and installation are separate}
+
+\tlbreak{CharlotteBoot}{Trust} distinguishes a signed verification receipt from
+boot authority. The shared verifier accepts either the exact installed record
+or its direct successor with the accepted digest as predecessor. The x86 boot
+fixture requires the exact compiled installed revision and digest before
+preparing its recipient-key owner. One-shot kernel publication then supplies
+the public policy used by both service manifests and the operational gate.
+A duplicate publication returns its unused preparation; development trust is
+selected explicitly and is never a fallback after verification failure.
+
+The model has two configurations. The first projects those implemented fixture
+and development paths. The second is a conditional contract for the missing
+protected installer: it assumes an authenticated context, atomic rollback-resistant
+state commit and serialization against boot publication. Two signed successors
+may verify against one old expectation; only one can commit it. An interrupted
+commit may leave the whole old or new record durable, so the caller must read
+protected state again before publishing. Recovery must first settle or fence the
+original writer; reading old bytes alone proves no completion. Reboot preserves that committed state
+while discarding volatile verification and publication state.
+
+These assumptions describe work still needed for production. The model adds
+no installer, firmware authentication, persistent-state adapter, key custody or
+production selector. Its ten negative controls expose the weakened ordering,
+identity and handoff guards. Byte-level cryptography, actual storage atomicity,
+erasure, outer contexts and physical lifetime remain outside the projection.
 
 \subsection{Local publication owns its death watch}
 
@@ -706,6 +739,36 @@ present conformance obligations:
 \tlbreak{UnsafeLookupDuring}{Publish} & Lookup runs between policy and registry
     publication. & \texttt{GrantGenerationCoherent} \\
 \hline
+\tlbreak{UnsafeUninstalled}{Publish} & A valid successor publishes before its
+    installed-state commit. & \tlbreak{InstalledBefore}{Publication} \\
+\hline
+\texttt{UnsafeStaleCommit} & A second installer reuses a stale expectation. &
+    \texttt{NoForkedInstallation} \\
+\hline
+\tlbreak{UnsafeEnrollment}{Fallback} & An installed-state read failure becomes
+    enrollment. & \texttt{NoEnrollmentFallback} \\
+\hline
+\texttt{UnsafeOverwrite} & The same boot publishes a second policy. &
+    \texttt{OnePublicationPerBoot} \\
+\hline
+\tlbreak{UnsafeIndependent}{Manifest} & Manifest and kernel gate select
+    different policies. & \texttt{SharedPolicy} \\
+\hline
+\tlbreak{UnsafeWrong}{Recipient} & Preparation accepts the wrong private-key
+    binding. & \texttt{RecipientBound} \\
+\hline
+\texttt{UnsafeAuthenticate} & A record bypasses authentication. &
+    \texttt{VerifiedAuthenticated} \\
+\hline
+\tlbreak{UnsafeDevelopment}{Fallback} & Failed verification selects development
+    trust. & \texttt{ExplicitDevelopment} \\
+\hline
+\tlbreak{UnsafeFailedCommit}{Publishes} & A failed commit grants publication
+    authority. & \tlbreak{InstalledBefore}{Publication} \\
+\hline
+\tlbreak{UnsafeUnsupported}{Production} & Publication bypasses the unavailable
+    protected boundary. & \texttt{ConditionalBoundary} \\
+\hline
 \texttt{UnsafeStaleClose} & A recycled numeric ASID is closed through an old
     generation handle. & \tlbreak{ReplacementSurvives}{StaleHandle} \\
 \hline
@@ -780,7 +843,7 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \end{longtable}
 \normalsize
 
-The check suite expects all seventy-seven negative configurations to fail for the named
+The check suite expects all eighty-seven negative configurations to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -826,12 +889,12 @@ docs/tla/check.sh /path/to/tla2tools.jar
 Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
 
 \begin{itemize}
-    \item runs all thirty safe configurations;
+    \item runs all thirty-two safe configurations;
     \item enables action coverage and requires selected actions to have a
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs seventy-seven negative configurations and requires each one to fail on
+    \item runs eighty-seven negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.

@@ -165,6 +165,33 @@ run_expected_violation CharlotteNamePublication CharlotteNamePublication_exhaust
     PolicyGenerationRepresentable UnsafePublishExhausted
 run_expected_violation CharlotteNamePublication CharlotteNamePublication_serial_unsafe.cfg \
     GrantGenerationCoherent UnsafeLookupDuringPublish
+run_model CharlotteBootTrust CharlotteBootTrust_fixture.cfg \
+    ReadInstalled ReadFailure Verify RejectRecord AcquireRecipient PrepareSigned \
+    RejectRecipient PrepareDevelopment Publish RejectPublication BorrowView DropPreparation Reboot
+run_model CharlotteBootTrust CharlotteBootTrust_contract.cfg \
+    ReadInstalled ReadEnrollment ReadFailure Verify RejectRecord CommitPolicy \
+    CommitFailure CommitInterrupted CompetingCommit AcquireRecipient PrepareSigned \
+    RejectRecipient Publish RejectPublication BorrowView DropPreparation Reboot
+run_expected_violation CharlotteBootTrust CharlotteBootTrust_uninstalled_unsafe.cfg \
+    InstalledBeforePublication UnsafeUninstalledPublish
+run_expected_violation CharlotteBootTrust CharlotteBootTrust_stale_unsafe.cfg \
+    NoForkedInstallation UnsafeStaleCommit
+run_expected_violation CharlotteBootTrust CharlotteBootTrust_enrollment_unsafe.cfg \
+    NoEnrollmentFallback UnsafeEnrollmentFallback
+run_expected_violation CharlotteBootTrust CharlotteBootTrust_overwrite_unsafe.cfg \
+    OnePublicationPerBoot UnsafeOverwrite
+run_expected_violation CharlotteBootTrust CharlotteBootTrust_manifest_unsafe.cfg \
+    SharedPolicy UnsafeIndependentManifest
+run_expected_violation CharlotteBootTrust CharlotteBootTrust_recipient_unsafe.cfg \
+    RecipientBound UnsafeWrongRecipient
+run_expected_violation CharlotteBootTrust CharlotteBootTrust_authenticate_unsafe.cfg \
+    VerifiedAuthenticated UnsafeAuthenticate
+run_expected_violation CharlotteBootTrust CharlotteBootTrust_development_unsafe.cfg \
+    ExplicitDevelopment UnsafeDevelopmentFallback
+run_expected_violation CharlotteBootTrust CharlotteBootTrust_failure_unsafe.cfg \
+    InstalledBeforePublication UnsafeFailedCommitPublishes
+run_expected_violation CharlotteBootTrust CharlotteBootTrust_boundary_unsafe.cfg \
+    ConditionalBoundary UnsafeUnsupportedProduction
 run_model CharlotteCQ CharlotteCQ_mini.cfg \
     Complete Fail CancelOp DrainOne DrainAll ObserveResult CqWait CqWake TimerFire
 run_expected_violation CharlotteCQ CharlotteCQ_buffer_unsafe.cfg \
