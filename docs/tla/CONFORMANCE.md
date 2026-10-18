@@ -596,6 +596,24 @@ input, not a proof of a safe lease: delayed same-term responses, election/clock
 timing, request correlation and full read linearizability remain open. Follower
 bounded-staleness reads are outside this model and unchanged by the correction.
 
+The [clock/lease-gap follow-up](../reports/audits/2026-10-18-raft-clock-lease-gap.md)
+adds a diagnostic schedule to the same read model. `CaptureDelayedContact`
+represents an honest reply created before another quorum elects a leader;
+`ElectOtherLeader` changes external authority while the isolated node retains
+its local term/role; `DeliverDelayedContact` refreshes that node's receive-time
+contact. Its ordinary `Read` action then violates `ReadHasAuthority`. This is a
+known source gap, not a weakened implementation guard. The safe prerequisite
+configuration disables those external transitions and retains its narrower
+claim. A matching host witness executes both state machines and the delayed
+reply; upstream execution and native packet delay are not claimed.
+
+`MonotonicClock` and `raft_clock::refresh` now supply both service reactors with
+kernel-counter elapsed time before inbound processing, transport completions and
+scheduled work. The read model does not prove the counter conversion, atomic
+sampling/read admission or clock/election assumptions. Rust checks exercise
+pause accounting, fractional conversion, rejection and overflow. Timer/CQ
+notifications wake the reactors; they no longer count as elapsed time.
+
 ## Raft pre-membership join admission
 
 | TLA+ action | Rust implementation | Correspondence |

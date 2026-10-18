@@ -171,18 +171,19 @@ pub(super) fn expire_queries(queries: &mut Vec<PendingQuery>) {
     }
 }
 
-/// Advance the logical Raft clock and maintain its detached wake-up timer.
+/// Sample elapsed Raft time and maintain its detached wake-up timer.
 pub(super) fn advance_raft_clock(
     node: &mut RaftNode,
+    clock: &mut catten_graft::clock::MonotonicClock,
     tick_due: bool,
     heartbeat_interval_ms: u64,
     last_heartbeat_broadcast: &mut u64,
     timer_armed: &mut bool,
 ) {
+    catten_services::raft_clock::refresh(node, clock);
     if !tick_due {
         return;
     }
-    node.set_millis(node.millis() + LOOP_TICK_MS);
     if node.check_timeout() {
         node.start_election(node.millis());
     }

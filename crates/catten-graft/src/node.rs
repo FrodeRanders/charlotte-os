@@ -1379,11 +1379,14 @@ impl RaftNode {
         self.applied_command_results.get(&index).map(Vec::as_slice)
     }
 
+    /// Check the implemented prerequisites and receive-time quorum freshness.
+    /// This gate still admits the stale read in `audit_receive_lease`; callers
+    /// need a request-specific quorum barrier to establish read authority.
     pub fn can_serve_linearizable_read(&self) -> bool {
         // Committing in this term establishes the inherited committed prefix.
         // Apply that prefix before querying it, including a compacted anchor.
-        // Recent contact is a separate gate; its timing contract still needs
-        // qualification for delayed same-term responses.
+        // Recent contact is a separate gate; a delayed same-term response can
+        // refresh it after another quorum replaces this leader.
         if self.state != NodeState::Leader
             || self.commit_index == 0
             || self.log_store.term_at(self.commit_index) != self.current_term
@@ -1403,9 +1406,9 @@ impl RaftNode {
 
     /// Whether local committed state is backed by recent cluster evidence.
     ///
-    /// A leader must currently hold its quorum-contact read lease. A follower
-    /// may serve a bounded-staleness projection only after a successful log
-    /// match from its recognized leader; rejected heartbeats do not count.
+    /// Leaders use the query gate, including its known delayed-reply gap.
+    /// Followers require a successful log match from the recognized leader;
+    /// rejected heartbeats do not count. Both are receive-time observations.
     pub fn can_serve_bounded_read(&self, max_follower_age_millis: u64) -> bool {
         if self.state == NodeState::Leader {
             return self.can_serve_linearizable_read();
@@ -1654,6 +1657,29 @@ mod tests {
         assert_eq!(node.commit_index, 1);
         assert_eq!(node.last_applied, 1);
         assert!(node.can_serve_linearizable_read());
+    }
+
+    #[test]
+    fn reactor_pause_expires_old_quorum_contact() {
+        let mut node = elected_three_node_leader();
+        node.handle_append_entries_response(
+            "n2",
+            AppendEntriesResponse {
+                peer_id: "n2".to_string(),
+                term: node.current_term,
+                success: true,
+                match_index: 1,
+            },
+            202,
+        );
+        assert!(node.can_serve_linearizable_read());
+        let mut clock = crate::clock::MonotonicClock::new(1_000, 1_000).unwrap();
+        assert_eq!(clock.sample(1_202, 1_000), Ok(node.millis()));
+        // The next notification follows a five-second reactor pause.
+        node.set_millis(clock.sample(6_202, 1_000).unwrap());
+        assert!(!node.can_serve_linearizable_read());
+        node.state = NodeState::Follower;
+        assert!(node.check_timeout(), "election time also includes the pause");
     }
 
     #[test]

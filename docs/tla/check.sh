@@ -357,6 +357,9 @@ run_expected_violation CharlotteRaftRead CharlotteRaftRead_commit_unsafe.cfg \
     ReadHasCurrentCommit UnsafeReadBeforeCommit
 run_expected_violation CharlotteRaftRead CharlotteRaftRead_apply_unsafe.cfg \
     ReadHasAppliedCommit UnsafeReadBeforeApply
+# Known implementation gap: contact delivery can revive an obsolete leader.
+run_expected_violation CharlotteRaftRead CharlotteRaftRead_delayed_lease_gap.cfg \
+    ReadHasAuthority Read
 run_model CharlotteRaftMembership CharlotteRaftMembership_small.cfg \
     Elect ElectNextOnly SubmitJoint Replicate CommitJoint SubmitFinalize \
     RejectLaggingFinalize CommitFinalize Crash Restart

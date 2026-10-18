@@ -121,7 +121,7 @@ provide.
 \section{What is modeled}
 
 The current suite checks thirty-five safe configurations across thirty-three
-specifications. It also checks 103 expected-counterexample
+specifications. It also checks 104 expected-counterexample
 configurations. The models are divided by state ownership and failure boundary
 so that each remains reviewable.
 The Raft models are deliberately layered: election, log replication,
@@ -600,6 +600,30 @@ differ, and no upstream failure was reproduced. Contact remains a receive-time
 observation: delayed same-term replies, lease timing and request correlation
 still need separate work before claiming complete read linearizability.
 
+\subsection{Elapsed time and delayed authority evidence}
+
+The service reactors previously counted one 25 ms tick after waking, even if
+seconds had passed. They now convert the kernel monotonic counter from a fixed
+epoch, sampling after waits and before inbound or scheduled work. Fractional
+counter ticks accumulate correctly. Invalid or regressing samples abort with
+pending work live; timer notifications no longer manufacture elapsed time.
+
+That correction does not make receive-time contact a safe read lease. A host
+witness elects n2 with n3 and commits value 2. Isolated n1 first rejects a read
+because its old contact expired. An honest delayed term-one reply then refreshes
+its contact, and n1 returns value 1. This is a reproduced application-level stale
+read in the host consensus core, without a native packet-delay or upstream
+execution claim.
+
+The diagnostic \texttt{DelayedLease} configuration extends
+\tlbreak{Charlotte}{RaftRead} with reply capture, external leader replacement
+and delayed delivery. Its ordinary \texttt{Read} action violates
+\tlbreak{ReadHas}{Authority} while both commit/application prerequisites hold.
+It removes no source guard. The safe 20-state instance excludes this external
+authority change and retains its narrower prerequisite claim. Request-specific
+quorum confirmation remains required; shortening a receive-time window alone
+does not establish that confirmation.
+
 \subsection{Rejected application snapshots leave known ground intact}
 
 A complete snapshot stream can still contain an unsupported application format
@@ -912,6 +936,9 @@ present conformance obligations:
 \tlbreak{UnsafeFinalize}{OldOnly} & FINALIZE commits without the new voter majority. &
     \tlbreak{FinalizationHas}{BothQuorums} \\
 \hline
+Read after delayed contact & A delayed reply revives an obsolete leader's read gate (known source gap). &
+    \tlbreak{ReadHas}{Authority} \\
+\hline
 \tlbreak{UnsafeReadBefore}{Commit} & A new leader reads before committing in its term. &
     \tlbreak{ReadHasCurrent}{Commit} \\
 \hline
@@ -992,7 +1019,8 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \end{longtable}
 \normalsize
 
-The check suite expects all 103 negative configurations to fail for the named
+The check suite expects all 104 negative configurations, including the known
+lease gap, to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -1043,7 +1071,7 @@ Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs 103 negative configurations and requires each one to fail on
+    \item runs 104 negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.

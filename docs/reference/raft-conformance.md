@@ -16,7 +16,7 @@ NVMe object store at the platform boundary.
 | Replication and commit | Responses require a matching admitted source and exact current term; success cannot exceed the local tail or reduce confirmed progress, and backoff retains that floor. The leader counts itself once, counts configured voters, requires a current-term entry and uses the candidate index's configuration. |
 | Membership changes | `JOIN`, `JOINT`, and `FINALIZE` are shared protobuf internal commands. Direct local membership mutation is rejected. Automatic FINALIZE waits for the committed JOINT fence and every proposed remote voter/learner to catch up, restoring Graft Java/Rust behavior. Its commit still requires both voter majorities. |
 | Learners and removal | Learners replicate but neither campaign nor vote. Finalization makes a non-voter a follower immediately, preserving its existing-term vote. Removed nodes become decommissioned; retained learners remain members. |
-| Reads | The current query gate requires leadership, a nonzero current-term commit, application through that commit and recent receive-time quorum contact. Exact-term response fencing rejects stale-term credit; lease duration, delayed same-term responses and election/clock assumptions still need qualification before claiming linearizability. |
+| Reads | Known stale-read gap: an honest delayed same-term reply can reopen an obsolete leader's receive-time gate. Current-term commit and application prerequisites are enforced, but a request-specific quorum barrier is still required. The audit host witness and TLA+ diagnostic reproduce this gap. |
 | Snapshots | Snapshots carry current and next membership, peer roles/addresses, and application state in the shared JSON envelope. Application restore must succeed before startup exposes a node or network installation publishes snapshot progress/membership. |
 | Wire contract | Vote, append, snapshot, peer, and internal-command messages use field-compatible `raft.proto` protobuf payloads. |
 | Liveness | Capability RPCs have bounded deadlines and at most one outstanding call per peer/RPC type/term. Append batches are reduced to the largest payload fitting the current one-page IPC attachment. |
@@ -115,3 +115,27 @@ comparison does not establish a reproduced upstream failure. The new Charlotte
 checks are necessary prerequisites, with two executable negative controls.
 Receive-time contact can still be refreshed by a delayed same-term response;
 complete read-lease correctness and request correlation remain open.
+
+## Reactor time and the receive-time lease gap
+
+Both service reactors now derive Raft milliseconds from the kernel monotonic
+counter. They sample after waits, before inbound work/completion processing and
+before scheduled work. A delayed reactor catches up by the whole elapsed pause;
+duplicate notifications contribute no artificial time. Invalid frequency,
+frequency change, regression or conversion exhaustion aborts with pending work
+live. Timers and the existing CQ watchdog remain wake mechanisms.
+
+The [18 October follow-up](../reports/audits/2026-10-18-raft-clock-lease-gap.md)
+now **reproduces a stale read**, beyond the previous prerequisite failure. n2
+and n3 elect a new leader and commit value 2. An honest delayed term-one reply
+then reaches isolated n1, refreshes its receive-time contact, and allows a read
+of value 1. Both the host witness and an explicit TLA+ diagnostic schedule retain
+this gap. Correct elapsed-time accounting does not close it. The 750 ms query
+window and leader bounded-read branch therefore remain unqualified for read
+safety; follower freshness is also a receive-time observation.
+
+A request-specific quorum barrier must carry the read's admission across the
+round and recheck leadership/application before answering. A committed per-read
+fence could use the existing log grammar; an explicit correlated probe needs a
+shared core/runtime contract across the ports. Merely shortening the lease or
+using an unrelated latest-send timestamp cannot identify the delayed reply.

@@ -534,6 +534,7 @@ fn main(ctx: Context) -> ! {
 
     config::write::<u32>(status::STAGE, 5);
 
+    let mut raft_clock = catten_services::raft_clock::start();
     let mut node = RaftNode::new(catten_graft::node::RaftNodeConfig {
         me,
         timeout_millis: election_timeout_ms,
@@ -603,6 +604,7 @@ fn main(ctx: Context) -> ! {
         // completion will arrive. Keep the bounded CQ timeout as an
         // independent clock watchdog so one delayed/lost cookie cannot stop
         // elections and heartbeats forever.
+        catten_services::raft_clock::refresh(&mut node, &mut raft_clock);
         let mut tick_due = clock_watchdog.expired();
         while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
             if completion.cookie == RAFT_TIMER_COOKIE {
@@ -847,6 +849,7 @@ fn main(ctx: Context) -> ! {
         // Drain inbound Raft traffic after processing the timer tick.
         loop {
             let message = ipc_recv(endpoint);
+            catten_services::raft_clock::refresh(&mut node, &mut raft_clock);
             if message.status == ipc_status::NO_MESSAGE {
                 break;
             }
@@ -1131,8 +1134,8 @@ fn main(ctx: Context) -> ! {
             }
         }
 
+        catten_services::raft_clock::refresh(&mut node, &mut raft_clock);
         if tick_due {
-            node.set_millis(node.millis() + LOOP_TICK_MS);
             if node.check_timeout() {
                 node.start_election(node.millis());
             }

@@ -560,6 +560,14 @@ historical AMD causality, the retained Intel scheduled-close/ingress failure and
 broader cleanup acceptance remain open. SEC-18 remains partial; finding counts
 are unchanged.
 
+The [Raft clock/lease-gap review](../reports/audits/2026-10-18-raft-clock-lease-gap.md)
+replaces wake-count time with checked kernel-monotonic elapsed time in both
+reactors. It also reproduces a stale application read after a delayed same-term
+reply refreshes an obsolete leader. That independent receive-time lease gap is
+retained as a host witness and TLA+ diagnostic counterexample; request-specific
+read barriers remain required. No read-safety or numbered finding closure is
+claimed by the clock correction.
+
 The [Raft read-prerequisite review](../reports/audits/2026-10-18-raft-read-prerequisites.md)
 reproduces query admission before a newly elected leader commits in its term.
 The gate now requires a current-term commit and application through that commit,

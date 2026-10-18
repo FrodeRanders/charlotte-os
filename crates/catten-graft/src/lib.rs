@@ -3,6 +3,7 @@
 extern crate alloc;
 
 pub mod charlotte;
+pub mod clock;
 pub mod configuration;
 pub mod log_store;
 pub mod membership;

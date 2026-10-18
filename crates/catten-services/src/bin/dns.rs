@@ -1762,6 +1762,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         catten_rt::logln!("[raft-store] DNS open rejected: {:?}", error);
         fatal(16)
     });
+    let mut raft_clock = catten_services::raft_clock::start();
     let mut node = RaftNode::new(catten_graft::node::RaftNodeConfig {
         me: me.clone(),
         timeout_millis: election_timeout_ms,
@@ -1868,6 +1869,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // It is an independent watchdog: a submitted timer can
         // have its completion delayed or dropped; ignoring the timeout while
         // `timer_armed` stayed true would then freeze Raft time forever.
+        catten_services::raft_clock::refresh(&mut node, &mut raft_clock);
         let mut tick_due = clock_watchdog.expired();
         while let Some(completion) = unsafe { cq_read(cq.base, cq.entries) } {
             if completion.cookie == RAFT_TIMER_COOKIE {
@@ -2028,6 +2030,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                             memory_close(memory);
                             continue;
                         }
+                        catten_services::raft_clock::refresh(&mut node, &mut raft_clock);
                         let frame = &object[IPC_MESSAGE_HEADER_SIZE..IPC_MESSAGE_HEADER_SIZE + len];
                         match frame.first().copied() {
                             Some(catten_services::rcall::TAG_REQUEST) => {
@@ -3045,6 +3048,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
                 as u32,
         );
 
+        catten_services::raft_clock::refresh(&mut node, &mut raft_clock);
         let completed = node.poll_transport(node.millis());
         if completed > 0 {
             config::write_u32_release(dns::status::TRANSPORT_COMPLETIONS, completed as u32);
@@ -3135,6 +3139,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         // --- Local endpoint ops (register / lookup / status) ---
         loop {
             let message = ipc_recv(endpoint);
+            catten_services::raft_clock::refresh(&mut node, &mut raft_clock);
             if message.is_ok() && message.opcode == dns::OP_CATALOG {
                 served += 1;
                 config::write_u32_release(dns::status::IPC_REQUESTS_SERVED, served);
@@ -4909,6 +4914,7 @@ fn serve(ctx: &Context) -> ShutdownRequest {
         transport.set_current_millis(node.millis());
         advance_raft_clock(
             &mut node,
+            &mut raft_clock,
             tick_due,
             heartbeat_interval_ms,
             &mut last_heartbeat_broadcast,

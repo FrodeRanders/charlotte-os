@@ -65,7 +65,7 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all thirty-five complete fast configurations and 103 expected-failure
+- runs all thirty-five complete fast configurations and 104 expected-failure
   IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
   checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
   Raft-join, Raft-response, snapshot-restore, cluster-ingress, and reliable-message regression configurations;
@@ -807,6 +807,17 @@ records the reproduced source failure. Contact is an external input: this model
 does not establish lease timing, delayed same-term response safety, request
 correlation or complete linearizability. Log/election proofs and actual snapshot
 term lookup remain separate layers and Rust checks.
+
+The read model also retains a **known implementation gap** in
+`CharlotteRaftRead_delayed_lease_gap.cfg`. It captures an honest reply, lets
+another quorum replace the leader without notifying the old node, then delivers
+the reply. The ordinary `Read` action violates `ReadHasAuthority` while the
+commit/application prerequisites still hold. This configuration removes no
+source guard; the safe 20-state prerequisite instance excludes that environment
+and makes no authority claim. The [clock and lease-gap review](../reports/audits/2026-10-18-raft-clock-lease-gap.md)
+includes a three-node host witness that returns an old value after a newer write
+commits. Kernel-monotonic service clocks fix elapsed-time accounting, not this
+receive-time authority gap.
 
 `CharlotteSnapshotRestore.tla` checks the application acceptance boundary
 separately. Unsupported headers and malformed later sections leave application

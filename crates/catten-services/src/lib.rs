@@ -35,6 +35,7 @@ pub mod grant_client;
 /// Owned application-side wrappers for the Kafka service protocol.
 pub mod kafka_client;
 pub mod publication;
+pub mod raft_clock;
 pub mod reactor;
 /// Owned application-side wrappers for the S3 service protocol.
 pub mod s3_client;

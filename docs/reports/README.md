@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Raft elapsed time and reproduced lease gap](audits/2026-10-18-raft-clock-lease-gap.md) — Corrects reactor clock accounting; an honest delayed reply still enables a stale application read.
+
 - [Raft read prerequisites](audits/2026-10-18-raft-read-prerequisites.md) — Rejects reads before current-term commit/application; timing and correlation remain open.
 
 - [Graft membership parity and demoted leadership](audits/2026-10-18-raft-membership-parity.md) — Restored proposed-member catch-up, immediate learner step-down with vote retention, and a dated Java/C++/Rust and Jepsen scope comparison.
