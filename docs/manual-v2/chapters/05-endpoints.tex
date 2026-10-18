@@ -223,11 +223,14 @@ A reply token is:
         caller's future.
     \item Consumable exactly once: a second reply attempt returns
         an error.
-    \item Invalidated by cancellation: if the caller times out or
-        aborts, the reply token becomes inert.
-    \item Invalidated by endpoint teardown: if the server dies,
-        all outstanding reply tokens are invalidated, and all waiting
-        callers receive \texttt{ServiceRestarted}.
+    \item Closed by confirmed cancellation. A wait timeout alone leaves the
+        pending call and reply authority live; the caller must retain the owner
+        until reply observation or completed cancellation.
+    \item Endpoint teardown can complete a call with
+        \texttt{IPC\_REPLY\_ENDPOINT\_CLOSED}. The client below maps this
+        to its own \texttt{ServiceRestarted} recovery decision. The kernel
+        must finish required loan cleanup before publishing that terminal result;
+        uncertain cleanup can leave the call pending.
     \item Optionally delegable: a server may forward a reply token
         to another service, allowing a chain of services to contribute to
         a single reply.
@@ -242,7 +245,8 @@ A reply token is:
 
 A connection capability can be delegated to another domain with attenuated rights.
 This is the mechanism by which the userspace name service returns service-level
-connections:
+connections. The following pseudocode illustrates delegation; the compiling
+client API is shown in \autoref{sec:reconnecting-client}:
 
 
 \begin{lstlisting}[style=rustCode]
@@ -268,19 +272,109 @@ maps human-readable names to re-delegable connection capabilities:
     \item Registration: a service registers as \texttt{"driver.nic.v1"}
         with a specific endpoint. The name service stores the endpoint's
         connection.
-    \item Generation tracking: each registration bumps a generation
-        counter. Stale client connections bound to the previous generation fail
-        with \texttt{ServiceRestarted}.
-    \item Access-key gating: a registration may specify a non-zero access
-        key. The userspace name service denies lookups without
-        the matching key.
-    \item Lookup: a client asks for \texttt{"driver.nic.v1"} and receives
-        a connection capability (or an error). It never receives an address, a
-        port number, or a raw handle.
+    \item Generation tracking: replacement registrations advance the name's
+        generation. A connection continues to identify its original endpoint;
+        re-registration alone does not revoke it or redirect it to a replacement.
+        Endpoint death closes that instance's communication path.
+    \item Authorization: policy-published services use default-deny rules
+        checked against the kernel-authenticated caller identity. Ordinary
+        applications acquire a connection through the capability-grant controller
+        using their signed deployment descriptor. Bearer access-key lookup is
+        retired; public lookup cannot bypass a protected publication.
+    \item Lookup: an application requests a complete name such as
+        \texttt{"driver.nic.v1"} and the rights it needs. The owning Rust API
+        returns a \texttt{Connection} or an error; capability handles stay
+        inside that owner. No network address or port is needed for local IPC.
 \end{itemize}
 
 The name service runs in userspace. The kernel provides the endpoint and
 connection primitives; userspace provides the naming policy.
+
+\subsection{A client with explicit recovery scopes}
+\label{sec:reconnecting-client}
+
+The following is a complete, compiling userspace example. It uses the existing
+\texttt{greet} service's read-only \texttt{deploy::OP\_GET} protocol so that the
+business operation has a concrete implementation. The deployment descriptor
+must grant \texttt{CALL} on \texttt{greet}, and the service must be published and
+allowed by policy. A NIC client would use its own signed service grant and
+versioned protocol in those two places.
+
+\begin{samepage}
+Keep the recovery scopes nested in this order:
+
+\begin{enumerate}
+    \item The application borrows its launch authority and owns its business
+        progress and current operation deadline.
+    \item Discovery creates one owned connection for a session.
+    \item The session performs business operations through a borrow of that
+        connection. A confirmed result advances application progress.
+    \item Each operation owns its pending call until reply observation or
+        confirmed cancellation. This owner ends before the session connection.
+\end{enumerate}
+\end{samepage}
+
+The complete source is
+\repofile{crates/catten-services/examples/reconnecting_client.rs}. It depends on
+\texttt{catten-rt}, \texttt{catten-services}, \texttt{catten-syscall} and
+\texttt{charlotte-launch}. The listings below include that source directly;
+the conditional attributes only allow its host tests to use Rust's test harness.
+
+\paragraph*{Application lifetime.}
+The launch contract supplies borrowed authority. Terminal exit and cooperative
+shutdown happen after \texttt{run} has returned and its owned resources have
+left scope. Failed cancellation has a separate retaining abort path below.
+
+\lstinputlisting[style=rustCode,linerange={APPBEGIN-APPEND},rangeprefix={//},includerangemarker=false]{../../crates/catten-services/examples/reconnecting_client.rs}
+
+\paragraph*{Discovery and session lifetime.}
+\texttt{Work} outlives every connection. When the session reports endpoint loss,
+\texttt{continue} drops that old connection before discovery acquires another.
+There are at most three sessions. The deadline belongs to the current business
+operation and survives reconnection; repeated discovery cannot renew its budget.
+Authorization, resource and malformed-request errors return to application policy.
+There is no fallback to public lookup.
+
+\lstinputlisting[style=rustCode,linerange={DISCOVERYBEGIN-DISCOVERYEND},rangeprefix={//},includerangemarker=false]{../../crates/catten-services/examples/reconnecting_client.rs}
+
+\paragraph*{Business operation.}
+The inner scope contains only use of this session. Its \texttt{ServiceRestarted}
+variant is an application-defined classification of the current endpoint-closure
+status or terminal reply code. The runtime does not export an error variant with
+that name, and closure alone does not establish that a replacement is available.
+All other failures step out to the application. Progress and the next deadline
+advance only after a validated reply.
+
+\lstinputlisting[style=rustCode,linerange={SESSIONBEGIN-SESSIONEND},rangeprefix={//},includerangemarker=false]{../../crates/catten-services/examples/reconnecting_client.rs}
+
+\paragraph*{Accepted-call lifetime.}
+A timeout and rejected waiter admission are different outcomes. Both leave an
+accepted pending call owned here. Explicit cancellation closes that owner before
+returning an error; rejected cancellation returns the owner, which stays live
+through terminal domain abort. Cancellation can wait for loan cleanup, so the
+five-second observation budget is not a guaranteed teardown deadline.
+
+\lstinputlisting[style=rustCode,linerange={CALLBEGIN-CALLEND},rangeprefix={//},includerangemarker=false]{../../crates/catten-services/examples/reconnecting_client.rs}
+
+This example can repeat an unconfirmed greeting read after endpoint loss because
+the operation is read-only. A write, payment, device command or other mutation
+needs its own recovery contract: for example a durable request ID, deduplication
+and a query for the recorded outcome. Successful cancellation does not undo an
+effect already performed by the service. Timeout, cancelled replies and rejected
+wait admission therefore stop this example; they never enter its reconnect path.
+Its progress counter survives connection replacement within this process only.
+Durable application progress belongs outside the session and needs its own commit
+and recovery rules.
+
+The single-call wait suits a dedicated client that has no inbound work needed to
+produce the reply. A service reactor must bind the pending call and its other
+interests to one CQ and continue serving them; see
+\repofile{docs/reference/cq-wait.md}. Shutdown is checked between acquisitions
+and calls, so an accepted RPC may occupy the observation budget before that check.
+Grant acquisition still uses bounded availability backoff because applications
+have no publication-readiness subscription. It returns authorization and other
+rejections immediately. This example demonstrates ownership and recovery policy;
+it does not establish production readiness of the operating system.
 
 \section{Two kernel data paths}
 
@@ -325,13 +419,13 @@ they are different kernel abstractions with different semantics.
         in-flight work and continues serving other requests. The shard's executor
         multiplexes naturally.
 
-    \item Restart errors are defined: stale connections return typed
-        errors such as \texttt{EndpointClosed} and \texttt{ServiceRestarted}.
+    \item Endpoint loss is observable: clients classify the endpoint-closure
+        status and terminal reply, as in \autoref{sec:reconnecting-client}.
         A replacement cannot inherit the old instance's reply tokens.
 
     \item The kernel provides endpoints and connections. The userspace name
         service decides who can register what name,
-        who can look up what service, and what access keys are required. The
+        who can look up what service, and which rights policy permits. The
         kernel remains small; policy is replaceable without a kernel rebuild.
 \end{enumerate}
 

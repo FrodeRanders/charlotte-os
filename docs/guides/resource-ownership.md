@@ -8,6 +8,10 @@ The raw functions in `catten-syscall` describe the register ABI. They are not
 the normal service-development API. Use `catten_rt::owned` in services and
 applications.
 
+For application-to-service calls, the [reconnecting client](reconnecting-clients.md)
+shows launch authority, an owned session connection, business progress and pending
+RPCs in nested recovery scopes, with explicit timeout and cancellation policy.
+
 Memory-object backing also consumes a kernel-enforced
 [sponsorship budget](../reference/memory-object-budgets.md). Moving ownership
 does not erase the creating generation's charge; the charge is returned when

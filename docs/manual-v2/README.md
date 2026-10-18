@@ -23,3 +23,9 @@ pdflatex --shell-escape charlotte.tex
 The second pass resolves the table of contents and clickable cross-references.
 For TeXShop, select or create an engine that passes `--shell-escape` to
 `pdflatex`; SyncTeX continues to work with the SVG figures.
+
+Chapter 5 includes the [reconnecting client example](../../crates/catten-services/examples/reconnecting_client.rs)
+directly through marked `lstinputlisting` ranges. Keep the range markers intact
+when editing the example; its source must compile without additions to the
+listings. Build and host-test commands, prerequisites and recovery limits are in
+the [client guide](../guides/reconnecting-clients.md).

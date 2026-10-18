@@ -197,27 +197,23 @@ macro:
 #![no_std]
 #![no_main]
 
-use catten_rt::entry;
-
-entry!(main);
+use catten_rt::Context;
 
 fn main(ctx: Context) -> ! {
-    // ctx provides:
-    // - A connection to the name service
-    // - The default CQ handle
-    // - Heap configuration
-    // - Bootstrap capabilities (device grants, etc.)
-
-    let name_service = ctx.name_service();
-    let nic_driver = name_service.lookup("driver.nic.v1")?;
-
-    // ... service logic ...
-
-    loop {
-        // Poll tasks, drain CQ, wait for events.
-    }
+    // The launch environment owns this bootstrap connection.
+    let _controller = ctx.bootstrap_connection()
+        .unwrap_or_else(|| catten_rt::domain_abort());
+    // A deployed application also borrows ctx.profile_memory().
+    // See the complete client in Section 5's discovery discussion.
+    unsafe { catten_syscall::thread_exit() }
 }
+
+catten_rt::entry!(main);
 \end{lstlisting}
+
+\autoref{sec:reconnecting-client} contains the complete application skeleton:
+signed-grant acquisition, an owned session connection, business progress outside
+that session, bounded reconnection and explicit accepted-call cancellation.
 
 The program does not define \texttt{\_start}, a panic handler, or an allocator.
 These are provided by \texttt{catten-rt}. The \texttt{entry!} macro wires them

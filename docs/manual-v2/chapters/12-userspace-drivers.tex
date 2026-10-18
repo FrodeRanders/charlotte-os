@@ -210,9 +210,11 @@ Complex I/O stacks decompose into separate failure and authority domains:
 
 The NIC driver knows about hardware registers and descriptor rings, the network
 service knows about protocols and sockets, and the application knows about its
-business logic. A crash in any layer is contained: the NIC driver crashes,
-the network service sees \texttt{ServiceRestarted}, and reconnects to a fresh
-instance.
+business logic. When a driver's endpoint closes, the network service can discard
+its old session and discover a replacement. Endpoint loss alone cannot authorize
+replaying an uncertain device command or reclaiming DMA backing. The client
+recovery scopes in \autoref{sec:reconnecting-client} show that distinction for a
+read-only operation.
 
 \section{Isolation and device access}
 

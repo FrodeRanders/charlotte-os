@@ -64,27 +64,31 @@ The kernel does not know about service names. A userspace \textbf{name service}
 maps human-readable names to connection capabilities:
 
 \begin{description}
-    \item[Registration] A service calls \texttt{register("driver.nic.v1",
-        endpoint, access\_key)} on the name service. The name service stores the
-        endpoint's identity and opens a connection to it.
+    \item[Registration] A service publishes a name such as
+        \texttt{"driver.nic.v1"} with a delegated connection to its endpoint.
+        An ordinary application uses the grant controller and its signed
+        deployment descriptor; trusted mediation services have a private
+        connection to the name service.
     \item[Generation tracking] Each registration bumps a generation counter.
         If the service restarts and re-registers with the same name, the new
-        generation replaces the old one. Existing connections bound to the old
-        generation fail with \texttt{ServiceRestarted}.
-    \item[Lookup] A client calls \texttt{lookup("driver.nic.v1", access\_key)}.
-        The name service checks the access key (if the service registered one),
-        then delegates a connection capability to the client, typically with
-        \texttt{SEND | CALL} rights only.
-    \item[Access-key gating] A registration with a non-zero access key requires
-        lookers to provide the matching key. This is userspace policy: the name
-        service enforces it; the kernel does not participate.
+        generation replaces the old binding. Existing connections still target
+        the original endpoint. Re-registration alone does not revoke or redirect
+        them; endpoint death closes that instance's communication path.
+    \item[Lookup] An application requests the complete name and required rights
+        from the grant controller, supplying its immutable signed descriptor.
+        Policy checks the kernel-authenticated caller identity and returns an
+        attenuated owned connection. Public bootstrap lookup cannot grant a
+        policy-published service.
+    \item[Authorization] Bearer access-key operations are retired. Access uses
+        default-deny principal/service policy and signed deployment grants.
 \end{description}
 
 The name service runs as a \texttt{no\_std} EL0 service process. Boot starts
 exactly one node-local instance and the supervisor retains its registry
-endpoint. Each ordinary service or application receives an attenuated
-connection to that endpoint through its bootstrap page, so all processes on
-the node observe the same registry. Registering another name does not create
+endpoint. Deployed applications receive an attenuated connection to the grant
+controller through their bootstrap page. Trusted node-local services may instead
+receive a name-service connection. Those paths use the same
+node-local registry. Registering another name does not create
 another name-service process. A separate registry is appropriate only for an
 explicitly isolated namespace, such as a test or a future tenant domain.
 
@@ -98,19 +102,22 @@ inspect another process's capability table.
 When a service crashes and the supervisor restarts it:
 
 \begin{enumerate}
-    \item Device reset: if the service was a driver, the supervisor
-        resets the device before re-granting it to a new driver instance. The
-        new driver sees a clean hardware state.
-    \item Generation increment: the name service bumps the service's
-        generation. All old connections are invalidated.
+    \item Device quiescence and reset: a driver can restart only after its
+        hardware-specific cleanup contract permits new grants. Failed or
+        uncertain cleanup retains its fences and backing; a new service name
+        or generation cannot supply the missing completion proof.
+    \item Generation increment: the name service advances the replacement's
+        publication generation. Existing connections keep their old target.
     \item Stale connections: clients connected to the old instance
-        receive \texttt{ServiceRestarted} on their next call
-        attempt. They re-lookup the service and receive a connection to the
-        new instance.
+        observe endpoint closure when that target dies. They dispose of the old
+        session and request another connection through their original authority.
+        \autoref{sec:reconnecting-client} provides a compiling Rust example,
+        including outcomes that must stop rather than replay an operation.
     \item Outstanding operation reconciliation: the supervisor
-        reconciles any operations the old domain had submitted but not
-        completed: cancellations are posted, borrowed memory is returned,
-        DMA buffers are recovered.
+        retains the old domain's operation owners until cancellation, loan
+        revocation and hardware completion are confirmed. Uncertain work can
+        prevent reclamation and restart. Application effects still need their
+        protocol's own reconciliation; teardown does not undo them.
     \item Fresh bootstrap: the new domain receives a fresh config-page
         with freshly minted capabilities. It does not inherit the previous
         instance's capability table, reply tokens, or DMA ownership.

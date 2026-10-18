@@ -10,6 +10,12 @@ name = "catten_services"
 path = "src/lib.rs"
 bench = false
 
+[[example]]
+name = "reconnecting_client"
+path = "examples/reconnecting_client.rs"
+test = true
+bench = false
+
 [[bin]]
 name = "ns"
 path = "src/bin/ns.rs"
@@ -138,7 +144,7 @@ zeroize = { version = "1.9", default-features = false, features = ["alloc"] }
 p256 = { version = "0.13", default-features = false, features = ["ecdsa"] }
 signature = { version = "2.2", default-features = false }
 
-[dev-dependencies]
+[target.'cfg(not(target_os = "none"))'.dev-dependencies]
 ed25519-compact = "2.3.1"
 getrandom = { version = "0.4", features = ["sys_rng"] }
 rand_core_10 = { package = "rand_core", version = "0.10" }

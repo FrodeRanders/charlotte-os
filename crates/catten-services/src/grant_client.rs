@@ -23,8 +23,9 @@ pub enum Error {
 
 /// Acquire one capability allowed by the launch-provided signed deployment
 /// descriptor. No name-service connection or connector secret enters the
-/// application. Waits at most five monotonic seconds, retrying only temporary
-/// unavailability. Every attempt owns its pending call; expiry cancels it.
+/// application. Observation uses a five-second monotonic budget, retrying only
+/// temporary unavailability. Every attempt owns its pending call; expiry
+/// cancels it through the runtime policy. Teardown can outlive that budget.
 pub fn acquire(
     controller: ConnectionRef<'_>,
     descriptor: &LaunchMemoryRef<'_>,
@@ -32,10 +33,24 @@ pub fn acquire(
     rights: u16,
 ) -> Result<Connection, Error> {
     let deadline = crate::deadline::Deadline::after(5_000);
+    acquire_until(controller, descriptor, service, rights, &deadline)
+}
+
+/// Acquire within the caller's original operation budget. Reconnection and
+/// subsequent service calls can share this same monotonic deadline.
+/// Publication readiness is not exposed to applications yet, so temporary
+/// unavailability uses bounded backoff. Other rejections return immediately.
+pub fn acquire_until(
+    controller: ConnectionRef<'_>,
+    descriptor: &LaunchMemoryRef<'_>,
+    service: &[u8],
+    rights: u16,
+    deadline: &crate::deadline::Deadline,
+) -> Result<Connection, Error> {
     loop {
-        match acquire_once(controller, descriptor, service, rights, &deadline) {
+        match acquire_once(controller, descriptor, service, rights, deadline) {
             Err(Error::Service(grant::ERR_UNAVAILABLE)) if !deadline.expired() => {
-                crate::sleep_ms(100);
+                crate::sleep_ms(deadline.remaining_ms().min(100));
             }
             result => return result,
         }

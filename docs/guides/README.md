@@ -15,6 +15,9 @@ These documents contain repeatable workflows rather than architectural claims.
   inputs, fixture compatibility, and the fail-closed production-image gate.
 - [Userspace resource ownership](resource-ownership.md) — RAII, typed mappings,
   IPC transfer/borrowing, server replies, cancellation, and raw boundaries.
+- [Reconnecting clients](reconnecting-clients.md) — a compiling application
+  skeleton with nested ownership scopes, one operation deadline and explicit
+  endpoint-loss, cancellation and replay policy.
 - [Cooperative shutdown](shutdown.md) — signed grace periods, lifecycle-aware
   event loops, resource teardown, and forced deployment retirement.
 - [AArch64 network development](aarch64-network-development.md) — macOS TCG,
