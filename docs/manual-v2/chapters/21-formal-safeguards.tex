@@ -121,7 +121,7 @@ provide.
 \section{What is modeled}
 
 The current suite checks thirty-four safe configurations across thirty-two
-specifications. It also checks ninety-eight expected-counterexample
+specifications. It also checks 101 expected-counterexample
 configurations. The models are divided by state ownership and failure boundary
 so that each remains reviewable.
 The Raft models are deliberately layered: election, log replication,
@@ -533,6 +533,33 @@ prove which cluster has authority. The safe
 TLA+ specification includes crash and restart; an unsafe restart that forgets
 admission must violate \tlbreak{RestartPreserves}{Admission}.
 
+\subsection{Membership changes preserve the tested Graft contract}
+
+Charlotte's Raft port derives from Graft, whose Java, C++ and Rust runtimes are
+intended to form mixed clusters. The upstream Jepsen harness exercises hostile
+schedules and membership changes. That evidence makes core and runtime parity
+an explicit review concern; a local model or host test does not replace it.
+
+A source comparison found that Charlotte had replaced the Java/Rust automatic
+finalization catch-up gate with immediate proposal after JOINT committed. The
+port now waits for every proposed remote voter and learner to reach the committed
+JOINT fence. The leader owns that prefix locally. Committing FINALIZE still
+requires both voter majorities. A slow proposed member can delay automatic
+completion; explicit/manual finalization is a separate path.
+
+A second regression finalizes the current leader as a retained learner. The
+previous Charlotte code kept it in the leader state. It now becomes a follower
+immediately, keeps its existing-term durable vote, and remains a member. The
+upstream Jepsen demotion scenario selects a non-leader, while leader removal has
+its own scenario; the new regression covers the retained-leader transition.
+
+\tlbreak{Charlotte}{RaftMembership} checks 6,232 distinct states. It includes
+next-only voter elections with both majorities and rejects automatic finalization
+while a proposed member lags. Three counterexamples remove the catch-up,
+leader-eligibility and dual-quorum guards. Durable vote persistence remains a
+source-test obligation. Native Charlotte checks do not establish Graft TCP
+interoperation, mixed implementation histories or read-lease correctness.
+
 \subsection{A delayed acknowledgement belongs to its original term}
 
 A source regression captured an honest term-one acknowledgement for index three,
@@ -855,6 +882,15 @@ present conformance obligations:
 \tlbreak{UnsafeRestartForgets}{Admission} & Restart makes an incomplete joiner
     election-eligible. & \tlbreak{RestartPreserves}{Admission} \\
 \hline
+\tlbreak{UnsafeFinalize}{BeforeCatchUp} & Automatic FINALIZE bypasses proposed-member catch-up. &
+    \tlbreak{ProposedMembers}{CaughtUp} \\
+\hline
+\tlbreak{UnsafeFinalize}{LearnerLeader} & A finalized learner retains leadership. &
+    \tlbreak{LeaderIs}{Eligible} \\
+\hline
+\tlbreak{UnsafeFinalize}{OldOnly} & FINALIZE commits without the new voter majority. &
+    \tlbreak{FinalizationHas}{BothQuorums} \\
+\hline
 \tlbreak{UnsafeOldTerm}{Ack} & An old reply commits a replaced prefix. &
     \tlbreak{CommitHas}{CurrentPrefix} \\
 \hline
@@ -929,7 +965,7 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \end{longtable}
 \normalsize
 
-The check suite expects all ninety-eight negative configurations to fail for the named
+The check suite expects all 101 negative configurations to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -980,7 +1016,7 @@ Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs ninety-eight negative configurations and requires each one to fail on
+    \item runs 101 negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.

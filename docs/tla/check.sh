@@ -351,7 +351,17 @@ run_expected_violation CharlotteRaftResponse \
     CharlotteRaftResponse_invalid_unsafe.cfg \
     AcknowledgementsHaveProof UnsafeInvalidCredit
 run_model CharlotteRaftMembership CharlotteRaftMembership_small.cfg \
-    Elect SubmitJoint Replicate CommitJoint SubmitFinalize CommitFinalize Crash Restart
+    Elect ElectNextOnly SubmitJoint Replicate CommitJoint SubmitFinalize \
+    RejectLaggingFinalize CommitFinalize Crash Restart
+run_expected_violation CharlotteRaftMembership \
+    CharlotteRaftMembership_beforecatchup_unsafe.cfg \
+    ProposedMembersCaughtUp UnsafeFinalizeBeforeCatchUp
+run_expected_violation CharlotteRaftMembership \
+    CharlotteRaftMembership_learnerleader_unsafe.cfg \
+    LeaderIsEligible UnsafeFinalizeLearnerLeader
+run_expected_violation CharlotteRaftMembership \
+    CharlotteRaftMembership_oldonly_unsafe.cfg \
+    FinalizationHasBothQuorums UnsafeFinalizeOldOnly
 run_model CharlotteRaftJoin CharlotteRaftJoin_small.cfg \
     Elect BeginJoining Crash Restart SubmitJoin CommitJoin ReplicateToJoiner SubmitJoint CommitJoint
 run_expected_violation CharlotteRaftJoin CharlotteRaftJoin_unsafe.cfg \

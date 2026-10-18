@@ -1255,10 +1255,14 @@ impl RaftNode {
             self.joining = false;
             self.joining_from = None;
         }
-        if self.decommissioned {
+        if !self.cluster_configuration.is_voter(&self.me.id) {
+            // Finalization can retain us as a learner. Relinquish leadership
+            // immediately while preserving this term's durable vote.
             self.state = NodeState::Follower;
             self.known_leader_id = None;
             self.last_successful_leader_sync_millis = None;
+            self.last_follower_contact_millis.clear();
+            self.granted_votes.clear();
         }
 
         let active_ids: BTreeSet<String> = self
@@ -1270,11 +1274,8 @@ impl RaftNode {
         self.next_index.retain(|id, _| active_ids.contains(id));
         self.match_index.retain(|id, _| active_ids.contains(id));
         self.snapshot_offsets.retain(|id, _| active_ids.contains(id));
-        if entered_joint
-            && self.state == NodeState::Leader
-            && self.submit_finalize_configuration(self.current_millis).is_ok()
-        {
-            self.finalize_configuration_pending = true;
+        if entered_joint {
+            self.maybe_auto_finalize_joint_configuration();
         }
         true
     }
@@ -1287,11 +1288,18 @@ impl RaftNode {
         {
             return;
         }
-        // Applying Joint means its log entry is committed. It is therefore
-        // safe to propose Finalize immediately: advancement of the Finalize
-        // commit index is still evaluated against both old and new majorities.
-        // A separate unanimity/match-index gate only lets one slow learner pin
-        // the cluster in joint consensus.
+        let fence = self.pending_auto_finalize_fence_index;
+        if fence == 0
+            || self.commit_index < fence
+            || self.pending_auto_finalize_members.iter().any(|id| {
+                id != &self.me.id && self.match_index.get(id).copied().unwrap_or(0) < fence
+            })
+        {
+            return;
+        }
+        // Match Graft's catch-up policy before proposing FINALIZE. The leader
+        // owns the committed entry locally; every proposed remote voter or
+        // learner must acknowledge it. Commit still needs both voter quorums.
         if self.submit_finalize_configuration(self.current_millis).is_ok() {
             self.finalize_configuration_pending = true;
         }
@@ -1543,6 +1551,162 @@ mod tests {
         );
         assert_eq!(node.state, NodeState::Leader);
         node
+    }
+
+    #[test]
+    fn finalized_learner_relinquishes_leadership_without_erasing_its_vote() {
+        let mut node = elected_three_node_leader();
+        let term = node.current_term;
+        let joint = node
+            .submit_joint_configuration(
+                vec![
+                    Peer::learner("n1".to_string(), 0),
+                    Peer::voter("n2".to_string(), 0),
+                    Peer::voter("n3".to_string(), 0),
+                ],
+                202,
+            )
+            .unwrap();
+        let acknowledge = |node: &mut RaftNode, peer: &str, index, millis| {
+            node.handle_append_entries_response(
+                peer,
+                AppendEntriesResponse {
+                    peer_id: peer.to_string(),
+                    term,
+                    success: true,
+                    match_index: index,
+                },
+                millis,
+            );
+        };
+        acknowledge(&mut node, "n2", joint, 203);
+        assert_eq!(node.commit_index, joint);
+        assert!(node.cluster_configuration.is_joint_consensus());
+        assert!(node.cluster_configuration.is_voter("n1"));
+        assert_eq!(node.state, NodeState::Leader);
+        assert_eq!(node.log_store.last_index(), joint);
+        acknowledge(&mut node, "n3", joint, 204);
+        let finalize = node.log_store.last_index();
+        assert!(finalize > joint);
+        acknowledge(&mut node, "n2", finalize, 205);
+        assert_eq!(node.commit_index, joint, "the new voter majority is still missing");
+        acknowledge(&mut node, "n3", finalize, 206);
+
+        assert_eq!(node.commit_index, finalize);
+        assert!(!node.cluster_configuration.is_joint_consensus());
+        assert!(node.cluster_configuration.contains("n1"));
+        assert!(!node.cluster_configuration.is_voter("n1"));
+        assert!(!node.decommissioned, "a retained learner remains a cluster member");
+        assert_eq!(node.state, NodeState::Follower);
+        assert!(node.known_leader_id.is_none());
+        assert!(node.last_follower_contact_millis.is_empty());
+        assert!(!node.can_serve_linearizable_read());
+        assert!(!node.can_serve_bounded_read(750));
+        assert_eq!(node.submit_command(vec![0xff], 206), Err(crate::types::ERR_NOT_LEADER));
+        assert_eq!(node.handle_client_query(Vec::new()), Err((crate::types::ERR_NOT_LEADER, None)));
+        assert_eq!(node.current_term, term);
+        assert_eq!(node.voted_for.as_deref(), Some("n1"));
+        assert_eq!(node.persistent_state.voted_for().as_deref(), Some("n1"));
+        node.start_election(2_000);
+        assert_eq!(node.state, NodeState::Follower);
+        assert_eq!(node.current_term, term);
+        assert!(!node.check_timeout());
+    }
+
+    #[test]
+    fn finalization_waits_for_a_slow_learner_then_commits() {
+        let mut node = elected_three_node_leader();
+        let joint = node
+            .submit_joint_configuration(
+                vec![
+                    Peer::voter("n1".to_string(), 0),
+                    Peer::voter("n2".to_string(), 0),
+                    Peer::learner("n3".to_string(), 0),
+                ],
+                202,
+            )
+            .unwrap();
+        for millis in [203, 204] {
+            node.handle_append_entries_response(
+                "n2",
+                AppendEntriesResponse {
+                    peer_id: "n2".to_string(),
+                    term: node.current_term,
+                    success: true,
+                    match_index: joint,
+                },
+                millis,
+            );
+        }
+        assert_eq!(node.commit_index, joint);
+        assert_eq!(node.log_store.last_index(), joint, "a slow learner delays the proposal");
+        assert!(node.cluster_configuration.is_joint_consensus());
+        assert!(!node.finalize_configuration_pending);
+        node.handle_append_entries_response(
+            "n3",
+            AppendEntriesResponse {
+                peer_id: "n3".to_string(),
+                term: node.current_term,
+                success: true,
+                match_index: joint,
+            },
+            205,
+        );
+        assert_eq!(node.log_store.last_index(), joint + 1);
+        assert!(node.finalize_configuration_pending);
+        node.handle_append_entries_response(
+            "n2",
+            AppendEntriesResponse {
+                peer_id: "n2".to_string(),
+                term: node.current_term,
+                success: true,
+                match_index: joint + 1,
+            },
+            206,
+        );
+        assert_eq!(node.commit_index, joint + 1);
+        assert!(!node.cluster_configuration.is_joint_consensus());
+        assert_eq!(node.match_index.get("n3"), Some(&joint));
+        assert!(node.cluster_configuration.contains("n3"));
+        assert!(!node.cluster_configuration.is_voter("n3"));
+        assert_eq!(node.state, NodeState::Leader);
+    }
+
+    #[test]
+    fn next_only_voter_needs_both_joint_election_majorities() {
+        let configuration = ClusterConfiguration::stable(vec![
+            Peer::voter("n1".to_string(), 0),
+            Peer::voter("n2".to_string(), 0),
+            Peer::learner("n3".to_string(), 0),
+        ])
+        .transition_to(vec![Peer::voter("n2".to_string(), 0), Peer::voter("n3".to_string(), 0)]);
+        let mut node = RaftNode::new(RaftNodeConfig {
+            me: Peer::learner("n3".to_string(), 0),
+            timeout_millis: 150,
+            log_store: Box::new(InMemoryLogStore::new()),
+            persistent_state: Box::new(InMemoryPersistentStateStore::new()),
+            state_machine: None,
+            cluster_configuration: configuration,
+            transport: Arc::new(NoopTransport),
+            current_millis: 0,
+            snapshot_min_entries: 64,
+            snapshot_chunk_bytes: 3000,
+        })
+        .unwrap();
+        node.start_election(200);
+        assert_eq!(node.state, NodeState::Candidate);
+        for (peer, expected_state) in [("n2", NodeState::Candidate), ("n1", NodeState::Leader)] {
+            node.handle_vote_response(
+                peer,
+                VoteResponse {
+                    peer_id: peer.to_string(),
+                    term: node.current_term,
+                    vote_granted: true,
+                },
+                201,
+            );
+            assert_eq!(node.state, expected_state);
+        }
     }
 
     #[test]
@@ -2041,7 +2205,7 @@ mod tests {
     }
 
     #[test]
-    fn committed_joint_configuration_can_propose_finalize_immediately() {
+    fn automatic_finalization_requires_a_committed_nonzero_fence() {
         let mut node = node_with_voters(&["n1", "n2"]);
         node.start_election(200);
         node.handle_vote_response(
@@ -2062,17 +2226,19 @@ mod tests {
         ]);
         node.pending_auto_finalize_members =
             vec!["n1".to_string(), "n2".to_string(), "n3".to_string()];
+        let last_index = node.log_store.last_index();
+        node.pending_auto_finalize_fence_index = 0;
+
+        node.maybe_auto_finalize_joint_configuration();
+
+        assert!(!node.finalize_configuration_pending);
+        assert_eq!(node.log_store.last_index(), last_index);
         node.pending_auto_finalize_fence_index = 7;
 
         node.maybe_auto_finalize_joint_configuration();
 
-        assert!(node.finalize_configuration_pending);
-        assert!(matches!(
-            node.log_store
-                .entry_at(node.log_store.last_index())
-                .and_then(|entry| crate::configuration::decode(&entry.data)),
-            Some(crate::configuration::ConfigurationCommand::Finalize)
-        ));
+        assert!(!node.finalize_configuration_pending);
+        assert_eq!(node.log_store.last_index(), last_index);
     }
 
     #[test]

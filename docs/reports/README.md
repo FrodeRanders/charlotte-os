@@ -8,6 +8,8 @@ appendix, and the living [`architecture/`](../architecture/README.md) and
 
 ## Audits
 
+- [Graft membership parity and demoted leadership](audits/2026-10-18-raft-membership-parity.md) — Restored proposed-member catch-up, immediate learner step-down with vote retention, and a dated Java/C++/Rust and Jepsen scope comparison.
+
 - [Raft response term and progress fencing](audits/2026-10-18-raft-response-fencing.md) — Reproduced stale-term unsafe commit, corrected response admission/progress, and repaired snapshot join-completion coverage.
 
 - [Application snapshot acceptance model](audits/2026-10-18-snapshot-restore-model.md) — Rejected restore preserves live state and Raft publication; recovery requires acceptance, with seven required counterexamples.

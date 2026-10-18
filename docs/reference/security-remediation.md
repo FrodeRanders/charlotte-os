@@ -560,6 +560,14 @@ historical AMD causality, the retained Intel scheduled-close/ingress failure and
 broader cleanup acceptance remain open. SEC-18 remains partial; finding counts
 are unchanged.
 
+The [Graft membership/parity follow-up](../reports/audits/2026-10-18-raft-membership-parity.md)
+compares all three upstream implementations and the Jepsen scenario definitions.
+It restores the automatic proposed-member catch-up gate and corrects retained
+learner leadership without erasing the current-term vote. The model now includes
+next-only voter elections and three required counterexamples. This does not
+qualify mixed Charlotte/Graft clusters, authenticated networking or read leases;
+numbered finding dispositions remain unchanged.
+
 The [Raft response-ordering review](../reports/audits/2026-10-18-raft-response-fencing.md)
 reproduces and corrects old-term acknowledgements committing a replaced prefix.
 Append/snapshot progress now rejects mismatched or unadmitted sources and

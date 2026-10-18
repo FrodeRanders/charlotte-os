@@ -558,13 +558,20 @@ establish that the existing receive-time contact lease is linearizable.
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
-| `Elect` | `has_election_majority`, `become_leader` | Membership projection of election: a candidate must obtain both current and next voter majorities while joint. Durable voting remains in the election model. Concrete `ClusterConfiguration::is_voter` also admits a next-only voter as a candidate, so the concrete eligibility set is `current ∪ next` rather than `currentVoters`. |
+| `Elect` | `has_election_majority`, `become_leader` | Membership projection of election: a candidate must obtain both current and next voter majorities while joint. Durable voting remains in the election model. Both the model and `ClusterConfiguration::is_voter` admit current or next voters as candidates. `ElectNextOnly` supplies separate positive coverage for the next-only path; both joint voter majorities remain required. |
 | `SubmitJoint` | `submit_joint_configuration`, `submit_command` | Direct for appending the encoded `JOINT` command while the old configuration is authoritative. |
 | `Replicate` | append-response handling and `match_index` | Abstract replication progress for configured voters and learners. Concrete append and completed-snapshot successes now require a matching admitted peer, exact current term and an index within the local tail. Progress retains its maximum and append rejection respects its floor; `CharlotteRaftResponse` checks this boundary. Commit counting reads configured voters. Log contents and conflict repair remain in the log model. |
 | `CommitJoint` | `advance_commit_index`, then `apply_configuration_command(Joint)` | The `JOINT` entry commits under its preceding configuration; applying it activates the old/new union and records the finalization fence. |
-| `SubmitFinalize` | `maybe_auto_finalize_joint_configuration` | Abstract: the model requires every proposed voter and learner to reach the committed joint-entry fence before `FINALIZE` is submitted. Concrete code intentionally omits that catch-up fence and proposes `FINALIZE` as soon as `JOINT` is committed, because the `FINALIZE` commit still requires both voter majorities. The recorded fence index is not read on this path, so the model's `FinalizationWasJoint` ordering is stronger than the implementation. |
-| `CommitFinalize` | `advance_commit_index`, then `apply_configuration_command(Finalize)` | Requires both voter majorities while joint, installs the next configuration, and decommissions nodes absent from the resulting voter/learner set. A leader that survives only as a learner keeps leadership, whereas the model sets `leader' = NoNode`. |
+| `SubmitFinalize`, `RejectLaggingFinalize` | `maybe_auto_finalize_joint_configuration` | Restored Graft Java/Rust automatic catch-up policy: JOINT is committed and every proposed remote voter/learner has reached its fence. The leader owns that prefix locally. Explicit/manual FINALIZE submission is outside this automatic-path projection. |
+| `CommitFinalize` | `advance_commit_index`, then `apply_configuration_command(Finalize)` | Requires both voter majorities while joint, installs the next configuration, and decommissions nodes absent from the resulting voter/learner set. A node retained only as a learner becomes a follower immediately, matching the model. It remains a member and keeps its durable vote for the existing term. A captured joint-quorum result is checked even after the model replaces the old voter set. |
 | `Crash` / `Restart` | service-domain exit and `RaftNode::new` | Abstract volatile availability. Durable configuration recovery is checked in the snapshot layer. |
+
+The [Graft comparison and correction](../reports/audits/2026-10-18-raft-membership-parity.md)
+records upstream revision `1a818d416a40330bea2055e03f61580679baa9f6`, narrow
+source extracts and the Charlotte regression. Three negative controls cover
+automatic finalization before catch-up, retaining a learner as leader and
+committing FINALIZE with only the old quorum. The source regression preserves
+its existing-term vote; the membership model does not model durable voting.
 
 The model represents peer identity and role as voter/learner sets. Peer
 addresses, protobuf encoding, transport retries, and temporal availability are

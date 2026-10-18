@@ -4,7 +4,7 @@
 
 EXTENDS Naturals, FiniteSets
 
-CONSTANTS Node, InitialVoters, MaxIndex, NoNode
+CONSTANTS Node, InitialVoters, MaxIndex, NoNode, Unsafe
 
 ASSUME NoNode \notin Node
 ASSUME InitialVoters \subseteq Node
@@ -28,14 +28,15 @@ VARIABLES up,
           jointIndex,
           finalizeIndex,
           matchIndex,
-          decommissioned
+          decommissioned,
+          finalizedWithJointQuorum
 
 vars == <<up, leader,
           currentVoters, currentLearners,
           nextVoters, nextLearners,
           proposedVoters, proposedLearners,
           phase, lastIndex, commitIndex, jointIndex, finalizeIndex,
-          matchIndex, decommissioned>>
+          matchIndex, decommissioned, finalizedWithJointQuorum>>
 
 Members(voters, learners) == voters \cup learners
 
@@ -58,6 +59,7 @@ JointQuorum(index) ==
     /\ Majority(nextVoters, Acknowledged(index))
 
 Init ==
+    /\ finalizedWithJointQuorum = TRUE
     /\ up = [n \in Node |-> TRUE]
     /\ leader = NoNode
     /\ currentVoters = InitialVoters
@@ -80,7 +82,7 @@ Init ==
 Elect(n, votes) ==
     /\ leader = NoNode
     /\ up[n]
-    /\ n \in currentVoters
+    /\ n \in currentVoters \cup nextVoters
     /\ votes \subseteq Node
     /\ n \in votes
     /\ Majority(currentVoters, votes)
@@ -91,7 +93,7 @@ Elect(n, votes) ==
                     nextVoters, nextLearners,
                     proposedVoters, proposedLearners,
                     phase, lastIndex, commitIndex, jointIndex, finalizeIndex,
-                    matchIndex, decommissioned>>
+                    matchIndex, decommissioned, finalizedWithJointQuorum>>
 
 \* A JOINT command is first appended to the leader's old-configuration log.
 \* New peers do not become active replication targets until that entry commits.
@@ -112,7 +114,7 @@ SubmitJoint(voters, learners) ==
     /\ UNCHANGED <<up, leader,
                     currentVoters, currentLearners,
                     nextVoters, nextLearners,
-                    phase, commitIndex, finalizeIndex, decommissioned>>
+                    phase, commitIndex, finalizeIndex, decommissioned, finalizedWithJointQuorum>>
 
 Replicate(n, index) ==
     /\ leader \in Node
@@ -126,7 +128,7 @@ Replicate(n, index) ==
                     nextVoters, nextLearners,
                     proposedVoters, proposedLearners,
                     phase, lastIndex, commitIndex, jointIndex, finalizeIndex,
-                    decommissioned>>
+                    decommissioned, finalizedWithJointQuorum>>
 
 \* The JOINT entry is committed using the configuration that preceded it.
 CommitJoint ==
@@ -147,17 +149,20 @@ CommitJoint ==
     /\ UNCHANGED <<up, leader,
                     currentVoters, currentLearners,
                     proposedVoters, proposedLearners,
-                    lastIndex, jointIndex, finalizeIndex, matchIndex>>
+                    lastIndex, jointIndex, finalizeIndex, matchIndex,
+                    finalizedWithJointQuorum>>
 
-\* Rust submits FINALIZE only after every proposed member has caught up to the
-\* committed JOINT fence. This is stronger than merely requiring a new quorum.
-SubmitFinalize ==
+\* Match the restored Graft catch-up policy before automatic FINALIZE.
+\* The leader owns its committed prefix; every proposed remote member must
+\* reach the fence. Committing FINALIZE still needs both voter majorities.
+SubmitFinalizeWith(skipCatchUp) ==
     /\ phase = "Joint"
     /\ leader \in currentVoters \cup nextVoters
     /\ up[leader]
     /\ lastIndex < MaxIndex
-    /\ \A n \in Members(nextVoters, nextLearners) :
-           matchIndex[n] >= jointIndex
+    /\ jointIndex > 0 /\ jointIndex <= commitIndex
+    /\ (skipCatchUp \/ (\A n \in Members(nextVoters, nextLearners) :
+                           n = leader \/ matchIndex[n] >= jointIndex))
     /\ finalizeIndex' = lastIndex + 1
     /\ lastIndex' = lastIndex + 1
     /\ matchIndex' = [matchIndex EXCEPT ![leader] = lastIndex + 1]
@@ -166,13 +171,17 @@ SubmitFinalize ==
                     currentVoters, currentLearners,
                     nextVoters, nextLearners,
                     proposedVoters, proposedLearners,
-                    commitIndex, jointIndex, decommissioned>>
+                    commitIndex, jointIndex, decommissioned, finalizedWithJointQuorum>>
 
-CommitFinalize ==
+SubmitFinalize ==
+    /\ phase = "Joint" /\ SubmitFinalizeWith(FALSE)
+
+CommitFinalizeWith(keepLearner, oldOnly) ==
     /\ phase = "Finalizing"
     /\ finalizeIndex > commitIndex
     /\ finalizeIndex <= lastIndex
-    /\ JointQuorum(finalizeIndex)
+    /\ (IF oldOnly THEN CurrentQuorum(finalizeIndex) ELSE JointQuorum(finalizeIndex))
+    /\ finalizedWithJointQuorum' = JointQuorum(finalizeIndex)
     /\ commitIndex' = finalizeIndex
     /\ currentVoters' = nextVoters
     /\ currentLearners' = nextLearners
@@ -187,8 +196,32 @@ CommitFinalize ==
         [n \in Node |->
             n \notin Members(nextVoters, nextLearners)]
     /\ leader' =
-        IF leader \in nextVoters THEN leader ELSE NoNode
+        IF leader \in nextVoters \/ (keepLearner /\ leader \in nextLearners)
+        THEN leader ELSE NoNode
     /\ UNCHANGED <<up, lastIndex, matchIndex>>
+
+CommitFinalize ==
+    /\ phase = "Finalizing" /\ CommitFinalizeWith(FALSE, FALSE)
+
+ElectNextOnly(n, votes) ==
+    /\ n \in nextVoters /\ n \notin currentVoters /\ Elect(n, votes)
+
+RejectLaggingFinalize ==
+    /\ phase = "Joint" /\ leader \in currentVoters \cup nextVoters /\ up[leader]
+    /\ (\E n \in Members(nextVoters, nextLearners) :
+            n # leader /\ matchIndex[n] < jointIndex)
+    /\ UNCHANGED vars
+
+UnsafeFinalizeBeforeCatchUp ==
+    /\ Unsafe = "BeforeCatchUp" /\ SubmitFinalizeWith(TRUE)
+
+UnsafeFinalizeLearnerLeader ==
+    /\ Unsafe = "LearnerLeader" /\ leader \in nextLearners
+    /\ CommitFinalizeWith(TRUE, FALSE)
+
+UnsafeFinalizeOldOnly ==
+    /\ Unsafe = "OldOnly" /\ ~JointQuorum(finalizeIndex)
+    /\ CommitFinalizeWith(FALSE, TRUE)
 
 Crash(n) ==
     /\ up[n]
@@ -198,7 +231,7 @@ Crash(n) ==
                     nextVoters, nextLearners,
                     proposedVoters, proposedLearners,
                     phase, lastIndex, commitIndex, jointIndex, finalizeIndex,
-                    matchIndex, decommissioned>>
+                    matchIndex, decommissioned, finalizedWithJointQuorum>>
 
 Restart(n) ==
     /\ ~up[n]
@@ -208,15 +241,20 @@ Restart(n) ==
                     nextVoters, nextLearners,
                     proposedVoters, proposedLearners,
                     phase, lastIndex, commitIndex, jointIndex, finalizeIndex,
-                    matchIndex, decommissioned>>
+                    matchIndex, decommissioned, finalizedWithJointQuorum>>
 
 Next ==
     \/ \E n \in Node, votes \in SUBSET Node : Elect(n, votes)
+    \/ \E n \in Node, votes \in SUBSET Node : ElectNextOnly(n, votes)
     \/ \E voters, learners \in SUBSET Node : SubmitJoint(voters, learners)
     \/ \E n \in Node, index \in 1..MaxIndex : Replicate(n, index)
     \/ CommitJoint
     \/ SubmitFinalize
+    \/ RejectLaggingFinalize
+    \/ UnsafeFinalizeBeforeCatchUp
     \/ CommitFinalize
+    \/ UnsafeFinalizeLearnerLeader
+    \/ UnsafeFinalizeOldOnly
     \/ \E n \in Node : Crash(n)
     \/ \E n \in Node : Restart(n)
 
@@ -238,6 +276,7 @@ TypeOK ==
     /\ finalizeIndex \in Index
     /\ matchIndex \in [Node -> Index]
     /\ decommissioned \in [Node -> BOOLEAN]
+    /\ finalizedWithJointQuorum \in BOOLEAN
 
 MembershipWellFormed ==
     /\ currentVoters # {}
@@ -272,11 +311,16 @@ LeaderIsEligible ==
         /\ up[leader]
         /\ leader \in currentVoters \cup nextVoters
 
-FinalizationWasJoint ==
+FinalizationFollowsJoint ==
     phase = "Finalizing" =>
         /\ nextVoters # {}
-        /\ \A n \in Members(nextVoters, nextLearners) :
-               matchIndex[n] >= jointIndex
+        /\ jointIndex > 0 /\ jointIndex <= commitIndex
+
+ProposedMembersCaughtUp ==
+    phase = "Finalizing" =>
+        \A n \in Members(nextVoters, nextLearners) : matchIndex[n] >= jointIndex
+
+FinalizationHasBothQuorums == finalizedWithJointQuorum
 
 Invariants ==
     /\ TypeOK
@@ -285,6 +329,8 @@ Invariants ==
     /\ PhaseOrdering
     /\ DecommissioningMatchesMembership
     /\ LeaderIsEligible
-    /\ FinalizationWasJoint
+    /\ FinalizationFollowsJoint
+    /\ ProposedMembersCaughtUp
+    /\ FinalizationHasBothQuorums
 
 =============================================================================

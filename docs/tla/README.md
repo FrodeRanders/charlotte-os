@@ -64,7 +64,7 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all thirty-four complete fast configurations and ninety-eight expected-failure
+- runs all thirty-four complete fast configurations and 101 expected-failure
   IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
   checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
   Raft-join, Raft-response, snapshot-restore, cluster-ingress, and reliable-message regression configurations;
@@ -739,19 +739,20 @@ the following layers; storage write failures, state-machine application, and
 temporal replication liveness remain outside this model.
 
 `CharlotteRaftMembership.tla` models stable and joint configurations, separate
-voter and learner roles, old-configuration commitment of the `JOINT` entry,
-joint-majority commitment of `FINALIZE`, an all-proposed-peer catch-up fence
-before automatic finalization, leader eligibility, crashes, restarts, and
-decommissioning. The model requires the catch-up fence; the implementation
-intentionally proposes `FINALIZE` as soon as `JOINT` commits (see
-`CONFORMANCE.md`). Its two-entry, three-node configuration explores 5,656
-distinct states.
+voter/learner roles, old-configuration commitment of JOINT, joint-majority
+commitment of FINALIZE, and automatic proposal after every proposed remote
+member reaches the JOINT fence. This restores the Graft Java/Rust catch-up
+policy in Charlotte. Next-only voters may campaign with both voter majorities;
+finalized learners relinquish leadership while remaining members. The finite
+three-node, two-entry instance explores 6,232 distinct states. Durable voting,
+log freshness and prefix agreement remain assumptions from the other layers.
 
-The invariants require voters and learners to remain disjoint, both voter
-majorities during joint consensus, finalization only after every proposed
-member reaches the joint-entry fence, and decommissioning to follow the active
-member union rather than voter status. Durable vote mechanics remain in the
-election layer and entry conflict repair remains in the log layer.
+Separate required coverage exercises a next-only election and a rejected
+finalization while a proposed member lags. Three counterexamples weaken the
+catch-up, eligible-leader and dual-quorum boundaries. The
+[source and upstream comparison](../reports/audits/2026-10-18-raft-membership-parity.md)
+records the failed Charlotte role regression and its correction. This model
+covers automatic proposal; explicit/manual FINALIZE commands are outside it.
 
 `CharlotteRaftJoin.tla` models the MAC-level admission layer that precedes
 joint consensus. A non-member selects one anchor, cannot campaign while
