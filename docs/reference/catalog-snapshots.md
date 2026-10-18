@@ -50,6 +50,14 @@ discards the pending stream and returns unsuccessful/not-done with offset zero;
 a supported stream can then start again. Normal term/vote and leader-contact
 processing still precede application validation.
 
+The [snapshot acceptance model](../tla/CharlotteSnapshotRestore.tla) checks these
+rejection and recovery ordering rules separately from chunk reception and log
+suffix retention. Its [review evidence](../reports/audits/2026-10-18-snapshot-restore-model.md)
+records the host tests and seven required counterexamples. Persistence failure
+terminates the calling Raft thread through `thread_exit`; the model does not
+claim sibling-thread termination, endpoint withdrawal or concurrent-reader
+isolation. Application restore still precedes the durable write.
+
 ## Deployment query record
 
 The sole reply grammar is

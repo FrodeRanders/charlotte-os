@@ -572,14 +572,38 @@ preserve the admission fence.
 | `BeginReceive` / `ReceiveChunk` | `handle_install_snapshot`, `PendingSnapshot` | Direct for ordered chunk accumulation. A mismatched offset is rejected without changing the durable image. |
 | `DiscardStale` | early completed response from `handle_install_snapshot` | Direct: an index at or below `commit_index` is acknowledged but cannot replace newer state or move progress backwards. The concrete early return also clears any pending snapshot buffer, which the model leaves unchanged. |
 | `PersistSnapshot` | `LogStore::install_snapshot`, `DiskLogStore::persist_log_state` | The durable boundary, bytes, current/next membership, and compatible suffix are one serialized object-store replacement. The object store publishes it copy-on-write after data and metadata reach stable storage. |
-| `ActivateSnapshot` | commit/last-applied update and membership reconstruction after successful `StateMachine::restore` | Application restore rejects before durable snapshot publication; the model's split represents successful logical activation after persistence. Rejection and temporary application restoration before a failed write are outside this model, qualified by host rejection tests and the fail-stop persistence policy. Membership activation also recomputes local decommissioning. |
+| `ActivateSnapshot` | commit/last-applied update and membership reconstruction after successful `StateMachine::restore` | Application restore rejects before durable snapshot publication; the model's split represents successful logical activation after persistence. Application rejection and temporary restoration before a failed write are checked separately by `CharlotteSnapshotRestore` below. Membership activation also recomputes local decommissioning. |
 | `Crash` | service-domain exit | Pending chunks and volatile state-machine contents disappear; the atomically published log-state object survives. |
-| `Restart` | `disk_raft::open`, then fallible `RaftNode::new` | The tagged state/log pair validates jointly before construction restores snapshot bytes and current/next membership and exposes its index as committed and applied. Incomplete/unsupported pairs or rejected application snapshots stop recovery without migration or reset. Membership is only restored when the snapshot payload decodes to a non-empty `current_members` envelope; locally produced snapshots always satisfy this. Application validation is outside the model. |
+| `Restart` | `disk_raft::open`, then fallible `RaftNode::new` | The tagged state/log pair validates jointly before construction restores snapshot bytes and current/next membership and exposes its index as committed and applied. Incomplete/unsupported pairs or rejected application snapshots stop recovery without migration or reset. Membership is only restored when the snapshot payload decodes to a non-empty `current_members` envelope; locally produced snapshots always satisfy this. Application validation is abstracted separately by `CharlotteSnapshotRestore`. |
 
 The model abstracts snapshot contents to one value, membership to peer-ID sets,
 and chunks to a bounded count. It omits peer roles and addresses within those
 sets, checksums below the object-store interface, network framing, storage
 exhaustion, and state-machine-specific validation of snapshot bytes.
+
+## Application snapshot acceptance and rejection
+
+`CharlotteSnapshotRestore` isolates the rejection boundary from the chunk/suffix
+model above. Its `exposed` flag means the calling Raft operation can return or
+continue with the node; it is not a global endpoint-availability assertion.
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `ReadHeader`, `ParseSections`, `RejectUnsupported`, `RejectMalformed` | `NameCatalog::restore_bytes` | Unsupported format or any malformed section rejects before live publication. Temporary section maps remain local. Exact bytes, bounds, signatures and field dependencies collapse to a verdict; the host decoder tests qualify this abstraction. |
+| `Validate`, `Restore` | final length check and collection replacement in `restore_bytes`; `StateMachine::restore` | All validation precedes live replacement. Several section locks remain distinct; the model assumes serialized Raft execution, not concurrent-reader isolation or fallible allocation. |
+| `Persist` | `handle_install_snapshot` after successful restore; `DiskLogStore::install_snapshot` | The existing whole-object replacement is assumed. Chunk ordering, term checks and suffix selection belong to the separate model. |
+| `DefinitePersistenceFailure`, `AmbiguousPersistenceFailure` | `persist_bytes`, `persist_log_state`, `persist_fail_stop` | Write/flush rejection calls `thread_exit` and never returns to publish progress. The model allows either the old or whole new durable object after failure, then requires fresh recovery. No new storage failure injection, global domain abort or physical quiescence is proved. |
+| `ActivateStream` | progress/membership updates and join-fence clear in `handle_install_snapshot` | Only a restored, persisted snapshot completes the reply. The finite candidate is newer than the join-admission snapshot; membership excluding self retains admission. |
+| `ActivateRecovery` | `RaftNode::new` | Restore must succeed before `Ok(Self)` exposes progress or clears admission. The recorded admission index is one: restoring that same old snapshot cannot complete it, even when membership includes self. |
+| `Crash`, `BeginRecovery` | stopped caller/service restart, fallible node reconstruction | Volatile progress is reconstructed from durable bytes and join admission. Decoder/context verdict may differ on a later process start; this is not spontaneous disk corruption or an in-place migration. |
+
+The six rejected-publication controls cover application, durable snapshot,
+progress, membership, join admission and recovery exposure; the seventh publishes
+a snapshot before successful restore. Each must fail its named invariant.
+Term/vote changes and leader-contact processing may precede application rejection
+in Rust and are deliberately outside the preserved-state tuple. The no-snapshot
+constructor path, raw membership envelope parser, election/log replay, concurrent
+queries, allocator failure and endpoint teardown remain outside this model.
 
 ## Cluster placement, readiness, and DSR ingress
 

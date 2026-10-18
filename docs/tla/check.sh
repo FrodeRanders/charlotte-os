@@ -346,6 +346,31 @@ run_expected_violation CharlotteRaftJoin CharlotteRaftJoin_restart_unsafe.cfg \
 run_model CharlotteRaftSnapshot CharlotteRaftSnapshot_small.cfg \
     AppendLog Commit BeginReceive ReceiveChunk PersistSnapshot ActivateSnapshot \
     DiscardStale Crash Restart
+run_model CharlotteSnapshotRestore CharlotteSnapshotRestore_small.cfg \
+    ReadHeader ParseSections RejectUnsupported RejectMalformed Validate Restore \
+    Persist DefinitePersistenceFailure AmbiguousPersistenceFailure \
+    ActivateStream ActivateRecovery Crash BeginRecovery
+run_expected_violation CharlotteSnapshotRestore \
+    CharlotteSnapshotRestore_application_unsafe.cfg \
+    RejectionPreservesApplication UnsafeRejectApplication
+run_expected_violation CharlotteSnapshotRestore \
+    CharlotteSnapshotRestore_durable_unsafe.cfg \
+    RejectionPreservesDurable UnsafeRejectDurable
+run_expected_violation CharlotteSnapshotRestore \
+    CharlotteSnapshotRestore_progress_unsafe.cfg \
+    RejectionPreservesProgress UnsafeRejectProgress
+run_expected_violation CharlotteSnapshotRestore \
+    CharlotteSnapshotRestore_membership_unsafe.cfg \
+    RejectionPreservesMembership UnsafeRejectMembership
+run_expected_violation CharlotteSnapshotRestore \
+    CharlotteSnapshotRestore_join_unsafe.cfg \
+    RejectionPreservesJoin UnsafeRejectJoin
+run_expected_violation CharlotteSnapshotRestore \
+    CharlotteSnapshotRestore_exposure_unsafe.cfg \
+    RecoveryExposureRequiresRestore UnsafeExposeRecovery
+run_expected_violation CharlotteSnapshotRestore \
+    CharlotteSnapshotRestore_ordering_unsafe.cfg \
+    PublicationRequiresRestore UnsafePublishBeforeRestore
 run_model CharlotteClusterIngress CharlotteClusterIngress_small.cfg \
     PublishReady WithdrawReady ReplaceDeployment CommitDrain BeginJoint \
     FinalizeJoint LearnRoute ForgetRoute InstallSnapshot StartNewFlow \

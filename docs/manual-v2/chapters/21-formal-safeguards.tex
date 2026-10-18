@@ -120,8 +120,8 @@ provide.
 
 \section{What is modeled}
 
-The current suite checks thirty-two safe configurations across thirty
-specifications. It also checks eighty-seven expected-counterexample
+The current suite checks thirty-three safe configurations across thirty-one
+specifications. It also checks ninety-four expected-counterexample
 configurations. The models are divided by state ownership and failure boundary
 so that each remains reviewable.
 The Raft models are deliberately layered: election, log replication,
@@ -263,6 +263,11 @@ different proof obligations.
     matching suffix, membership recovery & Stale snapshots cannot regress
     progress; the installed state and retained suffix agree; restart restores
     membership and application state before use. \\
+\hline
+\tlbreak{Charlotte}{SnapshotRestore} & Application acceptance, rejected restore,
+    persistence failure and restart exposure & Rejection preserves application,
+    durable state, progress, membership and join admission; recovery must accept
+    the snapshot before exposing its node. \\
 \hline
 \tlbreak{CharlotteCluster}{Ingress} & Joint membership, replica placement,
     exact-generation readiness, drain, immutable ingress snapshots, and
@@ -523,6 +528,28 @@ Raft nodes must not auto-join: without stable state, a process restart cannot
 prove which cluster has authority. The safe
 TLA+ specification includes crash and restart; an unsafe restart that forgets
 admission must violate \tlbreak{RestartPreserves}{Admission}.
+
+\subsection{Rejected application snapshots leave known ground intact}
+
+A complete snapshot stream can still contain an unsupported application format
+or a malformed late section. The catalog parses all sections into temporary
+collections before replacing live state. A rejected restore leaves those live
+collections intact. Raft propagates rejection before publishing the snapshot,
+commit/applied indices, membership or join completion. Construction returns an
+error before exposing the node or clearing durable admission.
+
+\tlbreak{Charlotte}{SnapshotRestore} makes this boundary explicit alongside the
+existing chunk and suffix model. Its finite configuration explores 124 distinct
+states; seven weakened configurations must produce counterexamples. An accepted
+newer membership snapshot can complete a join, while the original snapshot or
+membership excluding this node retains its admission fence.
+
+Restore succeeds before the durable write. If persistence fails, the Raft caller
+terminates; a later caller must restore the whole durable image again. This
+ordering does not provide an atomic transaction across application and disk.
+The model assumes the existing whole-object storage contract and serialized
+Raft execution. It does not prove decoder correctness, fallible allocation,
+concurrent-reader isolation, endpoint withdrawal or sibling-thread termination.
 
 \subsection{Cluster placement and DSR ingress}
 \label{subsec:formal-cluster-ingress}
@@ -802,6 +829,27 @@ present conformance obligations:
 \tlbreak{UnsafeRestartForgets}{Admission} & Restart makes an incomplete joiner
     election-eligible. & \tlbreak{RestartPreserves}{Admission} \\
 \hline
+\tlbreak{UnsafeReject}{Application} & Rejected restore changes application state. &
+    \tlbreak{RejectionPreserves}{Application} \\
+\hline
+\tlbreak{UnsafeReject}{Durable} & Rejected restore replaces durable bytes. &
+    \tlbreak{RejectionPreserves}{Durable} \\
+\hline
+\tlbreak{UnsafeReject}{Progress} & Rejected restore advances progress. &
+    \tlbreak{RejectionPreserves}{Progress} \\
+\hline
+\tlbreak{UnsafeReject}{Membership} & Rejected restore changes membership. &
+    \tlbreak{RejectionPreserves}{Membership} \\
+\hline
+\tlbreak{UnsafeReject}{Join} & Rejected restore clears join admission. &
+    \tlbreak{RejectionPreserves}{Join} \\
+\hline
+\tlbreak{UnsafeExpose}{Recovery} & Recovery exposes a rejected node. &
+    \tlbreak{RecoveryExposure}{RequiresRestore} \\
+\hline
+\tlbreak{UnsafePublishBefore}{Restore} & Durable publication precedes restore. &
+    \tlbreak{Publication}{RequiresRestore} \\
+\hline
 \tlbreak{UnsafeStartStale}{Flow} & A router admits a new SYN through an old
     snapshot after its admission lease expires. &
     \tlbreak{NewFlowsRequire}{FreshLease} \\
@@ -843,7 +891,7 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \end{longtable}
 \normalsize
 
-The check suite expects all eighty-seven negative configurations to fail for the named
+The check suite expects all ninety-four negative configurations to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -889,12 +937,12 @@ docs/tla/check.sh /path/to/tla2tools.jar
 Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
 
 \begin{itemize}
-    \item runs all thirty-two safe configurations;
+    \item runs all thirty-three safe configurations;
     \item enables action coverage and requires selected actions to have a
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs eighty-seven negative configurations and requires each one to fail on
+    \item runs ninety-four negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.
