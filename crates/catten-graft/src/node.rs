@@ -51,11 +51,13 @@ use crate::{
     },
 };
 
-pub struct PendingSnapshot {
-    pub last_included_index: u64,
-    pub last_included_term: u64,
-    pub offset: u64,
-    pub data: Vec<u8>,
+struct PendingSnapshot {
+    leader_id: String,
+    leader_term: u64,
+    last_included_index: u64,
+    last_included_term: u64,
+    offset: u64,
+    data: Vec<u8>,
 }
 
 /// One query admitted before its fresh log fence. Consuming this owner queries
@@ -112,7 +114,7 @@ pub struct RaftNode {
     pub snapshot_min_entries: u64,
     pub snapshot_chunk_bytes: usize,
     pub known_leader_id: Option<String>,
-    pub pending_snapshot: Option<PendingSnapshot>,
+    pending_snapshot: Option<PendingSnapshot>,
     pub log_store: Box<dyn LogStore>,
     pub persistent_state: Box<dyn PersistentStateStore>,
     pub state_machine: Option<Box<dyn StateMachine>>,
@@ -370,6 +372,7 @@ impl RaftNode {
             return;
         }
         self.state = NodeState::Candidate;
+        self.pending_snapshot = None;
         self.current_term += 1;
         self.persistent_state.set_current_term(self.current_term);
         self.voted_for = Some(self.me.id.clone());
@@ -474,6 +477,8 @@ impl RaftNode {
     }
 
     fn step_down(&mut self, term: u64, current_millis: u64) {
+        // A new election term cannot continue a former leader's byte stream.
+        self.pending_snapshot = None;
         self.current_term = term;
         self.persistent_state.set_current_term(term);
         self.state = NodeState::Follower;
@@ -758,7 +763,7 @@ impl RaftNode {
 
         self.last_heartbeat_millis = current_millis;
         self.timeout_at_millis = current_millis + self.election_timeout_millis();
-        self.known_leader_id = Some(req.leader_id);
+        self.known_leader_id = Some(req.leader_id.clone());
 
         // A delayed or retried snapshot must never move application progress
         // backwards or replace a newer snapshot/log. A successful completed
@@ -778,11 +783,21 @@ impl RaftNode {
 
         if req.offset == 0 {
             self.pending_snapshot = Some(PendingSnapshot {
+                leader_id: req.leader_id.clone(),
+                leader_term: req.term,
                 last_included_index: req.last_included_index,
                 last_included_term: req.last_included_term,
                 offset: 0,
                 data: Vec::new(),
             });
+        } else if self
+            .pending_snapshot
+            .as_ref()
+            .is_some_and(|snap| snap.leader_id != req.leader_id || snap.leader_term != req.term)
+        {
+            // Boundary/offset equality does not identify a stream. Different
+            // leaders can encode the same snapshot state differently.
+            self.pending_snapshot = None;
         }
 
         let mut accepted = false;
@@ -790,7 +805,9 @@ impl RaftNode {
         let mut oversized = false;
         if let Some(ref mut snap) = self.pending_snapshot {
             next_offset = snap.offset;
-            if req.last_included_index == snap.last_included_index
+            if req.leader_id == snap.leader_id
+                && req.term == snap.leader_term
+                && req.last_included_index == snap.last_included_index
                 && req.last_included_term == snap.last_included_term
                 && req.offset == snap.offset
             {
@@ -2397,6 +2414,8 @@ mod tests {
         node.match_index.insert("stale".to_string(), 8);
         node.snapshot_offsets.insert("stale".to_string(), 7);
         node.pending_snapshot = Some(PendingSnapshot {
+            leader_id: "stale".to_string(),
+            leader_term: 1,
             last_included_index: 6,
             last_included_term: 1,
             offset: 2,
@@ -2824,6 +2843,204 @@ mod tests {
         assert_eq!(node.membership_epoch(), 7);
         assert!(!node.joining);
         assert!(node.persistent_state.join_admission().is_none());
+    }
+
+    fn assert_snapshot_continuation_rejected(leader: &str) {
+        let mut node = node_with_voters(&["n1", "n2", "n3"]);
+        let restored = Arc::new(spin::Mutex::new(Vec::new()));
+        node.state_machine = Some(Box::new(RecordingStateMachine {
+            restored: restored.clone(),
+        }));
+        let first = InstallSnapshotRequest {
+            term: 1,
+            leader_id: "n2".to_string(),
+            last_included_index: 7,
+            last_included_term: 1,
+            offset: 0,
+            data: b"old-prefix".to_vec(),
+            done: false,
+        };
+        assert!(node.handle_install_snapshot(first.clone(), 1).success);
+        let reply = node.handle_install_snapshot(
+            InstallSnapshotRequest {
+                term: 2,
+                leader_id: leader.to_string(),
+                offset: first.data.len() as u64,
+                data: b"new-suffix".to_vec(),
+                done: true,
+                ..first.clone()
+            },
+            2,
+        );
+        assert!(
+            !reply.success && !reply.done,
+            "cross-episode continuation from {leader}: restored={:?}, snapshot_index={}, \
+             commit={}, applied={}",
+            *restored.lock(),
+            node.log_store.snapshot_index(),
+            node.commit_index,
+            node.last_applied,
+        );
+        assert_eq!(reply.next_offset, 0);
+        assert!(node.pending_snapshot.is_none());
+        assert!(restored.lock().is_empty());
+        assert_eq!(node.log_store.snapshot_index(), 0);
+        assert_eq!((node.commit_index, node.last_applied, node.membership_epoch()), (0, 0, 0));
+        assert_eq!(node.current_term, 2, "term observation still takes effect");
+        let replacement = b"complete replacement".to_vec();
+        let reply = node.handle_install_snapshot(
+            InstallSnapshotRequest {
+                term: 2,
+                leader_id: leader.to_string(),
+                data: replacement.clone(),
+                done: true,
+                ..first
+            },
+            3,
+        );
+        assert!(reply.success && reply.done);
+        assert_eq!(*restored.lock(), replacement);
+        assert_eq!(node.commit_index, 7);
+    }
+
+    #[test]
+    fn snapshot_continuation_cannot_cross_leaders() {
+        assert_snapshot_continuation_rejected("n3");
+    }
+
+    #[test]
+    fn snapshot_continuation_cannot_cross_election_terms() {
+        assert_snapshot_continuation_rejected("n2");
+    }
+
+    #[test]
+    fn snapshot_rejections_preserve_the_current_stream_and_zero_restarts_it() {
+        let mut node = node_with_voters(&["n1", "n2", "n3"]);
+        let restored = Arc::new(spin::Mutex::new(Vec::new()));
+        node.state_machine = Some(Box::new(RecordingStateMachine {
+            restored: restored.clone(),
+        }));
+        let first = InstallSnapshotRequest {
+            term: 1,
+            leader_id: "n2".to_string(),
+            last_included_index: 7,
+            last_included_term: 1,
+            offset: 0,
+            data: b"prefix".to_vec(),
+            done: false,
+        };
+        assert!(node.handle_install_snapshot(first.clone(), 1).success);
+        let offset = first.data.len() as u64;
+        let continuation = InstallSnapshotRequest {
+            offset,
+            data: b"suffix".to_vec(),
+            done: true,
+            ..first.clone()
+        };
+        for rejected in [
+            InstallSnapshotRequest {
+                term: 0,
+                ..continuation.clone()
+            },
+            InstallSnapshotRequest {
+                leader_id: "n3".to_string(),
+                ..continuation.clone()
+            },
+            InstallSnapshotRequest {
+                offset: offset + 1,
+                ..continuation.clone()
+            },
+            InstallSnapshotRequest {
+                last_included_index: 8,
+                ..continuation.clone()
+            },
+            InstallSnapshotRequest {
+                last_included_term: 2,
+                ..continuation.clone()
+            },
+        ] {
+            let reply = node.handle_install_snapshot(rejected, 2);
+            assert!(!reply.success && !reply.done);
+            assert_eq!(node.pending_snapshot.as_ref().unwrap().data, first.data);
+            assert!(restored.lock().is_empty());
+            assert_eq!(node.commit_index, 0);
+        }
+        let reply = node.handle_install_snapshot(continuation, 3);
+        assert!(reply.success && reply.done);
+        assert_eq!(&*restored.lock(), b"prefixsuffix");
+        assert!(node.pending_snapshot.is_none());
+
+        let replacement = InstallSnapshotRequest {
+            last_included_index: 9,
+            ..first
+        };
+        assert!(node.handle_install_snapshot(replacement.clone(), 4).success);
+        let reply = node.handle_install_snapshot(
+            InstallSnapshotRequest {
+                data: b"complete".to_vec(),
+                done: true,
+                ..replacement
+            },
+            5,
+        );
+        assert!(reply.success && reply.done);
+        assert_eq!(&*restored.lock(), b"complete");
+        assert_eq!(node.commit_index, 9);
+    }
+
+    #[test]
+    fn election_and_indirect_term_observation_discard_partial_snapshot() {
+        for transition in 0..3 {
+            let mut node = node_with_voters(&["n1", "n2", "n3"]);
+            assert!(
+                node.handle_install_snapshot(
+                    InstallSnapshotRequest {
+                        term: 1,
+                        leader_id: "n2".to_string(),
+                        last_included_index: 7,
+                        last_included_term: 1,
+                        offset: 0,
+                        data: b"prefix".to_vec(),
+                        done: false,
+                    },
+                    1,
+                )
+                .success
+            );
+            match transition {
+                0 => node.start_election(2),
+                1 => {
+                    node.handle_vote_request(
+                        VoteRequest {
+                            term: 2,
+                            candidate_id: "n3".to_string(),
+                            last_log_index: 0,
+                            last_log_term: 0,
+                        },
+                        2,
+                    );
+                }
+                _ => {
+                    node.handle_append_entries(
+                        AppendEntriesRequest {
+                            term: 2,
+                            leader_id: "n3".to_string(),
+                            prev_log_index: 0,
+                            prev_log_term: 0,
+                            entries: Vec::new(),
+                            leader_commit: 0,
+                        },
+                        2,
+                    );
+                }
+            }
+            assert_eq!(node.current_term, 2);
+            assert!(node.pending_snapshot.is_none());
+            assert_eq!(
+                (node.log_store.snapshot_index(), node.commit_index, node.last_applied),
+                (0, 0, 0)
+            );
+        }
     }
 
     #[test]

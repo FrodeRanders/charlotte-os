@@ -1,6 +1,6 @@
 # Executable TLA+ Models of CharlotteOS
 
-This directory contains finite, executable specifications for thirty-three
+This directory contains finite, executable specifications for thirty-four
 CharlotteOS subsystems:
 
 | Subsystem | Module | Fast configuration |
@@ -33,6 +33,7 @@ CharlotteOS subsystems:
 | Raft joint membership and decommissioning | `CharlotteRaftMembership.tla` | `CharlotteRaftMembership_small.cfg` |
 | Raft pre-membership join admission | `CharlotteRaftJoin.tla` | `CharlotteRaftJoin_small.cfg` |
 | Raft snapshot installation and recovery | `CharlotteRaftSnapshot.tla` | `CharlotteRaftSnapshot_small.cfg` |
+| Raft snapshot sender episodes and chunk order | `CharlotteRaftStream.tla` | `CharlotteRaftStream_small.cfg` |
 | Application snapshot rejection and recovery | `CharlotteSnapshotRestore.tla` | `CharlotteSnapshotRestore_small.cfg` |
 | Joint cluster placement, readiness, drain, and DSR ingress | `CharlotteClusterIngress.tla` | `CharlotteClusterIngress_small.cfg` |
 | Filtered placement control, dwell, and reservations | `CharlottePlacementControl.tla` | `CharlottePlacementControl_small.cfg` |
@@ -65,10 +66,10 @@ docs/tla/check.sh /path/to/tla2tools.jar
 
 Alternatively, set `TLA2TOOLS_JAR`. The script:
 
-- runs all thirty-five complete fast configurations and 105 expected-failure
+- runs all thirty-six complete fast configurations and 107 expected-failure
   IPC-transaction, IPC-publication, endpoint-observer, name-publication, boot-trust, CQ-buffer, timed-wait, scheduler, thread-join, stack-growth,
   checked-wait, domain-abort, address-space, root-retirement, hardware-ASID, interrupt-route, service-lifecycle, DMA, DMA-operation, authorization,
-  Raft-join, Raft-response, snapshot-restore, cluster-ingress, and reliable-message regression configurations;
+  Raft-join, Raft-response, Raft-stream, snapshot-restore, cluster-ingress, and reliable-message regression configurations;
 - enables TLC action coverage;
 - places checkpoints and traces in a temporary directory;
 - rejects structural TLC warnings in addition to invariant failures.
@@ -786,6 +787,18 @@ writes do not form one atomic snapshot/log update. The implementation now
 restores on construction, acknowledges stale snapshots without installing
 them, retains a suffix with a matching boundary term, and serializes snapshot
 metadata, bytes, and log suffix into one copy-on-write object.
+
+`CharlotteRaftStream.tla` separately checks continuation ownership when different
+leaders share a snapshot boundary. Its safe instance explores 400 distinct
+states: each partial buffer belongs to its captured leader and RPC term, term
+changes discard it, and installation requires strict offsets. Two controls
+permit cross-episode continuation or a wrong offset and violate
+`InstalledSingleOwner` or `InstalledInOrder`. Host regressions reproduce the
+former mixed-byte installation. See the
+[19 October stream review](../reports/audits/2026-10-19-raft-snapshot-streams.md).
+The model assumes immutable bytes within one sender/term/boundary and abstracts
+rejected packets as observations; Rust tests exercise their exact fields.
+Authentication, same-episode image replacement and allocation are outside scope.
 
 `CharlotteRaftResponse.tla` checks delayed acknowledgements separately from log
 replication. An honest response for an old prefix cannot commit a new prefix at

@@ -197,3 +197,10 @@ local results carry no capability. Shared protobuf, no-op grammar,
 storage versions and runtime ABI remain unchanged. Bounded observations and
 raw transport adapters remain candidates for separate qualification; no numbered
 protocol-format batch is added.
+
+The [snapshot continuation correction](../reports/audits/2026-10-19-raft-snapshot-streams.md)
+makes the core's `PendingSnapshot` and its node field private. The receiver owns
+leader ID, RPC term, boundary, offset and bytes together; callers use the existing
+snapshot handler. No external callers used the mutable buffer. Wire/protobuf,
+snapshot envelope and persistent formats remain unchanged, without an older
+unbound receive path or a new numbered format batch.

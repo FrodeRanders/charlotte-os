@@ -382,6 +382,13 @@ run_expected_violation CharlotteRaftJoin CharlotteRaftJoin_restart_unsafe.cfg \
 run_model CharlotteRaftSnapshot CharlotteRaftSnapshot_small.cfg \
     AppendLog Commit BeginReceive ReceiveChunk PersistSnapshot ActivateSnapshot \
     DiscardStale Crash Restart
+run_model CharlotteRaftStream CharlotteRaftStream_small.cfg \
+    BeginReceive RestartOffsetZero ChangeTerm RecognizeLeader ReceiveChunk \
+    CancelReceive RejectStale RejectLeader RejectOffset RejectBoundary
+run_expected_violation CharlotteRaftStream CharlotteRaftStream_owner_unsafe.cfg \
+    InstalledSingleOwner ReceiveChunk
+run_expected_violation CharlotteRaftStream CharlotteRaftStream_offset_unsafe.cfg \
+    InstalledInOrder ReceiveChunk
 run_model CharlotteSnapshotRestore CharlotteSnapshotRestore_small.cfg \
     ReadHeader ParseSections RejectUnsupported RejectMalformed Validate Restore \
     Persist DefinitePersistenceFailure AmbiguousPersistenceFailure \

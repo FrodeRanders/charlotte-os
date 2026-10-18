@@ -1,0 +1,718 @@
+{
+  "schema": "charlotte-raft-snapshot-stream-evidence-v1",
+  "report_date": "2026-10-19 Europe/Stockholm; native UTC captures begin 2026-10-18",
+  "reviewed_revision": "c8fdfe1843b8a54471cd65178502f9887085f591",
+  "reproduction": {
+    "source_capture": {
+      "baseline": "c8fdfe1843b8a54471cd65178502f9887085f591",
+      "pre_fix_source_sha256": {
+        "crates/catten-graft/src/node.rs": "e111b9c483ff7bda1179fe0250ef8564ae92c2ebb014593bda3ca05eed81d9fb",
+        "crates/catten-graft/src/snapshot_codec.rs": "e439fa7536859d4f990ee273ee5f30fdcc2cfebcbb078596518bf57681f36060"
+      },
+      "reproduced_source_sha256": "457240012cfa7b07d73fb746f58f27a47471d26c14951bdd420db6214ece6108"
+    },
+    "input": "Prefix old-prefix from n2/term1 at boundary7/1; suffix new-suffix from n2 or n3/term2 at offset10, done=true.",
+    "observed_unfixed": "Both restore old-prefixnew-suffix and publish snapshot/commit/applied index7.",
+    "classification": "Direct host receiver tests with recording application and supplied chunks. No native delayed network schedule or upstream failure claimed."
+  },
+  "verification": {
+    "configured_modules": 34,
+    "configured_safe_cases": 36,
+    "configured_negative_cases": 107,
+    "fresh_safe_cases": 1,
+    "fresh_expected_counterexamples": 2,
+    "fresh_harness_exit": 0,
+    "fresh_harness_sha256": "3e67c530bf90d412e9dd5ef5ac312605417a775a9784aa00063aa53152b8de3f",
+    "fresh_output_sha256": "d7c362c389b096e03ae6569bea4b0be6a3e5cfa7c480ad2d7156cb9831b103ed",
+    "fresh_single_full_suite_run_claimed": false
+  },
+  "baseline": {
+    "evidence_file": "docs/reports/audits/evidence/2026-10-19-raft-read-fences.json",
+    "evidence_sha256": "ed3785c03c455574871b17141b86b54053fb5e57ce05d1bb6b62318baca189c9",
+    "reused_cases": 140,
+    "unchanged_model_config_inputs_rechecked": 173,
+    "all_hashes_match": true,
+    "harness_matches_prior_after_removing_only_stream_block": true
+  },
+  "checked_input_sha256": {
+    "docs/tla/CharlotteAddressSpace.tla": "94e8ae476eab11029c39513fa66197793b05f0a6ca1655b751497a6e518d0284",
+    "docs/tla/CharlotteAddressSpace_small.cfg": "25feef19bf1dc780d8cece87801b7590b0bce68aa884c7459f7a9a65866d35eb",
+    "docs/tla/CharlotteAddressSpace_unsafe.cfg": "4be0b588a5b44ff54ac273701331a622b9f2bfd241b4a428be8acaf98a5337cf",
+    "docs/tla/CharlotteAuthorization.tla": "d5e14f9e9eb674522b6446235d24e322507959a2baf0219d22912ab3c7929515",
+    "docs/tla/CharlotteAuthorization_generation_unsafe.cfg": "4f23d40ea610f3e457a4d3e8107d111c9d4bdbadd421a83d946c371677b105db",
+    "docs/tla/CharlotteAuthorization_policy_unsafe.cfg": "4f0e81b15fa4c54d4e10216d4b23f84ed3ce85fd801c0c271ca0486717750779",
+    "docs/tla/CharlotteAuthorization_policy_version_unsafe.cfg": "369762db357baf735d3464b0c1f309b9a2c6ff1c2f22bb19c28ef1d91361be2a",
+    "docs/tla/CharlotteAuthorization_principal_unsafe.cfg": "c3f4c2815588d123d723e6f3aa12360a08c5c93d1dc9730e31bca4c6590525bf",
+    "docs/tla/CharlotteAuthorization_rights_unsafe.cfg": "9d82cd883cb9b68ba02cc926d9019d591c0edaceb9568416744dc3b7a882221f",
+    "docs/tla/CharlotteAuthorization_small.cfg": "2ddfd048b004e053686223171bcfcbbeb94d1ef4f4d53cc2c63b2276738ea15b",
+    "docs/tla/CharlotteBootTrust.tla": "cad787631097b7d870db5c33d923347cc5af9cb0220331aa317d17c2b89ac646",
+    "docs/tla/CharlotteBootTrust_authenticate_unsafe.cfg": "611d53f8615472e6958a8901a1ecd1b0011801228e319577633e070780b3d328",
+    "docs/tla/CharlotteBootTrust_boundary_unsafe.cfg": "8e415118debd8e9a467bce69e30d890b8ee024cc71d00cec360c9f5e8acb4c70",
+    "docs/tla/CharlotteBootTrust_contract.cfg": "46363cde40899130188ea50dea6f0aceff8b7bac675291d52862998170a82e57",
+    "docs/tla/CharlotteBootTrust_development_unsafe.cfg": "996e72ecbf931c6e5891f6ebaa7a6e6bc807b9ab01917a3a5d6161afc4b1849f",
+    "docs/tla/CharlotteBootTrust_enrollment_unsafe.cfg": "95b4dee9697707dc39edbe8ac6c94a4c49cfe3a0cd10c05c3d4084a0163f3395",
+    "docs/tla/CharlotteBootTrust_failure_unsafe.cfg": "2310166ce6c6c0bb4f93c1e4ee384c07b959920d8c29d109fc100b1107d74d15",
+    "docs/tla/CharlotteBootTrust_fixture.cfg": "023562d632e18920d8d51cac7cee5f5d9159aad42c423782d6d833b37e5b19df",
+    "docs/tla/CharlotteBootTrust_manifest_unsafe.cfg": "6989bfd31e1eb9c7f433017cc1c2a780af10a0d9f7bdc8d1cadaec20f8abb3c6",
+    "docs/tla/CharlotteBootTrust_overwrite_unsafe.cfg": "311a8f4022eb40cba78628ec14a7a32a324b7218084fdead778d7add6d9bbfc8",
+    "docs/tla/CharlotteBootTrust_recipient_unsafe.cfg": "6dc6e0759a42289cbbd65888842c40efbea1b8e1207cb36458adfbef8248122f",
+    "docs/tla/CharlotteBootTrust_stale_unsafe.cfg": "aec488139f350badb5164942bc4bbe05b58bc1178c7a713bdf086defddd6b88b",
+    "docs/tla/CharlotteBootTrust_uninstalled_unsafe.cfg": "99362ddbc2c34acd714b36f30f2e037ff17138e1b9845e9d6881242654be8a7f",
+    "docs/tla/CharlotteCQ.tla": "1557db52418f0e4d47a737951b4a1d9cae5dfb44329b228bbd749da22a4bdd04",
+    "docs/tla/CharlotteCQ_buffer_unsafe.cfg": "9c5a49c335ba999c468e18651ee9a60bfb336d7ea32db783de562f8c897bf5ac",
+    "docs/tla/CharlotteCQ_mini.cfg": "e1b7eafb8fbc246c9122055672615be144e3b43ed869c9dbe41ba4d7d101125f",
+    "docs/tla/CharlotteCapability.tla": "4e94c107f21e7486cfe23c232c2b1930557af27df89c45cf75f29f4ddd098f1a",
+    "docs/tla/CharlotteCapability_small.cfg": "6a0cf36f3f4845ea37d901eb3ddbbf603445789ba18081ef7646c3f7ea36c8e3",
+    "docs/tla/CharlotteCheckedWait.tla": "0a94737e26b40c49939af7233d765ef4c76523608e39bf1b21818ac344c129b7",
+    "docs/tla/CharlotteCheckedWait_deadline_unsafe.cfg": "ed16d0f4d9759d76eafa780f56f6be83a95e7ae4721e0535aa8249afcbc0e5d2",
+    "docs/tla/CharlotteCheckedWait_park_unsafe.cfg": "0851785424eb552b590f5b191e31a0b3ec38ff8f6ee2a437803cc47a0e60fbbc",
+    "docs/tla/CharlotteCheckedWait_rejection_unsafe.cfg": "d73cdb7ac12b71fc3413a87343adecbd23a3ed3fbe29d8f5bd12d024e7b10188",
+    "docs/tla/CharlotteCheckedWait_replay_unsafe.cfg": "48df5cf72013a629118216d005481a2bef0c8e6fbee23e29664470affbec15c1",
+    "docs/tla/CharlotteCheckedWait_result_unsafe.cfg": "609274f19fcbd3f2d1a259f03c98bd8670ee2790a2de9c1b127cc935a51139c5",
+    "docs/tla/CharlotteCheckedWait_small.cfg": "5c114d9f0027dc3382a9b0ba9516b8dbc88eed5dde9b1067ebd8eecaace13e04",
+    "docs/tla/CharlotteCheckedWait_timeout_unsafe.cfg": "92699d7f09749d4f7f05ecc0e5e11605d79a0d02b715f4814eb5e0e590c36477",
+    "docs/tla/CharlotteClusterIngress.tla": "4660b215db89bb5d67b8433091eff5bb0052c993152e5423c657b9909aa6ac13",
+    "docs/tla/CharlotteClusterIngress_history_unsafe.cfg": "b35cd382b188843b7ae065053d0095c1fd55c41b6695410e8d8824e2a7820926",
+    "docs/tla/CharlotteClusterIngress_readiness_unsafe.cfg": "811add7d3dc380ff4f5feb31c33ba002ca72fa6ebc3b45e4116b5427fdec0656",
+    "docs/tla/CharlotteClusterIngress_small.cfg": "402c878db4ccef9c752c84c9beee894d823a8bf0d5f669d62de57734f2063360",
+    "docs/tla/CharlotteClusterIngress_stale_snapshot_unsafe.cfg": "ed01b5382c1dc5aa11eee36b853a7cf72e5193f586d5e9075e6c73adb22127a2",
+    "docs/tla/CharlotteDMA.tla": "5c732aed07fa1f79463d4ca30d2aa7fc7e7c58f46c1e0a64f9445298867cd9fc",
+    "docs/tla/CharlotteDMA_small.cfg": "55befa332f585191e5078b4085601f1ea9439a02f24c042d14e2bc7ae3009e93",
+    "docs/tla/CharlotteDMA_unsafe.cfg": "8b5f798d0723b8d9640eae2f9fb4c8a20383b49552d501943826fb55ad25b2ac",
+    "docs/tla/CharlotteDmaOperation.tla": "2839f7d90627b32049ac677bd0040474df313f1dc862090e1d9373817787e682",
+    "docs/tla/CharlotteDmaOperation_abandon_unsafe.cfg": "ffb8ec7166354bd94c8b53dca935d7cd0f1332aa1d922ed625c09476b6716d10",
+    "docs/tla/CharlotteDmaOperation_access_unsafe.cfg": "5a7b9512acaf0c030ed76a2c9c834b244ad06e4742db5fea72f09e1ae4182c88",
+    "docs/tla/CharlotteDmaOperation_cell_unsafe.cfg": "afca9bcf0e4ebf495043761e5a75e5f707c2f015b7596471a97e4c078e88123b",
+    "docs/tla/CharlotteDmaOperation_confirmation_unsafe.cfg": "fe466b9e71056adebe75475a3ccced1a5fa41d428694013c3924e76e14f35ea5",
+    "docs/tla/CharlotteDmaOperation_context_unsafe.cfg": "ad3c3e24b3cfdd57d6dc07851a0c73d3de6ebd123b545facbdd0ab2bf8e62999",
+    "docs/tla/CharlotteDmaOperation_cpu_unsafe.cfg": "16d1450ba672e9366eeed68a17c018d1a1988bee2bcd286ea87a4883ef3031ef",
+    "docs/tla/CharlotteDmaOperation_drop_unsafe.cfg": "b12da60b76b0b776895ba9a2b267fed4f777f9fad6561c023fbbedb290c224b8",
+    "docs/tla/CharlotteDmaOperation_map_unsafe.cfg": "bed6cdfaf7f0df9d4ba31d5f8d5005f287bcbbacd82a291986fb9771fee74a27",
+    "docs/tla/CharlotteDmaOperation_preparation_unsafe.cfg": "6fd8ba8d7238d6cc415a8dcc300d10154fd02f7bc1833605bcc612357804ce13",
+    "docs/tla/CharlotteDmaOperation_public_unsafe.cfg": "6684e9fcb141fa7ab6fa1df96918a7df1c490c62f765e2b4296c325e05b463c2",
+    "docs/tla/CharlotteDmaOperation_readiness_unsafe.cfg": "e4153638e5f59bbf1728ed2f338ade189844ad1c7254aec8751e6cfc754cb57f",
+    "docs/tla/CharlotteDmaOperation_rearm_unsafe.cfg": "3e124e8f8d7cc95794c56b1f615fcd1e30b4000aae7c9207a35f54e99f933503",
+    "docs/tla/CharlotteDmaOperation_remap_unsafe.cfg": "a97e1f454c658a35aeaac53d1ce06552fe0a95ffae5522fff19e3512a7896362",
+    "docs/tla/CharlotteDmaOperation_small.cfg": "5cd7d31f47748b790b12b903fd5fdd309106400aa6a5511e6991fc06664ddc95",
+    "docs/tla/CharlotteEndpointObservers.tla": "42415be276a5a31546337c473cfb89300cee102664809905169eb713efb140b6",
+    "docs/tla/CharlotteEndpointObservers_small.cfg": "8a972975c5d21bc23df1d1529258c455d35f5278ad6f209c19349dfbe6c11e14",
+    "docs/tla/CharlotteEndpointObservers_unsafe.cfg": "c85058ca46cb9ed10c39c38742cdb1c2895571fc6247de2fbaedcd488aff89a2",
+    "docs/tla/CharlotteHardwareAsid.tla": "2074acb290a98b6113874dbb3a6c93bb213698d5731153acd0f099b996644928",
+    "docs/tla/CharlotteHardwareAsid_small.cfg": "f4ef9b3536f735756f09f04bd0297b4f74d54ce03a6725806b5475b26b72d8ef",
+    "docs/tla/CharlotteHardwareAsid_unsafe.cfg": "4cc26e9851630ffbd7b8f3de981304bda0e3be2d06bf16c2e71cd6d286d852c9",
+    "docs/tla/CharlotteIPC.tla": "cafa97f897a33d496eb5c1ce2da877e6546ec66f9202d20f6ab33280a49ad857",
+    "docs/tla/CharlotteIPC_small.cfg": "7b5369411db55b2a2e8ea88245bdffc3dfbeb4867528f59c9e6e659a27931570",
+    "docs/tla/CharlotteInterruptRoute.tla": "9e6fdc9caff46461273a279b2a76153c6f22c7c97152999a92a93b46e281b0b4",
+    "docs/tla/CharlotteInterruptRoute_small.cfg": "d2d75e070eab33d10fd0cc38a3d60f53788637dfac9dfe505df0702f8f98f24e",
+    "docs/tla/CharlotteInterruptRoute_unsafe.cfg": "58e087639848e1cae282cd413caf77b3fffd0b912ebdde3728c6d05820f8bf10",
+    "docs/tla/CharlotteIpcPublication.tla": "67d87012aaed9bed5eec8df42b68f46359153a618d43a9b0befcb6b92e009432",
+    "docs/tla/CharlotteIpcPublication_batch_unsafe.cfg": "f21d1ad0c3c4ae9110851d914f55df4e08a5583db20fb9a1c3524c8158f3af1f",
+    "docs/tla/CharlotteIpcPublication_cancel_unsafe.cfg": "fb3cb26ea11333c4341a9569f3d1eea6757d28d2bed3a8bab006c8930187cd6d",
+    "docs/tla/CharlotteIpcPublication_connection_unsafe.cfg": "aaca3189ab479abf22b273882ca92fdf23602696a91aba0c1ff316bd46e1beae",
+    "docs/tla/CharlotteIpcPublication_memory_unsafe.cfg": "157e67d386164b1789334327b7c329b5cc2f133203867a7f2f3738688616133d",
+    "docs/tla/CharlotteIpcPublication_observe_unsafe.cfg": "958ce487bbee6ff56aae8a9a40df99593537a6b64320f4a5641a262ce245b0f9",
+    "docs/tla/CharlotteIpcPublication_readiness_unsafe.cfg": "dbc976896ed54d43217106ac32f920a93ef1ea9be8821e71b926d16ca6a02a27",
+    "docs/tla/CharlotteIpcPublication_refund_unsafe.cfg": "6aad7a123d8d50f7604ea78ed9f3106e05c5d95559c6dda0e83948f533abdc57",
+    "docs/tla/CharlotteIpcPublication_restore_unsafe.cfg": "a96f0da36e15eda49e0698ed30b3f373425fac45e76d11f8f8b034e5866ac5dd",
+    "docs/tla/CharlotteIpcPublication_rollback_unsafe.cfg": "e835593816f7502ac984d59d370237950b166a938774ec5a45a5686afbab6313",
+    "docs/tla/CharlotteIpcPublication_serial_unsafe.cfg": "32130b6ce3d0d01be1df08a89b7dd38d9a7d476ad31cd3605df48376eb1a5650",
+    "docs/tla/CharlotteIpcPublication_small.cfg": "4c6da1ebeb79eeefa62bb0dbb9d26184956c1fdd6d097a5de41b120275d67d87",
+    "docs/tla/CharlotteIpcTransaction.tla": "bfc596a22480fae309c31732670b60024085014ec084d998dbbf8affd40fed7c",
+    "docs/tla/CharlotteIpcTransaction_rollback_unsafe.cfg": "89326400847cf5ac0fd76e7c68eb2f32385d551cd38ce201c70dd6a5a6b7fe99",
+    "docs/tla/CharlotteIpcTransaction_small.cfg": "67e0efe832fbadf7258296297af6afa293da1a78edcdb464a14cf9a70280a471",
+    "docs/tla/CharlotteIpcTransaction_timeout_unsafe.cfg": "5c748b860dec8df3fb253e6aefcaa8138835fac61dc0b6ea48c8a089cb2b4c00",
+    "docs/tla/CharlotteNamePublication.tla": "64e06c4d4eba6c9af622cc8433bcb27e97a9c55655f4151a9f4d4e0faf9728f1",
+    "docs/tla/CharlotteNamePublication_abort_unsafe.cfg": "e271ebbf4cb0a504119c836cbdc42dcab8d6039a85209439f0dfa9c1d6f90a8c",
+    "docs/tla/CharlotteNamePublication_deferred_unsafe.cfg": "d1c9e007af1d13797dd43395aef321c857bb869285cbf9e13f9259b6b0ebf705",
+    "docs/tla/CharlotteNamePublication_disposal_unsafe.cfg": "9962dfc20c9bb6e4e7bdc54a2ac6a68dae04a701427004a494b54f9aaee02865",
+    "docs/tla/CharlotteNamePublication_exhausted_unsafe.cfg": "a942fbefc77918b1ad9ee416f77bd0357a1205e9cd831c1110e30e193d4deca2",
+    "docs/tla/CharlotteNamePublication_exhaustion.cfg": "9276ebe1529abbd3863d389066d633d0440adce13c69cccbdf7c8facc4c81cc6",
+    "docs/tla/CharlotteNamePublication_hint_unsafe.cfg": "8484b3ae8b8c58ceeee38e3e4bf4bee13056b420883c04924393984f85af2c09",
+    "docs/tla/CharlotteNamePublication_public_unsafe.cfg": "e569ee4d0b6f3bb86c05785a6574565195ef0d73a64edd9074cf61e18710443f",
+    "docs/tla/CharlotteNamePublication_quota_unsafe.cfg": "75624b9f524283872e18b0ec2d36c49e9b7b70a78d10e0b9248450c6eb10ee36",
+    "docs/tla/CharlotteNamePublication_replacement_unsafe.cfg": "02b0c2abe35eacfa067a22403296400228c8fff7e6531450bc428aa9bb3a8c8c",
+    "docs/tla/CharlotteNamePublication_retire_unsafe.cfg": "435a962cad50daf5e8c928c23bb0034a7b1f88f8b0d46b8e9018eb3b521b1748",
+    "docs/tla/CharlotteNamePublication_serial_unsafe.cfg": "beb2131c7c79377259741ca89e909273e0bde7bf43f7cb1e1413f182c911ad30",
+    "docs/tla/CharlotteNamePublication_small.cfg": "df05aff71bceb53c288f9e29ec0f64fd4efd5d17face5d1884fdc0a339b7dd88",
+    "docs/tla/CharlotteNamePublication_stale_unsafe.cfg": "23470b9661034062398a56368f0ff5980ecbe731f4f764da51b4e4de5ee89ac3",
+    "docs/tla/CharlotteNamePublication_watch_unsafe.cfg": "acff70f0762e23fa9ba9411edba9e5b9464a5ac9f6ba54f94ac03af10f9c020b",
+    "docs/tla/CharlotteNamePublication_wrap_unsafe.cfg": "d857d5368be2ca80b990b0b6d476da2d24ba8e5719116b19ce30a138794241a3",
+    "docs/tla/CharlottePlacementControl.tla": "2c93a5cf0a91d5babd0d4fbb863ea0d0c64eeda82a9bfc8d2467e19ba17e2515",
+    "docs/tla/CharlottePlacementControl_dwell_unsafe.cfg": "c1ffcc9f00441a11bd727cb812389a12dab91898d0764081e763693abaf55e8a",
+    "docs/tla/CharlottePlacementControl_reserve_unsafe.cfg": "969d1b58a2debd681a1beea9a4b69585f0f04f3e563eb78ddf32ef5396382733",
+    "docs/tla/CharlottePlacementControl_small.cfg": "ea702173e19534cf9f0967fe2f5a46bc5ea0e25a78c6a0a66ecd96da6e514cf8",
+    "docs/tla/CharlotteRaft.tla": "6ab1ef702a12515a8299263af5d5216115dd976dfee7d69e6b394c4c1fc94d80",
+    "docs/tla/CharlotteRaftJoin.tla": "4436022e36d4ed88690e3ba1dbd995bcb7bbaf60acd2c9da10063bb5cb221486",
+    "docs/tla/CharlotteRaftJoin_restart_unsafe.cfg": "9ae634438f5cfcd525ef79f229861ed5f16b09ded70282aa2d672670291b95eb",
+    "docs/tla/CharlotteRaftJoin_small.cfg": "645defb0cbba7276f412504af6ae1edd648bb75dc612bfec0c4466de5e15c833",
+    "docs/tla/CharlotteRaftJoin_unsafe.cfg": "e9e87d139447a922465906760b61028efcfdeb06e08fc0657111127bb1d3f3e1",
+    "docs/tla/CharlotteRaftLog.tla": "f1264ced4451c6498bbc23877475805613a798d4baa4dc7b92a16804f4d1266b",
+    "docs/tla/CharlotteRaftLog_small.cfg": "d0922611874d0a0c3aad1302c79cbeb2964b28047f5a4d62828c4b83ba44addb",
+    "docs/tla/CharlotteRaftMembership.tla": "ee283cee5f5c54cbd98a0ef002dbe2d8592f1dbda13c11a31c3dd118e30e3f4d",
+    "docs/tla/CharlotteRaftMembership_beforecatchup_unsafe.cfg": "1bebd17d6742862ea1b42603110142ab7ecfce3181a38486f900b42494c5662c",
+    "docs/tla/CharlotteRaftMembership_learnerleader_unsafe.cfg": "e03b850a627f57c6a67221bab01809966fd326845479bdc9ff9cb739c80152f8",
+    "docs/tla/CharlotteRaftMembership_oldonly_unsafe.cfg": "66c4d2ee02c6f971fb8529c3f27c6a484240e7e88787c4089e284967b569c818",
+    "docs/tla/CharlotteRaftMembership_small.cfg": "c4949302102f62fe00a4d7b2144ad348bd0ac07a14f7e49819eb9d45a3c55a3c",
+    "docs/tla/CharlotteRaftRead.tla": "ba501b11cfb8f5b1b49783164821f8f9919f7bebd005750d588af53bc55bf4a6",
+    "docs/tla/CharlotteRaftRead_apply_unsafe.cfg": "43cba1003d8bd416c940a67210311278e210565b7699d24a6b335e8cfc358231",
+    "docs/tla/CharlotteRaftRead_binding_unsafe.cfg": "eae17e21a319cc8ca76e862f0e5e8c426bb067b4df995128155e0bd859aae816",
+    "docs/tla/CharlotteRaftRead_commit_unsafe.cfg": "dc43808ad84e9c1f980a81124b59560f5e3494489c9b1c70f2cba87715ca87b7",
+    "docs/tla/CharlotteRaftRead_lease_unsafe.cfg": "04027533e5b606ff3995f03b3534135a005ced922ceff5b42d55813f2c7d7b53",
+    "docs/tla/CharlotteRaftRead_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+    "docs/tla/CharlotteRaftResponse.tla": "3d18cf384a8769934d40b538d1b66a62c347f24429e03e347076c359972fa3fa",
+    "docs/tla/CharlotteRaftResponse_backoff_unsafe.cfg": "9a72a7d3759a03c6515d0f345ef67bbb015881ae50f906b36259173c1618ec55",
+    "docs/tla/CharlotteRaftResponse_invalid_unsafe.cfg": "955dbde49aea1b4811db506ec61c662d3650272d7ec982c8d5b8d3506a36ed0f",
+    "docs/tla/CharlotteRaftResponse_oldterm_unsafe.cfg": "ca31d6e2a4e4a1545c2a541d583bdd30e68ff7c16857397c307745383f1cd4fe",
+    "docs/tla/CharlotteRaftResponse_regress_unsafe.cfg": "fec5226e58addf76e4676b34d144bb9f85785a3b725ecf88b420ef6e4161e192",
+    "docs/tla/CharlotteRaftResponse_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+    "docs/tla/CharlotteRaftSnapshot.tla": "3ecd5c17fdb200227c0de9608b732df5ae18c648acdcf4619d607eff3a7639d8",
+    "docs/tla/CharlotteRaftSnapshot_small.cfg": "0ea7a243aab5cdeace57a0ef990237f8893614d30afc06427d98ce0425baafb1",
+    "docs/tla/CharlotteRaft_small.cfg": "48294c1cddc1d440a1e2d70a80fd6ea9da8ade2d20ff0f1f4f54b85e8843bb9b",
+    "docs/tla/CharlotteReliableMessage.tla": "3a17cb197cbf7818717940a30cf6930f41a3b5e6fe16b8dfe4cfa52851e51f6a",
+    "docs/tla/CharlotteReliableMessage_identity_unsafe.cfg": "4cbb48be424584a73181c7c5495e31faf41c3b967405092b520a41b9503678da",
+    "docs/tla/CharlotteReliableMessage_regression_unsafe.cfg": "49dbe795212fe69495d4c927592dce59074306c5b30c254d6d4bf8f43bd6ce8b",
+    "docs/tla/CharlotteReliableMessage_small.cfg": "85adbd3bb065b8da79a7d8dfe58fd5e4b530f10d26015f83952c4a82e22edea5",
+    "docs/tla/CharlotteRemoteCall.tla": "36de513b3ffbfa1e9cbd74bac0404fc1ef66cd5400c7b536a9da18c1be2b1c55",
+    "docs/tla/CharlotteRemoteCall_small.cfg": "56d4993c70c7c7f9a5d5ec478240776ee12e00432adf8402a6cc291bc7fe9601",
+    "docs/tla/CharlotteRootRetirement.tla": "817ce0b352e358ab901f6392354d4a42ca294274080e5f1b979d1105f563d87e",
+    "docs/tla/CharlotteRootRetirement_abandon_unsafe.cfg": "693f4eeb72902cd536fb1fa185b05e7daec0f0fd50f9fe655f1dcbd9396c7202",
+    "docs/tla/CharlotteRootRetirement_lease_unsafe.cfg": "185baa2c91ce27fd6872e654ee522f6b3770f467e0eead8557bb26c60c95c889",
+    "docs/tla/CharlotteRootRetirement_physical_unsafe.cfg": "fa20b8c4b353156b8f39c48362bc3ea995377e31d81a69f742300ca41077edab",
+    "docs/tla/CharlotteRootRetirement_refund_unsafe.cfg": "c01d5c13fbee34239773c05eb0a33db1d5c31dfaa2ecf9a8de25853de659faed",
+    "docs/tla/CharlotteRootRetirement_release_unsafe.cfg": "47ca560b0c4fba4952c7009e3fb6af8c5c3cde906a7bb943d70aea4113dbada5",
+    "docs/tla/CharlotteRootRetirement_small.cfg": "9ee0187ad3b152ba75044f87f71788bb9bd1f5d2af8ebf0a1b1389c487b593d1",
+    "docs/tla/CharlotteScheduler.tla": "a58ef1f0f39ebb06d7b5d09568071891b51ecc327ca097b018155026c2acab5e",
+    "docs/tla/CharlotteScheduler_domain_abort_unsafe.cfg": "53332baa166196b745e9c8a9ae53ca6f0df3675120de0ff4fa4c9b8d7c24ee56",
+    "docs/tla/CharlotteScheduler_small.cfg": "f48844b2897340be11b29446d9fe763fe5ac12eb09a4d98128ed8567adffb047",
+    "docs/tla/CharlotteScheduler_unsafe.cfg": "d8816f8c15bd9c50ccb9421ba88b5aba6c2b737b03d8f71bddbb8791cf8165c5",
+    "docs/tla/CharlotteServiceLifecycle.tla": "5cab06543727b1373ae1ba9a342217f93a275fb3058cc33c3408c6f6fc39dee0",
+    "docs/tla/CharlotteServiceLifecycle_small.cfg": "e44daeaa25b96571f91e1f440ef61865ca2cfe7ac2908e3761a0c17a24fc1762",
+    "docs/tla/CharlotteServiceLifecycle_unsafe.cfg": "dfbae5bdd1af4274cec07f6501be0724140ff96343be816b836d7458262e1e74",
+    "docs/tla/CharlotteSnapshotRestore.tla": "c71563b3814d1f58b6bee72dac6bfd78e76d55d50895dad5c70372002f42eb88",
+    "docs/tla/CharlotteSnapshotRestore_application_unsafe.cfg": "983d4959987c263293f339a66848e2d2160c8d47314b1006fcc965139f78c041",
+    "docs/tla/CharlotteSnapshotRestore_durable_unsafe.cfg": "08aab0735de4db738b699997e9c1e9db496a2c5627c71ead888bb9755dae2321",
+    "docs/tla/CharlotteSnapshotRestore_exposure_unsafe.cfg": "6aae5eb519c5d5e67c5cb64be07b8b64f3f82635236f0854f9d6797d00f193ad",
+    "docs/tla/CharlotteSnapshotRestore_join_unsafe.cfg": "f9e148560d035b72c231e971fabe1e0281db21539b1886d86a6aacc16bd6b079",
+    "docs/tla/CharlotteSnapshotRestore_membership_unsafe.cfg": "6de0ef827f05f5e144f88fb97473f5b8f1b15b49df87d253c6a58565d571a3b6",
+    "docs/tla/CharlotteSnapshotRestore_ordering_unsafe.cfg": "5c773fbf7a6930b96ee72c86b0a06ecba3fae85b6e51b05e03164059052eb6f5",
+    "docs/tla/CharlotteSnapshotRestore_progress_unsafe.cfg": "8e8ff5e47b8a3d60cab8d400802ff594af6320666274ce7366482045f136a854",
+    "docs/tla/CharlotteSnapshotRestore_small.cfg": "d8356638da42d1a5f9e2bf70e011584a4d8e155f81401747b993c5df58f3c786",
+    "docs/tla/CharlotteStackGrowth.tla": "36dce6679dd969bd14136bb79c5c2cff8cec8df6479f0d33458ab196324a4a5f",
+    "docs/tla/CharlotteStackGrowth_grow_unsafe.cfg": "bef8d583b177e41bc58ef6312d0726129b58aa62f0539fe0e3b2b3dc4cf99e74",
+    "docs/tla/CharlotteStackGrowth_leak_unsafe.cfg": "d3df7e3d6e69ea109cb6b9ee06c57cf54c9d6d4ac92ede12b7497066093857d6",
+    "docs/tla/CharlotteStackGrowth_small.cfg": "1931995ce026befe604d6225a63e43cf5afbc336881c9141222af8943076baf9",
+    "docs/tla/CharlotteThreadJoin.tla": "3e61029e5fa352c6b065f0edd165a94f132095fb1c0d79c31b57d6761653b0e6",
+    "docs/tla/CharlotteThreadJoin_small.cfg": "64bf35e8eea699f9f8d1f1fd51c4c8c8b3f0e123a32912015546ea891563c819",
+    "docs/tla/CharlotteThreadJoin_unsafe.cfg": "1caa3d988aea11eefcc695c7524337b2ceac2ccfa8daa7620732affb6fc577d7",
+    "docs/tla/CharlotteThreadJoin_wrap_unsafe.cfg": "6304719f640bb360f0aa8f7c85face93526dea4e490f9de314dcc46bdf62eed9",
+    "docs/tla/CharlotteTimedWait.tla": "8739f35fb3eb7d97b5e9b41c786ada3f1f74d7bfd9d285fbb332bd457e06078e",
+    "docs/tla/CharlotteTimedWait_small.cfg": "a3d3b0fcaf80d4030a515699c0f02d29b6951f4e4170774df1c83cb558aba1d2",
+    "docs/tla/CharlotteTimedWait_unsafe.cfg": "1ffdb5d33dd8d1280de6aa281c33a646b6bfa111f6f3ac8eb82b9800c8833be6",
+    "docs/tla/check.sh": "4e0e3bdadd37d14a62455bad5110229739a9ea42a7835bef089d5bbffc169d57",
+    "docs/tla/CharlotteRaftStream.tla": "9569b70cc70a89633d88c2b1605b685ed8269aeb835ef11919325905b800e338",
+    "docs/tla/CharlotteRaftStream_small.cfg": "1cbf9e0476239a905305c0bafff90221959624090d88d60b1a96e88ea41a1cdc",
+    "docs/tla/CharlotteRaftStream_owner_unsafe.cfg": "d4d8ff4cad3ee145ee09909d9aef43cf97d52f169f2f8675f768a386bb5b12d5",
+    "docs/tla/CharlotteRaftStream_offset_unsafe.cfg": "69eff1ae0d71551616c20ca9453f5037cc655ff676343d2a0ef5c3adfe6ec35d"
+  },
+  "reviewed_source_sha256": {
+    "crates/catten-graft/src/node.rs": "2dd05e31c5c026af322520cd56488ebea5b723af65bf7ac0c19eb8b9217a56c5",
+    "crates/catten-graft/src/log_store.rs": "ea710c8fd7725a8f3e0d9a732865b34f669fb1cf9b7d0f5c6e3c02a099a95b72",
+    "crates/catten-graft/src/snapshot_codec.rs": "e439fa7536859d4f990ee273ee5f30fdcc2cfebcbb078596518bf57681f36060",
+    "crates/catten-services/src/disk_raft.rs": "82936a9fba9f5b98dc5c178350692b2760870dab9576778fa150f88483664263",
+    "crates/catten-services/src/bin/dns.rs": "9ce3e5c28bbcfdedb0a92b13ba29b8d3ac2a39b375010f3021011ccb024c2c34",
+    "crates/catten-services/src/bin/raft.rs": "b705bdf0f700838cec9c6fee1f68878b2fe2328f8afc3b3862aee3c527b5d288"
+  },
+  "tooling": {
+    "release": "TLA+ Tools v1.7.4",
+    "tlc": "TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)",
+    "jar_sha256": "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88",
+    "rust_toolchain": "nightly-2026-07-27"
+  },
+  "cases": [
+    {
+      "module": "CharlotteRaftStream",
+      "config": "CharlotteRaftStream_small.cfg",
+      "exit_status": 0,
+      "log_sha256": "23d3525ad7929822713eee2cf1157d72110077d05fcfeb1579d29eafd0fafa36",
+      "action_coverage": [
+        "<Init line 21, col 1 to line 21, col 4 of module CharlotteRaftStream>: 2:2",
+        "<BeginReceive line 35, col 1 to line 35, col 12 of module CharlotteRaftStream>: 4:96",
+        "<RestartOffsetZero line 44, col 1 to line 44, col 17 of module CharlotteRaftStream>: 8:96",
+        "<ChangeTerm line 53, col 1 to line 53, col 22 of module CharlotteRaftStream>: 129:288",
+        "<RecognizeLeader line 65, col 1 to line 65, col 27 of module CharlotteRaftStream>: 0:96",
+        "<ReceiveChunk line 73, col 1 to line 73, col 20 of module CharlotteRaftStream>: 96:96",
+        "<CancelReceive line 85, col 1 to line 85, col 13 of module CharlotteRaftStream>: 77:96",
+        "<RejectStale line 94, col 1 to line 94, col 11 of module CharlotteRaftStream>: 5:64",
+        "<RejectLeader line 101, col 1 to line 101, col 12 of module CharlotteRaftStream>: 11:96",
+        "<RejectOffset line 108, col 1 to line 108, col 12 of module CharlotteRaftStream>: 24:96",
+        "<RejectBoundary line 114, col 1 to line 114, col 14 of module CharlotteRaftStream>: 44:96"
+      ],
+      "structure_warnings": [],
+      "generated_states": 1122,
+      "distinct_states": 400,
+      "depth": 9,
+      "required_actions": [
+        "BeginReceive",
+        "RestartOffsetZero",
+        "ChangeTerm",
+        "RecognizeLeader",
+        "ReceiveChunk",
+        "CancelReceive",
+        "RejectStale",
+        "RejectLeader",
+        "RejectOffset",
+        "RejectBoundary"
+      ]
+    },
+    {
+      "module": "CharlotteRaftStream",
+      "config": "CharlotteRaftStream_owner_unsafe.cfg",
+      "exit_status": "nonzero, verified by harness",
+      "log_sha256": "1ce0c1dfb9ce1bfb1578155e390496c2f822e0d159b180a5486f62615e04c0a9",
+      "action_coverage": [
+        "<Init line 21, col 1 to line 21, col 4 of module CharlotteRaftStream>: 4:4",
+        "<BeginReceive line 35, col 1 to line 35, col 12 of module CharlotteRaftStream>: 3:5",
+        "<RestartOffsetZero line 44, col 1 to line 44, col 17 of module CharlotteRaftStream>: 4:14",
+        "<ChangeTerm line 53, col 1 to line 53, col 22 of module CharlotteRaftStream>: 25:31",
+        "<RecognizeLeader line 65, col 1 to line 65, col 27 of module CharlotteRaftStream>: 0:8",
+        "<ReceiveChunk line 73, col 1 to line 73, col 20 of module CharlotteRaftStream>: 12:19",
+        "<CancelReceive line 85, col 1 to line 85, col 13 of module CharlotteRaftStream>: 4:9",
+        "<RejectStale line 94, col 1 to line 94, col 11 of module CharlotteRaftStream>: 5:5",
+        "<RejectLeader line 101, col 1 to line 101, col 12 of module CharlotteRaftStream>: 6:6",
+        "<RejectOffset line 108, col 1 to line 108, col 12 of module CharlotteRaftStream>: 9:9",
+        "<RejectBoundary line 114, col 1 to line 114, col 14 of module CharlotteRaftStream>: 9:9"
+      ],
+      "structure_warnings": [],
+      "violated_invariant": "InstalledSingleOwner",
+      "required_action": "ReceiveChunk",
+      "counterexample": "Error: Invariant InstalledSingleOwner is violated.\nError: The behavior up to this point is:\nState 1: <Initial predicate>\n/\\ rejectedStale = FALSE\n/\\ pendingOwner = [leader |-> none, term |-> 0]\n/\\ term = 1\n/\\ buffered = <<>>\n/\\ rejectedBoundary = FALSE\n/\\ installed = <<>>\n/\\ restarted = FALSE\n/\\ leader = n2\n/\\ rejectedLeader = FALSE\n/\\ rejectedOffset = FALSE\n\nState 2: <BeginReceive line 36, col 5 to line 42, col 65 of module CharlotteRaftStream>\n/\\ rejectedStale = FALSE\n/\\ pendingOwner = [leader |-> n2, term |-> 1]\n/\\ term = 1\n/\\ buffered = <<[owner |-> [leader |-> n2, term |-> 1], offset |-> 0]>>\n/\\ rejectedBoundary = FALSE\n/\\ installed = <<>>\n/\\ restarted = FALSE\n/\\ leader = n2\n/\\ rejectedLeader = FALSE\n/\\ rejectedOffset = FALSE\n\nState 3: <ChangeTerm line 54, col 5 to line 63, col 65 of module CharlotteRaftStream>\n/\\ rejectedStale = FALSE\n/\\ pendingOwner = [leader |-> n2, term |-> 1]\n/\\ term = 2\n/\\ buffered = <<[owner |-> [leader |-> n2, term |-> 1], offset |-> 0]>>\n/\\ rejectedBoundary = FALSE\n/\\ installed = <<>>\n/\\ restarted = FALSE\n/\\ leader = n2\n/\\ rejectedLeader = FALSE\n/\\ rejectedOffset = FALSE\n\nState 4: <ReceiveChunk line 74, col 5 to line 83, col 65 of module CharlotteRaftStream>\n/\\ rejectedStale = FALSE\n/\\ pendingOwner = [leader |-> none, term |-> 0]\n/\\ term = 2\n/\\ buffered = <<>>\n/\\ rejectedBoundary = FALSE\n/\\ installed = << [owner |-> [leader |-> n2, term |-> 1], offset |-> 0],\n   [owner |-> [leader |-> n2, term |-> 2], offset |-> 1] >>\n/\\ restarted = FALSE\n/\\ leader = n2\n/\\ rejectedLeader = FALSE\n/\\ rejectedOffset = FALSE"
+    },
+    {
+      "module": "CharlotteRaftStream",
+      "config": "CharlotteRaftStream_offset_unsafe.cfg",
+      "exit_status": "nonzero, verified by harness",
+      "log_sha256": "1702fbdf0837daf7cb3b826d41616f10a9cece9bdefd7dea9f07033df449b7cb",
+      "action_coverage": [
+        "<Init line 21, col 1 to line 21, col 4 of module CharlotteRaftStream>: 4:4",
+        "<BeginReceive line 35, col 1 to line 35, col 12 of module CharlotteRaftStream>: 4:6",
+        "<RestartOffsetZero line 44, col 1 to line 44, col 17 of module CharlotteRaftStream>: 4:9",
+        "<ChangeTerm line 53, col 1 to line 53, col 22 of module CharlotteRaftStream>: 6:20",
+        "<RecognizeLeader line 65, col 1 to line 65, col 27 of module CharlotteRaftStream>: 0:2",
+        "<ReceiveChunk line 73, col 1 to line 73, col 20 of module CharlotteRaftStream>: 16:27",
+        "<CancelReceive line 85, col 1 to line 85, col 13 of module CharlotteRaftStream>: 0:0",
+        "<RejectStale line 94, col 1 to line 94, col 11 of module CharlotteRaftStream>: 0:0",
+        "<RejectLeader line 101, col 1 to line 101, col 12 of module CharlotteRaftStream>: 0:0",
+        "<RejectOffset line 108, col 1 to line 108, col 12 of module CharlotteRaftStream>: 0:0",
+        "<RejectBoundary line 114, col 1 to line 114, col 14 of module CharlotteRaftStream>: 0:0"
+      ],
+      "structure_warnings": [],
+      "violated_invariant": "InstalledInOrder",
+      "required_action": "ReceiveChunk",
+      "counterexample": "Error: Invariant InstalledInOrder is violated.\nError: The behavior up to this point is:\nState 1: <Initial predicate>\n/\\ rejectedStale = FALSE\n/\\ pendingOwner = [leader |-> none, term |-> 0]\n/\\ term = 1\n/\\ buffered = <<>>\n/\\ rejectedBoundary = FALSE\n/\\ installed = <<>>\n/\\ restarted = FALSE\n/\\ leader = n3\n/\\ rejectedLeader = FALSE\n/\\ rejectedOffset = FALSE\n\nState 2: <ChangeTerm line 54, col 5 to line 63, col 65 of module CharlotteRaftStream>\n/\\ rejectedStale = FALSE\n/\\ pendingOwner = [leader |-> none, term |-> 0]\n/\\ term = 2\n/\\ buffered = <<>>\n/\\ rejectedBoundary = FALSE\n/\\ installed = <<>>\n/\\ restarted = FALSE\n/\\ leader = n3\n/\\ rejectedLeader = FALSE\n/\\ rejectedOffset = FALSE\n\nState 3: <BeginReceive line 36, col 5 to line 42, col 65 of module CharlotteRaftStream>\n/\\ rejectedStale = FALSE\n/\\ pendingOwner = [leader |-> n3, term |-> 2]\n/\\ term = 2\n/\\ buffered = <<[owner |-> [leader |-> n3, term |-> 2], offset |-> 0]>>\n/\\ rejectedBoundary = FALSE\n/\\ installed = <<>>\n/\\ restarted = FALSE\n/\\ leader = n3\n/\\ rejectedLeader = FALSE\n/\\ rejectedOffset = FALSE\n\nState 4: <ReceiveChunk line 74, col 5 to line 83, col 65 of module CharlotteRaftStream>\n/\\ rejectedStale = FALSE\n/\\ pendingOwner = [leader |-> none, term |-> 0]\n/\\ term = 2\n/\\ buffered = <<>>\n/\\ rejectedBoundary = FALSE\n/\\ installed = << [owner |-> [leader |-> n3, term |-> 2], offset |-> 0],\n   [owner |-> [leader |-> n3, term |-> 2], offset |-> 2] >>\n/\\ restarted = FALSE\n/\\ leader = n3\n/\\ rejectedLeader = FALSE\n/\\ rejectedOffset = FALSE"
+    }
+  ],
+  "failed_runs": [
+    {
+      "kind": "First receiver regression rejects expectedly: the unfixed core accepts a same-leader higher-term continuation.",
+      "exit_status": 101,
+      "log_sha256": "59da82256be59663ea138a6928c00a1bcf30c56b67f22ee0d1b9c48bd2694b9e",
+      "diagnostics": [
+        "running 1 test",
+        "test node::tests::snapshot_continuation_cannot_cross_leader_or_election_term ... FAILED",
+        "",
+        "failures:",
+        "",
+        "---- node::tests::snapshot_continuation_cannot_cross_leader_or_election_term stdout ----",
+        "",
+        "thread 'node::tests::snapshot_continuation_cannot_cross_leader_or_election_term' (19482621) panicked at crates/catten-graft/src/node.rs:2858:13:",
+        "cross-episode continuation from n2",
+        "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+        "",
+        "",
+        "failures:",
+        "    node::tests::snapshot_continuation_cannot_cross_leader_or_election_term",
+        "",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 51 filtered out; finished in 0.00s",
+        "",
+        "error: test failed, to rerun pass `--lib`"
+      ]
+    },
+    {
+      "kind": "Both receiver regressions reproduce mixed bytes and snapshot/commit/applied index 7 before correction.",
+      "exit_status": 101,
+      "log_sha256": "ff5fc4f314f630d307b8c9a13dc764680c69b68fb070404bdd60260add5fa2b1",
+      "diagnostics": [
+        "running 2 tests",
+        "test node::tests::snapshot_continuation_cannot_cross_leaders ... FAILED",
+        "test node::tests::snapshot_continuation_cannot_cross_election_terms ... FAILED",
+        "",
+        "failures:",
+        "",
+        "---- node::tests::snapshot_continuation_cannot_cross_leaders stdout ----",
+        "",
+        "thread 'node::tests::snapshot_continuation_cannot_cross_leaders' (19483364) panicked at crates/catten-graft/src/node.rs:2856:13:",
+        "cross-episode continuation from n3: restored=[111, 108, 100, 45, 112, 114, 101, 102, 105, 120, 110, 101, 119, 45, 115, 117, 102, 102, 105, 120], snapshot_index=7, commit=7, applied=7",
+        "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+        "",
+        "---- node::tests::snapshot_continuation_cannot_cross_election_terms stdout ----",
+        "",
+        "thread 'node::tests::snapshot_continuation_cannot_cross_election_terms' (19483363) panicked at crates/catten-graft/src/node.rs:2856:13:",
+        "cross-episode continuation from n2: restored=[111, 108, 100, 45, 112, 114, 101, 102, 105, 120, 110, 101, 119, 45, 115, 117, 102, 102, 105, 120], snapshot_index=7, commit=7, applied=7",
+        "",
+        "",
+        "failures:",
+        "    node::tests::snapshot_continuation_cannot_cross_election_terms",
+        "    node::tests::snapshot_continuation_cannot_cross_leaders",
+        "",
+        "test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 51 filtered out; finished in 0.00s",
+        "",
+        "error: test failed, to rerun pass `--lib`"
+      ]
+    },
+    {
+      "kind": "Redundant borrow in new test diagnostic; corrected without lint suppression.",
+      "exit_status": 101,
+      "log_sha256": "0d5d3c6a484e38508f2920a52262c06d52e5f88992b1a75c4be949596828ebdc",
+      "diagnostics": [
+        "Checking catten-graft v0.1.0 (/Users/froran/Projects/private/charlotte-os/crates/catten-graft)",
+        "error: redundant reference in `assert!` argument",
+        "    --> crates/catten-graft/src/node.rs:2879:13",
+        "     |",
+        "2879 |             &*restored.lock(),",
+        "     |             ^^^^^^^^^^^^^^^^^ help: remove the redundant `&`: `*restored.lock()`",
+        "     |",
+        "     = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#useless_borrows_in_formatting",
+        "     = note: `-D clippy::useless-borrows-in-formatting` implied by `-D warnings`",
+        "     = help: to override `-D warnings` add `#[allow(clippy::useless_borrows_in_formatting)]`",
+        "",
+        "error: could not compile `catten-graft` (lib test) due to 1 previous error"
+      ]
+    },
+    {
+      "kind": "Sandbox denied Java local RMI coordination socket before state exploration. Authorized repeat passes.",
+      "exit_status": 1,
+      "log_sha256": "7a4f03b6a490aac3fb4e28f329003434a4daef0b3eb0315c9506f4f742f103f1",
+      "diagnostics": [
+        "Error: TLC threw an unexpected exception.",
+        "This was probably caused by an error in the spec or model.",
+        "See the User Output or TLC Console for clues to what happened.",
+        "The exception was a java.util.concurrent.ExecutionException",
+        ": java.rmi.server.ExportException: Listen failed on port: 0; nested exception is: ",
+        "\tjava.net.SocketException: Operation not permitted",
+        "Finished in 00s at (2026-10-19 00:15:29)"
+      ]
+    }
+  ],
+  "host_validation": {
+    "command": "cargo test --locked --manifest-path <repo>/crates/catten-graft/Cargo.toml --lib (from /private/tmp, outside root freestanding Cargo configuration)",
+    "exit_status": 0,
+    "passed": 55,
+    "failed": 0,
+    "log_sha256": "cd5809feabbeb3d71a050ef19b05f5ab10fc9a08b2c19c2c6612f52ec17e4bd1",
+    "new_tests": [
+      "snapshot_continuation_cannot_cross_leaders",
+      "snapshot_continuation_cannot_cross_election_terms",
+      "snapshot_rejections_preserve_the_current_stream_and_zero_restarts_it",
+      "election_and_indirect_term_observation_discard_partial_snapshot"
+    ]
+  },
+  "checks": {
+    "host_all_target_clippy": {
+      "exit_status": 0,
+      "log_sha256": "e6d35c3329663fcb8ff6ba60d320447fec5001a415d650d9c56cc46ec01dc3ff"
+    },
+    "bundle_build": {
+      "exit_status": 0,
+      "log_sha256": "f6286a5d542139f6f1f037ab3bb0eb08c2e3d41ab86c8bb24492fabdd365e2d2"
+    },
+    "bundle_check": {
+      "exit_status": 0,
+      "log_sha256": "527d476e5d5ebd7b81b16edb548a352e340c7ecb50e028cf33ddeae644186eb2"
+    }
+  },
+  "native_validation": {
+    "result": {
+      "events": [
+        {
+          "event": "runner_started",
+          "utc": "2026-10-18T22:17:24.296409+00:00",
+          "instance": "rmstream-a2",
+          "pid": 1361,
+          "arguments": [
+            "scripts/run-aarch64.sh",
+            "debug",
+            "--dns-test",
+            "--instance",
+            "rmstream-a2",
+            "--mac",
+            "52:54:00:12:34:01",
+            "--fresh-storage",
+            "--timeout",
+            "180",
+            "--net-listen",
+            "12450"
+          ]
+        },
+        {
+          "event": "listener_ready",
+          "utc": "2026-10-18T22:18:21.796772+00:00"
+        },
+        {
+          "event": "runner_started",
+          "utc": "2026-10-18T22:18:21.798351+00:00",
+          "instance": "rmstream-b2",
+          "pid": 2277,
+          "arguments": [
+            "scripts/run-aarch64.sh",
+            "debug",
+            "--dns-test",
+            "--instance",
+            "rmstream-b2",
+            "--mac",
+            "52:54:00:12:34:02",
+            "--fresh-storage",
+            "--timeout",
+            "180",
+            "--net-connect",
+            "127.0.0.1:12450"
+          ]
+        },
+        {
+          "event": "runners_finished",
+          "utc": "2026-10-18T22:19:16.165723+00:00",
+          "exit_statuses": [
+            0,
+            0
+          ]
+        }
+      ],
+      "exit_statuses": [
+        0,
+        0
+      ]
+    },
+    "result_sha256": "1939bd0a9eb66efba4564412b16aca16d299dc3756b4c6064267e550f1dd1255",
+    "coordinator_sha256": "d192f7c03152065299030d560e6f858dd5c2de0cf8c80b2a9a2d7b12f171d33c",
+    "environment": "CATTEN_ALLOW_SANDBOX_NETWORK=1 CATTEN_SKIP_EMBED_BUILD=1; second guest also CATTEN_SKIP_KERNEL_BUILD=1",
+    "coordination": "Bounded host lsof check for the isolated QEMU TCP listener; no TCP probe. Both runners awaited with bounded host budget.",
+    "guests": [
+      {
+        "instance": "rmstream-a2",
+        "runner_exit_status": 0,
+        "kernel_sha256": "c3b6fb3bcb78c89dd05a354d982ee0100f71c5cfa21c9e677004ddde8ba63b7e",
+        "runner_log_sha256": "8477a368207bd2f4e53f096f73a83d94326b91a3fdd32ba5dd860cc85368f73b",
+        "serial_log_sha256": "8abe6836617f509f2968eea2f23dfd0c388a04b72b78f5bb17609a23a76432a1",
+        "diagnostics": [
+          "[+    16.018723] [disco] discovered 1 peer(s) on the network.",
+          "[+    28.946441] [dns] full-name echo result = 43",
+          "[+    31.176560] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0xfffff failed_bitmap=0x0 pending_bitmap=0x0"
+        ]
+      },
+      {
+        "instance": "rmstream-b2",
+        "runner_exit_status": 0,
+        "kernel_sha256": "c3b6fb3bcb78c89dd05a354d982ee0100f71c5cfa21c9e677004ddde8ba63b7e",
+        "runner_log_sha256": "c335fbe749ef7bf1c0d375c660ae51febbbd622b71412c57867a313d8848b15c",
+        "serial_log_sha256": "a7ffb608c87297863ab64c0844cef7e41d595d08325ea07bf423dcc5ec968416",
+        "diagnostics": [
+          "[+    14.490146] [disco] discovered 1 peer(s) on the network.",
+          "[+    26.481202] [dns] fenced local placement returned without capability authority.",
+          "[+    27.501192] [dns] full-name echo result = 43",
+          "[+    29.093074] [dns] NS retired DNS-owned full-name and Echo-owned short-name publications after endpoint death without a fixture removal",
+          "[+    29.095258] SELFTEST COMPLETE: passed=20 failed=0 pending=0 passed_bitmap=0xfffff failed_bitmap=0x0 pending_bitmap=0x0"
+        ]
+      }
+    ],
+    "limits": "No native cross-leader chunk injection, allocation failure or crash during assembly. QEMU ARM only; no physical hardware, mixed-architecture or Graft interoperation claim."
+  },
+  "verified_bundle": {
+    "command_sequence": [
+      "scripts/build-catten-services.sh --embed",
+      "scripts/build-catten-services.sh --check",
+      "paired native run with CATTEN_SKIP_EMBED_BUILD=1"
+    ],
+    "staged_file_count": 41,
+    "file_sha256": {
+      "agent.elf": "f081554904f507757008b4191c67aef3b5f527891df5b90634209097144d8526",
+      "cclient.elf": "eabfb6a219396f084ac316e8d565e8c4fbf28b4184cbecd2dc0dee205a0afb3e",
+      "client.elf": "e4352ce9d6c6fe49a825b6db944ed832445cf939e77297c9f3b4cd96bcd30f49",
+      "clusterctl.elf": "ce9673030af0a2f57fc9d6a64d4a42ade36a9c12e1ac3bb4c47d5f37f58267e8",
+      "deployd.elf": "5cb4368cf4e2d59fb49625c31b4e16fe43ef95a6014e59166912da4d000fdc09",
+      "disco.elf": "a6b170d30b6b8b50aaf02686016eba19d6ac77eff5beae8a687a53ac3e33307a",
+      "dns.elf": "243e305f75cc03a59aaf91c33b7c75868472fcabba1d3cd0408d5e66af690dbe",
+      "echo.elf": "8c6376c7cffd19941c855eb572923f9917b93fc6d861054aa7ff2ca64e4a34d3",
+      "frouter.elf": "c02e73da6ea1bddbf712ed7820833618dd392f9b89b56d4459482546b3400b68",
+      "fs.elf": "6ef9175ecbab7da6783673c353801744435a6962912f032e2d521030797b8c89",
+      "grantctl.elf": "44e60875e85485debe48a17a7195d52a8e0c7f0fc90586fd38ecdeb9dd235957",
+      "greet.elf": "5aa196a560a1d96310d027a577e7b7aa4a3f4b3945246b2efd3dd5a20251f4e8",
+      "httpd.elf": "a1df110edab1b5549c4910a7263c69f4ab29e4fadf5c489112005447a15ead0d",
+      "kafka.elf": "5bb76412222e560e24e679f0ba12fadea03991a74176b8635a918993a19dbfe9",
+      "kafka_fence_smoke.elf": "39d628a5a2856b4562512b0191eef2ca39b846286fda2de236c457df9742eb69",
+      "kafka_smoke.elf": "4684ea5ec4968f81e45b3ba4e3160dbd257ea4d47d1ccb887087b170ea225ab7",
+      "kafka_step.elf": "b082ed244568985acb10b1e5b075259b2b1900730a6e29a152ee68d6f480ba3c",
+      "kafka_step_input.elf": "889d40948865f2c4251f2f2659b7dd6294555426a1a7312d366be1e393ffbde6",
+      "kafka_step_proc.elf": "4394deeb08b058e9322b9ff3cf845575c6dcc6e2d23a9d59400c333ac7f3f73a",
+      "nclient.elf": "6b7f614ebced9ea722446e331b6a5a4f980101d4bf6d85e11cc64debb0ce4919",
+      "net.elf": "ef428842ec8d382488d26ea2b7f1c20f3d6951dd58136b68c6720e675c8fe580",
+      "ns.elf": "10ed64e5b68275abd413606b2a86c564f923867ee9b5b67798592e22a6d972b1",
+      "nvme.elf": "8c60f8f649481c558db4fafc5e2e25e4226d6b3142e402462c874f30c6ff4846",
+      "nvme_client.elf": "d8b3ce038ed86a31418996e5585e69f0cb3b27b132c125d7c0b95e91be539587",
+      "objstore.elf": "14ebcd101f39e019d56b4dc770815ad6eca03607e0568b8684bfa080b9af2cea",
+      "objstore_client.elf": "2386460fb9587e29db2255e84c208b98096887ac02c1f8958e06e4d006a533d4",
+      "observe.elf": "8872b58e1cf74a8517047a5fb05f99378391159974079877490d4ec739a8e8e1",
+      "raft.elf": "7772341c9e55c090305a5000729f4bf145cd66bab446a7001bfbb8279a885009",
+      "rclient.elf": "abd929c3aebdea624d703c55386d28707bad2b3dae1a267074cbb5dc3ed854ab",
+      "relmsg.elf": "27312ab0253caa8e8bda232dc00ec969598079a6f4835c7da3bd8268c32a605b",
+      "rng.elf": "9f1256d45ac33f5ad6f254aaa0fc7d91d6c9748299116a1df84e6ad4725a9ab4",
+      "s3.elf": "10044aa00f29f1e866964a50ce7e2317d158a9fa39604d2420595c19e3785523",
+      "s3_smoke.elf": "3b94e5112e850fc0976191a04c634a1dc0676fb361e237a76ca750b5e9e57055",
+      "security_probe.elf": "0dde2c3b6935bfd603ce81acdf535b8134c6993e6bbbfa75deb3b9a64a97e018",
+      "servicemgr.elf": "152ab24cc394bfd2cb99609b7bacedbb3334c842dac413ea039626e7a21da3bc",
+      "shutdown_probe.elf": "fea129342eea8752f50e6bbd1bc14d939aaa8fc1d5166a44f4ccd2cb8e33e2cd",
+      "sitas-user.elf": "a01b596eab01adc9f8bf7ac45228b1b21da9dcdb00b9e38799850358d01ed564",
+      "tcpclient.elf": "a302ae9569b052731fdeb308ab7870221b8ae5dbdd0cba12219672c13786ee88",
+      "tcpip.elf": "de5cc35926961bf4afcb3c1fcd1f231b0bbdcf5dd70236e6a18d53b5bbc7a053",
+      "time.elf": "8acbe8799ac834a82e4c7e03dd5c15f861226f121fbf14d76a93efdc94905a69",
+      "uart.elf": "c08105fdc5f52305fe5274515a06e319a99d9cd96dd4b7df8660856049ea173c"
+    },
+    "changed_elfs_from_baseline": {
+      "dns.elf": {
+        "before": "72fda26cbc1b408ce967a648f0f4089b78219c5ad843dbfdf6455349065c0058",
+        "after": "243e305f75cc03a59aaf91c33b7c75868472fcabba1d3cd0408d5e66af690dbe"
+      },
+      "raft.elf": {
+        "before": "da6cc344a46a4928fe3e1cc20f7494014bd347926eaf25068d3c18022aa7b4c1",
+        "after": "7772341c9e55c090305a5000729f4bf145cd66bab446a7001bfbb8279a885009"
+      }
+    },
+    "kernel_unchanged_from_baseline": true,
+    "meaning": "The kernel is unchanged; fresh NVMe images stage the newly signed DNS and Raft ELFs. Every staged file still matches the verified manifest after native execution."
+  },
+  "upstream_comparison": {
+    "revision": "1a818d416a40330bea2055e03f61580679baa9f6",
+    "checkout_still_clean": true,
+    "source_contracts": [
+      {
+        "file": "raft-core/src/main/java/org/gautelis/raft/RaftNode.java",
+        "sha256": "dd93d9ce4ac69b972f808d8141bd3008f1a33d226cb45213ffea078cab144ed4",
+        "extracts": [
+          {
+            "first_line": 552,
+            "last_line": 565,
+            "source": "    private static final class PendingSnapshot {\n        private final String leaderId;\n        private final long lastIncludedIndex;\n        private final long lastIncludedTerm;\n        // Buffer grows chunk-by-chunk until the sender marks the final InstallSnapshot RPC.\n        private final ByteArrayOutputStream data = new ByteArrayOutputStream();\n\n        private PendingSnapshot(String leaderId, long lastIncludedIndex, long lastIncludedTerm) {\n            this.leaderId = leaderId;\n            this.lastIncludedIndex = lastIncludedIndex;\n            this.lastIncludedTerm = lastIncludedTerm;\n        }\n    }\n"
+          },
+          {
+            "first_line": 1241,
+            "last_line": 1260,
+            "source": "    private boolean acceptSnapshotChunk(InstallSnapshotRequest request) {\n        if (request.getOffset() == 0\n                || pendingSnapshot == null\n                || !Objects.equals(pendingSnapshot.leaderId, request.getLeaderId())\n                || pendingSnapshot.lastIncludedIndex != request.getLastIncludedIndex()\n                || pendingSnapshot.lastIncludedTerm != request.getLastIncludedTerm()) {\n            // A new stream starts at offset 0 or whenever the sender/metadata changes.\n            pendingSnapshot = new PendingSnapshot(request.getLeaderId(), request.getLastIncludedIndex(), request.getLastIncludedTerm());\n        }\n\n        if (request.getOffset() != pendingSnapshot.data.size()) {\n            // Reject out-of-order or overlapping chunks so followers never install a corrupted snapshot.\n            log.warn(\"{}@{} rejected snapshot chunk from {}: expected offset {}, got {}\",\n                    me.getId(), currentTerm, request.getLeaderId(), pendingSnapshot.data.size(), request.getOffset());\n            return false;\n        }\n        pendingSnapshot.data.writeBytes(request.getSnapshotData());\n        if (log.isTraceEnabled()) {\n            log.trace(\"{}@{} accepted snapshot chunk from {} for snapshot index {} at offset {} (bytes={}, buffered={})\",\n                    me.getId(), currentTerm, request.getLeaderId(), request.getLastIncludedIndex(),"
+          }
+        ]
+      },
+      {
+        "file": "graft-cpp/src/core/raft_node.cpp",
+        "sha256": "3c2755f68cbf9cb66a289a50f34f941c7074b4e28b48d2378cbb3ad1ac9c1366",
+        "extracts": [
+          {
+            "first_line": 161,
+            "last_line": 200,
+            "source": "    raft::InstallSnapshotResponse RaftNode::handle_install_snapshot(const raft::InstallSnapshotRequest &request) {\n        std::scoped_lock lock(mu_);\n\n        if (request.term() > current_term_) {\n            step_down_locked(request.term(), request.leader_id());\n        }\n\n        bool success = false;\n        if (!decommissioned_ &&\n            is_known_voting_member_locked(request.leader_id()) &&\n            request.term() == current_term_) {\n            role_ = Role::follower;\n            leader_id_ = request.leader_id();\n            last_activity_ = std::chrono::steady_clock::now();\n            // Snapshot chunks are accepted only in strict offset order. A new index/term or offset zero restarts\n            // the pending transfer, which matches the Java side's chunked InstallSnapshot behavior.\n            if (request.offset() == 0 ||\n                pending_snapshot_index_ != request.last_included_index() ||\n                pending_snapshot_term_ != request.last_included_term()) {\n                pending_snapshot_index_ = request.last_included_index();\n                pending_snapshot_term_ = request.last_included_term();\n                pending_snapshot_data_.clear();\n            }\n\n            if (request.offset() == static_cast<std::int64_t>(pending_snapshot_data_.size())) {\n                pending_snapshot_data_.append(request.snapshot_data());\n                success = true;\n            }\n\n            if (success && request.done()) {\n                snapshot_index_ = request.last_included_index();\n                snapshot_term_ = request.last_included_term();\n                snapshot_data_ = pending_snapshot_data_;\n                pending_snapshot_data_.clear();\n                pending_snapshot_index_ = 0;\n                pending_snapshot_term_ = 0;\n                truncate_prefix_up_to_locked(snapshot_index_);\n                if (last_log_index_ < snapshot_index_) {\n                    last_log_index_ = snapshot_index_;\n                    last_log_term_ = snapshot_term_;"
+          },
+          {
+            "first_line": 1370,
+            "last_line": 1380,
+            "source": "    void RaftNode::step_down_locked(std::int64_t new_term, std::optional<std::string> leader_id) {\n        current_term_ = new_term;\n        role_ = Role::follower;\n        voted_for_.reset();\n        leader_id_ = std::move(leader_id);\n        last_activity_ = std::chrono::steady_clock::now();\n        votes_granted_.clear();\n        votes_responded_.clear();\n    }\n\n    std::string RaftNode::applied_command_result_at_locked(std::int64_t index) const {"
+          }
+        ]
+      },
+      {
+        "file": "graft-rust/graft-core/src/raft_node.rs",
+        "sha256": "c95f8e1b8e0fb5b7fb23d71264d528d49c5db8f4d3f8a9b2539781820676e837",
+        "extracts": [
+          {
+            "first_line": 143,
+            "last_line": 160,
+            "source": "// Pending snapshot assembly (follower side during InstallSnapshot)\n// ---------------------------------------------------------------------------\n\n/// Partial snapshot being received from the leader via InstallSnapshot RPC.\n/// Accumulated chunk-by-chunk until the `done` flag signals completion,\n/// at which point the snapshot is installed into the LogStore.\n#[derive(Debug, Clone)]\npub struct PendingSnapshot {\n    /// The last log index covered by this snapshot.\n    pub last_included_index: u64,\n    /// Term of the last included index.\n    pub last_included_term: u64,\n    /// Byte offset of the next expected chunk.\n    pub offset: u64,\n    /// Accumulated snapshot bytes so far.\n    pub data: Vec<u8>,\n}\n"
+          },
+          {
+            "first_line": 1350,
+            "last_line": 1406,
+            "source": "        // Reject stale snapshots.\n        if req.term < self.current_term {\n            return InstallSnapshotResponse {\n                term: self.current_term,\n                peer_id: self.me.id.clone(),\n                success: false,\n                last_included_index: 0,\n            };\n        }\n\n        // Higher term \u2192 recognize the new leader and become follower.\n        if req.term > self.current_term {\n            self.current_term = req.term;\n            self.persistent_state.set_current_term(req.term);\n            self.become_follower(now);\n        }\n\n        self.known_leader_id = Some(req.leader_id.clone());\n        self.refresh_timeout(now);\n\n        // First chunk: start a new pending snapshot.\n        if req.offset == 0 {\n            self.pending_snapshot = Some(PendingSnapshot {\n                last_included_index: req.last_included_index,\n                last_included_term: req.last_included_term,\n                offset: 0,\n                data: Vec::new(),\n            });\n        }\n\n        if let Some(ref mut pending) = self.pending_snapshot {\n            pending.data.extend_from_slice(&req.data);\n            pending.offset += req.data.len() as u64;\n\n            // Final chunk: install the complete snapshot.\n            if req.done {\n                self.log_store.install_snapshot(\n                    pending.last_included_index,\n                    pending.last_included_term,\n                    std::mem::take(&mut pending.data),\n                );\n                let installed_index = pending.last_included_index;\n                let installed_data = self.log_store.snapshot_data();\n                self.pending_snapshot = None;\n                self.commit_index = self.commit_index.max(installed_index);\n                self.last_applied = self.last_applied.max(installed_index);\n\n                // Unwrap the membership envelope (Java/C++ compatible) to\n                // restore the cluster configuration at the snapshot boundary.\n                let app_snapshot = crate::snapshot_codec::unwrap_snapshot_payload(&installed_data);\n                if let Some(ref sm) = self.state_machine {\n                    sm.restore(&app_snapshot);\n                }\n\n                // Update snapshot_configuration so configuration_at() can\n                // reconstruct the membership for post-snapshot log entries.\n                self.snapshot_configuration = self.cluster_configuration.clone();"
+          }
+        ]
+      }
+    ],
+    "scope": "Static source comparison only; no upstream tests, Jepsen or mixed implementation clusters run."
+  },
+  "manual_validation": {
+    "page_count": 234,
+    "exit_statuses": [
+      0,
+      0
+    ],
+    "pdf_sha256": "5df7938e71f5322103d10cc21f04d90133cc2a4c7df6ac4e2dffeb3f8b230a94",
+    "final_pass_log_sha256": "036f06b4cc5baa9e3f0d6cbff743a0a9040cd5e4eee58087df54bf47d137ef61",
+    "previous_pass_log_sha256": "036f06b4cc5baa9e3f0d6cbff743a0a9040cd5e4eee58087df54bf47d137ef61",
+    "source_sha256": "0e338f8497cfeb8943e43c644a1e20e3dd5613acd81b2b4aa40a89f1d24d5f6a",
+    "chapter_21_overfull_boxes": 0,
+    "visual_review": "Reviewed contents 14\u201316 and Chapter21 pages196\u2013215. Intermediate one-word widow and split workflow list were corrected; final tail214\u2013215 re-rendered/reviewed. Other reviewed pages are unchanged by the final closing-paragraph deletion.",
+    "reviewed_raster_sha256": {
+      "final-chapter-207.png": "432f0f9affeee8cefe20400bc5a378861dbf66a055dc10c27df1e90affbe271c",
+      "final-chapter-213.png": "989ffa5a41cb33a016bf6cd294269caf4e6b8f922b8dc3f8740d416c21331b53",
+      "final-chapter-212.png": "ed899356c73c9c585dc2a1c90a87c6327c406ba383d066a245b237aa32012977",
+      "final-chapter-206.png": "d19e5314e67310f124d7e8cc207f4915b8f5b068444a9ce609f38633dbc79c7a",
+      "final-chapter-210.png": "c9cdb84ee5ec4b300a220466c507ee94ca731404e8f9e51bff0f6a15616a75ca",
+      "final-chapter-204.png": "546e07c1698065f932b7ac624e58d1de0568c4c1c58329cc30776c026038fab2",
+      "final-chapter-199.png": "3c9f531876558228fb4646fb2e72d6162974c312469f6d5baa6076d61019ee93",
+      "final-chapter-198.png": "adc8144a617bfab37499a372fe749637b356fcfb94637ae200d65d810afbd5ac",
+      "final-chapter-205.png": "b6504d87d89d544418bb199d71179a4dfa267951036dcf57014c373f72e47898",
+      "final-chapter-211.png": "1679529ab023607063df3ddb2a0d7e96c1fec263ff811458fc70a96872381198",
+      "final-chapter-215.png": "e6f826da3a7bede3b40bf63061ad7ba94b5da007da38fcdce256f87c7d786827",
+      "final-chapter-201.png": "0bdae42cc7bb282a9dee970ab52fcac20d6998ad2d7be2ede1ef579b500555a5",
+      "final-chapter-200.png": "5af8bca3c6c9609dc8524dc27c89ce973da2df554af39eafcbc637a96353d40c",
+      "final-chapter-214.png": "236d45c237a3b6d395c09f850e7a8be0a6ad72b4575c352f2b01de7a63789d9b",
+      "final-chapter-202.png": "2c3d8f8a8b22e68dd52eb7192df7661b7347b1b3bbcb352eaccc8f64dd025331",
+      "final-chapter-203.png": "d633fcd53bd25b7c84e38ea614148b2301b59629783a6dc9dcefae2a08e6725c",
+      "final-chapter-208.png": "5f2b1a2627c58e29cbc1e09ac50b65c0d423d3806fcf506b5c473d8df62072f0",
+      "final-chapter-209.png": "132b655a6e934fcb4a5477a56a5a2ef59c9c9ab33d53d4cb2c7fa059079f928a",
+      "final-chapter-196.png": "d2b0f5259c36f06300042ea007335f4787bcd5a8628576405710ce3438a9bb4a",
+      "final-chapter-197.png": "cdde3e7874f059d7a58ceb54e714d96200aad1bdfc6dbc195a5122471943c50f",
+      "final-contents-014.png": "7cba7d97d011b15c05eccaf375d2078670fe650767d63be46b374c7b791ffdcb",
+      "final-contents-015.png": "53269c86e818c6b94162d2e6ff2c2a04d8fbb00ae396deea17f02956891b799f",
+      "final-contents-016.png": "001652a8da5a350dcb8a018d69662df4b5ccef0904bc7b05bc5cfe3ae34f6bce",
+      "verified-tail-215.png": "c32017eea5989352e7fd9a8a78cd7be41c5a15d9c1588693b94f8c2bb9e7dc64",
+      "verified-tail-214.png": "236d45c237a3b6d395c09f850e7a8be0a6ad72b4575c352f2b01de7a63789d9b"
+    },
+    "tracked_user_pdf_sha256": "8793a9fdcc1a461cfa8eb10a05674c7db02d7e1fdf700240f52808127f45b94f",
+    "tracked_user_pdf_changed": false
+  },
+  "documentation_validation": {
+    "local_markdown_targets_checked": 638,
+    "all_exist": true,
+    "file_sha256": {
+      "docs/reference/api-simplification.md": "02a5dc23a18758492be97fa8597e60d4b71ae914adac30fc829eb62b8078a9ec",
+      "docs/reference/cleanup-recovery.md": "d7155c193191a1d119d04a681cf502c64638ad97e3bc94421282da574af9ddc7",
+      "docs/reference/raft-conformance.md": "4605b8d4b6dca716edf4ae5d954a2570a04912fd5dd3c98e6813a6e03380e3b7",
+      "docs/reference/security-remediation.md": "f92e8eeac55bb33c0009577b7aa8a6068b13afa94086572226c4a4315f8f59ee",
+      "docs/reports/README.md": "49dd931c39493e24318f719b4fcfa7b082f1ee9de0f5a9b1fbec6566a1bb2343",
+      "docs/tla/CONFORMANCE.md": "c252a083732c965b5e41313cfab4897dc03d713cd53385bbb49bd90a16479f9e",
+      "docs/tla/README.md": "14894ed7ce407303b040effc24915a991e3ce952989b86f19424c92cbe190603",
+      "docs/reports/audits/2026-10-19-raft-snapshot-streams.md": "108a967ba4698e41af63329f9bb2be942a308b0feb314498145c051cf7bc59d3"
+    }
+  },
+  "limits": [
+    "Immutable bytes within one sender/RPC-term/snapshot-boundary remain assumed. Current wire has no stream ID or snapshot digest; same-episode replacement/retry needs separate qualification.",
+    "Incoming source identity is a transport input, with no new authenticated network boundary.",
+    "Model fixes one snapshot boundary and unit-sized chunks; Rust tests exercise fields and bytes. Existing models retain application acceptance, durable state, membership and crash/restart contracts.",
+    "General heap admission and storage-failure recovery remain unqualified.",
+    "Bounded status/ingress receive-time freshness and raw transport ownership/readiness remain separate.",
+    "No numbered security finding disposition changed."
+  ],
+  "final_checks": {
+    "workspace_fmt": "cargo fmt --all -- --check: passed",
+    "diff_whitespace": "git diff --check: passed",
+    "shell_syntax": "bash -n docs/tla/check.sh scripts/build-catten-services.sh scripts/run-aarch64.sh: passed",
+    "source_model_document_and_staged_bundle_hashes_rechecked": true,
+    "local_documentation_targets_checked": 638,
+    "upstream_checkout_still_clean": true
+  }
+}

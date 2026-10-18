@@ -17,7 +17,7 @@ NVMe object store at the platform boundary.
 | Membership changes | `JOIN`, `JOINT`, and `FINALIZE` are shared protobuf internal commands. Direct local membership mutation is rejected. Automatic FINALIZE waits for the committed JOINT fence and every proposed remote voter/learner to catch up, restoring Graft Java/Rust behavior. Its commit still requires both voter majorities. |
 | Learners and removal | Learners replicate but neither campaign nor vote. Finalization makes a non-voter a follower immediately, preserving its existing-term vote. Removed nodes become decommissioned; retained learners remain members. |
 | Reads | Catalog queries consume a fresh `PendingRead` fence after current-term quorum commit and application. Node/domain, term and membership epoch are rechecked. A prior delayed acknowledgement cannot complete a newly admitted read. Bounded status/ingress observations remain a separate receive-time freshness policy. |
-| Snapshots | Snapshots carry current and next membership, peer roles/addresses, and application state in the shared JSON envelope. Application restore must succeed before startup exposes a node or network installation publishes snapshot progress/membership. |
+| Snapshots | Snapshots carry current and next membership, peer roles/addresses, and application state in the shared JSON envelope. Partial buffers bind leader ID and RPC term as well as boundary/offset; a new election discards them. Application restore must succeed before startup exposes a node or network installation publishes snapshot progress/membership. |
 | Wire contract | Vote, append, snapshot, peer, and internal-command messages use field-compatible `raft.proto` protobuf payloads. |
 | Liveness | Capability RPCs have bounded deadlines and at most one outstanding call per peer/RPC type/term. Append batches are reduced to the largest payload fitting the current one-page IPC attachment. |
 
@@ -141,3 +141,19 @@ authority. Follower and control-plane freshness, clock/election timing,
 authenticated network identity and raw transport readiness remain separate
 qualification boundaries. This correction does not establish general lease
 safety or close a numbered security finding.
+
+## Snapshot continuation identity
+
+The [19 October stream review](../reports/audits/2026-10-19-raft-snapshot-streams.md)
+reproduces installation of a former sender's prefix followed by a new term's
+suffix at the same snapshot boundary. The private pending buffer now captures
+leader ID and RPC term. Local elections and higher-term observations discard it;
+a replacement starts at offset zero. Invalid stale/source/boundary/offset
+requests leave an accepted current stream intact.
+
+Java's inspected receive owner retains leader ID. The inspected Rust core and
+C++ handler have different checks and no equivalent sender/term binding;
+this is a static comparison, with no upstream failure reproduction or Jepsen
+rerun. Shared wire/storage formats are unchanged. An immutable byte image per
+sender/term/boundary remains an assumption; same-episode image replacement and
+transport authentication need separate qualification.

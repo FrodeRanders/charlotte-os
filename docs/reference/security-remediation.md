@@ -560,6 +560,14 @@ historical AMD causality, the retained Intel scheduled-close/ingress failure and
 broader cleanup acceptance remain open. SEC-18 remains partial; finding counts
 are unchanged.
 
+The [Raft snapshot continuation correction](../reports/audits/2026-10-19-raft-snapshot-streams.md)
+reproduces mixed-prefix/suffix installation across leader/election episodes.
+The private buffer now binds its leader and RPC term and is discarded on local
+election or higher-term observation. Host regressions and a small model retain
+owner/offset failures. Authentication, same-episode byte-image stability and
+general allocation/persistence failures remain separate; finding counts are
+unchanged.
+
 The [Raft per-read fence correction](../reports/audits/2026-10-19-raft-read-fences.md)
 replaces the catalog query lease with a fresh no-op commit for each admitted
 read. Exact node/domain, term, membership and application checks consume one

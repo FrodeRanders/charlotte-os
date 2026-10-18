@@ -120,8 +120,8 @@ provide.
 
 \section{What is modeled}
 
-The current suite checks thirty-five safe configurations across thirty-three
-specifications. It also checks 105 expected-counterexample
+The current suite checks thirty-six safe configurations across thirty-four
+specifications. It also checks 107 expected-counterexample
 configurations. The models are divided by state ownership and failure boundary
 so that each remains reviewable.
 The Raft models are deliberately layered: election, log replication,
@@ -271,6 +271,10 @@ different proof obligations.
     matching suffix, membership recovery & Stale snapshots cannot regress
     progress; the installed state and retained suffix agree; restart restores
     membership and application state before use. \\
+\hline
+\tlbreak{Charlotte}{RaftStream} & Leader/term-bound snapshot chunks and offset
+    order & A replacement election discards partial bytes; installation uses
+    one sender episode in strict offset order. \\
 \hline
 \tlbreak{Charlotte}{SnapshotRestore} & Application acceptance, rejected restore,
     persistence failure and restart exposure & Rejection preserves application,
@@ -487,9 +491,8 @@ local unchecked increment were replaced with checked allocation that returns
 an error without mutating the catalog. A delayed unregister is accepted only
 when both owner and generation still match, which preserves a replacement.
 
-Formal safeguarding does not promise every desired availability property. Here it
-prevents the documentation from claiming atomic replacement and protects the
-generation safety that the implementation does provide.
+The model records this availability limit while preserving the generation
+safety that the implementation enforces.
 
 \subsection{Reliable-message session identity}
 
@@ -630,6 +633,18 @@ sampling after waits and before inbound or scheduled work. Fractional ticks
 accumulate; invalid or regressing samples abort with pending work live. Timers
 wake the service without manufacturing elapsed time. Clock conversion, resource
 readiness delivery and physical cleanup remain outside the read model.
+
+\subsection{Snapshot chunks belong to one leader and term}
+
+Snapshot chunk assembly also needs a sending identity. The old receiver matched
+only the snapshot boundary and offset: a new leader, or the same leader in a new
+election term, could complete an earlier buffer. Host regressions reproduced
+installation of a combined prefix and suffix. The buffer now captures the leader
+and RPC term, and elections and higher-term observations discard it. A replacement
+must begin at offset zero. \tlbreak{Charlotte}{RaftStream} checks this owner and
+strict ordering in 400 distinct states, with two weakened controls. It assumes
+one immutable byte image per sender/term/boundary; same-episode image replacement,
+transport authentication and general allocation failure remain outside this model.
 
 \subsection{Rejected application snapshots leave known ground intact}
 
@@ -1029,7 +1044,7 @@ Flat session allocation & Retry and restart epochs alias one wire session. &
 \end{longtable}
 \normalsize
 
-The check suite expects all 105 negative configurations to fail for the named
+The check suite expects all 107 negative configurations to fail for the named
 reason. If one unexpectedly satisfies its invariant, the regression harness
 has lost sensitivity and the suite fails.
 
@@ -1075,12 +1090,12 @@ docs/tla/check.sh /path/to/tla2tools.jar
 Alternatively, \texttt{TLA2TOOLS\_JAR} may name the tools archive. The script:
 
 \begin{itemize}
-    \item runs all thirty-five safe configurations;
+    \item runs all thirty-six safe configurations;
     \item enables action coverage and requires selected actions to have a
         positive successor count;
     \item rejects structural TLC warnings about variables, \texttt{EXCEPT}
         expressions, or incomplete successor states;
-    \item runs 105 negative configurations and requires each one to fail on
+    \item runs 107 negative configurations and requires each one to fail on
         the named invariant after exercising the named unsafe action; and
     \item writes checkpoints and traces into a temporary directory so generated
         state does not become part of the source tree.
@@ -1187,9 +1202,7 @@ mean one of three things:
         than silently attributed to the checked invariants.
 \end{enumerate}
 
-Therefore a green TLC run is not a blanket ``formally verified'' label for
-CharlotteOS.
-
+\begin{samepage}
 \section{Workflow for changes}
 
 Any change to ownership, generations, persistence, retry identity, lifecycle,
@@ -1216,5 +1229,6 @@ A practical review checklist is:
     \item Record deliberate omissions and avoid converting a safety result into
         an unsupported liveness or availability claim.
 \end{enumerate}
+\end{samepage}
 
 \endinput

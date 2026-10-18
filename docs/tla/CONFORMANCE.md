@@ -634,7 +634,7 @@ preserve the admission fence.
 
 | TLA+ action | Rust implementation | Correspondence |
 |---|---|---|
-| `BeginReceive` / `ReceiveChunk` | `handle_install_snapshot`, `PendingSnapshot` | Direct for ordered chunk accumulation. A mismatched offset is rejected without changing the durable image. |
+| `BeginReceive` / `ReceiveChunk` | `handle_install_snapshot`, `PendingSnapshot` | Abstracts bounded chunk accumulation. Exact offset and sender/term binding are checked by `CharlotteRaftStream` and Rust regressions below. |
 | `DiscardStale` | early completed response from `handle_install_snapshot` | Direct: an index at or below `commit_index` is acknowledged but cannot replace newer state or move progress backwards. The concrete early return also clears any pending snapshot buffer, which the model leaves unchanged. |
 | `PersistSnapshot` | `LogStore::install_snapshot`, `DiskLogStore::persist_log_state` | The durable boundary, bytes, current/next membership, and compatible suffix are one serialized object-store replacement. The object store publishes it copy-on-write after data and metadata reach stable storage. |
 | `ActivateSnapshot` | commit/last-applied update and membership reconstruction after successful `StateMachine::restore` | Application restore rejects before durable snapshot publication; the model's split represents successful logical activation after persistence. Application rejection and temporary restoration before a failed write are checked separately by `CharlotteSnapshotRestore` below. Membership activation also recomputes local decommissioning. |
@@ -645,6 +645,32 @@ The model abstracts snapshot contents to one value, membership to peer-ID sets,
 and chunks to a bounded count. It omits peer roles and addresses within those
 sets, checksums below the object-store interface, network framing, storage
 exhaustion, and state-machine-specific validation of snapshot bytes.
+
+## Raft snapshot stream ownership
+
+[`CharlotteRaftStream`](CharlotteRaftStream.tla) isolates sender/term and offset
+checks from the durable snapshot model. Both senders share one snapshot boundary;
+matching that boundary cannot establish continuation ownership.
+
+| TLA+ action | Rust implementation | Correspondence |
+|---|---|---|
+| `BeginReceive`, `RestartOffsetZero` | offset-zero `PendingSnapshot` construction in `handle_install_snapshot` | Captures leader ID, RPC term, boundary and owned byte buffer. A zero-offset request replaces the previous partial buffer. Boundary is fixed in this model; Rust tests exercise mismatched index and term too. |
+| `ChangeTerm`, `RecognizeLeader` | `start_election`, `step_down`, accepted append/snapshot leader recognition | A local election or higher-term observation discards partial bytes. The model combines higher-term observation and optional leader recognition; recognizing a leader after a local election is separate. |
+| `ReceiveChunk` | exact leader/term, boundary and offset checks before append | Two unit chunks represent prefix and final suffix. Installation requires one owner and offsets zero then one. Application validation and durable activation belong to the other snapshot models. |
+| `RejectStale`, `RejectLeader`, `RejectOffset`, `RejectBoundary` | early term/leader rejection and unmatched pending-buffer checks | Abstract observations preserve the current buffer; field-by-field rejection is exercised by Rust tests. These observations do not establish authentication or transport provenance. |
+| `CancelReceive` | stale completed snapshot discard, join reset or node destruction | Abstract local buffer disposal, without capability or hardware release. |
+
+The safe instance explores **400 distinct states**; all ten required actions
+have positive total coverage. Removing episode invalidation and the continuation
+binding produces `InstalledSingleOwner`; accepting a wrong offset produces
+`InstalledInOrder`. Both controls require `ReceiveChunk` coverage.
+
+This model assumes an immutable byte image within one sender/term/boundary.
+There is no shared stream ID or digest in the current wire grammar. Same-episode
+image replacement/retries, authenticated identity, heap admission, actual bytes,
+device persistence and concurrent raw transport remain separate qualifications.
+The [source review and evidence](../reports/audits/2026-10-19-raft-snapshot-streams.md)
+retain the failing mixed-byte installation and cross-port source comparison.
 
 ## Application snapshot acceptance and rejection
 
